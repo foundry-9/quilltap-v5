@@ -25,6 +25,17 @@
 //! union error) are masked after their deterministic prefixes — the standing
 //! parser-wording seam; every other warning is compared verbatim.
 //!
+//! ## [P4.33] The ruled import divergences
+//!
+//! Two, both from the 2026-08-04 ruling ("import overwrite claims the whole
+//! store, and store identity is the ID") and both asserted in BOTH directions
+//! rather than carved out:
+//!
+//! - [`FOLDER_CLEAR_DIVERGENCE`] — v5's overwrite drops `doc_mount_folders`
+//!   too, so the archive's tree lands clean where v4 collides with the
+//!   survivors. Pinned on the whole-state arms; the semantics half lives on the
+//!   dedicated `execute_folder_overwrite` arm.
+//!
 //! ## `doc_mount_chunks` — the P4.6BK tripwire, CLOSED at unification
 //!
 //! v4 re-chunks on every database-document write — the payload's own documents
@@ -293,9 +304,246 @@ fn derived_hashes(state: &StateDump, literals: &HashSet<String>) -> HashSet<Stri
     out
 }
 
+// ── [P4.33] the ruled overwrite-clears-folders divergence ───────────────────
+
+/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — the overwrite-clear takes the
+/// folders with it
+///
+/// v4's overwrite branch clears documents, blobs, chunks and files but NOT
+/// `doc_mount_folders` (`import-document-stores.ts:62-67`), so the previous
+/// contents' folder tree survives an archive that no longer mentions it, and a
+/// re-import of an IDENTICAL archive cannot re-insert its own folders — every
+/// one collides on `idx_doc_mount_folders_mp_parent_name_nocase`. Measured
+/// here: v4 answers `documentStoreFolders: 0` with fifteen
+/// `Failed to import folder "…"` warnings, and the fifteen surviving rows are
+/// the fixture's own.
+///
+/// **The ruling (human, 2026-08-04; `status-log.md` → "Ruling — import
+/// overwrite claims the whole store, and store identity is the ID") says
+/// overwrite means overwrite**, under the standing 2026-08-03 backup/restore
+/// ruling. v5 drops the folders too and writes the archive's tree clean. See
+/// `services::quilltap_import::document_stores::overwrite_clear_mount`.
+///
+/// These are the whole-state cases whose overwrite branch actually runs over a
+/// store that HAS folders. On them, [`apply_folder_clear_divergence`] asserts
+/// the divergence in BOTH directions and then removes exactly the diverging
+/// comparands — the folder-row identity and their write clock — so everything
+/// else in all three partitions is still diffed for equality. The dedicated
+/// `execute_folder_overwrite` arm pins the *semantics* (which folders survive);
+/// this pins the *round trip* (the whole instance is otherwise identical).
+const FOLDER_CLEAR_DIVERGENCE: &[&str] = &["execute_overwrite_all", "route_replace_remap"];
+
+/// The warning family v4 raises and v5 cannot: the folder re-insert collision.
+const FOLDER_WARNING_PREFIX: &str = "Failed to import folder \"";
+
+/// Map every `doc_mount_folders.id` to `<folder:{mountPointId}/{path}>`.
+///
+/// A folder row's IDENTITY is what the ruling makes incomparable: v4 keeps the
+/// row it already had, v5 writes a fresh one for the same place in the tree.
+/// `(mountPointId, path)` is that place — unique by index — so labelling with
+/// it keeps every REFERENCE comparable (a `doc_mount_file_links.folderId`
+/// pointing at the wrong folder still shows up, and reads better than
+/// `<minted-31>` did), while costing the raw uuid, which on these cases carries
+/// no information either side can share.
+fn folder_labels(state: &StateDump) -> BTreeMap<String, String> {
+    let empty = Vec::new();
+    let mut out = BTreeMap::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for row in state
+        .get("mountIndex")
+        .and_then(|t| t.get("doc_mount_folders"))
+        .unwrap_or(&empty)
+    {
+        let (Some(id), Some(mp), Some(path)) = (
+            row.get("id").and_then(Value::as_str),
+            row.get("mountPointId").and_then(Value::as_str),
+            row.get("path").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let label = format!("<folder:{mp}/{path}>");
+        assert!(
+            seen.insert(label.clone()),
+            "two folder rows share ({mp}, {path}) — the label key is not unique, so this \
+             normalization would fuse two distinct rows. Fix the key before trusting the diff."
+        );
+        out.insert(id.to_string(), label);
+    }
+    out
+}
+
+/// Split a result body's `warnings` into (everything else, the folder-collision
+/// sentences).
+fn split_folder_warnings(result: &Value) -> (Value, Vec<String>) {
+    let mut out = result.clone();
+    let mut folder = Vec::new();
+    if let Some(warnings) = out.get_mut("warnings").and_then(Value::as_array_mut) {
+        warnings.retain(|w| match w.as_str() {
+            Some(s) if s.starts_with(FOLDER_WARNING_PREFIX) => {
+                folder.push(s.to_string());
+                false
+            }
+            _ => true,
+        });
+    }
+    (out, folder)
+}
+
+/// Blank `doc_mount_folders.createdAt` / `.updatedAt` and re-key the rows by
+/// `(mountPointId, path)` — the second and third diverging comparands.
+///
+/// The clock is obvious: v4's rows carry the fixture's, v5's the import's. The
+/// row ORDER is the insertion-order residual — every other table in this family
+/// is dumped in rowid order and compared that way, but here v4 keeps rows it
+/// wrote long ago while v5 writes the archive's tree fresh, in the exporter's
+/// path-length order. Nothing reads `doc_mount_folders` by rowid (the exporter
+/// sorts by path length, every reader by path), so the order carries no meaning
+/// — but it is not equal, and pretending otherwise by leaving it would just
+/// report the same divergence fifteen more times. Sorting by the unique
+/// `(mountPointId, path)` index key keeps the comparison total.
+fn normalize_folder_rows(state: &mut StateDump) {
+    if let Some(rows) = state
+        .get_mut("mountIndex")
+        .and_then(|t| t.get_mut("doc_mount_folders"))
+    {
+        for row in rows.iter_mut() {
+            for key in ["createdAt", "updatedAt"] {
+                if let Some(v) = row.get_mut(key) {
+                    *v = Value::String("<folder-clock>".to_string());
+                }
+            }
+        }
+        rows.sort_by_key(|r| {
+            (
+                r["mountPointId"].as_str().unwrap_or_default().to_string(),
+                r["path"].as_str().unwrap_or_default().to_string(),
+            )
+        });
+    }
+}
+
+/// How many `doc_mount_folders` rows carry a write clock the PRE-import dump
+/// already knew — i.e. rows that survived rather than being rewritten.
+fn surviving_folder_rows(state: &StateDump, literals: &HashSet<String>) -> usize {
+    let empty = Vec::new();
+    state
+        .get("mountIndex")
+        .and_then(|t| t.get("doc_mount_folders"))
+        .unwrap_or(&empty)
+        .iter()
+        .filter(|r| {
+            r.get("createdAt")
+                .and_then(Value::as_str)
+                .is_some_and(|c| literals.contains(c))
+        })
+        .count()
+}
+
+/// Assert the ruled divergence in BOTH directions on one whole-state case, then
+/// hand back the comparands with exactly the diverging parts removed.
+///
+/// Returns `(rust body, oracle body, rust labels, oracle labels)`; the two
+/// states are masked in place.
+#[allow(clippy::too_many_arguments)]
+fn apply_folder_clear_divergence(
+    name: &str,
+    payload: &Value,
+    got_result: &Value,
+    want_result: &Value,
+    got_state: &mut StateDump,
+    want_state: &mut StateDump,
+    literals: &HashSet<String>,
+    failures: &mut Vec<String>,
+) -> (
+    Value,
+    Value,
+    BTreeMap<String, String>,
+    BTreeMap<String, String>,
+) {
+    let archive_folders = payload["data"]["folders"]
+        .as_array()
+        .map(Vec::len)
+        .unwrap_or(0);
+    assert!(
+        archive_folders > 0,
+        "[{name}] FOLDER_CLEAR_DIVERGENCE names a case whose archive carries no folders — \
+         the pin would be vacuous. Re-classify the case or fix the payload."
+    );
+
+    let (got_body, got_folder_warnings) = split_folder_warnings(got_result);
+    let (want_body, want_folder_warnings) = split_folder_warnings(want_result);
+    let count_of = |body: &Value| body["imported"]["documentStoreFolders"].as_u64();
+
+    // v4: every folder insert collides, so nothing is counted and every one is
+    // reported.
+    if want_folder_warnings.len() != archive_folders || count_of(&want_body) != Some(0) {
+        failures.push(format!(
+            "[{name}] v4 has CONVERGED (or moved): expected {archive_folders} folder-collision \
+             warnings and documentStoreFolders=0, got {} warnings and {:?}. If v4 now clears its \
+             folders too, delete FOLDER_CLEAR_DIVERGENCE and let these cases be plain equalities.",
+            want_folder_warnings.len(),
+            count_of(&want_body)
+        ));
+    }
+    // v5: the store was emptied first, so the archive's tree lands whole.
+    if !got_folder_warnings.is_empty() || count_of(&got_body) != Some(archive_folders as u64) {
+        failures.push(format!(
+            "[{name}] v5 did NOT import the archive's folders cleanly: {} collision warning(s), \
+             documentStoreFolders={:?} (expected {archive_folders}). The ruled overwrite-clear is \
+             not working — see `overwrite_clear_mount`.",
+            got_folder_warnings.len(),
+            count_of(&got_body)
+        ));
+    }
+
+    // The rows themselves: v4's are the survivors, v5's are all freshly written.
+    let want_survivors = surviving_folder_rows(want_state, literals);
+    let got_survivors = surviving_folder_rows(got_state, literals);
+    if want_survivors == 0 {
+        failures.push(format!(
+            "[{name}] v4 kept NO pre-existing folder row — the divergence is over on v4's side; \
+             retire FOLDER_CLEAR_DIVERGENCE."
+        ));
+    }
+    if got_survivors != 0 {
+        failures.push(format!(
+            "[{name}] v5 kept {got_survivors} pre-existing folder row(s) — the overwrite-clear \
+             did not claim the whole store."
+        ));
+    }
+
+    let got_labels = folder_labels(got_state);
+    let want_labels = folder_labels(want_state);
+    assert!(
+        !got_labels.is_empty() && !want_labels.is_empty(),
+        "[{name}] no folder rows on one side — the label normalization is vacuous."
+    );
+    normalize_folder_rows(got_state);
+    normalize_folder_rows(want_state);
+
+    // The counts and warnings are now pinned above; zero them so the rest of the
+    // body is still compared for equality.
+    let blank = |mut b: Value| {
+        if let Some(v) = b
+            .get_mut("imported")
+            .and_then(|i| i.get_mut("documentStoreFolders"))
+        {
+            *v = Value::String("<folder-count>".to_string());
+        }
+        b
+    };
+    (blank(got_body), blank(want_body), got_labels, want_labels)
+}
+
 struct Normalizer {
     literals: HashSet<String>,
     derived_hashes: HashSet<String>,
+    /// [P4.33] Structural ids whose VALUE is deliberately incomparable across
+    /// engines, mapped to a semantic key instead of a walk-order `<minted-N>`
+    /// label — see [`folder_labels`]. Consulted before both `literals` and the
+    /// minting counter, so a side that writes a fresh row where the other keeps
+    /// an old one cannot shift every later label.
+    id_labels: BTreeMap<String, String>,
     minted: BTreeMap<String, String>,
 }
 
@@ -304,12 +552,18 @@ impl Normalizer {
         Normalizer {
             literals,
             derived_hashes: HashSet::new(),
+            id_labels: BTreeMap::new(),
             minted: BTreeMap::new(),
         }
     }
 
     fn with_derived_hashes(mut self, hashes: HashSet<String>) -> Self {
         self.derived_hashes = hashes;
+        self
+    }
+
+    fn with_id_labels(mut self, labels: BTreeMap<String, String>) -> Self {
+        self.id_labels = labels;
         self
     }
 
@@ -320,6 +574,11 @@ impl Normalizer {
         while i < b.len() {
             if i + 36 <= b.len() {
                 if let Ok(w) = std::str::from_utf8(&b[i..i + 36]) {
+                    if let Some(label) = self.id_labels.get(w) {
+                        out.push_str(label);
+                        i += 36;
+                        continue;
+                    }
                     if is_uuid(w) && !self.literals.contains(w) {
                         let next = self.minted.len();
                         let label = self
@@ -351,6 +610,9 @@ impl Normalizer {
     fn value(&mut self, v: &Value) -> Value {
         match v {
             Value::String(s) => {
+                if let Some(label) = self.id_labels.get(s) {
+                    return Value::String(label.clone());
+                }
                 if self.derived_hashes.contains(s) {
                     return Value::String("<sha:derived-from-normalized>".to_string());
                 }
@@ -551,8 +813,11 @@ fn normalize_side(
     result: &Value,
     state: &StateDump,
     skip_tables: &HashSet<(&str, &str)>,
+    id_labels: BTreeMap<String, String>,
 ) -> (Value, StateDump) {
-    let mut n = Normalizer::new(literals.clone()).with_derived_hashes(derived);
+    let mut n = Normalizer::new(literals.clone())
+        .with_derived_hashes(derived)
+        .with_id_labels(id_labels);
     let norm_result = n.value(&mask_result_warnings(result));
     let mut norm_state = BTreeMap::new();
     for (part, tables) in state {
@@ -715,32 +980,34 @@ fn system_import_execute_state_equivalence() {
     );
 }
 
-/// [P4.31] The `.qtap` overwrite-clear's FOLDER GAP — measured and pinned in
-/// both directions, and deliberately NOT fixed.
+/// [P4.31 → P4.33] The `.qtap` overwrite-clear's FOLDER GAP — the semantics
+/// half of the ruled divergence (see [`FOLDER_CLEAR_DIVERGENCE`] for the
+/// round-trip half).
 ///
 /// Two imports into one store: the first seeds `alpha` + `alpha/beta`, the
 /// second overwrites it with an archive carrying only `gamma`.
 /// `importDocumentStores`' overwrite branch clears documents, blobs, chunks and
-/// files but not `doc_mount_folders` (`import-document-stores.ts:62-67`), so
-/// BOTH apps end with all three folders and the two the archive no longer
-/// mentions are permanent.
+/// files but not `doc_mount_folders` (`import-document-stores.ts:62-67`), so v4
+/// ends with all THREE folders and the two the archive no longer mentions are
+/// permanent — stale husks, the orphan shape P4.31 closed at the delete end.
 ///
-/// P4.31's tier-2 item 7 asked v5 to fix this under the standing 2026-08-03
-/// backup/restore ruling. Implementing it showed the obvious repair is wrong:
-/// the stores an overwrite lands on are typically character vaults and project
-/// stores whose folders are SCAFFOLDING, not archive content (the
-/// `system-data` fixture's Lorian Character Vault carries `Outfits`,
-/// `Prompts`, `Scenarios`, `Wardrobe`, `files`, `images`), and clearing the
-/// table takes those with it — visible as `execute_overwrite_all` and
-/// `route_replace_remap` going red on rows nothing in the archive owns. Which
-/// folders an overwrite may claim is a semantics call for the human, like the
-/// P4.9G5 restore-bug ruling, so the lane escalated instead of guessing.
+/// P4.31 measured this and escalated rather than guessing, because clearing the
+/// table also takes the scaffolding a vault / project store is provisioned with
+/// (`Outfits` / `Prompts` / `Scenarios` / `Wardrobe` / `files` / `images`).
+/// **The ruling (human, 2026-08-04) settles it: overwrite means overwrite.** A
+/// real export always carries the scaffolding back — v4's own exporter dumps
+/// every folder row (`lib/export/ndjson-writer.ts:513-524`) — so the
+/// scaffold-loss arm is an archive shape no real export produces, and
+/// round-trip fidelity wins.
 ///
-/// This arm is the escalation's evidence: it asserts today's shared behavior
-/// EXACTLY on both sides and additionally pins that the stale folders are
-/// present, so it fires the moment either app moves — including when v5 lands
-/// the ruled repair, which is exactly when the next lane should read this
-/// comment.
+/// The divergence is asserted in BOTH directions: v5 must end with EXACTLY the
+/// second archive's folders, v4 must end with those plus the stale ones. If v4
+/// converges the second assertion says so and names the retirement.
+///
+/// Everything else on this case is still compared for equality — both result
+/// bodies, the store count, and each link with the PATH of the folder it
+/// resolves to. That last one is the fidelity claim worth having: v5's `gamma`
+/// link must resolve to v5's freshly written `gamma` row, not dangle.
 ///
 /// It does not reuse the `execute_twice` path because that comparison runs the
 /// whole three-partition state through a normalizer that labels minted ids in
@@ -838,16 +1105,8 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
         ));
     }
 
-    // The folder rows themselves are compared for EQUALITY — v5 is v4-faithful
-    // here pending the ruling.
-    if folders != case["folders"] {
-        bad(format!(
-            "folder rows diverged:\n  rust  : {folders}\n  oracle: {}",
-            case["folders"]
-        ));
-    }
-
-    // …and the gap itself is pinned, so this arm cannot quietly become vacuous.
+    // ── the ruled divergence, asserted in both directions ───────────────────
+    //
     // The archive's own folder is `gamma`; anything else in the store survived
     // an overwrite that replaced every file beneath it.
     let paths = |v: &Value| -> Vec<String> {
@@ -860,19 +1119,34 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
             .unwrap_or_default()
     };
     let archive_paths = second_payload_folder_paths(&case["exportData"]);
-    for (side, rows) in [("v4", &case["folders"]), ("v5", &folders)] {
-        let stale: Vec<String> = paths(rows)
+    let stale = |rows: &Value| -> Vec<String> {
+        paths(rows)
             .into_iter()
             .filter(|p| !archive_paths.contains(p))
-            .collect();
-        if stale.is_empty() {
-            bad(format!(
-                "{side} kept NO folders the archive does not carry — the overwrite-clear gap is \
-                 CLOSED on that side. If it is v5, the ruling has been made and this arm should \
-                 become a divergence pin; if it is v4, retire the escalation. See \
-                 `overwrite_clear_mount`."
-            ));
-        }
+            .collect()
+    };
+
+    // v5: the overwrite claimed the whole store, so exactly the archive's tree
+    // is left — no husks, and every path the archive DOES carry is present.
+    let mut v5_paths = paths(&folders);
+    v5_paths.sort();
+    if v5_paths != archive_paths {
+        bad(format!(
+            "v5 must end with EXACTLY the archive's folders {archive_paths:?}, got {v5_paths:?} \
+             — the ruled overwrite-clear (see `overwrite_clear_mount`) is not holding."
+        ));
+    }
+
+    // v4: the husks are still there. When that stops being true, v4 has adopted
+    // the same repair and the whole divergence retires.
+    let v4_stale = stale(&case["folders"]);
+    if v4_stale.is_empty() {
+        bad(
+            "v4 kept NO folders the archive does not carry — it has CONVERGED on the ruled \
+             behavior. Retire this divergence: restore the plain equality here, drop \
+             FOLDER_CLEAR_DIVERGENCE, and take the twin off the post-5.0 v4-side list."
+                .to_string(),
+        );
     }
 }
 
@@ -938,17 +1212,42 @@ fn run_execute_case(
         .expect("execute_import ran");
     drop(db);
 
-    let got_state = read_state(&scratch);
-    let want_state = state_from_value(&case["state"]);
+    let mut got_state = read_state(&scratch);
+    let mut want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
+
+    // [P4.33] The ruled overwrite-clears-folders divergence, asserted in both
+    // directions and then subtracted from the comparands.
+    let (got_body, want_body, got_labels, want_labels) = if FOLDER_CLEAR_DIVERGENCE.contains(&name)
+    {
+        apply_folder_clear_divergence(
+            name,
+            &case["exportData"],
+            &results[0].to_value(),
+            &case["result"],
+            &mut got_state,
+            &mut want_state,
+            &literals,
+            failures,
+        )
+    } else {
+        (
+            results[0].to_value(),
+            case["result"].clone(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+        )
+    };
 
     compare_execute(
         name,
-        &results[0].to_value(),
-        &case["result"],
+        &got_body,
+        &want_body,
         &got_state,
         &want_state,
         &literals,
+        got_labels.clone(),
+        want_labels.clone(),
         failures,
     );
     if runs > 1 {
@@ -962,6 +1261,7 @@ fn run_execute_case(
             &got2,
             &got_state,
             &HashSet::new(),
+            got_labels,
         );
         let (want_norm, _) = normalize_side(
             &literals2,
@@ -969,6 +1269,7 @@ fn run_execute_case(
             &want2,
             &want_state,
             &HashSet::new(),
+            want_labels,
         );
         if got_norm != want_norm {
             failures.push(format!(
@@ -990,6 +1291,8 @@ fn compare_execute(
     got_state: &StateDump,
     want_state: &StateDump,
     literals: &HashSet<String>,
+    got_labels: BTreeMap<String, String>,
+    want_labels: BTreeMap<String, String>,
     failures: &mut Vec<String>,
 ) {
     // P4.6BK closed the chunk gap in this round, so nothing is skipped here:
@@ -1001,6 +1304,7 @@ fn compare_execute(
         got_result,
         got_state,
         &skip,
+        got_labels,
     );
     let (want_norm_result, want_norm_state) = normalize_side(
         literals,
@@ -1008,6 +1312,7 @@ fn compare_execute(
         want_result,
         want_state,
         &skip,
+        want_labels,
     );
 
     if got_norm_result != want_norm_result {
@@ -1086,15 +1391,38 @@ fn run_route_case(
             }
             let literals = literals_for(&pre, &export_data);
             if case.get("state").filter(|v| !v.is_null()).is_some() {
-                let got_state = read_state(&scratch);
-                let want_state = state_from_value(&case["state"]);
+                let mut got_state = read_state(&scratch);
+                let mut want_state = state_from_value(&case["state"]);
+                // [P4.33] Same ruled divergence as the execute arms.
+                let (got_body, want_body, got_labels, want_labels) =
+                    if FOLDER_CLEAR_DIVERGENCE.contains(&name) {
+                        apply_folder_clear_divergence(
+                            name,
+                            &export_data,
+                            &got_body,
+                            body,
+                            &mut got_state,
+                            &mut want_state,
+                            &literals,
+                            failures,
+                        )
+                    } else {
+                        (
+                            got_body.clone(),
+                            body.clone(),
+                            BTreeMap::new(),
+                            BTreeMap::new(),
+                        )
+                    };
                 compare_execute(
                     name,
                     &got_body,
-                    body,
+                    &want_body,
                     &got_state,
                     &want_state,
                     &literals,
+                    got_labels,
+                    want_labels,
                     failures,
                 );
             } else {

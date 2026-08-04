@@ -55,6 +55,21 @@ real template to carry, and that exposed a hole in the differential
 itself: the id-normalizing diff could not tell one template id from
 another, so two of the new arms passed even with the resolution
 deliberately broken. The template id is now compared literally.
+Fixed a test-suite race in the maintenance-sweep cadence check: it waited for
+the terminal-session cleanup and then read the sweep timestamp, which is
+written separately just afterward, so a heavily loaded full-suite run could
+read it too early. Test-only; no product behavior changed.
+
+Overwriting a document store on import now clears its folders too.
+Previously an overwrite replaced every file in the store but left the old
+folder tree standing, so folders the archive no longer mentioned became
+permanent empty husks, and re-importing the same archive failed to
+restore its own folders at all — every one collided with a survivor. The
+store is now emptied completely before the archive's tree is written
+back, which is what makes an import a faithful round trip. A real export
+always carries the store's whole folder tree, scaffolding included, so
+nothing is lost by clearing first. This is a deliberate difference from
+the reference app, which still keeps the husks.
 
 Planned the next porting round and committed its work orders — four
 lanes. Two absorb the reference app's newest drift: the New Chat form

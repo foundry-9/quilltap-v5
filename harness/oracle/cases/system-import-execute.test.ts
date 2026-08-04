@@ -258,14 +258,17 @@ function linkGroupPayload(): { manifest: unknown; data: Record<string, unknown> 
 }
 
 /**
- * P4.31 — a database store carrying FOLDERS, for the overwrite-clear arm.
+ * P4.31 → P4.33 — a database store carrying FOLDERS, for the overwrite-clear
+ * arm.
  *
  * `importDocumentStores`' overwrite branch clears documents, blobs, chunks and
  * files (`import-document-stores.ts:62-67`) but NOT `doc_mount_folders`, so a
  * re-import into the same store keeps the previous run's folder rows and then
  * fails to re-insert its own against the `(mountPointId, path)` unique index.
- * v5 clears them, under the standing backup/restore ruling. Imported TWICE so
- * the second run is the one that hits the overwrite branch.
+ * **v5 clears them too** — the ruled divergence (human, 2026-08-04: "overwrite
+ * means overwrite"), under the standing 2026-08-03 backup/restore ruling.
+ * Imported TWICE so the second run is the one that hits the overwrite branch,
+ * with a DIFFERENT folder set the second time so the husks are visible.
  */
 function folderOverwritePayload(
   variant: 'alpha' | 'gamma',

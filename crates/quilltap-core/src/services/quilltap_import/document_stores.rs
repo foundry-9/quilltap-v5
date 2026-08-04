@@ -471,33 +471,39 @@ pub(super) fn import_document_stores(
 /// 3. `docMountChunks` — chunks by `mountPointId`.
 /// 4. `docMountFiles` — a second links+files pass over an already-empty set.
 ///
-/// ## P4.31 — the folder gap: MEASURED, PINNED, and ESCALATED (not fixed)
+/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — step 5, the FOLDER clear
 ///
 /// v4's clear list (`import-document-stores.ts:62-67`) omits
 /// `doc_mount_folders`, so an overwrite replaces every file while leaving the
-/// previous contents' folder tree standing. Measured on v4 at `49769ec4`
-/// (`system_import_state`'s `execute_folder_overwrite` arm): importing an
-/// archive carrying only `gamma` over a store that held `alpha` +
-/// `alpha/beta` leaves ALL THREE folders, and the two the archive no longer
-/// mentions are then permanent — the same orphan shape this lane closes at the
-/// delete end, arriving by a different door. Re-importing an IDENTICAL archive
-/// surfaces it instead as `Failed to import folder …UNIQUE constraint failed`
-/// warnings, because the survivors block the re-insert.
+/// previous contents' folder tree standing. P4.31 measured it on v4 at
+/// `49769ec4`: importing an archive carrying only `gamma` over a store that
+/// held `alpha` + `alpha/beta` leaves ALL THREE folders, and the two the
+/// archive no longer mentions are then permanent — the same orphan shape P4.31
+/// closed at the delete end, arriving by a different door. Re-importing an
+/// IDENTICAL archive surfaces it instead as
+/// `Failed to import folder …UNIQUE constraint failed` warnings, because the
+/// survivors block the re-insert (measured: all 15 of `system-data`'s folder
+/// rows, and `documentStoreFolders: 0` in the result body).
 ///
-/// **The obvious repair — clear the folders too — is WRONG, and that is why
-/// this is escalated rather than landed.** The stores an overwrite most often
-/// lands on are character vaults and project stores, whose folders
-/// (`Outfits` / `Prompts` / `Scenarios` / `Wardrobe` / `images` / `files`) are
-/// SCAFFOLDING, not archive content: `system-data`'s Lorian Character Vault
-/// carries six of them, and a blanket clear deletes the lot. Choosing between
-/// "clear only the folders the archive replaces", "clear all non-scaffold
-/// folders", and "leave them and reap the unreachable ones later" is a
-/// semantics call of the same kind as the P4.9G5 restore-bug ruling, so v5
-/// stays v4-faithful here until it is made.
+/// P4.31 escalated rather than fixed it, because clearing the table also takes
+/// the scaffolding folders a character vault / project store is provisioned
+/// with (`Outfits` / `Prompts` / `Scenarios` / `Wardrobe` / `images` /
+/// `files`). **The ruling (human, 2026-08-04; `status-log.md` → "Ruling —
+/// import overwrite claims the whole store, and store identity is the ID")
+/// settles it: overwrite means overwrite.** The scaffold-loss worry is an
+/// archive shape no real export produces — v4's own exporter dumps EVERY
+/// folder row of a database store (`lib/export/ndjson-writer.ts:513-524`), so
+/// a genuine archive always carries the scaffolding back, and round-trip
+/// fidelity wins. This runs under the standing 2026-08-03 backup/restore
+/// ruling ("v5 FIXES v4's bugs in this family").
 ///
-/// The gap is not merely written down: `execute_folder_overwrite` pins the
-/// stale-folder set in BOTH directions, so it fires the moment either app's
-/// behavior moves.
+/// Pinned in BOTH directions by `system_import_state`: the dedicated
+/// `execute_folder_overwrite` arm (v5 ends with exactly the archive's folders;
+/// v4 keeps the union) and `FOLDER_CLEAR_DIVERGENCE` for the whole-state arms
+/// (v4's folder rows are the PRE-EXISTING ones plus its UNIQUE warnings; v5's
+/// are freshly written with none). Both carry the retire-the-divergence
+/// message for the day v4 converges. The v4-side twin is queued on
+/// `dogfood-findings.md`'s post-5.0 v4-side list.
 fn overwrite_clear_mount(mount: &Connection, mount_point_id: &str) -> Result<(), DbError> {
     // 1. Documents whose file is linked from this mount.
     mount.execute(
@@ -530,6 +536,16 @@ fn overwrite_clear_mount(mount: &Connection, mount_point_id: &str) -> Result<(),
     // 3. Chunks by mountPointId.
     mount.execute(
         "DELETE FROM doc_mount_chunks WHERE mountPointId = ?1",
+        [mount_point_id],
+    )?;
+
+    // 5. Folders — v5 ONLY, the ruled divergence above. Runs last, after the
+    //    links that pointed into them are gone, so nothing is left dangling;
+    //    the archive's own folder tree is then imported clean, which is what
+    //    lets a re-import of an identical archive succeed instead of colliding
+    //    with the survivors on `idx_doc_mount_folders_mp_parent_name_nocase`.
+    mount.execute(
+        "DELETE FROM doc_mount_folders WHERE mountPointId = ?1",
         [mount_point_id],
     )?;
 

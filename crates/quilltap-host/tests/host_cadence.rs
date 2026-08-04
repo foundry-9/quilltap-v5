@@ -375,11 +375,23 @@ async fn maintenance_startup_tick_honors_recent_run_window() {
     seed_session(&db, "s-1").await;
 
     // The startup tick (after the 100 ms grace) reaps it + records the stamp.
-    wait_until(|| session_count(&db) == 0, "first maintenance startup tick").await;
-    let stamp = db
-        .read_main(quilltap_core::db::instance_settings::get_last_maintenance_sweep_at)
-        .unwrap();
-    assert!(stamp.is_some(), "stamp recorded");
+    //
+    // Both halves have to be waited for, not just the reap: the sweep writes the
+    // stamp in a SEPARATE `db.write` after the terminal-session cleanup
+    // (`scheduled_maintenance.rs` step 5, then "Record the pass"), so observing
+    // the reap says nothing about the stamp yet. Waiting only on the reap raced
+    // under full-suite load and failed `stamp recorded` there while passing in
+    // isolation (caught by P4.33's gate, 2026-08-04).
+    let stamp_of = |db: &Db| {
+        db.read_main(quilltap_core::db::instance_settings::get_last_maintenance_sweep_at)
+            .unwrap()
+    };
+    wait_until(
+        || session_count(&db) == 0 && stamp_of(&db).is_some(),
+        "first maintenance startup tick",
+    )
+    .await;
+    assert!(stamp_of(&db).is_some(), "stamp recorded");
     drop(db);
 
     // Re-boot (Lock → Unlock is unavailable under an env pepper; use a full

@@ -54264,3 +54264,106 @@ v4's new 189-line design spec (`diff -q` identical).
 
 core 0.0.462 → **0.0.463**; harness 0.0.395 → **0.0.396**. No other crate
 and no `apps/web` file touched.
+## Lane record — P4.33 unit 1 (arm 1: the overwrite-clear claims the folders), 2026-08-04
+
+**Drift check at lane start (2026-08-04):** `git log 7fe9fe40..HEAD` in
+`~/source/quilltap-server` is EMPTY and the tree is clean — v4 HEAD is exactly
+the round's baseline `7fe9fe40`. Every oracle in this lane regenerated straight
+from the checkout; no pinned worktree was needed.
+
+### What landed
+
+`overwrite_clear_mount` gained a fifth step: `DELETE FROM doc_mount_folders
+WHERE mountPointId = ?`, running last so the links that pointed into those rows
+are already gone. This discharges the first arm of the 2026-08-04 ruling
+("Ruling — import overwrite claims the whole store, and store identity is the
+ID"), under the standing 2026-08-03 backup/restore ruling. The P4.31 escalation
+comment on that function is replaced by the ruling citation.
+
+**The measured divergence, on v4 at `7fe9fe40`:**
+
+| | v4 | v5 |
+|---|---|---|
+| `execute_overwrite_all` / `route_replace_remap` | `documentStoreFolders: 0`, 15 × `Failed to import folder "…": UNIQUE constraint failed: index 'idx_doc_mount_folders_mp_parent_name_nocase'`; the fixture's own 15 rows survive | `documentStoreFolders: 15`, no folder warnings; 15 freshly written rows |
+| `execute_folder_overwrite` (archive carries only `gamma`) | ends with `alpha`, `alpha/beta`, `gamma` — two husks | ends with exactly `gamma` |
+
+Note what the second row is NOT: both result bodies on that case are
+byte-identical between the engines (`documentStoreFolders: 1`, no warnings),
+because the second archive's folder set is disjoint from the first's, so v4
+never collides. The whole divergence there is which rows are left standing —
+which is why the arm needed its own focused dump rather than the result body.
+
+### The differential
+
+`system_import_state` (13 cases, unchanged count) now carries the divergence in
+both directions rather than as a shared-behavior tripwire:
+
+- `FOLDER_CLEAR_DIVERGENCE` — the two whole-state arms whose overwrite branch
+  runs over a store that HAS folders. `apply_folder_clear_divergence` asserts
+  v4's exact leaked end-state (N collision warnings, `documentStoreFolders: 0`,
+  ≥1 surviving pre-import row) AND v5's exact end-state (zero folder warnings,
+  `documentStoreFolders` == the archive's folder count, ZERO surviving rows),
+  each with its own retire-the-divergence message, and only then subtracts the
+  three comparands that legitimately cannot match: the folder rows' identity,
+  their write clock, and their rowid order. **Everything else in all three
+  partitions is still diffed for equality** — this is the round-trip claim.
+- `execute_folder_overwrite` — reworked from "assert today's shared behavior
+  exactly" into the semantics pin: v5's folder paths must equal EXACTLY the
+  second archive's; v4's must still contain husks. Its result bodies, store
+  count and per-link folder resolution stay plain equalities, so v5's `gamma`
+  link resolving to v5's freshly written `gamma` row (not dangling) is proven.
+
+**The normalizer constraint the P4.31 lane recorded, and how it was answered.**
+The family labels minted ids `<minted-N>` in walk order, so a side that mints
+15 uuids the other does not shifts every label after it — even with row COUNTS
+equal, as they are here. The fix is a new `Normalizer::id_labels`, consulted
+before both the literals set and the minting counter: on the divergence cases
+every `doc_mount_folders.id` is replaced, on both sides, by
+`<folder:{mountPointId}/{path}>`. That is the row's place in the tree, unique
+by the same index the collisions fire on, so every REFERENCE stays comparable
+(a `doc_mount_file_links.folderId` pointing at the wrong folder still shows up,
+and reads better than `<minted-31>` did) while costing only a uuid neither side
+can share. Row ORDER goes the same way: v4 keeps rows in the rowid slots it
+wrote them in, v5 re-inserts in the exporter's path-length order, so the
+divergence cases sort `doc_mount_folders` by `(mountPointId, path)` — nothing
+reads that table by rowid.
+
+### Mutation proofs (the D24 rule), both directions
+
+- **v5 side** — folder DELETE removed from `overwrite_clear_mount`: 5 named
+  failures, `execute_overwrite_all` + `route_replace_remap` each reporting "v5
+  did NOT import the archive's folders cleanly: 15 collision warning(s),
+  documentStoreFolders=Some(0)" and "v5 kept 15 pre-existing folder row(s)",
+  and `execute_folder_overwrite` reporting `got ["alpha", "alpha/beta",
+  "gamma"]`.
+- **v4 side** — the oracle NDJSON hand-edited to simulate v4 converging (folder
+  warnings dropped, `documentStoreFolders: 15`, folder clock rewritten, husks
+  removed): all three "v4 has CONVERGED" messages fire, each naming what to
+  retire.
+
+### Oracles regenerated, and the neutrality set
+
+All four straight from `~/source/quilltap-server` at `7fe9fe40`, each in its own
+invocation. `system_import_state` 13/13; the three neighbours re-run BY NAME,
+all green, none of them touched by the change (the preview does no store
+matching, and the exporter was not opened): `system_import_equivalence` (20),
+`system_export_equivalence`, `qtap_import_equivalence`.
+
+No fixture bytes moved.
+
+### A pre-existing full-suite race, found by this gate and fixed
+
+`quilltap-host`'s `maintenance_startup_tick_honors_recent_run_window` failed at
+`stamp recorded` in the full `--workspace` run (412 binaries) and passed 3/3 in
+isolation — the classic full-suite interference shape. Diagnosed rather than
+retried: the sweep writes the stamp in a SEPARATE `db.write` AFTER the terminal
+cleanup (`scheduled_maintenance.rs`, step 5 then "Record the pass"), so the
+spec's `wait_until(session_count == 0)` proves nothing about the stamp it then
+reads. Load widened the window; nothing about the import path is involved.
+
+Fixed in the spec's gesture, no product code touched: the wait now covers both
+halves. **Reproduced deterministically before and after** by injecting a 1.5 s
+sleep ahead of the stamp write — the old gesture fails, the new one passes and
+takes 2.35 s, i.e. it genuinely waits. Taken under `commit.md` §5 ("fix every
+failure you find, regardless of whether you think you caused it"); the file is
+in no lane's ownership block.
