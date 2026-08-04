@@ -1911,11 +1911,11 @@ records THERE. Update this summary only when a phase or round completes.
   75-family neutrality sweep re-measured the recipe-rot debt (19
   unrunnable + ~7 stale-red incl. `compression_tier3` latent since
   P4.13 and the `8bf3cb5f` native-tool-prompt wording gap) — wants its
-  own maintenance order. Gate: 412 test binaries green with the round's
-  31-var env block; 14 families regenerated fresh from a PINNED
-  `49769ec4` worktree and re-run by name zero SKIP; clippy both feature
-  sets; release build; ng test/build clean; full Playwright green zero
-  skips, the preset beat LIVE (exact numbers in the round record).
+  own maintenance order. Gate: 412 test binaries /
+  1,848 / 0 with the round's 31-var env block; 14 families regenerated
+  fresh from a PINNED `49769ec4` worktree and re-run by name zero SKIP;
+  clippy both feature sets; release build; ng 278 files / 3,829; full
+  Playwright 177/177 zero skips, the preset beat LIVE.
   Versions: core 0.0.461, harness 0.0.395, host 0.0.57, web 0.0.57,
   SPA 0.5.398; cli/tauri unchanged. Round record: `status-log.md`.
 - **Oracle baseline: `49769ec4` (v4 4.8.0-dev.150, 2026-08-03), adopted

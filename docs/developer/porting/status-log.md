@@ -53512,10 +53512,24 @@ doctrine) and `dispatchData` has no AbortSignal seam (app-wide).
   NDJSON freshness-checked (mtime + drift markers: `vaultMountPointId`
   on six pascal rows; `"chunkCount":1` in doc-text/doc-fm).
 - `cargo test --workspace --no-fail-fast` with the round's 31-variable
-  env block: see the gate numbers in the CHANGELOG entry; the 14 families
-  re-run BY NAME with `--nocapture`, zero SKIP.
-- SPA: `ng test` + `ng build` clean; full Playwright green zero skips
-  with the new preset beat LIVE (numbers in the CHANGELOG entry).
+  env block: **412 test binaries / 1,848 tests / 0 failed** (exit 0); the
+  14 families re-run BY NAME with `--nocapture`, **zero SKIP**.
+- SPA: `ng test` **278 files / 3,829 / 0**; `ng build` clean; full
+  Playwright **177 passed / 0 failed / 0 skipped (4.1 m)** with the new
+  preset beat LIVE.
+- **Two late catches at the gate itself** (`f3aa2d8f`): the review
+  commit's own "3½." doc marker tripped `doc_lazy_continuation` under
+  clippy — and the tell was the gate script's MISSING clippy echoes (a
+  pipe had eaten the exit status: the standing `grep|head` trap, hit
+  twice this round — the Playwright `PW-EXIT:0` after a `tail` pipe was
+  equally worthless). And the full suite failed the P4.6z scriptorium
+  convert beat on a strict-mode violation: an unrelated base-path
+  accessibility toast stacked beside the refusal toast, green 3/3 in
+  isolation — the bare `.qt-toast-error` locator was weak in BOTH
+  directions (ANY error toast satisfied it, so the accessibility warning
+  alone would have passed with the refusal missing; any second toast
+  broke it), now filtered to the refusal's own words. Assertion
+  strengthened, not weakened.
 
 ### Harness traps worth carrying (from the lanes + the unify run)
 

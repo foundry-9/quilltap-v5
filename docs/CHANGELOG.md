@@ -22,10 +22,11 @@ real chunk-on-write, so the two long-red equivalence checks are green and
 edited documents are positively proven chunked for search. The
 unification review caught four real defects before they shipped — the
 worst a fail-soft gate that would have silently disabled the orphan
-repair forever on text-only databases. Gate: 412 Rust test binaries all
-green with fourteen oracle families regenerated from a pinned reference
-checkout; the full browser suite green with the new preset walk live.
-(Final numbers in the round record.)
+repair forever on text-only databases. Gate: 412 Rust test binaries /
+1,848 tests / 0 failed with fourteen oracle families regenerated from a
+pinned reference checkout and re-run by name; Angular tests 278 files /
+3,829 green; the full browser suite 177 passed / 0 failed / 0 skipped
+with the new preset walk live.
 
 Rewrote the regeneration recipes carried in all six document-editing
 equivalence checks. The old ones pointed the reference app's test runner
