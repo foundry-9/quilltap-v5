@@ -237,6 +237,11 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
         params: &CompletionParams,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         let api_key = self.keys.key_for(provider).unwrap_or_default();
+        // P4.D42 (v4 `74ec93b5`): the caller's per-request budget becomes THIS
+        // call's transport policy — a ceiling on one attempt, retries off. The
+        // process-wide policy stands when the caller named none. This is the only
+        // per-call path; the field never reaches a request body (v4 same).
+        let policy = self.policy.with_request_budget(params.request_timeout_ms);
         async move {
             quilltap_core::model::completion_provider::execute_completion(
                 &self.transport,
@@ -244,7 +249,7 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
                 base_url,
                 &api_key,
                 params,
-                &self.policy,
+                &policy,
                 &self.user_agent,
                 self.base_url_env.as_deref(),
             )

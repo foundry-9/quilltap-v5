@@ -217,6 +217,7 @@ mod tests {
             cache_key: None,
             profile_parameters: None,
             attachments: Vec::new(),
+            request_timeout_ms: None,
         }
     }
 

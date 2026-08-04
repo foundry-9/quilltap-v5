@@ -52236,3 +52236,98 @@ un-mocked v4 turns out to write anything v5 does not beyond
 `chunkCount`, that is a REAL port finding — escalate, never normalize.
 The lane also repairs the six families' unrunnable recipe headers (the
 D32/D41 sweep debt that let this red sit invisible).
+---
+
+## Lane record — P4.D42 unit 1 (the per-request transport budget)
+
+**Order:** `work-orders/p4.d42-provider-request-bounding.md`, tier-1 item 1
+(D1 / D2 / D3 / D4). Branch `claude/p4-d42-provider-bounding-c218f0`.
+
+**Drift check (lane start, 2026-08-04):** `git log 49769ec4..HEAD --oneline`
+in `~/source/quilltap-server` is EMPTY and `git status --short` is clean —
+v4 HEAD *is* the baseline `49769ec4`. Oracles regenerate straight from the
+checkout; no pinned worktree needed.
+
+**What landed.**
+
+- `CompletionParams.request_timeout_ms: Option<i64>` (D1) — v4
+  `LLMParams.requestTimeoutMs`, plugin-types 2.5.5. It rides
+  `model/completion.rs`, **not** `RequestInput`: it is a transport knob and
+  must never serialize into a request body (v4 same — see the corpus note
+  below). Off the canned tier-3 key by construction
+  (`canned_completion_key` reads provider/model/temperature/messages), so no
+  fixture moves.
+- `TransportPolicy::with_request_budget(Option<i64>)` (D2) — the collapse of
+  v4 plugin-utils 2.2.18's `buildSdkRequestOptions` + `buildSdkClientOptions`
+  onto v5's ONE reqwest transport. A set, positive budget replaces the
+  timeout AND drops `max_retries` to 0 (v4's reason, carried verbatim in the
+  doc comment: three attempts at the requested budget would spend three
+  times what the caller agreed to). `None`/non-positive leaves the policy
+  alone — v4's `typeof requested === 'number' && requested > 0` guard.
+  Applied per call in `WireCompletionProvider::send_message`
+  (`quilltap-host/src/spine.rs`), which the survey confirmed is the ONLY
+  production `CompletionProvider` (every other impl is a canned test one).
+- **The streaming distinction (D3), the one place the nine-SDK collapse must
+  not flatten.** `ReqwestTransport::build` no longer arms a deadline at all;
+  each caller applies the one its shape needs. `execute` keeps reqwest's
+  whole-exchange `.timeout()` (v4's non-streaming `buildRequestAbortSignal` /
+  `timeoutMs` / `httpOptions.timeout` idiom — the answer is one body).
+  `execute_stream` drops `.timeout()` entirely and instead bounds only the
+  `send()` await with `tokio::time::timeout`, so the ceiling measures
+  **time-to-response-headers** and the body then streams unbounded. That is
+  v4's raw-fetch idiom verbatim (`AbortController` armed before `fetch`,
+  `clearTimeout` in the `finally` once the response resolves — openrouter
+  `provider.ts:597`, ollama `:188`) and the semantics the OpenAI/Anthropic
+  SDK timeouts already have.
+- **The default drop (D4):** `TransportPolicy::default()` 600 s → **300 s**
+  via the new `DEFAULT_REQUEST_TIMEOUT_MS`, matching plugin-utils 2.2.18's
+  `DEFAULT_REQUEST_TIMEOUT_MS` and the `OpenAICompatibleProvider` client
+  default that governs effectively every v4 provider. `max_retries: 2` stays
+  (the `buildSdkClientOptions` uncapped arm).
+- The module header (`transport.rs:10-19`), whose "no timeout / abort /
+  retry at the provider tier" survey was made obsolete by `74ec93b5`, is
+  rewritten to describe the new reality including the streaming distinction.
+
+**v4 sets `requestTimeoutMs` on exactly one path.** Grepping v4's `lib/` +
+`app/` for the identifier finds `core-execution.ts:219` and nothing else
+(the one hit in `app/api/v1/system/tools/route.ts:838` is a static
+capabilities-report constant, not an `LLMParams`). So the four other v5
+`CompletionParams` construction sites — the settings connection test, the
+dangerous-content classifier, `generateImageDescription`'s vision call, and
+the regenerate-swipe path — take `request_timeout_ms: None` with a comment
+saying why. The cheap-LLM path's own stamping is unit 2.
+
+**Proof (unit tier — a timeout is wall-clock behavior no NDJSON corpus can
+observe; P4.15 falsifiability ruling).** Seven tests in
+`model/transport.rs`, four of them over a real ephemeral-port TCP server
+that speaks just enough HTTP to misbehave on purpose (never answers /
+answers then dribbles a chunked body / fails at once while counting
+connections). The socket tests are `#[cfg(feature = "native-transport")]`
+and DO run in the ordinary `cargo test --workspace` gate, because
+quilltap-host requires that feature and cargo unifies features across the
+invocation (confirmed in the gate output by name).
+
+**Mutation proofs (the D24 rule — every assertion was first-run green).**
+Each pin was proven RED by disabling exactly the thing it pins:
+
+| Mutation | Went red |
+| --- | --- |
+| default timeout back to 600 s | `default_policy_matches_v4s_no_caller_budget_default` |
+| a budget keeps `self.max_retries` | `a_request_budget_caps_…` + `a_budget_bearing_call_never_retries` |
+| budget guard `> 0` → `>= 0` | `an_absent_or_nonpositive_budget_leaves_the_policy_untouched` |
+| re-arm reqwest's whole-request `.timeout()` on the stream path | `streaming_does_not_truncate_a_slow_but_flowing_body` **and** `streaming_aborts_a_provider_that_never_sends_headers` |
+| stream ceiling ignored (hard-coded 30 s) | `streaming_aborts_a_provider_that_never_sends_headers` |
+| non-streaming ceiling ignored (hard-coded 30 s) | `non_streaming_abandons_a_provider_that_never_answers` |
+
+⚠ **Gotcha worth carrying:** the mutation harness restored the file in a
+`finally`, and a harness killed by an outer timeout never runs its
+`finally` — the leftover mutation then made the NEXT mutation's
+`assert count == 1` fail in a way that looks like a bad pattern rather
+than a dirty tree. Restore from a pristine COPY taken before the first
+mutation, not from an in-process variable, and re-grep the file after any
+interrupted run.
+
+**Corpus impact: none, by design.** `requestTimeoutMs` never reaches a
+request body on either side, and the request-envelope / google-request /
+google-wire corpora record bodies only. The regen-and-byte-diff proof is
+tier 2 and runs with the neutrality sweep.

@@ -8,6 +8,13 @@ app's own chunk-on-write step, making the reference look like it skipped
 indexing when it doesn't. The oracle now runs the real indexing code, so
 the comparison also proves edited documents get chunked for search. The
 repair runs as a fourth lane alongside the round already in flight.
+Put a ceiling on every provider request. A model call that a provider
+accepts and then never answers used to run all the way to the ten-minute
+SDK default; without a caller-supplied budget it now fails after five
+minutes, and a caller can hand down a shorter budget for one attempt,
+which is never retried past. Streaming is bounded differently on
+purpose: the ceiling there covers only how long a provider may take to
+*start* answering, so a long reply is never cut off mid-sentence.
 
 Planned the next porting round and committed its three work orders: a
 re-port of the reference app's new provider-request bounding (so a

@@ -106,6 +106,23 @@ pub struct CompletionParams {
     /// image-description vision call sets this (v4 `messages[].attachments`).
     /// Empty for every other completion caller.
     pub attachments: Vec<CompletionAttachment>,
+    /// v4 `LLMParams.requestTimeoutMs` (plugin-types 2.5.5, P4.D42): a hard
+    /// wall-clock budget for this ONE request, in milliseconds.
+    ///
+    /// Providers must treat it as a ceiling on a single attempt and must NOT
+    /// retry past it — a caller that sets this has already decided what the work
+    /// is worth waiting for. `None` (or a non-positive value) means "use the
+    /// provider's own default". Quilltap sets it on cheap-LLM / background work
+    /// ([`CheapLlmTaskExecutor`](crate::services::cheap_llm_exec::CheapLlmTaskExecutor)),
+    /// which is awaited inline on user-visible turns and must degrade rather than
+    /// stall when a provider accepts a connection and then never answers.
+    ///
+    /// This is a transport knob, NOT body-shaping input: it never reaches a
+    /// request body on either side (v4 same), so it is deliberately absent from
+    /// [`RequestInput`](crate::model::request_builder::RequestInput) and off the
+    /// canned tier-3 key. It is applied by
+    /// [`TransportPolicy::with_request_budget`](crate::model::transport::TransportPolicy::with_request_budget).
+    pub request_timeout_ms: Option<i64>,
 }
 
 /// Token usage of a completion (v4 `TokenUsage`).
@@ -450,6 +467,7 @@ mod tests {
             cache_key: None,
             profile_parameters: None,
             attachments: Vec::new(),
+            request_timeout_ms: None,
         }
     }
 

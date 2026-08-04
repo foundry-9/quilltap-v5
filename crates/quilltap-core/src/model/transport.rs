@@ -7,16 +7,44 @@
 //! feature, so the default core build stays IO-free (it is expected to migrate to
 //! the CLI/host crate when one exists).
 //!
-//! ## v4 baseline (survey-confirmed): no timeout / abort / retry at the provider
-//! ## tier
+//! ## v4 baseline (re-surveyed 2026-08-03 at `49769ec4`): bounded requests
 //!
-//! v4's plugins carry NO timeout, abort, or retry of their own — the SDK defaults
-//! apply (openai/anthropic SDK `maxRetries: 2`, ~10-min timeout; ollama's raw
-//! fetch is unbounded; cancellation is only stop-iterating the generator). The v5
-//! trait therefore carries timeout/abort/retry as HOST-policy knobs
-//! ([`TransportPolicy`]) whose defaults match that observable behavior (a retry
-//! re-sends the SAME built request). None of this is oracle-checkable — transport
-//! is integration-smoke tier, no differential.
+//! Until v4 `74ec93b5` the plugins carried NO timeout, abort, or retry of their
+//! own — the SDK defaults applied (openai/anthropic SDK `maxRetries: 2`, ~10-min
+//! timeout; ollama's raw fetch unbounded), and this module's policy defaults
+//! transcribed exactly that. That default cost a measured **622,451 ms** memory
+//! recap: a provider accepted the connection and never answered, and the turn sat
+//! on "Recalling…" for the full ten minutes with nothing logged (llm_logs rows
+//! are only written when a call *finishes*). v4 now bounds every provider request
+//! at three levels; this module owns the third.
+//!
+//! **The nine-SDK collapse.** v4 applies its budget nine different ways (SDK
+//! `timeout` options, `AbortSignal`, `httpOptions.timeout`, `timeoutMs`) because
+//! it has nine plugin SDKs; v5 has ONE `reqwest` transport, so that matrix
+//! collapses to this one [`TransportPolicy`] — **except the streaming
+//! distinction, which is real and is carried, not collapsed**:
+//!
+//!   - **Non-streaming** ([`ProviderTransport::execute`]): the budget bounds the
+//!     WHOLE exchange, body included. That is v4's non-streaming idiom
+//!     (`buildRequestAbortSignal` on ollama's `fetch`, `timeoutMs` on the
+//!     openrouter SDK, `httpOptions.timeout` on google) — the answer is one JSON
+//!     blob, so waiting for all of it is the request.
+//!   - **Streaming** ([`ProviderTransport::execute_stream`]): the budget bounds
+//!     **time-to-response-headers only**; once the headers land the body streams
+//!     unbounded. That is v4's raw-fetch idiom verbatim — an `AbortController`
+//!     armed before `fetch` and `clearTimeout`-ed in a `finally` once the
+//!     response resolves (openrouter `provider.ts:597`, ollama `:188`) — and the
+//!     semantics the OpenAI/Anthropic SDK timeouts already have. A whole-exchange
+//!     ceiling here would truncate a long generation mid-answer.
+//!
+//! Retries follow v4's `buildSdkRequestOptions` contract: a caller-supplied
+//! budget is a **ceiling on a single attempt**, so a request that carries one
+//! never retries (three attempts at the requested budget would spend three times
+//! what the caller agreed to). See [`TransportPolicy::with_request_budget`].
+//!
+//! None of this is oracle-checkable — a timeout is wall-clock behavior no NDJSON
+//! corpus can observe (the canned providers never stall), so the proofs are
+//! unit-tier (this module's tests) per the P4.15 falsifiability ruling.
 //!
 //! ## Per-provider construction (v4)
 //!
@@ -61,9 +89,20 @@ pub fn transport_headers(
     headers
 }
 
-/// Host-policy knobs for a transport call. Defaults match the SDKs' observable
-/// behavior (openai/anthropic SDK `maxRetries: 2`, ~10-min timeout). A retry
-/// re-sends the SAME built request.
+/// v4 plugin-utils 2.2.18 `DEFAULT_REQUEST_TIMEOUT_MS` — the budget for a request
+/// whose caller expressed no preference. Half the SDK default: "long enough for a
+/// slow non-streaming generation, short enough that a silently-stalled endpoint
+/// fails in minutes rather than tens of minutes". v4 applies it through
+/// `OpenAICompatibleProvider`'s client default (600 s → 300 s in `74ec93b5`),
+/// which governs effectively every v4 provider.
+pub const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 300_000;
+
+/// Host-policy knobs for a transport call. The defaults are v4's no-caller-budget
+/// defaults after `74ec93b5`: [`DEFAULT_REQUEST_TIMEOUT_MS`] with the SDKs'
+/// `maxRetries: 2` (plugin-utils `buildSdkClientOptions`'s uncapped arm). A retry
+/// re-sends the SAME built request. What `timeout` *measures* differs by call
+/// shape — whole exchange on [`ProviderTransport::execute`], time-to-headers on
+/// [`ProviderTransport::execute_stream`] (module header).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransportPolicy {
     pub timeout: Duration,
@@ -73,8 +112,32 @@ pub struct TransportPolicy {
 impl Default for TransportPolicy {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(600),
+            timeout: Duration::from_millis(DEFAULT_REQUEST_TIMEOUT_MS),
             max_retries: 2,
+        }
+    }
+}
+
+impl TransportPolicy {
+    /// Apply a caller's per-request budget (v4
+    /// [`LLMParams.requestTimeoutMs`][crate::model::completion::CompletionParams::request_timeout_ms],
+    /// plugin-types 2.5.5) to this policy — the collapse of v4 plugin-utils'
+    /// `buildSdkRequestOptions` + `buildSdkClientOptions` onto v5's one transport.
+    ///
+    /// A set, positive budget is a **ceiling on a single attempt**: it replaces
+    /// the timeout AND drops `max_retries` to 0, because "three attempts at the
+    /// requested budget would spend three times what the caller agreed to"
+    /// (v4's own words). `None` or a non-positive value means "the caller named
+    /// no budget" and leaves this policy untouched — v4's
+    /// `typeof requested === 'number' && requested > 0` guard.
+    #[must_use]
+    pub fn with_request_budget(self, request_timeout_ms: Option<i64>) -> Self {
+        match request_timeout_ms {
+            Some(ms) if ms > 0 => Self {
+                timeout: Duration::from_millis(ms as u64),
+                max_retries: 0,
+            },
+            _ => self,
         }
     }
 }
@@ -134,7 +197,9 @@ pub type StreamBytes = Result<Vec<u8>, TransportError>;
 /// [`reqwest` impl](ReqwestTransport), or a CLI/host-crate one later); the
 /// engine holds it as `dyn ProviderTransport`.
 pub trait ProviderTransport: Send + Sync {
-    /// Issue a non-streaming request (retry/timeout per `policy`).
+    /// Issue a non-streaming request (retry/timeout per `policy`). `policy.timeout`
+    /// bounds the WHOLE exchange here — the answer is one body, so waiting for all
+    /// of it is the request (module header).
     fn execute<'a>(
         &'a self,
         request: &'a TransportRequest,
@@ -144,6 +209,9 @@ pub trait ProviderTransport: Send + Sync {
     /// Issue a streaming request, returning a channel of byte frames the decoders
     /// consume. (The default impl is provided by the concrete transport; the trait
     /// keeps it explicit so a non-streaming-only host can `unimplemented!` it.)
+    ///
+    /// `policy.timeout` bounds **time-to-response-headers only**; the body then
+    /// streams unbounded (v4's `clearTimeout`-in-`finally` idiom — module header).
     fn execute_stream<'a>(
         &'a self,
         request: &'a TransportRequest,
@@ -176,17 +244,15 @@ mod native {
             }
         }
 
-        fn build(
-            &self,
-            request: &TransportRequest,
-            policy: &TransportPolicy,
-        ) -> reqwest::RequestBuilder {
+        /// The request WITHOUT any deadline attached — each caller applies the
+        /// deadline its own shape needs (`execute` bounds the whole exchange with
+        /// reqwest's own `.timeout()`; `execute_stream` bounds only the `send()`).
+        fn build(&self, request: &TransportRequest) -> reqwest::RequestBuilder {
             let method = reqwest::Method::from_bytes(request.method.as_bytes())
                 .unwrap_or(reqwest::Method::POST);
             let mut rb = self
                 .client
                 .request(method, &request.url)
-                .timeout(policy.timeout)
                 .body(request.body.clone());
             for (k, v) in &request.headers {
                 rb = rb.header(k.as_str(), v.as_str());
@@ -209,9 +275,14 @@ mod native {
         ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
             Box::pin(async move {
                 // A retry re-sends the SAME built request (v4 SDK maxRetries).
+                // `max_retries` is 0 whenever the caller set a per-request budget
+                // (`TransportPolicy::with_request_budget`) — a ceiling must not be
+                // spent three times over.
                 let mut last: Option<TransportError> = None;
                 for _ in 0..=policy.max_retries {
-                    match self.build(request, policy).send().await {
+                    // Non-streaming: reqwest's own `.timeout()` bounds the whole
+                    // exchange, body included — v4's `buildRequestAbortSignal`.
+                    match self.build(request).timeout(policy.timeout).send().await {
                         Ok(resp) => {
                             let status = resp.status().as_u16();
                             let body = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
@@ -246,14 +317,26 @@ mod native {
         ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
         {
             Box::pin(async move {
-                let resp =
-                    self.build(request, policy)
-                        .send()
-                        .await
-                        .map_err(|e| TransportError {
-                            message: e.to_string(),
-                            status: None,
-                        })?;
+                // Streaming: bound how long the provider may take to *start*
+                // answering, not how long it takes to finish. `send()` resolves at
+                // the response headers, so timing out around it — and NOT arming
+                // reqwest's whole-exchange `.timeout()` — is v4's raw-fetch idiom
+                // (`AbortController` armed before `fetch`, `clearTimeout` in the
+                // `finally` once the headers land). The body below streams
+                // unbounded: a long generation must never be cut off mid-answer.
+                let sent = tokio::time::timeout(policy.timeout, self.build(request).send())
+                    .await
+                    .map_err(|_| TransportError {
+                        message: format!(
+                            "provider did not send response headers within {}ms",
+                            policy.timeout.as_millis()
+                        ),
+                        status: None,
+                    })?;
+                let resp = sent.map_err(|e| TransportError {
+                    message: e.to_string(),
+                    status: None,
+                })?;
                 let status = resp.status().as_u16();
                 if !(200..300).contains(&status) {
                     let text = resp.text().await.unwrap_or_default();
@@ -333,10 +416,251 @@ mod tests {
         assert_eq!(h[0].0, "User-Agent");
     }
 
+    /// P4.D42 / v4 `74ec93b5` + plugin-utils 2.2.18: the no-caller-budget default
+    /// dropped from the SDKs' ten minutes to five (`DEFAULT_REQUEST_TIMEOUT_MS`),
+    /// keeping `maxRetries: 2` (`buildSdkClientOptions`'s uncapped arm).
     #[test]
-    fn default_policy_matches_sdk_observable_behavior() {
+    fn default_policy_matches_v4s_no_caller_budget_default() {
         let p = TransportPolicy::default();
         assert_eq!(p.max_retries, 2);
-        assert_eq!(p.timeout, Duration::from_secs(600));
+        assert_eq!(p.timeout, Duration::from_millis(DEFAULT_REQUEST_TIMEOUT_MS));
+        assert_eq!(p.timeout, Duration::from_secs(300));
+    }
+
+    /// v4 `buildSdkRequestOptions`: a caller-supplied budget is a ceiling on ONE
+    /// attempt, so it both replaces the timeout and disables retries.
+    #[test]
+    fn a_request_budget_caps_the_timeout_and_forbids_retrying_past_it() {
+        let p = TransportPolicy::default().with_request_budget(Some(40_000));
+        assert_eq!(p.timeout, Duration::from_millis(40_000));
+        assert_eq!(
+            p.max_retries, 0,
+            "three attempts at the requested budget would spend 3x what the caller agreed to"
+        );
+    }
+
+    /// v4's `typeof requested === 'number' && requested > 0` guard: absent or
+    /// non-positive means "no preference" and leaves the policy alone.
+    #[test]
+    fn an_absent_or_nonpositive_budget_leaves_the_policy_untouched() {
+        let base = TransportPolicy::default();
+        for none in [None, Some(0), Some(-1)] {
+            let p = base.with_request_budget(none);
+            assert_eq!(p, base, "budget {none:?} must not change the policy");
+        }
+    }
+
+    /// The two call shapes read `timeout` differently (module header), so the
+    /// wall-clock proofs need a real socket. Feature-gated with the concrete
+    /// transport; `cargo test --workspace` compiles core with `native-transport`
+    /// (quilltap-host requires it, and cargo unifies features across the
+    /// invocation), so these run in the ordinary gate.
+    #[cfg(feature = "native-transport")]
+    mod native_deadlines {
+        use super::*;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        /// What the fake provider socket does once a request arrives.
+        #[derive(Clone, Copy)]
+        enum Behavior {
+            /// Accept the connection and never answer — the `74ec93b5` incident.
+            NeverAnswers,
+            /// Send headers at once, then dribble the body out over `chunks *
+            /// gap_ms`, well past the policy budget.
+            SlowButFlowing { chunks: usize, gap_ms: u64 },
+            /// Answer 500 immediately, counting how many times we were asked.
+            AlwaysFails,
+        }
+
+        /// A one-shot-per-connection HTTP server on an ephemeral port. Returns the
+        /// base URL and the connection counter.
+        async fn spawn(behavior: Behavior) -> (String, Arc<AtomicUsize>) {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            let hits = Arc::new(AtomicUsize::new(0));
+            let counter = hits.clone();
+            tokio::spawn(async move {
+                loop {
+                    let Ok((mut sock, _)) = listener.accept().await else {
+                        return;
+                    };
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    tokio::spawn(async move {
+                        // Drain whatever the client sends; we never need to parse
+                        // it, only to let the request finish arriving.
+                        let mut buf = [0u8; 4096];
+                        let _ = sock.read(&mut buf).await;
+                        match behavior {
+                            Behavior::NeverAnswers => {
+                                // Hold the socket open, silently, forever.
+                                std::future::pending::<()>().await;
+                            }
+                            Behavior::SlowButFlowing { chunks, gap_ms } => {
+                                let _ = sock
+                                    .write_all(
+                                        b"HTTP/1.1 200 OK\r\n\
+                                          Content-Type: text/event-stream\r\n\
+                                          Transfer-Encoding: chunked\r\n\r\n",
+                                    )
+                                    .await;
+                                let _ = sock.flush().await;
+                                for i in 0..chunks {
+                                    tokio::time::sleep(Duration::from_millis(gap_ms)).await;
+                                    let frame = format!("data: {i}\n\n");
+                                    let _ = sock
+                                        .write_all(
+                                            format!("{:x}\r\n{frame}\r\n", frame.len()).as_bytes(),
+                                        )
+                                        .await;
+                                    let _ = sock.flush().await;
+                                }
+                                let _ = sock.write_all(b"0\r\n\r\n").await;
+                                let _ = sock.flush().await;
+                            }
+                            Behavior::AlwaysFails => {
+                                let _ = sock
+                                    .write_all(
+                                        b"HTTP/1.1 500 Internal Server Error\r\n\
+                                          Content-Length: 4\r\n\r\nboom",
+                                    )
+                                    .await;
+                                let _ = sock.flush().await;
+                            }
+                        }
+                    });
+                }
+            });
+            (format!("http://{addr}/v1/chat"), hits)
+        }
+
+        fn request(url: String) -> TransportRequest {
+            TransportRequest {
+                provider: "DEEPSEEK".to_string(),
+                method: "POST".to_string(),
+                url,
+                headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+                body: b"{}".to_vec(),
+                api_key: "synthetic-key".to_string(),
+            }
+        }
+
+        /// The incident itself, on the non-streaming path: a provider that accepts
+        /// the connection and never answers must fail inside the budget rather
+        /// than hold the caller for the SDK default.
+        #[tokio::test]
+        async fn non_streaming_abandons_a_provider_that_never_answers() {
+            let (url, _) = spawn(Behavior::NeverAnswers).await;
+            let transport = ReqwestTransport::new();
+            let policy = TransportPolicy {
+                timeout: Duration::from_millis(150),
+                max_retries: 0,
+            };
+            let started = std::time::Instant::now();
+            let err = transport
+                .execute(&request(url), &policy)
+                .await
+                .expect_err("a silent provider must not resolve");
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "the budget must fire, not the SDK default (took {:?})",
+                started.elapsed()
+            );
+            assert!(err.status.is_none(), "a deadline is not an HTTP status");
+        }
+
+        /// D3, half one: a stream whose provider never sends headers is aborted at
+        /// the budget — the streaming path is bounded, not unbounded.
+        #[tokio::test]
+        async fn streaming_aborts_a_provider_that_never_sends_headers() {
+            let (url, _) = spawn(Behavior::NeverAnswers).await;
+            let transport = ReqwestTransport::new();
+            let policy = TransportPolicy {
+                timeout: Duration::from_millis(150),
+                max_retries: 0,
+            };
+            let started = std::time::Instant::now();
+            let err = transport
+                .execute_stream(&request(url), &policy)
+                .await
+                .expect_err("a silent provider must not open a stream");
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "took {:?}",
+                started.elapsed()
+            );
+            assert!(
+                err.message.contains("response headers"),
+                "the abort must name what it measured: {}",
+                err.message
+            );
+        }
+
+        /// D3, half two — the half that makes the first half safe: a provider that
+        /// answers promptly and then generates *slowly* must stream to completion,
+        /// even though the whole exchange runs far past the budget. Arming
+        /// reqwest's whole-request `.timeout()` here (the pre-P4.D42 shape) cuts
+        /// this body off mid-answer.
+        #[tokio::test]
+        async fn streaming_does_not_truncate_a_slow_but_flowing_body() {
+            let (url, _) = spawn(Behavior::SlowButFlowing {
+                chunks: 6,
+                gap_ms: 60,
+            })
+            .await;
+            let transport = ReqwestTransport::new();
+            // The whole body takes ~360ms to arrive; the budget is 150ms and must
+            // apply to the headers only.
+            let policy = TransportPolicy {
+                timeout: Duration::from_millis(150),
+                max_retries: 0,
+            };
+            let mut rx = transport
+                .execute_stream(&request(url), &policy)
+                .await
+                .expect("headers arrive at once");
+            let mut body = String::new();
+            while let Some(frame) = rx.recv().await {
+                let bytes = frame.expect("a flowing body must not error");
+                body.push_str(&String::from_utf8_lossy(&bytes));
+            }
+            for i in 0..6 {
+                assert!(
+                    body.contains(&format!("data: {i}\n\n")),
+                    "frame {i} was truncated away; got {body:?}"
+                );
+            }
+        }
+
+        /// v4 `buildSdkRequestOptions`: a budget-bearing call is ONE attempt. The
+        /// same failing provider is asked three times under the default policy and
+        /// exactly once under a budget.
+        #[tokio::test]
+        async fn a_budget_bearing_call_never_retries() {
+            let (url, hits) = spawn(Behavior::AlwaysFails).await;
+            let transport = ReqwestTransport::new();
+
+            let uncapped = TransportPolicy {
+                timeout: Duration::from_secs(5),
+                max_retries: 2,
+            };
+            let _ = transport.execute(&request(url.clone()), &uncapped).await;
+            assert_eq!(
+                hits.load(Ordering::SeqCst),
+                3,
+                "the uncapped policy retries twice"
+            );
+
+            hits.store(0, Ordering::SeqCst);
+            let capped = TransportPolicy::default().with_request_budget(Some(5_000));
+            let _ = transport.execute(&request(url), &capped).await;
+            assert_eq!(
+                hits.load(Ordering::SeqCst),
+                1,
+                "a caller's ceiling must be spent once, not three times"
+            );
+        }
     }
 }

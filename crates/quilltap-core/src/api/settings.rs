@@ -1742,6 +1742,10 @@ where
         cache_key: None,
         profile_parameters: None,
         attachments: vec![],
+        // v4 sets `requestTimeoutMs` ONLY on the cheap-LLM path
+        // (`core-execution.ts` `baseParams`); every other `sendMessage` caller
+        // leaves the provider's own default in charge.
+        request_timeout_ms: None,
     };
     match completion.send_message(provider, base_url, &params).await {
         Err(e) => Response::ConnectionTest(json!({

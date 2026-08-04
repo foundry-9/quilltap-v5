@@ -439,6 +439,8 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
             None
         },
         attachments: attachments.clone(),
+        // v4's `generateImageDescription` sets no `requestTimeoutMs`.
+        request_timeout_ms: None,
     };
 
     let response = deps

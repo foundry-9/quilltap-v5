@@ -340,6 +340,7 @@ impl CheapLlmTaskExecutor {
             cache_key: build_character_cache_key(character_id),
             profile_parameters: selection.profile_parameters.clone(),
             attachments: Vec::new(),
+            request_timeout_ms: None,
         };
 
         let known_no_temp = self

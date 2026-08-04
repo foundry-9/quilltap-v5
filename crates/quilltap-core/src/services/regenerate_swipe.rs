@@ -423,6 +423,9 @@ where
                 cache_key: Some(character_id.clone()),
                 profile_parameters: Some(params_value),
                 attachments,
+                // A visible regeneration, not cheap-LLM work: v4 sets no
+                // `requestTimeoutMs` here.
+                request_timeout_ms: None,
             },
         )
         .await

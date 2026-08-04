@@ -545,6 +545,9 @@ where
         cache_key: None,
         profile_parameters: cheap_llm_selection.profile_parameters.clone(),
         attachments: Vec::new(),
+        // v4's classifier calls `sendMessage` directly, not through
+        // `executeCheapLLMTask`, so it carries no `requestTimeoutMs`.
+        request_timeout_ms: None,
     };
 
     let response = completion
