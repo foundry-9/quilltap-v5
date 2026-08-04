@@ -333,6 +333,14 @@ fn build_listing(
         m.insert("characterLabel".into(), json!(label));
     }
     m.insert("asCharacterId".into(), json!(perspective.character_id));
+    // That character's vault mount, where run presets
+    // (`Tools/{name}.{preset}.settings.json`) are kept (v4 `c988fbd2`). JSON
+    // `null` — never absent, never invented — for a character whose vault could
+    // not be resolved; the dialog hides its preset controls off this field.
+    m.insert(
+        "vaultMountPointId".into(),
+        json!(perspective.character_mount_point_id),
+    );
     m.insert("definitionPath".into(), json!(entry.definition_path));
     m.insert("mountPointId".into(), json!(entry.mount_point_id));
     m.insert("mountName".into(), json!(entry.mount_name));
@@ -1385,5 +1393,73 @@ pub fn custom_tool_audit(
             "valueMean": crate::db::js_number_to_json(result.value_mean),
         })),
         Err(CustomToolRunError(reason)) => unprocessable(reason),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::tiered_mount_pool::MountTier;
+
+    fn entry() -> DiscoveredCustomTool {
+        DiscoveredCustomTool {
+            definition: crate::pascal::custom_tool_types::safe_parse(&json!({
+                "name": "coin_toss",
+                "description": "d",
+                "outcomes": [{"when": true, "message": "-", "state": "info"}]
+            }))
+            .unwrap(),
+            tier: MountTier::Global,
+            mount_point_id: "mp-1".into(),
+            mount_name: "Global".into(),
+            definition_path: "Tools/coin_toss.tool.json".into(),
+        }
+    }
+
+    fn perspective(vault: Option<&str>) -> Perspective {
+        Perspective {
+            character_id: "char-1".into(),
+            character_name: "Charlie".into(),
+            character_mount_point_id: vault.map(str::to_string),
+            metadata: Map::new(),
+        }
+    }
+
+    /// v4 `c988fbd2`: the listing carries the running character's vault mount,
+    /// and a character with none must say so with `null` — not invent one, and
+    /// not omit the key. The dialog hides its preset controls off this field,
+    /// so an absent key would read as "no vault" only by accident of JS.
+    ///
+    /// The committed `pascal-run-custom-*` fixture cannot reach the None arm
+    /// (all three of its live characters have vaults, and CHAR_D's broken vault
+    /// drops that perspective entirely), so the route differential pins the
+    /// Some arm and this pins the other — the same split v4 uses, whose own
+    /// coverage of null is likewise unit-level.
+    #[test]
+    fn vault_mount_point_id_is_json_null_when_the_character_has_no_vault() {
+        let with_vault = build_listing(&entry(), &perspective(Some("vault-charlie")), None);
+        assert_eq!(
+            with_vault.get("vaultMountPointId"),
+            Some(&json!("vault-charlie"))
+        );
+
+        let without = build_listing(&entry(), &perspective(None), None);
+        assert_eq!(without.get("vaultMountPointId"), Some(&Value::Null));
+    }
+
+    /// Key ORDER is part of the route differential's diff: v4 inserts the field
+    /// after `asCharacterId` and before `definitionPath`.
+    #[test]
+    fn vault_mount_point_id_sits_between_as_character_id_and_definition_path() {
+        let listing = build_listing(&entry(), &perspective(Some("v")), None);
+        let keys: Vec<&str> = listing
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let at = |k: &str| keys.iter().position(|s| *s == k).unwrap();
+        assert_eq!(at("vaultMountPointId"), at("asCharacterId") + 1);
+        assert_eq!(at("definitionPath"), at("vaultMountPointId") + 1);
     }
 }

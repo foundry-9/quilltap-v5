@@ -58,6 +58,12 @@ survive forever. The obvious repair -- clear the folders too -- turned
 out to delete a character vault's own scaffolding (Outfits, Prompts,
 Scenarios, Wardrobe), so the behavior is unchanged pending a decision
 about which folders an overwrite may claim.
+The reference app's custom-tool run presets now work here too, first
+half: the composer's run dialog is told which vault belongs to the
+character a tool would run as, which is what decides whether the preset
+controls appear at all. A character whose vault could not be read says
+so plainly rather than going missing, so the dialog can hide the
+controls instead of guessing.
 
 Planned the next porting round and committed its three work orders: a
 re-port of the reference app's new provider-request bounding (so a

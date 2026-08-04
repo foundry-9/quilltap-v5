@@ -53029,3 +53029,58 @@ The baseline paragraph in `CLAUDE.md` is the unifier's to move (this lane
 edited neither `CLAUDE.md` nor `phase-4.md`, per the order). Until the catch-up
 runs, regenerate chat-create-family oracles from a worktree pinned at
 `49769ec4`; everything else regenerates straight from the checkout.
+## Lane record — P4.D43 unit 1: the `vaultMountPointId` listing field
+
+**Order:** `work-orders/p4.d43-pascal-run-presets.md` (tier-1 deliverables 1
+and 4). Branch `claude/p4-d43-pascal-presets-1c4b3d`.
+
+**Drift check at lane start:** v4 HEAD is `49769ec4` — exactly the round's
+baseline, tree clean (`git log 49769ec4..HEAD` empty, `git status --short`
+empty). No pinned worktree needed; oracles regenerate straight from
+`~/source/quilltap-server`.
+
+**Landed.** `build_listing` emits `vaultMountPointId` from
+`Perspective.character_mount_point_id`, inserted after `asCharacterId` and
+before `definitionPath` — v4's own position, which matters because the route
+differential diffs key ORDER, not just values. `json!(Option<String>)`
+serializes `None` as JSON `null`, which is v4's pinned behavior (its
+perspective test asserts `toBeNull()`, not `toBeUndefined()`).
+
+**The null arm's coverage decision (the order asked for it recorded).** The
+committed `pascal-run-custom-*` fixture **cannot reach** `None`: all three of
+its live characters carry vaults, and CHAR_D's broken vault drops that
+perspective from `load_perspectives` entirely. The fixture was NOT rebuilt for
+this — a rebuild re-mints vault ids and invalidates every pascal family plus
+the e2e seed, which reads `vaultA` from the committed sidecar. v4's own
+coverage of the null arm is likewise unit-level (its perspective test), so v5
+matches with two unit tests in `api::custom_tools::tests`:
+`vault_mount_point_id_is_json_null_when_the_character_has_no_vault` and
+`vault_mount_point_id_sits_between_as_character_id_and_definition_path`.
+
+**Mutation proofs (D24 — all three assertions were green on first run).**
+- Move the insert after `definitionPath` → the position test FAILS, the null
+  test still passes.
+- Emit `""` instead of `null` for a vaultless character → the null test FAILS,
+  the position test still passes.
+- Delete the insert entirely and re-run the ROUTE differential against the
+  freshly regenerated oracle → RED on case `list`, with v4's side carrying
+  `vaultMountPointId` on every row. So the differential is not blind to this
+  field, and the two unit tests are not redundant with each other.
+
+**Roster tripwire (deliverable 4).** `pascal::roster::preset_isolation_tests`
+pins `is_root_tool_file` against the four shapes that now share the `Tools/`
+folder — `{tool}.{preset}.settings.json` and its two neighbours reject, the
+definition still accepts. The whole feature rests on this: presets are written
+straight into `Tools/` through the ordinary file verbs, with nothing
+validating them against the roster, so a widened predicate would put an
+operator's saved parameter values on Pascal's Table as unloadable definitions.
+
+**Differential.** `pascal_custom_tools_route_equivalence` regenerated at
+`49769ec4` via `python3 harness/tools/recipe_sweep.py --run
+pascal_custom_tools_route_equivalence` (the driver shields the committed
+fixture into `/tmp/qt-recipe-shield-…` per the standing rule) and re-run by
+name: **24 cases, green, zero SKIP**. Freshness confirmed by grepping the
+NDJSON for the drift's own marker — `vaultMountPointId` appears on six rows,
+in the key position the port emits.
+
+**Fixtures:** none changed. No other oracle family is invalidated.

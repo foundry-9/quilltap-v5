@@ -643,3 +643,28 @@ mod read_tool_file_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod preset_isolation_tests {
+    //! Run presets (v4 `c988fbd2`) live in the very same `Tools/` folder as the
+    //! definitions, as `Tools/{tool}.{preset}.settings.json`. The whole feature
+    //! rests on one guarantee the spec doc states outright: roster discovery
+    //! reads ONLY `Tools/*.tool.json`, so a preset file can never leak in as a
+    //! tool. Nothing about a preset write is validated against the roster, so
+    //! if this predicate ever widened, an operator's saved parameter values
+    //! would start appearing on Pascal's Table as unloadable definitions.
+
+    use super::*;
+
+    #[test]
+    fn a_preset_file_is_never_a_tool_definition() {
+        // The shape the run dialog writes, and the two adjacent shapes.
+        assert!(!is_root_tool_file(
+            "Tools/coin_toss.hard-mode.settings.json"
+        ));
+        assert!(!is_root_tool_file("Tools/coin_toss.settings.json"));
+        assert!(!is_root_tool_file("Tools/coin_toss.tool.settings.json"));
+        // …while the definition itself still is.
+        assert!(is_root_tool_file("Tools/coin_toss.tool.json"));
+    }
+}
