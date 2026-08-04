@@ -53084,3 +53084,23 @@ NDJSON for the drift's own marker — `vaultMountPointId` appears on six rows,
 in the key position the port emits.
 
 **Fixtures:** none changed. No other oracle family is invalidated.
+
+## Lane record — P4.D43 unit 2: the `tool-presets` naming contract (TS twin)
+
+**Order:** deliverable 2. Ported verbatim from v4 `lib/pascal/tool-presets.ts`
+(`c988fbd2`, 52 lines) to `apps/web/src/app/pascal/tool-presets.ts`, with v4's
+92-line `__tests__/unit/lib/pascal/tool-presets.test.ts` ported case-for-case
+to a colocated vitest spec (25 assertions across v4's three describes).
+
+**No Rust twin, and none is owed.** Presets ride the existing
+`mountFilesList` / `mountFileRead` / `mountFileWrite` verbs as ordinary vault
+documents, so no server code ever parses a preset filename — exactly as in v4,
+where nothing under `lib/` outside the run dialog imports the module. Its proof
+is therefore v4's own suite, the corpus-free pure-port precedent set by
+`expressions.ts` (P4.D36), not a differential.
+
+**The two-gate design is pinned, not paraphrased.** `sanitizePresetNameInput`
+is a keystroke FILTER, not a validator: it can yield `''` or `-x`, both of
+which `PRESET_NAME_PATTERN` refuses. v4 makes that explicit in a test and so
+does the port — the Save button's pattern check is the second gate, not a
+redundancy.

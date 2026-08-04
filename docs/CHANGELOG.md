@@ -58,6 +58,12 @@ survive forever. The obvious repair -- clear the folders too -- turned
 out to delete a character vault's own scaffolding (Outfits, Prompts,
 Scenarios, Wardrobe), so the behavior is unchanged pending a decision
 about which folders an overwrite may claim.
+Ported the naming rules for custom-tool presets: a preset is a plain
+JSON file in the character's vault, named for the tool and the preset
+together, and the name is locked to lowercase letters, digits, dashes
+and underscores as it is typed. The reference app's own tests for those
+rules came across case for case.
+
 The reference app's custom-tool run presets now work here too, first
 half: the composer's run dialog is told which vault belongs to the
 character a tool would run as, which is what decides whether the preset
