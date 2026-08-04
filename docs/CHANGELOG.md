@@ -55,6 +55,12 @@ real template to carry, and that exposed a hole in the differential
 itself: the id-normalizing diff could not tell one template id from
 another, so two of the new arms passed even with the resolution
 deliberately broken. The template id is now compared literally.
+Audited every place the code could reach a document store by its display
+name, confirming that nothing resolves a character's vault that way. The
+one remaining name lookup is the startup repair that re-adopts a vault
+whose link was lost, where there is no ID left to look up; it is now
+labeled as such in place.
+
 Import now identifies a document store by its ID rather than its display
 name. Overwriting or skipping matches the store the archive actually came
 from, so renaming a store — on either side — can no longer redirect an

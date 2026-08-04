@@ -54486,3 +54486,69 @@ self-consistent id. It proves the seed still imports correctly; it could not
 have caught the change either way.
 
 No fixture bytes moved.
+
+## Lane record — P4.33 unit 3 (arm 3: the by-ID census + tier 2), 2026-08-04
+
+### The census, run fresh at lane start rather than inherited
+
+Every place the codebase could reach a document store by NAME, and its verdict.
+The question the ruling asks is narrow — does anything RESOLVE a known
+character's vault by its display name? — so each site is judged against that,
+not against "does the word name appear".
+
+| site | what it does | verdict |
+|---|---|---|
+| `services/quilltap_import/document_stores.rs` (was `by_name`) | matched an archive's store to the instance by lowered name | **CONVERTED** — arm 2; the id is the identity now |
+| `db/character_vault.rs:264` `find_by_name` | the startup heal: adopt an orphaned same-name `'character'` store when a character's link write was LOST | **STAYS** — classified in place with a comment naming the ruling. There is no id to resolve by (it runs only when `current_fk` is `None`); the name is the only handle left, which is why v4 built the path. Guarded by `storeType == 'character'` + holds-every-required-file + exactly-one-candidate |
+| `db/character_vault.rs:291` `find_all_names` | uniquify a NEW vault's display name | **STAYS** — naming, not resolution |
+| `db/ensure_official_store.rs:124` `find_all_names` | same, for project/group stores | **STAYS** — naming |
+| `doc_edit/uri_producers.rs:47` `count_by_name` | is this store name ambiguous enough to need the UUID form? | **STAYS** — display-side, and it already prefers the id when the name is ambiguous |
+| `quilltap-cli/src/docs_cmd.rs:461` | an operator-typed store selector | **STAYS** — prefers the id when given one (`is_uuid(spec)`), refuses on ambiguity |
+| every other `FROM doc_mount_points … WHERE` | `WHERE id = ?` or `WHERE enabled = 1` | already by id |
+
+The character→vault link itself is `characterDocumentMountPointId` across 45
+files in `quilltap-core`, and the import reconcile remaps it through
+`idMaps.mountPoints` — by id, never by name. **So the survey's expectation held:
+nothing beyond the import matcher needed converting.** Proven by running it,
+which is the point; had the census turned up a second site, the ruling would
+have covered it.
+
+### Tier 2 — the SPA copy check
+
+Answer: **nothing to change, and no `apps/web` file was touched**, so no SPA
+gate is owed. `import-dialog.ts`'s three strategy labels ("Skip (keep mine)" /
+"Overwrite with imported" / "Import as a duplicate") describe the strategy, not
+the matching rule. v4's own copy
+(`components/tools/import-export/steps/ImportOptionsStep.tsx:34-41`) is the
+same shape — "Existing entities will be overwritten with imported versions",
+with nothing about how "existing" is decided. Neither app has ever told the
+user that matching was by name, so the ruling changes no wording. (The two
+apps' label strings differ slightly; that is pre-existing SPA drift, not this
+lane's.)
+
+### Tier 3 — deferrals
+
+**None.** The order anticipated only one possibility — an unexpected consumer
+of name matching — and there was one, in the harness rather than the product:
+`execute_cross_instance_skip`'s payload depended on store-name matching to stay
+an equality case. Its SPEC's gesture was fixed (mount-point ids preserved
+through `rewriteIds`) and the shape it gave up got a dedicated arm; no
+assertion was weakened. Recorded in unit 2.
+
+### The v4-side twins
+
+Already queued at the ruling on `dogfood-findings.md`'s post-5.0 v4-side FIXES
+list ("The `.qtap` import overwrite trio"); this lane marked the v5 side landed
+there and listed the pins that fail the day v4 converges.
+
+### P4.33 verification gate (the final tree, all three units)
+
+`cargo fmt --all --check`; clippy `-D warnings` on BOTH feature sets;
+`cargo build --release --workspace`; `cargo test --workspace --no-fail-fast`
+with the lane's four oracle env vars — **412 test binaries / 1,848 tests / 0
+failed**. The four import families re-run BY NAME with `--nocapture`: **zero
+SKIP lines**, over oracles regenerated fresh from `~/source/quilltap-server` at
+`7fe9fe40` (`system_import_state` 17, `system_import_equivalence` 20,
+`system_export_equivalence`, `qtap_import_equivalence`). No `apps/web` file was
+touched, so **no SPA gate is owed**. Versions: core 0.0.465, harness 0.0.397,
+host 0.0.58 (the last for the cadence-spec deflake).

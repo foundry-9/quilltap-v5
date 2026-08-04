@@ -261,6 +261,27 @@ pub fn ensure_character_vault(
     // v4 filters `findByName` matches to `storeType === 'character'`, keeps those
     // that hold every REQUIRED_VAULT_FILES entry, and adopts iff exactly one
     // qualifies.
+    //
+    // ## [P4.33] Classified against the 2026-08-04 ruling — this by-NAME lookup STAYS
+    //
+    // The ruling's third clause ("character-vault references resolve by ID, not
+    // name, everywhere") targets code that RESOLVES a known character's vault.
+    // This is not that. It is reached only when `current_fk` is `None` — there
+    // IS no id to resolve by, because the link write was lost mid
+    // cloud-materialization and the heal is trying to find the orphan again. The
+    // name is the only handle left, which is precisely why v4 built this path,
+    // and it is guarded twice over: `storeType == 'character'` plus "holds every
+    // required file", adopting only when EXACTLY one candidate qualifies.
+    //
+    // The lane's census (see `status-log.md` → "Lane record — P4.33 unit 3")
+    // found no true name-resolution of a character's vault anywhere: the
+    // character→vault link is `characterDocumentMountPointId` across 45 files,
+    // the import matcher that DID resolve by name is gone (arm 2), and the other
+    // consumers of `find_by_name` / `find_all_names` / `count_by_name` are
+    // name-UNIQUIFYING (`ensure_official_store`, the create path below) or
+    // display-side (`doc_edit::uri_producers` deciding when a store name is
+    // ambiguous enough to need the UUID form; the CLI's operator-typed store
+    // selector, which prefers an id when given one and refuses on ambiguity).
     let same_name = DocMountPointsRepository::new(mount).find_by_name(&vault_name)?;
     let mut populated: Vec<String> = Vec::new();
     for (id, store_type) in same_name {

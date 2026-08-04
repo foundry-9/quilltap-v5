@@ -982,6 +982,21 @@ catch, since every fixture is built fresh.
     unrelated store); and import CREATE mints a fresh store id (`:89-105`),
     so no archive can ever be re-recognized by identity. v4's halves: clear
     folders too, match by id, preserve the archive's id on create.
+
+    **✅ THE v5 SIDE IS LANDED (P4.33, 2026-08-04) — all three.** The
+    overwrite-clear takes `doc_mount_folders` with it; the conflict match
+    keys on the archive store's id; import CREATE writes that id through,
+    minting only when it is empty or already taken. **The v4 halves above
+    stay queued post-5.0** — v5's divergence is deliberate, and every pin
+    fails the day v4 converges, naming what to retire:
+    `system_import_state`'s `FOLDER_CLEAR_DIVERGENCE`,
+    `STORE_ID_PRESERVED_ON_CREATE`, the `execute_folder_overwrite` arm and
+    the four `store_identity_*` arms. Two v5-side consequences are recorded
+    with the lane rather than papered over: an overwrite can leave two
+    stores sharing a display name (the boot case-repair pass renames the
+    loser; the URI producers already tolerate it), and `skip` is not a
+    no-op for a store the import recognizes — on either side. Lane records:
+    `status-log.md` → "Lane record — P4.33 unit 1/2/3".
   > ### ✅ THE WHOLE LIST BELOW IS CLOSED — v4 fixed all four itself (2026-07-26)
   >
   > `67ffb444` (`fix(backup): restore brings back the stores, the links, and the
