@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Repaired the two long-red document-editing equivalence checks. The test
+oracle had been silencing the reference app's own chunk-on-write step
+along with a separate, still-unported trigger, so the reference looked
+like it never indexed an edited document while the port did — a
+difference in the test rig, not in either app. The oracle now runs the
+real indexing code and seams only the piece the port genuinely omits,
+and the checks additionally prove, on named files, that an edited
+document really is chunked for search on both sides. All six
+document-editing families' regeneration recipes were rewritten to
+commands that actually run, since the broken ones are why this sat
+unnoticed. Test-harness only; no application behavior changed.
+
 Ruled and ordered the repair for the two long-red document-editing
 equivalence checks: the test oracle had been silencing the reference
 app's own chunk-on-write step, making the reference look like it skipped

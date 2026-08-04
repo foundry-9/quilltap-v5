@@ -311,6 +311,9 @@ fn doc_fm_matches_oracle() {
     let documents =
         dump_table_json_conn(mount.connection(), "doc_mount_documents", "contentSha256")
             .expect("dump documents");
+    // P4.32: the chunk ROWS themselves, ordered by the remap-invariant `content`.
+    let chunks = dump_table_json_conn(mount.connection(), "doc_mount_chunks", "content")
+        .expect("dump chunks");
     // W4.6c: the Librarian move/copy/delete/folder announcement rows live in the
     // MAIN db. Order by `content` — a remap-invariant key (the persona body has no
     // minted uuid/timestamp; each op yields distinct content) so the positional
@@ -318,12 +321,15 @@ fn doc_fm_matches_oracle() {
     let chat_messages = dump_table_json_conn(main.connection(), "chat_messages", "content")
         .expect("dump chat_messages");
 
-    let got_dumps = normalize(&json!({
+    let got_raw = json!({
         "fileLinks": file_links,
         "folders": folders,
         "documents": documents,
+        "chunks": chunks,
         "chatMessages": chat_messages,
-    }));
+    });
+    let got_dumps = normalize(&got_raw);
+    assert_chunk_pass_ran(&got_raw, &oracle_dumps);
     let want_dumps = normalize(&oracle_dumps);
     assert_eq!(
         got_dumps, want_dumps,
@@ -336,8 +342,104 @@ fn doc_fm_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
 
     eprintln!(
-        "OK: doc-fm handlers matched oracle ({} ops + 4 table dumps incl. Librarian chat_messages).",
+        "OK: doc-fm handlers matched oracle ({} ops + 5 table dumps incl. doc_mount_chunks + Librarian chat_messages).",
         spec.ops.len()
+    );
+}
+
+/// The database-store paths this corpus WRITES — every one of which the chunk pass
+/// must leave chunked. Deliberately NOT "any link with `chunkCount > 0`: the fixture
+/// seeds four already-chunked vault files (`metadata.json` / `properties.json` /
+/// `state.json` / `physical-prompts.json`), and an "at least one nonzero" arm sailed
+/// through on those alone while the ops chunked nothing at all — the mutation proof
+/// caught exactly that. These are the rows that moved 0 -> 1 the moment the oracle's
+/// `reindexSingleFile` mock came off (P4.32).
+const OP_CHUNKED_PATHS: &[&str] = &["Inbox/journal.md", "copied.md"];
+
+/// P4.32 — the POSITIVE chunk-pass arm.
+///
+/// The dump equality below is an EQUALITY: it passes just as happily with
+/// `chunkCount` 0 on both sides, which is precisely the state that held while the
+/// oracle mocked `reindexSingleFile` away — v4's own P4.6BK chunk-on-write silenced
+/// alongside the tool-level reindex seam it was aimed at. (What that concealed was
+/// the opposite: v5 chunked, v4 did not, and the family sat stale-RED.) So assert
+/// the pass actually RAN and left rows behind:
+///
+///   1. per-path `chunkCount` agrees side-for-side;
+///   2. every path in [`OP_CHUNKED_PATHS`] carries a NONZERO count on BOTH sides —
+///      an all-zero equality must not pass silently;
+///   3. the `doc_mount_chunks` rows physically present equal the sum of the
+///      rollups, checked on each side independently — so a bumped counter with no
+///      chunk row behind it fails.
+///
+/// Mutation-proven: suppressing `insert_chunks` in `services::mount_index::
+/// reindex_file` fires (3); zeroing the chunk vector on both sides fires (2).
+fn assert_chunk_pass_ran(got: &Value, want: &Value) {
+    fn num(v: &Value) -> i64 {
+        v.as_i64()
+            .or_else(|| v.as_f64().map(|f| f as i64))
+            .unwrap_or(0)
+    }
+    fn counts(dumps: &Value) -> Vec<(String, i64)> {
+        dumps["fileLinks"]["rows"]
+            .as_array()
+            .expect("fileLinks rows")
+            .iter()
+            .map(|r| {
+                (
+                    r["relativePath"].as_str().unwrap_or_default().to_string(),
+                    num(&r["chunkCount"]),
+                )
+            })
+            .collect()
+    }
+    fn chunk_rows(dumps: &Value) -> i64 {
+        dumps["chunks"]["rows"]
+            .as_array()
+            .expect("chunks rows")
+            .len() as i64
+    }
+    fn lookup(counts: &[(String, i64)], path: &str) -> i64 {
+        counts
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, n)| *n)
+            .unwrap_or_else(|| {
+                panic!("pinned path `{path}` has no doc_mount_file_links row — the corpus moved; re-pin OP_CHUNKED_PATHS")
+            })
+    }
+
+    let got_counts = counts(got);
+    let want_counts = counts(want);
+    assert_eq!(
+        got_counts, want_counts,
+        "per-path chunkCount diverged\n  rust:   {got_counts:?}\n  oracle: {want_counts:?}"
+    );
+
+    for path in OP_CHUNKED_PATHS {
+        let (g, w) = (lookup(&got_counts, path), lookup(&want_counts, path));
+        assert!(
+            g > 0 && w > 0,
+            "the chunk pass did NOT run for the written path `{path}`: chunkCount rust={g} \
+             oracle={w}. An all-zero equality is exactly what the mocked oracle used to pass \
+             with — see P4.32."
+        );
+    }
+
+    let total: i64 = got_counts.iter().map(|(_, n)| *n).sum();
+    assert_eq!(
+        chunk_rows(got),
+        total,
+        "rust: doc_mount_chunks row count != sum(chunkCount)"
+    );
+    assert_eq!(
+        chunk_rows(want),
+        total,
+        "oracle: doc_mount_chunks row count != sum(chunkCount)"
+    );
+    eprintln!(
+        "chunk pass proven: {} written path(s) pinned nonzero, {total} chunk row(s), equal on both sides.",
+        OP_CHUNKED_PATHS.len()
     );
 }
 

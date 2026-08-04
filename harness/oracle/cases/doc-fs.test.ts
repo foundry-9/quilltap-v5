@@ -206,7 +206,8 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/embedding/embedding-service'),
   );
 
-  // The Librarian announcements + reindex + embedding are documented seams: mock
+  // The Librarian announcements + the tool-level reindex trigger + embedding are
+  // documented seams: mock
   // every poster to a no-op so chat_messages stays untouched (matching the Rust
   // side, which does not post the pending announcement in this differential).
   jest.doMock('@/lib/services/librarian-notifications/writer', () => {
@@ -223,10 +224,38 @@ async function main(): Promise<void> {
       postLibrarianOpenAnnouncement: async () => undefined,
     };
   });
-  jest.doMock('@/lib/doc-edit/reindex-file', () => ({
-    __esModule: true,
-    reindexSingleFile: async () => undefined,
-  }));
+  // P4.32 — the reindex module runs for REAL (RULED 2026-08-04). Its one export
+  // `reindexSingleFile` IS v4's database-store chunk pass: `writeDatabaseDocument`
+  // AWAITS it (`lib/mount-index/database-store.ts:148`) to chunk the bytes it just
+  // wrote — the P4.6BK chunk-on-write v5 also performs. Mocking it to a no-op
+  // therefore silenced v4's OWN chunking, and `chunkCount` diverged 1-vs-0 on every
+  // write that lands in a database store. Kept as an explicit requireActual (rather
+  // than a plain deletion) so a future global mock in `jest.setup` cannot re-silence
+  // it invisibly — which is exactly how this red hid. The embedding-enqueue seam is
+  // a DIFFERENT module and stays mocked below (`reindexSingleFile` never enqueues:
+  // "Embedding jobs are NOT enqueued here").
+  jest.doMock('@/lib/doc-edit/reindex-file', () =>
+    jest.requireActual('@/lib/doc-edit/reindex-file'),
+  );
+
+  // …but `triggerReindexIfNeeded` — the TOOL-level fire-and-forget trigger — stays
+  // seamed. It is a SEPARATE, still-standing v5 deferral (`tools/doc_edit/shared.rs`
+  // header: "the port omits them"), and unlike `writeDatabaseDocument`'s awaited
+  // chunk pass it is NOT awaited by anything: `triggerReindexIfNeeded` kicks off
+  // `reindexSingleFile(...).then(reindexLinkGroupSiblings).then(enqueue+refreshStats)`
+  // and returns, so its writes race the dump. Leaving it live would (a) make the
+  // FILESYSTEM branch mint mount-index link + chunk rows v5 never writes — the
+  // deferral's measured blast radius, see the P4.32 lane record — and (b) make every
+  // family timing-dependent. Seaming just this one export keeps the mock exactly as
+  // wide as the deferral, instead of also silencing v4's own chunk-on-write.
+  jest.doMock('@/lib/tools/handlers/doc-edit/shared', () => {
+    const actual = jest.requireActual('@/lib/tools/handlers/doc-edit/shared');
+    return {
+      __esModule: true,
+      ...actual,
+      triggerReindexIfNeeded: async () => undefined,
+    };
+  });
   jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
     __esModule: true,
     enqueueEmbeddingJobsForMountPoint: () => undefined,

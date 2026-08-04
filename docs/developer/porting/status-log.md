@@ -53257,3 +53257,166 @@ Worth carrying forward: "v4 was clean when I started" is not the same claim as
 "v4 was clean when the oracle ran". Re-checking `git status` at lane END is
 cheap, and when it has moved, a regenerate-and-diff turns the caveat into a
 fact for a couple of minutes' work.
+
+## Lane record — P4.32 (the doc-edit oracle reindex un-mock)
+
+**Branch** `claude/p4-32-doc-edit-oracle-unmock-618e18`. Harness + oracle
+only — **zero `crates/quilltap-core` source changed** (verified by
+`git diff --stat -- crates/quilltap-core` at every step). v4 drift-checked
+CLEAN at the pinned baseline `49769ec4` at lane start and again before the
+final regen, so every oracle regenerated straight from
+`~/source/quilltap-server`; no pinned worktree was needed.
+
+### The pre-state, measured before touching anything
+
+All six families were regenerated with the mock still in place and run, to
+establish the red rather than inherit the order's description of it. Result:
+`doc_text` and `doc_fm` FAILED, the other four passed — and the failure
+payloads carried **`chunkCount` and nothing else** (8 rows in `doc_text`,
+2 in `doc_fm`; v5 `1` vs oracle `0` in every one). Every other column of
+`doc_mount_file_links` — including `plainTextLength` and
+`conversionStatus`, which `linkDocumentContent` sets before the chunk pass
+runs — already agreed. That is the P4.D41 diagnosis confirmed exactly.
+
+### What actually landed, and one correction to the order
+
+The order's survey said `triggerReindexIfNeeded` is "awaited at every
+text/markdown/file-management handler site". The handlers do await the
+FUNCTION — but the function does not await the work: `shared.ts:468` fires
+`reindexSingleFile(...).then(reindexLinkGroupSiblings).then(enqueue +
+refreshStats)` and returns immediately. So the tool-level reindex is
+fire-and-forget, and a blanket un-mock would have made every doc-edit family
+race its own dump.
+
+That matters because the one mock covered **two different things**:
+
+1. `writeDatabaseDocument`'s chunk pass (`database-store.ts:148`), which
+   genuinely IS awaited and which **v5 performs too** (P4.6BK,
+   `database_store.rs:224`) — the ruling's target; and
+2. `triggerReindexIfNeeded`, a **separate, still-standing v5 deferral**
+   spelled out in `tools/doc_edit/shared.rs`'s own header ("the port omits
+   them"; "for a FILESYSTEM/obsidian doc-edit write the seam is the only
+   path in v4, and v5 has no reindex there at all").
+
+So the module is now `jest.requireActual` (an explicit passthrough rather
+than a deletion, so a future global mock in `jest.setup` cannot re-silence
+it invisibly — which is how this red hid), and the ONE export
+`triggerReindexIfNeeded` is seamed in its place via a `requireActual`-plus-
+override on `@/lib/tools/handlers/doc-edit/shared`. The mock is now exactly
+as wide as the deferral instead of also silencing v4's own chunk-on-write.
+
+**The deferral's blast radius, now MEASURED** (the experiment is worth
+keeping): with the trigger left live as well, `doc-fs` grew one whole
+`doc_mount_file_links` row — `docs/fresh.md` on the filesystem mount,
+`chunkCount 1`, `plainTextLength 5`, `conversionStatus 'converted'`, plus
+its chunk row — that v5 never writes. Not a new finding (it is the header's
+own "loudly deferred" case) but until now it was an argument, not a number.
+It closes when the doc-edit reindex is ported.
+
+### Per-family moved/unmoved verdicts
+
+Comparison method: each family's oracle regenerated before and after, both
+sides run through the same UUID/ISO/epoch-ms normalization the Rust
+differentials apply, then structurally diffed — raw NDJSON comparison is
+useless here because every run mints fresh ids and clocks.
+
+| family | verdict | what moved |
+| --- | --- | --- |
+| `doc_text` | **MOVED** | 8 × `fileLinks.chunkCount` 0 → 1 |
+| `doc_fm` | **MOVED** | 2 × `fileLinks.chunkCount` 0 → 1 |
+| `doc_ui` | unmoved | opens/focus/close write no store bytes |
+| `doc_enum` | unmoved | reads only |
+| `doc_blob` | unmoved | blob paths have no detectable text type, so the pass returns at `detectFileType` |
+| `doc_fs` | unmoved | every write lands on the host filesystem, reachable only through the still-seamed trigger |
+
+The 8 and the 2 are the same rows, and the same values, that the pre-state
+run reported as v5-vs-oracle divergences — the oracle moved onto v5, which
+is the shape a genuine oracle repair should have.
+
+### The positive chunk arm (deliverable 3) and what the mutation proof caught
+
+Both red families now dump `doc_mount_chunks` (ordered by `content`, a
+remap-invariant key) alongside their existing tables, and call a new
+`assert_chunk_pass_ran` BEFORE the dump equality so a chunk regression
+reports as a chunk regression rather than as a wall of JSON. It asserts
+(1) per-path `chunkCount` agrees side-for-side, (2) every path in a pinned
+`OP_CHUNKED_PATHS` list carries a NONZERO count on BOTH sides, and (3) the
+`doc_mount_chunks` rows present equal the sum of the rollups, per side.
+
+**The first version of arm (2) was wrong and the mutation proof is what
+found it.** It asserted "at least one link has `chunkCount > 0`" — and with
+v5's chunk pass mutated to produce nothing at all, `doc_text` still PASSED,
+because the fixture seeds four already-chunked vault files
+(`metadata.json` / `properties.json` / `state.json` /
+`physical-prompts.json`) that satisfied it on their own. An arm that a
+seeded row can discharge proves nothing about the ops. It now pins the
+exact paths the corpus writes — the eight (`doc_text`) and two (`doc_fm`)
+rows that moved 0 → 1 when the mock came off — and panics with a re-pin
+instruction if the corpus ever moves a path out from under it.
+
+Mutations recorded (both against `services::mount_index::reindex_file`,
+restored from a scratch backup afterwards; core was verified clean again by
+`git diff --stat`):
+
+- **M1** — suppress `insert_chunks` while leaving the rollup: fires arm (3),
+  `rust: doc_mount_chunks row count != sum(chunkCount)`, in both families.
+- **M2** — zero the chunk vector on the v5 side AND restore the old no-op
+  reindex mock on the oracle side, i.e. reconstruct the exact all-zero
+  agreement the mocked family used to pass with: fires arm (2), `the chunk
+  pass did NOT run for the written path 'Notes/accent.md'`.
+
+### The recipe headers (deliverable 4)
+
+All six `.rs` headers and all six `.ts` case headers were rewritten to
+commands that run today, and each was then **executed verbatim** through
+`harness/tools/recipe_sweep.py --run <family>` (all six extract as `ok`).
+What was wrong with them: they pointed `--roots` at
+`$V5/harness/oracle/cases`, which under a `.claude/worktrees/` checkout
+matches ZERO tests (v4's jest ignores `/\.claude/` in BOTH
+`testPathIgnorePatterns` and `modulePathIgnorePatterns`), leaves the
+previous NDJSON sitting in `/tmp`, and lets the family pass against a stale
+oracle. That is the mechanism by which this red stayed invisible, so the new
+headers carry the staging step, an ANCHORED jest filter
+(`-- "doc-text\.test\.ts$"`), `--testTimeout=240000`, and a note that the
+fixture pair is minted rather than committed, so oracle and `cargo test`
+must point at the SAME build.
+
+### Escalations / owed elsewhere (this lane may not touch them)
+
+- **`crates/quilltap-core/src/tools/doc_edit/shared.rs`'s header is now
+  stale in two sentences** — it says "the differential oracle mocks the
+  writer/reindex modules to no-ops" and "the `chunkCount` a reindex would
+  bump is pinned/excluded in every store differential". Neither is true of
+  the doc-edit families any more: the reindex module is real and
+  `chunkCount` is now positively asserted. The correction is a comment-only
+  edit to a core file this lane is forbidden to open; it should ride the
+  next lane that owns `tools/doc_edit/**`.
+- Nothing else diverged. Un-mocked v4 wrote no field and no row beyond the
+  `chunkCount` rollups and the `doc_mount_chunks` rows v5 already writes —
+  the tier-2 census below is the all-clear.
+
+### Tier-2 census — what un-mocked v4 writes on the doc-edit path
+
+`reindexSingleFile`'s database-backed branch touches exactly three things,
+and v5's `reindex_after_database_write` matches all three:
+
+| field / row | v4 (un-mocked) | v5 | diffed by |
+| --- | --- | --- | --- |
+| `doc_mount_file_links.chunkCount` | `chunks.length` | `chunks.len()` | dump equality + arm (1)/(2) |
+| `doc_mount_file_links.plainTextLength` | `plainText.length` | `utf16_len` | dump equality (already agreed pre-lane) |
+| `doc_mount_file_links.conversionStatus` | `'converted'` | `"converted"` | dump equality (already agreed pre-lane) |
+| `doc_mount_file_links.lastModified` | the document's `lastModified` | same | dump equality |
+| policy flags (markdown only) | `updatePolicyFlags` from frontmatter | same | dump equality |
+| `doc_mount_chunks` rows | `bulkInsert`, `embedding: null` | `insert_chunks`, `embedding: None` | **NEW** chunks dump + arm (3) |
+| `sha256` / `fileSizeBytes` | NOT written by the database branch (they belong to the content writer) | same | n/a |
+
+No embedding job is enqueued on either side: `reindexSingleFile` never
+enqueues ("Embedding jobs are NOT enqueued here"), and the separate
+`@/lib/mount-index/embedding-scheduler` mock stays in place — that path
+keeps its own families (`embedding_generate_jobs`, `embedding_remainder`).
+
+### Fixtures
+
+None changed and none added. The six doc-edit families' fixture pairs are
+MINTED into `/tmp` by their builders (`build-doc-*-fixture.ts`), not
+committed, so no other family's oracle is invalidated by this lane.
