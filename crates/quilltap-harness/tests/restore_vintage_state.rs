@@ -73,7 +73,7 @@ fn vintage_instance(tag: &str) -> (PathBuf, PathBuf) {
 }
 
 fn open(instance: &Path) -> Db {
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main: instance.join("quilltap.db"),
             mount_index: Some(instance.join("quilltap-mount-index.db")),
@@ -81,7 +81,25 @@ fn open(instance: &Path) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open the vintage instance")
+    .expect("open the vintage instance");
+    // Mirror boot. In production a restore can only run inside a booted engine,
+    // and the builtin-mounts boot hook has already run v4 `40319484`'s
+    // `linkGroupId` column ensure on this instance's own mount partition
+    // (`services::builtin_mounts` → `ensure_link_group_column`) — the fixture
+    // itself stays deliberately pre-column, because being repaired at boot IS
+    // the vintage path a real instance takes. Without this, phase 22d's
+    // 25-column link insert fails with "no such column: linkGroupId" on a
+    // target no production restore can ever see.
+    db.write_blocking(|writers| {
+        quilltap_core::db::mount_index_case_repair::ensure_link_group_column(
+            writers
+                .mount_index()
+                .expect("the vintage instance has a mount partition")
+                .connection(),
+        )
+    })
+    .expect("boot-align the vintage mount partition");
+    db
 }
 
 struct TestHost {
