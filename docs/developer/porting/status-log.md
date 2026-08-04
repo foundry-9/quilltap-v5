@@ -267,11 +267,33 @@ makes and the one a screen assertion alone cannot carry.
 - `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
   `--features quilltap-core/native-transport`.
 - `cargo build --release` clean.
-- `cargo test --workspace --no-fail-fast` with the lane's env vars — see the
-  inherited-red note in the unit-1/2 record: the ONLY failure is
-  `chat_create_capstone_equivalence` on the sibling-owned Aurora whisper string
-  (`7fe9fe40` → P4.D45's `services/aurora_notifications.rs`). With D45's one
-  line applied locally and reverted, the family is 19/19, zero SKIP.
+- `cargo test --workspace --no-fail-fast` with the lane's env vars —
+  **412 test binaries, 1,847 passed, ZERO SKIP lines, and exactly ONE failing
+  binary**: `chat_create_capstone_equivalence`, on the sibling-owned Aurora
+  whisper string (`7fe9fe40` → P4.D45's `services/aurora_notifications.rs`; see
+  the inherited-red note in the unit-1/2 record). With D45's one line applied
+  locally and reverted, that family is 19/19, zero SKIP. **The unifier should
+  re-run this family after P4.D45 merges and expect it green.**
+
+### ⚠ Spotted, not ours — a load-only flake in the P4.18 tracing-test family
+
+The FIRST full workspace run (taken while four sibling lanes were running their
+own `cargo test` binaries) also failed
+`services::job_runner::tests::failed_job_emits_a_tracing_event`. It did not
+reproduce anywhere afterwards: green alone; green 3/3 in the whole
+`quilltap-core --lib` suite on this branch (1,286 passed each); green 10/10 with
+the four subscriber-using tests forced together onto `--test-threads=16`; and
+absent from both later full workspace runs on a quieter machine.
+
+Not this lane's, and structurally not reachable from it: four tests in that one
+binary (`job_runner`, `cheap_llm_exec`, and two in `build_context`) install
+THREAD-LOCAL subscribers via `tracing::subscriber::set_default` under
+`#[tokio::test]`, while `tracing`'s callsite `Interest` cache is global — the
+shape that drops an event onto the wrong thread's subscriber under scheduling
+pressure. The P4.D44 addition is a `tracing::debug!` on a different callsite and
+target inside `handle_create`, which that test never calls, and the assertion is
+a `contains`, so an extra event cannot break it. Recorded for whoever owns the
+P4.18 tracing tests; no change made here.
 - `ng test` 278 files / 3,843 passed; `ng build` clean.
 - Full Playwright (unfiltered): **177 passed, 1 failed** — the suite grew 177 →
   178 and the new beat is among the passes.
