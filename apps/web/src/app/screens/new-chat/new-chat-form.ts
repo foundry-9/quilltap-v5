@@ -117,6 +117,35 @@ interface PlayAsOption {
           </div>
         }
 
+        @if (roleplayTemplates().length > 0) {
+          <div>
+            <label for="new-chat-roleplay-template" class="mb-2 block text-sm qt-text-primary"
+              >Roleplay Template</label
+            >
+            <select
+              id="new-chat-roleplay-template"
+              [ngModel]="form().roleplayTemplateId ?? ''"
+              (ngModelChange)="onRoleplayTemplate($event)"
+              [disabled]="creating()"
+              class="qt-select"
+            >
+              <option value="">
+                No Template{{ defaultRoleplayTemplateId() === null ? ' (default)' : '' }}
+              </option>
+              @for (template of roleplayTemplates(); track template.id) {
+                <option [value]="template.id">
+                  {{ template.name }}{{ template.isBuiltIn ? ' (Built-in)' : ''
+                  }}{{ template.id === defaultRoleplayTemplateId() ? ' (default)' : '' }}
+                </option>
+              }
+            </select>
+            <p class="qt-text-xs qt-text-muted mt-1">
+              Sets how prose, dialogue, and asides are dressed for this conversation. You may change
+              your mind later from the chat&rsquo;s own sidebar.
+            </p>
+          </div>
+        }
+
         <div>
           <label class="mb-2 block text-sm qt-text-primary"
             >Image Generation Profile (Optional)</label
@@ -338,6 +367,10 @@ export class NewChatForm {
   protected availableProjects = computed(() => this.core().availableProjects());
   protected selectedProjectId = computed(() => this.core().selectedProjectId());
   protected project = computed(() => this.core().project());
+  /** The picker's options; an empty list hides the dropdown entirely (v4). */
+  protected roleplayTemplates = computed(() => this.core().roleplayTemplates());
+  /** Marks the option the chat would get anyway — labelling only. */
+  protected defaultRoleplayTemplateId = computed(() => this.core().defaultRoleplayTemplateId());
 
   protected readonly llmSelected = computed(() => this.core().llmSelected());
   protected readonly singleLlm = computed<NewChatSelectedCharacter | null>(() =>
@@ -528,6 +561,18 @@ export class NewChatForm {
 
   protected onImageProfile(id: string | null): void {
     this.core().patchForm({ imageProfileId: id || '' });
+  }
+
+  /**
+   * v4 `handleRoleplayTemplateChange` — the empty option means "no template"
+   * (`null`), and ANY hand pick latches `roleplayTemplateTouched` so a later
+   * reference-data reload cannot quietly re-seed the default over it.
+   */
+  protected onRoleplayTemplate(value: string): void {
+    this.core().patchForm({
+      roleplayTemplateId: value || null,
+      roleplayTemplateTouched: true,
+    });
   }
 
   protected onOutfits(selections: ChatCreateOutfitSelectionInput[]): void {

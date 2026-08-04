@@ -8,7 +8,11 @@ import type { CharacterListItem } from '../../core/core-contract';
 import { RichEditor } from '../../editor/rich-editor';
 import { NewChatForm } from './new-chat-form';
 import { NewChatState } from './new-chat.state';
-import type { NewChatSelectedCharacter, ScenarioOption } from './new-chat.types';
+import type {
+  NewChatSelectedCharacter,
+  RoleplayTemplateOption,
+  ScenarioOption,
+} from './new-chat.types';
 
 function char(id: string, name: string, over: Partial<CharacterListItem> = {}): CharacterListItem {
   return {
@@ -154,5 +158,92 @@ describe('NewChatForm Play As dropdown', () => {
       o.textContent?.trim(),
     );
     expect(options).toEqual(['Chat as yourself', 'Alice']);
+  });
+});
+
+// --- Roleplay template picker (v4 `4bbeab47` NewChatForm.test.tsx) ------------
+
+const TEMPLATES: RoleplayTemplateOption[] = [
+  { id: 'tpl-classic', name: 'Classic Roleplay', description: null, isBuiltIn: true },
+  { id: 'tpl-house', name: 'House Style', description: null, isBuiltIn: false },
+];
+
+function templateSelect(fixture: ComponentFixture<NewChatForm>): HTMLSelectElement | null {
+  return (fixture.nativeElement as HTMLElement).querySelector('#new-chat-roleplay-template');
+}
+
+function templateOptions(fixture: ComponentFixture<NewChatForm>): string[] {
+  return Array.from(templateSelect(fixture)?.querySelectorAll('option') ?? []).map(
+    (o) => o.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+  );
+}
+
+describe('NewChatForm roleplay template picker', () => {
+  it('is hidden when no templates are available', () => {
+    const fixture = render(makeState());
+    expect(templateSelect(fixture)).toBeNull();
+  });
+
+  it('defaults to the chat default and marks it in the list', async () => {
+    const state = makeState();
+    state.roleplayTemplates.set(TEMPLATES);
+    state.defaultRoleplayTemplateId.set('tpl-house');
+    state.patchForm({ roleplayTemplateId: 'tpl-house' });
+    const fixture = render(state);
+    // `[ngModel]` lands on the DOM asynchronously — settle before reading it,
+    // or the assertion reads the pristine '' and passes for the wrong reason.
+    await settle(fixture);
+
+    expect(templateSelect(fixture)?.value).toBe('tpl-house');
+    expect(templateOptions(fixture)).toEqual([
+      'No Template',
+      'Classic Roleplay (Built-in)',
+      'House Style (default)',
+    ]);
+  });
+
+  it('marks "No Template" as the default when no default template is set', async () => {
+    const state = makeState();
+    state.roleplayTemplates.set(TEMPLATES);
+    state.defaultRoleplayTemplateId.set(null);
+    const fixture = render(state);
+    await settle(fixture);
+
+    expect(templateSelect(fixture)?.value).toBe('');
+    expect(templateOptions(fixture)[0]).toBe('No Template (default)');
+  });
+
+  it('records an explicit pick as touched so reference reloads cannot re-seed it', async () => {
+    const state = makeState();
+    state.roleplayTemplates.set(TEMPLATES);
+    state.defaultRoleplayTemplateId.set('tpl-house');
+    state.patchForm({ roleplayTemplateId: 'tpl-house' });
+    const fixture = render(state);
+    await settle(fixture);
+
+    const select = templateSelect(fixture)!;
+    select.value = 'tpl-classic';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    expect(state.form().roleplayTemplateId).toBe('tpl-classic');
+    expect(state.form().roleplayTemplateTouched).toBe(true);
+  });
+
+  it('turns "No Template" into a null id, still marked as touched', async () => {
+    const state = makeState();
+    state.roleplayTemplates.set(TEMPLATES);
+    state.defaultRoleplayTemplateId.set('tpl-house');
+    state.patchForm({ roleplayTemplateId: 'tpl-house' });
+    const fixture = render(state);
+    await settle(fixture);
+
+    const select = templateSelect(fixture)!;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    expect(state.form().roleplayTemplateId).toBeNull();
+    expect(state.form().roleplayTemplateTouched).toBe(true);
   });
 });

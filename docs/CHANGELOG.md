@@ -27,6 +27,17 @@ illustrates itself in unquoted prose instead of quoted asterisk spans;
 that block goes into the system prompt on every tool-enabled turn, so it
 was the one unconditional source. This also retires a stale wording gap
 in that same rule, left over from an earlier upstream change.
+The New Chat form gained a Roleplay Template dropdown, beneath Play As.
+Previously the template was decided silently at creation and could only
+be seen or changed afterward from the chat's sidebar. The dropdown is
+pre-selected with what the chat would have gotten anyway — project
+default, then your global default, then No Template — with that option
+marked "(default)", and it is hidden entirely when no templates exist.
+Adding a character or switching projects re-seeds the default only until
+you pick one by hand. The form sends the value it displayed, and omits it
+entirely when the reads it depends on failed, so a read error can never
+masquerade as a deliberate "no template".
+
 Chat creation now accepts an explicit roleplay template. The create
 request carries a tri-state `roleplayTemplateId`: present — including an
 explicit `null`, which means "no template" — beats both the project

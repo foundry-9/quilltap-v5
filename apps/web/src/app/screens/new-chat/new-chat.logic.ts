@@ -187,6 +187,7 @@ export function buildCreateRequest(
   form: NewChatFormState,
   selectedProjectId: string | null,
   progressId: string | undefined,
+  opts: { templateDefaultsLoaded: boolean } = { templateDefaultsLoaded: false },
 ): ChatCreateRequest {
   const participants = selectedCharacters.map((sc) => ({
     type: 'CHARACTER' as const,
@@ -203,6 +204,14 @@ export function buildCreateRequest(
   };
 
   if (form.imageProfileId) body.imageProfileId = form.imageProfileId;
+
+  // Sent — including `null` for "No Template" — so the value the user saw in the
+  // dropdown is the value the chat is created with. Omitted entirely when the
+  // defaults never loaded and the user didn't choose, leaving the server to walk
+  // its own project > user default chain (v4 `4bbeab47`).
+  if (form.roleplayTemplateTouched || opts.templateDefaultsLoaded) {
+    body.roleplayTemplateId = form.roleplayTemplateId;
+  }
   // Free-text notes ride independently of any preset (the server layers them).
   if (form.scenario) body.scenario = form.scenario;
 

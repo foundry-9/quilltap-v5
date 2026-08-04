@@ -791,6 +791,15 @@ export interface ChatCreateRequest {
   generalScenarioPath?: string;
   timestampConfig?: TimestampConfig;
   projectId?: string;
+  /**
+   * P4.D44 (v4 `4bbeab47`) — the roleplay template chosen in the New Chat form.
+   * TRI-STATE: present (even as `null`, meaning "no template") beats both the
+   * project default and the user's global default; OMIT the key entirely to let
+   * the server walk that default chain. The client omits it whenever the
+   * settings/templates/project reads failed, so a read error can never
+   * masquerade as a deliberate "no template".
+   */
+  roleplayTemplateId?: string | null;
   avatarGenerationEnabled?: boolean;
   outfitSelections?: ChatCreateOutfitSelectionInput[];
   continuationFromChatId?: string;

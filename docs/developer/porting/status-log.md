@@ -156,6 +156,95 @@ green the moment P4.D45 merges, and should re-run it after the merge.**
 
 Versions: core 0.0.463, harness 0.0.396.
 
+## Lane record — P4.D44 unit 3 (the New-Chat SPA picker), 2026-08-04
+
+The `4bbeab47` drift's client half, on `/salon/new` (v5 has **no New-Chat
+modal** — the standing no-modal divergence, `app.routes.ts:54` — so v4's
+"page + modal" pair reduces to the page; that is a divergence already on the
+books, not a deferral, and the count of ported surfaces is one, not two).
+
+### What landed
+
+- `NewChatFormState` gains `roleplayTemplateId` + `roleplayTemplateTouched`;
+  `NewChatProject` gains `defaultRoleplayTemplateId`; a new
+  `RoleplayTemplateOption` (v4's trimmed record).
+- `NewChatState.load()` fetches `roleplayTemplateList` and the chat settings
+  alongside the reference data, and resolves the seed the same way the create
+  route does: project default > user/global default > none, guarded by
+  `defaultTemplateStillExists` so a default naming a deleted template seeds
+  nothing. The seed re-applies on every reference reload UNLESS
+  `roleplayTemplateTouched`.
+- The dropdown sits between Play As and Image Generation Profile, hidden when
+  the list is empty, with v4's exact labels (`No Template` + ` (default)`,
+  `{name}` + ` (Built-in)` + ` (default)`) and v4's hint copy verbatim. A hand
+  pick sets `roleplayTemplateId: value || null` and latches `touched`.
+- `buildCreateRequest` sends the key only when `touched || templateDefaultsLoaded`.
+- `core-contract.ts` `ChatCreateRequest` gains `roleplayTemplateId?: string |
+  null` — **the round's only contract edit**; `api/types.rs` stayed shut (the
+  field rides the `#[serde(flatten)]` seam, exactly as
+  `api/chat_create.rs:26-27` documents).
+
+### The omit-on-failed-fetch design note (the order flagged this as real work)
+
+v4 gets its per-source signal for free: `fetch` RESOLVES on a non-2xx, so the
+hook reads `res.ok` per source and warns instead of aborting, and
+`templateDefaultsLoaded = templatesRes.ok && chatSettingsRes.ok &&
+(!selectedProjectId || projectRes.ok)`. v5's `CoreClient.dispatch*` REJECTS, and
+`load()` had exactly one all-or-nothing try/catch — no hook for a per-source
+predicate at all.
+
+Rather than convert the whole load, a local `settled()` wrapper restores the
+per-source shape for **the sources the predicate names, and their paired read**:
+`roleplayTemplateList`, `chatSettings`, `projectGet`, and `projectScenarioList`
+(paired with `projectGet` in the same `Promise.all`). Each now warns on failure
+where v4 warns, and the form stays usable. The other four reference reads
+(`characterList` / `connectionProfileList` / `scenarioList` / `projectList`) keep
+v5's pre-existing all-or-nothing arm — **a pre-existing divergence from v4,
+deliberately not widened and deliberately not swept**; converging them is a
+separate, larger change with its own toast-behavior consequences.
+
+Two consequences worth naming: the project branch now degrades instead of
+aborting (a convergence toward v4), and the predicate's third clause is
+load-bearing rather than vacuous — a spec proves the key is omitted when a
+chosen project fails to load.
+
+⚠ `db/chat_settings.rs:722,776` OMITS `defaultRoleplayTemplateId` when the column
+is SQL NULL. Absent means "no default", NOT "the read failed" — so the failure
+signal is the settled `ok` flag and never the key's absence. Called out inline at
+the read site, because getting that backwards would turn a user with no default
+into a user whose default could not be read.
+
+The state's own `chatSettings` read is a second fetch alongside the form's
+pre-existing `settingsQuery` (which feeds the autonomous hint). v4 reads both
+from one response; v5's split predates this lane, and the seeding decision has to
+live in `load()` because that is where the ok-tracking and the re-seed latch are.
+
+### Specs
+
+`new-chat-form.spec.ts` mirrors v4's five `NewChatForm.test.tsx` picker cases
+1:1 (hidden when empty; defaults to the chat default and marks it; marks "No
+Template" as default when none is set; an explicit pick records touched; "No
+Template" → null id, still touched). Two of them assert the rendered `<select>`
+value, which lands asynchronously — the first draft passed for the wrong reason
+by reading the pristine `''`, so both now `await settle(fixture)` first, with the
+reason recorded inline.
+
+`new-chat.state.spec.ts` adds the seeding chain (user default; project beats
+user; a deleted default seeds nothing; reload re-seeds until touched) and all
+five arms of the omit predicate over a scripted `CoreClient` that can fail one
+source at a time — including the explicit-`null` send, asserted with
+`toHaveProperty(…, null)` so "sent as null" and "omitted" cannot be confused.
+
+`ng test` 278 files / 3843 passed; `ng build` clean.
+
+### Deferred loudly (Tier 3, recorded for the `p4.9i2` bank)
+
+`help/chats.md` and `help/templates-in-chats.md` rode along in `4bbeab47`. v5 has
+no help surface, so both join the standing `p4.9i2` help-doc bank. Nothing else
+from the drift is unported.
+
+Version: SPA 0.5.400.
+
 ## Round unified — the `c4d4b0de` v4-drift catch-up (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40), 2026-08-01
 
 **All six orders CLOSED. The oracle baseline MOVES to `c4d4b0de` and the drift

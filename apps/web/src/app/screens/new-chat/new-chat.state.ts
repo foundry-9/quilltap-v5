@@ -29,6 +29,8 @@ import type { CoreClient } from '../../core/core-client';
 import type {
   CharacterListItem,
   ChatCreateDto,
+  ChatSettingsDto,
+  RoleplayTemplateDto,
   ScenarioDto,
   ScenarioListDto,
 } from '../../core/core-contract';
@@ -42,6 +44,7 @@ import {
   type NewChatProject,
   type NewChatSelectedCharacter,
   type ProjectListEntry,
+  type RoleplayTemplateOption,
   type ScenarioOption,
 } from './new-chat.types';
 
@@ -66,6 +69,21 @@ function mapScenario(s: ScenarioDto): ScenarioOption {
   };
 }
 
+/**
+ * Per-source tolerance for a reference read. v4's `fetch` resolves on a non-2xx
+ * and the hook branches on `res.ok`; `CoreClient.dispatch*` REJECTS instead, so
+ * this restores the per-source shape the template-default predicate needs. Only
+ * the sources that feed that predicate (and their paired reads) use it — the
+ * four core reference fetches keep the pre-existing all-or-nothing arm.
+ */
+async function settled<T>(p: Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await p };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export class NewChatState {
   readonly loading = signal(true);
   readonly creating = signal(false);
@@ -81,6 +99,14 @@ export class NewChatState {
   /** Fetched faithfully (participant union) but never rendered — dead UI in v4. */
   readonly groupScenarios = signal<GroupScenarioOption[]>([]);
   readonly availableProjects = signal<ProjectListEntry[]>([]);
+  /** Every roleplay template available to the user, for the in-form picker. */
+  readonly roleplayTemplates = signal<RoleplayTemplateOption[]>([]);
+  /**
+   * The template this chat would use if the picker were left alone: project
+   * default > user/global default > null. {@link form}'s `roleplayTemplateId`
+   * is seeded from it; the form uses it only to label that option as default.
+   */
+  readonly defaultRoleplayTemplateId = signal<string | null>(null);
   readonly selectedProjectId: WritableSignal<string | null>;
 
   readonly selectedCharacters = signal<NewChatSelectedCharacter[]>([]);
@@ -111,6 +137,14 @@ export class NewChatState {
   /** True once an initial seed ran (v4 `seededRef`) — gates the single-LLM propagation. */
   private seeded = false;
   private prevLlmIds = '';
+  /**
+   * v4 `templateDefaultsLoaded`: true only when EVERY source of the template
+   * default answered (templates + chat settings + the project, when one is
+   * chosen). {@link buildCreateRequest} sends the key only when this is true or
+   * the user picked by hand, so a failed read can never masquerade as a
+   * deliberate "no template" and override a default the server knows about.
+   */
+  private templateDefaultsLoaded = false;
 
   constructor(
     private readonly core: CoreClient,
@@ -166,18 +200,70 @@ export class NewChatState {
       ).map((p) => ({ id: p.id, name: p.name, color: p.color ?? null }));
 
       // Project + its scenarios (defaults ride the detail GET, not the list).
+      // Read TOLERANTLY (v4 reads each `res.ok` and warns rather than aborting):
+      // the template-default predicate below needs to know whether the project
+      // answered, and a failed project read must leave the form usable.
       let loadedProject: NewChatProject | null = null;
       let loadedProjectScenarios: ScenarioOption[] = [];
+      let projectOk = true;
       if (projectId) {
-        const [projData, projScenData] = await Promise.all([
-          this.core.dispatchData({ type: 'projectGet', projectId }),
-          this.core.dispatchData({ type: 'projectScenarioList', projectId }),
+        const [projRes, projScenRes] = await Promise.all([
+          settled(this.core.dispatchData({ type: 'projectGet', projectId })),
+          settled(this.core.dispatchData({ type: 'projectScenarioList', projectId })),
         ]);
-        loadedProject = (projData['project'] as NewChatProject) ?? null;
-        loadedProjectScenarios = ((projScenData as unknown as ScenarioListDto).scenarios ?? []).map(
-          mapScenario,
-        );
+        projectOk = projRes.ok;
+        if (projRes.ok) {
+          loadedProject = (projRes.value['project'] as NewChatProject) ?? null;
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[NewChatState] Failed to load project', projectId);
+        }
+        if (projScenRes.ok) {
+          loadedProjectScenarios = (
+            (projScenRes.value as unknown as ScenarioListDto).scenarios ?? []
+          ).map(mapScenario);
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[NewChatState] Failed to load project scenarios', projectId);
+        }
       }
+
+      // The roleplay-template picker's two sources (v4 `4bbeab47`): the template
+      // list and the user's global default. Both tolerant, both ok-tracked.
+      const [templatesRes, chatSettingsRes] = await Promise.all([
+        settled(this.core.dispatchData({ type: 'roleplayTemplateList' })),
+        settled(
+          this.core.dispatchExpect({ type: 'chatSettings' }, 'chatSettings') as Promise<{
+            data: ChatSettingsDto;
+          }>,
+        ),
+      ]);
+      let loadedRoleplayTemplates: RoleplayTemplateOption[] = [];
+      if (templatesRes.ok) {
+        const raw = templatesRes.value;
+        // The pinned envelope is a BARE array; `dispatchData` wraps a non-object
+        // body under a synthetic key, so accept either shape (the same defensive
+        // read `fetchRoleplayTemplates` uses).
+        const list = (
+          Array.isArray(raw) ? raw : ((raw['templates'] ?? raw['data'] ?? []) as unknown)
+        ) as RoleplayTemplateDto[];
+        loadedRoleplayTemplates = list.map((t) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description ?? null,
+          isBuiltIn: Boolean(t.isBuiltIn),
+        }));
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[NewChatState] Failed to load roleplay templates');
+      }
+      // ⚠ `db/chat_settings.rs` OMITS `defaultRoleplayTemplateId` when the column
+      // is SQL NULL — absent means "no default", not "the read failed". The
+      // failure signal is `chatSettingsRes.ok`, never the key's absence.
+      const userDefaultRoleplayTemplateId: string | null = chatSettingsRes.ok
+        ? ((chatSettingsRes.value.data['defaultRoleplayTemplateId'] as string | null | undefined) ??
+          null)
+        : null;
 
       // The seed character + its default partner (?characterId=).
       let seededChar: CharacterListItem | null = null;
@@ -201,6 +287,32 @@ export class NewChatState {
       this.projectScenarios.set(loadedProjectScenarios);
       this.generalScenarios.set(loadedGeneral);
       this.availableProjects.set(loadedProjects);
+      this.roleplayTemplates.set(loadedRoleplayTemplates);
+
+      // What the chat's template would be if the user never touched the
+      // dropdown: project default > user/global default > none. The same chain
+      // the create route walks, so the pre-selection tells the truth. A default
+      // pointing at a deleted template seeds nothing.
+      const resolvedDefaultTemplateId =
+        loadedProject?.defaultRoleplayTemplateId || userDefaultRoleplayTemplateId || null;
+      const defaultTemplateStillExists =
+        !resolvedDefaultTemplateId ||
+        loadedRoleplayTemplates.some((t) => t.id === resolvedDefaultTemplateId);
+      this.defaultRoleplayTemplateId.set(
+        defaultTemplateStillExists ? resolvedDefaultTemplateId : null,
+      );
+      this.templateDefaultsLoaded =
+        templatesRes.ok && chatSettingsRes.ok && (!projectId || projectOk);
+      // The template re-seeds on every reference-data load (a new project, a
+      // changed cast) until the user picks one by hand.
+      this.form.update((prev) => ({
+        ...prev,
+        roleplayTemplateId: prev.roleplayTemplateTouched
+          ? prev.roleplayTemplateId
+          : defaultTemplateStillExists
+            ? resolvedDefaultTemplateId
+            : null,
+      }));
 
       const projectDefaultPath = loadedProjectScenarios.find((s) => s.isDefault)?.path ?? null;
       const generalDefaultPath = loadedGeneral.find((s) => s.isDefault)?.path ?? null;
@@ -432,7 +544,9 @@ export class NewChatState {
         : undefined;
 
     try {
-      const body = buildCreateRequest(cast, this.form(), this.selectedProjectId(), progressId);
+      const body = buildCreateRequest(cast, this.form(), this.selectedProjectId(), progressId, {
+        templateDefaultsLoaded: this.templateDefaultsLoaded,
+      });
       if (progressId) this.greenRoom?.begin(progressId);
       const resp = await this.core.dispatchExpect(body, 'chatCreate');
       const chatId = (resp.data as ChatCreateDto).chat.id;

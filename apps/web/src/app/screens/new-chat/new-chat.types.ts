@@ -66,6 +66,19 @@ export interface NewChatProject {
   color?: string | null;
   defaultAvatarGenerationEnabled?: boolean | null;
   defaultImageProfileId?: string | null;
+  defaultRoleplayTemplateId?: string | null;
+}
+
+/**
+ * A roleplay template offered in the New Chat form's template dropdown (v4
+ * `RoleplayTemplateOption`). Trimmed from the `roleplayTemplateList` record —
+ * the form only needs enough to label an option.
+ */
+export interface RoleplayTemplateOption {
+  id: string;
+  name: string;
+  description?: string | null;
+  isBuiltIn: boolean;
 }
 
 /**
@@ -83,6 +96,18 @@ export interface NewChatSelectedCharacter {
 /** The mutable form state (v4 `NewChatFormState`). */
 export interface NewChatFormState {
   imageProfileId: string;
+  /**
+   * Roleplay template for the new chat (v4 `4bbeab47`). Seeded with whatever
+   * the chat would have defaulted to (project default > user/global default)
+   * and sent verbatim at create time — `null` means "no template".
+   */
+  roleplayTemplateId: string | null;
+  /**
+   * Set once the user picks a template by hand. Reference-data reloads (adding
+   * a character, switching projects) re-seed the default only while this is
+   * false, so an explicit choice is never quietly overwritten.
+   */
+  roleplayTemplateTouched: boolean;
   /** Free-text scenario notes (layered beneath any resolved preset). */
   scenario: string;
   scenarioId: string | null;
@@ -100,6 +125,8 @@ export interface NewChatFormState {
 /** The pristine form state (v4 `INITIAL_STATE`). */
 export const INITIAL_FORM_STATE: NewChatFormState = {
   imageProfileId: '',
+  roleplayTemplateId: null,
+  roleplayTemplateTouched: false,
   scenario: '',
   scenarioId: null,
   projectScenarioPath: null,
