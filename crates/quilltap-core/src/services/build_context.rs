@@ -1465,6 +1465,59 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
 /// `RETRO_MINI_RECAP_MAX_ENTRIES`, context-manager.ts:33).
 const RETRO_MINI_RECAP_MAX_ENTRIES: usize = 5;
 
+/// Wall-clock ceiling on the whole memory-recap phase (v4
+/// `MEMORY_RECAP_PHASE_TIMEOUT_MS`, context-manager.ts, `74ec93b5`).
+///
+/// Set above [`CHEAP_LLM_TASK_TIMEOUT_MS`](crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS)
+/// on purpose: the recap makes an embedding call and a cheap-LLM call in
+/// sequence, each already deadlined, and a recap that is merely slow in both
+/// places is still doing useful work. This is the backstop that keeps a visible
+/// turn from sitting on "Recalling…" no matter which leg misbehaves. The recap
+/// is optional context — losing it costs the character some remembered flavour,
+/// not the turn.
+pub const MEMORY_RECAP_PHASE_TIMEOUT_MS: u64 = 60_000;
+
+/// v4's `withTimeout(generateMemoryRecap(...), MEMORY_RECAP_PHASE_TIMEOUT_MS,
+/// "Memory recap exceeded its 60000ms phase budget")` at the `buildContext` call
+/// site, with v4's existing fail-soft `catch` folded in.
+///
+/// v4 rejects into a `try/catch` that already drops the recap and moves on;
+/// [`generate_memory_recap`](crate::services::memory_recap::generate_memory_recap)
+/// returns no `Result` (it fails soft to `MemoryRecapResult::default()` on a DB
+/// failure of its own), so a fired ceiling maps onto that same default — the
+/// identical observable outcome.
+///
+/// Extracted rather than left inline because a fired ceiling is wall-clock
+/// behavior no NDJSON corpus can observe (the canned providers never stall) and
+/// the proof therefore has to be unit-tier (P4.15) — standing up a whole
+/// `build_context` call to make one future hang would pin the fifty-field input
+/// bag, not the ceiling. This has exactly one production caller, the recap block
+/// in [`build_context`].
+pub(crate) async fn memory_recap_within_phase_budget(
+    work: impl std::future::Future<Output = crate::services::memory_recap::MemoryRecapResult>,
+    chat_id: &str,
+    character_id: &str,
+) -> crate::services::memory_recap::MemoryRecapResult {
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(MEMORY_RECAP_PHASE_TIMEOUT_MS),
+        work,
+    )
+    .await
+    {
+        Ok(recap) => recap,
+        Err(_) => {
+            tracing::warn!(
+                target: "quilltap::build_context",
+                chat_id,
+                character_id,
+                timeout_ms = MEMORY_RECAP_PHASE_TIMEOUT_MS,
+                "Memory recap exceeded its phase budget; continuing without it",
+            );
+            crate::services::memory_recap::MemoryRecapResult::default()
+        }
+    }
+}
+
 /// v4's UUID-in-backticks scanner for the fold whisper's conversation list
 /// (`/\`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\`/gi`).
 static FOLD_WHISPER_UUID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -1998,8 +2051,18 @@ where
             embedding_profile_id: input.embedding_profile_id.as_deref(),
             now_ms: now_ms_f,
         };
-        let recap = crate::services::memory_recap::generate_memory_recap(
-            db, embedding, completion, executor, &params,
+        // v4 `74ec93b5`: the recap is the one context step awaited inline on a
+        // visible turn that makes several independent network calls — an
+        // embedding for the relevant-conversations search, then the cheap-LLM
+        // summarization. Each leg carries its own deadline; this bounds the
+        // phase as a whole so no combination of slow legs can leave the turn
+        // sitting on "Recalling…". See [`memory_recap_within_phase_budget`].
+        let recap = memory_recap_within_phase_budget(
+            crate::services::memory_recap::generate_memory_recap(
+                db, embedding, completion, executor, &params,
+            ),
+            &input.chat.id,
+            &input.character.id,
         )
         .await;
         if !recap.content.is_empty() {
@@ -3247,3 +3310,140 @@ fn build_timestamp_content(formatted: &str) -> String {
 // from `crate::services::commonplace_notifications` (Group 5 dedup) — the private
 // copies that used to live here were byte-identical for the per-turn consolidated
 // whisper (which never sets `relevant_conversations`).
+
+#[cfg(test)]
+mod phase_ceiling_tests {
+    //! P4.D42 unit 3 — the memory-recap phase ceiling (v4 `74ec93b5`).
+    //!
+    //! Wall-clock behavior no NDJSON corpus can observe (P4.15): the tier-3
+    //! `build_context` family additionally sets `generate_memory_recap: false`,
+    //! so the recap seam has no differential today and this ceiling could not
+    //! have one even if it were reachable. Paused-clock unit pins instead.
+
+    use super::*;
+    use crate::services::memory_recap::MemoryRecapResult;
+
+    /// v4's literal, spelled out rather than read back from the constant, so
+    /// moving the bound has to be a deliberate edit here too.
+    #[test]
+    fn the_phase_ceiling_is_v4s_sixty_seconds() {
+        assert_eq!(MEMORY_RECAP_PHASE_TIMEOUT_MS, 60_000);
+        // Deliberately ABOVE the per-leg cheap-LLM budget: a recap that is
+        // merely slow in two places is still doing useful work. A const block,
+        // so inverting the ordering fails to COMPILE rather than merely failing
+        // a test.
+        const {
+            assert!(
+                MEMORY_RECAP_PHASE_TIMEOUT_MS
+                    > crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS
+            )
+        };
+    }
+
+    /// A recap that never finishes is abandoned at the ceiling and yields the
+    /// same empty result v4's fail-soft `catch` produces — the turn keeps its
+    /// remaining context and moves on.
+    #[tokio::test(start_paused = true)]
+    async fn a_stalled_recap_is_dropped_at_the_ceiling() {
+        let started = tokio::time::Instant::now();
+        let recap =
+            memory_recap_within_phase_budget(std::future::pending(), "chat-1", "char-1").await;
+        // `MemoryRecapResult::default()` is exactly the empty-content shape v4's
+        // fail-soft catch leaves behind.
+        assert_eq!(recap.content, MemoryRecapResult::default().content);
+        assert!(recap.content.is_empty());
+        assert_eq!(started.elapsed().as_millis() as u64, 60_000);
+    }
+
+    /// The other half, and the one that makes the first half safe: a recap that
+    /// is merely slow — both legs dawdling, well past the 45 s per-leg budget —
+    /// still lands, whole. A ceiling that truncated healthy work would be worse
+    /// than no ceiling.
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_but_finishing_recap_is_not_truncated() {
+        let work = async {
+            tokio::time::sleep(std::time::Duration::from_millis(55_000)).await;
+            MemoryRecapResult {
+                content: "## What You Remember\n…".to_string(),
+            }
+        };
+        let recap = memory_recap_within_phase_budget(work, "chat-1", "char-1").await;
+        assert_eq!(recap.content, "## What You Remember\n…");
+    }
+
+    /// A fired ceiling narrates itself — the incident this whole re-port exists
+    /// for was ten silent minutes on "Recalling…".
+    #[tokio::test(start_paused = true)]
+    async fn a_fired_ceiling_warns_with_its_context() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            memory_recap_within_phase_budget(std::future::pending(), "chat-42", "char-7").await;
+        }
+        let captured = logs.lock().unwrap().join("\n");
+        for expected in [
+            "WARN quilltap::build_context",
+            "Memory recap exceeded its phase budget",
+            "chat_id=chat-42",
+            "character_id=char-7",
+            "timeout_ms=60000",
+        ] {
+            assert!(
+                captured.contains(expected),
+                "the ceiling's warn is missing {expected}; captured:\n{captured}"
+            );
+        }
+    }
+
+    /// A healthy recap logs nothing — the warn means "this fired", not "this ran".
+    #[tokio::test(start_paused = true)]
+    async fn a_healthy_recap_says_nothing() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            memory_recap_within_phase_budget(
+                async { MemoryRecapResult::default() },
+                "chat-1",
+                "char-1",
+            )
+            .await;
+        }
+        assert!(logs.lock().unwrap().is_empty());
+    }
+
+    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    struct FieldVisitor(String);
+
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+}

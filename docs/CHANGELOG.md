@@ -8,6 +8,14 @@ app's own chunk-on-write step, making the reference look like it skipped
 indexing when it doesn't. The oracle now runs the real indexing code, so
 the comparison also proves edited documents get chunked for search. The
 repair runs as a fourth lane alongside the round already in flight.
+Put a one-minute ceiling on the whole memory-recap step of a turn. The
+recap makes two network calls in a row, each already deadlined; this is
+the backstop that keeps a turn from sitting on "Recalling…" no matter
+which leg misbehaves. It sits above the per-call budget on purpose — a
+recap that is merely slow in two places is still working — and when it
+does fire the turn simply continues without the recap, which is optional
+flavour rather than something the reply depends on.
+
 Gave every background model call a deadline. Memory recaps, titling,
 compression and extraction now abandon a provider that goes silent after
 45 seconds (three minutes for a local model, where slow is not the same

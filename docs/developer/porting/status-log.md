@@ -52439,3 +52439,47 @@ again). Without that second case the new attempt deadline would have
 shadowed `OUTFIT_LLM_TIMEOUT_MS` in every test and nothing would have
 noticed. `services/outfit_selections.rs` is owned by no lane this round;
 the edit is test-only.
+
+---
+
+## Lane record — P4.D42 unit 3 (the memory-recap phase ceiling)
+
+**Order:** tier-1 item 3 (D7). The phase-ceiling third of v4 `74ec93b5`, in
+`services/build_context.rs`.
+
+**What landed.** `MEMORY_RECAP_PHASE_TIMEOUT_MS = 60_000` (v4's constant and
+its whole rationale comment) plus `memory_recap_within_phase_budget`, which
+wraps the recap call in the "1b. Memory recap (seam)" block. v4 raises a
+STRING-message `withTimeout` into `buildContext`'s existing fail-soft
+`try/catch`; `generate_memory_recap` returns no `Result` (it already fails
+soft to `MemoryRecapResult::default()` on a DB failure of its own), so the
+fired ceiling maps onto that same default — the identical observable
+outcome, per D7.
+
+**Why the ceiling is extracted rather than inline.** The proof has to be
+unit-tier (wall clock, P4.15), and `build_context` takes a ~50-field
+`BuildContextInput` with no `Default`. Standing that up to make one future
+hang would have pinned the input bag, not the ceiling. The wrapper takes any
+`Future<Output = MemoryRecapResult>`, so the pins drive it directly; it has
+exactly one production caller, which is a one-line composition. That
+call-site composition is the one thing the unit tier does NOT pin — stated
+here rather than papered over.
+
+**Proof.** Five pins in a new `phase_ceiling_tests` module, paused clock:
+the 60 s literal (spelled out, plus the assertion that it sits ABOVE the
+per-leg cheap-LLM budget — v4's deliberate ordering), a stalled recap
+dropped at exactly 60 s with empty content, a SLOW-but-finishing recap
+(55 s, well past the 45 s per-leg budget) landing whole, the fired ceiling's
+warn with `chat_id`/`character_id`/`timeout_ms`, and silence on the healthy
+path.
+
+**Mutation proofs (D24 — all five were first-run green).** Ceiling 60 s →
+45 s reddens four of the five; removing the ceiling reddens the stalled
+case; renaming the warn reddens the log pin; warning on the healthy arm too
+reddens the silence pin.
+
+**The inherited coverage hole, restated as the order asked.**
+`build_context_tier3` sets `generate_memory_recap: false`, so the recap seam
+has no differential today and this ceiling could not have one even if the
+seam were live. Not built for this port; noted in the test module's own
+header so the next person to widen that family finds it.
