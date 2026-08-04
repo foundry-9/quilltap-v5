@@ -3872,10 +3872,68 @@ Round record: `status-log.md`.
    note-grade items (the wiring pin's setup discharge, the vacuous
    assertion, the scratch dirs).
 
-**Standing regen note:** the oracle baseline is **`49769ec4`**
-(4.8.0-dev.150, 2026-08-03). ⚠ v4 HEAD is `7fe9fe40`, TWO commits past
-it (the item-1 drift): regenerate chat-create-family and
-writer/prompt-transitive oracles only from a worktree PINNED at
-`49769ec4` until that catch-up runs; everything else regenerates straight
-from the checkout. The distill-transitive TZ pins, the committed-fixture
-rule, and the recipe-sweep driver notes all stand unchanged.
+**Standing regen note (SUPERSEDED by the `7fe9fe40` round below):** the
+oracle baseline was **`49769ec4`** (4.8.0-dev.150, 2026-08-03) until the
+`7fe9fe40` round unified.
+
+---
+
+## The `7fe9fe40` round (P4.D44 ∥ P4.D45 ∥ P4.33 ∥ P4.34): UNIFIED on main (2026-08-04) — ALL FOUR CLOSED; the oracle baseline MOVES to `7fe9fe40` and the drift debt is CLEARED
+
+Candidates 1–3 of the previous list ran as one four-lane round (orders
+committed at planning; round record + four lane records in
+`status-log.md`). The New-Chat roleplay-template picker is live
+end-to-end (tri-state `roleplayTemplateId` riding the `ChatCreate`
+flatten seam — `api/types.rs` never opened; the capstone family grew
+five `rt_*` cases + the un-normalized `chat_template_ids` section after
+mutation testing caught the UUID-normalizer blindness); the thirteen
+staff strings + the native-tool-prompt rule stopped teaching asterisk
+narration (the six direct families' measured RED→GREEN flip; the
+`8bf3cb5f` wording debt closed with it); the import family now matches
+stores by ID with id-preserving create and the full folder clear (four
+`store_identity_*` arms + `FOLDER_CLEAR_DIVERGENCE`, all
+both-directions); and the recipe-rot debt is REPAIRED, not re-measured —
+the "19 unrunnable" hypothesis was refuted (8 venue-healed, 2
+driver-healed, 1 sweep artifact, 4+4 genuinely broken and fixed), the
+sweep driver gained its self-test + the durable `--run-all` artifact,
+and the autonomous-rooms oracle race is fixed. **The escalated
+remainder:** `context_summary_service_tier3` stays red — the unifier
+confirmed the cause is a STALE ORACLE MOCK (v5's live fold-episode pass
+is faithful; v4 folds in production at `lib/chat/context-summary.ts:519`)
+— a small dedicated harness order is owed to un-mock it (the P4.32
+`doc_text`/`doc_fm` precedent). Gate numbers, wires, and the §3 review
+findings: the round record in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **A dogfood pass** — owes this round's live proofs (the picker on
+   real data; the de-asterisked whispers in a real chat) plus the
+   standing queue: the orphan reaper against the Friday copy's 43+118,
+   the presets round-trip, the bounded-turn behavior, walk Part D /
+   Part F items 15/16, the P4.D31/P4.21/D33 💸 proofs, the vintage
+   tripwire.
+2. **The context-summary oracle un-mock** — the escalated
+   `context_summary_service_tier3` red: update the oracle case to run
+   v4's REAL `runFoldEpisodePass` (canned model both sides), regenerate,
+   and retire the escalation (the P4.32 un-mock precedent; diagnosis
+   pinned in the round record and `common/mod.rs`'s helper doc).
+3. **The remaining recipe-rot tail** — 27 families still carry
+   `unstaged_jest_roots` (named by `recipe_sweep.py --list`; each needs
+   its own staged-mirror conversion + verification run), 20 static /tmp
+   collisions. Mechanical but per-family; can ride any round as a rider
+   or run as a second maintenance pass.
+4. The standing pools: `p4.9h`, `p4.9i2` (the bank grew again —
+   `4bbeab47`'s two chat docs), `p4.9l`, the P4.D41 tier-2 item 9
+   committed grouped-pair fixture, the P4.31 note-grade items.
+
+**Standing regen note:** the oracle baseline is **`7fe9fe40`**
+(4.8.0-dev.152, 2026-08-04), adopted at this round's unification — NO v4
+drift debt remains as of the unification (drift-check before every
+round; v4 ships daily). Oracles regenerate straight from
+`~/source/quilltap-server`; pin a detached worktree only on drift/dirty.
+The distill-transitive TZ pins, the committed-fixture rule, and the
+recipe-sweep driver notes stand unchanged — plus the new rule from
+P4.34: **run any `unstaged_jest_roots` family with
+`--v5w ~/source/quilltap-v5`** (jest ignores `.claude/` venues), and
+prefer `recipe_sweep.py --run-all --results …` so classifications
+survive the round.

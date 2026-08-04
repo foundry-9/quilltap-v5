@@ -1920,6 +1920,51 @@ records THERE. Update this summary only when a phase or round completes.
   Playwright 177/177 zero skips, the preset beat LIVE.
   Versions: core 0.0.461, harness 0.0.395, host 0.0.57, web 0.0.57,
   SPA 0.5.398; cli/tauri unchanged. Round record: `status-log.md`.
+- **The `7fe9fe40` drift catch-up + import-identity + recipe-rot round
+  (P4.D44 ∥ P4.D45 ∥ P4.33 ∥ P4.34): UNIFIED on main (2026-08-04) — ALL
+  FOUR CLOSED; the oracle baseline MOVES to `7fe9fe40` and the drift
+  debt is CLEARED.** The New-Chat roleplay-template picker end-to-end
+  (the tri-state `roleplayTemplateId` riding the `ChatCreate` flatten
+  seam — `api/types.rs` never opened; capstone family 14 → 19 cases
+  with the un-normalized `chat_template_ids` section after mutation
+  testing caught the UUID-normalizer blindness; the SPA dropdown +
+  touched latch + omit-on-failed-fetch; a live e2e beat closing the
+  loop to the persisted column) ∥ the asterisk-narration re-port
+  (thirteen strings + native-tool-prompt rule 1 byte-exact, closing the
+  `8bf3cb5f` wording debt with it — all six direct families' measured
+  RED→GREEN flip; the broken build-context fixture builder + its
+  missing TZ pin repaired) ∥ the P4.33 ruling discharged (import
+  overwrite claims folders; store identity is the ID with id-preserving
+  create; the by-ID census — four `store_identity_*` arms +
+  `FOLDER_CLEAR_DIVERGENCE`, all both-directions with convergence
+  retirement) ∥ the recipe-rot repair (the "19 unrunnable" hypothesis
+  REFUTED — 8 venue-healed, 2 driver-healed, 1 sweep artifact, 4+4 real
+  and fixed; the driver gained `--self-test` + the durable `--run-all`
+  artifact; the autonomous-rooms oracle fork race fixed; the R1
+  ruled-row pin on `compression_tier3`). **The §3 review's headline:
+  two lane records disagreed on the one remaining red — adjudicated by
+  measurement, D45's "P4.13 ruled row" claim was wrong, and the
+  confirmed cause is a STALE ORACLE MOCK** (v4 folds live in
+  production, `lib/chat/context-summary.ts:519`; v5 is faithful; the
+  un-mock is a small owed order). Gate: 412 test binaries / 1,848 / 0;
+  the 19-family phase-2 sweep 18 ok + the escalated red; clippy both
+  feature sets; release build; ng 278 files / 3,843; full Playwright
+  **178 passed / 0 failed / 0 skipped (4.5 m)** — the suite grew 177 → 178 with the new template-picker beat. Versions: core 0.0.465, harness 0.0.397, host 0.0.58,
+  SPA 0.5.401. Round record: `status-log.md`.
+- **Oracle baseline: `7fe9fe40` (v4 4.8.0-dev.152, 2026-08-04), adopted
+  at the `7fe9fe40` round's unification — NO v4 drift debt remains.**
+  The two commits past `49769ec4` are both absorbed (`4bbeab47` →
+  P4.D44, `7fe9fe40` → P4.D45). v4's tree was clean at `7fe9fe40`
+  throughout the round, so every family regenerated straight from
+  `~/source/quilltap-server`; pin a detached worktree only on
+  drift/dirty (`oracle-regen-pinned-v4-worktree`). ⚠ The
+  distill-transitive TZ=UTC pins, the committed-fixture regen rule, and
+  the `/tmp`-pins-die-between-rounds rule stand unchanged — plus P4.34's
+  new venue rule: run any `unstaged_jest_roots` family with
+  `--v5w ~/source/quilltap-v5` (jest ignores `.claude/` venues), and
+  prefer `recipe_sweep.py --run-all --results …` so classifications
+  survive the round. Drift-check before every round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `49769ec4` (v4 4.8.0-dev.150, 2026-08-03), adopted
   at the `49769ec4` round's unification.** The four commits past
   `40319484` are absorbed or dispositioned: `74ec93b5` → P4.D42,

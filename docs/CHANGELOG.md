@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Unified the 7fe9fe40 drift-catch-up round onto the main line: four
+parallel lanes, all closed, and the oracle baseline moves to the
+reference app's head — no drift debt remains. The New Chat form gains
+its Roleplay Template dropdown: pre-selected with what the chat would
+have gotten anyway (project default, then your global default, then No
+Template), hidden when no templates exist, and an explicit choice —
+including a deliberate "No Template" — now beats both defaults at
+creation, with an unresolvable template refused outright. Staff
+announcements and the tool-execution rules stop teaching models
+asterisk-delimited narration, which also retires a long-stale wording
+gap in the native tool prompt. Importing a document store now matches
+by the store's identity rather than its display name (renames can no
+longer redirect an overwrite onto an unrelated store), imports preserve
+archive store ids so re-imports recognize their own stores, and an
+overwrite claims the whole store, folders included. The differential
+harness's recipe rot is repaired rather than re-measured — most of the
+"unrunnable" recipes turned out to be a measurement venue artifact, the
+sweep driver gained a self-test and a batch mode whose results survive
+the round, and the one remaining red is precisely diagnosed (a stale
+oracle mock, not a port bug) and queued as its own small order. Gate
+results, versions, and the unification review's findings are in the
+round record.
+
 Repaired the differential harness's build-context fixture builder, which
 had stopped building at all: the blob table that the reference app's
 orphan collector now requires was created after character provisioning

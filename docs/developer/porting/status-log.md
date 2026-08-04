@@ -54870,3 +54870,110 @@ failures** (from 0/4 green with a fork failure on every run).
 - **No production `crates/quilltap-core/src/**` source was touched**, per
   the mandate. The only `.rs` edits are harness test headers, the R1 pin, and
   the shared `common/mod.rs` helper.
+
+## Round record — the `7fe9fe40` round unification (P4.D44 ∥ P4.D45 ∥ P4.33 ∥ P4.34), 2026-08-04
+
+**ALL FOUR ORDERS CLOSED; the oracle baseline MOVES to `7fe9fe40`
+(4.8.0-dev.152) and the drift debt is CLEARED.** Thirteen lane commits
+cherry-picked onto `unify/7fe9fe40-round` in dependency order (D45 → D44
+→ P4.33 → P4.34; D45 first because D44's capstone red heals on its
+string), version files recounted (identical-bump collapse per the
+playbook: core 0.0.462 → **0.0.465**, harness → **0.0.397**, host →
+**0.0.58**, SPA → **0.5.401**; web/cli/tauri untouched), the two
+append-only docs union-merged with nothing dropped (verified by lane-
+record and entry counts).
+
+### The §3 review — what the unifier's own read found
+
+1. **The round's two lane records DISAGREED about one shared red, and
+   the confident one was wrong.** P4.D45's record called the
+   `context_summary_service_tier3` 17-vs-11 residual "the P4.13 ruled
+   row, nothing else"; P4.34 measured ZERO rows carrying the ruled
+   error signature and escalated. Adjudicated at the gate by reading
+   the actual failing rows on the unified tree: the six extras are five
+   `SUMMARIZATION` rows carrying the fold-episode extraction prompt
+   plus one `TITLE_GENERATION` — P4.34 is right; D45's cause claim
+   confused CONFINEMENT (the residual sits only in `llm_logs`, which
+   its neutralize-locally check did prove) with CAUSE. The unifier then
+   sized the risk in v4 itself: **v4 folds live in production**
+   (`lib/chat/context-summary.ts:519` calls `runFoldEpisodePass` inside
+   `generateContextSummary`), so v5's live fold is FAITHFUL, no real
+   money is being spent that v4 wouldn't spend, and the red is a STALE
+   ORACLE MOCK (the P4.20 class — the harness lying about v4). The
+   correction is noted in D45's status header; the follow-up is a small
+   dedicated harness order (un-mock the fold in the oracle case per the
+   P4.32 precedent), named in `phase-4.md`'s candidates.
+2. **D44's server port carries one recorded nuance inside the standing
+   Zod-format-validator gap:** v4 rejects `roleplayTemplateId: ""` at
+   schema validation (`z.uuid()`), while v5 — which has no format
+   validation on this bag (the P4.D29 standing gap) — reproduces
+   `handleCreate`'s own JS-truthiness exactly, so an explicit `""`
+   skips the existence check and is stored. Unreachable from v5's own
+   SPA (it sends an id or `null`); recorded here, no code change — the
+   arm belongs to the standing gap, not this round.
+3. **The unifier's own first `ng test` invocation silently did not
+   run** — a Karma-era `--browsers=ChromeHeadless` flag on the vitest
+   builder errored out in two lines, and the `| tail` pipe ate the exit
+   status (the standing grep|head trap, this time in the gate itself).
+   Caught by reading the log head; re-run correctly (numbers below).
+   Recorded because the trap keeps finding new clothes.
+4. Beyond those: the whole combined diff was read hunk-by-hunk against
+   the four orders and the v4 sources. D45's thirteen strings are
+   byte-identical to v4's diff; D44's tri-state/latch/omit-predicate
+   semantics match `useNewChat` arm-for-arm (including absent-vs-failed
+   on `chat_settings`); P4.33's two ruled divergences are pinned in
+   both directions with convergence-retirement messages and the
+   mutation fingerprints recorded; P4.34's driver fixes carry a
+   passing `--self-test` and its refusals are precise rather than
+   blanket. No stubs, no silent refusals, no ownership violations —
+   the only cross-lane file contacts were the version files and the
+   two append-only docs, as designed.
+
+### The unification wires
+
+- **W1 — the healed inherited red, verified:** `chat_create_capstone_
+  equivalence` re-run fresh on the unified tree — **19/19, zero SKIP**
+  (it was the round's one expected cross-lane red: D44's five new cases
+  measured against a baseline whose Aurora string only D45 could land).
+- **W2 — P4.34's phase 2, run by the unifier as handed off:**
+  `recipe_sweep.py --run-all` from the main checkout over the
+  sibling-owned families P4.34 was ordered not to touch — 19 families:
+  **18 ok, 1 run_failed** (`context_summary_service_tier3`, the
+  escalated stale-mock red above). The four round-internal-drift reds
+  P4.34 diagnosed (`enclave_step_tier3`, `orchestrator_tier3`, both
+  brahma tier-3s) are **green** now that D45's string is on the tree —
+  the diagnosis held. Artifact committed:
+  `harness/tools/sweep-results/2026-08-04-7fe9fe40-phase2.json`.
+- **W3 — the context-summary adjudication** (finding 1 above): row
+  inspection + the v4 call-site check, recorded here and in the
+  escalation trail so the follow-up order starts from a verified
+  diagnosis, not two conflicting claims.
+
+### The gate (all on `unify/7fe9fe40-round`, v4 verified clean at `7fe9fe40` before and during)
+
+- `cargo fmt --all --check` clean; `recipe_sweep.py --self-test` 0
+  failures; clippy `-D warnings` clean on BOTH feature sets;
+  `cargo build --release` clean.
+- **The by-name differential gate ran as the phase-2 sweep** (each
+  family regen-then-run in its own invocation, oracles FRESH from the
+  clean v4 checkout at `7fe9fe40`, NDJSON targets deleted pre-regen by
+  the driver): the 19 families above = D44's capstone + D45's six
+  direct + the four drift-diagnosed tier-3s + build-context + P4.33's
+  four import families + `compression_tier3` (the R1 pin proven green)
+  + `autonomous_rooms_routes` (3/3, zero fork failures) +
+  `pseudo_tool_prompts` (the two-debt heal, green).
+- `cargo test --workspace --no-fail-fast`: **412 test binaries / 1,848
+  passed / 0 failed** (env-less — the oracle families SKIP there by
+  design and are proven by the by-name sweep runs above).
+- SPA: `ng test` **278 files / 3,843 passed / 0 failed**; `ng build`
+  clean; full Playwright: ****178 passed / 0 failed / 0 skipped (4.5 m)** — the suite grew 177 → 178 with the new template-picker beat**.
+
+Versions after the round: core 0.0.465, harness 0.0.397, host 0.0.58,
+web 0.0.57, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.401.
+
+**Standing after the round (the next `/setupphase` reads this + the
+phase plan):** the escalated context-summary oracle un-mock (candidate
+2 in `phase-4.md`); the recipe-rot tail (27 `unstaged_jest_roots`
+families + 20 static /tmp collisions — named by `--list`); the dogfood
+pass now owes this round's live proofs on top of the standing queue;
+the `p4.9i2` bank holds `4bbeab47`'s two chat help docs.
