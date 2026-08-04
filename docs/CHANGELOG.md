@@ -8,6 +8,16 @@ app's own chunk-on-write step, making the reference look like it skipped
 indexing when it doesn't. The oracle now runs the real indexing code, so
 the comparison also proves edited documents get chunked for search. The
 repair runs as a fourth lane alongside the round already in flight.
+Gave every background model call a deadline. Memory recaps, titling,
+compression and extraction now abandon a provider that goes silent after
+45 seconds (three minutes for a local model, where slow is not the same
+as stalled), and each attempt gets its own fresh deadline. The provider
+is handed a hard budget five seconds inside that one, so a stalled
+request is closed at the socket rather than left running. An abandoned
+call now says so in the log, with the provider, model, task and elapsed
+time — the whole reason the original ten-minute stall was so hard to
+find is that it said nothing at all.
+
 Put a ceiling on every provider request. A model call that a provider
 accepts and then never answers used to run all the way to the ten-minute
 SDK default; without a caller-supplied budget it now fails after five

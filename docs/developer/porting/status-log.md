@@ -52331,3 +52331,111 @@ interrupted run.
 request body on either side, and the request-envelope / google-request /
 google-wire corpora record bodies only. The regen-and-byte-diff proof is
 tier 2 and runs with the neutrality sweep.
+
+---
+
+## Lane record — P4.D42 unit 2 (the cheap-LLM attempt deadline)
+
+**Order:** tier-1 item 2 (D5 / D6). The caller-deadline third of v4
+`74ec93b5`, in `services/cheap_llm_exec.rs`.
+
+**What landed.** v4's three constants verbatim (`CHEAP_LLM_TASK_TIMEOUT_MS`
+45 000 / `CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS` 180 000 / module-private
+`PROVIDER_BUDGET_HEADROOM_MS` 5 000), `cheap_llm_deadline_for` (v4
+`deadlineFor`) and `provider_budget_for` (v4 `providerBudgetFor` — 40 s
+remote / 175 s local), the provider budget stamped into
+`send_to_provider`'s `CompletionParams` closure so all three temperature
+arms carry it (v4 stamps one `baseParams` and spreads it), and
+`send_with_deadline` (v4 `withDeadline`) wrapping **both** `execute` call
+sites — the first send and the uncensored retry — each with a FRESH
+budget, because the fallback only fires after a *completed* call came back
+empty.
+
+**`CheapLLMTimeoutError` → a message, not a type.** v4 makes the error a
+class so a caller can tell a fired deadline from failed work *by type
+rather than by string matching*. v5 has no thrown-value hierarchy to catch
+on here: the deadline is handled at the point it fires, and the only thing
+that escapes is the message — which is exactly what v4's own outer
+`getErrorMessage(error)` reduces it to before it reaches
+`CheapLlmTaskResult.error`. So the port is `cheap_llm_timeout_message`,
+byte-faithful including the empty-string arm (JS `taskType ? …` is falsy
+for `''`, so a zero-length task type takes the no-parentheses form).
+
+**D6 logging.** A fired deadline emits v4's abandonment `tracing::warn!`
+on `quilltap::cheap_llm` with its whole field set (`chat_id`,
+`character_id`, `provider`, `model`, `task_type`, `timeout_ms`, `elapsed`)
+AND writes the failed-call error row per the standing P4.13 ruled
+divergence — a timeout is a failed call, and v4 writes no row for either.
+`chat_id` comes from the attached `CheapLlmLogConfig` (v4 threads it as a
+parameter). The row records the temperature the attempt *started* with
+(`pending_temperature`), since a fired deadline never learns which arm of
+`send_to_provider` was in flight.
+
+**A deliberate structural divergence, recorded.** v4 does
+`void work.catch(() => {})` and walks away: a JS promise cannot be
+cancelled, so the abandoned request runs on and only the *waiting* stops.
+Dropping a Rust future genuinely cancels it, so v5 abandons AND cancels.
+That is strictly better (no orphaned socket, and no late `llm_logs` row
+from a call nobody is listening to) and unobservable in any differential —
+the abandoned v4 promise's only side effect is that late row, which no
+oracle case can reach because the canned providers never stall. It is also
+mostly moot in practice: the provider's own budget fires five seconds
+earlier.
+
+**D5 rationale (the order asked for it on the record).** The deadline uses
+`tokio::time::timeout` IN CORE. D20 ("all cadence lives in
+`quilltap-host`; the core owns no timers") is about *cadence* — scheduling,
+pumps, ticks, the things a host must drive and a sleeping phone must not.
+A bounded await on work the core itself just initiated is a request
+deadline, not cadence: there is nothing for a host to schedule, and
+erasing it behind a per-call-site seam would put a `dyn` boundary between
+`send_to_provider` and its own timeout for no gain. `services/
+outfit_selections.rs:750` already set this precedent (v4's own 60 s
+`withTimeout` at an invoker boundary), as do the host's `TimeoutConfirmation`
+/ `TimeoutConsult`. No escalation was needed.
+
+**Proof (unit tier, P4.15).** Seven new pins in `cheap_llm_exec.rs`, all
+on a PAUSED tokio clock so they cost no real time — the v5 counterpart of
+v4's own `lib/memory/cheap-llm-tasks/__tests__/task-deadline.test.ts`,
+case for case, plus three v4 has no equivalent of (the budget on every arm
+of one attempt, the fresh-budget discriminator, and the log surface).
+`tokio::time::Instant` throughout, not `std::time::Instant`: it reads the
+same clock the deadline does, so the virtual elapsed time the log reports
+is the one the test asserts.
+
+**Mutation proofs (D24 — all seven pins were first-run green).**
+
+| Mutation | Went red |
+| --- | --- |
+| the attempt deadline stretched to a day | remote-45 s + the slow/stalled pair + the log-surface pin |
+| `deadlineFor` ignores `is_local` | local-180 s + the slow/stalled pair + the budget pin |
+| no `request_timeout_ms` on the params | both budget pins |
+| headroom 5 000 → 0 | both budget pins |
+| ONE task-level budget instead of a fresh one per attempt | `each_attempt_gets_a_fresh_budget` (+ the log pin) |
+| the abandonment warn renamed | the log-surface pin |
+| no error row on the timeout arm | the log-surface pin |
+| the message drops its `(taskType)` | the byte pin + all three deadline tests |
+
+The fresh-budget pin is the one worth understanding: the safe provider
+burns 30 s and returns empty, then the uncensored fallback stalls. With
+per-attempt budgets that fires at 30 + 45 = **75 s**; the mutation that
+wraps the whole task in one budget fires at 45 s, so the `>= 75 s`
+assertion is what actually distinguishes them. An earlier draft that let
+the first attempt answer instantly would have passed under both.
+
+**A real interaction the gate caught, worth carrying.** The unit-2 workspace
+run went red on `outfit_selections::tests::a_stalled_provider_gives_up_at_the_timeout`
+— "gave up at 45000, expected 60000". That is not a regression: the outfit
+consult wraps `executeCheapLLMTask` in its own 60 s `OUTFIT_LLM_TIMEOUT_MS`
+phase ceiling, and now that the attempt itself deadlines at 45 s the inner
+bound is simply the tighter one **on a remote profile**. v4 has exactly the
+same layering for exactly the same reason (`lib/wardrobe/
+apply-outfit-selections.ts` races the very same `executeCheapLLMTask`), so
+the assertion was describing pre-`74ec93b5` v4. Both layers are now pinned:
+the remote case asserts 45 s with the reason spelled out, and a NEW local-
+profile case asserts the phase ceiling still fires at v4's exact 60 s
+literal (a local attempt's deadline is 180 s, so the outer bound is binding
+again). Without that second case the new attempt deadline would have
+shadowed `OUTFIT_LLM_TIMEOUT_MS` in every test and nothing would have
+noticed. `services/outfit_selections.rs` is owned by no lane this round;
+the edit is test-only.

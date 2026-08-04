@@ -125,6 +125,79 @@ struct ProviderResponse {
     usage: Option<CompletionUsage>,
 }
 
+// ---------------------------------------------------------------------------
+// The per-attempt deadline (v4 `74ec93b5`)
+// ---------------------------------------------------------------------------
+
+/// v4 `CHEAP_LLM_TASK_TIMEOUT_MS` — the wall-clock budget for a single
+/// cheap-LLM attempt against a REMOTE provider.
+///
+/// Cheap tasks are small — a few hundred completion tokens — and several of
+/// them (the memory recap in particular) are awaited *inline* on a
+/// user-visible turn. Provider SDKs default to a 10-minute request timeout, so
+/// a provider that accepts the connection and then never answers wedges the
+/// whole turn behind it with no log output. This budget abandons the attempt
+/// instead: the task fails soft, its caller drops the optional content, and the
+/// turn moves on.
+pub const CHEAP_LLM_TASK_TIMEOUT_MS: u64 = 45_000;
+
+/// v4 `CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS` — the longer budget for local providers
+/// (Ollama and friends), where a cold model load or a CPU-bound machine can
+/// legitimately take far longer than a remote API would. A local endpoint that
+/// is merely slow is still working.
+pub const CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS: u64 = 180_000;
+
+/// v4 `PROVIDER_BUDGET_HEADROOM_MS` — how far inside the caller's deadline the
+/// provider's own budget sits. Module-private in v4 and here.
+///
+/// The provider should give up first so the failure arrives as an ordinary
+/// provider error with the socket closed, rather than as our deadline firing
+/// while an orphaned request runs on.
+const PROVIDER_BUDGET_HEADROOM_MS: u64 = 5_000;
+
+/// v4 `deadlineFor(selection)` — the caller-side deadline for one attempt.
+pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection) -> u64 {
+    if selection.is_local {
+        CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS
+    } else {
+        CHEAP_LLM_TASK_TIMEOUT_MS
+    }
+}
+
+/// v4 `providerBudgetFor(selection)` — the hard per-request budget handed to the
+/// provider ([`CompletionParams::request_timeout_ms`]), five seconds inside the
+/// caller's own deadline: 40 000 ms remote / 175 000 ms local.
+pub fn provider_budget_for(selection: &CheapLlmSelection) -> i64 {
+    (cheap_llm_deadline_for(selection) - PROVIDER_BUDGET_HEADROOM_MS) as i64
+}
+
+/// The message bytes of v4's `CheapLLMTimeoutError`
+/// (`` `Cheap LLM task${taskType ? ` (${taskType})` : ''} exceeded its
+/// ${timeoutMs}ms budget` ``). v4 distinguishes a fired deadline from failed
+/// work *by type*; v5 has no thrown-value hierarchy to catch on here — the
+/// deadline is handled where it fires and only its message escapes, which is
+/// exactly what v4's outer `getErrorMessage(error)` reduces the error to before
+/// it reaches [`CheapLlmTaskResult::error`].
+///
+/// NB the empty-string arm: JS `taskType ? …` is falsy for `''`, so a
+/// zero-length task type takes the no-parentheses form.
+pub fn cheap_llm_timeout_message(timeout_ms: u64, task_type: Option<&str>) -> String {
+    match task_type.filter(|t| !t.is_empty()) {
+        Some(t) => format!("Cheap LLM task ({t}) exceeded its {timeout_ms}ms budget"),
+        None => format!("Cheap LLM task exceeded its {timeout_ms}ms budget"),
+    }
+}
+
+/// v4's `effectiveMaxTokens` floor: cheap tasks never ask for fewer than 2048.
+fn effective_max_tokens(max_tokens: Option<f64>) -> i64 {
+    max_tokens.unwrap_or(2048.0).max(2048.0) as i64
+}
+
+/// v4's `profileKey` for the session-level no-custom-temperature cache.
+fn profile_key_for(selection: &CheapLlmSelection) -> String {
+    format!("{}:{}", selection.provider, selection.model_name)
+}
+
 /// The logging config attached to a [`CheapLlmTaskExecutor`] — v4's
 /// per-service `userId`/`chatId`/`messageId` (constant across a service call)
 /// plus the `Db` handle and the ambient [`LogContext`]. `task_type` varies per
@@ -326,8 +399,8 @@ impl CheapLlmTaskExecutor {
         character_id: Option<&str>,
         task_type: Option<&str>,
     ) -> Result<ProviderResponse, CompletionError> {
-        let profile_key = format!("{}:{}", selection.provider, selection.model_name);
-        let effective_max_tokens = max_tokens.unwrap_or(2048.0).max(2048.0) as i64;
+        let profile_key = profile_key_for(selection);
+        let effective_max_tokens = effective_max_tokens(max_tokens);
 
         let params = |temperature: Option<f64>| CompletionParams {
             messages: messages.to_vec(),
@@ -340,7 +413,13 @@ impl CheapLlmTaskExecutor {
             cache_key: build_character_cache_key(character_id),
             profile_parameters: selection.profile_parameters.clone(),
             attachments: Vec::new(),
-            request_timeout_ms: None,
+            // Give the provider a hard budget of its own, slightly inside the
+            // caller's deadline, so a stalled request is aborted at the socket
+            // rather than left running while we walk away from it.
+            // `send_with_deadline` remains the backstop for providers that
+            // ignore it. (v4 `baseParams.requestTimeoutMs`, stamped ONCE and
+            // spread into all three arms — the closure is v5's spread.)
+            request_timeout_ms: Some(provider_budget_for(selection)),
         };
 
         let known_no_temp = self
@@ -482,6 +561,100 @@ impl CheapLlmTaskExecutor {
         }
     }
 
+    /// The temperature the NEXT provider call on this selection will carry —
+    /// `Some(0.3)` normally, `None` once the profile is cached as
+    /// no-custom-temperature. A fired deadline never learns which arm of
+    /// [`Self::send_to_provider`] was in flight, so this is what the
+    /// abandonment's error row records: the temperature the attempt *started*
+    /// with.
+    fn pending_temperature(&self, selection: &CheapLlmSelection) -> Option<f64> {
+        let known_no_temp = self
+            .profiles_without_custom_temp
+            .lock()
+            .expect("temp cache lock")
+            .contains(&profile_key_for(selection));
+        if known_no_temp {
+            None
+        } else {
+            Some(0.3)
+        }
+    }
+
+    /// v4 `withDeadline` — bound one attempt by its deadline, and say so in the
+    /// log when it fires. A stall used to be completely silent, which is what
+    /// made the original incident so hard to see.
+    ///
+    /// **One structural divergence from v4, deliberate.** v4 does
+    /// `void work.catch(() => {})` and walks away: the abandoned request is left
+    /// to finish on its own because a JS promise cannot be cancelled, and only
+    /// the *waiting* stops. Dropping a Rust future genuinely cancels it, so v5
+    /// abandons AND cancels — strictly better (no orphaned socket, and no late
+    /// `llm_logs` row from a call nobody is listening to), and unobservable in
+    /// any differential: the abandoned v4 promise's only side effect is that
+    /// late row, which no oracle case can reach because the canned providers
+    /// never stall. The provider's own budget
+    /// ([`provider_budget_for`]) fires five seconds earlier anyway, so a
+    /// well-behaved provider closes the socket before either side gives up.
+    #[allow(clippy::too_many_arguments)]
+    async fn send_with_deadline<C: CompletionProvider>(
+        &self,
+        completion: &C,
+        selection: &CheapLlmSelection,
+        messages: &[CompletionMessage],
+        max_tokens: Option<f64>,
+        character_id: Option<&str>,
+        task_type: Option<&str>,
+    ) -> Result<ProviderResponse, CompletionError> {
+        let timeout_ms = cheap_llm_deadline_for(selection);
+        // `tokio::time::Instant`, not `std::time::Instant`: it reads the same
+        // clock the deadline does, so a paused-clock test measures the virtual
+        // elapsed time the log reports.
+        let started_at = tokio::time::Instant::now();
+        let pending_temperature = self.pending_temperature(selection);
+        let work = self.send_to_provider(
+            completion,
+            selection,
+            messages,
+            max_tokens,
+            character_id,
+            task_type,
+        );
+        match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), work).await {
+            Ok(result) => result,
+            Err(_) => {
+                let message = cheap_llm_timeout_message(timeout_ms, task_type);
+                // v4's abandonment warn, field for field (`chatId` comes from
+                // the attached log config — v4 threads it as a parameter).
+                tracing::warn!(
+                    target: "quilltap::cheap_llm",
+                    chat_id = self.log.as_ref().and_then(|c| c.chat_id.as_deref()).unwrap_or(""),
+                    character_id = character_id.unwrap_or(""),
+                    provider = %selection.provider,
+                    model = %selection.model_name,
+                    task_type = task_type.unwrap_or(""),
+                    timeout_ms,
+                    elapsed = started_at.elapsed().as_millis() as u64,
+                    "[CheapLLM] Abandoned a stalled provider call",
+                );
+                // A timeout IS a failed call, so it takes the standing ruled
+                // divergence's error row (see `log_failed_call`) — v4 writes no
+                // row here either way, since it writes none for ANY unfinished
+                // or failed cheap call.
+                self.log_failed_call(
+                    task_type,
+                    selection,
+                    messages,
+                    pending_temperature,
+                    effective_max_tokens(max_tokens),
+                    character_id,
+                    &message,
+                )
+                .await;
+                Err(CompletionError::new(message))
+            }
+        }
+    }
+
     /// v4 `executeCheapLLMTask`: send, maybe retry on the uncensored provider
     /// for an empty response, parse, and wrap — any error becomes
     /// `{ success: false, error }`.
@@ -497,9 +670,13 @@ impl CheapLlmTaskExecutor {
         character_id: Option<&str>,
         task_type: Option<&str>,
     ) -> CheapLlmTaskResult<T> {
+        // Each attempt gets its own budget rather than sharing one across the
+        // task: the uncensored fallback below only fires after a *completed*
+        // call came back empty, so it is a fresh attempt and deserves a fresh
+        // deadline (v4's `deadlineFor` per call site).
         let attempt = async {
             let mut response = self
-                .send_to_provider(
+                .send_with_deadline(
                     completion,
                     selection,
                     &messages,
@@ -515,7 +692,7 @@ impl CheapLlmTaskExecutor {
                 uncensored_fallback,
             ) {
                 let retry = self
-                    .send_to_provider(
+                    .send_with_deadline(
                         completion,
                         &uncensored_selection,
                         &messages,
@@ -574,6 +751,577 @@ mod tests {
             is_local: false,
             profile_parameters: None,
         }
+    }
+
+    fn local_selection(provider: &str, model: &str) -> CheapLlmSelection {
+        CheapLlmSelection {
+            is_local: true,
+            ..selection(provider, model)
+        }
+    }
+
+    // === P4.D42 unit 2: the per-attempt deadline (v4 `74ec93b5`) ===
+    //
+    // A timeout is wall-clock behavior no NDJSON corpus can observe — the canned
+    // providers never stall — so per the P4.15 falsifiability ruling these are
+    // unit-tier pins, driven on a PAUSED tokio clock so they cost no real time.
+    // They are the v5 counterpart of v4's own
+    // `lib/memory/cheap-llm-tasks/__tests__/task-deadline.test.ts`.
+
+    /// A provider that accepts every call and never answers — v4's
+    /// `sendMessage.mockReturnValue(new Promise(() => {}))`.
+    struct StallingProvider;
+
+    impl CompletionProvider for StallingProvider {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            std::future::pending()
+        }
+    }
+
+    /// A provider that takes `delay_ms` and then answers — "slow" as distinct
+    /// from "stalled".
+    struct SlowProvider {
+        delay_ms: u64,
+        content: String,
+    }
+
+    impl CompletionProvider for SlowProvider {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            let delay = std::time::Duration::from_millis(self.delay_ms);
+            let content = self.content.clone();
+            async move {
+                tokio::time::sleep(delay).await;
+                Ok(CompletionResponse {
+                    content,
+                    usage: None,
+                    finish_reason: None,
+                    attachment_results: None,
+                })
+            }
+        }
+    }
+
+    /// Answers slowly (and emptily) for one provider so the uncensored fallback
+    /// fires, then stalls forever on the fallback's provider. The two attempts'
+    /// deadlines are only distinguishable if the first one CONSUMED time without
+    /// firing — a shared task-level budget would fire earlier than a fresh one.
+    struct SlowEmptyThenStall {
+        first_provider: String,
+        first_delay_ms: u64,
+    }
+
+    impl CompletionProvider for SlowEmptyThenStall {
+        fn send_message(
+            &self,
+            provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            let first = provider == self.first_provider;
+            let delay = std::time::Duration::from_millis(self.first_delay_ms);
+            async move {
+                if first {
+                    tokio::time::sleep(delay).await;
+                    return Ok(CompletionResponse {
+                        content: String::new(),
+                        usage: None,
+                        finish_reason: None,
+                        attachment_results: None,
+                    });
+                }
+                std::future::pending().await
+            }
+        }
+    }
+
+    /// A `tracing` layer that captures `LEVEL target msg field=value …` for
+    /// every event, so the abandonment warn can be asserted field by field —
+    /// the fields ARE the deliverable here (the incident's whole cost was that
+    /// a stall logged nothing at all).
+    struct CaptureLayer(std::sync::Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    /// Records the [`CompletionParams`] of every call and answers at once.
+    struct RecordingProvider {
+        seen: Mutex<Vec<CompletionParams>>,
+    }
+
+    impl RecordingProvider {
+        fn new() -> Self {
+            Self {
+                seen: Mutex::new(Vec::new()),
+            }
+        }
+        fn budgets(&self) -> Vec<Option<i64>> {
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|p| p.request_timeout_ms)
+                .collect()
+        }
+    }
+
+    impl CompletionProvider for RecordingProvider {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            self.seen.lock().unwrap().push(params.clone());
+            async move {
+                Ok(CompletionResponse {
+                    content: "ok".to_string(),
+                    usage: None,
+                    finish_reason: None,
+                    attachment_results: None,
+                })
+            }
+        }
+    }
+
+    /// The `CheapLLMTimeoutError` message bytes, both arms. JS `taskType ? …` is
+    /// falsy for the empty string, so `Some("")` must take the bare form.
+    #[test]
+    fn the_timeout_message_matches_v4s_bytes() {
+        assert_eq!(
+            cheap_llm_timeout_message(45_000, Some("memory-recap-summarization")),
+            "Cheap LLM task (memory-recap-summarization) exceeded its 45000ms budget"
+        );
+        assert_eq!(
+            cheap_llm_timeout_message(180_000, None),
+            "Cheap LLM task exceeded its 180000ms budget"
+        );
+        assert_eq!(
+            cheap_llm_timeout_message(45_000, Some("")),
+            "Cheap LLM task exceeded its 45000ms budget"
+        );
+    }
+
+    /// The incident: a remote provider that accepts the request and never
+    /// answers is abandoned at 45 s, and the task fails soft with v4's message.
+    #[tokio::test(start_paused = true)]
+    async fn a_remote_attempt_is_abandoned_at_its_45s_deadline() {
+        let exec = CheapLlmTaskExecutor::new();
+        let sel = selection("DEEPSEEK", "deepseek-v4-flash");
+        let started = tokio::time::Instant::now();
+
+        let r = exec
+            .execute(
+                &StallingProvider,
+                &sel,
+                vec![CompletionMessage::user("hi")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("memory-recap-summarization"),
+            )
+            .await;
+
+        assert!(!r.success);
+        assert_eq!(
+            r.error.as_deref(),
+            Some("Cheap LLM task (memory-recap-summarization) exceeded its 45000ms budget")
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS)
+                && elapsed < std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS + 1_000),
+            "abandoned after {elapsed:?}, expected ~45s"
+        );
+    }
+
+    /// Local providers get the longer budget — a cold model load is slow, not
+    /// stalled. Same stalling provider, four times the patience.
+    #[tokio::test(start_paused = true)]
+    async fn a_local_attempt_is_abandoned_only_at_its_180s_deadline() {
+        let exec = CheapLlmTaskExecutor::new();
+        let sel = local_selection("OLLAMA", "qwen3");
+        let started = tokio::time::Instant::now();
+
+        let r = exec
+            .execute(
+                &StallingProvider,
+                &sel,
+                vec![CompletionMessage::user("hi")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("summarize-chat"),
+            )
+            .await;
+
+        assert!(!r.success);
+        assert_eq!(
+            r.error.as_deref(),
+            Some("Cheap LLM task (summarize-chat) exceeded its 180000ms budget")
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS),
+            "a local call gave up after {elapsed:?}, before its own budget"
+        );
+    }
+
+    /// v4's "slow is not the same as stalled" pair: the SAME 100 s call is a
+    /// success on a local provider and an abandonment on a remote one.
+    #[tokio::test(start_paused = true)]
+    async fn a_hundred_second_call_succeeds_locally_and_is_abandoned_remotely() {
+        let slow = SlowProvider {
+            delay_ms: 100_000,
+            content: "slow but fine".to_string(),
+        };
+        let messages = vec![CompletionMessage::user("hi")];
+
+        let local = CheapLlmTaskExecutor::new()
+            .execute(
+                &slow,
+                &local_selection("OLLAMA", "qwen3"),
+                messages.clone(),
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("summarize-chat"),
+            )
+            .await;
+        assert!(local.success);
+        assert_eq!(local.result.as_deref(), Some("slow but fine"));
+
+        let remote = CheapLlmTaskExecutor::new()
+            .execute(
+                &slow,
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("summarize-chat"),
+            )
+            .await;
+        assert!(!remote.success);
+        assert!(remote.error.as_deref().unwrap().contains("45000ms budget"));
+    }
+
+    /// v4 `providerBudgetFor`: the provider's own budget sits strictly inside
+    /// the caller's deadline (40 s remote / 175 s local) and reaches
+    /// `CompletionParams` on every arm.
+    #[tokio::test]
+    async fn the_provider_budget_sits_five_seconds_inside_the_deadline() {
+        let messages = vec![CompletionMessage::user("hi")];
+
+        let remote_rec = RecordingProvider::new();
+        CheapLlmTaskExecutor::new()
+            .execute(
+                &remote_rec,
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages.clone(),
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("title-chat"),
+            )
+            .await;
+        assert_eq!(remote_rec.budgets(), vec![Some(40_000)]);
+
+        let local_rec = RecordingProvider::new();
+        CheapLlmTaskExecutor::new()
+            .execute(
+                &local_rec,
+                &local_selection("OLLAMA", "qwen3"),
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("title-chat"),
+            )
+            .await;
+        assert_eq!(local_rec.budgets(), vec![Some(175_000)]);
+
+        // v4's own two assertions, restated: strictly inside our deadline (so
+        // the provider aborts its socket first), and the local budget outranks
+        // the remote *deadline*.
+        assert!(
+            provider_budget_for(&selection("DEEPSEEK", "m")) < CHEAP_LLM_TASK_TIMEOUT_MS as i64
+        );
+        assert!(provider_budget_for(&selection("DEEPSEEK", "m")) > 0);
+        assert!(
+            provider_budget_for(&local_selection("OLLAMA", "m")) > CHEAP_LLM_TASK_TIMEOUT_MS as i64
+        );
+    }
+
+    /// The temperature-rejection retry re-issues inside the SAME attempt, so
+    /// both provider calls carry the same budget (v4 spreads one `baseParams`).
+    #[tokio::test]
+    async fn every_arm_of_one_attempt_carries_the_same_budget() {
+        let messages = vec![CompletionMessage::user("hi")];
+        struct TempRejectThenRecord(RecordingProvider);
+        impl CompletionProvider for TempRejectThenRecord {
+            fn send_message(
+                &self,
+                provider: &str,
+                base_url: Option<&str>,
+                params: &CompletionParams,
+            ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+            {
+                let reject = params.temperature.is_some();
+                let inner = self.0.send_message(provider, base_url, params);
+                async move {
+                    if reject {
+                        return Err(CompletionError::new("model does not support temperature"));
+                    }
+                    inner.await
+                }
+            }
+        }
+        let p = TempRejectThenRecord(RecordingProvider::new());
+        let r = CheapLlmTaskExecutor::new()
+            .execute(
+                &p,
+                &selection("OPENAI", "gpt-x"),
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("title-chat"),
+            )
+            .await;
+        assert!(r.success);
+        assert_eq!(p.0.budgets(), vec![Some(40_000), Some(40_000)]);
+    }
+
+    /// Each attempt gets a FRESH budget. The safe provider burns 30 s and comes
+    /// back empty, the uncensored fallback then stalls — with per-attempt
+    /// budgets that fires at 30 + 45 = 75 s; a single task-level budget would
+    /// have fired at 45 s.
+    #[tokio::test(start_paused = true)]
+    async fn each_attempt_gets_a_fresh_budget() {
+        let messages = vec![CompletionMessage::user("spicy")];
+        let provider = SlowEmptyThenStall {
+            first_provider: "ANTHROPIC".to_string(),
+            first_delay_ms: 30_000,
+        };
+        let danger = DangerousContentSettings {
+            mode: "AUTO_ROUTE".to_string(),
+            uncensored_text_profile_id: Some("u1".to_string()),
+        };
+        let profiles = vec![
+            CheapLlmProfile {
+                id: "cur".to_string(),
+                provider: "ANTHROPIC".to_string(),
+                model_name: "safe".to_string(),
+                ..Default::default()
+            },
+            CheapLlmProfile {
+                id: "u1".to_string(),
+                provider: "OLLAMA".to_string(),
+                model_name: "dolphin".to_string(),
+                ..Default::default()
+            },
+        ];
+        let options = UncensoredFallbackOptions {
+            danger_settings: &danger,
+            available_profiles: &profiles,
+            is_dangerous_chat: None,
+        };
+
+        let started = tokio::time::Instant::now();
+        let r = CheapLlmTaskExecutor::new()
+            .execute(
+                &provider,
+                &selection("ANTHROPIC", "safe"),
+                messages,
+                |s| s.to_string(),
+                Some(&options),
+                None,
+                None,
+                Some("summarize-chat"),
+            )
+            .await;
+
+        assert!(!r.success);
+        // The fallback selection is `isLocal: false` in v4, so its fresh budget
+        // is the remote 45 s — reported as such.
+        assert!(r.error.as_deref().unwrap().contains("45000ms budget"));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(75_000),
+            "the second attempt shared the first's budget (total {elapsed:?}, expected ~75s)"
+        );
+    }
+
+    /// A fired deadline narrates itself: v4's abandonment WARN with its whole
+    /// field set (the incident was invisible precisely because a stall logged
+    /// nothing), plus — per the standing P4.13 ruled divergence — the failed-call
+    /// error row carrying the timeout message. v4 writes no row for an
+    /// unfinished call; v5 writes one for every failed cheap call, and a
+    /// timeout is a failed call.
+    #[tokio::test(start_paused = true)]
+    async fn a_fired_deadline_warns_and_writes_the_ruled_error_row() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: "user-1".to_string(),
+            chat_id: Some("chat-7".to_string()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let r = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            exec.execute(
+                &StallingProvider,
+                &selection("DEEPSEEK", "deepseek-chat"),
+                vec![CompletionMessage::user("summarize")],
+                |s| s.to_string(),
+                None,
+                None,
+                Some("char-9"),
+                Some("memory-recap-summarization"),
+            )
+            .await
+        };
+        assert!(!r.success);
+
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            captured.contains("Abandoned a stalled provider call"),
+            "a stall must never be silent again; captured:\n{captured}"
+        );
+        assert!(
+            captured.contains("WARN quilltap::cheap_llm"),
+            "the abandonment is a WARN on quilltap::cheap_llm; captured:\n{captured}"
+        );
+        for field in [
+            "chat_id=chat-7",
+            "character_id=char-9",
+            "provider=DEEPSEEK",
+            "model=deepseek-chat",
+            "task_type=memory-recap-summarization",
+            "timeout_ms=45000",
+            "elapsed=45000",
+        ] {
+            assert!(
+                captured.contains(field),
+                "the abandonment warn is missing {field}; captured:\n{captured}"
+            );
+        }
+
+        let rows: Vec<(String, String, String, String, Option<String>)> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn
+                    .prepare("SELECT type, provider, modelName, response, usage FROM llm_logs")?;
+                let out = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 1, "exactly one error row for the abandonment");
+        let (typ, provider_col, model, response, usage) = &rows[0];
+        assert_eq!(typ, "SUMMARIZATION");
+        assert_eq!(provider_col, "DEEPSEEK");
+        assert_eq!(model, "deepseek-chat");
+        assert!(
+            response.contains(
+                "Cheap LLM task (memory-recap-summarization) exceeded its 45000ms budget"
+            ),
+            "response: {response}"
+        );
+        assert_eq!(usage.as_deref(), None, "an error row carries no usage");
     }
 
     #[tokio::test]

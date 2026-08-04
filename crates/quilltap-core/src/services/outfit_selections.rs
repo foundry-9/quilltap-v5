@@ -1231,8 +1231,53 @@ mod tests {
             LlmChooseOutcome::Attempted { choice, .. } => assert!(choice.is_none()),
             LlmChooseOutcome::NotAttempted => panic!("the consult did start"),
         }
-        // v4's literal, spelled out rather than read back from the constant, so
-        // moving the bound has to be a deliberate edit here too.
+        // P4.D42 (v4 `74ec93b5`): the consult is now bounded TWICE, and on a
+        // REMOTE profile the inner bound is the tighter one. `executeCheapLLMTask`
+        // abandons its own attempt at `CHEAP_LLM_TASK_TIMEOUT_MS` (45 s), so the
+        // 60 s phase ceiling never gets to fire here — in v4 as in v5, since v4
+        // wraps the very same `executeCheapLLMTask`. The literals stay spelled
+        // out rather than read back from the constants, so moving either bound
+        // has to be a deliberate edit here too.
+        assert_eq!(
+            started.elapsed().as_millis() as u64,
+            45_000,
+            "a remote consult gives up at the cheap-LLM attempt deadline, inside the phase ceiling"
+        );
+    }
+
+    /// The other side of that layering: on a LOCAL profile the attempt deadline
+    /// is 180 s, so `OUTFIT_LLM_TIMEOUT_MS` is once again the binding one and
+    /// the phase ceiling still fires at exactly v4's literal. (Without this the
+    /// P4.D42 attempt deadline would have shadowed the outfit ceiling entirely
+    /// and nothing would have noticed.)
+    #[tokio::test(start_paused = true)]
+    async fn a_stalled_local_provider_gives_up_at_the_outfit_phase_ceiling() {
+        let (character, items, _) = consult_inputs();
+        let profiles = vec![json!({
+            "id": "p1", "isDefault": true, "provider": "OLLAMA", "model": "qwen3"
+        })];
+        let provider = SlowProvider {
+            delay_ms: None,
+            in_flight: Default::default(),
+        };
+        let executor = CheapLlmTaskExecutor::new();
+        let started = tokio::time::Instant::now();
+        let outcome = choose_llm_outfit(
+            &provider,
+            &executor,
+            Some(&character),
+            &items,
+            &profiles,
+            None,
+            None,
+            "c1",
+            None,
+        )
+        .await;
+        match outcome {
+            LlmChooseOutcome::Attempted { choice, .. } => assert!(choice.is_none()),
+            LlmChooseOutcome::NotAttempted => panic!("the consult did start"),
+        }
         assert_eq!(
             started.elapsed().as_millis() as u64,
             60_000,
