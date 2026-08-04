@@ -21,16 +21,28 @@
 //! minted ids and `createdAt` are dropped and the rows sort by
 //! `(systemKind, content)`.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//! Generate the fixture + oracle (Node 24, from the v4 checkout). `TZ=UTC` is
+//! REQUIRED on BOTH stages — this is a distill-transitive family (the P4.d26
+//! rule): the retrospective-recall signature ring stamps its window bounds
+//! through v4's local-zone date math, so an unpinned regen bakes the host's
+//! offset into `retroSignatures` and diverges from the UTC-pinned Rust side.
+//! The case reads the committed corpus as `../fixtures/build-context-tier3.json`,
+//! and jest's `testPathIgnorePatterns` drops `/.claude/`, so BOTH the case and
+//! the corpus are staged in a /tmp mirror (this makes the recipe run unchanged
+//! from a worktree checkout as well as from the main one):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-bc-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/build-context-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/build-context-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-build-context-main.db \
+//!   TZ=UTC QT_FIXTURE_OUT=/tmp/qt-build-context-main.db \
 //!   QT_FIXTURE_MOUNT_OUT=/tmp/qt-build-context-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-context-tier3-fixture.ts
-//!   QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db \
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-context-tier3-fixture.ts
+//!   TZ=UTC QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db \
 //!   QT_FIXTURE_BC_MOUNT=/tmp/qt-build-context-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-build-context.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- build-context-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- build-context-tier3
 //! Run:
 //!   QT_ORACLE_BUILD_CONTEXT=/tmp/oracle-build-context.ndjson \
 //!   QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db \

@@ -53753,3 +53753,211 @@ and phase-1 re-measure (sibling-owned families EXCLUDED), with phase 2
 riding the unification. Worktree per lane, own branch each, no
 stash/worktree games; the disk budget note in the parallel-round
 playbook applies (four lanes ≈ 50–70 GB each worst case).
+
+---
+
+## Lane record — P4.D45 (the `7fe9fe40` asterisk-narration drift re-port)
+
+**Branch:** `claude/asterisk-narration-prompts-port-be8817`. **Baseline
+adopted: `7fe9fe40`** (v4 HEAD at lane start, clean tree, verified by
+`git log 7fe9fe40..HEAD` → empty). Every family below regenerated FRESH
+from the UNPINNED v4 checkout at `7fe9fe40`; every NDJSON freshness-checked
+by grepping for a new-wording marker AND for the absence of the old form
+(the stale-pass trap).
+
+### The string-by-string table (site → old → new)
+
+All thirteen are wording-identical to v4; only delimiters move, and a
+trailing `—*` becomes `:` exactly where v4 did it. Internal em-dashes
+survive (the Commonplace "own shelves" line keeps its mid-sentence `—`).
+
+| # | v5 site | old | new |
+|---|---|---|---|
+| 1 | `services/aurora_notifications.rs:60` | `*Aurora regards {n} and pronounces upon their attire —*` | `Aurora regards {n} and pronounces upon their attire:` |
+| 2 | `services/aurora_notifications.rs:87` | `*Aurora marks an alteration to {n}'s attire. They are now turned out as follows —*` | `…as follows:` |
+| 3 | `services/core_whisper.rs:37` (`AURORA_NARRATIVE_OPENER`) | `*Aurora pauses beside the workbench and sets your own plumb line into your hand —*` | `…into your hand:` |
+| 4 | `services/commonplace_notifications.rs:116` | `*…take stock of where you stand —*` | `…where you stand:` |
+| 5 | `…:121` | `*…the gist of what you have noted so far —*` | `…so far:` |
+| 6 | `…:126` | `*The Commonplace Book turns to the entries that bear on this moment.*` | same sentence, delimiters dropped |
+| 7 | `…:131` | `*The Commonplace Book opens to the pages where you have noted those present.*` | same sentence, delimiters dropped |
+| 8 | `…:136` | `*…own shelves — the references and reckonings you yourself have curated —*` | `…have curated:` (internal `—` KEPT) |
+| 9 | `…:141` | `*The conversation has wandered on, … now bear on the present —*` | `…on the present:` |
+| 10 | `…:146` | `*You speak of days gone by, … its dated pages —*` | `…dated pages:` |
+| 11 | `services/suparna_notifications.rs:41` (`quote_body`) | `> *(the letter is blank)*` | `> (the letter is blank)` |
+| 12 | `…:65` (single opener) | `*Suparṇā glides in … a single letter held out for you.*` | delimiters dropped |
+| 13 | `…:67` (plural opener) | `*Suparṇā glides in … an armful of {count} letters for you.*` | delimiters dropped |
+
+Plus `tools/native_tool_prompt.rs:14` rule 1: `Writing "*pulls up the
+file*", "*executes the search*", or "*reaches for the vault*" is NOT the
+same…` → `Describing the action in prose — pulling up the file, executing
+the search, reaching for the vault — is NOT the same…`.
+
+In-file assertions moved with the strings: `suparna_notifications.rs`
+:288 / :301-303 / :316. `core_whisper.rs:437` interpolates the const and
+needed no edit. **Deliberately NOT touched** (all confirmed against v4):
+the four `*_opaque_content` siblings (already plain — v4 left them),
+`services/suparna_mail.rs:45` (already delimiter-free; matches the v4 line
+the commit did not touch), `commonplace_notifications.rs:166` (the LLM
+context form, already plain), and `src/core_whisper.rs` at the crate root
+(the cadence gate — a different file from `src/services/core_whisper.rs`).
+
+### The headline: `pseudo_tool_prompts` stale-RED → GREEN
+
+Measured as a flip, not asserted. The lane regenerated all six direct
+families at `7fe9fe40` BEFORE porting (the order's §143 instruction) and
+ran them: **all six RED**, with every diff confined to the delimiter
+change. `pseudo_tool_prompts` was red for the PRE-EXISTING `8bf3cb5f`
+wording debt as well — v4's post-`7fe9fe40` rule 1 is a single target
+string, so landing it healed both debts at once. After the port: all six
+GREEN.
+
+**The two D42-recorded stale-reds are DIAGNOSED, and neither is a
+pre-existing v5 divergence.** `context_feeders_leaves` (leaf
+`core_persona/own-and-shared`) and `post_office_concierge_lantern_suparna`
+(leaf `suparna_whisper/single`) failed on exactly the two leaves this
+drift changes, and on nothing else — the D42 sweep was reading the drift
+early, not a port bug. Both are green now.
+
+### Direct families — all six GREEN, zero SKIP, `--nocapture`
+
+| Family | Env | Rows |
+|---|---|---|
+| `post_office_aurora_equivalence` | `QT_ORACLE_PO_AURORA` | 24 |
+| `post_office_commonplace_equivalence` | `QT_ORACLE_PO_COMMONPLACE` | 36 |
+| `post_office_concierge_lantern_suparna_equivalence` | `QT_ORACLE_PO_CLS` (TZ=UTC) | 40 |
+| `context_feeders_leaves_equivalence` | `QT_ORACLE_CONTEXT_FEEDERS_LEAVES` (TZ=UTC) | 32 |
+| `post_office_writers_tier3_equivalence` | `QT_ORACLE_POW` + `QT_FIXTURE_POW_{MAIN,MOUNT}` | 21 |
+| `pseudo_tool_prompts_equivalence` | `QT_ORACLE_PSEUDO_TOOL_PROMPTS` | 40 |
+
+### Transitive census — 19 families, 18 GREEN + 1 ruled-red
+
+Twelve ran end-to-end through their OWN committed recipe verbatim via
+`harness/tools/recipe_sweep.py --run` (read-only use; P4.34 owns that
+file): `orchestrator_tier3` (TZ=UTC), `memory_pipeline_jobs_tier3`
+(TZ=UTC), `turn_orchestrator_tier2`, `salon_mutations`, `salon_reads`,
+`salon_swipe_generate`, `brahma_console_tier3`,
+`brahma_orchestrator_tier3`, `chats_outfits_tier2`, `wardrobe_tier2`,
+`outfit_llm_choose_tier3`, `announcer_tier3` — all with a real
+`test result: ok` line and zero SKIP lines.
+
+Six more regenerated with a hand-staged /tmp oracle mirror (see the
+recipe-rot finding below) and re-run BY NAME: `build_context_tier3`,
+`primary_stream_tier3`, `native_tool_loop_tier3`, `text_tool_loop_tier3`,
+`message_finalizer_tier3`, `courier_transport_tier3` — all GREEN.
+
+**Stated no-ops (the D32 "verified neutral by name" convention).** The
+Aurora-outfit tier-2 pair behaved exactly as the order predicted:
+`chats_outfits_tier2` and `wardrobe_tier2` dump only `chats` /
+`wardrobe_items`, which carry no staff body, so the wording change is a
+**no-op** there — regenerated and re-run anyway, green. Same for
+`salon_reads`, `brahma_console_tier3`, `brahma_orchestrator_tier3`,
+`turn_orchestrator_tier2` and `outfit_llm_choose_tier3`: green with no
+observable change in the diffed payload.
+
+**`context_summary_service_tier3` — RED, and the red is the P4.13 ruled
+row, nothing else.** `llm_logs rows diverge (got 17 vs oracle 11)` —
+byte-for-byte the residual D32 measured, on the ruled failed-cheap-call
+error rows. The lane did NOT "fix" it (P4.34 owns the `.rs` pin). It also
+did not take the count on faith: with the `llm_logs` assertion neutralized
+**locally and uncommitted**, the family passes completely — the mount-link
+mirror set, every op's result object, and the three-table diff that
+carries the Librarian and Commonplace whisper BODIES all match the fresh
+`7fe9fe40` oracle. So the residual is precisely the ruled rows, and this
+family independently corroborates the string port. The diagnostic patch
+was reverted (`git diff` clean) before any commit.
+
+Because this family is expected-red by the round's own plan, the workspace
+gate runs with the lane's full env block **minus `QT_ORACLE_CTXSUM`** (it
+SKIPs there); its result is the standalone by-name run recorded above.
+Stated plainly rather than folded silently into a green number.
+
+### Fixture + builder work
+
+- **`harness/oracle/fixtures/build-context-tier3.json:948` — corpus
+  hygiene, not a behavior claim.** The seeded Commonplace
+  `relevant-conversations` message carried the OLD `*…—*` shape. Both
+  sides read the same seed, so it produced no red by itself; left alone it
+  would have been the only place in the repo still teaching the old
+  wording. Updated, and the fixture + oracle regenerated TOGETHER (the
+  committed-fixture rule).
+- **The build-context fixture BUILDER was broken, and the repair is
+  this lane's.** The D42 sweep had recorded it throwing inside v4's own
+  repositories; it reproduces, and **it is venue-independent** (confirmed
+  by running it from the main `~/source/quilltap-v5` checkout, not just
+  the worktree). Cause: the `doc_mount_blobs` DDL that `40319484`'s orphan
+  GC requires was placed AFTER character provisioning, but
+  `ensureCharacterVault` → `writeCharacterVaultManagedFields` already
+  reaches the second write to a path, so `gcOrphanedFileRow` threw
+  `no such table: doc_mount_blobs` on the first character. Moved the DDL
+  up beside the other mount-index DDL, with the comment corrected to say
+  why the ordering is load-bearing. (v4's own `gcOrphanedFileRow`
+  intolerance of a missing blobs table is the P4.D41-recorded v4 bug,
+  already queued post-5.0 — this is the fixture accommodating it, not a
+  new finding.)
+- **A missing TZ pin in `build_context_tier3`'s recipe — a real
+  correctness defect, repaired.** The family is distill-transitive, so it
+  is TZ-SENSITIVE under the P4.d26 rule, but its header pinned nothing.
+  An unpinned regen baked the host offset into `retroSignatures`
+  (`2024-06-03T05:00:00.000Z…` vs the Rust side's `…T00:00:00.000Z`) and
+  the family failed on that alone once every string matched. Header now
+  pins `TZ=UTC` on BOTH stages and stages the case + corpus in a /tmp
+  mirror, so it runs unchanged from a worktree as well as the main
+  checkout.
+
+### Deferred loudly — recipe rot on this lane's transitive families
+
+Found, diagnosed, NOT repaired, because the round's ownership split gives
+P4.34 the recipe-mechanics charter while explicitly excluding this lane's
+families — so these fall in a seam and are recorded rather than silently
+absorbed. None is a correctness defect: every one of these recipes works
+from the canonical `~/source/quilltap-v5` checkout. All were worked around
+with a hand-staged /tmp mirror, and every family is green.
+
+1. **The `.claude/`-venue jest confound (5 families).**
+   `context_summary_service_tier3`, `primary_stream_tier3`,
+   `native_tool_loop_tier3`, `text_tool_loop_tier3`,
+   `message_finalizer_tier3` pass `--roots "$V5/harness/oracle/cases"`
+   directly. jest's `testPathIgnorePatterns` contains `/\.claude/`, so
+   from a worktree the run reports `0 matches` / "No tests found" — which
+   fails loudly here, but is one config change away from being a silent
+   stale pass. Fix pattern: stage cases (and any sibling corpus the case
+   reads as `../fixtures/…`) into a /tmp mirror, as
+   `orchestrator_tier3` / `memory_pipeline_jobs_tier3` / `courier_transport`
+   already do.
+2. **`courier_transport_tier3` — missing `mkdir`.** The header's
+   `cp -R "$V5W/harness/oracle" $TMPO/oracle` has no `mkdir -p "$TMPO"`
+   before it, so it fails `No such file or directory` on a clean machine.
+   Venue-independent.
+3. **`text_tool_loop_tier3` — the driver's prose-leak.** Extraction pulled
+   a prose line ("touch is the preserve closure, a no-op here…") into the
+   shell block, producing `syntax error near unexpected token ')'`. This
+   is the sweep driver defect P4.34 already owns by name, showing up on a
+   family P4.34 may not touch.
+
+### Grep-sweep census (tier 2) — clean
+
+No OLD form of any changed literal survives under `crates/` or `harness/`.
+The three remaining hits are all correct and deliberate: `docs/v4/`
+(the v4 mirror), `status-log.md` (this journal's history), and the work
+order itself. Two near-misses examined and left alone:
+`harness/oracle/fixtures/post-office-writers-tier3.json:150` carries
+`*Suparṇā glides in from the Post Office with a letter for you.*` — a
+SYNTHETIC corpus payload that has never been a v4 string (v4's openers
+read "a single letter held out for you" / "an armful of N letters"). It is
+caller-supplied `content` for the post-function marshaling path, identical
+on both sides, and asserts nothing about the writer's wording; changing it
+would be churn with no claim behind it. `apps/web`'s
+`system-message-labels.ts` matches on substrings that sit INSIDE the
+wording, so bubble labels are unaffected — already verified clean by
+`system-message-labels.spec.ts:212`, and no SPA file was touched, so no
+SPA gate is owed.
+
+### Doc mirror
+
+`docs/v4/developer/features/roleplay-block-narration.md` — byte-copy of
+v4's new 189-line design spec (`diff -q` identical).
+
+### Versions
+
+core 0.0.462 → **0.0.463**; harness 0.0.395 → **0.0.396**. No other crate
+and no `apps/web` file touched.

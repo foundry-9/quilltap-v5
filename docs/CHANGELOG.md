@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Repaired the differential harness's build-context fixture builder, which
+had stopped building at all: the blob table that the reference app's
+orphan collector now requires was created after character provisioning
+rather than before it, and provisioning is itself what first reaches the
+collector. Its regeneration recipe also gained the timezone pin it always
+needed — without it the recall signature ring baked the host machine's
+offset into the generated oracle — and now stages its case and corpus in
+a scratch mirror so the recipe runs from a worktree checkout as well as
+the main one. The seeded Commonplace Book message in that corpus was
+updated to the new announcement wording, so no fixture teaches the old
+shape.
+
 Staff announcements and the tool-execution rules no longer teach models
 asterisk-delimited narration. Under a roleplay template that uses a
 different narration delimiter, the asterisks in those strings taught the
