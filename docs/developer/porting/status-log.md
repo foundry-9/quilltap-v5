@@ -52483,3 +52483,213 @@ reddens the silence pin.
 has no differential today and this ceiling could not have one even if the
 seam were live. Not built for this port; noted in the test module's own
 header so the next person to widen that family finds it.
+
+---
+
+## Lane record — P4.D42 tier 2 (the provider-corpus byte-neutrality proof)
+
+**Order:** tier-2 item 6 (the D33 precedent). SDK majors re-verified before
+the regen, as the order requires: openai **7.2.0** installed (package.json
+`^7.2.0`), `@openrouter/sdk` **1.2.2**, plugin-types **2.5.5**,
+plugin-utils **2.2.19** — the exact set the order pinned.
+
+All THREE provider corpora were regenerated from v4 at `49769ec4` (clean
+tree, so straight from `~/source/quilltap-server`, no pinned worktree) and
+came back **byte-identical**:
+
+| Corpus | Lines | md5 before → after |
+| --- | --- | --- |
+| `request-envelopes.recorded.ndjson` | 146 | `2d264ed1…` → `2d264ed1…` |
+| `google-request.recorded.ndjson` | 9 | `ff568977…` → `ff568977…` |
+| `google-wire.recorded.ndjson` | 18 | `22d4e060…` → `22d4e060…` |
+
+`git status` over the fixture directory is empty after all three.
+
+That is the tier-2 claim discharged: `74ec93b5` plus plugin-types 2.5.5's
+new `LLMParams.requestTimeoutMs` and plugin-utils 2.2.18/2.2.19's
+resolve/build helpers moved v4's request **wire** not at all. It is also
+the reason unit 1's new `CompletionParams` field is corpus-free by
+construction: the field is a transport knob, and the corpora record request
+BODIES (`provider/case/mode/input/method/url/body`), which
+`requestTimeoutMs` never reaches on either side.
+
+**Regen recipes, exactly as run** (Node 24 on `PATH`, from the v5 worktree
+root, `V5="$PWD"`):
+
+```
+V4=~/source/quilltap-server V5="$PWD" bash \
+  harness/oracle/providers/regenerate-request-envelopes.sh
+V4=~/source/quilltap-server V5="$PWD" bash \
+  harness/oracle/providers/regenerate-google-wire.sh
+cd ~/source/quilltap-server/plugins/dist/qtap-plugin-google && \
+  node "$V5/harness/oracle/providers/record-google-request.mjs" \
+    --out "$V5/harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson"
+```
+
+(The google-request half has no `regenerate-*.sh` of its own — its recipe
+lives in `record-google-request.mjs`'s header and is reproduced above so
+the next baseline move does not have to re-derive it.)
+
+---
+
+## Lane record — P4.D42 tier-1 item 5 (the neutrality sweep) — READ THIS ONE
+
+**The import sweep, as actually enumerated.** The order asked for "every
+family whose oracle case imports `core-execution.ts` or `context-manager.ts`
+transitively — enumerate by import at lane start". Written as a resolver over
+`harness/oracle/cases/*.ts` into the v4 checkout: **70 of 362 cases reach one
+or both**, mapping to **75 harness families** (list:
+`harness/tools/` sweep input, reproduced in the lane's scratch; every family
+name appears in the results table below by status).
+
+⚠ **My first sweep was WRONG and would have under-reported by 15 cases.** The
+resolver's import regex used `[^;\n]*?` between `import` and `from`, so every
+MULTI-LINE named import was invisible — and v4's `lib/` writes those without
+trailing semicolons. `lib/chat/context/compression.ts` imports
+`@/lib/memory/cheap-llm-tasks` across lines 14–20 and the sweep reported it
+as unreachable; that in turn wrongly cleared `compression_tier3`,
+`compression_cache_tier3` and three siblings. Caught only because the ORDER's
+own starting list named four families my sweep had dropped, and I went to
+check WHY they differed instead of trusting my tooling. **`[^;]*?`, not
+`[^;\n]*?`.** The order's list was right and mine was wrong; the corrected
+sweep is a superset of it (it also finds `title_update_tier3`,
+`fold_episode_tier3`, `collapse_stale_chat_caches_tier2`,
+`maintenance_ops_tier2` and others the planning survey missed). Two families
+the order named — `memory_gate_tier3`, `memory_watermark_tier3` — genuinely
+do NOT reach either file even with the fixed resolver (`memory-service.ts`
+has no path to cheap-llm-tasks), and were run anyway as belt-and-braces.
+
+**Result: 75 attempted → 47 green, 28 not green.** The 28 break into four
+causes, and **only one of them was this lane's**:
+
+| Cause | n | Disposition |
+| --- | --- | --- |
+| **This lane's, FIXED** | 2 | see below |
+| Oracle-regen rot (`exit 1`/`exit 2`) | 15 | pre-existing recipe debt |
+| Recipe not self-contained (driver refuses) | 4 | pre-existing recipe debt |
+| v5-vs-v4 content divergence | 7 | pre-existing, evidenced below |
+
+(A 76th line, `salon_skip_equivalence`, was flagged SUSPECT by my own driver
+and is green — my grep for `SKIP` matched the env var name
+`QT_ORACLE_SALON_SKIP` echoed in the recipe. Driver bug, not a family bug.)
+
+### The one real defect this lane introduced — and it was worth the sweep
+
+`pascal_workbench_route_equivalence` and
+`pascal_custom_tools_execution_equivalence` panicked **inside my own file**:
+
+```
+crates/quilltap-core/src/services/cheap_llm_exec.rs:622:
+  A Tokio 1.x context was found, but timers are disabled.
+```
+
+Putting `tokio::time::timeout` in `CheapLlmTaskExecutor::execute` made a
+previously-latent assumption load-bearing: *every runtime that drives a
+cheap-LLM task must have the time driver*. I audited every
+`Builder::new_current_thread`/`new_multi_thread` in the workspace for a
+chain lacking `enable_all`/`enable_time` before `.build()`:
+**zero production runtimes lack it** (the host's are all `enable_all`), and
+exactly **two harness test runtimes** did. Both now `.enable_time()`, with
+the reason in a comment, and both families re-run green (workbench 62 cases,
+execution 272 rows). This is the D5 escalation clause's trigger examined and
+found NOT to fire: the deadline in core is tenable because production is
+uniform on `enable_all`.
+
+### Why the other 26 are not this lane's
+
+The whole baseline move `40319484..49769ec4` touches **45 files**, of which
+only three are v4 `lib/` files this lane's blast radius contains
+(`context-manager.ts`, `core-execution.ts`, `promise-timeout.ts`) — and all
+three changes are timeout wrappers that CANNOT fire in a canned-provider
+oracle run (nothing stalls). The other lib changes are P4.D43's
+(`pascal/tool-presets.ts`, `pascal/custom-tool.types.ts`, `query/keys.ts`).
+So for these families the regenerated oracle is output-identical to what it
+would have been at the old baseline, and the reds are not a baseline effect.
+Two spot-checks, run rather than reasoned:
+
+- **`compression_tier3_equivalence`** (7 rows vs oracle 6): the extra row is
+  `{content:"", error:"provider connection reset"}` — the standing **P4.13
+  ruled failed-call divergence** (2026-07-23), whose call sites this lane did
+  not move (`git diff 9d7c2a34..HEAD` on `cheap_llm_exec.rs` adds exactly ONE
+  `log_failed_call` site, the timeout arm, and the row's error text is a
+  canned provider failure, not a budget message). The family's last edit was
+  W4.10b — it has been latent-red since the ruling, invisible because its
+  oracle is /tmp-only so it SKIPs in every routine gate.
+- **`pseudo_tool_prompts_equivalence`**: v5's native-tool prompt still carries
+  the OLD wording of rule 1 (`Writing "*pulls up the file*"…`) where v4 says
+  `Describing the action in prose — pulling up the file, …`. v4's
+  `lib/tools/native-tool-prompt.ts` last changed at **`8bf3cb5f`**, the
+  episodic-recall squash absorbed by the P4.d12–d15 campaign. So this is a
+  **pre-existing v5 fidelity gap from that campaign**, not drift from this
+  round.
+
+### ⚠ Standing finding for the round (NOT fixed here, deliberately)
+
+**A large slice of the transitive cheap-LLM/build-context family set cannot
+be mechanically re-run, and several of those that can are stale-red for
+reasons that predate this round.** 19 of 75 families fail at the *recipe*
+level (regen rot, `/tmp`-pin recipes, fixture rebuilds that now throw inside
+v4's own repositories, one recipe with a bash syntax error), and at least two
+of the 7 content divergences are long-standing v5 gaps nobody was going to
+notice, because these families' oracles are `/tmp`-only and therefore SKIP in
+every `cargo test --workspace`. This is the same debt P4.D32 recorded as "28
+families' recipes did not survive mechanical extraction" and P4.27 built
+`recipe_sweep.py` to make checkable; it has not shrunk. Fixing it is its own
+order — it is neither this lane's ownership nor its mandate, and quietly
+"repairing" seven differentials to green would have destroyed the evidence.
+Per-family logs are in `/tmp/p4d42-sweep-logs/` for the unifier's session;
+the classification above is the durable record.
+
+**The families the order named specifically, by status:**
+green — `precompute`, `carina_memory_extraction_tier3`, `answer_confirmation_tier3`,
+`memory_pipeline_jobs_tier3`, `salon_swipe_generate`, `memory_gate_tier3`,
+`memory_watermark_tier3`; not green for the pre-existing causes above —
+`memory_processor_tier3`, `compression_tier3`, `compression_cache_tier3`,
+`context_summary_service_tier3`, `chat_regenerate_title_tier3`,
+`build_context_tier3`, `orchestrator_tier3`, `regenerate_swipe_tier3`.
+
+---
+
+## Lane record — P4.D42 tier 3 (the explicit deferrals) + the baseline slice
+
+**Tier-3 deferrals, recorded loudly as the order requires — both are
+no-ports with reasons, not banked work:**
+
+1. **v4's `withTimeout` error-factory generalization has no v5 analog to
+   port.** `74ec93b5` widened `lib/promise-timeout.ts`'s third parameter to
+   `string | (() => Error)` so `withDeadline` can throw a TYPED
+   `CheapLLMTimeoutError` and callers can tell a fired deadline from failed
+   work without string matching. v5 has no shared promise-timeout module and
+   no thrown-value hierarchy on this path: both consumers are ported
+   directly (`send_with_deadline` handles its own deadline where it fires and
+   returns a `CompletionError`; `memory_recap_within_phase_budget` maps its
+   own fired ceiling to `MemoryRecapResult::default()`), so there is nothing
+   for a factory to be a factory *of*. The message bytes ARE ported
+   (`cheap_llm_timeout_message`), which is the part any observer can see.
+2. **Per-provider retry nuance beyond D2's `max_retries = 0`-under-budget is
+   not ported.** v5's transport retry semantics are otherwise unchanged.
+
+**Baseline-move wording for the unifier** (the order reserves
+`CLAUDE.md`/`phase-4.md` to unification — this is the replacement slice, not
+an edit):
+
+> **Oracle baseline: `49769ec4` (v4 4.8.0-dev.150, 2026-08-03), adopted at
+> the 49769ec4 drift-round unification.** The four commits past `40319484`
+> are all absorbed or dispositioned: `74ec93b5` (bounded provider requests →
+> P4.D42), `c988fbd2` (Pascal run presets → P4.D43), and `51c350a1` +
+> `49769ec4` (build/packaging only, zero shipped behavior → NO-PORT).
+> P4.D42 regenerated all three provider corpora
+> (`request-envelopes` 146 / `google-request` 9 / `google-wire` 18) at the
+> pin and they came back **byte-identical**, so `74ec93b5` plus
+> plugin-types 2.5.5 and plugin-utils 2.2.18/2.2.19 moved v4's request wire
+> not at all. ⚠ Its 75-family transitive neutrality sweep found **19
+> families whose recipes cannot be re-run mechanically at all** and several
+> more stale-red from causes that predate the round (the standing P4.13
+> ruled error row; a `native-tool-prompt.ts` wording gap dating to
+> `8bf3cb5f`) — see the P4.D42 sweep record. That debt is unchanged from
+> P4.D32's "28 families' recipes did not survive mechanical extraction" and
+> wants its own order.
+
+**Versions at lane end:** core **0.0.455**, host **0.0.57**, harness
+**0.0.389**. (quilltap-web / cli / tauri untouched; `apps/web` untouched, so
+no SPA gate is owed.)

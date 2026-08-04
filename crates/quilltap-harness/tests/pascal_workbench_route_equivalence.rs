@@ -402,7 +402,11 @@ fn workbench_route_matches_oracle() {
                             completion: canned_provider(want),
                         };
                         status_body(
+                            // P4.D42: the cheap-LLM executor now bounds each
+                            // attempt with `tokio::time::timeout`, so the
+                            // runtime driving it needs the time driver.
                             tokio::runtime::Builder::new_current_thread()
+                                .enable_time()
                                 .build()
                                 .expect("a current-thread runtime")
                                 .block_on(custom_tool_preview(

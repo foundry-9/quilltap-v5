@@ -8,6 +8,13 @@ app's own chunk-on-write step, making the reference look like it skipped
 indexing when it doesn't. The oracle now runs the real indexing code, so
 the comparison also proves edited documents get chunked for search. The
 repair runs as a fourth lane alongside the round already in flight.
+Checked the new request ceilings against the reference app across
+seventy-five comparison suites, and confirmed the change moves the bytes
+sent to model providers not at all. The check found one defect in the new
+work — two test harnesses ran on a clock that had been switched off — and
+a backlog of comparison suites that can no longer be re-run at all, which
+is recorded for its own repair. No product behavior changed here.
+
 Put a one-minute ceiling on the whole memory-recap step of a turn. The
 recap makes two network calls in a row, each already deadlined; this is
 the backstop that keeps a turn from sitting on "Recalling…" no matter

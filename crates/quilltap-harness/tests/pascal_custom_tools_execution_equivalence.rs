@@ -247,7 +247,10 @@ fn tool_of(row: &Value, id: &str) -> quilltap_core::pascal::custom_tool_types::Q
 fn pascal_custom_tools_execution_matches_oracle() {
     // The consult seam made `execute_custom_tool` async; everything else in this
     // corpus stays sync, so a current-thread runtime drives just those rows.
+    // P4.D42: the cheap-LLM executor now bounds each attempt with
+    // `tokio::time::timeout`, so that runtime needs the time driver too.
     let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
         .build()
         .expect("a current-thread runtime");
 
