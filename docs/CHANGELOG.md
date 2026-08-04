@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned the next porting round and committed its three work orders: a
+re-port of the reference app's new provider-request bounding (so a
+stalled model call can no longer wedge a turn for ten minutes), a
+re-port of the new custom-tool run presets (named parameter hands saved
+into the character's vault), and a repair for the long-standing bug
+where deleting a document store left its files, folders, and links
+orphaned in the index — plus a startup pass that cleans up the orphans
+existing databases have already accumulated. Documentation only; the
+work itself runs in the round's three parallel lanes.
+
 Unified the hard-link-groups drift and restore-remainder round onto the
 main line: four parallel lanes, all closed. Hard links between document
 stores are now real in v5 exactly as the reference app just made them —

@@ -52106,3 +52106,108 @@ v4 shipped THREE more commits while this round unified — HEAD is now
 **The drift debt is now TWO behavior commits** (`c988fbd2` + `74ec93b5`).
 Until the catch-up runs, regenerate pascal-family AND provider/cheap-LLM
 family oracles only from a worktree PINNED at `40319484`.
+
+## Round planned — the `49769ec4` drift catch-up + store-delete round (P4.D42 ∥ P4.D43 ∥ P4.31), 2026-08-04
+
+**Drift-check first, per the skill: v4 is FOUR commits past `40319484` —
+HEAD `49769ec4` (4.8.0-dev.150, tree clean), confirming the post-merge
+observation in the previous round record.** Classified at planning:
+
+- **`74ec93b5` "fix(llm): bound provider requests so a stalled call can't
+  wedge a turn" — BEHAVIOR, on ported surfaces** (`core-execution.ts`,
+  `context-manager.ts`, `promise-timeout.ts`, plugin-types 2.5.5's
+  `LLMParams.requestTimeoutMs`, plugin-utils 2.2.18's request-budget
+  helpers, all nine text-provider dists). Survey corrections worth
+  keeping: the provider budget is deadline − 5 000 ms HEADROOM (40 s
+  remote / 175 s local), not "5 s"; and v5's nine-SDK collapse to one
+  reqwest `TransportPolicy` flattens the per-provider matrix EXCEPT the
+  streaming distinction — v5's `.timeout()` bounds the whole body, so a
+  naive ceiling would truncate long generations; the port must carry
+  v4's bound-first-byte-only streaming idiom. The request-envelope
+  corpus is body-only, so the budget field produces ZERO corpus churn
+  (regen-byte-diff is the cheap neutrality proof). Wall-clock behavior
+  is unfalsifiable by NDJSON — the proof obligation is unit-tier
+  (stalling canned providers), per the P4.15 falsifiability ruling and
+  the `TimeoutConsult` precedent. → **P4.D42**.
+- **`c988fbd2` "feat(pascal): run presets for custom tools" — BEHAVIOR,
+  on ported surfaces**, but smaller than it looks: the server change is
+  +7 lines (`vaultMountPointId` on the roster listing — v5's
+  `Perspective` already carries the value); presets are ordinary vault
+  files (`Tools/{tool}.{preset}.settings.json`) riding the EXISTING
+  mount-file verbs (the spec doc's "no second write path" doctrine), so
+  there is NO new wire surface; the `{{state.path}}` describe fix is
+  ALREADY correct in v5's byte-copied schema asset (verify-only — v5 has
+  no zod and the §C corpus carries no describe strings); the bulk is the
+  run-dialog presets UI + the pure `tool-presets` naming contract (TS
+  twin + v4's 92-line test suite 1:1). A server/SPA lane split would be
+  fake parallelism — ONE end-to-end lane. `help/custom-tools.md` joins
+  the `p4.9i2` bank (third time). → **P4.D43**.
+- **`51c350a1`** (update_version.sh counter floor) and **`49769ec4`**
+  (plugin-utils generated version constant; "nothing reads the
+  constant") — **NO-PORT**, build/packaging only, dispositions recorded
+  here.
+
+**The third lane is the promoted #58 root cause** (phase-plan candidate
+2). Survey findings that reshaped it: only THREE v5 paths delete a
+`doc_mount_points` row; the links/folders leaks are ALREADY fixed in
+both apps (v4 `45dcf97d`/`ac0b7c80` — the real instance's 43+118
+orphans predate them); the genuinely divergent arms are `doc_mount_documents`
+(a dead-ordered subquery that deletes zero rows), the blobs step that
+re-deletes files instead of blobs, `group_doc_mount_links` (never
+deleted), the un-cascaded bare repo delete, and the missing transaction;
+and NEITHER existing sweep can reap the backlog (both key off
+content-with-no-link; #58's rows are children-with-no-parent — the
+opposite direction, never queried anywhere). So the fix is delete-time
+cascade through `gc_orphaned_file_row` + a new boot reaper beside the
+P4.D41 sweep, every arm pinned BOTH directions (v4's twin is queued
+post-5.0), over a NEW `store-delete-*` fixture family whose differential
+does a whole-table orphan census. → **P4.31**.
+
+**The round (three lanes, orders committed under `work-orders/`):**
+
+- **P4.D42** (`p4.d42-provider-request-bounding.md`) — the `74ec93b5`
+  re-port: the 45 s/180 s cheap-LLM attempt deadline +
+  `CheapLLMTimeoutError` + abandonment logging (extending the P4.13
+  ruled failed-call divergence to the timeout arm), the 60 s recap phase
+  ceiling in `build_context`, `CompletionParams.request_timeout_ms` →
+  per-call `TransportPolicy` with `max_retries = 0` under a budget, the
+  streaming first-byte-only semantics, the 600 s → 300 s default drop.
+  In-core `tokio::time::timeout` per the `outfit_selections.rs:750`
+  precedent (D5 in the order; escalate if untenable). Neutrality: the
+  cheap-LLM/build-context transitive families regen-and-rerun at the
+  pin; the provider corpora regen-byte-identical.
+- **P4.D43** (`p4.d43-pascal-run-presets.md`) — the `c988fbd2` vertical:
+  the listing field (position-exact, null-arm unit-pinned — the
+  committed pascal fixture cannot reach the null arm and is NOT rebuilt),
+  the `tool-presets` TS twin + tests 1:1, the popup presets section (all
+  ten surveyed behaviors, sentences byte-for-byte), `customToolsKeys.
+  presets`, the ONE named `core-contract.ts` addition, the roster
+  `.settings.json` tripwire, a live e2e preset beat, the
+  `pascal_custom_tools_route` regen at the pin.
+- **P4.31** (`p4.31-store-delete-cascade-orphan-reaper.md`) — the
+  cascade chokepoint (one transaction; documents/blobs/group-links
+  arms), the bare-repo-delete defusal, the boot orphan reaper (+
+  scheduled-maintenance membership, tier 2), the import overwrite-clear
+  folders gap (tier 2, under the standing backup/restore ruling's
+  reach — escalate if doubted), the new fixture family + census
+  differential with both-direction pins per arm and a WIRING pin on the
+  boot pass.
+
+Ownership is disjoint (the shared-contract section is verbatim-identical
+in all three orders); `api/types.rs` is FROZEN round-wide (P4.D42's
+field rides `model/completion.rs`, P4.D43's rides an opaque JSON body,
+P4.31 changes no verb); `core-contract.ts` takes exactly ONE named
+addition (P4.D43's); `spine.rs` is P4.D42's alone. Version-bump
+ownership: P4.D42 → core/harness/host; P4.D43 → core/harness/SPA;
+P4.31 → core/harness (+web for the fixture dir). The baseline moves to
+`49769ec4` at unification.
+
+**Deliberately left out of the round:** the `doc_text`/`doc_fm`
+stale-RED (needs the doc-edit-oracle-owner ruling FIRST — two candidate
+fixes change what the family proves; presented to the human alongside
+this plan rather than burned into an unattended lane); the vintage
+INSERT-tolerance repair (~20 typed creates — real but lower-value than
+the drift + #58, and its tripwire keeps the exposure pinned meanwhile);
+the dogfood pass (human-driven, and now also owes P4.31's live proof —
+the reaper against the Friday copy's 43+118 — plus the standing queue);
+`p4.9h`, `p4.9i2`, `p4.9l`, and the standing pools.
