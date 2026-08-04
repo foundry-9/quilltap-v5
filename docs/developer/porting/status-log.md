@@ -54367,3 +54367,122 @@ sleep ahead of the stamp write — the old gesture fails, the new one passes and
 takes 2.35 s, i.e. it genuinely waits. Taken under `commit.md` §5 ("fix every
 failure you find, regardless of whether you think you caused it"); the file is
 in no lane's ownership block.
+
+## Lane record — P4.33 unit 2 (arm 2: a store's identity is its ID), 2026-08-04
+
+Discharges the ruling's second and third clauses together, because they are one
+mechanism: matching by id is dead on arrival unless CREATE preserves the id, so
+an archive can recognize what its own earlier import wrote.
+
+### What landed
+
+`import_document_stores` drops the `by_name` table entirely. The conflict match
+is `existing_ids.get(&source_id)`; the create arm writes the archive's id
+through, minting only when it is empty or already taken — which in practice is
+only the `duplicate` arm, deliberately creating a SECOND copy of the store it
+just matched. `taken_names` and `next_unique_mount_point_name` are untouched:
+names remain one case-insensitive namespace and are still uniquified on create.
+
+**Two consequences, both measured rather than argued, both visible in the new
+arms' recorded end-states:**
+
+1. **An overwrite can leave two stores wearing one name.** The overwrite branch
+   writes the archive's name onto the store it matched — v4 does this too, it
+   simply never reaches the case, having matched on that name to begin with.
+   Nothing uniquifies a name on UPDATE and the ruling speaks only of CREATE, so
+   this was left v4-faithful rather than invented past the order. It is a
+   tolerated state, not corruption: `doc_mount_points.name` has no unique index
+   BY DESIGN (restore must recreate legacy rows verbatim — see
+   `mount_index_case_repair`'s header), `doc_edit::uri_producers` already falls
+   back to the UUID form when `count_by_name > 1`, and the boot case-repair pass
+   renames the loser on the next start. Recorded here so the next lane finds the
+   reasoning rather than the symptom.
+2. **`skip` is not a no-op for a recognized store.** Both engines pour the
+   archive's documents into whatever store the id map points at, so v5 adds the
+   new document to the store it recognized where v4 builds a second store to
+   hold it. That is v4's own shape, reached by a different door.
+
+The sample-content seed is NOT affected: `assets/first-startup/imports/
+lorian-and-riya.qtap` carries no `doc_mount_point` rows (its vaults come from
+`create_character`'s provisioning), so a fresh instance's store ids stay minted.
+Checked rather than assumed, because "the seed's ids are now fixed across every
+install" would have been a real behavior change.
+
+### The differential — four new arms, both engines' end-states recorded
+
+`system_import_state` 13 → **17 cases**, on a new oracle kind
+`execute_store_identity`: a scripted sequence of imports with the occasional
+hand rename between them (that being how a user redirects v4's name matching),
+then a dump of every `Identity Store…` store with the documents that landed in
+it. Raw ids are emitted and the Rust side classifies them
+(`archive-1` / `archive-2` / `minted`), so the comparison is *which store did
+the import land on*, not *which uuid did this engine mint*.
+
+| arm | v5 (ruled) | v4 (leaked) |
+|---|---|---|
+| `store_identity_target_renamed` — import, rename the target by hand, re-import | ONE store, wearing the archive id, name restored | TWO: the renamed one plus a fresh `Identity Store` |
+| `store_identity_archive_renamed` — same id, new display name | ONE store, overwritten and renamed | TWO |
+| `store_identity_same_name_new_id` — a stranger's archive sharing the name, imported twice | TWO stores; the stranger's created alongside as `Identity Store (2)`, then **found by id** on re-import (the convergence property) and renamed | ONE: v4 claims the existing store and overwrites it, twice |
+| `store_identity_skip_by_id` — same id, different name, `skip` | ONE store holding BOTH documents | TWO |
+
+Both directions are pinned per arm: v5's dump must equal the ruled end-state,
+v4's must equal the leaked one, and a third assertion fails if the two ever
+become EQUAL — an arm that has stopped being a divergence cannot fail for the
+right reason and must be re-classified. The v4 arm's failure message names
+exactly what to retire.
+
+Two whole-state arms needed handling, and neither got a carve-out:
+
+- `execute_cross_instance_skip` — its `rewriteIds` now PRESERVES the payload's
+  `mountPoints[].id`. Rewriting them would no longer mean "the same archive,
+  from a foreign instance" for the store family; it would mean "four stores this
+  instance has never seen", which is a genuine divergence but one that would
+  cost this case's whole-state equality across the other nine entity types. The
+  shape it gives up is exactly what `store_identity_same_name_new_id` proves, on
+  a payload whose end-state is legible. Everything else still arrives with
+  foreign ids.
+- `execute_link_groups_twice` — it CREATES a store, so v5 writes the archive id
+  where v4 mints, and v4 consumes one more `<minted-N>` label at that row than
+  v5, shifting every label after it. `STORE_ID_PRESERVED_ON_CREATE` +
+  `apply_store_create_divergence` assert it in both directions first (v5's
+  created store MUST wear an archive id; v4's MUST NOT) and only then label the
+  CREATED stores by name — a pre-existing store's id is still compared exactly.
+
+### ⚠ A latent fixture-id collision the change surfaced
+
+The hand-built payloads drew from `ab/ac/ad000000-0000-4000-8000-00000000000N`,
+and the `system-data` fixture holds rows at exactly those ids. Harmless while
+both engines minted their own store ids and the payload id was never written —
+but the moment v5 PRESERVED it, the link-group payload's mount point became a
+real `doc_mount_points.id` equal to a fixture wardrobe item's id, and the
+collision surfaced inside that item's YAML front matter, where the store-label
+substitution rewrote it. Fixed at the source: every hand-built payload in the
+case file moved to the `af1*` space, which the fixture does not use (checked
+against all 144 fixture ids), with a header note. This is why the `ac`/`ad`
+constants changed in the same commit.
+
+### Mutation proofs (the D24 rule), both directions
+
+- **match by NAME again** → all four `store_identity_*` arms report "v5's
+  end-state is NOT the ruled one".
+- **mint on create again** → 12 failures: `execute_link_groups_twice`'s
+  "v5 created 2 store(s) and NONE wears an id the archive carried", its two row
+  diffs, and every identity arm — two of them additionally reporting "both
+  engines produced the SAME end-state … re-classify it", which is the vacuity
+  guard doing its job.
+- **v4 converging** (oracle hand-edited to a single id-matched store, and to a
+  created store wearing the archive id) → "v4's end-state has MOVED — it may
+  have converged on matching by id" and "v4 created a store wearing an ARCHIVE
+  id — it has CONVERGED on preserving ids", each naming its retirement.
+
+### Oracles + neutrality
+
+`system_import_state` regenerated fresh from `~/source/quilltap-server` at
+`7fe9fe40`, 17/17. Re-run BY NAME, all green: `system_import_equivalence` (20),
+`system_export_equivalence`, `qtap_import_equivalence`. ⚠ Worth knowing that
+`qtap_import_equivalence` is structurally BLIND to arm 2 — it verifies every FK
+by RELATIONSHIP because v4 mints every id, so a preserved id is simply another
+self-consistent id. It proves the seed still imports correctly; it could not
+have caught the change either way.
+
+No fixture bytes moved.

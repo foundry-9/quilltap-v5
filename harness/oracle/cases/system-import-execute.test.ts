@@ -173,13 +173,28 @@ async function buildMergedExport(
   return { manifest, data };
 }
 
-/** Deterministically rewrite every UUID in the payload (the cross-instance arm). */
-function rewriteIds(payload: unknown): unknown {
+/**
+ * Deterministically rewrite every UUID in the payload (the cross-instance arm),
+ * except the ids in `preserve`.
+ *
+ * [P4.33] `preserve` carries the payload's own `mountPoints[].id`. Since the
+ * ruling made a store's identity its ID, rewriting those would no longer mean
+ * "the same archive, from a foreign instance" for the document-store family —
+ * it would mean "four stores this instance has never seen", which v4 claims by
+ * NAME and v5 creates alongside. That is a genuine divergence, but pinning it
+ * here would cost the whole-state equality this case exists for across the other
+ * nine entity types; it gets its own dedicated `store_identity_*` arms instead,
+ * over small hand-built archives where the end-state is legible. Everything else
+ * — characters, chats, memories, projects, groups, tags, the profiles — still
+ * arrives with foreign ids, which is what this case was built to prove.
+ */
+function rewriteIds(payload: unknown, preserve: string[] = []): unknown {
   let text = JSON.stringify(payload);
   const uuidRe = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+  const keep = new Set(preserve);
   const seen: string[] = [];
   for (const m of text.match(uuidRe) ?? []) {
-    if (!seen.includes(m)) seen.push(m);
+    if (!seen.includes(m) && !keep.has(m)) seen.push(m);
   }
   seen.forEach((id, i) => {
     const replacement = `aa000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
@@ -202,9 +217,9 @@ function rewriteIds(payload: unknown): unknown {
  * groups rather than fused into one.
  */
 function linkGroupPayload(): { manifest: unknown; data: Record<string, unknown> } {
-  const MP = 'ac000000-0000-4000-8000-000000000001';
-  const GRP = 'ac000000-0000-4000-8000-0000000000a1';
-  const LONE = 'ac000000-0000-4000-8000-0000000000a2';
+  const MP = 'af1c0000-0000-4000-8000-000000000001';
+  const GRP = 'af1c0000-0000-4000-8000-0000000000a1';
+  const LONE = 'af1c0000-0000-4000-8000-0000000000a2';
   const doc = (rel: string, content: string, linkGroupId: string | null) => ({
     mountPointId: MP,
     relativePath: rel,
@@ -273,10 +288,10 @@ function linkGroupPayload(): { manifest: unknown; data: Record<string, unknown> 
 function folderOverwritePayload(
   variant: 'alpha' | 'gamma',
 ): { manifest: unknown; data: Record<string, unknown> } {
-  const MP = 'ad000000-0000-4000-8000-000000000001';
-  const FOLDER_ALPHA = 'ad000000-0000-4000-8000-0000000000f1';
-  const FOLDER_BETA = 'ad000000-0000-4000-8000-0000000000f2';
-  const FOLDER_GAMMA = 'ad000000-0000-4000-8000-0000000000f3';
+  const MP = 'af1e0000-0000-4000-8000-000000000001';
+  const FOLDER_ALPHA = 'af1e0000-0000-4000-8000-0000000000f1';
+  const FOLDER_BETA = 'af1e0000-0000-4000-8000-0000000000f2';
+  const FOLDER_GAMMA = 'af1e0000-0000-4000-8000-0000000000f3';
   const doc = (rel: string, content: string, folderId: string | null) => ({
     mountPointId: MP,
     relativePath: rel,
@@ -336,6 +351,128 @@ function folderOverwritePayload(
           : [doc('gamma/three.md', '# Three\n\nIn gamma.', FOLDER_GAMMA)],
       blobs: [],
       projectLinks: [],
+    },
+  };
+}
+
+/**
+ * [P4.33] The store-IDENTITY archives: one database store, one document, and an
+ * id that is either the archive's own or a stranger's.
+ *
+ * Every store here is named `Identity Store…` so the dump can find them without
+ * knowing which ids either engine minted, and so the fixture's own four stores
+ * stay out of it.
+ *
+ * ⚠ The hand-built payloads in this file all draw from the `af1*` id space,
+ * which the `system-data` fixture does not use. They used to draw from
+ * `ab/ac/ad000000-0000-4000-8000-00000000000N`, and the fixture holds rows at
+ * exactly those ids — harmless while both engines minted their own store ids
+ * and the payload id was only ever a literal, but the moment v5 started
+ * PRESERVING an archive's store id (P4.33), the link-group payload's mount
+ * point collided with a fixture wardrobe item and the collision surfaced inside
+ * a document's YAML front matter. Keep hand-built ids out of the fixture's
+ * space.
+ */
+const IDENTITY_ID_1 = 'af1d0000-0000-4000-8000-000000000001';
+const IDENTITY_ID_2 = 'af1d0000-0000-4000-8000-000000000002';
+
+function identityStorePayload(
+  id: string,
+  name: string,
+  docPath: string,
+): { manifest: unknown; data: Record<string, unknown> } {
+  const content = `# ${docPath}\n\nWritten into ${name}.`;
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'document-stores',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      mountPoints: [
+        {
+          id,
+          name,
+          basePath: '',
+          mountType: 'database',
+          storeType: 'documents',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+        },
+      ],
+      folders: [],
+      documents: [
+        {
+          mountPointId: id,
+          relativePath: docPath,
+          fileName: docPath,
+          fileType: 'markdown',
+          content,
+          contentSha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+          plainTextLength: content.length,
+          lastModified: '2026-01-01T00:00:00.000Z',
+          folderId: null,
+          linkGroupId: null,
+        },
+      ],
+      blobs: [],
+      projectLinks: [],
+    },
+  };
+}
+
+/**
+ * kind 'execute_store_identity' (P4.33): replay a scripted sequence of imports
+ * — with the occasional hand rename between them, which is how a user redirects
+ * v4's name matching — then dump every `Identity Store…` store with the
+ * documents that ended up in it.
+ *
+ * Raw ids are emitted; the Rust side classifies them against the archives'
+ * own ids, so the comparison is "which store did the import land on", not
+ * "which uuid did this engine mint".
+ */
+function storeIdentityCase(name: string, steps: Array<Record<string, unknown>>) {
+  return {
+    name,
+    run: async (spec: Spec) => {
+      const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const results: unknown[] = [];
+      for (const step of steps) {
+        if (step.op === 'import') {
+          results.push(await executeImport(spec.userId, step.data as never, step.options as never));
+        } else if (step.op === 'rename') {
+          getRawMountIndexDatabase()!
+            .prepare('UPDATE doc_mount_points SET name = ? WHERE name = ?')
+            .run(step.to as string, step.from as string);
+        } else {
+          throw new Error(`unknown step op ${String(step.op)}`);
+        }
+      }
+      const midb = getRawMountIndexDatabase()!;
+      const stores = midb
+        .prepare(
+          `SELECT id, name, storeType, mountType, enabled
+             FROM doc_mount_points WHERE name LIKE 'Identity Store%' ORDER BY name, id`,
+        )
+        .all() as unknown[];
+      const docs = midb
+        .prepare(
+          `SELECT p.name AS storeName, l.mountPointId AS storeId, l.relativePath AS relativePath
+             FROM doc_mount_file_links l
+             JOIN doc_mount_points p ON p.id = l.mountPointId
+            WHERE p.name LIKE 'Identity Store%'
+            ORDER BY p.name, p.id, l.relativePath`,
+        )
+        .all() as unknown[];
+      return { kind: 'execute_store_identity', steps, results, stores, docs };
     },
   };
 }
@@ -776,11 +913,19 @@ async function main(): Promise<void> {
       includeMemories: true,
       includeRelatedEntities: false,
     }),
-    executeCase('execute_cross_instance_skip', () => rewriteIds(mergedPayload), {
-      conflictStrategy: 'skip',
-      includeMemories: true,
-      includeRelatedEntities: false,
-    }),
+    executeCase(
+      'execute_cross_instance_skip',
+      () =>
+        rewriteIds(
+          mergedPayload,
+          ((mergedPayload.data.mountPoints ?? []) as Array<{ id: string }>).map((m) => m.id),
+        ),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: true,
+        includeRelatedEntities: false,
+      },
+    ),
     executeCase('execute_legacy_folds', () => legacyFoldsPayload(), {
       conflictStrategy: 'skip',
       includeMemories: true,
@@ -798,6 +943,77 @@ async function main(): Promise<void> {
     // instead a focused, id-free dump of the store's folders plus both result
     // bodies.
     folderOverwriteCase(),
+    // [P4.33] The four store-IDENTITY arms. `overwrite` throughout except the
+    // last, which is the skip arm.
+    //
+    // (a) A rename on the TARGET — the story from the escalation: v4 loses
+    //     track of the store its own archive came from and creates a second
+    //     one, while v5 finds it by id and overwrites it (restoring the
+    //     archive's name in the bargain).
+    storeIdentityCase('store_identity_target_renamed', [
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store', 'one.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+      { op: 'rename', from: 'Identity Store', to: 'Identity Store (renamed by hand)' },
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store', 'one.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+    ]),
+    // (a, mirrored) A rename in the ARCHIVE. Same id, new display name: v5
+    //     overwrites and renames, v4 sees a stranger and creates.
+    storeIdentityCase('store_identity_archive_renamed', [
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store', 'one.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store Under A New Name', 'two.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+    ]),
+    // (b) + (c) A stranger's archive that merely SHARES the name: v4 claims the
+    //     existing store, v5 creates alongside under a uniquified name — and
+    //     re-importing that same stranger's archive then finds what it created,
+    //     by id. That last step is the convergence property: a foreign archive
+    //     imports once and updates thereafter, instead of multiplying.
+    storeIdentityCase('store_identity_same_name_new_id', [
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store', 'one.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_2, 'Identity Store', 'two.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_2, 'Identity Store', 'two.md'),
+        options: { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      },
+    ]),
+    // (d) `skip` maps by id too: the second archive wears a different name but
+    //     the same id, so v5 recognizes the store and pours its document into
+    //     it, where v4 creates a second store to hold it.
+    storeIdentityCase('store_identity_skip_by_id', [
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store', 'one.md'),
+        options: { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      },
+      {
+        op: 'import',
+        data: identityStorePayload(IDENTITY_ID_1, 'Identity Store With Another Face', 'three.md'),
+        options: { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      },
+    ]),
     routeCase('route_missing_export_data', () => ({})),
     routeCase('route_missing_options', () => ({
       exportData: legacyFoldsPayload(),

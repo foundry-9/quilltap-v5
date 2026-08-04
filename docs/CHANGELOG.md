@@ -55,6 +55,18 @@ real template to carry, and that exposed a hole in the differential
 itself: the id-normalizing diff could not tell one template id from
 another, so two of the new arms passed even with the resolution
 deliberately broken. The template id is now compared literally.
+Import now identifies a document store by its ID rather than its display
+name. Overwriting or skipping matches the store the archive actually came
+from, so renaming a store — on either side — can no longer redirect an
+overwrite onto an unrelated store that happens to wear the name, and an
+archive from elsewhere that merely shares a name is created alongside
+instead of claiming yours. For that to work, importing a store now keeps
+the archive's store ID rather than minting a new one, so re-importing
+the same archive updates the store it created the first time instead of
+multiplying it; the display name is still made unique when it collides,
+and "import as duplicate" still mints a fresh ID. This is a deliberate
+difference from the reference app, which still matches by name.
+
 Fixed a test-suite race in the maintenance-sweep cadence check: it waited for
 the terminal-session cleanup and then read the sweep timestamp, which is
 written separately just afterward, so a heavily loaded full-suite run could

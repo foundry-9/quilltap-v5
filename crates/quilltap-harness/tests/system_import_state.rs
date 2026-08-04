@@ -35,6 +35,9 @@
 //!   too, so the archive's tree lands clean where v4 collides with the
 //!   survivors. Pinned on the whole-state arms; the semantics half lives on the
 //!   dedicated `execute_folder_overwrite` arm.
+//! - [`store_identity_expectations`] — a store's identity is its ID, not its
+//!   display name, and import CREATE preserves the archive's id. Pinned on four
+//!   dedicated `store_identity_*` arms with per-engine expected end-states.
 //!
 //! ## `doc_mount_chunks` — the P4.6BK tripwire, CLOSED at unification
 //!
@@ -336,6 +339,24 @@ const FOLDER_CLEAR_DIVERGENCE: &[&str] = &["execute_overwrite_all", "route_repla
 /// The warning family v4 raises and v5 cannot: the folder re-insert collision.
 const FOLDER_WARNING_PREFIX: &str = "Failed to import folder \"";
 
+/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — import CREATE preserves the
+/// archive's store id
+///
+/// The other half of "identity is the ID": v4's repo strips the source id and
+/// mints (`import-document-stores.ts:85-105`), so no archive could ever be
+/// re-recognized by identity; v5 writes the archive's id through, minting only
+/// when it is already spoken for (the `duplicate` arm). The semantics are pinned
+/// by the dedicated `store_identity_*` arms; this list is for the WHOLE-STATE
+/// arms that happen to create a store, where the same divergence otherwise shows
+/// up as an unreadable cascade — v4 consumes one more `<minted-N>` label than v5
+/// at the `doc_mount_points` row, shifting every label after it.
+///
+/// [`apply_store_create_divergence`] asserts it in both directions first (v5's
+/// created store MUST wear an archive id, v4's MUST NOT), then labels the
+/// CREATED stores — and only those; a pre-existing store's id is still compared
+/// exactly — by name, so the rest of the instance stays diffable.
+const STORE_ID_PRESERVED_ON_CREATE: &[&str] = &["execute_link_groups_twice"];
+
 /// Map every `doc_mount_folders.id` to `<folder:{mountPointId}/{path}>`.
 ///
 /// A folder row's IDENTITY is what the ruling makes incomparable: v4 keeps the
@@ -370,6 +391,95 @@ fn folder_labels(state: &StateDump) -> BTreeMap<String, String> {
         out.insert(id.to_string(), label);
     }
     out
+}
+
+/// The store ids present BEFORE the import — everything else in
+/// `doc_mount_points` was created by it.
+fn store_ids(state: &StateDump) -> HashSet<String> {
+    let empty = Vec::new();
+    state
+        .get("mountIndex")
+        .and_then(|t| t.get("doc_mount_points"))
+        .unwrap_or(&empty)
+        .iter()
+        .filter_map(|r| r.get("id").and_then(Value::as_str))
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Assert the ruled create-preserves-the-id divergence on one whole-state case
+/// and return the per-side labels for the stores the import CREATED.
+fn apply_store_create_divergence(
+    name: &str,
+    payload: &Value,
+    pre: &StateDump,
+    got_state: &StateDump,
+    want_state: &StateDump,
+    failures: &mut Vec<String>,
+) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
+    let archive_ids: HashSet<String> = payload["data"]["mountPoints"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| m.get("id").and_then(Value::as_str))
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        !archive_ids.is_empty(),
+        "[{name}] STORE_ID_PRESERVED_ON_CREATE names a case whose payload carries no mount \
+         points — the pin would be vacuous."
+    );
+    let pre_ids = store_ids(pre);
+
+    let created = |state: &StateDump| -> Vec<(String, String)> {
+        let empty = Vec::new();
+        state
+            .get("mountIndex")
+            .and_then(|t| t.get("doc_mount_points"))
+            .unwrap_or(&empty)
+            .iter()
+            .filter_map(|r| {
+                let id = r.get("id")?.as_str()?;
+                let n = r.get("name")?.as_str()?;
+                (!pre_ids.contains(id)).then(|| (id.to_string(), n.to_string()))
+            })
+            .collect()
+    };
+    let got_created = created(got_state);
+    let want_created = created(want_state);
+
+    if !got_created.iter().any(|(id, _)| archive_ids.contains(id)) {
+        failures.push(format!(
+            "[{name}] v5 created {} store(s) and NONE wears an id the archive carried — import \
+             CREATE is not preserving the archive's id, so nothing could ever re-recognize its \
+             own store. See `import_document_stores`.",
+            got_created.len()
+        ));
+    }
+    if want_created.iter().any(|(id, _)| archive_ids.contains(id)) {
+        failures.push(format!(
+            "[{name}] v4 created a store wearing an ARCHIVE id — it has CONVERGED on preserving \
+             ids. Retire this divergence: drop STORE_ID_PRESERVED_ON_CREATE, let these ids \
+             compare exactly again, and take the twin off the post-5.0 v4-side list."
+        ));
+    }
+
+    let label = |rows: Vec<(String, String)>| -> BTreeMap<String, String> {
+        let mut out = BTreeMap::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for (id, n) in rows {
+            let l = format!("<store:{n}>");
+            assert!(
+                seen.insert(l.clone()),
+                "[{name}] two CREATED stores share the name {n:?} — the label key is not unique."
+            );
+            out.insert(id, l);
+        }
+        out
+    };
+    (label(got_created), label(want_created))
 }
 
 /// Split a result body's `warnings` into (everything else, the folder-collision
@@ -868,6 +978,309 @@ fn diff_states(name: &str, got: &StateDump, want: &StateDump, failures: &mut Vec
     }
 }
 
+// ── [P4.33] the ruled store-IDENTITY divergence ─────────────────────────────
+
+/// The two ids the `store_identity_*` archives carry, mirrored from
+/// `system-import-execute.test.ts`. Every arm asserts they actually appear in
+/// its emitted steps, so an edit on the oracle side cannot silently desync them
+/// and leave the classification calling everything `minted`.
+const IDENTITY_ID_1: &str = "af1d0000-0000-4000-8000-000000000001";
+const IDENTITY_ID_2: &str = "af1d0000-0000-4000-8000-000000000002";
+
+/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — a store's identity is its ID
+///
+/// v4 matches an archive's store to the instance by NAME
+/// (`import-document-stores.ts:55-57`) and mints a fresh id on create
+/// (`:85-105`). Together those mean an archive can never be re-recognized by
+/// identity: it claims whatever store wears its name today, and a rename on
+/// either side redirects it onto a stranger. The 2026-08-04 ruling makes the id
+/// the identity, the name display only, and has import CREATE preserve the
+/// archive's id — see
+/// `services::quilltap_import::document_stores::import_document_stores`.
+///
+/// Each arm's END STATE is written out per engine, so BOTH directions are
+/// pinned: v5's must be the ruled behavior, v4's must still be the leaked one.
+/// The dump is `stores` (store class + name) and `docs` (which store each
+/// document landed in), the classes being `archive-1` / `archive-2` (the id the
+/// payload carried) / `minted` — which is exactly the claim, stated as data:
+/// *did the import land on the store the archive names, or on a new one?*
+///
+/// **Two consequences worth knowing, both visible below rather than argued.**
+/// `store_identity_same_name_new_id` ends with v5 holding two stores both named
+/// `Identity Store`: the overwrite branch writes the archive's name onto the
+/// store it matched by id, and v4 does the same — it simply never reaches the
+/// case, having matched on that name to begin with. Nothing in this port
+/// uniquifies a name on UPDATE, and the ruling speaks only of CREATE, so the
+/// duplicate stands. It is a tolerated state, not a corruption: store names have
+/// no unique index (by design — restore must recreate legacy rows verbatim),
+/// `doc_edit::uri_producers` already falls back to the UUID form when
+/// `count_by_name > 1`, and `db::mount_index_case_repair` renames the loser on
+/// the next boot. And `store_identity_skip_by_id` shows `skip` is not a no-op
+/// for a recognized store: v4 and v5 both pour the archive's documents into
+/// whatever store the id map points at, so v5 adds `three.md` to the store it
+/// recognized where v4 builds a second store to hold it.
+fn store_identity_expectations(name: &str) -> Option<(Value, Value)> {
+    // (v5 — the ruled behavior, v4 — the leaked behavior)
+    let out = match name {
+        // A rename on the TARGET. v4 loses its own archive's store and builds a
+        // second; v5 finds it by id and overwrites, restoring the archive name.
+        "store_identity_target_renamed" => (
+            json!({
+                "stores": [{"id": "archive-1", "name": "Identity Store"}],
+                "docs": [{"store": "archive-1", "storeName": "Identity Store",
+                          "relativePath": "one.md"}],
+            }),
+            json!({
+                "stores": [
+                    {"id": "minted", "name": "Identity Store"},
+                    {"id": "minted", "name": "Identity Store (renamed by hand)"},
+                ],
+                "docs": [
+                    {"store": "minted", "storeName": "Identity Store",
+                     "relativePath": "one.md"},
+                    {"store": "minted", "storeName": "Identity Store (renamed by hand)",
+                     "relativePath": "one.md"},
+                ],
+            }),
+        ),
+        // A rename in the ARCHIVE. Same store, new display name: v5 overwrites
+        // and renames; v4 sees a stranger and creates.
+        "store_identity_archive_renamed" => (
+            json!({
+                "stores": [{"id": "archive-1", "name": "Identity Store Under A New Name"}],
+                "docs": [{"store": "archive-1", "storeName": "Identity Store Under A New Name",
+                          "relativePath": "two.md"}],
+            }),
+            json!({
+                "stores": [
+                    {"id": "minted", "name": "Identity Store"},
+                    {"id": "minted", "name": "Identity Store Under A New Name"},
+                ],
+                "docs": [
+                    {"store": "minted", "storeName": "Identity Store",
+                     "relativePath": "one.md"},
+                    {"store": "minted", "storeName": "Identity Store Under A New Name",
+                     "relativePath": "two.md"},
+                ],
+            }),
+        ),
+        // A stranger's archive that merely SHARES the name: v4 claims the
+        // existing store and overwrites a store it has no business touching; v5
+        // creates alongside under a uniquified name, keeping its own `one.md`.
+        // The THIRD step is the convergence property — re-importing that same
+        // stranger's archive finds what the second step created, by id, instead
+        // of multiplying. (It also renames it back, hence the two same-named
+        // stores; see the doc comment.)
+        "store_identity_same_name_new_id" => (
+            json!({
+                "stores": [
+                    {"id": "archive-1", "name": "Identity Store"},
+                    {"id": "archive-2", "name": "Identity Store"},
+                ],
+                "docs": [
+                    {"store": "archive-1", "storeName": "Identity Store",
+                     "relativePath": "one.md"},
+                    {"store": "archive-2", "storeName": "Identity Store",
+                     "relativePath": "two.md"},
+                ],
+            }),
+            json!({
+                "stores": [{"id": "minted", "name": "Identity Store"}],
+                "docs": [{"store": "minted", "storeName": "Identity Store",
+                          "relativePath": "two.md"}],
+            }),
+        ),
+        // `skip` maps by id too.
+        "store_identity_skip_by_id" => (
+            json!({
+                "stores": [{"id": "archive-1", "name": "Identity Store"}],
+                "docs": [
+                    {"store": "archive-1", "storeName": "Identity Store",
+                     "relativePath": "one.md"},
+                    {"store": "archive-1", "storeName": "Identity Store",
+                     "relativePath": "three.md"},
+                ],
+            }),
+            json!({
+                "stores": [
+                    {"id": "minted", "name": "Identity Store"},
+                    {"id": "minted", "name": "Identity Store With Another Face"},
+                ],
+                "docs": [
+                    {"store": "minted", "storeName": "Identity Store",
+                     "relativePath": "one.md"},
+                    {"store": "minted", "storeName": "Identity Store With Another Face",
+                     "relativePath": "three.md"},
+                ],
+            }),
+        ),
+        _ => return None,
+    };
+    Some(out)
+}
+
+/// Fold one side's raw dump into the classified shape the expectations are
+/// written in. `pre` is the PRE-import store id set, so a fixture store that
+/// somehow matched the name filter would be named rather than called `minted`.
+fn classify_identity_dump(stores: &[Value], docs: &[Value], pre: &HashSet<String>) -> Value {
+    let class = |id: &str| -> &'static str {
+        match id {
+            IDENTITY_ID_1 => "archive-1",
+            IDENTITY_ID_2 => "archive-2",
+            other if pre.contains(other) => "pre-existing",
+            _ => "minted",
+        }
+    };
+    json!({
+        "stores": stores
+            .iter()
+            .map(|s| json!({
+                "id": class(s["id"].as_str().unwrap_or_default()),
+                "name": s["name"].clone(),
+            }))
+            .collect::<Vec<_>>(),
+        "docs": docs
+            .iter()
+            .map(|d| json!({
+                "store": class(d["storeId"].as_str().unwrap_or_default()),
+                "storeName": d["storeName"].clone(),
+                "relativePath": d["relativePath"].clone(),
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// Replay a `store_identity_*` arm's steps through the Rust engine and check
+/// BOTH engines against their recorded end-states.
+fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<String>) {
+    let Some((want_v5, want_v4)) = store_identity_expectations(name) else {
+        failures.push(format!(
+            "[{name}] no recorded end-states — every store_identity arm must pin BOTH engines; \
+             see `store_identity_expectations`."
+        ));
+        return;
+    };
+
+    let steps = case["steps"].as_array().cloned().unwrap_or_default();
+    // The ids the classification keys on must really be in the payloads: an
+    // oracle-side edit that moved them would otherwise classify every store as
+    // `minted` and quietly turn the v5 expectation into a lie.
+    let steps_text = serde_json::to_string(&steps).unwrap_or_default();
+    let want_text = want_v5.to_string();
+    for (id, class) in [(IDENTITY_ID_1, "archive-1"), (IDENTITY_ID_2, "archive-2")] {
+        if want_text.contains(class) && !steps_text.contains(id) {
+            failures.push(format!(
+                "[{name}] the expectation names `{class}` but the oracle's steps do not carry \
+                 {id} — the harness's IDENTITY_ID_* constants have drifted from \
+                 `system-import-execute.test.ts`."
+            ));
+            return;
+        }
+    }
+
+    let scratch = fresh_fixture(name);
+    let pre_ids: HashSet<String> = read_state(&scratch)
+        .get("mountIndex")
+        .and_then(|t| t.get("doc_mount_points"))
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.get("id").and_then(Value::as_str))
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let db = open_db(&scratch);
+    let uid = user_id.to_string();
+    let replay = steps.clone();
+    db.write_blocking(move |ws| {
+        let main = ws.main().connection();
+        let mount = ws.mount_index().expect("fixture has a mount partition");
+        for step in &replay {
+            match step["op"].as_str().unwrap_or_default() {
+                "import" => {
+                    let export = export_of(&step["data"]);
+                    let opts = options_of(&step["options"]);
+                    execute_import(main, mount.connection(), &uid, &export, &opts)
+                        .expect("store-identity import");
+                }
+                "rename" => {
+                    mount
+                        .connection()
+                        .execute(
+                            "UPDATE doc_mount_points SET name = ?1 WHERE name = ?2",
+                            rusqlite::params![step["to"].as_str(), step["from"].as_str()],
+                        )
+                        .expect("rename step");
+                }
+                other => panic!("unknown store-identity step op {other:?}"),
+            }
+        }
+        Ok(())
+    })
+    .expect("store-identity replay");
+
+    let (stores, docs) = db
+        .read_mount_index(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name FROM doc_mount_points WHERE name LIKE 'Identity Store%' \
+                 ORDER BY name, id",
+            )?;
+            let stores: Vec<Value> = stmt
+                .query_map([], |r| {
+                    Ok(json!({ "id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)? }))
+                })?
+                .collect::<Result<_, _>>()?;
+            let mut stmt = conn.prepare(
+                "SELECT p.name, l.mountPointId, l.relativePath \
+                   FROM doc_mount_file_links l \
+                   JOIN doc_mount_points p ON p.id = l.mountPointId \
+                  WHERE p.name LIKE 'Identity Store%' \
+                  ORDER BY p.name, p.id, l.relativePath",
+            )?;
+            let docs: Vec<Value> = stmt
+                .query_map([], |r| {
+                    Ok(json!({
+                        "storeName": r.get::<_, String>(0)?,
+                        "storeId": r.get::<_, String>(1)?,
+                        "relativePath": r.get::<_, String>(2)?,
+                    }))
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok((stores, docs))
+        })
+        .expect("store-identity dump");
+    drop(db);
+
+    let got_v5 = classify_identity_dump(&stores, &docs, &pre_ids);
+    let oracle_stores = case["stores"].as_array().cloned().unwrap_or_default();
+    let oracle_docs = case["docs"].as_array().cloned().unwrap_or_default();
+    let got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+
+    if got_v5 != want_v5 {
+        failures.push(format!(
+            "[{name}] v5's end-state is NOT the ruled one\n  rust:     {got_v5}\n  \
+             expected: {want_v5}\nSee `store_identity_expectations` and \
+             `import_document_stores`."
+        ));
+    }
+    if got_v4 != want_v4 {
+        failures.push(format!(
+            "[{name}] v4's end-state has MOVED — it may have converged on matching by id\n  \
+             oracle:   {got_v4}\n  expected: {want_v4}\nIf v4 now matches by id and preserves \
+             archive store ids, retire this divergence: delete these arms' per-engine \
+             expectations, compare the two dumps for equality instead, and take the twin off \
+             the post-5.0 v4-side list."
+        ));
+    }
+    if got_v5 == got_v4 {
+        failures.push(format!(
+            "[{name}] both engines produced the SAME end-state — this arm is no longer a \
+             divergence and cannot fail for the right reason. Re-classify it."
+        ));
+    }
+}
+
 /// The `duplicate`-arm phantom pin: every non-literal chat/project FK a memory
 /// row carries must dangle (no chats/projects row has that id) — v4's
 /// phantom-map quirk observed end-to-end.
@@ -960,6 +1373,12 @@ fn system_import_execute_state_equivalence() {
                 run_folder_overwrite_case(name, case, &user_id, &mut failures);
                 ran += 1;
             }
+            // [P4.33] The store-identity divergence — see
+            // `store_identity_expectations`.
+            "execute_store_identity" => {
+                run_store_identity_case(name, case, &user_id, &mut failures);
+                ran += 1;
+            }
             "route" => {
                 run_route_case(name, case, &user_id, &rt, &mut failures);
                 ran += 1;
@@ -971,7 +1390,8 @@ fn system_import_execute_state_equivalence() {
         }
     }
 
-    assert_eq!(ran, 13, "expected 13 cases, ran {ran}");
+    // 13 from P4.9G4/P4.31 + P4.33's four `store_identity_*` arms.
+    assert_eq!(ran, 17, "expected 17 cases, ran {ran}");
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
@@ -1216,28 +1636,40 @@ fn run_execute_case(
     let mut want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
 
-    // [P4.33] The ruled overwrite-clears-folders divergence, asserted in both
-    // directions and then subtracted from the comparands.
-    let (got_body, want_body, got_labels, want_labels) = if FOLDER_CLEAR_DIVERGENCE.contains(&name)
-    {
-        apply_folder_clear_divergence(
+    // [P4.33] The two ruled divergences, each asserted in both directions and
+    // then subtracted from the comparands — never carved out.
+    let (got_body, want_body, mut got_labels, mut want_labels) =
+        if FOLDER_CLEAR_DIVERGENCE.contains(&name) {
+            apply_folder_clear_divergence(
+                name,
+                &case["exportData"],
+                &results[0].to_value(),
+                &case["result"],
+                &mut got_state,
+                &mut want_state,
+                &literals,
+                failures,
+            )
+        } else {
+            (
+                results[0].to_value(),
+                case["result"].clone(),
+                BTreeMap::new(),
+                BTreeMap::new(),
+            )
+        };
+    if STORE_ID_PRESERVED_ON_CREATE.contains(&name) {
+        let (g, w) = apply_store_create_divergence(
             name,
             &case["exportData"],
-            &results[0].to_value(),
-            &case["result"],
-            &mut got_state,
-            &mut want_state,
-            &literals,
+            &pre,
+            &got_state,
+            &want_state,
             failures,
-        )
-    } else {
-        (
-            results[0].to_value(),
-            case["result"].clone(),
-            BTreeMap::new(),
-            BTreeMap::new(),
-        )
-    };
+        );
+        got_labels.extend(g);
+        want_labels.extend(w);
+    }
 
     compare_execute(
         name,

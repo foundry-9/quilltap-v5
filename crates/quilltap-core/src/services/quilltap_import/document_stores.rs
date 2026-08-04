@@ -83,27 +83,33 @@ pub(super) fn import_document_stores(
     let mut counts = DocStoreCounts::default();
     let points_repo = DocMountPointsRepository::new(mount);
 
-    // Existing stores: one case-insensitive namespace. v4's `new Map(existing
-    // .map(s => [s.name.toLowerCase(), s]))` — a later duplicate key OVERWRITES,
-    // so the LAST store with a given lowered name wins.
+    // ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — a store's identity is its ID
+    //
+    // v4 matches the archive's store against the instance by NAME
+    // (`byName.get(mp.name.toLowerCase())`, `import-document-stores.ts:55-57`),
+    // so an archive overwrites whatever store happens to WEAR the name today:
+    // rename a store and the next import of its own archive redirects onto an
+    // unrelated one, while a store that merely shares a name with a stranger's
+    // archive is claimed by it. **The ruling (human, 2026-08-04; `status-log.md`
+    // → "Ruling — import overwrite claims the whole store, and store identity is
+    // the ID") makes the id the identity and the name display only**, under the
+    // standing 2026-08-03 backup/restore ruling.
+    //
+    // That only works if the id survives a round trip, so the CREATE arm below
+    // preserves the archive's id rather than minting (v4's repo strips it) —
+    // otherwise an id match would be dead on arrival, matching nothing it had
+    // itself written. Names stay uniquified exactly as v4 does it, since they
+    // remain one case-insensitive namespace.
+    //
+    // Pinned in both directions by `system_import_state`'s four
+    // `execute_store_identity_*` arms. The v4-side twin is queued on
+    // `dogfood-findings.md`'s post-5.0 v4-side list.
     let existing_stores = doc_mount_points::find_all_full_json(mount)?;
-    let mut by_name: Vec<(String, String, String)> = Vec::new(); // (lower, id, stored name)
-    for st in &existing_stores {
-        let (Some(id), Some(name)) = (
-            st.get("id").and_then(Value::as_str),
-            st.get("name").and_then(Value::as_str),
-        ) else {
-            continue;
-        };
-        let key = name.to_lowercase();
-        match by_name.iter_mut().find(|(k, _, _)| *k == key) {
-            Some(slot) => {
-                slot.1 = id.to_string();
-                slot.2 = name.to_string();
-            }
-            None => by_name.push((key, id.to_string(), name.to_string())),
-        }
-    }
+    let existing_ids: std::collections::HashSet<String> = existing_stores
+        .iter()
+        .filter_map(|st| st.get("id").and_then(Value::as_str))
+        .map(|id| id.to_string())
+        .collect();
     // Track every name we see (pre-existing + created this run) so neither a
     // clash with an existing store nor a duplicate inside the import payload
     // mints a colliding name.
@@ -112,15 +118,17 @@ pub(super) fn import_document_stores(
         .filter_map(|st| st.get("name").and_then(Value::as_str))
         .map(|n| n.to_string())
         .collect();
+    // …and the same for ids, which the create arm now tries to preserve. Only
+    // the `duplicate` arm can reach a taken id in practice (it deliberately
+    // creates a second copy of a store it just matched), but a payload carrying
+    // the same id twice would too, and neither may collide on the primary key.
+    let mut taken_ids = existing_ids.clone();
 
     for mp in mount_points {
         let mp_name = s(mp, "name");
         let source_id = s(mp, "id");
         let out: Result<(), DbError> = (|| {
-            let existing = by_name
-                .iter()
-                .find(|(k, _, _)| *k == mp_name.to_lowercase())
-                .map(|(_, id, _)| id.clone());
+            let existing = existing_ids.get(&source_id).cloned();
             let mount_type = s(mp, "mountType");
             let base_path = if mount_type == "database" {
                 String::new()
@@ -183,7 +191,16 @@ pub(super) fn import_document_stores(
             let name = next_unique_mount_point_name(&taken_names, &desired);
             taken_names.insert(name.clone());
             let now = crate::clock::now_iso();
-            let new_id = uuid::Uuid::new_v4().to_string();
+            // [P4.33] Preserve the archive's id — see the ruling note above.
+            // A payload without one, or one already spoken for (the `duplicate`
+            // arm, which is creating a SECOND copy of the store it matched),
+            // still mints.
+            let new_id = if source_id.is_empty() || taken_ids.contains(&source_id) {
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                source_id.clone()
+            };
+            taken_ids.insert(new_id.clone());
             points_repo.create(
                 &DmpCreate {
                     name,
