@@ -53234,3 +53234,26 @@ Harness source was not touched, so it keeps 0.0.388.
 `49769ec4` with a clean tree and no drift, so the round's baseline paragraph
 can say: *`c988fbd2` is fully absorbed; the pascal route family regenerated at
 `49769ec4`; no other family's regen vintage moved.*
+
+### Addendum — v4's tree went dirty mid-lane; the family is provably unaffected
+
+v4's HEAD never moved (`git log 49769ec4..HEAD` empty at lane start AND at lane
+end), but its working tree — clean when the lane began — picked up uncommitted
+new-chat / roleplay-template work partway through (`app/api/v1/chats/route.ts`,
+`components/new-chat/**`, two help docs, a new untracked route test). The
+baseline therefore does NOT move, and no pinned worktree was needed; but a
+dirty oracle checkout is exactly the condition the standing rule warns about,
+so the claim was measured rather than reasoned:
+
+`pascal_custom_tools_route_equivalence` was regenerated a SECOND time, with the
+dirt in place, and the two NDJSONs compared. They are **identical** once the two
+legitimately-nondeterministic families are masked — every `createdAt` and the
+16 freshly-minted UUIDs, both of which the differential normalizes anyway — and
+the second oracle is green against the port as well (24 cases). So none of the
+drifting files reach this family, and the lane's verification stands on either
+oracle.
+
+Worth carrying forward: "v4 was clean when I started" is not the same claim as
+"v4 was clean when the oracle ran". Re-checking `git status` at lane END is
+cheap, and when it has moved, a regenerate-and-diff turns the caveat into a
+fact for a couple of minutes' work.
