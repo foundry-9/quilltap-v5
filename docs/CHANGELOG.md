@@ -88,6 +88,18 @@ back, which is what makes an import a faithful round trip. A real export
 always carries the store's whole folder tree, scaffolding included, so
 nothing is lost by clearing first. This is a deliberate difference from
 the reference app, which still keeps the husks.
+Fixed the differential harness's recipe-sweep driver, which had been
+misreporting working recipes as broken. Doc prose that happens to start
+with a shell word no longer leaks into the generated script; the
+skip detector no longer mistakes an environment variable name ending in
+"_SKIP" for a skipped test; recipes naming a temporary reference-app pin
+directory (which never survives the round that made it) are now flagged;
+and recipes that hand the test runner a path inside an agent worktree —
+where the reference app's test runner ignores everything — are flagged
+and refused with an explanation instead of failing mysteriously. The
+driver also gained a batch mode that writes its results to a file after
+every family, so a sweep's per-family findings stop dying in temporary
+storage, plus its own self-tests.
 
 Planned the next porting round and committed its work orders — four
 lanes. Two absorb the reference app's newest drift: the New Chat form

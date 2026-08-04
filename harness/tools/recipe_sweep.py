@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The harness recipe sweep driver (P4.27, rebuilt from P4.D32's lane recipe).
+r"""The harness recipe sweep driver (P4.27, rebuilt from P4.D32's lane recipe).
 
 Every differential family's test file carries its own oracle-regeneration
 recipe in the leading `//!` doc comment (the standing rule:
@@ -16,8 +16,14 @@ move) never has to re-derive the extraction machinery again:
                   invocation: remove the oracle outputs first, run the regen
                   stage(s), then the `cargo test` run stage. This is the
                   "recipe executed verbatim" proof the work orders ask for.
+  --run-all       the same, over MANY families, writing a durable results
+                  artifact after EVERY family (P4.34's F7 — two sweeps' worth
+                  of per-family classification died in /tmp because the driver
+                  had no batch mode and no artifact). `--families a,b,c` /
+                  `--exclude a,b,c` / `--results PATH` shape the batch.
   --collisions    report /tmp paths written by more than one family's regen
                   (P4.D32 sweep hazard 2 — cross-family clobbering).
+  --self-test     run the driver's own classifier/detector assertions.
 
 Policies enforced (both are P4.D32's sweep hazards, made rules by P4.27):
 
@@ -59,6 +65,18 @@ Variable conventions the driver understands (and headers should use):
 
 TZ pins are load-bearing (the P4.d26 rule): the driver never strips or adds
 environment words — `TZ=UTC` / `TZ=America/Chicago` run exactly as written.
+
+THE VENUE RULE (P4.34's F1 — the confound that poisoned P4.D42's numbers).
+v4's `jest.config.ts` puts `/\.claude/` in BOTH `testPathIgnorePatterns` and
+`modulePathIgnorePatterns` whenever jest itself runs outside an agent worktree
+— which is always, since the oracle runs from `~/source/quilltap-server`. So a
+recipe that hands jest a `--roots` under the v5 checkout finds ZERO tests when
+the sweep runs from a `.claude/worktrees/…` checkout, and exits 1 for a reason
+that has nothing to do with the recipe. The driver therefore (a) flags that
+recipe shape statically (`unstaged_jest_roots`) so it can be repaired to the
+staged-mirror convention, and (b) refuses to `--run` an unstaged family from a
+`.claude/` venue unless `--force` is given. A repaired recipe stages its case
+into its own `/tmp` mirror and runs correctly from any venue.
 
 Exempt by design (compile-time pins, no oracle): see EXEMPT_FAMILIES.
 """
@@ -110,6 +128,18 @@ SHELL_START = re.compile(
 )
 # Prose traps that would otherwise match SHELL_START ("TZ=UTC is REQUIRED …").
 PROSE_TRAP = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=\S+\s+(?:is|are|was|were|means)\b")
+# F3 (P4.34): the same trap for KEYWORD-led prose — a doc sentence that happens
+# to open with a shell word ("touch is the preserve closure, a no-op here), …",
+# "cargo run fine from the worktree.)"). Two such lines leaked a stray `)` into
+# the generated script and made `tool_build` / `text_tool_loop_tier3` exit 2
+# with `bash: -c: syntax error near unexpected token ')'` — a driver defect
+# that P4.D42 counted as recipe rot.
+COPULA_PROSE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:=\S+)?\s+"
+    r"(?:is|are|was|were|means|must|should|can|will|would|does|has|have|"
+    r"needs?|only|also|still|never|always)\b"
+)
+_BRACKET_PAIRS = (("(", ")"), ("[", "]"), ("{", "}"))
 
 PLACEHOLDER_WORKTREE = re.compile(
     r"<[^<>]*(?:worktree|checkout|repo-root|this tree|v5)[^<>]*>", re.IGNORECASE
@@ -119,6 +149,22 @@ ELISION = "…"
 
 CASE_REF = re.compile(r"(?:cases/)?([A-Za-z0-9][A-Za-z0-9_.-]*?\.(?:test\.)?tsx?)\b")
 JEST_ELIDED = re.compile(r"npx jest[^\n]*?--\s+([A-Za-z0-9_.\\$-]+)")
+
+# F6 (P4.34): a detached v4 pin worktree lives in /tmp and NEVER survives the
+# round that made it (`/tmp`-pins-die-between-rounds — it has bitten at least
+# seven recipes across three rounds). A recipe naming one is dead on arrival.
+STALE_V4_PIN = re.compile(r"/(?:private/)?tmp/qt-v4-pin[^\s\"';]*")
+
+# F2 (P4.34): a jest root under the v5 checkout — the venue rule above.
+JEST_ROOTS_ARG = re.compile(r"--(?:roots|rootDir)[= ]\"?([^\s\"]+)\"?")
+V5_REF = re.compile(r"\$\{?(?:V5W|V5|W|WT)\}?/|~/source/quilltap-v5/")
+
+# The harness's own skip notice, anchored (F5): `eprintln!("SKIP: …")` and its
+# `SKIP <family>: …` variants always start the line. The old detector grepped a
+# bare `\bSKIP\b` over the whole output, so a recipe echoing an env var NAME
+# that ends in `_SKIP` (`QT_ORACLE_SALON_SKIP`) reported a phantom skip.
+SKIP_LINE = re.compile(r"^\s*SKIP\b")
+SKIP_PROSE = re.compile(r"skipping\b[^\n]*differential|not set — skipping")
 
 
 def rs_doc_header(path: Path) -> list[str]:
@@ -149,6 +195,19 @@ def ts_doc_header(path: Path) -> list[str]:
     return out
 
 
+def is_prose(stripped: str) -> bool:
+    """True when a line that OPENS like a shell command is really a sentence."""
+    if PROSE_TRAP.match(stripped) or COPULA_PROSE.match(stripped):
+        return True
+    # An unbalanced closer can only come from prose whose parenthesis opened on
+    # an earlier (prose, hence dropped) line. A shell command must balance its
+    # own grouping to run at all, so this never fires on a real command.
+    for opener, closer in _BRACKET_PAIRS:
+        if stripped.count(closer) > stripped.count(opener):
+            return True
+    return False
+
+
 def shell_lines(doc: list[str]) -> list[str]:
     """Classify doc lines into an ordered shell script (prose dropped)."""
     lines: list[str] = []
@@ -159,9 +218,7 @@ def shell_lines(doc: list[str]) -> list[str]:
             in_continuation = False
             continue
         indented = raw.startswith("  ")
-        looks_shell = bool(SHELL_START.match(stripped)) and not PROSE_TRAP.match(
-            stripped
-        )
+        looks_shell = bool(SHELL_START.match(stripped)) and not is_prose(stripped)
         if (in_continuation and indented) or looks_shell:
             lines.append(stripped)
             in_continuation = stripped.endswith("\\")
@@ -178,6 +235,9 @@ class Recipe:
         self.run: list[str] = []  # the cargo-test run line(s)
         self.problems: list[str] = []
         self.notes: list[str] = []
+        # Defects that do NOT make a recipe statically unextractable but change
+        # whether/where it can run (P4.34's F2 + tier-2 external-/tmp class).
+        self.warnings: list[str] = []
         self.tmp_writes: set[str] = set()
         self.repo_writes: list[str] = []
 
@@ -260,9 +320,14 @@ def extract(v5w: Path, family: str, path: Path) -> Recipe:
             r.problems.append(f"unresolved_placeholder {token}")
     if ".claude/worktrees" in joined:
         r.problems.append("stale_worktree_path")
+    for m in STALE_V4_PIN.finditer(joined):
+        problem = f"stale_v4_pin_path {m.group(0)}"
+        if problem not in r.problems:
+            r.problems.append(problem)
     # Scan writes over placeholder-normalized text so `<V5W>`-style brackets
     # can't be misread as redirects.
     scan_writes(r, PLACEHOLDER_WORKTREE.sub("$V5W", joined))
+    scan_venue(r, joined)  # after scan_writes — it consumes r.tmp_writes
     # Policy 1's second form: a REGEN stage whose oracle is pointed straight at
     # a repo-committed `.db` that the v4 case then MUTATES IN PLACE (the
     # `embedding-generate-*` / `episodic-recall-*` class, P4.D32). Cases that
@@ -369,6 +434,79 @@ def scan_writes(r: Recipe, joined: str) -> None:
             r.problems.append("repo_write (policy 1)")
 
 
+def scan_venue(r: Recipe, joined: str) -> None:
+    """F2 + the tier-2 external-/tmp class, both venue/ordering hazards.
+
+    `unstaged_jest_roots`: a jest `--roots` under the v5 checkout. Correct from
+    the main checkout, ZERO tests found from a `.claude/worktrees/…` one (see
+    THE VENUE RULE). The repair is the staged-mirror convention.
+
+    `external_tmp_input`: a /tmp path the recipe READS but no line of it
+    WRITES — i.e. it leans on another recipe's staging (or on a pin worktree
+    from a round that is over). Warning, not a problem: the paths a recipe
+    produces are only mechanically knowable up to the driver's write scan.
+    """
+    text = PLACEHOLDER_WORKTREE.sub("$V5W", joined)
+    for line in re.sub(r"\\\n", " ", text).splitlines():
+        if "jest" not in line:
+            continue
+        for m in JEST_ROOTS_ARG.finditer(line):
+            root = m.group(1)
+            if V5_REF.search(root) or root.rstrip("/").endswith("harness/oracle/cases"):
+                warning = f"unstaged_jest_roots {root}"
+                if warning not in r.warnings:
+                    r.warnings.append(warning)
+
+    produced = set(r.tmp_writes)
+    # An ASSIGNMENT is not a creation. `TMPO=/tmp/qt-oracle-run` followed by
+    # `--roots "$TMPO/cases"` and no mkdir is precisely the "leans on another
+    # recipe's staging" defect (compression_cache_tier3, found by P4.34's phase
+    # 1: `Directory /tmp/qt-oracle-run/cases in the roots[1] option was not
+    # found`). So assignments feed variable EXPANSION only.
+    assigns: dict[str, str] = {}
+    for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)=(/(?:private/)?tmp/\S+)", text):
+        assigns.setdefault(m.group(1), m.group(2).strip('"').rstrip(";").rstrip("/"))
+    for m in re.finditer(r"\bmkdir\s+(?:-[a-zA-Z]+\s+)*(.+)$", text, re.M):
+        for tok in m.group(1).split():
+            produced.add(expand_tmp(tok, assigns))
+    produced = {p for p in produced if p.startswith(("/tmp", "/private/tmp"))}
+
+    # Only genuine READ inputs count — a jest root, a `cp` source, a script path
+    # handed to tsx/node. Every other /tmp literal is an output the recipe is
+    # declaring, and scanning those made the class 73-families noisy.
+    consumed: set[str] = set()
+    for line in re.sub(r"\\\n", " ", text).splitlines():
+        for m in JEST_ROOTS_ARG.finditer(line):
+            consumed.add(expand_tmp(m.group(1), assigns))
+        m = re.match(r"^(?:cp|mv)\s+(?:-[a-zA-Z]+\s+)*(.+)$", line.strip())
+        if m:
+            args = m.group(1).split()
+            consumed.update(expand_tmp(a, assigns) for a in args[:-1])
+        for m2 in re.finditer(r"\b(?:tsx|node|bash|sh|python3?)\s+(\S+)", line):
+            consumed.add(expand_tmp(m2.group(1), assigns))
+    consumed = {c for c in consumed if c.startswith(("/tmp", "/private/tmp"))}
+    made = {p.replace("/private/tmp/", "/tmp/", 1) for p in produced}
+    for tok in sorted(consumed):
+        norm = tok.replace("/private/tmp/", "/tmp/", 1)
+        # Either direction counts: the recipe writes AT the path, or it writes
+        # BELOW it (a `mkdir -p "$TMPO/cases"` creates `$TMPO` on the way).
+        if any(
+            norm == p or norm.startswith(p + "/") or p.startswith(norm + "/")
+            for p in made
+        ):
+            continue
+        warning = f"external_tmp_input {tok}"
+        if warning not in r.warnings:
+            r.warnings.append(warning)
+
+
+def expand_tmp(tok: str, assigns: dict[str, str]) -> str:
+    tok = tok.strip('"').strip("'")
+    for var, val in assigns.items():
+        tok = tok.replace(f"${{{var}}}", val).replace(f"${var}", val)
+    return tok.rstrip("/")
+
+
 def is_repo_path(dest: str) -> bool:
     if dest.startswith(("/tmp", "/private/tmp", "/dev/")):
         return False
@@ -398,15 +536,26 @@ def normalize(script_lines: list[str], v5w: Path, family: str) -> str:
     )
     if header:
         text = header + "\n" + text
-    # Policy 2: per-family scratch dirs for restored jest mirrors.
+    # Policy 2: per-family scratch dirs for restored jest mirrors. The path ends
+    # at the first `;`/whitespace, not at end-of-line — headers idiomatically
+    # write `TMPO=/tmp/qt-oracle-x; mkdir -p $TMPO/cases`, and anchoring on `$`
+    # silently skipped every one of them (so those mirrors could still collide).
     for var in ("TMPO", "STAGE"):
         text = re.sub(
-            rf"^{var}=(/tmp/\S+?)/?$",
+            rf"^{var}=([^\s;]+?)/?(?=$|;|\s)",
             rf"{var}=\1-{family}",
             text,
             flags=re.M,
         )
     return "set -euo pipefail\n" + text
+
+
+def detect_skip(output: str) -> str | None:
+    """The harness's skip notice, anchored (F5). Returns the offending line."""
+    for line in output.splitlines():
+        if SKIP_LINE.match(line) or SKIP_PROSE.search(line):
+            return line.strip()
+    return None
 
 
 def shield_fixture_envs(script: str, v5w: Path, family: str) -> str:
@@ -473,6 +622,7 @@ def classify(v5w: Path) -> list[dict]:
                 "file": str(path.relative_to(v5w)),
                 "status": status,
                 "problems": r.problems,
+                "warnings": r.warnings,
                 "notes": r.notes,
                 "tmp_writes": sorted(r.tmp_writes),
                 "repo_writes": r.repo_writes,
@@ -484,11 +634,20 @@ def classify(v5w: Path) -> list[dict]:
 def cmd_list(v5w: Path, json_out: str | None) -> int:
     rows = classify(v5w)
     counts: dict[str, int] = {}
+    warned: dict[str, int] = {}
     for row in rows:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
         if row["status"] in ("non_extractable", "no_recipe"):
             print(f"{row['family']}: {', '.join(row.get('problems', []))}")
+        for w in row.get("warnings", []):
+            kind = w.split()[0]
+            warned[kind] = warned.get(kind, 0) + 1
+    for kind in sorted(warned):
+        fams = [r["family"] for r in rows if any(w.startswith(kind) for w in r.get("warnings", []))]
+        print(f"\n{kind} ({len(fams)}): {' '.join(fams)}")
     print(f"\ntotals: {counts}")
+    if warned:
+        print(f"warnings: {warned}")
     if json_out:
         Path(json_out).write_text(json.dumps(rows, indent=2))
         print(f"wrote {json_out}")
@@ -519,20 +678,47 @@ def cmd_show(v5w: Path, family: str) -> int:
     return 0
 
 
-def cmd_run(v5w: Path, family: str) -> int:
+def venue_is_worktree(v5w: Path) -> bool:
+    return "/.claude/" in str(v5w.resolve()) + "/"
+
+
+def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict:
+    """Execute one family's recipe end-to-end. Returns a results record:
+    status ∈ ok / refused_repo_write / refused_non_extractable / refused_venue /
+    regen_failed / run_failed / skipped."""
+    rec: dict = {"family": family, "status": "ok", "cause": None, "exit": 0}
     path = find_family(v5w, family)
     r = extract(v5w, family, path)
+    rec["warnings"] = list(r.warnings)
+    unstaged = [w for w in r.warnings if w.startswith("unstaged_jest_roots")]
     if r.repo_writes:
-        print(
-            f"REFUSED: {family}'s recipe writes into the repo (policy 1):",
-            file=sys.stderr,
+        rec.update(
+            status="refused_repo_write",
+            cause="recipe writes into the repo (policy 1): " + "; ".join(r.repo_writes),
+            exit=2,
         )
-        for line in r.repo_writes:
-            print(f"  {line}", file=sys.stderr)
-        return 2
+        return rec
     if r.problems:
-        print(f"REFUSED: {family} is non-extractable: {r.problems}", file=sys.stderr)
-        return 2
+        rec.update(
+            status="refused_non_extractable",
+            cause="; ".join(r.problems),
+            exit=2,
+        )
+        return rec
+    if unstaged and venue_is_worktree(v5w) and not force:
+        rec.update(
+            status="refused_venue",
+            cause=(
+                "the recipe hands jest a root under the v5 checkout and this "
+                f"checkout is under /.claude/ ({v5w}) — v4 jest ignores those "
+                "paths, so the run would find ZERO tests and fail for a reason "
+                "that is not the recipe's. Re-run from the main checkout "
+                f"(--v5w ~/source/quilltap-v5), repair to a staged mirror, or "
+                f"pass --force. [{'; '.join(unstaged)}]"
+            ),
+            exit=4,
+        )
+        return rec
     # Clean invocation: remove this family's oracle outputs (redirect targets)
     # so a stale NDJSON can never pass silently (`oracle-regen-silent-stale-pass`).
     joined = "\n".join(r.regen + r.run)
@@ -562,23 +748,104 @@ def cmd_run(v5w: Path, family: str) -> int:
             text=True,
             capture_output=True,
         )
-        sys.stdout.write(proc.stdout)
-        sys.stderr.write(proc.stderr)
+        if not quiet:
+            sys.stdout.write(proc.stdout)
+            sys.stderr.write(proc.stderr)
         if proc.returncode != 0:
-            print(f"FAILED: {family} {label} (exit {proc.returncode})", file=sys.stderr)
-            return proc.returncode
-        if label == "run" and re.search(
-            r"\bSKIP\b|skipping .*differential|not set — skipping",
-            proc.stdout + proc.stderr,
-        ):
-            print(
-                f"FAILED: {family} run SKIPPED (its oracle env var never reached "
-                "the cargo run — the recipe is not self-contained)",
-                file=sys.stderr,
+            rec.update(
+                status=f"{label}_failed",
+                cause=tail(proc.stdout + proc.stderr),
+                exit=proc.returncode,
             )
-            return 3
-    print(f"OK: {family} recipe ran end-to-end")
-    return 0
+            return rec
+        if label == "run":
+            skipped = detect_skip(proc.stdout + proc.stderr)
+            if skipped:
+                rec.update(
+                    status="skipped",
+                    cause=(
+                        "its oracle env var never reached the cargo run — the "
+                        f"recipe is not self-contained: {skipped}"
+                    ),
+                    exit=3,
+                )
+                return rec
+    return rec
+
+
+def tail(text: str, lines: int = 12) -> str:
+    kept = [l for l in text.splitlines() if l.strip()][-lines:]
+    return "\n".join(kept)
+
+
+def cmd_run(v5w: Path, family: str, force: bool) -> int:
+    rec = run_family(v5w, family, force)
+    if rec["status"] == "ok":
+        print(f"OK: {family} recipe ran end-to-end")
+        return 0
+    print(f"FAILED [{rec['status']}]: {family}: {rec['cause']}", file=sys.stderr)
+    return rec["exit"]
+
+
+def cmd_run_all(
+    v5w: Path,
+    families: list[str] | None,
+    exclude: set[str],
+    results_path: str | None,
+    force: bool,
+    label: str | None,
+) -> int:
+    """The durable batch (F7). Writes the results artifact after EVERY family,
+    so a batch that dies mid-run still leaves its classification behind — the
+    exact failure that cost P4.D32 and P4.D42 their per-family numbers."""
+    if families is None:
+        families = [
+            fam
+            for fam, _ in family_files(v5w)
+            if fam not in EXEMPT_FAMILIES
+            and classify_one(v5w, fam) not in ("committed_corpus", "no_oracle")
+        ]
+    families = [f for f in families if f not in exclude]
+    out = Path(results_path) if results_path else None
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "label": label,
+        "v5w": str(v5w),
+        "venue_is_worktree": venue_is_worktree(v5w),
+        "requested": families,
+        "excluded": sorted(exclude),
+        "families": [],
+    }
+
+    def flush() -> None:
+        if out:
+            out.write_text(json.dumps(report, indent=2) + "\n")
+
+    flush()
+    for i, family in enumerate(families, 1):
+        print(f"\n######## [{i}/{len(families)}] {family} ########", flush=True)
+        rec = run_family(v5w, family, force)
+        report["families"].append(rec)
+        counts: dict[str, int] = {}
+        for row in report["families"]:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        report["totals"] = counts
+        flush()
+        print(f"---- {family}: {rec['status']}", flush=True)
+    print(f"\ntotals: {report.get('totals', {})}")
+    if out:
+        print(f"wrote {out}")
+    return 0 if all(r["status"] == "ok" for r in report["families"]) else 1
+
+
+def classify_one(v5w: Path, family: str) -> str:
+    r = extract(v5w, family, find_family(v5w, family))
+    if "committed_corpus" in r.notes:
+        return "committed_corpus"
+    if "no_oracle" in r.notes:
+        return "no_oracle"
+    return "runnable"
 
 
 def find_family(v5w: Path, family: str) -> Path:
@@ -586,6 +853,126 @@ def find_family(v5w: Path, family: str) -> Path:
         if fam == family:
             return path
     sys.exit(f"unknown family: {family}")
+
+
+SELF_TEST_PROSE = [
+    # F3's two real leak sites (tool_build_equivalence.rs, and
+    # text_tool_loop_tier3_equivalence.rs), verbatim.
+    "cargo run fine from the worktree.)",
+    "touch is the preserve closure, a no-op here), so there is no fixture — just the",
+    # The pre-existing PROSE_TRAP class, kept covered.
+    "TZ=UTC is REQUIRED (the P4.d26 rule).",
+    "N=... must point at Node 24.",
+]
+SELF_TEST_SHELL = [
+    "N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5",
+    "TMPO=/tmp/qt-oracle-w41g; mkdir -p $TMPO/cases $TMPO/fixtures",
+    "cp $V5/harness/oracle/cases/tool-build.test.ts $TMPO/cases/",
+    "cd ~/source/quilltap-server",
+    "QT_ORACLE_OUT=/tmp/oracle-tool-build.ndjson \\",
+    "$N/npx jest --silent --watchman=false --roots \"$PWD\" --roots \"$TMPO/cases\" -- x",
+    "cargo test -p quilltap-harness --test tool_build_equivalence",
+    "rm -f /tmp/oracle-x.ndjson",
+    "touch /tmp/qt-marker",
+    "for f in a b c; do echo $f; done",
+]
+
+
+def cmd_self_test() -> int:
+    failures: list[str] = []
+
+    def check(cond: bool, msg: str) -> None:
+        if not cond:
+            failures.append(msg)
+
+    for line in SELF_TEST_PROSE:
+        check(is_prose(line) or not SHELL_START.match(line), f"prose leaked: {line!r}")
+    for line in SELF_TEST_SHELL:
+        check(bool(SHELL_START.match(line)), f"not recognized as shell: {line!r}")
+        check(not is_prose(line), f"shell misread as prose: {line!r}")
+
+    # F3 end-to-end: the two leak lines must not survive shell_lines().
+    doc = [
+        " Generate the oracle:",
+        " cargo run fine from the worktree.)",
+        "   N=~/.nvm/versions/node/v24.13.1/bin",
+        "   cd ~/source/quilltap-server",
+    ]
+    check(
+        shell_lines(doc)
+        == ["N=~/.nvm/versions/node/v24.13.1/bin", "cd ~/source/quilltap-server"],
+        f"shell_lines leaked prose: {shell_lines(doc)}",
+    )
+
+    # F5: the SKIP detector must fire on the harness's notice and NOT on an env
+    # var name that merely ends in _SKIP (the `salon_skip` false positive).
+    check(detect_skip("SKIP: set QT_ORACLE_X (see test header).") is not None, "F5 miss")
+    check(detect_skip("   SKIP canonicalize spot-check: set X.") is not None, "F5 miss2")
+    check(
+        detect_skip("QT_ORACLE_SALON_SKIP=/tmp/oracle-salon-skip.ndjson \\") is None,
+        "F5 false positive on QT_ORACLE_SALON_SKIP",
+    )
+    check(
+        detect_skip("test salon_skip_matches_oracle ... ok\ntest result: ok. 1 passed")
+        is None,
+        "F5 false positive on a green cargo run",
+    )
+
+    # F6: a /tmp v4 pin path is a problem class; a normal /tmp path is not.
+    check(
+        bool(STALE_V4_PIN.search("cd /private/tmp/qt-v4-pin-b8b12695")),
+        "F6 miss (private/tmp)",
+    )
+    check(bool(STALE_V4_PIN.search("V4=/tmp/qt-v4-pin-616930db")), "F6 miss (tmp)")
+    check(not STALE_V4_PIN.search("/tmp/qt-oracle-w41g"), "F6 false positive")
+
+    # Policy 2: the per-family scratch suffix must survive a `;`-tailed
+    # assignment (the form every staged-mirror header actually uses).
+    norm = normalize(["TMPO=/tmp/qt-oracle-w41g; mkdir -p $TMPO/cases"], Path("/v5"), "fam")
+    check("TMPO=/tmp/qt-oracle-w41g-fam;" in norm, f"policy-2 suffix missed: {norm}")
+
+    # F2: a jest root under the v5 checkout is flagged; the v4 checkout is not.
+    r = Recipe("x", Path("x"))
+    scan_venue(r, 'npx jest --roots "$PWD" --roots "$V5W/harness/oracle/cases" -- x')
+    check(
+        any(w.startswith("unstaged_jest_roots") for w in r.warnings),
+        f"F2 miss: {r.warnings}",
+    )
+    r2 = Recipe("x", Path("x"))
+    r2.tmp_writes.add("/tmp/qt-oracle-fam")
+    scan_venue(r2, 'npx jest --roots "$PWD" --roots "/tmp/qt-oracle-fam/cases" -- x')
+    check(
+        not any(w.startswith("unstaged_jest_roots") for w in r2.warnings),
+        f"F2 false positive: {r2.warnings}",
+    )
+    check(
+        not any(w.startswith("external_tmp_input") for w in r2.warnings),
+        f"tier-2 tmp false positive: {r2.warnings}",
+    )
+    r3 = Recipe("x", Path("x"))
+    scan_venue(r3, "cp /tmp/qt-someone-elses-stage/x.db /tmp/mine.db")
+    check(
+        any("external_tmp_input /tmp/qt-someone-elses-stage" in w for w in r3.warnings),
+        f"tier-2 tmp miss: {r3.warnings}",
+    )
+    # An assignment is not a creation: the compression_cache_tier3 shape.
+    r4 = Recipe("x", Path("x"))
+    scan_venue(r4, 'TMPO=/tmp/qt-oracle-run\nnpx jest --roots "$TMPO/cases" -- x')
+    check(
+        any("external_tmp_input /tmp/qt-oracle-run" in w for w in r4.warnings),
+        f"assignment wrongly counted as a producer: {r4.warnings}",
+    )
+    r5 = Recipe("x", Path("x"))
+    scan_venue(r5, 'TMPO=/tmp/qt-ok\nmkdir -p "$TMPO/cases"\nnpx jest --roots "$TMPO/cases" -- x')
+    check(
+        not any(w.startswith("external_tmp_input") for w in r5.warnings),
+        f"mkdir producer missed: {r5.warnings}",
+    )
+
+    for f in failures:
+        print(f"SELF-TEST FAIL: {f}", file=sys.stderr)
+    print(f"self-test: {len(failures)} failure(s)")
+    return 1 if failures else 0
 
 
 def main() -> int:
@@ -597,8 +984,21 @@ def main() -> int:
     ap.add_argument("--json")
     ap.add_argument("--show")
     ap.add_argument("--run")
+    ap.add_argument("--run-all", action="store_true")
+    ap.add_argument("--families", help="comma-separated family list for --run-all")
+    ap.add_argument("--exclude", default="", help="comma-separated families to skip")
+    ap.add_argument("--results", help="path for the --run-all results artifact")
+    ap.add_argument("--label", help="a note recorded in the results artifact")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="run even from a /.claude/ venue (see THE VENUE RULE)",
+    )
     ap.add_argument("--collisions", action="store_true")
+    ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
+    if args.self_test:
+        return cmd_self_test()
     if args.list:
         return cmd_list(args.v5w, args.json)
     if args.collisions:
@@ -606,8 +1006,17 @@ def main() -> int:
     if args.show:
         return cmd_show(args.v5w, args.show)
     if args.run:
-        return cmd_run(args.v5w, args.run)
-    ap.error("pick one of --list / --show / --run / --collisions")
+        return cmd_run(args.v5w, args.run, args.force)
+    if args.run_all:
+        return cmd_run_all(
+            args.v5w,
+            [f for f in (args.families or "").split(",") if f] or None,
+            {f for f in args.exclude.split(",") if f},
+            args.results,
+            args.force,
+            args.label,
+        )
+    ap.error("pick one of --list / --show / --run / --run-all / --collisions / --self-test")
 
 
 if __name__ == "__main__":

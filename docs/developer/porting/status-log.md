@@ -54552,3 +54552,70 @@ SKIP lines**, over oracles regenerated fresh from `~/source/quilltap-server` at
 `system_export_equivalence`, `qtap_import_equivalence`). No `apps/web` file was
 touched, so **no SPA gate is owed**. Versions: core 0.0.465, harness 0.0.397,
 host 0.0.58 (the last for the cadence-spec deflake).
+### Lane record — P4.34 unit 1: the sweep-driver defects (F3 / F5 / F6 / F2 / policy 2) + the batch mode
+
+`harness/tools/recipe_sweep.py` gains its own self-test (`--self-test`,
+it had none) and four fixes; every one of them was reproduced before it
+was repaired, and the whole classifier change was validated by diffing
+`--show` output for **all 386 families** old-vs-new (only the intended
+lines moved).
+
+- **F3 — the prose-leak, exit-2 generator.** `SHELL_START` matched a doc
+  sentence that happens to open with a shell word, so
+  `tool_build_equivalence.rs:17` (`cargo run fine from the worktree.)`)
+  and `text_tool_loop_tier3_equivalence.rs:7` (`touch is the preserve
+  closure, …here), so…`) each leaked a stray `)` into the generated
+  script: `bash: -c: line 2: syntax error near unexpected token ')'`.
+  Fixed in the CLASSIFIER, not the headers: a new `is_prose()` adds a
+  copula/modal trap (`^<word> (is|are|must|…)`) and an unbalanced-closer
+  test — a shell command must balance its own grouping to run at all, so
+  a line with more `)` than `(` can only be prose whose parenthesis
+  opened on an earlier, dropped line. Both families now run green.
+- **F5 — the SKIP false positive.** The detector grepped a bare
+  `\bSKIP\b` over the whole run output; a recipe echoing an env var whose
+  name ends in `_SKIP` reported a phantom skip (`salon_skip`, P4.D42's
+  one SUSPECT). Now anchored to the harness's actual notice
+  (`^\s*SKIP\b`) and reported with the offending line. `salon_skip` runs
+  green.
+- **F6 — the `/tmp` v4-pin class.** A detached pin worktree never
+  survives the round that made it, and no check flagged one. New
+  `stale_v4_pin_path` problem. It found **two** live offenders on its
+  first run (neither on the order's rot list):
+  `fictional_clock_anchor_equivalence` (`/tmp/qt-v4-pin-231be14c`) and
+  `openrouter_sdk_pricing_equivalence` (`/private/tmp/qt-v4-pin-<order>-<sha>`
+  — an unresolved placeholder that `ANY_PLACEHOLDER` missed because it
+  contains neither `/` nor a space).
+- **F2 — `unstaged_jest_roots` + the venue rule.** v4's `jest.config.ts`
+  ignores `/\.claude/` in both `testPathIgnorePatterns` and
+  `modulePathIgnorePatterns` whenever jest runs outside a worktree —
+  always, since the oracle runs from `~/source/quilltap-server`. So a
+  recipe handing jest a `--roots` under the v5 checkout finds ZERO tests
+  from a lane worktree. **37 families carry that shape.** They are now
+  flagged statically, and `--run` refuses them from a `/.claude/` venue
+  (with `--force`) naming the confound — a precise guard rather than the
+  order's tier-2 blanket venue refusal, so a repaired staged-mirror
+  recipe still runs from anywhere.
+- **Tier-2 external-/tmp class.** `external_tmp_input` flags a /tmp path
+  the recipe READS (a jest root, a `cp` source, a script handed to
+  tsx/node) that no line of it WRITES. Two calibration passes were
+  needed: counting a bare `VAR=/tmp/…` assignment as a producer missed
+  the real defect, and counting every /tmp literal as an input fired on
+  73 families. Scoped to genuine read-inputs with assignments used for
+  expansion only, it fires on **exactly one** family —
+  `compression_cache_tier3`, whose live failure phase 1 had just found
+  (`Directory /tmp/qt-oracle-run/cases in the roots[1] option was not
+  found`). A static check that reproduces a measured defect and nothing
+  else.
+- **Policy 2, repaired.** The per-family scratch suffix anchored on
+  `^TMPO=(…)$`, so it silently skipped every header written as
+  `TMPO=/tmp/qt-x; mkdir -p $TMPO/cases` — which is the idiom nearly all
+  of them use. Eight families were affected, including
+  `danger_gatekeeper_tier3` and `danger_routing` sharing
+  `/tmp/qt-danger-oracle` outright.
+- **F7 — the durable batch.** `--run-all` (with `--families` /
+  `--exclude` / `--results` / `--label`) writes its results artifact
+  **after every family**, so a batch that dies mid-run still leaves its
+  classification behind. That is the exact failure that cost P4.D32 and
+  P4.D42 their per-family numbers (`/tmp/d32-rest-final.json`,
+  `/tmp/p4d42-sweep-logs/`), and it is why this order had to recover
+  P4.D42's classification from a session transcript.

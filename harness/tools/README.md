@@ -13,7 +13,10 @@ the next broad sweep runs it instead of re-deriving it.
 python3 harness/tools/recipe_sweep.py --list [--json report.json]
 python3 harness/tools/recipe_sweep.py --show  <family>
 python3 harness/tools/recipe_sweep.py --run   <family>
+python3 harness/tools/recipe_sweep.py --run-all [--families a,b] [--exclude c,d] \
+    --results harness/tools/sweep-results/<date>-<v4-baseline>-<label>.json
 python3 harness/tools/recipe_sweep.py --collisions
+python3 harness/tools/recipe_sweep.py --self-test
 ```
 
 `<family>` is a test-file stem, e.g. `characters_read_equivalence`. The scan
@@ -29,11 +32,46 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   envelope arms, the CLI Tier R driver), `exempt` (compile-time wire/seam
   pins, no oracle by design), and `non_extractable` (a broken header — fix
   it; the P4.27 lane drove this bucket to zero).
+  `--list` also reports two WARNING classes that do not change a family's
+  status but do change whether/where its recipe runs:
+  `unstaged_jest_roots` (see "The venue rule") and `external_tmp_input`
+  (a /tmp path the recipe reads but never writes — it leans on another
+  recipe's staging).
 - `--run` executes ONE family end-to-end in its own clean invocation: it
   deletes the family's oracle NDJSON outputs first (a stale oracle can never
   pass silently), runs the regen stage(s), then the `cargo test` run stage
   with `CARGO_INCREMENTAL=0`. This is the "recipe executed verbatim" proof
   the work orders ask for.
+- `--run-all` does the same over many families and **writes its results
+  artifact after every one**, so a batch that dies mid-run still leaves its
+  classification behind. P4.D32's and P4.D42's per-family results both died
+  in /tmp (`/tmp/d32-rest-final.json`, `/tmp/p4d42-sweep-logs/`), and P4.34
+  had to recover D42's from a session transcript. Committed results live in
+  `harness/tools/sweep-results/`; each row is
+  `family → status (ok / regen_failed / run_failed / skipped /
+  refused_*) → cause`.
+- `--self-test` runs the driver's own classifier and detector assertions
+  (the two real F3 prose-leak lines, the F5 `_SKIP` false positive, the F6
+  pin paths, the venue and external-/tmp classes, the policy-2 suffix). Run
+  it after ANY change to the extraction machinery.
+
+## The venue rule (P4.34's F1)
+
+v4's `jest.config.ts` puts `/\.claude/` in BOTH `testPathIgnorePatterns` and
+`modulePathIgnorePatterns` whenever jest itself runs outside an agent
+worktree — which is always, since the oracle runs from
+`~/source/quilltap-server`. So a recipe that hands jest a `--roots` under
+the **v5** checkout finds ZERO tests when the sweep runs from a
+`.claude/worktrees/…` lane checkout, and fails for a reason that has
+nothing to do with the recipe. P4.D42's sweep ran from a worktree and
+counted ten such families as "regen rot"; eight of them were green from the
+main checkout.
+
+`--list` flags the shape as `unstaged_jest_roots`, and `--run` refuses such
+a family from a `/.claude/` venue (override with `--force`). The repair is
+the staged-mirror convention below, after which the recipe runs from any
+venue. Until a family is repaired, run its recipe with
+`--v5w ~/source/quilltap-v5` from the main checkout.
 
 ## The two P4.D32 sweep hazards, enforced as policy
 
@@ -69,6 +107,29 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
 - TZ pins (`TZ=UTC`, `America/Chicago` legs) are load-bearing since P4.d26 —
   the driver never adds or strips environment words; preserve them verbatim
   when editing headers.
+- **Stage the case into a per-family /tmp mirror; never point jest at
+  `$V5W/harness/oracle/cases`** (the venue rule above):
+
+  ```text
+  TMPO=/tmp/qt-<family>-oracle
+  rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp "$V5W/harness/oracle/cases/<case>.test.ts"  "$TMPO/cases/"
+  cp "$V5W/harness/oracle/fixtures/<spec>.json"  "$TMPO/fixtures/"
+  cd ~/source/quilltap-server
+  … $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- <pattern>
+  ```
+
+  The `mkdir` is load-bearing in its own right: a recipe that assigns
+  `TMPO=` and never creates it leans on whatever an earlier recipe left
+  behind (`external_tmp_input`).
+- **Never name a `/tmp` v4 pin worktree in a header.** A detached pin does
+  not survive the round that made it, so the recipe is dead on arrival
+  (`stale_v4_pin_path`). Regenerate from `~/source/quilltap-server`; if the
+  family needs an older v4 vintage, say so in prose and let the reader make
+  the pin.
+- **The `cargo test` run line carries its own `QT_ORACLE_*` env prefix.**
+  A run line without it inherits nothing and the family SKIPs — which
+  `--run` reports as `skipped`, not as a pass.
 - Elided jest stages (`… npx jest -- <case>`) in `.rs` headers are tolerated
   ONLY when the named oracle case's own header carries the complete recipe —
   the driver restores from there. If neither side is complete, the family is
