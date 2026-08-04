@@ -53420,3 +53420,167 @@ keeps its own families (`embedding_generate_jobs`, `embedding_remainder`).
 None changed and none added. The six doc-edit families' fixture pairs are
 MINTED into `/tmp` by their builders (`build-doc-*-fixture.ts`), not
 committed, so no other family's oracle is invalidated by this lane.
+
+## Round record — the `49769ec4` drift catch-up + store-delete round (P4.D42 ∥ P4.D43 ∥ P4.31 ∥ P4.32), UNIFIED 2026-08-04
+
+**All four orders CLOSED; the oracle baseline MOVES to `49769ec4`
+(4.8.0-dev.150).** Cherry-picked in order D42 → P4.31 → D43 → P4.32 onto
+`unify/49769ec4-round` (17 lane commits; conflicts were version files +
+the two union-merge docs only — zero source conflicts, ownership held).
+Versions recounted per the playbook: core 452 + 7 lane bumps + 2 unify
+bumps = **0.0.461**; harness 388 + 6 + 1 = **0.0.395**; host **0.0.57**;
+web **0.0.57**; SPA **0.5.398**; cli/tauri unchanged.
+
+### The §3 review (four parallel reviewers + the unifier's own reads)
+
+**Zero blocking findings; four real minors fixed on the unify branch
+(`70bf9f05`), each with a pin; the one that would have shipped first:**
+
+1. **P4.31 — the reaper's fail-soft gate would have silently no-opped the
+   #58 repair FOREVER on a text-only instance.** The all-or-nothing
+   seven-table existence gate returned `default()` when ANY table was
+   missing — and `doc_mount_blobs` is lazily created (only when a blob is
+   first stored) while the boot hook ensures only points + folders. An
+   instance with text-only stores and store-delete damage — a completely
+   ordinary shape — would boot, skip silently, and never heal. Split into
+   a required four-table gate (the tables the reaper sweeps) + a warned
+   content-leg gate (links/folders/chunks still reaped when the content
+   tables are absent; the stranded `doc_mount_files` rows are exactly what
+   `sweep_orphaned_link_content` collects once the tables exist). Two new
+   gate tests, mutation-proven red under the old gate. Riders: the three
+   deletes moved `NOT IN` → `NOT EXISTS` (the census's NULL-safe
+   predicate, so the delete and its verification can never drift), the
+   cascade doc block gained the FOURTH divergence sentence (v4's
+   `safeQuery` missing-table tolerance answers 200 where v5 500s+rolls
+   back — deliberate, unreachable on ensured schemas), and the
+   maintenance sweep's parentless `Err` arm now traces before it counts.
+2. **D43 — the new presets component host rendered `display: inline`**,
+   dropping the popup's `space-y-5` gap (the `qt-collapsible-card` /
+   P4.9E1B bug class, which there swallowed clicks). `:host { display:
+   block }` + a computed-style spec, mutation-proven (the mutation run
+   also re-taught two harness lessons — see the traps below).
+3. **D42 — the fired recap ceiling dropped v4's `warnings` entry** —
+   v4's catch pushes `Failed to generate memory recap: <message>` into
+   `BuiltContext.warnings`, a DIFFED comparand in the tier-3 family
+   (unreachable from the corpus, which is why the lane's unit tier missed
+   it) — and logged at warn where v4 logs error. The wrapper now takes
+   `&mut warnings`, pushes v4's exact string, and logs ERROR; all five
+   phase-ceiling pins updated. Riders: `const` asserts on the
+   deadline-vs-headroom relation, the google streaming-corner sentence in
+   the transport header, and the `tokio/time` Cargo.toml comment restated
+   as the LOAD-BEARING invariant it now is.
+4. **P4.32 — doc-staleness of exactly the class the lane exists to
+   prevent**: four stale table-count comments, the doc-blob "unmoved"
+   rationale corrected (the blob handlers never invoke the pass at all —
+   not a file-type short-circuit), the one UNSEALED fire-and-forget
+   entrance (`file-management-handlers.ts:259`, the fs branch of
+   `doc_move_file` — unreachable from today's corpora) named in both case
+   headers so a future fs-move op cannot silently reintroduce the race,
+   and the unifier's own shared.rs wire sentence made precise (the
+   embedding scheduler is still seamed too).
+
+**Recorded, not fixed (note-grade, with owners):** the P4.31 wiring pin
+is partly discharged by its own setup (only the folder assertion is
+uniquely the hook's — it does still fire red); `store_delete_equivalence`
+:646's vacuous `!group_files.is_empty()`; `fresh_db`'s `/tmp/qt-sd-*`
+scratch dirs never removed; the streaming error-body read is unbounded
+(v4-faithful — its `clearTimeout` fires before `response.text()` too);
+the D42 "all three arms" budget claim is directly proven for two of three
+(the third is structurally shared); the new pub timeout constants have no
+external consumers (documented v4 mirrors, not API surface); D43's
+presets query inherits the app-wide 5 s staleTime (established v5
+doctrine) and `dispatchData` has no AbortSignal seam (app-wide).
+
+### The unification wires
+
+- The §D43 contract diffed name-for-name: `build_listing` always emits
+  `vaultMountPointId` (string|null) after `asCharacterId`;
+  `core-contract.ts` types it `?: string | null` (older-server tolerance,
+  documented). Clean.
+- P4.32's escalated stale header in `tools/doc_edit/shared.rs` corrected
+  by the unifier (`854e3c05`, comment-only — the lane was forbidden the
+  file; the unifier is not).
+
+### The gate (on the unify branch, post-fixes)
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets; `cargo build --release` clean.
+- Oracles: **all 14 affected families regenerated FRESH from a detached
+  worktree PINNED at `49769ec4`** (`/private/tmp/qt-v4-pin-49769ec4` —
+  v4 HEAD had drifted two commits past the baseline mid-round, so no
+  regen ran from the checkout), each in its own clean invocation, every
+  NDJSON freshness-checked (mtime + drift markers: `vaultMountPointId`
+  on six pascal rows; `"chunkCount":1` in doc-text/doc-fm).
+- `cargo test --workspace --no-fail-fast` with the round's 31-variable
+  env block: see the gate numbers in the CHANGELOG entry; the 14 families
+  re-run BY NAME with `--nocapture`, zero SKIP.
+- SPA: `ng test` + `ng build` clean; full Playwright green zero skips
+  with the new preset beat LIVE (numbers in the CHANGELOG entry).
+
+### Harness traps worth carrying (from the lanes + the unify run)
+
+- **A killed mutation harness never restores** (D42's lane, re-hit at
+  unify): restore from a pristine COPY taken before the first mutation,
+  never a `finally`/git — `git checkout <file>` restores to HEAD and eats
+  UNCOMMITTED fixes (it ate the display:block fix once here).
+- **A build failure can wear a green hat** (D43's lane): a summary regex
+  that finds no `Tests N failed` line reads a compile error as "0
+  failed" — require the build-complete marker before believing a count.
+- **A mutation that stays green may be a harness that never ran the
+  gesture** (D43's `openForm` clicked the modal ✕ via a positional
+  fallback).
+- **The import-sweep regex class** (D42): multi-line imports need
+  `[^;]*?`, not `[^;\n]*?` — 15 cases were invisible until the order's
+  own starting list disagreed with the tooling.
+
+### ⚠ v4 DRIFTED during the round — TWO commits past the baseline
+
+v4 HEAD is now `7fe9fe40`, both commits BEHAVIOR on ported surfaces; **a
+drift catch-up is OWED**:
+
+- **`4bbeab47` "feat(salon): pick a roleplay template when creating a
+  chat"** (4.8.0-dev.151) — `app/api/v1/chats/route.ts` (+29, the ported
+  chat-create route) + the New-Chat SPA family (`NewChatForm` /
+  `useNewChat` / `types` / `NewChatModal` / `NewChatPageClient`) + two
+  help docs (→ the `p4.9i2` bank).
+- **`7fe9fe40` "fix(prompt): stop teaching models asterisk narration"**
+  (4.8.0-dev.152) — the aurora/commonplace/suparna notification writers,
+  `aurora-notifications/core-whisper.ts`, and
+  `lib/tools/native-tool-prompt.ts` (all ported surfaces), + a 189-line
+  feature doc (`roleplay-block-narration.md` — mirror it with the
+  catch-up). Note D42's sweep independently found v5's
+  `native-tool-prompt.ts` rule-1 wording ALREADY stale from `8bf3cb5f` —
+  the catch-up lane should close both at once.
+
+Until it runs, regenerate chat-create-family and
+writer/prompt-transitive oracles from a worktree PINNED at `49769ec4`;
+everything else regenerates straight from the checkout.
+
+### Standing after the round (the next `/setupphase` reads this)
+
+- **The `4bbeab47` + `7fe9fe40` drift catch-up is OWED** (above).
+- **ESCALATED, awaiting a human ruling: the import overwrite-clear
+  folder gap** (P4.31 tier-2 item 7). v4's overwrite keeps folders an
+  archive no longer mentions (measured: stale rows + UNIQUE-constraint
+  warnings on re-import); the obvious "clear folders too" deletes
+  character-vault SCAFFOLDING (`Outfits`/`Prompts`/… that
+  `create_character` writes, not archive content). Which folders an
+  overwrite may claim — only the archive's, only non-scaffold, or none
+  with a later reap — is a P4.9G5-class semantics ruling. The gap is
+  PINNED both directions meanwhile (`system_import_state`'s
+  `execute_folder_overwrite`, 12 → 13 cases).
+- **The recipe-rot debt DID NOT SHRINK and now has fresh numbers** (D42's
+  75-family sweep): 19 families' recipes cannot be re-run mechanically;
+  ~7 more are stale-red for pre-existing causes — among them
+  `compression_tier3` (latent-red since the P4.13 ruled error row — its
+  oracle is /tmp-only so it SKIPs in every routine gate) and
+  `pseudo_tool_prompts` (the `8bf3cb5f` native-tool-prompt wording gap,
+  now doubly owed with `7fe9fe40`). Per-family classification in the
+  D42 sweep record; /tmp logs do not survive the round. **Wants its own
+  maintenance order.**
+- **💸 Live proofs owed to the next dogfood pass:** the orphan reaper on
+  the Friday copy (the 43+118), the presets round-trip on real data, and
+  a stalled-provider turn actually bounded (hard to stage — at minimum
+  the 300 s default is observable).
+- The P4.31 note-grade items above; the `p4.9i2` bank (grew
+  `help/custom-tools.md` again + `4bbeab47`'s two chat help docs).

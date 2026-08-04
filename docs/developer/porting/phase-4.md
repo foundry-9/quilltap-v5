@@ -3821,3 +3821,62 @@ PINNED at `40319484` until that catch-up runs; the system/backup/restore/
 doc-mount families were verified untainted by name and regenerate straight
 from the checkout. The distill-transitive TZ pins, the committed-fixture
 rule, and the recipe-sweep driver notes all stand unchanged.
+
+## The `49769ec4` drift catch-up + store-delete round (P4.D42 ∥ P4.D43 ∥ P4.31 ∥ P4.32) — UNIFIED 2026-08-04
+
+All four orders CLOSED; the oracle baseline MOVES to **`49769ec4`**
+(4.8.0-dev.150). Provider requests are bounded end-to-end (dogfood's
+ten-silent-minutes class is closed), custom-tool run presets are live,
+dogfood #58's root cause is fixed at both ends (cascade + reaper), and
+the `doc_text`/`doc_fm` stale-RED is repaired per the human ruling.
+Round record: `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The `4bbeab47` + `7fe9fe40` drift catch-up** — v4 shipped both
+   during the round, BOTH behavior on ported surfaces. `4bbeab47`
+   (roleplay-template picker at chat creation): the ported
+   `app/api/v1/chats/route.ts` (+29) + the New-Chat SPA family
+   (`NewChatForm`/`useNewChat`/`types`/`NewChatModal`/
+   `NewChatPageClient`); two help docs → `p4.9i2`. `7fe9fe40` (stop
+   teaching models asterisk narration): the aurora/commonplace/suparna
+   notification writers + `core-whisper.ts` + `native-tool-prompt.ts` —
+   and v5's `native-tool-prompt.ts` rule-1 wording is ALREADY stale from
+   `8bf3cb5f` (found by P4.D42's sweep), so this lane closes two debts;
+   mirror `docs/developer/features/roleplay-block-narration.md`.
+   Drift-check before planning — v4 has been shipping daily.
+2. **The import overwrite-clear folder ruling** (ESCALATED from P4.31
+   tier-2 item 7): v4's `.qtap` overwrite import keeps folders the
+   archive no longer mentions (stale rows + UNIQUE warnings on
+   re-import, measured); the obvious repair deletes character-vault
+   SCAFFOLDING folders (`create_character`'s, not archive content).
+   Which folders an overwrite may claim — only the archive's, only
+   non-scaffold, or none with a later reap — is a P4.9G5-class human
+   ruling; the gap is pinned both directions meanwhile
+   (`system_import_state::execute_folder_overwrite`).
+3. **The recipe-rot maintenance order** — P4.D42's 75-family sweep
+   re-measured the standing debt with fresh numbers: 19 families'
+   recipes cannot be re-run mechanically; ~7 more are stale-red for
+   pre-existing causes (`compression_tier3` latent-red since the P4.13
+   ruled error row; `pseudo_tool_prompts` from `8bf3cb5f` — partly
+   closed by candidate 1; others enumerated in the sweep record). The
+   D32/P4.27 debt has not shrunk; it wants its own order before it hides
+   the next real red.
+4. **A dogfood pass** — owes this round's live proofs (the orphan reaper
+   against the Friday copy's 43+118, the presets round-trip on real
+   data, the bounded-turn behavior) plus the standing queue (walk Part D
+   / Part F items 15/16, the P4.D31/P4.21/D33 💸 proofs, the vintage
+   tripwire).
+5. The standing pools: `p4.9h`, `p4.9i2` (the bank grew again —
+   `help/custom-tools.md` + `4bbeab47`'s two chat docs), `p4.9l`, the
+   P4.D41 tier-2 item 9 committed grouped-pair fixture, the P4.31
+   note-grade items (the wiring pin's setup discharge, the vacuous
+   assertion, the scratch dirs).
+
+**Standing regen note:** the oracle baseline is **`49769ec4`**
+(4.8.0-dev.150, 2026-08-03). ⚠ v4 HEAD is `7fe9fe40`, TWO commits past
+it (the item-1 drift): regenerate chat-create-family and
+writer/prompt-transitive oracles only from a worktree PINNED at
+`49769ec4` until that catch-up runs; everything else regenerates straight
+from the checkout. The distill-transitive TZ pins, the committed-fixture
+rule, and the recipe-sweep driver notes all stand unchanged.

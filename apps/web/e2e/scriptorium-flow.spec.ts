@@ -252,9 +252,16 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await convertDialog.getByRole('button', { name: 'Convert', exact: true }).click();
 
     // The typed refusal lands in the error toast — a loud, visible notice.
-    await expect(page.locator('[role="toast-container"] > .qt-toast-error')).toBeVisible({
-      timeout: 15_000,
-    });
+    // Filtered to the refusal's own words, for both directions of strength:
+    // the bare class locator passed on ANY error toast (a base-path
+    // accessibility warning alone would have satisfied it with the refusal
+    // missing), and it strict-mode-broke whenever an unrelated toast stacked
+    // beside it (the full-suite-only flake this replaced).
+    await expect(
+      page
+        .locator('[role="toast-container"] > .qt-toast-error')
+        .filter({ hasText: "The 'convert' mount-point action is recognized but not yet available" }),
+    ).toBeVisible({ timeout: 15_000 });
 
     await deleteStoreFromList(page, storeName);
   });

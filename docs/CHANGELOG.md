@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+Unified the 49769ec4 drift catch-up and store-delete round onto the main
+line: four parallel lanes, all closed. Every model request is now bounded
+— a provider that accepts a call and never answers is abandoned in
+seconds-to-minutes instead of wedging a turn for ten silent minutes
+(45s/180s per cheap-task attempt, a 60s ceiling on the memory recap, a
+300s default at the transport, and streaming carefully bounded only until
+the first byte so a long answer is never cut off mid-generation). The
+custom-tool run dialog gained presets: save the current parameter values
+under a name into the character's vault, load them back from a dropdown,
+reset to defaults — ordinary vault files, visible in the Scriptorium,
+riding backup and export. Deleting a document store now takes all of the
+store's rows with it in one transaction (the reference app leaks
+documents and group links there — deliberate, pinned divergences), and a
+startup pass reaps the orphans existing databases have already
+accumulated, including the 43 links and 118 folders measured on the real
+instance. The document-editing test oracle now runs the reference app's
+real chunk-on-write, so the two long-red equivalence checks are green and
+edited documents are positively proven chunked for search. The
+unification review caught four real defects before they shipped — the
+worst a fail-soft gate that would have silently disabled the orphan
+repair forever on text-only databases. Gate: 412 Rust test binaries all
+green with fourteen oracle families regenerated from a pinned reference
+checkout; the full browser suite green with the new preset walk live.
+(Final numbers in the round record.)
+
 Rewrote the regeneration recipes carried in all six document-editing
 equivalence checks. The old ones pointed the reference app's test runner
 at a path it silently ignores, so a regeneration matched nothing, left
