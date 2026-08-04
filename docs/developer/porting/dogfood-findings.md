@@ -907,6 +907,31 @@ catch, since every fixture is built fresh.
   hard-link-groups lane — a v5-side repair should ride that surface, not the
   backup family.
 
+  **✅ THE v5 SIDE IS FIXED (P4.31, 2026-08-04) — both ends.** The delete path
+  is `api::mount_points::cascade_delete`, now one transaction through the
+  existing `gc_orphaned_file_row` chokepoint, and it additionally takes
+  `group_doc_mount_links` (v4 never has); the bare repo delete was renamed
+  `delete_row_only` so no future caller repeats the bug. The backlog already on
+  disk is reaped by a new boot pass,
+  `db::doc_mount_file_links::sweep_orphaned_store_children`, registered in
+  `services::builtin_mounts` and in the daily maintenance sweep — so **the
+  Friday copy's 43 links + 118 folders go on its next boot.** Two arms of the
+  survey's diagnosis were corrected by measuring rather than reasoning: v4's
+  dead blobs step leaks nothing (`doc_mount_blobs` is the one mount table whose
+  DDL carries `ON DELETE CASCADE`, on both vintages, and v4 enables
+  `foreign_keys = ON` too), and the existing `mount_points_routes_equivalence`
+  could never have caught any of this — its cascade counts are scoped to the
+  link rows the delete has just removed. New `store-delete-*` fixture family +
+  `store_delete_equivalence`, 7 arms, every divergence pinned in both
+  directions. **The v4-side twin above stays queued post-5.0** — v5's divergence
+  is deliberate, and the pins fail the day v4 converges.
+
+  💸 **Live proof owed to the next dogfood pass:** boot v5 against the Friday
+  copy and confirm the orphan counts go to zero (`SELECT COUNT(*) FROM
+  doc_mount_file_links l WHERE NOT EXISTS (SELECT 1 FROM doc_mount_points p
+  WHERE p.id = l.mountPointId)` — expect 43 → 0, and 118 → 0 for
+  `doc_mount_folders`), and that a subsequent backup no longer carries them.
+
 - **v4-side item (P4.28, 2026-08-03) — backup drops unreadable files silently
   (finding #59).** `backup-service.ts:648` warns to the module logger and
   continues, so a file whose bytes are gone leaves the archive without the

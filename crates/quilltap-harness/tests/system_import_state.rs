@@ -689,6 +689,12 @@ fn system_import_execute_state_equivalence() {
                 run_execute_case(name, case, &user_id, &mut failures, 2);
                 ran += 1;
             }
+            // [P4.31] The overwrite-clear's folder gap — see
+            // `run_folder_overwrite_case`.
+            "execute_folder_overwrite" => {
+                run_folder_overwrite_case(name, case, &user_id, &mut failures);
+                ran += 1;
+            }
             "route" => {
                 run_route_case(name, case, &user_id, &rt, &mut failures);
                 ran += 1;
@@ -700,13 +706,190 @@ fn system_import_execute_state_equivalence() {
         }
     }
 
-    assert_eq!(ran, 12, "expected 12 cases, ran {ran}");
+    assert_eq!(ran, 13, "expected 13 cases, ran {ran}");
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
         failures.len(),
         failures.join("\n\n")
     );
+}
+
+/// [P4.31] The `.qtap` overwrite-clear's FOLDER GAP — measured and pinned in
+/// both directions, and deliberately NOT fixed.
+///
+/// Two imports into one store: the first seeds `alpha` + `alpha/beta`, the
+/// second overwrites it with an archive carrying only `gamma`.
+/// `importDocumentStores`' overwrite branch clears documents, blobs, chunks and
+/// files but not `doc_mount_folders` (`import-document-stores.ts:62-67`), so
+/// BOTH apps end with all three folders and the two the archive no longer
+/// mentions are permanent.
+///
+/// P4.31's tier-2 item 7 asked v5 to fix this under the standing 2026-08-03
+/// backup/restore ruling. Implementing it showed the obvious repair is wrong:
+/// the stores an overwrite lands on are typically character vaults and project
+/// stores whose folders are SCAFFOLDING, not archive content (the
+/// `system-data` fixture's Lorian Character Vault carries `Outfits`,
+/// `Prompts`, `Scenarios`, `Wardrobe`, `files`, `images`), and clearing the
+/// table takes those with it — visible as `execute_overwrite_all` and
+/// `route_replace_remap` going red on rows nothing in the archive owns. Which
+/// folders an overwrite may claim is a semantics call for the human, like the
+/// P4.9G5 restore-bug ruling, so the lane escalated instead of guessing.
+///
+/// This arm is the escalation's evidence: it asserts today's shared behavior
+/// EXACTLY on both sides and additionally pins that the stale folders are
+/// present, so it fires the moment either app moves — including when v5 lands
+/// the ruled repair, which is exactly when the next lane should read this
+/// comment.
+///
+/// It does not reuse the `execute_twice` path because that comparison runs the
+/// whole three-partition state through a normalizer that labels minted ids in
+/// walk order; a divergence in row COUNT shifts every label after it. The
+/// oracle emits a focused, id-free dump instead (folder paths, link paths with
+/// the folder each resolves to, the store count) plus both result bodies.
+fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<String>) {
+    let scratch = fresh_fixture(name);
+    let first = export_of(&case["firstData"]);
+    let second = export_of(&case["exportData"]);
+    let opts = options_of(&case["options"]);
+    let uid = user_id.to_string();
+
+    let db = open_db(&scratch);
+    let results = db
+        .write_blocking(move |ws| {
+            let main = ws.main().connection();
+            let mount = ws.mount_index().expect("fixture has a mount partition");
+            let r1 = execute_import(main, mount.connection(), &uid, &first, &opts)
+                .expect("first import");
+            let r2 = execute_import(main, mount.connection(), &uid, &second, &opts)
+                .expect("second import");
+            Ok(vec![r1.to_value(), r2.to_value()])
+        })
+        .expect("imports ran");
+
+    let (folders, links, store_count) = db
+        .read_mount_index(|conn| {
+            let store: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM doc_mount_points WHERE name = 'Folder Store'",
+                    [],
+                    |r| r.get(0),
+                )
+                .ok();
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM doc_mount_points WHERE name = 'Folder Store'",
+                [],
+                |r| r.get(0),
+            )?;
+            let Some(store) = store else {
+                return Ok((Value::Array(vec![]), Value::Array(vec![]), count));
+            };
+            let mut stmt = conn.prepare(
+                "SELECT path, name FROM doc_mount_folders WHERE mountPointId = ?1 \
+                 ORDER BY path, name",
+            )?;
+            let folders: Vec<Value> = stmt
+                .query_map([&store], |r| {
+                    Ok(json!({ "path": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)? }))
+                })?
+                .collect::<Result<_, _>>()?;
+            let mut stmt = conn.prepare(
+                "SELECT l.relativePath, \
+                        CASE WHEN l.folderId IS NULL THEN NULL \
+                             ELSE COALESCE(f.path, '<dangling>') END \
+                   FROM doc_mount_file_links l \
+                   LEFT JOIN doc_mount_folders f ON f.id = l.folderId \
+                  WHERE l.mountPointId = ?1 ORDER BY l.relativePath",
+            )?;
+            let links: Vec<Value> = stmt
+                .query_map([&store], |r| {
+                    Ok(json!({
+                        "relativePath": r.get::<_, String>(0)?,
+                        "folderPath": r.get::<_, Option<String>>(1)?,
+                    }))
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok((Value::Array(folders), Value::Array(links), count))
+        })
+        .expect("folder-overwrite dump");
+    drop(db);
+
+    let mut bad = |msg: String| failures.push(format!("[{name}] {msg}"));
+
+    // Everything but the folder rows must be identical, including both bodies.
+    for (i, want_key) in ["result", "result2"].iter().enumerate() {
+        if results[i] != case[*want_key] {
+            bad(format!(
+                "{want_key} diverged:\n  rust  : {}\n  oracle: {}",
+                results[i], case[*want_key]
+            ));
+        }
+    }
+    if links != case["links"] {
+        bad(format!(
+            "link/folder resolution diverged:\n  rust  : {links}\n  oracle: {}",
+            case["links"]
+        ));
+    }
+    if json!(store_count) != case["storeCount"] {
+        bad(format!(
+            "store count {store_count} != oracle {}",
+            case["storeCount"]
+        ));
+    }
+
+    // The folder rows themselves are compared for EQUALITY — v5 is v4-faithful
+    // here pending the ruling.
+    if folders != case["folders"] {
+        bad(format!(
+            "folder rows diverged:\n  rust  : {folders}\n  oracle: {}",
+            case["folders"]
+        ));
+    }
+
+    // …and the gap itself is pinned, so this arm cannot quietly become vacuous.
+    // The archive's own folder is `gamma`; anything else in the store survived
+    // an overwrite that replaced every file beneath it.
+    let paths = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|r| r["path"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let archive_paths = second_payload_folder_paths(&case["exportData"]);
+    for (side, rows) in [("v4", &case["folders"]), ("v5", &folders)] {
+        let stale: Vec<String> = paths(rows)
+            .into_iter()
+            .filter(|p| !archive_paths.contains(p))
+            .collect();
+        if stale.is_empty() {
+            bad(format!(
+                "{side} kept NO folders the archive does not carry — the overwrite-clear gap is \
+                 CLOSED on that side. If it is v5, the ruling has been made and this arm should \
+                 become a divergence pin; if it is v4, retire the escalation. See \
+                 `overwrite_clear_mount`."
+            ));
+        }
+    }
+}
+
+/// The folder paths the SECOND payload actually carries — read from the oracle's
+/// own emitted `exportData` rather than hard-coded, so a payload edit cannot
+/// leave this arm asserting a stale expectation.
+fn second_payload_folder_paths(export_data: &Value) -> Vec<String> {
+    let mut out: Vec<String> = export_data["data"]["folders"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|f| f["path"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort();
+    out
 }
 
 fn run_execute_case(

@@ -51,6 +51,14 @@ the contents down. Startup now also sweeps up the leftovers a database
 has already accumulated, and the daily maintenance pass does the same
 for servers that run for weeks without restarting.
 
+Recorded, with a test that will notice if it ever changes: importing an
+archive over an existing document store replaces every file but leaves
+the old folders standing, so folders the archive no longer contains
+survive forever. The obvious repair -- clear the folders too -- turned
+out to delete a character vault's own scaffolding (Outfits, Prompts,
+Scenarios, Wardrobe), so the behavior is unchanged pending a decision
+about which folders an overwrite may claim.
+
 Planned the next porting round and committed its three work orders: a
 re-port of the reference app's new provider-request bounding (so a
 stalled model call can no longer wedge a turn for ten minutes), a

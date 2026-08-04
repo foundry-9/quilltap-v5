@@ -52910,3 +52910,59 @@ would compare v5's reaped state against v4's un-reaped one. The family now
 ASSERTS `parentless_store_rows_reaped == 0` on its fixture, with a message
 naming what to do if that ever changes. It is 0 today: the maintenance fixture
 carries no parentless rows.
+
+---
+
+## Lane record — P4.31 tier-2 item 7: the import overwrite-clear folder gap — MEASURED, PINNED, **ESCALATED** (not fixed)
+
+The order asked v5 to close another v4-faithful leak under the standing
+2026-08-03 backup/restore ruling: `importDocumentStores`' overwrite branch
+(`import-document-stores.ts:62-67`) clears documents, blobs, chunks and files
+but not `doc_mount_folders`. **The ruling does reach it. The obvious repair does
+not survive contact, and that is why this is escalated rather than landed or
+silently dropped.**
+
+### What was measured (v4 at `49769ec4`, its REAL `executeImport`)
+
+A new oracle case, `execute_folder_overwrite`, imports into one store twice with
+`conflictStrategy: 'overwrite'`: run 1 carries folders `alpha` + `alpha/beta`,
+run 2 carries only `gamma`.
+
+- v4 ends with **all three folders**. `alpha` and `alpha/beta` outlive an archive
+  that no longer mentions them, and every file beneath them is gone — the same
+  orphan shape P4.31 closes at the delete end, arriving by a different door.
+- Re-importing an IDENTICAL archive surfaces it differently: two
+  `Failed to import folder "…": UNIQUE constraint failed: index
+  'idx_doc_mount_folders_mp_parent_name_nocase'` warnings, because the survivors
+  block the re-insert, and `imported.documentStoreFolders` drops to 0.
+- The link → folder resolution is NOT damaged (both runs resolve by path), so
+  the result bodies are otherwise clean. The damage is stale rows and warnings.
+
+### Why the fix was reverted
+
+Implementing "clear the folders too" turned `execute_overwrite_all` and
+`route_replace_remap` red on rows nothing in any archive owns. The store those
+cases overwrite is `system-data`'s **Lorian Character Vault**, whose folders are
+`Outfits`, `Prompts`, `Scenarios`, `Wardrobe`, `files`, `images`, `lore`,
+`notes` — six of them SCAFFOLDING that `create_character` writes, not archive
+content. A blanket clear deletes the vault's structure; and because the family's
+normalizer labels minted ids in walk order, a row-COUNT divergence also shifts
+every label after it, so there is no honest carve-out either.
+
+Which folders an overwrite may claim — only those the archive replaces, only
+non-scaffold ones, or none with a later reap — is a semantics call of the same
+kind as the P4.9G5 restore-bug ruling. **Escalated to the human; v5 stays
+v4-faithful until it is made.**
+
+### What DID land, so the gap is measured rather than written down
+
+`execute_folder_overwrite` is committed as a both-directions tripwire in
+`system_import_state` (12 → 13 cases). It asserts today's shared behavior
+EXACTLY — result bodies, folder rows, link→folder resolution, store count — and
+additionally pins that BOTH sides keep folders the archive does not carry. It
+fires the moment either app moves, including when v5 lands the ruled repair,
+which is precisely when the next lane should read the comment on
+`services::quilltap_import::document_stores::overwrite_clear_mount`.
+
+It deliberately does not reuse the `execute_twice` path (see above re the
+normalizer); the oracle emits a focused, id-free dump instead.

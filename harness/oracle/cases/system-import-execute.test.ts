@@ -257,6 +257,86 @@ function linkGroupPayload(): { manifest: unknown; data: Record<string, unknown> 
   };
 }
 
+/**
+ * P4.31 — a database store carrying FOLDERS, for the overwrite-clear arm.
+ *
+ * `importDocumentStores`' overwrite branch clears documents, blobs, chunks and
+ * files (`import-document-stores.ts:62-67`) but NOT `doc_mount_folders`, so a
+ * re-import into the same store keeps the previous run's folder rows and then
+ * fails to re-insert its own against the `(mountPointId, path)` unique index.
+ * v5 clears them, under the standing backup/restore ruling. Imported TWICE so
+ * the second run is the one that hits the overwrite branch.
+ */
+function folderOverwritePayload(
+  variant: 'alpha' | 'gamma',
+): { manifest: unknown; data: Record<string, unknown> } {
+  const MP = 'ad000000-0000-4000-8000-000000000001';
+  const FOLDER_ALPHA = 'ad000000-0000-4000-8000-0000000000f1';
+  const FOLDER_BETA = 'ad000000-0000-4000-8000-0000000000f2';
+  const FOLDER_GAMMA = 'ad000000-0000-4000-8000-0000000000f3';
+  const doc = (rel: string, content: string, folderId: string | null) => ({
+    mountPointId: MP,
+    relativePath: rel,
+    fileName: rel.split('/').pop(),
+    fileType: 'markdown',
+    content,
+    contentSha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+    plainTextLength: content.length,
+    lastModified: '2026-01-01T00:00:00.000Z',
+    folderId,
+    linkGroupId: null,
+  });
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'document-stores',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      mountPoints: [
+        {
+          id: MP,
+          name: 'Folder Store',
+          basePath: '',
+          mountType: 'database',
+          storeType: 'documents',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+        },
+      ],
+      folders:
+        variant === 'alpha'
+          ? [
+              { id: FOLDER_ALPHA, mountPointId: MP, parentId: null, name: 'alpha', path: 'alpha' },
+              {
+                id: FOLDER_BETA,
+                mountPointId: MP,
+                parentId: FOLDER_ALPHA,
+                name: 'beta',
+                path: 'alpha/beta',
+              },
+            ]
+          : [
+              { id: FOLDER_GAMMA, mountPointId: MP, parentId: null, name: 'gamma', path: 'gamma' },
+            ],
+      documents:
+        variant === 'alpha'
+          ? [
+              doc('alpha/one.md', '# One\n\nIn alpha.', FOLDER_ALPHA),
+              doc('alpha/beta/two.md', '# Two\n\nIn beta.', FOLDER_BETA),
+            ]
+          : [doc('gamma/three.md', '# Three\n\nIn gamma.', FOLDER_GAMMA)],
+      blobs: [],
+      projectLinks: [],
+    },
+  };
+}
+
 /** The hand-built legacy-folds payload (scenario string, outfitPresets,
  *  annotationButtons, missing supportsImageUpload, the three memory arms). */
 function legacyFoldsPayload(): { manifest: unknown; data: Record<string, unknown> } {
@@ -462,6 +542,83 @@ function executeCase(
  * twice, in one instance. The only arm that can prove a re-imported archive does
  * not FUSE with its earlier copy (see `linkGroupPayload`).
  */
+/**
+ * kind 'execute_folder_overwrite' (P4.31): import [`folderOverwritePayload`]
+ * twice with `conflictStrategy: 'overwrite'`, then dump the resulting store's
+ * folders by PATH (no ids — both sides mint their own) alongside both result
+ * bodies. See the case list for why this does not reuse `execute_twice`.
+ */
+function folderOverwriteCase() {
+  return {
+    name: 'execute_folder_overwrite',
+    run: async (spec: Spec, _dumpAll: () => Record<string, unknown>) => {
+      const first = folderOverwritePayload('alpha');
+      const exportData = folderOverwritePayload('gamma');
+      const options = {
+        conflictStrategy: 'overwrite',
+        includeMemories: false,
+        includeRelatedEntities: false,
+      };
+      const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+      // Run 1 seeds the store with `alpha` + `alpha/beta`; run 2 overwrites it
+      // with a DIFFERENT folder set, which is what makes the gap visible: v4's
+      // overwrite clears the documents but not the folders, so `alpha` and
+      // `alpha/beta` survive an archive that no longer contains them.
+      const result = await executeImport(spec.userId, first as never, options as never);
+      const result2 = await executeImport(spec.userId, exportData as never, options as never);
+
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const midb = getRawMountIndexDatabase()!;
+      const store = midb
+        .prepare('SELECT id FROM doc_mount_points WHERE name = ?')
+        .get('Folder Store') as { id: string } | undefined;
+      const folders = store
+        ? (midb
+            .prepare(
+              'SELECT path, name FROM doc_mount_folders WHERE mountPointId = ? ORDER BY path, name',
+            )
+            .all(store.id) as unknown[])
+        : [];
+      // Each link with the PATH of the folder it resolves to (never the id —
+      // both sides mint their own). A link whose `folderId` names no surviving
+      // folder row reports `<dangling>`: that is the second-order damage when
+      // the folder re-import fails, since the document's remapped folderId has
+      // nowhere to land.
+      const links = store
+        ? (midb
+            .prepare(
+              `SELECT l.relativePath AS relativePath,
+                      CASE WHEN l.folderId IS NULL THEN NULL
+                           ELSE COALESCE(f.path, '<dangling>') END AS folderPath
+                 FROM doc_mount_file_links l
+                 LEFT JOIN doc_mount_folders f ON f.id = l.folderId
+                WHERE l.mountPointId = ?
+                ORDER BY l.relativePath`,
+            )
+            .all(store.id) as unknown[])
+        : [];
+      const storeCount = (
+        midb.prepare('SELECT COUNT(*) AS c FROM doc_mount_points WHERE name = ?').get('Folder Store') as {
+          c: number;
+        }
+      ).c;
+      return {
+        kind: 'execute_folder_overwrite',
+        firstData: first,
+        exportData,
+        options,
+        result,
+        result2,
+        folders,
+        links,
+        storeCount,
+      };
+    },
+  };
+}
+
 function executeTwiceCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -631,6 +788,13 @@ async function main(): Promise<void> {
       includeMemories: false,
       includeRelatedEntities: false,
     }),
+    // [P4.31] The overwrite-clear's folder gap. Its own kind rather than
+    // `execute_twice` because v5 deliberately diverges here, and this family's
+    // whole-state normalizer labels minted ids in walk order — dropping rows
+    // from one side would shift every label after them. The comparison is
+    // instead a focused, id-free dump of the store's folders plus both result
+    // bodies.
+    folderOverwriteCase(),
     routeCase('route_missing_export_data', () => ({})),
     routeCase('route_missing_options', () => ({
       exportData: legacyFoldsPayload(),

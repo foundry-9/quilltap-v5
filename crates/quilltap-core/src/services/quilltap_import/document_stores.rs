@@ -470,6 +470,34 @@ pub(super) fn import_document_stores(
 /// 2. `docMountBlobs` — actually deletes the LINKS + orphaned FILES.
 /// 3. `docMountChunks` — chunks by `mountPointId`.
 /// 4. `docMountFiles` — a second links+files pass over an already-empty set.
+///
+/// ## P4.31 — the folder gap: MEASURED, PINNED, and ESCALATED (not fixed)
+///
+/// v4's clear list (`import-document-stores.ts:62-67`) omits
+/// `doc_mount_folders`, so an overwrite replaces every file while leaving the
+/// previous contents' folder tree standing. Measured on v4 at `49769ec4`
+/// (`system_import_state`'s `execute_folder_overwrite` arm): importing an
+/// archive carrying only `gamma` over a store that held `alpha` +
+/// `alpha/beta` leaves ALL THREE folders, and the two the archive no longer
+/// mentions are then permanent — the same orphan shape this lane closes at the
+/// delete end, arriving by a different door. Re-importing an IDENTICAL archive
+/// surfaces it instead as `Failed to import folder …UNIQUE constraint failed`
+/// warnings, because the survivors block the re-insert.
+///
+/// **The obvious repair — clear the folders too — is WRONG, and that is why
+/// this is escalated rather than landed.** The stores an overwrite most often
+/// lands on are character vaults and project stores, whose folders
+/// (`Outfits` / `Prompts` / `Scenarios` / `Wardrobe` / `images` / `files`) are
+/// SCAFFOLDING, not archive content: `system-data`'s Lorian Character Vault
+/// carries six of them, and a blanket clear deletes the lot. Choosing between
+/// "clear only the folders the archive replaces", "clear all non-scaffold
+/// folders", and "leave them and reap the unreachable ones later" is a
+/// semantics call of the same kind as the P4.9G5 restore-bug ruling, so v5
+/// stays v4-faithful here until it is made.
+///
+/// The gap is not merely written down: `execute_folder_overwrite` pins the
+/// stale-folder set in BOTH directions, so it fires the moment either app's
+/// behavior moves.
 fn overwrite_clear_mount(mount: &Connection, mount_point_id: &str) -> Result<(), DbError> {
     // 1. Documents whose file is linked from this mount.
     mount.execute(
