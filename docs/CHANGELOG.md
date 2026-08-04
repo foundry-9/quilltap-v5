@@ -99,6 +99,11 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Added an automated test that walks three real actions end to end — saving
+a character, allowing any character into a project, and creating a
+folder in Files — and checks that each one shows its confirmation
+message.
+
 Gave the API key dialog a confirmation message for each connection
 profile it automatically links to a newly created key, matching the
 original. Gave the character tag editor an error message when creating a

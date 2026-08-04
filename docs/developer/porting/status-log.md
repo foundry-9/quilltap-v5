@@ -51824,3 +51824,117 @@ project-detail's four card families, the files family's create-folder and
 move-to-project dialogs, New Chat's validation banner). Tier 2 (the new
 e2e spec) and Tier 3 (the deferral list) follow in the lane's closing
 units below.
+
+### Tier 3 — the explicit deferrals, named per the order
+
+Every UNPORTED row from the original P4.25 census (`ff12f491`) that this
+lane's worklist never touched — listed here so the census stays honest,
+per the order's own instruction:
+
+- `app/salon/SalonListView.tsx` (6) — the Salon LIST's re-extract/
+  re-render actions have no v5 analog.
+- `app/salon/[id]/hooks/useMemoryActions.ts` (7) — the in-chat memory
+  re-extract/bulk-delete actions have no v5 caller.
+- `components/character/character-conversations-tab.tsx` (9) — the
+  per-card delete/re-extract/re-render, already that vertical's
+  documented deferral.
+- `components/characters/RenameReplaceTab.tsx` (2) — no v5 rename/
+  replace tab.
+- `components/chat/SummonFromLoreModal.tsx` (2) — no v5 summon-from-lore
+  modal.
+- `components/import/import-wizard.tsx` (2) — v5's `.qtap` import is the
+  Data & System wizard, a different surface with its own step reporting.
+- `components/import/memory-creation-dialog.tsx` (4) — no v5
+  memory-creation dialog.
+- `components/settings/api-keys/ImportKeysDialog.tsx` (1) — no v5
+  import-keys dialog.
+- `components/settings/plugins-tab.tsx` (16) +
+  `components/settings/plugins/PluginConfigModal.tsx` (2) — v5 has no
+  plugins surface.
+- `components/startup/migration-warning-notifier.tsx` (1) — no v5
+  migration notifier (the migration runner is deferred).
+- `components/startup/plugin-upgrade-notifier.tsx` (2) — no v5 plugin
+  system.
+- `components/tools/capabilities-report-card.tsx` (5) — no v5
+  capabilities-report card.
+- `components/tools/conversation-summary-regenerate-card.tsx` (2) — a
+  named v5 deferral.
+- `components/tools/memory-dedup-card.tsx` (2) — memory-dedup is a named
+  v5 deferral.
+- `components/wardrobe/import-from-image-modal.tsx` (5) — the wardrobe
+  import-from-image dialog is a named v5 deferral.
+- `lib/chat-utils.ts` (1) — nothing in v5 deletes a chat.
+
+Plus the six rows THIS lane reclassified from OPEN to UNPORTED after
+verifying against actual code (each already reasoned through in its own
+unit above): `app/aurora/[id]/edit/CharacterEditView.tsx` (5, the AI
+Wizard), `app/aurora/new/NewCharacterView.tsx` (4, same wizard),
+`components/files/useMountPointBlobUpload.ts` (2, the Scriptorium file
+manager is a different rewrite), `components/files/useProjectFileUpload.ts`
+(3, a named pre-existing deferral), `components/providers/
+qtap-link-provider.tsx` (3, no v5 click-handler exists), and
+`components/tags/tag-editor.tsx`'s remove-tag arm (1, no v5 network call
+under the staged architecture).
+
+**The census's four `screens/settings/system/**` rows
+(`useRestoreData.ts`/restore-dialog, `backup-dialog.tsx`,
+`delete-data-card.tsx`, `auto-lock-provider.tsx`) are P4.28's, not this
+lane's — named here only for completeness, untouched by this branch.**
+
+### Tier 2 — the new e2e spec
+
+`apps/web/e2e/toast-open-rows-flow.spec.ts` (new file): three live beats —
+a character save (`Character saved successfully!`, the one genuine BOTH
+row), toggling Project detail's Allow Any Character both directions (the
+tri-state dynamic sentence), and creating a folder from the general Files
+screen (`Folder created`). Own dedicated server on port 4323 over a
+private copy of the committed `groups-projects-{main,mount}.db` fixture
+(the one fixture family carrying characters, projects, and files
+together); no LLM send on any of these paths, so no mock LLM and zero
+spend. Regen recipe: none — the fixture is read-only (copied, not
+regenerated); the spec applies two schema-materialization patches to its
+own copy before spawning the server (never to the committed fixture
+itself):
+
+- The `userId` single-user rewrite, scoped to `characters`/`chats`/
+  `tags`/`files` only — **`groups` and `projects` carry no `userId`
+  column in this fixture family** (neither is user-scoped), so including
+  them in the rewrite loop 400s with `no such column: userId`.
+- `CREATE TABLE IF NOT EXISTS folders (...)`, byte-identical to the patch
+  `global-setup.ts` already carries for the shared server — this fixture
+  family predates the general-files `folders` table too, so General
+  Files' folder list 500s (`no such table: folders`) without it.
+
+Three gotchas worth carrying forward:
+
+- **A leftover manual-debug server had squatted on the spec's port**
+  across several fix-and-rerun cycles, serving stale pre-dbkey state
+  from an earlier ad hoc debugging session in this same lane. Because the
+  spec's own `spawn()` silently fails to bind when the port is taken (no
+  code path checks or surfaces that), the zombie kept answering
+  `/health` and every page load, making three consecutive *actual* fixes
+  to the spec (the dbkey generation, the `userId` table list, the health
+  check) look like they hadn't worked. `lsof -nP -iTCP:<port>
+  -sTCP:LISTEN` is the fast way to catch this; always kill any manual
+  debug server on the SAME port before trusting a spec rerun's result.
+- `waitForHealth()` must accept **HTTP 423** as healthy, not just 200 —
+  the server answers `/health` before the passphrase unlock with 423
+  Locked; `res.ok` alone times out forever on a perfectly healthy
+  locked-but-up server. Copied `characters-flow.spec.ts`'s exact pattern.
+- **A button whose accessible name comes from its emoji-glyph text
+  content, not its `title` attribute** — `getByRole('button', {name:
+  '<title text>'})` silently fails to match; target `button[title="..."]`
+  via CSS instead when the visible glyph, not the title, is the
+  accessible name.
+
+The original plan's third beat (syncing the filesystem) was swapped
+after discovering **`filesSync` has no Rust-side handler at all** — a
+census-verdict-trap variant one level deeper than the file-mapping kind:
+the sentence itself was real and correctly toasted by `files-browser.ts`
+(Unit 9 landed it), but the SERVER ACTION it depends on is an unported
+loud refusal (named among the standing files-family deferrals in
+CLAUDE.md), so a live walk of that beat could only ever hit the failure
+arm, never the success sentence this spec is meant to pin. Folder
+creation (`filesFolderCreate`, confirmed live in
+`crates/quilltap-core/src/api/engine.rs`) replaced it as a third
+genuinely-live files beat.
