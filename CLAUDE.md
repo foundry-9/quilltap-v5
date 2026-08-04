@@ -1905,9 +1905,11 @@ records THERE. Update this summary only when a phase or round completes.
   no-opped the #58 repair forever on text-only instances; also the
   presets host's display:inline, the recap ceiling's dropped v4
   warnings entry, and the P4.32 doc-staleness set (all fixed with pins
-  on the unify branch, `70bf9f05`). **ESCALATED, awaiting a human
-  ruling: the import overwrite-clear folder gap** (the obvious fix
-  deletes vault scaffolding; pinned both directions meanwhile). D42's
+  on the unify branch, `70bf9f05`). **The one escalation was RULED same-day**
+  (import overwrite claims the WHOLE store incl. folders; store identity
+  by ID, not name; import create preserves archive ids; character-vault
+  references by ID everywhere) — ordered as `p4.33-import-overwrite-id-
+  identity.md`, pinned both directions meanwhile. D42's
   75-family neutrality sweep re-measured the recipe-rot debt (19
   unrunnable + ~7 stale-red incl. `compression_tier3` latent since
   P4.13 and the `8bf3cb5f` native-tool-prompt wording gap) — wants its

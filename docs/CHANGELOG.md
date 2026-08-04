@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Ruled and ordered the import-overwrite repair the last round escalated:
+overwriting a document store on import now means overwriting all of it,
+folders included; a store's identity for import matching is its ID rather
+than its display name (renames can no longer redirect an overwrite onto
+an unrelated store, and imports will preserve archive store IDs so
+re-imports recognize their own stores); and an audit ensures every
+character-vault reference in the code resolves by ID. Documentation only
+— the implementation is the new P4.33 work order.
+
 Unified the 49769ec4 drift catch-up and store-delete round onto the main
 line: four parallel lanes, all closed. Every model request is now bounded
 — a provider that accepts a call and never answers is abandoned in

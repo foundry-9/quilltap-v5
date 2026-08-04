@@ -53598,3 +53598,39 @@ everything else regenerates straight from the checkout.
   the 300 s default is observable).
 - The P4.31 note-grade items above; the `p4.9i2` bank (grew
   `help/custom-tools.md` again + `4bbeab47`'s two chat help docs).
+
+## Ruling — import overwrite claims the whole store, and store identity is the ID (2026-08-04, human)
+
+The P4.31 escalation (the overwrite-clear folder gap) is RULED, and the
+ruling goes further than the escalated question:
+
+1. **Option (b): overwrite means overwrite.** The overwrite-clear drops
+   `doc_mount_folders` along with documents/blobs/chunks/files. A real
+   exported vault always carries its full folder tree (the exporter dumps
+   every folder row, scaffolding included — `ndjson-writer.ts:513-524`),
+   so a round-trip is lossless; an archive that lacks a store's structure
+   overwrites it anyway, structure included. The scaffold-loss arm the
+   lane measured is an archive no real export produces.
+2. **Overwrite matches the target store by ID, not name** ("names change,
+   it would get confusing"). Consequences, accepted: import CREATE must
+   PRESERVE the archive's store id (today it mints fresh —
+   `import-document-stores.ts:89-105` passes no id — which would make an
+   ID match dead on arrival); a cross-instance archive whose ids are
+   unknown here CREATES rather than silently clobbering a same-named
+   unrelated store (name-uniquified), and a RE-import of that same
+   archive then converges to overwrite-by-ID, since the first import
+   preserved its ids. `duplicate` still mints fresh ids by definition;
+   the new-account restore remap (P4.9G6) is untouched — reminting there
+   is its deliberate point.
+3. **Every reference to a character's document store goes by ID, not
+   name.** The character→vault link already is
+   (`characterDocumentMountPointId`, 53 reader files); the audit closes
+   the stragglers — the import matcher above, and a classification of
+   `db/character_vault.rs:258-264`'s `find_by_name` (create-time
+   collision handling is fine; anything that RESOLVES an existing vault
+   by name converts).
+
+All three arms are v5 divergences in the import family, sanctioned by the
+standing 2026-08-03 backup/restore ruling; each lands with both-direction
+pins, and the v4-side twins join the post-5.0 list. Ordered as
+`work-orders/p4.33-import-overwrite-id-identity.md`.

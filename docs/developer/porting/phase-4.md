@@ -3845,15 +3845,14 @@ Round record: `status-log.md`.
    `8bf3cb5f` (found by P4.D42's sweep), so this lane closes two debts;
    mirror `docs/developer/features/roleplay-block-narration.md`.
    Drift-check before planning — v4 has been shipping daily.
-2. **The import overwrite-clear folder ruling** (ESCALATED from P4.31
-   tier-2 item 7): v4's `.qtap` overwrite import keeps folders the
-   archive no longer mentions (stale rows + UNIQUE warnings on
-   re-import, measured); the obvious repair deletes character-vault
-   SCAFFOLDING folders (`create_character`'s, not archive content).
-   Which folders an overwrite may claim — only the archive's, only
-   non-scaffold, or none with a later reap — is a P4.9G5-class human
-   ruling; the gap is pinned both directions meanwhile
-   (`system_import_state::execute_folder_overwrite`).
+2. **P4.33 — import overwrite claims the whole store + store identity
+   by ID** (`work-orders/p4.33-import-overwrite-id-identity.md`; the
+   P4.31 escalation, **RULED 2026-08-04**: option (b) full folder
+   clear, overwrite matches by ID not name, import CREATE preserves
+   archive store ids, and character-vault references resolve by ID
+   everywhere — ruling record in `status-log.md`). Standalone; can run
+   alone or join the next round; drift-independent of item 1 (verified:
+   neither drift commit touches `lib/import/**`).
 3. **The recipe-rot maintenance order** — P4.D42's 75-family sweep
    re-measured the standing debt with fresh numbers: 19 families'
    recipes cannot be re-run mechanically; ~7 more are stale-red for

@@ -974,6 +974,14 @@ catch, since every fixture is built fresh.
   papercut list below: these ARE bugs, and v5 does NOT reproduce them. What is
   queued is the change to v4 itself, so instances still running v4 before
   retirement get the fix too.
+  - **The `.qtap` import overwrite trio (ruled 2026-08-04, ordered v5-side as
+    `p4.33`):** the overwrite-clear leaves `doc_mount_folders` standing
+    (stale husks + UNIQUE warnings on identical re-import —
+    `import-document-stores.ts:63-67`); overwrite matches the target store
+    by NAME (`:55-57` — a rename silently redirects an overwrite onto an
+    unrelated store); and import CREATE mints a fresh store id (`:89-105`),
+    so no archive can ever be re-recognized by identity. v4's halves: clear
+    folders too, match by id, preserve the archive's id on create.
   > ### ✅ THE WHOLE LIST BELOW IS CLOSED — v4 fixed all four itself (2026-07-26)
   >
   > `67ffb444` (`fix(backup): restore brings back the stores, the links, and the
