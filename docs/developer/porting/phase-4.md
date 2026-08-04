@@ -3912,17 +3912,27 @@ findings: the round record in `status-log.md`.
    the presets round-trip, the bounded-turn behavior, walk Part D /
    Part F items 15/16, the P4.D31/P4.21/D33 💸 proofs, the vintage
    tripwire.
-2. **The context-summary oracle un-mock** — the escalated
+2. **`p4.35` — the streaming `.qtap` import**
+   (`work-orders/p4.35-streaming-qtap-import.md`, written 2026-08-04 out
+   of the dogfood walk). Dogfood #63 raised the transport ceiling to v4's
+   real 10 GB, so a 791 MB real export is now *reachable* — and held
+   about three times over (raw `Bytes` + the whole-record `Vec` + a
+   CLONING assembler). Stage the upload to disk, read lines from a
+   `BufRead`, assemble from owned records: ~3× → ~1×, which is v4's own
+   shape. **Bounded deliberately** — v4 assembles the whole export too,
+   so going below 1× would mean abandoning its ten-map orchestrator and
+   is explicitly out of scope. Guarded by the three import families.
+3. **The context-summary oracle un-mock** — the escalated
    `context_summary_service_tier3` red: update the oracle case to run
    v4's REAL `runFoldEpisodePass` (canned model both sides), regenerate,
    and retire the escalation (the P4.32 un-mock precedent; diagnosis
    pinned in the round record and `common/mod.rs`'s helper doc).
-3. **The remaining recipe-rot tail** — 27 families still carry
+4. **The remaining recipe-rot tail** — 27 families still carry
    `unstaged_jest_roots` (named by `recipe_sweep.py --list`; each needs
    its own staged-mirror conversion + verification run), 20 static /tmp
    collisions. Mechanical but per-family; can ride any round as a rider
    or run as a second maintenance pass.
-4. The standing pools: `p4.9h`, `p4.9i2` (the bank grew again —
+5. The standing pools: `p4.9h`, `p4.9i2` (the bank grew again —
    `4bbeab47`'s two chat docs), `p4.9l`, the P4.D41 tier-2 item 9
    committed grouped-pair fixture, the P4.31 note-grade items.
 

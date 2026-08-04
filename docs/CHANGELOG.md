@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Large exports can be imported again. A `.qtap` over 100 MB — a real
+character library runs to hundreds of megabytes once vault images are
+included — was refused at the edge before any of the import code ran,
+with an unhelpful "Payload Too Large". The ceiling now matches the
+reference app's own, which is 10 GB and always was; the wrong one of its
+two configured limits had been copied. Note that a very large import is
+now possible, not cheap: the whole archive is held in memory while it is
+read, so a multi-gigabyte file will cost multi-gigabyte memory until the
+import path learns to stream.
+
+The import wizard also stops going blank when a preview fails. It
+recorded the reason and drew nothing — an empty "Step 2 of 5" with
+working buttons and no explanation, in both apps. It now shows what went
+wrong, a deliberate departure from the reference app in the
+backup/restore/import/export family, where a lost explanation is worst
+precisely when something has already gone wrong.
+
 Unified the 7fe9fe40 drift-catch-up round onto the main line: four
 parallel lanes, all closed, and the oracle baseline moves to the
 reference app's head — no drift debt remains. The New Chat form gains

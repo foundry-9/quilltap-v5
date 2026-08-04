@@ -135,6 +135,20 @@ interface PreviewEntity {
                 }
               </div>
             </div>
+          } @else if (error(); as msg) {
+            <!--
+              Dogfood #61/#63 — a DELIBERATE divergence from v4, under the
+              2026-08-03 backup/restore/import/export ruling. loadPreview
+              records the failure in the error signal but leaves the wizard on
+              this step, and v4's ImportPreviewStep bails with a bare
+              "if (!preview) return null" while its dialog renders state.error
+              only on the file and error steps — so in BOTH apps a failed
+              preview drew a blank step 2 with working Back/Next buttons and no
+              hint of what went wrong. The v4 one-liner is queued post-5.0.
+            -->
+            <div class="p-3 qt-bg-destructive/10 border qt-border-destructive rounded-lg">
+              <p class="text-sm qt-text-destructive">{{ msg }}</p>
+            </div>
           }
         }
         @case ('options') {

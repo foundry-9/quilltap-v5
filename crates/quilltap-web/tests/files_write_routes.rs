@@ -176,3 +176,58 @@ async fn chat_file_upload_over_axum_default_body_limit() {
         "the ported cap must be the one that refuses, not the transport"
     );
 }
+
+/// Dogfood finding #63 — the sibling of #36, one ceiling up. A `.qtap` import
+/// body over 100 MB must reach the handler.
+///
+/// The bug: #36 raised the transport ceiling to `bodySizeLimit: '100mb'`, but
+/// that key governs v4's **Server Actions**; the ceiling on v4's request path is
+/// `proxyClientMaxBodySize: '10gb'`, whose own comment names `.qtap` imports and
+/// says 10 MB "truncates .qtap import files with memories". A real Friday
+/// characters export (791 MB) therefore died at the edge with a bare
+/// `413 "Failed to buffer the request body: length limit exceeded"` — and,
+/// because the wizard's preview step rendered nothing on failure, as a BLANK
+/// step 2 rather than an error.
+///
+/// The assertion is deliberately "not 413": the payload here is garbage, so the
+/// handler's own loader refuses it. Reaching a `400` from the LOADER is the
+/// proof that the transport let the body through — which is precisely what a
+/// 100 MB ceiling prevented. Sending 101 MB (not 10 GB) keeps the test cheap
+/// while sitting on the far side of the old limit; it fails the moment anyone
+/// lowers the ceiling back under it.
+#[tokio::test(flavor = "multi_thread")]
+async fn import_body_over_the_old_100mb_ceiling_reaches_the_handler() {
+    let base = common::materialize_fixture_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+
+    // 101 MB of nonsense — one megabyte past the old ceiling, and no further:
+    // the test costs what it must to sit on the far side of the limit.
+    let body = vec![b'x'; 101 * 1024 * 1024];
+
+    let resp = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/system/tools?action=import-preview"
+        ))
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+
+    let status = resp.status();
+    assert_ne!(
+        status, 413,
+        "a 101 MB import body must reach the handler, not die at the transport \
+         ceiling — v4's ceiling on this path is 10 GB"
+    );
+    assert_eq!(
+        status,
+        400,
+        "the LOADER should be what refuses this garbage payload (body: {:?})",
+        resp.text().await.unwrap_or_default()
+    );
+}

@@ -176,12 +176,32 @@ pub fn production_host_config(base_dir: PathBuf, version: String) -> HostConfig 
 /// error and the wrong status.
 ///
 /// v4 imposes no per-route limit of its own — its route handlers stream
-/// `request.formData()` — and the only ceiling it states anywhere is
-/// `next.config`'s `bodySizeLimit: '100mb'`. Matching that keeps the ported
-/// caps authoritative (they fire well below it, with v4's own messages) while
-/// leaving a hard backstop, which matters because the no-auth HTTP/Docker
-/// deployment (D1/D12) is first-class and every upload is buffered whole.
-const MAX_REQUEST_BODY_BYTES: usize = 100 * 1024 * 1024;
+/// `request.formData()`. It states TWO ceilings in `next.config.js`, and only
+/// one of them governs this surface (dogfood finding #63 — the #36 fix read the
+/// wrong one):
+///
+/// - `experimental.serverActions.bodySizeLimit: '100mb'` applies to **Server
+///   Actions**, which no ported route is;
+/// - `experimental.proxyClientMaxBodySize: '10gb'` is the one on the request
+///   path, and v4's own comment beside it names this exact surface: *"allow
+///   large import/export and backup files … Default is 10MB which truncates
+///   .qtap import files with memories … Bumped to 10GB so the streaming NDJSON
+///   .qtap imports (which can run multi-GB once full memory sets are included)
+///   aren't rejected at the proxy layer."*
+///
+/// So 100 MB was never v4's ceiling here, and a real Friday characters export
+/// (791 MB, mostly vault blobs) was refused at the edge with a bare
+/// `413 "Failed to buffer the request body: length limit exceeded"`. Matching
+/// v4's stated 10 GB keeps the ported caps authoritative (they fire far below
+/// it, with v4's own messages) while leaving a hard backstop, which matters
+/// because the no-auth HTTP/Docker deployment (D1/D12) is first-class.
+///
+/// ⚠ Honest limit: v5 buffers the whole body and then parses it, where v4's
+/// import streams the NDJSON line by line ("only one record's worth of bytes …
+/// in a V8 string at a time"). Raising the ceiling makes the large import
+/// *reachable*, not cheap — a multi-GB archive will cost multi-GB of RSS until
+/// the import path streams. Recorded as a standing note, not fixed here.
+const MAX_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024 * 1024;
 
 /// Build the full router over a shared state.
 pub fn build_router(state: SharedState) -> Router {
