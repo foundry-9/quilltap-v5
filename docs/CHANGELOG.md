@@ -88,6 +88,9 @@ back, which is what makes an import a faithful round trip. A real export
 always carries the store's whole folder tree, scaffolding included, so
 nothing is lost by clearing first. This is a deliberate difference from
 the reference app, which still keeps the husks.
+Recorded the post-fix autonomous-rooms sweep result alongside the
+pre-fix one, so the committed evidence shows both states.
+
 Repaired the differential harness's rotten oracle-regeneration recipes.
 Re-measuring the families a previous sweep had written off found that most
 of them were never broken — they only fail when the sweep runs from an

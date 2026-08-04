@@ -1,0 +1,21 @@
+{
+  "label": "P4.34 unit 6 follow-up: autonomous-rooms AFTER the forked-job-child silencing (the repairs artifact records its pre-fix regen_failed). Verified 3/3 green in isolation with ZERO fork failures; this is run 4. Lane worktree venue, v4 baseline 7fe9fe40.",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/recipe-rot-maintenance-docs-98c700",
+  "venue_is_worktree": true,
+  "requested": [
+    "autonomous_rooms_routes_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 1
+  }
+}
