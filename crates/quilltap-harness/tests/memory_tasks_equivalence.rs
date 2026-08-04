@@ -9,10 +9,14 @@
 //!
 //! Generate the oracle output (jest — the seam needs `jest.mock`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   V5=~/source/quilltap-v5
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-memory-tasks-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/memory-tasks-tier1.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/memory-tasks-tier1.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-memory-tasks.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-tasks-tier1
+//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/cases" -- memory-tasks-tier1
 //! Run:
 //!   QT_ORACLE_MEMORY_TASKS=/tmp/oracle-memory-tasks.ndjson \
 //!     cargo test -p quilltap-harness memory_tasks

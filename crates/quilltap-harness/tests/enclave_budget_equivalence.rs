@@ -12,7 +12,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/enclave-budget.ts \
 //!     > /tmp/oracle-enclave-budget.ndjson
 //! Run:
-//!   QT_ORACLE_ENCLAVE_BUDGET=/tmp/oracle-enclave-budget.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_ENCLAVE_BUDGET=/tmp/oracle-enclave-budget.ndjson \
+//!     cargo test -p quilltap-harness --test enclave_budget_equivalence
 
 use quilltap_core::enclave_budget::{
     check_budget, compute_autonomous_context_cap, compute_budget_progress, BudgetCheck, BudgetState,

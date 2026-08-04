@@ -14,9 +14,13 @@
 //! The clock is pinned on both sides (the spec's `nowMs`), so even the two rows
 //! that fall back to "now" are diffed on their exact value.
 //!
-//! Generate the oracle (Node 24; TZ=UTC):
+//! Generate the oracle (Node 24; TZ=UTC is load-bearing). The header used to
+//! name `/tmp/qt-v4-pin-231be14c`; a detached pin worktree never survives the
+//! round that made it, so the recipe was dead on arrival (P4.34's F6). Regen
+//! from the checkout, and pin a fresh worktree only if v4 has drifted past the
+//! baseline this family was last verified at:
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   cd /tmp/qt-v4-pin-231be14c
+//!   cd ~/source/quilltap-server
 //!   TZ=UTC $N/node --import tsx \
 //!     ~/source/quilltap-v5/harness/oracle/cases/fictional-clock-anchor.ts \
 //!     > /tmp/oracle-fictional-clock-anchor.ndjson

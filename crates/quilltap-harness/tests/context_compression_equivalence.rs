@@ -11,7 +11,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/context-compression.ts \
 //!     > /tmp/oracle-context-compression.ndjson
 //! Run:
-//!   QT_ORACLE_CONTEXT_COMPRESSION=/tmp/oracle-context-compression.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_CONTEXT_COMPRESSION=/tmp/oracle-context-compression.ndjson \
+//!     cargo test -p quilltap-harness --test context_compression_equivalence
 
 use quilltap_core::context_compression::{
     build_compressed_history_block, should_apply_budget_compression, should_apply_compression,

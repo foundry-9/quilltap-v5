@@ -24,15 +24,19 @@
 //! flipped to the observer.
 //!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-memory-processor-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/memory-processor-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/memory-processor-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-memory-processor-main.db \
 //!   QT_FIXTURE_MOUNT_OUT=/tmp/qt-memory-processor-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-memory-processor-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-memory-processor-fixture.ts
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
 //!   QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-processor-tier3
+//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/cases" -- memory-processor-tier3
 //! Run:
 //!   QT_ORACLE_PROCESSOR=/tmp/oracle-memory-processor.ndjson \
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \

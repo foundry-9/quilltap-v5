@@ -120,7 +120,13 @@ DELIBERATE_REPO_WRITERS = {
 # ending in `\` are shell regardless.
 SHELL_START = re.compile(
     r"^(?:"
-    r"[A-Za-z_][A-Za-z0-9_]*=\S"  # VAR=value (env prefix or assignment)
+    # F8 (P4.34): an ELIDED command (`… QT_ORACLE_OUT=… npx jest -- <case>`).
+    # Dropping it as prose hid the elision from `extract`'s own `…` check, so
+    # anchored restoration never fired and the family ran the truncated tail
+    # instead — `chat_regenerate_title_tier3`'s recipe degenerated to a bare
+    # `npx jest -- <case>` with no `cd`, and jest died looking for a config.
+    r"…\s*\S"
+    r"|[A-Za-z_][A-Za-z0-9_]*=\S"  # VAR=value (env prefix or assignment)
     r"|cd\s|cp\s|mv\s|rm\s|mkdir\s|ln\s|export\s|for\s|do\s|done\b|touch\s"
     r"|\$N/|\$\{?N\}?/|npx\s|node\s|cargo\s|python3?\s|bash\s|sh\s|diff\s"
     r"|brctl\s|sqlite3\s|tar\s|unzip\s|curl\s"
@@ -875,6 +881,9 @@ SELF_TEST_SHELL = [
     "rm -f /tmp/oracle-x.ndjson",
     "touch /tmp/qt-marker",
     "for f in a b c; do echo $f; done",
+    # F8: an elided command must survive classification, or `extract`'s own
+    # `…` check never fires and anchored restoration is skipped.
+    "… QT_ORACLE_OUT=/tmp/oracle-x.ndjson \\",
 ]
 
 
@@ -903,6 +912,11 @@ def cmd_self_test() -> int:
         == ["N=~/.nvm/versions/node/v24.13.1/bin", "cd ~/source/quilltap-server"],
         f"shell_lines leaked prose: {shell_lines(doc)}",
     )
+
+    # F8 end-to-end: the elision marker reaches the extracted script, so the
+    # `…` check in extract() can trigger anchored restoration.
+    elided = [" Generate the oracle (see the .ts header):", "   … npx jest -- foo"]
+    check(ELISION in "\n".join(shell_lines(elided)), "F8: elision dropped as prose")
 
     # F5: the SKIP detector must fire on the harness's notice and NOT on an env
     # var name that merely ends in _SKIP (the `salon_skip` false positive).

@@ -75,6 +75,78 @@ fn js_num(f: f64) -> Value {
     }
 }
 
+/// Split a dumped `llm_logs` row list into `(byte-faithful, ruled-divergence)`.
+///
+/// The second half is P4.13 unit 6's RULED deliberate divergence: **v4 logs
+/// NOTHING when a cheap-LLM call fails, and v5 writes an error row anyway**
+/// (`cheap_llm_exec::log_failed_call` — findings #23/#26 cost hours of
+/// invisible failure arms, and v5 has no console to fall back on). No oracle
+/// differential is possible for a deliberate divergence, so any family that
+/// dumps `llm_logs` over a corpus containing a failed cheap call is
+/// permanently red on the row COUNT alone — `compression_tier3` (7 vs 6),
+/// which two sweeps counted as an unexplained "content divergence".
+///
+/// ⚠ `context_summary_service_tier3`'s 17-vs-11 looks like the same shape and
+/// is NOT: P4.34 measured ZERO rows with a non-null `error` on either side
+/// there, and v5's rows are a strict superset of v4's (five episodic-extraction
+/// `SUMMARIZATION` calls plus one `TITLE_GENERATION`). Do not reach for this
+/// helper to make that family green — its divergence is undiagnosed and
+/// escalated.
+///
+/// The signature is exact and cannot collide with a success row: v5's success
+/// arms always log `response.error = null`, and `log_failed_call` is the only
+/// writer that sets it. Callers must assert in BOTH directions (see the
+/// `assert_ruled_failed_call_divergence` helper) so the day v4 starts logging
+/// these, the pin fails loudly instead of hiding a convergence.
+pub fn split_ruled_failed_call_rows(rows: Vec<Value>) -> (Vec<Value>, Vec<Value>) {
+    rows.into_iter()
+        .partition(|row| !is_ruled_failed_call_row(row))
+}
+
+fn is_ruled_failed_call_row(row: &Value) -> bool {
+    let Some(Value::String(response)) = row.get("response") else {
+        return false;
+    };
+    serde_json::from_str::<Value>(response)
+        .ok()
+        .and_then(|v| v.get("error").cloned())
+        .is_some_and(|e| !e.is_null())
+}
+
+/// Assert the ruled failed-call divergence in both directions, then hand back
+/// the rows that MUST match v4 byte-for-byte.
+///
+/// - v5 must still be writing the error row (else the corpus stopped
+///   exercising the failed cheap call and this pin has gone vacuous);
+/// - v4 must still be writing none (else the divergence has CONVERGED and the
+///   pin must be retired, not silently widened).
+pub fn assert_ruled_failed_call_divergence(
+    got: Vec<Value>,
+    oracle: &[Value],
+    family: &str,
+) -> Vec<Value> {
+    let (got_faithful, got_ruled) = split_ruled_failed_call_rows(got);
+    assert!(
+        !got_ruled.is_empty(),
+        "{family}: v5 wrote no failed-cheap-call error row, so the P4.13 ruled \
+         divergence is no longer exercised by this corpus — the pin is vacuous. \
+         Either the corpus lost its failing provider arm or `log_failed_call` \
+         stopped firing; find out which before relaxing this."
+    );
+    let oracle_ruled: Vec<&Value> = oracle
+        .iter()
+        .filter(|r| is_ruled_failed_call_row(r))
+        .collect();
+    assert!(
+        oracle_ruled.is_empty(),
+        "{family}: v4 now logs {} failed-cheap-call row(s) too — the P4.13 \
+         deliberate divergence has CONVERGED. RETIRE this pin and diff the \
+         rows straight, rather than filtering v5's rows away: {oracle_ruled:?}",
+        oracle_ruled.len()
+    );
+    got_faithful
+}
+
 /// Dump every `llm_logs` row as a normalized `serde_json::Value` object keyed by
 /// column name: id/createdAt/updatedAt collapsed to placeholders, `durationMs`
 /// read as REAL (integer-collapsed), every other column as TEXT (NULL → JSON

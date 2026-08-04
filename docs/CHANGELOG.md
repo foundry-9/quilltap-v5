@@ -88,6 +88,30 @@ back, which is what makes an import a faithful round trip. A real export
 always carries the store's whole folder tree, scaffolding included, so
 nothing is lost by clearing first. This is a deliberate difference from
 the reference app, which still keeps the husks.
+Repaired the differential harness's rotten oracle-regeneration recipes.
+Re-measuring the families a previous sweep had written off found that most
+of them were never broken — they only fail when the sweep runs from an
+agent worktree, which the reference app's test runner ignores. The ones
+that were genuinely broken had four distinct causes, each fixed: a recipe
+that used a scratch directory it never created, one that copied into a
+directory it never made, one whose complete recipe the driver had been
+dropping on the floor, and a fixture builder that created a table the
+reference app needs *after* the step that needs it. Nine more recipes now
+stage their files outside the worktree so where you run them stops
+mattering, two stopped pointing at temporary directories that no longer
+exist, and four stopped running the entire test suite when they meant to
+run one test.
+
+The context-compression differential is green again: it was permanently red
+only because v5 deliberately records a log row for failed cheap model calls
+where the reference app records nothing, and that ruled difference is now
+pinned explicitly — asserted in both directions, so it fails loudly if the
+two ever agree again instead of hiding it.
+
+Also fixed the autonomous-rooms oracle, which had been silently spawning a
+child process that cannot start under the test runner; its crashes were
+intermittently emptying the database mid-run.
+
 Fixed the differential harness's recipe-sweep driver, which had been
 misreporting working recipes as broken. Doc prose that happens to start
 with a shell word no longer leaks into the generated script; the

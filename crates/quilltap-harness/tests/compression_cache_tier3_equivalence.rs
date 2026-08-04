@@ -17,11 +17,19 @@
 //!   - `get` (no cache) — `null` (the miss);
 //!   - `invalidate` — the column cleared to `null`.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; `.claude` copy):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; TMPO=/tmp/qt-oracle-run
+//! Generate the fixture + oracle (Node 24, from the v4 checkout). jest ignores
+//! `.claude/` paths, so the case + its spec are staged into a per-family /tmp
+//! mirror first — the old header named `/tmp/qt-oracle-run` without ever
+//! creating it, so the run died on `Directory /tmp/qt-oracle-run/cases in the
+//! roots[1] option was not found` (P4.34 phase 1):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-compcache-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/compression-cache-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/compression-cache-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-compcache.db \
-//!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-compression-cache-fixture.ts
+//!     $N/npx tsx "$V5W/harness/oracle/fixtures/build-compression-cache-fixture.ts"
 //!   QT_FIXTURE_COMPCACHE=/tmp/qt-compcache.db QT_ORACLE_OUT=/tmp/oracle-compcache.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- compression-cache-tier3

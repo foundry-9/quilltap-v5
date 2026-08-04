@@ -342,7 +342,18 @@ async fn compression_tier3_matches_oracle() {
     // `sendToProvider` `logLLMCall`, task type CONTEXT_COMPRESSION). Diff the
     // written rows against v4's byte-for-byte (id/createdAt/updatedAt
     // placeholdered, sorted by canonical JSON).
-    let got_logs = common::dump_llm_logs(&db);
+    //
+    // The corpus contains a failing provider arm, so v5 ALSO writes P4.13 unit
+    // 6's ruled error row, which v4 never writes. That row is split off and
+    // asserted in both directions (`assert_ruled_failed_call_divergence`) — it
+    // must be present on the v5 side and absent on v4's — and everything else
+    // is diffed byte-for-byte. Two sweeps counted this family's 7-vs-6 as an
+    // unexplained content divergence (P4.D32, P4.D42).
+    let got_logs = common::assert_ruled_failed_call_divergence(
+        common::dump_llm_logs(&db),
+        &oracle_llm_logs,
+        "compression_tier3",
+    );
     assert_eq!(
         got_logs,
         oracle_llm_logs,

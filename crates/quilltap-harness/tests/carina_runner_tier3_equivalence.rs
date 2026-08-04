@@ -23,13 +23,17 @@
 //!      `<ts>` (the established minted-values remap form).
 //!
 //! Generate the fixture + oracle output (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-carina-runner-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/carina-runner-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/carina-runner-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-carina-runner.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-carina-runner-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-carina-runner-fixture.ts
 //!   QT_FIXTURE_CARINA=/tmp/qt-carina-runner.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-carina-runner.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- carina-runner-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- carina-runner-tier3
 //! Run:
 //!   QT_ORACLE_CARINA=/tmp/oracle-carina-runner.ndjson \
 //!   QT_FIXTURE_CARINA=/tmp/qt-carina-runner.db \

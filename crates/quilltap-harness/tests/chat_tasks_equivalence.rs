@@ -8,7 +8,7 @@
 //!     > /tmp/oracle-chat-tasks.ndjson
 //! Run:
 //!   QT_ORACLE_CHAT_TASKS=/tmp/oracle-chat-tasks.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test chat_tasks_equivalence
 
 use quilltap_core::chat_tasks::{extract_visible_conversation, strip_tool_artifacts, RawMessage};
 use quilltap_core::chat_utils::get_character_chat_preview;

@@ -26,10 +26,14 @@
 //! stopSequences forwarding) are compared.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-text-tool-loop-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/text-tool-loop-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/text-tool-loop-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-text-tool-loop.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- text-tool-loop-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- text-tool-loop-tier3
 //! Run:
 //!   QT_ORACLE_TEXT_TOOL_LOOP=/tmp/oracle-text-tool-loop.ndjson \
 //!     cargo test -p quilltap-harness --test text_tool_loop_tier3_equivalence

@@ -29,13 +29,17 @@
 //!      `id` + timestamps.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-message-finalizer-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/message-finalizer-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/message-finalizer-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-mf-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-mf-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-message-finalizer-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-message-finalizer-fixture.ts
 //!   QT_FIXTURE_MF_MAIN=/tmp/qt-mf-main.db QT_FIXTURE_MF_MOUNT=/tmp/qt-mf-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-message-finalizer.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- message-finalizer-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- message-finalizer-tier3
 //! Run:
 //!   QT_ORACLE_MESSAGE_FINALIZER=/tmp/oracle-message-finalizer.ndjson \
 //!   QT_FIXTURE_MF_MAIN=/tmp/qt-mf-main.db QT_FIXTURE_MF_MOUNT=/tmp/qt-mf-mount.db \

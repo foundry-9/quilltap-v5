@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/context-summary.ts \
 //!     > /tmp/oracle-context-summary.ndjson
 //! Run:
-//!   QT_ORACLE_CONTEXT_SUMMARY=/tmp/oracle-context-summary.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_CONTEXT_SUMMARY=/tmp/oracle-context-summary.ndjson \
+//!     cargo test -p quilltap-harness --test context_summary_equivalence
 
 use quilltap_core::context_summary::{
     calculate_interchange_count, evaluate_summarization_gate, partition_messages_into_turns,

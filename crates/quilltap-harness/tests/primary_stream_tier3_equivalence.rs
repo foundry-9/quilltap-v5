@@ -33,13 +33,17 @@
 //!      failover legs (characterId NULL); NONE for recovery (v4 passes no userId).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-primary-stream-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/primary-stream-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/primary-stream-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-primary-stream.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-primary-stream-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-primary-stream-fixture.ts
 //!   QT_FIXTURE_PRIMARY_STREAM=/tmp/qt-primary-stream.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-primary-stream.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- primary-stream-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- primary-stream-tier3
 //! Run:
 //!   QT_ORACLE_PRIMARY_STREAM=/tmp/oracle-primary-stream.ndjson \
 //!   QT_FIXTURE_PRIMARY_STREAM=/tmp/qt-primary-stream.db \

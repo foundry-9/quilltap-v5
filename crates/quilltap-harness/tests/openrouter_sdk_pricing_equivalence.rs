@@ -19,13 +19,19 @@
 //! The v5 replay models the host's `openrouter_models_pages`: walk the oracle's
 //! pages under the same stop rule, concatenate, remap, parse, sort.
 //!
-//! Generate the oracle (jest, Node 24, from a PINNED v4 worktree). BOTH
-//! overrides are load-bearing — see the case file's header; without the
-//! `--transformIgnorePatterns` one the suite passes and emits empty scenarios:
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
-//!   STAGE=/private/tmp/p4d33-oracle-cases   # jest ignores /.claude/ paths
-//!   mkdir -p "$STAGE" && cp "$V5/harness/oracle/cases/openrouter-sdk-pricing.test.ts" "$STAGE/"
-//!   cd /private/tmp/qt-v4-pin-<order>-<sha>
+//! Generate the oracle (jest, Node 24, from the v4 checkout). BOTH overrides
+//! are load-bearing — see the case file's header; without the
+//! `--transformIgnorePatterns` one the suite passes and emits empty scenarios.
+//! The header used to name `/private/tmp/qt-v4-pin-<order>-<sha>`; a detached
+//! pin never survives the round that made it (P4.34's F6), and a pin also has
+//! to have `plugins/node_modules` + the per-plugin `plugins/dist/*/node_modules`
+//! symlinked before this family's SDK is resolvable at all. Regen from the
+//! checkout; pin only if v4 has drifted past the verified baseline:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   STAGE=/private/tmp/qt-openrouter-sdk-pricing-oracle  # jest ignores /.claude/
+//!   rm -rf "$STAGE"; mkdir -p "$STAGE"
+//!   cp "$V5W/harness/oracle/cases/openrouter-sdk-pricing.test.ts" "$STAGE/"
+//!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-openrouter-sdk-pricing.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE" \
 //!       --transformIgnorePatterns "node_modules/(?!(@openrouter/sdk|jose)/)" \

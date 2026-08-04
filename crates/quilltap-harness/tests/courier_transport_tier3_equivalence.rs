@@ -21,9 +21,15 @@
 //! functions (`resolve_external_turn` / `cancel_external_turn`) compose
 //! tier-2/tier-3-proven repo ops and are Rust-unit-tested in the core module.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; `.claude` copy):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; TMPO=/tmp/qt-oracle-w444
-//!   cp -R <worktree>/harness/oracle $TMPO/oracle
+//! Generate the fixture + oracle (Node 24, from the v4 checkout). jest ignores
+//! `.claude/` paths, so the whole oracle tree is staged into a per-family /tmp
+//! mirror first (the builder imports from it too). The `mkdir` is the repair:
+//! without it the copy died on `cp: /tmp/qt-oracle-w444/oracle: No such file or
+//! directory` (P4.34 phase 1):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-courier-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO"
+//!   cp -R "$V5W/harness/oracle" "$TMPO/oracle"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-cour-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-cour-mount.db \
 //!     $N/npx tsx $TMPO/oracle/fixtures/build-courier-transport-fixture.ts

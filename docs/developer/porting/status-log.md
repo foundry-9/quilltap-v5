@@ -54619,3 +54619,254 @@ lines moved).
   P4.D42 their per-family numbers (`/tmp/d32-rest-final.json`,
   `/tmp/p4d42-sweep-logs/`), and it is why this order had to recover
   P4.D42's classification from a session transcript.
+
+### Correction — the P4.D42 sweep record's dangling numbers (P4.34, appended not rewritten)
+
+The lane record above ("Lane record — P4.D42 tier-1 item 5 (the neutrality
+sweep) — READ THIS ONE") carries three defects. They are corrected here
+rather than edited in place, so the round's history stays intact.
+
+1. **"every family name appears in the results table below by status"** —
+   there is no such table. The per-family classification lived in
+   `/tmp/p4d42-sweep-logs/`, which the record itself points at "for the
+   unifier's session", and it is gone. Recovering it for P4.34's order meant
+   mining the D42 lane's session transcript. That is the failure
+   `recipe_sweep.py --run-all`'s always-written results artifact now
+   prevents, and the artifacts live in `harness/tools/sweep-results/`.
+2. **The arithmetic does not close.** The record's prose reports "19 of 75
+   families fail at the recipe level" plus "7 content divergences"; the
+   transcript's actual measurement was **76 lines / 44 OK / 30 FAIL / 1
+   SUSPECT**, causing `15 REGEN_ROT + 4 RECIPE_NOT_SELF_CONTAINED + 11
+   CONTENT_DIVERGENCE`. One of the 11 (`pascal_workbench_route`) was the D42
+   lane's own tokio defect, fixed in-round, leaving 10 residual — not 7.
+3. **`pascal_custom_tools_execution_equivalence` was a STATIC-AUDIT find,
+   not one of the 30 sweep failures.** It is listed among the divergences in
+   places; it was never a `--run` red. The genuinely unexplained pascal red
+   was `pascal_custom_tools_route` — and P4.34 re-ran it in isolation at
+   `7fe9fe40`, where it is **green**. A red inside a broad sweep is not a
+   finding until it survives isolation.
+
+### Lane record — P4.34 unit 2: the two-phase re-measure, phase 1
+
+Run from the **main checkout** (`--v5w ~/source/quilltap-v5`), which is the
+whole point: P4.D42's sweep ran from a `.claude/worktrees/` lane checkout,
+and v4's jest ignores those paths. Sibling-owned families were excluded
+(D44's chat-create capstone; D45's direct + transitive set incl.
+`build_context_tier3` and `pseudo_tool_prompts`; P4.33's import families).
+Artifact: `harness/tools/sweep-results/2026-08-04-7fe9fe40-phase1.json`.
+
+**28 families measured: 12 ok / 4 regen_failed / 4 skipped / 6 run_failed /
+2 refused.** The order's hypothesis — "the true rot count may be far
+smaller than 19" — is confirmed. The classification:
+
+| Class | Families | Verdict |
+| --- | --- | --- |
+| **Venue-healed** (8) | `carina_runner_tier3`, `memory_processor_tier3`, `memory_tasks`, `message_finalizer_tier3`, `native_tool_loop_tier3`, `primary_stream_tier3`, `tool_execution_process_tier3`, `text_tool_loop_tier3` | Never rotten. They hand jest a `--roots` under the v5 checkout and only fail from a lane worktree. Converted to staged mirrors anyway (unit 3) so the venue stops mattering. |
+| **Driver-healed** (2) | `tool_build` (F3), `salon_skip` (F5) | The failure was the driver's, not the recipe's. |
+| **Sweep artifact** (1) | `pascal_custom_tools_route` | Green in isolation at `7fe9fe40`. |
+| **Genuine regen rot** (4) | `chat_regenerate_title_tier3`, `compression_cache_tier3`, `courier_transport_tier3`, `regenerate_swipe_tier3` | Four DIFFERENT defects, all repaired in unit 3. |
+| **Genuine non-self-containment** (4) | `chat_tasks`, `context_compression`, `context_summary`, `enclave_budget` | Repaired in unit 3. |
+| **Ruled divergence** (1) | `compression_tier3` | Pinned in unit 4. |
+| **Round-internal drift** (4) | `enclave_step_tier3`, `orchestrator_tier3`, `brahma_console_tier3`, `brahma_orchestrator_tier3` | Diagnosed in unit 5. Not v5 defects. |
+| **Undiagnosed** (1) | `context_summary_service_tier3` | Deliberately NOT pinned — see unit 4. |
+| **F6 refusals** (2) | `fictional_clock_anchor`, `openrouter_sdk_pricing` | The new stale-v4-pin class firing correctly; repaired in unit 3. |
+
+**`autonomous_rooms_routes` — the P4.27-deferred debt — is a RACE, and
+phase 1's green was luck.** It measured `ok` from the main checkout, so the
+first read was "fixed since P4.27". That was wrong, and re-running it in
+isolation is what caught it: **0/4 green from the lane worktree, and a
+`Cannot find package '@/lib' imported from child-entry.ts` on EVERY run
+including the ones that passed** (phase 1's green run logged 21 of them).
+The fork always fails; whether its crash/restart loop races the parent's DB
+singleton into `no such table: chats` depends on machine load. Repaired in
+unit 3 — a green here was never evidence of health.
+
+**Phase 2 is the UNIFIER's work item.** This lane finishes before the
+siblings land, so the excluded families have not been measured post-round.
+The handoff is in the final report and repeated here: after D44/D45/P4.33
+unify, run
+
+```
+python3 harness/tools/recipe_sweep.py --v5w <the unify checkout> --run-all \
+  --results harness/tools/sweep-results/<date>-7fe9fe40-phase2.json \
+  --families build_context_tier3_equivalence,chat_create_capstone_equivalence,\
+context_feeders_leaves_equivalence,post_office_concierge_lantern_suparna_equivalence,\
+pseudo_tool_prompts_equivalence,context_summary_service_tier3_equivalence,\
+enclave_step_tier3_equivalence,orchestrator_tier3_equivalence,\
+brahma_console_tier3_equivalence,brahma_orchestrator_tier3_equivalence
+```
+
+from a **non-`.claude`** checkout (or accept the `refused_venue` rows for
+the four that are still unstaged), and commit the artifact.
+
+### Lane record — P4.34 units 3–6: the repairs, the R1 pin, the R3 diagnoses
+
+Verification artifact:
+`harness/tools/sweep-results/2026-08-04-7fe9fe40-repairs.json` — 24 families,
+**22 ok**. It was deliberately run from the **lane worktree** (a `/.claude/`
+venue), so every green in it is simultaneously proof that the repaired
+recipes are venue-independent. The two non-ok rows are the two families the
+run was designed to characterize (autonomous-rooms, repaired after; and
+context-summary-service, escalated below).
+
+**Unit 3 — the repairs. Four "regen rot" families, four DIFFERENT defects:**
+
+- `chat_regenerate_title_tier3` — **a driver defect, F8.** The `.rs` header
+  elides its regen as `… QT_ORACLE_OUT=… npx jest -- <case>` and points at
+  the `.ts` header, which carries the complete recipe. But `shell_lines()`
+  dropped the leading `…` as prose, so `extract()`'s own elision check never
+  saw it, anchored restoration never fired, and the driver ran the truncated
+  tail — a bare `npx jest` with no `cd`, which died looking for a jest
+  config. The ellipsis is now recognized as the start of an elided command.
+  No header change was needed; the recipe was there the whole time.
+- `compression_cache_tier3` — assigned `TMPO=/tmp/qt-oracle-run` and never
+  created it, so it depended on whatever an earlier recipe had left behind
+  (and on a name two other families also use). Given its own staged mirror.
+  This is the defect the new `external_tmp_input` class now catches
+  statically.
+- `courier_transport_tier3` — `cp -R "$V5W/harness/oracle" "$TMPO/oracle"`
+  with no `mkdir -p "$TMPO"`. One line.
+- `regenerate_swipe_tier3` — **not a recipe defect at all.** The fixture
+  builder died with `Error creating character … no such table:
+  doc_mount_blobs`, i.e. v4's own `gcOrphanedFileRow` bug (P4.D41 found it
+  and queued the v4-side fix). The builder already carried the
+  `CREATE TABLE IF NOT EXISTS doc_mount_blobs` workaround P4.D41 added — at
+  the END of the file, after the `repos.characters.create` loop that reaches
+  `ensureCharacterVault → writeCharacterVaultManagedFields →
+  linkDocumentContent → gcOrphanedFileRow` first. Moved into the DDL block.
+  **This is the diagnosis to hand P4.D45 for `build_context_tier3`**, whose
+  order-listed failure is the identical call chain in its own builder (that
+  file is D45's this round, so it was left alone).
+
+**Four "not self-contained" families** (`chat_tasks`, `context_compression`,
+`context_summary`, `enclave_budget`) DID carry their `QT_ORACLE_*` prefix —
+the defect was that their run line is `cargo test -p quilltap-harness` with
+no `--test <family>`, so it runs all ~380 harness binaries and the other
+families' legitimate `SKIP:` notices land in the output. Given the `--test`
+filter every other header has.
+
+**Eight venue-healed families converted to staged mirrors**
+(`carina_runner_tier3`, `memory_processor_tier3`, `memory_tasks`,
+`message_finalizer_tier3`, `native_tool_loop_tier3`, `primary_stream_tier3`,
+`tool_execution_process_tier3`, `text_tool_loop_tier3`) plus
+`context_summary_service_tier3`. Each stages its case and its spec JSON into
+`/tmp/qt-<slug>-oracle`, and `V5=~/source/quilltap-v5` became the documented
+`V5W=${V5W:-$HOME/source/quilltap-v5}`. All nine run green from a `.claude/`
+venue now.
+
+**Two `stale_v4_pin_path` families** (`fictional_clock_anchor`,
+`openrouter_sdk_pricing`) point at `~/source/quilltap-server` again, with a
+note that a pin is for drift only. Both green at `7fe9fe40`.
+`openrouter_sdk_pricing` also got a per-family stage dir and inherited
+P4.D33's "a pin needs `plugins/node_modules` symlinked" warning in prose.
+
+**Static picture after unit 3:** `non_extractable` **2 → 0**,
+`external_tmp_input` **1 → 0**, `unstaged_jest_roots` **37 → 29**,
+`ok_restored` 65 → 66.
+
+**Unit 4 — the R1 pin. One family, not two.**
+
+`compression_tier3` is pinned: `common::assert_ruled_failed_call_divergence`
+splits the ruled P4.13 unit-6 error row off v5's `llm_logs` dump (the
+signature is `response.error != null`, which no success row can carry) and
+asserts it in BOTH directions — present on v5, absent on v4 — with a message
+that says RETIRE THE PIN, not widen it, if v4 ever converges. Everything
+else is diffed byte-for-byte as before. The family is green; two sweeps had
+counted its 7-vs-6 as an unexplained content divergence.
+
+`context_summary_service_tier3` was **deliberately NOT pinned** — the
+order's condition ("if phase-1/2 confirms the same shape") is not met.
+Measured: **17 vs 11, and ZERO rows with a non-null `error` on either
+side**, so it is not the P4.13 divergence at all. v5's rows are a strict
+**superset** of v4's (no row appears only on v4). The six extras are five
+`SUMMARIZATION` calls carrying the episodic extraction prompt ("an outing, a
+visit, an arrival, a completed undertaking, a notable incident. It is NOT a
+standing fact…") and one `TITLE_GENERATION`. **Hypothesis, not a
+conclusion:** v5's `run_summary_check` folds live since P4.6bj wired
+`FoldEpisodePassSeams`, while this family's header still says "the `check`-op
+internal fold keeps `NoopSeams`" and the oracle mocks it — the P4.20
+stale-oracle-mock shape. Deciding which side is wrong is a port question and
+changing either the case's mocks or the Rust seam selection changes what the
+differential PROVES, which this maintenance lane is forbidden from doing.
+**ESCALATED (tier 3): it needs its own order.** Re-measure at phase 2 first —
+this family's oracle regen is D45-transitive.
+
+**Unit 5 — the R3 diagnoses. All four reds are THIS ROUND'S OWN drift.**
+
+`enclave_step_tier3`, `orchestrator_tier3`, `brahma_console_tier3` and
+`brahma_orchestrator_tier3` all fail as canned-provider MISSES
+(`brahma_console`'s is literally `{"ok":false,"detail":"empty response"}`
+against `{"ok":true,"answer":"Hello there…"}`; `enclave_step`'s is one fewer
+message per chat, a different selected speaker, and zero completion tokens).
+
+The cause is `7fe9fe40` itself — the round's own baseline. It rewords
+`lib/tools/native-tool-prompt.ts`, which lands in the system prompt on
+**every tool-enabled turn**, and the canned key for these tier-3 families IS
+the system prompt. v4 now emits *"Describing the action in prose — pulling up
+the file, executing the search, reaching for the vault"*; v5 on main still
+emits *"Writing \"\*pulls up the file\*\", \"\*executes the search\*\"…"*.
+**P4.D45 is porting exactly that string this round.** Measured, not reasoned:
+the freshly regenerated oracles carry `pulling up the file` 13 / 78 / 10 / 8
+times and the old wording **zero** times, while v5's built keys in the same
+run carry the old wording 12 times.
+
+So: **not v5 divergences, no fix here, and the reds will clear when D45
+lands.** Phase 2 must re-measure them. Note this does NOT retro-explain
+P4.D42's reds for the same families — D42 ran at `49769ec4`, before
+`7fe9fe40` existed, so its cause was something else and only phase 2 can say
+whether a second cause survives underneath.
+
+`pascal_custom_tools_route`, the fifth undiagnosed red, is a **sweep
+artifact**: green in isolation at `7fe9fe40`.
+
+**Unit 6 — the autonomous-rooms oracle repair (the P4.27-deferred item).**
+
+`autonomous-rooms-routes.test.ts` now `jest.doMock`s
+`@/lib/background-jobs/processor` with `ensureProcessorRunning: () =>
+undefined` — the idiom `courier-images-routes.test.ts` already uses, and
+which this case was alone among the route oracles in lacking.
+`queueService.enqueueJob` calls it after every insert, which
+`child_process.fork`s `child-entry.ts` with `execArgv: process.execArgv`;
+under jest that carries no tsx loader and no tsconfig-paths resolver, so the
+child dies on `Cannot find package '@/lib'` and its restart loop races the
+parent's DB singleton. Silencing it is also the FAITHFUL choice: the Rust
+harness has no forked child either, so a child that actually claimed jobs
+would diverge the two sides on `background_jobs` state — the differential
+compares the enqueue, never the execution. **After: 3/3 green and ZERO fork
+failures** (from 0/4 green with a fork failure on every run).
+
+### Lane record — P4.34: what this lane deliberately did NOT do
+
+- **28 families still carry `unstaged_jest_roots`** — the same venue defect,
+  outside this lane's rot list and never measured by any sweep, so outside
+  tier 1's "every family phase 1 proves genuinely unrunnable". They are NOT
+  uniform (some restore their roots from the `.ts` header, some read two
+  spec files, some use a different jest pattern), so the mechanical
+  conversion that worked for the nine in unit 3 does not simply apply, and
+  each needs its own verification run. **This is no longer archaeology:**
+  `recipe_sweep.py --list` names all 28 in one command. They are
+  `build_context_tier3` (D45's this round), `danger_resolver`, `doc_blob`,
+  `doc_enum`, `doc_fm`, `doc_fs`, `doc_text`, `doc_ui`,
+  `embedding_refit_tier3`, `embedding_wire`, `first_message_context`,
+  `image_gen_leaves`, `knowledge_injector`, `mail_carina_tools`,
+  `memory_gate_tier3`, `memory_watermark_tier3`, `photo_tools`,
+  `precompute`, `pricing_fetcher`, `recall_replay`, `rng_executor`,
+  `search_tools`, `state_cascade`, `state_routes`, `state_sql_tools`,
+  `wardrobe_transfers_tier2`, `web_search_tool`, `write_apply`. Until they
+  are converted, run them with `--v5w ~/source/quilltap-v5`.
+- **`--collisions` still reports 20 shared /tmp paths.** They are static
+  (two headers naming the same mirror dir), and `--run` de-collides by
+  suffixing the scratch assignment with the family name — but a HUMAN
+  copy-pasting two such recipes back to back would still clobber. Pre-existing
+  and outside the rot list.
+- **Tier-2 deliverable 9, deliberately narrowed.** The order asked for a
+  `--check-venue` that refuses to run from any `/\.claude/` path. Implemented
+  as a PRECISE guard instead: `--run`/`--run-all` refuses only the families
+  that actually carry `unstaged_jest_roots`, naming the confound, with
+  `--force`. A blanket refusal would have made the sweep unrunnable from any
+  lane worktree — which is where lanes live — and would still have been
+  refusing families whose repair had made them venue-independent. The
+  confound cannot poison a number either way.
+- **No production `crates/quilltap-core/src/**` source was touched**, per
+  the mandate. The only `.rs` edits are harness test headers, the R1 pin, and
+  the shared `common/mod.rs` helper.

@@ -15,10 +15,14 @@
 //! and a mixed batch (a metadata-bearing vault-read success + a failure).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-toolexec-process-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/tool-execution-process-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/tool-execution-process-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-toolexec-process.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- tool-execution-process-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- tool-execution-process-tier3
 //! Run:
 //!   QT_ORACLE_TOOLEXEC_PROCESS=/tmp/oracle-toolexec-process.ndjson \
 //!     cargo test -p quilltap-harness --test tool_execution_process_tier3_equivalence

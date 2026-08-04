@@ -70,6 +70,25 @@ function applyMocks(spec: Spec, userId: string): void {
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // The forked background-job child, silenced (the sibling idiom — see
+  // courier-images-routes.test.ts). `queueService.enqueueJob` calls
+  // `ensureProcessorRunning()` after every insert, which `child_process.fork`s
+  // `lib/background-jobs/child/child-entry.ts` with `execArgv: process.execArgv`.
+  // Under jest that carries no tsx loader and no tsconfig-paths resolver, so the
+  // child dies on `Cannot find package '@/lib'` — and its crash/restart loop
+  // races the parent's DB singleton, which is how a mid-list case ends up
+  // reading `no such table: chats`. P4.27 recorded that failure and deferred it;
+  // it reproduces deterministically (P4.34 measured 0/4 green under load and a
+  // fork failure on EVERY run, including the ones that happened to pass).
+  //
+  // Silencing it is also the FAITHFUL choice: the Rust harness has no forked
+  // child either, so a child that actually claimed jobs would make the two
+  // sides diverge on `background_jobs` state. The differential compares the
+  // enqueue, never the execution.
+  jest.doMock('@/lib/background-jobs/processor', () => {
+    const actual = jest.requireActual('@/lib/background-jobs/processor');
+    return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
+  });
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
