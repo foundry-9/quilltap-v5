@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Planned the next porting round and committed its work orders — four
+lanes. Two absorb the reference app's newest drift: the New Chat form
+gains its roleplay-template dropdown (pick the template at creation,
+with the default chain pre-selected and an explicit "No Template"
+honored), and the staff announcement strings plus the tool-execution
+rules stop teaching models asterisk-delimited narration (which also
+retires a long-stale wording gap in the native-tool prompt). The third
+lane is the previously ruled import-overwrite repair, now slotted into
+the round. The fourth is a maintenance pass over the differential
+harness's regeneration recipes: the sweep driver's known defects, the
+mechanically-unrunnable recipe repairs, pins for the deliberately
+divergent error-row families, and a durable results artifact so sweep
+classifications stop dying with the round. Documentation only — the
+implementation is the four work orders.
+
 Ruled and ordered the import-overwrite repair the last round escalated:
 overwriting a document store on import now means overwriting all of it,
 folders included; a store's identity for import matching is its ID rather

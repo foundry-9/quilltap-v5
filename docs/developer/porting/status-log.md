@@ -53634,3 +53634,122 @@ All three arms are v5 divergences in the import family, sanctioned by the
 standing 2026-08-03 backup/restore ruling; each lands with both-direction
 pins, and the v4-side twins join the post-5.0 list. Ordered as
 `work-orders/p4.33-import-overwrite-id-identity.md`.
+
+## Round planned — the `7fe9fe40` drift catch-up + import-identity + recipe-rot round (P4.D44 ∥ P4.D45 ∥ P4.33 ∥ P4.34), 2026-08-04
+
+**Drift-check first, per the skill: v4 is TWO commits past `49769ec4` —
+HEAD `7fe9fe40` (4.8.0-dev.152, tree clean), exactly the owed catch-up
+the previous round record flagged.** Classified at planning:
+
+- **`4bbeab47` "feat(salon): pick a roleplay template when creating a
+  chat" — BEHAVIOR, on ported surfaces** (the chat-create route + the
+  New-Chat SPA family). A tri-state `roleplayTemplateId` on POST
+  /api/v1/chats (present-even-null beats the project > user default
+  chain; unresolvable id → 400) + the form dropdown beneath Play As
+  with default labeling, touched-tracking, and the fail-safe key
+  omission when the settings/templates/project fetches failed. Survey
+  corrections worth keeping: **v5 has NO REST `POST /api/v1/chats`**
+  (creation rides dispatch; no `quilltap-web` change and no web bump)
+  and **NO New-Chat modal** (the standing no-modal divergence — v4's
+  "page + modal" reduces to the page); `api/types.rs` needs NO edit
+  (`ChatCreate` is a `#[serde(flatten)]` map; the field grows
+  `ChatCreateRequest` in `services/chat_create.rs`, whose
+  `timestamp_config: Option<Option<Value>>` is the in-struct tri-state
+  precedent — with INVERTED null semantics, null-accepts vs null-400s);
+  the chat-create capstone fixture has ZERO roleplay-template data
+  today, so the fixture extension is the lane's largest single cost; a
+  server/SPA split would be fake parallelism — ONE end-to-end lane.
+  Two help docs → the `p4.9i2` bank. → **P4.D44**.
+- **`7fe9fe40` "fix(prompt): stop teaching models asterisk narration"
+  — BEHAVIOR, on ported surfaces** (the aurora/commonplace/suparna
+  writers, `services/core_whisper.rs`, `tools/native_tool_prompt.rs`).
+  Thirteen string changes (the twelve counted + the `quoteBody`
+  blank-letter the commit message doesn't count), all surveyed to exact
+  v5 line numbers; the suparna in-file tests must move too. **Closes
+  TWO debts at once:** the drift, and the pre-existing `8bf3cb5f`
+  rule-1 wording gap D42's sweep found (`pseudo_tool_prompts` stale-RED
+  → must flip GREEN as the lane's headline proof). One committed
+  fixture carries an affected string as an input seed
+  (`build-context-tier3.json:948`) — updated with its family
+  regenerated, corpus hygiene not a behavior claim. The 189-line
+  feature doc mirrors to `docs/v4/developer/features/`. → **P4.D45**.
+
+**The third lane is the already-ordered P4.33** (import overwrite claims
+the whole store; store identity is the ID — ruled 2026-08-04). Its
+order anticipated this round; the Siblings section is now slotted and
+the four-lane Ownership block is binding. Drift-independence
+re-verified: neither drift commit touches `lib/import/**` or the
+exporter.
+
+**The fourth lane is P4.34, the recipe-rot maintenance order the
+previous round record asked for.** Planning surfaced a record defect
+worth stating here: **the D42 sweep's per-family classification was
+never committed** — the lane record's "results table below" is a
+dangling reference and the /tmp logs are gone. The classification was
+RECOVERED at planning from the D42 lane's session transcript and is now
+banked in the P4.34 order (19 mechanically-unrunnable = 15 regen-rot +
+4 not-self-contained; 10 residual content-divergence reds, not the
+round record's "~7"; one driver false-positive). Big caveats the order
+carries: the D42 sweep ran from a `.claude/worktrees/` venue where
+jest's `/\.claude/` ignore makes every direct-roots recipe find zero
+tests — up to ten of the fifteen "rot" rows may be venue artifacts;
+re-measure from the main checkout FIRST. Two live driver bugs found at
+planning (the prose-leak exit-2 generator on `tool_build` +
+`text_tool_loop`; the bare-`SKIP` false positive on `salon_skip`), a
+missing `qt-v4-pin` guard, and the structural fix — a batch mode with a
+durable results artifact so no future round mines a transcript.
+
+**The round (orders committed under `work-orders/`):**
+
+- **P4.D44** (`p4.d44-newchat-roleplay-template.md`) — the `4bbeab47`
+  vertical, both sides of the wire in one lane: server tri-state + 400
+  arm, capstone fixture extension + five new differential cases
+  mirroring v4's route tests, the SPA dropdown/seeding/latch/per-source
+  fetch-ok flags + ng specs mirroring v4's five picker tests, the ONE
+  `core-contract.ts` field, a live e2e beat. ⚠ Carries the D42
+  stale-red note for its own family: re-measure in isolation before
+  porting on top.
+- **P4.D45** (`p4.d45-asterisk-narration-prompts.md`) — the `7fe9fe40`
+  string re-port + the `8bf3cb5f` wording debt: six direct families
+  regenerated at the new pin (the RED→GREEN `pseudo_tool_prompts` flip
+  is the headline), the transitive blast radius regenerated + re-run BY
+  NAME with no-ops STATED, the fixture-seed hygiene update, the doc
+  mirror. Knows `context_summary_service_tier3` is expected-red from
+  the P4.13 ruled row (P4.34 owns that pin).
+- **P4.33** (`p4.33-import-overwrite-id-identity.md`) — unchanged scope,
+  now slotted: the three ruled arms (folder clear / ID identity with
+  id-preserving create / by-ID census), both-direction pins, the
+  convergence-case table.
+- **P4.34** (`p4.34-recipe-rot-maintenance.md`) — driver fixes
+  (prose-leak, SKIP anchor, qt-v4-pin guard) + the two-phase re-measure
+  from the MAIN checkout (phase 2 = sibling-owned families, a unifier
+  work item if the lane finishes first) + recipe repairs to the modern
+  header convention + the R1 ruled-row pins (`compression_tier3`,
+  conditionally `context_summary_service_tier3`) + the owned R3
+  diagnoses + the P4.27-deferred autonomous-rooms oracle repair + the
+  durable sweep-results artifact + the status-log correction block.
+
+**Shared contract:** the four-lane Ownership block is verbatim-identical
+across all four orders. `api/types.rs` is FROZEN for the whole round
+(D44's field rides the flatten seam — an edit there is a smell).
+Version-bump ownership: D44 core/harness/SPA; D45 core/harness; P4.33
+core/harness(+web only if a fixture lands there); P4.34 harness only.
+The named seams: D45↔P4.34 on `pseudo_tool_prompts` (content is D45's,
+mechanics-only families are P4.34's) and on
+`context_summary_service_tier3` (oracle regen D45, `.rs` pin P4.34);
+D45↔D44 none (disjoint families); P4.33 disjoint from everything.
+
+**Oracle-regen rule for the round:** the drift lanes ADOPT `7fe9fe40`
+and regenerate their families from the unpinned checkout there
+(cross-contamination impossible: `4bbeab47` touches only chat-create,
+`7fe9fe40` only writers/prompt — verified at planning); P4.33 and P4.34
+regenerate their families straight from the checkout at `7fe9fe40`
+too. Pin a detached worktree only on drift/dirty BEYOND `7fe9fe40`.
+The baseline move (CLAUDE.md + phase-4.md) is the unifier's.
+
+**Recommended arrangement:** D44 ∥ D45 ∥ P4.33 fully parallel (disjoint
+ownership); P4.34 may start in parallel for its driver fixes, R1 pins,
+and phase-1 re-measure (sibling-owned families EXCLUDED), with phase 2
+riding the unification. Worktree per lane, own branch each, no
+stash/worktree games; the disk budget note in the parallel-round
+playbook applies (four lanes ≈ 50–70 GB each worst case).
