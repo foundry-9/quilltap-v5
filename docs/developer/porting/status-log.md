@@ -245,6 +245,51 @@ from the drift is unported.
 
 Version: SPA 0.5.400.
 
+## Lane record — P4.D44 unit 4 (the live e2e beat) + the lane gate, 2026-08-04
+
+### The beat
+
+`apps/web/e2e/new-chat-flow.spec.ts` gains a third walk: seed a roleplay
+template through raw dispatch → `/salon/new` → assert the picker renders and
+pre-selects the truth (this instance configures no default, so "No Template"
+wears the `(default)` label and is the selected value) → pick the seeded
+template by hand → create → read the created chat back through `chatGet` and
+assert `roleplayTemplateId` is the id that was on screen. The template is
+deleted in `finally`, so the shared instance is left as it was found.
+
+The read-back is the load-bearing assertion: it closes the loop from the
+displayed value to the persisted column, which is exactly the claim the feature
+makes and the one a screen assertion alone cannot carry.
+
+### Gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the lane's env vars — see the
+  inherited-red note in the unit-1/2 record: the ONLY failure is
+  `chat_create_capstone_equivalence` on the sibling-owned Aurora whisper string
+  (`7fe9fe40` → P4.D45's `services/aurora_notifications.rs`). With D45's one
+  line applied locally and reverted, the family is 19/19, zero SKIP.
+- `ng test` 278 files / 3,843 passed; `ng build` clean.
+- Full Playwright (unfiltered): **177 passed, 1 failed** — the suite grew 177 →
+  178 and the new beat is among the passes.
+
+### The one Playwright failure — a load flake, re-proven green in isolation
+
+`settings-flow.spec.ts:115` ("setup → wizard → validated key + model → save")
+timed out at 5 s waiting for the `Setup Complete` heading. The captured
+error-context shows the button still reading `Setting up...` and disabled — the
+fresh-instance setup POST was simply still in flight, not a wrong screen or a
+missing element. Three sibling lanes were running `cargo test` binaries
+concurrently during the run. Re-run in isolation: **6 passed**, that beat in
+**3.2 s** against its 5 s budget. Recorded, not deflaked — the beat is not this
+lane's and the remedy (a longer budget, or the standing pause-before-assert
+gesture) belongs with whoever owns the settings walk.
+
+Version: SPA 0.5.401.
+
 ## Round unified — the `c4d4b0de` v4-drift catch-up (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40), 2026-08-01
 
 **All six orders CLOSED. The oracle baseline MOVES to `c4d4b0de` and the drift

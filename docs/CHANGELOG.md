@@ -27,6 +27,11 @@ illustrates itself in unquoted prose instead of quoted asterisk spans;
 that block goes into the system prompt on every tool-enabled turn, so it
 was the one unconditional source. This also retires a stale wording gap
 in that same rule, left over from an earlier upstream change.
+A browser walk covers the new template picker end to end: seed a
+template, open New Chat, confirm the pre-selection is what the chat would
+have gotten, pick the template, create, and read the created chat back to
+confirm it carries the id that was on screen.
+
 The New Chat form gained a Roleplay Template dropdown, beneath Play As.
 Previously the template was decided silently at creation and could only
 be seen or changed afterward from the chat's sidebar. The dropdown is

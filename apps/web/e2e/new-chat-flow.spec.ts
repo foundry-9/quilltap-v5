@@ -128,4 +128,72 @@ test.describe('P4.6q — New-Chat vertical (list → /salon/new → create → l
       await ctx.dispose();
     }
   });
+
+  /**
+   * P4.D44 (v4 `4bbeab47`): the create-time Roleplay Template picker. Asserts
+   * the pre-selection tells the truth (this instance sets no default, so
+   * "No Template" wears the `(default)` label and is what is selected), then
+   * picks a seeded template, creates, and reads the created chat back through
+   * raw dispatch — the chat must carry the id that was on screen. Seeds and
+   * deletes its own template so the shared instance is left as it was found.
+   */
+  test('the roleplay-template picker pre-selects the default and the pick reaches the chat', async ({
+    page,
+  }) => {
+    const name = `E2E Template ${Date.now()}`;
+    const ctx = await pwRequest.newContext();
+    let templateId = '';
+    try {
+      const created = await dispatch(ctx, {
+        type: 'roleplayTemplateCreate',
+        template: {
+          name,
+          description: null,
+          systemPrompt: 'Write plainly, and mind the lantern.',
+          narrationDelimiters: '*',
+        },
+      });
+      templateId = ((created['template'] as { id?: string } | undefined)?.id ??
+        (created as { id?: string }).id ??
+        '') as string;
+      expect(templateId).toBeTruthy();
+
+      await page.goto('/salon');
+      await maybeUnlock(page);
+      await page.goto('/salon/new');
+      await expect(page.getByRole('heading', { name: 'Select Characters' })).toBeVisible();
+
+      // The dropdown renders (templates exist) and pre-selects what the chat
+      // would have gotten anyway. No default is configured here, so that is
+      // "No Template", and the option says so.
+      const picker = page.locator('#new-chat-roleplay-template');
+      await expect(picker).toBeVisible();
+      await expect(picker).toHaveValue('');
+      await expect(picker.locator('option', { hasText: 'No Template (default)' })).toHaveCount(1);
+
+      // Pick the seeded template by hand, then create.
+      await picker.selectOption(templateId);
+      await expect(picker).toHaveValue(templateId);
+
+      await page.locator('.new-chat-character-picker button').first().click();
+      await expect(page.getByText('Speaks First')).toBeVisible();
+      const create = page.getByRole('button', { name: 'Create Chat' });
+      await expect(create).toBeEnabled();
+      await create.click();
+
+      await expect(page).toHaveURL(/\/salon\/[0-9a-f-]{16,}/, { timeout: 20_000 });
+      const chatId = (page.url().match(/\/salon\/([0-9a-f-]{16,})/) ?? [])[1] ?? '';
+      expect(chatId).toBeTruthy();
+
+      // The value the user saw is the value the chat was created with.
+      const fetched = await dispatch(ctx, { type: 'chatGet', chatId });
+      const chat = (fetched['chat'] ?? fetched) as { roleplayTemplateId?: string | null };
+      expect(chat.roleplayTemplateId).toBe(templateId);
+    } finally {
+      if (templateId) {
+        await dispatch(ctx, { type: 'roleplayTemplateDelete', templateId });
+      }
+      await ctx.dispose();
+    }
+  });
 });
