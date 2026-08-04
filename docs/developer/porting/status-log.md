@@ -52966,3 +52966,44 @@ which is precisely when the next lane should read the comment on
 
 It deliberately does not reuse the `execute_twice` path (see above re the
 normalizer); the oracle emits a focused, id-free dump instead.
+
+---
+
+## Lane record — P4.31 verification gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the lane's env block: **412 test
+  binaries / 1,823 tests / 0 failed** (exit 0).
+- **14 families re-run BY NAME with `--nocapture`, every one green with ZERO
+  SKIP lines** (a plain workspace run swallows a test's own `SKIP:` eprintln, so
+  the by-name runs are the proof the differentials RAN):
+  `store_delete_equivalence` (NEW), `mount_points_routes_equivalence`,
+  `system_import_state`, `maintenance_ops_tier2_equivalence`, and the nine
+  doc-mount / link-group tier-2 families. Every oracle was regenerated fresh at
+  the pin `49769ec4` in its own clean invocation, most through
+  `recipe_sweep.py --run`.
+- **No `apps/web` file was touched, so no `ng test` / `ng build` / Playwright run
+  is owed.** (The store-delete surface has no SPA of its own; the reaper runs at
+  boot and in the maintenance sweep, neither of which the SPA can reach.)
+
+### The one gate red, and why it was not a regression
+
+The first full workspace run came back `1 failed`:
+`doc_mount_files_tier2_matches_oracle`. The cause was the
+`/tmp/oracle-dmf.ndjson` + `/tmp/qt-dmf-fixture.db` collision recorded in unit
+1's record — `doc_mount_folders` regenerates last and overwrites both, so
+`doc_mount_files` read the folders oracle. Proven by regenerating `files` into
+private paths (`/tmp/oracle-dmfiles.ndjson`, `/tmp/qt-dmfiles-fixture.db`) and
+re-running it green, and by the fact that the sweep — which runs each family in
+its OWN clean invocation — had both green earlier. The gate env block points
+`files` at the private copies. **A `QT_ORACLE_*` var pointing at another
+family's output reads exactly like a port regression; check the collision list
+before diagnosing code.**
+
+### Versions after the lane
+
+core `0.0.455`, harness `0.0.391`, web `0.0.57` (the committed fixture dir);
+host / cli / tauri / SPA untouched.
