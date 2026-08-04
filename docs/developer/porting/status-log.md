@@ -52884,3 +52884,29 @@ family.
   (v4 design); the character cascade never touches the vault store. Those are
   the SOURCE of the stray stores someone later deletes via the route, recorded
   and unchanged.
+
+---
+
+## Lane record — P4.31 unit 2 (tier-2 item 8): the reaper joins the daily sweep
+
+`services::scheduled_maintenance` gained step **4b**, immediately after v4's
+orphaned-files sweep: the same `sweep_orphaned_store_children` the boot hook
+runs, on the same failure shape (an absent mount-index partition reproduces v4's
+`getRawMountIndexDatabase() === null → 0` and is NOT a failure; a repo error
+records `parentless`, a key of its own rather than joining v4's list under an
+existing name).
+
+The boot hook alone heals a desktop instance on its next launch. A server — the
+Docker deployment the P4.10 packaging close-out made runnable — may not restart
+for weeks, and it is exactly the deployment where a store delete is most likely
+to happen while nobody is watching. The summary reports
+`parentless_store_rows_reaped` (links + folders + chunks + collected content).
+
+**The differential consequence, handled rather than hoped for.**
+`maintenance_ops_tier2_equivalence` builds v4's camelCase summary explicitly,
+so the new v5-only field is simply absent from the comparison — but the family
+also diffs surviving rows per table, and a v5-only sweep that reaped anything
+would compare v5's reaped state against v4's un-reaped one. The family now
+ASSERTS `parentless_store_rows_reaped == 0` on its fixture, with a message
+naming what to do if that ever changes. It is 0 today: the maintenance fixture
+carries no parentless rows.

@@ -14,6 +14,10 @@
 //!    [`crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches`];
 //! 4. orphaned mount-index files (belt-and-suspenders after the collapse) —
 //!    [`crate::db::doc_mount_file_links::sweep_orphaned_files`];
+//!    (4b, v5-only, P4.31) mount-index rows whose STORE is gone —
+//!    [`crate::db::doc_mount_file_links::sweep_orphaned_store_children`]. The
+//!    boot hook runs it too; this is the arm that heals a server which has not
+//!    restarted in weeks;
 //! 5. closed terminal (Ariel) PTY sessions and their transcript files —
 //!    [`cleanup_closed_sessions`], the transcript unlink behind the injected
 //!    [`TranscriptStore`] seam (the fs lives host-side).
@@ -84,11 +88,14 @@ pub struct MaintenanceSweepSummary {
     pub caches_chunk_embeddings_cleared: usize,
     /// Orphaned `doc_mount_files` rows swept.
     pub orphaned_files_swept: usize,
+    /// P4.31 (v5-only): rows reaped because their mount point no longer exists
+    /// — links / folders / chunks / collected content, summed.
+    pub parentless_store_rows_reaped: usize,
     /// Terminal-session rows reaped / transcript files removed.
     pub terminal_rows: usize,
     pub terminal_transcripts: usize,
     /// Sweeps that threw (and were swallowed so the rest could run):
-    /// `jobs` / `assets` / `orphans` / `terminals`.
+    /// `jobs` / `assets` / `orphans` / `parentless` / `terminals`.
     pub failures: Vec<String>,
 }
 
@@ -154,6 +161,7 @@ pub async fn run_scheduled_maintenance(
         caches_message_rows_cleared: 0,
         caches_chunk_embeddings_cleared: 0,
         orphaned_files_swept: 0,
+        parentless_store_rows_reaped: 0,
         terminal_rows: 0,
         terminal_transcripts: 0,
         failures: Vec::new(),
@@ -202,6 +210,26 @@ pub async fn run_scheduled_maintenance(
     {
         Ok(n) => summary.orphaned_files_swept = n,
         Err(_) => summary.failures.push("orphans".to_string()),
+    }
+
+    // 4b. P4.31 (v5-only, dogfood finding #58): the parentless-store reaper.
+    // `ensure_builtin_mounts` runs it at boot, which heals a desktop instance on
+    // its next launch; a long-running server (the Docker deployment) may not
+    // restart for weeks, so it rides the daily sweep too. Same failure shape as
+    // 4 above: an absent mount-index partition is v4's `null → 0`, not a
+    // failure. v4 has no counterpart, so this is reported under its own key and
+    // never joins `failures`' v4-shaped list under an existing name.
+    match db
+        .write(|writers| match writers.mount_index() {
+            Some(w) => {
+                crate::db::doc_mount_file_links::sweep_orphaned_store_children(w.connection())
+            }
+            None => Ok(Default::default()),
+        })
+        .await
+    {
+        Ok(r) => summary.parentless_store_rows_reaped = r.links + r.folders + r.chunks + r.content,
+        Err(_) => summary.failures.push("parentless".to_string()),
     }
 
     // 5. Closed terminal sessions + transcript files.

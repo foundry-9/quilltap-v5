@@ -155,10 +155,21 @@ fn maintenance_ops_match_oracle() {
             "messageRowsCleared": summary.caches_message_rows_cleared,
             "chunkEmbeddingsCleared": summary.caches_chunk_embeddings_cleared,
         },
+        // `parentless_store_rows_reaped` is deliberately absent: it is P4.31's
+        // v5-only sweep (step 4b), which v4's summary has no key for. It must be
+        // a no-op on THIS fixture, or the row diffs below would compare v5's
+        // reaped state against v4's un-reaped one — asserted just below rather
+        // than assumed.
         "orphanedFilesSwept": summary.orphaned_files_swept,
         "terminals": { "rows": summary.terminal_rows, "transcripts": summary.terminal_transcripts },
         "failures": summary.failures,
     });
+    assert_eq!(
+        summary.parentless_store_rows_reaped, 0,
+        "the maintenance fixture grew rows whose mount point is gone; P4.31's v5-only \
+         sweep now reaps them here, so this family no longer compares like for like. \
+         Either restore the fixture or move the coverage to store_delete_equivalence."
+    );
     let want_summary = oracle_line(&oracle_text, "summary");
     assert_eq!(
         &got_summary,
