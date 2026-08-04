@@ -34,11 +34,11 @@ use crate::post_office::instructions::{format_letter_actions, format_letter_date
 use crate::post_office::mailbox::{collect_unalerted_mail, mark_alerted, DeliveredLetterSummary};
 
 /// Quote a letter body as a Markdown blockquote so Suparṇā "reads it aloud"
-/// (v4 `quoteBody`). Blank → the italic placeholder.
+/// (v4 `quoteBody`). Blank → the plain placeholder.
 fn quote_body(body: &str) -> String {
     let trimmed = js_trim(body);
     if trimmed.is_empty() {
-        return "> *(the letter is blank)*".to_string();
+        return "> (the letter is blank)".to_string();
     }
     trimmed
         .split('\n')
@@ -62,11 +62,9 @@ pub fn build_suparna_mail_whisper(letters: &[DeliveredLetterSummary]) -> String 
     }
     let count = letters.len();
     let opener = if count == 1 {
-        "*Suparṇā glides in from the Post Office, a single letter held out for you.*".to_string()
+        "Suparṇā glides in from the Post Office, a single letter held out for you.".to_string()
     } else {
-        format!(
-            "*Suparṇā glides in from the Post Office with an armful of {count} letters for you.*"
-        )
+        format!("Suparṇā glides in from the Post Office with an armful of {count} letters for you.")
     };
     let parts = letters
         .iter()
@@ -285,7 +283,7 @@ mod tests {
 
     #[test]
     fn quote_body_blank_placeholder() {
-        assert_eq!(quote_body("   "), "> *(the letter is blank)*");
+        assert_eq!(quote_body("   "), "> (the letter is blank)");
         assert_eq!(quote_body("a\n\nb"), "> a\n>\n> b");
     }
 
@@ -299,7 +297,7 @@ mod tests {
         );
         let out = build_suparna_mail_whisper(std::slice::from_ref(&l));
         assert!(out.starts_with(
-            "*Suparṇā glides in from the Post Office, a single letter held out for you.*"
+            "Suparṇā glides in from the Post Office, a single letter held out for you."
         ));
         assert!(out.contains("**A letter from Friday**, posted "));
         assert!(out.contains("> Hello there."));
@@ -313,6 +311,6 @@ mod tests {
         let out = build_suparna_mail_whisper(&[l1, l2]);
         assert!(out.contains("with an armful of 2 letters for you."));
         assert!(out.contains("\n\n---\n\n"));
-        assert!(out.contains("> *(the letter is blank)*"));
+        assert!(out.contains("> (the letter is blank)"));
     }
 }

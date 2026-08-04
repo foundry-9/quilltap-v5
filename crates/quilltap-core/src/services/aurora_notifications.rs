@@ -57,7 +57,7 @@ use crate::wardrobe::{describe_outfit, OutfitSlotValues, Slots};
 pub fn build_opening_outfit_content(character_name: &str, outfit: &OutfitSlotValues) -> String {
     let outfit_text = describe_outfit(outfit);
     [
-        format!("*Aurora regards {character_name} and pronounces upon their attire —*"),
+        format!("Aurora regards {character_name} and pronounces upon their attire:"),
         String::new(),
         String::new(),
         jsstr::js_trim_end(&outfit_text).to_string(),
@@ -85,7 +85,7 @@ pub fn build_outfit_change_content(character_name: &str, outfit: &OutfitSlotValu
     let outfit_text = describe_outfit(outfit);
     [
         format!(
-            "*Aurora marks an alteration to {character_name}'s attire. They are now turned out as follows —*"
+            "Aurora marks an alteration to {character_name}'s attire. They are now turned out as follows:"
         ),
         String::new(),
         String::new(),

@@ -35,7 +35,7 @@ pub const CORE_WHISPER_PREAMBLE: &str = "This is who you are. Carry it forward. 
 const CORE_WHISPER_ADVISORY: &str = "This material is offered, not imposed. If the scene honestly calls for silence, grief, confusion, experiment, contradiction, or change, do not perform a recognised self-shape. Ask whether this still comes from you.";
 
 const AURORA_NARRATIVE_OPENER: &str =
-    "*Aurora pauses beside the workbench and sets your own plumb line into your hand —*";
+    "Aurora pauses beside the workbench and sets your own plumb line into your hand:";
 
 const LLM_CONTEXT_OPENER: &str = "Your own center of gravity, as you have written it for yourself:";
 

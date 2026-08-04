@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Staff announcements and the tool-execution rules no longer teach models
+asterisk-delimited narration. Under a roleplay template that uses a
+different narration delimiter, the asterisks in those strings taught the
+wrong format outright. Thirteen strings across the Aurora wardrobe
+announcements, the Aurora core whisper, the seven Commonplace Book
+sections, and the Suparna mail whisper (including the blank-letter
+placeholder) are now plain declarative lines: the wording is unchanged,
+only the delimiters are gone, and a trailing dash becomes a colon where
+the line introduces content. The native tool prompt's first rule now
+illustrates itself in unquoted prose instead of quoted asterisk spans;
+that block goes into the system prompt on every tool-enabled turn, so it
+was the one unconditional source. This also retires a stale wording gap
+in that same rule, left over from an earlier upstream change.
+
 Planned the next porting round and committed its work orders — four
 lanes. Two absorb the reference app's newest drift: the New Chat form
 gains its roleplay-template dropdown (pick the template at creation,

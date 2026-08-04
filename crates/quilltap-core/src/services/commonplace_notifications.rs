@@ -113,37 +113,37 @@ pub fn build_commonplace_persona_whisper(parts: &CommonplaceParts) -> String {
     let mut sections: Vec<String> = Vec::new();
     if let Some(s) = trimmed(&parts.current_state) {
         sections.push(format!(
-            "*The Commonplace Book sets its memories aside for a moment to take stock of where you stand —*\n\n{s}"
+            "The Commonplace Book sets its memories aside for a moment to take stock of where you stand:\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.recap) {
         sections.push(format!(
-            "*The Commonplace Book lays open at your bookmark; here is the gist of what you have noted so far —*\n\n{s}"
+            "The Commonplace Book lays open at your bookmark; here is the gist of what you have noted so far:\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.relevant) {
         sections.push(format!(
-            "*The Commonplace Book turns to the entries that bear on this moment.*\n\n{s}"
+            "The Commonplace Book turns to the entries that bear on this moment.\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.inter_char) {
         sections.push(format!(
-            "*The Commonplace Book opens to the pages where you have noted those present.*\n\n{s}"
+            "The Commonplace Book opens to the pages where you have noted those present.\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.knowledge) {
         sections.push(format!(
-            "*The Commonplace Book pulls down volumes from your own shelves — the references and reckonings you yourself have curated —*\n\n{s}"
+            "The Commonplace Book pulls down volumes from your own shelves — the references and reckonings you yourself have curated:\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.relevant_conversations) {
         sections.push(format!(
-            "*The conversation has wandered on, and the Commonplace Book re-marks the past dialogues that now bear on the present —*\n\n{s}"
+            "The conversation has wandered on, and the Commonplace Book re-marks the past dialogues that now bear on the present:\n\n{s}"
         ));
     }
     if let Some(s) = trimmed(&parts.retrospective_recall) {
         sections.push(format!(
-            "*You speak of days gone by, and the Commonplace Book obligingly riffles back through its dated pages —*\n\n{s}"
+            "You speak of days gone by, and the Commonplace Book obligingly riffles back through its dated pages:\n\n{s}"
         ));
     }
     crate::jsstr::js_trim(&sections.join("\n\n")).to_string()
