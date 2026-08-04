@@ -52086,3 +52086,23 @@ host / web / tauri unchanged.
   window, P4.D41's tier-2 item 9 (a committed grouped-pair fixture), #61's
   fresh-copy re-walk, and the round's live proofs all ride the phase-plan
   candidates list.
+
+### Drift observed at unification close (2026-08-03, post-merge)
+
+v4 shipped THREE more commits while this round unified — HEAD is now
+`49769ec4`, FOUR commits past the new `40319484` baseline. Classified:
+
+- **`74ec93b5` "fix(llm): bound provider requests so a stalled call can't
+  wedge a turn" — BEHAVIOR, on ported surface** (`lib/chat/
+  context-manager.ts`, `lib/memory/cheap-llm-tasks/core-execution.ts`,
+  `lib/promise-timeout.ts`, plus every plugin provider under
+  `plugins/dist/*`). Joins `c988fbd2` (Pascal run presets) in the owed
+  catch-up round — the provider-I/O + cheap-LLM families are its blast
+  radius.
+- `51c350a1` (update_version.sh) and `49769ec4` (plugin-utils version
+  generation) — build/packaging, NO-PORT shape, dispositions to confirm at
+  planning.
+
+**The drift debt is now TWO behavior commits** (`c988fbd2` + `74ec93b5`).
+Until the catch-up runs, regenerate pascal-family AND provider/cheap-LLM
+family oracles only from a worktree PINNED at `40319484`.

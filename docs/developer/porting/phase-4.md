@@ -3775,13 +3775,17 @@ conversation renders with its own template's patterns. Round record:
 
 **Next candidates, in rough value order:**
 
-1. **The `c988fbd2` drift catch-up (Pascal run presets)** — v4 shipped it
-   mid-round: `lib/pascal/tool-presets.ts` (new) + `custom-tool.types.ts` +
-   the chat custom-tools route + `CustomToolRunDialog.tsx` + `lib/query/
-   keys.ts` + `help/custom-tools.md`. Lands on the PORTED Pascal
-   custom-tools surface (P4.6ay / P4.D35); the pascal/workbench families
-   are its blast radius. Drift-check before planning — v4 has been shipping
-   daily.
+1. **The `c988fbd2` + `74ec93b5` drift catch-up** — v4 shipped both
+   mid-round. `c988fbd2` (Pascal run presets): `lib/pascal/tool-presets.ts`
+   (new) + `custom-tool.types.ts` + the chat custom-tools route +
+   `CustomToolRunDialog.tsx` + `lib/query/keys.ts` + `help/custom-tools.md`
+   — the pascal/workbench families' blast radius. `74ec93b5` (bounded
+   provider requests so a stalled call can't wedge a turn):
+   `lib/chat/context-manager.ts` + `lib/memory/cheap-llm-tasks/
+   core-execution.ts` + `lib/promise-timeout.ts` + every plugin provider —
+   the provider-I/O + cheap-LLM families' blast radius. Two build-only
+   siblings (`51c350a1`, `49769ec4`) look NO-PORT; confirm at planning.
+   Drift-check before planning — v4 has been shipping daily.
 2. **The mount-index delete path leaves children behind (the #58 ROOT
    CAUSE)** — a `doc_mount_points` delete that takes neither its links nor
    its folders is how the real instance accumulated 43+118 orphans. P4.28
