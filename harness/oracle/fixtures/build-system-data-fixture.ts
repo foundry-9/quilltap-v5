@@ -28,6 +28,18 @@
  *                                 chunk (the delete sweep of doc_mount_chunks).
  *   - `system-data-llmlogs.db`  — the llm-logs PARTITION carrying a small corpus.
  *
+ * P4.D46 (`7189a968`) widened the family for the export/import drift: a second
+ * database store hard-linked to the group (the ordering-fix arm), the Quilltap
+ * Uploads mount + its `userUploadsMountPointId` pointer, two files WITH bytes
+ * (one project-less text file, one project-bound > 3 MiB binary — both stored
+ * through v4's REAL uploads bridge as `mount-blob:` keys so the bytes live in
+ * the committed mount fixture), an embedding-BEARING memory (the strip arm), a
+ * BUILT-IN prompt template (the exclusion arm), a switched-off bundled-plugin
+ * config (`qtap-plugin-mcp` — the resolvable-manifest + tri-state `enabled`
+ * arms), and four more `instance_settings` rows (two portable, two
+ * non-portable). Widening the family obliges re-running every consuming
+ * differential over the rebuilt DBs.
+ *
  * P4.28 (dogfood #57) widened `conversation_annotations` from one row to THREE:
  * one per chat plus one whose `chatId` matches no chat. Deleting all data must
  * take all three; a chat-scoped cascade would leave the orphan, so the third row
@@ -118,6 +130,30 @@ const ANNOTATION_1 = 'b5000000-0000-4000-8000-000000000001';
 // cascade). A cascade-shaped wipe would leave the orphan; a truncate takes it.
 const ANNOTATION_2 = 'b5000000-0000-4000-8000-000000000002';
 const ANNOTATION_ORPHAN = 'b5000000-0000-4000-8000-000000000003';
+// ── P4.D46 (`7189a968`) additions — the export/import drift's new arms ───────
+// A standalone database store linked to the group BEYOND its official store:
+// the ordering-fix case (`_linkedStoreMountPointIds` must survive an import,
+// which requires document stores to import before the group-link step).
+const STORE_FIELD = 'bd000000-0000-4000-8000-000000000001';
+// The "Quilltap Uploads" mount (provision-user-uploads-mount-v1's shape): the
+// `files` export type needs file BYTES, and a `mount-blob:` storage key keeps
+// them inside the committed fixture; the import side's uploads bridge needs
+// the mount provisioned to land project-less files under `imported/`.
+const UPLOADS_MOUNT = 'be000000-0000-4000-8000-000000000001';
+const FILE_TXT = 'f0000003-0000-4000-8000-000000000003';
+// > BLOB_CHUNK_BYTES (3 MiB) so the file_blob/file_blob_chunk pair streams as
+// a genuine multi-chunk sequence — the counted-arrivals oracle.
+const FILE_BIG = 'f0000004-0000-4000-8000-000000000004';
+// An embedding-BEARING memory: the strip arms need a fixture memory whose
+// `embedding` is non-null so an export without the field is a measurement.
+const MEM_3 = 'ad000000-0000-4000-8000-000000000003';
+// A BUILT-IN prompt template — the writer must exclude it.
+const PROMPT_TEMPLATE_BUILTIN = 'b2000000-0000-4000-8000-000000000002';
+// A plugin config for a BUNDLED plugin (manifest resolvable, no password keys
+// → no `_redactedKeys` key at all) that the user has SWITCHED OFF — the
+// tri-state `enabled` restore arm. The pre-existing `qtap-plugin-fixture`
+// config covers the manifest-unresolvable `['*']` arm.
+const PLUGIN_CONFIG_MCP = 'b3000000-0000-4000-8000-000000000002';
 const ORPHANED_CHAT_ID = 'c1000000-0000-4000-8000-0000000000ff';
 const CHAT_DOCUMENT_1 = 'b7000000-0000-4000-8000-000000000001';
 const CONV_CHUNK_1 = 'b8000000-0000-4000-8000-000000000001';
@@ -779,6 +815,175 @@ async function main(): Promise<void> {
     .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
     .run('lanternBackgroundsMountPointId', '"66666666-7777-4888-8999-aaaaaaaaaaaa"');
 
+  // 14e. P4.D46 (`7189a968`) — the export/import drift's new arms.
+  //
+  // A second database store, linked to the group beyond its official one. The
+  // export's `_linkedStoreMountPointIds` and the import's group→store link
+  // re-establishment (the ordering fix: document stores must import BEFORE the
+  // group-link step or this link silently drops) both hang off this row.
+  await repos.docMountPoints.create(
+    {
+      name: 'Field Library',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+    } as never,
+    { id: STORE_FIELD, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.groupDocMountLinks.link(GROUP_1, STORE_FIELD);
+
+  // The Quilltap Uploads mount + its instance-settings pointer (the shape
+  // provision-user-uploads-mount-v1 writes; the value is the BARE uuid — both
+  // sides read it raw). Needed twice: file bytes live here as mount blobs, and
+  // the import side's uploads bridge lands project-less files under
+  // `imported/` only when this mount resolves.
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap Uploads',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+    } as never,
+    { id: UPLOADS_MOUNT, createdAt: TS, updatedAt: TS } as never,
+  );
+  mainDb
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('userUploadsMountPointId', UPLOADS_MOUNT);
+
+  // Two files WITH bytes, stored through v4's REAL uploads bridge so the rows
+  // look exactly like live uploads (`mount-blob:` storage keys; bytes inside
+  // the committed mount fixture). The small one is project-less; the big one
+  // (> BLOB_CHUNK_BYTES) is project-bound, so import exercises BOTH bridges.
+  const { writeUserUploadToMountStore } = await import('@/lib/file-storage/user-uploads-bridge');
+  const smallBytes = Buffer.from(
+    'Field notes, kept plainly: the lift is strongest before noon.\n',
+    'utf8',
+  );
+  const smallStored = await writeUserUploadToMountStore({
+    filename: 'field-notes.txt',
+    content: smallBytes,
+    contentType: 'text/plain',
+    subfolder: 'uploads',
+  });
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [CHAT_1],
+      tags: [TAG_1],
+      sha256: smallStored.sha256,
+      originalFilename: 'field-notes.txt',
+      mimeType: smallStored.storedMimeType,
+      size: smallStored.sizeBytes,
+      source: 'UPLOADED',
+      category: 'DOCUMENT',
+      storageKey: smallStored.storageKey,
+      folderPath: '/notes',
+      isPlainText: true,
+    } as never,
+    { id: FILE_TXT, createdAt: TS, updatedAt: TS } as never,
+  );
+  // Deterministic > 3 MiB pattern (no randomness — the fixture is committed).
+  const bigBytes = Buffer.alloc(3_400_000);
+  for (let i = 0; i < bigBytes.length; i++) bigBytes[i] = (i * 31 + 7) & 0xff;
+  const bigStored = await writeUserUploadToMountStore({
+    filename: 'atlas-plates.bin',
+    content: bigBytes,
+    contentType: 'application/octet-stream',
+    subfolder: 'uploads',
+  });
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      tags: [],
+      sha256: bigStored.sha256,
+      originalFilename: 'atlas-plates.bin',
+      mimeType: bigStored.storedMimeType,
+      size: bigStored.sizeBytes,
+      source: 'UPLOADED',
+      category: 'DOCUMENT',
+      storageKey: bigStored.storageKey,
+      projectId: PROJECT_1,
+      folderPath: '/',
+    } as never,
+    { id: FILE_BIG, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // An embedding-BEARING memory (MEM_1/MEM_2 are embedding-null): the export
+  // strip is only a measurement if some fixture memory HAS a vector to strip.
+  await repos.memories.create(
+    {
+      characterId: LORIAN,
+      aboutCharacterId: null,
+      chatId: CHAT_1,
+      projectId: null,
+      content: 'Lorian remembers the storm over the strait.',
+      summary: 'the storm',
+      keywords: ['storm'],
+      tags: [],
+      importance: 0.7,
+      embedding: new Float32Array([0.25, -0.5, 0.125, 1]),
+      source: 'AUTO',
+      witnessedContext: null,
+      sourceMessageId: null,
+      lastAccessedAt: null,
+      reinforcementCount: 1,
+      lastReinforcedAt: null,
+      relatedMemoryIds: [],
+      reinforcedImportance: 0.7,
+    } as never,
+    { id: MEM_3, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // A BUILT-IN prompt template — the prompt-templates writer/listing must
+  // exclude it (only the user-created PROMPT_TEMPLATE_1 travels).
+  await repos.promptTemplates.create(
+    {
+      userId: spec.userId,
+      name: 'Builtin Prompt',
+      content: 'Seeded on every instance.',
+      description: 'The built-in fixture prompt template.',
+      isBuiltIn: true,
+      category: 'COMPANION',
+      modelHint: null,
+      tags: [],
+    } as never,
+    { id: PROMPT_TEMPLATE_BUILTIN, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // A bundled plugin's config, switched OFF: the manifest resolves (no
+  // password keys → `_redactedKeys` omitted entirely) and the tri-state
+  // `enabled` carry is measurable on restore/import.
+  await repos.pluginConfigs.create(
+    {
+      userId: spec.userId,
+      pluginName: 'qtap-plugin-mcp',
+      config: { servers: '[]', discoveryTimeout: 45 },
+      enabled: false,
+    } as never,
+    { id: PLUGIN_CONFIG_MCP, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // Instance settings: two portable keys (both non-default values, so the
+  // unconditional-overwrite import is measurable) and two more NON-portable
+  // keys, so the 5-key exclusion set is asserted against real rows.
+  for (const [key, value] of [
+    ['memoryRecall', '{"scopePolicy":"down-weight","expandRelated":true}'],
+    ['dataRetention', '{"staleChatDays":45}'],
+    ['lastMaintenanceSweepAt', '1740000000000'],
+    ['highest_app_version', '"4.8.0"'],
+  ] as Array<[string, string]>) {
+    mainDb
+      .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+      .run(key, value);
+  }
+
   // 15. background_jobs — one row in every status (the tasks-queue + jobs corpus).
   for (const job of spec.jobs) {
     await repos.backgroundJobs.create(
@@ -831,7 +1036,7 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built system-data fixture: main=${mainOut} mount=${mountOut} llm=${llmOut} ` +
-      `(2 characters, 2 chats, 2 memories, ${spec.jobs.length} background jobs, 2 llm-logs)\n`,
+      `(2 characters, 2 chats, 3 memories, 4 files, ${spec.jobs.length} background jobs, 2 llm-logs)\n`,
   );
   process.exit(0);
 }

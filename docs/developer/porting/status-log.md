@@ -55059,3 +55059,38 @@ order" though P4.28 (reader-side, `40319484` round) and P4.31 (the
 #58 root cause, `49769ec4` round) closed them — corrected, with a
 note that rows #57–#60's `**FIXED** \`<commit>\`` placeholders were
 never back-filled.
+
+## Lane record — P4.D46 unit 1: the system-data fixture widening (2026-08-05)
+
+Branch `claude/p4-export-import-drift-46c5bf`. Drift-check at lane start:
+v4 HEAD is exactly `7189a968`, tree clean (one untracked doc,
+`docs/developer/features/capabilities-report-update.md` — a brewing
+feature doc, not drift; flagged for the next round's drift check).
+
+`build-system-data-fixture.ts` gains a "14e. P4.D46" section and the
+three committed DBs are rebuilt (mount grows to ~3.6 MB — the >3 MiB
+blob is the multi-chunk file-blob oracle):
+
+- `STORE_FIELD` — a second database store + `group_doc_mount_links`
+  row on GROUP_1 (the ordering-fix arm: the link must survive import).
+- `UPLOADS_MOUNT` — "Quilltap Uploads" (database) + the BARE-uuid
+  `userUploadsMountPointId` instance setting (both sides read it raw;
+  the import bridges refuse without it).
+- `FILE_TXT` (project-less, `/notes`, linkedTo CHAT_1, tag) and
+  `FILE_BIG` (project-bound, 3,400,000 deterministic pattern bytes),
+  both stored through v4's REAL `writeUserUploadToMountStore` so the
+  rows carry genuine `mount-blob:` storage keys and the bytes live in
+  the committed mount DB. The pre-existing `portrait.png` disk-key row
+  becomes the `_bytesMissing` arm for free (its bytes exist nowhere).
+- `MEM_3` — an embedding-BEARING memory (Float32Array [0.25,-0.5,
+  0.125,1]) so the export strip is a measurement, not a vacuous pass.
+- `PROMPT_TEMPLATE_BUILTIN` (isBuiltIn) — the writer-exclusion arm.
+- `PLUGIN_CONFIG_MCP` — `qtap-plugin-mcp`, enabled:false (the
+  resolvable-manifest no-`_redactedKeys` arm + the tri-state carry).
+- Four `instance_settings` rows: portable `memoryRecall` /
+  `dataRetention` (non-default values) + non-portable
+  `lastMaintenanceSweepAt` / `highest_app_version`.
+
+No crate source touched; all fixture consumers are env-gated, so the
+workspace gate is unchanged. Consumer regen happens per-unit as the
+round's ports land (the committed-fixture rule).

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Widened the shared `system-data-*` test fixture for the export/import
+drift port (P4.D46 unit 1): a second database store hard-linked to the
+group, the Quilltap Uploads mount with its `userUploadsMountPointId`
+pointer, two files with real bytes stored through the reference app's
+uploads bridge (one project-less text file, one project-bound binary
+over the 3 MiB chunk size), an embedding-bearing memory, a built-in
+prompt template, a switched-off bundled-plugin config, and four more
+instance-settings rows. No production code changed; every consuming
+differential regenerates over the rebuilt DBs as the round's units land.
+
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
 surface: embeddings no longer travel in exports, five new export types
