@@ -75,7 +75,11 @@ fn collect_chat_counts_by_character(db: &Db, user_id: &str) -> HashMap<String, f
     );
 
     let mut binds = vec![SqlValue::Text(user_id.to_string())];
-    binds.extend(EXCLUDED_CHAT_TYPES.iter().map(|t| SqlValue::Text((*t).to_string())));
+    binds.extend(
+        EXCLUDED_CHAT_TYPES
+            .iter()
+            .map(|t| SqlValue::Text((*t).to_string())),
+    );
 
     let rows: Vec<(Option<String>, f64)> = main_rows(
         db,
@@ -128,13 +132,9 @@ pub fn collect_top_characters(
        WHERE "id" IN ({})"#,
             placeholders(vault_ids.len())
         );
-        for (id, size) in mount_rows(
-            db,
-            &sql,
-            &as_params(&binds),
-            "personae.vaultSizes",
-            |r| Ok((text(r, 0)?, num_col(r, 1)?)),
-        ) {
+        for (id, size) in mount_rows(db, &sql, &as_params(&binds), "personae.vaultSizes", |r| {
+            Ok((text(r, 0)?, num_col(r, 1)?))
+        }) {
             vault_sizes.insert(id, size);
         }
     }
@@ -354,7 +354,10 @@ pub fn collect_groups(db: &Db) -> Vec<GroupRow> {
             .get(character_id)
             .cloned()
             .unwrap_or_else(|| "(missing character)".to_string());
-        members_by_group.entry(group_id.clone()).or_default().push(name);
+        members_by_group
+            .entry(group_id.clone())
+            .or_default()
+            .push(name);
     }
 
     groups

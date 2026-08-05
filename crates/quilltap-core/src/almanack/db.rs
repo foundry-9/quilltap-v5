@@ -66,7 +66,14 @@ where
 }
 
 /// Run a `SELECT` against a partition and map every row, `[]` on any failure.
-pub fn query_rows<T, F>(db: &Db, partition: Partition, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Vec<T>
+pub fn query_rows<T, F>(
+    db: &Db,
+    partition: Partition,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Vec<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {
@@ -83,7 +90,13 @@ where
 
 /// Run a `SELECT` against the MAIN database, `[]` on any failure
 /// (v4 `mainRows`).
-pub fn main_rows<T, F>(db: &Db, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Vec<T>
+pub fn main_rows<T, F>(
+    db: &Db,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Vec<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {
@@ -92,7 +105,13 @@ where
 
 /// Run a `SELECT` against the MAIN database and return the first row
 /// (v4 `mainRow`).
-pub fn main_row<T, F>(db: &Db, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Option<T>
+pub fn main_row<T, F>(
+    db: &Db,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Option<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {
@@ -104,7 +123,13 @@ where
 /// Deliberately NOT the main connection — that addresses the main DB, and
 /// pointing a `doc_mount_*` query at it silently returns nothing (dogfood #16
 /// was exactly this mistake elsewhere).
-pub fn mount_rows<T, F>(db: &Db, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Vec<T>
+pub fn mount_rows<T, F>(
+    db: &Db,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Vec<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {
@@ -113,7 +138,13 @@ where
 
 /// Run a `SELECT` against the mount index and return the first row
 /// (v4 `mountRow`).
-pub fn mount_row<T, F>(db: &Db, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Option<T>
+pub fn mount_row<T, F>(
+    db: &Db,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Option<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {
@@ -121,7 +152,13 @@ where
 }
 
 /// Run a `SELECT` against the LLM LOGS database (v4's repository `aggregate`).
-pub fn logs_rows<T, F>(db: &Db, sql: &str, params: &[&dyn rusqlite::ToSql], context: &str, map: F) -> Vec<T>
+pub fn logs_rows<T, F>(
+    db: &Db,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+    context: &str,
+    map: F,
+) -> Vec<T>
 where
     F: Fn(&Row<'_>) -> rusqlite::Result<T>,
 {

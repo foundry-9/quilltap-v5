@@ -24,7 +24,9 @@ use crate::pascal::roster::list_all_custom_tools;
 use crate::photos::photos_paths::PHOTOS_FOLDER;
 use crate::post_office::mailbox::MAIL_FOLDER;
 
-use super::db::{in_clause, is_mount_index_available, main_rows, mount_row, mount_rows, num_col, opt_text, text};
+use super::db::{
+    in_clause, is_mount_index_available, main_rows, mount_row, mount_rows, num_col, opt_text, text,
+};
 use super::types::*;
 
 /// Root-level folder each character vault keeps its wardrobe in.
@@ -96,7 +98,9 @@ fn collect_mount_ownership(db: &Db, user_id: &str) -> MountOwnership {
 /// `new Set(...)` — first-seen order, which is what iterating a JS `Set` yields.
 fn dedup(ids: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
-    ids.into_iter().filter(|id| seen.insert(id.clone())).collect()
+    ids.into_iter()
+        .filter(|id| seen.insert(id.clone()))
+        .collect()
 }
 
 /// Bind an owned id list plus trailing scalars as query params.
@@ -361,7 +365,14 @@ pub fn collect_scriptorium(
      FROM "doc_mount_points""#,
         &[],
         "scriptorium.mountTotals",
-        |r| Ok((num_col(r, 0)?, num_col(r, 1)?, num_col(r, 2)?, num_col(r, 3)?)),
+        |r| {
+            Ok((
+                num_col(r, 0)?,
+                num_col(r, 1)?,
+                num_col(r, 2)?,
+                num_col(r, 3)?,
+            ))
+        },
     )
     .unwrap_or((0.0, 0.0, 0.0, 0.0));
 
@@ -681,7 +692,10 @@ fn collect_custom_tools(db: &Db) -> CustomToolsInfo {
     let mut metadata_gated = 0.0;
 
     for entry in &library.entries {
-        match by_store_counts.iter_mut().find(|(s, _)| *s == entry.mount_name) {
+        match by_store_counts
+            .iter_mut()
+            .find(|(s, _)| *s == entry.mount_name)
+        {
             Some((_, n)) => *n += 1.0,
             None => by_store_counts.push((entry.mount_name.clone(), 1.0)),
         }

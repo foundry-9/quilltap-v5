@@ -24,7 +24,9 @@ use std::path::{Path, PathBuf};
 use crate::db::runtime::Db;
 
 use super::db::{main_row, main_rows, opt_text, text};
-use super::types::{BackupInfo, DatabaseSecurityInfo, DatabaseSizeInfo, MigrationStateInfo, RuntimeEnvironmentInfo};
+use super::types::{
+    BackupInfo, DatabaseSecurityInfo, DatabaseSizeInfo, MigrationStateInfo, RuntimeEnvironmentInfo,
+};
 
 /// The on-disk facts the core cannot discover for itself — supplied by the
 /// composition root (v4 reads them from `lib/paths`). Keeping them as an input
@@ -87,7 +89,9 @@ pub fn collect_runtime_environment(
 /// v4's `statSize` — the file may legitimately not exist yet (fresh install, or
 /// a database whose first access hasn't happened).
 fn stat_size(label: &str, path: Option<&Path>) -> DatabaseSizeInfo {
-    let size = path.and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len());
+    let size = path
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len());
     match size {
         Some(bytes) => DatabaseSizeInfo {
             label: label.to_string(),
@@ -264,11 +268,20 @@ mod tests {
     fn backup_filenames_parse_like_v4() {
         // `quilltap-2026-08-04T031500.db` → 2026-08-04T03:15:00Z under TZ=UTC.
         let ms = parse_backup_filename("quilltap-2026-08-04T031500.db", "quilltap-").unwrap();
-        assert_eq!(crate::clock::iso_from_unix_ms(ms), "2026-08-04T03:15:00.000Z");
+        assert_eq!(
+            crate::clock::iso_from_unix_ms(ms),
+            "2026-08-04T03:15:00.000Z"
+        );
         // The prefixed parsers must not be shadowed by the loose main one — the
         // caller tries them first, and the main prefix DOES match these names.
-        assert!(parse_backup_filename("quilltap-llm-logs-2026-08-04T031500.db", "quilltap-llm-logs-").is_some());
-        assert!(parse_backup_filename("quilltap-llm-logs-2026-08-04T031500.db", "quilltap-").is_none());
+        assert!(parse_backup_filename(
+            "quilltap-llm-logs-2026-08-04T031500.db",
+            "quilltap-llm-logs-"
+        )
+        .is_some());
+        assert!(
+            parse_backup_filename("quilltap-llm-logs-2026-08-04T031500.db", "quilltap-").is_none()
+        );
         // Rejections.
         assert!(parse_backup_filename("quilltap-2026-08-04T0315.db", "quilltap-").is_none());
         assert!(parse_backup_filename("quilltap-backup.db", "quilltap-").is_none());

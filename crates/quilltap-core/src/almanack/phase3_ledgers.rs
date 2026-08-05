@@ -106,17 +106,29 @@ pub fn collect_database_stats(db: &Db, user_id: &str) -> Result<EnhancedDatabase
        FROM "connection_profiles" WHERE "userId" = ?"#,
         &[&user_id],
         "ledgers.connectionProfiles",
-        |r| Ok((num_col(r, 0)?, num_col(r, 1)?, num_col(r, 2)?, num_col(r, 3)?)),
+        |r| {
+            Ok((
+                num_col(r, 0)?,
+                num_col(r, 1)?,
+                num_col(r, 2)?,
+                num_col(r, 3)?,
+            ))
+        },
     );
 
     let image_profiles = count_rows(db, "image_profiles", r#"WHERE "userId" = ?"#, &[&user_id]);
-    let embedding_profiles_count =
-        count_rows(db, "embedding_profiles", r#"WHERE "userId" = ?"#, &[&user_id]);
+    let embedding_profiles_count = count_rows(
+        db,
+        "embedding_profiles",
+        r#"WHERE "userId" = ?"#,
+        &[&user_id],
+    );
 
     // Templates come through the repositories in v4 — built-ins live alongside
     // user rows, so the filter is `isBuiltIn = 1 OR userId = ?`, not a bare
     // COUNT(*). See the module header on the seeding divergence.
-    let prompt_templates = template_census(db, "prompt_templates", user_id, "ledgers.promptTemplates");
+    let prompt_templates =
+        template_census(db, "prompt_templates", user_id, "ledgers.promptTemplates");
     let roleplay_templates = {
         let rows = db
             .read_main(|c| roleplay_templates::find_all_for_user(c, user_id))
@@ -700,11 +712,7 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
             interval: jnum(s, &["coreWhisper", "interval"], 12.0),
             silence_threshold: jnum(s, &["coreWhisper", "silenceThreshold"], 3.0),
             packet_token_budget: jnum(s, &["coreWhisper", "packetTokenBudget"], 4096.0),
-            fire_on_context_transition: jbool(
-                s,
-                &["coreWhisper", "fireOnContextTransition"],
-                true,
-            ),
+            fire_on_context_transition: jbool(s, &["coreWhisper", "fireOnContextTransition"], true),
         },
         thinking_display: ThinkingDisplayConfig {
             default_visible: jbool(s, &["thinkingDisplay", "defaultVisible"], true),
@@ -920,7 +928,10 @@ fn embedding_widths(db: &Db, table: &str) -> Vec<StoredDimensionRow> {
 
 /// v4 `collectEmbeddingPipeline` — what is indexed, what failed, and whether the
 /// vectors on disk match the profile that would be used to query them.
-pub fn collect_embedding_pipeline(db: &Db, user_id: &str) -> Result<EmbeddingPipelineInfo, DbError> {
+pub fn collect_embedding_pipeline(
+    db: &Db,
+    user_id: &str,
+) -> Result<EmbeddingPipelineInfo, DbError> {
     let status_rows = main_rows(
         db,
         r#"SELECT "entityType" AS entityType, COALESCE("status", 'PENDING') AS status, COUNT(*) AS count
@@ -966,8 +977,8 @@ pub fn collect_embedding_pipeline(db: &Db, user_id: &str) -> Result<EmbeddingPip
         .as_ref()
         .and_then(|p| p.truncate_to_dimensions.or(p.dimensions));
 
-    let dimension_mismatch = active_dims
-        .is_some_and(|d| stored_dimensions.iter().any(|row| row.dimensions != d));
+    let dimension_mismatch =
+        active_dims.is_some_and(|d| stored_dimensions.iter().any(|row| row.dimensions != d));
 
     let permanently_failed: f64 = status_rows
         .iter()

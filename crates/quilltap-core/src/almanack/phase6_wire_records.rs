@@ -431,7 +431,12 @@ pub fn collect_wire_records(db: &Db, user_id: &str) -> Result<WireRecordsInfo, D
         Vec::new()
     };
 
-    let connection_names = profile_names(db, "connection_profiles", user_id, "wire.connectionProfileNames");
+    let connection_names = profile_names(
+        db,
+        "connection_profiles",
+        user_id,
+        "wire.connectionProfileNames",
+    );
     let image_names = profile_names(db, "image_profiles", user_id, "wire.imageProfileNames");
 
     /// v4's `labelFor` — an attribution key turned into something a reader
@@ -442,7 +447,10 @@ pub fn collect_wire_records(db: &Db, user_id: &str) -> Result<WireRecordsInfo, D
         }
         names.get(key).cloned().unwrap_or_else(|| {
             // v4 `key.slice(0, 8)` — UTF-16 code units; profile ids are ASCII.
-            format!("(deleted profile {}…)", crate::jsstr::utf16_truncate(key, 8))
+            format!(
+                "(deleted profile {}…)",
+                crate::jsstr::utf16_truncate(key, 8)
+            )
         })
     }
 

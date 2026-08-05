@@ -67,10 +67,7 @@ pub fn collect_plugin_info(db: &Db) -> Result<PluginBreakdown, DbError> {
         npm_installed: 0.0,
         bundled: 0.0,
         plugin_config_rows: count("plugin_configs", "machinery.pluginConfigs"),
-        character_plugin_data_rows: count(
-            "character_plugin_data",
-            "machinery.characterPluginData",
-        ),
+        character_plugin_data_rows: count("character_plugin_data", "machinery.characterPluginData"),
     })
 }
 

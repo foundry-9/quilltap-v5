@@ -3348,11 +3348,12 @@ impl CoreEngine {
             Request::SystemAlmanackGenerate { progress_id } => {
                 match (self.ready_db(), self.ready_almanack_host()) {
                     (Ok(db), Ok(host)) => {
-                        let progress = crate::services::creation_progress::CreationProgressEmitter::from_id(
-                            progress_id.as_deref(),
-                            self.creation_progress_bus(),
-                            self.inner.events.clone(),
-                        );
+                        let progress =
+                            crate::services::creation_progress::CreationProgressEmitter::from_id(
+                                progress_id.as_deref(),
+                                self.creation_progress_bus(),
+                                self.inner.events.clone(),
+                            );
                         let ctx = crate::almanack::AlmanackContext {
                             db: &db,
                             registry: crate::provider_manifest::Registry::built_in(),

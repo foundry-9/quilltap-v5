@@ -46,11 +46,11 @@ pub mod phases;
 pub mod render;
 pub mod types;
 
+pub use phase1_premises::{AlmanackPaths, RuntimeFacts};
 pub use phases::{
     phase_index, AlmanackPhase, ALMANACK_NAME, ALMANACK_PHASES, ALMANACK_PHASE_COUNT,
     ALMANACK_TITLE,
 };
-pub use phase1_premises::{AlmanackPaths, RuntimeFacts};
 pub use render::render_almanack_markdown;
 pub use types::AlmanackReportData;
 
@@ -87,12 +87,7 @@ fn announce(progress: &CreationProgressEmitter, key: &str) {
         return;
     };
     let phase = &ALMANACK_PHASES[index - 1];
-    progress.phase(
-        key,
-        index as i64,
-        ALMANACK_PHASE_COUNT as i64,
-        phase.label,
-    );
+    progress.phase(key, index as i64, ALMANACK_PHASE_COUNT as i64, phase.label);
 }
 
 /// Announce the seventh phase, "Binding the volume" — the one the write side
@@ -136,11 +131,8 @@ pub fn generate_almanack_data(
     // `collect_runtime_environment` reads only host-supplied facts, so it needs
     // no fallback shape of its own (v4 says the same of its `os`/`process` read).
     let runtime_environment = phase1_premises::collect_runtime_environment(&ctx.facts, &ctx.paths);
-    let database_security = phase1_premises::collect_database_security(
-        d,
-        &ctx.paths,
-        ctx.passphrase_protected,
-    );
+    let database_security =
+        phase1_premises::collect_database_security(d, &ctx.paths, ctx.passphrase_protected);
     let backup_status = phase1_premises::collect_backup_status(&ctx.paths);
     let migration_state = phase1_premises::collect_migration_state(d);
 
@@ -177,9 +169,11 @@ pub fn generate_almanack_data(
     let image_prompt_llm = collect("imagePromptLLM", DesignatedProfileInfo::default(), || {
         phase2_machinery::collect_image_prompt_llm_info(d, user)
     });
-    let embedding_provider = collect("embeddingProvider", DesignatedProfileInfo::default(), || {
-        phase2_machinery::collect_embedding_info(d, user)
-    });
+    let embedding_provider = collect(
+        "embeddingProvider",
+        DesignatedProfileInfo::default(),
+        || phase2_machinery::collect_embedding_info(d, user),
+    );
     let image_providers = collect("imageProviders", Vec::new(), || {
         phase2_machinery::collect_image_providers(d, ctx.registry)
     });
@@ -517,4 +511,3 @@ mod tests {
         );
     }
 }
-

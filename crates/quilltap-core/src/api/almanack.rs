@@ -147,7 +147,11 @@ pub fn almanack_list(db: &Db, user_id: &str) -> Response {
 /// The `files` row for a report id, or `None` when it is not a report of this
 /// user's (v4 finds within the DOCUMENT/`/reports` set, so a real file that is
 /// not a report is a 404 here — deliberately).
-fn find_report_entry(db: &Db, user_id: &str, report_id: &str) -> Result<Option<FileEntry>, DbError> {
+fn find_report_entry(
+    db: &Db,
+    user_id: &str,
+    report_id: &str,
+) -> Result<Option<FileEntry>, DbError> {
     let rows = read_report_rows(db, user_id)?;
     if !rows.iter().any(|r| r.id == report_id) {
         return Ok(None);
@@ -315,7 +319,9 @@ pub async fn almanack_generate(
         updated_at: stamp,
     };
     if let Err(e) = db
-        .write(move |writers| FilesRepository::new(writers.main().connection()).create(&create, &opts))
+        .write(move |writers| {
+            FilesRepository::new(writers.main().connection()).create(&create, &opts)
+        })
         .await
     {
         progress.fail(e.to_string());
