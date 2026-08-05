@@ -57281,3 +57281,101 @@ now:
 ### Gate
 
 `ng test` 284 files / 3892 tests, 0 failed. No `crates/**` change.
+
+## Lane record — P4.38 units 5–6 (the viewer dialog + the Almanack card), 2026-08-05
+
+### The viewer dialog (`almanack/almanack-report-dialog.ts`)
+
+v4 `components/tools/capabilities-report-dialog.tsx` whole: the near-full-screen
+`fixed inset-4 md:inset-8 lg:inset-12` shell with the `max-w-6xl` cap, the
+overlay button, Escape-to-close, the body-scroll lock (the `image-modal.ts`
+idiom), the FILENAME as title with `ALMANACK_TITLE` as subtitle, and a footer
+carrying the same download leg plus Close. The dialog is created only while open,
+so mount/teardown IS v4's `isOpen` transition.
+
+**A new markdown pipeline, and why it is not a reuse** (`almanack-markdown.ts`):
+v4 renders the report with bare `ReactMarkdown remarkPlugins={[remarkGfm]}` — no
+roleplay processing at all. v5's ONE ported renderer is the SALON renderer and
+always applies `DEFAULT_RENDERING_PATTERNS`, which would wrap every
+`[bracketed]`, `{braced}` and `"quoted"` run in a system report in narration /
+dialogue spans. A report is not a performance, so v4's four-plugin pipeline is
+transcribed instead (parse → GFM → rehype → stringify). Two properties come with
+that choice and are what justify trusting the HTML verbatim, exactly as
+`MessageContent` does: `remark-rehype` drops raw HTML unless
+`allowDangerousHtml` is set (ReactMarkdown's own default), and nothing rewrites
+hrefs, so `qtap://` survives to the DOM. v5 has no `QtapLink` analog — it renders
+to HTML, not to components, and the qtap:// link-OPENING path is a standing
+server-side deferral — so "route them through the qtap machinery" reduces here to
+"do not let them be sanitized", which is v5's established handling.
+
+v4's per-element ReactMarkdown `components` overrides land as the scoped
+`.qt-almanack-report` CSS block in `_content.css`, following the
+`.qt-chat-message-content` precedent directly above it — including its standing
+note that CSS cannot inject a wrapper, so v4's `overflow-x-auto` div around each
+table has no analog (a wide table scrolls with the dialog body).
+
+### The card (`almanack/almanack-card.ts`) + the Providers-tab mount
+
+v4's strings are transcribed byte-for-byte per the toast-census discipline: the
+header + tagline, "Compile the Almanack" / "Compiling the Almanack…", "Previous
+Editions", "Loading reports...", "No editions yet. Compile one to get started.",
+the toasts "The Almanack has been bound" and "Report deleted", and the confirm
+sentence `Are you sure you want to delete "<filename>"?`.
+
+The generate flow is v4's ORDER, and the order is the point:
+
+1. mint `progressId` (`crypto.randomUUID()`);
+2. **subscribe BEFORE dispatching** — v4 states the reason ("so the first phase
+   event can't be missed… keeps the bar honest from the very first tick");
+3. the blocking `systemAlmanackGenerate`;
+4. the DISPATCH's resolution — not a `done` frame — toasts and opens the viewer
+   on the returned content;
+5. on settle: unsubscribe, clear phase state, invalidate the list.
+
+The channel is the DIVERGENCE the §1 contract records: v4 reads a per-id SSE
+route, v5 filters the ONE global event stream by `progressId` (the
+`green-room.state.ts` pattern). The card is hosted in a `qt-collapsible-card` and
+can be collapsed mid-run; that keeps working because the subscription lives with
+the CARD's lifetime, not the panel's.
+
+Delete gates on `window.confirm` — v5 has no `showConfirmation` analog and this
+is the established idiom (photos / wardrobe / character-edit precedent).
+
+The tab mount is the fourth collapsible card with `sectionId="capabilities-report"`
+— v4 kept the old wording deliberately because it is the `?section=` anchor old
+bookmarks and help docs point at, and the comment saying so is carried. The
+`providers-tab.ts:15` "named deferral" comment is RETIRED.
+
+### Verification
+
+- `almanack-report-dialog.spec.ts` (12 cases): GFM tables render, `qtap://`
+  hrefs survive, **no roleplay spans appear** (the reason the pipeline exists),
+  raw HTML is dropped, the title/subtitle split, the download href + `download`
+  attribute, the scroll lock restoring on teardown, and all three close paths.
+- `almanack-card.spec.ts` (10 cases) — tier-2 deliverable 9 included. The
+  ordering pin records `subscribe` and `dispatch` on ONE timeline (the stub's
+  `events$` getter is what stamps the subscribe) and asserts the sequence.
+  **Mutation-proven:** moving the subscription after the dispatch turns exactly
+  two cases red — the ordering pin and the frame-arrives-mid-run beat — and
+  nothing else. Also pinned: the minted `progressId` reaches the wire, a frame
+  scoped to a DIFFERENT run does not move this bar, the dispatch's resolution
+  opens the viewer with no frame required, settling leaves no reader subscribed
+  (`events$.observed === false`), a failure surfaces inline and opens no viewer,
+  View fetches stored content, and Delete's confirm sentence gates the dispatch.
+
+One spec-authoring trap worth naming: the bar's segment CHIPS carry the
+ellipsis-TRIMMED phase labels, so a `toContain('Auditing the ledgers')` matches
+the chip and not the status line. The wrong-scope assertion has to use the
+ellipsis form to be about the thing it claims to be about.
+
+### Gate
+
+`ng test` 286 files / 3914 tests, 0 failed. `ng build` clean. No `crates/**`
+change — no cargo gate owed.
+
+**One transient observed and not reproduced:** a single `ng test` invocation
+mid-unit reported all 8 cases in the unrelated `courier-bubble.spec.ts` failing
+at once (the wholesale-file shape of a compile/setup error, not an assertion),
+immediately after new files were written. Six subsequent full runs are green and
+nothing in this lane touches that file or anything it imports; recorded here
+rather than left unmentioned.

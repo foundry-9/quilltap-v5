@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
+import { AlmanackCard } from '../../../almanack/almanack-card';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { Icon } from '../../../ui/icon';
 import { ApiKeysCard } from './api-keys-card';
@@ -10,14 +11,22 @@ import { ConnectionProfilesCard } from './connection-profiles-card';
 
 /**
  * The AI Providers tab (v4 `components/settings/tabs/ProvidersTabContent.tsx`):
- * the wizard link card plus the API Keys, Connection Profiles, and Cheap LLM
- * collapsible cards. The `?section=` deep-link force-opens the matching card. The
- * Capabilities Report card is a named deferral.
+ * the wizard link card plus the API Keys, Connection Profiles, Cheap LLM and
+ * Almanack collapsible cards. The `?section=` deep-link force-opens the matching
+ * card.
  */
 @Component({
   selector: 'qt-settings-providers',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, CollapsibleCard, ApiKeysCard, ConnectionProfilesCard, CheapLlmCard],
+  imports: [
+    RouterLink,
+    Icon,
+    CollapsibleCard,
+    ApiKeysCard,
+    ConnectionProfilesCard,
+    CheapLlmCard,
+    AlmanackCard,
+  ],
   template: `
     <div>
       <p class="qt-text-small qt-text-muted italic mb-6">
@@ -66,6 +75,18 @@ import { ConnectionProfilesCard } from './connection-profiles-card';
           [forceOpen]="section() === 'cheap-llm'"
         >
           <qt-cheap-llm-card />
+        </qt-collapsible-card>
+
+        <!-- sectionId stays "capabilities-report": it is the deep-link anchor
+             (?section=…) that the help docs and old bookmarks point at, which is
+             why v4 kept the old wording there when it renamed the feature. -->
+        <qt-collapsible-card
+          title="The Almanack (System Report)"
+          description="A compendium of the whole establishment — configuration, contents and condition"
+          sectionId="capabilities-report"
+          [forceOpen]="section() === 'capabilities-report'"
+        >
+          <qt-almanack-card />
         </qt-collapsible-card>
       </div>
     </div>

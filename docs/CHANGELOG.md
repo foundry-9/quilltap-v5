@@ -51,6 +51,12 @@ the reference app's real code over seven inputs covering every branch,
 including empty sections, an unreachable document store, and locale
 number and date formatting. No user-visible surface yet — the collectors
 and the report API follow.
+Added the Almanack card to the AI Providers settings tab, with its
+report viewer. Compiling a report shows a phase-by-phase progress bar
+while it runs and opens the finished report when it's done; previous
+editions can be viewed, downloaded, or deleted. The card answers the
+same `?section=capabilities-report` deep link older bookmarks use.
+
 Moved the two existing meters — the Proving Bench outcome shares and the
 search results' importance bar — onto the shared progress styles. Both
 were painted with hardcoded colors no theme could reach; they now draw

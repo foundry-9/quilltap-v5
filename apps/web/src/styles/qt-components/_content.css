@@ -1723,4 +1723,61 @@
     color: var(--qt-status-info-fg);
     border: 1px solid var(--qt-status-info-border);
   }
+
+  /* ==========================================================================
+     THE ALMANACK REPORT (the viewer dialog's rendered markdown)
+     v4 styles this content with per-element ReactMarkdown `components`
+     overrides (`capabilities-report-dialog.tsx:88-174`). v5 renders markdown to
+     HTML rather than to components, so the same treatment lands as a scoped CSS
+     block — the `.qt-chat-message-content` precedent above it.
+
+     Note, as there: CSS cannot inject a wrapper element, so v4's
+     `<div class="overflow-x-auto">` around each table has no analog. A wide
+     table scrolls with the dialog body instead.
+     ========================================================================== */
+
+  .qt-almanack-report table {
+    @apply min-w-full border-collapse border border-border my-4;
+  }
+
+  .qt-almanack-report thead {
+    @apply bg-muted;
+  }
+
+  .qt-almanack-report th {
+    @apply border border-border px-3 py-2 text-left font-semibold;
+  }
+
+  .qt-almanack-report td {
+    @apply border border-border px-3 py-2;
+  }
+
+  .qt-almanack-report h1 {
+    @apply mt-6 mb-4 pb-2 border-b border-border;
+  }
+
+  .qt-almanack-report h2 {
+    @apply mt-6 mb-3 pb-1 border-b border-border;
+  }
+
+  .qt-almanack-report h3 {
+    @apply mt-4 mb-2;
+  }
+
+  .qt-almanack-report h4 {
+    @apply text-base font-semibold mt-3 mb-2;
+  }
+
+  .qt-almanack-report ul {
+    @apply list-disc list-inside my-2 space-y-1;
+  }
+
+  .qt-almanack-report li {
+    @apply ml-2;
+  }
+
+  .qt-almanack-report :not(pre) > code {
+    @apply px-1.5 py-0.5 rounded text-sm font-mono;
+    background: var(--qt-code-bg, var(--color-muted));
+  }
 }
