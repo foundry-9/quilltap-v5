@@ -3616,16 +3616,31 @@ export interface OutfitPreviewSlots {
  * its fields fold FLAT into the {@link ScopedEvent} envelope (like
  * {@link ChatStreamFrame}), so a frame arrives as `{ progressId, kind, ... }`.
  * The Green-Room reducer narrows on `kind`. `level` rides only `log` frames;
- * `characterId`/`characterName`/`slots` ride the two `wardrobe-*` frames.
+ * `characterId`/`characterName`/`slots` ride the two `wardrobe-*` frames;
+ * `key`/`index`/`total`/`label` ride only the `phase` frame (see below).
+ *
+ * P4.38 §1 adds the `phase` kind — the Almanack's per-phase tick. It rides this
+ * same union (and so the same ONE global stream, scope-tagged by `progressId`)
+ * rather than a bespoke per-id SSE route: the standing D3-family divergence from
+ * v4's `GET ?action=capabilities-report-progress`, which v5 does not port. The
+ * existing kinds' wire bytes do not move.
  */
 export interface CreationProgressFrame {
-  kind?: 'status' | 'log' | 'wardrobe-start' | 'wardrobe-result' | 'done' | 'error';
+  kind?: 'status' | 'log' | 'wardrobe-start' | 'wardrobe-result' | 'done' | 'error' | 'phase';
   message?: string;
   level?: 'info' | 'warn' | 'error';
   characterId?: string;
   characterName?: string;
   slots?: OutfitPreviewSlots;
   ts?: number;
+  /** `phase` only — the manifest key (`ALMANACK_PHASES[].key`) now running. */
+  key?: string;
+  /** `phase` only — 1-based position of that phase in the manifest. */
+  index?: number;
+  /** `phase` only — how many phases the manifest holds. */
+  total?: number;
+  /** `phase` only — the phase's user-facing label, house voice. */
+  label?: string;
 }
 
 // ===========================================================================
@@ -4471,7 +4486,14 @@ export type MemoryRequest =
   | SystemJobControlRequest
   | SystemJobDeleteRequest
   | SystemDeleteDataPreviewRequest
-  | SystemDeleteDataRequest;
+  | SystemDeleteDataRequest
+  // P4.38 §1 — the Almanack (v4's "capabilities report"). P4.37 delivers the
+  // four variants in `api/types.rs`; this lane mirrors them name-for-name and
+  // the unifier diffs the two. Interfaces in the P4.38 block at end of file.
+  | SystemAlmanackGenerateRequest
+  | SystemAlmanackListRequest
+  | SystemAlmanackGetRequest
+  | SystemAlmanackDeleteRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -5865,4 +5887,91 @@ export interface SystemDeleteDataPreviewRequest {
 export interface SystemDeleteDataRequest {
   type: 'systemDeleteData';
   confirm: string;
+}
+
+// ===========================================================================
+// P4.38 §1 — the Almanack (v4's "capabilities report") dispatch surface.
+//
+// BINDING, and identical in P4.37 (`api/types.rs`) and this mirror: the four
+// variants below are diffed NAME-FOR-NAME at unification (the
+// `p4_6ar_wire_contract` precedent). Response bodies ride the server's envelope
+// and are read DEFENSIVELY via `CoreClient.dispatchData` — no `CoreResponse`
+// variants are added — so only the request `type` strings and payload fields are
+// load-bearing on this side; the response interfaces here are the §1 shapes the
+// card casts to.
+//
+// The web-edge action strings keep v4's `capabilities-report-*` names verbatim
+// (v4 froze them deliberately: "renaming them would break bookmarks to buy
+// nothing"), and the settings card's `sectionId` stays `capabilities-report` for
+// the same reason.
+//
+// PROGRESS is NOT a verb: no dispatch variant and no per-id SSE route. The
+// server emits the `phase` kind on the ONE global event stream, scope-tagged by
+// `progressId` (see {@link CreationProgressFrame}); v4's
+// `GET ?action=capabilities-report-progress` SSE action is the standing
+// D3-family divergence and is not ported.
+//
+// The one WEB-EDGE-ONLY leg (no dispatch verb — reached via `apiUrl()` raw):
+//   GET /api/v1/system/tools?action=capabilities-report-get&reportId=…&download=true
+//   (same action as the `get` verb; the `download=true` query switches the edge
+//   to a `Content-Disposition: attachment` text/markdown response).
+// ===========================================================================
+
+/**
+ * v4 `POST /api/v1/system/tools?action=capabilities-report-generate` — body
+ * `{progressId}`. A BLOCKING call: the response carries the whole rendered
+ * report, and its resolution — not the `done` frame — is what drives the UI.
+ * `progressId` is minted client-side (`crypto.randomUUID()`) and is what the
+ * `phase` frames are scope-tagged with.
+ */
+export interface SystemAlmanackGenerateRequest {
+  type: 'systemAlmanackGenerate';
+  progressId?: string;
+}
+
+/** v4 `GET ?action=capabilities-report-list` — `{reports}`, newest first. */
+export interface SystemAlmanackListRequest {
+  type: 'systemAlmanackList';
+}
+
+/** v4 `GET ?action=capabilities-report-get&reportId=…` — the stored markdown. */
+export interface SystemAlmanackGetRequest {
+  type: 'systemAlmanackGet';
+  reportId: string;
+}
+
+/** v4 `POST ?action=capabilities-report-delete` — body `{reportId}` → `{success}`. */
+export interface SystemAlmanackDeleteRequest {
+  type: 'systemAlmanackDelete';
+  reportId: string;
+}
+
+/** One row of the previous-editions list (v4 `ReportInfo`). */
+export interface AlmanackReportInfo {
+  id: string;
+  filename: string;
+  storageKey: string;
+  createdAt: string;
+  size: number;
+}
+
+/**
+ * The generate response (v4 `GenerateResponse`). `reportId` is the files-row id
+ * — v4's 404-fix shape, and what the view/download/delete legs address.
+ */
+export interface AlmanackGenerateResult {
+  success: boolean;
+  reportId: string;
+  filename: string;
+  storageKey: string;
+  size: number;
+  content: string;
+}
+
+/** The `get` response — one stored edition's markdown. */
+export interface AlmanackReportContent {
+  reportId: string;
+  filename: string;
+  content: string;
+  size: number;
 }

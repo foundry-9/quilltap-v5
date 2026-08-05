@@ -57129,3 +57129,54 @@ No `apps/web` change in this lane, so **no SPA gate is owed**.
   restore got the tolerant variant, because only restore has a
   vintage-instance invariant proving it. If an import into an
   un-migrated instance ever matters, it needs its own survey first.
+## Lane record — P4.38 unit 1 (the §1 contract mirror + the phases mirror), 2026-08-05
+
+Branch `claude/almanack-spa-porting-docs-2a6795`. The SPA half of the Almanack
+port; this unit lays the wire the other six sit on.
+
+### Drift check
+
+v4 HEAD is exactly the round baseline `f7f1a956` (`git log f7f1a956..HEAD`
+empty). `git status --short` shows ONE untracked file,
+`docs/developer/features/taboo.md` — a feature planning doc, no tracked change
+and no `lib/` code, so nothing this lane transcribes can have moved. Recorded
+rather than treated as a stop: it is the shape of the NEXT drift, not this one.
+
+### What landed
+
+- `app/almanack/almanack-phases.ts` — the client-safe mirror of v4
+  `lib/tools/almanack/phases.ts`: the seven phase keys in order, their
+  house-voice labels, `estimatedShare` weights, `ALMANACK_PHASE_COUNT`,
+  `ALMANACK_NAME`, `ALMANACK_TITLE`. In v4 this file is literally shared between
+  the server pipeline and the card; v5 cannot share across the Rust/TS boundary,
+  so the manifest exists three times (v4's file, P4.37's Rust constant, this
+  mirror) and §1 binds them.
+- `core-contract.ts`: the four `SystemAlmanack{Generate,List,Get,Delete}Request`
+  variants added to the `CoreRequest` union plus a P4.38 block at the end of the
+  file carrying them and the three response shapes (`AlmanackReportInfo`,
+  `AlmanackGenerateResult`, `AlmanackReportContent`). Read defensively through
+  `dispatchData` per the P4.9G2 precedent — no `CoreResponse` variants added.
+- `CreationProgressFrame` gained the `phase` kind and its four rider fields
+  (`key`, `index`, `total`, `label`), documented as `phase`-only. The Almanack's
+  progress rides the ONE global event stream scope-tagged by `progressId` —
+  v4's `GET ?action=capabilities-report-progress` SSE action is the standing
+  D3-family divergence and is NOT ported. The Green-Room reducer's `default:
+  return prev` arm means the new kind is inert for its existing consumer.
+
+### The equivalence obligation, discharged
+
+There is no oracle to diff a TS constant against, so `almanack-phases.spec.ts`
+pins the manifest LITERALLY — the byte-copied-asset discipline. Re-reading v4's
+file is then a mechanical diff against one block, and a drift on either side goes
+red instead of quietly re-weighting the progress bar. The shares-sum-to-1
+invariant v4 states in prose is asserted (`toBeCloseTo(1, 10)` — the seven float
+literals land a hair off exact 1, which v4's own arithmetic does too).
+
+The §1 mirror's real check is the name-for-name diff against P4.37's
+`api/types.rs` at unification; this unit only guarantees the SPA side compiles
+against the contract as written.
+
+### Gate
+
+`ng test` 282 files / 3873 tests, 0 failed (main's baseline was 281 / 3870 —
+this unit's spec is the delta). No `crates/**` change, so no cargo gate is owed.

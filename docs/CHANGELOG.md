@@ -51,6 +51,10 @@ the reference app's real code over seven inputs covering every branch,
 including empty sections, an unreachable document store, and locale
 number and date formatting. No user-visible surface yet — the collectors
 and the report API follow.
+Mirrored the Almanack's client contract into the web app: the four
+dispatch verbs (generate, list, get, delete), the new `phase` progress
+frame on the shared event stream, and the seven-phase manifest whose
+labels and timing weights must match the server's exactly.
 
 Planned the `f7f1a956` Almanack round and committed its four work
 orders: the reference app rewrote its system capabilities report into
