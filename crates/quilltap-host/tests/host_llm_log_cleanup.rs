@@ -47,7 +47,8 @@ const CHAT_SETTINGS_DDL: &str = "CREATE TABLE chat_settings (\
 const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
     id TEXT PRIMARY KEY, userId TEXT NOT NULL, type TEXT NOT NULL, messageId TEXT, \
     chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT NOT NULL, \
-    modelName TEXT NOT NULL, request TEXT NOT NULL, response TEXT NOT NULL, usage TEXT, \
+    modelName TEXT NOT NULL, connectionProfileId TEXT, imageProfileId TEXT, \
+    request TEXT NOT NULL, response TEXT NOT NULL, usage TEXT, \
     cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, durationMs REAL, \
     createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
 

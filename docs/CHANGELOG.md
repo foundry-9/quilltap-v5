@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+The LLM Inspector shows which profile served each logged call, on
+instances whose log database carries the new columns; older rows and
+older instances read exactly as before.
+
 Harness only: the reference app now pins its test timezone to UTC before
 forking test workers, which silently overrode the timezone our two
 zone-legged oracle regenerations pass on the command line. Both now apply

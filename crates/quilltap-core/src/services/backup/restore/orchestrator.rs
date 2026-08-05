@@ -685,7 +685,7 @@ fn restore_on_writer(
                     w,
                     c.llm_logs,
                     "Failed to restore LLM log".to_string(),
-                    repo.create(
+                    repo.create_for_restore(
                         &create,
                         &crate::db::llm_logs::CreateOptions {
                             id: id_of(log),

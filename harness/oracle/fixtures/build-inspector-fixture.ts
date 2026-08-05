@@ -91,6 +91,9 @@ interface LogSeed {
   modelName: string;
   request: Record<string, unknown>;
   response: Record<string, unknown>;
+  /** v4 `0cde7fbc`'s profile attribution — omitted on the rows that predate it. */
+  connectionProfileId?: string | null;
+  imageProfileId?: string | null;
   usage?: Record<string, unknown>;
   cacheUsage?: Record<string, unknown>;
   durationMs?: number;
@@ -317,6 +320,13 @@ async function main(): Promise<void> {
         autonomousRunId: null,
         provider: log.provider,
         modelName: log.modelName,
+        // Spread so an OMITTED key stays omitted: a pre-4.9 row must reach the
+        // read surface with no profile keys at all, which is the shape every
+        // committed pre-migration fixture has.
+        ...(log.connectionProfileId !== undefined
+          ? { connectionProfileId: log.connectionProfileId }
+          : {}),
+        ...(log.imageProfileId !== undefined ? { imageProfileId: log.imageProfileId } : {}),
         request: log.request,
         response: log.response,
         ...(log.usage !== undefined ? { usage: log.usage } : {}),

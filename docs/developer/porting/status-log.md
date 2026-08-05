@@ -56615,3 +56615,146 @@ Green after the change: `distill_search_extraction_equivalence` 26 cases
 × 2 legs (7 zone-sensitive); `llm_log_cleanup_equivalence` 4/4 including
 `legs_disagree_on_the_dst_hour`, which is the standing proof that the
 Chicago leg genuinely ran Chicago.
+
+## Lane record — P4.D49 units 7 + 9: the blast-radius sweep, and the two stale DDLs it uncovered
+
+**2026-08-05.** The regen-and-re-run sweep did not go the way the order
+predicted, and what it found is worth more than the green ticks.
+
+### The order's prediction held for pure READ families, and broke for writers
+
+`llm_logs_routes`, `cost_background_routes`, `self_inventory`, and the
+whole backup/export/import/restore/delete set are green over their
+committed pre-migration fixtures, exactly as the order said they would be
+(the optional Zod keys are simply absent on a column-less DB and both
+sides agree). `provisioning_equivalence` is green over the re-dump; the
+uuid-remap corpus is green; `llm_logs_tier2`, `enclave_step_tier3`,
+`llm_log_cleanup` (all three legs) are green over oracles regenerated
+fresh at `f7f1a956`.
+
+**But any family whose differential WRITES an llm-log broke**, and for a
+reason the order could not have predicted: since `0cde7fbc`, v4 itself
+cannot log into an un-migrated partition. Its `insertOne` names
+`Object.keys(row)` and `logLLMCall` always sets both profile keys
+(`?? null`), so the INSERT names two columns an 18-column table lacks and
+v4 throws into its own swallow. Every committed llm-logs fixture is
+18-column.
+
+### The design question that forced, and its answer
+
+The first cut made v5's `create` table-driven (name the profile columns
+only where they exist). That is closer to v4's key-driven insert in
+spirit and it kept `restore_vintage_state` green — but it made v5 LOG
+where v4 cannot, and the sweep turned red across
+`courier_images_routes`, `attach_mount_file`, the pascal route families
+and more, each with the same fingerprint: `GOT llmLogs: [row]` vs
+`WANT llmLogs: []`.
+
+So the split: **`create` is STRICT (byte-faithful to v4, including its
+new inability to write into an un-migrated partition), and
+`create_for_restore` is TOLERANT.** Only the restore orchestrator calls
+the second, and only because `restore_vintage_state`'s INSERT-tolerance
+survey requires it — a restore into a migration-vintage instance must not
+leak a raw SQLite sentence, and under the standing 2026-08-03
+backup/restore ruling v5 fixes that rather than reproducing it. Both arms
+carry unit tests (`create_is_strict_on_a_pre_migration_table_exactly_as_
+v4_is` / `create_for_restore_drops_profile_attribution_on_a_pre_
+migration_table`).
+
+The strict arm's silence is closed rather than left: `log_llm_call`'s
+swallow now emits a `tracing::error!` naming the log type, provider and
+error. v4 logs the same failure through its own logger; v5 had been
+swallowing it in total silence, which is the finding-#23 shape, and
+"every LLM log on this instance is quietly missing" is exactly the
+symptom nobody would notice.
+
+### Two stale hand-written DDLs — the real find
+
+With `create` strict again, ten tier-3 families still failed with the
+MIRROR fingerprint: `got 0 rows vs oracle 1`. The cause is that **the
+harness materializes its own `llm_logs` table** and
+`tests/common/mod.rs`'s `LLM_LOGS_DDL` was hand-written and 18-column.
+The oracle side creates its table through v4's repo (20 columns since the
+drift) while v5's side got 18, so every ported write failed into the
+swallow. Widening that constant — and `LLM_LOGS_COLUMNS` beside it — took
+`avatar_job`, `image_generation`, `story_background`, `primary_stream`
+and the three pascal route families green in one move. Six more
+hand-rolled copies of the same DDL were found by grep and widened
+(`enclave/step.rs`, `cheap_llm_exec.rs` ×3, `provider_failover.rs`,
+`host_llm_log_cleanup.rs`, `quilltap-tauri/tests/common`,
+`photos_web_routes.rs`). The constant now carries a why-comment naming
+the empty-dump fingerprint, so the next reader recognizes it in seconds
+rather than hours.
+
+**The generalizable rule: a D23 re-dump is not finished at
+`fresh_schema.json`.** Every hand-written mirror of a v4 table has to
+follow it, and the harness's own DDL is the one that fails most quietly —
+green oracle, empty v5 dump, no error anywhere.
+
+### `durationMs` is no longer diffable
+
+`answer_confirmation`, `orchestrator` and `story_background` then failed
+on `durationMs: 1` vs `0`. Both engines now MEASURE the provider call
+(v4 `0cde7fbc` added it to the shared cheap path and both gatekeeper
+logs), and against canned responses the elapsed time is 0 ms or 1 ms as
+the machine decides. `common::dump_llm_logs` and `common::oracle_llm_logs`
+now collapse a non-NULL duration to `"<ms>"` and leave NULL as NULL —
+the presence/absence distinction is the ported behavior and stays under
+diff; the number never was. All three green after.
+
+### Deliverable 9 — the column-blindness closure, taken not waived
+
+The `inspector-*` family was rebuilt at `f7f1a956` (its builder writes the
+committed files directly — the sanctioned workflow for this family) with
+three deliberate row shapes: log 0 carries a real `connectionProfileId`
+with `imageProfileId` explicitly null; log 9 carries an `imageProfileId`
+with `connectionProfileId` null; log 13 carries NEITHER KEY AT ALL — the
+pre-4.9 row shape, which v4 omits from the body entirely. The builder
+spreads the keys so an omitted one stays omitted. `item_get_found`'s
+existing key-order assertion now pins `connectionProfileId` in its wire
+position between `modelName` and `request`, with the null
+`imageProfileId` absent (the standing "reads omit null" rule).
+Mutation-proven: forcing the read to `None` fails the family. Both
+consumers of that fixture (`llm_logs_routes_equivalence`,
+`image_aesthetics_routes_equivalence`) re-run green.
+
+### ⚠ Two families could NOT be re-verified at the new baseline — v4-side, escalated
+
+`context_summary_service_tier3` and `memory_processor_tier3` fail their
+ORACLE regeneration at `f7f1a956` with `SqliteError: no such table:
+llm_logs` — v4 writes no log at all in those corpora, so its lazy
+`ensureCollection` never runs and the case's own dump explodes. **This is
+not this lane's:** the regen executes v4's code plus a v5 case file that
+is byte-identical to main (`git diff main` empty), and no Rust change can
+reach it. Neither family is in the order's enumerated blast radius; I
+added them by grepping for llm-logs references. The shape matches the
+P4.36 "stale oracle mock" class — the cheap fold/title calls fail on the
+v4 side, so nothing is logged — and it wants that same treatment in a
+maintenance lane, not here. Reproduce with the family header's recipe
+verbatim.
+
+Two more sweep rows are the known recipe-extraction rot, NOT failures:
+`danger_gatekeeper_tier3` and `state_sql_tools` have header prose
+beginning with the word `diff`, which `recipe_sweep.py` classifies as
+shell. Both were regenerated and run BY HAND and are green
+(`danger_gatekeeper` matters here — it is the gatekeeper duration change's
+own proof). `backup_uuid_remap` reports `refused_repo_write` by design
+(its recipe writes the corpus into the repo) and was run by hand, green.
+
+### The env-var collision the full-workspace gate exposed
+
+`llm_logs_routes_equivalence` and `llm_logs_tier2_equivalence` both read
+**`QT_ORACLE_LLM_LOGS`**. The sweep runs one family per invocation, so
+neither the sweep nor either family's own recipe could ever see it —
+but a full-workspace gate carrying one family's env block feeds the
+OTHER family's NDJSON to this test, and since both SKIP when unset the
+collision had simply never fired. The routes family is renamed to
+`QT_ORACLE_LLM_LOGS_ROUTES`, with the reason in its header so the
+shorter name is not reclaimed.
+
+Also fixed on the way past: `cheap_llm_exec`'s
+`logging_writes_one_row_through_the_real_writer` asserted
+`durationMs == None` ("the cheap path sets no durationMs") — true until
+v4 `0cde7fbc` made it a required `logCall` argument. It now asserts
+PRESENCE (never a number — it is a measured wall clock) and additionally
+pins `connectionProfileId` on the written row.

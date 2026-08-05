@@ -17,10 +17,16 @@
 //! the REST edge's `to_string()` both carry the struct's declared field order
 //! onto the wire.
 //!
+//! ⚠️ The env var is `QT_ORACLE_LLM_LOGS_ROUTES`, NOT `QT_ORACLE_LLM_LOGS` —
+//! that shorter name belongs to `llm_logs_tier2_equivalence`. The two collided
+//! until P4.D49, which meant a full-workspace gate carrying one family's env
+//! block fed the OTHER family's NDJSON to this test; because both skip when
+//! unset, the collision only ever surfaced when someone ran both at once.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-llm-logs.ndjson npx jest -- llm-logs-routes
 //! Run:
-//!   QT_ORACLE_LLM_LOGS=/tmp/oracle-llm-logs.ndjson \
+//!   QT_ORACLE_LLM_LOGS_ROUTES=/tmp/oracle-llm-logs.ndjson \
 //!     cargo test -p quilltap-harness --test llm_logs_routes_equivalence -- --nocapture
 
 use std::collections::HashMap;
@@ -249,7 +255,7 @@ fn check_after_status(
 
 #[test]
 fn llm_logs_routes_match_oracle() {
-    let Some(oracle_path) = env_or_skip("QT_ORACLE_LLM_LOGS") else {
+    let Some(oracle_path) = env_or_skip("QT_ORACLE_LLM_LOGS_ROUTES") else {
         return;
     };
     let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();

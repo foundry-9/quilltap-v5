@@ -487,16 +487,50 @@ impl<'c> LLMLogsRepository<'c> {
         Self { conn }
     }
 
-    /// Insert an llm-log with the given pinned id + timestamps. All 20 columns are
-    /// written in `LLMLogSchema` field order; nested-JSON columns via
-    /// `serde_json::to_string`, nullable JSON/REAL/UUID columns via `Option`.
+    /// Insert an llm-log with the given pinned id + timestamps, in `LLMLogSchema`
+    /// field order; nested-JSON columns via `serde_json::to_string`, nullable
+    /// JSON/REAL/UUID columns via `Option`.
     ///
-    /// The write names the profile columns unconditionally — v4's `insertOne`
-    /// does the same (it names the document's keys, and `logLLMCall` always sets
-    /// both, `?? null`), so neither engine can write into an llm-logs partition
-    /// that predates `add-llm-logs-profile-columns-v1`. Only the READ side is
-    /// tolerant ([`log_columns`]).
+    /// **All 20 columns, always — byte-faithful to v4.** v4's `insertOne` names
+    /// `Object.keys(row)`, and `logLLMCall` always sets both profile keys
+    /// (`?? null`), so v4's INSERT names them too. Neither engine can therefore
+    /// write a log into a partition that predates
+    /// `add-llm-logs-profile-columns-v1`: v4 throws `no such column` into its
+    /// own swallow, and so does v5 (with a `tracing::error!` beside it — see
+    /// [`crate::services::llm_logging::log_llm_call`] — because v5 has no
+    /// console to fall back on and a silently log-less instance is exactly the
+    /// finding-#23 failure shape). The v5 migration runner stays deferred, so
+    /// the operator's fix is the same either way: open the instance once with
+    /// v4 4.9.
+    ///
+    /// The RESTORE path is the one place that must not fail this way, and it
+    /// uses [`Self::create_for_restore`] instead.
     pub fn create(&self, data: &LlCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.create_inner(data, opts, false)
+    }
+
+    /// The restore orchestrator's create: identical to [`Self::create`] except
+    /// that the profile columns are named only when the target table HAS them.
+    ///
+    /// A **deliberate divergence**, and a ruled one. v4's restore inserts the
+    /// archive row's keys, so a pre-4.9 archive (no profile keys) restores into
+    /// an un-migrated instance fine while a 4.9 archive — whose rows carry
+    /// explicit nulls — throws `no such column` and loses the row. v5 restores
+    /// either archive into either instance, dropping only the attribution. This
+    /// is the standing "fix v4's restore, don't reproduce it" ruling, and it is
+    /// what `restore_vintage_state`'s INSERT-tolerance survey requires: a
+    /// restore into a migration-vintage instance must not leak a raw SQLite
+    /// sentence at the operator.
+    pub fn create_for_restore(&self, data: &LlCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.create_inner(data, opts, true)
+    }
+
+    fn create_inner(
+        &self,
+        data: &LlCreate,
+        opts: &CreateOptions,
+        omit_columns_the_table_lacks: bool,
+    ) -> Result<(), DbError> {
         let request_json = serde_json::to_string(&data.request)
             .map_err(|e| DbError::Key(format!("request serialize: {e}")))?;
         let response_json = serde_json::to_string(&data.response)
@@ -506,37 +540,70 @@ impl<'c> LLMLogsRepository<'c> {
         let raw_provider_usage_json = opt_json(&data.raw_provider_usage, "rawProviderUsage")?;
         let request_hashes_json = opt_json(&data.request_hashes, "requestHashes")?;
 
-        self.conn.execute(
-            "INSERT INTO llm_logs \
-               (id, userId, type, messageId, chatId, characterId, autonomousRunId, \
-                provider, modelName, connectionProfileId, imageProfileId, request, \
-                response, usage, cacheUsage, \
-                rawProviderUsage, requestHashes, durationMs, createdAt, updatedAt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20)",
-            params![
-                opts.id,
-                data.user_id,
-                data.log_type,
-                data.message_id,
-                data.chat_id,
-                data.character_id,
-                data.autonomous_run_id,
-                data.provider,
-                data.model_name,
-                data.connection_profile_id,
-                data.image_profile_id,
-                request_json,
-                response_json,
-                usage_json,
-                cache_usage_json,
-                raw_provider_usage_json,
-                request_hashes_json,
-                data.duration_ms,
-                opts.created_at,
-                opts.updated_at,
-            ],
-        )?;
+        let mut columns: Vec<&str> = vec![
+            "id",
+            "userId",
+            "type",
+            "messageId",
+            "chatId",
+            "characterId",
+            "autonomousRunId",
+            "provider",
+            "modelName",
+        ];
+        let mut values: Vec<&dyn ToSql> = vec![
+            &opts.id,
+            &data.user_id,
+            &data.log_type,
+            &data.message_id,
+            &data.chat_id,
+            &data.character_id,
+            &data.autonomous_run_id,
+            &data.provider,
+            &data.model_name,
+        ];
+        // Schema position: between `modelName` and `request`.
+        if !omit_columns_the_table_lacks || table_has_column(self.conn, PROFILE_COLUMNS[0]) {
+            columns.push(PROFILE_COLUMNS[0]);
+            values.push(&data.connection_profile_id);
+        }
+        if !omit_columns_the_table_lacks || table_has_column(self.conn, PROFILE_COLUMNS[1]) {
+            columns.push(PROFILE_COLUMNS[1]);
+            values.push(&data.image_profile_id);
+        }
+        columns.extend([
+            "request",
+            "response",
+            "usage",
+            "cacheUsage",
+            "rawProviderUsage",
+            "requestHashes",
+            "durationMs",
+            "createdAt",
+            "updatedAt",
+        ]);
+        values.extend([
+            &request_json as &dyn ToSql,
+            &response_json,
+            &usage_json,
+            &cache_usage_json,
+            &raw_provider_usage_json,
+            &request_hashes_json,
+            &data.duration_ms,
+            &opts.created_at,
+            &opts.updated_at,
+        ]);
+
+        let placeholders = (1..=columns.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "INSERT INTO llm_logs ({}) VALUES ({placeholders})",
+            columns.join(", ")
+        );
+        self.conn
+            .execute(&sql, rusqlite::params_from_iter(values))?;
         Ok(())
     }
 
@@ -1387,6 +1454,112 @@ mod tests {
             repo.get_total_token_usage_since("someone-else", "2000-01-01T00:00:00.000Z"),
             TokenUsageTotals::default()
         );
+    }
+
+    /// The 20-column shape v4 `generateDDL` emits since `0cde7fbc` — the
+    /// profile columns in `LLMLogSchema` position.
+    const DDL_MIGRATED: &str = "CREATE TABLE llm_logs (\
+        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, chatId TEXT, \
+        characterId TEXT, autonomousRunId TEXT, provider TEXT, modelName TEXT, \
+        connectionProfileId TEXT, imageProfileId TEXT, \
+        request TEXT, response TEXT, usage TEXT, cacheUsage TEXT, \
+        rawProviderUsage TEXT, requestHashes TEXT, durationMs REAL, \
+        createdAt TEXT, updatedAt TEXT);";
+
+    fn sample_create() -> LlCreate {
+        LlCreate {
+            user_id: "u1".into(),
+            log_type: "CHAT_MESSAGE".into(),
+            message_id: None,
+            chat_id: None,
+            character_id: None,
+            autonomous_run_id: None,
+            provider: "ANTHROPIC".into(),
+            model_name: "m".into(),
+            connection_profile_id: Some("cp-1".into()),
+            image_profile_id: Some("ip-1".into()),
+            request: serde_json::from_str(r#"{"messageCount":0,"messages":[],"toolCount":0}"#)
+                .unwrap(),
+            response: serde_json::from_str(r#"{"content":"","contentLength":0}"#).unwrap(),
+            usage: None,
+            cache_usage: None,
+            raw_provider_usage: None,
+            request_hashes: None,
+            duration_ms: None,
+        }
+    }
+
+    fn opts() -> CreateOptions {
+        CreateOptions {
+            id: "x1".into(),
+            created_at: "2026-08-05T00:00:00.000Z".into(),
+            updated_at: "2026-08-05T00:00:00.000Z".into(),
+        }
+    }
+
+    /// On a MIGRATED partition the attribution is written — the byte-identical
+    /// v4 case, and every differential fixture's case.
+    #[test]
+    fn create_writes_profile_attribution_when_the_table_has_it() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL_MIGRATED).unwrap();
+        LLMLogsRepository::new(&conn)
+            .create(&sample_create(), &opts())
+            .expect("create on a migrated table");
+        let (cp, ip): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT connectionProfileId, imageProfileId FROM llm_logs",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(cp.as_deref(), Some("cp-1"));
+        assert_eq!(ip.as_deref(), Some("ip-1"));
+        // And the read finds them by name off the widened SELECT list.
+        let row = LLMLogsRepository::new(&conn).find_by_id("x1").unwrap();
+        let row = row.expect("row reads back");
+        assert_eq!(row.connection_profile_id.as_deref(), Some("cp-1"));
+        assert_eq!(row.image_profile_id.as_deref(), Some("ip-1"));
+    }
+
+    /// The ORDINARY create is strict, exactly as v4's is: on a partition that
+    /// predates `add-llm-logs-profile-columns-v1` it fails, and v4 fails the
+    /// same way (its INSERT names the keys `logLLMCall` always sets). `DDL`
+    /// above is that 18-column shape.
+    #[test]
+    fn create_is_strict_on_a_pre_migration_table_exactly_as_v4_is() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL).unwrap();
+        let err = LLMLogsRepository::new(&conn)
+            .create(&sample_create(), &opts())
+            .expect_err("v4 throws `no such column` here; v5 must too");
+        assert!(
+            format!("{err:?}").contains("connectionProfileId"),
+            "the error must name the column: {err:?}"
+        );
+    }
+
+    /// The RESTORE create is tolerant — v5's ruled divergence, and what
+    /// `restore_vintage_state`'s INSERT-tolerance survey requires: the row lands
+    /// and only the attribution is dropped.
+    #[test]
+    fn create_for_restore_drops_profile_attribution_on_a_pre_migration_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL).unwrap();
+        LLMLogsRepository::new(&conn)
+            .create_for_restore(&sample_create(), &opts())
+            .expect("the restore create must NOT fail on a pre-migration table");
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM llm_logs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        // The read is tolerant the same way: absent column reads as absent key.
+        let row = LLMLogsRepository::new(&conn)
+            .find_by_id("x1")
+            .unwrap()
+            .expect("row reads back");
+        assert_eq!(row.connection_profile_id, None);
+        assert_eq!(row.image_profile_id, None);
     }
 
     /// A read against a missing table returns the safeQuery default (zeros).

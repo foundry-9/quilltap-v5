@@ -41,7 +41,7 @@
   "logs": [
     {
       "id": "e0000000-0000-4000-8000-000000000001",
-      "note": "message-linked CHAT_MESSAGE; full usage + cacheUsage + durationMs",
+      "note": "message-linked CHAT_MESSAGE; full usage + cacheUsage + durationMs. P4.D49: attributed to the corpus connection profile, with imageProfileId explicitly null.",
       "user": "primary",
       "type": "CHAT_MESSAGE",
       "messageId": "d4000000-0000-4000-8000-000000000002",
@@ -49,6 +49,8 @@
       "characterId": null,
       "provider": "ANTHROPIC",
       "modelName": "claude-opus-4-8",
+      "connectionProfileId": "d1000000-0000-4000-8000-000000000001",
+      "imageProfileId": null,
       "request": {
         "messageCount": 2,
         "messages": [
@@ -302,7 +304,7 @@
     },
     {
       "id": "e0000000-0000-4000-8000-00000000000a",
-      "note": "standalone IMAGE_PROMPT_CRAFTING (no entity links at all)",
+      "note": "standalone IMAGE_PROMPT_CRAFTING (no entity links at all). P4.D49: imageProfileId set, connectionProfileId explicitly null - the two columns are independent.",
       "user": "primary",
       "type": "IMAGE_PROMPT_CRAFTING",
       "messageId": null,
@@ -310,6 +312,8 @@
       "characterId": null,
       "provider": "OPENAI",
       "modelName": "gpt-5",
+      "connectionProfileId": null,
+      "imageProfileId": "e9000000-0000-4000-8000-0000000000e9",
       "request": {
         "messageCount": 1,
         "messages": [
@@ -415,7 +419,7 @@
     },
     {
       "id": "e0000000-0000-4000-8000-00000000000e",
-      "note": "owned by the SECOND user — the no-ownership-check item GET/DELETE case",
+      "note": "P4.D49: BOTH profile keys ABSENT - the pre-4.9 row shape v4 omits from the body entirely. Owned by the SECOND user — the no-ownership-check item GET/DELETE case",
       "user": "other",
       "type": "CHAT_MESSAGE",
       "messageId": null,

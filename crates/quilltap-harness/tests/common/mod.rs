@@ -24,10 +24,22 @@ pub const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 /// `PRAGMA table_info(llm_logs)` output. Hand-rolled here because `Db::open` never
 /// creates tables (the differential harness materializes them, as the tier-2
 /// oracles' `generateCreateTable` does on the v4 side).
+///
+/// **This follows v4's `generateDDL`, and must keep following it.** v4
+/// `0cde7fbc` widened `LLMLogSchema` with `connectionProfileId` /
+/// `imageProfileId`, so the oracle side of every tier-3 family creates a
+/// 20-column table through its own repo while this constant materialized an
+/// 18-column one — and the ported write, which names all 20 exactly as v4's
+/// does, then failed into `log_llm_call`'s swallow. The symptom is a family
+/// whose `llm_logs` dump is EMPTY where the oracle has rows (`avatar_job`,
+/// `story_background`, `image_generation`, `primary_stream`, the pascal route
+/// families). If that shape ever reappears, check this DDL against
+/// `provisioning/fresh_schema.json` first.
 pub const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
     id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
     chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-    modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+    modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+    request TEXT, response TEXT, usage TEXT, \
     cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
     durationMs REAL, createdAt TEXT, updatedAt TEXT);";
 
@@ -42,6 +54,8 @@ pub const LLM_LOGS_COLUMNS: &[&str] = &[
     "autonomousRunId",
     "provider",
     "modelName",
+    "connectionProfileId",
+    "imageProfileId",
     "request",
     "response",
     "usage",
@@ -150,10 +164,16 @@ pub fn assert_ruled_failed_call_divergence(
 }
 
 /// Dump every `llm_logs` row as a normalized `serde_json::Value` object keyed by
-/// column name: id/createdAt/updatedAt collapsed to placeholders, `durationMs`
-/// read as REAL (integer-collapsed), every other column as TEXT (NULL → JSON
-/// null). Sorted by canonical JSON so the multiset compares regardless of write
-/// order — matching the oracle's dump.
+/// column name: id/createdAt/updatedAt collapsed to placeholders, every column
+/// read as TEXT (NULL → JSON null). Sorted by canonical JSON so the multiset
+/// compares regardless of write order — matching the oracle's dump.
+///
+/// **`durationMs` is a PLACEHOLDER, not a value** (see
+/// [`normalize_duration_ms`]). v4 `0cde7fbc` made the shared cheap-LLM path and
+/// both gatekeeper logs MEASURE their provider call, and v5 measures the same
+/// wall clock — so on a canned-response corpus the two sides land on 0 or 1 ms
+/// as the machine decides. The presence/absence distinction is preserved,
+/// because that IS the ported behavior; the number never was.
 pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
     let mut rows: Vec<Value> = db
         .read_llm_logs(|conn| {
@@ -188,9 +208,28 @@ pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
         m.insert("id".into(), Value::String("<id>".into()));
         m.insert("createdAt".into(), Value::String("<ts>".into()));
         m.insert("updatedAt".into(), Value::String("<ts>".into()));
+        normalize_duration_ms(m);
     }
     sort_by_canonical_json(&mut rows);
     rows
+}
+
+/// Collapse a row's `durationMs` to a presence marker.
+///
+/// A measured wall clock cannot be diffed: v4 and v5 both time the real
+/// provider call (v4 `0cde7fbc` added the measurement to the shared cheap-LLM
+/// path and to both gatekeeper logs), and against canned responses the elapsed
+/// time is 0 ms on one side and 1 ms on the other, run to run. What the port
+/// owes is that a duration is written where v4 writes one and omitted where v4
+/// omits one — so a non-NULL value becomes `"<ms>"` and NULL stays NULL. Both
+/// the ported dump and the oracle's rows go through this, so a family that
+/// stopped writing a duration entirely still fails.
+pub fn normalize_duration_ms(row: &mut Map<String, Value>) {
+    if let Some(v) = row.get_mut("durationMs") {
+        if !v.is_null() {
+            *v = Value::String("<ms>".into());
+        }
+    }
 }
 
 /// Sort a row list by its canonical JSON string (the same stable ordering the
@@ -207,6 +246,11 @@ pub fn sort_by_canonical_json(rows: &mut [Value]) {
 /// row list, re-sorted by canonical JSON (defensive — the oracle already sorts).
 pub fn oracle_llm_logs(v: &Value) -> Vec<Value> {
     let mut rows: Vec<Value> = v["rows"].as_array().expect("llmlogs rows").clone();
+    for r in &mut rows {
+        if let Some(m) = r.as_object_mut() {
+            normalize_duration_ms(m);
+        }
+    }
     sort_by_canonical_json(&mut rows);
     rows
 }

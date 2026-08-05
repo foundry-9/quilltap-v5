@@ -1255,7 +1255,8 @@ mod tests {
                     "CREATE TABLE llm_logs (\
                        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
                        chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
                        cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
                        durationMs REAL, createdAt TEXT, updatedAt TEXT);",
                 )
@@ -1472,7 +1473,8 @@ mod tests {
                     "CREATE TABLE llm_logs (\
                        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
                        chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
                        cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
                        durationMs REAL, createdAt TEXT, updatedAt TEXT);",
                 )
@@ -1541,11 +1543,12 @@ mod tests {
             String,
             Option<String>,
             Option<f64>,
+            Option<String>,
         )> = db
             .read_llm_logs(|conn| {
                 let mut stmt = conn.prepare(
                     "SELECT type, provider, modelName, chatId, userId, request, response, \
-                     usage, durationMs FROM llm_logs",
+                     usage, durationMs, connectionProfileId FROM llm_logs",
                 )?;
                 let out = stmt
                     .query_map([], |row| {
@@ -1559,6 +1562,7 @@ mod tests {
                             row.get(6)?,
                             row.get(7)?,
                             row.get(8)?,
+                            row.get(9)?,
                         ))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1567,7 +1571,20 @@ mod tests {
             .unwrap();
 
         assert_eq!(rows.len(), 1, "exactly one llm_logs row written");
-        let (typ, provider_col, model, chat, user, request, response, usage, duration) = &rows[0];
+        let (
+            typ,
+            provider_col,
+            model,
+            chat,
+            user,
+            request,
+            response,
+            usage,
+            duration,
+            conn_profile,
+        ) = &rows[0];
+        // v4 `0cde7fbc`: `selection.connectionProfileId ?? null`.
+        assert_eq!(conn_profile.as_deref(), Some("cur"));
         assert_eq!(typ, "SUMMARIZATION");
         assert_eq!(provider_col, "ANTHROPIC");
         assert_eq!(model, "claude-haiku");
@@ -1590,8 +1607,11 @@ mod tests {
                 .contains("\"totalTokens\":14"),
             "usage: {usage:?}"
         );
-        // The cheap path sets no durationMs.
-        assert_eq!(*duration, None);
+        // v4 `0cde7fbc` made `durationMs` a REQUIRED argument of the shared
+        // cheap path's `logCall`, so the row now always carries one. The value
+        // is a real measured wall clock (0 against a canned provider on a fast
+        // machine, 1+ on a slow one) — assert PRESENCE, never a number.
+        assert!(duration.is_some(), "the cheap path now measures durationMs");
     }
 
     /// The RULED failed-call error row (P4.13 unit 6, a deliberate divergence
@@ -1613,7 +1633,8 @@ mod tests {
                     "CREATE TABLE llm_logs (\
                        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
                        chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
                        cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
                        durationMs REAL, createdAt TEXT, updatedAt TEXT);",
                 )

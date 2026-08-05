@@ -697,7 +697,8 @@ mod tests {
                     "CREATE TABLE llm_logs (\
                        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
                        chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
                        cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
                        durationMs REAL, createdAt TEXT, updatedAt TEXT);",
                 )

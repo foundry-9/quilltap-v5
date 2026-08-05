@@ -300,6 +300,10 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
     let id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
 
+    // Kept for the failure trace below — `data` moves into the writer closure.
+    let log_type_for_trace = params.log_type.clone();
+    let provider_for_trace = params.provider.clone();
+
     let data = LlCreate {
         user_id: params.user_id,
         log_type: params.log_type,
@@ -338,8 +342,22 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
 
     match written {
         Ok(()) => Some(id),
-        // v4's outer catch -> log + null. Never propagate.
-        Err(_) => None,
+        // v4's outer catch -> log + null. Never propagate. v4 logs the failure
+        // through its own logger; v5 has no console to fall back on, and a
+        // silently log-less instance is the finding-#23 failure shape — the
+        // commonest cause is an llm-logs partition that predates v4's
+        // `add-llm-logs-profile-columns-v1` migration, which v4 cannot write
+        // either (open the instance once with v4 4.9).
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::llm_logging",
+                log_type = %log_type_for_trace,
+                provider = %provider_for_trace,
+                error = %error,
+                "Failed to log LLM call",
+            );
+            None
+        }
     }
 }
 
