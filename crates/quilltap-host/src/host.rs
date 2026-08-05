@@ -627,6 +627,13 @@ impl EngineAssembler for HostAssembler {
         ));
 
         Ok(EngineAssembly {
+            // === P4.37: the Almanack host seam ===
+            // DEFERRED, loudly: the four `SystemAlmanack*` arms answer the
+            // not-assembled refusal until a host impl of `AlmanackHost` is
+            // wired here (paths + runtime facts + version + clock + the disk
+            // storage backend). The recipe is in the P4.37 lane record; this
+            // line is deliberately the ONLY host change the lane makes.
+            almanack_host: None,
             shutdown: Box::new(HostShutdown {
                 stop: stop_tx,
                 terminal_slot: self.terminal_slot.clone(),

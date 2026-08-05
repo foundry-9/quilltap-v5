@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Ported the collectors, orchestrator and API surface of the new system
+report ("The Almanack"): the seven-phase census across all three
+databases, the four report actions (generate / list / get / delete) with
+the download link, and per-phase progress on the live event stream.
+NOT YET VERIFIED against the reference app and NOT YET REACHABLE: the
+report's equivalence test is still to be built, and the server answers a
+clear "not assembled" until the host supplies its paths and version.
+
 Planned the next porting round and committed its work orders — three
 lanes. The first resumes the held Almanack server work from its
 preserved branch: the report collectors get the equivalence test they

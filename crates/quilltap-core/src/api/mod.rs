@@ -21,6 +21,7 @@
 //! resolution the readiness gate rides on), [`engine`] (the implementation).
 
 // === P4.6ad: autonomous rooms ===
+pub mod almanack;
 pub mod autonomous_rooms;
 pub mod brahma;
 // === end P4.6ad ===

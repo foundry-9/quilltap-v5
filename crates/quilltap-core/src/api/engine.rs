@@ -185,6 +185,15 @@ pub struct EngineAssembly {
     /// `SystemBackupCreate` arm answers the loud not-assembled refusal.
     pub backup_host: Option<Arc<dyn crate::services::backup::BackupHost>>,
     // === end P4.9G5 ===
+    // === P4.37: the Almanack host seam ===
+    /// The host facts the report needs (paths, runtime, version, clock, the
+    /// disk storage backend). `None` (read-only embedders, canned assemblies)
+    /// → the four `SystemAlmanack*` arms answer the loud not-assembled refusal.
+    /// **The host wire is DEFERRED to unification** (this lane owns neither
+    /// `quilltap-host` nor its version bump — the `avatar_preview` /
+    /// `announcement_preview` precedent; the recipe is in the lane record).
+    pub almanack_host: Option<Arc<dyn super::almanack::AlmanackHost>>,
+    // === end P4.37 ===
     // === P4.9E2A: the in-chat announcement-preview seam ===
     /// The in-character announcement rewriter — the host holds the completion
     /// provider + cheap executor + embedding provider the rewrite's Commonplace
@@ -275,6 +284,7 @@ impl EngineAssembly {
             // === P4.9G1 ===
             job_pump: None,
             backup_host: None,
+            almanack_host: None,
             // === end P4.9G1 ===
             // === P4.9E2A ===
             announcement_preview: None,
@@ -398,6 +408,8 @@ enum EngineState {
 
 struct ReadyEngine {
     db: Db,
+    /// The Almanack's host facts (P4.37); `None` → the not-assembled refusal.
+    almanack_host: Option<Arc<dyn super::almanack::AlmanackHost>>,
     pepper_state: PepperState,
     has_user_passphrase: bool,
     shutdown: Box<dyn EngineShutdown>,
@@ -3332,6 +3344,61 @@ impl CoreEngine {
                 Ok(db) => super::system::system_home(&db, SINGLE_USER_ID, None),
                 Err(r) => r,
             },
+            // === P4.37: The Almanack ===
+            Request::SystemAlmanackGenerate { progress_id } => {
+                match (self.ready_db(), self.ready_almanack_host()) {
+                    (Ok(db), Ok(host)) => {
+                        let progress = crate::services::creation_progress::CreationProgressEmitter::from_id(
+                            progress_id.as_deref(),
+                            self.creation_progress_bus(),
+                            self.inner.events.clone(),
+                        );
+                        let ctx = crate::almanack::AlmanackContext {
+                            db: &db,
+                            registry: crate::provider_manifest::Registry::built_in(),
+                            user_id: SINGLE_USER_ID,
+                            paths: host.paths(),
+                            facts: host.runtime_facts(),
+                            passphrase_protected: host.passphrase_protected(),
+                            version: host.app_version(),
+                            node_env: host.node_env(),
+                            now_ms: host.now_ms(),
+                        };
+                        super::almanack::almanack_generate(&ctx, &progress).await
+                    }
+                    (Err(r), _) | (_, Err(r)) => r,
+                }
+            }
+            Request::SystemAlmanackList => match self.ready_db() {
+                Ok(db) => super::almanack::almanack_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::SystemAlmanackGet { report_id } => {
+                match (self.ready_db(), self.ready_almanack_host()) {
+                    (Ok(db), Ok(host)) => super::almanack::almanack_get(
+                        &db,
+                        host.storage().as_ref(),
+                        SINGLE_USER_ID,
+                        &report_id,
+                    ),
+                    (Err(r), _) | (_, Err(r)) => r,
+                }
+            }
+            Request::SystemAlmanackDelete { report_id } => {
+                match (self.ready_db(), self.ready_almanack_host()) {
+                    (Ok(db), Ok(host)) => {
+                        super::almanack::almanack_delete(
+                            &db,
+                            host.storage().as_ref(),
+                            SINGLE_USER_ID,
+                            &report_id,
+                        )
+                        .await
+                    }
+                    (Err(r), _) | (_, Err(r)) => r,
+                }
+            }
+            // === end P4.37 ===
             // === end P4.6au ===
             // === P4.6ab: courier + chat images ===
             Request::MessageResolveExternalTurn {
@@ -4142,6 +4209,22 @@ impl CoreEngine {
 
     /// Extract the open `Db` under the readiness gate (D2). `Err` is the locked
     /// refusal the caller returns directly.
+    /// The host-supplied Almanack facts under the readiness gate (P4.37).
+    /// `None` → the loud not-assembled refusal.
+    fn ready_almanack_host(
+        &self,
+    ) -> Result<std::sync::Arc<dyn super::almanack::AlmanackHost>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.almanack_host.clone().ok_or_else(|| {
+                Response::error(
+                    ErrorKind::Internal,
+                    "The Almanack is not assembled (no host facts wired)",
+                )
+            }),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     fn ready_db(&self) -> Result<Db, Response> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok(r.db.clone()),
@@ -4927,6 +5010,7 @@ fn open_ready(
         recall_replay: assembly.recall_replay,
         job_pump: assembly.job_pump,
         backup_host: assembly.backup_host,
+        almanack_host: assembly.almanack_host,
         // === P4.9E2A ===
         announcement_preview: assembly.announcement_preview,
         operator_tool_runner: assembly.operator_tool_runner,

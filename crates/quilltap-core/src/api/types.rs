@@ -2332,6 +2332,36 @@ pub enum Request {
         upload_id: String,
         mode: String,
     },
+    // === P4.37: The Almanack (system report) ===
+    // The web-edge action strings keep v4's frozen `capabilities-report-*`
+    // names; the verbs use the feature's real one. §1 of the work order — the
+    // SPA's `core-contract.ts` mirrors these name-for-name.
+    /// v4 `POST /api/v1/system/tools?action=capabilities-report-generate`
+    /// (`{progressId?}`) → `{success, reportId, filename, storageKey, size,
+    /// content}`. Blocking; `reportId` is the FILES-ROW id (v4's 404 fix).
+    /// `progressId` is optional — absent means an untracked run.
+    #[serde(rename_all = "camelCase")]
+    SystemAlmanackGenerate {
+        #[serde(default)]
+        progress_id: Option<String>,
+    },
+    /// v4 `GET ?action=capabilities-report-list` → `{reports: [...]}`, newest
+    /// first.
+    SystemAlmanackList,
+    /// v4 `GET ?action=capabilities-report-get&reportId=…` →
+    /// `{reportId, filename, content, size}`. The `&download=true` leg is
+    /// WEB-EDGE-ONLY (same action, no separate verb).
+    #[serde(rename_all = "camelCase")]
+    SystemAlmanackGet {
+        report_id: String,
+    },
+    /// v4 `POST ?action=capabilities-report-delete` (`{reportId}`) →
+    /// `{success: true}`.
+    #[serde(rename_all = "camelCase")]
+    SystemAlmanackDelete {
+        report_id: String,
+    },
+    // === end P4.37 ===
     /// v4 `GET /api/v1/system/tools?action=export-entities&type=`.
     #[serde(rename_all = "camelCase")]
     SystemExportEntities {

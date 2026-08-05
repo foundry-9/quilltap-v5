@@ -97,6 +97,67 @@ pub async fn system_tools_get(
             )
             .await
         }
+        // === P4.37: The Almanack — v4's frozen action names ===
+        "capabilities-report-list" => {
+            dispatch_system(&state, CoreRequest::SystemAlmanackList, StatusCode::OK).await
+        }
+        "capabilities-report-get" => {
+            let Some(report_id) = q.get("reportId").filter(|s| !s.is_empty()).cloned() else {
+                return error_json(StatusCode::BAD_REQUEST, "Missing reportId parameter");
+            };
+            let download = q.get("download").map(String::as_str) == Some("true");
+            let resp = match dispatch_core(
+                &state,
+                CoreRequest::SystemAlmanackGet {
+                    report_id: report_id.clone(),
+                },
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(r) => return r,
+            };
+            if !download {
+                return system_body(resp, StatusCode::OK);
+            }
+            // v4's download leg is the SAME action with `download=true`: the
+            // markdown bytes as an attachment rather than the JSON envelope.
+            let CoreResponse::System(body) = resp else {
+                return system_body(resp, StatusCode::OK);
+            };
+            let content = body
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let filename = body
+                .get("filename")
+                .and_then(Value::as_str)
+                .unwrap_or("almanack.md")
+                .to_string();
+            let bytes = content.into_bytes();
+            let len = bytes.len();
+            (
+                StatusCode::OK,
+                [
+                    ("content-type", "text/markdown".to_string()),
+                    (
+                        "content-disposition",
+                        // v4 writes a bare `attachment; filename="…"` here.
+                        // The generated name is always ASCII, so the shared
+                        // builder's RFC 5987 arm is never reached.
+                        quilltap_core::content_disposition::build_content_disposition(
+                            &filename,
+                            quilltap_core::content_disposition::Disposition::Attachment,
+                        ),
+                    ),
+                    ("content-length", len.to_string()),
+                ],
+                bytes,
+            )
+                .into_response()
+        }
+        // === end P4.37 ===
         "export-preview" => {
             let Some(entity_type) = q.get("type").filter(|s| !s.is_empty()).cloned() else {
                 return error_json(StatusCode::BAD_REQUEST, "Missing required parameter: type");
@@ -157,6 +218,41 @@ pub async fn system_tools_post(
             )
             .await
         }
+        // === P4.37: The Almanack ===
+        "capabilities-report-generate" => {
+            // v4 zod-parses `{progressId?: uuid}` and treats a missing/invalid
+            // body as "untracked" rather than an error (the card only sends one
+            // when it is watching).
+            let progress_id = parsed
+                .get("progressId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            dispatch_system(
+                &state,
+                CoreRequest::SystemAlmanackGenerate { progress_id },
+                StatusCode::OK,
+            )
+            .await
+        }
+        "capabilities-report-delete" => {
+            let Some(report_id) = parsed
+                .get("reportId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            else {
+                return error_json(StatusCode::BAD_REQUEST, "Missing reportId");
+            };
+            dispatch_system(
+                &state,
+                CoreRequest::SystemAlmanackDelete {
+                    report_id: report_id.to_string(),
+                },
+                StatusCode::OK,
+            )
+            .await
+        }
+        // === end P4.37 ===
         "job-concurrency" => {
             // v4 body `{concurrency}`; the verb field is `maxConcurrentJobs`.
             let value = parsed.get("concurrency").and_then(Value::as_i64);
