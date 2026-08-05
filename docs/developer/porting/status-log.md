@@ -56758,3 +56758,79 @@ Also fixed on the way past: `cheap_llm_exec`'s
 v4 `0cde7fbc` made it a required `logCall` argument. It now asserts
 PRESENCE (never a number — it is a measured wall clock) and additionally
 pins `connectionProfileId` on the written row.
+
+### ⚠ v4 DRIFTED MID-LANE — every oracle regenerated again from a PINNED worktree
+
+At lane start v4 was exactly `f7f1a956` with one untracked doc
+(`docs/developer/features/taboo.md`). By the end of the lane v4 had moved
+to **`44e2e4fe`** (docs only — `.claude/commands/update-documentation.md`,
+`docs/CHANGELOG.md`, `docs/developer/PROMPT_ARCHITECTURE.md`; **NO-PORT**,
+verified by name) AND its working tree had gone **DIRTY with in-flight
+"taboo" feature work on PORTED surfaces**: `lib/chat/context-manager.ts`,
+`lib/chat/context/system-prompt-builder.ts`, `lib/llm/cache-key.ts`,
+`lib/schemas/settings.types.ts`, `lib/instance-settings/index.ts`,
+`lib/tools/handlers/self-inventory/builders.ts`, plus a new
+`app/api/v1/settings/taboo/` route and its components. **That is the next
+drift, and it lands on the chat spine.**
+
+The dirty files' mtimes (14:06–14:24) PRECEDE most of this lane's oracle
+regenerations (14:35–15:30), so those runs were against a moving tree.
+Per the order's standing rule, a detached worktree was pinned at
+`f7f1a956` (`/tmp/qt-v4-pin-f7f1a956`, node_modules + packages/* +
+plugins/{node_modules,dist} symlinked) and **every family in this lane
+was regenerated and re-run from it**: the fresh-schema dump (byte-
+identical, which is the first evidence the taint was benign), llm_logs
+tier-2, enclave-step tier-3, all three llm-log-cleanup legs, both distill
+legs, the uuid-remap corpus + oracle (**corpus byte-identical**), danger
+gatekeeper, state-sql-tools, the whole inspector fixture family, and the
+route / system / tier-3 sets via a path-substituting runner (the sweep's
+recipes hardcode `cd ~/source/quilltap-server`; the regen stage was
+rewritten to the pin and the run stage left in the v5 worktree). All
+green.
+
+**For the next lane: pin the worktree from the START.** The v4 checkout
+cannot be trusted to hold still for the length of a round, and a dirty
+tree is invisible in the oracle output — nothing in an NDJSON says which
+working copy produced it.
+
+### Gate
+
+`cargo fmt --all --check`; clippy `-D warnings` on BOTH feature sets;
+`cargo build --release` (via the workspace build); **412 test binaries /
+1,857 passed / 0 SKIP** with the lane's 61-variable env block.
+
+**One intermittent, pre-existing, unrelated:**
+`services::job_runner::tests::failed_job_emits_a_tracing_event` failed
+once under the full suite with `captured: INFO quilltap::jobs Dispatching
+job` — the "Job failed" event missing. The test captures through
+`tracing::subscriber::set_default`, which is THREAD-LOCAL, so an event
+emitted off the caller thread escapes it; that is a race in the test
+(P4.18-era), not in the runner. Re-run in isolation **3/3 green**, and it
+PASSED in this lane's earlier full-workspace run. Nothing in this lane
+touches it: the test writes no llm-log, so the new `tracing::error!` in
+`log_llm_call` never fires there. Recorded, not papered over; it wants
+`with_default` + a single-threaded runtime (or a global subscriber) in a
+maintenance pass.
+
+No `apps/web` change in this lane, so **no SPA gate is owed**.
+
+### Deferred loudly
+
+- **`context_summary_service_tier3` + `memory_processor_tier3` cannot
+  regenerate their oracles at `f7f1a956`** (`no such table: llm_logs` —
+  v4 writes no log in those corpora). v4-side, case files byte-identical
+  to main, outside the order's enumerated blast radius. Escalated above.
+- The **P4.37 territory** is untouched as the §2 contract requires: the
+  Almanack aggregates, the `hasProfileAttributionColumns` probe, and the
+  user-scoped delegates. `api/types.rs`, `api/engine.rs`,
+  `services/creation_progress.rs`, `apps/web/**` and the provider
+  manifests were never opened.
+- `auto-configure` and `character-optimizer` remain UNPORTED v5 surface;
+  when they land they inherit the post-drift shape (profile ids + a
+  measured duration).
+- The plain `getTotalTokenUsage` (no-`since`) is still not ported — no v5
+  consumer, as the order directs.
+- **The import path's llm-log insert is strict** like `create` is; only
+  restore got the tolerant variant, because only restore has a
+  vintage-instance invariant proving it. If an import into an
+  un-migrated instance ever matters, it needs its own survey first.
