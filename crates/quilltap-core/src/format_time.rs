@@ -111,9 +111,94 @@ pub fn format_date_short_us(iso: &str) -> String {
     format!("{month}/{day}/{year}")
 }
 
+/// v4 `new Date(iso).toLocaleDateString()` (no options) under TZ=UTC / en-US —
+/// `"M/D/YYYY"`, no leading zeros — over the **full `Date.parse` domain**
+/// ([`crate::episodic::js_date_parse_ms`]) rather than the strict-ISO
+/// [`format_date_short_us`]. `None` when the input is not a date JS would
+/// accept, i.e. exactly when v4's `Number.isNaN(date.getTime())` is true.
+///
+/// The Almanack's `formatDate` is its only caller; it renders `None` as `"N/A"`.
+pub fn locale_date_us(iso: &str) -> Option<String> {
+    let ms = crate::episodic::js_date_parse_ms(iso)?;
+    let days = ms.div_euclid(86_400_000);
+    let (year, month, day) = civil_from_days(days);
+    Some(format!("{month}/{day}/{year}"))
+}
+
+/// v4 `new Date(iso).toLocaleString()` (no options) under TZ=UTC / en-US —
+/// `"M/D/YYYY, h:mm:ss AM/PM"`. The date half has no leading zeros and neither
+/// does the 12-hour hour; minutes and seconds are 2-digit. Probed live against
+/// Node 24 (`12:00:00 PM`, `9:07:03 AM`, `12:00:00 AM` at midnight).
+///
+/// `None` on an unparseable input (v4's `NaN` guard → `"N/A"`).
+pub fn locale_date_time_us(iso: &str) -> Option<String> {
+    let ms = crate::episodic::js_date_parse_ms(iso)?;
+    let days = ms.div_euclid(86_400_000);
+    let ms_in_day = ms.rem_euclid(86_400_000);
+    let (year, month, day) = civil_from_days(days);
+    let total_seconds = ms_in_day / 1000;
+    let hour24 = total_seconds / 3600;
+    let minute = (total_seconds % 3600) / 60;
+    let second = total_seconds % 60;
+    let am = hour24 < 12;
+    let hour12 = match hour24 % 12 {
+        0 => 12,
+        h => h,
+    };
+    Some(format!(
+        "{month}/{day}/{year}, {hour12}:{minute:02}:{second:02} {}",
+        if am { "AM" } else { "PM" }
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Vectors captured from Node 24 under `TZ=UTC` (the oracle's pin).
+    #[test]
+    fn locale_formats_match_node() {
+        let vectors = [
+            (
+                "2026-08-05T12:00:00.000Z",
+                "8/5/2026",
+                "8/5/2026, 12:00:00 PM",
+            ),
+            (
+                "2026-01-05T09:07:03.000Z",
+                "1/5/2026",
+                "1/5/2026, 9:07:03 AM",
+            ),
+            (
+                "2026-12-31T23:59:59.999Z",
+                "12/31/2026",
+                "12/31/2026, 11:59:59 PM",
+            ),
+            (
+                "2026-06-01T00:00:00.000Z",
+                "6/1/2026",
+                "6/1/2026, 12:00:00 AM",
+            ),
+            (
+                "2020-02-29T13:05:00.000Z",
+                "2/29/2020",
+                "2/29/2020, 1:05:00 PM",
+            ),
+        ];
+        for (iso, date, date_time) in vectors {
+            assert_eq!(locale_date_us(iso).as_deref(), Some(date), "date {iso}");
+            assert_eq!(
+                locale_date_time_us(iso).as_deref(),
+                Some(date_time),
+                "datetime {iso}"
+            );
+        }
+        // Date-only forms parse in JS (and here) — unlike `format_date_short_us`.
+        assert_eq!(locale_date_us("2026-01-05").as_deref(), Some("1/5/2026"));
+        // What JS rejects, we reject — the renderer's "N/A" arm.
+        assert_eq!(locale_date_us("not-a-date"), None);
+        assert_eq!(locale_date_time_us(""), None);
+    }
 
     #[test]
     fn format_date_short_us_matches_v4() {

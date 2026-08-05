@@ -9,6 +9,109 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 units 1–2 (the pure core + the tier-1 render differential), 2026-08-05
+
+Branch `claude/almanack-server-porting-693d77`. The Almanack's pure half: the
+phase manifest, the ~40-struct report model, and the byte-exact markdown
+renderer, with an EXACT differential against v4's real
+`renderAlmanackMarkdown` at `f7f1a956`.
+
+### Drift check
+
+v4 HEAD is exactly the round baseline `f7f1a956` (`git log f7f1a956..HEAD`
+empty). `git status --short` shows ONE untracked file —
+`docs/developer/features/taboo.md`, a feature doc with no `lib/`, `app/` or
+dependency change — so the checkout cannot alter oracle behavior and every
+oracle regenerated straight from `~/source/quilltap-server`, no pinned
+worktree. **Worth flagging:** an untracked feature doc is v4 brewing its next
+drift; re-checked at the lane gate.
+
+### The port
+
+- `almanack/phases.rs` — v4's `phases.ts` transcribed: seven phases in order,
+  labels and `estimatedShare` byte-equal, `ALMANACK_NAME`/`ALMANACK_TITLE`,
+  plus `phase_index()` (v4's `announce`'s `findIndex(...) < 0` guard). Unit
+  tests pin the key order and that the shares sum to 1. This is the constant
+  P4.38 mirrors in TypeScript (§1).
+- `almanack/types.rs` — one struct per v4 interface. **Every count is `f64`**,
+  because a TS `number` from a SQLite aggregate can be fractional and
+  truncating it would change what `toLocaleString()` prints. Serde is
+  `camelCase` + `skip_serializing_if` on the genuinely optional fields, so a
+  serialized report is byte-comparable with v4's own JSON. Three fields need an
+  explicit rename because v4's acronym casing is not what `camelCase`
+  derives: `totalEstimatedCostUSD`, `cheapLLM`, `imagePromptLLM` — all three
+  were caught by the differential's first run, not by inspection.
+- `almanack/render.rs` — `render_almanack_markdown`, pure. The helper family
+  ported with its JS semantics intact:
+  - `to_locale_string(f64)` — en-US grouping with at most three fraction
+    digits, rounded **half-expand on the shortest decimal representation**.
+    That last clause is the subtle one: `toFixed(3)` rounds the exact binary
+    value and gives `12345.678`, while `Intl` (which `toLocaleString` is)
+    gives `12,345.679`. Probed against Node 24 and pinned by unit test.
+    The existing `services::primary_stream::to_locale_string` is `i64`-only,
+    so it could not be reused.
+  - `js_num(f64)` — `String(number)`. Rust's `{}` for `f64` coincides with
+    V8's `Number::toString` across the report's domain, EXCEPT at negative
+    zero: JS `String(-0)` is `"0"`, Rust's Display is `"-0"`. Reachable —
+    `format_ms` runs `Math.round(-0.5)` — so it is special-cased.
+  - `format_ms` — JS `Math.round` is half toward **+∞**, not Rust's half away
+    from zero; ported as `(ms + 0.5).floor()`.
+  - `format_date`/`format_date_time` — see the `format_time.rs` note below.
+- `format_time.rs` gained `locale_date_us` / `locale_date_time_us`: v4's
+  `toLocaleDateString()` / `toLocaleString()` with **no arguments** under
+  TZ=UTC/en-US (`"8/5/2026"`, `"8/5/2026, 12:00:00 PM"` — 12-hour hour not
+  zero-padded, minutes and seconds padded). They parse through
+  `episodic::js_date_parse_ms` (the full `Date.parse` port) rather than the
+  strict `clock::iso_to_ms`, so a date-only stamp behaves as v4's `new Date()`
+  does; `None` maps to the renderer's `'N/A'`, matching v4's
+  `Number.isNaN(date.getTime())` guard exactly.
+
+### The differential — `almanack_render_equivalence` (tier 1, EXACT)
+
+Oracle `harness/oracle/cases/almanack-render.test.ts` drives v4's REAL
+`renderAlmanackMarkdown` and emits, per case, BOTH the input
+`AlmanackReportData` as JSON and the rendered markdown. The Rust side
+deserializes the same JSON and byte-compares. No normalization whatsoever —
+the renderer is pure on both sides, so any difference is a port defect.
+
+**Seven cases, because v4's own fixture only takes one side of every branch.**
+v4's `__tests__/helpers/almanack/fixture.ts` populates every field
+distinctively (which proves the renderer reaches every section) but never
+renders an empty collection, an unreachable Scriptorium, or a pipe in a cell.
+The variants flip those: `base`, `all_empty`, `scriptorium_unavailable`,
+`approximate_attribution` (which also takes the `retentionDays: 0` "forever"
+arm), `pipes_and_newlines`, `numeric_edges` (fractional counts through
+`toLocaleString`, `1e21`, null latencies, `Math.round` at `.5`, a dimension
+mismatch, a store-less group, a designated profile whose provider is set but
+whose model is not — v4 renders the literal `undefined`), and
+`null_dates_and_zero_tables` (every optional date null, an unparseable stamp,
+the all-zero `.every(...)` collapses, all four `wellKnown` resolution states).
+
+The test also asserts the report data **round-trips** through the Rust model
+(numbers compared as `f64` on both sides, since v4's JSON writes an integral
+count as `3` and the Rust model writes `3.0` — a `serde_json::Number`
+representation difference, not a value difference). Without that, a field the
+Rust model silently dropped would be invisible to a render that never mentions
+it. It also asserts the case SET, not merely each line present, so a truncated
+oracle fails loudly, and asserts the NDJSON's `baseline` marker is
+`f7f1a956` so a stale regen cannot pass silently.
+
+**Not first-run-green** (the field-name renames above were the first run's
+failure), and mutation-proven anyway per the D24 rule — three deliberate
+mutations, each red, then restored green:
+1. `"## The Premises"` → `"## The premises"` → red at line 8.
+2. `format_usd` `toFixed(4)` → `toFixed(3)` → red at line 178.
+3. `cell()`'s pipe escape dropped → red in `pipes_and_newlines` at line 32 —
+   and ONLY in that variant, which is what earns the variant its place.
+
+### Regen recipe
+
+In the case-file header, and `recipe_sweep.py`-shaped (a jest family; the case
+is copied to a `/tmp` mirror because jest ignores `.claude/` venues). It pins
+`TZ=UTC` explicitly and the case ABORTS if `process.env.TZ` is anything else —
+v4's `jest.config.ts` sets it before ICU resolves, but a tsx-driven or
+differently-configured run would silently render in the ambient zone.
+
 ## Lane record — P4.D44 unit 1 (the server tri-state) + unit 2 (the differential), 2026-08-04
 
 Branch `claude/p4-newchat-roleplay-template-acd0f0`. The `4bbeab47` drift's

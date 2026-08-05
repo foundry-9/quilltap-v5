@@ -40,6 +40,13 @@ instance now creates the call log with the two profile-attribution
 columns (`connectionProfileId`, `imageProfileId`), re-dumped from the
 reference app's live schema generator rather than hand-edited. No
 indexes changed.
+Added the pure core of the new system report ("The Almanack"): the
+seven-phase manifest, the report data model, and the markdown renderer,
+all byte-identical to the reference app. The renderer is verified against
+the reference app's real code over seven inputs covering every branch,
+including empty sections, an unreachable document store, and locale
+number and date formatting. No user-visible surface yet — the collectors
+and the report API follow.
 
 Planned the `f7f1a956` Almanack round and committed its four work
 orders: the reference app rewrote its system capabilities report into
