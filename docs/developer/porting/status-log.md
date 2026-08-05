@@ -55548,3 +55548,214 @@ beats' 15 s expectations — global setup alone ran past seven minutes
 before it was abandoned, which is worth knowing for any future SPA-only
 lane: build release, not debug, for a Playwright gate). SPA version
 0.5.402 → 0.5.407.
+## Lane record — P4.D48 unit 1: the `be2c9cbb` Anthropic-SDK wire check, and the five infra NO-PORT dispositions (2026-08-05)
+
+Branch `claude/anthropic-sdk-wire-check-536a2f`. v4 drift-checked at lane
+start: `git log 7189a968..HEAD` empty, `git status --short` clean — HEAD is
+the baseline, so every corpus regenerated straight from
+`~/source/quilltap-server` (no pinned worktree needed).
+
+### The neutrality proof — VERDICT: the SDK jump moved v4's wire NOT AT ALL
+
+v4's `be2c9cbb` takes `qtap-plugin-anthropic` from `@anthropic-ai/sdk`
+`^0.88.0` → `^0.115.0` — 27 minors across a 0.x caret, which pins the minor,
+so 0.88 could never have floated. The commit *claims* the used surface is
+unchanged. Per the P4.D33 precedent that claim is worth nothing until it is
+measured, so it was measured: all four corpora whose recorders load the
+Anthropic plugin were regenerated against the new SDK and byte-compared.
+
+| Corpus | Regen script | sha256 before | after |
+| --- | --- | --- | --- |
+| `request-envelopes/request-envelopes.recorded.ndjson` (146 lines, 36 anthropic) | `regenerate-request-envelopes.sh` | `7adc6d4b…96371` | **identical** |
+| `response-bodies/response-bodies.recorded.ndjson` (29 cases) | `regenerate-response-bodies.sh` | `653c8158…d227` | **identical** |
+| `tool-wire/tool-wire.recorded.ndjson` | `regenerate-tool-wire.sh` | `6bb7b40d…374c` | **identical** |
+| `streams/*/**.recorded.ndjson` (8 files, all five decoders) | `regenerate-stream-fixtures.sh` | 8 hashes | **all identical** |
+
+`git status --short harness/` was empty afterward. **Nothing was committed
+corpus-side, because nothing changed** — which is the whole finding.
+
+**The dating proof** (a byte-identical regen is only a measurement if the
+corpus can be dated — P4.D33's rule). Two halves, both recorded here because
+the corpora carry no headers:
+
+1. *Resolved from the directory the recorder actually runs in.* The regen
+   scripts `cd "$V4/plugins/dist/qtap-plugin-anthropic"` and the recorder
+   imports `provider.ts` from cwd under tsx, so the SDK resolves from that
+   dir's own `node_modules`. A `createRequire` walk from that cwd resolves
+   `@anthropic-ai/sdk` → `.../plugins/dist/qtap-plugin-anthropic/node_modules/
+   @anthropic-ai/sdk/index.js`, **version 0.115.0**. (`node -p
+   "require('@anthropic-ai/sdk/package.json').version"` as the order suggests
+   does NOT work on this package — its `exports` map has no `./package.json`
+   subpath, `ERR_PACKAGE_PATH_NOT_EXPORTED`; walk up from the resolved entry
+   instead. Recipe below.)
+2. *The install postdates every corpus.* The installed package.json's mtime is
+   **2026-08-04 19:54:55Z**; the newest committed corpus was last written by
+   `387b1dc3`, **2026-07-30**. `response-bodies` `1ea6bab9` 2026-07-23,
+   `tool-wire` `a4f0db83` 2026-07-07, `streams` `ea75b712` 2026-07-06. Every
+   corpus predates the new SDK by days to weeks, so the recording ran against
+   0.115 and could not have been a stale no-op.
+
+A third, independent confirmation fell out of the survey: `be2c9cbb` also
+rewrote `plugins/dist/qtap-plugin-anthropic/index.js`, which is an **esbuild
+bundle with the SDK compiled in** (24,941 lines; 211 `@anthropic-ai/sdk`
+references; the only SDK version string in it is `0.115.0`, no `0.88.x`
+anywhere). So even the bundle path — the one `gen-provider-manifests.mjs`
+loads — is unambiguously the new SDK in this checkout.
+
+No v5 source changed for this unit. **v5's request builders, response
+parsers, tool-wire and stream decoders are all still byte-correct against v4
+at SDK 0.115** — including the `anthropic-version: 2023-06-01` behavior and
+all nine streaming event types the commit flagged as the risk.
+
+### The differentials, re-run by name
+
+Even with the bytes unmoved, the cheap half of the proof is running the
+consumers. All green, **zero SKIP**:
+
+```
+provider_registry_equivalence      1 passed   (oracle regenerated fresh)
+request_builder_equivalence        1 passed
+request_builder_google_wire_…      1 passed   (neutrality — google SDK untouched)
+response_parse_equivalence         1 passed
+stream_decoders_equivalence        5 passed
+tool_wire_equivalence              2 passed
+tool_wire_call_site                6 passed
+```
+
+`provider_registry_equivalence`'s oracle (`cases/provider-registry.ts`, 253
+lines) was regenerated at `7189a968` for this run — it initializes the real v4
+registry, which loads the new anthropic bundle, so it is the fourth
+independent check on the same claim.
+
+### Tier-2 item 6 — the two recorders that do NOT load the Anthropic plugin
+
+Verified by reading their imports rather than assuming:
+`record-moderation-wire.mjs` runs from `plugins/dist/qtap-plugin-openai` and
+imports `moderation-provider.ts` from that cwd — OpenAI only.
+`record-web-search-wire.mjs` runs from `qtap-plugin-search-serper` and imports
+that plugin — Serper only. `record-image-fixtures.mjs`'s provider list is
+openai / google / grok / openrouter / z-ai. None of the three touches
+Anthropic; `moderation-wire`, `web-search-wire` and `image-dialects` are
+therefore out of this drift's blast radius and were not regenerated.
+
+### 💡 A finding for the v4 side (not a wire change)
+
+SDK 0.115 emits a runtime console deprecation on every recorded thinking case:
+*"Using Claude with claude-opus-4-6 and 'thinking.type=enabled' is deprecated.
+Use 'thinking.type=adaptive' instead…"*. It is **advisory only** — v4 still
+puts `"thinking":{"type":"enabled","budget_tokens":2048}` on the wire, and the
+corpus proves it byte-for-byte. Worth carrying to the v4 side as a product
+decision: moving to `adaptive` WOULD move the wire, and would arrive here as a
+drift item with a real re-port behind it.
+
+### ⚠ Recipe rot found in passing — `gen-provider-manifests.mjs` (NOT this
+lane's to fix, warning landed)
+
+The manifest generator loads the Anthropic plugin bundle, so it got the same
+neutrality check: regenerated into a scratch dir and diffed against the
+committed `crates/quilltap-core/src/provider_manifest/manifests/`.
+`anthropic.json` is **byte-identical** — the SDK bump moves no manifest, which
+is the answer this lane needed.
+
+But five files differ on a key the SDK has nothing to do with: **google, grok,
+openai, openrouter and z_ai each carry an `imageGenerationModels` line the
+generator does not emit.** P4.6p (`006bbb32`) added that field to the Rust
+`ProviderManifest` and to the manifests by hand and never taught the
+generator. So the committed regen recipe, run as written, silently DELETES the
+field from five manifests — and silently is the operative word: it is
+`#[serde(default)]` Rust-side, so the loss shows up only as
+`imageProfileList`'s `defaultModels` going blank.
+
+Teaching it is not one line. Three providers expose the list on the built
+plugin (`plugin.getImageGenerationModels()` — openai, google, openrouter,
+verified by probe); **grok and z-ai do not** — theirs live in each plugin's
+`image-provider.ts` source (`readonly supportedModels` on grok's class, a
+module-local `SUPPORTED_MODELS` const on z-ai's), unreachable from the bundle.
+Re-deriving those faithfully is P4.6p's transcription, and verifying a fix
+means editing `quilltap-core/**`, which belonged to P4.D46 this round. So the
+lane landed **a loud warning in the generator header** with the measurement,
+the two source locations, and a diff-into-scratch recipe that no longer
+destroys anything — and left the repair to its own small order.
+
+### The five infra commits — NO-PORT dispositions, with evidence
+
+**`a7f691e7` (Docker TZ → entrypoint) — NO-PORT as such; it implies unit 2.**
+Zero `lib/` change; the diff is `docker/entrypoint.sh` (+18), `Dockerfile`
+(the dev stage gaining the same entrypoint), and README / DEPLOYMENT.md /
+help/chat-settings.md prose. v5 has no entrypoint script to receive it — its
+image runs the binary directly — so the transplant is unit 2's resolver, which
+transcribes the precedence rule from this commit. The moved
+`help/chat-settings.md` needs no v5 action: v5 syncs help docs from disk at
+runtime (the standing `e3593f75` disposition), and that claim was re-verified
+for this doc — v5 ships no copy of `chat-settings.md`, it reads v4's tree.
+
+**`298563eb` (start-script host-TZ detection) — NO-PORT.** Three launchers
+(`start-quilltap.sh`, `start-quilltap.ps1`, `start-quilltap-docker.ts`) learn
+to detect the host zone and pass it as `QUILLTAP_TIMEZONE`. **v5 ships no
+start scripts at all** — `docker run` is the documented invocation — so the
+analog is `running.md`'s `-e QUILLTAP_TIMEZONE=` row, landed in unit 2. Its
+*validation* rule is not dropped, though: it is where unit 2's IANA check
+comes from, since v5's resolver is the only place validation can live.
+
+**`f31598c0` (image CVE hardening) — NO-PORT, but read the caveat.** v4
+removed npm/npx/corepack/yarn, purged perl, and dropped git/curl/wget/jq from
+a Node production image. v5's runtime stage is
+`FROM debian:bookworm-slim` + `ca-certificates` and two static Rust binaries
+(`Dockerfile:88–92`) — **no node, no npm, no git/curl/wget/jq at any layer**,
+verified by reading the file; the whole npm half (1 critical, 6 high) and the
+toolbox half cannot apply. Nothing to adopt. **⚠ The perl half DOES apply and
+is not fixed here:** `debian:bookworm-slim` ships `perl-base 5.36.0-7+deb12u3`
+as an Essential package (probed directly — `docker run --rm
+debian:bookworm-slim dpkg -l perl-base`), which is exactly the 2 critical /
+2 high, no-fix-in-Debian set v4 purged with `--force-remove-essential`.
+Purging it from a Rust-only image is plausibly a cheap win and nothing in the
+image obviously needs perl — but it is a Dockerfile change outside this
+order's mandate and it wants an actual image build plus a scan to claim,
+which this lane's gate deliberately does not run. **Recorded as a follow-up,
+not taken.**
+
+**`b5c9ee7d` (standalone-tarball `node_modules` pruning) — NO-PORT.** It
+prunes what the packaged Node tarball ships. v5 distributes compiled binaries;
+there is no `node_modules` in any v5 artifact. No analog exists.
+
+**`d13e8a84` (the `import_export_update.md` plan doc) — NO-PORT here.**
+Superseded by `7189a968`, which moved it under `features/complete/`. **The
+doc mirrors belong to P4.D46**, with the rest of that commit; this lane only
+records the disposition.
+
+### Recipes (runnable, per the harness-recipes-are-runnable rule)
+
+```bash
+# Node 24 on PATH for all of these.
+export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"
+V4=~/source/quilltap-server
+V5=~/source/quilltap-v5
+
+# The four Anthropic-touching corpora (each writes in place; git diff is the check).
+V4=$V4 V5=$V5 bash $V5/harness/oracle/providers/regenerate-request-envelopes.sh
+V4=$V4 V5=$V5 bash $V5/harness/oracle/providers/regenerate-response-bodies.sh
+V4=$V4 V5=$V5 bash $V5/harness/oracle/providers/regenerate-tool-wire.sh
+V4=$V4 V5=$V5 bash $V5/harness/oracle/providers/regenerate-stream-fixtures.sh
+
+# The provider-registry oracle (env-var driven, not committed).
+cd $V4 && npx tsx $V5/harness/oracle/cases/provider-registry.ts \
+  > /tmp/oracle-provider-registry.ndjson
+
+# The consumers, by name.
+cd $V5 && QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
+  cargo test -p quilltap-harness \
+    --test request_builder_equivalence \
+    --test request_builder_google_wire_equivalence \
+    --test response_parse_equivalence \
+    --test tool_wire_equivalence --test tool_wire_call_site \
+    --test stream_decoders_equivalence \
+    --test provider_registry_equivalence -- --nocapture
+
+# The dating proof, re-runnable (note: NOT `require('@anthropic-ai/sdk/package.json')`).
+cd $V4/plugins/dist/qtap-plugin-anthropic && node -e "
+const {createRequire}=require('node:module'),fs=require('node:fs'),path=require('node:path');
+let d=path.dirname(createRequire(process.cwd()+'/noop.js').resolve('@anthropic-ai/sdk'));
+while(!fs.existsSync(path.join(d,'package.json'))) d=path.dirname(d);
+const p=path.join(d,'package.json');
+console.log(JSON.parse(fs.readFileSync(p,'utf8')).version, fs.statSync(p).mtime.toISOString());"
+```

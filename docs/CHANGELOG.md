@@ -104,6 +104,15 @@ good, and rebuilding costs time and money at the worst possible moment.
 
 The browser walk for all of the above is written and waits on the
 server half of the same change; it starts running the moment that lands.
+Checked that the reference app's Anthropic SDK jump — 27 minor versions,
+0.88 to 0.115 — did not change a single byte on the wire, and it did not.
+All four recorded corpora that drive the Anthropic plugin (request
+envelopes, response bodies, tool wire, streaming frames) were re-recorded
+against the new SDK and compared byte for byte against the committed
+copies: identical, including the streaming event types the upgrade put at
+risk. The seven differentials that consume them pass unchanged. Nothing
+to fix, but the check is the point: the last time an SDK was upgraded on
+a claim of "no wire change," the proving run turned up two real bugs.
 
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported

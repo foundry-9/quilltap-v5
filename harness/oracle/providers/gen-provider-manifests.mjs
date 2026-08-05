@@ -19,11 +19,37 @@
  * refine endpoints/auth against recorded wire fixtures; they are not
  * differential-checked here (v4 exposes no registry getter for them).
  *
+ * ⚠ RECIPE ROT — DO NOT RUN THIS STRAIGHT INTO THE MANIFEST DIR TODAY.
+ * P4.6p added an `imageGenerationModels` field to the committed manifests (and
+ * to the Rust `ProviderManifest` struct) by hand, and never taught this
+ * generator to emit it. Running the recipe below as written therefore DELETES
+ * that field from five manifests — google, grok, openai, openrouter, z_ai —
+ * silently, because `imageGenerationModels` is `#[serde(default)]` Rust-side
+ * and an empty list simply makes `imageProfileList`'s `defaultModels` go blank.
+ * Measured 2026-08-05 (P4.D48): regenerating into a scratch dir and diffing
+ * against the committed manifests differs on exactly those five files and
+ * exactly that key; `anthropic.json` and the other three are byte-identical.
+ *
+ * Teaching it the field is not one line. Three providers expose the list on the
+ * built plugin object (`plugin.getImageGenerationModels().map(m => m.id)` —
+ * openai, google, openrouter), but grok and z-ai do NOT: theirs live in each
+ * plugin's `image-provider.ts` source (`readonly supportedModels` on grok's
+ * class; a module-local `SUPPORTED_MODELS` const on z-ai's), neither reachable
+ * from the built bundle. Re-deriving those faithfully is its own small order —
+ * P4.D48 owned the provider CORPORA, not P4.6p's transcription, and could not
+ * verify a fix without editing `quilltap-core` (another lane's file that round).
+ *
+ * Until that lands: regenerate into a SCRATCH dir and diff, rather than
+ * overwriting; carry the five `imageGenerationModels` lines across by hand.
+ *
  * Regen recipe (after a v4 provider-metadata drift):
  *   cd ~/source/quilltap-server
  *   node ~/source/quilltap-v5/harness/oracle/providers/gen-provider-manifests.mjs \
+ *     /tmp/manifests-regen
+ *   diff -r /tmp/manifests-regen \
  *     ~/source/quilltap-v5/crates/quilltap-core/src/provider_manifest/manifests
- *   (then re-run the differential to confirm)
+ *   (expect ONLY the five imageGenerationModels lines above; copy the rest in,
+ *    then re-run `provider_registry_equivalence` to confirm)
  *
  * The generator MUST run from the quilltap-server checkout root (it loads the
  * built plugins/dist bundles via createRequire).
