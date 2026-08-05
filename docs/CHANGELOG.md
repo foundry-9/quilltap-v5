@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Autonomous rooms' daily token budget now works. The query behind it
+filtered on a condition SQL can never satisfy, so the spend it summed was
+always zero and a configured daily budget never bound on anything; the
+reference app found and fixed this and v5 had reproduced it faithfully.
+A room with a daily token budget will now grant its grace turn and then
+pause at instance-local midnight rollover, as it was always meant to.
+Rooms without one are unaffected.
+
 LLM call logs now record which profile served the call. Every text call
 made through a connection profile stamps its id; every image call stamps
 its image profile id, including Concierge reroutes. The shared cheap-LLM

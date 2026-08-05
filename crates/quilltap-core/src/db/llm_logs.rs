@@ -642,7 +642,10 @@ impl<'c> LLMLogsRepository<'c> {
     /// the operand bound — so a `$eq: null` becomes `"messageId" = NULL`, which is
     /// UNKNOWN for every row under SQL NULL semantics (the same family of bug as
     /// the `$ne: null` one v4's own comment on `getTotalTokenUsageForChatSince`
-    /// documents; `IS NULL` is what the author meant). The consequence is that
+    /// documents; `IS NULL` is what the author meant). **v4 `0cde7fbc` fixed its
+    /// `$ne: null` siblings and left THIS one alone** (re-verified at
+    /// `f7f1a956`, llm-logs.repository.ts:205-228), so the pin stands. The
+    /// consequence is that
     /// `GET /api/v1/llm-logs?standalone=true` can never return a log, however many
     /// unlinked rows exist. The translated SQL is executed verbatim (NULL binds
     /// included) rather than short-circuited, so the shape stays faithful.
@@ -995,21 +998,23 @@ impl<'c> LLMLogsRepository<'c> {
     /// v4 `getTotalTokenUsageSince(userId, sinceTimestamp)` — the daily
     /// user-token spend read the autonomous-room budget gate consults.
     ///
-    /// ⚠️ **BROKEN-BUT-EXACT** (the `memories` `$regex` precedent). v4's filter
-    /// is `{ userId, usage: { $exists: true, $ne: null }, createdAt: { $gte } }`
-    /// and the SQLite translator lowers `$ne: null` to `"usage" != ?` with a
-    /// NULL bind — `usage != NULL` is UNKNOWN for every row under SQL NULL
-    /// semantics, so the filter matches NOTHING and the sum is **always
-    /// {0,0,0}** on v4-on-SQLite. Empirically pinned (U4.4 A-probe,
-    /// 2026-07-08): four rows carrying 1,665 total tokens summed to 0 through
-    /// v4's REAL repo, while `getTotalTokenUsageForRun` (no `$ne:null`) summed
-    /// correctly. Consequence: the autonomous daily-token-budget gates NEVER
-    /// bind through actual spend in v4-on-SQLite (`dailyTokensSpent` is always
-    /// 0, and `dailyTokenBudget` is schema-`positive()` so `0 >= budget` never
-    /// holds) — the daily-pause branches are dead code, banked as such by the
-    /// U4.4 capstone differential. The translated SQL is executed verbatim
-    /// (NULL bind included) rather than short-circuited, so the shape stays
-    /// faithful to v4's query.
+    /// **`$exists: true` ONLY — `$ne: null` must never be added back.** v4
+    /// `0cde7fbc` removed it, with the reasoning recorded on its sibling
+    /// `getTotalTokenUsage` (llm-logs.repository.ts:445-450): the SQLite
+    /// translator emits `usage != ?` with a NULL bind, i.e. `usage != NULL`,
+    /// which is UNKNOWN for every row under SQL NULL semantics, so the filter
+    /// matched nothing and this method returned zeroes on every install. The
+    /// Almanack renders exactly this number, which is how the long-standing
+    /// "0 tokens logged" reading was finally traced.
+    ///
+    /// v5 reproduced the bug faithfully from U4.4 until this drift catch-up
+    /// (empirically pinned then: four rows carrying 1,665 total tokens summed
+    /// to 0 through v4's REAL repo). **Consequence of the fix:** the
+    /// autonomous-room daily token budget binds on real spend for the first
+    /// time, both pre-turn (grace turn / End) and post-turn — see
+    /// [`crate::enclave::step`]. `$exists: true` lowers to `usage IS NOT NULL`.
+    ///
+    /// v5 has no plain no-`since` variant: nothing consumes one.
     pub fn get_total_token_usage_since(
         &self,
         user_id: &str,
@@ -1017,9 +1022,9 @@ impl<'c> LLMLogsRepository<'c> {
     ) -> TokenUsageTotals {
         self.sum_usage_rows(
             "SELECT usage, cacheUsage FROM llm_logs \
-              WHERE \"userId\" = ?1 AND \"usage\" IS NOT NULL AND \"usage\" != ?2 \
-                AND \"createdAt\" >= ?3",
-            params![user_id, rusqlite::types::Null, since_timestamp],
+              WHERE \"userId\" = ?1 AND \"usage\" IS NOT NULL \
+                AND \"createdAt\" >= ?2",
+            params![user_id, since_timestamp],
             false,
         )
         .unwrap_or_default()
@@ -1353,19 +1358,33 @@ mod tests {
         );
     }
 
-    /// The BROKEN-BUT-EXACT daily read: rows with real usage exist since the
-    /// timestamp, and the sum is still zero (the `$ne: null` → `usage != NULL`
-    /// translator bug, empirically pinned against v4 — see the method docs).
+    /// The daily read after v4 `0cde7fbc` dropped `$ne: null`: it now sums the
+    /// user's real spend since the timestamp. Every row in the fixture belongs
+    /// to `u1` and carries usage except `r4` (NULL — excluded by
+    /// `usage IS NOT NULL`), so the total is r1+r2+r3+r5+r6. Cache reads never
+    /// enter (this read passes `include_cache_hits = false`, as v4 does), so
+    /// r2's 7 cache tokens are absent from the sum.
     #[test]
-    fn since_sum_is_always_zero_on_sqlite() {
+    fn since_sum_totals_real_spend() {
         let conn = conn_with_rows();
         let repo = LLMLogsRepository::new(&conn);
         let t = repo.get_total_token_usage_since("u1", "2000-01-01T00:00:00.000Z");
-        assert_eq!(t, TokenUsageTotals::default());
-        // Sanity: the same rows DO sum through the run read (the filter is the
-        // only difference).
-        assert_ne!(
-            repo.get_total_token_usage_for_run("run-1", false),
+        assert_eq!(t.prompt_tokens, 100.0 + 10.0 + 1.0 + 1000.0 + 2000.0);
+        assert_eq!(t.completion_tokens, 50.0 + 5.0 + 1.0 + 500.0 + 1000.0);
+        assert_eq!(t.total_tokens, 150.0 + 15.0 + 2.0 + 1500.0 + 3000.0);
+    }
+
+    /// The `createdAt >= since` half of the filter still bounds the window, and
+    /// a different user is still excluded.
+    #[test]
+    fn since_sum_respects_the_window_and_the_user() {
+        let conn = conn_with_rows();
+        let repo = LLMLogsRepository::new(&conn);
+        // Only r5 (1500) and r6 (3000) are at/after this instant.
+        let t = repo.get_total_token_usage_since("u1", "2026-07-08T00:00:05.000Z");
+        assert_eq!(t.total_tokens, 4500.0);
+        assert_eq!(
+            repo.get_total_token_usage_since("someone-else", "2000-01-01T00:00:00.000Z"),
             TokenUsageTotals::default()
         );
     }

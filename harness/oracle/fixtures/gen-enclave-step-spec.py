@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 
 BASE_MS = 1767326645000  # 2026-01-02T03:04:05.000Z
+DAY1_ANCHOR_MS = 1767310205000  # 2026-01-01T23:30:05.000Z — the daily-gate case
 STEP_MS = 600_000        # 10 min between call anchors
 SEED_TS = "2026-01-01T00:00:00.000Z"
 
@@ -55,14 +56,16 @@ chats = []
 calls = []
 streams = {}
 
-def add_turn_call(name, chat, run, stream_chunks, job_id=None, job_created_at=None):
+def add_turn_call(name, chat, run, stream_chunks, job_id=None, job_created_at=None,
+                  anchor_ms=None):
     i = len(calls)
     label = name if stream_chunks is not None else None
+    anchor = a(i) if anchor_ms is None else anchor_ms
     calls.append({
         "name": name, "kind": "turn", "chatId": chat, "userId": USER1,
         "runId": run, "jobId": job_id or f"eeeeeeee-0000-4000-8000-{i:012d}",
-        "jobCreatedAt": job_created_at or iso(a(i) - 5000),
-        "streamLabel": label, "anchorMs": a(i),
+        "jobCreatedAt": job_created_at or iso(anchor - 5000),
+        "streamLabel": label, "anchorMs": anchor,
     })
     if stream_chunks is not None:
         streams[label] = stream_chunks
@@ -73,15 +76,22 @@ def turn_stream(text, usage=None):
         done["usage"] = {"promptTokens": usage[0], "completionTokens": usage[1], "totalTokens": usage[2]}
     return [[{"content": text}, done]]
 
-# --- Case 0: daily gate broken-zero + normal re-enqueue -----------------------
+# --- Case 0: the daily user-token gate binding pre-turn -----------------------
+# The ONLY case anchored on 2026-01-01. `getTotalTokenUsageSince` has no upper
+# bound, so this case's window (from day-1 local midnight) picks up the 10,000-
+# token untagged row below while every other case's day-2 window excludes it.
+# That is what keeps the daily arm separable now that v4 `0cde7fbc` fixed the
+# read: before the fix this case re-enqueued, because the `$ne: null` filter
+# summed the spend to zero and the gate never bound on anything.
 n = 1
-c = {"id": chat_id(n), "userId": USER1, "title": "Daily broken zero",
+c = {"id": chat_id(n), "userId": USER1, "title": "Daily budget binds",
      "participants": participants(n), "messages": opener(n),
      "columns": {"chatType": "autonomous", "runState": "running",
                   "currentRunId": rid(n), "runStartedAt": SEED_TS}}
 chats.append(c)
-add_turn_call("daily_broken_zero_reenqueue", chat_id(n), rid(n),
-              turn_stream("Quite so; the ledgers agree.", (40, 8, 48)))
+add_turn_call("daily_budget_binds_pre_turn", chat_id(n), rid(n),
+              turn_stream("Quite so; the ledgers agree.", (40, 8, 48)),
+              anchor_ms=DAY1_ANCHOR_MS)
 
 # --- Case 1: budget_turns_end (post-turn end; organic stream usage) ----------
 n = 2
@@ -320,11 +330,13 @@ llm_log_rows = [
      "usage": {"promptTokens": 40, "completionTokens": 10, "totalTokens": 50},
      "cacheUsage": {"cacheReadInputTokens": 60},
      "createdAt": iso(a(3) - 60_000)},
-    # UNTAGGED user spend since local midnight — far over dailyTokenBudget 500;
-    # the BROKEN-BUT-EXACT since-read sums it to 0, so nothing ever pauses.
+    # UNTAGGED user spend, dated to the PREVIOUS day. Only case 0's window
+    # reaches back far enough to include it (10,150 > 9,000, so the daily gate
+    # binds there); every day-2 case sums 150 plus whatever the run has spent
+    # so far, which stays well under the budget.
     {"id": "11111111-0000-4000-8000-000000000001", "userId": USER1,
      "usage": {"promptTokens": 5000, "completionTokens": 5000, "totalTokens": 10000},
-     "createdAt": "2026-01-02T02:00:00.000Z"},
+     "createdAt": "2026-01-01T23:00:00.000Z"},
 ]
 
 spec = {
@@ -338,7 +350,9 @@ spec = {
                            "provider": "ANTHROPIC", "modelName": "claude-sonnet"},
     "chatSettings": {
         "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
-        "dailyTokenBudget": 500,
+        # Above the day-2 window's spend (so the day-2 cases keep their own
+        # coverage) and below the day-1 window's (so case 0 trips the gate).
+        "dailyTokenBudget": 9000,
     },
     "characters": [
         {"id": ADA, "name": "Ada", "description": "A methodical analyst.",

@@ -9,15 +9,21 @@
  *     speaker selection's talkativeness + the run-start banner's names read
  *     through the vault overlay);
  *   - one `chat_settings` row for user 1 (cheapLLM present, compression off,
- *     danger DETECT_ONLY, `autonomousRoomSettings.dailyTokenBudget = 500` — the
- *     BROKEN-BUT-EXACT daily gate's bait); user 2 (the tick user) deliberately
- *     has NO row (the 12 h default freshness fallback);
+ *     danger DETECT_ONLY, `autonomousRoomSettings.dailyTokenBudget = 9000` —
+ *     above the day-2 window's spend so the day-2 cases keep their own
+ *     coverage, and BELOW the day-1 window's, which is what the
+ *     `daily_budget_binds_pre_turn` case trips); user 2 (the tick user)
+ *     deliberately has NO row (the 12 h default freshness fallback);
  *   - the corpus chats via `repos.chats.create` (pinned ids/timestamps,
  *     CHARACTER participants only) with the autonomous run/budget/schedule
  *     columns from the spec, plus their seed opener messages;
  *   - the seeded `llm_logs` rows (the token-accounting substrate: tagged
- *     per-run spend + the untagged over-budget daily spend the broken
- *     `getTotalTokenUsageSince` sums to zero);
+ *     per-run spend, plus a 10,000-token untagged row dated to the PREVIOUS
+ *     day. `getTotalTokenUsageSince` has only a lower bound, so the day-1
+ *     case's window includes that row and the day-2 cases' windows do not —
+ *     that is the whole mechanism separating the daily-budget arm from the
+ *     rest of the family, now that v4 `0cde7fbc` fixed the read that used to
+ *     sum to zero);
  *   - the pinned PROCESSING sibling `background_jobs` row (the concurrency
  *     tie-break case).
  *

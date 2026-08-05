@@ -13,7 +13,7 @@
  },
  "chatSettings": {
   "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
-  "dailyTokenBudget": 500
+  "dailyTokenBudget": 9000
  },
  "characters": [
   {
@@ -35,7 +35,7 @@
   {
    "id": "dddddddd-0000-4000-8000-000000000001",
    "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-   "title": "Daily broken zero",
+   "title": "Daily budget binds",
    "participants": [
     {
      "id": "bbbbbbb1-0000-4000-8000-000000000001",
@@ -776,20 +776,20 @@
     "completionTokens": 5000,
     "totalTokens": 10000
    },
-   "createdAt": "2026-01-02T02:00:00.000Z"
+   "createdAt": "2026-01-01T23:00:00.000Z"
   }
  ],
  "calls": [
   {
-   "name": "daily_broken_zero_reenqueue",
+   "name": "daily_budget_binds_pre_turn",
    "kind": "turn",
    "chatId": "dddddddd-0000-4000-8000-000000000001",
    "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
    "runId": "aaaaaaa1-0000-4000-8000-000000000001",
    "jobId": "eeeeeeee-0000-4000-8000-000000000000",
-   "jobCreatedAt": "2026-01-02T04:04:00.000Z",
-   "streamLabel": "daily_broken_zero_reenqueue",
-   "anchorMs": 1767326645000
+   "jobCreatedAt": "2026-01-01T23:30:00.000Z",
+   "streamLabel": "daily_budget_binds_pre_turn",
+   "anchorMs": 1767310205000
   },
   {
    "name": "budget_turns_end",
@@ -992,7 +992,7 @@
   }
  ],
  "streams": {
-  "daily_broken_zero_reenqueue": [
+  "daily_budget_binds_pre_turn": [
    [
     {
      "content": "Quite so; the ledgers agree."

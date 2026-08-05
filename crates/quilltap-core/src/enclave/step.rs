@@ -525,11 +525,11 @@ where
     let mut daily_tokens_spent: i64 = 0;
     if daily_token_budget.is_some() {
         let since = last_local_midnight_iso(now, sdeps.tz);
-        // ⚠️ BROKEN-BUT-EXACT: `get_total_token_usage_since` always sums to 0
-        // on SQLite (the `$ne: null` translator bug, empirically pinned — see
-        // the repo method's docs). The daily gate therefore never binds through
-        // actual spend, exactly as in v4-on-SQLite; the read still runs so the
-        // composition shape (and any future fix) stays aligned.
+        // v4 `0cde7fbc` dropped the `$ne: null` that had zeroed this read on
+        // every install, so the daily gate now binds on REAL spend — the
+        // grace-turn / End transitions below stopped being dead code the moment
+        // that landed. A room with a `dailyTokenBudget` configured begins
+        // pausing or ending where it used to run unbounded.
         let uid = user_id.clone();
         let usage = db.read_llm_logs(move |conn| {
             Ok(LLMLogsRepository::new(conn).get_total_token_usage_since(&uid, &since))
@@ -800,7 +800,8 @@ where
     if daily_token_budget.is_some() {
         let since = last_local_midnight_iso((sdeps.now_ms)(), sdeps.tz);
         let uid = user_id.clone();
-        // The same BROKEN-BUT-EXACT always-zero read as the pre-turn check.
+        // The same now-working read as the pre-turn check (v4 `0cde7fbc`): the
+        // post-turn arm sees this turn's own spend as soon as its log rows land.
         let usage = db.read_llm_logs(move |conn| {
             Ok(LLMLogsRepository::new(conn).get_total_token_usage_since(&uid, &since))
         })?;
