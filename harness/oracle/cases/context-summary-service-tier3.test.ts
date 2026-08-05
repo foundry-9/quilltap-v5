@@ -28,10 +28,18 @@
  *     internal fold (`NoopSeams`). `computeConversationStats` is always REAL (pure).
  *     `estimateMessageCost` returns `{ cost: null }` (host-resolved; the Rust seam
  *     passes `None`). The *sweep* of prior Librarian whispers is v4's REAL code.
- *   - `generateEmbeddingForUser` → a canned unit vector (dim 8, [1,0,…]) matching
- *     the fixture's seeded chunk, so the refresh's semantic search scores cosine
- *     1.0 and surfaces the pre-seeded prior summary (a `relevant-conversations`
- *     whisper into `chat_messages`).
+ *   - `generateEmbeddingForUser` → a canned unit vector (dim 8, [1,0,…]) for EVERY
+ *     input text, matching the fixture's seeded chunk, so the refresh's semantic
+ *     search scores cosine 1.0 and surfaces the pre-seeded prior summary (a
+ *     `relevant-conversations` whisper into `chat_messages`). P4.36: the inputs are
+ *     RECORDED and emitted as `kind: "embedInputs"`; the Rust side asserts the same
+ *     multiset, which is what a text-independent mock cannot prove on its own.
+ *
+ * NOT stubbed, though `jest.setup` stubs it globally: `@/lib/embedding/vector-store`
+ * (P4.36). Its stub answers every `search` with `[]` and no-ops `addVector`, which
+ * pinned v4's memory gate to "no existing memories → INSERT" — invisible until the
+ * fold-episode pass started writing memories. The case `requireActual`s it so both
+ * sides run the real store over the fixture's `vector_indices` / `vector_entries`.
  *
  * P4.36: the fold-time EPISODE pass (`runFoldEpisodePass`) is NOT mocked and never
  * was — but until P4.36 the completion mock had no rule for its extraction prompt,
@@ -330,20 +338,41 @@ async function main(): Promise<void> {
   // characters: only `aa…0001` (the `fold_regular` participant) has a vault, and the
   // check-op chats reference unprovisioned characters, so their internal folds mirror
   // nothing — exactly matching the Rust side, where the direct `generate` ops run
-  // `RealContextSummarySeams` and the `check`-op internal folds keep `NoopSeams`.
-  // The embedding is canned to a fixed unit vector on BOTH sides (dim 8, [1,0,…]),
-  // matching the seeded chunk's embedding so the refresh's semantic search scores
-  // cosine 1.0 and surfaces the pre-seeded prior summary.
+  // `RealContextSummarySeams` and the `check`-op internal folds run
+  // `FoldEpisodePassSeams` (episode pass live, those four arms no-ops).
+  // The embedding is canned to a fixed unit vector on BOTH sides (dim 8, [1,0,…])
+  // for EVERY input text, matching the seeded chunk's embedding so the refresh's
+  // semantic search scores cosine 1.0 and surfaces the pre-seeded prior summary.
+  // P4.36: the inputs are RECORDED and emitted as `kind: "embedInputs"`. Since the
+  // fold-episode pass now writes real memories, the gate embeds each candidate —
+  // and a text-independent mock on its own would let v5 embed *different* text
+  // unnoticed. The Rust side asserts the same multiset.
+  // P4.36 — the SECOND stale mock this family carried, and the one that mattered
+  // once the episode pass started writing. `jest.setup` globally stubs the vector
+  // store to `search: () => []` with a no-op `addVector`, so v4's memory gate always
+  // took its "no existing memories → INSERT" branch and never persisted a vector.
+  // v5 has no such stub: it searched for real and answered SKIP_NEAR_DUPLICATE on a
+  // second episode from the same window. That read as a port divergence and was
+  // neither — the same P4.20 shape as the episode prompt itself. Un-mocked, so both
+  // sides run v4's REAL `CharacterVectorStore` over the fixture's `vector_indices` /
+  // `vector_entries` tables.
+  jest.doMock('@/lib/embedding/vector-store', () =>
+    jest.requireActual('@/lib/embedding/vector-store')
+  );
+  const embedInputs: string[] = [];
   jest.doMock('@/lib/embedding/embedding-service', () => {
     const actual = jest.requireActual('@/lib/embedding/embedding-service');
     return {
       __esModule: true,
       ...actual,
-      generateEmbeddingForUser: async () => ({
-        embedding: new Float32Array([1, 0, 0, 0, 0, 0, 0, 0]),
-        model: 'canned',
-        dimensions: 8,
-      }),
+      generateEmbeddingForUser: async (text: string) => {
+        embedInputs.push(text);
+        return {
+          embedding: new Float32Array([1, 0, 0, 0, 0, 0, 0, 0]),
+          model: 'canned',
+          dimensions: 8,
+        };
+      },
     };
   });
   // The estimated cost stays host-resolved; the Rust seam passes `None`, so the
@@ -474,6 +503,25 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'payload')) }));
 
+  // P4.36: the fold-episode pass's WRITE half. `memories` is created lazily by the
+  // first `createMemoryWithGate`, so it may legitimately not exist — an absent table
+  // dumps as zero columns / zero rows on both sides (and a side that writes where
+  // the other does not diverges on the column list, loudly).
+  const memoriesExists =
+    (
+      (await rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='memories'"
+      )) as Array<{ name: string }>
+    ).length > 0;
+  lines.push(
+    JSON.stringify({
+      kind: 'table',
+      ...(memoriesExists
+        ? await dumpTable('memories', 'summary')
+        : { table: 'memories', columns: [], rows: [] }),
+    })
+  );
+
   // Mirror proof (Round-3 Group 7): the SET of (mountPointId, relativePath) present
   // in the vault after the fold. The minted link ids / fileIds / folderIds /
   // timestamps / chunkCount are ignored (v4 reindexes → chunkCount; the Rust write
@@ -488,6 +536,10 @@ async function main(): Promise<void> {
     .map((r) => `${r.mountPointId}|${r.relativePath}`)
     .sort();
   lines.push(JSON.stringify({ kind: 'mountLinks', paths: linkPaths }));
+
+  // P4.36: every text v4 asked the embedding provider for, as a sorted multiset —
+  // the refresh's fold-summary query plus one gate candidate per episode memory.
+  lines.push(JSON.stringify({ kind: 'embedInputs', texts: [...embedInputs].sort() }));
   closeMountIndexSQLiteClient();
 
   // W4.10b: the fold/title `llm_logs` rows. Fire-and-forget → settle first; read

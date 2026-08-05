@@ -127,6 +127,15 @@ copies: identical, including the streaming event types the upgrade put at
 risk. The seven differentials that consume them pass unchanged. Nothing
 to fix, but the check is the point: the last time an SDK was upgraded on
 a claim of "no wire change," the proving run turned up two real bugs.
+The same differential now also compares what that pass writes — the dated
+episode memories it consolidates out of a folded stretch of conversation,
+and the links it makes between an episode and the individual turns it came
+from — rather than only checking that both apps asked the model the same
+question. Doing so turned up a second stale mock: the test harness had
+been standing in for the vector store with one that always returned no
+matches, which meant the reference app's duplicate check never actually
+ran. With that removed, both sides agree.
+
 Retired a stale mock in the context-summary differential (test-only; no
 shipped behavior changed). The fold-time episode pass — which turns a
 just-folded stretch of conversation into dated episode memories — runs in

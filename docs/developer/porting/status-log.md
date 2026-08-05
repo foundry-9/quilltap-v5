@@ -56019,3 +56019,98 @@ not have contained at all. This family's fixture is BUILT, not committed, so the
 committed-fixture rule does not bind it — but the build must be re-run whenever
 `context-summary-service-tier3.json` moves, since the oracle and the Rust side
 both read the same built file.
+
+## Lane record — P4.36 unit 2: diffing what the un-mocked pass DOES
+
+Unit 1 proved the fold-episode pass makes the same model call on both sides. That
+left its whole write half — the `kind: 'episodic'` memories and the fragment links
+— running in the differential but compared by nothing. Unit 2 closes that, and in
+doing so found a SECOND stale mock of the same P4.20 class.
+
+### ⚠ The v4 checkout went DIRTY mid-lane — everything below regenerates from a pin
+
+Between unit 1's gate and unit 2's first regen, `~/source/quilltap-server` picked
+up in-flight work (HEAD still `7189a968`, tree dirty) touching, among others,
+`lib/services/llm-logging.service.ts`, `lib/memory/cheap-llm-tasks/core-execution.ts`,
+`lib/database/repositories/llm-logs.repository.ts` and `lib/schemas/llm-log.types.ts`
+— i.e. exactly the surface this family diffs. It announced itself immediately and
+unambiguously: the oracle case, unchanged and freshly regenerated, started throwing
+`no such table: llm_logs`, because the dirty code writes no log rows under these
+conditions. The COMMITTED case reproduced it; a pinned worktree did not.
+
+Every regen from that point on ran from
+`/tmp/qt-v4-pin-p436-7189a968` (`git worktree add --detach`, both `node_modules`
+symlinks per `oracle-regen-pinned-v4-worktree`), and unit 1's artifacts were
+regenerated there too, so the whole lane rests on `7189a968` and nothing else.
+Unit 1's own gate had run before the tree went dirty. **The pin is a lane-unique
+path and must be removed at unification** (`git -C ~/source/quilltap-server
+worktree remove --force /tmp/qt-v4-pin-p436-7189a968`).
+
+### The second stale mock — `@/lib/embedding/vector-store`
+
+With the pass writing for real, the differential went red on ONE row: the second
+episode of the `check_gate_fires_fold` window. v4 INSERTED it; v5 answered
+`SkipNearDuplicate`. That reads exactly like a memory-gate port divergence, and it
+is not one. `jest.setup.ts:426` globally replaces `@/lib/embedding/vector-store`
+with `search: () => []` and a no-op `addVector`, so **v4's gate never had a
+populated vector store and always took its `results.length === 0 → INSERT`
+branch**. v5 has no such stub; both episodes embed to the same canned unit vector,
+so its real search scored cosine 1.0 and skipped. `jest.requireActual`'d, v4 skips
+too and the row disappears from both sides.
+
+This is the corollary sweep's fifth case, found by consequence rather than by
+grep — worth noting for the next lane that runs one: greppping for the seam NAME
+finds cases that reference it, not cases whose behavior a global `jest.setup` mock
+silently governs. The tell was a divergence that appeared only once the ported code
+started depending on the mocked module's state.
+
+### Fixture: three collections and one fragment
+
+- `memories`, `vector_indices`, `vector_entries` are now materialized by the
+  builder via v4's own `ensureCollection`. v4 creates collections on demand at the
+  first `createMemoryWithGate`; the Rust port creates no tables on the fly, so
+  without this the diff was `table exists` vs `no such table` — the builder already
+  carried exactly this treatment, and its reasoning, for `background_jobs`. (The
+  underlying difference is pre-existing and recorded there; this lane did not
+  discover it and does not change it.)
+- ONE seeded per-turn fragment memory (`ff…00a1`) inside `fold_regular`'s folded
+  window, written through v4's real repo. It gets no `vector_entries` row, so the
+  gate's near-duplicate search cannot see it and no gate decision in the corpus
+  moves; only `findByCharacterAndSourceMessageIds` finds it. Without it the pass's
+  linking half was inert — see the mutation table.
+
+### What is diffed now
+
+- **`memories`**, whole-table: the episodic rows with their quantized embedding
+  blob, resolved `occurredAt`, keywords, and `relatedMemoryIds`. Memory ids are
+  relabeled by `summary` (unique in this corpus) WHEREVER they appear, so a link is
+  compared by what it points at rather than by a per-side token; an id the map does
+  not know stays literal, so a dangling link diverges instead of normalizing away.
+- **The embedding INPUTS**, as a sorted multiset (`kind: "embedInputs"` on the
+  oracle side, a recording provider on the Rust side). Both mocks answer any text
+  with the same unit vector — v4's always did — so a text-independent Rust mock
+  alone would let v5 embed *different* text unnoticed. Measured identical: four
+  inputs, the refresh's fold-summary query plus one gate candidate per episode,
+  each in the canonical `summary\n\ncontent\n(when: … · place: …)` shape.
+
+### Mutation proof (all four; each reverted and re-proven green)
+
+| mutation | result |
+|---|---|
+| A — the `check` op's seams back to `NoopSeams` | RED, `llm_logs` 16 vs 17 |
+| B — `RealContextSummarySeams::run_fold_episode_pass` body no-op'd | RED, `llm_logs` 12 vs 17 |
+| C — drop one recorded embed input on the v5 side | RED, "embedding inputs diverge" |
+| D — `continue` after the gate call (the fragment-LINK half only) | RED, "memories rows diverge" |
+
+Mutation D is the one that earned the fixture's fragment seed: run BEFORE it was
+added, D passed **green** — with no fragment in any window, `fragment_ids` was
+always empty and the entire linking half was unreachable, so the memories
+assertion could not have caught its removal. That is the sensitivity check doing
+its job, not a formality.
+
+### Regen recipe (unchanged from unit 1 except the working directory)
+
+Run every step from the pinned worktree while v4's tree is dirty; from
+`~/source/quilltap-server` once it is clean and still at `7189a968`. The fixture
+build MUST be re-run whenever the builder or `context-summary-service-tier3.json`
+moves — the oracle and the Rust side read the same built file.

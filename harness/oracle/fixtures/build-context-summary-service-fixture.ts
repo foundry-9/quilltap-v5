@@ -20,6 +20,13 @@
  *     sides). The other four `generate` chats' characters are NOT provisioned, so
  *     their mirror/refresh no-op identically on both sides.
  *
+ * P4.36 adds what the fold-time EPISODE pass needs to be comparable: the three
+ * collections v4 would create on demand at the first `createMemoryWithGate`
+ * (`memories`, `vector_indices`, `vector_entries` — the Rust port creates no tables
+ * on the fly, the same reason `background_jobs` was already materialized here), and
+ * ONE seeded per-turn fragment memory inside `fold_regular`'s folded window so the
+ * pass's `relatedMemoryIds` linking is exercised rather than trivially empty.
+ *
  * `reindexSingleFile` (run by `repos.characters.create` here and by
  * `writeConversationSummaryToVaults` in the ops) creates chunks with NULL
  * embeddings and does NOT enqueue jobs, so `background_jobs` is untouched by the
@@ -81,6 +88,13 @@ const VAULT_CHARACTER_NAME = 'Vaulted A';
 const PRIOR_CHAT_ID = 'dd000000-0000-4000-8000-0000000000f1';
 const PRIOR_CHAT_TITLE = 'Prior Chat X';
 const PRIOR_SUMMARY_BODY = 'A prior discussion about airships and clockwork resolutions.';
+// P4.36: the seeded per-turn fragment the fold-episode pass links to. Its
+// `sourceMessageId` MUST be a message inside `fold_regular`'s folded window
+// (`c…0001`'s messages), which is what `findByCharacterAndSourceMessageIds`
+// matches on.
+const FRAGMENT_MEMORY_ID = 'ff000000-0000-4000-8000-0000000000a1';
+const FRAGMENT_CHAT_ID = 'c0000001-0000-4000-8000-000000000001';
+const FRAGMENT_SOURCE_MESSAGE_ID = 'dd000001-0000-4000-8000-000000000015';
 // The unit vector the refresh query is canned to on BOTH sides (dim 8, [1,0,…]).
 function cannedEmbeddingBuffer(): Buffer {
   const buf = Buffer.alloc(8 * 4);
@@ -125,7 +139,10 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
-  const { BackgroundJobSchema } = await import('@/lib/schemas/types');
+  const { BackgroundJobSchema, MemorySchema } = await import('@/lib/schemas/types');
+  const { VectorIndexMetaSchema, VectorEntryRowSchema } = await import(
+    '@/lib/schemas/vector-indices.types'
+  );
   const {
     DocMountPointSchema,
     DocMountFileSchema,
@@ -143,6 +160,14 @@ async function main(): Promise<void> {
   // already has it (the title-checkpoint enqueue writes here; the Rust port
   // does not create tables on the fly).
   await ensureCollection('background_jobs', BackgroundJobSchema);
+  // P4.36: same reason, for the fold-time episode pass's writes. v4 would create
+  // `memories` (and the gate's `vector_indices`) on demand at the first
+  // `createMemoryWithGate`; the Rust port does not, so seeding them is what makes
+  // the two sides comparable rather than a table-exists-vs-not difference standing
+  // in for the write diff.
+  await ensureCollection('memories', MemorySchema);
+  await ensureCollection('vector_indices', VectorIndexMetaSchema);
+  await ensureCollection('vector_entries', VectorEntryRowSchema);
 
   // MOUNT-INDEX db: materialize every store table the provision/write path touches,
   // via v4's own generated DDL (idempotent).
@@ -246,6 +271,28 @@ async function main(): Promise<void> {
       updatedAt: TS,
     } as never);
   }
+
+  // P4.36: a per-turn FRAGMENT memory sitting inside `fold_regular`'s folded
+  // window, so the episode pass's LINK half (`relatedMemoryIds`, written on both
+  // the episode and the fragment) is exercised instead of trivially empty. Written
+  // through v4's REAL repo with a pinned id. It gets NO `vector_entries` row, so
+  // the gate's near-duplicate search never sees it — only
+  // `findByCharacterAndSourceMessageIds` does — and every gate decision in the
+  // corpus stays what it would have been without it.
+  await repos.memories.create(
+    {
+      characterId: VAULT_CHARACTER_ID,
+      chatId: FRAGMENT_CHAT_ID,
+      content: 'Vaulted A checked the ropes twice before the run began.',
+      summary: 'checked the ropes twice',
+      keywords: ['ropes'],
+      tags: [],
+      importance: 0.4,
+      source: 'AUTO',
+      sourceMessageId: FRAGMENT_SOURCE_MESSAGE_ID,
+    } as never,
+    { id: FRAGMENT_MEMORY_ID, createdAt: TS, updatedAt: TS }
+  );
 
   // Pre-seed a PRIOR conversation summary into the vault (a different chat), so
   // the refresh's semantic search — which excludes the current chat — surfaces it.

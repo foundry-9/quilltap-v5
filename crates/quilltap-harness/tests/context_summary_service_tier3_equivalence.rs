@@ -42,6 +42,27 @@
 //! `common::assert_ruled_failed_call_divergence` and asserted in BOTH directions
 //! (the `compression_tier3` pin's shape) — a convergence retires the pin loudly.
 //!
+//! P4.36 also diffs what the pass DOES, not just that it called the model:
+//!
+//!   - `memories` — the `kind: 'episodic'` rows it consolidates, including the
+//!     quantized embedding blob, the resolved `occurredAt`, and the
+//!     `relatedMemoryIds` links it writes in BOTH directions between an episode and
+//!     the seeded per-turn fragment in the same window. Memory ids are relabeled by
+//!     `summary` wherever they appear, so a link is compared by what it points AT.
+//!   - the embedding INPUTS, as a sorted multiset. Both sides' mocks answer any
+//!     text with the same unit vector, so recording the inputs is what proves v5
+//!     embedded the same things — the canonical
+//!     `summary\n\ncontent\n(when: … · place: …)` shape included.
+//!
+//! Reaching that state took un-mocking a SECOND stale stub: `jest.setup` globally
+//! replaces `@/lib/embedding/vector-store` with `search: () => []`, so v4's memory
+//! gate always took its "no existing memories → INSERT" branch. v5 searched for
+//! real and answered SKIP_NEAR_DUPLICATE on a second episode from one window; that
+//! read as a port divergence and was the mock. The case un-mocks it, and the
+//! fixture builder materializes `memories` / `vector_indices` / `vector_entries`
+//! (v4 creates collections on demand, the Rust port does not — the `background_jobs`
+//! precedent already in that builder).
+//!
 //! W4.6b + Round-3 Group 7: the `generate` ops drive `RealContextSummarySeams`, so
 //! the fold now ALSO writes the Librarian summary whisper + the CONTEXT_SUMMARY /
 //! TITLE_GENERATION cost events, MIRRORS the summary into the provisioned character's
@@ -187,6 +208,48 @@ struct CannedRowW {
     fail: Option<String>,
 }
 
+/// The v4-shaped embedding mock: one fixed unit vector for EVERY input text
+/// (dim 8, `[1,0,…]` — the vector the fixture seeded into the prior summary's
+/// chunk), with the inputs recorded so the multiset can be diffed against the
+/// oracle's `embedInputs` row. Resolves synchronously so the returned future
+/// owns its result (the `CannedCompletionProvider` precedent).
+#[derive(Default)]
+struct RecordingUnitEmbeddingProvider {
+    seen: std::sync::Mutex<Vec<String>>,
+}
+
+impl RecordingUnitEmbeddingProvider {
+    fn recorded_sorted(&self) -> Vec<String> {
+        let mut v = self.seen.lock().unwrap().clone();
+        v.sort();
+        v
+    }
+}
+
+impl quilltap_core::model::embedding::EmbeddingProvider for RecordingUnitEmbeddingProvider {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        _user_id: &str,
+        _profile_id: Option<&str>,
+        _priority: quilltap_core::model::embedding::EmbeddingPriority,
+    ) -> impl std::future::Future<
+        Output = Result<
+            quilltap_core::model::embedding::EmbeddingResult,
+            quilltap_core::model::embedding::EmbeddingError,
+        >,
+    > + Send {
+        self.seen.lock().unwrap().push(text.to_string());
+        let result = quilltap_core::model::embedding::EmbeddingResult {
+            embedding: vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            model: "canned".to_string(),
+            dimensions: 8,
+            provider: "canned".to_string(),
+        };
+        async move { Ok(result) }
+    }
+}
+
 fn ops_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/context-summary-service-ops.json")
@@ -303,6 +366,69 @@ fn remap_minted_message_ids(dump: &mut Value, seed_ids: &std::collections::HashS
     }
 }
 
+/// The `memories` table the fold-episode pass writes into. Its rows carry MINTED
+/// ids that also appear inside each other's `relatedMemoryIds` (the pass links the
+/// window's fragments), so a first-seen token would be order-dependent and
+/// meaningless. Relabel every memory id — wherever it appears — by that memory's
+/// `summary`, which the corpus makes unique. An id the map does not know stays
+/// LITERAL, so a dangling link diverges instead of quietly normalizing away.
+fn relabel_memory_ids(dump: &mut Value) {
+    let rows = dump.get_mut("rows").and_then(Value::as_array_mut).unwrap();
+    let mut by_id: HashMap<String, String> = HashMap::new();
+    for row in rows.iter() {
+        if let (Some(id), Some(summary)) = (
+            row.get("id").and_then(Value::as_str),
+            row.get("summary").and_then(Value::as_str),
+        ) {
+            by_id.insert(id.to_string(), format!("<mem:{summary}>"));
+        }
+    }
+    for row in rows.iter_mut() {
+        let obj = row.as_object_mut().unwrap();
+        if let Some(Value::String(id)) = obj.get("id") {
+            if let Some(token) = by_id.get(id) {
+                obj.insert("id".to_string(), Value::String(token.clone()));
+            }
+        }
+        if let Some(Value::String(raw)) = obj.get("relatedMemoryIds") {
+            if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(raw) {
+                let relabeled: Vec<Value> = items
+                    .iter()
+                    .map(|it| match it.as_str().and_then(|s| by_id.get(s)) {
+                        Some(token) => Value::String(token.clone()),
+                        None => it.clone(),
+                    })
+                    .collect();
+                // Sort: the link SET is the claim; v4 and v5 build it by
+                // iterating the same rows, but nothing pins the iteration order.
+                let mut sorted = relabeled;
+                sorted.sort_by_key(|v| v.to_string());
+                obj.insert(
+                    "relatedMemoryIds".to_string(),
+                    Value::String(serde_json::to_string(&Value::Array(sorted)).unwrap()),
+                );
+            }
+        }
+        for col in [
+            "createdAt",
+            "updatedAt",
+            "lastAccessedAt",
+            "lastReinforcedAt",
+        ] {
+            if let Some(v) = obj.get(col) {
+                let nv = norm_ts(v);
+                obj.insert(col.to_string(), nv);
+            }
+        }
+    }
+    rows.sort_by_key(|r| {
+        r.get("summary")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    });
+}
+
 fn seed_ids_of(dump: &Value) -> Vec<String> {
     dump.get("rows")
         .and_then(Value::as_array)
@@ -351,6 +477,7 @@ async fn context_summary_service_tier3_matches_oracle() {
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_mount_links: Vec<String> = Vec::new();
+    let mut oracle_embed_inputs: Option<Vec<String>> = None;
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
@@ -367,6 +494,16 @@ async fn context_summary_service_tier3_matches_oracle() {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
             Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
+            Some("embedInputs") => {
+                oracle_embed_inputs = Some(
+                    v["texts"]
+                        .as_array()
+                        .expect("embedInputs.texts array")
+                        .iter()
+                        .map(|p| p.as_str().unwrap().to_string())
+                        .collect(),
+                );
+            }
             Some("mountLinks") => {
                 oracle_mount_links = v["paths"]
                     .as_array()
@@ -388,17 +525,15 @@ async fn context_summary_service_tier3_matches_oracle() {
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
-    // Round-3 Group 7: the fold's refresh embeds the fold summary and searches the
-    // vault. The `fold_regular` character (`aa…0001`) is the only provisioned vault,
-    // so it is the only op whose refresh reaches the embed; canned to the same unit
-    // vector the fixture seeded into the prior summary's chunk (cosine 1.0 → match).
-    // The other generate chats' characters are unprovisioned → their refresh returns
-    // early (no vault) before embedding, so no registration is needed for them.
-    const FOLD_REGULAR_SUMMARY: &str = "Active threads: heist continues. Resolved decisions: split the take. Emotional state: wary. Open questions: escape route.";
-    let embedding = quilltap_core::model::embedding::CannedEmbeddingProvider::new().with_vector(
-        FOLD_REGULAR_SUMMARY,
-        vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    );
+    // Round-3 Group 7 + P4.36: the fold's refresh embeds the fold summary and
+    // searches the vault; the fold-episode pass's gate embeds one candidate per
+    // episode memory. v4's mock answers EVERY input with the same unit vector (the
+    // one the fixture seeded into the prior summary's chunk, so the refresh scores
+    // cosine 1.0), so this side must be text-independent too — a per-text
+    // registration would turn "v5 embedded something v4 didn't" into an opaque
+    // canned MISS. Instead both sides RECORD their inputs and the multisets are
+    // compared, which catches the same divergence and names it.
+    let embedding = RecordingUnitEmbeddingProvider::default();
 
     // Replay EXACTLY the recorded entries (responses + the recorded failure key).
     let mut completion = CannedCompletionProvider::new();
@@ -624,6 +759,29 @@ async fn context_summary_service_tier3_matches_oracle() {
         })
         .collect();
 
+    // P4.36: the fold-episode pass's WRITE half — the `kind: 'episodic'` memories it
+    // consolidates out of each folded window, plus the fragment links it makes
+    // between them. `memories` is created lazily by the first `createMemoryWithGate`,
+    // so a side that never writes has no table at all; that dumps as zero columns and
+    // diverges on the column list rather than panicking on a missing table.
+    let mut got_memories = db
+        .read_main(|conn| dump_table_json_conn(conn, "memories", "summary"))
+        .unwrap_or_else(|_| json!({"table": "memories", "columns": [], "rows": []}));
+    let mut want_memories = oracle_tables
+        .remove("memories")
+        .expect("oracle missing table memories");
+    want_memories.as_object_mut().unwrap().remove("kind");
+    relabel_memory_ids(&mut got_memories);
+    relabel_memory_ids(&mut want_memories);
+    assert_eq!(
+        got_memories["columns"], want_memories["columns"],
+        "memories column set / order"
+    );
+    assert_eq!(
+        got_memories["rows"], want_memories["rows"],
+        "memories rows diverge (the fold-episode pass's writes)"
+    );
+
     // Mirror proof (Round-3 Group 7): the SET of `<mountPointId>|<relativePath>` in
     // the vault after the fold. The mirror wrote `Conversation Summaries/Old Title
     // A.md` into the `fold_regular` character's vault on both sides; the deterministic
@@ -653,6 +811,18 @@ async fn context_summary_service_tier3_matches_oracle() {
     assert_eq!(
         got_mount_links, want_mount_links,
         "vault doc_mount_file_links path set diverges (the mirror write)"
+    );
+
+    // P4.36: every text asked of the embedding provider, as a sorted multiset — the
+    // refresh's fold-summary query plus one gate candidate per episode memory. Both
+    // mocks answer any text with the same vector, so this is what proves v5 embedded
+    // the SAME things (the canonical `summary\n\ncontent\n(anchor line)` shape
+    // included) rather than merely embedding something.
+    let want_embed_inputs = oracle_embed_inputs.expect("oracle emitted no embedInputs row");
+    assert_eq!(
+        embedding.recorded_sorted(),
+        want_embed_inputs,
+        "embedding inputs diverge"
     );
 
     // W4.10b: diff the fold/title `llm_logs` rows (SUMMARIZATION + TITLE_GENERATION).
