@@ -1383,8 +1383,8 @@ impl CoreEngine {
             },
             // === end P4.9E3B ===
             // ── P4.9G5 arms ──
-            Request::SystemBackupCreate => match self.ready_backup_host() {
-                Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),
+            Request::SystemBackupCreate { compact } => match self.ready_backup_host() {
+                Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref(), compact),
                 Err(r) => r,
             },
             Request::SystemRestorePreview { upload_id } => match self.ready_backup_host() {

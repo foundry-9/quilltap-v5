@@ -80,7 +80,28 @@ pub struct RestoreSummary {
     pub group_doc_mount_links: usize,
     pub group_character_members: usize,
     pub text_replacement_rules: usize,
+    /// v4 `7189a968`: the post-restore embedding reconcile's outcome (step 25).
+    /// Restore ALWAYS sets it; preview never does (the key is optional in v4's
+    /// type and absent from `previewRestore`'s summary).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_reconcile: Option<EmbeddingReconcileSummary>,
     pub warnings: Vec<String>,
+}
+
+/// v4 `RestoreSummary.embeddingReconcile` (`types.ts:586-592`, `7189a968`). A
+/// restore can land a corpus whose vectors were produced by a different
+/// embedding standard than the receiving instance's default profile
+/// (new-account mode, or a machine configured differently), which nothing else
+/// would notice until the next boot. `skipped_reason` explains a no-op pass;
+/// `reindex_enqueued` says whether a repair job was scheduled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddingReconcileSummary {
+    pub target_dimensions: Option<usize>,
+    pub skipped_reason: Option<&'static str>,
+    pub vector_entries_deleted: usize,
+    pub vector_index_meta_fixed: usize,
+    pub reindex_enqueued: bool,
 }
 
 /// v4's nested `profiles` object.

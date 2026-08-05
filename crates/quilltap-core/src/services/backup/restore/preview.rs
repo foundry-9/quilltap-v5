@@ -65,6 +65,7 @@ pub fn preview_restore(zip_path: &Path, temp_root: &Path) -> Result<RestoreSumma
         group_doc_mount_links: d.group_doc_mount_links.len(),
         group_character_members: d.group_character_members.len(),
         text_replacement_rules: d.text_replacement_rules.len(),
+        embedding_reconcile: None,
         warnings: Vec::new(),
     })
     // `extracted` drops here — v4's `finally cleanupDir(extractDir)` (`:77`).

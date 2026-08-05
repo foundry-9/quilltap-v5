@@ -55252,3 +55252,93 @@ bytes, so baselines agree; noted so nobody "fixes" the fixture's
 zeros and wonders why nothing changed.
 
 Versions: core 0.0.466, harness 0.0.398, web 0.0.59.
+
+## Lane record — P4.D46 unit 5 (+ unit 6's restore half): compact backup + the restore tail (2026-08-05)
+
+**⚠ v4 DRIFTED MID-LANE — `0cde7fbc` ("feat(almanack): rename and
+rewrite the capabilities report, add Scriptorium coverage"), landed
+2026-08-05 11:53, ONE commit past this round's `7189a968` baseline.**
+It is REAL drift: migration `add-llm-logs-profile-columns-v1` adds
+nullable `connectionProfileId`/`imageProfileId` to `llm_logs` (a
+schema change on the llm partition — D23 territory), both columns join
+the new-account restore's UUID remap list (the PORTED
+`uuid_remap`/`uuid_remapper`), `LLMLogsRepository` gains fixes
+(`getTotalTokenUsage`'s `$ne: null` → `!= NULL` never-matches bug),
+the llm-logging service now threads the profile ids + `durationMs`
+through call sites, and the capabilities report is rewritten as The
+Almanack (that surface is UNPORTED in v5 — the report itself is not
+drift on ported code, but the llm_logs schema + remap-list + logging
+changes ARE). **A drift catch-up is OWED; the lane detected it because
+the first post-11:53 oracle regen (system-restore) suddenly showed the
+two new columns in restored `llm_logs` rows.** Everything regenerated
+before 11:53 (export / import / import-execute / backup oracles, the
+compact archive at 11:46) is clean `7189a968`; the lane pinned
+`/tmp/qt-v4-pin-p4d46-7189a968` and re-ran the restore regen from it
+(pin marker: restored `llm_logs` rows carry NO `connectionProfileId`).
+The lane-start note about the untracked
+`capabilities-report-update.md` doc was this feature brewing.
+
+**The port.** `SystemBackupCreate` gains `compact` (serde default
+false — the pre-drift fieldless wire body still decodes; both shapes
+pinned in `p4_9g1_wire_contract`). The web edge parses the body
+tolerantly (malformed ≡ absent; only literal `true`).
+`create_backup(..., compact)` applies the new
+`collect::compact_backup_data` (memories keep every word,
+`embedding: null`; six derived collections emptied), the manifest
+gains `compact: true` OMITTED when false, and staging omits the six
+data files outright (absent ≡ empty to the optional readers; absent is
+what shrinks the archive). Restore: step 24a (gated on
+`manifest.compact` — resolve the strict default profile, enqueue ONE
+`EMBEDDING_REINDEX_ALL {profileId, scope:'all'}` at priority −1
+BEFORE the reconcile so its dedupe sees it, three warning variants
+verbatim) and step 25 (`reconcile_embedding_dimensions` — the P4.D25
+port, now with its restore caller — immediately before the summary;
+result → `RestoreSummary.embeddingReconcile`, preview never sets it,
+plus the two warning branches). Restore phase 15 passes the archived
+`enabled` through the widened plugin-config upsert (unit 6's restore
+half).
+
+**What the differentials caught before it shipped:**
+- v4's parsed memory carries `embedding` as a property even when its
+  VALUE is undefined (invisible to `JSON.stringify`), so the compact
+  spread's null lands at the SCHEMA slot, not appended — v5's marshal
+  omits the key outright, so `compact_backup_data` inserts at the slot
+  (right after `importance`).
+- The restore-oracle environment ALSO had `@/lib/embedding/vector-store`
+  globally mocked (jest.setup), which made v4's whole reconcile THROW
+  into its catch — a null/zero `embeddingReconcile` — the moment a
+  restored corpus carried real vectors. Real module now; the same
+  P4.20/P4.36 class as the embedding-service mock, third instance
+  this lane.
+- The harness `TestBackupHost::now_ms` returned 0 (epoch), so v5's
+  reconcile found nothing stale while v4's `Date.now()` cleared the
+  restored stale-chat chunk embedding — the host now answers the real
+  wall clock.
+- Two of my own doc-string continuations had been eaten by a python
+  heredoc (literal space runs inside the warning sentences) — the
+  byte-diff caught both.
+
+**Divergence-pin verdicts touched here:** the two compact cases JOIN
+`REPLAY_DEDUPE` (the compact archive carries store-backed files
+exactly like uploads/gen2 — the ruling applies unchanged), and on the
+compact pair alone the same divergence reaches
+`mountIndex.doc_mount_points`: v4's unconditional re-ingest fires a
+best-effort `refreshStats`, and the new 24a/25 awaits give that
+fire-and-forget chain time to land before v4's dump — rollups for rows
+v5 (by ruling) never writes. The four older dedupe cases still compare
+that table green, so the mask is confined to the compact pair.
+
+**Differentials at the PINNED `7189a968`:** `system_backup_equivalence`
+2 → 3 cases (compact: six files ABSENT asserted + manifest flag + the
+oracle tree diff); `system_restore_equivalence` 5 → 6 previews;
+`system_restore_state` 11 → 13 (the eleven existing cases green WITH
+the new tail — every summary now carries `embeddingReconcile`, incl.
+the `restore_replace` mismatch arm: dims 8, one entry deleted, one
+meta fixed, reindex enqueued + warning; and `restore_new_account`'s
+`builtin-profile` skip arm). Mutation fingerprint: breaking the 24a
+manifest gate reddens `main.background_jobs` on exactly the compact
+pair. New committed fixture:
+`restore-archives/restore-archive-compact.zip` (own additive builder
+`build-restore-archives-compact.test.ts`, built by v4's REAL
+`createBackup(userId, {compact: true})` at the pin, 2026-08-05 11:46 —
+pre-drift; the other nine zips byte-untouched).

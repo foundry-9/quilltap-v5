@@ -109,6 +109,9 @@ pub async fn restore(
     let codec = host.pixel_codec();
     let dirs = host.host_dirs();
     let user_id = target_user_id.to_string();
+    // Step 25's reconcile takes the injected wall clock (its staleness window's
+    // origin) — the host's, same as the boot caller.
+    let now_ms = host.now_ms();
     db.write(move |ws| {
         Ok(restore_on_writer(
             ws,
@@ -117,6 +120,7 @@ pub async fn restore(
             &user_id,
             codec,
             dirs,
+            now_ms,
         ))
     })
     .await
@@ -163,6 +167,7 @@ macro_rules! warn_row {
 /// partitions' connections, which is what lets the cross-partition phases
 /// (doc-store rows in the mount index, llm logs in their own file) run in the
 /// same pass v4 runs them in.
+#[allow(clippy::too_many_arguments)]
 fn restore_on_writer(
     ws: &mut WriterSet,
     extracted: &mut ExtractedBackup,
@@ -170,6 +175,7 @@ fn restore_on_writer(
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
+    now_ms: i64,
 ) -> RestoreSummary {
     let backup_format = extracted.backup_format();
     let root_path = extracted.root_path.clone();
@@ -1099,13 +1105,120 @@ fn restore_on_writer(
         }
     }
 
+    // ── 24a. Compact archives arrive with no vectors at all (v4 `7189a968`,
+    //    `restore.ts:873-907`): memory embeddings are NULL and every derived
+    //    collection was omitted at backup time. The reconcile below
+    //    deliberately ignores *absent* chunk rows — it only repairs
+    //    non-conforming ones — so without this the instance would come back
+    //    with search quietly cold. Enqueued BEFORE the reconcile so the
+    //    reconcile's own dedupe sees this job and doesn't stack a second one.
+    if extracted
+        .manifest
+        .get("compact")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        match enqueue_compact_reindex(main, target_user_id) {
+            Ok(true) => w.push(
+                "This was a compact backup, so search indexes were rebuilt rather than restored — search will warm back up as re-indexing completes. Conversation and document chunks are rebuilt as those chats and stores are next touched."
+                    .to_string(),
+            ),
+            Ok(false) => w.push(
+                "This was a compact backup, but no default embedding profile is configured, so search cannot be rebuilt yet. Configure one and re-index from the Commonplace Book."
+                    .to_string(),
+            ),
+            Err(e) => {
+                w.push(format!(
+                    "Failed to queue re-indexing after compact restore: {e}"
+                ));
+                tracing::warn!(error = %e, "Failed to enqueue reindex after compact restore");
+            }
+        }
+    }
+
+    // ── 25. Embedding reconcile (v4 `restore.ts:910-938`). Restore is the one
+    //    moment a corpus can arrive whose vectors were produced under a
+    //    different embedding standard than this instance's default profile —
+    //    new-account mode, or simply a machine configured differently from the
+    //    one the backup came off. Until now the only repair was the *next
+    //    boot's* sweep, which is fine for an in-place restore and wrong for
+    //    everything else. The reconcile never throws (it catches into an
+    //    all-zero result), resolves the default profile itself and dedupes its
+    //    own reindex enqueue — so in the ordinary conforming case this is a
+    //    cheap no-op.
+    let reconcile = crate::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
+        main, mount, now_ms,
+    );
+    if let Some(reason) = reconcile.skipped_reason {
+        w.push(format!(
+            "Embedding reconcile was skipped after restore ({}); semantic search will be repaired on the next startup.",
+            reason.as_str()
+        ));
+    } else if reconcile.reindex_enqueued {
+        w.push(
+            "Some restored embeddings did not match this instance's embedding profile; re-indexing has been queued and search will warm back up as it completes."
+                .to_string(),
+        );
+    }
+    let embedding_reconcile = crate::services::backup::restore::EmbeddingReconcileSummary {
+        target_dimensions: reconcile.target_dimensions,
+        skipped_reason: reconcile.skipped_reason.map(|r| r.as_str()),
+        vector_entries_deleted: reconcile.vector_entries_deleted,
+        vector_index_meta_fixed: reconcile.vector_index_meta_fixed,
+        reindex_enqueued: reconcile.reindex_enqueued,
+    };
+
     // v4's `finally cleanupDir(extractDir)` (`:899`) is `Drop` on
     // [`ExtractedBackup`]. It is borrowed here rather than owned (the caller keeps
     // it so the remap can read the ORIGINAL rows alongside the remapped ones), so
     // the cleanup fires when `restore` returns — one stack frame later, on every
     // path including a panic. `system_restore_state` asserts the scratch root is
     // empty after every case, which is what actually proves it.
-    c.into_summary(data, w)
+    c.into_summary(data, w, embedding_reconcile)
+}
+
+/// v4 24a's enqueue: `getDefaultEmbeddingProfile(targetUserId)` (strict
+/// `findDefault` — no first-row fallback) then
+/// `enqueueEmbeddingReindexAll(userId, {profileId, scope: 'all'})` — plain
+/// enqueue at priority -1, maxAttempts 3, payload key order `{profileId,
+/// scope}`. `Ok(true)` = enqueued, `Ok(false)` = no default profile.
+fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<bool, DbError> {
+    let profile_id: Option<String> = main
+        .query_row(
+            "SELECT id FROM embedding_profiles WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
+            rusqlite::params![user_id],
+            |r| r.get::<_, String>(0),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    let Some(profile_id) = profile_id else {
+        return Ok(false);
+    };
+    let now = now();
+    crate::db::background_jobs::BackgroundJobsRepository::new(main).create(
+        &crate::db::background_jobs::BjCreate {
+            user_id: user_id.to_string(),
+            job_type: "EMBEDDING_REINDEX_ALL".to_string(),
+            status: Some("PENDING".to_string()),
+            payload: serde_json::json!({ "profileId": profile_id, "scope": "all" }),
+            priority: -1.0,
+            attempts: 0.0,
+            max_attempts: 3.0,
+            last_error: None,
+            scheduled_at: now.clone(),
+            started_at: None,
+            completed_at: None,
+        },
+        &crate::db::background_jobs::CreateOptions {
+            id: uuid::Uuid::new_v4().to_string(),
+            created_at: now.clone(),
+            updated_at: now,
+        },
+    )?;
+    Ok(true)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1986,6 +2099,7 @@ impl Counters {
         self,
         data: &crate::services::backup::collect::BackupData,
         warnings: Vec<String>,
+        embedding_reconcile: crate::services::backup::restore::EmbeddingReconcileSummary,
     ) -> RestoreSummary {
         RestoreSummary {
             characters: data.characters.len(),
@@ -2033,6 +2147,7 @@ impl Counters {
             group_doc_mount_links: self.group_doc_mount_links,
             group_character_members: self.group_character_members,
             text_replacement_rules: self.text_replacement_rules,
+            embedding_reconcile: Some(embedding_reconcile),
             warnings,
         }
     }

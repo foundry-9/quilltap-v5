@@ -31,9 +31,15 @@ use super::types::{ErrorKind, Response};
 /// a failing backup is diagnosable from the server log instead of being a bare
 /// 500. Found at the round's unification: the first live walk of this verb hit
 /// exactly that wall, with nothing anywhere saying why.
-pub fn backup_create(db: &Db, host: &dyn BackupHost) -> Response {
+pub fn backup_create(db: &Db, host: &dyn BackupHost, compact: bool) -> Response {
     let created_at = iso_from_millis(host.now_ms());
-    let created = match create_backup(db, host, super::engine::SINGLE_USER_ID, &created_at) {
+    let created = match create_backup(
+        db,
+        host,
+        super::engine::SINGLE_USER_ID,
+        &created_at,
+        compact,
+    ) {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "createBackup failed");

@@ -71,7 +71,7 @@
             "npc": false,
             "talkativeness": 0.5,
             "controlledBy": "llm",
-            "characterDocumentMountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "characterDocumentMountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "canChooseOutfit": false,
             "partnerLinks": [],
             "aliases": [],
@@ -81,7 +81,7 @@
             ],
             "avatarOverrides": [],
             "physicalDescription": {
-              "id": "13e842b0-eecf-80b3-b477-6b998a92094d",
+              "id": "8ab33c4a-c47c-89fa-b9c6-c2c7f102fd06",
               "name": "default",
               "usageContext": null,
               "headAndShouldersPrompt": null,
@@ -94,7 +94,7 @@
               "updatedAt": "2026-01-01T00:00:00.000Z"
             },
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:44.968Z"
+            "updatedAt": "2026-08-05T15:47:32.530Z"
           },
           {
             "id": "a1000000-0000-4000-8000-000000000002",
@@ -115,7 +115,7 @@
             "npc": false,
             "talkativeness": 0.5,
             "controlledBy": "llm",
-            "characterDocumentMountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "characterDocumentMountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "canChooseOutfit": false,
             "partnerLinks": [],
             "aliases": [],
@@ -125,7 +125,7 @@
             ],
             "avatarOverrides": [],
             "physicalDescription": {
-              "id": "9e30ef9e-1f6b-88b4-b00e-53590a2d03bf",
+              "id": "0f91c15b-4d1c-8d9b-9d19-b6d29daf29f2",
               "name": "default",
               "usageContext": null,
               "headAndShouldersPrompt": null,
@@ -138,7 +138,7 @@
               "updatedAt": "2026-01-01T00:00:00.000Z"
             },
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:44.998Z"
+            "updatedAt": "2026-08-05T15:47:32.561Z"
           }
         ],
         "chats": [
@@ -165,7 +165,7 @@
               "a5000000-0000-4000-8000-000000000001"
             ],
             "messageCount": 2,
-            "lastMessageAt": "2026-08-03T20:53:45.035Z",
+            "lastMessageAt": "2026-08-05T15:47:32.596Z",
             "lastRenameCheckInterchange": 0,
             "compactionGeneration": 0,
             "lastSummaryTurn": 0,
@@ -199,7 +199,7 @@
             "runDestructiveToolsAllowed": 0,
             "budgetExcludeCacheHits": 1,
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:45.035Z",
+            "updatedAt": "2026-08-05T15:47:32.596Z",
             "messages": [
               {
                 "type": "message",
@@ -387,6 +387,32 @@
             "updatedAt": "2026-03-01T00:00:00.000Z"
           },
           {
+            "id": "ad000000-0000-4000-8000-000000000003",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "content": "Lorian remembers the storm over the strait.",
+            "summary": "the storm",
+            "keywords": [
+              "storm"
+            ],
+            "tags": [],
+            "importance": 0.7,
+            "embedding": {
+              "0": 0.25196850299835205,
+              "1": -0.4960629940032959,
+              "2": 0.12598425149917603,
+              "3": 1
+            },
+            "source": "AUTO",
+            "entities": [],
+            "kind": "semantic",
+            "reinforcementCount": 1,
+            "relatedMemoryIds": [],
+            "reinforcedImportance": 0.7,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
             "id": "ad000000-0000-4000-8000-000000000002",
             "characterId": "a1000000-0000-4000-8000-000000000002",
             "content": "Riya recalls the harbour.",
@@ -422,6 +448,46 @@
             "fileStatus": "ok",
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "f0000003-0000-4000-8000-000000000003",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "sha256": "1065ee92208d16fbd02af1041248cb76ee38cdb68c7c2d89e4facac052b41d05",
+            "originalFilename": "field-notes.txt",
+            "mimeType": "text/plain",
+            "size": 62,
+            "isPlainText": true,
+            "linkedTo": [
+              "c1000000-0000-4000-8000-000000000001"
+            ],
+            "source": "UPLOADED",
+            "category": "DOCUMENT",
+            "tags": [
+              "a5000000-0000-4000-8000-000000000001"
+            ],
+            "folderPath": "/notes",
+            "storageKey": "mount-blob:be000000-0000-4000-8000-000000000001:b585b1ed-f355-4c48-b597-9ef47812ef8e",
+            "fileStatus": "ok",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "f0000004-0000-4000-8000-000000000004",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "sha256": "ae826f5fa6cbb10857b729f7dae5c6384782072c4b01c68fb964da499d2303f6",
+            "originalFilename": "atlas-plates.bin",
+            "mimeType": "application/octet-stream",
+            "size": 3400000,
+            "linkedTo": [],
+            "source": "UPLOADED",
+            "category": "DOCUMENT",
+            "tags": [],
+            "projectId": "a3000000-0000-4000-8000-000000000001",
+            "folderPath": "/",
+            "storageKey": "mount-blob:be000000-0000-4000-8000-000000000001:64c92c5e-dccf-42f7-b1a4-cc44264121ed",
+            "fileStatus": "ok",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
           }
         ],
         "promptTemplates": [
@@ -436,6 +502,18 @@
             "tags": [
               "a5000000-0000-4000-8000-000000000002"
             ],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "b2000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Builtin Prompt",
+            "content": "Seeded on every instance.",
+            "description": "The built-in fixture prompt template.",
+            "isBuiltIn": true,
+            "category": "COMPANION",
+            "tags": [],
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
@@ -476,9 +554,9 @@
           {
             "id": "a3000000-0000-4000-8000-000000000001",
             "name": "The Voyage",
-            "officialMountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "officialMountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:45.011Z",
+            "updatedAt": "2026-08-05T15:47:32.571Z",
             "description": "A fixture project.",
             "instructions": null,
             "state": {},
@@ -497,9 +575,9 @@
           {
             "id": "a2000000-0000-4000-8000-000000000001",
             "name": "The Crew",
-            "officialMountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "officialMountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:45.022Z",
+            "updatedAt": "2026-08-05T15:47:32.584Z",
             "description": "A fixture group.",
             "instructions": null,
             "state": {}
@@ -565,6 +643,18 @@
               "retries": 2
             },
             "enabled": true,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "b3000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "pluginName": "qtap-plugin-mcp",
+            "config": {
+              "servers": "[]",
+              "discoveryTimeout": 45
+            },
+            "enabled": false,
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
@@ -742,6 +832,26 @@
           {
             "key": "lanternBackgroundsMountPointId",
             "value": "\"66666666-7777-4888-8999-aaaaaaaaaaaa\""
+          },
+          {
+            "key": "userUploadsMountPointId",
+            "value": "be000000-0000-4000-8000-000000000001"
+          },
+          {
+            "key": "memoryRecall",
+            "value": "{\"scopePolicy\":\"down-weight\",\"expandRelated\":true}"
+          },
+          {
+            "key": "dataRetention",
+            "value": "{\"staleChatDays\":45}"
+          },
+          {
+            "key": "lastMaintenanceSweepAt",
+            "value": "1740000000000"
+          },
+          {
+            "key": "highest_app_version",
+            "value": "\"4.8.0\""
           }
         ],
         "embeddingStatus": [
@@ -754,7 +864,7 @@
             "status": "EMBEDDED",
             "embeddedAt": "2026-03-01T00:00:00.000Z",
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:45.135Z"
+            "updatedAt": "2026-08-05T15:47:32.655Z"
           }
         ],
         "conversationChunks": [
@@ -792,7 +902,7 @@
             "includeBigrams": true,
             "fittedAt": "2026-03-01T00:00:00.000Z",
             "createdAt": "2026-03-01T00:00:00.000Z",
-            "updatedAt": "2026-08-03T20:53:45.133Z"
+            "updatedAt": "2026-08-05T15:47:32.653Z"
           }
         ],
         "vectorIndexMetas": [
@@ -801,8 +911,8 @@
             "characterId": "a1000000-0000-4000-8000-000000000001",
             "version": 1,
             "dimensions": 4,
-            "createdAt": "2026-08-03T20:53:45.138Z",
-            "updatedAt": "2026-08-03T20:53:45.138Z"
+            "createdAt": "2026-08-05T15:47:32.657Z",
+            "updatedAt": "2026-08-05T15:47:32.657Z"
           }
         ],
         "vectorEntries": [
@@ -815,12 +925,12 @@
               0.501968502998352,
               0.75
             ],
-            "createdAt": "2026-08-03T20:53:45.139Z"
+            "createdAt": "2026-08-05T15:47:32.657Z"
           }
         ],
         "docMountPoints": [
           {
-            "id": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "name": "Lorian Character Vault",
             "basePath": "",
             "mountType": "database",
@@ -836,11 +946,11 @@
             "fileCount": 11,
             "chunkCount": 7,
             "totalSizeBytes": 453,
-            "createdAt": "2026-08-03T20:53:44.842Z",
-            "updatedAt": "2026-08-03T20:53:45.124Z"
+            "createdAt": "2026-08-05T15:47:32.441Z",
+            "updatedAt": "2026-08-05T15:47:32.646Z"
           },
           {
-            "id": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "name": "Riya Character Vault",
             "basePath": "",
             "mountType": "database",
@@ -856,11 +966,11 @@
             "fileCount": 0,
             "chunkCount": 0,
             "totalSizeBytes": 0,
-            "createdAt": "2026-08-03T20:53:44.971Z",
-            "updatedAt": "2026-08-03T20:53:44.971Z"
+            "createdAt": "2026-08-05T15:47:32.533Z",
+            "updatedAt": "2026-08-05T15:47:32.533Z"
           },
           {
-            "id": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "name": "Project Files: The Voyage",
             "basePath": "",
             "mountType": "database",
@@ -876,11 +986,11 @@
             "fileCount": 0,
             "chunkCount": 0,
             "totalSizeBytes": 0,
-            "createdAt": "2026-08-03T20:53:45.010Z",
-            "updatedAt": "2026-08-03T20:53:45.010Z"
+            "createdAt": "2026-08-05T15:47:32.571Z",
+            "updatedAt": "2026-08-05T15:47:32.571Z"
           },
           {
-            "id": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "name": "Group Files: The Crew",
             "basePath": "",
             "mountType": "database",
@@ -896,262 +1006,321 @@
             "fileCount": 0,
             "chunkCount": 0,
             "totalSizeBytes": 0,
-            "createdAt": "2026-08-03T20:53:45.021Z",
-            "updatedAt": "2026-08-03T20:53:45.021Z"
+            "createdAt": "2026-08-05T15:47:32.581Z",
+            "updatedAt": "2026-08-05T15:47:32.581Z"
+          },
+          {
+            "id": "bd000000-0000-4000-8000-000000000001",
+            "name": "Field Library",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "documents",
+            "includePatterns": "[]",
+            "excludePatterns": "[]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 0,
+            "chunkCount": 0,
+            "totalSizeBytes": 0,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "be000000-0000-4000-8000-000000000001",
+            "name": "Quilltap Uploads",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "documents",
+            "includePatterns": "[]",
+            "excludePatterns": "[]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 2,
+            "chunkCount": 0,
+            "totalSizeBytes": 3400062,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-08-05T15:47:32.683Z"
           }
         ],
         "docMountFolders": [
           {
-            "id": "28581c60-c63d-4ea0-81af-1846e2a949e8",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "aa427833-5dfb-4ec5-a5b8-e6ff63d0a94a",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "Prompts",
             "path": "Prompts",
-            "createdAt": "2026-08-03T20:53:44.852Z",
-            "updatedAt": "2026-08-03T20:53:44.852Z"
+            "createdAt": "2026-08-05T15:47:32.447Z",
+            "updatedAt": "2026-08-05T15:47:32.447Z"
           },
           {
-            "id": "e04d30b8-248f-4785-b2cd-9bec04f13026",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "f36cf086-fadc-4140-bacd-c75f0d3423f6",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "Scenarios",
             "path": "Scenarios",
-            "createdAt": "2026-08-03T20:53:44.853Z",
-            "updatedAt": "2026-08-03T20:53:44.853Z"
+            "createdAt": "2026-08-05T15:47:32.448Z",
+            "updatedAt": "2026-08-05T15:47:32.448Z"
           },
           {
-            "id": "0e96c2f6-e7b7-4c82-8449-9ea2ddbd3f2c",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "7652852c-c709-471e-a173-3f76674da7e1",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "Wardrobe",
             "path": "Wardrobe",
-            "createdAt": "2026-08-03T20:53:44.853Z",
-            "updatedAt": "2026-08-03T20:53:44.853Z"
+            "createdAt": "2026-08-05T15:47:32.448Z",
+            "updatedAt": "2026-08-05T15:47:32.448Z"
           },
           {
-            "id": "d02dfa1a-3afd-4e25-9a62-545412615c9b",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "28ed88b8-405a-47f1-8e90-31148afb087d",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "Outfits",
             "path": "Outfits",
-            "createdAt": "2026-08-03T20:53:44.854Z",
-            "updatedAt": "2026-08-03T20:53:44.854Z"
+            "createdAt": "2026-08-05T15:47:32.449Z",
+            "updatedAt": "2026-08-05T15:47:32.449Z"
           },
           {
-            "id": "d77b593d-825a-4d5f-838b-015184211595",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "af125afa-cec5-41b1-ac3d-b5be5bf81ad6",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "lore",
             "path": "lore",
-            "createdAt": "2026-08-03T20:53:44.854Z",
-            "updatedAt": "2026-08-03T20:53:44.854Z"
+            "createdAt": "2026-08-05T15:47:32.449Z",
+            "updatedAt": "2026-08-05T15:47:32.449Z"
           },
           {
-            "id": "09cf3c66-8351-48a3-9f36-98f260b2a91c",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "7ba1bf75-f18d-435e-ab53-44ffd2cd43e1",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "images",
             "path": "images",
-            "createdAt": "2026-08-03T20:53:44.855Z",
-            "updatedAt": "2026-08-03T20:53:44.855Z"
+            "createdAt": "2026-08-05T15:47:32.450Z",
+            "updatedAt": "2026-08-05T15:47:32.450Z"
           },
           {
-            "id": "06e8bb98-57bf-4270-a801-9d0651a4ac16",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "37de464d-a519-4ffc-9478-6c435cc28e46",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "files",
             "path": "files",
-            "createdAt": "2026-08-03T20:53:44.856Z",
-            "updatedAt": "2026-08-03T20:53:44.856Z"
+            "createdAt": "2026-08-05T15:47:32.450Z",
+            "updatedAt": "2026-08-05T15:47:32.450Z"
           },
           {
-            "id": "4349d6b3-2cb4-43c4-b2be-984e40c5352d",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "ec734e6f-25bd-4cbb-a50b-9e63ebbef54d",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "Prompts",
             "path": "Prompts",
-            "createdAt": "2026-08-03T20:53:44.972Z",
-            "updatedAt": "2026-08-03T20:53:44.972Z"
+            "createdAt": "2026-08-05T15:47:32.533Z",
+            "updatedAt": "2026-08-05T15:47:32.533Z"
           },
           {
-            "id": "032e2130-0ccf-4ce7-87ec-e457a4918f68",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "95f15422-43bc-48ce-8748-a3d08fd138d3",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "Scenarios",
             "path": "Scenarios",
-            "createdAt": "2026-08-03T20:53:44.972Z",
-            "updatedAt": "2026-08-03T20:53:44.972Z"
+            "createdAt": "2026-08-05T15:47:32.534Z",
+            "updatedAt": "2026-08-05T15:47:32.534Z"
           },
           {
-            "id": "e2657251-6b86-483e-b6be-ece60181b1eb",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "02d1002b-87e4-4521-9c63-ea0652367f5f",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "Wardrobe",
             "path": "Wardrobe",
-            "createdAt": "2026-08-03T20:53:44.973Z",
-            "updatedAt": "2026-08-03T20:53:44.973Z"
+            "createdAt": "2026-08-05T15:47:32.534Z",
+            "updatedAt": "2026-08-05T15:47:32.534Z"
           },
           {
-            "id": "13cb60b7-1ab5-449f-a4bb-9a5c7f4b5ac5",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "8c194973-b6a0-450d-9654-37136df182de",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "Outfits",
             "path": "Outfits",
-            "createdAt": "2026-08-03T20:53:44.973Z",
-            "updatedAt": "2026-08-03T20:53:44.973Z"
+            "createdAt": "2026-08-05T15:47:32.535Z",
+            "updatedAt": "2026-08-05T15:47:32.535Z"
           },
           {
-            "id": "f29cedec-8335-40fd-a5de-c06d92d9fbcf",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "be53df70-8601-4fa9-8319-52721a7c631f",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "lore",
             "path": "lore",
-            "createdAt": "2026-08-03T20:53:44.974Z",
-            "updatedAt": "2026-08-03T20:53:44.974Z"
+            "createdAt": "2026-08-05T15:47:32.535Z",
+            "updatedAt": "2026-08-05T15:47:32.535Z"
           },
           {
-            "id": "02957a1a-2b92-42c0-93de-300afd5f1a40",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "e1b9b07d-57b1-403b-a62c-5026d30c8587",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "images",
             "path": "images",
-            "createdAt": "2026-08-03T20:53:44.974Z",
-            "updatedAt": "2026-08-03T20:53:44.974Z"
+            "createdAt": "2026-08-05T15:47:32.536Z",
+            "updatedAt": "2026-08-05T15:47:32.536Z"
           },
           {
-            "id": "76f82fa5-bc92-4987-9922-715da2695229",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "8e605961-111e-4b54-aa03-b7e10c5ea59d",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "parentId": null,
             "name": "files",
             "path": "files",
-            "createdAt": "2026-08-03T20:53:44.975Z",
-            "updatedAt": "2026-08-03T20:53:44.975Z"
+            "createdAt": "2026-08-05T15:47:32.536Z",
+            "updatedAt": "2026-08-05T15:47:32.536Z"
           },
           {
-            "id": "562b974a-b87f-4cea-bc71-32f1751f32b1",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "63df5a37-003e-4d44-946d-b611ae06c9e4",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "parentId": null,
             "name": "notes",
             "path": "notes",
-            "createdAt": "2026-08-03T20:53:45.114Z",
-            "updatedAt": "2026-08-03T20:53:45.114Z"
+            "createdAt": "2026-08-05T15:47:32.637Z",
+            "updatedAt": "2026-08-05T15:47:32.637Z"
+          },
+          {
+            "id": "a5c5c56a-ea2e-4815-9e8d-14476fcbe303",
+            "mountPointId": "be000000-0000-4000-8000-000000000001",
+            "parentId": null,
+            "name": "uploads",
+            "path": "uploads",
+            "createdAt": "2026-08-05T15:47:32.662Z",
+            "updatedAt": "2026-08-05T15:47:32.662Z"
           }
         ],
         "docMountFiles": [
           {
-            "id": "44c4a2de-5bbc-43ce-959f-0f626113b437",
+            "id": "3279457b-b5a1-4315-af4c-a90663f24163",
             "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "fileSizeBytes": 0,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.857Z",
-            "updatedAt": "2026-08-03T20:53:44.857Z"
+            "createdAt": "2026-08-05T15:47:32.453Z",
+            "updatedAt": "2026-08-05T15:47:32.453Z"
           },
           {
-            "id": "3754c66b-65be-477d-a800-65f4158467b7",
-            "sha256": "6af3e8b0a140e9f104d3291f427f569887f9b397d3f5a45449947555a58e59f1",
-            "fileSizeBytes": 128,
-            "fileType": "json",
-            "source": "database",
-            "createdAt": "2026-08-03T20:53:44.949Z",
-            "updatedAt": "2026-08-03T20:53:44.949Z"
-          },
-          {
-            "id": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
+            "id": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
             "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
             "fileSizeBytes": 2,
             "fileType": "json",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.952Z",
-            "updatedAt": "2026-08-03T20:53:44.952Z"
+            "createdAt": "2026-08-05T15:47:32.514Z",
+            "updatedAt": "2026-08-05T15:47:32.514Z"
           },
           {
-            "id": "1d018ad6-1f7f-4996-a2ba-5442fa2121e8",
+            "id": "50e1dd2f-b1d4-47fd-944c-9423ae2a2d01",
             "sha256": "a4d58ef379824e554a0d2027315010633a1ec8043145d047249a318dbfe2920b",
             "fileSizeBytes": 73,
             "fileType": "json",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.954Z",
-            "updatedAt": "2026-08-03T20:53:44.954Z"
+            "createdAt": "2026-08-05T15:47:32.517Z",
+            "updatedAt": "2026-08-05T15:47:32.517Z"
           },
           {
-            "id": "eeaa8858-0060-4a4f-a6f3-bb2e07065a84",
+            "id": "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce",
             "sha256": "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
             "fileSizeBytes": 132,
             "fileType": "json",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.956Z",
-            "updatedAt": "2026-08-03T20:53:44.956Z"
+            "createdAt": "2026-08-05T15:47:32.519Z",
+            "updatedAt": "2026-08-05T15:47:32.519Z"
           },
           {
-            "id": "fe3780dd-1b33-4048-a9b3-7d84928f1542",
+            "id": "1d16396b-5024-4a98-9b19-cf4f598c96a1",
             "sha256": "54ad9d378acdac9ea0ae643724ef2ab3e77ab961358a1b901e53213facab6694",
             "fileSizeBytes": 22,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.960Z",
-            "updatedAt": "2026-08-03T20:53:44.960Z"
+            "createdAt": "2026-08-05T15:47:32.523Z",
+            "updatedAt": "2026-08-05T15:47:32.523Z"
           },
           {
-            "id": "d4843dae-5bf2-4d14-a30b-6f1602d5ff1f",
+            "id": "06d2d56a-d8d4-46ba-953b-d13b7141f7bf",
             "sha256": "d3a87080d6e3ee8b060ccf3ccbffe0dd0aa029e6d219c436fc96f5c2231ef7bf",
             "fileSizeBytes": 20,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:44.993Z",
-            "updatedAt": "2026-08-03T20:53:44.993Z"
+            "createdAt": "2026-08-05T15:47:32.555Z",
+            "updatedAt": "2026-08-05T15:47:32.555Z"
           },
           {
-            "id": "bd3a6edf-3ed0-4f98-8345-4c14fcc16058",
+            "id": "ad6a20a8-bf88-488b-bc02-db548d72bc54",
             "sha256": "f6d7255ee4ce7e63c64777055179749418556dcfda8be14895c6cab213abf291",
             "fileSizeBytes": 272,
             "fileType": "json",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:45.012Z",
-            "updatedAt": "2026-08-03T20:53:45.012Z"
+            "createdAt": "2026-08-05T15:47:32.572Z",
+            "updatedAt": "2026-08-05T15:47:32.572Z"
           },
           {
-            "id": "75947951-4695-45b8-a747-41a5ac6e21d4",
+            "id": "7fda7a37-2b31-4bbd-b4d7-f2fc9abd0e52",
             "sha256": "5619f6262d71257645fceddf17a79edec09da17b080ffbfd29b4036c2c68c995",
             "fileSizeBytes": 18,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:45.014Z",
-            "updatedAt": "2026-08-03T20:53:45.014Z"
+            "createdAt": "2026-08-05T15:47:32.574Z",
+            "updatedAt": "2026-08-05T15:47:32.574Z"
           },
           {
-            "id": "dcd5ffc0-8e69-46d3-b25a-93d23e47c9b4",
+            "id": "3c3023ae-f810-43b6-81b1-17af505e82ef",
             "sha256": "eaf514699d8adacadecd4dcc7b6bd17fb61da924cb03496386d04f4316ecb3d5",
             "fileSizeBytes": 16,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:45.024Z",
-            "updatedAt": "2026-08-03T20:53:45.024Z"
+            "createdAt": "2026-08-05T15:47:32.586Z",
+            "updatedAt": "2026-08-05T15:47:32.586Z"
           },
           {
-            "id": "0517b3a3-7f4a-49e6-9f0e-7890411f85ea",
+            "id": "37e06db0-73ad-4854-b438-96a19cf7988e",
             "sha256": "5e86eadb6a9bf755386bfa58e6e5042a9e81625afe12589c6b23c4853a964c75",
             "fileSizeBytes": 201,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:45.047Z",
-            "updatedAt": "2026-08-03T20:53:45.047Z"
+            "createdAt": "2026-08-05T15:47:32.604Z",
+            "updatedAt": "2026-08-05T15:47:32.604Z"
           },
           {
-            "id": "ccb13c97-6360-4c24-9f12-107495af7d6f",
+            "id": "6380c821-5c51-40c8-8121-946120e889ef",
             "sha256": "e7bc84837f97ba390837b115d8b7321581e6e9d96cd1cb47523959f34c082e7e",
             "fileSizeBytes": 23,
             "fileType": "markdown",
             "source": "database",
-            "createdAt": "2026-08-03T20:53:45.115Z",
-            "updatedAt": "2026-08-03T20:53:45.115Z"
+            "createdAt": "2026-08-05T15:47:32.638Z",
+            "updatedAt": "2026-08-05T15:47:32.638Z"
+          },
+          {
+            "id": "83da9f47-b745-4753-9a21-09f5b7862972",
+            "sha256": "1065ee92208d16fbd02af1041248cb76ee38cdb68c7c2d89e4facac052b41d05",
+            "fileSizeBytes": 62,
+            "fileType": "blob",
+            "source": "database",
+            "createdAt": "2026-08-05T15:47:32.662Z",
+            "updatedAt": "2026-08-05T15:47:32.662Z"
+          },
+          {
+            "id": "f2c42b70-b29d-4daf-a3f9-68684042537c",
+            "sha256": "ae826f5fa6cbb10857b729f7dae5c6384782072c4b01c68fb964da499d2303f6",
+            "fileSizeBytes": 3400000,
+            "fileType": "blob",
+            "source": "database",
+            "createdAt": "2026-08-05T15:47:32.671Z",
+            "updatedAt": "2026-08-05T15:47:32.671Z"
           }
         ],
         "docMountFileLinks": [
           {
-            "id": "e4dcc7f7-c3b8-43ef-89df-dc0bf6192c0b",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "e8cb4389-d3ef-4fc6-a409-7877b058a005",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "identity.md",
             "fileName": "identity.md",
             "folderId": null,
@@ -1170,15 +1339,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.958Z",
-            "createdAt": "2026-08-03T20:53:44.857Z",
-            "updatedAt": "2026-08-03T20:53:44.960Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.522Z",
+            "createdAt": "2026-08-05T15:47:32.453Z",
+            "updatedAt": "2026-08-05T15:47:32.523Z"
           },
           {
-            "id": "a0a8b4e6-7773-4ce9-a738-367129f2613d",
-            "fileId": "fe3780dd-1b33-4048-a9b3-7d84928f1542",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "07294f8f-f258-4c5e-ac1b-95029dfb10b5",
+            "fileId": "1d16396b-5024-4a98-9b19-cf4f598c96a1",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "description.md",
             "fileName": "description.md",
             "folderId": null,
@@ -1197,15 +1366,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.960Z",
-            "createdAt": "2026-08-03T20:53:44.941Z",
-            "updatedAt": "2026-08-03T20:53:44.961Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.523Z",
+            "createdAt": "2026-08-05T15:47:32.502Z",
+            "updatedAt": "2026-08-05T15:47:32.524Z"
           },
           {
-            "id": "ab4e099f-40ee-4143-9348-16bcfb6f4013",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "3beb293f-7554-47a4-a471-623304c11bd8",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "manifesto.md",
             "fileName": "manifesto.md",
             "folderId": null,
@@ -1224,15 +1393,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.962Z",
-            "createdAt": "2026-08-03T20:53:44.943Z",
-            "updatedAt": "2026-08-03T20:53:44.963Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.525Z",
+            "createdAt": "2026-08-05T15:47:32.504Z",
+            "updatedAt": "2026-08-05T15:47:32.526Z"
           },
           {
-            "id": "2b01cad9-ad3d-4329-b79b-5a42f8e3f131",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "04d1fe47-0d46-468b-a4a2-558610a70587",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "personality.md",
             "fileName": "personality.md",
             "folderId": null,
@@ -1251,15 +1420,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.964Z",
-            "createdAt": "2026-08-03T20:53:44.945Z",
-            "updatedAt": "2026-08-03T20:53:44.965Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.526Z",
+            "createdAt": "2026-08-05T15:47:32.505Z",
+            "updatedAt": "2026-08-05T15:47:32.528Z"
           },
           {
-            "id": "7b1f4a35-d3c2-4a96-8d80-1927638eaa6a",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "4de8ab52-9cd5-4831-a580-1a9462a3d13f",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "physical-description.md",
             "fileName": "physical-description.md",
             "folderId": null,
@@ -1278,15 +1447,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.946Z",
-            "createdAt": "2026-08-03T20:53:44.946Z",
-            "updatedAt": "2026-08-03T20:53:44.948Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.507Z",
+            "createdAt": "2026-08-05T15:47:32.507Z",
+            "updatedAt": "2026-08-05T15:47:32.509Z"
           },
           {
-            "id": "840bf141-a8df-44ef-80bc-6179e429a621",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "26ae1bd4-af41-4bef-86ff-b89b986481f8",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "example-dialogues.md",
             "fileName": "example-dialogues.md",
             "folderId": null,
@@ -1305,15 +1474,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.965Z",
-            "createdAt": "2026-08-03T20:53:44.948Z",
-            "updatedAt": "2026-08-03T20:53:44.967Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.528Z",
+            "createdAt": "2026-08-05T15:47:32.509Z",
+            "updatedAt": "2026-08-05T15:47:32.529Z"
           },
           {
-            "id": "b21ea813-cc6d-46c8-bbbb-6588eb5fbd5e",
-            "fileId": "eeaa8858-0060-4a4f-a6f3-bb2e07065a84",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "b9b46947-90a5-41cb-be95-4c00181fc23c",
+            "fileId": "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "properties.json",
             "fileName": "properties.json",
             "folderId": null,
@@ -1332,15 +1501,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.956Z",
-            "createdAt": "2026-08-03T20:53:44.949Z",
-            "updatedAt": "2026-08-03T20:53:44.957Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.519Z",
+            "createdAt": "2026-08-05T15:47:32.512Z",
+            "updatedAt": "2026-08-05T15:47:32.521Z"
           },
           {
-            "id": "805e973f-5605-4d43-9a8c-f28964742f0a",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "8bf48022-9c7e-4de5-b6bb-d6c0fd76fcff",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "metadata.json",
             "fileName": "metadata.json",
             "folderId": null,
@@ -1359,15 +1528,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.952Z",
-            "createdAt": "2026-08-03T20:53:44.952Z",
-            "updatedAt": "2026-08-03T20:53:44.953Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.514Z",
+            "createdAt": "2026-08-05T15:47:32.514Z",
+            "updatedAt": "2026-08-05T15:47:32.516Z"
           },
           {
-            "id": "5a2bc918-0a08-4029-87df-8d4bd971c3a2",
-            "fileId": "1d018ad6-1f7f-4996-a2ba-5442fa2121e8",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "4c412712-0673-4ea2-9d92-9edffcc28862",
+            "fileId": "50e1dd2f-b1d4-47fd-944c-9423ae2a2d01",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "physical-prompts.json",
             "fileName": "physical-prompts.json",
             "folderId": null,
@@ -1386,15 +1555,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.954Z",
-            "createdAt": "2026-08-03T20:53:44.954Z",
-            "updatedAt": "2026-08-03T20:53:44.955Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.517Z",
+            "createdAt": "2026-08-05T15:47:32.517Z",
+            "updatedAt": "2026-08-05T15:47:32.518Z"
           },
           {
-            "id": "3e6b912f-67a9-4147-ba2a-ce0b92b2d023",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "dd38c357-28a5-4854-820f-b589cf4d30ac",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "identity.md",
             "fileName": "identity.md",
             "folderId": null,
@@ -1413,15 +1582,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.991Z",
-            "createdAt": "2026-08-03T20:53:44.975Z",
-            "updatedAt": "2026-08-03T20:53:44.992Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.554Z",
+            "createdAt": "2026-08-05T15:47:32.537Z",
+            "updatedAt": "2026-08-05T15:47:32.555Z"
           },
           {
-            "id": "4869b51c-9db1-48e6-a4f3-845c6b54909d",
-            "fileId": "d4843dae-5bf2-4d14-a30b-6f1602d5ff1f",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "951078a1-19b7-47bc-a306-8fd568499096",
+            "fileId": "06d2d56a-d8d4-46ba-953b-d13b7141f7bf",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "description.md",
             "fileName": "description.md",
             "folderId": null,
@@ -1440,15 +1609,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.993Z",
-            "createdAt": "2026-08-03T20:53:44.977Z",
-            "updatedAt": "2026-08-03T20:53:44.994Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.555Z",
+            "createdAt": "2026-08-05T15:47:32.538Z",
+            "updatedAt": "2026-08-05T15:47:32.556Z"
           },
           {
-            "id": "fa0e275a-e8db-4982-9266-6eaa139abd2e",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "8b4844aa-a615-417c-b427-ce03ed2008f8",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "manifesto.md",
             "fileName": "manifesto.md",
             "folderId": null,
@@ -1467,15 +1636,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.994Z",
-            "createdAt": "2026-08-03T20:53:44.978Z",
-            "updatedAt": "2026-08-03T20:53:44.995Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.557Z",
+            "createdAt": "2026-08-05T15:47:32.540Z",
+            "updatedAt": "2026-08-05T15:47:32.558Z"
           },
           {
-            "id": "77f1252f-844e-4ba5-8c89-9d02c3c628e3",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "2c3c9c4d-66dc-43fb-a053-6a0bac3b08a9",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "personality.md",
             "fileName": "personality.md",
             "folderId": null,
@@ -1494,15 +1663,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.996Z",
-            "createdAt": "2026-08-03T20:53:44.980Z",
-            "updatedAt": "2026-08-03T20:53:44.997Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.558Z",
+            "createdAt": "2026-08-05T15:47:32.541Z",
+            "updatedAt": "2026-08-05T15:47:32.559Z"
           },
           {
-            "id": "fbebda77-75f9-4a47-970a-88199b92b136",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "39c7cca0-da15-493f-a4bb-581acf20e0a3",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "physical-description.md",
             "fileName": "physical-description.md",
             "folderId": null,
@@ -1521,15 +1690,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.981Z",
-            "createdAt": "2026-08-03T20:53:44.981Z",
-            "updatedAt": "2026-08-03T20:53:44.982Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.543Z",
+            "createdAt": "2026-08-05T15:47:32.543Z",
+            "updatedAt": "2026-08-05T15:47:32.544Z"
           },
           {
-            "id": "0a2ccc4f-f0f1-4914-a92b-3d053c7cf4d9",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "e71508cd-7db6-4271-8833-206d2cb398d6",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "example-dialogues.md",
             "fileName": "example-dialogues.md",
             "folderId": null,
@@ -1548,15 +1717,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.997Z",
-            "createdAt": "2026-08-03T20:53:44.983Z",
-            "updatedAt": "2026-08-03T20:53:44.998Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.560Z",
+            "createdAt": "2026-08-05T15:47:32.545Z",
+            "updatedAt": "2026-08-05T15:47:32.561Z"
           },
           {
-            "id": "10d3b38b-ce2b-4cc5-8944-7e19ece035aa",
-            "fileId": "eeaa8858-0060-4a4f-a6f3-bb2e07065a84",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "eef1a777-e84c-493f-a0d1-65391950f2ec",
+            "fileId": "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "properties.json",
             "fileName": "properties.json",
             "folderId": null,
@@ -1575,15 +1744,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.989Z",
-            "createdAt": "2026-08-03T20:53:44.984Z",
-            "updatedAt": "2026-08-03T20:53:44.991Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.552Z",
+            "createdAt": "2026-08-05T15:47:32.546Z",
+            "updatedAt": "2026-08-05T15:47:32.553Z"
           },
           {
-            "id": "59acaee7-673a-4bdf-97bd-79f2a30ad604",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "e79ebc58-be80-46ac-a367-5016c3b709f2",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "metadata.json",
             "fileName": "metadata.json",
             "folderId": null,
@@ -1602,15 +1771,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.986Z",
-            "createdAt": "2026-08-03T20:53:44.986Z",
-            "updatedAt": "2026-08-03T20:53:44.987Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.548Z",
+            "createdAt": "2026-08-05T15:47:32.548Z",
+            "updatedAt": "2026-08-05T15:47:32.549Z"
           },
           {
-            "id": "d070e3f0-52df-4f94-9d48-fae585a38de7",
-            "fileId": "1d018ad6-1f7f-4996-a2ba-5442fa2121e8",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "a6eb4021-7be4-4a24-871a-6c2d8dc85574",
+            "fileId": "50e1dd2f-b1d4-47fd-944c-9423ae2a2d01",
+            "linkGroupId": null,
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "relativePath": "physical-prompts.json",
             "fileName": "physical-prompts.json",
             "folderId": null,
@@ -1629,15 +1798,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:44.988Z",
-            "createdAt": "2026-08-03T20:53:44.988Z",
-            "updatedAt": "2026-08-03T20:53:44.988Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.550Z",
+            "createdAt": "2026-08-05T15:47:32.550Z",
+            "updatedAt": "2026-08-05T15:47:32.551Z"
           },
           {
-            "id": "fe2fcb92-69bc-4d72-a429-daa6a571c052",
-            "fileId": "bd3a6edf-3ed0-4f98-8345-4c14fcc16058",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "4e230ac5-d060-4a81-b9ed-7cab51874993",
+            "fileId": "ad6a20a8-bf88-488b-bc02-db548d72bc54",
+            "linkGroupId": null,
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "relativePath": "properties.json",
             "fileName": "properties.json",
             "folderId": null,
@@ -1656,15 +1825,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.012Z",
-            "createdAt": "2026-08-03T20:53:45.012Z",
-            "updatedAt": "2026-08-03T20:53:45.013Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.572Z",
+            "createdAt": "2026-08-05T15:47:32.572Z",
+            "updatedAt": "2026-08-05T15:47:32.573Z"
           },
           {
-            "id": "300f0a8d-358e-4a2f-8f60-f0f2d7920065",
-            "fileId": "75947951-4695-45b8-a747-41a5ac6e21d4",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "be16031b-5dc1-41e7-b72a-add850a9c7cc",
+            "fileId": "7fda7a37-2b31-4bbd-b4d7-f2fc9abd0e52",
+            "linkGroupId": null,
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "relativePath": "description.md",
             "fileName": "description.md",
             "folderId": null,
@@ -1683,15 +1852,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.014Z",
-            "createdAt": "2026-08-03T20:53:45.014Z",
-            "updatedAt": "2026-08-03T20:53:45.016Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.574Z",
+            "createdAt": "2026-08-05T15:47:32.574Z",
+            "updatedAt": "2026-08-05T15:47:32.576Z"
           },
           {
-            "id": "56cc09b4-0cc8-4b35-af43-9f8d2146b136",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "7e735579-2c8f-49ee-a85e-cb35890887f5",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "relativePath": "instructions.md",
             "fileName": "instructions.md",
             "folderId": null,
@@ -1710,15 +1879,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.017Z",
-            "createdAt": "2026-08-03T20:53:45.017Z",
-            "updatedAt": "2026-08-03T20:53:45.018Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.576Z",
+            "createdAt": "2026-08-05T15:47:32.576Z",
+            "updatedAt": "2026-08-05T15:47:32.578Z"
           },
           {
-            "id": "69dcf76c-bc9f-4c22-a261-ffebc9b5024c",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "2004a19f-f7f3-4321-a25a-877ae1789921",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
+            "linkGroupId": null,
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "relativePath": "state.json",
             "fileName": "state.json",
             "folderId": null,
@@ -1737,15 +1906,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.018Z",
-            "createdAt": "2026-08-03T20:53:45.018Z",
-            "updatedAt": "2026-08-03T20:53:45.019Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.578Z",
+            "createdAt": "2026-08-05T15:47:32.578Z",
+            "updatedAt": "2026-08-05T15:47:32.579Z"
           },
           {
-            "id": "aa4bb9c2-de65-4d24-b1e1-67bb5a7aae17",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "150be5a0-c7de-4a43-8653-a16bd5329150",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
+            "linkGroupId": null,
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "relativePath": "properties.json",
             "fileName": "properties.json",
             "folderId": null,
@@ -1764,15 +1933,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.022Z",
-            "createdAt": "2026-08-03T20:53:45.022Z",
-            "updatedAt": "2026-08-03T20:53:45.023Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.585Z",
+            "createdAt": "2026-08-05T15:47:32.585Z",
+            "updatedAt": "2026-08-05T15:47:32.586Z"
           },
           {
-            "id": "ce22c54f-21ef-454c-8f2b-a29d02eaaa2f",
-            "fileId": "dcd5ffc0-8e69-46d3-b25a-93d23e47c9b4",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "8aee9de9-c703-40ed-bfb1-2b14b9eebf45",
+            "fileId": "3c3023ae-f810-43b6-81b1-17af505e82ef",
+            "linkGroupId": null,
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "relativePath": "description.md",
             "fileName": "description.md",
             "folderId": null,
@@ -1791,15 +1960,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.024Z",
-            "createdAt": "2026-08-03T20:53:45.024Z",
-            "updatedAt": "2026-08-03T20:53:45.026Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.586Z",
+            "createdAt": "2026-08-05T15:47:32.586Z",
+            "updatedAt": "2026-08-05T15:47:32.588Z"
           },
           {
-            "id": "efbfad6e-a1fb-4c19-9c79-5ef550c93eed",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "22899ef5-fd2f-46a7-ba22-41008d60e323",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
+            "linkGroupId": null,
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "relativePath": "instructions.md",
             "fileName": "instructions.md",
             "folderId": null,
@@ -1818,15 +1987,15 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.026Z",
-            "createdAt": "2026-08-03T20:53:45.026Z",
-            "updatedAt": "2026-08-03T20:53:45.028Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.588Z",
+            "createdAt": "2026-08-05T15:47:32.588Z",
+            "updatedAt": "2026-08-05T15:47:32.590Z"
           },
           {
-            "id": "4dddcd03-1cd9-465a-af0f-e25476d31993",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "79035a99-d3d1-44a7-b647-28c8a1f44052",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
+            "linkGroupId": null,
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "relativePath": "state.json",
             "fileName": "state.json",
             "folderId": null,
@@ -1845,18 +2014,18 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.028Z",
-            "createdAt": "2026-08-03T20:53:45.028Z",
-            "updatedAt": "2026-08-03T20:53:45.029Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.590Z",
+            "createdAt": "2026-08-05T15:47:32.590Z",
+            "updatedAt": "2026-08-05T15:47:32.591Z"
           },
           {
-            "id": "469f0b37-b24c-4b09-90ec-7b60fafd314e",
-            "fileId": "0517b3a3-7f4a-49e6-9f0e-7890411f85ea",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "44a333a1-5ab7-4315-9d5b-dfd0662153e3",
+            "fileId": "37e06db0-73ad-4854-b438-96a19cf7988e",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "Wardrobe/Travelling Coat.md",
             "fileName": "Travelling Coat.md",
-            "folderId": "0e96c2f6-e7b7-4c82-8449-9ea2ddbd3f2c",
+            "folderId": "7652852c-c709-471e-a173-3f76674da7e1",
             "originalFileName": null,
             "originalMimeType": null,
             "description": "",
@@ -1872,18 +2041,18 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.047Z",
-            "createdAt": "2026-08-03T20:53:45.047Z",
-            "updatedAt": "2026-08-03T20:53:45.052Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.604Z",
+            "createdAt": "2026-08-05T15:47:32.604Z",
+            "updatedAt": "2026-08-05T15:47:32.608Z"
           },
           {
-            "id": "24597e48-51a7-4f05-baaf-e7940f39369f",
-            "fileId": "ccb13c97-6360-4c24-9f12-107495af7d6f",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "e6f4bc21-f763-40ff-b399-f9176204352c",
+            "fileId": "6380c821-5c51-40c8-8121-946120e889ef",
+            "linkGroupId": null,
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "relativePath": "notes/intro.md",
             "fileName": "intro.md",
-            "folderId": "562b974a-b87f-4cea-bc71-32f1751f32b1",
+            "folderId": "63df5a37-003e-4d44-946d-b611ae06c9e4",
             "originalFileName": null,
             "originalMimeType": null,
             "description": "",
@@ -1899,209 +2068,262 @@
             "allowEmbed": 1,
             "allowCharacterRead": 1,
             "allowCharacterWrite": 1,
-            "lastModified": "2026-08-03T20:53:45.115Z",
-            "createdAt": "2026-08-03T20:53:45.115Z",
-            "updatedAt": "2026-08-03T20:53:45.117Z",
-            "linkGroupId": null
+            "lastModified": "2026-08-05T15:47:32.638Z",
+            "createdAt": "2026-08-05T15:47:32.638Z",
+            "updatedAt": "2026-08-05T15:47:32.640Z"
+          },
+          {
+            "id": "42c72030-a714-40b1-9d7b-e41191ff1592",
+            "fileId": "83da9f47-b745-4753-9a21-09f5b7862972",
+            "linkGroupId": null,
+            "mountPointId": "be000000-0000-4000-8000-000000000001",
+            "relativePath": "uploads/field-notes.txt",
+            "fileName": "field-notes.txt",
+            "folderId": "a5c5c56a-ea2e-4815-9e8d-14476fcbe303",
+            "originalFileName": "field-notes.txt",
+            "originalMimeType": "text/plain",
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "skipped",
+            "conversionError": null,
+            "plainTextLength": null,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-08-05T15:47:32.662Z",
+            "createdAt": "2026-08-05T15:47:32.662Z",
+            "updatedAt": "2026-08-05T15:47:32.662Z"
+          },
+          {
+            "id": "d372c277-2252-4f80-b7b5-011ccc9b3d1e",
+            "fileId": "f2c42b70-b29d-4daf-a3f9-68684042537c",
+            "linkGroupId": null,
+            "mountPointId": "be000000-0000-4000-8000-000000000001",
+            "relativePath": "uploads/atlas-plates.bin",
+            "fileName": "atlas-plates.bin",
+            "folderId": "a5c5c56a-ea2e-4815-9e8d-14476fcbe303",
+            "originalFileName": "atlas-plates.bin",
+            "originalMimeType": "application/octet-stream",
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "skipped",
+            "conversionError": null,
+            "plainTextLength": null,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-08-05T15:47:32.671Z",
+            "createdAt": "2026-08-05T15:47:32.671Z",
+            "updatedAt": "2026-08-05T15:47:32.671Z"
           }
         ],
         "docMountChunks": [
           {
-            "id": "d74ccf23-35b0-4f44-a7d1-ac146f537c15",
-            "linkId": "805e973f-5605-4d43-9a8c-f28964742f0a",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "9274b59d-1583-40b3-b2db-9e17b847707d",
+            "linkId": "8bf48022-9c7e-4de5-b6bb-d6c0fd76fcff",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "{}",
             "tokenCount": 1,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.954Z",
-            "updatedAt": "2026-08-03T20:53:44.954Z"
+            "createdAt": "2026-08-05T15:47:32.516Z",
+            "updatedAt": "2026-08-05T15:47:32.516Z"
           },
           {
-            "id": "91d2dfc7-da18-432a-98a1-6b41e349e99f",
-            "linkId": "5a2bc918-0a08-4029-87df-8d4bd971c3a2",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "9acdeba4-9765-4e69-b547-d70e11485809",
+            "linkId": "4c412712-0673-4ea2-9d92-9edffcc28862",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
             "tokenCount": 19,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.955Z",
-            "updatedAt": "2026-08-03T20:53:44.955Z"
+            "createdAt": "2026-08-05T15:47:32.518Z",
+            "updatedAt": "2026-08-05T15:47:32.518Z"
           },
           {
-            "id": "84eb7ecb-ed4f-4bc2-986b-985382db4cbc",
-            "linkId": "b21ea813-cc6d-46c8-bbbb-6588eb5fbd5e",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "6905059e-f79c-4b08-9a4c-08d30e4d1a42",
+            "linkId": "b9b46947-90a5-41cb-be95-4c00181fc23c",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
             "tokenCount": 33,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.958Z",
-            "updatedAt": "2026-08-03T20:53:44.958Z"
+            "createdAt": "2026-08-05T15:47:32.521Z",
+            "updatedAt": "2026-08-05T15:47:32.521Z"
           },
           {
-            "id": "975ad14f-f2da-445a-bd88-2a0b60b5b8b4",
-            "linkId": "a0a8b4e6-7773-4ce9-a738-367129f2613d",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "f63009e5-ff25-493b-a5ea-f1f11d078908",
+            "linkId": "07294f8f-f258-4c5e-ac1b-95029dfb10b5",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "Lorian of the fixture.",
             "tokenCount": 6,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.961Z",
-            "updatedAt": "2026-08-03T20:53:44.961Z"
+            "createdAt": "2026-08-05T15:47:32.525Z",
+            "updatedAt": "2026-08-05T15:47:32.525Z"
           },
           {
-            "id": "54b8aaf8-d8f9-43be-9ca8-ddec60d65563",
-            "linkId": "59acaee7-673a-4bdf-97bd-79f2a30ad604",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "afe046f7-1eef-4275-b400-5c68cfcc7f28",
+            "linkId": "e79ebc58-be80-46ac-a367-5016c3b709f2",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "chunkIndex": 0,
             "content": "{}",
             "tokenCount": 1,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.987Z",
-            "updatedAt": "2026-08-03T20:53:44.987Z"
+            "createdAt": "2026-08-05T15:47:32.549Z",
+            "updatedAt": "2026-08-05T15:47:32.549Z"
           },
           {
-            "id": "c5c7f0bc-1610-48cb-bb67-d34ce168e009",
-            "linkId": "d070e3f0-52df-4f94-9d48-fae585a38de7",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "68bdcfa8-a39f-4ff3-b144-f6e6e1aea8c9",
+            "linkId": "a6eb4021-7be4-4a24-871a-6c2d8dc85574",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "chunkIndex": 0,
             "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
             "tokenCount": 19,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.989Z",
-            "updatedAt": "2026-08-03T20:53:44.989Z"
+            "createdAt": "2026-08-05T15:47:32.551Z",
+            "updatedAt": "2026-08-05T15:47:32.551Z"
           },
           {
-            "id": "f5580a3c-a758-4c45-9f30-bcb448ddc77b",
-            "linkId": "10d3b38b-ce2b-4cc5-8944-7e19ece035aa",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "edfe17f2-f1c5-4079-8d90-0308ecdc8121",
+            "linkId": "eef1a777-e84c-493f-a0d1-65391950f2ec",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "chunkIndex": 0,
             "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
             "tokenCount": 33,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.991Z",
-            "updatedAt": "2026-08-03T20:53:44.991Z"
+            "createdAt": "2026-08-05T15:47:32.553Z",
+            "updatedAt": "2026-08-05T15:47:32.553Z"
           },
           {
-            "id": "17e34b53-d501-428d-b1ad-4702d831bffc",
-            "linkId": "4869b51c-9db1-48e6-a4f3-845c6b54909d",
-            "mountPointId": "cc93ed5c-b382-44b8-b272-f5b861e7f413",
+            "id": "802eab53-d447-43ce-a848-0f90f4045f28",
+            "linkId": "951078a1-19b7-47bc-a306-8fd568499096",
+            "mountPointId": "60d9f423-9107-4843-ae4a-743c52fdc4c4",
             "chunkIndex": 0,
             "content": "Riya of the fixture.",
             "tokenCount": 5,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:44.994Z",
-            "updatedAt": "2026-08-03T20:53:44.994Z"
+            "createdAt": "2026-08-05T15:47:32.556Z",
+            "updatedAt": "2026-08-05T15:47:32.556Z"
           },
           {
-            "id": "5d16446c-daf1-4123-aa40-33428f7078f4",
-            "linkId": "fe2fcb92-69bc-4d72-a429-daa6a571c052",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "91c4a3ca-87f1-4cd8-a183-bef04daacadf",
+            "linkId": "4e230ac5-d060-4a81-b9ed-7cab51874993",
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "chunkIndex": 0,
             "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"a1000000-0000-4000-8000-000000000001\",\n    \"a1000000-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#334455\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"project\"\n}",
             "tokenCount": 68,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.013Z",
-            "updatedAt": "2026-08-03T20:53:45.013Z"
+            "createdAt": "2026-08-05T15:47:32.574Z",
+            "updatedAt": "2026-08-05T15:47:32.574Z"
           },
           {
-            "id": "fc148bec-54fd-4750-b091-427190977cf6",
-            "linkId": "300f0a8d-358e-4a2f-8f60-f0f2d7920065",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "1e60d396-7f95-4110-b868-dfaea5c79bd6",
+            "linkId": "be16031b-5dc1-41e7-b72a-add850a9c7cc",
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "chunkIndex": 0,
             "content": "A fixture project.",
             "tokenCount": 5,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.016Z",
-            "updatedAt": "2026-08-03T20:53:45.016Z"
+            "createdAt": "2026-08-05T15:47:32.576Z",
+            "updatedAt": "2026-08-05T15:47:32.576Z"
           },
           {
-            "id": "2023248b-56d5-4888-8922-13627fab77d8",
-            "linkId": "69dcf76c-bc9f-4c22-a261-ffebc9b5024c",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
+            "id": "14888f1a-0224-4bfd-9a89-6d45d10c7a90",
+            "linkId": "2004a19f-f7f3-4321-a25a-877ae1789921",
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
             "chunkIndex": 0,
             "content": "{}",
             "tokenCount": 1,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.019Z",
-            "updatedAt": "2026-08-03T20:53:45.019Z"
+            "createdAt": "2026-08-05T15:47:32.579Z",
+            "updatedAt": "2026-08-05T15:47:32.579Z"
           },
           {
-            "id": "649e1f73-0afa-49d3-8a9e-410a6e88412c",
-            "linkId": "aa4bb9c2-de65-4d24-b1e1-67bb5a7aae17",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "0cd3c752-ad37-4f38-adb6-5bfd6b9ef378",
+            "linkId": "150be5a0-c7de-4a43-8653-a16bd5329150",
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "chunkIndex": 0,
             "content": "{}",
             "tokenCount": 1,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.024Z",
-            "updatedAt": "2026-08-03T20:53:45.024Z"
+            "createdAt": "2026-08-05T15:47:32.586Z",
+            "updatedAt": "2026-08-05T15:47:32.586Z"
           },
           {
-            "id": "892d7fff-84cd-4942-b872-43f856447054",
-            "linkId": "ce22c54f-21ef-454c-8f2b-a29d02eaaa2f",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "3c0c186c-861e-42b3-89ca-6c4a9db489cd",
+            "linkId": "8aee9de9-c703-40ed-bfb1-2b14b9eebf45",
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "chunkIndex": 0,
             "content": "A fixture group.",
             "tokenCount": 4,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.026Z",
-            "updatedAt": "2026-08-03T20:53:45.026Z"
+            "createdAt": "2026-08-05T15:47:32.588Z",
+            "updatedAt": "2026-08-05T15:47:32.588Z"
           },
           {
-            "id": "26e01804-394b-4970-9c11-4b7592786be9",
-            "linkId": "4dddcd03-1cd9-465a-af0f-e25476d31993",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
+            "id": "c911459b-1607-44fe-9cc7-14acb0ba04ca",
+            "linkId": "79035a99-d3d1-44a7-b647-28c8a1f44052",
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
             "chunkIndex": 0,
             "content": "{}",
             "tokenCount": 1,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.029Z",
-            "updatedAt": "2026-08-03T20:53:45.029Z"
+            "createdAt": "2026-08-05T15:47:32.591Z",
+            "updatedAt": "2026-08-05T15:47:32.591Z"
           },
           {
-            "id": "58009bf6-d604-463d-b87b-968eb3dbcae1",
-            "linkId": "469f0b37-b24c-4b09-90ec-7b60fafd314e",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "ed915cc6-bbe2-4596-8ce3-2a41f2cc58fb",
+            "linkId": "44a333a1-5ab7-4315-9d5b-dfd0662153e3",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "---\nid: ac000000-0000-4000-8000-000000000001\ntitle: Travelling Coat\ntypes:\n  - top\nimagePrompt: brown coat\ncreatedAt: 2026-03-01T00:00:00.000Z\nupdatedAt: 2026-03-01T00:00:00.000Z\n---\n\nA weathered coat.",
             "tokenCount": 51,
             "headingContext": null,
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.052Z",
-            "updatedAt": "2026-08-03T20:53:45.052Z"
+            "createdAt": "2026-08-05T15:47:32.608Z",
+            "updatedAt": "2026-08-05T15:47:32.608Z"
           },
           {
-            "id": "65956dab-30f8-46cc-bbe8-09db83c3c215",
-            "linkId": "24597e48-51a7-4f05-baaf-e7940f39369f",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "id": "4f090f42-319f-4ed3-9955-b407e33a1755",
+            "linkId": "e6f4bc21-f763-40ff-b399-f9176204352c",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "# Intro\n\nStore content.",
             "tokenCount": 6,
             "headingContext": "Intro",
             "embedding": null,
-            "createdAt": "2026-08-03T20:53:45.117Z",
-            "updatedAt": "2026-08-03T20:53:45.117Z"
+            "createdAt": "2026-08-05T15:47:32.640Z",
+            "updatedAt": "2026-08-05T15:47:32.640Z"
           },
           {
             "id": "a7000000-0000-4000-8000-000000000001",
-            "linkId": "e4dcc7f7-c3b8-43ef-89df-dc0bf6192c0b",
-            "mountPointId": "35f24192-2536-408d-bc75-b24f68e0fa59",
+            "linkId": "e8cb4389-d3ef-4fc6-a409-7877b058a005",
+            "mountPointId": "c5e2a72d-b5f1-4486-8325-8308f783c90e",
             "chunkIndex": 0,
             "content": "Store content.",
             "tokenCount": 3,
@@ -2115,150 +2337,166 @@
         ],
         "docMountDocuments": [
           {
-            "id": "caca0fab-cbb5-48c5-912c-8f6af3926afd",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
+            "id": "5bc05233-8bc2-49dd-80c7-fec4ec9116f1",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
             "content": "",
             "contentSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "plainTextLength": 0,
-            "createdAt": "2026-08-03T20:53:44.857Z",
-            "updatedAt": "2026-08-03T20:53:44.857Z"
+            "createdAt": "2026-08-05T15:47:32.453Z",
+            "updatedAt": "2026-08-05T15:47:32.453Z"
           },
           {
-            "id": "b314853d-2e8a-45e2-a133-9c9b6e05884c",
-            "fileId": "3754c66b-65be-477d-a800-65f4158467b7",
-            "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
-            "contentSha256": "6af3e8b0a140e9f104d3291f427f569887f9b397d3f5a45449947555a58e59f1",
-            "plainTextLength": 128,
-            "createdAt": "2026-08-03T20:53:44.949Z",
-            "updatedAt": "2026-08-03T20:53:44.949Z"
-          },
-          {
-            "id": "91b2702a-31e8-492b-83ce-b2cf9eb566d6",
-            "fileId": "0ab546b9-b438-4ad5-a4e9-7d57bf8e2c88",
+            "id": "e9e46266-f08d-4233-b485-40191e45ff2c",
+            "fileId": "93ab94fa-5ff2-452a-b48a-2f274fd2ae57",
             "content": "{}",
             "contentSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
             "plainTextLength": 2,
-            "createdAt": "2026-08-03T20:53:44.952Z",
-            "updatedAt": "2026-08-03T20:53:44.952Z"
+            "createdAt": "2026-08-05T15:47:32.514Z",
+            "updatedAt": "2026-08-05T15:47:32.514Z"
           },
           {
-            "id": "23eca7ac-e4df-4446-8583-227aa3ed2c3b",
-            "fileId": "1d018ad6-1f7f-4996-a2ba-5442fa2121e8",
+            "id": "973bfab8-a86a-4fb5-a0ef-a3becd2b5504",
+            "fileId": "50e1dd2f-b1d4-47fd-944c-9423ae2a2d01",
             "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
             "contentSha256": "a4d58ef379824e554a0d2027315010633a1ec8043145d047249a318dbfe2920b",
             "plainTextLength": 73,
-            "createdAt": "2026-08-03T20:53:44.954Z",
-            "updatedAt": "2026-08-03T20:53:44.954Z"
+            "createdAt": "2026-08-05T15:47:32.517Z",
+            "updatedAt": "2026-08-05T15:47:32.517Z"
           },
           {
-            "id": "b6109933-7af2-471e-a49e-0f3e62876754",
-            "fileId": "eeaa8858-0060-4a4f-a6f3-bb2e07065a84",
+            "id": "2ff560a4-5907-45b1-b064-32165e8d9f2f",
+            "fileId": "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce",
             "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
             "contentSha256": "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
             "plainTextLength": 132,
-            "createdAt": "2026-08-03T20:53:44.956Z",
-            "updatedAt": "2026-08-03T20:53:44.956Z"
+            "createdAt": "2026-08-05T15:47:32.519Z",
+            "updatedAt": "2026-08-05T15:47:32.519Z"
           },
           {
-            "id": "cf319e55-6ae1-43e1-b029-60874df358f9",
-            "fileId": "fe3780dd-1b33-4048-a9b3-7d84928f1542",
+            "id": "3389279a-a7e5-4f19-b499-c60f08ea3d25",
+            "fileId": "1d16396b-5024-4a98-9b19-cf4f598c96a1",
             "content": "Lorian of the fixture.",
             "contentSha256": "54ad9d378acdac9ea0ae643724ef2ab3e77ab961358a1b901e53213facab6694",
             "plainTextLength": 22,
-            "createdAt": "2026-08-03T20:53:44.960Z",
-            "updatedAt": "2026-08-03T20:53:44.960Z"
+            "createdAt": "2026-08-05T15:47:32.523Z",
+            "updatedAt": "2026-08-05T15:47:32.523Z"
           },
           {
-            "id": "f6f81542-465b-436d-b6f3-8e98ac644228",
-            "fileId": "d4843dae-5bf2-4d14-a30b-6f1602d5ff1f",
+            "id": "cc4a0589-6282-4574-838b-3281edfebd9f",
+            "fileId": "06d2d56a-d8d4-46ba-953b-d13b7141f7bf",
             "content": "Riya of the fixture.",
             "contentSha256": "d3a87080d6e3ee8b060ccf3ccbffe0dd0aa029e6d219c436fc96f5c2231ef7bf",
             "plainTextLength": 20,
-            "createdAt": "2026-08-03T20:53:44.993Z",
-            "updatedAt": "2026-08-03T20:53:44.993Z"
+            "createdAt": "2026-08-05T15:47:32.555Z",
+            "updatedAt": "2026-08-05T15:47:32.555Z"
           },
           {
-            "id": "a1ac5263-caa8-4755-b93e-fc27d7ca5e60",
-            "fileId": "bd3a6edf-3ed0-4f98-8345-4c14fcc16058",
+            "id": "19fba457-abcd-49e2-9ec6-45a7c0069845",
+            "fileId": "ad6a20a8-bf88-488b-bc02-db548d72bc54",
             "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"a1000000-0000-4000-8000-000000000001\",\n    \"a1000000-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#334455\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"project\"\n}",
             "contentSha256": "f6d7255ee4ce7e63c64777055179749418556dcfda8be14895c6cab213abf291",
             "plainTextLength": 272,
-            "createdAt": "2026-08-03T20:53:45.012Z",
-            "updatedAt": "2026-08-03T20:53:45.012Z"
+            "createdAt": "2026-08-05T15:47:32.572Z",
+            "updatedAt": "2026-08-05T15:47:32.572Z"
           },
           {
-            "id": "3d9ca2ca-7403-4c1d-b2e4-595246c3df84",
-            "fileId": "75947951-4695-45b8-a747-41a5ac6e21d4",
+            "id": "eca52c83-f4e0-4713-a7b0-e8d53f97cf5a",
+            "fileId": "7fda7a37-2b31-4bbd-b4d7-f2fc9abd0e52",
             "content": "A fixture project.",
             "contentSha256": "5619f6262d71257645fceddf17a79edec09da17b080ffbfd29b4036c2c68c995",
             "plainTextLength": 18,
-            "createdAt": "2026-08-03T20:53:45.014Z",
-            "updatedAt": "2026-08-03T20:53:45.014Z"
+            "createdAt": "2026-08-05T15:47:32.574Z",
+            "updatedAt": "2026-08-05T15:47:32.574Z"
           },
           {
-            "id": "cb4b0ade-e1a6-4aaa-90e8-7d87768effe9",
-            "fileId": "dcd5ffc0-8e69-46d3-b25a-93d23e47c9b4",
+            "id": "445217e0-b652-4db6-9524-1027ac2bf12c",
+            "fileId": "3c3023ae-f810-43b6-81b1-17af505e82ef",
             "content": "A fixture group.",
             "contentSha256": "eaf514699d8adacadecd4dcc7b6bd17fb61da924cb03496386d04f4316ecb3d5",
             "plainTextLength": 16,
-            "createdAt": "2026-08-03T20:53:45.024Z",
-            "updatedAt": "2026-08-03T20:53:45.024Z"
+            "createdAt": "2026-08-05T15:47:32.586Z",
+            "updatedAt": "2026-08-05T15:47:32.586Z"
           },
           {
-            "id": "2036c725-2b5b-4b85-baed-4333b976ba8a",
-            "fileId": "0517b3a3-7f4a-49e6-9f0e-7890411f85ea",
+            "id": "04780a52-ffaa-406b-b68e-0c32fcf9d137",
+            "fileId": "37e06db0-73ad-4854-b438-96a19cf7988e",
             "content": "---\nid: ac000000-0000-4000-8000-000000000001\ntitle: Travelling Coat\ntypes:\n  - top\nimagePrompt: brown coat\ncreatedAt: 2026-03-01T00:00:00.000Z\nupdatedAt: 2026-03-01T00:00:00.000Z\n---\n\nA weathered coat.",
             "contentSha256": "5e86eadb6a9bf755386bfa58e6e5042a9e81625afe12589c6b23c4853a964c75",
             "plainTextLength": 201,
-            "createdAt": "2026-08-03T20:53:45.047Z",
-            "updatedAt": "2026-08-03T20:53:45.047Z"
+            "createdAt": "2026-08-05T15:47:32.604Z",
+            "updatedAt": "2026-08-05T15:47:32.604Z"
           },
           {
-            "id": "943c54f0-8479-431e-9aa3-493eedc50803",
-            "fileId": "ccb13c97-6360-4c24-9f12-107495af7d6f",
+            "id": "c4ec1051-8071-4fac-9789-1941cdb21293",
+            "fileId": "6380c821-5c51-40c8-8121-946120e889ef",
             "content": "# Intro\n\nStore content.",
             "contentSha256": "e7bc84837f97ba390837b115d8b7321581e6e9d96cd1cb47523959f34c082e7e",
             "plainTextLength": 23,
-            "createdAt": "2026-08-03T20:53:45.115Z",
-            "updatedAt": "2026-08-03T20:53:45.115Z"
+            "createdAt": "2026-08-05T15:47:32.638Z",
+            "updatedAt": "2026-08-05T15:47:32.638Z"
           }
         ],
         "docMountBlobs": [
           {
             "id": "bc000000-0000-4000-8000-000000000001",
-            "fileId": "44c4a2de-5bbc-43ce-959f-0f626113b437",
+            "fileId": "3279457b-b5a1-4315-af4c-a90663f24163",
             "sha256": "796efd8c1a95df1b089875c1831676347c1a8dd4a49bbabd6e6e9ac24940b80b",
             "sizeBytes": 24,
             "storedMimeType": "application/octet-stream",
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "b585b1ed-f355-4c48-b597-9ef47812ef8e",
+            "fileId": "83da9f47-b745-4753-9a21-09f5b7862972",
+            "sha256": "1065ee92208d16fbd02af1041248cb76ee38cdb68c7c2d89e4facac052b41d05",
+            "sizeBytes": 62,
+            "storedMimeType": "text/plain",
+            "createdAt": "2026-08-05T15:47:32.662Z",
+            "updatedAt": "2026-08-05T15:47:32.662Z"
+          },
+          {
+            "id": "64c92c5e-dccf-42f7-b1a4-cc44264121ed",
+            "fileId": "f2c42b70-b29d-4daf-a3f9-68684042537c",
+            "sha256": "ae826f5fa6cbb10857b729f7dae5c6384782072c4b01c68fb964da499d2303f6",
+            "sizeBytes": 3400000,
+            "storedMimeType": "application/octet-stream",
+            "createdAt": "2026-08-05T15:47:32.671Z",
+            "updatedAt": "2026-08-05T15:47:32.671Z"
           }
         ],
         "projectDocMountLinks": [
           {
-            "id": "b967ca01-9e7a-4422-aa97-d8d002cbd70a",
+            "id": "d8d42832-9a27-4f4d-bcc2-aaa146f4944e",
             "projectId": "a3000000-0000-4000-8000-000000000001",
-            "mountPointId": "3ffa753c-d877-4dca-b320-daf60b7b008e",
-            "createdAt": "2026-08-03T20:53:45.010Z",
-            "updatedAt": "2026-08-03T20:53:45.010Z"
+            "mountPointId": "bf9092cb-9b00-4dc9-a788-4b483c44195d",
+            "createdAt": "2026-08-05T15:47:32.571Z",
+            "updatedAt": "2026-08-05T15:47:32.571Z"
           }
         ],
         "groupDocMountLinks": [
           {
-            "id": "bf942a38-3361-4e08-aa4f-1d2f27b0d4a1",
+            "id": "de5a9063-e034-445f-b70f-2ab9a549d3d1",
             "groupId": "a2000000-0000-4000-8000-000000000001",
-            "mountPointId": "72725f83-4869-4e5c-af20-3dcc4d6daa65",
-            "createdAt": "2026-08-03T20:53:45.021Z",
-            "updatedAt": "2026-08-03T20:53:45.021Z"
+            "mountPointId": "46779d2e-49b4-4b0c-a0d3-fce83b253203",
+            "createdAt": "2026-08-05T15:47:32.581Z",
+            "updatedAt": "2026-08-05T15:47:32.581Z"
+          },
+          {
+            "id": "00eb7491-eed8-4ea1-bb4e-44a162eb9f7f",
+            "groupId": "a2000000-0000-4000-8000-000000000001",
+            "mountPointId": "bd000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-08-05T15:47:32.659Z",
+            "updatedAt": "2026-08-05T15:47:32.659Z"
           }
         ],
         "groupCharacterMembers": [
           {
-            "id": "d6b8c95f-7cc2-4220-b1a6-c95902b53f4b",
+            "id": "de2cf969-8e1b-4a5c-b9e2-25dbe56c55bb",
             "groupId": "a2000000-0000-4000-8000-000000000001",
             "characterId": "a1000000-0000-4000-8000-000000000001",
-            "createdAt": "2026-08-03T20:53:45.030Z",
-            "updatedAt": "2026-08-03T20:53:45.030Z"
+            "createdAt": "2026-08-05T15:47:32.592Z",
+            "updatedAt": "2026-08-05T15:47:32.592Z"
           }
         ],
         "textReplacementRules": [

@@ -113,14 +113,30 @@ pub fn create_backup(
     host: &dyn BackupHost,
     user_id: &str,
     created_at_iso: &str,
+    // v4 `createBackup(userId, {compact})` (`7189a968`): drop embeddings and
+    // every derived embedding table (see `collect::compact_backup_data`). Off
+    // by default — full fidelity is the documented behaviour and the safer one.
+    compact: bool,
 ) -> Result<CreatedBackup, String> {
-    let data = collect_user_data(db, user_id).map_err(|e| e.to_string())?;
+    let collected = collect_user_data(db, user_id).map_err(|e| e.to_string())?;
+    let data = if compact {
+        collect::compact_backup_data(collected)
+    } else {
+        collected
+    };
     let dirs = host.host_dirs();
     let counts = HostCounts {
         npm_plugins: count_subdirs(dirs.npm_plugins.as_deref(), &[]),
         user_installed_themes: count_subdirs(dirs.themes.as_deref(), &[".cache"]),
     };
-    let manifest = create_manifest(user_id, &data, &host.app_version(), created_at_iso, counts);
+    let manifest = create_manifest(
+        user_id,
+        &data,
+        &host.app_version(),
+        created_at_iso,
+        counts,
+        compact,
+    );
 
     // v4 `mkdtemp(path.join(os.tmpdir(), 'quilltap-backup-'))` (`:577`), then a
     // staging folder named `quilltap-backup-<ISO with [:.] → ->` inside it.
@@ -139,6 +155,7 @@ pub fn create_backup(
             &manifest,
             &staging_dir,
             &dirs,
+            compact,
         )
         .map_err(|e| e.to_string())?;
         let zip_path = temp_dir.join(format!("{folder_name}.zip"));

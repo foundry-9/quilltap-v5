@@ -84,6 +84,9 @@ fn archive_for(name: &str) -> &'static str {
         "preview_minimal" => "restore-archive-minimal.zip",
         "preview_missing_required" => "restore-archive-missing-required.zip",
         "preview_malformed" => "restore-archive-malformed.zip",
+        // [P4.D46] The compact archive previews like any other (the six
+        // omitted data files read as empty; no `embeddingReconcile` key).
+        "preview_compact" => "restore-archive-compact.zip",
         other => panic!("unknown oracle case {other}"),
     }
 }
@@ -167,7 +170,7 @@ fn system_restore_equivalence() {
         }
     }
 
-    assert_eq!(seen, 5, "expected all five preview cases in the oracle");
+    assert_eq!(seen, 6, "expected all six preview cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore difference(s):\n{}",

@@ -145,11 +145,16 @@ interface CaseSpec {
   name: string;
   /** Seed the user file's bytes into the data dir before running. */
   seedFileBytes: boolean;
+  /** [P4.D46] v4 `createBackup(userId, {compact: true})` (`7189a968`). */
+  compact?: boolean;
 }
 
 const CASES: CaseSpec[] = [
   { name: 'backup_full', seedFileBytes: true },
   { name: 'backup_missing_file', seedFileBytes: false },
+  // The compact arm: memory embeddings nulled, the six derived embedding
+  // data files ABSENT from the tree (not empty), manifest.compact stamped.
+  { name: 'backup_compact', seedFileBytes: true, compact: true },
 ];
 
 async function runCase(
@@ -192,7 +197,10 @@ async function runCase(
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {
     const { createBackup } = await import('@/lib/backup/backup-service');
-    const { zipPath, manifest } = await createBackup(spec.userId);
+    const { zipPath, manifest } = await createBackup(
+      spec.userId,
+      c.compact ? { compact: true } : undefined,
+    );
 
     execFileSync('unzip', ['-q', '-o', zipPath, '-d', extractDir], { maxBuffer: 10 * 1024 * 1024 });
     const roots = fs

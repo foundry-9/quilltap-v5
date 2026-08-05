@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Compact backup lands end to end (P4.D46 unit 5, reference `7189a968`):
+opt-in via `compact: true` on the backup-create call (body optional, a
+malformed one treated as absent, only literal true engages), memory
+embeddings nulled at their schema slot, the six derived embedding
+collections omitted from the archive outright — absent is what shrinks
+it — and `manifest.compact` stamped only when true, so a full backup's
+manifest stays byte-identical. Restore gained the matching tail: a
+compact archive enqueues a full re-index before the embedding reconcile
+(so the reconcile's dedupe sees it — proven by the oracle, whose
+reconcile reports no second enqueue), and every restore now ends with
+the dimension reconcile, its outcome riding the summary as
+`embeddingReconcile` with the reference app's warning sentences. A new
+committed compact archive, built by the reference app's real
+createBackup, drives the new differential arms; the eleven existing
+restore cases regenerated green with the tail, and the two compact
+cases extend the ruled replay-dedupe divergence by name. Found on the
+way: the reference app's restore-oracle environment had its vector
+store globally mocked, which made the whole reconcile throw into its
+catch the moment a restored corpus carried real vectors — the oracle
+now uses the real module, same class as the embedding-service mock.
+
 The five new export types land server-side (P4.D46 unit 4, reference
 `7189a968`): files (folder tree, metadata, and bytes as chunked base64
 through the same counted-arrivals reassembly the document-store blobs

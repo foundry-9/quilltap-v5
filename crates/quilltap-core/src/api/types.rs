@@ -2312,8 +2312,15 @@ pub enum Request {
     // only — see quilltap-web routes). Restore preview/execute + backup create
     // ride dispatch.
     /// v4 `POST /api/v1/system/backup` — stage the full-graph zip, register it in
-    /// the temp store, return `{success, backupId, manifest}`.
-    SystemBackupCreate,
+    /// the temp store, return `{success, backupId, manifest}`. `compact`
+    /// (`7189a968`, the C2 contract): default false; only JSON literal `true`
+    /// engages the compact projection (embeddings + the six derived embedding
+    /// collections left behind, rebuilt after restoring).
+    #[serde(rename_all = "camelCase")]
+    SystemBackupCreate {
+        #[serde(default)]
+        compact: bool,
+    },
     /// v4 `POST /api/v1/system/restore?action=preview` `{uploadId}`.
     #[serde(rename_all = "camelCase")]
     SystemRestorePreview {

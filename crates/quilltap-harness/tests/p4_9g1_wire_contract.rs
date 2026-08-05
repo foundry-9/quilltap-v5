@@ -24,10 +24,15 @@ fn round_trip(wire: serde_json::Value, expected: Request) {
 
 #[test]
 fn p4_9g1_sixteen_wire_shapes() {
-    // Backup / restore.
+    // Backup / restore. `compact` (P4.D46, `7189a968`) defaults false, so the
+    // pre-drift fieldless body still decodes — and only literal `true` engages.
     round_trip(
         json!({ "type": "systemBackupCreate" }),
-        Request::SystemBackupCreate,
+        Request::SystemBackupCreate { compact: false },
+    );
+    round_trip(
+        json!({ "type": "systemBackupCreate", "compact": true }),
+        Request::SystemBackupCreate { compact: true },
     );
     round_trip(
         json!({ "type": "systemRestorePreview", "uploadId": "u1" }),

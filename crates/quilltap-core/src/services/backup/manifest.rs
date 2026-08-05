@@ -26,6 +26,10 @@ pub fn create_manifest(
     app_version: &str,
     created_at: &str,
     host: HostCounts,
+    // v4 `7189a968`: `...(options?.compact && { compact: true })` — the key is
+    // OMITTED when false, so a full backup's manifest is byte-identical to a
+    // pre-drift one.
+    compact: bool,
 ) -> Value {
     fn n(counts: &mut Map<String, Value>, key: &str, len: usize) {
         counts.insert(key.into(), Value::from(len as i64));
@@ -95,6 +99,9 @@ pub fn create_manifest(
     m.insert("createdAt".into(), Value::String(created_at.into()));
     m.insert("userId".into(), Value::String(user_id.into()));
     m.insert("appVersion".into(), Value::String(app_version.into()));
+    if compact {
+        m.insert("compact".into(), Value::Bool(true));
+    }
     m.insert("counts".into(), Value::Object(counts));
     Value::Object(m)
 }

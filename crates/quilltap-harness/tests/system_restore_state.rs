@@ -282,6 +282,12 @@ const REPLAY_DEDUPE: &[&str] = &[
     "restore_uploads_new_account",
     "restore_gen2_replace",
     "restore_gen2_new_account",
+    // [P4.D46] The compact archive is built over the widened fixture, whose
+    // two byte-bearing files live in the Quilltap Uploads mount — so it
+    // carries store-backed files exactly like the uploads/gen2 archives and
+    // the ruled dedupe divergence applies to it unchanged.
+    "restore_compact_replace",
+    "restore_compact_new_account",
 ];
 
 /// The tables [`REPLAY_DEDUPE`] makes incomparable row for row on its cases:
@@ -346,7 +352,14 @@ impl BackupHost for TestHost {
         "<normalized>".to_string()
     }
     fn now_ms(&self) -> i64 {
-        0
+        // [P4.D46] The REAL wall clock, not 0: step 25's reconcile derives its
+        // stale-chat cutoff from this, and v4's oracle uses Date.now() — with
+        // an epoch clock nothing is ever stale and the stale-chunk clearing
+        // arm silently diverges (seen on the first compact regen).
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
     }
     fn store_backup(&self, _id: &str, _p: &Path) {}
     fn take_backup(&self, _id: &str) -> Option<PathBuf> {
@@ -815,6 +828,8 @@ fn archive_for(name: &str) -> &'static str {
             "restore-archive-memory-graph.zip"
         }
         "restore_orphan_links_replace" => "restore-archive-orphan-links.zip",
+        // [P4.D46] The compact restore tail (24a + 25).
+        "restore_compact_replace" | "restore_compact_new_account" => "restore-archive-compact.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -849,7 +864,10 @@ fn mode_for(name: &str) -> RestoreMode {
 /// mount, which still shares the archive's CONTENT rows because `doc_mount_files`
 /// is global and keyed by sha.
 fn aligns_uploads_pointer(name: &str) -> bool {
-    matches!(name, "restore_uploads_replace" | "restore_gen2_replace")
+    matches!(
+        name,
+        "restore_uploads_replace" | "restore_gen2_replace" | "restore_compact_replace"
+    )
 }
 
 /// ## P4.D31 — the memory-id contract, asserted on v5 ALONE
@@ -1083,8 +1101,9 @@ fn system_restore_state_equivalence() {
     }
 
     assert_eq!(
-        seen, 11,
-        "expected all eleven restore cases in the oracle (ten + the #58 orphan-links arm)"
+        seen, 13,
+        "expected all thirteen restore cases in the oracle (ten + the #58 orphan-links arm \
+         + P4.D46's two compact arms)"
     );
     assert!(
         failures.is_empty(),
@@ -2154,6 +2173,22 @@ fn compare_case(
             // design. `assert_replay_dedupe` above states exactly how, in both
             // directions, instead of diffing them.
             if dedupe && REPLAY_DEDUPE_TABLES.contains(&(partition.as_str(), table.as_str())) {
+                continue;
+            }
+            // [P4.D46] On the compact cases the SAME ruled divergence reaches
+            // one more table: v4's unconditional re-ingest fires a best-effort
+            // `refreshStats`, and the new 24a/25 steps' awaits give that
+            // fire-and-forget chain time to land before v4's dump — so v4's
+            // doc_mount_points rollups reflect rows v5 (which skips the
+            // re-ingest by ruling) never wrote. The four older dedupe cases
+            // predate the tail and still compare this table green, so the
+            // mask is deliberately confined to the compact pair.
+            if matches!(
+                name,
+                "restore_compact_replace" | "restore_compact_new_account"
+            ) && partition == "mountIndex"
+                && table == "doc_mount_points"
+            {
                 continue;
             }
             // The #58 orphan divergence: three tables asserted in both

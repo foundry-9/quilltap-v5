@@ -420,7 +420,12 @@ fn system_backup_equivalence() {
     let mut failures = Vec::new();
     for case in &cases {
         let name = case["name"].as_str().unwrap();
-        let seed_file_bytes = name == "backup_full";
+        let seed_file_bytes = name == "backup_full" || name == "backup_compact";
+        // [P4.D46] `backup_compact` runs the same projection with the compact
+        // flag: memory embeddings nulled, the six derived embedding data files
+        // ABSENT from the tree (asserted below and by the oracle tree diff),
+        // manifest.compact stamped.
+        let compact = name == "backup_compact";
 
         let scratch = fresh_scratch(name);
         let db = open_fixture(&scratch.root);
@@ -440,10 +445,22 @@ fn system_backup_equivalence() {
             root: files_root.clone(),
         };
 
-        let data = collect_user_data(&db, USER).expect("collect");
+        let collected = collect_user_data(&db, USER).expect("collect");
+        let data = if compact {
+            quilltap_core::services::backup::collect::compact_backup_data(collected)
+        } else {
+            collected
+        };
         // No plugins/themes directory on this host — v4's `existsSync` guard
         // makes both counts 0 and stages neither subtree.
-        let manifest = create_manifest(USER, &data, NORMALIZED, NORMALIZED, HostCounts::default());
+        let manifest = create_manifest(
+            USER,
+            &data,
+            NORMALIZED,
+            NORMALIZED,
+            HostCounts::default(),
+            compact,
+        );
         let staging = scratch.root.join("staging");
         let staged = stage_backup(
             &db,
@@ -452,8 +469,33 @@ fn system_backup_equivalence() {
             &manifest,
             &staging,
             &HostDirs::default(),
+            compact,
         )
         .expect("stage");
+
+        if compact {
+            // Absent, not empty — absence is what shrinks the archive; the
+            // oracle tree diff holds the full claim, this keeps it legible.
+            for f in [
+                "embedding-status.json",
+                "conversation-chunks.json",
+                "tfidf-vocabularies.json",
+                "vector-index-metas.json",
+                "vector-entries.json",
+                "doc-mount-chunks.json",
+            ] {
+                assert!(
+                    !staging.join("data").join(f).exists(),
+                    "[{name}] compact must OMIT data/{f}"
+                );
+            }
+            assert_eq!(manifest["compact"], serde_json::Value::Bool(true));
+        } else {
+            assert!(
+                manifest.get("compact").is_none(),
+                "[{name}] a full backup's manifest must not carry the compact key"
+            );
+        }
 
         // ⚠ DELIBERATE DIVERGENCE (dogfood #59) — v5 REPORTS what it could not
         // stage. v4 warns to its module logger and forgets, so the operator only
@@ -494,8 +536,8 @@ fn system_backup_equivalence() {
                 files_root: files_root.clone(),
                 stored: std::sync::Mutex::new(None),
             };
-            let created =
-                create_backup(&db, &host, USER, "2026-03-01T00:00:00.000Z").expect("create_backup");
+            let created = create_backup(&db, &host, USER, "2026-03-01T00:00:00.000Z", compact)
+                .expect("create_backup");
             assert!(
                 created
                     .zip_path

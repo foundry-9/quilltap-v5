@@ -236,5 +236,5 @@ fn system_import_read_matches_oracle() {
         failed.join("\n\n")
     );
     // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob`, added by P4.d22.
-    assert_eq!(ran, 25, "expected 25 cases to run, ran {ran}");
+    assert_eq!(ran, 27, "expected 27 cases to run, ran {ran}");
 }

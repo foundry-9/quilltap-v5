@@ -47,6 +47,10 @@ const PREVIEW_CASES: PreviewCase[] = [
   { name: 'preview_minimal', archive: 'restore-archive-minimal.zip' },
   { name: 'preview_missing_required', archive: 'restore-archive-missing-required.zip' },
   { name: 'preview_malformed', archive: 'restore-archive-malformed.zip' },
+  // [P4.D46] The compact archive previews like any other; the six omitted
+  // data files read as empty (the optional readers), and previewRestore never
+  // sets `embeddingReconcile`.
+  { name: 'preview_compact', archive: 'restore-archive-compact.zip' },
 ];
 
 /**
@@ -176,6 +180,20 @@ const RESTORE_CASES: Array<{
   // directions, so this case is the tripwire that fires the day v4 grows its
   // own orphan handling.
   { name: 'restore_orphan_links_replace', archive: 'restore-archive-orphan-links.zip' },
+
+  // ── P4.D46 (`7189a968`): the compact restore tail ────────────────────────
+  //
+  // `restore-archive-compact.zip` is built by v4's REAL
+  // `createBackup(userId, {compact: true})` over the widened fixture: memory
+  // embeddings nulled, the six derived embedding data files ABSENT,
+  // `manifest.compact: true`. Restoring it reaches step 24a — the full
+  // re-index enqueued BEFORE step 25's reconcile, so the reconcile's dedupe
+  // sees it — plus the compact warning; every restore case (compact or not)
+  // now also carries step 25's `summary.embeddingReconcile`. The
+  // `alignUploadsPointer` reasoning is the P4.d23 cases' verbatim: the
+  // archive carries its own Quilltap Uploads mount.
+  { name: 'restore_compact_replace', archive: 'restore-archive-compact.zip', alignUploadsPointer: true },
+  { name: 'restore_compact_new_account', archive: 'restore-archive-compact.zip', mode: 'new-account' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -196,6 +214,27 @@ function applyMocks(): void {
   );
   jest.doMock('@/lib/file-storage/project-store-bridge', () =>
     jest.requireActual('@/lib/file-storage/project-store-bridge'),
+  );
+  // [P4.D46] Step 24a resolves the default embedding profile through the
+  // GLOBALLY-mocked embedding service (jest.setup pins
+  // getDefaultEmbeddingProfile to null — the P4.20/P4.36 stale-mock class),
+  // and its enqueue would wake the job dispatcher, which then CLAIMS the
+  // fresh row mid-dump. Real service + stubbed wake, exactly as the
+  // import-execute oracle does.
+  jest.doMock('@/lib/embedding/embedding-service', () =>
+    jest.requireActual('@/lib/embedding/embedding-service'),
+  );
+  jest.doMock('@/lib/background-jobs/processor', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/background-jobs/processor'),
+    ensureProcessorRunning: () => {},
+  }));
+  // The reconcile invalidates per-character HNSW handles through the
+  // vector-store manager, which jest.setup also mocks — the mock made the
+  // whole reconcile THROW into its catch (a null/zero result) the moment a
+  // restored corpus actually carried vectors.
+  jest.doMock('@/lib/embedding/vector-store', () =>
+    jest.requireActual('@/lib/embedding/vector-store'),
   );
   jest.doMock('@/lib/startup/startup-state', () => {
     const actual = jest.requireActual('@/lib/startup/startup-state');

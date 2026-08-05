@@ -377,6 +377,57 @@ fn encode_embedding(blob: Option<Vec<u8>>) -> Value {
 }
 
 /// v4 `collectUserData(userId)`.
+/// v4 `compactBackupData` (`backup-service.ts:557`, `7189a968`) — strip every
+/// embedding-derived payload out of a collected backup.
+///
+/// Full fidelity remains the default for a reason: a backup restores the
+/// *same* instance, so its vectors are valid on arrival, and re-embedding a
+/// whole corpus costs real money and time at exactly the moment the user is
+/// recovering from something. Compact is for users whose constraint is archive
+/// size instead — search is rebuilt after restore rather than carried.
+///
+/// `llm_logs` are untouched: compact is about embeddings, not logs (the
+/// existing 10k cap already bounds them).
+pub fn compact_backup_data(mut data: BackupData) -> BackupData {
+    // Memories keep every word; only the vector goes: v4 `{...memory,
+    // embedding: null}`. Subtle key-position point, learned from the first
+    // oracle diff: v4's parsed memory carries `embedding` as a PROPERTY even
+    // when its value is `undefined` (which `JSON.stringify` had been
+    // dropping), so the spread's `null` override lands at the SCHEMA slot —
+    // right after `importance` — not at the end. v5's marshal omits the key
+    // outright when NULL, so the null is inserted at that slot here.
+    for memory in &mut data.memories {
+        let Some(obj) = memory.as_object_mut() else {
+            continue;
+        };
+        if obj.contains_key("embedding") {
+            obj.insert("embedding".into(), Value::Null);
+            continue;
+        }
+        let mut rebuilt = Map::with_capacity(obj.len() + 1);
+        let mut inserted = false;
+        for (k, v) in obj.iter() {
+            rebuilt.insert(k.clone(), v.clone());
+            if k == "importance" && !inserted {
+                rebuilt.insert("embedding".into(), Value::Null);
+                inserted = true;
+            }
+        }
+        if !inserted {
+            rebuilt.insert("embedding".into(), Value::Null);
+        }
+        *obj = rebuilt;
+    }
+    // Wholly derived collections — regenerable from the content above.
+    data.conversation_chunks = Vec::new();
+    data.vector_entries = Vec::new();
+    data.vector_index_metas = Vec::new();
+    data.tfidf_vocabularies = Vec::new();
+    data.embedding_status = Vec::new();
+    data.doc_mount_chunks = Vec::new();
+    data
+}
+
 pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> {
     // The mount-index partition is required for the vault overlays; an instance
     // without one cannot have characters at all.

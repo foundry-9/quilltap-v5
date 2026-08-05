@@ -47,8 +47,20 @@ use crate::system_data_routes::system_body_public;
 use crate::text_replacements_routes::dispatch_core;
 
 /// `POST /api/v1/system/backup` — v4 answers **201**.
-pub async fn system_backup_post(State(state): State<SharedState>) -> AxumResponse {
-    match dispatch_core(&state, CoreRequest::SystemBackupCreate).await {
+///
+/// v4 `route.ts:23-28` (`7189a968`): the body is `{compact?: boolean}` and
+/// OPTIONAL; a malformed body is treated as ABSENT rather than rejected
+/// (matching how this route has always behaved), and only JSON literal `true`
+/// engages compact.
+pub async fn system_backup_post(
+    State(state): State<SharedState>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    let compact = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("compact").cloned())
+        == Some(serde_json::Value::Bool(true));
+    match dispatch_core(&state, CoreRequest::SystemBackupCreate { compact }).await {
         Ok(resp) => system_body_public(resp, StatusCode::CREATED),
         Err(r) => r,
     }

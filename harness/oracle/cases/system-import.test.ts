@@ -292,6 +292,27 @@ function buildCases(): CaseSpec[] {
     },
   });
 
+  // [P4.D46 tier 2] The forward-compat rule, asserted from v4's own checklist
+  // (`types.ts:48-52`): a reader WARNS-AND-SKIPS a record `kind` it doesn't
+  // know, but THROWS on an unknown `manifest.exportType`. The synthetic
+  // future-kind line must vanish on both sides with the tags round-tripping
+  // untouched; the future exportType must reach `buildExportDataForType`'s
+  // throw with its exact message.
+  cases.push({
+    name: 'read_ndjson_unknown_kind_skips',
+    run: async () => {
+      const bytes = Buffer.from(
+        '{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"tags"}}\n' +
+          '{"kind":"tag","data":{"id":"zz000000-0000-4000-8000-000000000010","name":"Kept"}}\n' +
+          '{"kind":"holographic_ledger","data":{"id":"zz000000-0000-4000-8000-000000000011"}}\n' +
+          '{"kind":"__footer__","counts":{"tags":1}}\n',
+        'utf8',
+      );
+      const assembled = await loadQtap(bytes);
+      return { kind: 'read', qtapBase64: bytes.toString('base64'), assembled };
+    },
+  });
+
   // Malformed inputs — the reader's throwing arms (v4's exact messages).
   const throwCase = (name: string, bytes: Buffer): CaseSpec => ({
     name,
@@ -320,6 +341,15 @@ function buildCases(): CaseSpec[] {
       'throw_ndjson_bad_line',
       Buffer.from(
         '{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"tags"}}\nnot json\n',
+        'utf8',
+      ),
+    ),
+  );
+  cases.push(
+    throwCase(
+      'throw_ndjson_unknown_export_type',
+      Buffer.from(
+        '{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"chrono-ledgers"}}\n',
         'utf8',
       ),
     ),

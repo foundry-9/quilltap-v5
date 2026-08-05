@@ -59,8 +59,25 @@ pub struct HostDirs {
 /// v4's data-file order and filenames (`:591-632`). `outfit-presets.json` is no
 /// longer written — pre-rework presets fold into composite wardrobe items at
 /// restore time instead (`:609`).
-fn data_files(data: &BackupData) -> Vec<(&'static str, &Vec<Value>)> {
-    vec![
+fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value>)> {
+    // v4 `7189a968`: a compact backup OMITS the six derived embedding data
+    // files outright rather than writing empty arrays — the restore reader
+    // treats all of them as optional, so an absent file and an empty one
+    // behave identically on the way back in, and the absent one is what makes
+    // the archive small.
+    let omit = |name: &'static str| {
+        compact
+            && matches!(
+                name,
+                "embedding-status.json"
+                    | "conversation-chunks.json"
+                    | "tfidf-vocabularies.json"
+                    | "vector-index-metas.json"
+                    | "vector-entries.json"
+                    | "doc-mount-chunks.json"
+            )
+    };
+    let files: Vec<(&'static str, &Vec<Value>)> = vec![
         ("characters.json", &data.characters),
         ("chats.json", &data.chats),
         ("tags.json", &data.tags),
@@ -109,7 +126,8 @@ fn data_files(data: &BackupData) -> Vec<(&'static str, &Vec<Value>)> {
             &data.group_character_members,
         ),
         ("text-replacement-rules.json", &data.text_replacement_rules),
-    ]
+    ];
+    files.into_iter().filter(|(name, _)| !omit(name)).collect()
 }
 
 /// v4 `writeJsonArrayFile` (`:505`).
@@ -163,9 +181,10 @@ pub fn stage_backup(
     manifest: &Value,
     staging_dir: &Path,
     host_dirs: &HostDirs,
+    compact: bool,
 ) -> std::io::Result<StageReport> {
     std::fs::create_dir_all(staging_dir.join("data"))?;
-    for (name, items) in data_files(data) {
+    for (name, items) in data_files(data, compact) {
         write_json_array_file(&staging_dir.join("data").join(name), items)?;
     }
 
