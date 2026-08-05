@@ -57450,3 +57450,27 @@ theme-pack `--qt-progress-*` overrides (v4 shipped none), and the
 **The one thing the unifier must do:** flip `P437_SERVER_LANDED` to `true` in
 `apps/web/e2e/settings-almanack-flow.spec.ts` once P4.37 is on the same tree, and
 diff the §1 mirror name-for-name against P4.37's `api/types.rs`.
+
+### P4.38 — a v4 drift-recheck at lane CLOSE (2026-08-05), for the unifier
+
+v4 was exactly at the baseline `f7f1a956` with a clean tree at lane start (one
+untracked feature doc, `docs/developer/features/taboo.md`). By lane close it had
+moved, and the unifier should know before it regenerates anything:
+
+- **One new commit, `44e2e4fe`** — "docs(prompt): rewrite PROMPT_ARCHITECTURE for
+  the current builder". Docs only.
+- **A large DIRTY working tree**: the in-flight **taboo** feature the untracked
+  doc foreshadowed. It touches PORTED surfaces —
+  `lib/chat/context/system-prompt-builder.ts`, `lib/chat/context-manager.ts`,
+  `lib/llm/cache-key.ts`, `lib/schemas/settings.types.ts`,
+  `lib/instance-settings/index.ts`, `lib/tools/handlers/self-inventory/builders.ts`
+  — plus a new settings route, a `TabooSettings` component and `help/taboo.md`.
+  **A drift catch-up will be owed once it lands**, and until then any oracle regen
+  must run from a worktree PINNED at the baseline.
+
+**None of it affects this lane.** Every v4 file P4.38 transcribed — the card, the
+dialog, `ProgressBar.tsx`, `lib/tools/almanack/phases.ts`, both
+`app/styles/qt-components/*` files, `ProvidersTabContent.tsx`, `ProvingBench.tsx`
+and `search-results.tsx` — is verified untouched by both the commit and the dirty
+set (`git status --short` over that path list returns empty). This lane consumes
+no oracles, so there is nothing to regenerate.
