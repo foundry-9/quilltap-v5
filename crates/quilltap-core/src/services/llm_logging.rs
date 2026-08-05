@@ -122,6 +122,14 @@ pub struct LogLlmCallParams {
     pub character_id: Option<String>,
     pub provider: String,
     pub model_name: String,
+    /// v4 `0cde7fbc`: the connection profile that served this call, when the call
+    /// site has one in hand. Lets the Almanack attribute usage/latency/cache
+    /// figures to a specific profile rather than guessing from
+    /// (provider, modelName). Coalesced `?? null` into the create payload.
+    pub connection_profile_id: Option<String>,
+    /// v4 `0cde7fbc`: the image profile that served this call (image-generation
+    /// call sites). Coalesced `?? null` into the create payload.
+    pub image_profile_id: Option<String>,
     pub request: LogRequest,
     pub response: LogResponse,
     pub usage: Option<LogUsage>,
@@ -301,6 +309,8 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
         autonomous_run_id: ctx.autonomous_run_id.clone(),
         provider: params.provider,
         model_name: params.model_name,
+        connection_profile_id: params.connection_profile_id,
+        image_profile_id: params.image_profile_id,
         request,
         response,
         usage,

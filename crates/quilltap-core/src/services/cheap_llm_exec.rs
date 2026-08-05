@@ -258,7 +258,14 @@ impl CheapLlmTaskExecutor {
     /// the lesson). The human ruling the P4.11 record requested came back YES:
     /// see [`Self::log_failed_call`]. The SUCCESS arms below stay byte-faithful
     /// to v4.
-    /// The cheap path sets no `durationMs`/`cacheUsage`/`rawProviderUsage`/
+    /// `duration_ms` is the wall-clock of the provider call this row describes
+    /// (v4 `0cde7fbc` made it a REQUIRED `logCall` argument). This shared path
+    /// covers MEMORY_EXTRACTION, TITLE_GENERATION, SUMMARIZATION,
+    /// CONTEXT_COMPRESSION, SCENE_STATE_TRACKING and IMAGE_PROMPT_CRAFTING — a
+    /// large share of all `llm_logs` rows — so leaving it null used to hollow out
+    /// every latency average the Almanack draws.
+    ///
+    /// The cheap path sets no `cacheUsage`/`rawProviderUsage`/
     /// `requestHashes`; the request carries `temperature` only when one was sent
     /// (v4 spreads `...(temperature !== undefined ? { temperature } : {})`, which
     /// `summarizeRequest` collapses to `temperature: null` when absent —
@@ -273,6 +280,7 @@ impl CheapLlmTaskExecutor {
         effective_max_tokens: i64,
         character_id: Option<&str>,
         response: &CompletionResponse,
+        duration_ms: f64,
     ) {
         let Some(cfg) = &self.log else {
             return;
@@ -285,6 +293,10 @@ impl CheapLlmTaskExecutor {
             character_id: character_id.map(str::to_string),
             provider: selection.provider.clone(),
             model_name: selection.model_name.clone(),
+            // v4 `0cde7fbc` core-execution.ts:191 — `selection.connectionProfileId
+            // ?? null`.
+            connection_profile_id: selection.connection_profile_id.clone(),
+            image_profile_id: None,
             request: LogRequest {
                 messages: messages
                     .iter()
@@ -312,7 +324,7 @@ impl CheapLlmTaskExecutor {
             cache_usage: None,
             raw_provider_usage: None,
             request_hashes: None,
-            duration_ms: None,
+            duration_ms: Some(duration_ms),
         };
         // Never throws (writer swallows); awaited for determinism (watermark
         // precedent) vs v4's fire-and-forget `.catch` — same DB effect.
@@ -362,6 +374,10 @@ impl CheapLlmTaskExecutor {
             character_id: character_id.map(str::to_string),
             provider: selection.provider.clone(),
             model_name: selection.model_name.clone(),
+            // The failure row is v5's own (v4 logs nothing here), so it carries
+            // the same attribution the success rows do.
+            connection_profile_id: selection.connection_profile_id.clone(),
+            image_profile_id: None,
             request: LogRequest {
                 messages: messages
                     .iter()
@@ -433,6 +449,9 @@ impl CheapLlmTaskExecutor {
             .expect("temp cache lock")
             .contains(&profile_key);
         if known_no_temp {
+            // v4 `0cde7fbc`: `const startedAt = Date.now()` around each of the
+            // three send arms; the delta is `logCall`'s required third argument.
+            let started_at = crate::clock::now_unix_ms();
             let response = match completion
                 .send_message(
                     &selection.provider,
@@ -467,6 +486,7 @@ impl CheapLlmTaskExecutor {
                 effective_max_tokens,
                 character_id,
                 &response,
+                (crate::clock::now_unix_ms() - started_at) as f64,
             )
             .await;
             return Ok(ProviderResponse {
@@ -476,6 +496,7 @@ impl CheapLlmTaskExecutor {
         }
 
         // Try with lower temperature for more consistent outputs.
+        let first_attempt_started_at = crate::clock::now_unix_ms();
         match completion
             .send_message(
                 &selection.provider,
@@ -493,6 +514,7 @@ impl CheapLlmTaskExecutor {
                     effective_max_tokens,
                     character_id,
                     &response,
+                    (crate::clock::now_unix_ms() - first_attempt_started_at) as f64,
                 )
                 .await;
                 Ok(ProviderResponse {
@@ -509,6 +531,7 @@ impl CheapLlmTaskExecutor {
                         .lock()
                         .expect("temp cache lock")
                         .insert(profile_key);
+                    let retry_started_at = crate::clock::now_unix_ms();
                     let response = match completion
                         .send_message(
                             &selection.provider,
@@ -541,6 +564,7 @@ impl CheapLlmTaskExecutor {
                         effective_max_tokens,
                         character_id,
                         &response,
+                        (crate::clock::now_unix_ms() - retry_started_at) as f64,
                     )
                     .await;
                     Ok(ProviderResponse {

@@ -907,6 +907,10 @@ pub(crate) async fn log_chat_message_call(
         character_id: log.character_id.map(str::to_string),
         provider: profile.provider.clone(),
         model_name: profile.model_name.clone(),
+        // v4 `0cde7fbc` streaming.service.ts:450 — `connectionProfile.id`, plain
+        // (not `?? null`): the streaming path always has the effective profile.
+        connection_profile_id: Some(profile.id.clone()),
+        image_profile_id: None,
         request: LogRequest {
             messages: log_request_messages(&params.messages),
             temperature: params.temperature,

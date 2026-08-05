@@ -460,7 +460,11 @@ where
         return Ok(cached);
     }
 
-    // Try the moderation provider first.
+    // Try the moderation provider first. v4 `0cde7fbc` brackets the
+    // `provider.moderate` call with `Date.now()` (gatekeeper.service.ts:271/273)
+    // — the moderation row had no `durationMs` before, so its latency figures
+    // were hollow.
+    let moderation_started_at = crate::clock::now_unix_ms();
     match moderation
         .moderate(content, user_id, settings, chat_id)
         .await
@@ -489,6 +493,10 @@ where
                 character_id: None,
                 provider: provider_name,
                 model_name: "moderation".to_string(),
+                // NO profile id: v4 deliberately leaves both null here —
+                // moderation providers are not connection profiles.
+                connection_profile_id: None,
+                image_profile_id: None,
                 request: LogRequest {
                     messages: vec![LogRequestMessage {
                         role: "user".to_string(),
@@ -509,7 +517,7 @@ where
                 cache_usage: None,
                 raw_provider_usage: None,
                 request_hashes: None,
-                duration_ms: None,
+                duration_ms: Some((crate::clock::now_unix_ms() - moderation_started_at) as f64),
             };
             let _ = log_llm_call(db, log_params, &LogContext::none()).await;
             return Ok(mapped);
@@ -550,6 +558,9 @@ where
         request_timeout_ms: None,
     };
 
+    // v4 `0cde7fbc` gatekeeper.service.ts:384/398 — the classifier's send is
+    // bracketed by `Date.now()`; the row had no `durationMs` before.
+    let classification_started_at = crate::clock::now_unix_ms();
     let response = completion
         .send_message(
             &cheap_llm_selection.provider,
@@ -558,6 +569,8 @@ where
         )
         .await
         .map_err(|_| ())?;
+    let classification_duration_ms =
+        (crate::clock::now_unix_ms() - classification_started_at) as f64;
 
     // v4 logLLMCall (gatekeeper.service.ts:396): fire-and-forget
     // DANGER_CLASSIFICATION row on the cheap-LLM classify path (temperature 0.1,
@@ -571,6 +584,10 @@ where
         character_id: None,
         provider: cheap_llm_selection.provider.clone(),
         model_name: cheap_llm_selection.model_name.clone(),
+        // v4 `0cde7fbc` gatekeeper.service.ts:407 —
+        // `cheapLLMSelection.connectionProfileId ?? null`.
+        connection_profile_id: cheap_llm_selection.connection_profile_id.clone(),
+        image_profile_id: None,
         request: LogRequest {
             messages: params
                 .messages
@@ -599,7 +616,7 @@ where
         cache_usage: None,
         raw_provider_usage: None,
         request_hashes: None,
-        duration_ms: None,
+        duration_ms: Some(classification_duration_ms),
     };
     let _ = log_llm_call(db, log_params, &LogContext::none()).await;
 

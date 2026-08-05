@@ -56400,3 +56400,71 @@ QT_SCHEMA_OUT=/tmp/qt-fresh-schema.json \
 QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
   $N/npx tsx <v5>/harness/oracle/provision/build-provision-oracle.ts
 ```
+
+## Lane record — P4.D49 units 2–3: the write spine + the six call sites
+
+**2026-08-05.** `db/llm_logs.rs` 18 → 20 columns and
+`services/llm_logging.rs` gains the two optional params, both in v4's
+exact `LLMLogSchema` position (between `modelName` and `request`).
+
+**The read-side tolerance nobody predicted at planning.** v4 reads every
+collection with `SELECT *` (`backends/sqlite/query-translator.ts:602`),
+so a partition that predates `add-llm-logs-profile-columns-v1` simply
+returns no profile columns and their `.nullable().optional()` keys parse
+as absent. v5 NAMES its columns — so naming the two new ones outright
+would have failed every read with `no such column` on every
+pre-migration instance. And it is not hypothetical: **all six committed
+llm-logs fixtures are 18-column** (`inspector-llm`, `salon-llm-logs`,
+`courier-images-llmlogs`, `system-data-llmlogs`,
+`llm-log-cleanup-llmlogs`, `attach-file-llmlogs` — probed directly under
+the test pepper), and the v5 migration runner stays deferred. So:
+`LOG_COLUMNS` keeps the 18 positional columns, `log_columns(conn)`
+appends the profile pair only when `pragma_table_info` reports them, and
+`map_log_row` reads those two BY NAME with an `InvalidColumnName → None`
+arm. Indices 0..=17 never move. The WRITE side is strict exactly as v4's
+is — v4's `insertOne` names the document's keys and `logLLMCall` always
+sets both (`?? null`), so neither engine can write a log into a
+pre-migration table. That asymmetry is v4's, carried.
+
+This guard is the read spine's own; P4.37's Almanack
+`hasProfileAttributionColumns` probe is a separate thing in a separate
+module, per the round's §2.
+
+**The call sites** (v4's `0cde7fbc` diff followed line for line):
+
+| v5 site | what it got |
+|---|---|
+| `services/cheap_llm_exec.rs` | `selection.connection_profile_id` + measured duration on ALL THREE send arms (v4's `startedAt` / `firstAttemptStartedAt` / `retryStartedAt`), `log_call` re-signatured with a required `duration_ms` as v4's `logCall` was |
+| `services/primary_stream.rs` | `connection_profile_id: Some(profile.id)` — plain, not `?? null`: the streaming path always has the effective profile |
+| `services/dangerous_content/gatekeeper.rs` | measured duration on BOTH logs; `connection_profile_id` on the classifier ONLY — v4 deliberately leaves the moderation row's null (moderation providers are not connection profiles), and that reasoning is carried inline |
+| `services/image_job_common.rs` | `image_profile_id` through all four arms (`profile_id` primary, `reroute.profile.id` reroute) — covers character-avatar AND story-background |
+| `tools/generate_image.rs` | same four-arm shape off `image_profile.id` / `reroute.profile.id` |
+
+Three more v5 sites construct `LogLlmCallParams` and got explicit
+`None`s with the reason inline: `services/file_fallback.rs` (×2) and
+`services/initial_greeting.rs` — v4's `0cde7fbc` did NOT touch
+`lib/chat/file-attachment-fallback.ts` or `lib/chat/initial-greeting.ts`
+(verified against the commit's 65-file list). The v5-only cheap-LLM
+FAILURE row (the P4.13 ruled divergence) carries the same
+`connection_profile_id` its success siblings do; v4 has no analog to be
+faithful to. `services/backup/restore/orchestrator.rs` reads both keys
+off the archive row.
+
+**Proof.** `llm_logs_tier2_equivalence` over a fixture + oracle
+regenerated fresh at `f7f1a956`: 4 rows, green. The spec grew three arms
+so the claim is MEASURED rather than merely compiled — a create with
+`connectionProfileId` set and `imageProfileId` explicitly null, an
+UPDATE that sets `connectionProfileId` on a row that had none, and a new
+IMAGE_GENERATION create with `imageProfileId` set and
+`connectionProfileId` null (the two columns proven independent).
+Mutation-proven: forcing the create's `connectionProfileId` bind to NULL
+turns it red.
+
+Regen recipe (from `~/source/quilltap-server`, Node 24):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-ll-fixture.db \
+  $N/npx tsx <v5>/harness/oracle/fixtures/build-llm-logs-fixture.ts
+QT_FIXTURE_LLM_LOGS=/tmp/qt-ll-fixture.db \
+  $N/npx tsx <v5>/harness/oracle/cases/llm-logs-tier2.ts > /tmp/oracle-ll.ndjson
+```

@@ -228,6 +228,10 @@ struct CreateData {
     autonomous_run_id: Option<String>,
     provider: String,
     model_name: String,
+    #[serde(default)]
+    connection_profile_id: Option<String>,
+    #[serde(default)]
+    image_profile_id: Option<String>,
     request: RequestJson,
     response: ResponseJson,
     usage: Option<UsageJson>,
@@ -257,6 +261,10 @@ struct UpdateData {
     autonomous_run_id: Option<String>,
     provider: Option<String>,
     model_name: Option<String>,
+    #[serde(default)]
+    connection_profile_id: Option<String>,
+    #[serde(default)]
+    image_profile_id: Option<String>,
     request: Option<RequestJson>,
     response: Option<ResponseJson>,
     usage: Option<UsageJson>,
@@ -322,6 +330,8 @@ fn llm_logs_tier2_matches_oracle() {
                         autonomous_run_id: data.autonomous_run_id.clone(),
                         provider: data.provider.clone(),
                         model_name: data.model_name.clone(),
+                        connection_profile_id: data.connection_profile_id.clone(),
+                        image_profile_id: data.image_profile_id.clone(),
                         request: data.request.clone().into(),
                         response: data.response.clone().into(),
                         usage: data.usage.clone().map(Into::into),
@@ -349,6 +359,8 @@ fn llm_logs_tier2_matches_oracle() {
                         autonomous_run_id: data.autonomous_run_id.clone(),
                         provider: data.provider.clone(),
                         model_name: data.model_name.clone(),
+                        connection_profile_id: data.connection_profile_id.clone(),
+                        image_profile_id: data.image_profile_id.clone(),
                         request: data.request.clone().map(Into::into),
                         response: data.response.clone().map(Into::into),
                         usage: data.usage.clone().map(Into::into),

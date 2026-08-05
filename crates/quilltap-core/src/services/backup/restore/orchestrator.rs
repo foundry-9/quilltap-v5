@@ -658,6 +658,8 @@ fn restore_on_writer(
                     autonomous_run_id: os(log, "autonomousRunId"),
                     provider: s(log, "provider"),
                     model_name: s(log, "modelName"),
+                    connection_profile_id: os(log, "connectionProfileId"),
+                    image_profile_id: os(log, "imageProfileId"),
                     request: match de_opt(log, "request") {
                         Some(r) => r,
                         None => {

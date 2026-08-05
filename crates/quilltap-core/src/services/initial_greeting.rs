@@ -219,6 +219,10 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
             character_id: req.character_id.clone(),
             provider: req.provider.clone(),
             model_name: req.model_name.clone(),
+            // v4 `0cde7fbc` did NOT touch `lib/chat/initial-greeting.ts` — this
+            // call site sets no profile id on either side.
+            connection_profile_id: None,
+            image_profile_id: None,
             request: LogRequest {
                 messages: messages
                     .iter()

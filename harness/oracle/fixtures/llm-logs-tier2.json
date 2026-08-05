@@ -162,7 +162,7 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state. Type changed to ANSWER_CONFIRMATION to bank v4's new LLMLogType enum member (a plain TEXT column on the port side, no marshaling change).",
+      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state. Type changed to ANSWER_CONFIRMATION to bank v4's new LLMLogType enum member (a plain TEXT column on the port side, no marshaling change). P4.D49: also carries v4 0cde7fbc's connectionProfileId (a real profile id) with imageProfileId explicitly null - the two-column write in LLMLogSchema field order.",
       "data": {
         "userId": "7d000000-0000-4000-8000-0000000000d1",
         "type": "ANSWER_CONFIRMATION",
@@ -172,6 +172,8 @@
         "autonomousRunId": null,
         "provider": "zai",
         "modelName": "glm-4.6",
+        "connectionProfileId": "5c000000-0000-4000-8000-0000000000c1",
+        "imageProfileId": null,
         "request": {
           "messageCount": 1,
           "messages": [
@@ -209,7 +211,7 @@
     },
     {
       "kind": "update",
-      "comment": "Swap the response object AND set usage on the sparse seed row 2. createdAt preserved, updatedAt pinned. Also sets durationMs (was null) to an integer.",
+      "comment": "Swap the response object AND set usage on the sparse seed row 2. createdAt preserved, updatedAt pinned. Also sets durationMs (was null) to an integer. P4.D49: also sets connectionProfileId on a row that had none, through the UPDATE path.",
       "id": "2a000000-0000-4000-8000-0000000000a2",
       "data": {
         "response": {
@@ -223,7 +225,46 @@
           "totalTokens": 46
         },
         "durationMs": 321,
+        "connectionProfileId": "5c000000-0000-4000-8000-0000000000c2",
         "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D49: the IMAGE_GENERATION shape of v4 0cde7fbc's attribution - imageProfileId set, connectionProfileId explicitly null. Proves the two columns are independent and that a null one stores SQL NULL.",
+      "data": {
+        "userId": "7d000000-0000-4000-8000-0000000000d1",
+        "type": "IMAGE_GENERATION",
+        "messageId": null,
+        "chatId": null,
+        "characterId": "4c000000-0000-4000-8000-0000000000c4",
+        "autonomousRunId": null,
+        "provider": "openai",
+        "modelName": "gpt-image-1",
+        "connectionProfileId": null,
+        "imageProfileId": "5e000000-0000-4000-8000-0000000000e1",
+        "request": {
+          "messageCount": 1,
+          "messages": [
+            {
+              "role": "user",
+              "content": "A brass orrery.",
+              "contentLength": 15,
+              "hasAttachments": false
+            }
+          ],
+          "toolCount": 0
+        },
+        "response": {
+          "content": "Generated 1 image(s)",
+          "contentLength": 20
+        },
+        "durationMs": 1204
+      },
+      "options": {
+        "id": "3a000000-0000-4000-8000-0000000000a4",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
       }
     },
     {

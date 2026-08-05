@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+LLM call logs now record which profile served the call. Every text call
+made through a connection profile stamps its id; every image call stamps
+its image profile id, including Concierge reroutes. The shared cheap-LLM
+path and the content gatekeeper now also measure how long the provider
+took — both had been writing no duration at all, which left every
+latency average hollow. Logs written before this change read exactly as
+before, and an instance whose log database predates the new columns
+still opens and reads.
+
 Adopted the reference app's new LLM-log schema: a freshly provisioned
 instance now creates the call log with the two profile-attribution
 columns (`connectionProfileId`, `imageProfileId`), re-dumped from the

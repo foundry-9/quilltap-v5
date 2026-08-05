@@ -1,6 +1,6 @@
 //! The llm-logs repository — the **second sibling-DB partition** of Phase 2
-//! (after the mount-index family) and the **widest repo to date** (18 columns,
-//! FIVE nested JSON-object columns). Ports v4's
+//! (after the mount-index family) and the **widest repo to date** (20 columns
+//! since v4 `0cde7fbc`, FIVE nested JSON-object columns). Ports v4's
 //! `lib/database/repositories/llm-logs.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
@@ -52,7 +52,10 @@
 //! ms value collapses back to a JSON integer in the dump via
 //! [`super::js_number_to_json`], matching v4), the `type` **enum TEXT** column
 //! (`LLMLogTypeEnum`, 18 variants), four **nullable UUID-as-TEXT** columns
-//! (`messageId` / `chatId` / `characterId` / `autonomousRunId`), and the plain
+//! (`messageId` / `chatId` / `characterId` / `autonomousRunId`), the two
+//! nullable profile-attribution columns v4 `0cde7fbc` added
+//! (`connectionProfileId` / `imageProfileId` — see [`log_columns`] for how a
+//! pre-migration partition is tolerated on the read side), and the plain
 //! `provider` / `modelName` / `userId` strings.
 //!
 //! ### Nested-JSON rendering rules (must match v4 byte-for-byte)
@@ -279,6 +282,14 @@ pub struct LlCreate {
     pub autonomous_run_id: Option<String>,
     pub provider: String,
     pub model_name: String,
+    /// The connection profile that served this call, when the call site has one
+    /// in hand (v4 `0cde7fbc`) — lets the Almanack attribute usage/latency/cache
+    /// figures to a specific profile rather than guessing from
+    /// (provider, modelName). `None` => SQL NULL.
+    pub connection_profile_id: Option<String>,
+    /// The image profile that served this call (image-generation call sites).
+    /// `None` => SQL NULL.
+    pub image_profile_id: Option<String>,
     /// Required nested JSON object → compact JSON text.
     pub request: LlmLogRequestSummary,
     /// Required nested JSON object → compact JSON text.
@@ -317,6 +328,8 @@ pub struct LlUpdate {
     pub autonomous_run_id: Option<String>,
     pub provider: Option<String>,
     pub model_name: Option<String>,
+    pub connection_profile_id: Option<String>,
+    pub image_profile_id: Option<String>,
     pub request: Option<LlmLogRequestSummary>,
     pub response: Option<LlmLogResponseSummary>,
     pub usage: Option<LlmLogTokenUsage>,
@@ -359,6 +372,14 @@ pub struct LlmLogRow {
     pub autonomous_run_id: Option<String>,
     pub provider: String,
     pub model_name: String,
+    /// v4 `0cde7fbc`'s profile-attribution columns. Both are
+    /// `.nullable().optional()` in `LLMLogSchema`, so a NULL column is ABSENT
+    /// from v4's body (the standing "reads omit null" rule) — and a row written
+    /// before the migration reads as absent on both sides.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_profile_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_profile_id: Option<String>,
     pub request: LlmLogRequestSummary,
     pub response: LlmLogResponseSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -396,9 +417,54 @@ where
 /// The `SELECT` list for [`LlmLogRow`], in schema field order. v4 issues
 /// `SELECT *` and lets the Zod parse reorder; naming the columns is the same set
 /// in the same order, and keeps the row mapper's indices honest.
+///
+/// v4 `0cde7fbc`'s two profile-attribution columns are NOT in this list — they
+/// are appended by [`log_columns`] only when the table actually has them, and
+/// [`map_log_row`] reads them BY NAME. Keeping them off the positional list is
+/// what lets indices 0..=17 stay put.
 const LOG_COLUMNS: &str = "id, userId, type, messageId, chatId, characterId, autonomousRunId, \
      provider, modelName, request, response, usage, cacheUsage, rawProviderUsage, \
      requestHashes, durationMs, createdAt, updatedAt";
+
+/// The two columns v4's `add-llm-logs-profile-columns-v1` migration adds.
+const PROFILE_COLUMNS: [&str; 2] = ["connectionProfileId", "imageProfileId"];
+
+/// The `SELECT` list for THIS partition — [`LOG_COLUMNS`] plus the profile
+/// columns when the table carries them.
+///
+/// v4 reads every collection with `SELECT *`
+/// (`backends/sqlite/query-translator.ts:602`), so an llm-logs partition that
+/// predates the `add-llm-logs-profile-columns-v1` migration simply returns no
+/// profile columns and their `.nullable().optional()` schema keys parse as
+/// absent. v5 names its columns, so it has to ask the table first — otherwise
+/// every pre-migration instance (and every differential fixture built before
+/// the drift) would fail the read outright with `no such column`. The v5
+/// migration runner stays deferred, so this is the whole tolerance story on
+/// the read side; the WRITE side is strict exactly as v4's is (its `insertOne`
+/// names the document's keys, so v4 cannot write a profile id into a
+/// pre-migration table either).
+///
+/// This is the read spine's own guard. P4.37's Almanack attribution probe is a
+/// separate thing in a separate module (§2 of the round contract).
+fn log_columns(conn: &Connection) -> String {
+    let mut list = String::from(LOG_COLUMNS);
+    for col in PROFILE_COLUMNS {
+        if table_has_column(conn, col) {
+            list.push_str(", ");
+            list.push_str(col);
+        }
+    }
+    list
+}
+
+/// `PRAGMA table_info(llm_logs)` membership. Fail-soft: an unreadable pragma
+/// (missing table) reports "absent", which lands the caller on the same
+/// no-profile-columns path v4 takes.
+fn table_has_column(conn: &Connection, column: &str) -> bool {
+    conn.prepare("SELECT 1 FROM pragma_table_info('llm_logs') WHERE name = ?1")
+        .and_then(|mut stmt| stmt.exists(params![column]))
+        .unwrap_or(false)
+}
 
 /// The subset of an `llm_logs` row `self_inventory`'s lastTurn section reads: the
 /// provider/model plus the parsed `usage` token counts and the log timestamp.
@@ -421,9 +487,15 @@ impl<'c> LLMLogsRepository<'c> {
         Self { conn }
     }
 
-    /// Insert an llm-log with the given pinned id + timestamps. All 18 columns are
+    /// Insert an llm-log with the given pinned id + timestamps. All 20 columns are
     /// written in `LLMLogSchema` field order; nested-JSON columns via
     /// `serde_json::to_string`, nullable JSON/REAL/UUID columns via `Option`.
+    ///
+    /// The write names the profile columns unconditionally — v4's `insertOne`
+    /// does the same (it names the document's keys, and `logLLMCall` always sets
+    /// both, `?? null`), so neither engine can write into an llm-logs partition
+    /// that predates `add-llm-logs-profile-columns-v1`. Only the READ side is
+    /// tolerant ([`log_columns`]).
     pub fn create(&self, data: &LlCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let request_json = serde_json::to_string(&data.request)
             .map_err(|e| DbError::Key(format!("request serialize: {e}")))?;
@@ -437,9 +509,11 @@ impl<'c> LLMLogsRepository<'c> {
         self.conn.execute(
             "INSERT INTO llm_logs \
                (id, userId, type, messageId, chatId, characterId, autonomousRunId, \
-                provider, modelName, request, response, usage, cacheUsage, \
+                provider, modelName, connectionProfileId, imageProfileId, request, \
+                response, usage, cacheUsage, \
                 rawProviderUsage, requestHashes, durationMs, createdAt, updatedAt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
+                     ?18, ?19, ?20)",
             params![
                 opts.id,
                 data.user_id,
@@ -450,6 +524,8 @@ impl<'c> LLMLogsRepository<'c> {
                 data.autonomous_run_id,
                 data.provider,
                 data.model_name,
+                data.connection_profile_id,
+                data.image_profile_id,
                 request_json,
                 response_json,
                 usage_json,
@@ -495,7 +571,8 @@ impl<'c> LLMLogsRepository<'c> {
     /// v4 `AbstractBaseRepository._findById(id)` for this repo — the item routes'
     /// only read. Translated: `SELECT * FROM "llm_logs" WHERE "id" = ? LIMIT 1`.
     pub fn find_by_id(&self, id: &str) -> Result<Option<LlmLogRow>, DbError> {
-        let sql = format!("SELECT {LOG_COLUMNS} FROM llm_logs WHERE \"id\" = ?1 LIMIT 1");
+        let cols = log_columns(self.conn);
+        let sql = format!("SELECT {cols} FROM llm_logs WHERE \"id\" = ?1 LIMIT 1");
         let mut stmt = self.conn.prepare(&sql)?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
@@ -620,8 +697,9 @@ impl<'c> LLMLogsRepository<'c> {
         } else {
             String::new()
         };
+        let cols = log_columns(self.conn);
         let sql = format!(
-            "SELECT {LOG_COLUMNS} FROM llm_logs WHERE {where_sql} \
+            "SELECT {cols} FROM llm_logs WHERE {where_sql} \
                ORDER BY \"createdAt\" DESC{limit_clause}"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -740,6 +818,14 @@ impl<'c> LLMLogsRepository<'c> {
         if let Some(model_name) = &patch.model_name {
             assignments.push(format!("modelName = ?{}", values.len() + 1));
             values.push(Box::new(model_name.clone()));
+        }
+        if let Some(connection_profile_id) = &patch.connection_profile_id {
+            assignments.push(format!("connectionProfileId = ?{}", values.len() + 1));
+            values.push(Box::new(connection_profile_id.clone()));
+        }
+        if let Some(image_profile_id) = &patch.image_profile_id {
+            assignments.push(format!("imageProfileId = ?{}", values.len() + 1));
+            values.push(Box::new(image_profile_id.clone()));
         }
         if let Some(request) = &patch.request {
             let json = serde_json::to_string(request)
@@ -1016,6 +1102,16 @@ fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
             None => Ok(None),
         }
     }
+    /// The profile columns are read BY NAME, not by index: they are absent from
+    /// the SELECT list on a pre-migration partition ([`log_columns`]), and an
+    /// absent column is v4's `undefined` — the key is simply omitted.
+    fn profile_col(row: &rusqlite::Row<'_>, name: &str) -> Result<Option<String>, DbError> {
+        match row.get::<_, Option<String>>(name) {
+            Ok(v) => Ok(v),
+            Err(rusqlite::Error::InvalidColumnName(_)) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
     let request_json: String = row.get(9)?;
     let response_json: String = row.get(10)?;
     Ok(LlmLogRow {
@@ -1028,6 +1124,8 @@ fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
         autonomous_run_id: row.get(6)?,
         provider: row.get(7)?,
         model_name: row.get(8)?,
+        connection_profile_id: profile_col(row, "connectionProfileId")?,
+        image_profile_id: profile_col(row, "imageProfileId")?,
         request: parse(&request_json, "request")?,
         response: parse(&response_json, "response")?,
         usage: parse_opt(row.get(11)?, "usage")?,

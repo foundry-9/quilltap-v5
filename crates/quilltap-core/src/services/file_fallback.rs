@@ -614,6 +614,10 @@ async fn log_description_success<CMP: CompletionProvider>(
         character_id: None,
         provider: provider.to_string(),
         model_name: model_name.to_string(),
+        // v4 `0cde7fbc` did NOT touch `lib/chat/file-attachment-fallback.ts` —
+        // this call site sets no profile id on either side.
+        connection_profile_id: None,
+        image_profile_id: None,
         request: LogRequest {
             messages: vec![LogRequestMessage {
                 role: "user".to_string(),
@@ -660,6 +664,10 @@ async fn log_description_failure<CMP: CompletionProvider>(
         character_id: None,
         provider: provider.to_string(),
         model_name: model_name.to_string(),
+        // v4 `0cde7fbc` did NOT touch `lib/chat/file-attachment-fallback.ts` —
+        // this call site sets no profile id on either side.
+        connection_profile_id: None,
+        image_profile_id: None,
         request: LogRequest {
             messages: vec![LogRequestMessage {
                 role: "user".to_string(),
