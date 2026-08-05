@@ -56137,3 +56137,9 @@ Tier-2 deliverable 6 (headers that no longer claim the fold is mocked) landed wi
 units 1 and 2: the Rust test header, the oracle case header, and the fixture
 builder header all describe the un-mocked pass, the vector-store un-mock, and the
 three seeded collections.
+
+**Correction to the P4.36 unit-2 record above:** the pinned worktree
+`/tmp/qt-v4-pin-p436-7189a968` was removed at the END OF THE LANE, not left for
+the unifier. `git -C ~/source/quilltap-server worktree list` shows only the main
+checkout. If v4's tree is still dirty at unification, make a fresh pin at
+`7189a968` — do not reuse a sibling lane's (P4.d26's lesson).
