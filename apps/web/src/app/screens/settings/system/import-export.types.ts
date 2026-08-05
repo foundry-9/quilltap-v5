@@ -6,24 +6,45 @@
  * @module screens/settings/system/import-export.types
  */
 
-/** v4 `ExportTypeStep.tsx:12-20` — the exportable types, in order. */
+/**
+ * Entity types offered in the picker (v4 `ExportTypeStep.tsx:20-36`).
+ *
+ * This list must stay exhaustive over `ExportEntityType`. Every member the
+ * writer supports belongs here — three types were once silently missing from
+ * this array with no note saying why, and the result was a set of exports
+ * nobody could reach from the UI. If a type is ever deliberately withheld,
+ * leave it out *with a comment right here* explaining the reason.
+ *
+ * In v5 the array is also the SOURCE of `ExportEntityType`, so
+ * `ENTITY_TYPE_LABELS` below cannot compile with a member missing — the
+ * doctrine is enforced rather than merely asked for.
+ */
 export const EXPORTABLE_TYPES = [
   'characters',
   'chats',
   'roleplay-templates',
+  'prompt-templates',
   'connection-profiles',
   'image-profiles',
   'embedding-profiles',
   'tags',
+  'projects',
+  'groups',
+  'document-stores',
+  'files',
+  'provider-models',
+  'plugin-configs',
+  'instance-settings',
 ] as const;
 
 export type ExportEntityType = (typeof EXPORTABLE_TYPES)[number];
 
-/** v4 `types.ts:42-53` — the label map (all ten). */
-export const ENTITY_TYPE_LABELS: Record<string, string> = {
+/** v4 `types.ts:42-58` — the label map (all fifteen). */
+export const ENTITY_TYPE_LABELS: Record<ExportEntityType, string> = {
   characters: 'Characters',
   chats: 'Chats',
   'roleplay-templates': 'Roleplay Templates',
+  'prompt-templates': 'Prompt Templates',
   'connection-profiles': 'Connection Profiles',
   'image-profiles': 'Image Profiles',
   'embedding-profiles': 'Embedding Profiles',
@@ -31,11 +52,20 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   projects: 'Projects',
   groups: 'Groups',
   'document-stores': 'Document Stores',
+  files: 'Files & Folders',
+  'provider-models': 'Provider Models',
+  'plugin-configs': 'Plugin Settings',
+  'instance-settings': 'Instance Settings',
 };
 
-/** v4 `utils.ts:6-17` — camelCase preview key → kebab export type. */
-export function toExportEntityType(key: string): string {
-  const map: Record<string, string> = {
+/**
+ * v4 `utils.ts:6-25` — camelCase preview key → kebab export type. The fallback
+ * is v4's `mapping[key] || key`: an unrecognized key passes through unchanged
+ * (and then misses the label map, which is why every caller keeps its own
+ * `?? key`).
+ */
+export function toExportEntityType(key: string): ExportEntityType {
+  const map: Record<string, ExportEntityType> = {
     characters: 'characters',
     chats: 'chats',
     tags: 'tags',
@@ -43,8 +73,16 @@ export function toExportEntityType(key: string): string {
     imageProfiles: 'image-profiles',
     embeddingProfiles: 'embedding-profiles',
     roleplayTemplates: 'roleplay-templates',
+    promptTemplates: 'prompt-templates',
+    projects: 'projects',
+    groups: 'groups',
+    documentStores: 'document-stores',
+    files: 'files',
+    providerModels: 'provider-models',
+    pluginConfigs: 'plugin-configs',
+    instanceSettings: 'instance-settings',
   };
-  return map[key] ?? key;
+  return map[key] ?? (key as ExportEntityType);
 }
 
 /** One entity in the picker (v4 `AvailableEntity`). */

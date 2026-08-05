@@ -81,6 +81,13 @@ over the 3 MiB chunk size), an embedding-bearing memory, a built-in
 prompt template, a switched-off bundled-plugin config, and four more
 instance-settings rows. No production code changed; every consuming
 differential regenerates over the rebuilt DBs as the round's units land.
+The Export Data picker now offers all fifteen kinds of data the writer
+can produce, not seven. Prompt templates, projects, character groups,
+document stores, files and folders, provider models, plugin settings,
+and instance settings were all exportable and none of them could be
+reached from the screen. The list is now exhaustive by construction —
+a kind without a label no longer compiles — and the picker's order and
+wording match the reference app exactly.
 
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported

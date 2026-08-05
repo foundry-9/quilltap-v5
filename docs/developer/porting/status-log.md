@@ -55409,3 +55409,47 @@ predates the fixture widening flowing into it by construction),
   at lane end; recreate per `oracle-regen-pinned-v4-worktree`.
 - P4.D47's C1–C5 contract stands untouched (no deviation was needed;
   `api/types.rs`'s one §1 change is exactly C2's `compact`).
+### Lane record — P4.D47 unit 1 (the fifteen-type table)
+
+The `7189a968` SPA drift's first half. `EXPORTABLE_TYPES` went from the
+pre-drift SEVEN (which v5 had carried faithfully) to the contract's
+fifteen in v4's exact order, `ENTITY_TYPE_LABELS` to all fifteen labels,
+and `toExportEntityType` to v4's whole fifteen-key camelCase→kebab map
+(the eight additions: `promptTemplates, projects, groups, documentStores,
+files, providerModels, pluginConfigs, instanceSettings`). v4's doctrine
+comment came with it — the one that says an exclusion must be commented
+*at the exclusion site*, because three types were once silently missing
+and the exports were unreachable.
+
+One structural improvement over the v5 that was here: the label map is
+now `Record<ExportEntityType, string>` (v4's own shape) rather than
+`Record<string, string>`, and `toExportEntityType` returns
+`ExportEntityType` (v4's shape too, cast fallback included). Since
+`ExportEntityType` is *derived* from `EXPORTABLE_TYPES` in v5, adding a
+type to the picker without labelling it is now a compile error — the
+doctrine is enforced, not merely requested. `export-dialog.label()`
+narrowed from `string` to `ExportEntityType` to suit; nothing else
+consumes the three exports.
+
+New spec `import-export.types.spec.ts` transcribes contract C1 as a
+literal (a spec that iterates the array it is checking asserts nothing)
+and pins the order, every label, the both-ways key/label agreement, all
+fifteen preview-key mappings, and v4's pass-through fallback.
+**Mutation-proven:** swapping `files` and `provider-models` in the module
+turned the order assertion red (1 failed / 3,851 passed), restored green.
+
+### Lane record — P4.D47 unit 2 (the wizard over the widened list)
+
+No wizard machinery was needed for the eight new types, which is the
+finding rather than an assumption: v4's `supportsMemories`
+(`useExportData.ts:42-43`) is still characters/chats only at `7189a968`,
+so each new type is a 4-step, all-or-selected flow whose second step
+already offers Export instead of Next, and v5's generic implementation
+of the step-count quirk already produced exactly that. New
+`export-dialog.spec.ts` pins it rather than the prose: the fifteen
+radios' rendered ORDER and their rendered LABELS against literal
+contract lists, "Step 1 of 4" for each of the eight new types, the
+`systemExportEntities` dispatch for `instance-settings` with Export (not
+Next) on step 2 and no memories option, and — the C4 obligation — that
+the server's composed names (`anthropic / claude-opus-4`) render verbatim
+with no client-side reformatting.

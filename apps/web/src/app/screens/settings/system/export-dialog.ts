@@ -295,7 +295,7 @@ export class ExportDialog {
       (this.step() === 'select' && this.scope() === 'selected' && this.selectedIds().length === 0),
   );
 
-  protected label(t: string): string {
+  protected label(t: ExportEntityType): string {
     return ENTITY_TYPE_LABELS[t] ?? t;
   }
 
