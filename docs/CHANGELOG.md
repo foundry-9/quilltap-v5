@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Restoring a backup into a new account now carries LLM-log profile
+attribution across: a log row's connection-profile and image-profile ids
+are remapped alongside the profiles themselves, so restored rows keep
+naming a live profile instead of one that no longer exists.
+
 Autonomous rooms' daily token budget now works. The query behind it
 filtered on a condition SQL can never satisfy, so the spend it summed was
 always zero and a configured daily budget never bound on anything; the

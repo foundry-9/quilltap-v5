@@ -56523,3 +56523,40 @@ own jest oracle, so no other family is invalidated.
 
 Regen recipe: unchanged — the family header's, verbatim (TZ=UTC pin
 load-bearing since P4.d26).
+
+## Lane record — P4.D49 unit 6: the UUID-remap additions, made measurable
+
+**2026-08-05.** `services/backup/uuid_remap.rs`'s llm-logs entry grows
+from `["id","messageId","chatId","characterId"]` to include
+`connectionProfileId` and `imageProfileId` (v4 `0cde7fbc`), with v4's
+reasoning carried: the profiles are themselves remapped, so a log left
+holding the source instance's profile id names nothing on the receiving
+one and the Almanack reads every restored row as a deleted profile.
+`remap_fields` only touches string fields, so pre-4.9 NULL rows pass
+through untouched.
+
+**Made measurable, not merely compiled.** The P4.D31 lesson is that a
+minted-id normalizer labels the correct id and the wrong one
+identically — but this family has NO normalizer by design (both sides
+mint from the same pinned deterministic source), so ids are compared
+literally already. What was missing was a case where a log's profile id
+has a profile to agree WITH. New corpus case
+`llm_log_profile_attribution` (4 logs, 2 connection profiles, 1 image
+profile): log A's `connectionProfileId` lands on the same minted id the
+profile itself got (`…0001`), log B REUSES that same entry and picks up
+the image profile (`…0003`), log C's nulls pass through, and log D's
+orphan id — naming no profile in the backup — still earns its own
+mapping entry (`…0011`). 38 collections byte-identical, 11 ids remapped.
+Mutation-proven: dropping `connectionProfileId` from v5's list fails at
+`backup_uuid_remap_equivalence.rs:362`.
+
+**Fixture impact:** `harness/oracle/fixtures/uuid-remap-corpus.json`
+regenerated (+80 lines) and its sha256 re-pinned per NDJSON line, per
+P4.9G6's hash rule — corpus and oracle are always regenerated in ONE
+invocation. That corpus is consumed by
+`backup_uuid_remap_equivalence` alone; the committed `system-data-*.db`
+files it reads were verified unmodified afterwards.
+
+Regen recipe: the case header's, verbatim
+(`harness/oracle/cases/backup-uuid-remap.test.ts`), run from
+`~/source/quilltap-server` with the /tmp jest mirror.

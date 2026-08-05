@@ -450,6 +450,40 @@ function edgeCases(): Case[] {
       }),
     },
     {
+      name: 'llm_log_profile_attribution',
+      note: "P4.D49 / v4 0cde7fbc: an llm_logs row's connectionProfileId and imageProfileId must land on the SAME minted ids the profiles themselves got, or the Almanack's per-profile attribution reads every restored row as a deleted profile. The second log shares the connection profile (one mapping entry, reused), the third carries nulls (a pre-4.9 row, untouched by remapFields' string guard).",
+      targetUserId: t,
+      data: bag({
+        connectionProfiles: [{ id: 'cp-1' }, { id: 'cp-2' }],
+        imageProfiles: [{ id: 'ip-1' }],
+        llmLogs: [
+          {
+            id: 'log-a',
+            messageId: 'msg-1',
+            chatId: 'chat-1',
+            characterId: 'char-1',
+            connectionProfileId: 'cp-1',
+            imageProfileId: null,
+          },
+          {
+            id: 'log-b',
+            connectionProfileId: 'cp-1',
+            imageProfileId: 'ip-1',
+          },
+          {
+            id: 'log-c',
+            connectionProfileId: null,
+            imageProfileId: null,
+          },
+          {
+            id: 'log-d',
+            note: 'a profile id naming nothing in this backup still gets its own mapping entry',
+            connectionProfileId: 'cp-orphan',
+          },
+        ],
+      }),
+    },
+    {
       name: 'array_field_guards',
       note: "remapArrayFields' Array.isArray guard: a non-array is left alone (it is NOT routed through remapArray's dead [] branch); an empty array stays empty",
       targetUserId: t,

@@ -207,12 +207,26 @@ pub fn remap_backup_data(
     // it's intentionally left alone (membership/links carry the group id forward).
     let groups = each(&data.groups, |g| r.remap_fields(g, &["id"]));
 
-    // Remap LLM logs
+    // Remap LLM logs.
+    // `connectionProfileId` / `imageProfileId` must be in this list (v4
+    // `0cde7fbc`): connection and image profiles are themselves remapped above,
+    // so a log row left holding the source instance's profile id would name
+    // nothing on the receiving one — and The Almanack's per-profile attribution
+    // would read every restored row as a deleted profile. Both are nullable and
+    // `remap_fields` only touches string fields, so pre-4.9 rows (which carry
+    // null) pass through untouched.
     let llm_logs = each(&data.llm_logs, |l| {
         fields_owned(
             r,
             l,
-            &["id", "messageId", "chatId", "characterId"],
+            &[
+                "id",
+                "messageId",
+                "chatId",
+                "characterId",
+                "connectionProfileId",
+                "imageProfileId",
+            ],
             target_user_id,
         )
     });
