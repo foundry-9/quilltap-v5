@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Planned the `f7f1a956` Almanack round and committed its four work
+orders: the reference app rewrote its system capabilities report into
+The Almanack, adding per-profile attribution columns to the LLM call
+log and fixing a token-accounting bug that had made autonomous-room
+daily token budgets a no-op. One order absorbs those changes on the
+already-ported surfaces (schema, call-site logging, the budget fix,
+backup remapping), two port the new Almanack report itself (server
+collectors/renderer/API, and the settings card with a new shared
+progress-bar component), and a fourth repairs the provider-manifest
+generator so regenerating manifests no longer silently drops the
+image-model lists. Planning docs only; no code changed.
+
 Unified the `7189a968` round: the reference app's import/export overhaul
 is fully absorbed. Exports no longer carry memory embeddings (99.7% of a
 real 791 MB archive; the importer re-embeds what it inserts, one queued

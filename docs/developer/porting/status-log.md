@@ -56255,3 +56255,104 @@ phase plan):** the `0cde7fbc` Almanack drift catch-up (candidate 0 —
 pin at `7189a968` until it lands); the dogfood pass with this round's
 live proofs (candidate 1); the `gen-provider-manifests.mjs` repair
 (candidate 2); the recipe-rot tail; the standing pools.
+
+## Round planned — the `f7f1a956` Almanack round (P4.D49 ∥ P4.37 ∥ P4.38 ∥ P4.39), 2026-08-05
+
+**The drift-check ran first (per the skill): v4 HEAD is `f7f1a956`,
+TWO commits past the `7189a968` baseline, tree CLEAN** (the dirty
+in-flight almanack test work the `7189a968` round record warned about
+landed as `f7f1a956` itself). Classification:
+
+- **`0cde7fbc` — "feat(almanack): rename and rewrite the capabilities
+  report" — REAL drift, split two ways.** (a) Ported-surface deltas →
+  **P4.D49**: the `add-llm-logs-profile-columns-v1` schema change
+  (nullable `connectionProfileId`/`imageProfileId` on `llm_logs` —
+  the FIRST D23 re-dump to touch the llm-logs partition; the
+  generateDDL feed is the LLMLogSchema Zod change, and the
+  migration-only indexes are expected NOT to appear in the fresh
+  dump), the two columns through `logLLMCall` + six PORTED call sites
+  (cheap-llm exec both arms, primary stream, gatekeeper ×2 —
+  moderation gets duration but NO profile id — image_job_common's
+  four consolidated arms, generate_image; `auto-configure` and
+  `character-optimizer` are UNPORTED surface, named for their future
+  lanes), measured `durationMs` where v4 added it, the
+  `getTotalTokenUsageSince` `$ne: null` un-zero — which makes the
+  enclave daily token budget BIND ON REAL SPEND for the first time
+  (v5's BROKEN-BUT-EXACT annotations at `enclave/step.rs:528/:803`
+  anticipated exactly this fix) — and the UUID-remap list additions
+  (sha-pinned corpus regen + a P4.D31-style measurability
+  obligation). The `findStandalone` `$eq: null` quirk is UNCHANGED in
+  v4 — v5's pin stands. (b) The Almanack report itself → **P4.37 ∥
+  P4.38** (port-or-defer RULED at planning: PORT NOW — v4 deleted the
+  old capabilities-report, which v5 never had; the M6 row 578 MISSING
+  entry closes with it). Server: the seven-phase collectors over all
+  three partitions, the pure byte-exact renderer (one new
+  `toLocaleString()`-no-args datetime port; the date/number formats
+  otherwise already exist in `format_time.rs`/the grouping ports),
+  the four report verbs on v4's frozen `capabilities-report-*` action
+  names, the operation-progress generalization as a new `phase` frame
+  kind on the ONE global event stream (the D3-family divergence — no
+  per-id SSE route, creation-progress precedent; `creation_progress`'s
+  existing wire bytes pinned unmoved). SPA: the Providers-tab card
+  (the :15 named deferral retires), the viewer dialog, the shared
+  ProgressBar + qt-progress CSS family, and the Proving-Bench +
+  search-importance meter migrations (v4's third migrated consumer,
+  the optimizer bar, is unported v5 surface — out of scope by name).
+  The key decoupling that lets P4.D49 and P4.37 run in parallel:
+  v4's `hasProfileAttributionColumns()` is a runtime PRAGMA probe
+  with a `(provider || '/' || modelName)` fallback arm, so the
+  almanack collectors work on column-less DBs; the §2 contract splits
+  ownership (D49 = schema/writes/`db/llm_logs.rs`; P4.37 = read
+  aggregates as raw SQL in its own module) with both attribution arms
+  differential-exercised in P4.37's own lane.
+- **`f7f1a956` — "fix(ci): pin the test timezone…" — NO-PORT** (CI
+  workflows + snapshot regen only), **with one v5-relevant trap**:
+  v4's `jest.config.ts`/`jest.integration.config.ts` now set
+  `process.env.TZ = 'UTC'` unconditionally BEFORE workers fork, so an
+  env-passed `TZ=America/Chicago` jest oracle regen is silently
+  clobbered to UTC. Surveyed: `day_references` + `enclave_cron` are
+  tsx-driven and SAFE (both validate the recorded zone);
+  `llm_log_cleanup` (jest) fails LOUD on the mismatch;
+  `distill_search_extraction` (jest) is SEMI-SILENT (no TZ marker in
+  its NDJSON — the only catch is a misleading corpus-sensitivity
+  red). P4.D49 deliverable 8 defuses both jest recipes and adds a TZ
+  marker to the distill family.
+
+**The four orders** (committed under
+`docs/developer/porting/work-orders/`):
+`p4.d49-almanack-drift-catchup-server.md` (drift-proper server),
+`p4.37-almanack-server.md` (Almanack server; §1 contract with P4.38,
+§2 with P4.D49), `p4.38-almanack-spa.md` (Almanack SPA; beats gated
+`P437_SERVER_LANDED`), `p4.39-provider-manifests-generator-repair.md`
+(phase-4 candidate 2 — the `imageGenerationModels` generator repair;
+grok/z-ai lists confirmed readable from the shipped
+`plugins/dist/*/image-provider.ts` sources at :17/:16; byte-identity
+regen is the proof; the `perl-base` Docker purge rides as its tier 2).
+
+**Ownership is disjoint by construction:** P4.37 is the SOLE toucher
+of `api/types.rs`/`api/engine.rs`/`creation_progress.rs`/
+`system_data_routes.rs`/`format_time.rs`; P4.D49 owns the whole
+llm_logs write spine + schema + remap + enclave/step.rs + the
+blast-radius harness families; P4.38 owns `apps/web/**`; P4.39 owns
+the generator + manifests dir (byte-identity expected). P4.37 builds
+its OWN new almanack fixture family so the `system-data-*` family
+stays uncontended. Version bumps: D49 core+harness; P4.37
+core+harness+web; P4.38 SPA; P4.39 none expected.
+
+**Deliberately left out of the round:** the dogfood pass (candidate 1
+— it should run AFTER unification, richer for it: this round adds the
+Almanack live proof + the enclave-budget behavior change + the
+still-owed P4.D31/P4.21/D33 💸 proofs and walk Parts C 17-19/D/G/H);
+the recipe-rot tail (candidate 3 — file-ownership overlap with
+P4.D49's regen sweep; next maintenance round); `p4.9h`/`p4.9i2` and
+the standing pools (`0cde7fbc`'s three help docs — `the-almanack.md`
+NEW, `system-capabilities-report.md` rewritten, `system-tools.md` —
+join the `p4.9i2` bank: no v5 action, runtime sync, the bank tracks
+them); `memory-dedup*` + `ai-import-stream` (pre-existing unported
+system-tools actions, untouched by this drift).
+
+**Oracle regen venue for the round:** straight from
+`~/source/quilltap-server` while HEAD stays `f7f1a956` and the tree
+stays clean; pin a detached worktree at `f7f1a956` on any further
+drift (`oracle-regen-pinned-v4-worktree`). The baseline MOVES to
+`f7f1a956` at unification (the unifier's edit, as always).
