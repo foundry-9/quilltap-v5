@@ -24,10 +24,20 @@ pub fn fixtures_dir() -> PathBuf {
 }
 
 /// The harness `llm_logs` DDL (a fresh encrypted sibling partition).
+///
+/// **Follows v4's `generateDDL` — 20 columns since v4 `0cde7fbc`** (the two
+/// profile-attribution columns between `modelName` and `request`). The ported
+/// write names all 20 exactly as v4's does, so an 18-column copy of this DDL
+/// makes every log write fail into `log_llm_call`'s swallow and the venue's
+/// llm_logs coverage silently vanish (the `chat_send_smoke` CHAT_MESSAGE row
+/// was lost this way at the `f7f1a956` unification's §3 review — caught there,
+/// not by a red test, which is the point of this comment). Check against
+/// `provisioning/fresh_schema.json` before trusting a hand-rolled copy.
 const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
     id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
     chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
-    modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+    modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+    request TEXT, response TEXT, usage TEXT, \
     cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
     durationMs REAL, createdAt TEXT, updatedAt TEXT);";
 

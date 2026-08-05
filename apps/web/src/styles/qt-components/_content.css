@@ -1752,20 +1752,43 @@
     @apply border border-border px-3 py-2;
   }
 
+  /* v4's headings compose the qt-heading-* classes (h1 → qt-heading-2,
+     h2 → qt-heading-3, h3 → qt-heading-4 — dialog.tsx:119-137). A CSS block
+     cannot compose a class, so their declarations are carried inline (from
+     the definitions at _content.css `.qt-heading-*` above); without them the
+     report's headings render at body size under the Tailwind preflight —
+     caught at the `f7f1a956` unification's §3 review. */
   .qt-almanack-report h1 {
-    @apply mt-6 mb-4 pb-2 border-b border-border;
+    @apply text-2xl font-semibold tracking-tight mt-6 mb-4 pb-2 border-b border-border;
+    font-family: var(--qt-heading-font);
   }
 
   .qt-almanack-report h2 {
-    @apply mt-6 mb-3 pb-1 border-b border-border;
+    @apply text-xl font-semibold mt-6 mb-3 pb-1 border-b border-border;
+    font-family: var(--qt-heading-font);
   }
 
   .qt-almanack-report h3 {
-    @apply mt-4 mb-2;
+    @apply text-lg font-semibold mt-4 mb-2;
+    font-family: var(--qt-heading-font);
   }
 
   .qt-almanack-report h4 {
     @apply text-base font-semibold mt-3 mb-2;
+  }
+
+  /* v4 dialog.tsx:164-174: paragraph rhythm + the strong/em treatments. */
+  .qt-almanack-report p {
+    @apply my-2 leading-relaxed;
+  }
+
+  .qt-almanack-report strong {
+    @apply font-semibold;
+  }
+
+  .qt-almanack-report em {
+    @apply italic text-sm;
+    color: var(--qt-text-secondary-fg);
   }
 
   .qt-almanack-report ul {

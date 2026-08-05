@@ -85,6 +85,12 @@ interface SelectedReport {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, ProgressBar, AlmanackReportDialog],
   template: `
+    <!-- v4's rewritten card wraps its body in a nested "qt-card p-6" INSIDE the
+         collapsible (card.tsx's root div) — a double-card its sibling Providers
+         cards don't have. v5 deliberately drops the wrapper so the Almanack
+         matches the api-keys / connection-profiles / cheap-llm cards beside it;
+         a documented rendered-DOM divergence (recorded at the f7f1a956
+         unification's §3 review). -->
     <div>
       <div class="flex items-start gap-4 mb-6">
         <div class="flex-1">
