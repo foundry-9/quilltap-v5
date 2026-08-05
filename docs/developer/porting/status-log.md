@@ -56114,3 +56114,26 @@ Run every step from the pinned worktree while v4's tree is dirty; from
 `~/source/quilltap-server` once it is clean and still at `7189a968`. The fixture
 build MUST be re-run whenever the builder or `context-summary-service-tier3.json`
 moves — the oracle and the Rust side read the same built file.
+
+## Lane record — P4.36 tier 2: the recipe classification (no change needed)
+
+**The order's warning that this family carries `unstaged_jest_roots` is stale.**
+`recipe_sweep.py --list` puts it in neither the 27-family warning set nor any
+other; `--json` reports it `status: ok, problems: [], notes: []`. The header
+recipe already uses P4.34's staged-mirror convention (`TMPO=/tmp/qt-ctxsum-oracle`
++ `--roots "$TMPO/cases"`), so the `--v5w` guard the order prescribes is not
+needed — every regen in this lane ran from a `.claude/worktrees/…` venue without
+it. Nothing to convert; deliverable 5 was already satisfied on main.
+
+`--run context_summary_service_tier3_equivalence` was exercised anyway. The driver
+extracts the recipe correctly, stages it into its own per-family mirror, and runs
+it from this venue — and then fails, because the recipe's `cd
+~/source/quilltap-server` lands on the tree that went dirty mid-lane. That is the
+environment, not the recipe: the identical command from the pinned worktree is
+green. **A sweep run should not be trusted while v4's tree is dirty** — every
+family whose recipe cds into the checkout inherits the same false red.
+
+Tier-2 deliverable 6 (headers that no longer claim the fold is mocked) landed with
+units 1 and 2: the Rust test header, the oracle case header, and the fixture
+builder header all describe the un-mocked pass, the vector-store un-mock, and the
+three seeded collections.
