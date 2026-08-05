@@ -57824,3 +57824,14 @@ DIRTY with the in-flight Taboo feature)
 
 Versions after the round: core 0.0.474, harness 0.0.403, host 0.0.59,
 web 0.0.61, cli 0.0.5, quilltap-tauri 0.0.6, SPA 0.5.412.
+
+### Post-round addendum (2026-08-05, minutes after the ff-merge): the Taboo drift LANDED
+
+v4 shipped `7df7de8e` ("feat(taboo): instance-wide forbidden phrases in
+the system prompt") while this round's cleanup was running — the exact
+feature every lane watched brewing in v4's dirty tree. v4 HEAD is now
+TWO commits past the `f7f1a956` baseline (`44e2e4fe` docs-only NO-PORT +
+`7df7de8e` the Taboo feature); the catch-up is phase-4.md candidate 2,
+upgraded from "brewing" to OWED. Nothing in this round's gate is
+affected: every oracle regenerated from a worktree PINNED at
+`f7f1a956`, and the pin predated the landing.

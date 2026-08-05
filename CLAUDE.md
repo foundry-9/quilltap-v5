@@ -2006,14 +2006,17 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.474, harness 0.0.403, host 0.0.59, web 0.0.61, tauri 0.0.6,
   SPA 0.5.412. Round record: `status-log.md`.
 - **Oracle baseline: `f7f1a956` (2026-08-05), adopted at the
-  `f7f1a956` Almanack round's unification. ⚠ v4 HEAD is `44e2e4fe`,
-  ONE commit past it (docs-only — NO-PORT), and v4's tree is DIRTY
-  with the in-flight Taboo settings feature ON PORTED CHAT-SPINE
-  SURFACES (`system-prompt-builder.ts`, `context-manager.ts`,
+  `f7f1a956` Almanack round's unification. ⚠ v4 HEAD is `7df7de8e` —
+  TWO commits past it: `44e2e4fe` (docs-only, NO-PORT) and
+  **`7df7de8e` "feat(taboo): instance-wide forbidden phrases in the
+  system prompt", which LANDED within the hour of this round's
+  unification and IS the owed drift catch-up**, on PORTED chat-spine
+  surfaces (`system-prompt-builder.ts`, `context-manager.ts`,
   `cache-key.ts`, `settings.types.ts`, `instance-settings/index.ts`,
-  `self-inventory/builders.ts`) — a Taboo drift catch-up runs as soon
-  as v4 lands it, and until then PIN a detached worktree at
-  `f7f1a956` for every oracle regen.** New: jest-based Chicago-leg
+  `self-inventory/builders.ts` + a new settings route/component). The
+  Taboo round runs first or alongside the resumed P4.37 (phase-4.md
+  candidates 1-2); PIN a detached worktree at `f7f1a956` for every
+  oracle regen until it is absorbed.** New: jest-based Chicago-leg
   regens need `--globalSetup
   harness/oracle/lib/jest-zone-globalsetup.cjs` + `QT_ORACLE_TZ`
   (v4's jest configs force TZ=UTC before workers fork). The

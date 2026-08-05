@@ -4050,14 +4050,17 @@ record in `status-log.md`; the four order status headers.
    flip `P437_SERVER_LANDED`, re-diff §1. Until it lands the Almanack
    card shows an empty Previous Editions list and the four verbs do not
    exist — the SPA is DONE and waiting.
-2. **⚠ The Taboo drift catch-up — BREWING, not yet landed.** v4's
-   working tree is dirty with an in-flight Taboo settings feature on
-   PORTED chat-spine surfaces (`system-prompt-builder.ts`,
-   `context-manager.ts`, `cache-key.ts`, `settings.types.ts`,
-   `instance-settings/index.ts`, `self-inventory/builders.ts` + a new
-   settings route/component/help doc). When v4 lands it, that round
-   runs FIRST (drift-check before every round; pin at `f7f1a956`
-   until absorbed).
+2. **⚠ The Taboo drift catch-up — LANDED, now OWED.** v4 shipped
+   `7df7de8e` ("feat(taboo): instance-wide forbidden phrases in the
+   system prompt") within the hour of this round's unification
+   (observed at cleanup, 2026-08-05). It is the in-flight feature the
+   round watched brewing, on PORTED chat-spine surfaces
+   (`system-prompt-builder.ts`, `context-manager.ts`, `cache-key.ts`,
+   `settings.types.ts`, `instance-settings/index.ts`,
+   `self-inventory/builders.ts` + a new settings route/component/help
+   doc). The catch-up round runs FIRST or alongside the resumed P4.37
+   (their surfaces look disjoint — verify at planning); pin at
+   `f7f1a956` for every regen until it is absorbed.
 3. **A dogfood pass** — the owed queue keeps growing: the `7189a968`
    round's live proofs, the standing backlog (walk Parts C 17–19 / D /
    G / H, the P4.D31/P4.21/D33 💸 proofs), and now this round's: the
