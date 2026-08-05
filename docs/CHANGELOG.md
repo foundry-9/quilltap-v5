@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Unified the `7189a968` round: the reference app's import/export overhaul
+is fully absorbed. Exports no longer carry memory embeddings (99.7% of a
+real 791 MB archive; the importer re-embeds what it inserts, one queued
+job per memory), the export picker reaches all fifteen types (files with
+their bytes, prompt templates, provider models, plugin settings with
+password-key redaction, instance settings minus the instance-local
+keys), a long-standing ordering bug that silently dropped every group's
+linked document stores on import is fixed, and an opt-in compact backup
+leaves the search indexes behind and rebuilds them after restore. The
+import preview now explains per-item notes ("secrets withheld…"), and
+the backup dialog gained the compact checkbox. Separately: the reference
+app's Anthropic SDK jump was proven byte-neutral on the wire; the Docker
+container now honors QUILLTAP_TIMEZONE/TZ so scheduled rooms and
+same-day recall stop running on UTC; and a stale harness mock that had
+been mis-reporting a context-summary divergence was retired. Gate: 412
+Rust test binaries / 1,854 tests / 0 failed with twelve differential
+families re-proven over oracles pinned at the reference baseline; SPA
+281 files / 3,870 / 0; full Playwright green with the round's gated beat
+live (numbers in the round record). Versions: core 0.0.467, harness
+0.0.399, web 0.0.60, SPA 0.5.407.
+
 Compact backup lands end to end (P4.D46 unit 5, reference `7189a968`):
 opt-in via `compact: true` on the backup-create call (body optional, a
 malformed one treated as absent, only literal true engages), memory

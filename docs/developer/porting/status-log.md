@@ -56143,3 +56143,115 @@ three seeded collections.
 the unifier. `git -C ~/source/quilltap-server worktree list` shows only the main
 checkout. If v4's tree is still dirty at unification, make a fresh pin at
 `7189a968` — do not reuse a sibling lane's (P4.d26's lesson).
+
+## Round record — the `7189a968` round unification (P4.D46 ∥ P4.D47 ∥ P4.D48 ∥ P4.36), 2026-08-05
+
+**ALL FOUR ORDERS CLOSED; the oracle baseline MOVES to `7189a968` and
+the predicted import/export drift is ABSORBED.** Sixteen lane commits
+cherry-picked onto `unify/7189a968-round` in dependency order (D46 →
+D47 → D48 → P4.36), versions recounted per the playbook (identical-bump
+collapse: core 0.0.465 → **0.0.467**, harness → **0.0.399** [D46 and
+P4.36 hit identical steps], web → **0.0.60** [D48's 0.0.59 collapsed
+into D46's ladder — and its `jiff` dev-dep block SURVIVED the
+version-conflict resolution, checked per the `c4d4b0de` lesson], SPA →
+**0.5.407**), the two append-only docs union-merged.
+
+### ⚠ v4 drifted mid-round — the baseline holds at `7189a968`
+
+`0cde7fbc` ("feat(almanack): rename and rewrite the capabilities
+report") landed 2026-08-05 11:53, ONE commit past the baseline, and
+v4's tree was additionally DIRTY with in-flight almanack test work at
+unification. It is REAL drift on ported surfaces (the
+`add-llm-logs-profile-columns-v1` migration, the UUID-remap list
+additions, the `getTotalTokenUsage*` `$ne: null` fixes, `durationMs`
+at ported logging call sites) plus the largely-unported Almanack
+report itself — **a catch-up round is OWED (phase-4.md candidate 0)**.
+D46 detected it mid-lane (a post-11:53 restore regen suddenly showed
+the two new columns) and pinned; P4.36 hit the dirty tree and pinned
+independently. EVERY oracle in this unification's gate regenerated
+from the unifier's own pin `/tmp/qt-v4-pin-unify7189-7189a968`
+(removed at cleanup), with the per-plugin `node_modules` symlinks the
+provider-registry regen taught us it needs.
+
+### The §3 review — what the unifier's read found
+
+The whole combined diff was read (the D46 server port hunk-by-hunk
+against v4 at the pin by the unifier; D47 and D48+P4.36 by two
+reviewer agents whose findings the unifier verified). **No blocking
+findings — a round where the review found nothing structural, said
+explicitly.** Three real minors, all fixed on the unify branch
+(`a2925325`, the wires commit):
+
+1. **A shared helper's doc-comment contradicted its new caller** —
+   `common/mod.rs`'s `assert_ruled_failed_call_divergence` still
+   carried the P4.34-era escalation paragraph FORBIDDING its use on
+   `context_summary_service_tier3`, which P4.36 resolved and now calls
+   it legitimately. The paragraph now records the corrected history
+   (P4.34's "zero error rows" missed signatures inside the `response`
+   JSON).
+2. **A comment mis-attributed a v5 divergence to v4** — the SPA's
+   `toExportEntityType` note presented `keyLabel`'s `?? key` fallback
+   as v4's shape; v4's `ImportPreviewStep.tsx:104` renders an EMPTY
+   heading for an unknown key. Pre-existing behavior, unreachable for
+   known keys; the comment now names it as a recorded divergence.
+3. The D47 beat-flip itself (`D46_SERVER_LANDED` → true).
+
+Recorded, not changed (each verified as a deliberate, in-rule choice):
+the TZ resolver's Rejected arm leaves the refused value in the
+environment (`chat_timestamp.rs`'s direct `QUILLTAP_TIMEZONE` read
+still consumes it — v4's entrypoint is worse, forwarding blindly; the
+boot warning names it); the `export-dialog.spec` "Step 1 of 4" case is
+partially vacuous alone but cross-covered; the eight-failure
+`courier-bubble.spec.ts` intermittent D47 saw ONCE in seven runs
+(nothing in the round touches it; on the books for whoever next sees
+it); the D48-found `gen-provider-manifests.mjs` regen rot
+(imageGenerationModels deleted on naive regen — warning landed, repair
+is phase-4 candidate 2) and the `perl-base` CVE purge candidate.
+
+### The unification wires
+
+- **W1 — the §1 contract, diffed name-for-name:** server
+  `SystemBackupCreate { #[serde(default)] compact: bool }` (camelCase)
+  vs the SPA mirror `compact?: boolean` — match; the
+  optional-vs-default asymmetry is the standing mirror pattern.
+  C1–C5 stood untouched all round (both lanes' records agree).
+- **W2 — the gated beat flipped and run live:** the suite grew 178 →
+  **179**, zero skips — the fifteen-radio contract-order walk, the
+  `instance-settings` export to a downloaded `.qtap` envelope, and the
+  compact-backup byte download all passed on their FIRST live run.
+- **W3 — the corpus round-trip:** the uuid-remap regen re-emitted the
+  committed corpus byte-identical (empty `git status`), and the
+  system-data fixture widening flowed through every consuming family.
+
+### The gate (all on `unify/7189a968-round`; v4 pinned at `7189a968`)
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets; `cargo build --release` clean.
+- **Twelve differential families by name over oracles regenerated
+  FRESH from the pin, zero SKIP** (the two first-pass SKIP-masquerades
+  — `qtap_import` missing its fixture env, `context_summary` under a
+  wrong var name — were caught by the SKIP grep and re-run properly):
+  `system_export_equivalence` (57), `system_import_equivalence` (27),
+  `system_import_state` (23), `system_backup_equivalence` (3),
+  `system_restore_equivalence` (6), `system_restore_state` (13),
+  `backup_uuid_remap_equivalence`, `system_delete_data_equivalence`
+  (7), `backup_mount_index_coercion_equivalence` (20),
+  `qtap_import_equivalence`, `restore_vintage_state` (4),
+  `context_summary_service_tier3_equivalence` (18-vs-17, the ruled
+  row) — plus D48's seven consumer families
+  (request-builder ×2, response-parse, tool-wire ×2, stream-decoders,
+  provider-registry) green over a pin-fresh provider-registry oracle.
+- `cargo test --workspace --no-fail-fast` with the round's env block:
+  **412 test binaries / 1,854 passed / 0 failed** (exit 0).
+- SPA: `ng test` **281 files / 3,870 / 0**; `ng build` clean; full
+  Playwright **179 passed / 0 failed / 0 skipped (4.2 m)** against the
+  fresh dist, the round's beat LIVE on first execution.
+
+Versions after the round: core 0.0.467, harness 0.0.399, host 0.0.58,
+web 0.0.60, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.407.
+
+**Standing after the round (the next `/setupphase` reads this + the
+phase plan):** the `0cde7fbc` Almanack drift catch-up (candidate 0 —
+pin at `7189a968` until it lands); the dogfood pass with this round's
+live proofs (candidate 1); the `gen-provider-manifests.mjs` repair
+(candidate 2); the recipe-rot tail; the standing pools.

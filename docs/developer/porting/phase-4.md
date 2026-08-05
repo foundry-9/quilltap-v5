@@ -3963,3 +3963,64 @@ P4.34: **run any `unstaged_jest_roots` family with
 `--v5w ~/source/quilltap-v5`** (jest ignores `.claude/` venues), and
 prefer `recipe_sweep.py --run-all --results …` so classifications
 survive the round.
+
+## The `7189a968` round (P4.D46 ∥ P4.D47 ∥ P4.D48 ∥ P4.36) — UNIFIED 2026-08-05
+
+**ALL FOUR CLOSED; the oracle baseline MOVES to `7189a968` and the
+predicted import/export drift is ABSORBED.** The server port (embedding
+strip + per-memory re-embed enqueue, the fifteen export types, the
+doc-stores ordering fix, compact backup + restore 24a/25, the plugin
+`enabled` carry) ∥ the SPA half (the fifteen-type picker, the preview
+`detail` line, the compact toggle, the gated beat flipped LIVE) ∥ the
+Anthropic-SDK wire check (byte-neutral, proven, not assumed) + the five
+infra NO-PORT dispositions + the container-timezone resolver ∥ the
+context-summary oracle un-mock (the escalated stale red RETIRED; a
+second stale mock of the same class found and fixed by consequence).
+Details: the round record in `status-log.md`; the four order status
+headers.
+
+**Next candidates, in rough value order:**
+
+0. **⚠ The `0cde7fbc` Almanack drift catch-up — v4 moved DURING this
+   round and the drift is REAL, on ported surfaces.** Migration
+   `add-llm-logs-profile-columns-v1` (llm_logs gains nullable
+   `connectionProfileId`/`imageProfileId` — D23 re-dump territory on
+   the llm partition), both columns join the new-account restore's UUID
+   remap list (the ported `uuid_remap`), the llm-logging service
+   threads the profile ids + `durationMs` through ported call sites,
+   `LLMLogsRepository.getTotalTokenUsage*`'s `$ne: null` never-matches
+   bug is fixed (v5 may carry the broken-but-exact twin from P4.6ar —
+   check), and the Almanack report itself is UNPORTED surface (a
+   port-or-defer decision for the round planner). **Until it runs,
+   regenerate any llm-logs-touching or restore-family oracle from a
+   worktree pinned at `7189a968`.** ⚠ v4's tree was left DIRTY with
+   in-flight almanack test work at unification — re-check before
+   pinning.
+1. **A dogfood pass** — the queue is now substantial: this round's live
+   proofs (a real post-strip export size on the Friday copy, an import
+   that enqueues embeddings, a compact backup/restore round-trip, the
+   container-TZ resolver in a real `docker run`), plus the standing
+   backlog (the orphan reaper's 43+118, P4.D43's presets, walk Parts
+   C 17–19 / D / G / H, the P4.D31/P4.21/D33 💸 proofs).
+2. **The `gen-provider-manifests.mjs` repair** (a small order): teach
+   the generator `imageGenerationModels` (three providers expose it on
+   the built plugin; grok + z-ai need P4.6p's source-level
+   transcription re-derived) so the manifest regen recipe stops
+   deleting a field five committed manifests carry. The warning header
+   + safe diff-into-scratch recipe landed in P4.D48.
+3. **The remaining recipe-rot tail** — 27 `unstaged_jest_roots`
+   families + 20 static /tmp collisions (P4.36's family turned out NOT
+   to be one — its order's warning was stale).
+4. The standing pools: `p4.9h`, `p4.9i2` (+ `7189a968`'s two help docs:
+   `system-backup-restore.md`, `system-import-export.md` — no v5
+   action, runtime sync, but the bank tracks them), `p4.9l`, the
+   P4.D41 tier-2 item 9 fixture, the P4.31 note-grade items, the
+   `perl-base` purge candidate on v5's Docker image (P4.D48's caveat).
+
+**Standing regen note:** the oracle baseline is **`7189a968`**
+(2026-08-05), adopted at this round's unification. **v4 HEAD is
+`0cde7fbc`, ONE commit past it (+ a dirty tree at last check) — the
+catch-up is candidate 0 above; pin a detached worktree at `7189a968`
+for any regen until it lands.** The distill-transitive TZ pins, the
+committed-fixture rule, and the recipe-sweep venue rules stand
+unchanged.

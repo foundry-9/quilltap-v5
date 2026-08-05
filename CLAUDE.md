@@ -1951,6 +1951,39 @@ records THERE. Update this summary only when a phase or round completes.
   feature sets; release build; ng 278 files / 3,843; full Playwright
   **178 passed / 0 failed / 0 skipped (4.5 m)** — the suite grew 177 → 178 with the new template-picker beat. Versions: core 0.0.465, harness 0.0.397, host 0.0.58,
   SPA 0.5.401. Round record: `status-log.md`.
+- **The `7189a968` import/export drift round (P4.D46 ∥ P4.D47 ∥ P4.D48 ∥
+  P4.36): UNIFIED on main (2026-08-05) — ALL FOUR CLOSED; the oracle
+  baseline MOVES to `7189a968`.** The predicted export/import overhaul
+  absorbed end to end: the embedding strip (writer + reader + one
+  `EMBEDDING_GENERATE` per imported memory), all FIFTEEN export types
+  + the exhaustive listing, the doc-stores-before-group-links ordering
+  fix (mutation-proven), compact backup + restore steps 24a/25 +
+  `RestoreSummary.embeddingReconcile`, the tri-state plugin-config
+  `enabled` carry, the widened `system-data-*` fixture + the committed
+  `restore-archive-compact.zip` ∥ the SPA fifteen-type picker + preview
+  `detail` line + compact toggle (the gated beat LIVE — suite 178 →
+  179) ∥ the `be2c9cbb` Anthropic-SDK jump PROVEN wire-neutral (four
+  corpora byte-identical at 0.115, dated) + five infra NO-PORTs + the
+  `QUILLTAP_TIMEZONE`/`TZ` container resolver ∥ the escalated
+  `context_summary_service_tier3` stale red RETIRED (a SECOND stale
+  mock of the P4.20 class found by consequence and fixed; the fold
+  pass's WRITES are now comparands). Gate: 412 binaries / 1,854 / 0;
+  twelve families by name over PINNED `7189a968` oracles zero SKIP;
+  clippy both feature sets; release build; ng 281 files / 3,870; full
+  Playwright **179/179 zero skips**. Versions: core 0.0.467, harness
+  0.0.399, web 0.0.60, SPA 0.5.407. Round record: `status-log.md`.
+- **Oracle baseline: `7189a968` (2026-08-05), adopted at the `7189a968`
+  round's unification. ⚠ v4 HEAD is `0cde7fbc` (the Almanack rewrite),
+  ONE commit past it, and v4's tree was DIRTY at unification — a drift
+  catch-up is OWED (phase-4.md candidate 0): the
+  `add-llm-logs-profile-columns-v1` migration (D23 territory), the
+  UUID-remap list additions, `durationMs` + profile ids at ported
+  logging call sites, the `getTotalTokenUsage*` `$ne: null` fixes; the
+  Almanack report itself is unported surface. Until it runs, PIN a
+  detached worktree at `7189a968` for every oracle regen.** The
+  distill-transitive TZ pins, the committed-fixture rule, and the
+  recipe-sweep venue rules stand unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `7fe9fe40` (v4 4.8.0-dev.152, 2026-08-04), adopted
   at the `7fe9fe40` round's unification — NO v4 drift debt remains.**
   The two commits past `49769ec4` are both absorbed (`4bbeab47` →
