@@ -57180,3 +57180,69 @@ against the contract as written.
 
 `ng test` 282 files / 3873 tests, 0 failed (main's baseline was 281 / 3870 —
 this unit's spec is the delta). No `crates/**` change, so no cargo gate is owed.
+
+## Lane record — P4.38 units 2–3 (the `qt-progress` CSS family + the shared bar), 2026-08-05
+
+### The CSS family (`_utilities.css` +6 classes & 1 keyframes, `_variables.css` +4 tokens)
+
+Transcribed from v4 `app/styles/qt-components/{_utilities,_variables}.css` at
+`f7f1a956`, values byte-faithful, landed at v4's own insertion points (right
+after the spinner block on both sides). `.qt-progress` track, `.qt-progress-sm`,
+`.qt-progress-fill`, `-fill-success`, `-fill-danger`, `-fill-idle`,
+`.qt-progress-indeterminate` + `@keyframes qt-progress-slide`.
+
+**One judgment recorded**: the four tokens go in v5's BOTH-MODES baseline block
+(`[data-theme], [data-theme].dark, [data-theme].light`) and are deliberately NOT
+duplicated into `[data-theme].dark`. Every value is an indirection to a core
+palette token that is already mode-aware, so a dark copy would be byte-identical
+dead CSS; v4 declares them exactly once for the same reason, and the sibling
+spinner tokens immediately above are the in-repo precedent. Theme packs override
+none of them — v4 shipped no overrides in `0cde7fbc` (tier 3).
+
+### The bar (`ui/progress-bar.ts`, selector `qt-progress-bar`)
+
+v4's `components/ui/ProgressBar.tsx` behavior spec, carried whole: the 500 ms
+tick, the ACTIVE segment's `min(elapsed/estimate, 0.9)` cap, segments before the
+current one at 100% `-fill-success` and later ones `-fill-idle`, per-segment
+first-active timestamps, the finished state (`currentKey === null && startedAt
+!== null` ⇒ all success), indeterminate on segment ZERO only with no inline
+width, the label row's active/done/pending colouring, and the right-aligned
+`Xm Ys` elapsed timer with `hideLabels` dropping the whole row.
+
+Faithful details worth naming:
+
+- v4 seeds `fillPercents` to `{}` and `elapsed` to `0`, so the FIRST paint is
+  all-empty and the first tick fills it in. Carried via a `ticked` gate rather
+  than computing from the clock on render — otherwise a bar handed a
+  `startedAt` from a minute ago would render "1m 0s" where v4 renders "0s".
+- The per-segment start stamps live in a plain object, not a signal, because v4
+  holds them in a ref and it is the tick that re-reads them.
+- **A v4 quirk, carried and PINNED:** the Almanack passes
+  `indeterminate={currentPhase === null}` alongside a live `startedAt`, and v4's
+  `finished` is exactly that conjunction — so during the window before the first
+  phase frame every segment is treated as DONE, and the tail renders full green
+  while segment zero slides over it. It reads "finished" for a beat before the
+  run visibly starts. A port that quietly fixed this would diverge on the
+  most-seen frame of the feature, so the spec asserts it instead (the first
+  version of that spec asserted the *fixed* behavior and went red — which is how
+  the quirk was found).
+
+The one shape difference from v4: no `className` input. Angular applies a
+parent-supplied `class` to the host natively, so v4's prop has nothing to do;
+the root layout (`flex flex-col gap-2`) is a host class.
+
+### Verification
+
+`progress-bar.spec.ts` — 16 cases. The fill math is extracted as the pure
+`computeSegmentFills` so the cap is pinnable without a component, and it is
+pinned twice (pure + rendered width). **Mutation-proven:** flipping
+`ACTIVE_FILL_CAP` 0.9 → 1.0 turns exactly those two cases red and nothing else,
+so the never-100% claim is genuinely load-bearing rather than incidentally true.
+Destruction clears the interval (`vi.getTimerCount()` back to 0).
+
+### Gate
+
+`ng test` 283 files / 3890 tests, 0 failed. `ng build` clean, and the emitted
+`styles-*.css` positively contains `qt-progress-slide`,
+`qt-progress-fill-success` and `--qt-progress-indicator-danger` (the CSS is in
+the bundle, not merely in the source). No `crates/**` change — no cargo gate owed.

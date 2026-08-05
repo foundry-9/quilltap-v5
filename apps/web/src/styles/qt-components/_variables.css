@@ -629,6 +629,25 @@
   --qt-spinner-indicator: var(--color-primary);
 
   /* ==========================================================================
+     PROGRESS BAR VARIABLES
+     Every bar-shaped construct in the app — task progress, value meters —
+     draws its track and fill from these two. A caller wanting a bespoke fill
+     colour (Pascal's per-outcome meters) sets --qt-progress-indicator inline
+     rather than reaching for a raw background utility.
+
+     These live in the BOTH-MODES baseline block above and are deliberately NOT
+     duplicated into the [data-theme].dark block: every value is an indirection
+     to a core palette token that is already mode-aware, so a dark copy would be
+     byte-identical dead CSS. v4 declares them exactly once for the same reason,
+     and the sibling spinner tokens directly above set the precedent here. No
+     theme pack overrides them (v4 shipped none in `0cde7fbc`).
+     ========================================================================== */
+  --qt-progress-track: var(--color-muted);
+  --qt-progress-indicator: var(--color-primary);
+  --qt-progress-indicator-success: var(--color-success);
+  --qt-progress-indicator-danger: var(--color-destructive);
+
+  /* ==========================================================================
      FAVORITE VARIABLES
      ========================================================================== */
   --qt-favorite-color: hsl(45 96% 58%);

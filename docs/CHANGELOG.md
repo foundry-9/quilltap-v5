@@ -51,6 +51,11 @@ the reference app's real code over seven inputs covering every branch,
 including empty sections, an unreachable document store, and locale
 number and date formatting. No user-visible surface yet — the collectors
 and the report API follow.
+Added the shared progress bar and its themeable `qt-progress` style
+family. The bar shows one segment per phase of a long operation, sized
+by how long each phase usually takes; the running segment stops at 90%
+so a slow phase reads as still working rather than finished and stuck.
+
 Mirrored the Almanack's client contract into the web app: the four
 dispatch verbs (generate, list, get, delete), the new `phase` progress
 frame on the shared event stream, and the seven-phase manifest whose
