@@ -56560,3 +56560,58 @@ files it reads were verified unmodified afterwards.
 Regen recipe: the case header's, verbatim
 (`harness/oracle/cases/backup-uuid-remap.test.ts`), run from
 `~/source/quilltap-server` with the /tmp jest mirror.
+
+## Lane record — P4.D49 unit 8: `f7f1a956` NO-PORT, and the jest-TZ clobber defused
+
+**2026-08-05.** **`f7f1a956` is NO-PORT.** It is CI/test-infra only:
+GitHub workflow edits (dropping two node20 Discord actions, tidying the
+build job), the Almanack render snapshot regenerated under UTC, and the
+`process.env.TZ = 'UTC'` line added to `jest.config.ts` (:11) and
+`jest.integration.config.ts` (:6). No `lib/`, `app/`, schema, or
+dependency change.
+
+**Its one v5-relevant consequence, and the fix.** That pin runs at config
+load, in the MAIN process, before Jest forks its workers — so an
+env-passed `TZ=America/Chicago` on an oracle regen command line is
+clobbered to UTC. Of v5's four Chicago-leg families,
+`day_references_equivalence` and `enclave_cron_equivalence` are tsx (no
+jest config, unaffected). The two jest ones both needed work:
+
+- `llm_log_cleanup_equivalence` — LOUD by luck: its case throws on a
+  `TZ` / `QT_LLC_LEG` mismatch, so the Chicago leg refused to run rather
+  than mis-recording. But it could not be regenerated at all.
+- `distill_search_extraction_equivalence` — SEMI-SILENT: no zone marker
+  anywhere, so a clobbered Chicago leg would have re-recorded the UTC one
+  and the only downstream symptom would have been the `differing >= 5`
+  corpus-sensitivity assertion, which reads as "the corpus went blind",
+  not "your oracle is the wrong leg".
+
+**The mechanism that actually works** — and the two that don't. Setting
+`process.env.TZ` inside the oracle case is INERT: `jest-environment-node`
+hands the test a deep COPY of `process`, so the write lands on a sandbox
+object libuv never reads. (Measured: the pin was written, and the guard
+below caught `getTimezoneOffset()` still reporting 0 for a January
+instant under `America/Chicago`. v4's own comment blames ICU caching;
+the copied env is the nearer cause.) A plain `TZ=` on the command line is
+clobbered. The one window left is **`globalSetup`**, which runs in the
+main process AFTER the config and BEFORE the fork — new
+`harness/oracle/lib/jest-zone-globalsetup.cjs`, which applies
+`QT_ORACLE_TZ` / `QT_LLC_LEG` and then **chains to v4's own
+`jest.global-setup.js`** (resolved from the CWD, which every recipe sets
+to the v4 root) rather than replacing it — dropping it would silently
+disable v4's native-ABI heal.
+
+Both cases now PROVE the zone took, at a winter AND a summer instant,
+against an offset computed with an explicit `timeZone` (independent of
+the process default). The distill oracle additionally stamps a
+`{"kind":"zone"}` marker line, and the Rust loader refuses a leg whose
+marker disagrees — verified by feeding the UTC oracle in as the Chicago
+leg: `"/tmp/oracle-distill.ndjson was recorded under UTC, not
+America/Chicago"`. Both recipes (case headers AND `.rs` headers) now
+carry `--globalSetup`; `recipe_sweep.py --show` extracts both correctly,
+so the sweep inherits the fix with no driver change.
+
+Green after the change: `distill_search_extraction_equivalence` 26 cases
+× 2 legs (7 zone-sensitive); `llm_log_cleanup_equivalence` 4/4 including
+`legs_disagree_on_the_dst_hour`, which is the standing proof that the
+Chicago leg genuinely ran Chicago.

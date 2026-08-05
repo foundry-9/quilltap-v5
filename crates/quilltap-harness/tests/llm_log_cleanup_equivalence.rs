@@ -67,29 +67,36 @@
 //!   # crates/quilltap-web/tests/fixtures/llm-log-cleanup-{main,llmlogs}.db
 //!   # and regenerate ALL of this family's oracles against the new bytes.
 //!
+//! ⚠️ **The Chicago leg needs `--globalSetup`.** Since v4 `f7f1a956` its
+//! `jest.config.ts` assigns `process.env.TZ = 'UTC'` before Jest forks its
+//! workers, so a bare `TZ=America/Chicago` on the command line is clobbered
+//! (the case then throws on the leg mismatch — loud, never silent). The zone is
+//! applied by `harness/oracle/lib/jest-zone-globalsetup.cjs`, which runs in the
+//! main process after that config and chains to v4's own global setup.
+//!
 //! Generate the three oracles against the COMMITTED fixtures (Node 24, from
 //! the v4 checkout; the /tmp mirror dodges jest's `/.claude/`
 //! testPathIgnorePatterns; each leg gets its OWN clean invocation; the oracle
 //! cases copy the DBs to per-pid /tmp scratch before mutating, so pointing at
 //! the committed files is safe):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
-//!   TMPO=/tmp/qt-llm-log-cleanup-oracle
+//!   TMPO=/tmp/qt-llm-log-cleanup-oracle ; GS=$V5W/harness/oracle/lib/jest-zone-globalsetup.cjs
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
 //!   cp $V5W/harness/oracle/cases/llm-log-cleanup-jobs.test.ts    "$TMPO/cases/"
 //!   cp $V5W/harness/oracle/cases/llm-log-cleanup-enqueue.test.ts "$TMPO/cases/"
 //!   cp $V5W/harness/oracle/fixtures/llm-log-cleanup.json         "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
-//!   TZ=UTC QT_LLC_LEG=UTC \
+//!   QT_LLC_LEG=UTC \
 //!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
 //!   QT_FIXTURE_LLC_LOGS=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-UTC.ndjson \
-//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 --globalSetup "$GS" \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- llm-log-cleanup-jobs
-//!   TZ=America/Chicago QT_LLC_LEG=America/Chicago \
+//!   QT_LLC_LEG=America/Chicago \
 //!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
 //!   QT_FIXTURE_LLC_LOGS=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-America-Chicago.ndjson \
-//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 --globalSetup "$GS" \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- llm-log-cleanup-jobs
 //!   TZ=UTC \
 //!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \

@@ -36,6 +36,17 @@
  * ⚠️ The handler DELETES, so the case works on /tmp copies of the committed
  * fixture and never touches the committed files.
  *
+ * ⚠️ **A bare `TZ=` on the command line is NOT enough any more.** Since v4
+ * `f7f1a956` its `jest.config.ts` assigns `process.env.TZ = 'UTC'` before Jest
+ * forks its workers, clobbering it — and this case would then refuse to run at
+ * all (it throws on a TZ/leg mismatch, which is why it never silently
+ * mis-recorded). The zone must be applied from
+ * `--globalSetup <v5>/harness/oracle/lib/jest-zone-globalsetup.cjs`, the one
+ * hook that runs in the MAIN process after that config and before the fork; an
+ * in-worker assignment is inert, because `jest-environment-node` gives the test
+ * a deep COPY of `process`. This file then PROVES the zone took, at a winter
+ * and a summer instant, against an independently computed offset.
+ *
  * Run from the v4 server checkout under Node 24, ONCE PER LEG (the /tmp mirror
  * dodges jest's `/.claude/` testPathIgnorePatterns):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<the v5 worktree>
@@ -45,11 +56,13 @@
  *   cp $V5/harness/oracle/fixtures/llm-log-cleanup.json      /tmp/qt-llc-oracle/fixtures/
  *   for LEG in UTC America/Chicago; do
  *     SLUG=$(echo "$LEG" | tr '/' '-')
- *     TZ=$LEG QT_LLC_LEG=$LEG \
+ *     QT_LLC_LEG=$LEG \
+ *     GS=$V5/harness/oracle/lib/jest-zone-globalsetup.cjs \
  *     QT_FIXTURE_LLC_MAIN=$V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
  *     QT_FIXTURE_LLC_LOGS=$V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
  *     QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-$SLUG.ndjson \
  *       $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *         --globalSetup "$GS" \
  *         --roots "$PWD" --roots /tmp/qt-llc-oracle/cases -- llm-log-cleanup-jobs
  *   done
  */
@@ -58,6 +71,57 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+
+// ── The zone GUARD (see the header) ──────────────────────────────────────────
+// This file cannot SET the zone: `jest-environment-node` hands the test a deep
+// copy of `process`, so an in-worker `process.env.TZ = …` writes to a sandbox
+// object libuv never reads. The pin has to come from
+// `--globalSetup <v5>/harness/oracle/lib/jest-zone-globalsetup.cjs`, which runs
+// in the main process after v4's config assigns UTC and before the workers
+// fork. What this file does is PROVE the pin took.
+const LLC_LEG = process.env.QT_LLC_LEG ?? 'UTC';
+
+/** The offset (minutes WEST of UTC, `getTimezoneOffset`'s sign) `zone` has at
+ *  `at` — computed with an EXPLICIT `timeZone`, so it is independent of
+ *  whatever the process default happens to be. */
+function zoneOffsetMinutes(zone: string, at: Date): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value])
+  ) as Record<string, string>;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return (at.getTime() - asUtc) / 60000;
+}
+
+for (const instant of ['2026-01-15T12:00:00Z', '2026-07-15T12:00:00Z']) {
+  const at = new Date(instant);
+  const want = zoneOffsetMinutes(LLC_LEG, at);
+  if (at.getTimezoneOffset() !== want) {
+    throw new Error(
+      `zone pin did not take: process zone reports ${at.getTimezoneOffset()} at ` +
+        `${instant}, ${LLC_LEG} is ${want}. Pass ` +
+        '--globalSetup <v5>/harness/oracle/lib/jest-zone-globalsetup.cjs; v4 ' +
+        'jest.config.ts pins UTC and a bare TZ= on the command line is clobbered.'
+    );
+  }
+}
 import { tmpdir } from 'node:os';
 
 function canonValue(v: unknown): unknown {
@@ -101,10 +165,12 @@ async function main(): Promise<void> {
   ) as Spec;
 
   const leg = process.env.QT_LLC_LEG;
-  if (!leg) throw new Error('QT_LLC_LEG must name the timezone leg (and match TZ)');
+  if (!leg) throw new Error('QT_LLC_LEG must name the timezone leg');
   if (!spec.timezoneLegs.includes(leg)) {
     throw new Error(`QT_LLC_LEG=${leg} is not one of the corpus legs`);
   }
+  // The module-level pin above already re-applied and PROVED the zone; this is
+  // the belt to its braces.
   if (process.env.TZ !== leg) {
     throw new Error(`TZ=${process.env.TZ} does not match QT_LLC_LEG=${leg}`);
   }

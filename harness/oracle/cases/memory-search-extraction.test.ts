@@ -18,15 +18,83 @@
  *
  * Every case supplies an explicit clock (the `clock: undefined` arm would read
  * the wall clock — nondeterministic, and the Rust side pins the same
- * fallback separately). Run with TZ=UTC (Date.parse on zone-less forms).
+ * fallback separately).
  *
- * Run from the v4 server checkout under Node 24:
+ * ## The zone, and why it does NOT come from `TZ`
+ *
+ * This family has two zone legs (the TODAY line and the day-reference scan
+ * resolve their calendar in the server-local zone; under UTC the fix is
+ * indistinguishable from the bug). Since v4 `f7f1a956`, `jest.config.ts`
+ * assigns `process.env.TZ = 'UTC'` before Jest forks its workers, so an
+ * env-passed `TZ=America/Chicago` on the command line is silently clobbered
+ * and the Chicago leg would quietly re-record the UTC one. The zone therefore
+ * arrives in **`QT_ORACLE_TZ`**, is re-applied here at module load — before
+ * anything in this file touches a `Date`, which is when Node still honours the
+ * assignment — and is then PROVEN to have taken, at a winter and a summer
+ * instant, against an independently computed offset. The zone is also stamped
+ * into the NDJSON as a `zone` marker line so the Rust side can refuse an
+ * oracle recorded for the wrong leg (a silent clobber was the whole hazard).
+ *
+ * Run from the v4 server checkout under Node 24, once per leg:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
- *   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-distill.ndjson \
- *     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-search-extraction
+ *   GS=$V5/harness/oracle/lib/jest-zone-globalsetup.cjs
+ *   QT_ORACLE_TZ=UTC QT_ORACLE_OUT=/tmp/oracle-distill.ndjson \
+ *     $N/npx jest --silent --globalSetup "$GS" --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-search-extraction
+ *   QT_ORACLE_TZ=America/Chicago QT_ORACLE_OUT=/tmp/oracle-distill-chicago.ndjson \
+ *     $N/npx jest --silent --globalSetup "$GS" --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-search-extraction
  */
+
+// ── The zone GUARD (see the header) ──────────────────────────────────────────
+// This file cannot SET the zone: `jest-environment-node` hands the test a deep
+// copy of `process`, so an in-worker `process.env.TZ = …` writes to a sandbox
+// object libuv never reads. The pin comes from
+// `--globalSetup <v5>/harness/oracle/lib/jest-zone-globalsetup.cjs`; this
+// proves it took.
+const ORACLE_ZONE = process.env.QT_ORACLE_TZ ?? 'UTC';
+
+/** The offset (minutes WEST of UTC, `getTimezoneOffset`'s sign) `zone` has at
+ *  `at` — computed with an EXPLICIT `timeZone`, so it is independent of
+ *  whatever the process default happens to be. */
+function zoneOffsetMinutes(zone: string, at: Date): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value])
+  ) as Record<string, string>;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return (at.getTime() - asUtc) / 60000;
+}
+
+for (const instant of ['2026-01-15T12:00:00Z', '2026-07-15T12:00:00Z']) {
+  const at = new Date(instant);
+  const want = zoneOffsetMinutes(ORACLE_ZONE, at);
+  if (at.getTimezoneOffset() !== want) {
+    throw new Error(
+      `zone pin did not take: process zone reports ${at.getTimezoneOffset()} at ` +
+        `${instant}, ${ORACLE_ZONE} is ${want}. Pass ` +
+        '--globalSetup <v5>/harness/oracle/lib/jest-zone-globalsetup.cjs; v4 ' +
+        'jest.config.ts pins UTC and a bare TZ= on the command line is clobbered.'
+    );
+  }
+}
 
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
@@ -103,6 +171,12 @@ test('memory search-extraction oracle', async () => {
     );
   }
 
-  fs.writeFileSync(outPath, lines.join('\n') + '\n');
+  // The leg marker: the Rust side refuses an oracle recorded for another zone,
+  // so a future TZ clobber is LOUD instead of a misleading corpus-sensitivity
+  // failure. Emitted FIRST so a truncated file still carries it.
+  fs.writeFileSync(
+    outPath,
+    [JSON.stringify({ kind: 'zone', zone: ORACLE_ZONE }), ...lines].join('\n') + '\n'
+  );
   expect(lines.length).toBe(spec.cases.length);
 });

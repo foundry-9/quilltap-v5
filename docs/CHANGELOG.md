@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Harness only: the reference app now pins its test timezone to UTC before
+forking test workers, which silently overrode the timezone our two
+zone-legged oracle regenerations pass on the command line. Both now apply
+their zone from a hook that runs early enough, prove it took, and record
+it so a future override fails loudly instead of quietly re-recording the
+wrong leg.
+
 Restoring a backup into a new account now carries LLM-log profile
 attribution across: a log row's connection-profile and image-profile ids
 are remapped alongside the profiles themselves, so restored rows keep

@@ -26,15 +26,26 @@
 //! (jest — the seam needs `jest.mock`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
 //!   M=/tmp/qt-p4d26-mirror; rm -rf $M; mkdir -p $M/cases $M/fixtures
+//!   GS=$W/harness/oracle/lib/jest-zone-globalsetup.cjs
 //!   cp $W/harness/oracle/cases/memory-search-extraction.test.ts $M/cases/
 //!   cp $W/harness/oracle/fixtures/memory-search-extraction.json $M/fixtures/
 //!   cd ~/source/quilltap-server   # or a worktree pinned at the baseline
-//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-distill.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$M/cases" \
-//!       -- memory-search-extraction
-//!   TZ=America/Chicago QT_ORACLE_OUT=/tmp/oracle-distill-chicago.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$M/cases" \
-//!       -- memory-search-extraction
+//!   QT_ORACLE_TZ=UTC QT_ORACLE_OUT=/tmp/oracle-distill.ndjson \
+//!     $N/npx jest --silent --watchman=false --globalSetup "$GS" \
+//!       --roots "$PWD" --roots "$M/cases" -- memory-search-extraction
+//!   QT_ORACLE_TZ=America/Chicago QT_ORACLE_OUT=/tmp/oracle-distill-chicago.ndjson \
+//!     $N/npx jest --silent --watchman=false --globalSetup "$GS" \
+//!       --roots "$PWD" --roots "$M/cases" -- memory-search-extraction
+//!
+//! ⚠️ **`QT_ORACLE_TZ` + `--globalSetup`, not a bare `TZ=`.** Since v4
+//! `f7f1a956` its `jest.config.ts` pins `process.env.TZ = 'UTC'` before Jest
+//! forks its workers, so `TZ=America/Chicago` on the command line is clobbered
+//! and the Chicago leg silently re-records the UTC one. An in-worker
+//! reassignment cannot recover it either (`jest-environment-node` hands the
+//! test a deep COPY of `process`). `harness/oracle/lib/jest-zone-globalsetup.cjs`
+//! applies `QT_ORACLE_TZ` in the main process, after the config and before the
+//! fork, and chains to v4's own global setup; the case then proves the zone
+//! took and stamps a `zone` marker the loader below refuses to mismatch.
 //! Run:
 //!   QT_ORACLE_DISTILL=/tmp/oracle-distill.ndjson \
 //!   QT_ORACLE_DISTILL_CHICAGO=/tmp/oracle-distill-chicago.ndjson \
@@ -96,12 +107,41 @@ struct Spec {
     cases: Vec<CaseW>,
 }
 
-fn load_oracle(path: &str) -> Vec<OracleRow> {
+/// Read one leg's NDJSON, and REFUSE it if it was recorded for another zone.
+///
+/// Since v4 `f7f1a956` its `jest.config.ts` assigns `process.env.TZ = 'UTC'`
+/// before Jest forks its workers, so an env-passed `TZ=America/Chicago` on the
+/// regen command line is silently clobbered and the Chicago leg would
+/// re-record the UTC one. The oracle case now takes its zone from
+/// `QT_ORACLE_TZ`, proves the assignment took, and stamps a `zone` marker line;
+/// this check is the other half. Without it the only downstream symptom is the
+/// `differing >= 5` corpus-sensitivity assertion below, which reads as a
+/// misleading "the corpus went blind" red rather than "your oracle is the
+/// wrong leg".
+fn load_oracle(path: &str, zone: &str) -> Vec<OracleRow> {
     let raw = std::fs::read_to_string(path).expect("read oracle NDJSON");
-    raw.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("parse oracle row"))
-        .collect()
+    let mut rows = Vec::new();
+    let mut recorded_zone: Option<String> = None;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        let value: Value = serde_json::from_str(line).expect("parse oracle line");
+        if value.get("kind").and_then(Value::as_str) == Some("zone") {
+            recorded_zone = value
+                .get("zone")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            continue;
+        }
+        rows.push(serde_json::from_value(value).expect("parse oracle row"));
+    }
+    let recorded = recorded_zone.unwrap_or_else(|| {
+        panic!("{path}: oracle carries no `zone` marker — regenerate it (QT_ORACLE_TZ)")
+    });
+    assert_eq!(
+        recorded, zone,
+        "{path} was recorded under {recorded}, not {zone} — regenerate that leg \
+         with QT_ORACLE_TZ={zone} (a bare TZ= is clobbered by v4's jest config)"
+    );
+    rows
 }
 
 fn load_corpus() -> Spec {
@@ -117,7 +157,7 @@ fn load_corpus() -> Spec {
 /// `local_tz = zone` and diff against that leg's NDJSON. Returns the per-case
 /// results so the caller can prove the legs actually disagree.
 fn run_leg(zone: &str, oracle_path: &str) -> Vec<(String, Value)> {
-    let oracle_rows = load_oracle(oracle_path);
+    let oracle_rows = load_oracle(oracle_path, zone);
     let spec = load_corpus();
     assert_eq!(
         spec.cases.len(),
