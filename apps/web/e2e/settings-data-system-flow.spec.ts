@@ -29,6 +29,23 @@ import { E2E_PASSPHRASE } from './support/env';
 const TEMP_PASSPHRASE = 'a temporary interlude';
 
 /**
+ * ACTIVATE-AT-UNIFY (lane P4.D46 — the server half of the `7189a968` round).
+ *
+ * The beat below walks the widened export picker to a REAL `instance-settings`
+ * download and creates a COMPACT backup. Both need P4.D46's server: the
+ * fifteen-arm `handleExportEntities` + writer types, and `compact` on
+ * `SystemBackupCreate`. It matters that the compact half is gated too, even
+ * though the create would answer today — `CoreRequest::SystemBackupCreate` is a
+ * serde-internally-tagged UNIT variant on main, so an unknown `compact` key is
+ * ignored rather than refused (verified), which means a green here before D46
+ * would prove a FULL backup was made and nothing about compact at all.
+ *
+ * Flip to `true` at unification; the manifest's own `compact: true` flag is
+ * P4.D46's differential territory, not this beat's.
+ */
+const D46_SERVER_LANDED = false;
+
+/**
  * The delete-all beat and its `DELETE_ALL_SERVER_LANDED` gate MOVED to
  * `zz-delete-all-destructive.spec.ts` when P4.9G3 landed the server family
  * (2026-07-24). It wipes the SHARED instance, and eight spec files sort after
@@ -369,5 +386,102 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     expect(zipPath).toBeTruthy();
     const head = readFileSync(zipPath!).subarray(0, 4);
     expect([...head]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+  });
+
+  /**
+   * P4.D47 unit 5 — the `7189a968` drift, end to end in a real browser.
+   *
+   * Two halves, one beat, gated by {@link D46_SERVER_LANDED}:
+   *
+   * 1. The export picker offers all FIFTEEN types (the drift's whole point —
+   *    eight of them were unreachable), and `instance-settings`, one of the five
+   *    NEW ones, walks to a downloaded `.qtap`. A fresh instance may hold no
+   *    portable settings at all, so the beat asserts the archive's ENVELOPE
+   *    rather than a row count: `exportType: 'instance-settings'` on line 1 is
+   *    what proves the server accepted the new type and the writer ran for it.
+   * 2. The compact checkbox is off by default and, once checked, a backup still
+   *    downloads real archive bytes.
+   */
+  test('the fifteen-type picker exports instance-settings, and a compact backup downloads', async ({
+    page,
+  }) => {
+    test.skip(
+      !D46_SERVER_LANDED,
+      'ACTIVATE-AT-UNIFY (lane P4.D46): the fifteen-arm export listing and the `compact` ' +
+        'backup field are not live yet — this walk self-activates when the server half lands',
+    );
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=system&section=import-export');
+
+    // ── The widened picker ───────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Export Data' }).click();
+    await expect(page.getByText('Select the type of data you want to export')).toBeVisible({
+      timeout: 15_000,
+    });
+    const types = page.locator('input[name="entity-type"]');
+    await expect(types).toHaveCount(15);
+    // The rendered ORDER, in the real browser, against contract C1.
+    expect(await types.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual([
+      'characters',
+      'chats',
+      'roleplay-templates',
+      'prompt-templates',
+      'connection-profiles',
+      'image-profiles',
+      'embedding-profiles',
+      'tags',
+      'projects',
+      'groups',
+      'document-stores',
+      'files',
+      'provider-models',
+      'plugin-configs',
+      'instance-settings',
+    ]);
+
+    // ── A new type, all the way to bytes ─────────────────────────────────────
+    await page.getByRole('radio', { name: 'Instance Settings', exact: true }).check();
+    // Non-character/chat types skip the memories step, so step 2 offers Export.
+    await expect(page.getByText('Step 1 of 4')).toBeVisible();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('Export All')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+    await expect(page.getByText('Export Complete')).toBeVisible({ timeout: 15_000 });
+
+    const qtapPath = await download.path();
+    expect(qtapPath).toBeTruthy();
+    const envelope = JSON.parse(readFileSync(qtapPath!, 'utf8').split('\n')[0]) as {
+      kind: string;
+      manifest: { exportType: string };
+    };
+    expect(envelope.kind).toBe('__envelope__');
+    expect(envelope.manifest.exportType).toBe('instance-settings');
+
+    // The header X shares the `Close` label — target the footer button.
+    await page.locator('[qt-modal-footer] button:has-text("Close")').click();
+
+    // ── The compact backup ───────────────────────────────────────────────────
+    await page.goto('/settings?tab=system&section=backup-restore');
+    await page.getByRole('button', { name: 'Create Backup', exact: true }).click();
+    // Scoped to the dialog: the tab's other cards carry checkboxes of their own,
+    // so a bare role locator would be a strict-mode violation.
+    const compact = page.locator('qt-backup-dialog input[type="checkbox"]');
+    await expect(compact).not.toBeChecked();
+    await compact.check();
+
+    const backupPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download Backup', exact: true }).click();
+    const backup = await backupPromise;
+    const zipPath = await backup.path();
+    expect(zipPath).toBeTruthy();
+    // Zip local-file-header magic: the byte leg streamed an archive, not an
+    // error envelope. Whether the manifest carries `compact: true` is P4.D46's
+    // differential to prove, not this beat's.
+    expect([...readFileSync(zipPath!).subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
   });
 });

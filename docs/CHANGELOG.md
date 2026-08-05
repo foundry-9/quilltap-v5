@@ -102,6 +102,9 @@ smaller file. Full fidelity stays the default on purpose: a backup
 usually returns to the same instance, where those indexes are still
 good, and rebuilding costs time and money at the worst possible moment.
 
+The browser walk for all of the above is written and waits on the
+server half of the same change; it starts running the moment that lands.
+
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
 surface: embeddings no longer travel in exports, five new export types

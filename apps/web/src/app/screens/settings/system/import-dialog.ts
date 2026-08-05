@@ -23,6 +23,15 @@ interface ImportResult {
   warnings?: string[];
 }
 
+/**
+ * The SPA's mirror of one row of the server's `ImportPreview.entities`, and the
+ * shape of v4's own `EntityPreview` (`ImportPreviewStep.tsx:10-16`).
+ *
+ * Contract C3's `matchedExistingId` (prompt templates) is deliberately ABSENT:
+ * v4's UI interface omits it too — it is the importer's business, and nothing on
+ * this screen reads it. Named here rather than left silent so a name-for-name
+ * diff against the server contract has an answer instead of a gap.
+ */
 interface PreviewEntity {
   id: string;
   name?: string;

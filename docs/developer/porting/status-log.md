@@ -55512,3 +55512,39 @@ immediately before or after (six other full runs this lane were clean at
 281 files). Nothing in this lane touches that component. It reads as a
 pre-existing full-suite intermittent; flagged for whoever next sees it
 rather than diagnosed here.
+
+### Lane record — P4.D47 unit 5 (the gated e2e beat)
+
+One new beat at the end of `settings-data-system-flow.spec.ts`, gated
+`ACTIVATE-AT-UNIFY` on the named `D46_SERVER_LANDED` (the P4.9G2
+`DELETE_ALL_SERVER_LANDED` precedent): the picker must show all fifteen
+radios IN CONTRACT ORDER in a real browser, `instance-settings` must walk
+to a downloaded `.qtap` whose envelope line says
+`exportType: 'instance-settings'`, and a COMPACT backup must download
+real archive bytes (zip local-header magic).
+
+Two decisions worth recording. The export half asserts the archive's
+ENVELOPE rather than a row count, because a fresh e2e instance may hold
+no portable settings at all and the beat must not depend on P4.D46's
+widened `system-data` fixture (which is differential-side). And the
+COMPACT half is gated even though the create would answer today: on main
+`CoreRequest::SystemBackupCreate` is a serde internally-tagged UNIT
+variant, so an unknown `compact` key is IGNORED rather than refused —
+verified with a standalone serde probe, which is also why the existing
+backup beat did not break when the dialog started sending the key. A
+green compact beat before D46 would therefore prove that a FULL backup
+was made and nothing about compact whatsoever.
+
+**P4.D47 gate (all five units on the lane branch):** `ng test` **281
+files / 3,870 tests, 0 failed**; `ng build` clean; full Playwright **178
+passed / 0 failed / 1 skipped (4.6 m)** — the ONE skip is this lane's
+gated beat, reported by name
+(`settings-data-system-flow.spec.ts:405` → "the fifteen-type picker
+exports instance-settings, and a compact backup downloads"), which is
+the only acceptable skip under the order's gate. No Rust source touched,
+so no cargo gate is owed; the release `quilltap-web`/`quilltap` were
+built only to RUN the suite (the debug pair proved too slow for the
+beats' 15 s expectations — global setup alone ran past seven minutes
+before it was abandoned, which is worth knowing for any future SPA-only
+lane: build release, not debug, for a Playwright gate). SPA version
+0.5.402 → 0.5.407.
