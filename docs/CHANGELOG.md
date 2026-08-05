@@ -51,6 +51,11 @@ the reference app's real code over seven inputs covering every branch,
 including empty sections, an unreachable document store, and locale
 number and date formatting. No user-visible surface yet — the collectors
 and the report API follow.
+Moved the two existing meters — the Proving Bench outcome shares and the
+search results' importance bar — onto the shared progress styles. Both
+were painted with hardcoded colors no theme could reach; they now draw
+from the same variables as every other bar in the app.
+
 Added the shared progress bar and its themeable `qt-progress` style
 family. The bar shows one segment per phase of a long operation, sized
 by how long each phase usually takes; the running segment stops at 90%

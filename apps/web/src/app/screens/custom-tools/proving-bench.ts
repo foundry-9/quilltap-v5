@@ -405,11 +405,11 @@ export function extractErrorMessage(err: unknown): string {
                   </span>
                   <span>{{ (entry.share * 100).toFixed(1) }}%</span>
                 </div>
-                <div class="h-1.5 rounded qt-bg-muted overflow-hidden">
+                <div class="qt-progress qt-progress-sm">
                   <div
-                    class="h-full rounded"
+                    class="qt-progress-fill"
                     [style.width.%]="barWidth(entry.share, entry.hits)"
-                    [style.background-color]="barColor(entry.index)"
+                    [style.--qt-progress-indicator]="barColor(entry.index)"
                   ></div>
                 </div>
                 @if (entry.hits === 0 && !isCatchAll(entry.index)) {
@@ -784,6 +784,10 @@ export class ProvingBench {
   /**
    * The same token family the Pascal bubble accents use, so the bars read in
    * every bundled theme.
+   *
+   * Since P4.38 this is bound to the bar family's own `--qt-progress-indicator`
+   * rather than to `background-color` (v4 `ProvingBench.tsx:485-489`), so a theme
+   * restyling `qt-progress` restyles these meters too. The value is unchanged.
    */
   protected barColor(index: number): string {
     return `var(--qt-alert-${stateToken(this.draft().outcomes[index]?.state)}-border)`;

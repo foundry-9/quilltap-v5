@@ -189,9 +189,9 @@ import {
                           <div class="flex items-center gap-2 mt-1">
                             <div class="flex items-center gap-1">
                               <span class="qt-text-xs">Importance:</span>
-                              <div class="w-16 h-1.5 bg-border rounded-full overflow-hidden">
+                              <div class="qt-progress qt-progress-sm w-16">
                                 <div
-                                  class="h-full bg-destructive rounded-full"
+                                  class="qt-progress-fill qt-progress-fill-danger"
                                   [style.width.%]="asMemory(result).importance * 100"
                                 ></div>
                               </div>

@@ -57246,3 +57246,38 @@ Destruction clears the interval (`vi.getTimerCount()` back to 0).
 `styles-*.css` positively contains `qt-progress-slide`,
 `qt-progress-fill-success` and `--qt-progress-indicator-danger` (the CSS is in
 the bundle, not merely in the source). No `crates/**` change — no cargo gate owed.
+
+## Lane record — P4.38 unit 4 (the two meter migrations), 2026-08-05
+
+v4's own migration of its two pre-existing value meters onto the new bar family,
+mirrored 1:1. Both are class swaps; no widths, colours or arithmetic moved.
+
+- **Proving Bench** (`screens/custom-tools/proving-bench.ts:408-413` → v4
+  `ProvingBench.tsx:476-490`): the track becomes `qt-progress qt-progress-sm`
+  and the fill `qt-progress-fill`, with the per-outcome colour moving off
+  `[style.background-color]` onto `[style.--qt-progress-indicator]` — the same
+  `var(--qt-alert-<state>-border)` value, now reaching the fill through the bar
+  family's own lever so a theme restyling `qt-progress` restyles these too.
+- **search-results** (`search/search-results.ts:192-195` → v4
+  `search-results.tsx:226-230`): `qt-progress qt-progress-sm w-16` +
+  `qt-progress-fill qt-progress-fill-danger`, replacing a hardcoded
+  `bg-destructive` that no theme could reach.
+
+### Verification
+
+Neither meter had a spec pinning its markup before this unit — v4's migration
+has no test either — so a silent regression would have been free. Both are pinned
+now:
+
+- the existing `proving-bench.spec.ts` gained a case asserting two
+  `qt-progress-sm` tracks, an EMPTY `style.backgroundColor` (no raw utility
+  survived) and the `--qt-progress-indicator` custom property carrying an
+  `--qt-alert-*` value — which also positively proves Angular's custom-property
+  style binding reaches the DOM, since a silent no-op would read `''`;
+- a new `search-results.spec.ts` (the file did not exist) asserting the
+  `w-16` track, `qt-progress-fill-danger`, the absence of `bg-destructive`, and
+  the width still computed from `importance`.
+
+### Gate
+
+`ng test` 284 files / 3892 tests, 0 failed. No `crates/**` change.

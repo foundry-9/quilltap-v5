@@ -238,6 +238,43 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
     expect(body).toContain('otherwise');
   });
 
+  /**
+   * P4.38 migrated these meters onto the shared `qt-progress` family (v4
+   * `ProvingBench.tsx:476-490`). The per-outcome colour is the interesting half:
+   * it must reach the fill through the family's OWN indicator variable, not a
+   * `background-color`, so a theme restyling `qt-progress` restyles these too.
+   */
+  it('renders the outcome meters on the shared qt-progress family', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        audit: {
+          runs: 10000,
+          outcomes: [
+            { index: 0, hits: 5012, share: 0.5012 },
+            { index: 1, hits: 4988, share: 0.4988 },
+          ],
+          valueMin: 0,
+          valueMax: 0.9999,
+          valueMean: 0.4996,
+        },
+      }),
+    );
+    await fixture.componentInstance.runAudit();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const tracks = host.querySelectorAll('.qt-progress.qt-progress-sm');
+    expect(tracks.length).toBe(2);
+
+    const fill = tracks[0].querySelector('.qt-progress-fill') as HTMLElement;
+    expect(fill).not.toBeNull();
+    // No raw colour utility survives, and the bespoke colour rides the variable.
+    expect(fill.style.backgroundColor).toBe('');
+    expect(fill.style.getPropertyValue('--qt-progress-indicator')).toContain('--qt-alert-');
+    expect(fill.style.width).toBe('50.12%');
+  });
+
   it('sends NO runs field — the count is server-fixed (§W1)', async () => {
     const seen: Req[] = [];
     const fixture = await render(
