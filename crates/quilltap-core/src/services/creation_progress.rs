@@ -1,5 +1,15 @@
-//! The chat-creation progress bus ("The Green Room") — v4's
-//! `lib/chat/creation-progress.ts` (D6).
+//! The operation-progress bus — v4's `lib/progress/operation-progress.ts`,
+//! which began life as the Green Room's `lib/chat/creation-progress.ts` (D6)
+//! and was generalized when The Almanack needed the same machinery for its
+//! seven-phase report run. v4 kept the old module as a thin re-exporting face;
+//! v5 keeps the one module and the one name, and simply grew the `phase` frame
+//! kind and [`CreationProgressEmitter::phase`] beside the existing surface.
+//!
+//! Nothing about the pre-existing kinds moved: `status`, `log`,
+//! `wardrobe-start`, `wardrobe-result`, `done` and `error` serialize exactly as
+//! before (a new enum variant adds a new `kind` discriminant and touches no
+//! other), which the `wire_bytes_unchanged_by_the_phase_kind` test below pins
+//! against a literal so a future edit cannot move them quietly.
 //!
 //! `POST /api/v1/chats` does a lot of slow, blocking work before it returns
 //! (resolving the cast, the per-character LLM wardrobe step, compiling identity
@@ -101,6 +111,18 @@ pub enum CreationProgressFrame {
         character_id: String,
         character_name: String,
         slots: OutfitPreviewSlots,
+        ts: i64,
+    },
+    /// A named pipeline phase has begun (v4 `operation-progress`'s `phase`
+    /// kind, added when The Almanack generalized this bus). `index` is 1-based.
+    /// Emitted only by the Almanack run today; every other kind's wire bytes
+    /// are unmoved by its arrival — a new variant serializes a new `kind` and
+    /// touches nothing else.
+    Phase {
+        key: String,
+        index: i64,
+        total: i64,
+        label: String,
         ts: i64,
     },
     Done {
@@ -317,6 +339,18 @@ impl CreationProgressEmitter {
         });
     }
 
+    /// Announce entry into a named pipeline phase (v4
+    /// `OperationProgressEmitter.phase`). `index` is 1-based.
+    pub fn phase(&self, key: impl Into<String>, index: i64, total: i64, label: impl Into<String>) {
+        self.emit(CreationProgressFrame::Phase {
+            key: key.into(),
+            index,
+            total,
+            label: label.into(),
+            ts: now_unix_ms(),
+        });
+    }
+
     /// The terminal `done` frame (v4 `finishCreationProgress`).
     pub fn finish(&self) {
         self.emit(CreationProgressFrame::Done { ts: now_unix_ms() });
@@ -455,5 +489,83 @@ mod tests {
         assert_eq!(wv["kind"], "wardrobe-start");
         assert_eq!(wv["characterId"], "cid");
         assert_eq!(wv["characterName"], "Aria");
+    }
+
+    /// The Almanack's generalization (P4.37): the new `phase` kind carries v4's
+    /// `{kind, key, index, total, label, ts}` shape with a 1-BASED index, and
+    /// every pre-existing kind's serialized bytes are pinned against a literal
+    /// so a later edit to this enum cannot move them without a red test.
+    #[test]
+    fn wire_bytes_unchanged_by_the_phase_kind() {
+        let phase = CreationProgressFrame::Phase {
+            key: "premises".into(),
+            index: 1,
+            total: 7,
+            label: "Taking the measure of the premises…".into(),
+            ts: 11,
+        };
+        assert_eq!(
+            serde_json::to_string(&phase).unwrap(),
+            r#"{"kind":"phase","key":"premises","index":1,"total":7,"label":"Taking the measure of the premises…","ts":11}"#
+        );
+
+        // The five pre-existing kinds, byte-for-byte.
+        assert_eq!(
+            serde_json::to_string(&status("Resolving the cast", 1)).unwrap(),
+            r#"{"kind":"status","message":"Resolving the cast","ts":1}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CreationProgressFrame::Log {
+                message: "settled".into(),
+                level: None,
+                ts: 2,
+            })
+            .unwrap(),
+            r#"{"kind":"log","message":"settled","ts":2}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CreationProgressFrame::WardrobeStart {
+                character_id: "cid".into(),
+                character_name: "Aria".into(),
+                ts: 3,
+            })
+            .unwrap(),
+            r#"{"kind":"wardrobe-start","characterId":"cid","characterName":"Aria","ts":3}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CreationProgressFrame::Done { ts: 4 }).unwrap(),
+            r#"{"kind":"done","ts":4}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CreationProgressFrame::Error {
+                message: "nope".into(),
+                ts: 5,
+            })
+            .unwrap(),
+            r#"{"kind":"error","message":"nope","ts":5}"#
+        );
+    }
+
+    /// A `phase` frame is NOT terminal — the Almanack emits seven of them and
+    /// then a `done`, and a channel that closed on the first would replay
+    /// nothing after it.
+    #[test]
+    fn phase_is_not_terminal() {
+        let bus = CreationProgressBus::new();
+        for i in 1..=3 {
+            bus.publish(
+                "p",
+                &CreationProgressFrame::Phase {
+                    key: format!("k{i}"),
+                    index: i,
+                    total: 7,
+                    label: "l".into(),
+                    ts: i,
+                },
+                i,
+            );
+        }
+        bus.publish("p", &CreationProgressFrame::Done { ts: 9 }, 9);
+        assert_eq!(bus.replay("p").len(), 4);
     }
 }

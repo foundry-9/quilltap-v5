@@ -40,6 +40,10 @@ instance now creates the call log with the two profile-attribution
 columns (`connectionProfileId`, `imageProfileId`), re-dumped from the
 reference app's live schema generator rather than hand-edited. No
 indexes changed.
+Generalized the progress side-channel so any long operation can narrate
+named phases, not just chat creation. Existing progress messages are
+unchanged on the wire.
+
 Added the pure core of the new system report ("The Almanack"): the
 seven-phase manifest, the report data model, and the markdown renderer,
 all byte-identical to the reference app. The renderer is verified against

@@ -9,6 +9,31 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 unit 10 (the progress generalization), 2026-08-05
+
+Branch `claude/almanack-server-porting-693d77`. v4 generalized
+`lib/chat/creation-progress.ts` into `lib/progress/operation-progress.ts` and
+left the old module as a thin re-exporting face; the only new event kind is
+`phase {key, index, total, label}`, and the Almanack run is its only emitter.
+
+v5 already had the whole bus ported in `services/creation_progress.rs` (the
+Green Room, D3 divergence and all), so the generalization is additive: a
+`Phase` variant on `CreationProgressFrame` and a `phase()` method on the
+emitter. v5 keeps ONE module rather than adopting v4's two-module split —
+there is no second consumer to justify a face, and the re-export layer is
+exactly the kind of vestigial structure the port is supposed to leave behind
+(the standing "refactor vestigial v4 cruft" rule).
+
+**The unchanged-bytes proof (deliverable 5).** Adding an enum variant cannot
+move a sibling's serialization, but "cannot" is not a test, so
+`wire_bytes_unchanged_by_the_phase_kind` pins all five pre-existing kinds
+against string literals alongside the new one. A second test,
+`phase_is_not_terminal`, pins that a `phase` frame does not arm the channel's
+TTL — the Almanack emits seven of them before its `done`, and a bus that
+closed on the first would replay nothing after it. The existing
+creation-progress suite (8 tests) is unchanged and green, which is the
+"existing consumers prove the bus moved nothing" half of the deliverable.
+
 ## Lane record — P4.37 units 1–2 (the pure core + the tier-1 render differential), 2026-08-05
 
 Branch `claude/almanack-server-porting-693d77`. The Almanack's pure half: the
