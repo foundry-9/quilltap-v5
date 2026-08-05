@@ -54,6 +54,38 @@ The first build is slow: it compiles the SQLite3MultipleCiphers amalgamation
 (~12 MB of C). BuildKit cache mounts and the pinned `quilltap-sqlite3mc-sys`
 version mean it happens once per cache, not once per build.
 
+#### Set the timezone, or things fire at the wrong hour
+
+A container has no timezone, so it runs on UTC unless told otherwise — and
+that is not merely cosmetic. Some of Quilltap consults the wall clock
+directly rather than asking how to phrase a date: rooms that wake on a
+schedule, the daily token allowance that turns over at local midnight, and
+the Commonplace Book's notion of what counts as "today" for same-day recall.
+Leave it unset and a room set for 07:00 rings at 02:00.
+
+```bash
+docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap \
+  -e QUILLTAP_TIMEZONE=America/Chicago quilltap
+```
+
+| Variable | What it does | Default |
+| --- | --- | --- |
+| `QUILLTAP_TIMEZONE` | IANA zone name (`America/New_York`, `Europe/London`, `Asia/Tokyo`) for the whole process — timestamp injection *and* the clock. | unset → UTC in a container |
+| `TZ` | The same thing, by its Unix name. | unset → UTC in a container |
+
+Setting **either one is enough**: the server copies whichever is present into
+the other at startup, and `QUILLTAP_TIMEZONE` wins if both are set and
+disagree. This is v4's rule (its `docker/entrypoint.sh`), applied in
+`quilltap-web`'s `main` because the v5 image runs the binary directly and has
+no entrypoint script. `-e QUILLTAP_TIMEZONE=UTC` deliberately pins to UTC.
+
+The value must be an **IANA zone name** — `UTC`, or something with a `/` in
+it. An abbreviation like `CDT` is refused with a warning on stderr rather
+than forwarded, because forwarding it would fall silently back to UTC, which
+is the failure this is here to prevent. Zone lookup reads the tzdb on disk;
+the image's `debian:bookworm-slim` base ships `tzdata`, so nothing extra is
+needed.
+
 ### Without Docker
 
 ```bash
@@ -103,7 +135,9 @@ authentication and TLS (Caddy, Traefik, a tunnel). Do not widen the bind and
 hope.
 
 Flags: `--host`, `--port`, `--data-dir <path>`, `--instance <name>`,
-`--spa-dir <path>`. Environment: `QUILLTAP_DATA_DIR`, `QUILLTAP_SPA_DIR`.
+`--spa-dir <path>`. Environment: `QUILLTAP_DATA_DIR`, `QUILLTAP_SPA_DIR`,
+`QUILLTAP_TIMEZONE` / `TZ` (see
+[Set the timezone](#set-the-timezone-or-things-fire-at-the-wrong-hour)).
 `--help` lists them.
 
 ---

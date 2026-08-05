@@ -42,6 +42,11 @@ tower-http = { version = "0.6", features = ["trace"] }
 
 [dev-dependencies]
 tempfile = "3"
+# P4.D48: the timezone resolver's validation rule is only meaningful if the
+# names it accepts resolve in the engine that consumes `TZ` — `main.rs`'s
+# `accepted_zones_resolve_in_jiff` checks them against the same jiff the host
+# calls `TimeZone::system()` on. Test-only; the binary itself never links it.
+jiff = "0.2"
 # Test HTTP client (already in the tree via quilltap-host).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "multipart", "json"] }
 # Test WebSocket client for the terminal stream route.

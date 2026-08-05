@@ -119,6 +119,17 @@ ENV QUILLTAP_SPA_DIR=/usr/local/share/quilltap/spa
 VOLUME /app/quilltap
 EXPOSE 3000
 
+# No TZ default is set here on purpose: an unset zone means UTC, and inventing
+# one for the operator would be worse than the honest default. Pass
+# `-e QUILLTAP_TIMEZONE=America/Chicago` (or `-e TZ=`) and `quilltap-web`'s
+# `main` reconciles the pair before anything reads the clock — see
+# `resolve_process_timezone` in crates/quilltap-web/src/main.rs and the
+# timezone section of docs/developer/running.md. There is no entrypoint script
+# to hang that on (v4 uses one); the binary is the entrypoint, so the binary
+# does it. Zone lookup needs a tzdb on disk — the debian:bookworm-slim base
+# ships `tzdata`, so do not swap for a distroless/scratch base without
+# carrying /usr/share/zoneinfo along.
+#
 # The container binds all interfaces (D2 — the container boundary is the trust
 # boundary; put a proxy in front for more).
 ENTRYPOINT ["quilltap-web", "--host", "0.0.0.0", "--port", "3000"]

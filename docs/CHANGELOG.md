@@ -104,6 +104,20 @@ good, and rebuilding costs time and money at the worst possible moment.
 
 The browser walk for all of the above is written and waits on the
 server half of the same change; it starts running the moment that lands.
+Fixed the timezone in Docker. A container has no timezone, so it ran on
+UTC — and that was not just cosmetic, because rooms that wake on a
+schedule, the daily token allowance that turns over at midnight, and
+"today" for same-day recall all read the clock directly. A room set for
+7am fired at 2am. Worse, setting `QUILLTAP_TIMEZONE`, the one variable
+the docs mentioned, fixed only the printed timestamps and left the
+schedules on UTC, so it looked solved. Now either `QUILLTAP_TIMEZONE` or
+`TZ` sets the whole process, whichever you supply fills in the other, and
+`QUILLTAP_TIMEZONE` wins if the two disagree — matching the reference
+app. The value must be an IANA name (`America/Chicago`, or `UTC`); an
+abbreviation like `CDT` is refused with a warning instead of being
+forwarded and silently falling back to UTC. `docs/developer/running.md`
+documents it.
+
 Checked that the reference app's Anthropic SDK jump — 27 minor versions,
 0.88 to 0.115 — did not change a single byte on the wire, and it did not.
 All four recorded corpora that drive the Anthropic plugin (request

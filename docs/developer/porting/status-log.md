@@ -55759,3 +55759,150 @@ while(!fs.existsSync(path.join(d,'package.json'))) d=path.dirname(d);
 const p=path.join(d,'package.json');
 console.log(JSON.parse(fs.readFileSync(p,'utf8')).version, fs.statSync(p).mtime.toISOString());"
 ```
+
+## Lane record — P4.D48 unit 2: the container-timezone rider (2026-08-05)
+
+The half of the round that is a v5 bug rather than a v4 mirror. v4 fixed its
+own containers in `a7f691e7`/`298563eb`; **v5's image had no timezone handling
+at all**, so a containerized v5 reproduced the identical failure on surfaces
+v5 had already ported zone-sensitively — and had no way for an operator to fix
+it, since neither knob reached the clock.
+
+### The bug, precisely
+
+v5 reads the two knobs in two different places, exactly as v4 does:
+
+- `QUILLTAP_TIMEZONE` feeds the timestamp-formatting chain
+  (`quilltap-core/src/chat_timestamp.rs:561`, mirroring v4's
+  `process.env.QUILLTAP_TIMEZONE` read).
+- `TZ` is what `jiff::tz::TimeZone::system()` honors — and *that* backs every
+  path that consults the wall clock directly: same-day episodic recall
+  (`day_references`, the P4.d26 "today"/"yesterday" windows), the
+  autonomous-room cron tick (`api/autonomous_rooms.rs:47`), the daily
+  token-budget rollover at instance-local midnight, and the host's own zone
+  (`quilltap-host/src/paths.rs:89`).
+
+`Dockerfile:124` is a bare `ENTRYPOINT ["quilltap-web", …]` with no script and
+no `ENV TZ`, so in a container both are unset and everything lands on UTC. A
+room set for 07:00 fires at 02:00; recall windows are offset by the operator's
+whole UTC offset. Setting only `QUILLTAP_TIMEZONE` — the variable the docs
+already mentioned and the one an operator would reach for — fixed the
+*timestamps* and left the schedules on UTC, which is the worst version: it
+looks fixed.
+
+### What landed
+
+`resolve_process_timezone` in `crates/quilltap-web/src/main.rs`, applied at the
+very top of `main` before the tracing subscriber, before `parse_args`, before
+the runtime — single-threaded still, so `set_var` is sound, and nothing has
+read the clock. jiff reads `TZ` lazily, but treating it as boot-time-only is
+the rule that stays true as call sites move.
+
+**The precedence rule is transcribed from v4's `docker/entrypoint.sh`**
+(`a7f691e7`): whichever knob is set fills in the other, `QUILLTAP_TIMEZONE`
+wins a disagreement, neither set changes nothing. **The validation rule is
+transcribed from `scripts/start-quilltap-docker.ts`'s `detectTimezone`**
+(`298563eb`): accept `UTC` or a name containing `/`, refuse anything else —
+v4's reasoning verbatim, that ICU silently falls back to UTC on an
+abbreviation and "better to pass nothing than to pass a lie". Both citations
+are in the doc comment, with what each applies to (the
+`7fe9fe40-dogfood-walk` rule: a transcribed v4 value carries WHAT IT GOVERNS,
+not just its number).
+
+Two shape decisions worth recording:
+
+1. **A `TimezoneResolution` enum, not `Option<String>`.** "Nobody asked" and
+   "you asked for something I refuse to forward" are different startup
+   stories, and the second is the bug the seam exists to prevent — so a
+   rejected value gets a `tracing::warn!` naming the value, the knob, and what
+   will now be wrong (rooms, budget rollover, same-day recall). v4's
+   *entrypoint* forwards a bogus value and lets ICU swallow it; v5 refuses and
+   says so. Net clock behavior is identical (UTC either way); v5 is louder,
+   which is the point of the whole family.
+2. **A bad first knob does not fall through to a good second one.** v4's
+   `detectTimezone` reads `QUILLTAP_TIMEZONE || TZ || Intl` and validates the
+   *result*, so a set-but-bogus `QUILLTAP_TIMEZONE` is the answer and the
+   answer is refused. Pinned by its own test rather than left to inference —
+   it is the one arm where "obviously it should try TZ" is wrong.
+
+Pure by construction (no env reads inside), so the table is testable without
+mutating process-global state; `main` does the reading and the writing.
+
+### Tests — 5, in `main.rs`, no env mutation
+
+`precedence_matches_v4_entrypoint` (all four rows of v4's table),
+`empty_strings_count_as_unset` (v4 tests with `-n`, so an exported-but-blank
+`TZ=` must not shadow a good `QUILLTAP_TIMEZONE` nor register as rejected),
+`abbreviations_are_rejected_not_forwarded` (CDT / EST / PST8PDT / GMT+2 /
+Chicago refused; `UTC` accepted, since `-e QUILLTAP_TIMEZONE=UTC` is how an
+operator deliberately pins), `a_bad_first_knob_does_not_fall_through`, and
+`accepted_zones_resolve_in_jiff`.
+
+That last one is the one that earns its keep: a validation rule is only
+meaningful if the names it accepts resolve **in the engine that consumes
+them**. It checks the accepted set against the same `jiff` the host calls
+`TimeZone::system()` on, and the rejected set against it too. Without it the
+rule is a string check that agrees with v4's *ICU* by coincidence. ⚠ It is
+why `jiff = "0.2"` was added to `quilltap-web`'s `[dev-dependencies]` — a
+**dep-block addition in a Cargo.toml another lane also bumps this round**.
+Flagged for the unifier per the `c4d4b0de` lesson (a `--ours` conflict
+resolution ate a dependency block once): the version line will conflict with
+P4.D46's bump and the dev-dep block must survive the resolution. Test-only;
+the binary never links it.
+
+### Live proof (not just unit tests)
+
+The built binary, three arms, `RUST_LOG=info`:
+
+```
+QUILLTAP_TIMEZONE=America/Chicago TZ=Europe/Paris
+  → INFO … process timezone set timezone=America/Chicago source=QUILLTAP_TIMEZONE
+QUILLTAP_TIMEZONE=CDT
+  → WARN … refusing a timezone that is not an IANA zone name … value=CDT source=QUILLTAP_TIMEZONE
+TZ=Asia/Tokyo (QUILLTAP_TIMEZONE unset)
+  → INFO … process timezone set timezone=Asia/Tokyo source=TZ
+```
+
+### A v5-specific fact v4 does not have to care about
+
+v4's docs say "no `tzdata` package is required — Node resolves `TZ` through
+bundled ICU". **That is not transferable.** jiff on Unix reads the tzdb from
+disk (`/usr/share/zoneinfo`); the bundled `jiff-tzdb` only activates on
+platforms without one. Probed the base image directly: `debian:bookworm-slim`
+ships `tzdata 2026b-0+deb12u1` with `/usr/share/zoneinfo` populated, so v5's
+image resolves zones today with nothing added. Recorded as a comment in the
+`Dockerfile` next to the `ENTRYPOINT`, because it is exactly the sort of thing
+a later "let's move to distroless/scratch for the CVE count" change would
+break silently.
+
+No `ENV TZ` default was added to the image on purpose: unset means UTC, and
+inventing a zone for the operator is worse than the honest default.
+
+### Docs
+
+`docs/developer/running.md` gains a "Set the timezone, or things fire at the
+wrong hour" subsection under Docker — the two-variable table, the `-e`
+example, the precedence sentence, the IANA-only rule and the refusal, and the
+tzdb note — plus the `QUILLTAP_TIMEZONE`/`TZ` mention in the flags/environment
+summary. `--help` lists both.
+
+### Scope, stated as a choice rather than an oversight
+
+`quilltap-cli` and `quilltap-tauri` get **no** resolver. Neither is a
+container entrypoint: the CLI runs on a host that already has a zone, and the
+Tauri shell inherits the desktop session's. If a future image ever runs the
+CLI as PID 1, this is the seam to lift.
+
+**Outside the differential contract**, like P4.10's packaging work: no v4
+oracle exists for a process-startup env reconciliation, and none could — the
+v4 analog is a shell script and three launchers. Proven by unit test + the
+live arms above.
+
+### Not verified in-lane, by the order's own allowance
+
+The Docker image build (slow; the change is a comment plus an env passthrough
+already documented). **The container walk rides the next dogfood pass:**
+`docker run -e QUILLTAP_TIMEZONE=America/Chicago …`, then confirm an
+autonomous room scheduled for a local hour fires at that hour and same-day
+recall agrees with the operator's calendar. That walk is also where the
+`perl-base` CVE question from unit 1 wants an answer.
