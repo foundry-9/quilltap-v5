@@ -55342,3 +55342,70 @@ pair. New committed fixture:
 `build-restore-archives-compact.test.ts`, built by v4's REAL
 `createBackup(userId, {compact: true})` at the pin, 2026-08-05 11:46 —
 pre-drift; the other nine zips byte-untouched).
+
+## Lane record — P4.D46 unit 7: the close-out (2026-08-05)
+
+**The order's status: ALL TIERS LANDED.** Tier 1 items 1–9 complete;
+tier 2 items 10–11 complete (the touch-list comment rides
+`EXPORT_ENTITY_TYPES`; the forward-compat rule is asserted by
+`read_ndjson_unknown_kind_skips` + `throw_ndjson_unknown_export_type`
+in `system_import_equivalence`; the p4.35 header now says the strip
+landed and the 791 MB economics are obsolete pending a fresh
+measurement on the walk). Tier 3: EMPTY — no refusal arms were needed;
+every planned surface landed live.
+
+**Doc mirrors:** `docs/v4/developer/features/complete/import_export_spec.md`
+(new, 454 L) + `import_export_update.md` (mirroring v4's move to
+`complete/` — v5's mirror had never carried the update doc at root, so
+both simply land in `complete/`), and `docs/v4/developer/DDL.md`
+refreshed from the pin (the "Portability (4.8+)" instance-settings
+note). All copied from the PINNED `7189a968` worktree, not the drifted
+checkout.
+
+**Divergence-pin verdicts (deliverable 8), each re-checked at the new
+baseline over the widened fixture:**
+- `PHASE_ORDER_RESIDUAL` — SURVIVES (v4 `7189a968` does not move its
+  files phase; the restore families ran green with the pin intact).
+- `V5_STATS_GAP` — SURVIVES unchanged.
+- `REPLAY_DEDUPE` — GROWS by the two compact cases (the ruling being
+  implemented, not regressing: the compact archive carries
+  store-backed files exactly like uploads/gen2), plus the
+  compact-only `doc_mount_points` rollup mask (v4's re-ingest
+  refreshStats lands inside the new tail's await window).
+- `ORPHAN_LINKS_CASE` — SURVIVES (green).
+- `FOLDER_CLEAR_DIVERGENCE`, `STORE_ID_PRESERVED_ON_CREATE` + the four
+  store-identity arms — SURVIVE (import-state green over 23 cases).
+- `ANNOTATION_DIVERGENCE_KEY` — SURVIVES (delete-data 7 cases green).
+- The skipped-files reporting (dogfood #59) — SURVIVES (backup green,
+  both arms asserted).
+- The sparse-array pin — already DISCHARGED pre-lane; the file-blob
+  path was born converged (its counted pattern is v4's own).
+
+**The final by-name run (all from the PINNED `7189a968` worktree,
+zero SKIP lines across the whole output):**
+`system_export_equivalence` (57), `system_import_equivalence` (27),
+`system_import_state` (23), `system_backup_equivalence` (3),
+`system_restore_equivalence` (6 previews), `system_restore_state`
+(13), `backup_uuid_remap_equivalence` (38 collections byte-identical,
+143 ids — the corpus regenerated WITH its hash-locked oracle over the
+widened fixture, superseding the order's "untouched" line, which
+predates the fixture widening flowing into it by construction),
+`system_delete_data_equivalence` (7), 
+`backup_mount_index_coercion_equivalence` (6), `qtap_import_equivalence`
+(9 tables / 2 DBs + skip branch), plus the unconditional
+`restore_vintage_state` invariant suite (4) — all green.
+
+**Standing for the unifier / next round:**
+- **⚠ v4 drift `0cde7fbc` (the Almanack) is OWED a catch-up round**:
+  the `add-llm-logs-profile-columns-v1` migration (llm_logs gains
+  nullable `connectionProfileId`/`imageProfileId` — D23 territory on
+  the llm partition), both columns joining the new-account restore's
+  UUID remap list (the ported `uuid_remap`), the llm-logging service
+  threading the ids + `durationMs`, the `getTotalTokenUsage*`
+  `$ne: null` repo fixes, and the (unported-surface) Almanack report
+  itself. Until it runs, regenerate any llm-logs-touching or
+  restore-family oracle from a worktree pinned at `7189a968`.
+- The lane's pin worktree `/tmp/qt-v4-pin-p4d46-7189a968` is removed
+  at lane end; recreate per `oracle-regen-pinned-v4-worktree`.
+- P4.D47's C1–C5 contract stands untouched (no deviation was needed;
+  `api/types.rs`'s one §1 change is exactly C2's `compact`).
