@@ -28,6 +28,8 @@ interface PreviewEntity {
   name?: string;
   title?: string;
   exists?: boolean;
+  /** Short note from the server, e.g. which plugin secrets were withheld. */
+  detail?: string;
 }
 
 /**
@@ -124,7 +126,12 @@ interface PreviewEntity {
                             [checked]="isSelected(key, e.id)"
                             (change)="toggleSelection(key, e.id)"
                           />
-                          <span class="text-foreground flex-1">{{ e.name || e.title }}</span>
+                          <span class="text-foreground flex-1">
+                            {{ e.name || e.title }}
+                            @if (e.detail) {
+                              <span class="block qt-text-small qt-text-secondary">{{ e.detail }}</span>
+                            }
+                          </span>
                           @if (e.exists) {
                             <span class="text-xs qt-bg-warning/10 qt-text-warning px-2 py-1 rounded">Exists</span>
                           }
@@ -331,7 +338,16 @@ export class ImportDialog {
     return !!mem && !!mem.count && mem.count > 0;
   });
 
-  /** v4 `getEntityKeysInPreview` (`ImportPreviewStep.tsx:41-47`). */
+  /**
+   * v4 `getEntityKeysInPreview` (`ImportPreviewStep.tsx:41-47`).
+   *
+   * The section ORDER is the server's, not ours: v4 builds `entities` in a
+   * fixed insertion order (`preview.ts` — document stores, files, prompt
+   * templates, provider models, plugin configs, instance settings, then
+   * characters/chats/tags and the rest), and both apps simply walk
+   * `Object.keys`. Do not sort here; a reorder would silently disagree with v4
+   * on a screen nobody would think to compare.
+   */
   protected readonly previewKeys = computed(() => {
     const entities = this.preview()?.entities ?? {};
     return Object.keys(entities).filter((k) => k !== 'memories' && !!entities[k]);

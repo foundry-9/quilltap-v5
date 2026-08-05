@@ -91,6 +91,11 @@ wording match the reference app exactly. None of the eight new kinds
 needs an extra wizard step: each is a two-choice, four-step flow, and
 the names the server composes are shown exactly as they arrive.
 
+The import preview lists those new kinds too, and now carries the
+server's per-item notes: a file whose contents did not travel says so
+before you import it, and a plugin's withheld secrets are named so you
+know what you will have to type back in.
+
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
 surface: embeddings no longer travel in exports, five new export types

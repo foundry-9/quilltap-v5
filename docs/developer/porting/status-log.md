@@ -55453,3 +55453,28 @@ contract lists, "Step 1 of 4" for each of the eight new types, the
 Next) on step 2 and no memories option, and — the C4 obligation — that
 the server's composed names (`anthropic / claude-opus-4`) render verbatim
 with no client-side reformatting.
+
+### Lane record — P4.D47 unit 3 (the preview's `detail` line + six new sections)
+
+`PreviewEntity` gained `detail?: string` and the row renders it exactly
+as v4 does at `ImportPreviewStep.tsx:123-127`: a `<span class="block
+qt-text-small qt-text-secondary">` NESTED INSIDE the name span, so the
+note wraps under the name instead of sitting beside the Exists chip.
+
+The six new sections needed no template work — they arrive through the
+same `previewKeys` / `keyLabel` mechanism v4 uses, and unit 1's widened
+map is what makes them legible instead of raw camelCase. Their ORDER,
+though, is a correctness point worth stating: v4 builds `entities` in a
+fixed insertion order (`preview.ts` — documentStores, files,
+promptTemplates, providerModels, pluginConfigs, instanceSettings, THEN
+characters/chats/tags and the rest) and both apps just walk
+`Object.keys`, so the server owns the order and the client must not sort.
+That is now a comment on `previewKeys` and an assertion in the spec.
+
+Three new `import-dialog.spec.ts` cases over one payload in v4's key
+order: the nine rendered section headings in order, the three C3 detail
+strings verbatim with their nesting checked, and a detail-free row
+rendering no note. **Both mutation-proven:** deleting the `@if (e.detail)`
+block reddened the detail case; appending `.sort()` to `previewKeys`
+reddened the order case (1 failed / 3,866 passed each time), both
+restored green.

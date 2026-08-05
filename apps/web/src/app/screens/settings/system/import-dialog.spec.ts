@@ -40,6 +40,122 @@ async function mountAtPreviewWith(response: Response): Promise<ComponentFixture<
   return fixture;
 }
 
+/** The preview payload contract C3 describes, in v4's own key order. */
+function previewBody(): string {
+  return JSON.stringify({
+    manifest: { exportType: 'plugin-configs', appVersion: '4.8.0' },
+    entities: {
+      documentStores: [{ id: 'ds1', name: 'Aria’s Vault', exists: true }],
+      files: [
+        { id: 'f1', name: 'who-is-friday.md', exists: false },
+        {
+          id: 'f2',
+          name: 'catastrophe.md',
+          exists: false,
+          detail: 'contents missing — will be skipped',
+        },
+      ],
+      promptTemplates: [{ id: 'pt1', name: 'The Lantern', exists: true, matchedExistingId: 'pt9' }],
+      providerModels: [{ id: 'pm1', name: 'anthropic / claude-opus-4', exists: false }],
+      pluginConfigs: [
+        {
+          id: 'pc1',
+          name: 'qtap-plugin-anthropic',
+          exists: false,
+          detail: 'secrets withheld: apiKey, orgId',
+        },
+        {
+          id: 'pc2',
+          name: 'qtap-plugin-mystery',
+          exists: false,
+          detail: 'all settings withheld — re-enter them here',
+        },
+      ],
+      instanceSettings: [{ id: 'siteTitle', name: 'siteTitle', exists: false }],
+      characters: [{ id: 'c1', name: 'Aria', exists: false }],
+      chats: [{ id: 'ch1', title: 'A Solo Voyage', exists: false }],
+      tags: [{ id: 't1', name: 'canon', exists: true }],
+    },
+  });
+}
+
+/**
+ * P4.D47 unit 3 — the six new preview sections and the per-entity `detail`
+ * line (contract C3; v4 `ImportPreviewStep.tsx:14` + `:123-127` at `7189a968`).
+ */
+describe('ImportDialog — the widened preview (contract C3)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("lists the six new sections first, in the server's key order", async () => {
+    const fixture = await mountAtPreviewWith(
+      new Response(previewBody(), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const headings = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('h4'),
+    ).map((h) => h.textContent?.trim());
+    // v4 serializes the configuration-shaped types BEFORE characters/chats/tags,
+    // and both apps walk `Object.keys` — so this order is the server's.
+    expect(headings).toEqual([
+      'Document Stores',
+      'Files & Folders',
+      'Prompt Templates',
+      'Provider Models',
+      'Plugin Settings',
+      'Instance Settings',
+      'Characters',
+      'Chats',
+      'Tags',
+    ]);
+  });
+
+  it("renders each detail as a nested block span under the entity's name", async () => {
+    const fixture = await mountAtPreviewWith(
+      new Response(previewBody(), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const details = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        'span.block.qt-text-small.qt-text-secondary',
+      ),
+    );
+    // v4's three detail strings, verbatim — and only for the entities carrying
+    // one (four of the ten rows here have no detail and must render none).
+    expect(details.map((d) => d.textContent?.trim())).toEqual([
+      'contents missing — will be skipped',
+      'secrets withheld: apiKey, orgId',
+      'all settings withheld — re-enter them here',
+    ]);
+
+    // v4 nests the note INSIDE the name span (`:123-127`), so it wraps under
+    // the name rather than beside the Exists chip.
+    for (const d of details) {
+      expect(d.parentElement?.className).toContain('flex-1');
+      expect(d.parentElement?.textContent).toMatch(/\S/);
+    }
+  });
+
+  it('leaves a detail-free entity with just its name', async () => {
+    const fixture = await mountAtPreviewWith(
+      new Response(previewBody(), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const rows = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).filter((l) => l.textContent?.includes('who-is-friday.md'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelector('span.block.qt-text-small.qt-text-secondary')).toBeNull();
+  });
+});
+
 describe('ImportDialog — a failed preview', () => {
   afterEach(() => vi.unstubAllGlobals());
 
