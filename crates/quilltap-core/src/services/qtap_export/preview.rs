@@ -177,6 +177,133 @@ pub fn preview_export(
                 }
             }
         }
+        // The five `7189a968` additions (v4 `quilltap-export-service.ts:254-332`).
+        "files" => {
+            let all_files = crate::services::backup::marshal::query_all(
+                main,
+                "files",
+                crate::services::backup::collect::FILES,
+                "",
+                &[],
+            )?;
+            let ids: Vec<String> = if all {
+                all_files
+                    .iter()
+                    .filter(|f| {
+                        f.get("category").and_then(Value::as_str) != Some("BACKUP")
+                            && f.get("folderPath").and_then(Value::as_str) != Some("/backups")
+                    })
+                    .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            } else {
+                entity_ids
+            };
+            for id in ids {
+                // v4 re-reads per id (`repos.files.findById`).
+                if let Some(f) = all_files
+                    .iter()
+                    .find(|f| f.get("id").and_then(Value::as_str) == Some(id.as_str()))
+                {
+                    push_entity(&mut entities, f, "originalFilename");
+                }
+            }
+        }
+        "prompt-templates" => {
+            let all_templates = crate::services::backup::marshal::query_all(
+                main,
+                "prompt_templates",
+                crate::services::backup::collect::PROMPT_TEMPLATES,
+                "",
+                &[],
+            )?;
+            let is_user = |t: &&Value| {
+                !t.get("isBuiltIn").and_then(Value::as_bool).unwrap_or(false)
+                    && t.get("userId").and_then(Value::as_str) == Some(user_id)
+            };
+            let ids: Vec<String> = if all {
+                all_templates
+                    .iter()
+                    .filter(is_user)
+                    .filter_map(|t| t.get("id").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            } else {
+                entity_ids
+            };
+            for id in ids {
+                if let Some(t) = all_templates
+                    .iter()
+                    .filter(is_user)
+                    .find(|t| t.get("id").and_then(Value::as_str) == Some(id.as_str()))
+                {
+                    push_entity(&mut entities, t, "name");
+                }
+            }
+        }
+        "provider-models" => {
+            // Instance-global catalogue, no user filter; `scope != 'all'`
+            // filters by the selected-id SET over findAll order (not per-id).
+            let wanted: Option<std::collections::HashSet<&str>> = if all {
+                None
+            } else {
+                Some(entity_ids.iter().map(String::as_str).collect())
+            };
+            for model in crate::db::provider_models::find_all(main)? {
+                let Some(id) = model.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
+                if wanted.as_ref().is_some_and(|w| !w.contains(id)) {
+                    continue;
+                }
+                let name = format!(
+                    "{} / {}",
+                    model.get("provider").and_then(Value::as_str).unwrap_or(""),
+                    model.get("modelId").and_then(Value::as_str).unwrap_or("")
+                );
+                let mut m = Map::new();
+                m.insert("id".into(), Value::String(id.to_string()));
+                m.insert("name".into(), Value::String(name));
+                entities.push(Value::Object(m));
+            }
+        }
+        "plugin-configs" => {
+            let wanted: Option<std::collections::HashSet<&str>> = if all {
+                None
+            } else {
+                Some(entity_ids.iter().map(String::as_str).collect())
+            };
+            for config in crate::services::backup::marshal::query_all(
+                main,
+                "plugin_configs",
+                crate::services::backup::collect::PLUGIN_CONFIGS,
+                "userId = ?1",
+                &[&user_id],
+            )? {
+                let Some(id) = config.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
+                if wanted.as_ref().is_some_and(|w| !w.contains(id)) {
+                    continue;
+                }
+                push_entity(&mut entities, &config, "pluginName");
+            }
+        }
+        "instance-settings" => {
+            // Keyed by setting key — the table has no id column.
+            let wanted: Option<std::collections::HashSet<&str>> = if all {
+                None
+            } else {
+                Some(entity_ids.iter().map(String::as_str).collect())
+            };
+            for (key, _) in crate::db::instance_settings::list_portable_instance_settings(main)? {
+                if wanted.as_ref().is_some_and(|w| !w.contains(key.as_str())) {
+                    continue;
+                }
+                let mut m = Map::new();
+                m.insert("id".into(), Value::String(key.clone()));
+                m.insert("name".into(), Value::String(key));
+                entities.push(Value::Object(m));
+            }
+        }
         other => return Err(ExportError::UnknownType(other.to_string())),
     }
 

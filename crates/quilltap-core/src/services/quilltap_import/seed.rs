@@ -86,6 +86,7 @@ fn seed_from_imports(main: &Connection, mount: &Connection, report: &mut SeedRep
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
+        None,
     ) {
         Ok(result) => {
             report.imported_characters = result.imported.characters;

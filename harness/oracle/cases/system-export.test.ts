@@ -15,7 +15,7 @@
  * byte-identical. Every other byte of every other line is exact.
  *
  * ── THE CASE MATRIX ──────────────────────────────────────────────────────────
- * All TEN entity types × `scope: all`, plus `scope: selected` and
+ * All FIFTEEN entity types × `scope: all` (`7189a968`), plus `scope: selected` and
  * `includeMemories` variants where they change behaviour, plus the unknown-type
  * throw and the `previewExport` / `export-entities` surfaces.
  *
@@ -57,6 +57,33 @@ function applyMocks(userId: string): void {
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // [P4.D46] jest.setup.ts globally mocks the storage manager with canned
+  // bytes — `streamFiles` must read REAL bytes (mount-blob keys hit the mount
+  // DB; the fixture's legacy disk key has no bytes anywhere, which is the
+  // `_bytesMissing` arm).
+  jest.doMock('@/lib/file-storage/manager', () =>
+    jest.requireActual('@/lib/file-storage/manager'),
+  );
+  // [P4.D46] The plugin registry is EMPTY under jest (loadPlugins never runs),
+  // but production has every bundled plugin registered — and the plugin-config
+  // redaction resolves manifests through it. Serve the REAL manifest.json
+  // straight from plugins/dist so redaction sees production's data; anything
+  // else (an npm-installed plugin, the fixture's synthetic name) resolves
+  // null, the withhold-everything arm.
+  jest.doMock('@/lib/plugins/registry', () => {
+    const actual = jest.requireActual('@/lib/plugins/registry');
+    const rfs = require('node:fs');
+    const rpath = require('node:path');
+    return {
+      __esModule: true,
+      ...actual,
+      getPlugin: (name: string) => {
+        const manifestPath = rpath.join(process.cwd(), 'plugins', 'dist', name, 'manifest.json');
+        if (!rfs.existsSync(manifestPath)) return null;
+        return { manifest: JSON.parse(rfs.readFileSync(manifestPath, 'utf8')) };
+      },
+    };
+  });
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -156,10 +183,12 @@ function buildCases(spec: Spec): CaseSpec[] {
     },
   });
 
+  // The fifteen `7189a968` types, in v4's declaration order.
   const TYPES = [
     'characters',
     'chats',
     'roleplay-templates',
+    'prompt-templates',
     'connection-profiles',
     'image-profiles',
     'embedding-profiles',
@@ -167,6 +196,10 @@ function buildCases(spec: Spec): CaseSpec[] {
     'projects',
     'groups',
     'document-stores',
+    'files',
+    'provider-models',
+    'plugin-configs',
+    'instance-settings',
   ];
 
   const cases: CaseSpec[] = [];
@@ -289,8 +322,8 @@ function buildCases(spec: Spec): CaseSpec[] {
     },
   });
 
-  // 6. The ?action=export-entities route — every type v4's switch handles, plus
-  //    the two that fall through to the 400 and one bogus value.
+  // 6. The ?action=export-entities route — the switch is exhaustive at
+  //    `7189a968` (groups + document-stores no longer 400), plus one bogus value.
   for (const type of TYPES) {
     cases.push(entitiesCase(`entities_${type}`, type));
   }

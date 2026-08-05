@@ -55094,3 +55094,161 @@ blob is the multi-chunk file-blob oracle):
 No crate source touched; all fixture consumers are env-gated, so the
 workspace gate is unchanged. Consumer regen happens per-unit as the
 round's ports land (the committed-fixture rule).
+
+## Lane record — P4.D46 units 2–3: the embedding strip + the ordering fix (2026-08-05)
+
+**Unit 2 (the strip end to end).** Writer: `strip_embedding` at both
+memory emit sites (`qtap_export/records.rs`), carrying v4's why-comment
+(size — 99.7% of a real 791 MB export — and cross-model correctness).
+The `schema-key-order.json` re-dump at `7189a968` came back
+byte-IDENTICAL (verified, not re-committed). Reader drop site 1: the
+assembler's `memory` arm (`quilltap_import/ndjson.rs`) shift-removes
+the field, for archives written before the change. Drop site 2:
+`import_memories` no longer validates the embedding at all — v4's
+destructure-before-validate retired the old Zod-reject trap on both
+sides, so `parse_embedding` is GONE and the module header records the
+history. `import_memories` returns `created_ids` and the new
+`enqueue_imported_memory_embeddings` (the sync conn-level twin of
+`enqueueEmbeddingGenerate`, per the order's named seam) runs after the
+reconcile: findDefault(userId) strict (no first-row fallback), the two
+bail-out warnings byte-for-byte, per-entity dedupe, MEMORY priority
+10.0, maxAttempts 3, payload key order
+`{entityType, entityId, characterId, profileId}`.
+
+**Unit 3 (the ordering fix).** Document stores import at step 7c —
+before the group→store link step (now 7d), after projects — mirroring
+v4 `execute.ts:382-407`. **Mutation-proven**: moving the block back
+below memories turns `system_import_state` red on
+`mountIndex.group_doc_mount_links` in four cases (the U1 fixture's
+`STORE_FIELD` link is the discriminating row). The writer-strip
+mutation fingerprint also ran: disabling `strip_embedding` turns
+`system_export_equivalence` red with MEM_3's quantized vector visible
+in the diff.
+
+**Also pulled forward (the regenerated oracles demanded them):** the
+`groups` + `document-stores` entity-listing arms (v4 made the switch
+exhaustive in this commit; the old asymmetry comments died) and the
+import preview's `documentStores` array (checked by id, listed FIRST
+in the entities literal, conflictCounts entry inserted after
+`characters`).
+
+**⚠ The oracle was lying and is now fixed (the P4.20/P4.36 class):**
+v4's `jest.setup.ts` globally mocks `@/lib/embedding/embedding-service`
+with `getDefaultEmbeddingProfile: () => null`, so the first
+import-execute regen answered the no-profile warning on EVERY case —
+with the fixture's default profile sitting right there. The case file
+now `doMock(requireActual)`s the embedding service, the uploads bridge,
+and the storage manager (the last two for unit 4's file arms), plus a
+`processor` doMock that stubs ONLY `ensureProcessorRunning` — with the
+real queue in play the dispatcher started CLAIMING the fresh jobs
+mid-dump (PENDING → PROCESSING raced the snapshot). The
+`QUILLTAP_JOB_CHILD=1` pin is NOT usable for that: it flips the whole
+sqlite client readonly (`attempt to write a readonly database` at
+close), which is worth remembering.
+
+**Differentials at `7189a968` over the widened fixture:**
+`system_export_equivalence` 42 cases green + the new in-test strip
+measurement (fixture must carry an embedding-bearing memory; no memory
+line may carry the key); `system_import_equivalence` 20 cases green;
+`system_import_state` 17 → **19** cases green (the two new
+`execute_prepped` arms: `drop-embedding-profiles` /
+`builtin-default-profile`, the named-prep pattern mirrored in Rust).
+The per-memory job rows are diffed by the whole-state dump on every
+import case (three PENDING rows per full import, payload shape and
+dedupe included).
+
+Versions: core 0.0.466, harness 0.0.398.
+
+## Lane record — P4.D46 unit 4 (+ unit 6's import half): the five new export types (2026-08-05)
+
+Lands in the same commit as units 2–3 (the strip and the writer arms
+share `records.rs`; splitting would have required staging surgery the
+diffs don't repay).
+
+**Writer.** Five new generators in `qtap_export/records.rs`, each
+sourced from the marshal machinery the backup collector already proved
+byte-parity for (`backup::marshal::query_all` over the `FILES` /
+`PROMPT_TEMPLATES` / `PLUGIN_CONFIGS` specs — promoted `pub(crate)`;
+provider models reuse `db::provider_models::find_all`). `stream_files`
+takes an `Option<&dyn StorageBackend>` (mount-blob keys read the mount
+partition; disk keys need the host seam; `None` → v4's own
+warn-and-`_bytesMissing` arm). Plugin-config redaction consults the NEW
+committed `bundled-plugin-secret-keys.json` (generator:
+`harness/oracle/fixtures/dump-plugin-config-schemas.ts` — the
+byte-exact static-transcription idiom; all 14 bundled plugins, none
+with a password key today; an npm-installed plugin resolves None → the
+`['*']` withhold-everything arm, the safe one, since v5 cannot run
+those plugins anyway). Instance settings ride
+`db::instance_settings::list_portable_instance_settings` + the new
+`NON_PORTABLE_INSTANCE_SETTING_KEYS` const (the five exact keys).
+`EXPORT_ENTITY_TYPES` is fifteen and carries v4's cross-cutting-change
+checklist verbatim as its doc comment. `resolve_export_ids`,
+`stream_export_records`, `preview_export`, and `export_entities` all
+answer all fifteen (the old eight-arm asymmetry comments died with
+their asymmetry).
+
+**Reader/importers.** The assembler gains the eight new record kinds —
+the general-library folders live in a DISTINCT typed field
+(`file_folders`) from the doc-store `folders`, exactly as v4's own
+hazard note endorses; the file-blob chunk path is the counted-arrivals
+pattern from day one, with v4's truncation message verbatim. New
+importer modules `quilltap_import/files.rs` (storage keys never
+transfer; post-bridge mime/size win; `remapLinkedTo`'s three tiers with
+the message-id companion check; folders parents-first with
+`find_by_path` reuse; project-bound → project-store bridge, else the
+uploads bridge under `imported/`) and `configuration.rs` (name-dedup
+prompt templates with the `(imported)` rename, provider-model upsert,
+the MERGING plugin-config upsert now carrying the tri-state `enabled`
+— the unit-6 repo widening, restore phase 15 passing it too — and
+unconditional instance settings). `execute_import` gained steps 9–10
+and an `Option<&dyn PixelCodec>` threaded from the engine's
+`backup_host` (new `qtap_file_storage`/`qtap_pixel_codec` accessors;
+the web edge passes both; seed/reset pass None).
+
+**What the differentials caught before it shipped (the reason they
+exist):**
+- v5's uploads/project bridge writes did NOT refresh the mount's
+  cached rollups (fileCount/chunkCount/totalSizeBytes) — v4's
+  `storeMountFile` does it best-effort after every write; the importer
+  now calls `refresh_stats` after each bridge write.
+- v5's project-branch failure message lacked v4's
+  `Failed to upload file '<name>':` manager wrapper, and `DbError`'s
+  Display was polluting every file/folder warning with a
+  "key derivation failed:" prefix v4 never prints — the importer now
+  unwraps `DbError::Key`'s inner sentence (`err_msg`).
+- The ORACLE's merged all-type payload FUSED the two `folders`
+  namespaces (general-library + doc-store rows under one key) — the
+  precise hazard v4's `buildExportDataForType` note documents, and a
+  state no real single-type `.qtap` can produce. `files` now has its
+  own four-strategy case family (`execute_files_{skip,overwrite,
+  duplicate,cross_instance}`) and the merged payload carries the other
+  fourteen types.
+- v4's best-effort `refreshStats` is fire-and-forget, and the state
+  dump caught it MID-AIR (the project store's rollups un-refreshed
+  purely because its write was last before the dump — and the same
+  pending promise would have poisoned the next case, the standing
+  fire-and-forget-tail rule). The oracle now `settle()`s (25
+  setImmediate turns) before every state dump; the settled state is
+  production's steady state and is what both sides now pin.
+
+**Differentials at `7189a968`:** `system_export_equivalence` 42 → 57
+cases green (mutation fingerprint: always-emitting `_redactedKeys`
+turns the mcp arm red); `system_import_equivalence` 20 → 25 green;
+`system_import_state` 19 → 23 green (the files matrix's first runs
+were the red→green fingerprints for the stats-refresh and
+message-wrapper gaps). The export oracle's applyMocks gained the real
+storage manager + a plugin-registry `getPlugin` serving the REAL
+bundled `manifest.json` files (the registry is empty under jest;
+production has every bundled plugin registered — same class as the
+embedding-service mock).
+
+**Recorded, not fixed:** v5's `PmCreate` upsert carries the nine
+provider-model fields the fixture exercises; if v4's ProviderModel
+schema grows a field the fixture lacks, the import-state diff is the
+tripwire. The `_build`-time fixture builder's own `process.exit(0)`
+kills v4's fire-and-forget stats refresh, so the COMMITTED fixture's
+store rows carry stale (zero) rollups — both sides copy the same
+bytes, so baselines agree; noted so nobody "fixes" the fixture's
+zeros and wonders why nothing changed.
+
+Versions: core 0.0.466, harness 0.0.398, web 0.0.59.

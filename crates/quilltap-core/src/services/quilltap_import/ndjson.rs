@@ -195,6 +195,27 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
     let mut conversation_annotations: Vec<Value> = Vec::new();
     let mut chat_documents: Vec<Value> = Vec::new();
 
+    // The `7189a968` additions. General-library folders are a DISTINCT typed
+    // field from the doc-store `folders` above (v4's own hazard note endorses
+    // this — its `CollectedArrays` names the field `fileFolders` and only
+    // shares the one untyped `folders` slot at the execute boundary; behavior
+    // is identical because a `.qtap` carries exactly one export type).
+    let mut file_folders: Vec<Value> = Vec::new();
+    // Insertion-ordered id→record map (v4 `filesById` + `fileOrder`).
+    let mut files: Vec<(String, Map<String, Value>)> = Vec::new();
+    let mut prompt_templates: Vec<Value> = Vec::new();
+    let mut provider_models: Vec<Value> = Vec::new();
+    let mut plugin_configs: Vec<Value> = Vec::new();
+    let mut instance_settings: Vec<Value> = Vec::new();
+    /// Same counted-arrivals contract as the doc-store blobs, keyed by fileId
+    /// — the pattern v4's file chunk path used FROM DAY ONE ("Same trap as the
+    /// doc-store blob path above", `quilltap-import-stream.ts:377-389`).
+    struct FileBlobAccumulator {
+        chunk_count: usize,
+        received: Vec<Option<String>>,
+    }
+    let mut file_blob_accumulators: Vec<(String, FileBlobAccumulator)> = Vec::new();
+
     let mut blob_accumulators: Vec<(String, BlobAccumulator)> = Vec::new();
 
     for raw in records {
@@ -314,7 +335,21 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     arr.push(data());
                 }
             }
-            "memory" => memories.push(data()),
+            "memory" => {
+                // v4 `quilltap-import-stream.ts:236-247` (`7189a968`): embeddings
+                // never cross an instance boundary. Current exports don't emit
+                // the field at all, but archives written before that change carry
+                // it, and a foreign vector landing in a corpus governed by a
+                // different embedding standard corrupts semantic search silently
+                // whenever the dimensionality happens to match. Drop it here;
+                // `import_memories` drops it again for the legacy monolithic
+                // path, which never passes through this reassembler.
+                let mut m = data();
+                if let Some(obj) = m.as_object_mut() {
+                    obj.shift_remove("embedding");
+                }
+                memories.push(m);
+            }
             "conversation_annotation" => conversation_annotations.push(data()),
             "chat_document" => chat_documents.push(data()),
             "doc_mount_point" => mount_points.push(data()),
@@ -466,6 +501,102 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                 }
             }
             "project_doc_mount_link" => project_links.push(data()),
+            "folder" => file_folders.push(data()),
+            "file" => {
+                let obj = data().as_object().cloned().unwrap_or_default();
+                let id = obj
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                match files.iter_mut().find(|(k, _)| *k == id) {
+                    Some(slot) => slot.1 = obj,
+                    None => files.push((id, obj)),
+                }
+            }
+            "file_blob" => {
+                let file_id = record
+                    .get("fileId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let chunk_count = record
+                    .get("chunkCount")
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default() as usize;
+                let accum = FileBlobAccumulator {
+                    chunk_count,
+                    received: vec![None; chunk_count],
+                };
+                match file_blob_accumulators
+                    .iter_mut()
+                    .find(|(k, _)| *k == file_id)
+                {
+                    Some(slot) => slot.1 = accum,
+                    None => file_blob_accumulators.push((file_id, accum)),
+                }
+            }
+            "file_blob_chunk" => {
+                let file_id = record
+                    .get("fileId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let index = record.get("index").and_then(Value::as_i64).unwrap_or(-1);
+                let Some(pos) = file_blob_accumulators
+                    .iter()
+                    .position(|(k, _)| *k == file_id)
+                else {
+                    return Err(format!(
+                        "file_blob_chunk received without preceding file_blob (fileId={file_id})"
+                    ));
+                };
+                let chunk_count = file_blob_accumulators[pos].1.chunk_count;
+                if index < 0 || index as usize >= chunk_count {
+                    return Err(format!(
+                        "file_blob_chunk index {index} out of range (chunkCount={chunk_count}, fileId={file_id})"
+                    ));
+                }
+                let idx = index as usize;
+                if file_blob_accumulators[pos].1.received[idx].is_some() {
+                    return Err(format!(
+                        "Duplicate file_blob_chunk at index {idx} for fileId={file_id}"
+                    ));
+                }
+                file_blob_accumulators[pos].1.received[idx] = Some(
+                    record
+                        .get("dataBase64")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                );
+                // Count the arrivals rather than asking `every` — v4's file
+                // chunk path was born with the counted pattern ("Same trap as
+                // the doc-store blob path above").
+                if file_blob_accumulators[pos]
+                    .1
+                    .received
+                    .iter()
+                    .all(Option::is_some)
+                {
+                    let (id, accum) = file_blob_accumulators.remove(pos);
+                    if let Some(slot) = files.iter_mut().find(|(k, _)| *k == id) {
+                        slot.1.insert(
+                            "dataBase64".into(),
+                            Value::String(
+                                accum
+                                    .received
+                                    .into_iter()
+                                    .map(Option::unwrap_or_default)
+                                    .collect::<String>(),
+                            ),
+                        );
+                    }
+                }
+            }
+            "prompt_template" => prompt_templates.push(data()),
+            "provider_model" => provider_models.push(data()),
+            "plugin_config" => plugin_configs.push(data()),
+            "instance_setting" => instance_settings.push(data()),
             // Unknown kind — v4 warns and skips.
             _ => {}
         }
@@ -503,6 +634,29 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
         return Err(format!(
             "NDJSON export truncated: {} blob(s) missing chunks — {}",
             blob_accumulators.len(),
+            Value::Array(pending)
+        ));
+    }
+
+    // The file-blob twin (`quilltap-import-stream.ts:432-441`) — any file still
+    // short a byte chunk at end of stream, with its own message.
+    if !file_blob_accumulators.is_empty() {
+        let pending: Vec<Value> = file_blob_accumulators
+            .iter()
+            .map(|(file_id, a)| {
+                let mut m = Map::new();
+                m.insert("fileId".into(), Value::String(file_id.clone()));
+                m.insert(
+                    "received".into(),
+                    Value::from(a.received.iter().filter(|v| v.is_some()).count()),
+                );
+                m.insert("expected".into(), Value::from(a.chunk_count));
+                Value::Object(m)
+            })
+            .collect();
+        return Err(format!(
+            "NDJSON export truncated: {} file(s) missing byte chunks — {}",
+            file_blob_accumulators.len(),
             Value::Array(pending)
         ));
     }
@@ -562,6 +716,12 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             project_links,
             conversation_annotations,
             chat_documents,
+            file_folders,
+            files: files.into_iter().map(|(_, f)| Value::Object(f)).collect(),
+            prompt_templates,
+            provider_models,
+            plugin_configs,
+            instance_settings,
         },
     )?;
 
@@ -591,6 +751,14 @@ struct Collected {
     project_links: Vec<Value>,
     conversation_annotations: Vec<Value>,
     chat_documents: Vec<Value>,
+    /// General file-library folders — a DISTINCT typed field from the
+    /// doc-store `folders` (v4's `fileFolders`; see the assembler note).
+    file_folders: Vec<Value>,
+    files: Vec<Value>,
+    prompt_templates: Vec<Value>,
+    provider_models: Vec<Value>,
+    plugin_configs: Vec<Value>,
+    instance_settings: Vec<Value>,
 }
 
 /// v4 `buildExportDataForType` (`quilltap-import-stream.ts:397`) — only the
@@ -656,6 +824,25 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
             d.insert("documents".into(), Value::Array(c.documents));
             d.insert("blobs".into(), Value::Array(c.blobs));
             d.insert("projectLinks".into(), Value::Array(c.project_links));
+        }
+        "files" => {
+            // `folders` is the same field name the document-store branch uses;
+            // the two never coexist because a .qtap carries exactly one export
+            // type, and each importer is gated on its own primary array.
+            d.insert("files".into(), Value::Array(c.files));
+            d.insert("folders".into(), Value::Array(c.file_folders));
+        }
+        "prompt-templates" => {
+            d.insert("promptTemplates".into(), Value::Array(c.prompt_templates));
+        }
+        "provider-models" => {
+            d.insert("providerModels".into(), Value::Array(c.provider_models));
+        }
+        "plugin-configs" => {
+            d.insert("pluginConfigs".into(), Value::Array(c.plugin_configs));
+        }
+        "instance-settings" => {
+            d.insert("instanceSettings".into(), Value::Array(c.instance_settings));
         }
         other => return Err(format!("Unknown export type in manifest: {other}")),
     }

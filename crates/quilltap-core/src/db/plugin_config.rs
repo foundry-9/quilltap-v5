@@ -239,11 +239,17 @@ impl<'c> PluginConfigRepository<'c> {
     /// as seam #5, on the assumption that `Value` sorts its keys.) The corpus
     /// still keeps every stored config — and every merge result — `{}` or a
     /// single key, having no need for more.
+    /// `enabled` is v4 `7189a968`'s tri-state widening: `Some(b)` sets the
+    /// flag on either branch; `None` leaves it UNTOUCHED (the update patches
+    /// nothing; the create stores SQL NULL, exactly as before) — so backup
+    /// restore and `.qtap` import can both pass it and a plugin the user had
+    /// switched off doesn't come back on.
     pub fn upsert_for_user_plugin(
         &self,
         user_id: &str,
         plugin_name: &str,
         config: &serde_json::Value,
+        enabled: Option<bool>,
     ) -> Result<String, DbError> {
         // Private find-by-(userId, pluginName): the existing row's id + config.
         let existing: Option<(String, String)> = self
@@ -282,7 +288,7 @@ impl<'c> PluginConfigRepository<'c> {
                 &PcUpdate {
                     plugin_name: None,
                     config: Some(merged_value),
-                    enabled: None,
+                    enabled,
                     updated_at: now,
                 },
             )?;
@@ -294,7 +300,7 @@ impl<'c> PluginConfigRepository<'c> {
                     user_id: user_id.to_string(),
                     plugin_name: plugin_name.to_string(),
                     config: config.clone(),
-                    enabled: None,
+                    enabled,
                 },
                 &CreateOptions {
                     id: id.clone(),

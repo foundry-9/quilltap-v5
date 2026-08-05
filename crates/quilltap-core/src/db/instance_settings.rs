@@ -386,6 +386,61 @@ pub fn get_user_uploads_mount_point_id(main: &Connection) -> Result<Option<Strin
 // after minting it (v4's `INSERT ... ON CONFLICT(key) DO UPDATE`).
 // ---------------------------------------------------------------------------
 
+/// v4 `NON_PORTABLE_INSTANCE_SETTING_KEYS` (`lib/instance-settings/index.ts:62-68`,
+/// `7189a968`) — settings that must never leave the instance that wrote them.
+/// Kept beside the key constants so adding a setting is a conscious
+/// include/exclude decision: the `instance-settings` export type dumps the
+/// whole table minus this set, so a new key is portable by default.
+///
+///  - The three mount-point pointers are UUIDs into *this* instance's
+///    mount-index database. Carrying them over would aim the Lantern, uploads,
+///    and general stores at mount points that don't exist on the receiver.
+///  - `lastMaintenanceSweepAt` is local timing state; importing it would make
+///    the receiving instance skip a sweep it never ran.
+///  - `highest_app_version` is the version guard's downgrade tripwire. An
+///    imported value could lock a healthy instance out of its own database.
+pub const NON_PORTABLE_INSTANCE_SETTING_KEYS: &[&str] = &[
+    KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID,
+    KEY_USER_UPLOADS_MOUNT_POINT_ID,
+    KEY_GENERAL_MOUNT_POINT_ID,
+    KEY_LAST_MAINTENANCE_SWEEP_AT,
+    "highest_app_version",
+];
+
+/// v4 `listPortableInstanceSettings()` — every `instance_settings` row
+/// `ORDER BY key`, minus [`NON_PORTABLE_INSTANCE_SETTING_KEYS`]. Values ride
+/// verbatim (the whole point of "move my setup" is that a setting travels
+/// without a typed helper). A read failure — including a missing table on a
+/// pre-provisioning instance — answers `[]`, v4's catch arm.
+pub fn list_portable_instance_settings(
+    main: &Connection,
+) -> Result<Vec<(String, String)>, DbError> {
+    let mut stmt = match main
+        .prepare("SELECT \"key\", \"value\" FROM \"instance_settings\" ORDER BY \"key\"")
+    {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let rows = match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+        Ok(r) => r,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let mut out = Vec::new();
+    for row in rows.flatten() {
+        if !NON_PORTABLE_INSTANCE_SETTING_KEYS.contains(&row.0.as_str()) {
+            out.push(row);
+        }
+    }
+    Ok(out)
+}
+
+/// v4 `writeInstanceSetting(key, value)` — upsert one raw row. Exposed for the
+/// `instance-settings` importer, which writes values it cannot interpret.
+/// Prefer the typed setters everywhere else.
+pub fn write_instance_setting(main: &Connection, key: &str, value: &str) -> Result<(), DbError> {
+    write_setting(main, key, value)
+}
+
 /// v4 `setGeneralMountPointId` — persist the Quilltap General store's id.
 pub fn set_general_mount_point_id(main: &Connection, id: &str) -> Result<(), DbError> {
     write_setting(main, KEY_GENERAL_MOUNT_POINT_ID, id)

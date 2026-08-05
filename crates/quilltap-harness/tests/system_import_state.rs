@@ -1201,7 +1201,7 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
                 "import" => {
                     let export = export_of(&step["data"]);
                     let opts = options_of(&step["options"]);
-                    execute_import(main, mount.connection(), &uid, &export, &opts)
+                    execute_import(main, mount.connection(), &uid, &export, &opts, None)
                         .expect("store-identity import");
                 }
                 "rename" => {
@@ -1360,6 +1360,13 @@ fn system_import_execute_state_equivalence() {
                 run_execute_case(name, case, &user_id, &mut failures, 1);
                 ran += 1;
             }
+            // [P4.D46] The embedding-enqueue bail-out arms: a named fixture
+            // mutation, then the ordinary execute flow (the prep is applied
+            // inside `run_execute_case` when `case.prep` is present).
+            "execute_prepped" => {
+                run_execute_case(name, case, &user_id, &mut failures, 1);
+                ran += 1;
+            }
             // [40319484] The only arm that can prove a re-imported archive does
             // not FUSE with its earlier copy: the same payload, twice, into one
             // instance.
@@ -1390,8 +1397,10 @@ fn system_import_execute_state_equivalence() {
         }
     }
 
-    // 13 from P4.9G4/P4.31 + P4.33's four `store_identity_*` arms.
-    assert_eq!(ran, 17, "expected 17 cases, ran {ran}");
+    // 13 from P4.9G4/P4.31 + P4.33's four `store_identity_*` arms + P4.D46's
+    // four `execute_files_*` arms and two `execute_prepped` embedding-enqueue
+    // bail-out arms.
+    assert_eq!(ran, 23, "expected 23 cases, ran {ran}");
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
@@ -1446,9 +1455,9 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
         .write_blocking(move |ws| {
             let main = ws.main().connection();
             let mount = ws.mount_index().expect("fixture has a mount partition");
-            let r1 = execute_import(main, mount.connection(), &uid, &first, &opts)
+            let r1 = execute_import(main, mount.connection(), &uid, &first, &opts, None)
                 .expect("first import");
-            let r2 = execute_import(main, mount.connection(), &uid, &second, &opts)
+            let r2 = execute_import(main, mount.connection(), &uid, &second, &opts, None)
                 .expect("second import");
             Ok(vec![r1.to_value(), r2.to_value()])
         })
@@ -1595,6 +1604,26 @@ fn run_execute_case(
 ) {
     let scratch = fresh_fixture(name);
 
+    // [P4.D46] `execute_prepped`: apply the case's NAMED fixture mutation
+    // before the baseline dump, mirroring the oracle's prep (which also runs
+    // before ITS preState dump — so the baselines still compare byte-equal).
+    if let Some(prep) = case.get("prep").and_then(Value::as_str) {
+        let conn =
+            quilltap_core::db::Writer::open_writable(&scratch.root.join("main.db"), TEST_PEPPER)
+                .expect("open main for prep");
+        match prep {
+            "drop-embedding-profiles" => conn
+                .connection()
+                .execute_batch("DELETE FROM \"embedding_profiles\"")
+                .expect("prep: drop embedding profiles"),
+            "builtin-default-profile" => conn
+                .connection()
+                .execute_batch("UPDATE \"embedding_profiles\" SET \"provider\" = 'BUILTIN'")
+                .expect("prep: builtin default profile"),
+            other => panic!("[{name}] unknown prep {other}"),
+        }
+    }
+
     // The PRE-import baseline: both sides copy the same fixture bytes, so the
     // raw dumps must be EQUAL — anything else is dump-machinery drift, reported
     // as such rather than leaking into every table diff below.
@@ -1617,7 +1646,7 @@ fn run_execute_case(
             let mut out = Vec::new();
             for _ in 0..runs {
                 out.push(
-                    execute_import(main, mount.connection(), &uid, &export, &opts).map_err(
+                    execute_import(main, mount.connection(), &uid, &export, &opts, None).map_err(
                         |e| match e {
                             quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
                             other => {
@@ -1793,6 +1822,7 @@ fn run_route_case(
         user_id,
         &export_data,
         &options,
+        None,
     ));
     drop(db);
 

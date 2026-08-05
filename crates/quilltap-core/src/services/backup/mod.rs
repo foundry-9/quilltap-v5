@@ -16,7 +16,7 @@
 pub mod archive;
 pub mod collect;
 pub mod manifest;
-mod marshal;
+pub(crate) mod marshal;
 // ── P4.9G5 restore ──
 pub mod restore;
 // ── end P4.9G5 restore ──

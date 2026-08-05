@@ -24,8 +24,10 @@
 //! `success: false` with `Import failed: <message>` appended to `warnings`.
 
 mod characters;
+mod configuration;
 mod document_stores;
 mod entities;
+mod files;
 mod legacy_presets;
 mod memories;
 pub mod ndjson;
@@ -110,6 +112,20 @@ pub struct ImportCounts {
     pub document_store_blobs: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_store_project_links: Option<u32>,
+    // The five `7189a968` additions (steps 9-10) — assigned only when their
+    // phase runs, exactly like the sidecar/document-store extras above.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folders: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_templates: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_models: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_configs: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_settings: Option<u32>,
 }
 
 /// v4 `ImportResult` (`types.ts:93`). `imported_character_ids` is the values of
@@ -330,6 +346,12 @@ pub fn execute_import(
     user_id: &str,
     export: &QuilltapExport,
     options: &ImportOptions,
+    // The image codec the file importers' storage bridges transcode with
+    // (`7189a968`'s step 9). `None` — a caller with no codec seam (the seed
+    // consumers, a host without one) — uses the not-configured codec, whose
+    // transcode falls through to the original bytes, exactly as v4 behaves
+    // when sharp fails.
+    codec: Option<&dyn crate::services::file_storage::PixelCodec>,
 ) -> Result<ImportResult, ImportError> {
     let mut warnings: Vec<String> = Vec::new();
     let mut imported = ImportCounts::default();
@@ -359,12 +381,14 @@ pub fn execute_import(
     };
 
     // The one-big-try body: a chokepoint error → success:false (v4's catch).
+    let not_configured = crate::services::file_storage::NotConfiguredPixelCodec;
     let outcome = import_body(
         main,
         mount,
         user_id,
         data,
         options,
+        codec.unwrap_or(&not_configured),
         &mut imported,
         &mut skipped,
         &mut warnings,
@@ -393,6 +417,137 @@ pub fn execute_import(
     }
 }
 
+/// v4 `enqueueImportedMemoryEmbeddings` (`execute.ts:62-138`, `7189a968`) —
+/// one targeted `EMBEDDING_GENERATE` per memory this import created.
+///
+/// Imported memories arrive with a NULL embedding on purpose (see
+/// [`memories`]); without this, their semantic search stays broken until the
+/// next boot's reconcile sweep runs. Mirrors the memory backfill sweeper,
+/// including its reliance on the per-entity dedupe.
+///
+/// Deliberately *not* one `EMBEDDING_REINDEX_ALL`: that job walks every
+/// character's entire memory table plus conversation chunks, help docs and
+/// mount chunks — wildly disproportionate to an import of a handful of rows
+/// (v4's own anti-decision at `execute.ts:56-58`).
+///
+/// Never throws: a failure to schedule re-indexing must not fail an import
+/// whose rows are already committed. The boot reconcile remains the backstop.
+///
+/// **The seam** (named in the order so no one re-derives it): `execute_import`
+/// runs INSIDE `db.write(...)` over raw connections, so the async
+/// `queue_service::enqueue_embedding_generate(&Db, …)` cannot be called from
+/// here — this is the sync connection-level shape
+/// (`mount_index::embedding_scheduler::enqueue_mount_chunk_embedding`'s twin),
+/// same dedupe via pending-for-entity, MEMORY priority 10.0, maxAttempts 3.
+fn enqueue_imported_memory_embeddings(
+    main: &rusqlite::Connection,
+    user_id: &str,
+    memory_refs: &[(String, String)],
+    warnings: &mut Vec<String>,
+) {
+    if memory_refs.is_empty() {
+        return;
+    }
+
+    // v4 `getDefaultEmbeddingProfile(userId)` → `findDefault(userId)`:
+    // `{userId, isDefault: true}`, NO first-row fallback. A read failure is
+    // v4's caught arm (logged, profile = null).
+    let profile: Option<(String, String)> = main
+        .query_row(
+            "SELECT id, provider FROM embedding_profiles \
+             WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
+            rusqlite::params![user_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .map(Some)
+        .unwrap_or_else(|e| {
+            if !matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                tracing::warn!(error = %e, "Failed to resolve default embedding profile after import");
+            }
+            None
+        });
+
+    // The BUILTIN TF-IDF profile is corpus-derived rather than model-derived;
+    // per-row generates against it are not the right repair, so those rows are
+    // left to the boot reconcile just as when no profile exists at all.
+    let profile_id = match profile {
+        Some((id, provider)) if provider != "BUILTIN" => id,
+        other => {
+            let reason = if other.is_some() {
+                "the configured embedding profile is the built-in TF-IDF one"
+            } else {
+                "no default embedding profile is configured"
+            };
+            warnings.push(format!(
+                "{} memories were imported without embeddings because {reason}; \
+                 they will be indexed once an embedding profile is configured.",
+                memory_refs.len()
+            ));
+            return;
+        }
+    };
+
+    let jobs = crate::db::background_jobs::BackgroundJobsRepository::new(main);
+    let mut enqueued = 0usize;
+    for (memory_id, character_id) in memory_refs {
+        // v4 `enqueueEmbeddingGenerate`'s dedupe: an in-flight
+        // EMBEDDING_GENERATE for the same entity means `isNew: false`.
+        let is_new = (|| -> Result<bool, DbError> {
+            let pending = jobs.find_pending_for_entity(memory_id)?;
+            if pending.iter().any(|j| j.job_type == "EMBEDDING_GENERATE") {
+                return Ok(false);
+            }
+            let now = crate::clock::now_iso();
+            jobs.create(
+                &crate::db::background_jobs::BjCreate {
+                    user_id: user_id.to_string(),
+                    job_type: "EMBEDDING_GENERATE".to_string(),
+                    status: Some("PENDING".to_string()),
+                    // v4's caller-literal key order (`execute.ts:106-111`).
+                    payload: serde_json::json!({
+                        "entityType": "MEMORY",
+                        "entityId": memory_id,
+                        "characterId": character_id,
+                        "profileId": profile_id,
+                    }),
+                    // EMBEDDING_ENTITY_PRIORITIES['MEMORY'] = 10.
+                    priority: 10.0,
+                    attempts: 0.0,
+                    max_attempts: 3.0,
+                    last_error: None,
+                    scheduled_at: now.clone(),
+                    started_at: None,
+                    completed_at: None,
+                },
+                &crate::db::background_jobs::CreateOptions {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            Ok(true)
+        })();
+        match is_new {
+            Ok(true) => enqueued += 1,
+            Ok(false) => {}
+            // v4 warns to the logger and continues — no `warnings` entry.
+            Err(e) => {
+                tracing::warn!(memory_id = %memory_id, error = %e,
+                    "Failed to enqueue embedding job for imported memory");
+            }
+        }
+    }
+
+    if enqueued < memory_refs.len() {
+        warnings.push(format!(
+            "{} of {} imported memories could not be queued for embedding; \
+             the next startup sweep will pick them up.",
+            memory_refs.len() - enqueued,
+            memory_refs.len()
+        ));
+    }
+}
+
 /// A non-empty JSON array under `key` (v4's `data.<key> && data.<key>.length > 0`
 /// gate — only a non-empty ARRAY iterates in practice).
 fn non_empty_array<'a>(
@@ -414,6 +569,7 @@ fn import_body(
     user_id: &str,
     data: &serde_json::Map<String, Value>,
     options: &ImportOptions,
+    codec: &dyn crate::services::file_storage::PixelCodec,
     imported: &mut ImportCounts,
     skipped: &mut ImportCounts,
     warnings: &mut Vec<String>,
@@ -630,7 +786,42 @@ fn import_body(
         imported.chat_documents = Some(chat_docs_imported);
     }
 
-    // 7c. Group character membership and linked document stores. Remap group and
+    // 7c. Document stores (Scriptorium) — mount point configs plus, for
+    //    database-backed mounts, folder structures, document bodies and blobs.
+    //
+    //    Must run *before* the group↔store link step below (v4 `7189a968`,
+    //    `execute.ts:382-407`): those links resolve through
+    //    `id_maps.mount_points`, which only this importer populates. It ran
+    //    dead-last for a long time, so in a mixed archive every group's linked
+    //    stores were silently dropped. It still has to follow importProjects —
+    //    its project links remap through `id_maps.projects`.
+    if let Some(mount_points) = non_empty_array(data, "mountPoints") {
+        let mount_points = mount_points.clone();
+        let arr = |key: &str| -> Vec<Value> {
+            data.get(key)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let c = document_stores::import_document_stores(
+            mount,
+            &mount_points,
+            &arr("folders"),
+            &arr("documents"),
+            &arr("blobs"),
+            &arr("projectLinks"),
+            options,
+            id_maps,
+            warnings,
+        )?;
+        imported.document_stores = Some(c.mount_points);
+        imported.document_store_folders = Some(c.folders);
+        imported.document_store_documents = Some(c.documents);
+        imported.document_store_blobs = Some(c.blobs);
+        imported.document_store_project_links = Some(c.project_links);
+    }
+
+    // 7d. Group character membership and linked document stores. Remap group and
     // character ids; skip members/links that don't exist in the import.
     if let Some(groups_data) = non_empty_array(data, "groups") {
         let members_repo =
@@ -692,44 +883,72 @@ fn import_body(
     }
 
     // 8. Memories (if includeMemories is enabled).
+    let mut imported_memory_refs: Vec<(String, String)> = Vec::new();
     if options.include_memories {
         if let Some(items) = non_empty_array(data, "memories") {
             let c = memories::import_memories(main, items, id_maps, warnings)?;
             imported.memories = c.imported;
             skipped.memories = c.skipped;
+            imported_memory_refs = c.created_ids;
         }
     }
 
-    // 9. Document stores (Scriptorium) — mount point configs plus, for
-    //    database-backed mounts, folder structures, document bodies and blobs.
-    if let Some(mount_points) = non_empty_array(data, "mountPoints") {
-        let mount_points = mount_points.clone();
-        let arr = |key: &str| -> Vec<Value> {
-            data.get(key)
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-        };
-        let c = document_stores::import_document_stores(
+    // 9. General file library (`7189a968`). Runs after projects (folders and
+    //    files remap projectId) and after characters/chats (linkedTo
+    //    resolution).
+    if let Some(items) = non_empty_array(data, "files") {
+        let folder_items = data
+            .get("folders")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let c = files::import_files(
+            main,
             mount,
-            &mount_points,
-            &arr("folders"),
-            &arr("documents"),
-            &arr("blobs"),
-            &arr("projectLinks"),
+            codec,
+            user_id,
+            items,
+            &folder_items,
             options,
             id_maps,
             warnings,
         )?;
-        imported.document_stores = Some(c.mount_points);
-        imported.document_store_folders = Some(c.folders);
-        imported.document_store_documents = Some(c.documents);
-        imported.document_store_blobs = Some(c.blobs);
-        imported.document_store_project_links = Some(c.project_links);
+        imported.files = Some(c.files);
+        imported.folders = Some(c.folders);
+        skipped.files = Some(c.skipped);
+    }
+
+    // 10. Configuration-shaped types (`7189a968`). None of these are
+    //     referenced by id, so they have no ordering constraint against the
+    //     entity importers.
+    if let Some(items) = non_empty_array(data, "promptTemplates") {
+        let c = configuration::import_prompt_templates(main, user_id, items, options, warnings)?;
+        imported.prompt_templates = Some(c.imported);
+        skipped.prompt_templates = Some(c.skipped);
+    }
+    if let Some(items) = non_empty_array(data, "providerModels") {
+        let c = configuration::import_provider_models(main, items, warnings)?;
+        imported.provider_models = Some(c.imported);
+        skipped.provider_models = Some(c.skipped);
+    }
+    if let Some(items) = non_empty_array(data, "pluginConfigs") {
+        let c = configuration::import_plugin_configs(main, user_id, items, warnings)?;
+        imported.plugin_configs = Some(c.imported);
+        skipped.plugin_configs = Some(c.skipped);
+    }
+    if let Some(items) = non_empty_array(data, "instanceSettings") {
+        let c = configuration::import_instance_settings(main, items, warnings)?;
+        imported.instance_settings = Some(c.imported);
+        skipped.instance_settings = Some(c.skipped);
     }
 
     // Post-import reconciliation.
     reconcile::reconcile_relationships(main, mount, id_maps, warnings);
+
+    // Re-embed what we just inserted (v4 `execute.ts:532`, AFTER the
+    // reconcile). Imported memories carry no vector, and without this their
+    // semantic search stays broken until the next boot's reconcile sweep runs.
+    enqueue_imported_memory_embeddings(main, user_id, &imported_memory_refs, warnings);
     Ok(())
 }
 
@@ -809,6 +1028,7 @@ mod tests {
             "user",
             &export,
             &ImportOptions::seed_defaults(),
+            None,
         )
         .expect("empty payload imports cleanly");
         assert!(result.success);
@@ -830,6 +1050,7 @@ mod tests {
             "user",
             &export,
             &ImportOptions::seed_defaults(),
+            None,
         )
         .expect("null data answers success:false, not Err");
         assert!(!result.success);

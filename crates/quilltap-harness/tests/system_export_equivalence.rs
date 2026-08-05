@@ -128,6 +128,7 @@ fn system_export_matches_oracle() {
                             Ok(qtap_export::stream_export_records(
                                 main,
                                 mount,
+                                None,
                                 &user,
                                 &opts,
                                 &created_at,
@@ -235,6 +236,7 @@ fn system_export_matches_oracle() {
                                 qtap_export::stream_export_records(
                                     main,
                                     mount,
+                                    None,
                                     &user,
                                     &opts,
                                     "T",
@@ -270,7 +272,62 @@ fn system_export_matches_oracle() {
         failed.len(),
         failed.join("\n\n")
     );
-    assert_eq!(ran, 42, "expected 42 cases to run, ran {ran}");
+    assert_eq!(ran, 57, "expected 57 cases to run, ran {ran}");
+
+    // [P4.D46, `7189a968`] The embedding strip is a MEASUREMENT, not a vacuous
+    // pass: the fixture must carry at least one embedding-BEARING memory
+    // (MEM_3), and no emitted memory line may carry the field. The per-line
+    // diff above already proves byte-parity with v4's stripped output; this
+    // guards the fixture itself so a rebuild that loses the vector can't turn
+    // the strip arms green by absence.
+    let bearing: i64 = db
+        .read_main(|main| {
+            Ok(main
+                .query_row(
+                    "SELECT COUNT(*) FROM memories WHERE embedding IS NOT NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0))
+        })
+        .expect("count embedding-bearing memories");
+    assert!(
+        bearing > 0,
+        "fixture carries no embedding-bearing memory — the strip arm is vacuous"
+    );
+    let strip_opts = ExportOptions {
+        entity_type: "characters".into(),
+        scope: "all".into(),
+        selected_ids: vec![],
+        include_memories: true,
+    };
+    let records = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                Ok(qtap_export::stream_export_records(
+                    main,
+                    mount,
+                    None,
+                    &user,
+                    &strip_opts,
+                    "T",
+                    &app_version,
+                ))
+            })
+        })
+        .expect("read")
+        .expect("characters export streams");
+    let mut memory_lines = 0usize;
+    for r in &records {
+        if r["kind"] == "memory" {
+            memory_lines += 1;
+            assert!(
+                r["data"].get("embedding").is_none(),
+                "a memory line carries `embedding` — the strip did not run: {r}"
+            );
+        }
+    }
+    assert!(memory_lines > 0, "no memory lines streamed at all");
 }
 
 /// Replace the vault-minted default `physicalDescription` timestamps (see the

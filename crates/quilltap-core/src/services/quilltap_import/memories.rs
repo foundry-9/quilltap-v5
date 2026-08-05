@@ -7,16 +7,22 @@
 //! map with `get(tag) || tag` (an unmapped tag keeps its ORIGINAL id, unlike the
 //! null-on-miss FK remaps). Strips id/createdAt/updatedAt (create mints).
 //!
-//! ## The embedding shape trap, carried faithfully
+//! ## Embeddings are dropped, not validated (v4 `7189a968`)
 //!
-//! v4's NDJSON writer emits a memory's embedding as `JSON.stringify(Float32Array)`
-//! — the `{"0":v0,"1":v1,…}` object — and v4's `MemorySchema.embedding` union
-//! (Float32Array | number[] | Buffer | string) accepts NONE of that, so a v4
-//! export that carries embeddings cannot re-import its memories: each one lands
-//! in the per-item catch as `Failed to import memory: <ZodError>` + `skipped++`.
-//! v5 reproduces the reject (warn + skip) for any embedding that is neither
-//! null/absent nor a plain number array; the differential masks the engine
-//! sentence (the standing parser-wording seam).
+//! `embedding` is excluded on purpose. A vector is only meaningful against the
+//! model that produced it, so a foreign one silently corrupts semantic search
+//! whenever the dimensionality happens to match — and v4's boot repair
+//! (`repair-text-embeddings.ts`) would *preserve* a bad vector by converting it
+//! to a valid blob rather than discarding it. Import time is the only correct
+//! place to drop it. The orchestrator enqueues an `EMBEDDING_GENERATE` per
+//! created row (see `mod.rs`'s `enqueue_imported_memory_embeddings`).
+//!
+//! (History: before `7189a968`, v4's Zod union REJECTED the NDJSON writer's
+//! `JSON.stringify(Float32Array)` object shape, so an embedding-bearing export
+//! could not re-import its memories at all — each landed in the per-item catch.
+//! The destructure-before-validate at `import-entities.ts:458` retired that
+//! trap on both sides: any embedding shape is now silently dropped. The
+//! standing irony note that used to live here is therefore history too.)
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -28,30 +34,9 @@ use crate::db::DbError;
 pub(super) struct Counts {
     pub imported: u32,
     pub skipped: u32,
-}
-
-/// The remapped embedding, or `Err` for a shape v4's Zod union rejects.
-fn parse_embedding(memory: &Value) -> Result<Option<Vec<f32>>, String> {
-    match memory.get("embedding") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(arr)) => {
-            let mut out = Vec::with_capacity(arr.len());
-            for v in arr {
-                match v.as_f64() {
-                    Some(f) => out.push(f as f32),
-                    None => {
-                        return Err(
-                            "invalid embedding: expected an array of numbers or null".to_string()
-                        )
-                    }
-                }
-            }
-            Ok(Some(out))
-        }
-        // The `{"0":…}` stringified-Float32Array shape (and anything else) — v4's
-        // union rejects it (see the module header).
-        Some(_) => Err("invalid embedding: expected an array of numbers or null".to_string()),
-    }
+    /// v4 `createdIds` (`import-entities.ts:400-406`) — `{id, characterId}` per
+    /// created row, in creation order, for the post-reconcile embedding enqueue.
+    pub created_ids: Vec<(String, String)>,
 }
 
 pub(super) fn import_memories(
@@ -62,6 +47,7 @@ pub(super) fn import_memories(
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
+    let mut created_ids: Vec<(String, String)> = Vec::new();
 
     let repo = MemoriesRepository::new(main);
 
@@ -106,15 +92,6 @@ pub(super) fn import_memories(
             .map(|t| id_maps.tags.get(&t).map(|s| s.to_string()).unwrap_or(t))
             .collect();
 
-        let embedding = match parse_embedding(memory) {
-            Ok(e) => e,
-            Err(msg) => {
-                warnings.push(format!("Failed to import memory: {msg}"));
-                skipped += 1;
-                continue;
-            }
-        };
-
         let create = MemCreate {
             character_id: new_character_id.to_string(),
             about_character_id,
@@ -131,7 +108,8 @@ pub(super) fn import_memories(
                 .get("importance")
                 .and_then(Value::as_f64)
                 .unwrap_or(0.5),
-            embedding,
+            // Excluded on purpose — see the module header (v4 `7189a968`).
+            embedding: None,
             source: opt_str(memory, "source").unwrap_or_else(|| "MANUAL".to_string()),
             witnessed_context: opt_str(memory, "witnessedContext"),
             // Episodic spine (v4 8bf3cb5f): occurredAt/narrativeTime absent →
@@ -161,7 +139,10 @@ pub(super) fn import_memories(
             updated_at: now,
         };
         match repo.create(&create, &opts) {
-            Ok(()) => imported += 1,
+            Ok(()) => {
+                created_ids.push((opts.id.clone(), new_character_id.to_string()));
+                imported += 1;
+            }
             Err(e) => {
                 warnings.push(format!("Failed to import memory: {e}"));
                 skipped += 1;
@@ -169,7 +150,11 @@ pub(super) fn import_memories(
         }
     }
 
-    Ok(Counts { imported, skipped })
+    Ok(Counts {
+        imported,
+        skipped,
+        created_ids,
+    })
 }
 
 fn opt_str(obj: &Value, key: &str) -> Option<String> {

@@ -31,9 +31,9 @@ fn db_error(e: crate::db::DbError) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
 
-/// v4 `handleExportEntities` (`route.ts:440`). A type outside v4's eight-arm
-/// switch answers `400 Unknown entity type: <t>` — including `groups` and
-/// `document-stores`, which `previewExport` DOES handle (v4's own asymmetry).
+/// v4 `handleExportEntities` (`route.ts:444`, `7189a968` — the switch is now
+/// exhaustive over all fifteen types; the old eight-arm asymmetry is gone). A
+/// type outside it answers `400 Unknown entity type: <t>`.
 pub fn export_entities(db: &Db, user_id: &str, entity_type: &str) -> Response {
     let uid = user_id.to_string();
     let t = entity_type.to_string();
@@ -90,6 +90,11 @@ pub fn export_stream(
     user_id: &str,
     options: ExportOptions,
     app_version: &str,
+    // The host disk backend for the `files` export type's legacy disk-style
+    // storage keys (`7189a968`); `mount-blob:` keys read the mount partition.
+    // `None` — no storage seam — lands disk-key files in v4's own
+    // warn-and-`_bytesMissing` arm.
+    storage: Option<std::sync::Arc<dyn crate::services::file_storage::StorageBackend>>,
 ) -> Result<ExportDownload, Response> {
     let uid = user_id.to_string();
     let now_iso = crate::clock::now_iso();
@@ -101,6 +106,7 @@ pub fn export_stream(
         Ok(qtap_export::stream_export_records(
             main,
             mount,
+            storage.as_deref(),
             &uid,
             &options,
             &created_at,
@@ -201,6 +207,7 @@ pub async fn import_execute(
     user_id: &str,
     export_data: &Value,
     options: &Value,
+    codec: Option<std::sync::Arc<dyn crate::services::file_storage::PixelCodec>>,
 ) -> Response {
     // v4 `if (!exportData)` / `if (!options)` — falsy (the JSON leg can only
     // produce `null` here) → the two fixed messages.
@@ -217,7 +224,7 @@ pub async fn import_execute(
     // JS distinguishes a MISSING `data` key (`undefined`) from an explicit
     // `null` in the TypeError wording; `Value` cannot, so carry the flag.
     let data_key_absent = export_data.get("data").is_none();
-    run_import_execute(db, user_id, export, data_key_absent, options).await
+    run_import_execute(db, user_id, export, data_key_absent, options, codec).await
 }
 
 /// The shared execute tail both legs (dispatch JSON + web-edge multipart) run
@@ -230,6 +237,9 @@ pub async fn run_import_execute(
     export: QuilltapExport,
     data_key_absent: bool,
     options: &Value,
+    // The image codec the `files` importer's storage bridges transcode with
+    // (`7189a968`'s step 9); `None` falls through to the not-configured codec.
+    codec: Option<std::sync::Arc<dyn crate::services::file_storage::PixelCodec>>,
 ) -> Response {
     let strategy = options
         .get("conflictStrategy")
@@ -287,6 +297,7 @@ pub async fn run_import_execute(
                 &uid,
                 &export,
                 &opts,
+                codec.as_deref(),
             )
             .map_err(|e| match e {
                 crate::services::quilltap_import::ImportError::Db(db_err) => db_err,

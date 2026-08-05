@@ -575,6 +575,34 @@ impl CoreEngine {
     }
     // ── end P4.9G3 ──
 
+    // ── P4.D46 (`7189a968`) ──
+    /// The backup host's disk backend, when ready and assembled. The `.qtap`
+    /// `files` export (a web-edge-only download leg) reads legacy disk-style
+    /// storage keys through it; `mount-blob:` keys read the mount partition
+    /// directly. `None` (unassembled) degrades disk-key files to v4's own
+    /// warn-and-`_bytesMissing` arm.
+    pub fn qtap_file_storage(
+        &self,
+    ) -> Option<Arc<dyn crate::services::file_storage::StorageBackend>> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.backup_host.as_ref().map(|h| h.storage()),
+            EngineState::Locked { .. } => None,
+        }
+    }
+
+    /// The backup host's image codec, when ready and assembled — the `.qtap`
+    /// file importer's storage bridges transcode through it, exactly as the
+    /// backup restore's file phase does. `None` falls through to the
+    /// not-configured codec (bytes pass through untranscoded, v4's
+    /// sharp-failed arm).
+    pub fn qtap_pixel_codec(&self) -> Option<Arc<dyn crate::services::file_storage::PixelCodec>> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.backup_host.as_ref().map(|h| h.pixel_codec()),
+            EngineState::Locked { .. } => None,
+        }
+    }
+    // ── end P4.D46 ──
+
     async fn dispatch_impl(&self, req: Request) -> Response {
         match req {
             Request::Health => self.health(),
@@ -904,8 +932,14 @@ impl CoreEngine {
                 options,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::system_qtap::import_execute(&db, SINGLE_USER_ID, &export_data, &options)
-                        .await
+                    super::system_qtap::import_execute(
+                        &db,
+                        SINGLE_USER_ID,
+                        &export_data,
+                        &options,
+                        self.qtap_pixel_codec(),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },

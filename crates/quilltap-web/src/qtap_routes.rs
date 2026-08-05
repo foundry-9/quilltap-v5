@@ -52,6 +52,7 @@ pub async fn export_download(state: &SharedState, body: &[u8]) -> AxumResponse {
         quilltap_core::api::engine::SINGLE_USER_ID,
         options,
         &host.core().app_version(),
+        host.core().qtap_file_storage(),
     ) {
         Ok(download) => (
             StatusCode::OK,
@@ -247,6 +248,7 @@ pub async fn import_execute(state: &SharedState, headers: &HeaderMap, body: Byte
         export,
         data_key_absent,
         &options,
+        host.core().qtap_pixel_codec(),
     )
     .await;
     match resp {

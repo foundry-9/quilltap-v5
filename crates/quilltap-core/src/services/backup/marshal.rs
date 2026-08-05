@@ -27,7 +27,7 @@ use crate::db::js_number_to_json;
 
 /// How one column becomes one JSON field.
 #[derive(Clone, Copy)]
-pub(super) enum F {
+pub(crate) enum F {
     /// Required text.
     Str,
     /// `.nullable().optional()` text — the key is OMITTED when the column is NULL.
@@ -54,7 +54,7 @@ pub(super) enum F {
 
 /// Marshal one row into v4's entity object, in the declared field order,
 /// omitting the optional fields whose column is NULL.
-pub(super) fn marshal(row: &Row<'_>, fields: &[(&str, F)]) -> rusqlite::Result<Value> {
+pub(crate) fn marshal(row: &Row<'_>, fields: &[(&str, F)]) -> rusqlite::Result<Value> {
     let mut o = Map::new();
     for (idx, (name, kind)) in fields.iter().enumerate() {
         let cell = row.get_ref(idx)?;
@@ -158,7 +158,7 @@ pub(super) fn select_list(
 /// rather than throw — and the backup simply carries an empty array. The port
 /// reproduces that for the missing-table case specifically; other SQL errors
 /// still surface rather than being silently swallowed into an empty backup.
-pub(super) fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
+pub(crate) fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
     conn.query_row(
         "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ?1",
         [table],
@@ -170,7 +170,7 @@ pub(super) fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
 /// Run a whole-table (or filtered) read through [`marshal`]. `where_sql` is
 /// appended verbatim when non-empty (already parameter-safe: callers pass fixed
 /// SQL with `?1` placeholders).
-pub(super) fn query_all(
+pub(crate) fn query_all(
     conn: &rusqlite::Connection,
     table: &str,
     fields: &[(&str, F)],

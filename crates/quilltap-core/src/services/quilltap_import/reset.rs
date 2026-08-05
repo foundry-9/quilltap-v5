@@ -153,6 +153,7 @@ pub fn reset_builtins(
         user_id,
         &remapped,
         &ImportOptions::seed_defaults(),
+        None,
     )
     .map_err(ResetError::Import)?;
 

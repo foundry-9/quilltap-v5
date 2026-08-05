@@ -54,12 +54,45 @@ const BLOB_CHUNK_BYTES: usize = 3 * 1024 * 1024;
 /// v4 `QTAP_NDJSON_CONTENT_TYPE` (`ndjson-writer.ts:784`).
 pub const QTAP_NDJSON_CONTENT_TYPE: &str = "application/x-ndjson";
 
-/// v4 `ExportEntityType` (`lib/export/types.ts:31`) — the ten exportable kinds.
-/// Each export carries exactly ONE type; no mixed exports.
+/// v4 `ExportEntityType` (`lib/export/types.ts:54`, `7189a968`) — the fifteen
+/// exportable kinds, in v4's declaration order. Each export carries exactly ONE
+/// type; no mixed exports.
+///
+/// v4's own checklist rides here verbatim (`types.ts:31-53`):
+///
+/// > Adding a member here is a cross-cutting change, not a one-liner. Every one
+/// > of these layers must gain a matching case or the records are written and
+/// > then silently evaporate on the way back in:
+/// >
+/// >   - `QuilltapExportCounts` key + `Qtap*Record` interface + `QtapRecord` union (this file)
+/// >   - `lib/export/ndjson-writer.ts`: `stream*` generator, `resolveExportIds`, `streamExportRecords`
+/// >   - `lib/export/quilltap-export-service.ts`: `previewExport` (its `default` throws)
+/// >   - `lib/import/quilltap-import-stream.ts`: record `switch`, `CollectedArrays`,
+/// >     `buildExportDataForType` (its `default` throws)
+/// >   - `lib/import/quilltap-import/types.ts`: `AnyExportData` field
+/// >   - `lib/import/quilltap-import/`: importer module, wired into `execute.ts`
+/// >   - `components/tools/import-export/types.ts`: `ENTITY_TYPE_LABELS`
+/// >   - `components/tools/import-export/steps/ExportTypeStep.tsx`: `EXPORTABLE_TYPES`
+/// >   - `app/api/v1/system/tools/route.ts`: `handleExportEntities`
+/// >   - `public/schemas/qtap-export.schema.json` + `qtap-export-ndjson.schema.json`
+/// >
+/// > Format compatibility: the NDJSON envelope stays `version: 1`. An older
+/// > build warns-and-skips record kinds it doesn't know, but *throws* on an
+/// > unknown `manifest.exportType` (`buildExportDataForType`), so it cannot
+/// > consume an archive of a newly-added type. That's deliberate — the thrown
+/// > message names the type plainly — but it means new types are forward-only.
+///
+/// The v5 analogs of those layers: this module's generators +
+/// `resolve_export_ids` + `stream_export_records`, [`preview::preview_export`],
+/// `quilltap_import::ndjson`'s record switch + `Collected` +
+/// `build_export_data_for_type`, the `quilltap_import` importer modules wired
+/// into `execute_import`, [`entities::export_entities`], and the SPA's picker
+/// (P4.D47's half).
 pub const EXPORT_ENTITY_TYPES: &[&str] = &[
     "characters",
     "chats",
     "roleplay-templates",
+    "prompt-templates",
     "connection-profiles",
     "image-profiles",
     "embedding-profiles",
@@ -67,6 +100,10 @@ pub const EXPORT_ENTITY_TYPES: &[&str] = &[
     "projects",
     "groups",
     "document-stores",
+    "files",
+    "provider-models",
+    "plugin-configs",
+    "instance-settings",
 ];
 
 /// v4 `ExportOptions` (`lib/export/types.ts:586`).
@@ -217,6 +254,52 @@ pub fn resolve_export_ids(
         "projects" => id_list(&projects::ProjectsRepository::new(main, mount).find_all()?),
         "groups" => id_list(&groups::GroupsRepository::new(main, mount).find_all()?),
         "document-stores" => id_list(&crate::db::doc_mount_points::find_all_full_json(mount)?),
+        // The five `7189a968` additions.
+        "files" => crate::services::backup::marshal::query_all(
+            main,
+            "files",
+            crate::services::backup::collect::FILES,
+            "",
+            &[],
+        )?
+        .iter()
+        // Backups are never exported (mirrors the backup service's own rule).
+        .filter(|f| {
+            f.get("category").and_then(Value::as_str) != Some("BACKUP")
+                && f.get("folderPath").and_then(Value::as_str) != Some("/backups")
+        })
+        .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect(),
+        "prompt-templates" => crate::services::backup::marshal::query_all(
+            main,
+            "prompt_templates",
+            crate::services::backup::collect::PROMPT_TEMPLATES,
+            "",
+            &[],
+        )?
+        .iter()
+        .filter(|t| {
+            !t.get("isBuiltIn").and_then(Value::as_bool).unwrap_or(false)
+                && t.get("userId").and_then(Value::as_str) == Some(user_id)
+        })
+        .filter_map(|t| t.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect(),
+        "provider-models" => id_list(&crate::db::provider_models::find_all(main)?),
+        "plugin-configs" => crate::services::backup::marshal::query_all(
+            main,
+            "plugin_configs",
+            crate::services::backup::collect::PLUGIN_CONFIGS,
+            "userId = ?1",
+            &[&user_id],
+        )?
+        .iter()
+        .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect(),
+        // Keyed by setting key rather than a UUID — the table has no id column.
+        "instance-settings" => crate::db::instance_settings::list_portable_instance_settings(main)?
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect(),
         other => return Err(ExportError::UnknownType(other.to_string())),
     };
     Ok(ids)
@@ -237,6 +320,7 @@ fn id_list(rows: &[Value]) -> Vec<String> {
 pub fn stream_export_records(
     main: &Connection,
     mount: &Connection,
+    storage: Option<&dyn crate::services::file_storage::StorageBackend>,
     user_id: &str,
     options: &ExportOptions,
     created_at: &str,
@@ -282,6 +366,19 @@ pub fn stream_export_records(
         "projects" => records::stream_projects(main, mount, &ids, &mut counts, &mut out)?,
         "groups" => records::stream_groups(main, mount, &ids, &mut counts, &mut out)?,
         "document-stores" => records::stream_document_stores(mount, &ids, &mut counts, &mut out)?,
+        "files" => {
+            records::stream_files(main, mount, storage, user_id, &ids, &mut counts, &mut out)?
+        }
+        "prompt-templates" => {
+            records::stream_prompt_templates(main, user_id, &ids, &mut counts, &mut out)?
+        }
+        "provider-models" => records::stream_provider_models(main, &ids, &mut counts, &mut out)?,
+        "plugin-configs" => {
+            records::stream_plugin_configs(main, user_id, &ids, &mut counts, &mut out)?
+        }
+        "instance-settings" => {
+            records::stream_instance_settings(main, &ids, &mut counts, &mut out)?
+        }
         other => return Err(ExportError::UnknownType(other.to_string())),
     }
 

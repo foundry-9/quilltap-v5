@@ -164,7 +164,10 @@ fn plugin_config_upsert_tier2_matches_oracle() {
                 plugin_name,
                 config,
             } = op;
-            repo.upsert_for_user_plugin(user_id, plugin_name, config)
+            // `None` = v4's absent `enabled` (the pre-`7189a968` call shape this
+            // family's oracle exercises); the tri-state carry is measured by
+            // `system_restore_state`'s plugin_configs row diff instead.
+            repo.upsert_for_user_plugin(user_id, plugin_name, config, None)
                 .expect("plugin_config.upsert_for_user_plugin");
         }
     }

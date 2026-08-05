@@ -2,10 +2,9 @@
 //! `?action=export-entities&type=` listing that seeds the export dialog's
 //! entity picker.
 //!
-//! ⚠ v4's switch covers only EIGHT of the ten export types: `groups` and
-//! `document-stores` fall through to `badRequest(\`Unknown entity type: ${type}\`)`.
-//! That asymmetry with `previewExport` (which handles all ten) is faithful — the
-//! dialog never offers a picker for those two.
+//! v4 `7189a968` made the switch exhaustive: `groups` and `document-stores`
+//! (which had fallen through to `badRequest`) now list, alongside the five new
+//! export types. The old asymmetry notes died with that commit.
 
 use rusqlite::Connection;
 use serde_json::{Map, Value};
@@ -111,7 +110,86 @@ pub fn export_entities(
                 entities.push(id_name(&p, "name"));
             }
         }
-        // `groups` + `document-stores` (and anything else) hit v4's default arm.
+        "groups" => {
+            for g in crate::db::groups::GroupsRepository::new(main, mount).find_all()? {
+                entities.push(id_name(&g, "name"));
+            }
+        }
+        "document-stores" => {
+            // Instance-scoped, not user-scoped — global repos on purpose,
+            // mirroring `resolveExportIds` in the NDJSON writer.
+            for s in crate::db::doc_mount_points::find_all_full_json(mount)? {
+                entities.push(id_name(&s, "name"));
+            }
+        }
+        "files" => {
+            // Backups are never offered — mirrors the backup service's own rule.
+            for f in crate::services::backup::marshal::query_all(
+                main,
+                "files",
+                crate::services::backup::collect::FILES,
+                "",
+                &[],
+            )? {
+                if f.get("category").and_then(Value::as_str) == Some("BACKUP")
+                    || f.get("folderPath").and_then(Value::as_str) == Some("/backups")
+                {
+                    continue;
+                }
+                entities.push(id_name(&f, "originalFilename"));
+            }
+        }
+        "prompt-templates" => {
+            for t in crate::services::backup::marshal::query_all(
+                main,
+                "prompt_templates",
+                crate::services::backup::collect::PROMPT_TEMPLATES,
+                "",
+                &[],
+            )? {
+                let built_in = t.get("isBuiltIn").and_then(Value::as_bool).unwrap_or(false);
+                if built_in || t.get("userId").and_then(Value::as_str) != Some(user_id) {
+                    continue;
+                }
+                entities.push(id_name(&t, "name"));
+            }
+        }
+        "provider-models" => {
+            // Instance-global catalogue, no user filter.
+            for m in crate::db::provider_models::find_all(main)? {
+                let name = format!(
+                    "{} / {}",
+                    m.get("provider").and_then(Value::as_str).unwrap_or(""),
+                    m.get("modelId").and_then(Value::as_str).unwrap_or("")
+                );
+                let mut e = Map::new();
+                e.insert("id".into(), m.get("id").cloned().unwrap_or(Value::Null));
+                e.insert("name".into(), Value::String(name));
+                entities.push(Value::Object(e));
+            }
+        }
+        "plugin-configs" => {
+            for c in crate::services::backup::marshal::query_all(
+                main,
+                "plugin_configs",
+                crate::services::backup::collect::PLUGIN_CONFIGS,
+                "userId = ?1",
+                &[&user_id],
+            )? {
+                entities.push(id_name(&c, "pluginName"));
+            }
+        }
+        "instance-settings" => {
+            // Keyed by setting key — instance_settings has no id column. Keys
+            // that only make sense inside the exporting instance are withheld.
+            for (key, _) in crate::db::instance_settings::list_portable_instance_settings(main)? {
+                let mut e = Map::new();
+                e.insert("id".into(), Value::String(key.clone()));
+                e.insert("name".into(), Value::String(key));
+                entities.push(Value::Object(e));
+            }
+        }
+        // Anything else hits v4's default arm.
         other => return Err(ExportError::UnknownType(other.to_string())),
     }
 

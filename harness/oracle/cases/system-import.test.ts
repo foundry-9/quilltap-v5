@@ -56,6 +56,27 @@ function applyMocks(userId: string): void {
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // [P4.D46] The round-trips run v4's REAL writer over the fixture, so the
+  // writer's byte reads + manifest resolution must be real too (jest.setup.ts
+  // globally mocks both) — same doMock(requireActual) antidote as the export
+  // oracle; the registry mock serves the REAL bundled manifest.json files.
+  jest.doMock('@/lib/file-storage/manager', () =>
+    jest.requireActual('@/lib/file-storage/manager'),
+  );
+  jest.doMock('@/lib/plugins/registry', () => {
+    const actual = jest.requireActual('@/lib/plugins/registry');
+    const rfs = require('node:fs');
+    const rpath = require('node:path');
+    return {
+      __esModule: true,
+      ...actual,
+      getPlugin: (name: string) => {
+        const manifestPath = rpath.join(process.cwd(), 'plugins', 'dist', name, 'manifest.json');
+        if (!rfs.existsSync(manifestPath)) return null;
+        return { manifest: JSON.parse(rfs.readFileSync(manifestPath, 'utf8')) };
+      },
+    };
+  });
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -155,10 +176,12 @@ function roundTrip(
 function buildCases(): CaseSpec[] {
   const cases: CaseSpec[] = [];
 
+  // The fifteen `7189a968` types, in v4's declaration order.
   for (const type of [
     'characters',
     'chats',
     'roleplay-templates',
+    'prompt-templates',
     'connection-profiles',
     'image-profiles',
     'embedding-profiles',
@@ -166,6 +189,10 @@ function buildCases(): CaseSpec[] {
     'projects',
     'groups',
     'document-stores',
+    'files',
+    'provider-models',
+    'plugin-configs',
+    'instance-settings',
   ]) {
     cases.push(roundTrip(`roundtrip_${type}`, { type, scope: 'all', includeMemories: false }));
   }

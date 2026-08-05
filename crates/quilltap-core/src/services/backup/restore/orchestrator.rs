@@ -705,6 +705,11 @@ fn restore_on_writer(
                     target_user_id,
                     &s(cfg, "pluginName"),
                     &obj(cfg, "config", serde_json::json!({})),
+                    // v4 `restore.ts:301-306` (`7189a968`): the archived
+                    // `enabled` rides through, tri-state — an absent flag
+                    // leaves the stored one untouched, so a plugin the user
+                    // had switched off doesn't come back on.
+                    cfg.get("enabled").and_then(serde_json::Value::as_bool),
                 )
             );
         }

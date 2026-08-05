@@ -2,6 +2,55 @@
 
 ## Recent Changes
 
+The five new export types land server-side (P4.D46 unit 4, reference
+`7189a968`): files (folder tree, metadata, and bytes as chunked base64
+through the same counted-arrivals reassembly the document-store blobs
+use), prompt templates (built-ins never travel), the provider-model
+catalogue (a regenerable cache, exportable for air-gapped instances),
+plugin configs (every password-typed manifest key redacted, the whole
+config withheld when the manifest can't be resolved — v5 carries a
+static transcription of the bundled manifests, generator included), and
+instance settings (minus the five non-portable keys). The entity
+listing and both previews cover all fifteen types, and the importers
+land with all four conflict strategies: file bytes are written back
+through the same storage bridges the backup restore uses (storage keys
+never transfer; post-bridge mime/size win; dangling links dropped so
+cascade-delete can't be fooled), prompt templates dedupe by name,
+provider models upsert by provider and model id, plugin configs merge
+so a redacted key can't clobber a local secret, and instance settings
+overwrite unconditionally. The plugin-config upsert gains the reference
+app's tri-state `enabled` flag, passed by restore and import both, so a
+plugin the user had switched off doesn't come back on. Differentials:
+the export family grew to 57 cases, the import-read family to 25, and
+the import-execute state family to 23 — including a four-strategy
+files matrix whose first run caught two real gaps (the mount-stats
+refresh v5's bridge leaves to callers, and the upload-failure message
+wrapper) and one oracle artifact (v4's fire-and-forget stats refresh
+caught mid-air by the state dump; the oracle now settles pending tails
+before dumping, which is also what keeps them from poisoning the next
+case).
+
+Embeddings no longer travel in `.qtap` exports, matching the reference
+app's `7189a968` overhaul (P4.D46 units 2–3). The writer strips the
+field at both memory emit sites, the NDJSON reassembler drops it from
+older archives that still carry it, and the legacy import path drops it
+again before validation. Every memory an import creates now gets its own
+`EMBEDDING_GENERATE` job queued after the reconcile — previously nothing
+re-embedded and semantic search stayed broken until the next restart —
+with the reference app's exact bail-out warnings when no default
+embedding profile is configured or the default is the built-in TF-IDF
+one. Document stores also import before the group→store link step; they
+ran dead last, so in a mixed archive every group's linked stores were
+silently dropped (proven by mutation: moving the step back turns the
+differential red on `group_doc_mount_links`). The entity listing gains
+`groups` and `document-stores` and the import preview gains the
+`documentStores` array, both from the same reference commit. The
+import-execute oracle also stopped lying: the jest setup file's global
+embedding-service mock had `getDefaultEmbeddingProfile` pinned to null,
+so the oracle claimed the reference app never enqueued — the
+`doMock(requireActual)` antidote plus a processor-wake stub fixed it,
+and the job rows the state diff now compares are real on both sides.
+
 Widened the shared `system-data-*` test fixture for the export/import
 drift port (P4.D46 unit 1): a second database store hard-linked to the
 group, the Quilltap Uploads mount with its `userUploadsMountPointId`

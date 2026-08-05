@@ -134,13 +134,200 @@ pub fn preview_import(
     // Characters: id first, then the case-insensitive name fallback.
     let characters_out = check_characters(main, arr("characters"), &mut conflict_counts)?;
 
+    // v4 `7189a968`: document stores (and the configuration-shaped types, which
+    // land with the five new export types) are previewed AFTER the parallel
+    // block, each against the key its importer dedupes on — for stores that is
+    // the id (`globalRepos.docMountPoints.findById`, error-swallowed to null).
+    // Their conflictCounts entries therefore insert after `characters`.
+    let document_stores_out: Vec<Value> = {
+        let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+        let mut out = Vec::new();
+        let mut conflicts = 0i64;
+        for mp in arr("mountPoints").map(|v| v.as_slice()).unwrap_or(&[]) {
+            let id = id_of(mp);
+            let exists = repo.find_full_json_by_id(&id).ok().flatten().is_some();
+            if exists {
+                conflicts += 1;
+            }
+            out.push(entity(
+                &id,
+                mp.get("name").and_then(Value::as_str).unwrap_or_default(),
+                exists,
+                None,
+            ));
+        }
+        if conflicts > 0 {
+            conflict_counts.insert("documentStores".to_string(), Value::from(conflicts));
+        }
+        out
+    };
+
+    // files — by id, plus the bytes-missing `detail` (`7189a968`).
+    let files_out: Vec<Value> = {
+        let repo = crate::db::files::FilesRepository::new(main);
+        let mut out = Vec::new();
+        let mut conflicts = 0i64;
+        for file in arr("files").map(|v| v.as_slice()).unwrap_or(&[]) {
+            let id = id_of(file);
+            let exists = repo.find_by_id(&id).ok().flatten().is_some();
+            if exists {
+                conflicts += 1;
+            }
+            let mut m = Map::new();
+            m.insert("id".into(), Value::String(id));
+            m.insert(
+                "name".into(),
+                file.get("originalFilename").cloned().unwrap_or(Value::Null),
+            );
+            m.insert("exists".into(), Value::Bool(exists));
+            if file
+                .get("_bytesMissing")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                m.insert(
+                    "detail".into(),
+                    Value::String("contents missing — will be skipped".into()),
+                );
+            }
+            out.push(Value::Object(m));
+        }
+        if conflicts > 0 {
+            conflict_counts.insert("files".to_string(), Value::from(conflicts));
+        }
+        out
+    };
+
+    // prompt templates — by NAME (the importer's dedupe key), carrying
+    // `matchedExistingId` on a hit.
+    let prompt_templates_out: Vec<Value> = {
+        let mut out = Vec::new();
+        let mut conflicts = 0i64;
+        for template in arr("promptTemplates").map(|v| v.as_slice()).unwrap_or(&[]) {
+            let name = template
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let existing = crate::db::prompt_templates::find_by_name(main, user_id, name)
+                .ok()
+                .flatten();
+            if existing.is_some() {
+                conflicts += 1;
+            }
+            out.push(entity(
+                &id_of(template),
+                name,
+                existing.is_some(),
+                existing.as_deref(),
+            ));
+        }
+        if conflicts > 0 {
+            conflict_counts.insert("promptTemplates".to_string(), Value::from(conflicts));
+        }
+        out
+    };
+
+    // provider models — always an upsert by (provider, modelId), so "exists"
+    // would be noise (`exists: false` always).
+    let provider_models_out: Vec<Value> = arr("providerModels")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[])
+        .iter()
+        .map(|model| {
+            let mut m = Map::new();
+            m.insert("id".into(), model.get("id").cloned().unwrap_or(Value::Null));
+            m.insert(
+                "name".into(),
+                Value::String(format!(
+                    "{} / {}",
+                    model.get("provider").and_then(Value::as_str).unwrap_or(""),
+                    model.get("modelId").and_then(Value::as_str).unwrap_or("")
+                )),
+            );
+            m.insert("exists".into(), Value::Bool(false));
+            Value::Object(m)
+        })
+        .collect();
+
+    // plugin configs — by (user, plugin); the redaction `detail` tells the
+    // user exactly what they will have to type back in.
+    let plugin_configs_out: Vec<Value> = {
+        let mut out = Vec::new();
+        let mut conflicts = 0i64;
+        for config in arr("pluginConfigs").map(|v| v.as_slice()).unwrap_or(&[]) {
+            let plugin_name = config
+                .get("pluginName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let exists = main
+                .query_row(
+                    "SELECT 1 FROM plugin_configs WHERE userId = ?1 AND pluginName = ?2",
+                    rusqlite::params![user_id, plugin_name],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            if exists {
+                conflicts += 1;
+            }
+            let redacted: Vec<&str> = config
+                .get("_redactedKeys")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let mut m = Map::new();
+            m.insert("id".into(), Value::String(id_of(config)));
+            m.insert("name".into(), Value::String(plugin_name.to_string()));
+            m.insert("exists".into(), Value::Bool(exists));
+            if !redacted.is_empty() {
+                m.insert(
+                    "detail".into(),
+                    Value::String(if redacted.contains(&"*") {
+                        "all settings withheld — re-enter them here".to_string()
+                    } else {
+                        format!("secrets withheld: {}", redacted.join(", "))
+                    }),
+                );
+            }
+            out.push(Value::Object(m));
+        }
+        if conflicts > 0 {
+            conflict_counts.insert("pluginConfigs".to_string(), Value::from(conflicts));
+        }
+        out
+    };
+
+    // instance settings — always overwrite (that's the point of the type).
+    let instance_settings_out: Vec<Value> = arr("instanceSettings")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[])
+        .iter()
+        .map(|setting| {
+            let key = setting
+                .get("key")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let mut m = Map::new();
+            m.insert("id".into(), Value::String(key.to_string()));
+            m.insert("name".into(), Value::String(key.to_string()));
+            m.insert("exists".into(), Value::Bool(false));
+            Value::Object(m)
+        })
+        .collect();
+
     let mut entities = Map::new();
     let mut put = |key: &str, v: Vec<Value>| {
         if !v.is_empty() {
             entities.insert(key.to_string(), Value::Array(v));
         }
     };
-    // v4's spread order inside the `entities` literal (:161-172).
+    // v4's spread order inside the `entities` literal (`7189a968` :232-247):
+    // the configuration-shaped kinds lead, then the entity kinds.
+    put("documentStores", document_stores_out);
+    put("files", files_out);
+    put("promptTemplates", prompt_templates_out);
+    put("providerModels", provider_models_out);
+    put("pluginConfigs", plugin_configs_out);
+    put("instanceSettings", instance_settings_out);
     put("characters", characters_out);
     put("chats", chats);
     put("tags", tags_out);

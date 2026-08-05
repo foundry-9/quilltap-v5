@@ -134,7 +134,7 @@ impl BackupData {
 
 // ── Field specs (Zod schema order; optionals omitted when the column is NULL) ─
 
-const FILES: &[(&str, F)] = &[
+pub(crate) const FILES: &[(&str, F)] = &[
     ("id", F::Str),
     ("userId", F::Str),
     ("sha256", F::Str),
@@ -188,7 +188,7 @@ const EMBEDDING_PROFILES: &[(&str, F)] = &[
     ("updatedAt", F::Str),
 ];
 
-const PROMPT_TEMPLATES: &[(&str, F)] = &[
+pub(crate) const PROMPT_TEMPLATES: &[(&str, F)] = &[
     ("id", F::Str),
     ("userId", F::StrOpt),
     ("name", F::Str),
@@ -218,7 +218,7 @@ const ROLEPLAY_TEMPLATES: &[(&str, F)] = &[
     ("updatedAt", F::Str),
 ];
 
-const PLUGIN_CONFIGS: &[(&str, F)] = &[
+pub(crate) const PLUGIN_CONFIGS: &[(&str, F)] = &[
     ("id", F::Str),
     ("userId", F::Str),
     ("pluginName", F::Str),
@@ -823,7 +823,7 @@ fn read_doc_mount_blob_metadata(conn: &rusqlite::Connection) -> Vec<Value> {
 
 /// Read a doc-mount blob's bytes by id (the staging leg reads them one at a
 /// time so a big archive never holds more than one blob in memory).
-pub(super) fn read_doc_mount_blob_bytes(
+pub(crate) fn read_doc_mount_blob_bytes(
     conn: &rusqlite::Connection,
     blob_id: &str,
 ) -> Option<Vec<u8>> {

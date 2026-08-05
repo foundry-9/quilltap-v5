@@ -137,6 +137,7 @@ fn seed_avatars_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
+        None,
     )
     .expect("import");
 

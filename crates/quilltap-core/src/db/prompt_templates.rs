@@ -61,6 +61,26 @@ pub struct PtCreate {
     pub tags: Vec<String>,
 }
 
+/// v4 `promptTemplates.findByName(userId, name)` — `findOneByFilter({userId,
+/// name})`, exact match, first row. Returns the matched id (the `.qtap`
+/// importer's dedupe key and the import preview's `matchedExistingId`).
+pub fn find_by_name(
+    conn: &Connection,
+    user_id: &str,
+    name: &str,
+) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT id FROM prompt_templates WHERE userId = ?1 AND name = ?2 LIMIT 1",
+        params![user_id, name],
+        |r| r.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
 /// Pinned id + timestamps (v4's `CreateOptions`).
 pub struct CreateOptions {
     pub id: String,

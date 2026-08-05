@@ -9,7 +9,7 @@
  *
  * ── THE PAYLOADS ARE REAL EXPORTS ────────────────────────────────────────────
  * The merged payload is built by running v4's own `createNdjsonStream` over the
- * fixture for each of the ten export types and merging the assembled `data`
+ * fixture for each of the fifteen export types (`7189a968`) and merging the assembled `data`
  * objects (memories ride the characters export via includeMemories). The emitted
  * `exportData` is exactly what the Rust differential replays, so both sides
  * provably import identical input.
@@ -55,6 +55,54 @@ function applyMocks(userId: string): void {
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // [P4.D46] jest.setup.ts globally mocks these three — with
+  // `getDefaultEmbeddingProfile: () => null`, a canned uploads bridge, and a
+  // canned storage manager — which made this oracle LIE about v4's `7189a968`
+  // behavior: every import answered the no-profile warning and enqueued
+  // nothing (the P4.20/P4.36 stale-mock class, caught here because the
+  // fixture HAS a default profile and the first regen still bailed out).
+  // The real modules must drive: the embedding enqueue, the file importers'
+  // uploads/project bridges, and `streamFiles`' byte reads.
+  jest.doMock('@/lib/embedding/embedding-service', () =>
+    jest.requireActual('@/lib/embedding/embedding-service'),
+  );
+  jest.doMock('@/lib/file-storage/user-uploads-bridge', () =>
+    jest.requireActual('@/lib/file-storage/user-uploads-bridge'),
+  );
+  jest.doMock('@/lib/file-storage/manager', () =>
+    jest.requireActual('@/lib/file-storage/manager'),
+  );
+  // The registry is EMPTY under jest (loadPlugins never runs), but production
+  // has every bundled plugin registered — and the export's plugin-config
+  // redaction resolves manifests through it. Serve the REAL manifest.json
+  // straight from plugins/dist; anything else resolves null (the
+  // withhold-everything arm).
+  jest.doMock('@/lib/plugins/registry', () => {
+    const actual = jest.requireActual('@/lib/plugins/registry');
+    const rfs = require('node:fs');
+    const rpath = require('node:path');
+    return {
+      __esModule: true,
+      ...actual,
+      getPlugin: (name: string) => {
+        const manifestPath = rpath.join(process.cwd(), 'plugins', 'dist', name, 'manifest.json');
+        if (!rfs.existsSync(manifestPath)) return null;
+        return { manifest: JSON.parse(rfs.readFileSync(manifestPath, 'utf8')) };
+      },
+    };
+  });
+  // …and with the real queue in play, `enqueueJob` calls
+  // `ensureProcessorRunning()` and the dispatcher starts CLAIMING the freshly
+  // enqueued rows mid-dump (PENDING → PROCESSING raced the state snapshot on
+  // the first regen). Still the wake — a job row's terminal state here is
+  // PENDING, exactly what the production enqueue leaves before the pump runs.
+  // (The `QUILLTAP_JOB_CHILD=1` pin is NOT usable for this: it flips the
+  // whole sqlite client readonly, by design.)
+  jest.doMock('@/lib/background-jobs/processor', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/background-jobs/processor'),
+    ensureProcessorRunning: () => {},
+  }));
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -76,6 +124,19 @@ function applyMocks(userId: string): void {
       },
     };
   });
+}
+
+/**
+ * Drain pending fire-and-forget tails (v4's best-effort `refreshStats` after a
+ * bridge write, etc.) before a state dump. Without this the dump catches v4
+ * mid-air — the first files-case regen showed the project store's rollups
+ * un-refreshed purely because its write was the LAST one before the dump —
+ * and, per the standing fire-and-forget rule, a stray promise would otherwise
+ * poison the NEXT case. Production settles milliseconds later; the settled
+ * state is the one worth pinning.
+ */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 25; i++) await new Promise((r) => setImmediate(r));
 }
 
 /** Drain a `ReadableStream<Uint8Array>` into its raw bytes. */
@@ -141,10 +202,18 @@ async function buildMergedExport(
   userId: string,
 ): Promise<{ manifest: unknown; data: Record<string, unknown[]> }> {
   const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
+  // Fourteen of the fifteen `7189a968` types, in v4's declaration order.
+  // `files` is deliberately EXCLUDED: its assembled data carries the general
+  // folder tree under the same `folders` key the document-stores type uses
+  // for doc-store folder rows, and this test-only merge would FUSE the two
+  // namespaces — exactly the hazard v4's own `buildExportDataForType` note
+  // documents, and a state no real single-type `.qtap` can produce. The files
+  // type gets its own `execute_files_*` cases below.
   const types = [
     'characters',
     'chats',
     'roleplay-templates',
+    'prompt-templates',
     'connection-profiles',
     'image-profiles',
     'embedding-profiles',
@@ -152,6 +221,9 @@ async function buildMergedExport(
     'projects',
     'groups',
     'document-stores',
+    'provider-models',
+    'plugin-configs',
+    'instance-settings',
   ];
   let manifest: unknown;
   const data: Record<string, unknown[]> = {};
@@ -171,6 +243,18 @@ async function buildMergedExport(
     }
   }
   return { manifest, data };
+}
+
+/** The files-only export (`{files, folders}`), assembled from v4's own writer. */
+async function buildFilesExport(
+  userId: string,
+): Promise<{ manifest: unknown; data: Record<string, unknown[]> }> {
+  const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
+  const bytes = await drainBytes(
+    createNdjsonStream(userId, { type: 'files', scope: 'all', includeMemories: false } as never),
+  );
+  const assembled = await loadQtap(bytes);
+  return { manifest: assembled.manifest, data: assembled.data as never };
 }
 
 /**
@@ -672,6 +756,7 @@ function executeCase(
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
       const result = await executeImport(spec.userId, exportData as never, options as never);
+      await settle();
       return { kind: 'execute', exportData, options, result, preState, state: dumpAll() };
     },
   };
@@ -772,6 +857,7 @@ function executeTwiceCase(
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
       const result = await executeImport(spec.userId, exportData as never, options as never);
       const result2 = await executeImport(spec.userId, exportData as never, options as never);
+      await settle();
       return {
         kind: 'execute_twice',
         exportData,
@@ -812,6 +898,7 @@ function routeCase(
       const resp = await route.POST(
         mockRequest('http://localhost/api/v1/system/tools?action=import-execute', 'POST', requestBody),
       );
+      await settle();
       const out: Record<string, unknown> = {
         kind: 'route',
         requestBody,
@@ -823,6 +910,51 @@ function routeCase(
         out.state = dumpAll();
       }
       return out;
+    },
+  };
+}
+
+/**
+ * kind 'execute_prepped' (P4.D46, `7189a968`): a NAMED pre-import mutation on
+ * the live fixture copy, then v4's REAL `executeImport`. The two preps are the
+ * `enqueueImportedMemoryEmbeddings` bail-out arms:
+ *   - 'drop-embedding-profiles' → "no default embedding profile is configured"
+ *   - 'builtin-default-profile' → "the configured embedding profile is the
+ *     built-in TF-IDF one"
+ * The Rust side applies the same named mutation to its own fixture copy before
+ * importing, so the preState baselines still match byte-for-byte.
+ */
+function executePreppedCase(
+  name: string,
+  prep: 'drop-embedding-profiles' | 'builtin-default-profile',
+  payload: (spec: Spec) => Promise<unknown> | unknown,
+  options: Record<string, unknown>,
+) {
+  return {
+    name,
+    run: async (spec: Spec, dumpAll: () => Record<string, unknown>) => {
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      const db = getRawDatabase();
+      if (!db) throw new Error('main DB handle unavailable for prep');
+      if (prep === 'drop-embedding-profiles') {
+        db.exec('DELETE FROM "embedding_profiles"');
+      } else {
+        db.exec(`UPDATE "embedding_profiles" SET "provider" = 'BUILTIN'`);
+      }
+      const exportData = await payload(spec);
+      const preState = dumpAll();
+      const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+      const result = await executeImport(spec.userId, exportData as never, options as never);
+      await settle();
+      return {
+        kind: 'execute_prepped',
+        prep,
+        exportData,
+        options,
+        result,
+        preState,
+        state: dumpAll(),
+      };
     },
   };
 }
@@ -894,8 +1026,10 @@ async function main(): Promise<void> {
   // and then replayed byte-identically into every strategy arm.
   const merged = await runCase(spec, '_build', scratch, fixtures, async () => ({
     payload: await buildMergedExport(spec.userId),
+    filesPayload: await buildFilesExport(spec.userId),
   }));
   const mergedPayload = merged.payload as { manifest: unknown; data: Record<string, unknown[]> };
+  const filesPayload = merged.filesPayload as { manifest: unknown; data: Record<string, unknown[]> };
 
   const cases = [
     executeCase('execute_skip_all', () => mergedPayload, {
@@ -1014,6 +1148,59 @@ async function main(): Promise<void> {
         options: { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       },
     ]),
+    // [P4.D46] The files type, over its own single-type payload (see the
+    // `types` note). `skip` is all-skips on a same-instance re-import (the
+    // `_bytesMissing` row skips with its warning on every arm); `overwrite`
+    // deletes + recreates by id; `duplicate` re-mints; the cross-instance arm
+    // exercises the linkedTo drop/keep logic over foreign ids.
+    executeCase('execute_files_skip', () => filesPayload, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_files_overwrite', () => filesPayload, {
+      conflictStrategy: 'overwrite',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_files_duplicate', () => filesPayload, {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_files_cross_instance', () => rewriteIds(filesPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.D46] The embedding-enqueue bail-out arms: a characters+memories slice
+    // of the merged payload, imported after a named fixture mutation. `skip`
+    // keeps the character rows still (memories always insert), so the state
+    // delta is the memories + the (absent) job rows + the warning.
+    executePreppedCase(
+      'execute_memories_no_profile',
+      'drop-embedding-profiles',
+      () => ({
+        manifest: mergedPayload.manifest,
+        data: {
+          characters: mergedPayload.data.characters ?? [],
+          memories: mergedPayload.data.memories ?? [],
+        },
+      }),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+    ),
+    executePreppedCase(
+      'execute_memories_builtin_profile',
+      'builtin-default-profile',
+      () => ({
+        manifest: mergedPayload.manifest,
+        data: {
+          characters: mergedPayload.data.characters ?? [],
+          memories: mergedPayload.data.memories ?? [],
+        },
+      }),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+    ),
     routeCase('route_missing_export_data', () => ({})),
     routeCase('route_missing_options', () => ({
       exportData: legacyFoldsPayload(),

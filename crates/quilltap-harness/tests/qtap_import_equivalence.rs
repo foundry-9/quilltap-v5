@@ -260,6 +260,7 @@ fn qtap_import_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
+        None,
     )
     .expect("execute_import");
     assert!(
@@ -429,6 +430,7 @@ fn qtap_import_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
+        None,
     )
     .expect("second execute_import");
     assert_eq!(result2.skipped.characters, 2, "both characters skipped");
