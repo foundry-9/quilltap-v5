@@ -57474,3 +57474,129 @@ dialog, `ProgressBar.tsx`, `lib/tools/almanack/phases.ts`, both
 and `search-results.tsx` — is verified untouched by both the commit and the dirty
 set (`git status --short` over that path list returns empty). This lane consumes
 no oracles, so there is nothing to regenerate.
+## Lane record — P4.39 (the `gen-provider-manifests.mjs` repair)
+
+**Branch** `claude/provider-manifests-generator-repair-7cd703`.
+**v4 baseline `f7f1a956`, drift-checked at lane start:** `git log
+f7f1a956..HEAD --oneline` in `~/source/quilltap-server` is EMPTY — v4
+HEAD *is* `f7f1a956`. `git status --short` carries exactly one entry,
+`?? docs/developer/features/taboo.md`, an untracked feature doc: no
+`lib/`, no `plugins/`, nothing any oracle or the generator reads, so
+every regen in this lane ran straight from the checkout rather than a
+pinned worktree. (Worth flagging to the next round's planner all the
+same: an untracked feature doc named `taboo.md` is v4's next feature
+brewing.)
+
+### What the repair actually had to solve
+
+The order's framing — "three providers expose the list on the built
+plugin, grok and z-ai do not" — held up exactly. Two things it did not
+name turned out to be the whole shape of the work:
+
+1. **The committed field is rendered INLINE.** Every other array in the
+   manifests is pretty-printed one element per line;
+   `imageGenerationModels` is a single line
+   (`openai.json:70`). P4.6p hand-wrote it, so
+   `JSON.stringify(manifest, null, 2)` cannot reproduce the committed
+   bytes no matter how correct the *data* is. The generator now
+   stringifies the field as a sentinel string and swaps in the exact
+   inline literal (`serializeManifest`), which keeps the key in its
+   schema position between `defaultContextWindow` and `fallbackModels`
+   and makes byte-identity reachable. Without this the lane would have
+   had to reformat nine committed files — precisely what the Mandate
+   forbids.
+2. **The getter is NOT `supportedModels` for google and openrouter.**
+   Both sources declare `supportedModels` as a spread
+   (`[...IMAGEN_MODELS, ...GEMINI_IMAGE_MODELS]` /
+   `[...FALLBACK_IMAGE_MODELS]`) whose ORDER differs from what
+   `getImageGenerationModels()` returns — google's getter emits the two
+   gemini ids first, its source lists the two imagen ids first. So the
+   tempting simplification "read `supportedModels` from source for all
+   five, one uniform mechanism" is WRONG and would have produced a
+   wrong-order google manifest that still parsed fine. The getter is
+   authoritative wherever it exists; the source read is only the
+   fallback for the two plugins that expose no getter at all (verified:
+   `qtap-plugin-{grok,z-ai}/index.ts` carry `imageGeneration: true` and
+   no `getImageGenerationModels` whatsoever).
+
+### The mechanism as landed
+
+`resolveImageGenerationModels(plugin, dir)` keys off
+`capabilities.imageGeneration` — which is true for exactly the five
+providers that carry the key and false for the four that omit it, so the
+capability flag *is* the emit rule and no second list can drift out of
+step. Capability true → the getter if present, else
+`readSupportedModelsFromSource(dir)`. Capability false → the key is
+omitted entirely (`delete`, not `null` — the four text-only manifests
+have no such key), and a plugin that grew a getter without flipping the
+flag is a loud exit rather than a silent omission.
+
+The source reader recognizes the two shapes those two plugins carry
+today — an array literal on grok's class (`image-provider.ts:17`) and a
+bare identifier resolved to one module-local `const` on z-ai's (`:20` →
+`:16`) — and `parseStringArrayLiteral` refuses anything that is not a
+flat list of quoted, escape-free strings (it re-scans the residue after
+removing the strings and brackets, so a spread, a template literal, or a
+computed element fails rather than silently yielding a short list). Every
+failure path is `fail()`: a named, non-zero exit. No hardcoded second
+copy exists to rot.
+
+One addition beyond the order: the write loop now **builds all nine
+before writing any**. Under the original loop, the loud failure fired
+mid-run and left three regenerated files in the output dir — harmless in
+a scratch dir, but the whole point of the repair is that the recipe is
+safe to run *straight into the committed manifests dir*, where a partial
+overwrite is exactly the mess the ⚠ block used to warn about.
+
+### The proofs
+
+- **Byte identity (deliverable 3).** Regen into a scratch dir, `diff -r`
+  against `crates/quilltap-core/src/provider_manifest/manifests/`:
+  **EMPTY, all nine files**, first run, no manifest edited. Then the
+  recipe as written — regen straight into the committed dir — leaves
+  `git status --short` showing only
+  `M harness/oracle/providers/gen-provider-manifests.mjs`. The nine
+  manifests are byte-untouched by this lane.
+- **Mutation (deliverable 4).** Emission disabled
+  (`imageGenerationModels: null`), regen, diff: exactly five files
+  differ — google, grok, openai, openrouter, z_ai — each by exactly one
+  added line, exactly that key; anthropic / deepseek / ollama /
+  openai_compatible byte-identical. That reproduces P4.D48's 2026-08-05
+  measurement character for character, so the check demonstrably bites.
+- **The loud arm bites too** (not asked for; cheap and load-bearing).
+  Renaming the anchored `readonly supportedModels` pattern to something
+  the sources no longer contain exits 1 with
+  `gen-provider-manifests: qtap-plugin-grok: no 'readonly
+  supportedModels = …;' in image-provider.ts` and — after the build-then-write
+  restructure — writes **zero** files.
+- **The consumer (deliverable 6).** `provider_registry_equivalence` by
+  name, `--nocapture`, over an oracle regenerated fresh at `f7f1a956`:
+  `OK: provider-registry matched oracle (253 rows).` — 1 passed, 0
+  failed, zero SKIP.
+
+### Regen recipes
+
+The manifest generator (now safe as written — this replaces the ⚠ RECIPE
+ROT block, deliverable 5):
+
+```
+cd ~/source/quilltap-server
+node ~/source/quilltap-v5/harness/oracle/providers/gen-provider-manifests.mjs \
+  ~/source/quilltap-v5/crates/quilltap-core/src/provider_manifest/manifests
+git -C ~/source/quilltap-v5 status --short   # expect clean on no drift
+```
+
+The consuming differential (unchanged, restated for the round record):
+
+```
+cd ~/source/quilltap-server
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/provider-registry.ts \
+  > /tmp/oracle-provider-registry.ndjson
+cd ~/source/quilltap-v5
+QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
+  cargo test -p quilltap-harness --test provider_registry_equivalence -- --nocapture
+```
+
+**Fixtures:** none consumed, none delivered, none invalidated. The nine
+committed manifests are byte-identical to what was on main, so no other
+oracle family is disturbed.

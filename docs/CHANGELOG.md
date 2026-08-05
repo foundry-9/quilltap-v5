@@ -75,6 +75,18 @@ Mirrored the Almanack's client contract into the web app: the four
 dispatch verbs (generate, list, get, delete), the new `phase` progress
 frame on the shared event stream, and the seven-phase manifest whose
 labels and timing weights must match the server's exactly.
+Repaired the provider-manifest generator so regenerating the nine
+built-in provider manifests no longer silently drops each provider's
+image-generation model list. The list had been added to the committed
+manifests by hand and never taught to the generator, so a regen deleted
+it from five of them — google, grok, openai, openrouter, z_ai — and the
+only symptom would have been an empty model dropdown when configuring an
+image profile. The generator now reads the list off each built plugin
+where the plugin exposes it, and out of the plugin's own image-provider
+source for the two that do not; an unrecognized source shape stops the
+run with a named error instead of emitting a stale manifest, and nothing
+is written until all nine build. Regenerating now reproduces all nine
+committed manifests byte for byte.
 
 Planned the `f7f1a956` Almanack round and committed its four work
 orders: the reference app rewrote its system capabilities report into

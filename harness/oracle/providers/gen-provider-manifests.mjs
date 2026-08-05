@@ -19,43 +19,34 @@
  * refine endpoints/auth against recorded wire fixtures; they are not
  * differential-checked here (v4 exposes no registry getter for them).
  *
- * ⚠ RECIPE ROT — DO NOT RUN THIS STRAIGHT INTO THE MANIFEST DIR TODAY.
- * P4.6p added an `imageGenerationModels` field to the committed manifests (and
- * to the Rust `ProviderManifest` struct) by hand, and never taught this
- * generator to emit it. Running the recipe below as written therefore DELETES
- * that field from five manifests — google, grok, openai, openrouter, z_ai —
- * silently, because `imageGenerationModels` is `#[serde(default)]` Rust-side
- * and an empty list simply makes `imageProfileList`'s `defaultModels` go blank.
- * Measured 2026-08-05 (P4.D48): regenerating into a scratch dir and diffing
- * against the committed manifests differs on exactly those five files and
- * exactly that key; `anthropic.json` and the other three are byte-identical.
- *
- * Teaching it the field is not one line. Three providers expose the list on the
- * built plugin object (`plugin.getImageGenerationModels().map(m => m.id)` —
- * openai, google, openrouter), but grok and z-ai do NOT: theirs live in each
- * plugin's `image-provider.ts` source (`readonly supportedModels` on grok's
- * class; a module-local `SUPPORTED_MODELS` const on z-ai's), neither reachable
- * from the built bundle. Re-deriving those faithfully is its own small order —
- * P4.D48 owned the provider CORPORA, not P4.6p's transcription, and could not
- * verify a fix without editing `quilltap-core` (another lane's file that round).
- *
- * Until that lands: regenerate into a SCRATCH dir and diff, rather than
- * overwriting; carry the five `imageGenerationModels` lines across by hand.
+ * The 'imageGenerationModels' field (P4.6p) is emitted for exactly the providers
+ * whose plugin declares `capabilities.imageGeneration` — google, grok, openai,
+ * openrouter, z_ai. Three of them expose the list on the built plugin object
+ * (`plugin.getImageGenerationModels().map(m => m.id)` — openai, google,
+ * openrouter); grok and z-ai carry NO such getter, and their only declaration is
+ * `supportedModels` in the `image-provider.ts` source that ships inside
+ * `plugins/dist/<dir>/`. Those two are read from that source at generation time
+ * (an array literal on grok's class; a module-local const on z-ai's), and an
+ * unrecognized shape is a LOUD non-zero exit naming the provider — so the
+ * generator stays self-updating rather than holding a second copy that rots.
+ * Repaired 2026-08-05 by P4.39; P4.6p had added the field to the committed
+ * manifests by hand and never taught the generator, so running the recipe below
+ * silently DELETED it from those five files (`#[serde(default)]` Rust-side, so
+ * the only symptom was a blank `defaultModels` in `imageProfileList`). The regen
+ * recipe below is safe to run straight into the manifest dir again.
  *
  * Regen recipe (after a v4 provider-metadata drift):
  *   cd ~/source/quilltap-server
  *   node ~/source/quilltap-v5/harness/oracle/providers/gen-provider-manifests.mjs \
- *     /tmp/manifests-regen
- *   diff -r /tmp/manifests-regen \
  *     ~/source/quilltap-v5/crates/quilltap-core/src/provider_manifest/manifests
- *   (expect ONLY the five imageGenerationModels lines above; copy the rest in,
- *    then re-run `provider_registry_equivalence` to confirm)
+ *   git -C ~/source/quilltap-v5 status --short   # expect clean on no drift
+ *   (then re-run `provider_registry_equivalence` to confirm)
  *
  * The generator MUST run from the quilltap-server checkout root (it loads the
  * built plugins/dist bundles via createRequire).
  */
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
@@ -181,6 +172,114 @@ function loadPlugin(dir) {
   return plugin;
 }
 
+/** Die with a named, non-zero-exit complaint — never emit a silently stale field. */
+function fail(message) {
+  console.error(`gen-provider-manifests: ${message}`);
+  process.exit(1);
+}
+
+/**
+ * Parse a plain string-array literal (`['a', 'b']`). Anything that is not a flat
+ * list of quoted, escape-free strings fails loudly rather than being coerced.
+ */
+function parseStringArrayLiteral(literal, where) {
+  const strings = /'([^'\\]*)'|"([^"\\]*)"/g;
+  const items = [];
+  let m;
+  while ((m = strings.exec(literal)) !== null) items.push(m[1] ?? m[2]);
+  const residue = literal.replace(strings, '').replace(/[[\],\s]/g, '');
+  if (residue !== '') {
+    fail(`${where}: not a plain string-array literal (leftover ${JSON.stringify(residue)})`);
+  }
+  if (items.length === 0) fail(`${where}: empty string-array literal`);
+  return items;
+}
+
+/**
+ * Read a plugin's image model list out of the `image-provider.ts` source that
+ * ships in its dist dir — the only declaration grok and z-ai have (no
+ * `getImageGenerationModels` getter on either built plugin object).
+ *
+ * Two shapes are recognized, matching what those two sources carry today:
+ *   readonly supportedModels = ['a', 'b'];          (grok)
+ *   readonly supportedModels = SUPPORTED_MODELS;    (z-ai, + a module-local const)
+ * Anything else exits non-zero naming the provider.
+ */
+function readSupportedModelsFromSource(dir) {
+  const srcPath = join(process.cwd(), 'plugins', 'dist', dir, 'image-provider.ts');
+  let src;
+  try {
+    src = readFileSync(srcPath, 'utf-8');
+  } catch {
+    fail(`${dir}: declares imageGeneration but has no getter and no ${srcPath}`);
+  }
+
+  const decl = /^\s*readonly\s+supportedModels\s*(?::[^=]*)?=\s*([^;]+);/m.exec(src);
+  if (!decl) fail(`${dir}: no 'readonly supportedModels = …;' in image-provider.ts`);
+  let rhs = decl[1].trim();
+
+  if (!rhs.startsWith('[')) {
+    // A bare identifier — resolve the one module-local `const NAME = [...]`.
+    if (!/^[A-Za-z_$][\w$]*$/.test(rhs)) {
+      fail(`${dir}: unrecognized supportedModels shape ${JSON.stringify(rhs)}`);
+    }
+    const constDecl = new RegExp(`^\\s*const\\s+${rhs}\\s*(?::[^=]*)?=\\s*(\\[[^\\]]*\\])`, 'm').exec(src);
+    if (!constDecl) fail(`${dir}: supportedModels names '${rhs}', but no 'const ${rhs} = [...]' in image-provider.ts`);
+    rhs = constDecl[1];
+  }
+
+  return parseStringArrayLiteral(rhs, `${dir} supportedModels`);
+}
+
+/**
+ * The image-generation model ids for a provider, or null when the plugin does
+ * not declare the capability (the four text-only built-ins carry no such key).
+ * The built plugin's getter is authoritative where it exists — for google and
+ * openrouter it deliberately differs from the source's `supportedModels` order.
+ */
+function resolveImageGenerationModels(plugin, dir) {
+  const declaresCapability = !!plugin.capabilities.imageGeneration;
+  const hasGetter = typeof plugin.getImageGenerationModels === 'function';
+
+  if (!declaresCapability) {
+    if (hasGetter) fail(`${dir}: exposes getImageGenerationModels but capabilities.imageGeneration is false`);
+    return null;
+  }
+
+  const ids = hasGetter
+    ? plugin.getImageGenerationModels().map((m) => m.id)
+    : readSupportedModelsFromSource(dir);
+
+  if (!Array.isArray(ids) || ids.length === 0) fail(`${dir}: resolved an empty image-generation model list`);
+  for (const id of ids) {
+    if (typeof id !== 'string' || id === '') fail(`${dir}: non-string image-generation model id ${JSON.stringify(id)}`);
+  }
+  return ids;
+}
+
+/**
+ * The committed manifests carry `imageGenerationModels` on ONE line where every
+ * other array is pretty-printed. Stringify through a sentinel so the field keeps
+ * its schema position and the inline rendering is exact.
+ */
+const INLINE_SENTINEL = '@@IMAGE_GENERATION_MODELS@@';
+
+function serializeManifest(manifest) {
+  const inlineIds = manifest.imageGenerationModels;
+  if (inlineIds === null) {
+    // Absent, not null: the four text-only providers have no such key at all.
+    delete manifest.imageGenerationModels;
+    return JSON.stringify(manifest, null, 2) + '\n';
+  }
+
+  manifest.imageGenerationModels = INLINE_SENTINEL;
+  const json = JSON.stringify(manifest, null, 2);
+  const needle = JSON.stringify(INLINE_SENTINEL);
+  if (!json.includes(needle)) fail(`${manifest.id}: inline sentinel never reached the output`);
+  const inline = `[${inlineIds.map((id) => JSON.stringify(id)).join(', ')}]`;
+  return json.replace(needle, inline) + '\n';
+}
+
 /**
  * Build the manifest object for a provider. The field ORDER here is the manifest
  * schema order (mirrored by the Rust serde structs); we do NOT sort keys.
@@ -252,16 +351,21 @@ function buildManifest(provider) {
     },
     charsPerToken: plugin.charsPerToken ?? DEFAULT_CHARS_PER_TOKEN,
     defaultContextWindow: plugin.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
+    imageGenerationModels: resolveImageGenerationModels(plugin, provider.dir),
     fallbackModels: models.map((m) => m.id),
     pricing,
   };
 }
 
-for (const provider of PROVIDERS) {
+// Build all nine BEFORE writing any: a loud failure (an unrecognized
+// `supportedModels` shape, say) must not leave a half-overwritten manifest dir.
+const rendered = PROVIDERS.map((provider) => {
   const manifest = buildManifest(provider);
-  const filename = `${manifest.id.toLowerCase()}.json`;
-  const outPath = join(outDir, filename);
-  writeFileSync(outPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-  console.error(`wrote ${outPath} (${manifest.id})`);
+  return { id: manifest.id, path: join(outDir, `${manifest.id.toLowerCase()}.json`), text: serializeManifest(manifest) };
+});
+
+for (const { id, path, text } of rendered) {
+  writeFileSync(path, text, 'utf-8');
+  console.error(`wrote ${path} (${id})`);
 }
-console.error(`generated ${PROVIDERS.length} manifests`);
+console.error(`generated ${rendered.length} manifests`);
