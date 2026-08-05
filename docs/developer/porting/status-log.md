@@ -54977,3 +54977,85 @@ phase plan):** the escalated context-summary oracle un-mock (candidate
 families + 20 static /tmp collisions — named by `--list`); the dogfood
 pass now owes this round's live proofs on top of the standing queue;
 the `p4.9i2` bank holds `4bbeab47`'s two chat help docs.
+
+## Round planned — the `7189a968` export/import drift + dogfood-debt round (P4.D46 ∥ P4.D47 ∥ P4.D48 ∥ P4.36), 2026-08-05
+
+**The drift check ran FIRST and it is the round.** v4 moved SEVEN
+commits past the `7fe9fe40` baseline; v4's tree is CLEAN at HEAD
+`7189a968`. Classification (per-commit evidence in the four orders):
+
+- **`7189a968` "feat(export): drop embeddings from exports, reach all
+  fifteen types, compact backup" — BEHAVIOR, on ported surface, and
+  exactly the inbound drift phase-4.md's candidate 0 predicted** (the
+  2026-08-04 dogfood walk stopped mid-Part-C for it). 44 files,
+  +4,859. No DDL change. → **P4.D46** (server: the embedding strip +
+  per-memory EMBEDDING_GENERATE enqueue, the five new export types +
+  the exhaustive listing, the doc-stores-before-group-links ordering
+  fix, compact backup + restore steps 24a/25 +
+  `RestoreSummary.embeddingReconcile`, the plugin-config `enabled`
+  carry, the widened `system-data-*` fixture + a new compact
+  restore-archive) ∥ **P4.D47** (SPA: the fifteen-type picker, the
+  preview `detail` line + six new sections, the compact toggle).
+  Two survey corrections worth recording against the commit message:
+  v4's `projects` was ALREADY in `handleExportEntities` pre-drift (v5
+  answers it too), so the listing gains SEVEN arms, not eight; and
+  the sparse-array `every()` fix is NOT in this commit — it was
+  `c1507f47`, already converged and discharged at P4.d22 (the new
+  file-blob chunk path was born with the counted pattern).
+- **`be2c9cbb` "unfreeze the Anthropic SDK" — WIRE-RISK dependency
+  change** (`@anthropic-ai/sdk` ^0.88 → ^0.115 in
+  qtap-plugin-anthropic; the commit claims the used surface is
+  unchanged). → **P4.D48** verifies by the P4.D33 method: regen the
+  Anthropic-touching provider corpora at the new SDK, byte-compare,
+  with the corpus-dating proof. Any moved byte STOPS and escalates.
+- **`a7f691e7` + `298563eb` (Docker/scripts timezone) — NO-PORT as
+  such, but they imply a v5 rider P4.D48 takes:** v5's Docker image
+  has NO TZ handling (bare `ENTRYPOINT` at `Dockerfile:124`; the host
+  resolves via `jiff::tz::TimeZone::system()` at
+  `quilltap-host/src/paths.rs:89`), so a containerized v5 reproduces
+  the bug class v4 just fixed on surfaces v5 ported zone-sensitively
+  (P4.d26 same-day recall, room cron/budget rollover). The rider:
+  `QUILLTAP_TIMEZONE`→`TZ` at the top of quilltap-web's `main`, v4's
+  precedence + IANA validation, + running.md.
+- **`f31598c0` (image CVE hardening), `b5c9ee7d` (tarball pruning),
+  `d13e8a84` (a plan doc, superseded into `7189a968`) — NO-PORT**;
+  dispositions recorded by P4.D48 with per-commit evidence.
+
+**The dogfood-findings half of the round:** **P4.36** retires the
+escalated `context_summary_service_tier3` stale red (the `7fe9fe40`
+round's adjudicated W3 diagnosis: v4 folds live at
+`lib/chat/context-summary.ts:519`, the oracle case still stubs it —
+the P4.20 class, fixed by the P4.32 un-mock shape; harness-only,
+zero production source expected).
+
+**Orders (committed this session):**
+`work-orders/p4.d46-export-import-drift-server.md`,
+`work-orders/p4.d47-export-import-drift-spa.md`,
+`work-orders/p4.d48-anthropic-sdk-wire-check.md`,
+`work-orders/p4.36-context-summary-oracle-unmock.md`. The D46↔D47
+shared contract (C1–C5: the fifteen types + order + labels, the
+`compact` wire semantics, the preview `detail` strings, the listing
+name shapes, the dialog copy) is verbatim-identical in both orders
+with the both-files-in-one-commit change rule. `api/types.rs` is
+D46-only. Version-bump ownership assigned per order (identical-bump
+collapse at unify).
+
+**Deliberately NOT in the round:** `p4.35` (streaming import — the
+drift removes embeddings from exports, which the walk measured as
+99.7% of the real 791 MB archive, so its economics collapse; D46
+tier-2 updates its header rather than running it); dogfood #62
+(thumbnails — recorded low-severity, no urgent fix); the recipe-rot
+tail (27 `unstaged_jest_roots` + 20 /tmp collisions — P4.36 converts
+only its OWN family's recipe as a rider); the dogfood pass itself
+(it resumes AFTER this round unifies, exactly as the walk record
+planned — the un-walked remainder plus this round's live proofs:
+a real post-strip export size, an import that enqueues embeddings,
+a compact backup/restore, the OpenRouter-pricing/vision/toolbar 💸
+backlog).
+
+**Doc hygiene fixed at planning (the setupphase stale-record rule):**
+dogfood findings #58/#59 status cells still read "OPEN — needs an
+order" though P4.28 (reader-side, `40319484` round) and P4.31 (the
+#58 root cause, `49769ec4` round) closed them — corrected, with a
+note that rows #57–#60's `**FIXED** \`<commit>\`` placeholders were
+never back-filled.

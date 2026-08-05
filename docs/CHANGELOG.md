@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the next porting round (docs only). The reference app shipped
+seven commits, headlined by an import/export overhaul on already-ported
+surface: embeddings no longer travel in exports, five new export types
+plus an exhaustive type listing, and an opt-in compact backup. Four work
+orders cover it — the server port (`p4.d46`), its SPA half (`p4.d47`),
+a wire-neutrality check on the reference app's Anthropic SDK jump plus
+container-timezone handling (`p4.d48`), and retiring a stale harness
+mock on the context-summary differential (`p4.36`). Also corrected two
+stale status cells on dogfood findings #58/#59, which had stayed "open"
+after their fixes landed.
+
 Large exports can be imported again. A `.qtap` over 100 MB — a real
 character library runs to hundreds of megabytes once vault images are
 included — was refused at the edge before any of the import code ran,
