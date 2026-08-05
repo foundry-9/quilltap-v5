@@ -1972,6 +1972,54 @@ records THERE. Update this summary only when a phase or round completes.
   clippy both feature sets; release build; ng 281 files / 3,870; full
   Playwright **179/179 zero skips**. Versions: core 0.0.467, harness
   0.0.399, web 0.0.60, SPA 0.5.407. Round record: `status-log.md`.
+- **The `f7f1a956` Almanack round (P4.D49 ∥ P4.37 ∥ P4.38 ∥ P4.39):
+  PARTIALLY UNIFIED on main (2026-08-05) — P4.D49/P4.38/P4.39 CLOSED;
+  P4.37 OPEN (its pure half landed; resume list in its order header);
+  the oracle baseline MOVES to `f7f1a956` and the `0cde7fbc`
+  ported-surface drift debt is CLEARED.** The llm-logs D23 re-dump (the
+  partition's FIRST — two profile-attribution columns, no new indexes)
+  through the 18→20-column write spine with pragma-guarded read
+  tolerance + the ruled STRICT-create / TOLERANT-create_for_restore
+  split, the six ported call sites (profile ids + measured durations),
+  the `getTotalTokenUsageSince` un-zero — **the autonomous daily token
+  budget now BINDS on real spend** (mutation-proven case; the fixture
+  rework that kept 17 sibling cases meaningful), the UUID-remap
+  additions (measurable corpus case), TEN widened hand-rolled DDLs (+
+  an ELEVENTH caught by the §3 unification review in the web test
+  venue), the `QT_ORACLE_LLM_LOGS` env split, and the `f7f1a956`
+  jest-TZ defuse (`jest-zone-globalsetup.cjs` + zone-marked NDJSONs) ∥
+  the Almanack PURE half (byte-exact renderer over a 7-case
+  mutation-proven differential incl. `toLocaleString` half-expand +
+  `locale_date_time_us`; the phase manifest; the `phase` frame kind
+  with wire-bytes-unchanged pins) — **the collectors/verbs/host wire
+  are HELD on the preserved branch pending their tier-2 differential**
+  (the lane's own record; the feature is dark until the resumed lane)
+  ∥ the whole Almanack SPA (Providers-tab card + viewer + the shared
+  `qt-progress-bar` + both meter migrations + the §1 mirror; §3 review
+  restored v4's report typography + documented the card-root
+  divergence; `P437_SERVER_LANDED` stays false) ∥ the manifests
+  generator repaired (byte-identity proven, RECIPE ROT retired) + the
+  Docker `perl-base` purge with the container walk re-run. Escalated:
+  `context_summary_service_tier3` + `memory_processor_tier3` oracle
+  regen fails v4-side at `f7f1a956` (P4.36 stale-mock class —
+  maintenance lane). Gate: see the round record. Versions: core
+  0.0.474, harness 0.0.403, host 0.0.59, web 0.0.61, tauri 0.0.6,
+  SPA 0.5.412. Round record: `status-log.md`.
+- **Oracle baseline: `f7f1a956` (2026-08-05), adopted at the
+  `f7f1a956` Almanack round's unification. ⚠ v4 HEAD is `44e2e4fe`,
+  ONE commit past it (docs-only — NO-PORT), and v4's tree is DIRTY
+  with the in-flight Taboo settings feature ON PORTED CHAT-SPINE
+  SURFACES (`system-prompt-builder.ts`, `context-manager.ts`,
+  `cache-key.ts`, `settings.types.ts`, `instance-settings/index.ts`,
+  `self-inventory/builders.ts`) — a Taboo drift catch-up runs as soon
+  as v4 lands it, and until then PIN a detached worktree at
+  `f7f1a956` for every oracle regen.** New: jest-based Chicago-leg
+  regens need `--globalSetup
+  harness/oracle/lib/jest-zone-globalsetup.cjs` + `QT_ORACLE_TZ`
+  (v4's jest configs force TZ=UTC before workers fork). The
+  distill-transitive TZ pins, the committed-fixture rule, and the
+  recipe-sweep venue rules stand unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `7189a968` (2026-08-05), adopted at the `7189a968`
   round's unification. ⚠ v4 HEAD is `0cde7fbc` (the Almanack rewrite),
   ONE commit past it, and v4's tree was DIRTY at unification — a drift

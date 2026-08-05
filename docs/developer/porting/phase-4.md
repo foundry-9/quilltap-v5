@@ -4024,3 +4024,71 @@ catch-up is candidate 0 above; pin a detached worktree at `7189a968`
 for any regen until it lands.** The distill-transitive TZ pins, the
 committed-fixture rule, and the recipe-sweep venue rules stand
 unchanged.
+
+## The `f7f1a956` Almanack round (P4.D49 ∥ P4.37 ∥ P4.38 ∥ P4.39) — PARTIALLY UNIFIED 2026-08-05
+
+**P4.D49, P4.38, P4.39 CLOSED; P4.37 OPEN (partially unified — resume
+list in its order header); the oracle baseline MOVES to `f7f1a956`.**
+The `0cde7fbc` drift's ported-surface half is fully absorbed (the
+llm-logs D23 re-dump, the write spine + six call sites, the token-usage
+un-zero that makes the autonomous daily budget BIND for the first time,
+the remap additions, the jest-TZ defuse); the Almanack's pure half
+(renderer + phase manifest + progress `phase` frame) and its whole SPA
+are on main; the Almanack's collectors/verbs/host-wire are HELD on the
+preserved branch `claude/almanack-server-porting-693d77` pending their
+tier-2 differential (the lane's own record forbade unifying them
+unverified). The manifests generator is repaired and the recipe safe as
+written; `perl-base` is purged from the Docker image. Details: the round
+record in `status-log.md`; the four order status headers.
+
+**Next candidates, in rough value order:**
+
+1. **The resumed P4.37 — the Almanack server remainder.** Rebase the
+   held commits, write unit 12 (the `almanack-*` fixture family + the
+   tier-2 differential, fixture plan in the lane record), the
+   `AlmanackHost` wire, the space-form date-stamp arm (§3 finding),
+   flip `P437_SERVER_LANDED`, re-diff §1. Until it lands the Almanack
+   card shows an empty Previous Editions list and the four verbs do not
+   exist — the SPA is DONE and waiting.
+2. **⚠ The Taboo drift catch-up — BREWING, not yet landed.** v4's
+   working tree is dirty with an in-flight Taboo settings feature on
+   PORTED chat-spine surfaces (`system-prompt-builder.ts`,
+   `context-manager.ts`, `cache-key.ts`, `settings.types.ts`,
+   `instance-settings/index.ts`, `self-inventory/builders.ts` + a new
+   settings route/component/help doc). When v4 lands it, that round
+   runs FIRST (drift-check before every round; pin at `f7f1a956`
+   until absorbed).
+3. **A dogfood pass** — the owed queue keeps growing: the `7189a968`
+   round's live proofs, the standing backlog (walk Parts C 17–19 / D /
+   G / H, the P4.D31/P4.21/D33 💸 proofs), and now this round's: the
+   enclave daily budget binding on a real room, the llm_logs profile
+   attribution on real calls, the Almanack itself once the resumed
+   P4.37 lands.
+4. **A maintenance lane**: the two families whose oracles cannot
+   regenerate at `f7f1a956` (`context_summary_service_tier3`,
+   `memory_processor_tier3` — `no such table: llm_logs`, the P4.36
+   stale-mock class, escalated by P4.D49); the image-path `durationMs`
+   zeros (follow-up chip filed 2026-08-05); the thread-local
+   tracing-capture race in `job_runner`'s
+   `failed_job_emits_a_tracing_event`; the recipe-rot tail; three
+   full-suite-only Playwright intermittents observed at this round's
+   gate (the two terminal-pane beats + the Rename Chat beat — each
+   isolation-green; the deflake-round treatment applies).
+5. The standing pools: `p4.9h`, `p4.9i2` (+ `0cde7fbc`'s three help
+   docs: `the-almanack.md` NEW, `system-capabilities-report.md`
+   rewritten, `system-tools.md`), `p4.9l`, the P4.D41 tier-2 item 9
+   fixture, the P4.31 note-grade items.
+
+**Standing regen note:** the oracle baseline is **`f7f1a956`**
+(2026-08-05), adopted at this round's unification. v4 HEAD is
+`44e2e4fe`, ONE commit past it (docs-only, NO-PORT), **and v4's tree is
+DIRTY with the in-flight Taboo feature — pin a detached worktree at
+`f7f1a956` for EVERY oracle regen until the Taboo round absorbs it**
+(`oracle-regen-pinned-v4-worktree`). New this round: jest-based
+Chicago-leg regens need `--globalSetup
+harness/oracle/lib/jest-zone-globalsetup.cjs` + `QT_ORACLE_TZ` (v4's
+jest configs force TZ=UTC before workers fork — an env-passed TZ is
+silently clobbered); the distill + llm-log-cleanup recipes carry it,
+and both families now zone-mark their NDJSONs. The distill-transitive
+TZ pins, the committed-fixture rule, and the recipe-sweep venue rules
+stand unchanged.

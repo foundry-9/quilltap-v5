@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+Unified the `f7f1a956` Almanack round (partially): the reference app's
+system-report rewrite is absorbed on every already-ported surface, and
+the new report's foundations are in. The LLM call log gains the two
+per-profile attribution columns (fresh schema follows the reference;
+existing pre-migration instances stay readable, and the write refuses
+exactly as the reference does), call sites now record which profile
+served a call and how long it took, and a token-accounting bug is
+fixed that had made autonomous-room daily token budgets a silent no-op
+— rooms with a daily budget now actually pause or end when they spend
+it. Restores remap the new columns. The Almanack's byte-exact markdown
+renderer, its phase manifest, and a progress "phase" event landed with
+a seven-case differential; the full settings card, report viewer, and
+a shared segmented progress bar (also adopted by the Proving Bench and
+search-importance meters) are live in the SPA — but the server-side
+report collectors were deliberately held back pending their
+equivalence test, so the card lists no editions yet. The provider
+manifest generator was repaired (regenerating manifests no longer
+drops the image-model lists) and perl was purged from the Docker
+image. The unification review caught a stale test-schema copy that was
+silently costing log coverage, restored the report viewer's heading
+typography, and documented one layout divergence. Gate: 413 Rust test
+binaries / 1,867 tests / 0 failed with twelve differential families
+re-proven over oracles pinned at the reference baseline; SPA 3,914
+tests / 0; Playwright 180 passed with only the deliberately gated
+Almanack beat skipped. Versions: core 0.0.474, harness 0.0.403, host
+0.0.59, web 0.0.61, tauri 0.0.6, SPA 0.5.412.
+
 The LLM Inspector shows which profile served each logged call, on
 instances whose log database carries the new columns; older rows and
 older instances read exactly as before.

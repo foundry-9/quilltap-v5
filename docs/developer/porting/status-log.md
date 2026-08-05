@@ -57661,3 +57661,166 @@ Desktop's memory or builds the stages in two calls.
 **Not claimed:** no CVE scanner was run (none is installed here). The
 claim is narrower and checkable — the package carrying the CVEs is gone
 and the image still does everything P4.10's walk asks of it.
+## Round record — the `f7f1a956` Almanack round unification (P4.D49 ∥ P4.37 ∥ P4.38 ∥ P4.39), 2026-08-05
+
+**P4.D49, P4.38, P4.39 CLOSED; P4.37 PARTIALLY UNIFIED — its verified
+pure half is on main, its unverified collector half is HELD on the
+preserved branch; the oracle baseline MOVES to `f7f1a956`.** Eighteen
+lane commits cherry-picked onto `unify/f7f1a956-almanack` in dependency
+order (D49 whole → P4.37 units 1–2 + 10 + the drift record → P4.38
+whole → P4.39 whole), versions recounted per the playbook (core
+0.0.467 → **0.0.474**, harness → **0.0.403**, host → **0.0.59**, web →
+**0.0.61**, tauri → **0.0.6**, SPA → **0.5.412**; the two held P4.37
+commits' bumps deliberately did NOT land), the two append-only docs
+union-merged.
+
+### The partial unification — why and how
+
+P4.37's own lane record says it plainly: units 3–9 + 11 (~3,500 lines
+of collectors/orchestrator/verbs) landed "with NO tier-2 differential
+behind it … the lane MUST NOT be unified until [unit 12] lands." The
+port discipline applied to ourselves: the unify cherry-picked ONLY the
+verified commits — units 1–2 (the pure core + the 7-case byte-exact
+`almanack_render_equivalence`, mutation-proven) and unit 10 (the
+`phase` frame kind + the wire-bytes-unchanged pins) — and the
+unverified half stays on **`claude/almanack-server-porting-693d77`
+(branch PRESERVED — do not delete)** as commits `a3623ac8` +
+`80b7c5da`. The resume list is in the order's status header. A side
+effect worth knowing: the status-log's union merge carried the HELD
+commits' lane records onto main along with the picked drift record
+(35 picked lines landed 167) — desirable here, since main now documents
+exactly what the branch holds, but check what a union actually landed.
+
+### The §3 review — what the unifier's read found
+
+The whole combined diff was read (the D49 spine + P4.39 generator +
+card/CSS load-bearing hunks by the unifier; three reviewer agents ran
+targeted v4-fidelity deep checks — D49 call-sites/repo, the render pure
+half probed live against Node 24, the SPA against v4's components —
+and the unifier verified their findings). **No blocking findings.**
+Three real ones fixed on the unify branch (`40e9eacd`):
+
+1. **The ELEVENTH stale 18-column `LLM_LOGS_DDL`**
+   (`crates/quilltap-web/tests/common/mod.rs`) — D49's sweep widened
+   ten copies and missed the shared one in the web test venue, so the
+   ported 20-column write failed into `log_llm_call`'s swallow for
+   every fixture that venue materializes and `chat_send_smoke` silently
+   lost its CHAT_MESSAGE llm_logs row. Exactly the fingerprint D49's
+   own new warning comment describes; widened, with the incident
+   recorded on the constant.
+2. **The report viewer's dropped typography**
+   (`.qt-almanack-report`): v4's dialog composes `qt-heading-2/3/4` +
+   `p`/`strong`/`em` classes that the CSS-block transcription carried
+   only the margins of — headings rendered at body size on the
+   feature's primary reading surface. Declarations carried inline (CSS
+   cannot compose a class), with the finding recorded in the block.
+3. The dropped v4 `qt-card p-6` nested card wrapper in the Almanack
+   card is now a DOCUMENTED divergence (it matches the sibling
+   Providers cards; v4's rewrite double-cards inside the collapsible).
+
+Recorded, not changed: the render reviewer's **space-form date-stamp
+domain** finding (v4's `new Date()` legacy fallback parses
+`"2026-08-05 09:07:03"`; v5's strict ISO-T parse renders "N/A"; real
+instances carry both stamp forms) — unreachable until the collectors
+land, so it is **item 4 of P4.37's resume list** with the instruction
+to pin it via a render-oracle case; the gatekeeper moderation-span
+sub-millisecond skew (cosmetic); `js_num`'s exponent-domain boundary +
+`format_ms`'s `Math.round(0.49999999999999994)` edge +
+`format_bytes`' fractional-sub-1 arm (all unreachable on real report
+data, enumerated by the reviewer for this record); the reviewer's
+residual-branch enumeration for the 7-case render corpus (empty-string
+falsy edges, NaN/∞ arms — matched by inspection, uncovered by the
+corpus). Two PRE-EXISTING divergences surfaced and filed as a follow-up
+chip (2026-08-05): the image-path `durationMs` zeros
+(`image_job_common.rs:256` hardcoded; `generate_image.rs:2183`
+structurally zero) — v4 measures, and the new harness `<ms>`
+normalization CONCEALS the divergence from every differential.
+
+### The unification wires
+
+- **W1 — the §1 contract, pre-diffed name-for-name** against the HELD
+  P4.37 `api/types.rs` (not just the contract text): `systemAlmanack*`
+  tags, camelCase fields, the optional-vs-default mirror asymmetry all
+  agree — the resumed lane inherits a clean contract.
+- **W2 — `P437_SERVER_LANDED` deliberately NOT flipped** (the server
+  half is held); the beat's comment now names the resumed-P4.37
+  dependency. The m6 Almanack row re-worded **SPA DONE / server OPEN**
+  (the P4.9G1 precedent's shape).
+- **W3 — §2 ownership verified on the union**: D49 never opened
+  `api/types.rs`/`engine.rs`/`creation_progress.rs`; the landed P4.37
+  half never opened `db/llm_logs.rs`; the uuid-remap corpus regen
+  re-emitted the committed file byte-identical.
+
+### The gate (all on `unify/f7f1a956-almanack`; v4 PINNED — its tree is
+DIRTY with the in-flight Taboo feature)
+
+- Every round oracle regenerated FRESH from the unifier's own pin
+  `/tmp/qt-v4-pin-unify-f7f1a956` (removed at cleanup): the
+  fresh-schema dump (**byte-identical to the committed re-dump**), the
+  provision oracle, almanack-render (baseline marker `f7f1a956`
+  asserted), llm-logs tier-2 (fixture + oracle), enclave-step tier-3
+  (fixture + oracle, TZ=UTC), all three llm-log-cleanup legs + both
+  distill legs (via the new `--globalSetup` zone pin; both Chicago legs
+  zone-marked and verified genuinely Chicago), the uuid-remap corpus +
+  oracle (**corpus byte-identical**), the llm-logs-routes +
+  image-aesthetics oracles over the committed inspector family, and
+  provider-registry (253 rows).
+- **Twelve differential families by name, `--nocapture`, all green,
+  zero differential SKIPs** (the one SKIP line is provisioning's
+  optional `QT_DBKEY_V5_OUT` artifact arm, not a case):
+  `provisioning` (2), `llm_logs_tier2` (4 rows incl. the three new
+  profile arms), `llm_logs_routes`, `image_aesthetics_routes`,
+  `enclave_step_tier3` (18 outcomes + 2 ticks incl.
+  `daily_budget_binds_pre_turn`), `llm_log_cleanup` (4, all three
+  legs), `distill_search_extraction` (26 × 2 legs, both zone-marked),
+  `backup_uuid_remap` (corpus re-emitted byte-identical),
+  `almanack_render` (7 byte-identical), `provider_registry`
+  (253 rows), `danger_gatekeeper_tier3`, `state_sql_tools`.
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets; `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the round's 72-variable
+  env block (auto-assembled by mapping /tmp artifacts to the vars each
+  test header names, intersected with runtime reads): **413 test
+  binaries / 1,867 passed / 0 failed, cargo exit 0.** The FIRST full
+  run had one red — `image_generation_tier3_equivalence`, a vault
+  mountPointId mismatch that is the committed-fixture-regen trap in
+  /tmp form: the lane-era fixture DBs (15:35) had been REBUILT after
+  their oracle (15:34), re-minting the vault UUIDs. Regenerating the
+  pair in ONE invocation from the unify pin turned it green with no
+  code change — the paired-artifact rule now applies to /tmp families
+  too, not only committed ones. (And the run that "passed" before it
+  was a lesson re-learned: a `| grep | head` pipeline both truncated
+  the failure line and masked cargo's exit code — the gate's numbers
+  come from a tee'd log with the exit checked directly.)
+- SPA: `ng test` **3,914 passed / 0 failed** (286 files); `ng build`
+  clean; full Playwright against the fresh dist + release binaries:
+  **180 passed / 1 skipped / 0 failed on the second full run** (the
+  skip is the gated Almanack beat, by design). Two full runs were
+  needed because each produced a DIFFERENT singleton intermittent —
+  run 1 failed the two terminal-pane beats (`salon-documents-flow`
+  stacking + the `workspace-flow` terminal pop-out), run 2 failed the
+  `salon-dialogs-flow` Rename Chat beat while the terminal pair
+  passed — all three on surfaces this round never touched, each
+  re-proven green in ISOLATION (17/17 and 8/8), and every spec green
+  in a full-suite context in at least one run. The shifting-singleton
+  shape under a heavily loaded machine is the documented
+  run-order-intermittent class; the three beats join the deflake pool
+  (recorded, not papered over — no assertion was weakened).
+
+### Standing after the round
+
+- **The resumed P4.37 is the top next candidate** (resume list in its
+  header); until it lands the Almanack card shows an empty
+  Previous Editions list and the four verbs do not exist.
+- **⚠ The Taboo drift is BREWING**: v4's tree is dirty with an
+  in-flight settings feature on PORTED chat-spine surfaces; v4 HEAD
+  `44e2e4fe` (docs-only, NO-PORT) is otherwise absorbed. Pin at
+  `f7f1a956` for every regen until the Taboo round runs.
+- Escalated to a maintenance lane: `context_summary_service_tier3` +
+  `memory_processor_tier3` oracle regens fail v4-SIDE at `f7f1a956`
+  (`no such table: llm_logs` — the P4.36 stale-mock class); plus the
+  image-durationMs chip, the `job_runner` thread-local tracing race,
+  and the recipe-rot tail.
+
+Versions after the round: core 0.0.474, harness 0.0.403, host 0.0.59,
+web 0.0.61, cli 0.0.5, quilltap-tauri 0.0.6, SPA 0.5.412.
