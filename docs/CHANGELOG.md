@@ -87,7 +87,9 @@ document stores, files and folders, provider models, plugin settings,
 and instance settings were all exportable and none of them could be
 reached from the screen. The list is now exhaustive by construction —
 a kind without a label no longer compiles — and the picker's order and
-wording match the reference app exactly.
+wording match the reference app exactly. None of the eight new kinds
+needs an extra wizard step: each is a two-choice, four-step flow, and
+the names the server composes are shown exactly as they arrive.
 
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
