@@ -55478,3 +55478,37 @@ rendering no note. **Both mutation-proven:** deleting the `@if (e.detail)`
 block reddened the detail case; appending `.sort()` to `previewKeys`
 reddened the order case (1 failed / 3,866 passed each time), both
 restored green.
+
+### Lane record — P4.D47 unit 4 (the compact-backup toggle + the wire mirror)
+
+v4 `7189a968`'s third SPA change. `BackupDialog` gained a `compact`
+signal defaulting to false — with v4's own reason carried as the comment,
+since the default is the interesting part: a backup usually returns to
+the SAME instance, where its search indexes are still valid, so
+rebuilding them costs time and money exactly when someone is recovering
+from something. The checkbox sits where v4 puts it (after the
+"will include" box, before the error block), disabled while the create is
+in flight, with contract C5's label and sub-label verbatim.
+
+`createBackup` now sends `{ type: 'systemBackupCreate', compact }` —
+always the key, as v4 `:33` does. The §1 mirror
+(`core-contract.ts` → `SystemBackupCreateRequest`) gained
+`compact?: boolean` with C2's edge semantics recorded: the server
+defaults it false, a malformed body is ABSENT rather than rejected, and
+only the JSON literal `true` engages compact. Optional in the mirror
+because the server side is a `#[serde(default)]` — P4.D46 owns
+`api/types.rs`; the unifier diffs the two by name.
+
+Three new `backup-restore-card.spec.ts` cases pin default-OFF, the C5
+copy (on collapsed whitespace, since Angular's template indentation
+reaches the DOM), and the payload in BOTH states. The pre-existing
+`{ type: 'systemBackupCreate' }` assertion moved to
+`{ ..., compact: false }`. **Mutation-proven:** replacing the sub-label's
+em dash with a hyphen reddened the copy case.
+
+⚠ Recorded, not chased: that one mutation run ALSO reported eight
+`courier-bubble.spec.ts` failures, which did not reproduce in the runs
+immediately before or after (six other full runs this lane were clean at
+281 files). Nothing in this lane touches that component. It reads as a
+pre-existing full-suite intermittent; flagged for whoever next sees it
+rather than diagnosed here.

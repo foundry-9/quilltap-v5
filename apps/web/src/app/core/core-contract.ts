@@ -5732,6 +5732,14 @@ export interface ChatRegenerateAvatarRequest {
  */
 export interface SystemBackupCreateRequest {
   type: 'systemBackupCreate';
+  /**
+   * P4.D47 / contract C2 (v4 `7189a968`, `backup/route.ts:23-28`). Opt-in
+   * compact archive: embeddings and every derived embedding table are left out
+   * and a restore enqueues a full re-index. Server-side default is false, and
+   * only the JSON literal `true` engages it — a malformed body is treated as
+   * ABSENT rather than rejected. The dialog always sends the key.
+   */
+  compact?: boolean;
 }
 
 /** v4 `POST /api/v1/system/restore?action=preview` — `{uploadId}` → `{preview}`. */

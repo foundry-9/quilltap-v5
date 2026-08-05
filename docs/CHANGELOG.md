@@ -96,6 +96,12 @@ server's per-item notes: a file whose contents did not travel says so
 before you import it, and a plugin's withheld secrets are named so you
 know what you will have to type back in.
 
+Create Backup offers a compact archive, off by default. It leaves the
+search indexes behind — a restore rebuilds them — for a considerably
+smaller file. Full fidelity stays the default on purpose: a backup
+usually returns to the same instance, where those indexes are still
+good, and rebuilding costs time and money at the worst possible moment.
+
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
 surface: embeddings no longer travel in exports, five new export types

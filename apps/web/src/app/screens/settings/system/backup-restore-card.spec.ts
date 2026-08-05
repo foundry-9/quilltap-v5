@@ -71,7 +71,7 @@ describe('BackupDialog', () => {
     buttonWith(fixture, 'Download Backup').click();
     await Promise.resolve();
     await Promise.resolve();
-    expect(dispatchData).toHaveBeenCalledWith({ type: 'systemBackupCreate' });
+    expect(dispatchData).toHaveBeenCalledWith({ type: 'systemBackupCreate', compact: false });
     expect(closed).toBe(true);
   });
 
@@ -85,6 +85,59 @@ describe('BackupDialog', () => {
     await Promise.resolve();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('disk full');
+  });
+});
+
+/**
+ * P4.D47 unit 4 — the compact-backup toggle (contract C2 + C5; v4
+ * `backup-dialog.tsx:21`, `:33`, `:119-127` at `7189a968`).
+ */
+describe('BackupDialog — the compact toggle', () => {
+  /** Contract C5's sub-label, verbatim. */
+  const SUB_LABEL =
+    'A considerably slimmer archive — the search indexes are left behind and rebuilt ' +
+    'after restoring. Everything you have written travels either way.';
+
+  function compactBox(fixture: ComponentFixture<unknown>): HTMLInputElement {
+    return (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+  }
+
+  it('is offered, unchecked, with v4’s copy', async () => {
+    const fixture = await mount(BackupDialog, coreStub());
+    expect(compactBox(fixture).checked).toBe(false);
+
+    const label = compactBox(fixture).closest('label') as HTMLElement;
+    expect(label.textContent).toContain('Compact backup');
+    // Angular's template indentation reaches the DOM as newlines/runs of
+    // spaces; compare on collapsed whitespace so the sentence itself is what
+    // is pinned.
+    expect(label.textContent?.replace(/\s+/g, ' ')).toContain(SUB_LABEL);
+  });
+
+  it('sends compact: false when left alone', async () => {
+    const dispatchData = vi.fn(async () => ({ backupId: 'b1' })) as unknown as CoreClient['dispatchData'];
+    const fixture = await mount(BackupDialog, coreStub(dispatchData));
+    buttonWith(fixture, 'Download Backup').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dispatchData).toHaveBeenCalledWith({ type: 'systemBackupCreate', compact: false });
+  });
+
+  it('sends compact: true once checked', async () => {
+    const dispatchData = vi.fn(async () => ({ backupId: 'b1' })) as unknown as CoreClient['dispatchData'];
+    const fixture = await mount(BackupDialog, coreStub(dispatchData));
+    const box = compactBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(compactBox(fixture).checked).toBe(true);
+
+    buttonWith(fixture, 'Download Backup').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dispatchData).toHaveBeenCalledWith({ type: 'systemBackupCreate', compact: true });
   });
 });
 

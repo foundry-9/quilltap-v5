@@ -14,6 +14,7 @@ import { triggerUrlDownload } from '../../../core/download-utils';
  * response has no `filename`, so the client fallback always runs (`:40`). Both
  * of v4's toasts are here (P4.28): the error one alongside the inline message
  * (v4 does both), and the success one right after the download is triggered.
+ * P4.D47 added v4 `7189a968`'s opt-in `compact` checkbox (default OFF).
  */
 @Component({
   selector: 'qt-backup-dialog',
@@ -36,6 +37,23 @@ import { triggerUrlDownload } from '../../../core/download-utils';
           <li>Plugin configurations and npm plugins</li>
         </ul>
       </div>
+
+      <label class="mt-4 flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          class="w-4 h-4 mt-0.5"
+          [checked]="compact()"
+          [disabled]="loading()"
+          (change)="compact.set($any($event.target).checked)"
+        />
+        <span>
+          <span class="text-sm qt-text-primary">Compact backup</span>
+          <span class="block qt-text-small qt-text-secondary">
+            A considerably slimmer archive — the search indexes are left behind and rebuilt
+            after restoring. Everything you have written travels either way.
+          </span>
+        </span>
+      </label>
 
       @if (error(); as msg) {
         <div class="mt-4 p-3 qt-bg-destructive/10 border qt-border-destructive rounded-lg">
@@ -75,12 +93,24 @@ export class BackupDialog {
 
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
+  /**
+   * v4 `backup-dialog.tsx:18-21`: full fidelity is the default, because a backup
+   * restores the same instance — its search indexes are still valid on arrival,
+   * and rebuilding them costs real time and money exactly when the user is
+   * recovering from something.
+   */
+  protected readonly compact = signal(false);
 
   protected async createBackup(): Promise<void> {
     this.error.set(null);
     this.loading.set(true);
     try {
-      const data = await this.core.dispatchData({ type: 'systemBackupCreate' });
+      // v4 `:33` sends `{ compact }` whether or not it is set; the server
+      // defaults it to false and only the literal `true` engages compact.
+      const data = await this.core.dispatchData({
+        type: 'systemBackupCreate',
+        compact: this.compact(),
+      });
       // ⚠ v5-only key (dogfood #59): the names of files whose bytes could not be
       // read, absent when there were none. v4 warns to the server log and tells
       // the operator nothing, so they discover the loss at RESTORE time — the
