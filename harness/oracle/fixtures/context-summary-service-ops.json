@@ -24,6 +24,11 @@
     },
     {
       "op": "fold_regular",
+      "kind": "fold-episode",
+      "response": "[{\"narrative\":\"On March 1st, Vaulted A and the crew finished the Blackwater run and split the take in the back room of the Copper Lantern.\",\"summary\":\"blackwater run take split\",\"when\":\"2026-03-01\",\"entities\":[\"Blackwater\",\"Copper Lantern\",\"Vaulted A\"],\"participants\":[\"Vaulted A\",\"User\"],\"importance\":0.7}]"
+    },
+    {
+      "op": "fold_regular",
       "kind": "title",
       "response": "\"A Wary Split of the Take\""
     },
@@ -31,6 +36,11 @@
       "op": "hard_rebuild",
       "kind": "fold",
       "response": "Active threads: rebuilt fresh. Resolved decisions: none. Emotional state: calm. Open questions: many."
+    },
+    {
+      "op": "hard_rebuild",
+      "kind": "fold-episode",
+      "response": "[]"
     },
     {
       "op": "hard_rebuild",
@@ -44,6 +54,11 @@
     },
     {
       "op": "fold_with_librarian_sweep",
+      "kind": "fold-episode",
+      "response": "not json at all"
+    },
+    {
+      "op": "fold_with_librarian_sweep",
       "kind": "title",
       "response": "Files Set in Order"
     },
@@ -51,6 +66,11 @@
       "op": "help_like_fold",
       "kind": "fold",
       "response": "Active threads: user setting up API. Resolved decisions: use Anthropic. Emotional state: neutral. Open questions: which model."
+    },
+    {
+      "op": "help_like_fold",
+      "kind": "fold-episode",
+      "response": "[]"
     },
     {
       "op": "help_like_fold",
@@ -64,6 +84,11 @@
     },
     {
       "op": "title_failure",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "title_failure",
       "kind": "title",
       "fail": "model provider outage: title unavailable"
     },
@@ -71,6 +96,11 @@
       "op": "check_gate_fires_fold",
       "kind": "fold",
       "response": "Active threads: long chat folded. Resolved decisions: keep going. Emotional state: engaged. Open questions: the ending."
+    },
+    {
+      "op": "check_gate_fires_fold",
+      "kind": "fold-episode",
+      "response": "[{\"narrative\":\"On March 1st, the party reached the long road's end and made camp at Wexford Cross.\",\"summary\":\"party camped at wexford cross\",\"when\":\"2026-03-01\",\"entities\":[\"Wexford Cross\"],\"participants\":[\"User\"],\"importance\":0.5},{\"narrative\":\"Later that night at Wexford Cross the watch changed twice without incident.\",\"summary\":\"quiet double watch change\",\"when\":\"2026-03-01\",\"entities\":[\"Wexford Cross\"],\"participants\":[\"User\"],\"importance\":0.3}]"
     },
     {
       "op": "check_gate_fires_fold",

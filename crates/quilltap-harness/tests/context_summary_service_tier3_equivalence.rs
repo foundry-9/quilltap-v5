@@ -2,8 +2,8 @@
 //! (`quilltap_core::services::context_summary` — v4 `generateContextSummary` /
 //! `invalidateContextSummaryIfMessageCovered` / `checkAndGenerateSummaryIfNeeded`).
 //!
-//! Both sides pin the model boundary identically: the fold / title / help-title
-//! completions by exact call key (the jest oracle resolves each real call to a
+//! Both sides pin the model boundary identically: the fold / fold-episode / title /
+//! help-title completions by exact call key (the jest oracle resolves each real call to a
 //! corpus rule and RECORDS the exact `provider|model|temperature|messages` entry
 //! it answered — including the deliberate title-failure entry, marked `fail`;
 //! this test replays those recorded entries through `CannedCompletionProvider`,
@@ -23,11 +23,24 @@
 //! [`RealContextSummarySeams`], so the fold now ALSO writes the Librarian summary
 //! whisper + the CONTEXT_SUMMARY / TITLE_GENERATION cost events into
 //! `chat_messages` (and bumps the chat's token aggregates); the oracle un-mocks
-//! the matching v4 writers for those ops. The `check`-op internal fold keeps the
-//! `NoopSeams` (this family drives the bare `check_and_generate_summary_if_needed`;
-//! the orchestrator's spine caller passes `FoldEpisodePassSeams` and its family
-//! pins the episode pass), so it posts none of those — the oracle gates its
-//! mocks the same way.
+//! the matching v4 writers for those ops. The `check` op drives
+//! `check_and_generate_summary_if_needed_with_seams` with [`FoldEpisodePassSeams`] —
+//! production's `run_summary_check` shape — so its internal fold runs the episode
+//! pass live but posts none of the Librarian / cost / mirror / refresh rows; the
+//! oracle gates its mocks the same way.
+//!
+//! P4.36 — the fold-time EPISODE pass is a comparand, not a suppressed no-op.
+//! v4 has always run `runFoldEpisodePass` inside `generateContextSummary`, but the
+//! oracle's completion mock had no rule for its extraction prompt, so every episode
+//! call died as "unrecognized system prompt" and neither side's pass could finish
+//! (v5's canned MISS additionally wrote the ruled P4.13 error row, which is what the
+//! 17-vs-11 stale red actually was). The corpus now answers `kind: 'fold-episode'`
+//! per op, so both sides run the pass to completion on all six folds.
+//!
+//! The ONE residual is the RULED P4.13 divergence: `title_failure`'s failed cheap
+//! call writes an `llm_logs` error row in v5 and nothing in v4. It is split off by
+//! `common::assert_ruled_failed_call_divergence` and asserted in BOTH directions
+//! (the `compression_tier3` pin's shape) — a convergence retires the pin loudly.
 //!
 //! W4.6b + Round-3 Group 7: the `generate` ops drive `RealContextSummarySeams`, so
 //! the fold now ALSO writes the Librarian summary whisper + the CONTEXT_SUMMARY /
@@ -38,7 +51,8 @@
 //! `chat_messages`. The oracle runs those seams REAL; the fixture is now two DBs
 //! (main + mount-index with a provisioned vault + seeded embedded summary). The
 //! mirror is diffed by the `doc_mount_file_links` path set; the refresh whisper by
-//! the `chat_messages` dump. The `check`-op internal fold keeps `NoopSeams`.
+//! the `chat_messages` dump. The `check`-op internal fold runs those four arms as
+//! no-ops (see the `FoldEpisodePassSeams` paragraph above).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -69,9 +83,9 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::context_summary::{
-    check_and_generate_summary_if_needed, generate_context_summary_with_seams,
-    invalidate_context_summary_if_message_covered, CheapLlmSettings, GenerateSummaryOptions,
-    RealContextSummarySeams,
+    check_and_generate_summary_if_needed_with_seams, generate_context_summary_with_seams,
+    invalidate_context_summary_if_message_covered, CheapLlmSettings, FoldEpisodePassSeams,
+    GenerateSummaryOptions, RealContextSummarySeams,
 };
 use quilltap_core::services::llm_logging::LogContext;
 use serde::Deserialize;
@@ -550,7 +564,19 @@ async fn context_summary_service_tier3_matches_oracle() {
                 json!(r)
             }
             "check" => {
-                let outcome = check_and_generate_summary_if_needed(
+                // P4.36: production's `run_summary_check` passes
+                // [`FoldEpisodePassSeams`], so the check op's INTERNAL fold runs
+                // the fold-time episode pass live. The oracle answers the same
+                // extraction call (v4 has always run it here — the case's mock
+                // simply had no rule for the prompt), so the pass is a comparand
+                // on both sides rather than a suppressed no-op.
+                let check_seams = FoldEpisodePassSeams {
+                    db: &db,
+                    embedding: &embedding,
+                    completion: &completion,
+                    executor: &executor,
+                };
+                let outcome = check_and_generate_summary_if_needed_with_seams(
                     &db,
                     &completion,
                     &executor,
@@ -562,6 +588,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                     None,
                     None,
                     true,
+                    &check_seams,
                 )
                 .await
                 .unwrap_or_else(|e| panic!("{}: check failed: {e:?}", op.name));
@@ -631,6 +658,16 @@ async fn context_summary_service_tier3_matches_oracle() {
     // W4.10b: diff the fold/title `llm_logs` rows (SUMMARIZATION + TITLE_GENERATION).
     let got_logs = common::dump_llm_logs(&db);
     let want_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
+    // The ONE remaining residual after P4.36's un-mock: the `title_failure` op's
+    // failed cheap call. v4 logs nothing on a throw; v5 writes the RULED P4.13
+    // error row. Split it off and assert the divergence in BOTH directions
+    // (`compression_tier3` carries the same pin), so a convergence retires the
+    // pin rather than hiding inside a filter.
+    let got_logs = common::assert_ruled_failed_call_divergence(
+        got_logs,
+        &want_logs,
+        "context_summary_service_tier3",
+    );
     assert_eq!(
         got_logs,
         want_logs,

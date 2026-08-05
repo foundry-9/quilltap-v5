@@ -55906,3 +55906,116 @@ already documented). **The container walk rides the next dogfood pass:**
 autonomous room scheduled for a local hour fires at that hour and same-day
 recall agrees with the operator's calendar. That walk is also where the
 `perl-base` CVE question from unit 1 wants an answer.
+---
+
+## Lane record — P4.36 unit 1: the fold-episode un-mock (the escalated stale red)
+
+**Branch** `claude/p4-36-oracle-unmock-c0907f`. v4 drift-checked at lane start:
+`git log 7189a968..HEAD` empty, tree clean — the baseline commit IS v4 HEAD, so
+every regen below ran straight from `~/source/quilltap-server` (no pinned
+worktree needed).
+
+### What the red actually was — the order's diagnosis, corrected in one place
+
+The order (following P4.34's escalation) said the red was 17-vs-11 in `llm_logs`
+with "ZERO rows carrying the P4.13 ruled error-row signature". **The 17-vs-11 is
+right; the zero is not.** P4.34's measurement missed them because the signature
+lives INSIDE the `response` JSON (`response.error != null`) and not in a column
+of its own — `llm_logs` has no `error` column. Measured here, on main's code
+against a freshly regenerated oracle: **all six extra rows carry it**, and they
+split into two unrelated causes.
+
+- **Five of them are the harness lying about v4** (the P4.20 class the order
+  named). `runFoldEpisodePass` is NOT mocked in the case and never was — v4 runs
+  it inside `generateContextSummary` on every fold. But the completion mock's
+  `classifyPrompt` had no arm for the episode-extraction prompt, so it threw
+  `canned completion: unrecognized system prompt`; v4's `sendToProvider` logs only
+  AFTER a successful response, so v4's pass died silently and logged nothing.
+  v5's `CannedCompletionProvider` had no entry either, so its pass died too — but
+  v5 writes the ruled P4.13 error row on a failed cheap call. **Both sides were
+  suppressing the same pass; only one of them left a receipt.**
+- **The sixth is the ruled P4.13 divergence itself** — the `title_failure` op's
+  deliberate provider throw. Nothing to fix; it is pinned (below).
+
+So the escalation's core call was correct — the fold pass was being suppressed —
+but the residual it predicted would vanish (the error rows) is exactly what the
+remaining one is.
+
+### What landed
+
+1. **The oracle answers the episode prompt.** `Kind` gains `'fold-episode'` and
+   `classifyPrompt` an arm keyed on the prompt's opening line ("You are
+   consolidating a batch of roleplay conversation turns into EPISODE records").
+   The `(op, promptKind)` lookup, the canned-key RECORD, and the Rust replay are
+   unchanged — the pass simply stops being answered with an exception.
+2. **Six new `completionRules`** in `context-summary-service-ops.json`, one per
+   folding op, spanning the arms rather than uniformly returning `[]`:
+   `fold_regular` one real episode (the provisioned-vault chat),
+   `check_gate_fires_fold` two (the `FOLD_EPISODE_CAP` boundary from below),
+   `fold_with_librarian_sweep` an unparseable answer (v4's `parseFoldEpisodes`
+   catch → success-with-zero), and `[]` — the case v4's own prompt calls the
+   common one — for the other three.
+3. **The Rust `check` op drives `FoldEpisodePassSeams`**, i.e. production's
+   `run_summary_check` shape, instead of the bare `NoopSeams` entry. The
+   `generate` ops already ran the pass through `RealContextSummarySeams`.
+4. **The one residual is pinned, not filtered away.**
+   `common::assert_ruled_failed_call_divergence` (the `compression_tier3` pin's
+   shape) splits the `title_failure` error row off v5's dump and asserts BOTH
+   directions — present on v5, absent on v4 — so a v4 convergence retires the pin
+   loudly instead of hiding inside a filter.
+
+Result: **18 v5 rows vs 17 v4 rows, the difference exactly the one ruled row**,
+and the family is GREEN. Zero production source changed (the mandate's
+expectation held).
+
+### Mutation proof (the D24 rule; both mutations line-targeted, occurrence-counted)
+
+| mutation | effect | result |
+|---|---|---|
+| baseline | — | GREEN |
+| A: the `check` op's seams back to `NoopSeams` (1 occurrence of `&check_seams,`) | chat 9's internal fold stops calling | RED — `llm_logs` **16 vs 17** |
+| B: `RealContextSummarySeams::run_fold_episode_pass` body no-op'd (the twin in `FoldEpisodePassSeams` deliberately left intact — P4.20's inert-twin trap; the two bodies are NOT textually identical, so a naive replace-all would have silently hit only one) | the five `generate` folds stop calling | RED — `llm_logs` **12 vs 17** |
+| A + B reverted | — | GREEN |
+
+### The P4.20 corollary sweep — no fourth case
+
+Every oracle case that can reach a fold was checked, not just the ones naming the
+pass. `generateContextSummary` / `checkAndGenerateSummaryIfNeeded` are reachable
+from exactly four cases plus the pass's own family:
+
+- `fold-episode-tier3` — drives `runFoldEpisodePass` directly; already live.
+- `courier-images-routes`, `memory-pipeline-jobs-tier3` — both already carry a
+  `startsWith('You are consolidating a batch')` arm.
+- `orchestrator-tier3` — answers EVERY cheap completion with the one corpus
+  response and records the key, so the episode call is answered (its text fails
+  `parseFoldEpisodes` → `[]`); no suppression.
+- `enclave-step-tier3` — routes on `system.includes('summar')`, which the episode
+  prompt satisfies via its `summary` field label; answered and recorded.
+
+`context-summary-service-tier3` was the last holdout. **No fourth case is
+suppressing a pass v5 runs live.**
+
+### Regen recipe (verbatim; also in the two file headers)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+TMPO=/tmp/qt-ctxsum-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/context-summary-service-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/context-summary-service-tier3.json" "$TMPO/fixtures/"
+cp "$V5W/harness/oracle/fixtures/context-summary-service-ops.json"   "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-ctxsum-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-context-summary-service-fixture.ts
+QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- context-summary-service-tier3
+```
+
+Freshness was checked the `oracle-regen-silent-stale-pass` way rather than
+assumed: the regenerated NDJSON carries **7** occurrences of the episode prompt
+marker (6 log rows + 1 recorded canned entry), which the previous artifact could
+not have contained at all. This family's fixture is BUILT, not committed, so the
+committed-fixture rule does not bind it — but the build must be re-run whenever
+`context-summary-service-tier3.json` moves, since the oracle and the Rust side
+both read the same built file.

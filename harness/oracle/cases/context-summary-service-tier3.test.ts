@@ -10,16 +10,16 @@
  * single main-database fixture, with ONLY these seams stubbed:
  *
  *   - `createLLMProvider` — the returned provider's `sendMessage` resolves each
- *     fold / title / help-title call by (op, promptKind), RECORDS the exact
- *     `provider|model|temperature|messages` canned key it answered (emitted as
+ *     fold / fold-episode / title / help-title call by (op, promptKind), RECORDS the
+ *     exact `provider|model|temperature|messages` canned key it answered (emitted as
  *     `kind: "canned"` rows), and returns the op's fixed content + usage — or
  *     THROWS the op's canned error (the title-failure branch). The Rust side
  *     replays exactly those recorded entries through `CannedCompletionProvider`,
  *     so any prompt/selection/temperature divergence surfaces as a canned-miss.
  *   - `getApiKeyForCheapLLMSelection` → a constant (host-side; the Rust boundary
  *     starts at the provider call).
- *   - `logLLMCall` runs REAL (W4.10b): the fold + title cheap calls land
- *     SUMMARIZATION / TITLE_GENERATION rows, dumped + diffed by the harness.
+ *   - `logLLMCall` runs REAL (W4.10b): the fold + fold-episode + title cheap calls
+ *     land SUMMARIZATION / TITLE_GENERATION rows, dumped + diffed by the harness.
  *   - W4.6b + Round-3 Group 7: `postLibrarianSummaryAnnouncement`,
  *     `createContextSummaryEvent` / `createTitleGenerationEvent`, the vault MIRROR
  *     (`writeConversationSummaryToVaults`) and the relevant-conversations REFRESH
@@ -33,10 +33,21 @@
  *     1.0 and surfaces the pre-seeded prior summary (a `relevant-conversations`
  *     whisper into `chat_messages`).
  *
+ * P4.36: the fold-time EPISODE pass (`runFoldEpisodePass`) is NOT mocked and never
+ * was — but until P4.36 the completion mock had no rule for its extraction prompt,
+ * so every episode call died as an "unrecognized system prompt" and the pass was
+ * suppressed in all but name. It is now answered by the same `(op, promptKind)`
+ * lookup (`kind: 'fold-episode'`), so v4's pass runs to completion on EVERY fold —
+ * the five `generate` ops AND the `check` op's internal fold — and the Rust side
+ * drives `FoldEpisodePassSeams` on the `check` op to match production's
+ * `run_summary_check`. The corpus's episode answers span the arms: one real episode
+ * (`fold_regular`, the provisioned-vault chat), two (`check_gate_fires_fold`), the
+ * empty `[]` v4's own prompt calls the common case, and one unparseable answer.
+ *
  * Everything else — the cheap-LLM selection, the execution pipeline, the fold /
- * title tasks, the turn partition, the gate, the title enqueue, the sweep, the
- * mirror + refresh, the repositories — is v4's REAL code against the REAL two-DB
- * fixture.
+ * fold-episode / title tasks, the turn partition, the gate, the title enqueue, the
+ * sweep, the mirror + refresh, the repositories — is v4's REAL code against the
+ * REAL two-DB fixture.
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -82,7 +93,7 @@ function canonicalizeRows(opts: {
   return { table, columns, rows };
 }
 
-type Kind = 'fold' | 'title' | 'help-title';
+type Kind = 'fold' | 'title' | 'help-title' | 'fold-episode';
 interface CompletionRule {
   op: string;
   kind: Kind;
@@ -171,11 +182,11 @@ async function main(): Promise<void> {
   let currentOp = '';
   // The Librarian re-post + cost events (W4.6b) are driven by the ported
   // `RealContextSummarySeams` ONLY at the `generate_context_summary` entry point.
-  // This family's `check` ops drive the bare `check_and_generate_summary_if_needed`
-  // (`NoopSeams`), so the `check`-op folds must NOT post those rows. (The
-  // orchestrator's spine check passes `FoldEpisodePassSeams` — episode pass live,
-  // these arms still no-op — and the orchestrator family pins that.)
-  // Mirror that here: run the real writers only for `generate` ops.
+  // This family's `check` ops drive `check_and_generate_summary_if_needed` with
+  // `FoldEpisodePassSeams` (P4.36 — production's `run_summary_check` shape): the
+  // fold-time EPISODE pass runs live there, but the Librarian re-post / cost-event /
+  // mirror / refresh arms stay no-ops. So the `check`-op folds must NOT post those
+  // rows. Mirror that here: run the real writers only for `generate` ops.
   let currentOpUsesRealSeams = false;
 
   // Classify the system prompt into a rule kind by its opening line (byte-stable
@@ -191,6 +202,16 @@ async function main(): Promise<void> {
       )
     )
       return 'help-title';
+    // P4.36: the fold-time EPISODE pass (`runFoldEpisodePass` →
+    // `extractEpisodesFromFold`). v4 runs it inside `generateContextSummary` on
+    // EVERY fold — including the internal fold a `check` op drives — so it is
+    // answered here rather than left to fail as an unrecognized prompt.
+    if (
+      system.startsWith(
+        'You are consolidating a batch of roleplay conversation turns into EPISODE records'
+      )
+    )
+      return 'fold-episode';
     return null;
   }
 

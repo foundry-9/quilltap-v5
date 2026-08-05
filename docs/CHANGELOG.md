@@ -127,6 +127,15 @@ copies: identical, including the streaming event types the upgrade put at
 risk. The seven differentials that consume them pass unchanged. Nothing
 to fix, but the check is the point: the last time an SDK was upgraded on
 a claim of "no wire change," the proving run turned up two real bugs.
+Retired a stale mock in the context-summary differential (test-only; no
+shipped behavior changed). The fold-time episode pass — which turns a
+just-folded stretch of conversation into dated episode memories — runs in
+the reference app on every fold, and it runs here too. But the test's
+canned model had no answer for the episode prompt, so on both sides the
+call died as "unrecognized prompt" and the pass was suppressed in all but
+name; the resulting row-count mismatch had been sitting as an unexplained
+red. The canned model now answers it, so the pass runs to completion on
+every fold in the corpus and both sides are compared on what it does.
 
 Planned the next porting round (docs only). The reference app shipped
 seven commits, headlined by an import/export overhaul on already-ported
