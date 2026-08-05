@@ -28,7 +28,12 @@ import { E2E_PASSPHRASE } from './support/env';
  * verb that is DEFINED-but-refusing from one that works, and would silently
  * activate the beat into guaranteed failure (the standing e2e rule).
  *
- * Flip to `true` at unification.
+ * ⚠ NOT flipped at the `f7f1a956` unification (2026-08-05): P4.37's verified
+ * pure half (renderer + phase manifest + the progress `phase` frame) landed,
+ * but the collectors / verbs / host wire were HELD BACK pending their tier-2
+ * differential (P4.37 unit 12 — the lane's own record forbade unifying them
+ * unverified; branch `claude/almanack-server-porting-693d77`). Flip to `true`
+ * when the RESUMED P4.37 lands the four verbs + the `almanack_host` wire.
  */
 const P437_SERVER_LANDED = false;
 
