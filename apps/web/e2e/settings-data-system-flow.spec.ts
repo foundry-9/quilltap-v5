@@ -42,8 +42,11 @@ const TEMP_PASSPHRASE = 'a temporary interlude';
  *
  * Flip to `true` at unification; the manifest's own `compact: true` flag is
  * P4.D46's differential territory, not this beat's.
+ *
+ * FLIPPED at the `7189a968`-round unification (2026-08-05): the D46 server
+ * surface is on the same tree, so the beat runs live.
  */
-const D46_SERVER_LANDED = false;
+const D46_SERVER_LANDED = true;
 
 /**
  * The delete-all beat and its `DELETE_ALL_SERVER_LANDED` gate MOVED to

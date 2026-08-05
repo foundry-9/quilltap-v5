@@ -86,12 +86,14 @@ fn js_num(f: f64) -> Value {
 /// permanently red on the row COUNT alone — `compression_tier3` (7 vs 6),
 /// which two sweeps counted as an unexplained "content divergence".
 ///
-/// ⚠ `context_summary_service_tier3`'s 17-vs-11 looks like the same shape and
-/// is NOT: P4.34 measured ZERO rows with a non-null `error` on either side
-/// there, and v5's rows are a strict superset of v4's (five episodic-extraction
-/// `SUMMARIZATION` calls plus one `TITLE_GENERATION`). Do not reach for this
-/// helper to make that family green — its divergence is undiagnosed and
-/// escalated.
+/// `context_summary_service_tier3`'s old 17-vs-11 escalation is RESOLVED
+/// (P4.36, 2026-08-05) and its history corrected: P4.34's "zero error rows"
+/// measurement missed them because the signature lives INSIDE the `response`
+/// JSON, not in a column. Five of the six extras were a stale oracle mock
+/// (the fold-episode extraction prompt had no canned arm, so BOTH sides'
+/// passes died — only v5 left a receipt); the sixth is exactly this ruled
+/// divergence, and that family now calls this helper legitimately
+/// (`context_summary_service_tier3_equivalence.rs`, the `title_failure` op).
 ///
 /// The signature is exact and cannot collide with a success row: v5's success
 /// arms always log `response.error = null`, and `log_failed_call` is the only

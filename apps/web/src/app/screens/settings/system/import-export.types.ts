@@ -61,8 +61,10 @@ export const ENTITY_TYPE_LABELS: Record<ExportEntityType, string> = {
 /**
  * v4 `utils.ts:6-25` — camelCase preview key → kebab export type. The fallback
  * is v4's `mapping[key] || key`: an unrecognized key passes through unchanged
- * (and then misses the label map, which is why every caller keeps its own
- * `?? key`).
+ * and then misses the label map. (v5's `keyLabel` caller renders the raw key
+ * via `?? key` where v4's `ImportPreviewStep.tsx:104` renders an EMPTY heading
+ * — a pre-existing, unreachable-for-known-keys divergence, recorded at the
+ * `7189a968` unification rather than silently re-described as v4's shape.)
  */
 export function toExportEntityType(key: string): ExportEntityType {
   const map: Record<string, ExportEntityType> = {
