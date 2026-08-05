@@ -9,6 +9,173 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## ⚠ v4 DRIFT observed during the P4.37 lane — pin the oracle worktree from here, 2026-08-05
+
+Re-checked at lane end (the standing rule: drift-check at both ends, because v4
+ships daily). Two things moved, and only one is benign:
+
+1. **v4 HEAD moved `f7f1a956` → `44e2e4fe`.** That commit is DOCS ONLY
+   (`docs(prompt): rewrite PROMPT_ARCHITECTURE for the current builder` — a
+   rewrite of the prompt-architecture document plus the command file it is
+   generated from). No `lib/`, no `app/`, no dependency change. **NO-PORT**; the
+   baseline is unaffected.
+2. **⚠ v4's working tree is now DIRTY with the in-flight "Taboo" feature**, and
+   it touches PORTED surfaces: `lib/chat/context-manager.ts`,
+   `lib/chat/context/system-prompt-builder.ts`, `lib/instance-settings/index.ts`,
+   `lib/schemas/settings.types.ts`, `lib/llm/cache-key.ts`,
+   `lib/tools/handlers/self-inventory/builders.ts`, plus a new
+   `app/api/v1/settings/taboo/` route, a `TabooSettings` component, `help/taboo.md`
+   and a completed feature doc. At lane START the only sign of it was ONE
+   untracked markdown file (`docs/developer/features/taboo.md`), which this
+   lane's opening record flagged as "v4 brewing its next drift"; by lane end it
+   had grown into a whole feature.
+
+**Consequences, in force immediately:**
+
+- **Every oracle regeneration from now on — including unit 12's — MUST run from
+  a detached worktree PINNED at `f7f1a956`** (`oracle-regen-pinned-v4-worktree`),
+  not from `~/source/quilltap-server`. A regen against the dirty checkout would
+  silently mix un-landed Taboo behaviour into the corpus.
+- This lane's own oracle (`almanack-render`) was generated EARLY, while the
+  checkout was clean at `f7f1a956`, so the committed NDJSON is untainted. The
+  Rust side additionally asserts the NDJSON's `baseline` marker, so a later regen
+  at a different pin fails loudly rather than passing silently.
+- **A Taboo drift catch-up is OWED** once v4 lands it — the system-prompt
+  builder, instance settings, the cache key and the self-inventory builders are
+  all ported surfaces, so it is not a docs-only round.
+
+## Lane record — P4.37 lane gate, 2026-08-05
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-D warnings` clean on BOTH feature sets (default and
+`quilltap-core/native-transport`); `cargo build --release` clean;
+`cargo test --workspace --no-fail-fast` with `QT_ORACLE_ALMANACK_RENDER` set:
+**413 test binaries / 1,867 tests / 0 failed, zero SKIP lines**.
+`almanack_render_equivalence` re-run BY NAME with `--nocapture`: "7 cases
+byte-identical" — it RAN, it did not skip.
+
+No `apps/web` change, so **no SPA gate is owed** (the §1 TypeScript mirror is
+P4.38's file; the unifier diffs the contract name-for-name).
+
+**The gate does not make this lane unifiable.** It proves the tree compiles,
+lints and does not regress; it does not prove the collectors match v4, because
+the differential that would (unit 12) is not written. See the units 3–9 + 11
+record above for the exact remaining scope.
+
+Versions: core 0.0.470, harness 0.0.400, web 0.0.61, host 0.0.59 (the host bump
+is for its single `almanack_host: None` line).
+
+## Lane record — P4.37 units 3–9 + 11 (the collectors, the orchestrator, the verbs) — ⚠ UNVERIFIED, 2026-08-05
+
+Branch `claude/almanack-server-porting-693d77`. **Read the status line first:
+this commit lands ~3,500 lines of ported collector/orchestrator/API code with
+NO tier-2 differential behind it. Unit 12 (the `almanack-*` fixture family and
+the data/markdown/route differential) is OPEN, and the lane MUST NOT be
+unified until it lands.** Every claim below about equivalence with v4 is a
+claim about the *transcription*, verified by reading v4's source and by the
+type system — not by the oracle, which is exactly the standard the port says
+is insufficient. The pure half (units 1–2) IS oracle-verified; this half is
+not.
+
+### What landed
+
+- `almanack/db.rs` — the three partition doors over `Db::read_{main,
+  mount_index,llm_logs}`, v4's fail-soft `collect()` wrapper, `num()` (with
+  its `Number(string)` and `isFinite` arms unit-tested), and `in_clause`
+  (whose empty `(NULL)` form deliberately matches no row, as v4's does).
+- `phase1_premises.rs` — runtime/security/backups/migrations.
+  `AlmanackPaths` + `RuntimeFacts` are INPUTS rather than discoveries, which
+  is what will let the differential pin every machine-dependent value.
+  The backup-filename parser is v4's three regexes transcribed, with the
+  prefix-ordering comment carried; its unit test records that the ordering is
+  belt-and-braces (the loose main pattern cannot actually match a prefixed
+  name, since `llm-` is not four digits).
+- `phase2_machinery.rs` — **the phase with real divergences**, all recorded in
+  its header: v5 has no plugin loader, no server-side theme registry, and does
+  not make a live model-discovery call from inside a diagnostic report. The
+  DB-derived figures (plugin-config rows, per-character plugin data, the model
+  cache, api-key usage, the three designated profiles, MCP servers off the
+  `qtap-plugin-mcp` config row, active theme + colour mode) are ported exactly;
+  the registry-derived lists are empty and render through v4's own `*None*`
+  arms. Provider/api-key-type/image/embedding-provider data comes from v5's
+  compiled-in manifest registry, which IS its provider registry.
+- `phase3_ledgers.rs` — twelve main-DB roll-ups, v4's SQL verbatim. The
+  `??` chain over `chat_settings` is expressed with a small JSON-path helper
+  family whose semantics are JS's: absent AND explicit-null both take the
+  default, and `jtruthy` treats `""` as falsy (v4's `!!someId`). Stale-chat
+  eligibility goes through the SAME `resolve_stale_chat_days` + `is_stale`
+  pair the maintenance sweep uses, per v4's reasoning that the number the
+  report prints and the number the sweep acts on must not be able to disagree.
+  One recorded divergence: v4's `promptTemplates.findAllForUser()` SEEDS
+  built-ins, so generating a report can write rows; v5's report is read-only.
+- `phase4_scriptorium.rs` — the mount-index tour, including the custom-tools
+  inventory over the existing `pascal::roster::list_all_custom_tools`. v4's
+  preset-name slice is carried faithfully (it slices by the CONSTANT's length
+  rather than locating the separator).
+- `phase5_personae.rs` — the top ten with v4's four-key comparator, and both
+  cross-database joins done in application code after one query per side.
+- `phase6_wire_records.rs` — the llm-logs aggregates as raw SQL over the
+  llm-logs connection, per §2 of the order: `db/llm_logs.rs` is NOT touched.
+  The `hasProfileAttributionColumns` PRAGMA probe is what makes this lane and
+  P4.D49 runtime-independent — the approximate `provider || '/' || modelName`
+  arm on any DB without the columns, the exact arm on any DB with them.
+  `getTotalTokenUsage` is expressed as SQL with `usage IS NOT NULL`, which is
+  what v4's `$exists: true` lowers to; the header carries v4's note that the
+  `$ne: null` beside it used to make the method return zeroes on every install
+  and that the Almanack rendering this number is how that was traced.
+- `almanack/mod.rs` — the orchestrator. Phases announce in order; every
+  collector is wrapped in `collect()` with v4's EXACT fallback shape. v4 joins
+  each phase's collectors in a `Promise.all` because they are awaited
+  round-trips; v5's are synchronous pooled reads and run in sequence — same
+  queries, same results.
+- `api/almanack.rs` + the four `SystemAlmanack*` verbs + the
+  `capabilities-report-*` web-edge arms including the `download=true` leg.
+  **Phase 7 lives in the API layer, not the core**: v4 passes a `persist`
+  callback, but v5's reads are synchronous while both writes (the Uploads-mount
+  blob and the `files` row) must go through the writer task, so the split falls
+  at the read/write boundary instead. `reportId` is the FILES-ROW id — v4's own
+  404 fix, and load-bearing for list/get/delete.
+
+### What is OPEN — and what that means
+
+1. **Unit 12: the `almanack-*` fixture family + the tier-2 differential.**
+   Not started. The plan the next lane should follow: fork
+   `harness/oracle/fixtures/build-system-data-fixture.ts` into
+   `build-almanack-fixture.ts` (it already seeds ~90% of what the report reads
+   — user, keys, profiles, characters WITH vaults via the real create, chats,
+   messages, memories, project + group + their official stores, files,
+   text-replacement rules, chunks, provider models, prompt templates, plugin
+   configs, per-character plugin data, chat documents, embedding status,
+   background jobs in every status, llm-logs) and ADD what the Almanack needs
+   beyond it: `terminal_sessions`, `help_docs`, `migrations_state`, an
+   autonomous chat with schedule/budgets/visibility, memories carrying the
+   episodic columns, the vault documents (`properties.json`, `metadata.json`,
+   `Wardrobe/`, `Scenarios/`, `Mail/` with `alerted: false`, `photos/`,
+   `Tools/*.tool.json` plus a `.settings.json` preset), `state.json` in the
+   project/group/general stores, and llm-logs rows carrying `durationMs`,
+   `cacheUsage` and an `IMAGE_GENERATION` type. The SECOND llm-logs variant
+   (the approximate-attribution arm) is the same DB with the two profile
+   columns dropped — v4's SQLite is 3.53, so `ALTER TABLE … DROP COLUMN`
+   suffices. The fork must NOT reuse the `system-data-*` output paths (P4.D49's
+   regen sweep and this lane must never contend), and the order's
+   fallback-coverage assertion — no section may render its `collect()` fallback
+   in a happy-path case — is what turns the fixture from decoration into proof.
+2. **The host wire.** `EngineAssembly.almanack_host` is `None` in
+   `quilltap-host`, so all four verbs answer the loud not-assembled refusal:
+   the feature is UNREACHABLE in production today. The host change is one
+   `AlmanackHost` impl supplying paths (the three DB files, data dir, backups
+   dir), runtime facts, `getHasUserPassphrase()`, the crate version, `NODE_ENV`
+   and a clock, plus the disk storage backend it already builds for
+   `backup_host`. The single `almanack_host: None` line is deliberately the
+   ONLY `quilltap-host` change this lane makes.
+
+### Drift check
+
+v4 HEAD is exactly `f7f1a956` at lane start and at lane end; `git status
+--short` shows one untracked feature doc (`docs/developer/features/taboo.md`)
+and nothing else, so no pinned worktree was needed. That untracked doc is v4
+brewing its next drift — worth a look before the next round.
+
 ## Lane record — P4.37 unit 10 (the progress generalization), 2026-08-05
 
 Branch `claude/almanack-server-porting-693d77`. v4 generalized
