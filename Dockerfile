@@ -87,8 +87,19 @@ RUN npm run build
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
+# `ca-certificates` first (its postinst is the last thing in the image that
+# could want perl), THEN purge `perl-base`. Debian marks it Essential, so the
+# purge needs --force-remove-essential; nothing in this image is perl, and it
+# carries a set of critical/high CVEs with no fix in Debian 12 — the same purge
+# v4 makes in its own image (`f31598c0`). Verified on the resulting layer: perl
+# is gone, /etc/ssl/certs/ca-certificates.crt survives intact (285 entries), and
+# /usr/share/zoneinfo is untouched — the two things the runtime actually needs
+# (TLS roots for provider calls, tzdb for QUILLTAP_TIMEZONE). Note this makes
+# `apt-get install` inside a running container unreliable; that is acceptable
+# for a dev-grade image and is what v4 accepts too.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
+    && dpkg --purge --force-remove-essential perl-base \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/quilltap-web /usr/local/bin/quilltap-web

@@ -57600,3 +57600,64 @@ QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
 **Fixtures:** none consumed, none delivered, none invalidated. The nine
 committed manifests are byte-identical to what was on main, so no other
 oracle family is disturbed.
+
+### P4.39 tier 2 — the `perl-base` CVE purge (TAKEN)
+
+P4.D48 left this as a follow-up it could not claim: purging perl "wants
+an actual image build plus a scan to claim, which this lane's gate
+deliberately does not run." This lane's gate can, so it ran.
+
+**The change** is one `dpkg --purge --force-remove-essential perl-base`
+chained onto the runtime stage's existing `apt-get` line, deliberately
+placed AFTER `ca-certificates` installs (its postinst is the last thing
+in the image that could plausibly want perl). `--force-remove-essential`
+alone is sufficient — `--force-depends` was tried first and is not
+needed, because `apt-cache rdepends --installed perl-base` in
+`debian:bookworm-slim` returns nothing: Essential packages are not
+declared as dependencies, which is exactly why the purge is clean.
+
+**What was at risk and what was checked.** The two things v5's runtime
+genuinely needs from the base image are the TLS root bundle (every
+provider call) and `/usr/share/zoneinfo` (the Dockerfile's own comment
+warns against losing it). Both survive: `ca-certificates.crt` intact at
+285 entries in `/etc/ssl/certs`, `America/Chicago` present, and a
+container booted with `QUILLTAP_TIMEZONE=America/Chicago` logs
+`process timezone set … source=QUILLTAP_TIMEZONE`. `command -v perl` in
+the finished image returns nothing.
+
+**The container walk, re-run on the purged image** (P4.10's exit-gate
+sequence): `docker build` clean → 324 MB image → banner "The parlour is
+furnished from /usr/local/share/quilltap/spa" → `/` serves the REAL
+Angular setup screen (no placeholder markers; `/health` 423
+`needs-setup`) → setup → the one-time pepper card with its
+`ENCRYPTION_MASTER_PEPPER` note → **the Home dashboard inside the
+workspace-tab shell with Lorian and Riya's avatars rendered** → `docker
+restart` → `/health` 200 healthy, job pump ticking
+(`LLM_LOG_CLEANUP`, `AUTONOMOUS_ROOM_SCHEDULE_TICK`) → Home again. The
+CLI half: `quilltap --version` 0.0.5, `db --tables` 32 tables,
+`SELECT COUNT(*) FROM memories` **42** (the P4.4u4 seed exactly),
+characters Lorian + Riya, and `db --write` refused with "held by **PID
+1** on this host" — the single-writer rule across `docker exec`, as
+designed. The walk was run WITHOUT a passphrase, so the restart leg
+lands unlocked rather than on the unlock gate; that gate leg is
+orthogonal to a perl purge and stands proven from P4.10.
+
+**⚠ A build-environment trap worth recording, NOT caused by this
+change.** `docker build` OOM-killed the first attempt —
+`ResourceExhausted: cannot allocate memory`, SIGKILL on `rustc` compiling
+`quilltap-web`. Docker Desktop on this machine allocates the VM **7.75 GB
+but 14 CPUs**, and the Dockerfile deliberately runs the Rust and `ng
+build` stages CONCURRENTLY (its header advertises this as a feature), so
+14 parallel `rustc` jobs plus a Node build share 7.75 GB. The fix needs
+no Dockerfile edit — build the SPA stage first
+(`docker build --target spa -t <tag> .`), then the full build, and
+BuildKit reuses the cached stage so the Rust stage gets the VM alone.
+Both then succeed. Left as an invocation note rather than a `-j` cap in
+the Dockerfile: capping jobs would slow every build everywhere to work
+around one host's memory allocation, and P4.10's dev-grade decree is
+explicitly against tuning. Anyone hitting this either raises Docker
+Desktop's memory or builds the stages in two calls.
+
+**Not claimed:** no CVE scanner was run (none is installed here). The
+claim is narrower and checkable — the package carrying the CVEs is gone
+and the image still does everything P4.10's walk asks of it.

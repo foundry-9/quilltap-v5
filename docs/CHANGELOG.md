@@ -75,6 +75,17 @@ Mirrored the Almanack's client contract into the web app: the four
 dispatch verbs (generate, list, get, delete), the new `phase` progress
 frame on the shared event stream, and the seven-phase manifest whose
 labels and timing weights must match the server's exactly.
+Purged `perl-base` from the Docker image. Debian's slim base ships it as
+an Essential package carrying a set of critical and high CVEs with no fix
+available, and nothing in the image is perl — the runtime is two compiled
+Rust binaries. The TLS root bundle and the timezone database, the two
+things the server actually needs from the base image, are untouched;
+verified by building the image and walking a fresh container through
+setup, the seeded home dashboard, a restart, the in-container CLI, and
+`QUILLTAP_TIMEZONE=America/Chicago` resolving. Installing packages inside
+a running container is no longer reliable, which is an acceptable trade
+for a dev-grade image.
+
 Repaired the provider-manifest generator so regenerating the nine
 built-in provider manifests no longer silently drops each provider's
 image-generation model list. The list had been added to the committed
