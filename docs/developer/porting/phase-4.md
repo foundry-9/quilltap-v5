@@ -3906,6 +3906,22 @@ findings: the round record in `status-log.md`.
 
 **Next candidates, in rough value order:**
 
+0. **⚠ AN INBOUND v4 DRIFT IS EXPECTED, ON PORTED SURFACE — check for it
+   FIRST.** The 2026-08-04 dogfood walk produced a v4-side design spec,
+   `~/source/quilltap-server/docs/developer/features/import_export_update.md`
+   (uncommitted at hand-off), which the human intends to implement: entity
+   exports gain the three unexposed types (projects / groups / document
+   stores), `memory` records stop carrying `embedding` (writer AND reader —
+   an existing archive's vectors must be DROPPED, not trusted), and possibly
+   a re-embed at the end of restore. **All of that is already-ported
+   surface.** Named blast radius: `system_export_equivalence`,
+   `system_import_equivalence`, `system_import_state`, the restore families
+   if §3a lands, and the SPA's export/import dialogs for the picker's type
+   list. **Drift-check before planning anything else**; if it has landed,
+   this is the round. Note the port has one deliberate divergence living in
+   this exact family (`EXPECTED_DIVERGENCES` — the sparse-array blob read,
+   the three ruled restore bugs, `REPLAY_DEDUPE`, the store-identity arms):
+   re-check each against the new v4 rather than assuming they survive.
 1. **A dogfood pass** — owes this round's live proofs (the picker on
    real data; the de-asterisked whispers in a real chat) plus the
    standing queue: the orphan reaper against the Friday copy's 43+118,

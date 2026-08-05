@@ -90,6 +90,63 @@ catch, since every fixture is built fresh.
 | 50 | The Open-Document picker in a project chat cannot reach that project's own document store — and **"Look everywhere" doesn't help**: every OTHER project's store lists, and only the conversation's own project is missing | **Port divergence — a dropped affordance, made invisible by a server contract that depends on it.** `accessible_stores_body` (`api/documents.rs:1131`) deliberately moves the chat project's official mount OUT of `stores` and returns it as a separate `projectLibrary` field — *"surfaced separately (left-column button)"* — and it stays withheld under look-everywhere because its id is already in `seen`. v4 renders that field as a **Project library** button in the picker's left column (`DocumentPickerModal.tsx:487-501`), with two arms: an official store → browse that mount (`handleSelectScope('document_store', …)`), no official store → the legacy `project` scope. v5 built neither, so the withheld store had no path at all. The wire was never the problem: the server returns the field and `document-api.ts:103` already parsed it — only the picker never read it. **Root cause is a deferral drawn too wide:** the picker's header deferred "the project/general FileBrowser path", which is genuinely needed for the legacy arm only; the store-backed arm is an ordinary mount browse v5 has had since P4.6x | **FIXED** `<commit>` — the button renders for the store-backed arm and browses the project mount through a shared `openMount` (extracted, not duplicated); `projectLibrary` is carried across a look-everywhere refetch so the button can't flicker away. Five specs: renders, browses (asserting `listMountFiles('pm1')`), survives the toggle, and both absence guards (no project library, standalone surface). **Mutation-proven** — dropping the carry reds exactly the three positive cases. The legacy no-official-store arm stays deferred and shows no button rather than a broken one; the header comment now scopes the deferral correctly. **E2E deferred with its requirement named** — no seeded chat in either the salon or projects instance lives inside a project with an enabled official mount, so the beat needs new fixture seeding |
 | 49 | A side-effect counter cannot bootstrap: an effect valued `{{state.encounters.count}} + 1` is skipped on every run of a fresh key (`· effect N skipped: expression did not evaluate: … did not resolve to a value`), and the guard forms an author reaches for — `{{state.encounters && state.encounters.count \|\| 0}}` — are not in the grammar either | **Faithfully ported v4 limitation, verified against the oracle in both halves.** The grammar is `+ - * /`, parentheses, literals and `{{ref}}` substitution and nothing else — no logical operators, no member access, no calls (v4 `lib/pascal/expressions.ts:52,121`; v5's port matches token for token). An unresolvable ref throws `{{…}} did not resolve to a value` and the effect is skipped fail-soft (v4 `expressions.ts:367-368` — the identical sentence), which v4's own feature doc states normatively: *"A `resolveRef` returning `undefined` (absent metadata key, non-primitive state value, no consult) → eval failure"* (`pascal-custom-tool-enhancements.md:174`). **The consequence is structural, not cosmetic:** the only thing that would create the key is the effect that keeps skipping, and `EffectWhen`'s subjects (`roll`/`params`/`metadata`/`llm`/`outcome` + comparators) include **no state subject**, so no "if absent, set 1" arm can be written either. Workarounds that do work today: seed the key once in the State Editor (any tier), after which the increment evaluates; or use a literal JSON number/boolean value, which is stored as-is rather than parsed as an expression (a flag, never a counter) | **NOT A BUG (v5)** (2026-08-02) — recorded so it is not re-reported, and NOT fixed: diverging unilaterally would move the oracle on a grammar whose every error sentence is corpus-pinned. The repair is a v4-first design choice (an effect-level `default`, an absent-state `when` subject, or absent refs resolving to 0) → added to the post-5.0 v4-side list |
 
+- **The 2026-08-04 `7fe9fe40`-round walk — STOPPED EARLY AND DELIBERATELY, mid
+  Part C, because v4 is about to move under the surface being walked.** Two
+  findings fixed (#61, #63), two dispositioned NOT A BUG (#64, #65), one
+  measurement that outranks all four, and one v4-side design doc written.
+
+  - **Part A (P4.D44's New-Chat roleplay-template picker) — 8/8 PASS.** The
+    dropdown, the default chain (project → global → No Template, `(default)`
+    labelled), the re-seed on reference-data reload, **the touched latch under
+    both add-character and project-switch**, the server read-back on the
+    created chat, the explicit-null-beats-defaults arm, and the keyboard path.
+    **P4.D44's live proof is COLLECTED**, and this was also the first walk of
+    **P4.30**'s app-wide roleplay-template rendering (landed in the `40319484`
+    round, never dogfooded) — PASS on real data.
+  - **Part B (P4.D45's de-asterisked staff strings) — PASS, 💸 proof
+    COLLECTED.** Aurora's wardrobe announcement, the Suparṇā mail opener, the
+    seven Commonplace sections and the core whisper all render plain on real
+    data, and **step 14 — the mixed-delimiter check under a non-asterisk
+    template, the reason the commit exists — passed.** Two script errors of
+    mine, recorded so they are not repeated: **step 13 told the human to grep
+    for `pulls up the file`, the PRE-fix string** (the current rule 1 reads
+    "pulling up the file"; settled by querying `llm_logs` on the copy — 7/7
+    recent requests carrying the block, all new wording, zero old), and step
+    10's blank-letter arm is **unreachable through either app's UI**
+    (`send_mail`'s schema sets `minLength: 1` and Compose enforces non-empty; a
+    model can still send whitespace-only, which is the arm `quote_body` pins).
+  - **Part C (P4.33 import identity + the #61 re-walk) — steps 15–16 only.**
+    #61 reproduced on clean data and its diagnosis changed completely (see the
+    row); #63 came out of the same step. **Steps 17–19 NOT WALKED** — the
+    rename→overwrite-by-ID arm, the id-preservation-into-empty-target arm, and
+    the P4.28 restore re-checks (#57–#60) from the never-walked `40319484`
+    round.
+
+  **NOT walked — where the next pass starts.** Part C steps 17–19 above, and
+  the whole of Part D: the P4.31 orphan reaper's 43+118 on boot, the P4.D25
+  no-mass-re-embed proof, P4.D43's run presets, the owed Part G (P4.d26
+  same-day recall on a non-UTC host, P4.d27's embedding standard), Part H (the
+  retrospective-recall look owed since 2026-07-24, Story's Clock, the per-chat
+  Core-whisper override), the #55 sub-list fix on the real Obsidian documents,
+  and P4.D41's link-group sibling re-chunk.
+
+  **⚠ WHY IT STOPPED, and what it means for the next round.** The walk's
+  findings produced a v4-side design spec —
+  `~/source/quilltap-server/docs/developer/features/import_export_update.md`
+  (written 2026-08-04, uncommitted at hand-off) — covering export coverage
+  gaps, embeddings-in-exports, and the backup contract. **The human intends to
+  implement it in v4**, which lands on ALREADY-PORTED surface: the NDJSON
+  writer's `memory` record, the import reader/`importMemories`, v4's
+  `handleExportEntities` switch, `ExportTypeStep`, and possibly the restore
+  service. **So a drift catch-up round is owed before the next dogfood pass**,
+  and continuing to walk the import surface now would be walking a surface that
+  is about to change. Blast radius for regen, named at hand-off:
+  `system_export_equivalence`, `system_import_equivalence`,
+  `system_import_state`, plus the restore families if §3a lands and the SPA's
+  export/import dialogs for the picker's type list. The walk's un-walked
+  remainder above is NOT affected by that drift and can be picked up either
+  side of it.
+
 - **The 2026-08-02 `c4d4b0de`-round walk, Parts A–B — the Pascal side-effects
   live proof COLLECTED, plus three findings (#49–#52, two fixed).**
   - **Part A (boot) — PASS on all three counts.** v5's whole boot footprint was
