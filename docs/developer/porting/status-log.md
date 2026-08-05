@@ -57379,3 +57379,74 @@ at once (the wholesale-file shape of a compile/setup error, not an assertion),
 immediately after new files were written. Six subsequent full runs are green and
 nothing in this lane touches that file or anything it imports; recorded here
 rather than left unmentioned.
+
+## Lane record — P4.38 units 7–8 (the e2e beats + the m6 rows), 2026-08-05
+
+### The beats (`apps/web/e2e/settings-almanack-flow.spec.ts`, new)
+
+Filename sorts after `foundation.spec.ts` ('se' > 'fo'), which the shared-server
+ordering rule requires; it rides the shared instance and only unlocks if the gate
+is showing.
+
+Two beats run UNGATED because they need no server family — the card's chrome is
+pure SPA:
+
+1. the Providers tab carries the card, it starts COLLAPSED (the body's Compile
+   button has count 0), and clicking the header opens it onto v4's strings;
+2. `?section=capabilities-report` force-opens it — the anchor that keeps v4's old
+   wording on purpose.
+
+Both locate the card by `#capabilities-report` rather than by its title. That is
+not incidental: the collapsible's HEADER and the card body inside it both render
+"The Almanack (System Report)", so a text locator is strict-mode ambiguous the
+moment the card opens (the standing two-line-card trap).
+
+The third beat — compile → phase bar → viewer (with a GFM table) → download →
+delete-with-confirm → empty list — is gated by the NAMED constant
+`P437_SERVER_LANDED = false`, per the standing rule that a capability probe
+cannot distinguish a DEFINED-but-refusing verb from a working one and would
+activate the beat into guaranteed failure. **The unifier flips it to `true`.**
+It registers its `waitForResponse` BEFORE the click (trap 10) and scopes the
+"Close" locator to the dialog footer, since the header ✕ answers to the same
+accessible name.
+
+### The m6 rows
+
+`m6-screen-parity.md` §2.6's MISSING row is now DONE with the port's file names
+and the D3-family divergence noted; the 2026-07-24 scope-correction blockquote's
+"re-binned to a future Providers-tab rider (unscheduled)" bullet records that the
+rider RAN as this lane (v4 having rewritten the feature as The Almanack at
+`0cde7fbc`); and backlog row 5's trailing re-bin clause is struck through. The
+row has read MISSING since 2026-07-24.
+
+### Gate
+
+See the lane's final gate record. No `crates/**` change in this unit.
+
+### P4.38 — the lane's final gate (2026-08-05)
+
+- `ng test`: **286 files / 3,914 tests, 0 failed.**
+- `ng build`: clean; the emitted `styles-*.css` positively carries the new
+  `qt-progress` family.
+- Full Playwright against a real dist and this worktree's own debug binaries:
+  **181 passed / 1 skipped / 0 failed (17.2 m).** The suite grew 179 → 182 with
+  this lane's three beats; the ONE skip is this lane's own gated beat, confirmed
+  by name in an isolated re-run (2 passed, 1 skipped). Every other spec ran.
+- **No `crates/**` change → no cargo gate owed** (the crates were BUILT here only
+  because neither main nor this worktree carried e2e binaries; nothing under
+  `crates/` was edited — `git diff main --name-only` touches only `apps/web/**`
+  and `docs/**`).
+- Mutation proofs recorded per unit: the 0.9 fill cap (2 cases red) and the
+  subscribe-before-dispatch ordering (2 cases red).
+
+**Open under this order at lane close: NOTHING.** Tier 1 items 1–8 and tier 2
+item 9 all landed. The tier-3 exclusions stand as written and are named in the
+code: the optimizer-bar consumer (v5 has no optimizer surface — the shared bar
+ships with three consumers where v4 has four; noted in `_utilities.css`), the
+theme-pack `--qt-progress-*` overrides (v4 shipped none), and the
+`capabilities-report-progress` SSE action (the D3-family divergence, recorded in
+`core-contract.ts` and the card's header).
+
+**The one thing the unifier must do:** flip `P437_SERVER_LANDED` to `true` in
+`apps/web/e2e/settings-almanack-flow.spec.ts` once P4.37 is on the same tree, and
+diff the §1 mirror name-for-name against P4.37's `api/types.rs`.

@@ -575,7 +575,7 @@ real directories.
 | **LLMLogViewerModal** | `components/chat/LLMLogViewerModal.tsx:16`; hosts `llm-logs-card.tsx:133` + `LLMLogsSection.tsx:102` | `chat/llm-log-viewer-modal.ts` | **DONE** (`p4.9g2`, 2026-07-24) |
 | Backup / Restore | `components/tools/backup-dialog.tsx`, `components/tools/restore/RestoreDialog.tsx` | `settings/system/{backup,restore}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
 | Export / Import | `components/tools/{export,import}-dialog.tsx` | `settings/system/{export,import}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
-| Capabilities report | `components/tools/capabilities-report-dialog.tsx` | absent | **MISSING** → Providers tab (re-binned 2026-07-24, §2.6) |
+| Capabilities report → **The Almanack** | `components/tools/capabilities-report-dialog.tsx` + `capabilities-report-card.tsx` | `almanack/almanack-report-dialog.ts` + `almanack/almanack-card.ts`, hosted on the Providers tab | **DONE (P4.38, 2026-08-05)** — card + viewer + the shared `qt-progress-bar`; `sectionId` stays `capabilities-report` (the deep-link anchor). Progress rides the ONE global event stream's new `phase` frame, not v4's per-id SSE route (the D3-family divergence) |
 | SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | `chat/tools/search-replace-modal.ts` | ~~`p4.9e3`~~ **DONE** (P4.9E3C, 2026-07-27 — the five v4 step components collapsed into one, the wizard behaviour unchanged) |
 | Housekeeping dialog | `components/memory/housekeeping-dialog.tsx` | `memory/housekeeping-dialog.ts:21` | **PARITY** (P4.6t) |
 | Memory-creation dialog | `components/import/memory-creation-dialog.tsx` | absent | **MISSING** → `p4.9h` |
@@ -597,6 +597,11 @@ because both are app-layout-mounted console surfaces with the same
 > - **CapabilitiesReportDialog** + `capabilities-report-card` are hosted on
 >   the **Providers tab** (`components/settings/tabs/ProvidersTabContent.tsx:10,74`)
 >   → re-binned to a future **Providers-tab rider** (unscheduled).
+>   **CLOSED (P4.38, 2026-08-05):** v4 rewrote the feature as **The Almanack**
+>   at `0cde7fbc`, and the rider ran as the SPA half of that drift round —
+>   the card, the viewer, and the shared `qt-progress-bar` the rewrite
+>   introduced (which also absorbed v4's two existing meters). The server
+>   half is P4.37.
 > - **SearchDialog / the global-search+toolbar lane — CLOSED (P4.9P,
 >   2026-07-30).** `qt-page-toolbar` hosts v4's four occupants in v4's order
 >   (autonomous badges — RELOCATED off the footer stopgap, which is retired —
@@ -707,7 +712,7 @@ lanes). These are liftable straight into `/setupphase`.
 | 2 | `p4.9c-about-profile` | `/about` + `/profile` + ThemePreviewModal; render the version **locally** (divergence from v4's shields.io fetch) | rider | none |
 | 3 | `p4.9b-generate-image-screen` | `/generate-image` route + StandaloneGenerateImageDialog + ImageProfilePicker; un-omits the homepage quick action | lane | `image_generation` seam (P4.6ai, LIVE) |
 | 4 | `p4.9d-quick-hide-provider` | the provider + tag-hide + hide-dangerous across salon list, home, characters, prospero; the `tags-tab` `quickHide` authoring column | lane | tags surface (landed) |
-| 5 | ~~`p4.9g-data-system-tab`~~ | **DONE 2026-07-24** (P4.9G1 ∥ P4.9G2) for the tab + LLMLogViewer ×2 hosts + backup/restore/export/import/delete-all dialogs. **Remainder: P4.9G1's delete-all, export/import and backup/restore SERVER families are OPEN** (the SPA cards refuse loudly). Capabilities report → Providers tab; search dialog → toolbar; image-profile validate/list-models still needs live providers — all re-binned at the 2026-07-24 scope correction (§2.6) | — | — |
+| 5 | ~~`p4.9g-data-system-tab`~~ | **DONE 2026-07-24** (P4.9G1 ∥ P4.9G2) for the tab + LLMLogViewer ×2 hosts + backup/restore/export/import/delete-all dialogs. **Remainder: P4.9G1's delete-all, export/import and backup/restore SERVER families are OPEN** (the SPA cards refuse loudly). ~~Capabilities report → Providers tab~~ **DONE as The Almanack (P4.38, 2026-08-05)**; search dialog → toolbar; image-profile validate/list-models still needs live providers — all re-binned at the 2026-07-24 scope correction (§2.6) | — | — |
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
 | 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (~~one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam~~ **that gap CLOSED 2026-07-21: P4.6bf wired `HostAvatarPreviewRenderer` over the existing `HostImageCodec` and `avatar_preview` is LIVE** — ⚠ the out-of-chat Preview button costs real money. `wardrobeAnalyzeImage` still refuses, and is on the §5.3 row) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |

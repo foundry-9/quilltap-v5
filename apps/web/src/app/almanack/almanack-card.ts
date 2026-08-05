@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 import type { Subscription } from 'rxjs';
 
@@ -252,10 +259,29 @@ export class AlmanackCard {
     );
   }
 
+  /** The `phase` reader for one run — subscribed BEFORE the dispatch (see above). */
+  private subscribeToPhases(progressId: string): Subscription {
+    return this.core.events$.subscribe((frame) => {
+      if (frame.progressId !== progressId) return;
+      if (frame.kind === 'phase' && frame.key) {
+        this.currentPhase.set(frame.key);
+        this.phaseLabel.set(frame.label ?? null);
+      } else if (frame.kind === 'done' || frame.kind === 'error') {
+        this.currentPhase.set(null);
+        this.phaseLabel.set(null);
+      }
+    });
+  }
+
   protected async generate(): Promise<void> {
     if (this.generating()) return;
 
-    const progressId = crypto.randomUUID();
+    // The same guard the Green Room's caller uses (`new-chat.state.ts:541-544`):
+    // without `crypto.randomUUID` there is no id to scope frames by, so the run
+    // simply goes without progress. It still completes — the dispatch's
+    // resolution is what drives the UI — and the bar stays indeterminate.
+    const progressId =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
 
     this.error.set(null);
     this.startedAt.set(Date.now());
@@ -266,16 +292,7 @@ export class AlmanackCard {
     // Open the reader BEFORE the dispatch so the first phase event can't be
     // missed (v4 `:156-159`). This ordering is pinned by the spec.
     this.progressSub?.unsubscribe();
-    this.progressSub = this.core.events$.subscribe((frame) => {
-      if (frame.progressId !== progressId) return;
-      if (frame.kind === 'phase' && frame.key) {
-        this.currentPhase.set(frame.key);
-        this.phaseLabel.set(frame.label ?? null);
-      } else if (frame.kind === 'done' || frame.kind === 'error') {
-        this.currentPhase.set(null);
-        this.phaseLabel.set(null);
-      }
-    });
+    this.progressSub = progressId ? this.subscribeToPhases(progressId) : null;
 
     try {
       const data = await this.core.dispatchData({ type: 'systemAlmanackGenerate', progressId });

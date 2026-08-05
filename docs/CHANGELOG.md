@@ -51,6 +51,10 @@ the reference app's real code over seven inputs covering every branch,
 including empty sections, an unreachable document store, and locale
 number and date formatting. No user-visible surface yet — the collectors
 and the report API follow.
+Added browser tests for the Almanack card and marked the parity
+checklist row done. The card and its deep link are covered now; the
+full compile-and-view walk is written and waits on the server half.
+
 Added the Almanack card to the AI Providers settings tab, with its
 report viewer. Compiling a report shows a phase-by-phase progress bar
 while it runs and opens the finished report when it's done; previous
