@@ -56356,3 +56356,47 @@ system-tools actions, untouched by this drift).
 stays clean; pin a detached worktree at `f7f1a956` on any further
 drift (`oracle-regen-pinned-v4-worktree`). The baseline MOVES to
 `f7f1a956` at unification (the unifier's edit, as always).
+
+---
+
+## Lane record — P4.D49 unit 1: the D23 re-dump (the llm-logs partition's first)
+
+**2026-08-05.** Ran `harness/oracle/provision/dump-fresh-schema.ts`
+against v4 at `f7f1a956` and adopted the emitted `fresh_schema.json`
+**verbatim** (the D23 rule — never by hand). v4 was verified at exactly
+`f7f1a956` with `git log f7f1a956..HEAD` empty; its tree carries ONE
+untracked file, `docs/developer/features/taboo.md` (a feature doc for
+in-flight v4 work — no `lib/` import can reach it, so oracles regenerate
+straight from the checkout; flagged as the next drift brewing).
+
+**What moved:** exactly one line. The `llm_logs` CREATE TABLE gains
+`"connectionProfileId" TEXT` and `"imageProfileId" TEXT` between
+`modelName` and `request` — v4's `generateDDL` reading the widened
+`LLMLogSchema`. **The index question resolved the way the order
+predicted: NO new indexes.** `extractSchemaMetadata` auto-emits only
+`idx_<name>_userId` + `idx_<name>_createdAt`; the migration's
+`idx_llm_logs_connectionProfileId` / `idx_llm_logs_imageProfileId` are
+migration-only, exactly like the pre-existing `idx_llm_logs_type` /
+`autonomousRunId`. So the llmLogs partition stays at 3 statements (1
+table + 2 indexes), and `docs/developer/DDL.md`'s hand-curated block —
+which shows the indexes — remains the migration-accumulated view, not the
+generateDDL surface. `main` (79) and `mountIndex` (30) are byte-identical
+to the committed dump.
+
+**Proof:** `provisioning_equivalence` over an oracle regenerated fresh at
+`f7f1a956` (`build-provision-oracle.ts`), 2 passed / 0 failed.
+**Mutation-proven red→green** by restoring the pre-drift
+`fresh_schema.json` under the fresh oracle: `panicked at
+provisioning_equivalence.rs:261 — schema mismatch in partition llmLogs`,
+left (v5) missing both columns. That is the D23 tripwire firing as
+designed — v4 drift, not a v5 bug.
+
+**Regen recipes (both from `~/source/quilltap-server`, Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`):**
+
+```
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema.json \
+  $N/npx tsx <v5>/harness/oracle/provision/dump-fresh-schema.ts
+QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
+  $N/npx tsx <v5>/harness/oracle/provision/build-provision-oracle.ts
+```

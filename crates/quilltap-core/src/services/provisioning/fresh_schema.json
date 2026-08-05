@@ -113,7 +113,7 @@
     "CREATE INDEX \"idx_project_doc_mount_links_createdAt\" ON \"project_doc_mount_links\" (\"createdAt\" DESC)"
   ],
   "llmLogs": [
-    "CREATE TABLE \"llm_logs\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"type\" TEXT NOT NULL,\n  \"messageId\" TEXT,\n  \"chatId\" TEXT,\n  \"characterId\" TEXT,\n  \"autonomousRunId\" TEXT,\n  \"provider\" TEXT NOT NULL,\n  \"modelName\" TEXT NOT NULL,\n  \"request\" TEXT NOT NULL,\n  \"response\" TEXT NOT NULL,\n  \"usage\" TEXT,\n  \"cacheUsage\" TEXT,\n  \"rawProviderUsage\" TEXT,\n  \"requestHashes\" TEXT,\n  \"durationMs\" REAL,\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
+    "CREATE TABLE \"llm_logs\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"type\" TEXT NOT NULL,\n  \"messageId\" TEXT,\n  \"chatId\" TEXT,\n  \"characterId\" TEXT,\n  \"autonomousRunId\" TEXT,\n  \"provider\" TEXT NOT NULL,\n  \"modelName\" TEXT NOT NULL,\n  \"connectionProfileId\" TEXT,\n  \"imageProfileId\" TEXT,\n  \"request\" TEXT NOT NULL,\n  \"response\" TEXT NOT NULL,\n  \"usage\" TEXT,\n  \"cacheUsage\" TEXT,\n  \"rawProviderUsage\" TEXT,\n  \"requestHashes\" TEXT,\n  \"durationMs\" REAL,\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
     "CREATE INDEX \"idx_llm_logs_createdAt\" ON \"llm_logs\" (\"createdAt\" DESC)",
     "CREATE INDEX \"idx_llm_logs_userId\" ON \"llm_logs\" (\"userId\" ASC)"
   ]

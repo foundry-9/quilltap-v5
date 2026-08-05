@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Adopted the reference app's new LLM-log schema: a freshly provisioned
+instance now creates the call log with the two profile-attribution
+columns (`connectionProfileId`, `imageProfileId`), re-dumped from the
+reference app's live schema generator rather than hand-edited. No
+indexes changed.
+
 Planned the `f7f1a956` Almanack round and committed its four work
 orders: the reference app rewrote its system capabilities report into
 The Almanack, adding per-profile attribution columns to the LLM call
