@@ -36,7 +36,7 @@
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
 //!   QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/cases" -- memory-processor-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- "memory-processor-tier3\\.test\\.ts$"
 //! Run:
 //!   QT_ORACLE_PROCESSOR=/tmp/oracle-memory-processor.ndjson \
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \

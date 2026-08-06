@@ -73,6 +73,16 @@ every add and remove and renders back exactly what the server stored,
 so the normalization is visible where you made the edit. The Taboo help
 page from the reference app is not carried over — this build has no help
 surface to show it on.
+Repaired the last broken oracle-regeneration recipes and gave the
+sweep driver the one option a catch-up round needs: a way to point
+every recipe at a pinned copy of the reference app, so a sweep run
+while the reference app is ahead of us cannot quietly bake in changes
+we have not absorbed yet. Re-running the known-broken set from that
+pin found fifteen of sixteen already healthy. The sixteenth — a
+comparison two earlier rounds had argued over and left red — turned
+out to have exactly the same cause as the two oracles repaired
+earlier today, and is now green. No product code changed.
+
 Hardened two end-to-end checks that could fail on a busy machine
 without anything being wrong with the app. The terminal check typed
 its "exit" the moment the terminal appeared, but the connection

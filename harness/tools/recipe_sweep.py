@@ -544,6 +544,11 @@ def normalize(script_lines: list[str], v5w: Path, family: str) -> str:
     text = "\n".join(script_lines)
     text = PLACEHOLDER_WORKTREE.sub(str(v5w), text)
     text = text.replace("~/source/quilltap-v5", str(v5w))
+    # Point every recipe's v4 checkout at the driver's `--v4` (default: the real
+    # checkout). A lane whose baseline is behind v4 HEAD passes its pinned
+    # worktree here; the recipes themselves never name a pin, by policy.
+    if V4_CHECKOUT != V4_CHECKOUT_DEFAULT:
+        text = text.replace(V4_CHECKOUT_DEFAULT, V4_CHECKOUT)
     if re.search(r"\$N\b|\$\{N\}", text) and not re.search(r"^N=", text, re.M):
         text = f"N={NODE_BIN_DEFAULT}\n" + text
     header = "\n".join(
@@ -956,6 +961,27 @@ def cmd_self_test() -> int:
     norm = normalize(["TMPO=/tmp/qt-oracle-w41g; mkdir -p $TMPO/cases"], Path("/v5"), "fam")
     check("TMPO=/tmp/qt-oracle-w41g-fam;" in norm, f"policy-2 suffix missed: {norm}")
 
+    # P4.40: `--v4` redirects every recipe's v4 checkout, and the default is a
+    # no-op (so an un-pinned sweep is byte-identical to the pre-P4.40 driver).
+    global V4_CHECKOUT
+    saved_v4 = V4_CHECKOUT
+    try:
+        norm = normalize(["cd ~/source/quilltap-server"], Path("/v5"), "fam")
+        check(
+            "cd ~/source/quilltap-server" in norm, f"v4 default must not rewrite: {norm}"
+        )
+        V4_CHECKOUT = "/tmp/qt-v4-pin-abc"
+        norm = normalize(["cd ~/source/quilltap-server"], Path("/v5"), "fam")
+        check("cd /tmp/qt-v4-pin-abc" in norm, f"v4 pin not applied: {norm}")
+        # The pin must NOT make the recipe look like a stale-pin header — that
+        # refusal is about paths baked into COMMITTED headers, not the driver's
+        # own runtime redirect, which `extract` never sees.
+        r = Recipe("x", Path("x"))
+        r.regen = ["cd ~/source/quilltap-server"]
+        check(not STALE_V4_PIN.search("\n".join(r.regen)), "pin leaked into the header")
+    finally:
+        V4_CHECKOUT = saved_v4
+
     # F2: a jest root under the v5 checkout is flagged; the v4 checkout is not.
     r = Recipe("x", Path("x"))
     scan_venue(r, 'npx jest --roots "$PWD" --roots "$V5W/harness/oracle/cases" -- x')
@@ -1021,7 +1047,21 @@ def main() -> int:
     )
     ap.add_argument("--collisions", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument(
+        "--v4",
+        default=V4_CHECKOUT_DEFAULT,
+        help=(
+            "the v4 checkout every recipe's `cd ~/source/quilltap-server` reaches. "
+            "Pass a detached worktree pinned at the lane's baseline when v4 HEAD "
+            "has moved past it, or the sweep bakes an unabsorbed drift into every "
+            "oracle it regenerates."
+        ),
+    )
     args = ap.parse_args()
+    global V4_CHECKOUT
+    V4_CHECKOUT = args.v4
+    if V4_CHECKOUT != V4_CHECKOUT_DEFAULT:
+        print(f"v4 checkout pinned to {V4_CHECKOUT}")
     if args.self_test:
         return cmd_self_test()
     if args.list:

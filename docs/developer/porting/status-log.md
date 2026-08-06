@@ -58781,3 +58781,61 @@ the next lane does not repeat them:
 **Verification.** Each hardened beat green in isolation under its own
 injected repro, and all three spec files green together unthrottled
 (25/25 in 53 s). The full-suite run is in the lane's gate.
+
+---
+
+### Lane record — P4.40 unit 4: the recipe-rot tail (tier 2)
+
+**The driver gained the one option a drift-era sweep needs: `--v4`.**
+Every recipe reaches v4 through a literal `cd ~/source/quilltap-server`,
+and the header convention deliberately forbids naming a `/tmp` pin (a
+detached pin does not survive the round that made it — that is the
+`stale_v4_pin_path` refusal). So a lane whose baseline is BEHIND v4 HEAD
+— the normal state during a drift round, and this round's state exactly
+— had no way to sweep without baking the unabsorbed drift into every
+oracle it regenerated. `--v4 <pin>` rewrites that one `cd` at run time;
+the default is a byte-for-byte no-op, asserted in `--self-test` along
+with the redirect itself and the fact that the pin never reaches the
+header text (so it cannot masquerade as the very rot the refusal
+catches). This lane ran every family below through `--v4
+/tmp/qt-v4-pin-p440-f7f1a956`.
+
+**The tail is nearly gone.** Re-running P4.34's phase-1 non-ok set (16
+families: 4 `regen_failed`, 4 `skipped`, 6 `run_failed`, 2
+`refused_non_extractable`) verbatim from the pin gives **15 ok, 1
+red** — the two stale-pin headers were already repaired in prose-only
+form, the four "recipe is not self-contained" skips now carry their env
+vars, and the reds that P4.D32/P4.D42 recorded do not reproduce. Most of
+that debt was repaired by P4.34 and the rounds after it; what remained
+was the last red, and it turned out to be unit 1's defect wearing a
+different hat.
+
+**`compression_tier3_equivalence` — the standing red TWO ROUNDS argued
+over — is GREEN, and its cause was the unit-1 defect.** Its corpus
+carried `"cur"` and `"unc-1"` as connection-profile ids, so at the
+`f7f1a956` baseline v4 refused every `llm_logs` create and the case died
+on the dump exactly as the two escalated families did. UUID-shaping the
+two ids (`…c010` / `…c011`) makes the family run end to end: 6 oracle
+rows against 6 v5 rows after the P4.13 ruled-divergence split, which
+means the split is doing its job and the "7 vs 6 unexplained content
+divergence" two sweeps recorded is fully accounted for. Mutation-proven
+(rewriting one `connectionProfileId` in the oracle turns it red at
+`compression_tier3_equivalence.rs:357`). **The "small owed order" to
+un-mock this family is therefore MOOT at the current baseline** — no
+un-mock was needed, and no v5 source changed.
+
+**Header repairs taken** (all inside this lane's Ownership): both unit-1
+families' `.rs` recipes gained `--watchman=false` (a bare staged /tmp
+mirror is not a watchman root, and the crawl failure is noise on every
+run) and an ANCHORED jest pattern (`"…\.test\.ts$"`), and both oracle-CASE
+headers — which still pointed jest at `$V5/harness/oracle/cases` and so
+could not run from a `.claude/` venue at all — were rewritten to the
+staged-mirror convention with their own `TMPO` block. `--list` reports
+**zero** `non_extractable`.
+
+**Skipped by name, per the order's sibling rule:** the settings-routes
+and prompt-family case files (P4.D50's) and the almanack families
+(P4.37's). None of them appeared in the tail. `compression_tier3` was
+checked against BOTH sibling orders' Ownership lists before being
+touched: it is named in neither, and the change is a fixture corpus, not
+a case file or a recipe a sibling regenerates.

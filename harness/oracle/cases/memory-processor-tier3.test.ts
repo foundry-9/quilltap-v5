@@ -30,8 +30,11 @@
  * v4's REAL code against the REAL fixture DBs.
  *
  * Run from the v4 server checkout under Node 24:
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=${V5:-$HOME/source/quilltap-v5}
+ *   TMPO=/tmp/qt-memory-processor-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp "$V5/harness/oracle/cases/memory-processor-tier3.test.ts" "$TMPO/cases/"
+ *   cp "$V5/harness/oracle/fixtures/memory-processor-tier3.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-memory-processor-main.db \
  *   QT_FIXTURE_MOUNT_OUT=/tmp/qt-memory-processor-mount.db \
@@ -39,7 +42,7 @@
  *   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
  *   QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
- *     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-processor-tier3
+ *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- "memory-processor-tier3\\.test\\.ts$"
  */
 
 import * as fs from 'fs';

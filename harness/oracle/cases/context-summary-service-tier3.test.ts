@@ -58,14 +58,18 @@
  * REAL two-DB fixture.
  *
  * Run from the v4 server checkout under Node 24:
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=${V5:-$HOME/source/quilltap-v5}
+ *   TMPO=/tmp/qt-ctxsum-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp "$V5/harness/oracle/cases/context-summary-service-tier3.test.ts" "$TMPO/cases/"
+ *   cp "$V5/harness/oracle/fixtures/context-summary-service-tier3.json" "$TMPO/fixtures/"
+ *   cp "$V5/harness/oracle/fixtures/context-summary-service-ops.json"   "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-ctxsum-mount.db \
  *     $N/npx tsx $V5/harness/oracle/fixtures/build-context-summary-service-fixture.ts
  *   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- context-summary-service-tier3
+ *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- "context-summary-service-tier3\\.test\\.ts$"
  */
 
 import * as fs from 'fs';

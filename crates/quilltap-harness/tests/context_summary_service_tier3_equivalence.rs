@@ -87,7 +87,7 @@
 //!     $N/npx tsx $V5W/harness/oracle/fixtures/build-context-summary-service-fixture.ts
 //!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- context-summary-service-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- "context-summary-service-tier3\\.test\\.ts$"
 //! Run:
 //!   QT_ORACLE_CTXSUM=/tmp/oracle-context-summary-service.ndjson \
 //!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \

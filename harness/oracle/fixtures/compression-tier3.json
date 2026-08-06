@@ -37,7 +37,7 @@
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": null,
@@ -76,7 +76,7 @@
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": null,
@@ -116,7 +116,7 @@
       "selection": {
         "provider": "OPENAI",
         "modelName": "gpt-mini",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": null,
@@ -158,16 +158,16 @@
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": {
         "mode": "AUTO_ROUTE",
-        "uncensoredTextProfileId": "unc-1"
+        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c011"
       },
       "availableProfiles": [
         {
-          "id": "cur",
+          "id": "bb000000-0000-4000-8000-00000000c010",
           "provider": "ANTHROPIC",
           "modelName": "claude-haiku-4-5",
           "baseUrl": null,
@@ -175,7 +175,7 @@
           "parameters": null
         },
         {
-          "id": "unc-1",
+          "id": "bb000000-0000-4000-8000-00000000c011",
           "provider": "OLLAMA",
           "modelName": "dolphin-mistral",
           "baseUrl": null,
@@ -230,16 +230,16 @@
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": {
         "mode": "AUTO_ROUTE",
-        "uncensoredTextProfileId": "unc-1"
+        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c011"
       },
       "availableProfiles": [
         {
-          "id": "cur",
+          "id": "bb000000-0000-4000-8000-00000000c010",
           "provider": "ANTHROPIC",
           "modelName": "claude-haiku-4-5",
           "baseUrl": null,
@@ -247,7 +247,7 @@
           "parameters": null
         },
         {
-          "id": "unc-1",
+          "id": "bb000000-0000-4000-8000-00000000c011",
           "provider": "OLLAMA",
           "modelName": "dolphin-mistral",
           "baseUrl": null,
@@ -297,7 +297,7 @@
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
-        "connectionProfileId": "cur",
+        "connectionProfileId": "bb000000-0000-4000-8000-00000000c010",
         "isLocal": false
       },
       "dangerSettings": null,
