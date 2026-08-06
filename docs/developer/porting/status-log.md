@@ -59818,3 +59818,28 @@ swallowed status failure, the enqueue toasting the server message, the
 error path).
 
 Gate: `ng build` clean, `ng test` 291 files / 3951 tests green.
+
+### Unit 5 — the p4.9o Scriptorium-badge rider (SPA 0.5.421)
+
+`ui/scriptorium-badge.ts`: the shared three-state badge lifted from the
+character Conversations card's read-only `scriptoriumClass`/
+`scriptoriumTitle` (v4 `ChatCard.tsx:250-275`) — the colours + titles in
+one presentational component that swallows the card-link navigation and
+emits `render`. Wired into `screens/salon/chat-card.ts` (which showed NO
+badge before) and `screens/characters/view/tabs/character-conversation-card.ts`
+(whose badge was static); each card owns the mutation:
+`core.renderConversation(chatId)` (the commit-1 client method over the
+already-live `ChatRenderConversation` verb) + v4's toast
+`Conversation rendering queued` + `notifyQueueChange()`.
+
+One documented divergence: v5 skips v4's immediate list refetch
+(`mutateChats`) after the click — the render is a background job, so the
+badge only changes once it completes (the next natural list load);
+avoiding it keeps the mutation inside the two owned card files rather
+than threading a callback through every list parent.
+
+Spec: `ui/scriptorium-badge.spec.ts` (5 cases — the class/title for all
+three states, the click emitting render with preventDefault/
+stopPropagation, the busy disable).
+
+Gate: `ng build` clean, `ng test` 292 files / 3956 tests green.

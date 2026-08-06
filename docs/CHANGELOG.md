@@ -80,6 +80,14 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Made the chat-card Scriptorium badge clickable to queue an on-demand
+conversation render (P4.9H2B rider, p4.9o). The three-state badge
+(not-rendered / rendered / rendered-and-embedded) is now a shared
+component on both the Salon list card and the character Conversations
+card; clicking it POSTs the render-conversation action, toasts, and
+wakes the toolbar queue badges. The Salon card previously showed no
+badge at all; the character card's was static. SPA 0.5.421.
+
 Ported the Regenerate Conversation Summaries card into the Settings →
 Memory tab (P4.9H2B), last in v4's card order on the
 `conversation-summaries-regenerate` deep link: a single-click enqueue

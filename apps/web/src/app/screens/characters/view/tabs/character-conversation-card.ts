@@ -1,9 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { CoreClient, coreErrorMessage } from '../../../../core/core-client';
 import type { CharacterChatSummary } from '../../../../core/core-contract';
+import { notifyQueueChange } from '../../../../layout/queue-status.logic';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { Icon } from '../../../../ui/icon';
+import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
+import { ToastService } from '../../../../ui/toast.service';
 
 /**
  * Chat-list date (v4 `lib/format-time.ts` `formatChatListDate`, `useRelative`
@@ -51,9 +55,9 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
  * One conversation card in the character Conversations tab — a display-only port
  * of v4 `components/chat/ChatCard.tsx` fed by `transformCharacterChatToCardData`
  * with `showAvatars={false}`, `showProject`, `showPreview`, `useRelativeDates`.
- * The whole card links to `/salon/:id`; badges/tags are read-only (the v4
- * delete / re-extract / re-render actions hit routes outside this contract and
- * are omitted, matching the Salon SPA card precedent).
+ * The whole card links to `/salon/:id`; tags are read-only. The Scriptorium
+ * badge (p4.9o) queues an on-demand render on click, as on the Salon card; the
+ * v4 delete / re-extract actions remain omitted (routes outside this contract).
  *
  * Divergence noted: v4's ConversationsTab hides the story-background thumbnail
  * (its `ChatCard` gates it behind `showAvatars`, which is false here); the work
@@ -62,7 +66,7 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
 @Component({
   selector: 'qt-character-conversation-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, ScriptoriumBadge],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -98,13 +102,11 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
                 </span>
               }
 
-              <span
-                class="chat-card__badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 qt-body-sm font-semibold flex-shrink-0"
-                [class]="scriptoriumClass()"
-                [title]="scriptoriumTitle()"
-              >
-                <qt-icon name="file" class="w-3 h-3" />
-              </span>
+              <qt-scriptorium-badge
+                [status]="chat().scriptoriumStatus"
+                [busy]="rendering()"
+                (render)="renderConversation()"
+              />
 
               @if (chat().isDangerousChat) {
                 <span
@@ -144,7 +146,11 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
   `,
 })
 export class CharacterConversationCard {
+  private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   readonly chat = input.required<CharacterChatSummary>();
+
+  protected readonly rendering = signal(false);
 
   protected readonly displayTitle = computed(() => this.chat().title || 'Untitled Chat');
   protected readonly messageCount = computed(() => this.chat()._count?.messages ?? 0);
@@ -159,26 +165,23 @@ export class CharacterConversationCard {
     formatChatListDate(this.chat().lastMessageAt || this.chat().updatedAt),
   );
 
-  /** Static scriptorium badge (v4 colours; no click-to-render in this vertical). */
-  protected readonly scriptoriumClass = computed(() => {
-    switch (this.chat().scriptoriumStatus) {
-      case 'embedded':
-        return 'qt-bg-success/10 qt-text-success';
-      case 'rendered':
-        return 'qt-bg-warning/10 qt-text-warning';
-      default:
-        return 'bg-destructive/10 qt-text-destructive';
+  /**
+   * Queue an on-demand Scriptorium render (v4 `handleRenderConversation`, the
+   * character Conversations tab's copy): POST, toast, and nudge the queue
+   * badges. Like the Salon card, v5 skips v4's immediate list refetch — the
+   * render is a background job.
+   */
+  protected async renderConversation(): Promise<void> {
+    if (this.rendering()) return;
+    this.rendering.set(true);
+    try {
+      await this.core.renderConversation(this.chat().id);
+      this.toasts.showSuccess('Conversation rendering queued');
+      notifyQueueChange();
+    } catch (err) {
+      this.toasts.showError(coreErrorMessage(err, 'Failed to queue conversation rendering'));
+    } finally {
+      this.rendering.set(false);
     }
-  });
-
-  protected readonly scriptoriumTitle = computed(() => {
-    switch (this.chat().scriptoriumStatus) {
-      case 'embedded':
-        return 'Scriptorium: Rendered and embedded';
-      case 'rendered':
-        return 'Scriptorium: Rendered but not fully embedded';
-      default:
-        return 'Scriptorium: Not yet rendered';
-    }
-  });
+  }
 }

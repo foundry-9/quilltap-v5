@@ -9,9 +9,12 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
+import { notifyQueueChange } from '../../layout/queue-status.logic';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
+import { ScriptoriumBadge } from '../../ui/scriptorium-badge';
 import { ToastService } from '../../ui/toast.service';
 
 /**
@@ -19,9 +22,10 @@ import { ToastService } from '../../ui/toast.service';
  * `components/chat/ChatCard.tsx` fed by `transformSalonChatToCardData`. The whole
  * card is a link to `/salon/:id`; badges/tags/participants are read-only.
  *
- * Deferrals (v4 features not in the M4 slice): the memory / scriptorium
- * badges are shown as static counts (no click-to-reextract / re-render) and tag
- * colours use the default style (v4 resolves them client-side by id).
+ * The Scriptorium badge (p4.9o) is a three-state pill that queues an on-demand
+ * conversation render on click. Remaining deferral: the memory badge is a static
+ * count (no click-to-reextract) and tag colours use the default style (v4
+ * resolves them client-side by id).
  *
  * The optional `removable` mode (v4 `actionType="remove"`, used by the project
  * chats section) overlays an X that emits `remove` — it DISASSOCIATES the chat
@@ -30,7 +34,7 @@ import { ToastService } from '../../ui/toast.service';
 @Component({
   selector: 'qt-chat-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, AvatarStack],
+  imports: [RouterLink, Icon, AvatarStack, ScriptoriumBadge],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -78,6 +82,12 @@ import { ToastService } from '../../ui/toast.service';
                   <qt-icon name="book" class="w-3 h-3" />{{ memoryCount() }}
                 </span>
               }
+
+              <qt-scriptorium-badge
+                [status]="chat().scriptoriumStatus"
+                [busy]="rendering()"
+                (render)="renderConversation()"
+              />
 
               @if (chat().isDangerousChat) {
                 <span
@@ -138,12 +148,14 @@ import { ToastService } from '../../ui/toast.service';
 })
 export class ChatCard {
   private readonly toasts = inject(ToastService);
+  private readonly core = inject(CoreClient);
   readonly chat = input.required<EnrichedChatSummary>();
   /** v4 `actionType="remove"` — overlay an X that disassociates from the project. */
   readonly removable = input(false);
   readonly remove = output<string>();
 
   protected readonly copied = signal(false);
+  protected readonly rendering = signal(false);
 
   protected readonly displayTitle = computed(() => this.chat().title || 'Untitled Chat');
   protected readonly messageCount = computed(() => this.chat()._count?.messages ?? 0);
@@ -179,6 +191,26 @@ export class ChatCard {
     event.preventDefault();
     event.stopPropagation();
     this.remove.emit(this.chat().id);
+  }
+
+  /**
+   * Queue an on-demand Scriptorium render (v4 `handleRenderConversation`): POST
+   * the render-conversation action, toast, and wake the toolbar queue badges.
+   * v5 skips v4's immediate list refetch — the render is a background job, so
+   * the badge only changes once it completes (the next natural list load).
+   */
+  protected async renderConversation(): Promise<void> {
+    if (this.rendering()) return;
+    this.rendering.set(true);
+    try {
+      await this.core.renderConversation(this.chat().id);
+      this.toasts.showSuccess('Conversation rendering queued');
+      notifyQueueChange();
+    } catch (err) {
+      this.toasts.showError(coreErrorMessage(err, 'Failed to queue conversation rendering'));
+    } finally {
+      this.rendering.set(false);
+    }
   }
 
   protected copyLink(event: Event): void {
