@@ -7,7 +7,7 @@
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { normalizeAvatarSrc } from '../ui/avatar-stack';
-import { groupToolMessagesIntoAssistants } from './group-tool-messages';
+import { groupToolMessagesIntoAssistants, readInitiatedBy } from './group-tool-messages';
 import {
   getAnnouncementImportance,
   getSystemKindDisplayLabel,
@@ -305,16 +305,38 @@ export function isAnnouncementChip(message: MessageDto): boolean {
 }
 
 /**
- * Resolve the author for a standalone TOOL row by borrowing the nearest
- * preceding character-assistant's participant when the row carries none (v4
- * `VirtualizedMessageList.tsx:228-247`). Historical TOOL rows persisted before
- * character attribution was added are identifiable by position only; the walk
- * stops at a USER boundary so it never reaches back into a prior turn.
+ * Resolve the message whose avatar and name should head a standalone TOOL row
+ * (v4 `app/salon/[id]/group-tool-messages.ts` `resolveToolRowAttributionMessage`,
+ * called from `VirtualizedMessageList.tsx`).
+ *
+ * A TOOL row that already knows its author (a Staff `systemSender`, or its own
+ * `participantId`) heads itself. Otherwise:
+ *  - A **user-initiated** run (composer / Run Tool modal, `initiatedBy: 'user'`)
+ *    is the operator's action, so it is resolved as a USER row and wears the
+ *    operator's face. The pending TOOL result is persisted *before* the user's
+ *    own message, so the positional borrow below would otherwise hand it
+ *    whoever spoke last — an unrelated character (Bug 29).
+ *  - A **character-initiated** run borrows the nearest preceding assistant's
+ *    participant, stopping at a USER boundary — that assistant is the character
+ *    that called the tool. Historical rows persisted before attribution existed
+ *    are identifiable by position only, and this heuristic is correct for them.
+ *
+ * Purely a rendering transform — the returned object is a shallow copy or the
+ * original by reference; the underlying message is never mutated.
  */
-function resolveToolAvatar(message: MessageDto, grouped: MessageDto[], i: number): MessageDto {
+export function resolveToolRowAttributionMessage(
+  message: MessageDto,
+  messageIndex: number,
+  messages: MessageDto[],
+): MessageDto {
   if (message.systemSender || message.participantId) return message;
-  for (let k = i - 1; k >= 0; k--) {
-    const prev = grouped[k];
+
+  if (readInitiatedBy(message.content) === 'user') {
+    return { ...message, role: 'USER', participantId: null };
+  }
+
+  for (let k = messageIndex - 1; k >= 0; k--) {
+    const prev = messages[k];
     if (prev.role === 'ASSISTANT' && prev.participantId) {
       return { ...message, participantId: prev.participantId };
     }
@@ -354,7 +376,7 @@ export function buildRenderItems(messages: MessageDto[]): RenderItem[] {
     const message = grouped[i];
     if (message.role === 'TOOL' && !message.systemSender) {
       flush();
-      items.push({ type: 'tool', message: resolveToolAvatar(message, grouped, i) });
+      items.push({ type: 'tool', message: resolveToolRowAttributionMessage(message, i, grouped) });
     } else if (isAnnouncementChip(message)) {
       run.push({
         id: message.id,

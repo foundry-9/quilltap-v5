@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ChatDetail, MessageDto, ParticipantDetail } from '../core/core-contract';
-import { buildRenderItems, resolveMessageAuthor, splitSwipeGroups } from './chat-view-model';
+import {
+  buildRenderItems,
+  resolveMessageAuthor,
+  resolveToolRowAttributionMessage,
+  splitSwipeGroups,
+} from './chat-view-model';
+
+function toolContent(extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ toolName: 'rng', success: true, result: '17', ...extra });
+}
 
 function msg(over: Partial<MessageDto>): MessageDto {
   return {
@@ -161,9 +170,12 @@ describe('buildRenderItems — TOOL rows (P4.17)', () => {
     expect(group.type === 'announcement-group' && group.chips[0].message.id).toBe('t');
   });
 
-  it('borrows the preceding assistant participant for a standalone TOOL row with none (avatar walk)', () => {
-    // A user-initiated tool WITHOUT a systemSender (no Prospero label) does not
-    // fold and carries no participant — the walk borrows p1 from the assistant.
+  it('heads a user-initiated standalone TOOL row as the operator, not the last speaker (Bug 29)', () => {
+    // A composer/Run-Tool result (initiatedBy: 'user', no systemSender) does not
+    // fold and carries no participant. Before Bug 29 the avatar walk borrowed p1
+    // from the assistant that spoke last; now the row heads as a USER row (the
+    // operator's face) instead. The direct helper cases live in
+    // resolveToolRowAttributionMessage's own describe.
     const items = buildRenderItems([
       msg({ id: 'a', role: 'ASSISTANT', participantId: 'p1', createdAt: '2024-01-01T00:00:01.000Z' }),
       msg({
@@ -176,7 +188,8 @@ describe('buildRenderItems — TOOL rows (P4.17)', () => {
     ]);
     const tool = items[1];
     expect(tool.type).toBe('tool');
-    expect(tool.type === 'tool' && tool.message.participantId).toBe('p1');
+    expect(tool.type === 'tool' && tool.message.role).toBe('USER');
+    expect(tool.type === 'tool' && tool.message.participantId).toBeNull();
   });
 
   it('does not borrow across a USER boundary for the avatar walk', () => {
@@ -187,7 +200,7 @@ describe('buildRenderItems — TOOL rows (P4.17)', () => {
         id: 't',
         role: 'TOOL',
         participantId: null,
-        content: TOOL({ initiatedBy: 'user' }),
+        content: TOOL(),
         createdAt: '2024-01-01T00:00:03.000Z',
       }),
     ]);
@@ -482,5 +495,60 @@ describe('resolveMessageAuthor — Staff senders (P4.26)', () => {
       chat({ participants: [cast('char-first', 'Aria')] }),
     );
     expect(author.name).toBe('Aria');
+  });
+});
+
+/**
+ * Ported case-for-case from v4 `app/salon/[id]/group-tool-messages.test.ts`
+ * (`resolveToolRowAttributionMessage` describe). v5 keeps the helper in
+ * `chat-view-model.ts` — `buildRenderItems` is its only caller — so its cases
+ * live here rather than in `group-tool-messages.spec.ts` (Bug 29).
+ */
+describe('resolveToolRowAttributionMessage (v4 group-tool-messages.ts)', () => {
+  it('heads a user-initiated tool card with the operator, not the last speaker', () => {
+    // The pending TOOL row is persisted before the user's own message, so the
+    // nearest preceding assistant is an unrelated character (Bug 29).
+    const other = msg({ id: 'other', role: 'ASSISTANT', content: 'char B just spoke', participantId: 'pB' });
+    const userTool = msg({ id: 'ut', role: 'TOOL', content: toolContent({ initiatedBy: 'user' }) });
+    const messages = [other, userTool];
+
+    const resolved = resolveToolRowAttributionMessage(userTool, 1, messages);
+
+    // Resolved as a USER row (operator's face) — it does NOT borrow pB.
+    expect(resolved.role).toBe('USER');
+    expect(resolved.participantId).toBeNull();
+  });
+
+  it('still borrows the calling character for a character-initiated tool row', () => {
+    const caller = msg({ id: 'caller', role: 'ASSISTANT', content: 'I roll', participantId: 'pA' });
+    const charTool = msg({ id: 'ct', role: 'TOOL', content: toolContent() });
+    const messages = [caller, charTool];
+
+    const resolved = resolveToolRowAttributionMessage(charTool, 1, messages);
+
+    expect(resolved.role).toBe('TOOL');
+    expect(resolved.participantId).toBe('pA');
+  });
+
+  it('does not borrow across a USER boundary for a character-initiated row', () => {
+    const caller = msg({ id: 'caller', role: 'ASSISTANT', content: 'turn 1', participantId: 'pA' });
+    const user = msg({ id: 'u', role: 'USER', content: 'next' });
+    const charTool = msg({ id: 'ct', role: 'TOOL', content: toolContent() });
+    const messages = [caller, user, charTool];
+
+    const resolved = resolveToolRowAttributionMessage(charTool, 2, messages);
+
+    // Walk stops at the USER boundary before reaching pA — row heads itself.
+    // v4 asserts `undefined` (its Message.participantId is optional); v5's
+    // MessageDto uses `null`, so the untouched row keeps its own `null`.
+    expect(resolved.participantId).toBeNull();
+  });
+
+  it('heads a TOOL row that already knows its author with itself', () => {
+    const sysTool = msg({ id: 'st', role: 'TOOL', content: toolContent(), systemSender: 'prospero' });
+    expect(resolveToolRowAttributionMessage(sysTool, 0, [sysTool])).toBe(sysTool);
+
+    const ownedTool = msg({ id: 'ot', role: 'TOOL', content: toolContent(), participantId: 'pC' });
+    expect(resolveToolRowAttributionMessage(ownedTool, 0, [ownedTool])).toBe(ownedTool);
   });
 });

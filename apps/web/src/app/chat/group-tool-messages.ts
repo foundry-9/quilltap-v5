@@ -12,8 +12,11 @@ import type { MessageDto } from '../core/core-contract';
  * Returns `undefined` when the content can't be parsed or the field is absent.
  * User-initiated runs (Run Tool modal, composer-attached results) carry
  * `initiatedBy: 'user'`; character-initiated tool results omit it.
+ *
+ * Exported (matching v4's shape) so the standalone-row attribution helper in
+ * `chat-view-model.ts` can share the same parse (Bug 29).
  */
-function readInitiatedBy(content: string): string | undefined {
+export function readInitiatedBy(content: string): string | undefined {
   try {
     const parsed = JSON.parse(content) as { initiatedBy?: unknown };
     return typeof parsed.initiatedBy === 'string' ? parsed.initiatedBy : undefined;

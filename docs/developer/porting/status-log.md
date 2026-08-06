@@ -60865,3 +60865,28 @@ quilltap-web 0.0.63 → 0.0.64, quilltap-host 0.0.61 → 0.0.62 (unifier recount
 **Ownership note for the unifier:** the dedup REST edges were added to the
 existing `system_data_routes.rs` `/api/v1/system/tools` handlers (v4 mounts
 memory-dedup there); no P4.D51–D55 lane touches that file, verified at planning.
+### Lane record — P4.D54 (the `f4955e0e` Salon + UI-polish SPA drift)
+
+SPA-only (`apps/web/**`); the server counterpart is P4.D53 (§1 shared
+contract). Equivalence obligation is v4's new client unit tests ported
+case-for-case as vitest specs (no Rust oracle family moves here) plus
+the §1 name-for-name contract diff at unification.
+
+- **Bug 29 (tool-card faces) — DONE.** v4 `99d5fc7d` extracted the
+  standalone-TOOL avatar borrow into `resolveToolRowAttributionMessage`,
+  which heads an `initiatedBy: 'user'` row as the operator (USER role,
+  null participant) instead of borrowing the last speaker's participant.
+  v5 mirror: `chat-view-model.ts` `resolveToolAvatar` → exported
+  `resolveToolRowAttributionMessage` (v4's `(message, messageIndex,
+  messages)` signature); `readInitiatedBy` exported from
+  `group-tool-messages.ts` and shared. v4's four
+  `resolveToolRowAttributionMessage` cases ported into
+  `chat-view-model.spec.ts` (v5 keeps the helper there — `buildRenderItems`
+  is its only caller — so the cases live with it rather than in
+  `group-tool-messages.spec.ts`). Two pre-existing P4.17 integration tests
+  encoded the OLD borrow via `initiatedBy: 'user'` content: one re-ruled to
+  assert the new operator-heading behavior end-to-end through
+  `buildRenderItems`, the other made character-initiated so it still
+  exercises the USER-boundary walk stop. The `undefined`-vs-`null`
+  participant assertion follows v5's `MessageDto` (`null`, not v4's
+  optional `undefined`). `ng test` bug-29 specs: 43/43.

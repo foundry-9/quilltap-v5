@@ -209,6 +209,12 @@ chat's summary into its participant vaults (the files the Commonplace Book reads
 before a character's turn), deduping to one run at a time. Both are live over
 the dispatch verbs and v4's `/api/v1/system/tools` and
 `/api/v1/system/conversation-summaries` URLs.
+P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
+- Bug 29: a composer/Run-Tool result card no longer wears the last
+  speaker's face. The standalone-tool avatar helper is now
+  `resolveToolRowAttributionMessage`, which heads an `initiatedBy: 'user'`
+  row as the operator; character-initiated rows keep the positional
+  borrow.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52
