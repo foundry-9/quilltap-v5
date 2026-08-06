@@ -27,12 +27,14 @@
 //! ## No oracle, deliberately
 //!
 //! This is a v5-side invariant suite, like `restore_preview_writes_nothing` in
-//! `system_restore_state`. It cannot be an equivalence: under the standing
-//! 2026-08-03 backup/restore ruling v5 **diverges** here — v4 wipes no
-//! annotations and skips no orphan, so v4 restoring these archives into a
-//! migrated instance fails in exactly the ways the walk recorded. What v4 does
-//! is asserted where it belongs (`system_delete_data_equivalence`'s
-//! `ANNOTATION_DIVERGENCE_KEY`); what v5 must do instead is asserted here.
+//! `system_restore_state`. It asserts what v5 must do on a migration-vintage
+//! restore: wipe `conversation_annotations` before re-inserting, and skip
+//! orphaned rows, so a `replace`-mode restore never hits the migrated instance's
+//! UNIQUE / FK constraints. v5 made both fixes first; v4 has since CONVERGED on
+//! the annotation wipe (`3bb664f0`, bug 10 — now asserted as a plain equality in
+//! `system_delete_data_equivalence`). The suite stays a v5-side invariant (no
+//! oracle) because it pins v5's on-disk restore behavior directly, and the
+//! orphan-skip half is still v5's to guarantee.
 //!
 //! Runs unconditionally — no env var, so it can never silently skip.
 

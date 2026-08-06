@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.D51 (bug 10, delete-all half): the reference app now clears
+`conversation_annotations` on "delete all my data" — a privacy fix this
+port made first. The delete-data differential's both-directions divergence
+carve-out is retired; the annotation count is compared as a plain equality
+like every other table.
+
 P4.D51 (bug 11): the reference app now recognizes an imported `.qtap`
 archive's document store by its ID (not its display name), preserves that
 ID on create, and clears folders on overwrite — all fixes this port made

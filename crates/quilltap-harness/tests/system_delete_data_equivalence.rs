@@ -17,12 +17,11 @@
 //! `background_jobs`, `users`) as tightly as the ones it must clear, and it is
 //! what would catch a v5 repo whose delete cascades differently from v4's.
 //!
-//! ## One ruled divergence
+//! ## `conversation_annotations` — CONVERGED (bug 10)
 //!
-//! [`ANNOTATION_DIVERGENCE_KEY`] — v5 wipes `conversation_annotations`, v4 wipes
-//! it nowhere (dogfood #57). Asserted in both directions on the four cases that
-//! actually run the wipe; every other key, and every other case, is compared for
-//! equality exactly as before.
+//! v5 wiped `conversation_annotations` on delete-all first (dogfood #57); v4 has
+//! since adopted it (`3bb664f0`), so this key is now a plain equality like every
+//! other. The whole count map, including it, is compared for equality.
 //!
 //! Generate the oracle (see the .test.ts header), then run:
 //!   QT_ORACLE_SYSTEM_DELETE_DATA=/tmp/oracle-system-delete-data.ndjson \
@@ -132,41 +131,22 @@ fn count_all(db: &Db) -> Value {
 
 const CONFIRM: &str = "DELETE_ALL_MY_DATA";
 
-/// ## ⚠ RULED DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes `conversation_annotations`
+/// ## `conversation_annotations` — the delete-all wipe (bug 10, v4 CONVERGED)
 ///
-/// v4 deletes this table on no path at all: it is absent from
-/// `clearFormat3Entities`' main list, `deleteUserData` never collects it, and
-/// `chats.repository.delete()` sweeps only the message rows. So "delete all my
-/// data" leaves it standing, and a `replace`-mode restore then re-inserts the
+/// v4 used to delete this table on no path at all: it was absent from
+/// `clearFormat3Entities`' main list, `deleteUserData` never collected it, and
+/// `chats.repository.delete()` swept only the message rows. So "delete all my
+/// data" left it standing, and a `replace`-mode restore then re-inserted the
 /// archive's annotations on top of the survivors — which on a migration-vintage
 /// instance (whose DDL carries `UNIQUE(chatId, messageIndex, characterName)`,
-/// something `generateDDL` never emits) fails once per row. The 2026-08-03 Part
-/// F walk saw it eight times.
+/// something `generateDDL` never emits) failed once per row (dogfood #57, seen
+/// eight times on the 2026-08-03 Part F walk).
 ///
-/// Under the standing 2026-08-03 ruling — in backup/restore/import/export v5
-/// FIXES v4's bugs rather than reproducing them — v5 truncates the table
-/// (`services::delete_all::V5_EXTRA_MAIN_TABLES`). The v4-side repair is queued
-/// on the post-5.0 v4-first list.
-///
-/// **Asserted in BOTH directions** by [`check_annotation_divergence`]: on every
-/// case that actually runs the wipe, rust must be 0 AND the oracle must be
-/// non-zero. If v4 ever converges, this test fails and tells the next lane to
-/// delete the entry rather than silently agreeing.
-///
-/// The key is excluded from the general count-map comparison below; nothing else
-/// is.
-const ANNOTATION_DIVERGENCE_KEY: &str = "main.conversation_annotations";
-
-/// The cases whose wipe actually runs, i.e. where the divergence must be live.
-/// The other three (`pristine_counts`, `delete_data_preview`,
-/// `delete_data_wrong_confirm`) write nothing, so both sides must AGREE there —
-/// and they are checked for equality like any other key.
-const WIPING_CASES: &[&str] = &[
-    "delete_data",
-    "delete_data_twice",
-    "delete_data_keeps_instance_settings",
-    "delete_data_preview_after_wipe",
-];
+/// v5 truncated the table (`services::delete_all::V5_EXTRA_MAIN_TABLES`) under
+/// the standing 2026-08-03 ruling; **v4 has since CONVERGED** (`3bb664f0`, bug
+/// 10: `conversation_annotations` added to `clearFormat3Entities`' `mainTables`),
+/// so both sides now zero it on delete and the count is a PLAIN equality like
+/// every other key.
 
 #[test]
 fn system_delete_data_matches_oracle() {
@@ -228,29 +208,10 @@ fn system_delete_data_matches_oracle() {
         let want = exp["counts"].as_object().unwrap();
         let zero = json!(0);
         let mut diffs: Vec<String> = Vec::new();
-        // The one ruled divergence, asserted in both directions instead of for
-        // equality — see `ANNOTATION_DIVERGENCE_KEY`.
-        if WIPING_CASES.contains(&name) {
-            let rust = got.get(ANNOTATION_DIVERGENCE_KEY).unwrap_or(&zero);
-            let oracle = want.get(ANNOTATION_DIVERGENCE_KEY).unwrap_or(&zero);
-            if rust != &zero {
-                diffs.push(format!(
-                    "    {ANNOTATION_DIVERGENCE_KEY}: v5 must WIPE it (rust {rust}, expected 0) \
-                     — see ANNOTATION_DIVERGENCE_KEY"
-                ));
-            }
-            if oracle == &zero {
-                diffs.push(format!(
-                    "    {ANNOTATION_DIVERGENCE_KEY}: v4 has CONVERGED (oracle 0) — the ruled \
-                     divergence is over; delete ANNOTATION_DIVERGENCE_KEY and let this key be \
-                     compared for equality again"
-                ));
-            }
-        }
+        // `main.conversation_annotations` is a PLAIN equality since bug 10
+        // (`3bb664f0`): v4 adopted the wipe this port made first
+        // (`clearFormat3Entities` now clears it), so both sides zero it on delete.
         for (k, v) in want {
-            if WIPING_CASES.contains(&name) && k == ANNOTATION_DIVERGENCE_KEY {
-                continue;
-            }
             let g = got.get(k).unwrap_or(&zero);
             if g != v {
                 diffs.push(format!("    {k}: rust {g} != oracle {v}"));

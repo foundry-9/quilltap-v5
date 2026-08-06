@@ -201,9 +201,9 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
 ///
 /// Under the **standing ruling of 2026-08-03** (backup/restore/import/export:
 /// v5 FIXES v4's bugs rather than reproducing them) v5 truncates the table here.
-/// The divergence is pinned in both directions by
-/// `system_delete_data_equivalence`; the v4-side repair is queued on the
-/// post-5.0 v4-first list in `dogfood-findings.md`.
+/// v5 made this fix first; **v4 has since CONVERGED** (`3bb664f0`, bug 10 —
+/// `conversation_annotations` added to `clearFormat3Entities`'s `mainTables`),
+/// so `system_delete_data_equivalence` now compares this key as a plain equality.
 ///
 /// Kept as its own list rather than folded into [`FORMAT3_MAIN_TABLES`] so the
 /// v4 list stays a verbatim transcription and the addition is visible as an
