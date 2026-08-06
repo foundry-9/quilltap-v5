@@ -46,7 +46,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::conversation_chunks::{CcCreate, CcUpdate, CreateOptions};
+use quilltap_core::db::conversation_chunks::{CcCreate, CcUpdate, CcUpsert, CreateOptions};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::Value;
@@ -69,6 +69,13 @@ enum Op {
     },
     #[serde(rename = "update")]
     Update { id: String, data: UpdateData },
+    /// Bug 17 (`62ab1bc8`) — v4 `upsert(input)` on an EXISTING `(chatId,
+    /// interchangeIndex)`. The three corpus ops close the embedding arms:
+    /// supplied embedding wins / content change NULLs the stale vector /
+    /// identical content preserves it. The update arm mints only `updatedAt`
+    /// (v4 `new Date()`; v5 injects `UPSERT_NOW_ISO`), normalized on both sides.
+    #[serde(rename = "upsert")]
+    Upsert { data: CreateData },
     #[serde(rename = "delete")]
     Delete { id: String },
     /// P4.D25 — v4 `clearEmbeddingsForChat` with its new optional `olderThan`
@@ -134,6 +141,13 @@ fn spec_path() -> PathBuf {
 /// Deliberately NOT in the committed spec: v4 mints its own `new Date()` there,
 /// so this value is v5-side only and must normalize to `<ts>` like the oracle's.
 const CLEAR_NOW_ISO: &str = "2026-06-06T06:06:06.606Z";
+
+/// The `now` the Rust port injects into `upsert`'s update arm (Bug 17). Like
+/// `CLEAR_NOW_ISO`, deliberately NOT in the committed spec — v4's `_update` mints
+/// `new Date()` there — so both sides' `updatedAt` normalize to `<ts>`. (The
+/// `new_id` is unused: the corpus upserts all hit an EXISTING row.)
+const UPSERT_NOW_ISO: &str = "2026-06-07T07:07:07.707Z";
+const UPSERT_NEW_ID: &str = "00000000-0000-4000-8000-0000000000ff";
 
 /// Every string literal anywhere in the committed spec — the values BOTH sides
 /// pinned.
@@ -273,11 +287,28 @@ fn conversation_chunks_tier2_matches_oracle() {
                                 content: data.content.clone(),
                                 participant_names: data.participant_names.clone(),
                                 message_ids: data.message_ids.clone(),
+                                // The plain `update` op never touches the BLOB.
+                                embedding: None,
                                 updated_at: data.updated_at.clone(),
                             },
                         )
                         .unwrap_or_else(|e| panic!("conversation_chunks.update {id}: {e}"));
                     assert!(found, "update target {id} not found in fixture");
+                }
+                Op::Upsert { data } => {
+                    repo.upsert(
+                        &CcUpsert {
+                            chat_id: data.chat_id.clone(),
+                            interchange_index: data.interchange_index,
+                            content: data.content.clone(),
+                            participant_names: data.participant_names.clone(),
+                            message_ids: data.message_ids.clone(),
+                            embedding: data.embedding.clone(),
+                        },
+                        UPSERT_NEW_ID,
+                        UPSERT_NOW_ISO,
+                    )
+                    .unwrap_or_else(|e| panic!("conversation_chunks.upsert: {e}"));
                 }
                 Op::Delete { id } => {
                     let found = repo

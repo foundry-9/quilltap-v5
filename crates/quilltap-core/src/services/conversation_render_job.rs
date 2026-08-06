@@ -223,6 +223,10 @@ async fn handle_inner(
             content: interchange.content.clone(),
             participant_names: interchange.participant_names.clone(),
             message_ids: interchange.message_ids.clone(),
+            // v4's render input carries no `embedding` key — the update arm
+            // preserves the stored vector, or NULLs it when the content at this
+            // index changed (Bug 17 sub-chunking), so the re-enqueue re-embeds.
+            embedding: None,
         };
         let new_id = Uuid::new_v4().to_string();
         let now_for_write = now_iso.to_string();

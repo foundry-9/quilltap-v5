@@ -26,13 +26,21 @@
 //! compares byte-for-byte (`[0.5,-0.25,0.75,0.125]` →
 //! `0000003f000080be0000403f0000003e`).
 //!
-//! Following `help_docs` exactly, the BLOB is **not touchable through `update`**:
-//! v4's `_update` whole-row rewrite re-persists the existing embedding unchanged,
-//! so a text-only patch leaves it intact. This port models the patch as a partial
-//! `UPDATE SET` over only the provided columns + `updatedAt`, never naming the
-//! `embedding` column, so the stored BLOB survives untouched. The corpus exercises
-//! this directly (a content/interchangeIndex/participantNames update on the
-//! embedded seed row, asserted to still show the original embedding hex).
+//! A text-only patch leaves the BLOB intact: v4's `_update` whole-row rewrite
+//! re-persists the existing embedding unchanged, and this port models the patch
+//! as a partial `UPDATE SET` that simply never names the `embedding` column when
+//! `CcUpdate::embedding` is `None`. The corpus exercises this directly (a
+//! content/interchangeIndex/participantNames update on the embedded seed row,
+//! asserted to still show the original embedding hex).
+//!
+//! **Bug 17 (`62ab1bc8`) made the BLOB reachable through `upsert`.** v4's
+//! `upsert` update arm now NULLs the stored vector when the content at a
+//! `(chatId, interchangeIndex)` changed (so the render handler re-embeds — its
+//! enqueue gate is `!chunk.embedding`), and a supplied `input.embedding` wins
+//! over that. `CcUpdate::embedding` is the tri-state that carries it (`None`
+//! untouched / `Some(None)` NULL / `Some(v)` quantized), driven from `upsert`;
+//! the three-way behavior is pinned by the conversation-chunks corpus's `upsert`
+//! ops (overwrite / NULL-on-content-change / preserve-on-identical-content).
 //!
 //! ## The rest of the marshaling surface
 //!
@@ -84,10 +92,15 @@ pub struct CreateOptions {
 
 /// A conversation-chunk update patch. Mirrors v4 `update` over `_update`:
 /// provided fields overwrite, id and createdAt are preserved, `updatedAt` is set
-/// explicitly. Following `help_docs`, it deliberately has **no embedding field** —
-/// the BLOB is never touched through `update` (v4's whole-row rewrite re-persists
-/// the existing embedding unchanged; here the partial `UPDATE SET` simply never
-/// names the `embedding` column). Each `Some` field sets that column.
+/// explicitly. Each `Some` text/number field sets that column.
+///
+/// The `embedding` field is **tri-state** (v4 Bug 17, `62ab1bc8`): `None` leaves
+/// the BLOB untouched — the text-only patch's whole prior behavior, still the
+/// only shape the render `upsert` produces on a preserve; the partial `UPDATE
+/// SET` never names the column so the stored BLOB survives. `Some(None)` NULLs it
+/// (v4's `updateData.embedding = null` — a content change re-render). `Some(v)`
+/// sets it to the quantized Float32 blob (v4's supplied `input.embedding`), an
+/// empty vector storing as SQL NULL per the codec convention.
 #[derive(Default)]
 pub struct CcUpdate {
     pub chat_id: Option<String>,
@@ -98,6 +111,8 @@ pub struct CcUpdate {
     pub participant_names: Option<Vec<String>>,
     /// Re-serialized to compact JSON array text when provided.
     pub message_ids: Option<Vec<String>>,
+    /// Bug 17: tri-state embedding — see the struct doc. `None` = untouched.
+    pub embedding: Option<Option<Vec<f32>>>,
     pub updated_at: String,
 }
 
@@ -133,16 +148,19 @@ pub struct CcChunkRow {
     pub content: String,
 }
 
-/// v4's `ConversationChunkInput` as the render handler builds it — the five
-/// fields it passes to `upsert`. `embedding` is deliberately absent: the render
-/// never supplies one, which is what makes the update arm preserve the vector
-/// already stored.
+/// v4's `ConversationChunkInput` as the render handler builds it — the fields it
+/// passes to `upsert`. `embedding` models v4's optional `input.embedding`: the
+/// render handler leaves it `None` (v4's key is absent — `!== undefined` is
+/// false), which is what makes the update arm preserve or NULL rather than
+/// overwrite; a caller that DOES supply one wins over the content-change NULL.
 pub struct CcUpsert {
     pub chat_id: String,
     pub interchange_index: f64,
     pub content: String,
     pub participant_names: Vec<String>,
     pub message_ids: Vec<String>,
+    /// `None` = not supplied (v4 `undefined`); `Some(v)` supplied (empty → NULL).
+    pub embedding: Option<Vec<f32>>,
 }
 
 /// A chunk row as the CONVERSATION_RENDER handler and EMBEDDING_REINDEX_ALL read
@@ -326,6 +344,17 @@ impl<'c> ConversationChunksRepository<'c> {
             assignments.push(format!("messageIds = ?{}", values.len() + 1));
             values.push(Box::new(message_ids_json));
         }
+        // Bug 17: the embedding column is named only when the patch carries it
+        // (tri-state — `None` leaves the BLOB untouched). An empty vector, like
+        // `None`-inner, binds SQL NULL (the codec convention).
+        if let Some(embedding_opt) = &patch.embedding {
+            let blob: Option<Vec<u8>> = match embedding_opt {
+                Some(v) if !v.is_empty() => Some(float32_to_blob(v)),
+                _ => None,
+            };
+            assignments.push(format!("embedding = ?{}", values.len() + 1));
+            values.push(Box::new(blob));
+        }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));
 
@@ -490,17 +519,19 @@ impl<'c> ConversationChunksRepository<'c> {
     /// v4 `upsert(input)` — update the chunk matching `(chatId,
     /// interchangeIndex)` if one exists, else create it.
     ///
-    /// The update arm writes **only** `content` / `participantNames` /
-    /// `messageIds` (v4's `updateData`), deliberately leaving the `embedding`
-    /// BLOB alone — that is what makes a re-render preserve embeddings already
-    /// computed. (v4's `input.embedding !== undefined` branch never fires from
-    /// the render handler, whose input object carries no `embedding` key; it is
-    /// not modeled.) `updatedAt` is stamped from the injected `now_iso`, matching
-    /// `_update`'s minted `now`.
+    /// The update arm writes `content` / `participantNames` / `messageIds`
+    /// (v4's `updateData`) plus, per v4 Bug 17 (`62ab1bc8`), the embedding: a
+    /// supplied `input.embedding` wins; else if `existing.content !=
+    /// input.content` the stale vector is NULLed so the render handler re-embeds
+    /// (its enqueue gate is `!chunk.embedding`); else the BLOB is left untouched
+    /// (a re-render of unchanged text preserves the vector already computed).
+    /// `updatedAt` is stamped from the injected `now_iso`, matching `_update`'s
+    /// minted `now`.
     ///
     /// The create arm mints the row with `new_id` + `now_iso` for all three of
-    /// id / createdAt / updatedAt and a NULL embedding (v4's `_create` with the
-    /// schema's `embedding` default). Returns `(chunk_id, created)`.
+    /// id / createdAt / updatedAt and the supplied-or-NULL embedding (v4's
+    /// `_create` with the schema's `embedding` default). Returns `(chunk_id,
+    /// created)`.
     pub fn upsert(
         &self,
         input: &CcUpsert,
@@ -510,10 +541,18 @@ impl<'c> ConversationChunksRepository<'c> {
         if let Some(existing) =
             self.find_by_interchange_index(&input.chat_id, input.interchange_index)?
         {
+            // v4: `input.embedding !== undefined` wins; else a content change
+            // NULLs the now-stale vector; else leave the BLOB alone.
+            let embedding = match &input.embedding {
+                Some(v) => Some(Some(v.clone())),
+                None if existing.content != input.content => Some(None),
+                None => None,
+            };
             let patch = CcUpdate {
                 content: Some(input.content.clone()),
                 participant_names: Some(input.participant_names.clone()),
                 message_ids: Some(input.message_ids.clone()),
+                embedding,
                 updated_at: now_iso.to_string(),
                 ..Default::default()
             };
@@ -526,7 +565,8 @@ impl<'c> ConversationChunksRepository<'c> {
             content: input.content.clone(),
             participant_names: input.participant_names.clone(),
             message_ids: input.message_ids.clone(),
-            embedding: None,
+            // v4 `_create(input)` carries the supplied embedding (or NULL).
+            embedding: input.embedding.clone(),
         };
         let opts = CreateOptions {
             id: new_id.to_string(),

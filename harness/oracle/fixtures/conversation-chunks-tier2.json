@@ -246,6 +246,136 @@
       "comment": "Guard OFF (no olderThan) on chat aaaa: both embedded rows go regardless of age; the already-NULL row is skipped by the IS NOT NULL guard, so the count is 2, not 3.",
       "chatId": "c0000000-0000-4000-8000-00000000aaaa",
       "olderThan": null
+    },
+    {
+      "kind": "create",
+      "comment": "Bug 17 upsert corpus: embedded seed on chat eeee, interchangeIndex 0.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 0,
+        "content": "Upsert seed alpha.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000a1"
+        ],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "8a000000-0000-4000-8000-000000000008",
+        "createdAt": "2026-06-01T00:00:00.000Z",
+        "updatedAt": "2026-06-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Bug 17 upsert corpus: embedded seed on chat eeee, interchangeIndex 1.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 1,
+        "content": "Upsert seed bravo.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000b1"
+        ],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "9b000000-0000-4000-8000-000000000009",
+        "createdAt": "2026-06-01T00:00:00.000Z",
+        "updatedAt": "2026-06-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Bug 17 upsert corpus: embedded seed on chat eeee, interchangeIndex 2.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 2,
+        "content": "Upsert seed charlie.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000c1"
+        ],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "ac000000-0000-4000-8000-00000000000a",
+        "createdAt": "2026-06-01T00:00:00.000Z",
+        "updatedAt": "2026-06-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Bug 17 arm 1 — SUPPLIED embedding wins. Upsert (eeee, 0) with a new content AND a new embedding: input.embedding !== undefined, so the stored vector is OVERWRITTEN with the quantized [0.25,0.5,-0.5,-0.75], not NULLed. updatedAt minted -> normalized.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 0,
+        "content": "Upsert seed alpha, revised.",
+        "participantNames": [
+          "Aurora",
+          "Prospero"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000a2"
+        ],
+        "embedding": [
+          0.25,
+          0.5,
+          -0.5,
+          -0.75
+        ]
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Bug 17 arm 2 — CONTENT CHANGE with no embedding NULLs the stale vector. Upsert (eeee, 1) with different content, no embedding key: existing.content != input.content -> embedding = NULL, so the render handler will re-embed.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 1,
+        "content": "Upsert seed bravo, revised.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000b2"
+        ]
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Bug 17 arm 3 — IDENTICAL content preserves the vector. Upsert (eeee, 2) with the SAME content, no embedding key (only messageIds differ): neither branch fires, the BLOB is left untouched -> the dump still shows the original embedding hex.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 2,
+        "content": "Upsert seed charlie.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000c2"
+        ]
+      }
     }
   ]
 }

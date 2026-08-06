@@ -60231,3 +60231,34 @@ Regen (Node 24, from the v4 checkout, TZ=UTC):
 /tmp/oracle-conversation-markdown.ndjson`; run
 `QT_ORACLE_CONVERSATION_MARKDOWN=… cargo test -p quilltap-harness
 --test conversation_markdown_equivalence`. Versions: core 0.0.487.
+
+### Unit 2 — bug 17 chunks-repo embedding-NULL upsert (FAITHFUL)
+
+Ported v4 `conversation-chunks.repository.ts:176-190`'s upsert update
+arm into `db/conversation_chunks.rs`: `CcUpdate` gained a tri-state
+`embedding: Option<Option<Vec<f32>>>` (`None` untouched / `Some(None)`
+NULL / `Some(v)` quantized blob), and `upsert` computes it — a supplied
+`input.embedding` wins, else `existing.content != input.content` NULLs
+the stale vector (so the render handler re-embeds: its gate is
+`!chunk.embedding`), else the BLOB is left alone. `CcUpsert` gained an
+optional `embedding` (render handler passes `None`); the create arm now
+carries it. The stale module-doc claim "the BLOB is not touchable through
+update" was corrected.
+
+**Corpus:** `conversation-chunks-tier2.json` gained a three-op `upsert`
+family over a new chat `eeee` (three embedded seeds) — arm 1 supplied
+embedding overwrites (`…2a55ab81`), arm 2 content-change NULLs, arm 3
+identical-content preserves (`…55d67f15`). Appended AFTER the existing
+ops so the `clearResults [1,0,2]` shape is unchanged. Harness gained an
+`Op::Upsert` (injected `UPSERT_NOW_ISO`/`UPSERT_NEW_ID`, both unpinned →
+`updatedAt` normalizes); the oracle case gained an `upsert` branch.
+Differential green (9 rows); **mutation-proven** — reverting the
+tri-state to `None` reddens arm 2 (`row state diverged`).
+
+Regen (Node 24, TZ irrelevant): rebuild the /tmp fixture
+`QT_FIXTURE_OUT=/tmp/qt-cc-fixture.db tsx …/build-conversation-chunks-fixture.ts`,
+then `QT_FIXTURE_CC=/tmp/qt-cc-fixture.db tsx …/cases/conversation-chunks-tier2.ts
+> /tmp/oracle-cc.ndjson`; run
+`QT_ORACLE_CONVERSATION_CHUNKS=… QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db
+cargo test -p quilltap-harness --test conversation_chunks_tier2_equivalence`.
+Versions: core 0.0.488, harness 0.0.412.

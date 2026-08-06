@@ -50,7 +50,7 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete' | 'clearEmbeddings';
+  kind: 'create' | 'update' | 'upsert' | 'delete' | 'clearEmbeddings';
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
@@ -107,6 +107,12 @@ async function main(): Promise<void> {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'upsert') {
+      // Bug 17 (`62ab1bc8`): the update arm NULLs a stale vector on a content
+      // change, and a supplied `input.embedding` wins over that. v4 mints its
+      // own now/generateId inside upsert; every corpus upsert hits an EXISTING
+      // row so only the minted `updatedAt` lands, normalized on both sides.
+      await repo.upsert(op.data as never);
     } else if (op.kind === 'clearEmbeddings') {
       // `undefined` (not null) is what turns the age guard OFF in v4.
       clearResults.push(

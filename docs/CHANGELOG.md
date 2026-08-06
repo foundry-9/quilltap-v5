@@ -84,6 +84,18 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+A conversation-chunk re-render now nulls a chunk's embedding when the
+text at that interchange position changed (v4 Bug 17). Before, a
+re-render preserved the stored vector unconditionally, so when an
+oversize interchange split into sub-chunks — shifting every later chunk
+to new content at an existing index — those chunks kept the previous
+occupant's vector and were never re-embedded. The chunk upsert now nulls
+a stale vector (the re-embed enqueue gate is "no embedding"), while a
+caller that supplies a fresh embedding still wins. Unchanged text keeps
+its vector. The conversation-chunks differential grew a three-op upsert
+family (supplied-embedding overwrite / content-change null / identical-
+content preserve), mutation-proven.
+
 The Scriptorium conversation renderer now sub-chunks an oversize
 interchange (v4 Bug 17). An interchange whose rendered text exceeds a
 24,000-character budget is split into sequential in-context chunks — at
