@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.D51 (bug 9): the reference app now deletes a document store's children
+in one transaction, leaking no orphaned document bodies or group links —
+the cascade fix this port made first. The store-delete differential's
+both-directions leak divergences are retired to plain equalities; the
+boot orphan-reaper arm stays (a fix still unique to this port).
+
 P4.D51 (bug 12): the reference app now preserves an archived document
 store's link IDs across a second-generation restore — the carried-file
 dedup this port made first. Its convergence is partial: the reference app

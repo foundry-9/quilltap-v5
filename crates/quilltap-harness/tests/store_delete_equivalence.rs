@@ -12,13 +12,13 @@
 //! needed changing; it is structurally blind to this class, and this family
 //! carries the census instead.
 //!
-//! **The divergences.** Under the standing 2026-08-03 backup/restore ruling ("I
-//! want this work, not just fail the same way v4 fails"), v5 FIXES the delete
-//! path v4 still leaks on; the v4-side twin is queued post-5.0. Each arm is
-//! asserted in BOTH directions — v5 must be clean AND v4 must still be dirty — so
-//! that the day v4 converges this test fails and tells the next lane to retire the
-//! divergence rather than silently agreeing with it. See the divergence block
-//! above `ARMS`.
+//! **The divergences — CONVERGED (bug 9).** v5 fixed the leaky delete path first
+//! (P4.31): a single-transaction cascade that leaks no orphaned
+//! `doc_mount_documents` or `group_doc_mount_links`. v4 has since adopted it
+//! (`3bb664f0`, `delete-store-cascade.ts`), so those tables are now a PLAIN
+//! equality. The `reap_orphans` arm stays — it exercises v5's boot orphan reaper
+//! (`sweep_orphaned_store_children`), a v5-only pass that clears the fixture's
+//! planted orphans; v4 has no equivalent in the DELETE route.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-store-delete.ndjson npx jest -- store-delete
@@ -49,20 +49,21 @@ const MP_BOGUS: &str = "b9000000-0000-4000-8000-0000000000ff";
 /// arm pass by having nothing to reap.
 const PLANTED_ORPHANS: (usize, usize, usize) = (2, 4, 3); // links, folders, chunks
 
-// ── The two ruled divergences, by shape ──────────────────────────────────────
+// ── The two former divergences — CONVERGED (bug 9, v4 `3bb664f0`) ────────────
 //
-// Both are *dangling references* rather than named row ids, so one predicate
-// proves both halves: it finds v4's leak and, run over v5's state, proves v5
-// left none. A fixture rebuild cannot invalidate them.
+// Both were *dangling references* v4 used to leak on a store delete and v5 never
+// did (P4.31). v4's new `delete-store-cascade.ts` runs the whole cascade in one
+// transaction and leaks neither, so both are now PLAIN equalities:
 //
-// 1. `doc_mount_documents` with a `fileId` matching no `doc_mount_files` row.
-//    v4's `docMountDocuments.deleteByMountPointId` selects the file ids from
-//    `doc_mount_file_links` AFTER `docMountFiles.deleteByMountPointId` emptied
-//    it, so it deletes nothing and the document bodies leak permanently (no FK
-//    on either schema vintage).
+// 1. `doc_mount_documents` with a `fileId` matching no `doc_mount_files` row —
+//    v4 used to delete files before selecting their document ids, so the bodies
+//    leaked. Fixed.
 // 2. `group_doc_mount_links` with a `mountPointId` matching no
-//    `doc_mount_points` row. v4's delete route never touches that table; its
-//    only group-link delete is `deleteByGroupId`.
+//    `doc_mount_points` row — v4's delete route used to never touch that table.
+//    Fixed (`deleteByMountPointId` added).
+//
+// The retirement's tripwire: the oracle census is asserted to carry NO orphan of
+// either shape (in `store_delete_matches_oracle`); if v4 regresses, it reddens.
 //
 // NOT a divergence, though the survey predicted one: `doc_mount_blobs`. v4's
 // blobs step is genuinely dead (a copy-paste of the files step that never names
@@ -89,10 +90,6 @@ enum Op {
 struct Arm {
     case: &'static str,
     op: Op,
-    /// Rows v4 leaks and v5 does not, per the predicates above. Exact, so a
-    /// fixture that stopped exercising an arm fails instead of passing hollow.
-    leaked_documents: usize,
-    leaked_group_links: usize,
     /// This arm runs the reaper, so v5 additionally clears the planted orphans.
     reaps: bool,
 }
@@ -101,52 +98,36 @@ const ARMS: &[Arm] = &[
     Arm {
         case: "pristine",
         op: Op::None,
-        leaked_documents: 0,
-        leaked_group_links: 0,
         reaps: false,
     },
     Arm {
         case: "delete_target",
         op: Op::Delete(MP_TARGET),
-        leaked_documents: 2,
-        leaked_group_links: 1,
         reaps: false,
     },
-    // The keeper links no group, so its group-link arm is legitimately 0-vs-0 —
-    // the leak counts are per-case for exactly this reason.
     Arm {
         case: "delete_keeper",
         op: Op::Delete(MP_KEEPER),
-        leaked_documents: 1,
-        leaked_group_links: 0,
         reaps: false,
     },
     Arm {
         case: "delete_twice",
         op: Op::DeleteTwice(MP_TARGET),
-        leaked_documents: 2,
-        leaked_group_links: 1,
         reaps: false,
     },
     Arm {
         case: "delete_404",
         op: Op::Delete(MP_BOGUS),
-        leaked_documents: 0,
-        leaked_group_links: 0,
         reaps: false,
     },
     Arm {
         case: "delete_ghost_404",
         op: Op::Delete(MP_GHOST),
-        leaked_documents: 0,
-        leaked_group_links: 0,
         reaps: false,
     },
     Arm {
         case: "reap_orphans",
         op: Op::Reap,
-        leaked_documents: 0,
-        leaked_group_links: 0,
         reaps: true,
     },
 ];
@@ -343,18 +324,11 @@ fn orphaned(c: &Value, table: &str) -> BTreeSet<String> {
 /// else must then match row for row — no per-table carve-outs, no normalizer that
 /// could hide an unrelated difference.
 fn expected_from_oracle(oracle: &Value, arm: &Arm) -> Value {
+    // [bug 9] The delete-cascade leak divergences (orphaned doc_mount_documents /
+    // group_doc_mount_links) are RETIRED — v4 converged (`3bb664f0`), so nothing
+    // is dropped on the delete arms and v5 must equal v4's census row for row. The
+    // reaper arm still drops the rows v5's boot reaper collects (a v5-only pass).
     let mut drop: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-
-    // Divergence 1 — documents whose file the cascade already collected.
-    drop.insert(
-        "doc_mount_documents",
-        dangling(oracle, "doc_mount_documents", "fileId", "doc_mount_files"),
-    );
-    // Divergence 2 — group links whose store the cascade already removed.
-    drop.insert(
-        "group_doc_mount_links",
-        orphaned(oracle, "group_doc_mount_links"),
-    );
 
     if arm.reaps {
         // The reaper: the parentless links / folders / chunks, plus the content
@@ -529,31 +503,28 @@ fn store_delete_matches_oracle() {
 
         // 2. Both-direction divergence pins, over the ORACLE's own census.
         let oracle_census = &want["census"];
-        let leaked_docs = dangling(
-            oracle_census,
-            "doc_mount_documents",
-            "fileId",
-            "doc_mount_files",
-        );
-        let leaked_group = orphaned(oracle_census, "group_doc_mount_links");
-        if leaked_docs.len() != arm.leaked_documents {
-            eprintln!(
-                "[{name}] v4 leaked {} orphaned doc_mount_documents rows, arm says {}. \
-                 If it dropped to 0, v4 has CONVERGED — retire this half of the divergence block and \
-                 compare the table for equality again; otherwise the fixture changed shape.",
-                leaked_docs.len(),
-                arm.leaked_documents
-            );
-            failed.push(name.to_string());
-        }
-        if leaked_group.len() != arm.leaked_group_links {
-            eprintln!(
-                "[{name}] v4 leaked {} orphaned group_doc_mount_links rows, arm says {}. \
-                 If it dropped to 0, v4 has CONVERGED — retire this half of the divergence block.",
-                leaked_group.len(),
-                arm.leaked_group_links
-            );
-            failed.push(name.to_string());
+        // [bug 9] The delete-cascade leak (orphaned doc_mount_documents +
+        // group_doc_mount_links) CONVERGED: v4 (`3bb664f0`,
+        // `delete-store-cascade.ts`) now runs the whole cascade in one transaction
+        // and leaks neither, exactly as v5 has since P4.31. So those tables are a
+        // plain equality here (via `expected_from_oracle`, which no longer drops
+        // them) and the direction-4 "v5 leaves no dangling row" check below is now
+        // asserting agreement, not divergence. The oracle census is checked below
+        // to carry NO such orphan (the retirement's own tripwire).
+        for (table, column, parent) in [
+            ("doc_mount_documents", "fileId", "doc_mount_files"),
+            ("group_doc_mount_links", "mountPointId", "doc_mount_points"),
+        ] {
+            let leaked = dangling(oracle_census, table, column, parent);
+            if !leaked.is_empty() {
+                eprintln!(
+                    "[{name}] v4 still leaks {} orphaned {table} row(s) — bug 9 was expected to \
+                     have converged; if v4 has regressed, restore the both-directions divergence \
+                     pin (see the git history for bug 9's leaked_* arms).",
+                    leaked.len()
+                );
+                failed.push(name.to_string());
+            }
         }
         // The planted orphans must still BE planted on v4's side, in every case
         // (nothing in v4 reaps them), or the reaper arm proves nothing.
