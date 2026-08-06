@@ -1,0 +1,108 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "pinnedNowIso": "2026-08-01T12:00:00.000Z",
+  "backups": [
+    { "filename": "quilltap-2026-07-01T031500.db", "sizeBytes": 2000 },
+    { "filename": "quilltap-2026-07-15T031500.db", "sizeBytes": 2100 },
+    { "filename": "quilltap-2026-08-01T031500.db", "sizeBytes": 2200 },
+    { "filename": "quilltap-llm-logs-2026-07-15T031500.db", "sizeBytes": 300 },
+    { "filename": "quilltap-llm-logs-2026-08-01T031500.db", "sizeBytes": 310 },
+    { "filename": "quilltap-mount-index-2026-07-15T031500.db", "sizeBytes": 512 },
+    { "filename": "quilltap-mount-index-2026-08-01T031500.db", "sizeBytes": 520 },
+    { "filename": "not-a-backup.txt", "sizeBytes": 7 }
+  ],
+  "jobs": [
+    {
+      "id": "b6000000-0000-4000-8000-000000000001",
+      "type": "MEMORY_EXTRACTION",
+      "status": "PENDING",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 5,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:01.000Z",
+      "createdAt": "2020-01-01T00:00:01.000Z",
+      "updatedAt": "2020-01-01T00:00:01.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000002",
+      "type": "TITLE_UPDATE",
+      "status": "PROCESSING",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002" },
+      "priority": 10,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:02.000Z",
+      "startedAt": "2020-01-01T00:05:00.000Z",
+      "createdAt": "2020-01-01T00:00:02.000Z",
+      "updatedAt": "2020-01-01T00:05:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000003",
+      "type": "CONTEXT_SUMMARY",
+      "status": "FAILED",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 0,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "lastError": "provider timed out",
+      "scheduledAt": "2020-01-01T00:00:03.000Z",
+      "createdAt": "2020-01-01T00:00:03.000Z",
+      "updatedAt": "2020-01-01T00:00:03.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000004",
+      "type": "EMBEDDING_GENERATE",
+      "status": "FAILED",
+      "payload": { "entityType": "MEMORY" },
+      "priority": 0,
+      "attempts": 3,
+      "maxAttempts": 3,
+      "lastError": "dimension mismatch",
+      "scheduledAt": "2020-01-01T00:00:04.000Z",
+      "createdAt": "2020-01-01T00:00:04.000Z",
+      "updatedAt": "2020-01-01T00:00:04.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000005",
+      "type": "MEMORY_HOUSEKEEPING",
+      "status": "COMPLETED",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 0,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:05.000Z",
+      "startedAt": "2020-01-01T00:05:05.000Z",
+      "completedAt": "2020-01-01T00:06:00.000Z",
+      "createdAt": "2020-01-01T00:00:05.000Z",
+      "updatedAt": "2020-01-01T00:06:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000006",
+      "type": "CONVERSATION_RENDER",
+      "status": "DEAD",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002" },
+      "priority": 0,
+      "attempts": 5,
+      "maxAttempts": 5,
+      "lastError": "renderer exploded",
+      "scheduledAt": "2020-01-01T00:00:06.000Z",
+      "createdAt": "2020-01-01T00:00:06.000Z",
+      "updatedAt": "2020-01-01T00:00:06.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000007",
+      "type": "MEMORY_EXTRACTION",
+      "status": "PAUSED",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 2,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:07.000Z",
+      "createdAt": "2020-01-01T00:00:07.000Z",
+      "updatedAt": "2020-01-01T00:00:07.000Z"
+    }
+  ]
+}

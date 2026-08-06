@@ -267,6 +267,9 @@ pub async fn almanack_generate(
                     ));
                 };
                 let mount_conn = mount.connection();
+                // v4's `writeUserUploadToMountStore` takes no description —
+                // the link row keeps its empty default; the files-row
+                // description below is the route's own (v4 route :983-1002).
                 write_user_upload_to_mount_store(
                     writers.main().connection(),
                     mount_conn,
@@ -275,7 +278,7 @@ pub async fn almanack_generate(
                     &bytes,
                     "text/markdown",
                     "diagnostics",
-                    Some("The Almanack — system report"),
+                    None,
                 )
             })
             .await;

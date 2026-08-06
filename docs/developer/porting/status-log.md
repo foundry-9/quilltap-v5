@@ -9,6 +9,124 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 unit 12 (the `almanack-*` fixture family + the tier-2 differential), 2026-08-06
+
+Branch `claude/almanack-server-porting-99b135` (the resumed P4.37 lane). The
+differential the held collector commit was waiting for. **The units-3–9+11 code
+is now oracle-verified**, and two v5 defects fell out of its first runs — which
+is the point of refusing to unify without it.
+
+### The fixture family (NEW, committed)
+
+`crates/quilltap-web/tests/fixtures/almanack-{main,mount,llmlogs,llmlogs-legacy}.db`,
+built by `harness/oracle/fixtures/build-almanack-fixture.ts` (a fork of the
+P4.9G1 system-data builder — deliberately DIFFERENT output paths so P4.D49's
+regen sweep and this lane never contend) from the PINNED `f7f1a956` worktree.
+Every report section is populated non-trivially (the P4.D31 rule), including:
+3 characters (favourite/Carina, dresser/core-whisper override, vaultless NPC —
+the vault unlink is raw, the legacy pre-vault state), 4 chats (fresh salon with
+a REMOVED participant, stale flag-bearer, an autonomous room with
+schedule/all-four-budgets/visibility/overdue `nextRunAt`, a 2020 `help` relic
+that also proves the personae exclusion), episodic-column memories, terminal
+sessions, help docs, `migrations_state`, wardrobe/scenarios/mail/photos/tools
+documents across all four tiers, `state.json` in project/group/general stores,
+link-policy denials + a hard-link group + extraction/conversion errors, a
+dangling group member (the `(missing character)` arm), a DANGLING lantern
+pointer (the unresolved well-known arm), and 12 llm-logs rows (distinct
+durations for fractional averages/medians, cacheUsage read-hit and
+creation-only arms, a failure, an unmeasured row, a usage-less row, a
+DELETED-profile attribution, profile-less rows). The legacy variant is the SAME
+llm-logs partition with the two 4.9 profile columns DROPPED (`ALTER TABLE …
+DROP COLUMN` through the cipher driver) — the §2 probe's approximate arm.
+
+Builder gotchas worth keeping: the built-in prompt/roleplay templates seed ONLY
+when v4's plugin system is initialized (`initializePlugins()` — the
+system-prompt registry is a plugin), so the builder initializes plugins exactly
+as the oracle does and BAKES the 18 built-ins into the committed main DB;
+`lastMaintenanceSweepAt` stores a bare ISO string (v4 `new Date(raw)`);
+`memoryRecall.scopePolicy` must be a valid enum or BOTH sides fail soft to the
+default (the fixture would go blind, not red); the custom-tool definitions must
+satisfy the real `CustomToolSchema` (record parameters, `llm.errorMessage`,
+gate as `{metadata: {…}}`) or they all land in `parseFailures`.
+
+### The oracle — `harness/oracle/cases/almanack-routes.test.ts` (14 cases)
+
+Real-DB jest oracle (the established doMock pattern) driving v4's REAL
+`generateAlmanackData`/`renderAlmanackMarkdown` and the REAL `system/tools`
+route handlers. Determinism: the CLOCK is frozen with jest fake timers faking
+ONLY `Date` (every timer API in `doNotFake`) at the spec's `pinnedNowIso`;
+fixtures are copied onto the `lib/paths`-derived locations so phase 1 stats the
+databases that are actually open; the backups dir is seeded from the spec
+(including SAME-DAY backups, which suppress v4's 24-hour startup physical
+backup — otherwise init mints a fresh backup at the pinned clock and the
+backup table goes nondeterministic); plugins are INITIALIZED (production's
+phase-2 registry inventory); and THREE jest.setup mocks are overridden with
+`requireActual` — the cipher driver, the uploads bridge (phantom
+`mock-uploads-mount` storage key) and **`fileStorageManager`** (canned
+`'mock file content'`, no-op delete). That last one mattered: with the manager
+mocked, v4's download leg returned 17 bytes of mock and its delete left the
+mount rows behind — what looked like a real v4-leaves-orphans divergence was
+the MOCK, and with the real manager v4's delete removes the mount rows exactly
+as v5's does. Cases: `data_exact` / `data_approximate` (both llm-logs
+variants), the route FLOW on one work copy (generate-with-progressId →
+progress replay → persisted dumps → list → get → download → 404 arms → delete
+→ delete-again → list-after → dumps), and `generate_untracked`.
+
+### The differential — `almanack_tier2_equivalence` (72 checks, zero SKIP)
+
+The comparison contract (full detail in the test header):
+
+- **Renderer proof**: `render_almanack_markdown(v4_data)` byte-equals v4's own
+  markdown — the tier-1 proof re-run over REAL collector output. Plus the
+  model ROUND-TRIP check (a silently dropped field cannot hide behind a render
+  that never mentions it).
+- **Data proof**: one normalization list — `databaseSecurity` sizes (v4's init
+  mutates its working copies before phase 1 stats them), the plugin/theme
+  registry blocks and the static-fallback model lists (the recorded phase-2
+  divergences; the DB-derived counts beside them stay EXACT), and the
+  `is not valid JSON:` engine-wording seam (prefix/store/path stay exact). The
+  runtime block + `version`/`nodeEnv` are SPLICED as host inputs, which is
+  what they are.
+- **The BUILTIN pin**: v4 lists the `BUILTIN` (TF-IDF) provider from its
+  bundled plugin; v5's manifest registry deliberately has no manifest for it.
+  Pinned in BOTH directions (`strip_builtin_provider`) — if v4 drops it or a
+  v5 manifest appears, the pin trips. **Deferred loud**: the Almanack's
+  provider table omits the BUILTIN row in v5 until a manifest decision is
+  made (a provider-manifest follow-up, not this lane's to take).
+- **Route flow**: envelopes with minted-uuid remap + content-derived
+  sentinels; CONTENT proven by composition (v5 route content == v5 data-case
+  markdown byte-exact; v4-vs-v4 modulo volatile phase-1 lines); the download
+  leg's `Content-Disposition` cross-checked against v4's real header through
+  the shared builder; persisted-row dumps over five tables both after
+  generate and after delete; the progress replay (seven 1-based `phase`
+  frames + `done`, labels byte-equal).
+- **Fallback coverage**: ~40 per-section assertions that NO section renders
+  its `collect()` fallback in the happy path (the `49769ec4` fail-soft-gate
+  lesson).
+
+**Two v5 defects found and fixed by the differential's first runs:** the
+report's mount write invented a link-row description v4 leaves empty
+(`write_user_upload_to_mount_store` now takes `None` — v4's bridge has no
+description parameter), and phase-2's designated-profile/theme reads were
+already correct but the fixture's first shapes were blind (see the builder
+gotchas). **Mutation-proven** (the D24 rule), three deliberate mutations, each
+red then restored green: (1) the terminal collector forced onto its fallback —
+red in BOTH the data diff and `fallback_coverage:terminal` (the assertion has
+teeth against the fail-soft-gate class); (2) the report written to a wrong
+mount subfolder — red in `persisted_after_generate`; (3) a dropped
+`wire-records` phase announce — red in `progress_frames`.
+
+**Quirk carried, worth a v4-side look:** v4's phase-3 `permanentlyFailed`
+census filters `embedding_status.status === 'PERMANENTLY_FAILED'`, a value the
+`EmbeddingStatusEnum` (`PENDING/EMBEDDED/FAILED`) can never store — the cell
+is structurally 0 in v4 and v5 carries it faithfully.
+
+Regen recipes live in the three file headers (builder → oracle → diff), all
+from the lane's pinned worktree `/tmp/qt-v4-pin-p437-f7f1a956`; the NDJSON
+carries a `baseline: f7f1a956` marker the Rust side asserts.
+
+Versions: core 0.0.477, harness 0.0.404.
+
 ## ⚠ v4 DRIFT observed during the P4.37 lane — pin the oracle worktree from here, 2026-08-05
 
 Re-checked at lane end (the standing rule: drift-check at both ends, because v4

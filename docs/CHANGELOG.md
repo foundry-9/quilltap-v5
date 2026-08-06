@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+The new system report ("The Almanack") is now verified against the
+reference app end to end: a new committed fixture family exercises every
+report section non-trivially over all three databases, and a differential
+drives the reference app's real collectors and route handlers against
+ours — comparing the report data, the rendered markdown byte-for-byte,
+the four report actions with their download link, the per-phase progress
+frames, and the rows both apps persist when a report is filed. Both
+attribution arms are proven (a modern call log with the per-profile
+columns and a legacy one without). One fix fell out: the report's
+library entry no longer invents a description on the stored copy the
+reference app leaves blank. Two knowingly accepted differences are
+pinned so any drift trips the test: our provider list omits the built-in
+TF-IDF entry (no plugin loader), and JSON parse-failure wording follows
+the JSON engine.
+
 Ported the collectors, orchestrator and API surface of the new system
 report ("The Almanack"): the seven-phase census across all three
 databases, the four report actions (generate / list / get / delete) with
