@@ -1,21 +1,21 @@
 //! P4.d6 differential — the help-doc sync's PRUNE GUARD (v4 `551f090b`
-//! `syncHelpDocs`, the `files.length === 0` early return).
+//! `syncHelpDocs`, the `files.length === 0` early return, WIDENED by bug 18
+//! (`13ddc5ee`) with the blank-content refusal).
 //!
 //! The prune is the difference between "delete rows whose file is gone" and
-//! "empty the table", so its exact boundary is pinned against v4's REAL code
-//! rather than against v4's own comment — which claims the guard is "produced at
-//! least one READABLE file", a stronger claim than the code makes.
+//! "empty the table", so its exact boundary is pinned against v4's REAL code.
 //!
 //! Three scenarios, each over a FRESH copy of the help-sync fixture DB and the
 //! committed tree at `fixtures/help-sync-guards/<scenario>/`, walked through the
 //! production host walker:
 //!   - `missing-dir`      — no help/ at all → no sync, no prune;
 //!   - `no-markdown`      — help/ with zero .md → no sync, no prune;
-//!   - `only-empty-files` — help/ with ONE whitespace-only .md. ⚠ The walk is
-//!     non-empty so the guard does NOT fire, but the file contributes no
-//!     `pathsOnDisk` entry, so EVERY row is unreachable and the table IS
-//!     emptied. **v4 does this** (oracle-confirmed: `deleted: 3`, zero rows
-//!     left) — the port reproduces the CODE, not the comment.
+//!   - `only-empty-files` — help/ with ONE whitespace-only .md. The walk is
+//!     non-empty (past the `files.is_empty()` guard) but the file contributes no
+//!     `pathsOnDisk` entry — historically that emptied the table. Bug 18 added a
+//!     second guard: `pathsOnDisk.size === 0 && existingDocs.length > 0` refuses
+//!     the prune, so the rows survive (oracle-confirmed: `deleted: 0`, all three
+//!     rows left). v5 made the same refusal in this convergence.
 //!
 //! Generate (Node 24, from the v4 checkout), AFTER building the fixture:
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this tree>
@@ -161,11 +161,15 @@ fn help_doc_sync_guards_match_oracle() {
         0,
         "a help/ with no Markdown must NEVER prune — this is the wipe guard"
     );
+    assert_eq!(
+        by_name("only-empty-files").deleted,
+        0,
+        "bug 18: a help/ whose only Markdown is whitespace-only must NOT prune — \
+         `pathsOnDisk.size === 0 && existingDocs.length > 0` refuses the wipe. If this \
+         ever flips back to a nonzero delete, v4 reverted its bug-18 guard."
+    );
     assert!(
-        by_name("only-empty-files").deleted > 0
-            && by_name("only-empty-files").help_doc_ids.is_empty(),
-        "v4's CODE guards on files.length > 0, not on '>=1 readable file': a help/ of \
-         only-empty Markdown DOES empty the table. If this ever flips, v4 changed and the \
-         port's comment must change with it."
+        !by_name("only-empty-files").help_doc_ids.is_empty(),
+        "bug 18: the rows must survive an all-blank help/ — the table stays populated."
     );
 }

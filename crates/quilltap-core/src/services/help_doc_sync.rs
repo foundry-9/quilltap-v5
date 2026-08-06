@@ -294,34 +294,44 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
         }
     }
 
-    // Prune rows whose file is gone from disk (v4 `551f090b`,
-    // `help-doc-sync.ts:221-242`).
+    // Prune rows whose file is gone from disk (v4 `551f090b` +, since bug 18
+    // (`13ddc5ee`), the widened blank-content guard, `help-doc-sync.ts:218-266`).
     //
-    // THE GUARD is the `files.is_empty()` early return above: a missing help/
-    // (the host walker yields an empty list, v4's `existsSync` guard) or a help/
-    // with no Markdown at all can never reach here, so neither can empty the
-    // table. That is the difference between a prune and a wipe.
-    //
-    // ⚠ v4's own comment claims the guard is "produced at least one READABLE
-    // file"; v4's CODE guards on `files.length > 0`, which is not the same
-    // thing. A help/ holding only empty/whitespace-only .md files walks
-    // non-empty but contributes NO `pathsOnDisk` entries, and every row IS
-    // pruned. This port reproduces the CODE, not the comment — the differential
-    // pins the divergent case rather than trusting either reading.
-    for doc in &existing_docs {
-        if paths_on_disk.contains(doc.path.as_str()) {
-            continue;
-        }
-        // v4 wraps the pair in its own try/catch that counts `failed`, so a
-        // prune failure is NOT the per-file counter above.
-        let pruned = (|| -> Result<(), DbError> {
-            repo.delete(&doc.id)?;
-            EmbeddingStatusRepository::new(main).delete_by_entity("HELP_DOC", &doc.id)?;
-            Ok(())
-        })();
-        match pruned {
-            Ok(()) => result.deleted += 1,
-            Err(_) => result.failed += 1,
+    // TWO guards protect the table from a wipe:
+    //   - The `files.is_empty()` early return above (a missing help/ — the host
+    //     walker yields an empty list, v4's `existsSync` guard).
+    //   - This `paths_on_disk.is_empty() && !existing_docs.is_empty()` refusal:
+    //     `paths_on_disk` holds exactly the files that survived the empty-content
+    //     `continue`, so a help/ whose only Markdown is whitespace-only walks
+    //     NON-empty (past the first guard) yet produces no usable content — and
+    //     the prune below would then delete every row (v4 measured `totalOnDisk
+    //     1, deleted 3, rows left 0`). An all-blank help set against a populated
+    //     table is suspicious (an interrupted checkout, a half-written file), not
+    //     an instruction to wipe the Guide. Skip and leave the rows; the next
+    //     healthy sync reconciles them.
+    if paths_on_disk.is_empty() && !existing_docs.is_empty() {
+        // Log output is non-contractual; `eprintln!` is this module's convention.
+        eprintln!(
+            "[HelpDocSync] No help docs on disk have usable content but the table is \
+             populated ({} rows) — skipping the destructive prune",
+            existing_docs.len()
+        );
+    } else {
+        for doc in &existing_docs {
+            if paths_on_disk.contains(doc.path.as_str()) {
+                continue;
+            }
+            // v4 wraps the pair in its own try/catch that counts `failed`, so a
+            // prune failure is NOT the per-file counter above.
+            let pruned = (|| -> Result<(), DbError> {
+                repo.delete(&doc.id)?;
+                EmbeddingStatusRepository::new(main).delete_by_entity("HELP_DOC", &doc.id)?;
+                Ok(())
+            })();
+            match pruned {
+                Ok(()) => result.deleted += 1,
+                Err(_) => result.failed += 1,
+            }
         }
     }
 

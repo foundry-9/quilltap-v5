@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.D51 (bug 18): the help-doc sync no longer wipes the in-app Guide when
+the only Markdown on disk is blank. A `help/` directory whose files are
+all whitespace-only walks non-empty but produces no usable content;
+previously that pruned every existing row. It now refuses the destructive
+prune when nothing on disk parsed to usable content while the table is
+populated, matching the reference app, and leaves the rows for the next
+healthy sync.
+
 P4.D51 (bug 8): a character whose `properties.json` is present but
 corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
