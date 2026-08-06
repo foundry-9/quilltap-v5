@@ -1,6 +1,7 @@
 {
  "_comment": "Tier-3 (mocked-completion + mocked-embedding) corpus for the memory processor (v4 processTurnForMemory). The COMPLETION call is pinned by rules keyed on (pass, CONTEXT-footer label, model, autonomous-clause presence): the jest oracle's createLLMProvider mock resolves each real call to a rule, RECORDS the exact (provider|model|temperature|messages) canned key it answered, and the Rust side replays those recorded entries through CannedCompletionProvider — so a prompt/selection/temperature divergence surfaces as a canned-miss, byte-exact. The EMBEDDING call is pinned by exact `summary\\n\\ncontent` text, as in the memory-gate corpus. Vector geometry: 13-dim unit basis vectors; each seed is s*e_k + sqrt(1-s^2)*e_spare so dot(candidate e_k, seed) == s exactly.",
  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+ "_profileIdNote": "Connection-profile ids MUST be well-formed UUIDs. Since v4 0cde7fbc, `LLMLogSchema.connectionProfileId` is `UUIDSchema.nullable().optional()` and the cheap-LLM execution path stamps `selection.connectionProfileId` onto every row, so placeholder ids like the old 'p-cur'/'p-cheap'/'p-unc'/'p-epi' make v4's repository REFUSE every llm_logs create (Zod 'Invalid UUID', swallowed by logLLMCall's catch). The oracle then finds no llm_logs table at all — the P4.40 escalation. Keep these UUID-shaped.",
  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
  "userId": "00000000-0000-4000-8000-0000000000ee",
  "seedTimestamp": "2020-01-01T00:00:00.000Z",
@@ -160,7 +161,7 @@
  ],
  "profiles": [
   {
-   "id": "p-cur",
+   "id": "bb000000-0000-4000-8000-00000000c001",
    "provider": "ANTHROPIC",
    "modelName": "claude-benchmark-large",
    "baseUrl": null,
@@ -171,7 +172,7 @@
    "modelClass": null
   },
   {
-   "id": "p-cheap",
+   "id": "bb000000-0000-4000-8000-00000000c002",
    "provider": "OPENAI",
    "modelName": "gpt-4o-mini",
    "baseUrl": null,
@@ -184,7 +185,7 @@
    "modelClass": null
   },
   {
-   "id": "p-unc",
+   "id": "bb000000-0000-4000-8000-00000000c003",
    "provider": "OLLAMA",
    "modelName": "dolphin-mixtral",
    "baseUrl": null,
@@ -195,7 +196,7 @@
    "modelClass": null
   },
   {
-   "id": "p-epi",
+   "id": "bb000000-0000-4000-8000-00000000c004",
    "provider": "OPENAI",
    "modelName": "gpt-epi-mini",
    "baseUrl": null,
@@ -206,7 +207,7 @@
    "modelClass": null
   }
  ],
- "currentProfileId": "p-cur",
+ "currentProfileId": "bb000000-0000-4000-8000-00000000c001",
  "cannedEmbeddings": {
   "reorganize ledger by wing\n\nI decided to reorganize the workshop ledger by wing.\n(when: 2023-05-05)": [
    0.0,
@@ -514,7 +515,7 @@
    },
    "dangerSettings": {
     "mode": "AUTO_ROUTE",
-    "uncensoredTextProfileId": "p-unc"
+    "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
    },
    "isDangerousChat": false,
    "memoryExtractionLimits": {
@@ -603,7 +604,7 @@
    },
    "dangerSettings": {
     "mode": "AUTO_ROUTE",
-    "uncensoredTextProfileId": "p-unc"
+    "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
    },
    "isDangerousChat": true,
    "memoryExtractionLimits": null,
@@ -676,7 +677,7 @@
    "chatContextSummary": null,
    "cheapLLMSettings": {
     "strategy": "USER_DEFINED",
-    "userDefinedProfileId": "p-epi",
+    "userDefinedProfileId": "bb000000-0000-4000-8000-00000000c004",
     "fallbackToLocal": false
    },
    "dangerSettings": null,

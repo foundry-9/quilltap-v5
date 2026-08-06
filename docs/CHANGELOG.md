@@ -73,6 +73,15 @@ every add and remove and renders back exactly what the server stored,
 so the normalization is visible where you made the edit. The Taboo help
 page from the reference app is not carried over — this build has no help
 surface to show it on.
+Repaired two differential test oracles that could no longer be
+regenerated. Both drive the reference app's real memory and
+conversation-summary code, and both had started failing outright
+because their test data used placeholder connection-profile names
+where the reference app now requires real identifiers — so every
+call-log row it tried to write was rejected, silently, and the
+comparison had nothing to read. The test data now uses well-formed
+identifiers and both comparisons run again, with a note in each
+recording why. No product code changed.
 
 Planned the next porting round and committed its work orders — three
 lanes. The first resumes the held Almanack server work from its

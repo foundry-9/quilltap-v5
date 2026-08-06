@@ -1,9 +1,10 @@
 {
+  "_profileIdNote": "Connection-profile ids MUST be well-formed UUIDs. Since v4 0cde7fbc, `LLMLogSchema.connectionProfileId` is `UUIDSchema.nullable().optional()` and the cheap-LLM execution path stamps `selection.connectionProfileId` onto every row, so a placeholder id like the old 'prof-current' makes v4's repository REFUSE every llm_logs create (Zod 'Invalid UUID', swallowed by logLLMCall's catch). The oracle then finds no llm_logs table at all — the P4.40 escalation. Keep these UUID-shaped.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "11111111-1111-4111-8111-111111111111",
   "profiles": [
     {
-      "id": "prof-current",
+      "id": "bb000000-0000-4000-8000-00000000c000",
       "provider": "OPENAI",
       "modelName": "gpt-4o-mini",
       "baseUrl": null,
@@ -14,7 +15,7 @@
       "modelClass": null
     }
   ],
-  "currentProfileId": "prof-current",
+  "currentProfileId": "bb000000-0000-4000-8000-00000000c000",
   "dangerSettings": null,
   "completionRules": [
     {

@@ -58553,3 +58553,102 @@ variant moved, so the fold is mechanical. The name-for-name §1 diff against
 `core-contract.ts` is clean (`tabooSettings` / `tabooSettingsUpdate`, field
 `phrases`). There is NO ACTIVATE-AT-UNIFY marker in this lane: the server
 half and the SPA half both land here, and the e2e beat is already live.
+### Lane record — P4.40 unit 1: the two unregenerable tier-3 oracles
+
+**The escalation, diagnosed.** `context-summary-service-tier3.test.ts`
+and `memory-processor-tier3.test.ts` both died v4-side at `f7f1a956`
+with `SqliteError: no such table: llm_logs`, thrown at each case's
+**dump** step — the llm-logs partition existed as a file and carried no
+table at all, which is what v4 leaves behind when `logLLMCall` never
+successfully creates a row (v4 creates collections on demand).
+
+The cause is NOT the P4.36 stale-mock shape the order predicted. It is a
+corpus-hygiene consequence of v4's `0cde7fbc`, and it is invisible with
+`--silent` because every layer swallows it: v4's `0cde7fbc` added
+`connectionProfileId: UUIDSchema.nullable().optional()` to `LLMLogSchema`
+AND made `lib/memory/cheap-llm-tasks/core-execution.ts` stamp
+`selection.connectionProfileId` onto every cheap-LLM log row. Both
+corpora carried placeholder profile ids — `"prof-current"` and
+`"p-cur"`/`"p-cheap"`/`"p-unc"`/`"p-epi"` — so v4's repository refused
+EVERY create with a Zod `Invalid UUID`, `logLLMCall`'s own `catch`
+swallowed it, and the table was never created. The diagnosis took one
+`ENABLE_TEST_LOGS=true LOG_LEVEL=debug` run (v4's `jest.setup` silences
+all six console methods unless that env var is set — worth remembering,
+because a swallowed repository error is otherwise perfectly silent).
+
+**The fix is venue-side only; zero v5 source changed.** The five
+placeholder ids became well-formed UUIDs
+(`bb000000-0000-4000-8000-00000000c000` for the context-summary corpus;
+`…c001`–`…c004` for the processor corpus, preserving the
+`uncensoredTextProfileId` / `userDefinedProfileId` references), and both
+corpora gained a `_profileIdNote` recording why they must stay
+UUID-shaped. `bb000000-…-00000000b4a3` was already in the processor
+corpus (a character id) and does not collide.
+
+**Both families now regenerate and run green at the `f7f1a956` pin.**
+The context-summary oracle emits its `llmlogs` row again: 20 columns
+(the P4.D49 profile pair present), 17 rows — 12 SUMMARIZATION + 5
+TITLE_GENERATION, each carrying the corpus profile id. The processor
+oracle emits 15 MEMORY_EXTRACTION rows across the three selected
+profiles (cheap / episodic / uncensored), which is what makes the
+selection itself a comparand again.
+
+**Both were green on the first run, so both were mutation-proven** (the
+D24 rule): rewriting ONE `connectionProfileId` inside each oracle's
+`llmlogs` row turns both red at the llm_logs assertion
+(`context_summary_service_tier3_equivalence.rs:841`,
+`memory_processor_tier3_equivalence.rs:629`), so the restored comparand
+is load-bearing and not merely present. No comparand moved in a way that
+implicates the port — v5 already wrote the same `connectionProfileId`
+values v4 refused, which is exactly why the escalation read as an oracle
+failure rather than a differential red.
+
+**A finding, recorded not papered:** with the placeholder ids, v5 wrote
+the llm_logs rows v4 refused. The UUID fix removes the blind spot rather
+than hiding a divergence, but the underlying asymmetry is real and
+general — v4 Zod-validates every field at the repository create and
+refuses the whole row, where v5's port does not reimplement repo-level
+validation. It is unreachable in production (profile ids are minted
+UUIDs) and is the same class as the standing `TimestampConfigSchema` and
+`dangerousContentSettings` notes. Not this lane's to change.
+
+**Regen recipe (both families, unchanged from their headers except the
+pin).** Neither committed fixture DB moved; both families build their
+fixtures into `/tmp`.
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+PIN=/tmp/qt-v4-pin-p440-f7f1a956    # git -C ~/source/quilltap-server worktree add --detach $PIN f7f1a956
+STAGE=/tmp/qt-p440-stage            # jest ignores /.claude/ — stage cases+fixtures
+rm -rf $STAGE; mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $V5W/harness/oracle/cases/{context-summary-service-tier3,memory-processor-tier3}.test.ts $STAGE/harness/oracle/cases/
+cp $V5W/harness/oracle/fixtures/*.json $STAGE/harness/oracle/fixtures/
+cd $PIN
+rm -f /tmp/qt-ctxsum-main.db /tmp/qt-ctxsum-mount.db /tmp/oracle-context-summary-service.ndjson
+QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-ctxsum-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-context-summary-service-fixture.ts
+QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" \
+    -- "context-summary-service-tier3\.test\.ts$"
+rm -f /tmp/qt-memory-processor-main.db /tmp/qt-memory-processor-mount.db /tmp/oracle-memory-processor.ndjson
+QT_FIXTURE_OUT=/tmp/qt-memory-processor-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-memory-processor-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-memory-processor-fixture.ts
+QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
+QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" \
+    -- "memory-processor-tier3\.test\.ts$"
+```
+
+Then, from the v5 worktree:
+
+```
+QT_ORACLE_CTXSUM=/tmp/oracle-context-summary-service.ndjson \
+QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
+  cargo test -p quilltap-harness --test context_summary_service_tier3_equivalence -- --nocapture
+QT_ORACLE_PROCESSOR=/tmp/oracle-memory-processor.ndjson \
+QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
+QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
+  cargo test -p quilltap-harness --test memory_processor_tier3_equivalence -- --nocapture
+```
