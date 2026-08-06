@@ -161,6 +161,18 @@ fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -
         ("dataRetention", "PUT") => {
             rt.block_on(settings::data_retention_settings_update(db, body.clone()))
         }
+        // P4.D50. The oracle emits the raw request body, which may be a
+        // NON-object (v4's `{...current, ...body}` spreads a string into
+        // indexed keys and so contributes no `phrases`); `get("phrases")`
+        // answers None for those, which is exactly the merge-keeps-current arm.
+        ("taboo", "GET") => settings::taboo_settings_get(db),
+        ("taboo", "PUT") => {
+            let bag = match body.get("phrases") {
+                Some(v) => serde_json::json!({ "phrases": v }),
+                None => serde_json::json!({}),
+            };
+            rt.block_on(settings::taboo_settings_update(db, bag))
+        }
         other => panic!("unhandled route/method: {other:?}"),
     };
     response_to_body(resp)
@@ -174,6 +186,7 @@ fn response_to_body(resp: Response) -> (Value, bool) {
         | Response::ApiKeys(v)
         | Response::ApiKey(v)
         | Response::DataRetention(v)
+        | Response::Taboo(v)
         | Response::Models(v) => (v, false),
         Response::Ack(_) => (serde_json::json!({}), true),
         Response::Error(e) => (serde_json::json!({ "error": e.message }), false),
@@ -209,6 +222,7 @@ fn settings_routes_match_v4() {
 
     let oracle = std::fs::read_to_string(&oracle_path).expect("read oracle ndjson");
     let mut n = 0;
+    let mut taboo_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -233,6 +247,24 @@ fn settings_routes_match_v4() {
         )
         .expect("open db");
 
+        // P4.D50: seed `instance_settings['taboo']` through the real setter
+        // before the case runs (the oracle does the same) — each case gets a
+        // pristine fixture copy, so the merge-over-current arms need it.
+        if let Some(seed) = req["seedTaboo"].as_array() {
+            let phrases: Vec<String> = seed
+                .iter()
+                .map(|v| v.as_str().unwrap_or_default().to_string())
+                .collect();
+            rt.block_on(db.write(move |w| {
+                quilltap_core::db::instance_settings::set_taboo_settings(
+                    w.main().connection(),
+                    &phrases,
+                )
+                .map(|_| ())
+            }))
+            .expect("seed taboo");
+        }
+
         let (mut got_body, is_ack) = run_handler(&rt, &db, user, req);
 
         // The `after` refetch (post-mutation family list).
@@ -241,6 +273,7 @@ fn settings_routes_match_v4() {
             let r = match kind {
                 "connProfiles" => settings::connection_profile_list(&db, user, false),
                 "apiKeys" => settings::api_key_list(&db, user),
+                "taboo" => settings::taboo_settings_get(&db),
                 _ => panic!("unknown after: {kind}"),
             };
             response_to_body(r).0
@@ -267,8 +300,17 @@ fn settings_routes_match_v4() {
             );
         }
         n += 1;
+        if row["family"].as_str() == Some("taboo") {
+            taboo_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
+    // P4.D50: the Taboo family must actually be present — a stale oracle that
+    // predates it would otherwise pass by simply not carrying those rows.
+    assert!(
+        taboo_cases >= 18,
+        "expected >= 18 taboo cases, got {taboo_cases} — regenerate the oracle"
+    );
     eprintln!("settings-routes differential: {n} cases matched");
 }

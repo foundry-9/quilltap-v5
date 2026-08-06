@@ -58,14 +58,20 @@ interface CaseSpec {
     | 'apiKeys'
     | 'apiKeyItem'
     | 'models'
-    | 'dataRetention';
+    | 'dataRetention'
+    | 'taboo';
   method: Method;
   url: string;
   paramId?: string;
   body?: Record<string, unknown>;
   /** Re-fetch the family list after the op (observe the persisted effect via the
    *  already-verified read marshaling), or none. */
-  after?: 'connProfiles' | 'apiKeys';
+  after?: 'connProfiles' | 'apiKeys' | 'taboo';
+  /** P4.D50: seed `instance_settings['taboo']` through v4's REAL setter before
+   *  the case runs. Each case gets a pristine fixture copy, so this is the only
+   *  way to reach the arms that depend on a list already being stored (the
+   *  merge-over-current PUT above all). The Rust harness seeds identically. */
+  seedTaboo?: string[];
 }
 
 function mockRequest(url: string, method: Method, body?: unknown): unknown {
@@ -136,6 +142,10 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
   await initializeDatabase();
 
   try {
+    if (c.seedTaboo) {
+      const { setTabooSettings } = await import('@/lib/instance-settings');
+      await setTabooSettings({ phrases: c.seedTaboo });
+    }
     const req = mockRequest(c.url, c.method, c.body);
     let response: { status: number; json: () => Promise<unknown> };
     const params = { params: Promise.resolve({ id: c.paramId ?? '' }) };
@@ -159,6 +169,9 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     } else if (c.route === 'dataRetention') {
       const mod = await import('@/app/api/v1/settings/data-retention/route');
       response = (await (c.method === 'GET' ? mod.GET : mod.PUT)(req as never)) as never;
+    } else if (c.route === 'taboo') {
+      const mod = await import('@/app/api/v1/settings/taboo/route');
+      response = (await (c.method === 'GET' ? mod.GET : mod.PUT)(req as never)) as never;
     } else {
       const mod = await import('@/app/api/v1/models/route');
       response = (await mod.GET(req as never)) as never;
@@ -169,7 +182,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     // The Rust port surfaces validation failures as the `{error}` envelope; the
     // Zod issue array is v4-implementation-specific, so drop `details` here.
     if (
-      c.route === 'dataRetention' &&
+      (c.route === 'dataRetention' || c.route === 'taboo') &&
       body &&
       typeof body === 'object' &&
       'details' in (body as Record<string, unknown>)
@@ -189,6 +202,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         paramId: c.paramId ?? null,
         body: c.body ?? null,
         after: c.after ?? null,
+        seedTaboo: c.seedTaboo ?? null,
       },
       status,
       body,
@@ -197,6 +211,15 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     if (c.after === 'connProfiles') {
       const mod = await import('@/app/api/v1/connection-profiles/route');
       const r = (await mod.GET(mockRequest(`http://x${CP_URL}`, 'GET') as never)) as never as {
+        json: () => Promise<unknown>;
+      };
+      out.after = await r.json();
+    } else if (c.after === 'taboo') {
+      // P4.D50: the PUT echoes what the SETTER stored; the refetch proves the
+      // echo and the stored row agree (v4's whole reason for returning the
+      // normalized list rather than the submission).
+      const mod = await import('@/app/api/v1/settings/taboo/route');
+      const r = (await mod.GET(mockRequest('http://x/api/v1/settings/taboo', 'GET') as never)) as never as {
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
@@ -466,6 +489,50 @@ describe('settings-routes oracle', () => {
     { name: 'dr_put_too_small', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 0 } },
     { name: 'dr_put_non_integer', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 12.5 } },
     { name: 'dr_put_wrong_type', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 'abc' } },
+    // taboo (P4.D50, v4 `7df7de8e`) — the instance-wide forbidden-phrase list.
+    // Every case runs over its OWN fresh fixture copy, so a PUT case that also
+    // wants to observe storage carries `after: 'taboo'` (the GET refetch).
+    { name: 'taboo_get_default', family: 'taboo', user: 'A', route: 'taboo', method: 'GET', url: 'http://x/api/v1/settings/taboo' },
+    // Normalization: trims, drops blanks, drops case-insensitive duplicates
+    // keeping the FIRST occurrence, and never sorts. The echo IS the storage.
+    {
+      name: 'taboo_put_normalizes',
+      family: 'taboo', user: 'A', route: 'taboo', method: 'PUT',
+      url: 'http://x/api/v1/settings/taboo',
+      body: { phrases: ['  zeta  ', 'Weight-Bearing', 'weight-bearing', "that's not nothing", 'WEIGHT-BEARING'] },
+      after: 'taboo',
+    },
+    { name: 'taboo_get_seeded', family: 'taboo', user: 'A', route: 'taboo', method: 'GET', url: 'http://x/api/v1/settings/taboo', seedTaboo: ['weight-bearing', "that's not nothing"] },
+    // The merge: a partial body — `{}` in particular — must leave the SEEDED
+    // list untouched, both in the echo and in storage.
+    { name: 'taboo_put_empty_merge', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: {}, seedTaboo: ['weight-bearing', 'tapestry'], after: 'taboo' },
+    // …while an explicit empty array is the clear gesture and DOES wipe it.
+    { name: 'taboo_put_explicit_empty', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: [] }, seedTaboo: ['weight-bearing'], after: 'taboo' },
+    // A rejected PUT leaves the seeded list exactly as it was.
+    { name: 'taboo_put_replaces_seeded', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['tapestry'] }, seedTaboo: ['weight-bearing'], after: 'taboo' },
+    // The schema trims BEFORE measuring: 204 raw units that trim to 200 pass,
+    // and the STORED value is the trimmed one.
+    { name: 'taboo_put_trim_then_length', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: [`  ${'x'.repeat(200)}  `] }, after: 'taboo' },
+    { name: 'taboo_put_boundary_max_length', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['x'.repeat(200)] } },
+    { name: 'taboo_put_boundary_max_count', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: Array.from({ length: 500 }, (_, i) => `phrase ${i}`) } },
+    // Rejections (400 `Validation error`, nothing written).
+    { name: 'taboo_put_too_long', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['x'.repeat(201)] }, seedTaboo: ['weight-bearing'], after: 'taboo' },
+    { name: 'taboo_put_too_many', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: Array.from({ length: 501 }, (_, i) => `phrase ${i}`) } },
+    { name: 'taboo_put_not_an_array', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: 'weight-bearing' } },
+    { name: 'taboo_put_non_string_entry', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: [42] } },
+    // Whitespace-only is REJECTED (it trims to length 0, failing `.min(1)`),
+    // not silently dropped — the check order made visible.
+    { name: 'taboo_put_whitespace_only_entry', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['   '] } },
+    // An explicit `null` is a PRESENT value, so Zod's `.default([])` does not
+    // fire and the parse fails — distinct from omitting the key entirely.
+    { name: 'taboo_put_null_phrases', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: null } },
+    // A non-object body: `{...current, ...body}` spreads a string into indexed
+    // keys, contributing no `phrases`, so the stored list survives.
+    { name: 'taboo_put_string_body', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: 'weight-bearing' as never, seedTaboo: ['tapestry'], after: 'taboo' },
+    // Unicode: the length bound is UTF-16 code units (JS `String.length`), so
+    // 101 astral characters is 202 units and fails while 100 passes.
+    { name: 'taboo_put_astral_within_bound', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['\u{1F3A9}'.repeat(100)] }, after: 'taboo' },
+    { name: 'taboo_put_astral_over_bound', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['\u{1F3A9}'.repeat(101)] } },
   ];
 
   it('emits all cases', async () => {

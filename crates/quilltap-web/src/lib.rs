@@ -276,6 +276,13 @@ pub fn build_router(state: SharedState) -> Router {
             get(text_replacements_routes::text_replacements_get)
                 .post(text_replacements_routes::text_replacements_post),
         )
+        // === P4.D50: the instance-wide Taboo list ===
+        .route(
+            "/api/v1/settings/taboo",
+            get(text_replacements_routes::taboo_settings_get)
+                .put(text_replacements_routes::taboo_settings_put),
+        )
+        // === end P4.D50 ===
         .route(
             "/api/v1/settings/text-replacements/{id}",
             axum::routing::patch(text_replacements_routes::text_replacement_patch)

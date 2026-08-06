@@ -13,6 +13,7 @@ import {
   type AutonomousRoomSettingsPatch,
   type AutonomousRoomUpdateResult,
   type DataRetentionSettingsDto,
+  type TabooSettingsDto,
   type FileEntry,
   type FolderEntry,
 } from './core-contract';
@@ -269,5 +270,25 @@ export class CoreClient {
   async updateDataRetentionSettings(staleChatDays: number): Promise<DataRetentionSettingsDto> {
     const data = await this.dispatchData({ type: 'dataRetentionSettingsUpdate', staleChatDays });
     return data as unknown as DataRetentionSettingsDto;
+  }
+
+  // === P4.D50: the instance-wide Taboo list ===
+
+  /** v4 GET `/settings/taboo` → the forbidden-phrase list (empty when unset). */
+  async getTabooSettings(): Promise<TabooSettingsDto> {
+    const data = await this.dispatchData({ type: 'tabooSettings' });
+    return data as unknown as TabooSettingsDto;
+  }
+
+  /**
+   * v4 PUT `/settings/taboo` → the NORMALIZED echo (trimmed, blanks dropped,
+   * case-insensitive duplicates dropped keeping the first, order preserved).
+   * The whole array is sent on every edit; the server owns normalization, and
+   * what it returns is what is stored — which is what keeps the local cache
+   * from ever disagreeing with the database.
+   */
+  async updateTabooSettings(phrases: string[]): Promise<TabooSettingsDto> {
+    const data = await this.dispatchData({ type: 'tabooSettingsUpdate', phrases });
+    return data as unknown as TabooSettingsDto;
   }
 }

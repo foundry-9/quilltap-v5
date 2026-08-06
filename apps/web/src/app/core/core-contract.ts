@@ -2014,6 +2014,9 @@ export type CoreRequest =
   | ChatAttachMountFileRequest
   // --- The global-search endpoint (§1; P4.9P) ---
   | UiSearchRequest
+  // --- The instance-wide Taboo list (§1; P4.D50) ---
+  | TabooSettingsRequest
+  | TabooSettingsUpdateRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest
@@ -5974,4 +5977,36 @@ export interface AlmanackReportContent {
   filename: string;
   content: string;
   size: number;
+}
+
+// ===========================================================================
+// --- P4.D50 additions ---
+// The instance-wide Taboo list (v4 `7df7de8e`): `instance_settings['taboo']`,
+// rendered into the cacheable prefix of every character's system prompt. Read
+// defensively through `CoreClient.dispatchData` (the data-retention precedent —
+// no CoreResponse variant added). Cross-checked name-for-name against
+// `api/types.rs` at unification.
+// ===========================================================================
+
+/** Mirrors `TabooSettingsSchema` in v4's `lib/schemas/settings.types.ts`. */
+export interface TabooSettingsDto {
+  /** The forbidden phrases, in the order the user arranged them. Order is
+   *  user-controlled on purpose: it is part of the cacheable prompt prefix, so
+   *  it only shifts when the user edits the list. */
+  phrases: string[];
+}
+
+/** v4 GET `/api/v1/settings/taboo`. */
+export interface TabooSettingsRequest {
+  type: 'tabooSettings';
+}
+
+/**
+ * v4 PUT `/api/v1/settings/taboo` — the body is merged over the stored value,
+ * validated, normalized, and echoed. Omitting `phrases` leaves the list alone;
+ * an explicit empty array clears it.
+ */
+export interface TabooSettingsUpdateRequest {
+  type: 'tabooSettingsUpdate';
+  phrases?: string[];
 }

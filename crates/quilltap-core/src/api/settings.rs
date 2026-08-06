@@ -2004,6 +2004,59 @@ pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
 
 // === end P4.d3 ===
 
+// === P4.D50 === (the instance-wide Taboo list — the `7df7de8e` drift)
+
+/// v4 `GET /api/v1/settings/taboo` — the instance-wide forbidden-phrase list
+/// `{phrases}` (empty when never written). A read failure is v4's
+/// `serverError('Failed to fetch taboo settings')`.
+pub fn taboo_settings_get(db: &Db) -> Response {
+    match db.read_main(instance_settings::get_taboo_settings) {
+        Ok(phrases) => Response::Taboo(json!({ "phrases": phrases })),
+        Err(_) => Response::error(ErrorKind::Internal, "Failed to fetch taboo settings"),
+    }
+}
+
+/// v4 `PUT /api/v1/settings/taboo` — read the current settings, merge the body
+/// OVER them (`{...current, ...body}`, so a partial body — `{}` in particular —
+/// can never wipe the list), `safeParse` the merge, persist, and echo what was
+/// stored.
+///
+/// The echo is `setTabooSettings`'s return value, i.e. the NORMALIZED list
+/// (trimmed, blanks dropped, case-insensitive duplicates dropped keeping the
+/// first), not the submission — that is what keeps the client's cache in step
+/// with the database. A schema violation is v4's `validationError` (400
+/// `{error: 'Validation error', details}`); the port surfaces the `{error}`
+/// envelope, the Zod issue array being v4-implementation-specific.
+pub async fn taboo_settings_update(db: &Db, bag: Value) -> Response {
+    let current = match db.read_main(instance_settings::get_taboo_settings) {
+        Ok(p) => p,
+        Err(_) => return Response::error(ErrorKind::Internal, "Failed to update taboo settings"),
+    };
+    // The schema's only field is `phrases`; the merge overlays it when the body
+    // carries it (even as an explicit empty array — that is the clear gesture),
+    // else the current value survives and is re-validated as v4 re-validates it.
+    let merged = match bag.get("phrases") {
+        Some(v) => json!({ "phrases": v }),
+        None => json!({ "phrases": current }),
+    };
+    let Some(parsed) = instance_settings::parse_taboo_settings(&merged) else {
+        return Response::error(ErrorKind::BadRequest, "Validation error");
+    };
+    match db
+        .write(move |w| instance_settings::set_taboo_settings(w.main().connection(), &parsed))
+        .await
+    {
+        // `Ok(None)` is v4's `setTabooSettings` THROW (the schema refused the
+        // normalized list), which lands in the route's catch as the 500.
+        Ok(Some(saved)) => Response::Taboo(json!({ "phrases": saved })),
+        Ok(None) | Err(_) => {
+            Response::error(ErrorKind::Internal, "Failed to update taboo settings")
+        }
+    }
+}
+
+// === end P4.D50 ===
+
 // ===========================================================================
 // General state (P4.d10 §A — v4 `app/api/v1/settings/general-state/route.ts`
 // at `f48f34dc`): the bottom cascade tier, a `state.json` document at the

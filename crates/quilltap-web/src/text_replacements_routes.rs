@@ -65,13 +65,14 @@ pub(crate) fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
         .into_response()
 }
 
-/// Unwrap a `TextReplacement`/`ChatBackground`/`ChatCost` body to the raw route
-/// shape. (`ChatCost` is raw in v4 too — `NextResponse.json(breakdown)`, not the
-/// successResponse envelope — so it needs no special casing here.)
+/// Unwrap a `TextReplacement`/`ChatBackground`/`ChatCost`/`Taboo` body to the
+/// raw route shape. (`ChatCost` is raw in v4 too — `NextResponse.json(breakdown)`,
+/// not the successResponse envelope — so it needs no special casing here.)
 fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
         CoreResponse::TextReplacement(v)
         | CoreResponse::ChatBackground(v)
+        | CoreResponse::Taboo(v)
         | CoreResponse::ChatCost(v) => (
             success_status,
             [("content-type", "application/json")],
@@ -160,6 +161,48 @@ pub async fn text_replacement_delete(
     match dispatch_core(&state, CoreRequest::TextReplacementDelete { id }).await {
         // v4 `noContent()` — 204 with an EMPTY body (the dispatch carries null).
         Ok(CoreResponse::TextReplacement(Value::Null)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+// ===========================================================================
+// GET / PUT /api/v1/settings/taboo (P4.D50)
+// ===========================================================================
+
+pub async fn taboo_settings_get(State(state): State<SharedState>) -> AxumResponse {
+    match dispatch_core(&state, CoreRequest::TabooSettings).await {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+pub async fn taboo_settings_put(
+    State(state): State<SharedState>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    // v4 `await req.json()` inside the try — a malformed body lands in the
+    // catch as the 500, not a 400.
+    let json_body: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update taboo settings",
+            )
+        }
+    };
+    // A non-object body (v4's `{...current, ...body}` spread of a string /
+    // array / number) contributes no `phrases` key, so the stored list
+    // survives — the same arm as an empty object.
+    // `Some(None)` preserves an explicit `null`, which Zod treats as a present
+    // value (`.default([])` fires only for `undefined`) and therefore rejects.
+    let phrases = json_body.get("phrases").map(|v| match v {
+        Value::Null => None,
+        other => Some(other.clone()),
+    });
+    let req = CoreRequest::TabooSettingsUpdate { phrases };
+    match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }

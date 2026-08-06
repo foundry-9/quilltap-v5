@@ -64,7 +64,9 @@ the feature produces a byte-identical prompt to one built before it
 existed. The prompt-structure cache version moved from 2 to 3
 accordingly. The list travels: it exports with instance settings and
 rides along in full backups. Introspection (the self-inventory tool)
-deliberately omits the section, matching the reference app.
+deliberately omits the section, matching the reference app. The list is
+read and written over `/api/v1/settings/taboo`, which merges a partial
+body over the stored value so an incomplete request can never wipe it.
 
 Planned the next porting round and committed its work orders — three
 lanes. The first resumes the held Almanack server work from its

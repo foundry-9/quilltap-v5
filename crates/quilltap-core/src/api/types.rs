@@ -2765,6 +2765,28 @@ pub enum Request {
         offset: Option<String>,
     },
     // === end P4.9P ===
+    // === P4.D50: the Taboo list (v4 `7df7de8e`) — append-only ===
+    /// v4 `GET /api/v1/settings/taboo` — the instance-wide forbidden-phrase
+    /// list, `{phrases: string[]}` (empty when never written).
+    TabooSettings,
+    /// v4 `PUT /api/v1/settings/taboo` — merge `{...current, ...body}`,
+    /// `TabooSettingsSchema.safeParse` the merge, persist the NORMALIZED list,
+    /// and echo what was stored.
+    ///
+    /// The raw value rides through so the handler runs the Zod-faithful parse
+    /// itself (the `DataRetentionSettingsUpdate` precedent): a partial body —
+    /// `{}` in particular — must leave the stored list untouched, and a
+    /// present-but-invalid `phrases` must 400 rather than being coerced.
+    ///
+    /// `Option<Option<_>>` is deliberate: `None` is the key ABSENT (the merge
+    /// keeps the stored list), `Some(None)` is an explicit `null`, which is NOT
+    /// `undefined` — Zod's `.default([])` does not fire for it, so v4 answers
+    /// `validationError`. A plain `Option` would collapse the two.
+    TabooSettingsUpdate {
+        #[serde(default)]
+        phrases: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D50 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -3118,6 +3140,13 @@ pub enum Response {
     /// `ChatAdmin` precedent).
     ChatDialog(serde_json::Value),
     // === end P4.9E3B ===
+    // === P4.D50: the Taboo list (v4 `7df7de8e`) — append-only ===
+    /// The Taboo settings body (`{phrases}`) — v4's `successResponse(settings)`.
+    /// The PUT arm echoes the NORMALIZED list the setter stored, never the raw
+    /// submission, so the client cache can never disagree with the database.
+    /// Pinned by `settings_routes_equivalence`.
+    Taboo(serde_json::Value),
+    // === end P4.D50 ===
     Error(CoreError),
 }
 

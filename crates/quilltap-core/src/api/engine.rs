@@ -3598,6 +3598,27 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.d3 ===
+            // === P4.D50 === (the instance-wide Taboo list)
+            Request::TabooSettings => match self.ready_db() {
+                Ok(db) => super::settings::taboo_settings_get(&db),
+                Err(resp) => resp,
+            },
+            Request::TabooSettingsUpdate { phrases } => match self.ready_db() {
+                Ok(db) => {
+                    // An absent key is v4's partial body (the merge keeps the
+                    // stored list); a present one — including an explicit
+                    // `null` — is carried raw so the handler's Zod-faithful
+                    // parse decides.
+                    let bag = match phrases {
+                        Some(Some(v)) => serde_json::json!({ "phrases": v }),
+                        Some(None) => serde_json::json!({ "phrases": serde_json::Value::Null }),
+                        None => serde_json::json!({}),
+                    };
+                    super::settings::taboo_settings_update(&db, bag).await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.D50 ===
             // === P4.6ae === (the general files family — lane A, append-only)
             Request::FilesList {
                 project_id,

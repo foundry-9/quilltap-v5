@@ -58361,3 +58361,64 @@ Both NDJSONs were grepped for a fresh-baseline marker before the diff was
 trusted ([[oracle-regen-silent-stale-pass]]): 7 `FORBIDDEN PHRASES`
 occurrences in the system-prompt oracle, 1 in the build-context oracle
 plus 2 mentions of the new op name.
+
+## Lane record — P4.D50 unit 2 (the two verbs, the REST edge, the §1 mirror)
+
+`TabooSettings` (GET) / `TabooSettingsUpdate` (PUT) on `api/types.rs` +
+`api/engine.rs`, `Response::Taboo`, the handlers in `api/settings.rs`, the
+`GET|PUT /api/v1/settings/taboo` edge in `quilltap-web` (registered in
+`lib.rs`, handlers alongside the text-replacements settings edges), and the
+`core-contract.ts` / `core-client.ts` mirror. Purely additive next to
+P4.37's four `SystemAlmanack*` arms, per the round's §1 contract; no
+existing variant moved.
+
+**The explicit-null arm.** `TabooSettingsUpdate` carries
+`Option<Option<serde_json::Value>>`, not `Option<Value>`. `None` is the key
+ABSENT (v4's merge keeps the stored list); `Some(None)` is an explicit
+`null`, which is NOT `undefined`, so Zod's `.default([])` does not fire and
+v4 answers `validationError`. A plain `Option` collapses the two — the same
+class as the `db::chats::ChatParticipant` collapse P4.9E1A found. The
+`taboo_put_null_phrases` differential case is the pin (v4: 400).
+
+`taboo_put_string_body` pins the other end: v4's `{...current, ...body}`
+spread of a STRING yields indexed keys and no `phrases`, so the stored list
+survives. Both the web edge and the Rust harness read `body.get("phrases")`,
+which answers `None` for a non-object body — the same arm.
+
+**Differential.** `settings_routes_equivalence` 32 → **50 cases** (18 new,
+`family: 'taboo'`), driving v4's REAL `app/api/v1/settings/taboo/route`
+module at the `7df7de8e` pin. The case spec grew two fields, both mirrored
+Rust-side: `seedTaboo` (write the row through v4's REAL setter before the
+case — each case runs over a pristine fixture copy, so the
+merge-over-current arms are unreachable without it) and `after: 'taboo'`
+(GET refetch, which is what proves the PUT's echo and the stored row agree —
+v4's whole reason for returning the normalized list). A
+`taboo_cases >= 18` assertion means a stale oracle that predates the family
+cannot pass by simply not carrying the rows.
+
+Coverage: GET default / GET seeded; PUT normalize (dedupe keeps FIRST, order
+preserved), empty-merge over a seeded list, explicit-empty clears, replace;
+trim-then-length (204 raw units trimming to 200 — valid, and the STORED
+value is trimmed), both boundary maxima; and eight rejections — over-long,
+over-count, non-array, non-string entry, whitespace-only, explicit null,
+astral-over-bound (101 🎩 = 202 UTF-16 units), plus the non-object body.
+
+**Green on the first run, so sensitivity was proven by deliberate mutation**
+(the D24 rule), on both arms the order names:
+
+| mutation | result |
+|---|---|
+| dedupe keeps LAST instead of FIRST | RED at `taboo_put_normalizes` |
+| PUT replaces instead of merging over current | RED at `taboo_put_empty_merge` |
+
+**Regen recipe** (from the pin; the committed header stays runnable from
+`~/source/quilltap-server`):
+
+```
+QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture-p4d50.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
+QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture-p4d50.db \
+QT_ORACLE_OUT=/tmp/oracle-settings-routes-p4d50.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "settings-routes\.test\.ts$"
+```
