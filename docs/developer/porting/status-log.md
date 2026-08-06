@@ -60262,3 +60262,53 @@ then `QT_FIXTURE_CC=/tmp/qt-cc-fixture.db tsx …/cases/conversation-chunks-tier
 `QT_ORACLE_CONVERSATION_CHUNKS=… QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db
 cargo test -p quilltap-harness --test conversation_chunks_tier2_equivalence`.
 Versions: core 0.0.488, harness 0.0.412.
+
+### Unit 3 — bug 17 reconcile arm (C) + unit 5 — bug 16 dimension DB placement (ONE fixture regen)
+
+**Arm (C)** (v4 `62ab1bc8`): `conversation_render_reconcile.rs` gained the
+third `OR EXISTS` — an un-embedded chunk `LENGTH > CHUNK_CHAR_BUDGET AND
+<= EMBEDDING_MAX_CHARS`, FAILED status deliberately NOT excluded (these are
+exactly the chunks arm B skips; a re-render, not a re-embed, heals them).
+`?3`/`?4` bind `CHUNK_CHAR_BUDGET`/`EMBEDDING_MAX_CHARS`; the module header
+grew a `(C)` arm. New unit test `arm_c_reclaims_failed_oversize_chunks`
+(window chunk FAILED-default → arm B off, arm C on; a beyond-cap chunk
+stays excluded).
+
+**Bug 16** (v4 `7bcd8515`): `embedding_dimension_reconcile.rs`'s
+`count_nonconforming_mount_chunks` now opens the MOUNT-index connection,
+guards `table_exists(mount, "doc_mount_points")`, and reads enabled mounts
+THERE; only the FAILED-status exclusion stays on `main`. The dead-code ⚠
+module section rewritten to the fix. The two unit tests re-ruled:
+`counts_mount_chunks_for_enabled_mounts_only` puts config in the mount
+partition (counts 1), and the former dead-code test became
+`ignores_mount_points_in_the_main_partition` (config in main → 0). Moved
+`doc_mount_points` from `main_conn()` to `mount_conn()`.
+
+**Fixture (ONE regen for both):** `embedding-remainder.json` chunk
+`f0…0010` (chat 0012's un-embedded FAILED-default chunk) gained
+`charCount: 30000` (in the arm-C window); the builder gained a per-chunk
+`charCount` hook. The bug-16 mount shape (enabled mount `d1…0001` with
+dim-258 nonconforming chunks) already existed — no fixture change needed
+for 16. Rebuilt the committed `embedding-remainder-{main,mount}.db` and
+regenerated the oracle: reconcile moved `{4,2,1,1}` → `{incompleteChats:
+5, enqueued: 3, reused: 1, skippedStale: 1}` (arm C = the +1), and
+`mismatched.mountChunks` moved 0 → 1 for the target-dim cases. The
+`embedding_remainder_equivalence` tripwire (`all mount_chunks == 0`)
+retired into a `any(> 0)` shape guard; its module doc rewritten. Only
+`embedding_remainder_equivalence` consumes these fixtures (verified — the
+`ER_*` env vars in precompute/recall_replay/whisper_tool/vault_conv_search
+point at `episodic-recall-*.db`, a different family). Differential green;
+**mutation-proven** (binding arm C's `?3` to `i64::MAX` reddens the
+reconcile counters).
+
+**Boot-behavior note:** on a real instance carrying pre-sub-chunking
+oversize chunks, arm C triggers a one-time render+embed burst at first
+boot after this lands (self-limiting — a re-rendered chat has no
+over-budget chunk left). The dogfood pass inherits the live proof.
+
+Regen: rebuild the committed pair via
+`QT_FIXTURE_OUT=/tmp/qt-er-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-er-mount.db
+tsx …/build-embedding-remainder-fixture.ts`, copy over
+`crates/quilltap-web/tests/fixtures/embedding-remainder-{main,mount}.db`,
+then the jest oracle recipe in the family header (against /tmp copies,
+TZ=UTC). Versions: core 0.0.489, harness 0.0.413.

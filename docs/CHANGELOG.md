@@ -84,6 +84,21 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+The startup reconcile now re-renders a conversation whose only stuck
+chunk is over the per-chunk budget but under the transport cap (v4 Bug
+17 arm C) — exactly the oversize chunk that could never embed before
+sub-chunking, and that the FAILED-status skip otherwise leaves stranded.
+Re-rendering splits it into embeddable in-context chunks; the pass stays
+self-limiting and stale-gated.
+
+The boot embedding-dimension reconcile's mount-chunk count now reads the
+mount-index database where `doc_mount_points` actually lives (v4 Bug 16).
+It had guarded on the main database, where that table does not exist, so
+the count was dead — non-conforming chunks on an enabled document mount
+were never counted toward a mismatched-dimension reindex. The
+embedding-remainder differential fixture was regenerated to seed the
+arm-C window chunk, and the old dead-code tripwire is retired.
+
 A conversation-chunk re-render now nulls a chunk's embedding when the
 text at that interchange position changed (v4 Bug 17). Before, a
 re-render preserved the stored vector unconditionally, so when an

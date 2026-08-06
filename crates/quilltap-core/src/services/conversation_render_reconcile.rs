@@ -3,7 +3,7 @@
 //! (v4 `instrumentation.ts` "PHASE 3.6").
 //!
 //! Re-enqueues a `CONVERSATION_RENDER` job for every chat the Scriptorium
-//! pipeline left half-finished — carrying v4's own two arms and its *why*:
+//! pipeline left half-finished — carrying v4's own arms and its *why*:
 //!
 //!   (A) a chat with real USER/ASSISTANT messages but no rendered Markdown — the
 //!       per-turn render trigger never fired or the render job died (e.g. an
@@ -11,22 +11,29 @@
 //!   (B) a chat whose interchange chunks were never embedded — the embedding
 //!       provider was down when the turn fired, or the render job died before
 //!       enqueuing the embeds, leaving chunks with a NULL `embedding` and no
-//!       recovery path.
+//!       recovery path; or
+//!   (C) a chat with an un-embedded chunk OVER the per-chunk budget yet inside
+//!       the transport cap (v4 Bug 17) — a chunk that predates interchange
+//!       sub-chunking. Re-rendering (not re-embedding) splits it into in-context
+//!       chunks that embed.
 //!
-//! Re-running `CONVERSATION_RENDER` heals both: the handler upserts the
-//! interchange chunks (preserving embeddings already present) and re-enqueues
-//! `EMBEDDING_GENERATE` for every chunk still lacking one.
+//! Re-running `CONVERSATION_RENDER` heals all three: the handler upserts the
+//! interchange chunks (preserving embeddings already present, NULLing a chunk
+//! whose content changed) and re-enqueues `EMBEDDING_GENERATE` for every chunk
+//! still lacking one.
 //!
 //! Why every startup rather than a one-time backfill: the gap recurs. New chats
 //! slip through whenever the embedder is unavailable mid-conversation, and a hard
 //! shutdown can drop an in-flight render. It is a no-op on a healthy instance —
 //! one indexed scan that returns nothing.
 //!
-//! **Oversized / empty chunks are EXCLUDED from the "needs work" test.** A chunk
-//! larger than [`EMBEDDING_MAX_CHARS`] (or empty) is deterministically
-//! unembeddable — the embedder marks it failed without retry — so counting it
-//! would keep its chat perpetually "incomplete" and re-render it on every boot
-//! for nothing.
+//! **Empty chunks are EXCLUDED from the "needs work" test, and oversized chunks
+//! are excluded from arm (B).** A chunk larger than [`EMBEDDING_MAX_CHARS`] (or
+//! empty) is deterministically unembeddable — the embedder marks it failed
+//! without retry — so counting it in arm (B) would keep its chat perpetually
+//! "incomplete" and re-render it for nothing. Arm (C) reclaims the sub-chunkable
+//! middle band (over the budget, under the cap): re-rendering there is progress,
+//! not a doomed re-embed.
 //!
 //! **STALE chats are EXCLUDED too** (v4 `a0243abd`), via the same shared
 //! [`is_stale_conn`] gate the maintenance sweeps use. The stale-chat cache
@@ -63,24 +70,36 @@
 use rusqlite::{params, Connection};
 use serde_json::json;
 
+use super::conversation_markdown::CHUNK_CHAR_BUDGET;
 use super::embedding_generate_job::EMBEDDING_MAX_CHARS;
 use super::maintenance::is_stale_conn;
 use super::queue_service::{resolve_stale_chat_days_conn, retention_cutoff_iso};
 use crate::clock::iso_to_ms;
 use crate::db::DbError;
 
-/// v4's `SELECT_INCOMPLETE_CHATS`, verbatim. The first `?` binds
-/// [`EMBEDDING_MAX_CHARS`]; the second binds the current default embedding
-/// profile's id (or a sentinel matching nothing when no profile exists).
-/// `updatedAt` rides along for the staleness gate's no-played-messages fallback.
+/// v4's `SELECT_INCOMPLETE_CHATS`, verbatim. `?1` binds [`EMBEDDING_MAX_CHARS`];
+/// `?2` binds the current default embedding profile's id (or a sentinel matching
+/// nothing when no profile exists); `?3` binds [`CHUNK_CHAR_BUDGET`] (arm C's
+/// lower bound) and `?4` binds [`EMBEDDING_MAX_CHARS`] again (arm C's upper
+/// bound). `updatedAt` rides along for the staleness gate's no-played-messages
+/// fallback.
 ///
 /// The length guard alone is not enough: a chunk can sit under the
 /// 131,072-char transport cap yet exceed the embedding model's token context
 /// (e.g. >8,192 tokens ≈ ~31k chars for text-embedding-3-large). Those fail
 /// deterministically — `is_permanent_embedding_error` marks them FAILED without
 /// retry — so any chunk with a FAILED `embedding_status` for the profile the
-/// re-embed would actually use is excluded, or its chat would re-render and
-/// re-fail on every boot (v4 `a5d6cee5`).
+/// re-embed would actually use is excluded from arm (B), or its chat would
+/// re-render and re-fail on every boot (v4 `a5d6cee5`).
+///
+/// Arm (C) is the one exception that DOES pull those oversize chunks back in —
+/// but only now that the renderer sub-chunks them (Bug 17). A chunk over the
+/// per-chunk budget yet inside the transport cap predates interchange
+/// sub-chunking; re-rendering (not re-embedding) splits it into in-context chunks
+/// that embed, so FAILED status is deliberately NOT excluded here — those are
+/// exactly the chunks arm (B) skips. Self-limiting: a re-rendered chat has no
+/// over-budget chunk left, so it stops matching. Like the others, it is gated by
+/// the stale-chat check in the loop below.
 const SELECT_INCOMPLETE_CHATS: &str = "\
   SELECT c.\"id\" AS chatId, c.\"userId\" AS userId, c.\"updatedAt\" AS updatedAt
   FROM \"chats\" c
@@ -108,6 +127,17 @@ const SELECT_INCOMPLETE_CHATS: &str = "\
           AND es.\"profileId\" = ?2
           AND es.\"status\" = 'FAILED'
       )
+  ) OR EXISTS (
+    -- (C) A sub-chunkable oversize chunk (Bug 17): un-embedded, over the
+    --     per-chunk budget but still within the transport cap. Re-rendering now
+    --     splits it into in-context chunks. FAILED status is deliberately NOT
+    --     excluded — these are exactly the chunks arm (B) skips, and a re-render
+    --     (not a re-embed) is what heals them. Self-limiting once split.
+    SELECT 1 FROM \"conversation_chunks\" cc2
+    WHERE cc2.\"chatId\" = c.\"id\"
+      AND cc2.\"embedding\" IS NULL
+      AND LENGTH(cc2.\"content\") > ?3
+      AND LENGTH(cc2.\"content\") <= ?4
   )
 ";
 
@@ -247,7 +277,14 @@ pub fn reconcile_conversation_rendering(main: &Connection, now_ms: i64) -> Recon
 fn scan(main: &Connection, default_profile_id: &str) -> Result<Vec<IncompleteChat>, DbError> {
     let mut stmt = main.prepare(SELECT_INCOMPLETE_CHATS)?;
     let rows = stmt.query_map(
-        params![EMBEDDING_MAX_CHARS as i64, default_profile_id],
+        // v4 binds (EMBEDDING_MAX_CHARS, defaultProfileId, CHUNK_CHAR_BUDGET,
+        // EMBEDDING_MAX_CHARS) — arm B's cap + FAILED scope, then arm C's window.
+        params![
+            EMBEDDING_MAX_CHARS as i64,
+            default_profile_id,
+            CHUNK_CHAR_BUDGET as i64,
+            EMBEDDING_MAX_CHARS as i64
+        ],
         |r| {
             Ok(IncompleteChat {
                 chat_id: r.get(0)?,
@@ -473,6 +510,43 @@ mod tests {
         let r = reconcile_conversation_rendering(&conn, NOW_MS);
         assert_eq!(r.incomplete_chats, 1);
         assert_eq!(enqueued_chat_ids(&conn), vec!["failed-under-other"]);
+    }
+
+    /// v4 Bug 17 arm (C): a chunk OVER the per-chunk budget but inside the
+    /// transport cap is reclaimed even when it is FAILED for the default profile
+    /// — exactly the chunk arm (B) skips. Re-rendering sub-chunks it. A chunk
+    /// beyond the cap stays excluded.
+    #[test]
+    fn arm_c_reclaims_failed_oversize_chunks() {
+        let conn = test_conn();
+        profile(&conn, "p-default", true);
+
+        // Rendered (arm A off) + a window chunk FAILED for the default profile
+        // (arm B off) → only arm (C) can select it.
+        chat(&conn, "sub-chunkable", Some("rendered"));
+        chunk(
+            &conn,
+            "c-window",
+            "sub-chunkable",
+            &"x".repeat(CHUNK_CHAR_BUDGET + 1),
+            false,
+        );
+        failed_status(&conn, "c-window", "p-default");
+
+        // Beyond the transport cap → arm (C)'s `<= EMBEDDING_MAX_CHARS` excludes it.
+        chat(&conn, "beyond-cap", Some("rendered"));
+        chunk(
+            &conn,
+            "c-huge",
+            "beyond-cap",
+            &"x".repeat(EMBEDDING_MAX_CHARS + 1),
+            false,
+        );
+        failed_status(&conn, "c-huge", "p-default");
+
+        let r = reconcile_conversation_rendering(&conn, NOW_MS);
+        assert_eq!(r.incomplete_chats, 1);
+        assert_eq!(enqueued_chat_ids(&conn), vec!["sub-chunkable"]);
     }
 
     /// No embedding profile at all → the sentinel `''` binds, matching no

@@ -168,6 +168,8 @@ interface ChunkSeed extends LegacyBlob {
   content: string;
   participantNames: string[];
   embedded: boolean;
+  /** Bug 17 arm C: inflate the content to exactly this many 'x' chars. */
+  charCount?: number;
 }
 interface MemorySeed extends LegacyBlob {
   id: string;
@@ -466,7 +468,14 @@ async function main(): Promise<void> {
   }
 
   for (const c of spec.conversationChunks) {
-    const content = c.id === spec.oversizeChunkId ? 'x'.repeat(spec.oversizeChars) : c.content;
+    // `charCount` (Bug 17 arm C) inflates one chunk to a pinned length in the
+    // sub-chunkable window; `oversizeChunkId` is the legacy single-oversize hook.
+    const content =
+      c.charCount != null
+        ? 'x'.repeat(c.charCount)
+        : c.id === spec.oversizeChunkId
+          ? 'x'.repeat(spec.oversizeChars)
+          : c.content;
     await repos.conversationChunks.create(
       {
         chatId: c.chatId,

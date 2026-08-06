@@ -18,10 +18,12 @@
 //! (everything older was, by design, stale relative to `renderNowIso`): a fresh
 //! arm-(A) chat (enqueued), a fresh arm-(A) chat with a PENDING render already
 //! seeded (reused), a fresh chat whose only un-embedded chunk is FAILED for the
-//! DEFAULT profile (excluded from arm (B) outright — and with no played
-//! messages, so it exercises the gate's `chats.updatedAt` fallback), and its
-//! twin whose FAILED row names the OTHER profile (still selected). The oracle
-//! reports `{incompleteChats: 4, enqueued: 2, reused: 1, skippedStale: 1}`.
+//! DEFAULT profile — now inflated OVER the per-chunk budget so v4 Bug 17's arm
+//! (C) reclaims it (a re-render sub-chunks it); with no played messages, so it
+//! exercises the gate's `chats.updatedAt` fallback — and its twin whose FAILED
+//! row names the OTHER profile (arm (B), still selected). The oracle reports
+//! `{incompleteChats: 5, enqueued: 3, reused: 1, skippedStale: 1}` — arm (C) is
+//! the +1 over the pre-Bug-17 corpus.
 //!
 //! Two fail-soft arms are NOT reachable from this corpus and are covered by the
 //! module's own unit tests instead: the no-profile sentinel (`''`, which matches
@@ -68,18 +70,16 @@
 //! default so the phases after it see the state they were written against.
 //!
 //! Every counter is asserted non-zero SOMEWHERE in the sequence (a corpus where
-//! every pass skipped would agree with a port that did nothing) — with one
-//! deliberate exception:
+//! every pass skipped would agree with a port that did nothing) — and that now
+//! includes `mismatched.mountChunks`.
 //!
-//! **⚠ `mismatched.mountChunks` is asserted to stay ZERO.** v4's
-//! `countNonconformingMountChunks` guards on `tableExists(mainDb,
-//! 'doc_mount_points')`, and that table lives in the MOUNT-INDEX partition, so the
-//! function returns 0 before it ever reaches the chunks. It is dead code in v4 and
-//! reproduced dead here; the corpus deliberately holds non-conforming chunks on an
-//! ENABLED mount, so the assertion is a tripwire — a "fix" that made the count
-//! work turns it red by design. v4's own unit test misses this because it creates
-//! `doc_mount_points` in its *main* test database, and this port's unit tests
-//! carry BOTH placements to pin the difference.
+//! **`mismatched.mountChunks` is LIVE (v4 `7bcd8515`, Bug 16).** The count reads
+//! `doc_mount_points` from the MOUNT-INDEX partition where it actually lives, so
+//! the corpus's non-conforming chunks on an ENABLED mount are counted — the
+//! target-dim case reports `mountChunks == 1` (one nonconforming chunk; a second
+//! is excluded as FAILED for that profile). The old dead-code tripwire is retired
+//! into a plain non-zero shape guard, and the per-case struct comparison against
+//! v4 does the rest.
 //!
 //! ## Minted values
 //!
@@ -726,17 +726,16 @@ async fn embedding_remainder_matches_oracle() {
                 && any(|r| r.target_dimensions.is_some() && !r.reindex_enqueued),
             "the corpus stopped exercising an arm of the dimension reconcile: {oracle_dim:?}"
         );
-        // ⚠ `mountChunks` is asserted to stay ZERO — see the port's module doc.
-        // v4's own guard reads `doc_mount_points` from the MAIN database, where
-        // that table does not live, so the count is dead code in v4 and dead here.
-        // The corpus deliberately holds non-conforming chunks on an ENABLED mount,
-        // so a "fix" that made this count work would turn this line red BY DESIGN.
+        // v4 `7bcd8515` (Bug 16) fixed the mount-chunk count to read the
+        // mount-index partition, so it is now LIVE: the corpus holds a
+        // non-conforming chunk on an ENABLED mount, so the target-dim case counts
+        // it (`mountChunks > 0`). Pin that the corpus still exercises the arm —
+        // the per-case `assert_eq!` below is the real comparison against v4.
         assert!(
             oracle_dim
                 .iter()
-                .all(|(_, r)| r.mismatched.mount_chunks == 0),
-            "v4's mount-chunk count is dead code (it guards on the main DB); a non-zero \
-             answer means either v4 moved or the port diverged — see the module doc"
+                .any(|(_, r)| r.mismatched.mount_chunks > 0),
+            "the corpus stopped exercising the mount-chunk count (Bug 16 fix): {oracle_dim:?}"
         );
 
         for (case, (want_name, want)) in

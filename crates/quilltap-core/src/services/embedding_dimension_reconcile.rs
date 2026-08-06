@@ -38,26 +38,20 @@
 //! Skipped entirely for a BUILTIN (TF-IDF) default: its dimension is the fitted
 //! vocabulary size, which the refit pipeline owns.
 //!
-//! ## ⚠ The mount-chunk count is DEAD CODE IN v4, and reproduced as such
+//! ## The mount-chunk count reads the mount-index partition (v4 `7bcd8515`, Bug 16)
 //!
-//! v4's `countNonconformingMountChunks` opens with
-//! `tableExists(mainDb, 'doc_mount_points')` and its comment says "mount point
-//! config lives in the main DB". **It does not** — `doc_mount_points` is a
-//! mount-index table (v4's own repository logs "Failed to ensure
-//! doc_mount_points table in mount index database", and v5's `fresh_schema.json`,
-//! re-dumped from v4's `generateDDL`, lists it under `mountIndex`). So on every
-//! real instance that guard is false and the function returns 0 before it ever
-//! reaches the mount-index handle. v4's unit test does not catch this because it
-//! creates `doc_mount_points` in its *main* test database.
-//!
-//! This port reproduces v4's operation order exactly, so `mismatched.mountChunks`
-//! is 0 on any real instance here too — and the differential proves it over a
-//! corpus that deliberately contains non-conforming chunks on an ENABLED mount.
-//! The counting logic below is nonetheless a faithful port and is exercised by
-//! this module's own unit test (which, like v4's, puts `doc_mount_points` in the
-//! main connection). **Do not "fix" this without a ruling**: it is v4 behavior,
-//! and the reindex handler's phase 4 — which reads mount points correctly — heals
-//! those chunks whenever a reindex runs for any other reason.
+//! `countNonconformingMountChunks` was long-broken: it guarded on
+//! `tableExists(mainDb, 'doc_mount_points')`, but `doc_mount_points` is a
+//! mount-index table (v5's `fresh_schema.json`, re-dumped from v4's `generateDDL`,
+//! lists it under `mountIndex`), so on every real instance the guard was false and
+//! the function returned 0 before it ever reached the chunks. v4 `7bcd8515` fixes
+//! it: both `doc_mount_points` (config) and `doc_mount_chunks` are mount-index
+//! tables, so the ENABLED filter and the chunk scan both run on the mount handle;
+//! only the FAILED-status exclusion (`embedding_status`) stays on main. This port
+//! mirrors the fix. The differential exercises it over a corpus that holds
+//! non-conforming chunks on an ENABLED mount (`mismatched.mountChunks` is now
+//! non-zero for the target-dim case), and the module's own unit tests pin both
+//! placements — the mount partition counts, the main partition is ignored.
 //!
 //! ## v5 divergences, all documented
 //!
@@ -516,10 +510,11 @@ fn clear_stale_chat_nonconforming_chunks(
     Ok(cleared)
 }
 
-/// v4's `countNonconformingMountChunks`, operation-for-operation — INCLUDING the
-/// `doc_mount_points`-on-the-MAIN-connection guard that makes it return 0 on every
-/// real instance. See the module doc's ⚠ section; the whole body is fail-soft to 0
-/// (v4 wraps it in try/catch and warns).
+/// v4's `countNonconformingMountChunks`, operation-for-operation (v4 `7bcd8515`,
+/// Bug 16): `doc_mount_points` and `doc_mount_chunks` are both mount-index tables,
+/// so the ENABLED filter and the chunk scan run on the `mount` handle; only the
+/// FAILED-status exclusion (`embedding_status`) consults `main`. The whole body is
+/// fail-soft to 0 (v4 wraps it in try/catch and warns).
 fn count_nonconforming_mount_chunks(
     main: &Connection,
     mount: Option<&Connection>,
@@ -527,20 +522,24 @@ fn count_nonconforming_mount_chunks(
     profile_id: &str,
 ) -> usize {
     let attempt = || -> Result<usize, DbError> {
-        if !table_exists(main, "doc_mount_points") {
+        // v4 `7bcd8515` (Bug 16): `doc_mount_points` (config) and
+        // `doc_mount_chunks` are BOTH mount-index tables, so the ENABLED filter
+        // and the chunk scan both run on the mount handle. Only the FAILED-status
+        // exclusion (`embedding_status`) lives in the main DB.
+        let Some(mount) = mount else {
+            return Ok(0);
+        };
+        if !table_exists(mount, "doc_mount_points") {
             return Ok(0);
         }
         let enabled_ids: Vec<String> = {
-            let mut stmt = main.prepare("SELECT id FROM doc_mount_points WHERE enabled = 1")?;
+            let mut stmt = mount.prepare("SELECT id FROM doc_mount_points WHERE enabled = 1")?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
         if enabled_ids.is_empty() {
             return Ok(0);
         }
-        let Some(mount) = mount else {
-            return Ok(0);
-        };
         if !table_exists(mount, "doc_mount_chunks") {
             return Ok(0);
         }
@@ -691,7 +690,6 @@ mod tests {
              CREATE TABLE embedding_status (\
                 id TEXT PRIMARY KEY, entityType TEXT, entityId TEXT, profileId TEXT, \
                 status TEXT);\
-             CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, enabled INTEGER);\
              CREATE TABLE background_jobs (\
                 id TEXT PRIMARY KEY, userId TEXT NOT NULL, type TEXT NOT NULL, \
                 status TEXT NOT NULL, payload TEXT NOT NULL, priority REAL NOT NULL, \
@@ -705,8 +703,10 @@ mod tests {
 
     fn mount_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        // Both mount-index tables live here (v4 `7bcd8515`, Bug 16).
         conn.execute_batch(
-            "CREATE TABLE doc_mount_chunks (\
+            "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, enabled INTEGER);\
+             CREATE TABLE doc_mount_chunks (\
                 id TEXT PRIMARY KEY, mountPointId TEXT, embedding BLOB);",
         )
         .unwrap();
@@ -862,19 +862,20 @@ mod tests {
         assert_eq!(r.mismatched.conversation_chunks, 1, "cc-live only");
     }
 
-    /// v4's fourth test — the mount-chunk COUNT, reachable only because
-    /// `doc_mount_points` is on the MAIN connection here (see the module doc's ⚠).
+    /// v4's fourth test — the mount-chunk COUNT (v4 `7bcd8515`, Bug 16), reading
+    /// `doc_mount_points` from the MOUNT-index partition where it actually lives.
     /// Enabled mounts only, FAILED excluded.
     #[test]
     fn counts_mount_chunks_for_enabled_mounts_only() {
         let main = main_conn();
         let mount = mount_conn();
         default_profile(&main, "OPENAI");
-        main.execute(
-            "INSERT INTO doc_mount_points (id, enabled) VALUES ('mp-on', 1), ('mp-off', 0)",
-            [],
-        )
-        .unwrap();
+        mount
+            .execute(
+                "INSERT INTO doc_mount_points (id, enabled) VALUES ('mp-on', 1), ('mp-off', 0)",
+                [],
+            )
+            .unwrap();
         let ins = "INSERT INTO doc_mount_chunks (id, mountPointId, embedding) VALUES (?1, ?2, ?3)";
         mount
             .execute(ins, params!["mc-on-old", "mp-on", raw_blob(OLD_DIM)])
@@ -888,6 +889,7 @@ mod tests {
         mount
             .execute(ins, params!["mc-off-old", "mp-off", raw_blob(OLD_DIM)])
             .unwrap();
+        // The FAILED-status exclusion set is the ONE thing still read from main.
         failed_status(&main, "MOUNT_CHUNK", "mc-on-failed");
 
         let r = reconcile_embedding_dimensions(&main, Some(&mount), NOW_MS);
@@ -896,22 +898,22 @@ mod tests {
         assert!(r.reindex_enqueued);
     }
 
-    /// The SAME corpus with `doc_mount_points` where it actually lives — the
-    /// mount-index partition — counts ZERO. This is v4's live behavior, pinned so
-    /// the divergence cannot be "fixed" by accident.
+    /// The complement of the fix: `doc_mount_points` written to the MAIN partition
+    /// (the pre-fix placement) is IGNORED — the fixed code only ever consults the
+    /// mount handle, so a main-partition table cannot revive the dead count. Pinned
+    /// so a regression back to reading main turns red.
     #[test]
-    fn mount_chunk_count_is_dead_when_mount_points_live_in_the_mount_partition() {
+    fn ignores_mount_points_in_the_main_partition() {
         let main = main_conn();
         let mount = mount_conn();
         default_profile(&main, "OPENAI");
-        // Move the table to where production keeps it.
-        main.execute_batch("DROP TABLE doc_mount_points;").unwrap();
-        mount
-            .execute_batch(
-                "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, enabled INTEGER);\
-                 INSERT INTO doc_mount_points (id, enabled) VALUES ('mp-on', 1);",
-            )
-            .unwrap();
+        // The pre-fix wrong placement: config in main, chunks in mount, and NO
+        // `doc_mount_points` in the mount partition.
+        main.execute_batch(
+            "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, enabled INTEGER);\
+             INSERT INTO doc_mount_points (id, enabled) VALUES ('mp-on', 1);",
+        )
+        .unwrap();
         mount
             .execute(
                 "INSERT INTO doc_mount_chunks (id, mountPointId, embedding) VALUES (?1, ?2, ?3)",
@@ -923,7 +925,7 @@ mod tests {
 
         assert_eq!(
             r.mismatched.mount_chunks, 0,
-            "v4 guards on the MAIN connection, so the count can never reach the chunks"
+            "the fixed code reads only the mount partition; a main-partition table is ignored"
         );
         assert!(!r.reindex_enqueued, "nothing else was non-conforming");
     }

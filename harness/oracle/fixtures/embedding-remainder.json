@@ -443,7 +443,7 @@
       "key": "reconcile-fresh-failed-default-profile",
       "title": "One Chunk The Embedder Will Never Take",
       "renderedMarkdown": "## Interchange 0\n\nrendered already\n",
-      "comment": "P4.D25 FAILED-status exclusion: rendered, with ONE un-embedded chunk that already carries a FAILED embedding_status for the DEFAULT profile -> arm (B) must not select it, so it never appears in incompleteChats at all. It has NO played messages, so the staleness gate falls back to chats.updatedAt -- which is why this chat carries a fresh `updatedAt`.",
+      "comment": "Bug 17 arm C (was P4.D25 FAILED-status exclusion): rendered, with ONE un-embedded chunk that carries a FAILED embedding_status for the DEFAULT profile -> arm (B) skips it. Its chunk is now OVER the per-chunk budget (charCount 30000) but under the transport cap, so arm (C) selects it and the reconcile ENQUEUES a re-render. NO played messages, so the staleness gate falls back to chats.updatedAt -- which is why it carries a fresh updatedAt.",
       "updatedAt": "2026-07-21T09:00:00.000Z",
       "participants": [
         {
@@ -529,7 +529,9 @@
       "participantNames": [
         "Aria"
       ],
-      "embedded": false
+      "embedded": false,
+      "charCount": 30000,
+      "comment": "Bug 17 arm C: an un-embedded chunk OVER the per-chunk budget (24,000) but inside the transport cap (131,072). Arm (B) skips it (FAILED for the default profile); arm (C) reclaims it — a re-render sub-chunks it. This is what moves the reconcile result."
     },
     {
       "id": "f0000000-0000-4000-8000-000000000011",
@@ -937,24 +939,80 @@
     "comment": "P4.d27 — corpus-shape guards, asserted against the ORACLE's background_jobs dump before the row diff. Each names an arm of v4 7391404e; if a fixture edit ever stops exercising one, the family says so by name instead of quietly agreeing with a port that lost it. `mismatchedProfileId` scopes the first two lists to the mismatched-dim run (full scope, which runs later, deliberately has no FAILED skip and no dim skip).",
     "mismatchedProfileId": "b0000000-0000-4000-8000-000000000002",
     "mustEnqueue": [
-      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000004", "why": "the fan-out proof — no characters row, so the OLD characters.findByUserId enumeration could never reach it" },
-      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000005", "why": "not user-scoped — Nadia belongs to the second user and the job runs as the first" },
-      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000006", "why": "a legacy raw Float32 vector at the old width" },
-      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000021", "why": "non-conforming on a FRESH chat — the stale skip must not swallow live chats" },
-      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000002", "why": "phase 4 exists at all: a NULL-embedding chunk on an enabled mount" },
-      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000003", "why": "phase 4's dim test: non-conforming on an enabled mount" }
+      {
+        "entityType": "MEMORY",
+        "entityId": "e1000000-0000-4000-8000-000000000004",
+        "why": "the fan-out proof — no characters row, so the OLD characters.findByUserId enumeration could never reach it"
+      },
+      {
+        "entityType": "MEMORY",
+        "entityId": "e1000000-0000-4000-8000-000000000005",
+        "why": "not user-scoped — Nadia belongs to the second user and the job runs as the first"
+      },
+      {
+        "entityType": "MEMORY",
+        "entityId": "e1000000-0000-4000-8000-000000000006",
+        "why": "a legacy raw Float32 vector at the old width"
+      },
+      {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000021",
+        "why": "non-conforming on a FRESH chat — the stale skip must not swallow live chats"
+      },
+      {
+        "entityType": "MOUNT_CHUNK",
+        "entityId": "d2000000-0000-4000-8000-000000000002",
+        "why": "phase 4 exists at all: a NULL-embedding chunk on an enabled mount"
+      },
+      {
+        "entityType": "MOUNT_CHUNK",
+        "entityId": "d2000000-0000-4000-8000-000000000003",
+        "why": "phase 4's dim test: non-conforming on an enabled mount"
+      }
     ],
     "mustNotEnqueue": [
-      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000001", "why": "conforming — the dim skip" },
-      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000007", "why": "the FAILED skip, memory arm (non-conforming, so the dim check cannot short-circuit it)" },
-      { "entityType": "HELP_DOC", "entityId": "a1000000-0000-4000-8000-000000000002", "why": "the FAILED skip, help-doc arm" },
-      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000011", "why": "the FAILED skip, conversation-chunk arm" },
-      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000004", "why": "the FAILED skip, mount-chunk arm" }
+      {
+        "entityType": "MEMORY",
+        "entityId": "e1000000-0000-4000-8000-000000000001",
+        "why": "conforming — the dim skip"
+      },
+      {
+        "entityType": "MEMORY",
+        "entityId": "e1000000-0000-4000-8000-000000000007",
+        "why": "the FAILED skip, memory arm (non-conforming, so the dim check cannot short-circuit it)"
+      },
+      {
+        "entityType": "HELP_DOC",
+        "entityId": "a1000000-0000-4000-8000-000000000002",
+        "why": "the FAILED skip, help-doc arm"
+      },
+      {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000011",
+        "why": "the FAILED skip, conversation-chunk arm"
+      },
+      {
+        "entityType": "MOUNT_CHUNK",
+        "entityId": "d2000000-0000-4000-8000-000000000004",
+        "why": "the FAILED skip, mount-chunk arm"
+      }
     ],
     "neverEnqueued": [
-      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000020", "why": "its chat is STALE, and the skip is not scope-gated — neither run may reach it" },
-      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000022", "why": "an ORPHAN chunk — phase 3 walks chats, so no run can see it" },
-      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000005", "why": "behind the DISABLED mount — phase 4 walks enabled mounts only" }
+      {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000020",
+        "why": "its chat is STALE, and the skip is not scope-gated — neither run may reach it"
+      },
+      {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000022",
+        "why": "an ORPHAN chunk — phase 3 walks chats, so no run can see it"
+      },
+      {
+        "entityType": "MOUNT_CHUNK",
+        "entityId": "d2000000-0000-4000-8000-000000000005",
+        "why": "behind the DISABLED mount — phase 4 walks enabled mounts only"
+      }
     ]
   },
   "reindexCases": [
