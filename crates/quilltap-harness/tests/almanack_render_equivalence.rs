@@ -20,7 +20,7 @@ use serde_json::Value;
 /// Every variant the oracle case emits. A missing name is a truncated oracle,
 /// not a pass (the P4.D19 census lesson): the assertion below is on the SET,
 /// not merely on each line that happens to be present.
-const EXPECTED_CASES: [&str; 7] = [
+const EXPECTED_CASES: [&str; 8] = [
     "base",
     "all_empty",
     "scriptorium_unavailable",
@@ -28,6 +28,9 @@ const EXPECTED_CASES: [&str; 7] = [
     "pipes_and_newlines",
     "numeric_edges",
     "null_dates_and_zero_tables",
+    // The V8 legacy space-form stamps (SQLite `datetime('now')` vintage) —
+    // the P4.37 §3-review arm: parsed as local(=UTC) where strict ISO says N/A.
+    "space_form_date_stamps",
 ];
 
 /// The v4 commit the committed recipe pins. A stale NDJSON regenerated against

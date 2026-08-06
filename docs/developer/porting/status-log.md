@@ -9,6 +9,37 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 resume item 4 (the space-form date stamp), 2026-08-06
+
+The §3 review finding from the `f7f1a956` unification, discharged. v4's
+`formatDate`/`formatDateTime` run through `new Date(...)`, whose V8 legacy
+fallback parses the SQLite `datetime('now')` vintage (`"2026-08-05 09:07:03"`,
+optionally with fractional seconds) as LOCAL time; v5's `locale_date{,_time}_us`
+sat on the strict ISO-T `js_date_parse_ms` and rendered `"N/A"` for it.
+
+The fix is a private `almanack_date_parse_ms` in `format_time.rs` — the two
+almanack formatters' shared parse domain — which normalizes the
+`YYYY-MM-DD HH:…` space form to the `T` form and delegates. **The shared
+`episodic::js_date_parse_ms` is deliberately NOT widened** (the order's
+instruction). TZ semantics recorded in the doc comment: V8 parses the space
+form as LOCAL; the zone-less `T` form already reads as UTC here under the
+standing `TZ=UTC` constraint, so the space form inherits exactly that seam.
+V8's tolerance for a single-digit hour (`"2026-08-05 9:07:03"`) is NOT
+reproduced — no writer produces it; recorded as a seam, probed on Node 24.
+
+Pinned by a NEW render-oracle case, `space_form_date_stamps` (the tier-1
+family goes 7 → 8 cases; the differential's case-SET assertion grew with it):
+`generatedAt`, a fractional-seconds `lastMigrationAt`,
+`lastMaintenanceSweepAt` and every `apiKeyUsage.lastUsed` carry space-form
+stamps; v4 renders them (`8/5/2026, 9:07:03 AM`) and v5 must byte-match.
+**Red→green proven**: with the space arm disabled the case fails
+(`rendered markdown differs`), with it the family is 8/8 byte-identical over
+an oracle regenerated fresh from the pinned `f7f1a956` worktree. Unit vectors
+in `format_time.rs`'s tests carry the Node-24 probe results, including the
+rejected single-digit-hour seam.
+
+Versions: core 0.0.478, harness 0.0.405.
+
 ## Lane record — P4.37 unit 12 (the `almanack-*` fixture family + the tier-2 differential), 2026-08-06
 
 Branch `claude/almanack-server-porting-99b135` (the resumed P4.37 lane). The

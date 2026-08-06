@@ -383,6 +383,23 @@ function variants(): Variant[] {
         return d;
       },
     },
+
+    // 8. The V8 legacy space-form stamps (the SQLite `datetime('now')` vintage,
+    //    present in real instances): v4's `new Date(...)` parses them as LOCAL
+    //    time (UTC under this oracle's pinned TZ) where a strict ISO parser
+    //    would render 'N/A'. Both formatters exercised, with and without
+    //    fractional seconds (the P4.37 §3 review finding).
+    {
+      name: 'space_form_date_stamps',
+      build: () => {
+        const d = clone(makeAlmanackFixture());
+        d.generatedAt = '2026-08-05 09:07:03';
+        d.migrationState.lastMigrationAt = '2026-08-04 23:59:59.500';
+        d.instanceSettings.lastMaintenanceSweepAt = '2026-08-01 00:00:00';
+        d.apiKeyUsage = d.apiKeyUsage.map(p => ({ ...p, lastUsed: '2026-07-31 12:30:45' }));
+        return d;
+      },
+    },
   ];
 }
 

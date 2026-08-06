@@ -119,10 +119,49 @@ pub fn format_date_short_us(iso: &str) -> String {
 ///
 /// The Almanack's `formatDate` is its only caller; it renders `None` as `"N/A"`.
 pub fn locale_date_us(iso: &str) -> Option<String> {
-    let ms = crate::episodic::js_date_parse_ms(iso)?;
+    let ms = almanack_date_parse_ms(iso)?;
     let days = ms.div_euclid(86_400_000);
     let (year, month, day) = civil_from_days(days);
     Some(format!("{month}/{day}/{year}"))
+}
+
+/// The Almanack formatters' parse domain: the full `Date.parse` ISO subset PLUS
+/// V8's legacy space-form fallback for the SQLite `datetime('now')` vintage
+/// (`"2026-08-05 09:07:03"`, optionally with fractional seconds) — real
+/// instances carry such stamps (e.g. pre-ISO `completedAt` columns), and v4's
+/// `new Date(...)` accepts them where the strict ISO subset renders `"N/A"`.
+///
+/// Deliberately NOT a widening of the shared [`crate::episodic::js_date_parse_ms`]
+/// (the P4.37 order's instruction): the space form is normalized to the `T`
+/// form HERE and only here. ⚠ TZ semantics: V8 parses the space form (like any
+/// zone-less datetime) as LOCAL time; `js_date_parse_ms` reads zone-less as
+/// UTC under the standing `TZ=UTC` constraint this module documents — the same
+/// seam the zone-less `T` form already has.
+///
+/// V8's legacy fallback also tolerates a single-digit hour (`"2026-08-05
+/// 9:07:03"`); no writer produces that shape, and it stays unparsed here — a
+/// recorded seam, not an arm.
+fn almanack_date_parse_ms(s: &str) -> Option<i64> {
+    if let Some(ms) = crate::episodic::js_date_parse_ms(s) {
+        return Some(ms);
+    }
+    // `YYYY-MM-DD HH:…` — swap the single separating space for `T` and re-try.
+    let b = s.as_bytes();
+    if b.len() > 11
+        && b[..10].iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            _ => c.is_ascii_digit(),
+        })
+        && b[10] == b' '
+        && b[11].is_ascii_digit()
+    {
+        let mut t_form = String::with_capacity(s.len());
+        t_form.push_str(&s[..10]);
+        t_form.push('T');
+        t_form.push_str(&s[11..]);
+        return crate::episodic::js_date_parse_ms(&t_form);
+    }
+    None
 }
 
 /// v4 `new Date(iso).toLocaleString()` (no options) under TZ=UTC / en-US —
@@ -132,7 +171,7 @@ pub fn locale_date_us(iso: &str) -> Option<String> {
 ///
 /// `None` on an unparseable input (v4's `NaN` guard → `"N/A"`).
 pub fn locale_date_time_us(iso: &str) -> Option<String> {
-    let ms = crate::episodic::js_date_parse_ms(iso)?;
+    let ms = almanack_date_parse_ms(iso)?;
     let days = ms.div_euclid(86_400_000);
     let ms_in_day = ms.rem_euclid(86_400_000);
     let (year, month, day) = civil_from_days(days);
@@ -195,6 +234,23 @@ mod tests {
         }
         // Date-only forms parse in JS (and here) — unlike `format_date_short_us`.
         assert_eq!(locale_date_us("2026-01-05").as_deref(), Some("1/5/2026"));
+        // The V8 legacy space form (the SQLite `datetime('now')` vintage) —
+        // probed on Node 24 under TZ=UTC: `new Date('2026-08-05 09:07:03')` →
+        // `8/5/2026, 9:07:03 AM`; fractional seconds accepted too.
+        assert_eq!(
+            locale_date_time_us("2026-08-05 09:07:03").as_deref(),
+            Some("8/5/2026, 9:07:03 AM")
+        );
+        assert_eq!(
+            locale_date_time_us("2026-08-05 09:07:03.123").as_deref(),
+            Some("8/5/2026, 9:07:03 AM")
+        );
+        assert_eq!(
+            locale_date_us("2026-08-05 09:07:03").as_deref(),
+            Some("8/5/2026")
+        );
+        // The single-digit-hour legacy shape stays unparsed — the recorded seam.
+        assert_eq!(locale_date_time_us("2026-08-05 9:07:03"), None);
         // What JS rejects, we reject — the renderer's "N/A" arm.
         assert_eq!(locale_date_us("not-a-date"), None);
         assert_eq!(locale_date_time_us(""), None);

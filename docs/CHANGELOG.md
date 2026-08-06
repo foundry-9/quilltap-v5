@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+The system report's date columns now render the plain space-separated
+timestamps older database rows carry ("2026-08-05 09:07:03") instead of
+"N/A". The reference app's JavaScript date parser has always accepted
+that form; our strict ISO parser did not, so any report column fed such a
+stamp went blank. The acceptance is scoped to the report's two formatters
+only, and a new render-oracle case pins the behavior against the
+reference app byte-for-byte.
+
 The new system report ("The Almanack") is now verified against the
 reference app end to end: a new committed fixture family exercises every
 report section non-trivially over all three databases, and a differential
