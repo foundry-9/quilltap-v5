@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+The system-report card's end-to-end test walk is active: compile,
+per-phase progress, viewer, download, delete. Activating it caught two
+real issues fixed here: the report card's and the settings tab
+container's custom elements had no display rule, so their inline boxes
+did not enclose their content and automated clicks on the compile button
+were read as landing on the tab container (the same class of bug as the
+chat sidebar's Add Character footer); and the test's viewer assertion
+was ambiguous once a real report rendered, since the dialog's
+description repeats the report title.
+
 The Almanack is now reachable in production: the server supplies the
 report pipeline its database paths, backups directory, honest runtime
 facts (host version, platform, uname, total memory, process uptime,

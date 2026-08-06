@@ -1011,6 +1011,19 @@
   }
 
   /**
+   * Almanack card + settings-tab HOST elements — the same inline-host bug
+   * class as above (found by the P4.37 compile beat's first live run:
+   * Playwright's hit-target check read the compile button's click as
+   * intercepted by the settings `qt-entity-tabs`, whose inline box — like
+   * the card's — did not enclose its block children).
+   */
+  qt-almanack-card,
+  qt-entity-tabs,
+  qt-settings-providers {
+    display: block;
+  }
+
+  /**
    * Collapsible card container
    */
   .qt-collapsible-card {

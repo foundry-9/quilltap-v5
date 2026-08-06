@@ -28,14 +28,12 @@ import { E2E_PASSPHRASE } from './support/env';
  * verb that is DEFINED-but-refusing from one that works, and would silently
  * activate the beat into guaranteed failure (the standing e2e rule).
  *
- * ⚠ NOT flipped at the `f7f1a956` unification (2026-08-05): P4.37's verified
- * pure half (renderer + phase manifest + the progress `phase` frame) landed,
- * but the collectors / verbs / host wire were HELD BACK pending their tier-2
- * differential (P4.37 unit 12 — the lane's own record forbade unifying them
- * unverified; branch `claude/almanack-server-porting-693d77`). Flip to `true`
- * when the RESUMED P4.37 lands the four verbs + the `almanack_host` wire.
+ * ✅ FLIPPED by the resumed P4.37 lane (2026-08-06): the four verbs are
+ * tier-2-verified (`almanack_tier2_equivalence`, 72 checks over the new
+ * `almanack-*` fixture family) and the `almanack_host` wire is LIVE in
+ * `quilltap-host` — the walk below runs against the real report pipeline.
  */
-const P437_SERVER_LANDED = false;
+const P437_SERVER_LANDED = true;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -127,7 +125,12 @@ test.describe('P4.38 — the Almanack card', () => {
     // The dispatch's own resolution opens the viewer on the fresh report.
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByText('The Almanack (System Report)')).toBeVisible();
+    // The report's own rendered H1 — both stronger than the dialog chrome
+    // (it proves the markdown pipeline ran) and unambiguous: the dialog's
+    // description paragraph carries the same words.
+    await expect(
+      dialog.getByRole('heading', { level: 1, name: 'The Almanack (System Report)' }),
+    ).toBeVisible();
     // The report is markdown with GFM tables — the renderer emitted at least one.
     await expect(dialog.locator('.qt-almanack-report table').first()).toBeVisible();
 

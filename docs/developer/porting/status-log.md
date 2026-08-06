@@ -9,6 +9,39 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 resume item 5 (`P437_SERVER_LANDED` flipped; the beat's first live run), 2026-08-06
+
+The gated compile → phase bar → viewer → download → delete walk is ACTIVE and
+green (3.0 s — the whole report pipeline live). Its first live run caught two
+real issues, exactly as an ACTIVATE-AT-UNIFY beat is meant to:
+
+1. **The inline-host bug class again** (the P4.9E1B `qt-collapsible-card`
+   precedent, same disease two hosts over): `qt-almanack-card` AND
+   `qt-entity-tabs` (+ `qt-settings-providers`) had no host display rule, so
+   their inline boxes did not enclose their block children and Playwright's
+   hit-target check read the compile click as intercepted by
+   `qt-entity-tabs` — persistently, while `elementFromPoint` and real mouse
+   events both hit the button (the check's stricter box math is what trips).
+   Fixed beside the collapsible's rule in `_surfaces.css` with the shared
+   comment. Diagnosis trail worth keeping: position-offset clicks worked
+   while center clicks failed, the button's rect was rock-stable, and only
+   the host-display sweep cured it — when a Playwright click reports an
+   ANCESTOR intercepting and the DOM looks clean, check every custom-element
+   host in the chain for `display: inline` FIRST.
+2. **The blind-written locator**: `dialog.getByText('The Almanack (System
+   Report)')` went strict-mode ambiguous the moment a REAL report rendered —
+   the dialog's description paragraph repeats the title the report's own H1
+   carries. The assertion now targets the H1 (`getByRole('heading', {level:
+   1})`), which is also the stronger check: it proves the markdown pipeline
+   ran.
+
+Gate for this item: the spec 3/3 in isolation; ng test 286 files / 3,914
+passed; ng build clean; the FULL suite re-run follows at the lane gate (the
+`qt-entity-tabs` host rule touches every tabbed screen, so the whole suite is
+the proof it moved nothing).
+
+Versions: SPA 0.5.413.
+
 ## Lane record — P4.37 resume item 3 (the Almanack host wire), 2026-08-06
 
 `EngineAssembly.almanack_host` is LIVE: `quilltap-host` gains
