@@ -540,16 +540,21 @@ test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
     await expect(ready).toBeVisible({ timeout: 10_000 });
   }
 
-  test('the four Commonplace Book cards render over the fixture', async ({ page }) => {
+  test('the Commonplace Book cards render over the fixture', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${MEMSET_BASE_URL}/settings?tab=memory`);
     await unlockIfLocked(page, page.getByRole('heading', { name: 'Repair Missing Embeddings' }));
-    // The four ported cards' titles all render (the deferred dedup /
-    // conversation-summary / embedding-profiles cards render nothing).
+    // Embedding Profiles is first and open by default (its inner h2 doubles the
+    // collapsible title — `.first()`); the rest render collapsed but titled.
+    await expect(page.getByRole('heading', { name: 'Embedding Profiles' }).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Memory Housekeeping' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recall Relevance' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Memory Deduplication' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Regenerate Memories' })).toBeVisible();
-    await expect(page.getByText('Memory Deduplication')).toHaveCount(0);
+    // P4.9H2B commit 4 adds the conversation-summary card; still absent here.
+    await expect(
+      page.getByRole('heading', { name: 'Regenerate Conversation Summaries' }),
+    ).toHaveCount(0);
   });
 
   test('a Recall Relevance toggle round-trips through the server', async ({ page }) => {

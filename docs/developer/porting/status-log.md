@@ -59770,3 +59770,28 @@ MissingApiKeyBadge condition three ways, refit vs reindex, both two-step
 confirms with their flipped labels, the two-step delete, empty state).
 
 Gate: `ng build` clean, `ng test` 289 files / 3942 tests green.
+
+### Unit 3 — the Memory Deduplication card (SPA 0.5.419)
+
+`screens/settings/memory/memory-dedup-card.ts` (v4 `components/tools/
+memory-dedup-card.tsx`): the threshold slider (0.70–0.95 / step 0.01 /
+default 0.80 — narrower than the API's accepted 0.5–1.0, carried
+faithfully with a comment), the Analyze→preview→Run→complete state
+machine, the per-character preview table + totals tfoot, the
+zero-removable Run disable, the complete-step Before/Removed/After
+table, and the run success/failure toasts (v4's exact
+`Removed N duplicate memories, merged N details` sentence). Preview
+failures are inline-only (NOT toasted, v4 :60-65). The dialog rides
+`qt-modal` (the `qt-dialog-overlay` backdrop convention).
+
+Wired into `memory-tab.ts` between Recall Relevance and Regenerate
+Memories on the `memory-deduplication` `?section=` deep link.
+Updated the P4.6t `settings-flow.spec.ts` "cards render" beat: the
+`Memory Deduplication toHaveCount(0)` guard flips to a visibility check,
+and a fresh guard pins the still-deferred conversation-summary card
+(retired in unit 4).
+
+Spec: `memory-dedup-card.spec.ts` (3 cases — zero-removable Run disable,
+the enabled Run + exact success toast, the inline-only preview failure).
+
+Gate: `ng build` clean, `ng test` 290 files / 3945 tests green.

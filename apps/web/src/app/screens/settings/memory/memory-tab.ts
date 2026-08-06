@@ -5,6 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { EmbeddingProfilesCard } from './embedding-profiles/embedding-profiles-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
+import { MemoryDedupCard } from './memory-dedup-card';
 import { MemoryHousekeepingCard } from './memory-housekeeping-card';
 import { MemoryRecallCard } from './memory-recall-card';
 import { MemoryRegenerateCard } from './memory-regenerate-card';
@@ -27,6 +28,7 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
     CollapsibleCard,
     EmbeddingProfilesCard,
     MemoryBackfillCard,
+    MemoryDedupCard,
     MemoryHousekeepingCard,
     MemoryRecallCard,
     MemoryRegenerateCard,
@@ -74,6 +76,15 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
           [forceOpen]="section() === 'memory-recall'"
         >
           <qt-memory-recall-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Memory Deduplication"
+          description="Find and remove duplicate memories"
+          sectionId="memory-deduplication"
+          [forceOpen]="section() === 'memory-deduplication'"
+        >
+          <qt-memory-dedup-card />
         </qt-collapsible-card>
 
         <qt-collapsible-card

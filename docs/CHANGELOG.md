@@ -80,6 +80,14 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Ported the Memory Deduplication card into the Settings → Memory tab
+(P4.9H2B), between Recall Relevance and Regenerate Memories on the
+`memory-deduplication` deep link: the similarity-threshold slider
+(0.70–0.95, default 0.80) and the Analyze → preview → Run dialog with
+the per-character table, the totals, the zero-removable Run disable, and
+the exact success toast. Preview failures show inline only, never as a
+toast. SPA 0.5.419.
+
 Ported the Embedding Profiles card into the Settings → Memory tab
 (P4.9H2B), first in v4's card order on the `embedding-profiles` deep
 link: the profile list with provider and missing-key badges and
