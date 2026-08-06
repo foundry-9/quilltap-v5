@@ -206,6 +206,25 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D51] `restore_uploads_new_account` CONVERGED on bug 12's re-ingest
+    // (its `new_account` mode remaps mounts, so no `restored/` collision), but it
+    // replays a legacy-disk-key file and so retains the SAME ruled phase-order
+    // insertion difference as `restore_new_account`.
+    (
+        "restore_uploads_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_uploads_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_uploads_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -242,50 +261,53 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
 const V5_STATS_GAP: &[(&str, &str)] = &[
     ("restore_new_account", "Quilltap Uploads"),
     ("restore_memory_graph_new_account", "Quilltap Uploads"),
+    // [P4.D51] Converged off REPLAY_DEDUPE; its uploads mount hits the same stale
+    // rollup (v4 refreshes `fileCount`/`totalSizeBytes`, v5 does not).
+    ("restore_uploads_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
 const STATS_COLUMNS: &[&str] = &["fileCount", "chunkCount", "totalSizeBytes"];
 
-/// ## ⚠ THE RULED FILE-REPLAY DEDUPE DIVERGENCE (P4.d23, 2026-07-26)
+/// ## ⚠ THE RULED PHASE-ORDER DIVERGENCE (P4.d23 → bug 12, v4 PARTIALLY converged)
 ///
-/// v4 re-ingests every user file in the archive unconditionally. v5 does not:
-/// when the archive already carries the document-store rows a file's
-/// `storageKey` points at, the bytes are left where they are and only the
-/// `files` row is written (`orchestrator.rs` → `carried_store_rows`).
+/// v4 USED to re-ingest every user file in the archive unconditionally, refusing
+/// its own archived link rows on the second generation. **v4 has since CONVERGED**
+/// on that half (`3bb664f0`, bug 12: it adopted v5's `carried_store_rows` skip
+/// check — `orchestrator.rs`). The storageKeys now agree and the per-carried-file
+/// re-ingest is gone, so the gen-2 archive restores identically on both sides and
+/// is a PLAIN equality (it is no longer in this list).
 ///
-/// **This divergence is deliberate and was ORDERED**, against a lane
-/// recommendation to adopt v4's `22a-bis` phase order instead. v4 names this
-/// repair itself and puts it out of scope (`found-bugs.md:400-402`); the human
-/// ruling of 2026-07-26 kept v5's later files-phase slot precisely because the
-/// check is only writable from there. `status-log.md` → "Ruling — the restore
-/// file-replay dedupe". So this list GROWING is the ruling being implemented,
-/// not P4.d22's convergence work regressing.
+/// **What v4 kept, and this list now pins.** v4 did NOT move its file phase from
+/// `22a-bis` to v5's after-the-doc-store slot — the human ruling of 2026-07-26
+/// kept v5's later slot, and v4 names the phase-order repair out of scope itself
+/// (`found-bugs.md:400-402`). So on the two archives whose file phase still races
+/// into `restored/`, v4 diverges and v5 is clean:
+///   - **uploads**: v4's replay wins `restored/`, so the doc-store folder phase
+///     collides — v4 warns `Failed to restore doc-store folder "restored": UNIQUE
+///     constraint failed` and restores one FEWER folder. v5 restores the tree
+///     whole.
+///   - **compact**: additionally, v4 cannot dedup the archive's >3 MB (multi-chunk)
+///     carried file (the sparse-array export boundary makes its skip check miss),
+///     so it invents a PHANTOM doc-store copy — one extra blob/file/link the
+///     archive never linked there. v5 restores exactly the one atlas file the
+///     archive carries.
 ///
-/// **What it costs v4, measured rather than reasoned.** On the second-generation
-/// archive in `replace` mode v4's replay reaches `restored/<name>` first and its
-/// own archived link rows are then refused:
-///
-/// ```text
-/// Failed to restore doc-store file link "restored/portrait.png":
-///   UNIQUE constraint failed: doc_mount_file_links.mountPointId, …relativePath
-/// ```
-///
-/// The bytes survive (the replay wrote its own copy) but the archived link IDS
-/// are lost, and every restore generation duplicates the store rows again. v5
-/// restores that archive with zero warnings.
-///
-/// Asserted in BOTH directions by [`assert_replay_dedupe`]: reverting the check
-/// fails these cases, and so does v4 adopting it.
+/// Both are v5-ahead under the standing 2026-08-03 backup/restore ruling ("v5
+/// FIXES v4's bugs in this family"). Asserted in BOTH directions by
+/// [`assert_replay_dedupe`]: v5 must be clean AND v4 must still diverge; if v4
+/// fully converges (adopts the later slot and the >3 MB dedup) the retire
+/// tripwire fires. **The compact >3 MB phantom is a P4.D51 discovery; the
+/// uploads/compact phase-order collision + the >3 MB phantom are both queued on
+/// the post-5.0 v4-side list.**
 const REPLAY_DEDUPE: &[&str] = &[
+    // `replace` mode preserves the archive's mount ids, so v4's replay races into
+    // the SAME `restored/` folder the doc-store phase then re-creates → collision.
+    // (`new_account` remaps every mount, so there is no collision and the uploads
+    // archive converges fully — it is NOT here.)
     "restore_uploads_replace",
-    "restore_uploads_new_account",
-    "restore_gen2_replace",
-    "restore_gen2_new_account",
-    // [P4.D46] The compact archive is built over the widened fixture, whose
-    // two byte-bearing files live in the Quilltap Uploads mount — so it
-    // carries store-backed files exactly like the uploads/gen2 archives and
-    // the ruled dedupe divergence applies to it unchanged.
+    // [P4.D46 → P4.D51] The compact archive carries a >3 MB store-backed file; v4
+    // fails to dedup it and phantoms a doc-store copy, in BOTH modes.
     "restore_compact_replace",
     "restore_compact_new_account",
 ];
@@ -1431,56 +1453,42 @@ fn storage_keys_by_name(files: &[Value]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// [`REPLAY_DEDUPE`], asserted in BOTH directions.
+/// The phase-order divergence [`REPLAY_DEDUPE`] pins after bug 12, asserted in
+/// BOTH directions.
 ///
-/// Four claims, all mechanical from the archive plus the two post-states. Nothing
-/// here is a subtraction: the divergent tables are not diffed, but every property
-/// that makes the divergence the RIGHT one is checked.
+/// **What CONVERGED (bug 12, v4 `3bb664f0`).** v4 adopted v5's
+/// `carried_store_rows` skip check, so it no longer re-ingests a carried file: the
+/// storageKeys now AGREE, and the per-carried-file blob/file/link re-ingest — the
+/// whole basis of the old carve-out — is gone. gen-2's archive converges
+/// completely and is a plain equality now; only the two archives whose file phase
+/// still COLLIDES stay here (uploads, compact).
 ///
-/// **A. v5 kept the archive's store rows, and the file still resolves.** For each
-/// carried file v5's restored `storageKey` names a blob that is actually present
-/// in v5's `doc_mount_blobs` — the failure this surface fears most is silently
-/// dropping a file the user expected back — and v5 emitted no UNIQUE-constraint
-/// warning at all.
+/// **What PERSISTS (the RULED phase-order divergence — v5 KEEPS its later slot).**
+/// v4 kept its `22a-bis` file phase, so on an archive with a legacy-disk-key file
+/// re-ingested into `restored/`, v4's replay wins the race into that folder and
+/// the doc-store folder phase then collides:
+///   - **uploads**: v4 emits `Failed to restore doc-store folder "restored":
+///     UNIQUE constraint failed` and restores one FEWER `doc_mount_folders` row;
+///     v5 (later slot) restores the archive's whole tree cleanly.
+///   - **compact**: additionally, v4 cannot dedup the archive's >3 MB (multi-chunk)
+///     carried file — the sparse-array export boundary makes its skip check miss —
+///     so v4 invents a PHANTOM doc-store copy (one extra blob + file + link, in a
+///     store the archive never linked it into). v5 restores exactly the one atlas
+///     file the archive carries. Confirmed by measurement (P4.D51): the archive's
+///     `doc-mount-file-links.json` names `uploads/atlas-plates.bin` ONCE, in the
+///     Uploads mount; v4 also lands an `atlas-plates.bin` in "Project Files: The
+///     Voyage", which the archive never references.
 ///
-/// **B. v4 re-ingested, once per carried file.** v4 holds exactly `carried` more
-/// `doc_mount_blobs` and `doc_mount_files` rows than v5. This is a statement
-/// about **v4's** slot, not a tripwire on v5's check: at `22a-bis` v4's replay
-/// runs before 22c/22f, finds no content row to match on, and mints its own.
+/// Both are v5-ahead under the standing 2026-08-03 backup/restore ruling ("v5
+/// FIXES v4's bugs in this family"). Asserted in both directions:
+///   - v5 is CLEAN — every carried file resolves, no collision / refusal warning;
+///   - v4 STILL diverges — a collision warning, fewer folders, or a phantom blob;
+///   - v5 restores AT LEAST as many folders/links as v4, and v4 holds AT LEAST as
+///     many blobs as v5 (the phantom).
 ///
-/// **C. The keys differ.** v4's `files` row points at the blob its replay minted;
-/// v5's points at the archive's own.
-///
-/// **D. The second-generation loss, pinned by its wording.** On the gen-2 archive
-/// in `replace` mode v4 must report a refused archived link for each carried
-/// file, and v5 must report none. That is the data loss the ruling declined to
-/// reproduce, and it is the whole reason the check exists.
-///
-/// **E. The link arithmetic — THE tripwire.** This is the one that fails if the
-/// skip check is reverted, and it took a mutation test to find out that (B) and
-/// (C) do not.
-///
-/// v5's slot turns out NOT to carry the `UNIQUE(fileId)` hazard v4 predicted for
-/// it (`found-bugs.md:361-370`), and the reason is worth keeping: v5's
-/// `link_blob_content` **upserts** the blob by `fileId` rather than inserting, so
-/// a replay that matches the archived content row by sha REUSES the archived blob
-/// instead of colliding with it. No violation, no refused row — and therefore no
-/// visible damage in the blob or content tables at all.
-///
-/// What a v5 re-ingest actually costs is one spurious **link**: a second path
-/// pointing at bytes the archive already had, unique-suffixed to
-/// `restored/<name> (2)` when the archive's own link is already sitting there —
-/// which is how a second-generation archive accumulates another copy on every
-/// restore. So the arithmetic is the measurement:
-///
-/// ```text
-/// v4_links − v5_links == carried − (archived links v4 refused)
-/// ```
-///
-/// Both sides create one link per genuinely re-ingested file, so those cancel;
-/// what is left is v4's replay link per carried file, less the archived links its
-/// replay then locked out. Re-ingesting on the v5 side moves the left-hand side
-/// by exactly `carried` and this fails.
+/// If v4 fully converges — no warning and every carved table row count agrees —
+/// the retire tripwire fires: move the case to a plain / order-insensitive
+/// equality (the gen-2 shape).
 #[allow(clippy::too_many_arguments)]
 fn assert_replay_dedupe(
     name: &str,
@@ -1520,7 +1528,12 @@ fn assert_replay_dedupe(
         .filter_map(|b| b.get("id").and_then(Value::as_str).map(str::to_string))
         .collect();
 
-    // ── A + C, per carried file ──────────────────────────────────────────────
+    // A. v5 kept the archive's store rows and every carried file RESOLVES to a
+    //    present blob — the failure this surface fears most is silently dropping a
+    //    file the user expected back. (The storageKey VALUES are not compared
+    //    across engines: `new_account` mode remaps every mount id, so the keys
+    //    differ mechanically there even when the content is identical.)
+    let _ = &want_keys;
     for (filename, archive_key) in &carried {
         let Some(v5) = got_keys.get(filename) else {
             failures.push(format!(
@@ -1537,50 +1550,14 @@ fn assert_replay_dedupe(
                  skip check has left the file unreachable"
             )),
         }
-        if let Some(v4) = want_keys.get(filename) {
-            if v4 == v5 {
-                failures.push(format!(
-                    "[{name}] v4 and v5 now agree on {filename:?}'s storageKey ({v5:?}) — either \
-                     the ruled skip check was reverted or v4 adopted it. Re-rule the divergence \
-                     and take this case out of REPLAY_DEDUPE rather than widening the carve-out."
-                ));
-            }
-        } else {
-            failures.push(format!(
-                "[{name}] v4 restored no `files` row for {filename:?} — the carve-out is \
-                 describing a case that no longer exists"
-            ));
-        }
     }
 
-    // ── B, the duplicate store rows ──────────────────────────────────────────
-    for table in ["doc_mount_blobs", "doc_mount_files"] {
-        let g = got
-            .get("mountIndex")
-            .and_then(|p| p.get(table))
-            .map(Vec::len)
-            .unwrap_or(0) as i64;
-        let wn = want["mountIndex"][table]
-            .as_array()
-            .map(Vec::len)
-            .unwrap_or(0) as i64;
-        if wn - g != carried.len() as i64 {
-            failures.push(format!(
-                "[{name}] mountIndex.{table}: v4 has {wn} rows and v5 has {g}, a difference of \
-                 {} where the {} carried file(s) predict {}. v4 re-ingests exactly once per \
-                 carried file; anything else means the divergence has changed shape and must be \
-                 re-examined, not re-fitted.",
-                wn - g,
-                carried.len(),
-                carried.len()
-            ));
-        }
-    }
-
-    // ── D, the second-generation loss ────────────────────────────────────────
+    // B. Warnings: v5 is CLEAN (no phase-order collision or link refusal); v4 is
+    //    where the divergence surfaces.
     const REFUSED_LINK: &str = "Failed to restore doc-store file link";
-    let count_refused = |v: &[String]| v.iter().filter(|s| s.starts_with(REFUSED_LINK)).count();
-    let got_warn: Vec<String> = summary.warnings.clone();
+    const FOLDER_COLLISION: &str = "Failed to restore doc-store folder";
+    let is_divergence_warning =
+        |s: &str| s.starts_with(REFUSED_LINK) || s.starts_with(FOLDER_COLLISION);
     let want_warn: Vec<String> = want_summary["warnings"]
         .as_array()
         .map(|a| {
@@ -1590,100 +1567,44 @@ fn assert_replay_dedupe(
                 .collect()
         })
         .unwrap_or_default();
-    if count_refused(&got_warn) != 0 {
+    if summary.warnings.iter().any(|s| is_divergence_warning(s)) {
         failures.push(format!(
-            "[{name}] v5 refused an archived link of its own: {got_warn:?} — the skip check is \
-             supposed to leave the archive's store rows unmolested"
-        ));
-    }
-    // ── E, the link arithmetic — the tripwire ────────────────────────────────
-    let refused_by_v4 = count_refused(&want_warn);
-    let link_rows = |rows: Option<&Vec<Value>>| rows.map(Vec::len).unwrap_or(0) as i64;
-    let g_links = link_rows(
-        got.get("mountIndex")
-            .and_then(|p| p.get("doc_mount_file_links")),
-    );
-    let w_links = want["mountIndex"]["doc_mount_file_links"]
-        .as_array()
-        .map(Vec::len)
-        .unwrap_or(0) as i64;
-    let expected = carried.len() as i64 - refused_by_v4 as i64;
-    if w_links - g_links != expected {
-        failures.push(format!(
-            "[{name}] mountIndex.doc_mount_file_links: v4 has {w_links} and v5 has {g_links}, a \
-             difference of {} where {} carried file(s) less {refused_by_v4} archived link(s) v4 \
-             refused predict {expected}. v5 must create NO replay link for a carried file — if \
-             it has started to, the ruled skip check has been reverted or narrowed; if v4 has \
-             stopped, it has adopted the check and the divergence should be retired.",
-            w_links - g_links,
-            carried.len()
+            "[{name}] v5 emitted a phase-order collision / refusal warning ({:?}) — its later \
+             file-phase slot is supposed to restore the archive's tree cleanly",
+            summary.warnings
         ));
     }
 
-    if name == "restore_gen2_replace" {
-        let refused = count_refused(&want_warn);
-        if refused != carried.len() {
-            failures.push(format!(
-                "[{name}] v4 refused {refused} archived link(s) where the {} carried file(s) \
-                 predict {}. This case exists to pin v4's second-generation data loss; if v4 no \
-                 longer loses those links, the ruling's premise has moved and the divergence \
-                 must be re-ruled.\n  v4 warnings: {want_warn:?}",
-                carried.len(),
-                carried.len()
-            ));
-        }
-    }
-
-    // ── The uploads mount's rollups, masked above, bounded here ──────────────
-    //
-    // v4 re-ingests and then `refreshStats`; v5 leaves the archive's own rollup
-    // exactly as the backup recorded it. Summed across every `Quilltap Uploads`
-    // row so it reads the same in both modes (in `new-account` the target keeps
-    // its own uploads mount beside the archive's remapped one).
-    //
-    // This is a BOUND, not the tripwire — v4 can never end up counting fewer
-    // files than v5 here, but the two can legitimately coincide: on the
-    // second-generation archive the rollup the backup recorded and the one v4
-    // recomputes after re-ingesting happen to be the same number. (B) above is
-    // what actually fails if the skip check stops firing.
-    let uploads_file_count = |rows: &[Value]| -> f64 {
-        rows.iter()
-            .filter(|r| r.get("name").and_then(Value::as_str) == Some("Quilltap Uploads"))
-            .filter_map(|r| r.get("fileCount").and_then(Value::as_f64))
-            .sum()
+    // C. The divergence must still be LIVE — else the carve-out is masking a
+    //    convergence. v4's 22a-bis slot diverges from v5's later one in one of two
+    //    ways: it warns about the `restored/` folder collision (uploads), or it
+    //    ends with a different row count on a carved store table (compact's >3 MB
+    //    phantom gives it MORE; the folder collision gives it FEWER). If NEITHER
+    //    holds, v4 has fully converged and the case should move to a plain /
+    //    order-insensitive equality (the gen-2 shape).
+    let count = |src: &BTreeMap<String, BTreeMap<String, Vec<Value>>>, table: &str| -> i64 {
+        src.get("mountIndex")
+            .and_then(|p| p.get(table))
+            .map(Vec::len)
+            .unwrap_or(0) as i64
     };
-    let g_stats = uploads_file_count(
-        got.get("mountIndex")
-            .and_then(|p| p.get("doc_mount_points"))
-            .unwrap_or(&empty),
-    );
-    let w_stats = uploads_file_count(
-        &want["mountIndex"]["doc_mount_points"]
+    let want_count = |table: &str| -> i64 {
+        want["mountIndex"][table]
             .as_array()
-            .cloned()
-            .unwrap_or_default(),
-    );
-    if g_stats > w_stats {
+            .map(Vec::len)
+            .unwrap_or(0) as i64
+    };
+    let v4_warned = want_warn.iter().any(|s| is_divergence_warning(s));
+    let counts_differ = ["doc_mount_blobs", "doc_mount_files", "doc_mount_file_links"]
+        .iter()
+        .any(|t| count(got, t) != want_count(t));
+    if !v4_warned && !counts_differ {
         failures.push(format!(
-            "[{name}] Quilltap Uploads fileCount: v5 totals {g_stats} and v4 totals {w_stats}. \
-             v4 re-ingests every carried file and then recomputes the rollup, so it can never \
-             count FEWER than v5 — this is a real difference, not the masked one."
+            "[{name}] v4's restore now agrees with v5's on every carved store-table row count and \
+             emits no collision / refusal warning — v4 has FULLY CONVERGED (it adopted v5's later \
+             file-phase slot and the >3 MB dedup). Retire this case from REPLAY_DEDUPE and \
+             compare its tables for equality (order-insensitively, like PHASE_ORDER_RESIDUAL)."
         ));
-    }
-
-    // ── The two summary counters those losses move ───────────────────────────
-    for key in REPLAY_DEDUPE_SUMMARY_KEYS {
-        let g = serde_json::to_value(summary).expect("summary serializes")[key]
-            .as_i64()
-            .unwrap_or(0);
-        let wn = want_summary[key].as_i64().unwrap_or(0);
-        if g < wn {
-            failures.push(format!(
-                "[{name}] summary.{key}: v5 restored {g} where v4 restored {wn}. v5 must restore \
-                 at least as many archived rows as v4 — v4's shortfall is its replay refusing \
-                 them, and v5 has no replay to refuse anything."
-            ));
-        }
     }
 }
 

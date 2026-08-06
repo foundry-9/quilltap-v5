@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.D51 (bug 12): the reference app now preserves an archived document
+store's link IDs across a second-generation restore — the carried-file
+dedup this port made first. Its convergence is partial: the reference app
+kept its earlier file-restore phase order, so it still loses the "restored"
+folder on one archive shape and, on a store file larger than 3 MB, invents
+a phantom duplicate copy the archive never contained. Both remain deliberate
+divergences where this port is ahead. The restore differential's dedup
+carve-out is reshaped: the gen-2 archive is now a plain equality, and the
+remaining phase-order divergences are pinned in both directions with a
+self-retiring tripwire.
+
 P4.D51 (bug 10, delete-all half): the reference app now clears
 `conversation_annotations` on "delete all my data" — a privacy fix this
 port made first. The delete-data differential's both-directions divergence
