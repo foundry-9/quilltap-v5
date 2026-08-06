@@ -59706,3 +59706,33 @@ file's `renamedToast` documents. Unrelated to the wire; my global-setup changes
 cannot reach that scope dialog, and the mock-serper server only starts in the
 P4.42 describe's `beforeAll` (after that beat runs) — it surfaced under run-to-run
 timing variance and is now hardened permanently.
+## Lane record — P4.9H2B (embedding-profiles + maintenance SPA), 2026-08-06
+
+SPA-only lane on `claude/embedding-profiles-spa-porting-8723fa`, off v4
+baseline `3adefeba` (drift-checked at start: HEAD unmoved, only
+`found-bugs.md` dirty). Sibling P4.9H2A owns the Rust half; the §1
+contract is diffed name-for-name at unification.
+
+### Unit 1 — the §1 wire mirror (SPA 0.5.417)
+
+`core-contract.ts`: the fifteen §1 request interfaces (eleven profile
+verbs + four dedup/summaries verbs) + their `CoreRequest` union entries,
+plus the DTO shapes mirroring v4's route JSON name-for-name
+(`EmbeddingProfileDto`, `EmbeddingModelDto`, `EmbeddingProviderInfoDto`,
+`VocabularyStatsDto`, `EmbeddingStatusStatsDto`, `DedupCharacterResult`,
+`DedupPreviewDto`, `ConversationSummariesStatusDto`;
+`EmbeddingApiKeyRef` aliases the existing `ProfileApiKeyRef`). One
+deliberate widening: `EmbeddingProfileDto.provider` is `string`, not
+v4's four-value `EmbeddingProvider` union — the plugin provider set is
+open and the e2e instance's default profile is `OPENAI_COMPATIBLE`,
+which the union omits; the card degrades unknown providers through its
+metadata/badge fallbacks.
+
+`core-client.ts`: one method per verb over `dispatchData` (the settings
+precedent — the server pins the response bodies, not narrowed `Response`
+types, so each helper reads its field defensively). The rider method
+`renderConversation(chatId)` (over the already-live `ChatRenderConversation`
+verb) landed here too rather than waiting for the badge commit.
+
+Gate: `ng build` clean (7 s), `ng test` 287 files / 3926 tests green,
+`tsc -p tsconfig.app.json --noEmit` clean.

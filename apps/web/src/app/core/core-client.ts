@@ -16,6 +16,11 @@ import {
   type TabooSettingsDto,
   type FileEntry,
   type FolderEntry,
+  type EmbeddingProfileDto,
+  type EmbeddingModelDto,
+  type EmbeddingProfileCreateRequest,
+  type EmbeddingProfileUpdateRequest,
+  type DedupPreviewDto,
 } from './core-contract';
 import {
   type ConnectionState,
@@ -290,5 +295,121 @@ export class CoreClient {
   async updateTabooSettings(phrases: string[]): Promise<TabooSettingsDto> {
     const data = await this.dispatchData({ type: 'tabooSettingsUpdate', phrases });
     return data as unknown as TabooSettingsDto;
+  }
+
+  // === P4.9H2B: embedding-profiles management (§1) ===
+  // Reads/writes ride `dispatchData` (the settings precedent): the server pins
+  // the response bodies (`Response::EmbeddingProfile(Value)`), so each helper
+  // extracts its field defensively. P4.9H2A owns the Rust half.
+
+  /** v4 GET `/embedding-profiles` → the profile list (`{profiles, count}`). */
+  async listEmbeddingProfiles(): Promise<EmbeddingProfileDto[]> {
+    const data = await this.dispatchData({ type: 'embeddingProfileList' });
+    return (data['profiles'] as EmbeddingProfileDto[] | undefined) ?? [];
+  }
+
+  /** v4 GET `?action=list-providers` → the plugin providers (`{providers: string[]}`). */
+  async listEmbeddingProviders(): Promise<string[]> {
+    const data = await this.dispatchData({ type: 'embeddingProfileListProviders' });
+    return (data['providers'] as string[] | undefined) ?? [];
+  }
+
+  /** v4 GET `?action=list-models` → the static per-provider model map. */
+  async listEmbeddingModels(provider?: string): Promise<Record<string, EmbeddingModelDto[]>> {
+    const data = await this.dispatchData({ type: 'embeddingProfileListModels', provider });
+    return (data as unknown as Record<string, EmbeddingModelDto[]>) ?? {};
+  }
+
+  /**
+   * v4 GET `?action=fetch-models` → a provider's installed models (`{models}`).
+   * REFUSAL-ARMED: the server answers `not_available` naming
+   * `embeddingProfileFetchModels` until the live path lands; the thrown
+   * `CoreDispatchError` carries the refusal sentence for the modal to surface.
+   */
+  async fetchEmbeddingModels(provider: string, baseUrl?: string): Promise<EmbeddingModelDto[]> {
+    const data = await this.dispatchData({ type: 'embeddingProfileFetchModels', provider, baseUrl });
+    return (data['models'] as EmbeddingModelDto[] | undefined) ?? [];
+  }
+
+  /** v4 POST `/embedding-profiles` → the created profile (spread + `apiKey`, `.id` set). */
+  async createEmbeddingProfile(
+    payload: Omit<EmbeddingProfileCreateRequest, 'type'>,
+  ): Promise<EmbeddingProfileDto> {
+    const data = await this.dispatchData({ type: 'embeddingProfileCreate', ...payload });
+    return data as unknown as EmbeddingProfileDto;
+  }
+
+  /** v4 PUT `/embedding-profiles/:id` → the updated profile (+ `reembeddingTriggered`). */
+  async updateEmbeddingProfile(
+    payload: Omit<EmbeddingProfileUpdateRequest, 'type'>,
+  ): Promise<EmbeddingProfileDto> {
+    const data = await this.dispatchData({ type: 'embeddingProfileUpdate', ...payload });
+    return data as unknown as EmbeddingProfileDto;
+  }
+
+  /** v4 DELETE `/embedding-profiles/:id`. */
+  async deleteEmbeddingProfile(profileId: string): Promise<void> {
+    await this.dispatchData({ type: 'embeddingProfileDelete', profileId });
+  }
+
+  /** v4 POST `?action=refit` — refit a BUILTIN vocabulary (enqueues a job). */
+  async refitEmbeddingProfile(profileId: string): Promise<void> {
+    await this.dispatchData({ type: 'embeddingProfileRefit', profileId });
+  }
+
+  /**
+   * v4 POST `?action=reindex` — re-embed. `scope` absent = v4's legacy no-body
+   * call = `'all'`; `'mismatched-dim'` re-embeds only dimension-mismatched rows.
+   */
+  async reindexEmbeddingProfile(
+    profileId: string,
+    scope?: 'all' | 'mismatched-dim',
+  ): Promise<void> {
+    await this.dispatchData({ type: 'embeddingProfileReindex', profileId, scope });
+  }
+
+  /** v4 POST `?action=reapply` — Matryoshka re-apply (slice + renormalize). */
+  async reapplyEmbeddingProfile(profileId: string): Promise<void> {
+    await this.dispatchData({ type: 'embeddingProfileReapply', profileId });
+  }
+
+  // === P4.9H2B: memory maintenance (§1) — dedup + summaries regen ===
+
+  /** v4 GET `?action=memory-dedup-preview` → `{success, result}` (the DedupPreview). */
+  async memoryDedupPreview(threshold?: number): Promise<DedupPreviewDto> {
+    const data = await this.dispatchData({ type: 'memoryDedupPreview', threshold });
+    return (data['result'] as DedupPreviewDto | undefined) ?? (data as unknown as DedupPreviewDto);
+  }
+
+  /** v4 POST `?action=memory-dedup` → `{success, result}` (the applied DedupPreview). */
+  async memoryDedupRun(threshold?: number): Promise<DedupPreviewDto> {
+    const data = await this.dispatchData({ type: 'memoryDedupRun', threshold });
+    return (data['result'] as DedupPreviewDto | undefined) ?? (data as unknown as DedupPreviewDto);
+  }
+
+  /** v4 GET `/system/conversation-summaries?action=regenerate` → the in-flight count. */
+  async conversationSummariesStatus(): Promise<number> {
+    const data = await this.dispatchData({ type: 'conversationSummariesRegenerateStatus' });
+    return (data['inFlight'] as number | undefined) ?? 0;
+  }
+
+  /** v4 POST `/system/conversation-summaries?action=regenerate` → `{success, jobId, message}`. */
+  async regenerateConversationSummaries(): Promise<{ message?: string; jobId?: string }> {
+    const data = await this.dispatchData({ type: 'conversationSummariesRegenerate' });
+    return {
+      message: data['message'] as string | undefined,
+      jobId: data['jobId'] as string | undefined,
+    };
+  }
+
+  // === P4.9H2B rider (p4.9o): the Scriptorium render trigger ===
+
+  /**
+   * v4 POST `…?action=render-conversation` — queue a Scriptorium render with a
+   * full re-embed (the chat-card badge click). The `ChatRenderConversation`
+   * verb is live end-to-end; the badge nudges the queue on success.
+   */
+  async renderConversation(chatId: string): Promise<void> {
+    await this.dispatchData({ type: 'chatRenderConversation', chatId });
   }
 }

@@ -2017,6 +2017,23 @@ export type CoreRequest =
   // --- The instance-wide Taboo list (§1; P4.D50) ---
   | TabooSettingsRequest
   | TabooSettingsUpdateRequest
+  // --- Embedding-profiles management + memory maintenance (§1; P4.9H2A owns
+  //     the server half) ---
+  | EmbeddingProfileListRequest
+  | EmbeddingProfileGetRequest
+  | EmbeddingProfileCreateRequest
+  | EmbeddingProfileUpdateRequest
+  | EmbeddingProfileDeleteRequest
+  | EmbeddingProfileRefitRequest
+  | EmbeddingProfileReindexRequest
+  | EmbeddingProfileReapplyRequest
+  | EmbeddingProfileListProvidersRequest
+  | EmbeddingProfileListModelsRequest
+  | EmbeddingProfileFetchModelsRequest
+  | MemoryDedupPreviewRequest
+  | MemoryDedupRunRequest
+  | ConversationSummariesRegenerateStatusRequest
+  | ConversationSummariesRegenerateRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest
@@ -6009,4 +6026,238 @@ export interface TabooSettingsRequest {
 export interface TabooSettingsUpdateRequest {
   type: 'tabooSettingsUpdate';
   phrases?: string[];
+}
+
+// ===========================================================================
+// --- P4.9H2B additions (§1 Shared wire contract) ---
+// The embedding-profiles management pool + the Memory Deduplication and
+// Regenerate Conversation Summaries maintenance verbs. This block is written
+// VERBATIM and IDENTICALLY in the P4.9H2A (server) work order; it is the
+// binding contract between the two lanes and is diffed name-for-name at
+// unification. Reads/writes go through `CoreClient.dispatchData` (the memory-
+// settings precedent — no narrowed CoreResponse variant): the server pins the
+// response BODIES (`Response::EmbeddingProfile(Value)` for the eleven profile
+// verbs, `Response::MemoryMaintenance(Value)` for the four dedup/summaries
+// verbs), so the DTO shapes below mirror v4's route JSON name-for-name and each
+// helper reads its fields defensively.
+// ===========================================================================
+
+/**
+ * The `apiKey` reference joined onto a profile (v4 `types.ts` `ApiKey`:
+ * `{id,label,provider,isActive}`) — identical to {@link ProfileApiKeyRef}, kept
+ * as a named alias so the embedding-profile block reads self-contained.
+ */
+export type EmbeddingApiKeyRef = ProfileApiKeyRef;
+
+/** Vocabulary stats for BUILTIN TF-IDF profiles (v4 `VocabularyStats`). */
+export interface VocabularyStatsDto {
+  vocabularySize: number;
+  avgDocLength: number;
+  includeBigrams: boolean;
+  fittedAt: string;
+}
+
+/** Embedding-status counters for a profile (v4 `EmbeddingStatusStats`). */
+export interface EmbeddingStatusStatsDto {
+  pending: number;
+  embedded: number;
+  failed: number;
+  total: number;
+}
+
+/**
+ * One embedding profile (v4 `components/settings/embedding-profiles/types.ts`
+ * `EmbeddingProfile`, enriched by the list/get routes with `apiKey`,
+ * `vocabularyStats`, `embeddingStats`).
+ *
+ * `provider` is a bare string, NOT v4's four-value `EmbeddingProvider` union:
+ * the plugin system's provider set is open (the e2e instance's default profile
+ * is `OPENAI_COMPATIBLE`, which the union omits), and the card degrades any
+ * unknown provider through its metadata/badge fallbacks. A faithful widening of
+ * v4's client-side optimism.
+ */
+export interface EmbeddingProfileDto {
+  id: string;
+  name: string;
+  provider: string;
+  apiKeyId?: string;
+  baseUrl?: string;
+  modelName: string;
+  dimensions?: number;
+  /** Matryoshka slice target — vectors longer than this are truncated before storage. */
+  truncateToDimensions?: number | null;
+  /** Whether stored embeddings are L2-normalised (default true). */
+  normalizeL2?: boolean;
+  isDefault: boolean;
+  apiKey?: EmbeddingApiKeyRef | null;
+  vocabularyStats?: VocabularyStatsDto | null;
+  embeddingStats?: EmbeddingStatusStatsDto | null;
+}
+
+/** One selectable embedding model (v4 `EmbeddingModel`). */
+export interface EmbeddingModelDto {
+  id: string;
+  name: string;
+  dimensions?: number;
+  description?: string;
+  /** Whether this model is installed on the server (from a dynamic fetch). */
+  installed?: boolean;
+}
+
+/** Provider metadata returned by `?action=list-providers` (v4 `EmbeddingProviderInfo`). */
+export interface EmbeddingProviderInfoDto {
+  name: string;
+  displayName: string;
+  requiresApiKey: boolean;
+  requiresBaseUrl: boolean;
+  description?: string;
+}
+
+/** One character's row in a dedup preview/result (v4 `CharacterResult`). */
+export interface DedupCharacterResult {
+  characterId: string;
+  characterName: string;
+  originalCount: number;
+  withEmbeddings: number;
+  withoutEmbeddings: number;
+  clustersFound: number;
+  memoriesInClusters: number;
+  removedCount: number;
+  mergedDetailCount: number;
+  finalCount: number;
+}
+
+/** The dedup preview / result payload (v4 `DedupPreview`). */
+export interface DedupPreviewDto {
+  threshold: number;
+  dryRun: boolean;
+  characters: DedupCharacterResult[];
+  totalOriginal: number;
+  totalRemoved: number;
+  totalMergedDetails: number;
+  totalFinal: number;
+  processedAt: string;
+}
+
+/** The conversation-summaries in-flight status (v4 GET `{inFlight}`). */
+export interface ConversationSummariesStatusDto {
+  inFlight: number;
+}
+
+/** v4 GET `/api/v1/embedding-profiles` — the profile list. */
+export interface EmbeddingProfileListRequest {
+  type: 'embeddingProfileList';
+}
+
+/** v4 GET `/api/v1/embedding-profiles/:id` — one enriched profile. */
+export interface EmbeddingProfileGetRequest {
+  type: 'embeddingProfileGet';
+  profileId: string;
+}
+
+/** v4 POST `/api/v1/embedding-profiles` — create (201; response spreads the created profile + `apiKey`). */
+export interface EmbeddingProfileCreateRequest {
+  type: 'embeddingProfileCreate';
+  name: string;
+  provider: string;
+  apiKeyId?: string;
+  baseUrl?: string;
+  modelName: string;
+  dimensions?: number;
+  isDefault?: boolean;
+}
+
+/**
+ * v4 PUT `/api/v1/embedding-profiles/:id` — update. Every field but `profileId`
+ * is optional; `apiKeyId` / `baseUrl` / `dimensions` / `truncateToDimensions`
+ * ride the server's tri-state (`double_option`: absent leaves the value alone,
+ * explicit `null` clears it, a value sets it). The v5 modal only ever sends a
+ * value or omits, but the contract carries the full shape.
+ */
+export interface EmbeddingProfileUpdateRequest {
+  type: 'embeddingProfileUpdate';
+  profileId: string;
+  name?: string;
+  provider?: string;
+  apiKeyId?: string | null;
+  baseUrl?: string | null;
+  modelName?: string;
+  dimensions?: number | null;
+  truncateToDimensions?: number | null;
+  normalizeL2?: boolean;
+  isDefault?: boolean;
+}
+
+/** v4 DELETE `/api/v1/embedding-profiles/:id` — delete → `{message}`. */
+export interface EmbeddingProfileDeleteRequest {
+  type: 'embeddingProfileDelete';
+  profileId: string;
+}
+
+/** v4 POST `…?action=refit` — refit a BUILTIN vocabulary → `{message, jobId, …}`. */
+export interface EmbeddingProfileRefitRequest {
+  type: 'embeddingProfileRefit';
+  profileId: string;
+}
+
+/**
+ * v4 POST `…?action=reindex` — re-embed → `{message, jobId, scope, invalidatedCount, …}`.
+ * `scope` absent = v4's legacy no-body call = `'all'`; `'mismatched-dim'` re-embeds
+ * only rows whose stored vector dim differs from the profile's target.
+ */
+export interface EmbeddingProfileReindexRequest {
+  type: 'embeddingProfileReindex';
+  profileId: string;
+  scope?: 'all' | 'mismatched-dim';
+}
+
+/** v4 POST `…?action=reapply` — Matryoshka re-apply → `{message, jobId, targetDimensions, …}`. */
+export interface EmbeddingProfileReapplyRequest {
+  type: 'embeddingProfileReapply';
+  profileId: string;
+}
+
+/** v4 GET `…?action=list-providers` — the plugin providers → `{providers}`. */
+export interface EmbeddingProfileListProvidersRequest {
+  type: 'embeddingProfileListProviders';
+}
+
+/** v4 GET `…?action=list-models` — the static per-provider model map. */
+export interface EmbeddingProfileListModelsRequest {
+  type: 'embeddingProfileListModels';
+  provider?: string;
+}
+
+/**
+ * v4 GET `…?action=fetch-models` — dynamically fetch a provider's installed
+ * models. REFUSAL-ARMED (tier 3): the server answers the family `not_available`
+ * shape naming `embeddingProfileFetchModels` until the live path lands; the card
+ * surfaces the refusal sentence.
+ */
+export interface EmbeddingProfileFetchModelsRequest {
+  type: 'embeddingProfileFetchModels';
+  provider: string;
+  baseUrl?: string;
+}
+
+/** v4 GET `/api/v1/system/tools?action=memory-dedup-preview` → `{success, result}`. */
+export interface MemoryDedupPreviewRequest {
+  type: 'memoryDedupPreview';
+  threshold?: number;
+}
+
+/** v4 POST `/api/v1/system/tools?action=memory-dedup` → `{success, result}`. */
+export interface MemoryDedupRunRequest {
+  type: 'memoryDedupRun';
+  threshold?: number;
+}
+
+/** v4 GET `/api/v1/system/conversation-summaries?action=regenerate` → `{success, inFlight}`. */
+export interface ConversationSummariesRegenerateStatusRequest {
+  type: 'conversationSummariesRegenerateStatus';
+}
+
+/** v4 POST `/api/v1/system/conversation-summaries?action=regenerate` → `{success, jobId, message}`. */
+export interface ConversationSummariesRegenerateRequest {
+  type: 'conversationSummariesRegenerate';
 }

@@ -80,6 +80,13 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Added the client-side wire contract for the embedding-profiles
+management surface (P4.9H2B, §1): the eleven profile verbs (list / get /
+create / update / delete / refit / reindex / reapply / list-providers /
+list-models / fetch-models) and the four memory-maintenance verbs
+(dedup preview + run, conversation-summaries status + regenerate), as
+CoreClient methods over `dispatchData` plus the request/DTO types.
+Server half is the parallel P4.9H2A lane. SPA 0.5.417.
 
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining
