@@ -39,7 +39,11 @@ pub fn supported_mime_types(provider: &str) -> &'static [&'static str] {
         "GOOGLE" => &["image/jpeg", "image/png", "image/gif", "image/webp"],
         "GROK" => &["image/jpeg", "image/png", "image/gif", "image/webp"],
         "OLLAMA" => &[],
-        "OPENROUTER" => &[],
+        // v4 bug 32 (`43a1b5b1`): `PROVIDER_ATTACHMENT_CAPABILITIES.OPENROUTER`
+        // now mirrors the plugin's `SUPPORTED_IMAGE_MIME_TYPES` (the four image
+        // types) instead of the old "unsupported" `[]`, opening the client
+        // vision gate onto the now-working non-streaming vision path (bug 31).
+        "OPENROUTER" => &["image/jpeg", "image/png", "image/gif", "image/webp"],
         "OPENAI_COMPATIBLE" => &[],
         // DEEPSEEK / Z_AI and any other provider are absent from
         // PROVIDER_ATTACHMENT_CAPABILITIES → isKnownProvider false → [].
@@ -81,5 +85,25 @@ mod tests {
         // non-image branch (never with an image/* argument in practice).
         assert!(supports_mime_type("OPENAI", "image/png"));
         assert!(supports_mime_type("GROK", "image/webp"));
+    }
+
+    #[test]
+    fn openrouter_now_lists_the_four_image_types_but_not_documents() {
+        // v4 bug 32 (`43a1b5b1`): OPENROUTER flipped from `[]` to the plugin's
+        // four image MIME types. (v4's `llm-attachment-support.test.ts` asserts
+        // the same flip.) The DB-visible consequence lives at the settings route
+        // — a connection-profile create that omits `supportsImageUpload` now
+        // defaults it from `supports_mime_type("OPENROUTER", "image/jpeg")`, so
+        // this true is what flips that default false → true.
+        for mime in ["image/jpeg", "image/png", "image/gif", "image/webp"] {
+            assert!(
+                supports_mime_type("OPENROUTER", mime),
+                "OPENROUTER should list {mime}"
+            );
+        }
+        // Documents are NOT in OpenRouter's image-only map (the plugin forwards
+        // images inline; PDF/text are unsupported on this provider).
+        assert!(!supports_mime_type("OPENROUTER", "application/pdf"));
+        assert!(!supports_mime_type("OPENROUTER", "text/plain"));
     }
 }

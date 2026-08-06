@@ -176,6 +176,11 @@ reference app (v4 bug 41). v5 previously escaped only the apostrophe; v4 has
 since caught up to the full set, so the two now agree and the deliberate
 divergence is retired. Filenames with parentheses, asterisks, or exclamation
 marks beside non-ASCII characters download with their real names intact.
+OpenRouter now reports its four image MIME types (JPEG, PNG, GIF, WebP) in
+the client-side attachment-capability map instead of "unsupported" (v4 bug
+32), so a new OpenRouter connection profile that omits the flag defaults to
+image upload enabled — the client vision gate onto the now-working
+non-streaming vision path.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

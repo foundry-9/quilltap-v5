@@ -198,6 +198,34 @@ Regen (all TZ=UTC, /tmp jest mirror): salon fixture
 `node --import tsx build-salon-fixture.ts` (writes committed `salon-{main,mount}.db`),
 then the four salon jest cases + `chat-cast-routes` jest + `turn-pause-filters`
 tsx. core 0.0.490, harness 0.0.415.
+## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), IN PROGRESS
+
+Branch `claude/p4-provider-attachments-streaming-28e119`. Absorbs v4
+`43a1b5b1` (session 8) — five provider-plugin fixes, all Faithful
+provenance. Drift-check at lane start: v4 HEAD is exactly `f4955e0e`
+(tree clean), no drift; every oracle regenerates straight from
+`~/source/quilltap-server`. Recorders run under Node 24
+(`~/.nvm/versions/node/v24.13.1`) from the plugin dirs;
+`@openrouter/sdk` 1.2.2, openai 7 present.
+
+**Unit — Bug 32 (the attachment-capability map), LANDED.**
+`files/attachment_support.rs`: `"OPENROUTER" => &[]` flipped to the
+four image MIME types (v4 `PROVIDER_ATTACHMENT_CAPABILITIES.OPENROUTER`
+now mirrors the plugin's `SUPPORTED_IMAGE_MIME_TYPES`) + a plugin-
+pointer comment + a new unit test asserting the four images list and
+that PDF/text stay unsupported (v4's `llm-attachment-support.test.ts`
+shape). **The DB-visible consequence is corpus-clear:** the
+`settings.rs:803` default of `resolvedSupportsImageUpload` from
+`supports_mime_type(provider, "image/jpeg")` flips false → true only
+when a connection-profile create OMITS `supportsImageUpload` AND names
+OPENROUTER. Grepped both tier-2 corpora — `connection-profiles-tier2`
+(ops name only Anthropic / Ollama; `supportsImageUpload` explicit) and
+`settings.json` (zero OPENROUTER, zero `supportsImageUpload`) — **no
+such case exists, so no tier-2 regen is owed**; recorded per the
+order. `file_fallback.rs` verified unaffected (image/* short-circuits
+on the profile flag at `:140` before ever consulting the map — no
+edit). No `api/settings.rs` edit (forbidden; the default flows from
+the map with no change of its own).
 
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
