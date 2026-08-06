@@ -2783,7 +2783,7 @@ pub enum Request {
     /// `undefined` — Zod's `.default([])` does not fire for it, so v4 answers
     /// `validationError`. A plain `Option` would collapse the two.
     TabooSettingsUpdate {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "double_option")]
         phrases: Option<Option<serde_json::Value>>,
     },
     // === end P4.D50 ===
@@ -3595,6 +3595,43 @@ impl Event {
             room_id: None,
             progress_id: Some(progress_id.into()),
             payload: EventPayload::CreationProgress(frame),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Request;
+
+    /// P4.D50 §3-review pin: the `TabooSettingsUpdate.phrases` tri-state must
+    /// survive SERDE deserialization — the dispatch JSON leg, which the route
+    /// differential cannot see (the web edge hand-constructs the variant).
+    /// Without `deserialize_with = "double_option"`, `{"phrases": null}`
+    /// silently collapsed to key-absent (keeping the stored list) where v4's
+    /// PUT answers `validationError` — Zod's `.default([])` fires only for
+    /// `undefined`, never for `null`.
+    #[test]
+    fn taboo_update_phrases_tristate_survives_serde() {
+        let absent: Request =
+            serde_json::from_str(r#"{"type":"tabooSettingsUpdate"}"#).unwrap();
+        assert!(matches!(absent, Request::TabooSettingsUpdate { phrases: None }));
+
+        let null: Request =
+            serde_json::from_str(r#"{"type":"tabooSettingsUpdate","phrases":null}"#).unwrap();
+        assert!(matches!(
+            null,
+            Request::TabooSettingsUpdate {
+                phrases: Some(None)
+            }
+        ));
+
+        let value: Request =
+            serde_json::from_str(r#"{"type":"tabooSettingsUpdate","phrases":["x"]}"#).unwrap();
+        match value {
+            Request::TabooSettingsUpdate {
+                phrases: Some(Some(v)),
+            } => assert_eq!(v, serde_json::json!(["x"])),
+            other => panic!("expected Some(Some(_)), got {other:?}"),
         }
     }
 }
