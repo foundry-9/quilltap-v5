@@ -59736,3 +59736,37 @@ verb) landed here too rather than waiting for the badge commit.
 
 Gate: `ng build` clean (7 s), `ng test` 287 files / 3926 tests green,
 `tsc -p tsconfig.app.json --noEmit` clean.
+
+### Unit 2 — the Embedding Profiles card (SPA 0.5.418)
+
+`screens/settings/memory/embedding-profiles/`: the card
+(`embedding-profiles-card.ts`, v4 `index.tsx` — header + New Profile +
+list + modal, loading + load-error-reload), the list
+(`embedding-profile-list.ts`, v4 `ProfileList.tsx` — alphabetical grid,
+provider/missing-key badges, embedded stats, the four `isDefault`-gated
+maintenance actions with two-step confirms and inline `qt-alert-success`
+banners + a `?tab=system` "View Tasks Queue" link, two-step delete), the
+modal (`embedding-profile-modal.ts`, v4 `ProfileModal.tsx` — the form,
+BUILTIN pins `tfidf-bm25-v1`, the validity gate, the refusal-armed
+Fetch-Installed-Models button, and the newly-default "Re-embed
+Everything?" follow-up issuing a no-scope reindex), the provider badge,
+and `embedding-profiles.types.ts` (v4's client-side `PROVIDER_METADATA`
++ badge-class maps + `buildProviderInfos`). Wired into `memory-tab.ts`
+as the FIRST card on the `embedding-profiles` `?section=` deep link;
+the tab's deferral comment trimmed to the two remaining cards.
+
+Two deferrals recorded loud, both v4-faithful: (a) the modal has NO
+truncation inputs — v4's form type carries `truncateToDimensions` /
+`normalizeL2` but renders no inputs and never submits them (an API-only
+matrix; a v4-side product item); (b) v4's `triggerAutoAssociate` mount
+effect (template-profile tag machinery) has no v5 analog and is NOT
+invented — it belongs to the `p4.9h2` prompt-library/tag slice.
+
+Specs: `embedding-profile-modal.spec.ts` (8 cases — the BUILTIN pin +
+newly-default re-embed flow → no-scope reindex, Skip, already-default
+no-follow-up, the validity gate both ways, the fetch-models refusal
+sentence) and `embedding-profile-list.spec.ts` (8 cases — the
+MissingApiKeyBadge condition three ways, refit vs reindex, both two-step
+confirms with their flipped labels, the two-step delete, empty state).
+
+Gate: `ng build` clean, `ng test` 289 files / 3942 tests green.

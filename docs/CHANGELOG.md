@@ -80,6 +80,18 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Ported the Embedding Profiles card into the Settings → Memory tab
+(P4.9H2B), first in v4's card order on the `embedding-profiles` deep
+link: the profile list with provider and missing-key badges and
+embedded-status counts, the four default-gated maintenance actions
+(refit / re-embed everything / Matryoshka re-apply / re-embed
+mismatched) with their two-step confirms and inline "View Tasks Queue"
+success banners, and the create/edit modal with the BUILTIN model pin,
+the validity gate, and the "Re-embed Everything?" follow-up on a save
+that newly sets the default. The Matryoshka truncation inputs are
+deliberately absent, matching the reference app (an API-only matrix
+there). SPA 0.5.418.
+
 Added the client-side wire contract for the embedding-profiles
 management surface (P4.9H2B, §1): the eleven profile verbs (list / get /
 create / update / delete / refit / reindex / reapply / list-providers /

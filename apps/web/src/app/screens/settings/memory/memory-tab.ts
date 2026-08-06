@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { EmbeddingProfilesCard } from './embedding-profiles/embedding-profiles-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
 import { MemoryHousekeepingCard } from './memory-housekeeping-card';
 import { MemoryRecallCard } from './memory-recall-card';
@@ -11,19 +12,20 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
 /**
  * The Settings → Memory tab (v4 `components/settings/tabs/
  * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): the CollapsibleCards
- * for backfill, housekeeping, recall, and regenerate. v4's card titles/descriptions
- * + `sectionId`s (the `?section=` deep link) are ported verbatim.
+ * for embedding profiles, backfill, housekeeping, recall, and regenerate. v4's
+ * card titles/descriptions + `sectionId`s (the `?section=` deep link) are ported
+ * verbatim, in v4's card order (Embedding Profiles first).
  *
- * DEFERRED LOUDLY (rendered as NOTHING — no dead cards): v4's Embedding Profiles
- * sub-tab, the Memory Deduplication card (server unported), and the Regenerate
- * Conversation Summaries card. Their verticals land in later rounds; enumerated in
- * this lane's closing notes.
+ * DEFERRED LOUDLY (rendered as NOTHING — no dead cards): the Memory Deduplication
+ * card and the Regenerate Conversation Summaries card land in this lane's later
+ * commits; enumerated in this lane's closing notes.
  */
 @Component({
   selector: 'qt-settings-memory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CollapsibleCard,
+    EmbeddingProfilesCard,
     MemoryBackfillCard,
     MemoryHousekeepingCard,
     MemoryRecallCard,
@@ -38,10 +40,19 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
 
       <div class="space-y-4">
         <qt-collapsible-card
+          title="Embedding Profiles"
+          description="Configure embedding models for semantic memory"
+          sectionId="embedding-profiles"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'embedding-profiles'"
+        >
+          <qt-embedding-profiles-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
           title="Repair Missing Embeddings"
           description="Generate embeddings for legacy memories that predate the embedding-aware gate"
           sectionId="memory-backfill"
-          [defaultOpen]="defaultOpen()"
           [forceOpen]="section() === 'memory-backfill'"
         >
           <qt-memory-backfill-card />
