@@ -189,9 +189,8 @@ pub struct EngineAssembly {
     /// The host facts the report needs (paths, runtime, version, clock, the
     /// disk storage backend). `None` (read-only embedders, canned assemblies)
     /// → the four `SystemAlmanack*` arms answer the loud not-assembled refusal.
-    /// **The host wire is DEFERRED to unification** (this lane owns neither
-    /// `quilltap-host` nor its version bump — the `avatar_preview` /
-    /// `announcement_preview` precedent; the recipe is in the lane record).
+    /// Wired LIVE by `quilltap-host` (`HostAlmanackServices`, P4.37 resume
+    /// item 3) — the production spine always supplies it.
     pub almanack_host: Option<Arc<dyn super::almanack::AlmanackHost>>,
     // === end P4.37 ===
     // === P4.9E2A: the in-chat announcement-preview seam ===
