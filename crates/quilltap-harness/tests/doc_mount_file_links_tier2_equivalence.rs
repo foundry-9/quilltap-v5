@@ -41,6 +41,13 @@
 //! rewrite — with `doc_mount_blobs` in the dump so the GC's explicit payload
 //! delete is measured. See the corpus's `_comment` for the op-by-op scenarios.
 //!
+//! The `doc_mount_chunks` table is a PLAIN row-for-row equality. It was a
+//! both-directions divergence carve-out until bug 15 (`7bcd8515`): v4 shipped
+//! `reindexLinkGroupSiblings` as dead code (`queryJoined` never selected
+//! `l.linkGroupId`, so the pass early-outed and hard-linked siblings served
+//! stale chunks), where v5 re-chunked them. v4 has since added the `linkGroupId`
+//! projection, so both sides now re-chunk the twins to the fresh revision.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -383,19 +390,17 @@ fn doc_mount_file_links_tier2_matches_oracle() {
             got[i]["columns"], want[i]["columns"],
             "{table}: column set / order"
         );
-        if table == "doc_mount_chunks" {
-            // The one deliberate divergence — asserted in both directions by
-            // `assert_chunk_divergence`, which also does the row-by-row equality
-            // for everything outside it.
-            continue;
-        }
+        // `doc_mount_chunks` (index 4) is a PLAIN equality since bug 15
+        // (`7bcd8515`): v4 now selects `l.linkGroupId` in `queryJoined`, so
+        // `reindexLinkGroupSiblings` runs and re-chunks the hard-link twins to
+        // the fresh revision on BOTH sides — the former both-directions
+        // divergence carve-out is retired.
         assert_eq!(
             got[i]["rows"], want[i]["rows"],
             "{table}: remapped row state diverged\n  rust:   {}\n  oracle: {}",
             got[i]["rows"], want[i]["rows"]
         );
     }
-    assert_chunk_divergence(&got[4], &want[4]);
 
     // Sanity: the corpus produced the expected shape and the remap fired.
     let files = got[0]["rows"].as_array().expect("files rows");
@@ -646,101 +651,6 @@ fn doc_mount_file_links_tier2_matches_oracle() {
     }
 
     eprintln!("OK: doc_mount_file_links storage-primitive tier-2 matched oracle (6 tables).");
-}
-
-/// **The one deliberate divergence in this family — v4 `40319484` ships
-/// `reindexLinkGroupSiblings` as DEAD CODE, and v5 does not.**
-///
-/// v4's `bindLinkGroup` writes `linkGroupId` correctly, and the write-path
-/// content fan-out works (it is raw SQL inside the write transaction). But
-/// `reindexLinkGroupSiblings` opens with `findByMountPointAndPath(...)` and
-/// returns 0 unless the result carries a `linkGroupId` — and `queryJoined`
-/// (`doc-mount-file-links.repository.ts:1276`), which every joined read goes
-/// through, never selects `l.linkGroupId` and never maps it. So the field is
-/// `undefined` for every link and the pass returns 0 unconditionally.
-///
-/// Measured, not reasoned: a probe against v4's real code at `40319484` binds a
-/// group, reads the raw column back as the bound uuid, and gets
-/// `findByMountPointAndPath(...).linkGroupId === undefined` and
-/// `reindexLinkGroupSiblings(...) === 0`.
-///
-/// The consequence in v4 is precisely the symptom its own commit message
-/// describes: a hard-linked file's other location keeps serving the PREVIOUS
-/// revision's chunks to semantic search and to character context. The rows move;
-/// the index does not. v5 carries `linkGroupId` on its joined read, so its pass
-/// runs and the siblings' chunk sets are rebuilt.
-///
-/// Pinned in BOTH directions: everything outside the named sortKeys must match
-/// row for row, and each named sortKey must show exactly the fresh content on the
-/// v5 side and exactly the stale content on the v4 side. **The moment v4 adds
-/// `l.linkGroupId` to `queryJoined`, this test fails** — which is the point.
-/// The v4-side fix is a one-liner and is queued on the post-5.0 v4-side list.
-const CHUNK_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        // A sibling of the twins/THIRD.md write.
-        "twins/left.md",
-        "# Twins\n\nThird revision, written through the third path.",
-        // v4 leaves the revision left.md was last written with directly.
-        "---\ncharacter_read: false\n---\n\n# Twins\n\nSecond revision, restricted.",
-    ),
-    (
-        // Never written directly after being linked, so v4 leaves it on the
-        // revision it was CREATED with — two fan-outs stale.
-        "twins/right.md",
-        "# Twins\n\nThird revision, written through the third path.",
-        "# Twins\n\nShared bytes, first revision.",
-    ),
-];
-
-fn assert_chunk_divergence(got: &Value, want: &Value) {
-    let got_rows = got["rows"].as_array().expect("rust chunk rows");
-    let want_rows = want["rows"].as_array().expect("oracle chunk rows");
-    assert_eq!(
-        got_rows.len(),
-        want_rows.len(),
-        "doc_mount_chunks: row count diverged\n  rust:   {got}\n  oracle: {want}"
-    );
-
-    for (got_row, want_row) in got_rows.iter().zip(want_rows) {
-        let sort_key = got_row["sortKey"].as_str().expect("sortKey");
-        assert_eq!(
-            sort_key,
-            want_row["sortKey"].as_str().expect("sortKey"),
-            "doc_mount_chunks: row alignment diverged"
-        );
-        let divergence = CHUNK_DIVERGENCES
-            .iter()
-            .find(|(path, _, _)| sort_key.contains(&format!("#{path}#")));
-        match divergence {
-            Some((path, fresh, stale)) => {
-                assert_eq!(
-                    got_row["content"],
-                    Value::String((*fresh).to_string()),
-                    "{path}: v5 should have re-chunked the hard-link sibling"
-                );
-                assert_eq!(
-                    want_row["content"],
-                    Value::String((*stale).to_string()),
-                    "{path}: v4's reindexLinkGroupSiblings is no longer dead code — \
-                     re-check the divergence and delete this carve-out"
-                );
-                // Everything else about the row must still agree.
-                for (key, got_value) in got_row.as_object().expect("chunk row object") {
-                    if key == "content" || key == "tokenCount" || key == "headingContext" {
-                        continue;
-                    }
-                    assert_eq!(
-                        got_value, &want_row[key],
-                        "{path}: chunk column `{key}` diverged outside the pinned divergence"
-                    );
-                }
-            }
-            None => assert_eq!(
-                got_row, want_row,
-                "doc_mount_chunks: row state diverged outside the pinned divergence"
-            ),
-        }
-    }
 }
 
 /// Map a table name to the JSON key the oracle emits it under.

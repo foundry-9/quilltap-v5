@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.D51 (bug 15): the reference app now re-chunks hard-linked file siblings
+when one location is rewritten, where before its sibling-reindex pass was
+dead code and the other locations served stale search chunks. This port
+was already correct, so the both-directions divergence carve-out in the
+mount-file-links differential is retired — the chunk table is now a plain
+row-for-row equality.
+
 P4.D51 (bug 13): garbage-collecting an orphaned mount-index file row no
 longer crashes on an index that never held a blob (a document-only,
 restored, or hand-built store). The blob and document payload deletes are
