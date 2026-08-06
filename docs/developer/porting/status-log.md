@@ -59520,3 +59520,48 @@ The REST edges for these (system/tools `?action=memory-dedup[-preview]`;
 reaches the refusal via `POST /api/dispatch` meanwhile.
 
 Version: core 0.0.485 → 0.0.486.
+## Lane record — P4.42 (the Serper web-search wire)
+
+Order: `work-orders/p4.42-web-search-wire.md`. A WIRE, not a port — the
+`RealWebSearchProvider` was already ported + differential-verified
+(`web_search_wire_equivalence`, `web_search_tool_equivalence`); the dogfood
+"NEEDS AN ORDER" note (2026-08-06) found it never connected to the running
+engine, so `search_web` refused at runtime even with `SERPER_API_KEY` set,
+while the tools inventory advertised it as available. Drift-check at lane
+start: v4 HEAD `3adefeba` == baseline, tree clean (only `found-bugs.md`
+modified, docs) — no drift; this lane regenerates no oracle (it extends no
+web-search family — it only re-runs both by name to prove neutrality).
+
+**Survey correction (recorded per the order's request):** the order's
+"add an active-key-by-provider finder in `db/api_keys.rs`" premise is
+SUPERSEDED — `api_key_service::find_active_api_key_for_provider(conn,
+user_id, provider)` already exists with v4's exact `getAllApiKeys().find(
+provider===X && isActive)` semantics (it's what `DbProviderKeys` uses), so
+`DbSearchApiKeys` reuses it and `db/api_keys.rs` needs NO edit. Also: the
+factory type is `ProviderIo` (the standing note's `HostProviders` name was
+already stale in the survey), and `ProviderIo::web_search_provider` +
+`executor.rs::with_web_search_provider` already existed with zero call
+sites.
+
+### Unit 1 — the additive base-URL seam (tier 2 item 6)
+
+`RealWebSearchProvider` gains an optional `base_url: Option<String>` (default
+`None` in `::new`) + `with_base_url(Option<String>)`; `run_serper` sends to
+`base_url.unwrap_or(&req.url)` — `build_serper_request`'s bytes and the wire
+differential are untouched by default. The `QUILLTAP_SERPER_BASE_URL` env
+override is read in ONE host place (`ProviderIo::web_search_provider`,
+`providers.rs`) so core stays pure. New core unit test
+`base_url_override_retargets_the_post` (canned transport keyed on the
+overridden URL). Neutrality proven: `web_search_wire_equivalence` green over
+the committed corpus (unmodified); `web_search_tool_equivalence` green over a
+freshly regenerated oracle. Versions: core 0.0.483, host 0.0.61.
+
+Regen recipe (web-search-tool oracle, unchanged from the test header):
+`N=~/.nvm/versions/node/v24.13.1/bin; STAGE=/tmp/qt-oracle-stage-ws;
+rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases; cp <worktree>/harness/
+oracle/cases/web-search-tool.test.ts $STAGE/harness/oracle/cases/; cd
+~/source/quilltap-server; TZ=UTC QT_ORACLE_OUT=/tmp/oracle-web-search-tool.
+ndjson $N/npx jest --silent --watchman=false --roots "$PWD" --roots
+"$STAGE/harness/oracle/cases" -- web-search-tool` → run with
+`QT_ORACLE_WEB_SEARCH=/tmp/oracle-web-search-tool.ndjson cargo test -p
+quilltap-harness --test web_search_tool_equivalence`.

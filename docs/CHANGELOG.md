@@ -55,6 +55,12 @@ duplicate-name check when creating or renaming), clearing the default
 flag across a user's profiles, and clearing a profile's optional
 numeric or key fields back to empty. Internal groundwork for the
 embedding-profiles management screens; no user-visible change yet.
+Began wiring the web search tool (P4.42). Added an optional endpoint-URL
+override to the Serper web-search provider so a test can point it at an
+in-process mock; by default the request is unchanged and goes to the
+real Serper endpoint byte-for-byte. No behavior change on its own — the
+provider is still not connected to the running engine yet. Versions:
+core 0.0.483, host 0.0.61.
 
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining

@@ -394,6 +394,13 @@ pub struct RealWebSearchProvider<T: SyncWireTransport, K: SearchApiKeyLookup> {
     key_lookup: K,
     serper_registered: bool,
     fallback_env_key: Option<String>,
+    /// An OPTIONAL override for the Serper endpoint URL (P4.42, additive). `None`
+    /// (the default) keeps [`build_serper_request`]'s hard-coded [`SERPER_API_URL`]
+    /// so the wire bytes and the wire differential are unchanged; production sets
+    /// this ONLY when the host injects a `QUILLTAP_SERPER_BASE_URL` (the e2e mock
+    /// seam — see `ProviderIo::web_search_provider`). It overrides the POST target
+    /// alone; the method / headers / body are untouched.
+    base_url: Option<String>,
 }
 
 impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
@@ -408,7 +415,17 @@ impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
             key_lookup,
             serper_registered,
             fallback_env_key,
+            base_url: None,
         }
+    }
+
+    /// Override the Serper endpoint URL (P4.42, additive; `None` keeps the
+    /// production [`SERPER_API_URL`]). The host passes the `QUILLTAP_SERPER_BASE_URL`
+    /// env value here so the e2e beat can point the real blocking transport at an
+    /// in-process mock; the default leaves every byte identical to v4's request.
+    pub fn with_base_url(mut self, base_url: Option<String>) -> Self {
+        self.base_url = base_url;
+        self
     }
 
     /// Run the Serper request over the transport, mapping success + the error sets.
@@ -422,10 +439,10 @@ impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
     ) -> WebSearchOutcome {
         let req = build_serper_request(query, max_results, api_key);
         let body = req.body_string();
-        match self
-            .transport
-            .send(&req.method, &req.url, &req.headers, &body)
-        {
+        // `base_url` is the additive host override (P4.42); `None` keeps
+        // `req.url` (= `SERPER_API_URL`), so the default path is byte-identical.
+        let url = self.base_url.as_deref().unwrap_or(&req.url);
+        match self.transport.send(&req.method, url, &req.headers, &body) {
             Ok(resp) if resp.ok() => {
                 let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
                 WebSearchOutcome::ProviderResult {
@@ -663,5 +680,37 @@ mod tests {
             provider3.search("cats", 5, "u"),
             WebSearchOutcome::NotConfigured
         ));
+    }
+
+    #[test]
+    fn base_url_override_retargets_the_post() {
+        use crate::model::wire::{wire_key, CannedSyncWireTransport, WireResponse};
+
+        // The override changes ONLY the POST target: build the request the way the
+        // provider does, but key the canned transport on the OVERRIDDEN url.
+        let mock = "http://127.0.0.1:45399/search";
+        let req = build_serper_request("cats", 5, "k");
+        assert_eq!(req.url, SERPER_API_URL, "build_serper_request unchanged");
+        let key = wire_key(&req.method, mock, &req.body_string());
+        let transport = CannedSyncWireTransport::new().with_raw_response(
+            key,
+            WireResponse::new(
+                200,
+                r#"{"organic":[{"title":"A","link":"https://a","snippet":"s"}]}"#,
+            ),
+        );
+        // fallback path (serper_registered=false, env key present).
+        let provider =
+            RealWebSearchProvider::new(transport, NoSearchApiKeys, false, Some("k".into()))
+                .with_base_url(Some(mock.to_string()));
+        match provider.search("cats", 5, "u") {
+            WebSearchOutcome::ProviderResult {
+                success, results, ..
+            } => {
+                assert!(success, "canned response only matches the overridden url");
+                assert_eq!(results.len(), 1);
+            }
+            other => panic!("expected provider result, got {other:?}"),
+        }
     }
 }

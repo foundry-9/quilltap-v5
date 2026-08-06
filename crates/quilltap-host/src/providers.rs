@@ -273,18 +273,27 @@ impl ProviderIo {
 
     /// The live Serper web-search provider (the W4.1d5/W4.7f seam), over the
     /// caller's key lookup. `fallback_env_key` is the host `SERPER_API_KEY`.
+    ///
+    /// The `QUILLTAP_SERPER_BASE_URL` env override (P4.42) is read HERE — the one
+    /// host place — so the core provider stays pure: absent (the normal case) the
+    /// request goes to v4's hard-coded `SERPER_API_URL` byte-for-byte; the e2e
+    /// beat sets it to point the blocking transport at an in-process mock.
     pub fn web_search_provider<K: quilltap_core::tools::web_search::SearchApiKeyLookup>(
         &self,
         key_lookup: K,
         serper_registered: bool,
         fallback_env_key: Option<String>,
     ) -> quilltap_core::tools::web_search::RealWebSearchProvider<BlockingWireTransport, K> {
+        let base_url = std::env::var("QUILLTAP_SERPER_BASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty());
         quilltap_core::tools::web_search::RealWebSearchProvider::new(
             self.sync_wire_transport(),
             key_lookup,
             serper_registered,
             fallback_env_key,
         )
+        .with_base_url(base_url)
     }
 
     /// The ported pricing fetcher over the live HTTP fetch. Hold ONE per host
