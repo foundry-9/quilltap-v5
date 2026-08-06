@@ -85,25 +85,24 @@ pub(super) fn import_document_stores(
 
     // ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — a store's identity is its ID
     //
-    // v4 matches the archive's store against the instance by NAME
+    // v4 USED to match the archive's store against the instance by NAME
     // (`byName.get(mp.name.toLowerCase())`, `import-document-stores.ts:55-57`),
-    // so an archive overwrites whatever store happens to WEAR the name today:
-    // rename a store and the next import of its own archive redirects onto an
-    // unrelated one, while a store that merely shares a name with a stranger's
-    // archive is claimed by it. **The ruling (human, 2026-08-04; `status-log.md`
+    // so an archive overwrote whatever store happened to WEAR the name today:
+    // rename a store and the next import of its own archive redirected onto an
+    // unrelated one, while a store that merely shared a name with a stranger's
+    // archive was claimed by it. **The ruling (human, 2026-08-04; `status-log.md`
     // → "Ruling — import overwrite claims the whole store, and store identity is
     // the ID") makes the id the identity and the name display only**, under the
     // standing 2026-08-03 backup/restore ruling.
     //
     // That only works if the id survives a round trip, so the CREATE arm below
-    // preserves the archive's id rather than minting (v4's repo strips it) —
-    // otherwise an id match would be dead on arrival, matching nothing it had
-    // itself written. Names stay uniquified exactly as v4 does it, since they
-    // remain one case-insensitive namespace.
+    // preserves the archive's id rather than minting. Names stay uniquified
+    // exactly as v4 does it, since they remain one case-insensitive namespace.
     //
-    // Pinned in both directions by `system_import_state`'s four
-    // `execute_store_identity_*` arms. The v4-side twin is queued on
-    // `dogfood-findings.md`'s post-5.0 v4-side list.
+    // v5 made this fix first; **v4 has since CONVERGED** (`3bb664f0`, bug 11:
+    // `import-document-stores.ts` matches `byId` and `preserveArchiveId`s on
+    // create), so `system_import_state`'s four `store_identity_*` arms are now
+    // plain equalities between the two engines.
     let existing_stores = doc_mount_points::find_all_full_json(mount)?;
     let existing_ids: std::collections::HashSet<String> = existing_stores
         .iter()
@@ -514,13 +513,11 @@ pub(super) fn import_document_stores(
 /// fidelity wins. This runs under the standing 2026-08-03 backup/restore
 /// ruling ("v5 FIXES v4's bugs in this family").
 ///
-/// Pinned in BOTH directions by `system_import_state`: the dedicated
-/// `execute_folder_overwrite` arm (v5 ends with exactly the archive's folders;
-/// v4 keeps the union) and `FOLDER_CLEAR_DIVERGENCE` for the whole-state arms
-/// (v4's folder rows are the PRE-EXISTING ones plus its UNIQUE warnings; v5's
-/// are freshly written with none). Both carry the retire-the-divergence
-/// message for the day v4 converges. The v4-side twin is queued on
-/// `dogfood-findings.md`'s post-5.0 v4-side list.
+/// v5 made this fix first; **v4 has since CONVERGED** (`3bb664f0`, bug 11:
+/// `import-document-stores.ts` clears folders on overwrite too), so
+/// `system_import_state`'s `execute_folder_overwrite` and whole-state overwrite
+/// arms are now plain equalities — both engines end with exactly the archive's
+/// folders.
 fn overwrite_clear_mount(mount: &Connection, mount_point_id: &str) -> Result<(), DbError> {
     // 1. Documents whose file is linked from this mount.
     mount.execute(

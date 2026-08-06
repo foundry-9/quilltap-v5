@@ -25,19 +25,18 @@
 //! union error) are masked after their deterministic prefixes — the standing
 //! parser-wording seam; every other warning is compared verbatim.
 //!
-//! ## [P4.33] The ruled import divergences
+//! ## [P4.33 → bug 11] The former import divergences — CONVERGED
 //!
-//! Two, both from the 2026-08-04 ruling ("import overwrite claims the whole
-//! store, and store identity is the ID") and both asserted in BOTH directions
-//! rather than carved out:
+//! Two came from the 2026-08-04 ruling ("import overwrite claims the whole
+//! store, and store identity is the ID"), both fixes v5 made FIRST and v4 has
+//! since adopted (`3bb664f0`, bug 11):
 //!
-//! - [`FOLDER_CLEAR_DIVERGENCE`] — v5's overwrite drops `doc_mount_folders`
-//!   too, so the archive's tree lands clean where v4 collides with the
-//!   survivors. Pinned on the whole-state arms; the semantics half lives on the
-//!   dedicated `execute_folder_overwrite` arm.
-//! - [`store_identity_expectations`] — a store's identity is its ID, not its
-//!   display name, and import CREATE preserves the archive's id. Pinned on four
-//!   dedicated `store_identity_*` arms with per-engine expected end-states.
+//! - The overwrite-clear takes `doc_mount_folders` with it, so a re-imported
+//!   archive's tree lands clean — pinned on the whole-state arms and the
+//!   dedicated `execute_folder_overwrite` arm, now as PLAIN equalities.
+//! - A store's identity is its ID, not its display name, and import CREATE
+//!   preserves the archive's id — pinned on the four `store_identity_*` arms,
+//!   now a plain equality between the two engines' classified end-states.
 //!
 //! ## `doc_mount_chunks` — the P4.6BK tripwire, CLOSED at unification
 //!
@@ -307,342 +306,63 @@ fn derived_hashes(state: &StateDump, literals: &HashSet<String>) -> HashSet<Stri
     out
 }
 
-// ── [P4.33] the ruled overwrite-clears-folders divergence ───────────────────
+// ── [P4.33 → bug 11] the overwrite-clear + store-identity divergences RETIRED ──
+//
+// v5 made both fixes first (a store's identity is its ID; overwrite means
+// overwrite, clearing folders too), and v4 has since CONVERGED (`3bb664f0`,
+// bug 11: `import-document-stores.ts` matches `byId`, `preserveArchiveId`s on
+// create, and clears folders on overwrite). So the whole-state arms
+// (`execute_overwrite_all`, `route_replace_remap`, `execute_link_groups_twice`)
+// are now PLAIN equalities — the folder-clear / store-create divergence
+// machinery and its FOLDER_CLEAR_DIVERGENCE / STORE_ID_PRESERVED_ON_CREATE
+// carve-outs are gone. The `store_identity_*` and `execute_folder_overwrite`
+// arms assert the converged behavior directly (see their runners).
 
-/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — the overwrite-clear takes the
-/// folders with it
+/// ⚠ CROSS-LANE DEPENDENCY (bug 10's per-chat annotation sweep — **P4.D53's**).
 ///
-/// v4's overwrite branch clears documents, blobs, chunks and files but NOT
-/// `doc_mount_folders` (`import-document-stores.ts:62-67`), so the previous
-/// contents' folder tree survives an archive that no longer mentions it, and a
-/// re-import of an IDENTICAL archive cannot re-insert its own folders — every
-/// one collides on `idx_doc_mount_folders_mp_parent_name_nocase`. Measured
-/// here: v4 answers `documentStoreFolders: 0` with fifteen
-/// `Failed to import folder "…"` warnings, and the fifteen surviving rows are
-/// the fixture's own.
+/// The import overwrite/replace path deletes each colliding chat through
+/// `chats.delete`, and v4's bug-10 fix (`chats.repository.ts:336-350`) now sweeps
+/// that chat's `conversation_annotations` there. v5's `chats::delete` does not
+/// yet sweep them — that half of bug 10 is P4.D53's lane (it owns `db/chats.rs`
+/// and `db/conversation_annotations.rs`), which this lane must NOT touch. So on
+/// these two arms v5 keeps the pre-existing annotation husks the overwrite should
+/// have removed, and `main.conversation_annotations` diverges (v5 > v4).
 ///
-/// **The ruling (human, 2026-08-04; `status-log.md` → "Ruling — import
-/// overwrite claims the whole store, and store identity is the ID") says
-/// overwrite means overwrite**, under the standing 2026-08-03 backup/restore
-/// ruling. v5 drops the folders too and writes the archive's tree clean. See
-/// `services::quilltap_import::document_stores::overwrite_clear_mount`.
-///
-/// These are the whole-state cases whose overwrite branch actually runs over a
-/// store that HAS folders. On them, [`apply_folder_clear_divergence`] asserts
-/// the divergence in BOTH directions and then removes exactly the diverging
-/// comparands — the folder-row identity and their write clock — so everything
-/// else in all three partitions is still diffed for equality. The dedicated
-/// `execute_folder_overwrite` arm pins the *semantics* (which folders survive);
-/// this pins the *round trip* (the whole instance is otherwise identical).
-const FOLDER_CLEAR_DIVERGENCE: &[&str] = &["execute_overwrite_all", "route_replace_remap"];
+/// [`carve_out_pending_annotation_sweep`] pulls that table out of the whole-state
+/// comparison on these arms and asserts the divergence in BOTH directions: v5's
+/// row set must be a strict superset of v4's (the imported rows plus the husks).
+/// **When P4.D53 lands the sweep the counts equalize and this tripwire fires** —
+/// at unification the two lanes' code meets on main and this carve-out is removed.
+const ANNOTATION_SWEEP_PENDING_P4D53: &[&str] = &["execute_overwrite_all", "route_replace_remap"];
 
-/// The warning family v4 raises and v5 cannot: the folder re-insert collision.
-const FOLDER_WARNING_PREFIX: &str = "Failed to import folder \"";
-
-/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — import CREATE preserves the
-/// archive's store id
-///
-/// The other half of "identity is the ID": v4's repo strips the source id and
-/// mints (`import-document-stores.ts:85-105`), so no archive could ever be
-/// re-recognized by identity; v5 writes the archive's id through, minting only
-/// when it is already spoken for (the `duplicate` arm). The semantics are pinned
-/// by the dedicated `store_identity_*` arms; this list is for the WHOLE-STATE
-/// arms that happen to create a store, where the same divergence otherwise shows
-/// up as an unreadable cascade — v4 consumes one more `<minted-N>` label than v5
-/// at the `doc_mount_points` row, shifting every label after it.
-///
-/// [`apply_store_create_divergence`] asserts it in both directions first (v5's
-/// created store MUST wear an archive id, v4's MUST NOT), then labels the
-/// CREATED stores — and only those; a pre-existing store's id is still compared
-/// exactly — by name, so the rest of the instance stays diffable.
-const STORE_ID_PRESERVED_ON_CREATE: &[&str] = &["execute_link_groups_twice"];
-
-/// Map every `doc_mount_folders.id` to `<folder:{mountPointId}/{path}>`.
-///
-/// A folder row's IDENTITY is what the ruling makes incomparable: v4 keeps the
-/// row it already had, v5 writes a fresh one for the same place in the tree.
-/// `(mountPointId, path)` is that place — unique by index — so labelling with
-/// it keeps every REFERENCE comparable (a `doc_mount_file_links.folderId`
-/// pointing at the wrong folder still shows up, and reads better than
-/// `<minted-31>` did), while costing the raw uuid, which on these cases carries
-/// no information either side can share.
-fn folder_labels(state: &StateDump) -> BTreeMap<String, String> {
-    let empty = Vec::new();
-    let mut out = BTreeMap::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    for row in state
-        .get("mountIndex")
-        .and_then(|t| t.get("doc_mount_folders"))
-        .unwrap_or(&empty)
-    {
-        let (Some(id), Some(mp), Some(path)) = (
-            row.get("id").and_then(Value::as_str),
-            row.get("mountPointId").and_then(Value::as_str),
-            row.get("path").and_then(Value::as_str),
-        ) else {
-            continue;
-        };
-        let label = format!("<folder:{mp}/{path}>");
-        assert!(
-            seen.insert(label.clone()),
-            "two folder rows share ({mp}, {path}) — the label key is not unique, so this \
-             normalization would fuse two distinct rows. Fix the key before trusting the diff."
-        );
-        out.insert(id.to_string(), label);
-    }
-    out
-}
-
-/// The store ids present BEFORE the import — everything else in
-/// `doc_mount_points` was created by it.
-fn store_ids(state: &StateDump) -> HashSet<String> {
-    let empty = Vec::new();
-    state
-        .get("mountIndex")
-        .and_then(|t| t.get("doc_mount_points"))
-        .unwrap_or(&empty)
-        .iter()
-        .filter_map(|r| r.get("id").and_then(Value::as_str))
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Assert the ruled create-preserves-the-id divergence on one whole-state case
-/// and return the per-side labels for the stores the import CREATED.
-fn apply_store_create_divergence(
+/// Remove `main.conversation_annotations` from both dumps on the flagged arms and
+/// assert the P4.D53 cross-lane divergence (v5 keeps the un-swept husks). See
+/// [`ANNOTATION_SWEEP_PENDING_P4D53`].
+fn carve_out_pending_annotation_sweep(
     name: &str,
-    payload: &Value,
-    pre: &StateDump,
-    got_state: &StateDump,
-    want_state: &StateDump,
-    failures: &mut Vec<String>,
-) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
-    let archive_ids: HashSet<String> = payload["data"]["mountPoints"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|m| m.get("id").and_then(Value::as_str))
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-    assert!(
-        !archive_ids.is_empty(),
-        "[{name}] STORE_ID_PRESERVED_ON_CREATE names a case whose payload carries no mount \
-         points — the pin would be vacuous."
-    );
-    let pre_ids = store_ids(pre);
-
-    let created = |state: &StateDump| -> Vec<(String, String)> {
-        let empty = Vec::new();
-        state
-            .get("mountIndex")
-            .and_then(|t| t.get("doc_mount_points"))
-            .unwrap_or(&empty)
-            .iter()
-            .filter_map(|r| {
-                let id = r.get("id")?.as_str()?;
-                let n = r.get("name")?.as_str()?;
-                (!pre_ids.contains(id)).then(|| (id.to_string(), n.to_string()))
-            })
-            .collect()
-    };
-    let got_created = created(got_state);
-    let want_created = created(want_state);
-
-    if !got_created.iter().any(|(id, _)| archive_ids.contains(id)) {
-        failures.push(format!(
-            "[{name}] v5 created {} store(s) and NONE wears an id the archive carried — import \
-             CREATE is not preserving the archive's id, so nothing could ever re-recognize its \
-             own store. See `import_document_stores`.",
-            got_created.len()
-        ));
-    }
-    if want_created.iter().any(|(id, _)| archive_ids.contains(id)) {
-        failures.push(format!(
-            "[{name}] v4 created a store wearing an ARCHIVE id — it has CONVERGED on preserving \
-             ids. Retire this divergence: drop STORE_ID_PRESERVED_ON_CREATE, let these ids \
-             compare exactly again, and take the twin off the post-5.0 v4-side list."
-        ));
-    }
-
-    let label = |rows: Vec<(String, String)>| -> BTreeMap<String, String> {
-        let mut out = BTreeMap::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        for (id, n) in rows {
-            let l = format!("<store:{n}>");
-            assert!(
-                seen.insert(l.clone()),
-                "[{name}] two CREATED stores share the name {n:?} — the label key is not unique."
-            );
-            out.insert(id, l);
-        }
-        out
-    };
-    (label(got_created), label(want_created))
-}
-
-/// Split a result body's `warnings` into (everything else, the folder-collision
-/// sentences).
-fn split_folder_warnings(result: &Value) -> (Value, Vec<String>) {
-    let mut out = result.clone();
-    let mut folder = Vec::new();
-    if let Some(warnings) = out.get_mut("warnings").and_then(Value::as_array_mut) {
-        warnings.retain(|w| match w.as_str() {
-            Some(s) if s.starts_with(FOLDER_WARNING_PREFIX) => {
-                folder.push(s.to_string());
-                false
-            }
-            _ => true,
-        });
-    }
-    (out, folder)
-}
-
-/// Blank `doc_mount_folders.createdAt` / `.updatedAt` and re-key the rows by
-/// `(mountPointId, path)` — the second and third diverging comparands.
-///
-/// The clock is obvious: v4's rows carry the fixture's, v5's the import's. The
-/// row ORDER is the insertion-order residual — every other table in this family
-/// is dumped in rowid order and compared that way, but here v4 keeps rows it
-/// wrote long ago while v5 writes the archive's tree fresh, in the exporter's
-/// path-length order. Nothing reads `doc_mount_folders` by rowid (the exporter
-/// sorts by path length, every reader by path), so the order carries no meaning
-/// — but it is not equal, and pretending otherwise by leaving it would just
-/// report the same divergence fifteen more times. Sorting by the unique
-/// `(mountPointId, path)` index key keeps the comparison total.
-fn normalize_folder_rows(state: &mut StateDump) {
-    if let Some(rows) = state
-        .get_mut("mountIndex")
-        .and_then(|t| t.get_mut("doc_mount_folders"))
-    {
-        for row in rows.iter_mut() {
-            for key in ["createdAt", "updatedAt"] {
-                if let Some(v) = row.get_mut(key) {
-                    *v = Value::String("<folder-clock>".to_string());
-                }
-            }
-        }
-        rows.sort_by_key(|r| {
-            (
-                r["mountPointId"].as_str().unwrap_or_default().to_string(),
-                r["path"].as_str().unwrap_or_default().to_string(),
-            )
-        });
-    }
-}
-
-/// How many `doc_mount_folders` rows carry a write clock the PRE-import dump
-/// already knew — i.e. rows that survived rather than being rewritten.
-fn surviving_folder_rows(state: &StateDump, literals: &HashSet<String>) -> usize {
-    let empty = Vec::new();
-    state
-        .get("mountIndex")
-        .and_then(|t| t.get("doc_mount_folders"))
-        .unwrap_or(&empty)
-        .iter()
-        .filter(|r| {
-            r.get("createdAt")
-                .and_then(Value::as_str)
-                .is_some_and(|c| literals.contains(c))
-        })
-        .count()
-}
-
-/// Assert the ruled divergence in BOTH directions on one whole-state case, then
-/// hand back the comparands with exactly the diverging parts removed.
-///
-/// Returns `(rust body, oracle body, rust labels, oracle labels)`; the two
-/// states are masked in place.
-#[allow(clippy::too_many_arguments)]
-fn apply_folder_clear_divergence(
-    name: &str,
-    payload: &Value,
-    got_result: &Value,
-    want_result: &Value,
     got_state: &mut StateDump,
     want_state: &mut StateDump,
-    literals: &HashSet<String>,
     failures: &mut Vec<String>,
-) -> (
-    Value,
-    Value,
-    BTreeMap<String, String>,
-    BTreeMap<String, String>,
 ) {
-    let archive_folders = payload["data"]["folders"]
-        .as_array()
-        .map(Vec::len)
-        .unwrap_or(0);
-    assert!(
-        archive_folders > 0,
-        "[{name}] FOLDER_CLEAR_DIVERGENCE names a case whose archive carries no folders — \
-         the pin would be vacuous. Re-classify the case or fix the payload."
-    );
-
-    let (got_body, got_folder_warnings) = split_folder_warnings(got_result);
-    let (want_body, want_folder_warnings) = split_folder_warnings(want_result);
-    let count_of = |body: &Value| body["imported"]["documentStoreFolders"].as_u64();
-
-    // v4: every folder insert collides, so nothing is counted and every one is
-    // reported.
-    if want_folder_warnings.len() != archive_folders || count_of(&want_body) != Some(0) {
-        failures.push(format!(
-            "[{name}] v4 has CONVERGED (or moved): expected {archive_folders} folder-collision \
-             warnings and documentStoreFolders=0, got {} warnings and {:?}. If v4 now clears its \
-             folders too, delete FOLDER_CLEAR_DIVERGENCE and let these cases be plain equalities.",
-            want_folder_warnings.len(),
-            count_of(&want_body)
-        ));
+    if !ANNOTATION_SWEEP_PENDING_P4D53.contains(&name) {
+        return;
     }
-    // v5: the store was emptied first, so the archive's tree lands whole.
-    if !got_folder_warnings.is_empty() || count_of(&got_body) != Some(archive_folders as u64) {
-        failures.push(format!(
-            "[{name}] v5 did NOT import the archive's folders cleanly: {} collision warning(s), \
-             documentStoreFolders={:?} (expected {archive_folders}). The ruled overwrite-clear is \
-             not working — see `overwrite_clear_mount`.",
-            got_folder_warnings.len(),
-            count_of(&got_body)
-        ));
-    }
-
-    // The rows themselves: v4's are the survivors, v5's are all freshly written.
-    let want_survivors = surviving_folder_rows(want_state, literals);
-    let got_survivors = surviving_folder_rows(got_state, literals);
-    if want_survivors == 0 {
-        failures.push(format!(
-            "[{name}] v4 kept NO pre-existing folder row — the divergence is over on v4's side; \
-             retire FOLDER_CLEAR_DIVERGENCE."
-        ));
-    }
-    if got_survivors != 0 {
-        failures.push(format!(
-            "[{name}] v5 kept {got_survivors} pre-existing folder row(s) — the overwrite-clear \
-             did not claim the whole store."
-        ));
-    }
-
-    let got_labels = folder_labels(got_state);
-    let want_labels = folder_labels(want_state);
-    assert!(
-        !got_labels.is_empty() && !want_labels.is_empty(),
-        "[{name}] no folder rows on one side — the label normalization is vacuous."
-    );
-    normalize_folder_rows(got_state);
-    normalize_folder_rows(want_state);
-
-    // The counts and warnings are now pinned above; zero them so the rest of the
-    // body is still compared for equality.
-    let blank = |mut b: Value| {
-        if let Some(v) = b
-            .get_mut("imported")
-            .and_then(|i| i.get_mut("documentStoreFolders"))
-        {
-            *v = Value::String("<folder-count>".to_string());
-        }
-        b
+    let take = |state: &mut StateDump| -> usize {
+        state
+            .get_mut("main")
+            .and_then(|t| t.remove("conversation_annotations"))
+            .map(|rows| rows.len())
+            .unwrap_or(0)
     };
-    (blank(got_body), blank(want_body), got_labels, want_labels)
+    let got = take(got_state);
+    let want = take(want_state);
+    if got <= want {
+        failures.push(format!(
+            "[{name}] main.conversation_annotations no longer diverges (v5 {got} vs v4 {want}) — \
+             P4.D53's per-chat annotation sweep has landed in v5's chats::delete. Remove \
+             ANNOTATION_SWEEP_PENDING_P4D53 and let this table be a plain equality again."
+        ));
+    }
 }
 
 struct Normalizer {
@@ -987,140 +707,40 @@ fn diff_states(name: &str, got: &StateDump, want: &StateDump, failures: &mut Vec
 const IDENTITY_ID_1: &str = "af1d0000-0000-4000-8000-000000000001";
 const IDENTITY_ID_2: &str = "af1d0000-0000-4000-8000-000000000002";
 
-/// ## ⚠ RULED DIVERGENCE (P4.33, 2026-08-04) — a store's identity is its ID
+/// ## Store identity is the ID (P4.33 ruling; v4 CONVERGED in bug 11, `3bb664f0`)
 ///
-/// v4 matches an archive's store to the instance by NAME
-/// (`import-document-stores.ts:55-57`) and mints a fresh id on create
-/// (`:85-105`). Together those mean an archive can never be re-recognized by
-/// identity: it claims whatever store wears its name today, and a rename on
-/// either side redirects it onto a stranger. The 2026-08-04 ruling makes the id
-/// the identity, the name display only, and has import CREATE preserve the
-/// archive's id — see
-/// `services::quilltap_import::document_stores::import_document_stores`.
+/// v4 used to match an archive's store to the instance by NAME
+/// (`import-document-stores.ts:55-57`) and mint a fresh id on create (`:85-105`),
+/// so an archive could never be re-recognized by identity: it claimed whatever
+/// store wore its name today, and a rename on either side redirected it onto a
+/// stranger. The 2026-08-04 ruling made the id the identity, the name display
+/// only, and had import CREATE preserve the archive's id — a fix v5 made first
+/// (`services::quilltap_import::document_stores::import_document_stores`). v4 has
+/// since adopted it (`import-document-stores.ts`: `byId` + `preserveArchiveId`),
+/// so the two engines now produce the SAME classified end-state, and the
+/// `store_identity_*` arms are PLAIN equalities.
 ///
-/// Each arm's END STATE is written out per engine, so BOTH directions are
-/// pinned: v5's must be the ruled behavior, v4's must still be the leaked one.
 /// The dump is `stores` (store class + name) and `docs` (which store each
 /// document landed in), the classes being `archive-1` / `archive-2` (the id the
 /// payload carried) / `minted` — which is exactly the claim, stated as data:
-/// *did the import land on the store the archive names, or on a new one?*
+/// *did the import land on the store the archive names, or on a new one?* Each
+/// arm asserts at least one store wears a preserved archive id, so a
+/// classification that silently called everything `minted` (an oracle-side id
+/// drift) cannot make the equality vacuous.
 ///
-/// **Two consequences worth knowing, both visible below rather than argued.**
-/// `store_identity_same_name_new_id` ends with v5 holding two stores both named
-/// `Identity Store`: the overwrite branch writes the archive's name onto the
-/// store it matched by id, and v4 does the same — it simply never reaches the
-/// case, having matched on that name to begin with. Nothing in this port
+/// **Two consequences worth knowing.** `store_identity_same_name_new_id` ends
+/// with two stores both named `Identity Store`: the overwrite branch writes the
+/// archive's name onto the store it matched by id. Nothing in this port
 /// uniquifies a name on UPDATE, and the ruling speaks only of CREATE, so the
-/// duplicate stands. It is a tolerated state, not a corruption: store names have
-/// no unique index (by design — restore must recreate legacy rows verbatim),
-/// `doc_edit::uri_producers` already falls back to the UUID form when
-/// `count_by_name > 1`, and `db::mount_index_case_repair` renames the loser on
-/// the next boot. And `store_identity_skip_by_id` shows `skip` is not a no-op
-/// for a recognized store: v4 and v5 both pour the archive's documents into
-/// whatever store the id map points at, so v5 adds `three.md` to the store it
-/// recognized where v4 builds a second store to hold it.
-fn store_identity_expectations(name: &str) -> Option<(Value, Value)> {
-    // (v5 — the ruled behavior, v4 — the leaked behavior)
-    let out = match name {
-        // A rename on the TARGET. v4 loses its own archive's store and builds a
-        // second; v5 finds it by id and overwrites, restoring the archive name.
-        "store_identity_target_renamed" => (
-            json!({
-                "stores": [{"id": "archive-1", "name": "Identity Store"}],
-                "docs": [{"store": "archive-1", "storeName": "Identity Store",
-                          "relativePath": "one.md"}],
-            }),
-            json!({
-                "stores": [
-                    {"id": "minted", "name": "Identity Store"},
-                    {"id": "minted", "name": "Identity Store (renamed by hand)"},
-                ],
-                "docs": [
-                    {"store": "minted", "storeName": "Identity Store",
-                     "relativePath": "one.md"},
-                    {"store": "minted", "storeName": "Identity Store (renamed by hand)",
-                     "relativePath": "one.md"},
-                ],
-            }),
-        ),
-        // A rename in the ARCHIVE. Same store, new display name: v5 overwrites
-        // and renames; v4 sees a stranger and creates.
-        "store_identity_archive_renamed" => (
-            json!({
-                "stores": [{"id": "archive-1", "name": "Identity Store Under A New Name"}],
-                "docs": [{"store": "archive-1", "storeName": "Identity Store Under A New Name",
-                          "relativePath": "two.md"}],
-            }),
-            json!({
-                "stores": [
-                    {"id": "minted", "name": "Identity Store"},
-                    {"id": "minted", "name": "Identity Store Under A New Name"},
-                ],
-                "docs": [
-                    {"store": "minted", "storeName": "Identity Store",
-                     "relativePath": "one.md"},
-                    {"store": "minted", "storeName": "Identity Store Under A New Name",
-                     "relativePath": "two.md"},
-                ],
-            }),
-        ),
-        // A stranger's archive that merely SHARES the name: v4 claims the
-        // existing store and overwrites a store it has no business touching; v5
-        // creates alongside under a uniquified name, keeping its own `one.md`.
-        // The THIRD step is the convergence property — re-importing that same
-        // stranger's archive finds what the second step created, by id, instead
-        // of multiplying. (It also renames it back, hence the two same-named
-        // stores; see the doc comment.)
-        "store_identity_same_name_new_id" => (
-            json!({
-                "stores": [
-                    {"id": "archive-1", "name": "Identity Store"},
-                    {"id": "archive-2", "name": "Identity Store"},
-                ],
-                "docs": [
-                    {"store": "archive-1", "storeName": "Identity Store",
-                     "relativePath": "one.md"},
-                    {"store": "archive-2", "storeName": "Identity Store",
-                     "relativePath": "two.md"},
-                ],
-            }),
-            json!({
-                "stores": [{"id": "minted", "name": "Identity Store"}],
-                "docs": [{"store": "minted", "storeName": "Identity Store",
-                          "relativePath": "two.md"}],
-            }),
-        ),
-        // `skip` maps by id too.
-        "store_identity_skip_by_id" => (
-            json!({
-                "stores": [{"id": "archive-1", "name": "Identity Store"}],
-                "docs": [
-                    {"store": "archive-1", "storeName": "Identity Store",
-                     "relativePath": "one.md"},
-                    {"store": "archive-1", "storeName": "Identity Store",
-                     "relativePath": "three.md"},
-                ],
-            }),
-            json!({
-                "stores": [
-                    {"id": "minted", "name": "Identity Store"},
-                    {"id": "minted", "name": "Identity Store With Another Face"},
-                ],
-                "docs": [
-                    {"store": "minted", "storeName": "Identity Store",
-                     "relativePath": "one.md"},
-                    {"store": "minted", "storeName": "Identity Store With Another Face",
-                     "relativePath": "three.md"},
-                ],
-            }),
-        ),
-        _ => return None,
-    };
-    Some(out)
-}
-
-/// Fold one side's raw dump into the classified shape the expectations are
-/// written in. `pre` is the PRE-import store id set, so a fixture store that
+/// duplicate stands — a tolerated state, not a corruption (store names have no
+/// unique index; `doc_edit::uri_producers` falls back to the UUID form when
+/// `count_by_name > 1`; `db::mount_index_case_repair` renames the loser on the
+/// next boot). And `store_identity_skip_by_id` shows `skip` is not a no-op for a
+/// recognized store: both engines pour the archive's documents into whatever
+/// store the id map points at.
+///
+/// Fold one side's raw dump into the classified shape. `pre` is the PRE-import
+/// store id set, so a fixture store that
 /// somehow matched the name filter would be named rather than called `minted`.
 fn classify_identity_dump(stores: &[Value], docs: &[Value], pre: &HashSet<String>) -> Value {
     let class = |id: &str| -> &'static str {
@@ -1150,33 +770,10 @@ fn classify_identity_dump(stores: &[Value], docs: &[Value], pre: &HashSet<String
     })
 }
 
-/// Replay a `store_identity_*` arm's steps through the Rust engine and check
-/// BOTH engines against their recorded end-states.
+/// Replay a `store_identity_*` arm's steps through the Rust engine and check the
+/// v5 end-state equals v4's — a PLAIN equality since v4 converged (bug 11).
 fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<String>) {
-    let Some((want_v5, want_v4)) = store_identity_expectations(name) else {
-        failures.push(format!(
-            "[{name}] no recorded end-states — every store_identity arm must pin BOTH engines; \
-             see `store_identity_expectations`."
-        ));
-        return;
-    };
-
     let steps = case["steps"].as_array().cloned().unwrap_or_default();
-    // The ids the classification keys on must really be in the payloads: an
-    // oracle-side edit that moved them would otherwise classify every store as
-    // `minted` and quietly turn the v5 expectation into a lie.
-    let steps_text = serde_json::to_string(&steps).unwrap_or_default();
-    let want_text = want_v5.to_string();
-    for (id, class) in [(IDENTITY_ID_1, "archive-1"), (IDENTITY_ID_2, "archive-2")] {
-        if want_text.contains(class) && !steps_text.contains(id) {
-            failures.push(format!(
-                "[{name}] the expectation names `{class}` but the oracle's steps do not carry \
-                 {id} — the harness's IDENTITY_ID_* constants have drifted from \
-                 `system-import-execute.test.ts`."
-            ));
-            return;
-        }
-    }
 
     let scratch = fresh_fixture(name);
     let pre_ids: HashSet<String> = read_state(&scratch)
@@ -1257,26 +854,32 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
     let oracle_docs = case["docs"].as_array().cloned().unwrap_or_default();
     let got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
 
-    if got_v5 != want_v5 {
+    // The classification must actually key on a PRESERVED archive id — otherwise
+    // everything folds to `minted` and the equality below is vacuous. Every arm's
+    // ruled end-state lands the archive's documents in a store wearing its own
+    // archive id, so at least one store class must be `archive-1`/`archive-2`.
+    let has_archive_class = got_v5["stores"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .any(|s| matches!(s["id"].as_str(), Some("archive-1") | Some("archive-2")))
+        })
+        .unwrap_or(false);
+    if !has_archive_class {
         failures.push(format!(
-            "[{name}] v5's end-state is NOT the ruled one\n  rust:     {got_v5}\n  \
-             expected: {want_v5}\nSee `store_identity_expectations` and \
-             `import_document_stores`."
+            "[{name}] no store wears a preserved archive id — either the import did not preserve \
+             the archive's id (a v5 regression) or the harness's IDENTITY_ID_* constants drifted \
+             from `system-import-execute.test.ts`; the equality below would be vacuous."
         ));
     }
-    if got_v4 != want_v4 {
+
+    // Bug 11 convergence: both engines match by id and preserve the archive id,
+    // so their classified end-states are EQUAL. If v4 has regressed to matching
+    // by name this reddens with the two dumps side by side.
+    if got_v5 != got_v4 {
         failures.push(format!(
-            "[{name}] v4's end-state has MOVED — it may have converged on matching by id\n  \
-             oracle:   {got_v4}\n  expected: {want_v4}\nIf v4 now matches by id and preserves \
-             archive store ids, retire this divergence: delete these arms' per-engine \
-             expectations, compare the two dumps for equality instead, and take the twin off \
-             the post-5.0 v4-side list."
-        ));
-    }
-    if got_v5 == got_v4 {
-        failures.push(format!(
-            "[{name}] both engines produced the SAME end-state — this arm is no longer a \
-             divergence and cannot fail for the right reason. Re-classify it."
+            "[{name}] the two engines' end-states diverge — bug 11 (store identity is the ID) \
+             was expected to have converged\n  rust:   {got_v5}\n  oracle: {got_v4}"
         ));
     }
 }
@@ -1409,29 +1012,27 @@ fn system_import_execute_state_equivalence() {
     );
 }
 
-/// [P4.31 → P4.33] The `.qtap` overwrite-clear's FOLDER GAP — the semantics
-/// half of the ruled divergence (see [`FOLDER_CLEAR_DIVERGENCE`] for the
-/// round-trip half).
+/// [P4.31 → P4.33 → bug 11] The `.qtap` overwrite-clear's FOLDER behavior —
+/// the semantics half, now a PLAIN equality.
 ///
 /// Two imports into one store: the first seeds `alpha` + `alpha/beta`, the
-/// second overwrites it with an archive carrying only `gamma`.
-/// `importDocumentStores`' overwrite branch clears documents, blobs, chunks and
-/// files but not `doc_mount_folders` (`import-document-stores.ts:62-67`), so v4
-/// ends with all THREE folders and the two the archive no longer mentions are
-/// permanent — stale husks, the orphan shape P4.31 closed at the delete end.
+/// second overwrites it with an archive carrying only `gamma`. v4's overwrite
+/// branch used to clear documents, blobs, chunks and files but NOT
+/// `doc_mount_folders`, leaving all THREE folders — stale husks, the orphan
+/// shape P4.31 closed at the delete end.
 ///
 /// P4.31 measured this and escalated rather than guessing, because clearing the
 /// table also takes the scaffolding a vault / project store is provisioned with
 /// (`Outfits` / `Prompts` / `Scenarios` / `Wardrobe` / `files` / `images`).
-/// **The ruling (human, 2026-08-04) settles it: overwrite means overwrite.** A
+/// **The ruling (human, 2026-08-04) settled it: overwrite means overwrite.** A
 /// real export always carries the scaffolding back — v4's own exporter dumps
 /// every folder row (`lib/export/ndjson-writer.ts:513-524`) — so the
 /// scaffold-loss arm is an archive shape no real export produces, and
-/// round-trip fidelity wins.
+/// round-trip fidelity wins. v5 made this fix first; v4 has since CONVERGED
+/// (`3bb664f0`, bug 11: `import-document-stores.ts` clears folders too).
 ///
-/// The divergence is asserted in BOTH directions: v5 must end with EXACTLY the
-/// second archive's folders, v4 must end with those plus the stale ones. If v4
-/// converges the second assertion says so and names the retirement.
+/// So both sides now end with EXACTLY the second archive's folders — asserted on
+/// each engine (a regression on either side reddens with the paths side by side).
 ///
 /// Everything else on this case is still compared for equality — both result
 /// bodies, the store count, and each link with the PATH of the folder it
@@ -1534,10 +1135,12 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
         ));
     }
 
-    // ── the ruled divergence, asserted in both directions ───────────────────
+    // ── the overwrite-clear folders (a PLAIN equality since bug 11 converged) ──
     //
-    // The archive's own folder is `gamma`; anything else in the store survived
-    // an overwrite that replaced every file beneath it.
+    // The archive's own folder is `gamma`; an overwrite that means overwrite
+    // leaves exactly the archive's tree, with no husks. v5 made this fix first;
+    // v4 has adopted it (`import-document-stores.ts` clears folders too), so both
+    // sides must now end with EXACTLY the archive's folders.
     let paths = |v: &Value| -> Vec<String> {
         v.as_array()
             .map(|a| {
@@ -1548,15 +1151,7 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
             .unwrap_or_default()
     };
     let archive_paths = second_payload_folder_paths(&case["exportData"]);
-    let stale = |rows: &Value| -> Vec<String> {
-        paths(rows)
-            .into_iter()
-            .filter(|p| !archive_paths.contains(p))
-            .collect()
-    };
 
-    // v5: the overwrite claimed the whole store, so exactly the archive's tree
-    // is left — no husks, and every path the archive DOES carry is present.
     let mut v5_paths = paths(&folders);
     v5_paths.sort();
     if v5_paths != archive_paths {
@@ -1566,16 +1161,14 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
         ));
     }
 
-    // v4: the husks are still there. When that stops being true, v4 has adopted
-    // the same repair and the whole divergence retires.
-    let v4_stale = stale(&case["folders"]);
-    if v4_stale.is_empty() {
-        bad(
-            "v4 kept NO folders the archive does not carry — it has CONVERGED on the ruled \
-             behavior. Retire this divergence: restore the plain equality here, drop \
-             FOLDER_CLEAR_DIVERGENCE, and take the twin off the post-5.0 v4-side list."
-                .to_string(),
-        );
+    let mut v4_paths = paths(&case["folders"]);
+    v4_paths.sort();
+    if v4_paths != archive_paths {
+        bad(format!(
+            "v4 must end with EXACTLY the archive's folders {archive_paths:?}, got {v4_paths:?} \
+             — if v4 has REGRESSED to keeping stale folder husks, restore the both-directions \
+             divergence pin (see the git history for bug 11's FOLDER_CLEAR_DIVERGENCE)."
+        ));
     }
 }
 
@@ -1665,40 +1258,15 @@ fn run_execute_case(
     let mut want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
 
-    // [P4.33] The two ruled divergences, each asserted in both directions and
-    // then subtracted from the comparands — never carved out.
-    let (got_body, want_body, mut got_labels, mut want_labels) =
-        if FOLDER_CLEAR_DIVERGENCE.contains(&name) {
-            apply_folder_clear_divergence(
-                name,
-                &case["exportData"],
-                &results[0].to_value(),
-                &case["result"],
-                &mut got_state,
-                &mut want_state,
-                &literals,
-                failures,
-            )
-        } else {
-            (
-                results[0].to_value(),
-                case["result"].clone(),
-                BTreeMap::new(),
-                BTreeMap::new(),
-            )
-        };
-    if STORE_ID_PRESERVED_ON_CREATE.contains(&name) {
-        let (g, w) = apply_store_create_divergence(
-            name,
-            &case["exportData"],
-            &pre,
-            &got_state,
-            &want_state,
-            failures,
-        );
-        got_labels.extend(g);
-        want_labels.extend(w);
-    }
+    // [P4.33 → bug 11] The folder-clear and store-create divergences RETIRED:
+    // v4 converged, so every whole-state arm is a plain equality (no folder or
+    // store labelling, no comparand subtraction).
+    let (got_body, want_body) = (results[0].to_value(), case["result"].clone());
+    let got_labels: BTreeMap<String, String> = BTreeMap::new();
+    let want_labels: BTreeMap<String, String> = BTreeMap::new();
+
+    // ⚠ bug 10's per-chat annotation sweep is P4.D53's — carve it out until then.
+    carve_out_pending_annotation_sweep(name, &mut got_state, &mut want_state, failures);
 
     compare_execute(
         name,
@@ -1855,27 +1423,13 @@ fn run_route_case(
             if case.get("state").filter(|v| !v.is_null()).is_some() {
                 let mut got_state = read_state(&scratch);
                 let mut want_state = state_from_value(&case["state"]);
-                // [P4.33] Same ruled divergence as the execute arms.
-                let (got_body, want_body, got_labels, want_labels) =
-                    if FOLDER_CLEAR_DIVERGENCE.contains(&name) {
-                        apply_folder_clear_divergence(
-                            name,
-                            &export_data,
-                            &got_body,
-                            body,
-                            &mut got_state,
-                            &mut want_state,
-                            &literals,
-                            failures,
-                        )
-                    } else {
-                        (
-                            got_body.clone(),
-                            body.clone(),
-                            BTreeMap::new(),
-                            BTreeMap::new(),
-                        )
-                    };
+                // [P4.33 → bug 11] The folder-clear divergence RETIRED — v4
+                // converged, so `route_replace_remap` is a plain equality.
+                let (got_body, want_body) = (got_body.clone(), body.clone());
+                let got_labels: BTreeMap<String, String> = BTreeMap::new();
+                let want_labels: BTreeMap<String, String> = BTreeMap::new();
+                // ⚠ bug 10's per-chat annotation sweep is P4.D53's — carve out.
+                carve_out_pending_annotation_sweep(name, &mut got_state, &mut want_state, failures);
                 compare_execute(
                     name,
                     &got_body,

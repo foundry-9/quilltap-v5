@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.D51 (bug 11): the reference app now recognizes an imported `.qtap`
+archive's document store by its ID (not its display name), preserves that
+ID on create, and clears folders on overwrite — all fixes this port made
+first. The import-execute differential's both-directions divergence
+carve-outs (store identity, folder clear) are retired to plain equalities.
+One table stays carved out with a self-retiring tripwire: the per-chat
+`conversation_annotations` sweep on chat delete is a sibling lane's (P4.D53)
+change, so the two converge at unification.
+
 P4.D51 (bug 15): the reference app now re-chunks hard-linked file siblings
 when one location is rewritten, where before its sibling-reindex pass was
 dead code and the other locations served stale search chunks. This port
