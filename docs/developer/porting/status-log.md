@@ -59084,3 +59084,103 @@ sweep), `…-p4.40-venue-false-positives.json` (the 16, run from a
 
 Versions: quilltap-core 0.0.476 (test module only), SPA 0.5.413 (e2e
 specs only). No other crate touched.
+
+## Round planned — the fallback + wire + embedding-profiles round (P4.41 ∥ P4.42 ∥ P4.9H2A ∥ P4.9H2B), 2026-08-06
+
+**The drift-check ran first: v4 HEAD is `3adefeba`, ZERO commits past
+the baseline, tree clean — the first planning pass in several rounds
+with no drift to classify.** Oracles may regenerate straight from the
+checkout; every order still carries the pin-on-drift instruction.
+
+Four lanes, from the three sources the round lifecycle hands over:
+the two human-ruled "NEEDS AN ORDER" items out of the 2026-08-06
+dogfood pass, and the top standing pool.
+
+- **P4.41 — the OpenAI conversation-chaining fallback (dogfood
+  finding #69, human-ruled to an order).** Restore v4's retry-once-
+  with-full-input at `WireStreamingProvider::stream_message`'s
+  pre-stream Err arm (`streaming_provider.rs:330`), gated on
+  `previous_response_id.is_some()`. Survey confirmed: the body split
+  is already correct (`build_openai_body`'s else arm produces the
+  byte-identical full-input request), the blast radius is exactly
+  the primary-stream turn (`orchestrator.rs:2089` is the only
+  non-None setter), and the wedge mechanic is real (a failed turn
+  preserves a partial, writes no new `resp_` id). The fake transport
+  is single-shot and needs a per-call script; the byte pin lives in
+  `tool_wire_call_site.rs`; the tier-3 case rides
+  `primary_stream_tier3_equivalence` (its canned-stream key excludes
+  the id — convenient for fail-then-succeed, but the id-drop proof
+  belongs to the wire tests). Collision-free.
+- **P4.42 — the Serper web-search wire (the 2026-08-06 standing
+  note).** Not a port: the whole implementation is on main and
+  differential-green but `with_web_search_provider` and
+  `ProviderIo::web_search_provider()` have zero callers, so the
+  inventory advertises `search_web` while every call refuses. The
+  lane adds the `EngineAssembly.web_search` seam (the
+  outfit_llm_choose four-step recipe), a host `DbSearchApiKeys`
+  (none exists — and `api_keys.rs` has no active-key-by-provider
+  finder), and BOTH consumption sites (the in-chat
+  `OrchestratorDeps` thread at `orchestrator.rs:2162` + the
+  `ChatSpine::tool_runner()` chain covering Brahma/Carina/Run-Tool).
+  The bool and the provider must derive from ONE check. e2e is the
+  repo's first mocked non-LLM external HTTP provider
+  (`mock-serper.ts` + an additive host-side base-URL override; the
+  hard-coded production URL stays pinned by the existing wire
+  differential). Survey correction recorded: the factory type is
+  `ProviderIo`, not the standing note's `HostProviders`. 💸 the
+  live-key smoke is banked for the next dogfood pass.
+- **P4.9H2A ∥ P4.9H2B — embedding-profiles management, server ∥ SPA
+  (the `p4.9h` pool's embedding slice).** Server: the eleven-verb +
+  REST family over the already-ported repo (which needs
+  `unset_all_defaults`, `find_by_name`, and nullable-to-NULL setters
+  — its own module doc names the gaps), the P4.d27-banked PUT
+  trigger matrix (doctrine comment carried; refit/reapply/reindex
+  splits proven by `background_jobs` + `embedding_status` state
+  diffs), the 435-line `reapply-profile.ts` port with its invariant
+  list (decoded-dim, VACUUM-INTO backups, refuse-to-grow, degenerate
+  skip) registered in the host.rs seam-free block, plus tier-2
+  memory-dedup (synchronous inline, no LLM — union-find over
+  dim-grouped cosine) and conversation-summaries regen (which
+  re-mirrors existing summaries into vaults — it regenerates
+  nothing; the v4 fork/host-RPC shape maps to the locked v5
+  non-port). `embeddingProfileFetchModels` (live provider call)
+  refusal-arms per the imageProfile precedent. New committed
+  `embedding-profiles-{main,mount}.db` family. SPA: the three
+  deferred cards named in `memory-tab.ts:17-20` (Embedding Profiles
+  with ProfileModal + the "Re-embed Everything?" follow-up + the
+  four two-step-confirm actions; Memory Deduplication; Regenerate
+  Conversation Summaries), v4's card order and sectionIds, v4's
+  form gap preserved deliberately (no truncation inputs — the
+  matrix's Branch B stays API-only, recorded loud), plus the
+  `p4.9o` rider (the Scriptorium three-state badge + click-to-
+  re-render — the server chain is fully live; only the salon-card
+  render and a thin client method are missing). The §1 wire
+  contract is pinned verbatim and identically in both orders.
+
+**The collision plan (pinned in the orders' Ownership sections):**
+P4.42 and P4.9H2A share `quilltap-host/src/host.rs` in disjoint
+named blocks (:468-510 seam-free registry = H2A; :515-560 destructure
++ :638-776 assembly literal = P4.42) — the 16-tuple is expected to
+need a hand-merge at unification. H2A stays OUT of `spine.rs`
+entirely (both its handlers are seam-free by design), which removes
+the one genuine adjacency the survey flagged (~:2844/:2845).
+`api/engine.rs` splits by named hunks (P4.42 the assembly seam, H2A
+the dispatch arms); `api/types.rs` is H2A-only; `core-contract.ts`/
+`core-client.ts` are H2B-only. P4.42 owns the two salon e2e specs +
+`env.ts`'s port block; H2B owns the settings specs.
+
+**Deliberately left out of the round:** the rest of the `p4.9h2`
+pool (prompt library, the global Core Whisper card, tag pickers,
+memory editor/anchoring, memory-creation dialog — a later round);
+`p4.9i2` (the help surface; its bank keeps growing); `p4.9l` (the
+composer-toolbar slice); the BUILTIN TF-IDF provider-manifest
+decision (a human product call — P4.9H2A is ordered NOT to disturb
+the pinned Almanack omission); another dogfood pass (one just ran
+2026-08-06; the owed 💸 queue — P4.D49 budget/attribution, Almanack
+first report, live Taboo, P4.42's live-key smoke — waits for this
+round's surfaces to land so one pass covers them all).
+
+Baseline versions at planning: core 0.0.482, harness 0.0.408, host
+0.0.60, web 0.0.62, cli 0.0.5, tauri 0.0.6, SPA 0.5.416. Bump
+ownership is assigned per order; the unifier recounts as base +
+total bumps.

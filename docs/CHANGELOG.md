@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the next porting round and committed four work orders (docs
+only, no code change): restore the OpenAI conversation-chaining
+fallback that finding #69 showed was dropped in the port (P4.41),
+connect the already-ported Serper web search to the running engine so
+the search tool stops advertising while refusing (P4.42), and port the
+embedding-profiles management surface — profile CRUD with the update
+trigger matrix, the profile re-apply job, memory deduplication, and
+conversation-summary regeneration — as a server lane and an SPA lane
+(P4.9H2A/P4.9H2B, the SPA lane also carrying the chat-card Scriptorium
+badge). Round record in the status log; no version bumps.
+
 Fixed two defects in the system report ("The Almanack"), found while
 reviewing the report against real data. The "Cast sizes" table now
 groups conversations by their number of participants instead of listing
