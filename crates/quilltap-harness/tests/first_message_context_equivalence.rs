@@ -17,12 +17,17 @@
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-fmc-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/first-message-context.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/first-message-context.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-fmc-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-fmc-mount.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-first-message-context-fixture.ts
 //!   QT_FIXTURE_FMC_MAIN=/tmp/qt-fmc-main.db QT_FIXTURE_FMC_MOUNT=/tmp/qt-fmc-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-first-message-context.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- first-message-context
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" \
+//!       -- "first-message-context\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_FMC=/tmp/oracle-first-message-context.ndjson \
 //!   QT_FIXTURE_FMC_MAIN=/tmp/qt-fmc-main.db QT_FIXTURE_FMC_MOUNT=/tmp/qt-fmc-mount.db \

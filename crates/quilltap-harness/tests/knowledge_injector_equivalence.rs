@@ -17,12 +17,17 @@
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-knowledge-injector-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/knowledge-injector.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/knowledge-injector.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-knowledge-injector-fixture.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-knowledge-injector-fixture.ts
 //!   QT_FIXTURE_KNOWLEDGE=/tmp/qt-knowledge-injector-fixture.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-knowledge-injector.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- knowledge-injector
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" \
+//!       -- "knowledge-injector\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_KNOWLEDGE=/tmp/oracle-knowledge-injector.ndjson \
 //!   QT_FIXTURE_KNOWLEDGE=/tmp/qt-knowledge-injector-fixture.db \

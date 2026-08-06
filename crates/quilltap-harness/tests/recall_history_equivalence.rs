@@ -16,7 +16,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/recall-history.ts \
 //!     > /tmp/oracle-recall-history.ndjson
 //! Run:
-//!   QT_ORACLE_RECALL_HISTORY=/tmp/oracle-recall-history.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_RECALL_HISTORY=/tmp/oracle-recall-history.ndjson \
+//!     cargo test -p quilltap-harness --test recall_history_equivalence
 
 use std::collections::HashSet;
 
