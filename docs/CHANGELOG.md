@@ -242,6 +242,10 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
   off the projected `isPaused`/`allLLMPauseTurnCount` (P4.D53) and rides
   the existing chain-complete refetch, so it also surfaces on loading an
   already-paused room.
+- Tier 2: an e2e beat proving a Story's-Clock choice survives a reload
+  is authored, gated behind `PROJECTION_ROUNDTRIP_SERVER_LANDED` until
+  P4.D53's projection lands. The all-LLM-pause live-opener beat is
+  deferred loud (needs a seeded paused all-LLM fixture).
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

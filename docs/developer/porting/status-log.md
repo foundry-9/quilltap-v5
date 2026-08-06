@@ -60995,3 +60995,15 @@ the §1 name-for-name contract diff at unification.
   all-LLM, already-`isPaused`, zero-USER-message chat — a P4.D53 fixture +
   server-projection dependency this SPA-only branch cannot stand up. Covered at
   spec level; named for a follow-up once P4.D53's fixtures land.
+
+- **Tier-2 e2e beats — item 8 authored (gated), item 9 deferred loud.** Item 8
+  (projection round-trip): a new `salon-sidebar-flow.spec.ts` beat flips the
+  Story's Clock to narrative, RELOADS the page (a fresh chat GET), reopens the
+  Chat section, and asserts the select still reads 'narrative' — the live proof
+  that bug 22's projection survives a reload. Gated behind
+  `PROJECTION_ROUNDTRIP_SERVER_LANDED = false` because this SPA-only branch's
+  server does not emit `timelineMode` yet (it lands with P4.D53); the unifier
+  flips the constant once P4.D53's projection is on the branch
+  ([[e2e-playwright-traps]] §7). Item 9 (AllLLMPause live opener): deferred loud
+  — see the bug-37 record (needs a seeded paused, all-LLM, zero-USER-message
+  chat, a P4.D53 fixture dependency). Component + helper specs cover the modal.

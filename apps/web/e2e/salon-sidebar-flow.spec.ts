@@ -4,6 +4,16 @@ import { E2E_PASSPHRASE } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 
 /**
+ * ACTIVATE-AT-UNIFY (P4.D54 bug 22 / P4.D53 §1): the chat GET now projects the
+ * four controlled sidebar selects (timelineMode, alertCharactersOfLanternImages,
+ * showThinking, answerConfirmationOverride), so a saved value survives a reload
+ * instead of snapping back. This SPA-only lane's server does not emit them yet —
+ * they land with P4.D53. Flip to `true` at unification once P4.D53's projection
+ * is on the branch. See [[e2e-playwright-traps]] §7 (gate by NAMED constant).
+ */
+const PROJECTION_ROUNDTRIP_SERVER_LANDED = false;
+
+/**
  * P4.9H1 — the Salon chat sidebar (v4 `components/chat/ChatSidebar.tsx`), and
  * above all **the Story's Clock**, the episodic timeline-mode switch the whole
  * round exists for.
@@ -153,6 +163,46 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
       timeout: 15_000,
     });
     expect(await readTimelineMode(page, chatId)).toBe('realtime');
+  });
+
+  /**
+   * P4.D54 bug 22 — the Story's Clock now survives a reload, because the chat GET
+   * projects `timelineMode` (P4.D53). Distinct from the write-echo test above: it
+   * flips the clock, reloads the page (a fresh GET), reopens the Chat section, and
+   * asserts the select still shows the saved value. Gated until P4.D53 lands.
+   */
+  test('the Story’s Clock survives a reload once the column is projected (bug 22)', async ({
+    page,
+  }) => {
+    test.skip(
+      !PROJECTION_ROUNDTRIP_SERVER_LANDED,
+      'awaits P4.D53 chat-GET projection of timelineMode (flip PROJECTION_ROUNDTRIP_SERVER_LANDED at unification)',
+    );
+    await openSoloVoyage(page);
+    await openSidebarSection(page, 'Chat');
+
+    const clock = () =>
+      page
+        .locator('qt-chat-section label')
+        .filter({ hasText: 'The Story’s Clock' })
+        .locator('select');
+    await expect(clock()).toBeVisible({ timeout: 10_000 });
+
+    await clock().selectOption('narrative');
+    await expect(page.getByText('The story now keeps its own hours')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // A fresh GET on reload delivers the saved column; the select seeds from it.
+    await page.reload();
+    await openSidebarSection(page, 'Chat');
+    await expect(clock()).toHaveValue('narrative');
+
+    // Leave Solo Voyage on the clock the sibling tests expect.
+    await clock().selectOption('realtime');
+    await expect(page.getByText('The story is back on the clock on the wall')).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   /**
