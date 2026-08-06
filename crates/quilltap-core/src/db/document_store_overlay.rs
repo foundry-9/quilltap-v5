@@ -185,6 +185,27 @@ impl std::fmt::Display for OverlayError {
                 mount_point_id,
                 detail,
             } => {
+                // The character vault carries a DISTINCT message wording from the
+                // project/group document stores: v4's `CharacterVaultUnavailableError`
+                // reads "Character {id} has no usable **vault**
+                // (**characterDocumentMountPointId**=…)", where
+                // `Project`/`GroupStoreUnavailableError` read "has no usable
+                // document store (officialMountPointId=…)". v5 raises one
+                // `OverlayError::Unavailable` for all three, so match v4 at the
+                // one site whose bytes are the user-facing error (and, via
+                // `into_db`, the P4.23 503 body). The character write path
+                // (`vault_character_update::read_current_properties`) is the only
+                // consumer with `entity_label == "character"` — bug 8's #47
+                // convergence made this reachable, so the byte parity now matters.
+                if *entity_label == "character" {
+                    return write!(
+                        f,
+                        "Character {} has no usable vault (characterDocumentMountPointId={}): {}",
+                        id,
+                        mount_point_id.as_deref().unwrap_or("null"),
+                        detail
+                    );
+                }
                 // v4 renders the label CAPITALIZED here ("Project …"/"Group …")
                 // — its overlay config carries both `entityLabel` and
                 // `entityLabelCapitalized`, and the message is built from the

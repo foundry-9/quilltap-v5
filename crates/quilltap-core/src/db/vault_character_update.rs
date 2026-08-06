@@ -23,16 +23,19 @@
 //!     default when GENUINELY ABSENT), overlay only the touched keys, rewrite. The
 //!     untouched keys are preserved — the RMW invariant. A `properties.json` that
 //!     is PRESENT but unparseable REFUSES the patch (`OverlayError::Unavailable`)
-//!     instead of seeding defaults — see [`read_current_properties`]. **This is a
-//!     DELIBERATE DIVERGENCE from v4** (dogfood finding #47): v4's
-//!     `readCharacterVaultProperties` returns `null` on a parse failure and its
-//!     `??`-seed then projects the empty defaults over all six property fields,
-//!     permanently — the exact clobber v4's own `dcd9440a` hardened the
+//!     instead of seeding defaults — see [`read_current_properties`]. This was
+//!     dogfood finding #47, a fix v5 made FIRST: v4's
+//!     `readCharacterVaultProperties` used to return `null` on a parse failure and
+//!     its `??`-seed then projected the empty defaults over all six property
+//!     fields, permanently — the exact clobber v4's own `dcd9440a` hardened the
 //!     group/project bags against but missed for the character vault (the third
 //!     bag of the same shape, and post-cutover the ONLY home those six fields
-//!     have). The v4-side repair is queued; when it lands this becomes an
-//!     ordinary drift re-port and the characters-update corpus's divergence arm
-//!     goes red by design.
+//!     have). **v4 has since CONVERGED** (`13ddc5ee`, bug 8): its new
+//!     `readCharacterVaultPropertiesForWrite` throws `CharacterVaultUnavailableError`
+//!     ("… has no usable vault …: properties.json unparseable: …") on the same
+//!     condition, so both sides now refuse and preserve the corrupt bytes. The
+//!     characters-update corpus is a PLAIN equality on this arm (the refusals are
+//!     byte-compared with the parse-detail tail elided).
 //!   - **physical** (`physicalDescription`): a non-null value writes
 //!     `physical-description.md` + `physical-prompts.json`; a **null** value leaves
 //!     the vault files alone (clearing is a DB-side concern) — matching v4, which
@@ -109,8 +112,8 @@ const PROPERTY_KEYS: &[&str] = &[
 ///
 /// Errors: [`OverlayError::Db`] wraps every real DB failure;
 /// [`OverlayError::Unavailable`] (entity label `character`) is the
-/// present-but-unparseable `properties.json` write refusal — the P4.22
-/// deliberate divergence documented on the module.
+/// present-but-unparseable `properties.json` write refusal — dogfood finding
+/// #47, a fix v5 made first and v4 has since converged to (see the module doc).
 pub fn apply_document_store_write_overlay(
     main: &Connection,
     mount: &Connection,
@@ -447,11 +450,11 @@ fn provision_vault_on_the_fly(
 /// group/project bags; mirrors [`super::document_store_overlay::read_properties`]
 /// including the `properties.json unparseable: <detail>` message form).
 ///
-/// The refusal is a **deliberate divergence from v4**, whose
-/// `readCharacterVaultProperties` still collapses the failure into `null` and
-/// clobbers; see the module doc. The fail-soft READ overlay
-/// (`vault_read_overlay.rs`) is v4-faithful and deliberately untouched — a
-/// corrupt bag costs a read nothing, it is only the write that loses data.
+/// v5 made this refusal first; v4 has since CONVERGED (`13ddc5ee`, bug 8) via
+/// `readCharacterVaultPropertiesForWrite`, so the write path is now a plain
+/// equality. The fail-soft READ overlay (`vault_read_overlay.rs`) is v4-faithful
+/// and deliberately untouched — a corrupt bag costs a read nothing, it is only
+/// the write that loses data.
 fn read_current_properties(
     mount: &Connection,
     mount_point_id: &str,

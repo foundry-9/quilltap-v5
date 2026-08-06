@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.D51 (bug 8): a character whose `properties.json` is present but
+corrupt now fails a save loudly instead of clobbering the six vault-only
+fields — a fix this port made first (finding #47), and the reference app
+has since adopted it, so the two now refuse identically. The refusal
+message matches the reference app's character-vault wording.
+
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52
 scriptorium/memory/almanack, P4.D53 chat-API/attribution server,

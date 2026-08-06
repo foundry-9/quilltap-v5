@@ -26,22 +26,25 @@
 //!     empty-managed defaults on BOTH sides (P4.D29's Epsilon arm for the
 //!     character vault — a fix that refused on absence would break
 //!     provisioning). Covered by the `afterOps` snapshot diff.
-//!   - **The corrupt arm (A PINNED DIVERGENCE, both directions):** malformed
+//!   - **The corrupt arm (PLAIN equality since v4 converged):** malformed
 //!     bytes are planted through the REAL `write_database_document`
-//!     (`postPlant` snapshot still matches), then the corrupt patch runs:
+//!     (`postPlant` snapshot still matches), then the corrupt patch runs and
+//!     BOTH sides now refuse:
 //!       * v5 REFUSES (`OverlayError::Unavailable`, entity label `character`,
-//!         the `properties.json unparseable: <detail>` message form) and writes
+//!         the `Character … has no usable vault (characterDocumentMountPointId=…):
+//!         properties.json unparseable: <detail>` message form) and writes
 //!         NOTHING — its final state is byte-diffed against the oracle's
 //!         `postPlant` snapshot, and the planted bytes are asserted to still be
 //!         the vault's `properties.json`.
-//!       * v4 TODAY does not throw: its `readCharacterVaultProperties` collapses
-//!         the parse failure into `null` and the `??`-seed CLOBBERS all six
-//!         property fields to defaults. The oracle records `message: null` and
-//!         the clobbered `finalProperties`, and THIS TEST ASSERTS BOTH — so the
-//!         arm goes RED the moment v4 lands its own #47 fix. When that happens,
-//!         reclassify: the divergence becomes an ordinary drift re-port
-//!         (regenerate the oracle, compare the refusals byte-for-byte with the
-//!         parse-detail tail elided per the `UNPARSEABLE_MARKER` convention).
+//!       * v4 CONVERGED (`13ddc5ee`, bug 8 — the fix v5 made first as dogfood
+//!         finding #47): `readCharacterVaultPropertiesForWrite` throws
+//!         `CharacterVaultUnavailableError` on the same condition, so v4 too
+//!         refuses and preserves the planted bytes. The oracle now records the
+//!         thrown `message` + the preserved `finalProperties`, and this test
+//!         compares the two refusals byte-for-byte with the parse-detail tail
+//!         elided (the `UNPARSEABLE_MARKER` convention — v4's detail is V8's
+//!         `JSON.parse` wording, v5's is serde_json; the tails never match, the
+//!         heads now do).
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -154,12 +157,28 @@ const TABLES: &[TableSpec] = &[
     },
 ];
 
-/// The bytes v4's clobber writes for `corruptPatch` = `{"title": "clobber probe"}`
-/// over the defaults seed (`JSON.stringify(next, null, 2)`, literal key order).
-/// This is the MEASURED divergence pin, direction v4: the oracle's
-/// `finalProperties` must equal it exactly. When v4 lands its #47 fix the
-/// planted bytes survive instead and this assertion goes red — reclassify.
-const V4_CLOBBERED_BAG: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"clobber probe\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}";
+/// The one seam the thrown refusals cannot cross: the parse detail. v4's tail is
+/// V8's `JSON.parse` text; v5's is serde's. Everything up to and including
+/// `properties.json unparseable: ` IS compared byte-for-byte (that is v4's
+/// `CharacterVaultUnavailableError` message, same baked ids on both sides); the
+/// tail is truncated to a placeholder and separately asserted non-empty. Mirrors
+/// the `UNPARSEABLE_MARKER` seam in `projects_tier2`/`groups_tier2`.
+const UNPARSEABLE_MARKER: &str = "properties.json unparseable: ";
+
+/// Elide the parse-detail tail after `UNPARSEABLE_MARKER`, asserting it non-empty.
+fn elide_parse_detail(message: &str, side: &str) -> String {
+    let idx = message.find(UNPARSEABLE_MARKER).unwrap_or_else(|| {
+        panic!("{side}: refusal missing the `properties.json unparseable: ` marker: {message:?}")
+    });
+    let head_end = idx + UNPARSEABLE_MARKER.len();
+    assert!(
+        !message[head_end..].trim().is_empty(),
+        "{side}: empty parse detail in {message:?}"
+    );
+    let mut out = message[..head_end].to_string();
+    out.push_str("<parse-detail>");
+    out
+}
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -372,12 +391,13 @@ fn characters_update_tier2_matches_oracle() {
              properties.json — the finding-#47 clobber guard is gone"
         ),
     };
-    // The message head is P4.D29's shape with entity label `character`; the
+    // The message head is v4's `CharacterVaultUnavailableError` shape (v5 now
+    // renders the character vault wording — bug 8's convergence); the
     // parse-detail tail is the stated seam (serde's text) — assert non-empty,
     // don't pin its bytes.
     let head = format!(
-        "Character {character_id} has no usable document store \
-         (officialMountPointId={mount_point_id}): properties.json unparseable: "
+        "Character {character_id} has no usable vault \
+         (characterDocumentMountPointId={mount_point_id}): properties.json unparseable: "
     );
     assert!(
         refusal.starts_with(&head),
@@ -418,25 +438,30 @@ fn characters_update_tier2_matches_oracle() {
         "corrupt arm: a defaults-seeded bag carrying the corrupt patch exists on the v5 side"
     );
 
-    // ── THE DIVERGENCE PIN, v4 direction (DELIBERATE — dogfood finding #47) ──
-    // v4 TODAY silently accepts the patch (message null) and clobbers the bag
-    // to defaults. Both assertions go RED the moment v4 lands its own #47 fix;
-    // when they do, reclassify this arm from a deliberate divergence to an
-    // ordinary drift re-port (see the module header).
+    // ── THE CONVERGENCE (plain equality — v4 adopted the #47 fix in 13ddc5ee) ──
+    // v4 now REFUSES too (`CharacterVaultUnavailableError`) and preserves the
+    // planted bytes. Compare the two refusals byte-for-byte with the tail
+    // elided, and assert v4 wrote nothing (its `finalProperties` is the planted
+    // bag, not a defaults-seeded clobber).
     let corrupt = oracle
         .get("corrupt")
         .unwrap_or_else(|| panic!("oracle missing corrupt arm"));
-    assert!(
-        corrupt["message"].is_null(),
-        "oracle corrupt arm threw — v4 appears to have landed its finding-#47 fix; \
-         RECLASSIFY this divergence as a drift re-port (message: {})",
-        corrupt["message"]
+    let v4_message = corrupt["message"].as_str().unwrap_or_else(|| {
+        panic!(
+            "oracle corrupt arm did NOT throw — v4 has regressed its bug-8 fix (message: {})",
+            corrupt["message"]
+        )
+    });
+    assert_eq!(
+        elide_parse_detail(&refusal, "rust"),
+        elide_parse_detail(v4_message, "oracle"),
+        "corrupt arm: the two refusals diverge (tail elided)\n  rust:   {refusal}\n  oracle: {v4_message}"
     );
     assert_eq!(
         corrupt["finalProperties"].as_str(),
-        Some(V4_CLOBBERED_BAG),
-        "oracle corrupt arm: v4's final properties.json is not the measured clobber — \
-         if it now matches the planted bytes, v4 landed its finding-#47 fix; RECLASSIFY"
+        Some(spec.planted_properties.as_str()),
+        "oracle corrupt arm: v4's final properties.json is not the planted bytes — \
+         v4 clobbered where it should have refused"
     );
 
     let _ = std::fs::remove_file(&main_work);
@@ -444,6 +469,6 @@ fn characters_update_tier2_matches_oracle() {
 
     eprintln!(
         "OK: characters update tier-2 matched oracle (6 tables × 3 snapshots, 2 DBs; \
-         the #47 divergence pinned both directions)."
+         the #47 arm is now a plain equality — v4 converged in 13ddc5ee)."
     );
 }
