@@ -17,18 +17,17 @@
 //! calls only off `rawResponse`, never off the chunk) — that field is excluded
 //! from both sides (see `strip_ignored`).
 //!
-//! Two documented, faithful normalisations:
+//! One documented, faithful normalisation:
 //! - **google `sdkHttpResponse`**: the `@google/genai` SDK injects a transport
 //!   `sdkHttpResponse: { headers }` wrapper into the parsed response object; a
 //!   sans-IO decoder never sees HTTP headers (the host transport does), so this
 //!   artifact is stripped from `rawResponse` on both sides.
-//! - **ollama byte-at-a-time**: the Ollama plugin splits each network read on
-//!   `\n` and parses each piece WITHOUT buffering across reads — so a JSON object
-//!   split across reads is silently lost (a real v4 bug, ported faithfully; see
-//!   `model::decoders::ollama_ndjson`). v4 sees exactly one chunking (the
-//!   recorder's line-aligned frames), so ollama is diffed at whole-buffer +
-//!   per-line only; the byte-at-a-time lossy behavior is asserted Rust-side in
-//!   the decoder's own unit tests.
+//!
+//! (v4 bug 35 rewrote the Ollama splitter to buffer across reads + carry an
+//! incomplete UTF-8 tail, so ollama is no longer push-boundary-sensitive: it
+//! now joins the full three-chunking equivalence — whole, per-line, AND
+//! byte-at-a-time — like every other decoder. The old whole-+-per-line-only
+//! exclusion for the ported no-buffer bug is gone.)
 
 use std::path::{Path, PathBuf};
 
@@ -216,8 +215,10 @@ fn chunkings_sse(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     vec![("whole", whole), ("per-frame", frames), ("byte", bytes)]
 }
 
-/// Chunkings for ollama NDJSON: whole + per-line only (byte-at-a-time diverges
-/// from v4 by design — the ported no-buffer bug; asserted Rust-side elsewhere).
+/// Chunkings for ollama NDJSON: whole + per-line + byte-at-a-time. v4 bug 35's
+/// buffered splitter (line carry + incomplete-UTF-8 carry) makes ollama
+/// push-boundary-insensitive, so the byte chunking now agrees with v4's single
+/// line-aligned recording — no exclusion.
 fn chunkings_ndjson(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     let whole = vec![wire.to_vec()];
     let mut lines = Vec::new();
@@ -231,7 +232,8 @@ fn chunkings_ndjson(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     if start < wire.len() {
         lines.push(wire[start..].to_vec());
     }
-    vec![("whole", whole), ("per-line", lines)]
+    let bytes: Vec<Vec<u8>> = wire.iter().map(|b| vec![*b]).collect();
+    vec![("whole", whole), ("per-line", lines), ("byte", bytes)]
 }
 
 /// Compare the driven (chunks, error) against the oracle case, for one chunking.

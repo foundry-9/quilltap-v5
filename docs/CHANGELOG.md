@@ -176,6 +176,13 @@ reference app (v4 bug 41). v5 previously escaped only the apostrophe; v4 has
 since caught up to the full set, so the two now agree and the deliberate
 divergence is retired. Filenames with parentheses, asterisks, or exclamation
 marks beside non-ASCII characters download with their real names intact.
+The Ollama streaming decoder now buffers across network reads (v4 bug 35):
+a JSON object split across two reads reassembles instead of being silently
+dropped, a multi-byte UTF-8 character split across reads is no longer
+corrupted, and a CRLF line terminator parses. The decoder is now
+push-boundary-insensitive and joins the full three-chunking stream-decoder
+equivalence.
+
 OpenRouter now reports its four image MIME types (JPEG, PNG, GIF, WebP) in
 the client-side attachment-capability map instead of "unsupported" (v4 bug
 32), so a new OpenRouter connection profile that omits the flag defaults to

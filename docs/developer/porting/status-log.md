@@ -227,6 +227,33 @@ on the profile flag at `:140` before ever consulting the map — no
 edit). No `api/settings.rs` edit (forbidden; the default flows from
 the map with no change of its own).
 
+**Unit — Bug 35 (the Ollama stream splitter), LANDED.**
+`model/decoders/ollama_ndjson.rs`: the three v4 changes ported —
+(1) **cross-read line buffering** (a new `line_buffer` field carries
+the trailing partial line between pushes; `push` processes complete
+lines and holds the fragment, `finish` treats the remainder as the
+final complete line); (2) **cross-read UTF-8 buffering** (a new
+`Utf8Stream` incremental decoder holds an incomplete multi-byte
+sequence between pushes — replacing the per-push `from_utf8_lossy`
+that corrupted a char split across reads — matching v4's
+`TextDecoder({stream:true})`; `finish` flushes it, one U+FFFD for a
+leftover incomplete tail, WHATWG end-of-stream); (3) **per-line
+`.trim()`** before parse (a CRLF `\r` now parses). The decoder is now
+push-boundary-insensitive. The old
+`split_line_across_pushes_loses_content_bug_parity` unit test INVERTED
+to `..._preserves_content`; added a multi-byte-split test (cafe-with-
+accent) and a CRLF test. Harness `stream_decoders_equivalence.rs`:
+`chunkings_ndjson` gained the **byte-at-a-time** chunking (ollama joins
+the full three-chunking equivalence; the whole+per-line-only exclusion
+retired), header note rewritten. **Corpus:** `ollama.recorded.ndjson`
+regenerated at the pin (Node 24, from `qtap-plugin-ollama`) —
+**byte-identical** to the committed file, as the order predicted (the
+three wire fixtures are line-aligned + newline-terminated, so bug 35's
+buffering does not move the output); committed file left unchanged.
+Differential green: ollama at 3 chunkings incl. byte (the
+`ollama-unicode.wire` multi-byte content is the split proof). Versions:
+core 0.0.488, harness 0.0.412.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →
