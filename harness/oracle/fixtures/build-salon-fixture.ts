@@ -96,6 +96,13 @@ interface ChatSpec {
   chunks?: ChunkSpec[];
   participants: ParticipantSpec[];
   messages: MessageSpec[];
+  // Bug 22/37 (`bd419ae9`): non-default projection values so the chat-GET
+  // projection is proven to carry the SAVED value, not just the null default.
+  timelineMode?: string;
+  alertCharactersOfLanternImages?: boolean;
+  showThinking?: boolean;
+  answerConfirmationOverride?: string;
+  allLLMPauseTurnCount?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -328,6 +335,18 @@ async function main(): Promise<void> {
         ...(chat.tags !== undefined ? { tags: chat.tags } : {}),
         ...(chat.storyBackgroundImageId !== undefined
           ? { storyBackgroundImageId: chat.storyBackgroundImageId }
+          : {}),
+        // Bug 22/37: the projection fields (non-default values proving the read).
+        ...(chat.timelineMode !== undefined ? { timelineMode: chat.timelineMode } : {}),
+        ...(chat.alertCharactersOfLanternImages !== undefined
+          ? { alertCharactersOfLanternImages: chat.alertCharactersOfLanternImages }
+          : {}),
+        ...(chat.showThinking !== undefined ? { showThinking: chat.showThinking } : {}),
+        ...(chat.answerConfirmationOverride !== undefined
+          ? { answerConfirmationOverride: chat.answerConfirmationOverride }
+          : {}),
+        ...(chat.allLLMPauseTurnCount !== undefined
+          ? { allLLMPauseTurnCount: chat.allLLMPauseTurnCount }
           : {}),
       } as never,
       { id: chat.id, createdAt: TS, updatedAt: TS } as never,

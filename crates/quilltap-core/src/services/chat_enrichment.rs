@@ -188,7 +188,8 @@ pub struct ApiKeySummary {
     pub label: String,
 }
 
-/// v4 `EnrichedConnectionProfile` — `{ id, name, provider, modelName, apiKey }`.
+/// v4 `EnrichedConnectionProfile` — `{ id, name, provider, modelName,
+/// allowToolUse, apiKey }` (bug 36, `bd419ae9`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnrichedConnectionProfile {
@@ -196,6 +197,10 @@ pub struct EnrichedConnectionProfile {
     pub name: String,
     pub provider: String,
     pub model_name: String,
+    /// Whether this profile permits tool use — surfaced so the tool-settings
+    /// dialog can warn that per-chat tool toggles are moot when it's false.
+    /// Between `modelName` and `apiKey` to match v4's key order.
+    pub allow_tool_use: bool,
     pub api_key: Option<ApiKeySummary>,
 }
 
@@ -342,6 +347,12 @@ pub fn get_connection_profile(
         name: s(&profile, "name").unwrap_or_default(),
         provider: s(&profile, "provider").unwrap_or_default(),
         model_name: s(&profile, "modelName").unwrap_or_default(),
+        // v4 `profile.allowToolUse ?? true` — `find_by_id` renders it as a bool
+        // (NOT NULL, default 1), so absent can only be the true default.
+        allow_tool_use: profile
+            .get("allowToolUse")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         api_key,
     }))
 }

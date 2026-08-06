@@ -525,8 +525,10 @@ async function main(): Promise<void> {
       participantId: I.pGail,
       controlledBy: 'llm',
     }),
-    // The `controlledBy` EARLY RETURN: `status` in the same patch is skipped.
-    updateCase('update_controlled_by_with_status_early_return', I.chatMain, {
+    // Bug 23 (`bd419ae9`): the `controlledBy` early return is GONE, so a `status`
+    // in the same patch now falls through and is applied (and the whole-chat
+    // identity stacks recompile).
+    updateCase('update_controlled_by_with_status_falls_through', I.chatMain, {
       participantId: I.pBram,
       controlledBy: 'user',
       status: 'silent',

@@ -27,12 +27,13 @@
 //! Flipping to `'user'` appends the id to `impersonatingParticipantIds` and — only
 //! when `activeTypingParticipantId` is currently falsy — sets that too. Flipping
 //! to `'llm'` removes the id and — only when it *was* the active typist —
-//! promotes `newImpersonating[0] || null`. Both branches then **re-read the chat
-//! and RETURN EARLY**, which is why a `controlledBy` patch never reaches the
-//! status-sync block, the `isActive` back-compat block, or the identity-stack
-//! recompiles below it. That early return makes v4's own
-//! `compileAllIdentityStacks(finalChat)` call **unreachable** — a v4 quirk this
-//! port reproduces deliberately rather than "fixing" (see the lane record).
+//! promotes `newImpersonating[0] || null`. v4 `bd419ae9` (bug 23) **DELETED** the
+//! early `findById`-and-return that once followed this block, so a `controlledBy`
+//! patch now falls through to the status-sync block, the `isActive` back-compat
+//! block, and the identity-stack recompile tail — which is where v4's
+//! `compileAllIdentityStacks(finalChat)` finally runs for it (step 9). v5 had
+//! reproduced that early return deliberately as a v4 quirk; the quirk is now
+//! fixed on both sides, so this port follows.
 //!
 //! **3. A connection-profile change posts a Prospero announcement**
 //! (`helpers.ts:159`) — only when `connectionProfileId` is present **and** differs
@@ -340,6 +341,10 @@ pub struct EnrichedParticipantConnectionProfile {
     pub name: String,
     pub provider: String,
     pub model_name: String,
+    /// v4 `bd419ae9` (bug 36): whether this profile permits tool use — surfaced so
+    /// the tool-settings dialog can warn that per-chat tool toggles are moot when
+    /// it's false. Between `modelName` and `apiKey` to match v4's key order.
+    pub allow_tool_use: bool,
     pub api_key: Option<EnrichedApiKey>,
 }
 
@@ -448,6 +453,12 @@ pub fn get_enriched_connection_profile(
         name: s(&p, "name").unwrap_or_default(),
         provider: s(&p, "provider").unwrap_or_default(),
         model_name: s(&p, "modelName").unwrap_or_default(),
+        // v4 `profile.allowToolUse ?? true` — `find_by_id` renders the column as a
+        // bool (NOT NULL, default 1), so an absent value can only mean the true default.
+        allow_tool_use: p
+            .get("allowToolUse")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         api_key,
     }))
 }
@@ -607,6 +618,37 @@ pub async fn compile_stack_best_effort(db: &Db, chat: Value, participant_id: &st
     }
 }
 
+/// `compileAllIdentityStacks(chat)` on the writer thread — recompile EVERY
+/// participant's identity stack and persist the map. v4 runs this after a
+/// `controlledBy` flip (a new user-controlled participant changes
+/// `{{user}}/{{persona}}` for everyone), from both the participant-update tail
+/// (`helpers.ts`) and the impersonate/stop-impersonate actions
+/// (`actions/participants.ts`).
+pub async fn compile_all_stacks(db: &Db, chat: Value) -> Result<(), DbError> {
+    db.write(move |w| {
+        let mount =
+            w.mount_index()
+                .map(|m| m.connection())
+                .ok_or(DbError::PartitionUnavailable(
+                    crate::write_partition::WriteDbTarget::MountIndex,
+                ))?;
+        let main = w.main().connection();
+        crate::services::system_prompt_compiler::compile_all_identity_stacks(main, mount, &chat)
+    })
+    .await
+}
+
+/// [`compile_all_stacks`] with v4's swallow-and-warn wrapper (every call site
+/// wraps `compileAllIdentityStacks` in a try/catch that only warns).
+pub async fn compile_all_stacks_best_effort(db: &Db, chat: Value) {
+    if let Err(e) = compile_all_stacks(db, chat).await {
+        tracing::warn!(
+            error = %e,
+            "[Chats v1] Failed to recompile identity stacks"
+        );
+    }
+}
+
 // ===========================================================================
 // `recordStatusChangeEvent` (v4 `helpers.ts:614`)
 // ===========================================================================
@@ -661,8 +703,8 @@ pub async fn record_status_change_event(
 
 /// v4 `handleParticipantUpdate` — the shared update spine for BOTH entrances
 /// (`?action=update-participant` and the chat-PUT `updateParticipant` bag).
-/// Returns the chat v4 returns (see the module header for the `controlledBy`
-/// early return).
+/// Returns the chat v4 returns (`finalChat || result`; see the module header for
+/// the `controlledBy` side effects, and bug 23's removed early return).
 pub async fn handle_participant_update(
     db: &Db,
     chat_id: &str,
@@ -750,7 +792,9 @@ pub async fn handle_participant_update(
         }
     }
 
-    // 6. The `controlledBy` impersonation sync — and v4's EARLY RETURN.
+    // 6. The `controlledBy` impersonation sync. v4 `bd419ae9` (bug 23) removed the
+    //    early return that once followed this block; it now falls through to the
+    //    status/`isActive` sync and the whole-chat recompile tail (step 9).
     if let Some(controlled_by) = &data.controlled_by {
         let current: Vec<String> = chat
             .get("impersonatingParticipantIds")
@@ -792,13 +836,10 @@ pub async fn handle_participant_update(
             };
             write_chat(db, chat_id, patch).await?;
         }
-
-        // v4: `const updatedChat = await repos.chats.findById(chatId); if
-        // (updatedChat) return { chat: updatedChat };` — the early return that
-        // makes everything below unreachable for a `controlledBy` patch.
-        if let Some(updated) = find_chat(db, chat_id)? {
-            return Ok(updated);
-        }
+        // v4 `bd419ae9` (bug 23) DELETED the early `findById`-and-return here: a
+        // `controlledBy` patch now FALLS THROUGH to the status/`isActive`
+        // back-compat sync and the identity-stack recompile tail below, so the
+        // `compileAllIdentityStacks` call (step 9) is reached for it too.
     }
 
     // 7. Explicit `status`: sync `isActive`/`removedAt` and announce.
@@ -952,7 +993,11 @@ pub async fn handle_participant_update(
         }
     }
 
-    // 9. Re-read + the identity-stack invalidation hooks.
+    // 9. Re-read + the identity-stack invalidation hooks. v4 wraps BOTH recompiles
+    //    in ONE try/catch that only warns; each best-effort helper swallows here.
+    //    For a `controlledBy`-only patch (no `selectedSystemPromptId`) only the
+    //    whole-chat recompile runs; when both fire, `compileAllIdentityStacks`
+    //    rewrites the entire map last, so the end state matches v4's ordering.
     let final_chat = find_chat(db, chat_id)?;
     if let Some(final_chat) = &final_chat {
         if let Some(new_prompt_id) = &data.selected_system_prompt_id {
@@ -968,8 +1013,12 @@ pub async fn handle_participant_update(
                 compile_stack_best_effort(db, final_chat.clone(), participant_id).await;
             }
         }
-        // v4's `if (participantData.controlledBy !== undefined) compileAllIdentityStacks`
-        // is UNREACHABLE (the step-6 early return) — deliberately not reproduced.
+        // v4 `bd419ae9` (bug 23): a `controlledBy` change alters
+        // `{{user}}/{{persona}}` for everyone, so recompile ALL stacks. Now
+        // REACHABLE — the step-6 early return is gone.
+        if data.controlled_by.is_some() {
+            compile_all_stacks_best_effort(db, final_chat.clone()).await;
+        }
     }
 
     Ok(final_chat.unwrap_or(result_chat))

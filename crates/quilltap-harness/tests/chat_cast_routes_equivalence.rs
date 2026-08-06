@@ -870,7 +870,7 @@ fn chat_cast_routes_match_oracle() {
         );
         upd(
             "u20",
-            "update_controlled_by_with_status_early_return",
+            "update_controlled_by_with_status_falls_through",
             &chat_main,
             json!({ "participantId": p_bram, "controlledBy": "user", "status": "silent" }),
             true,

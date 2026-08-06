@@ -41,7 +41,7 @@ interface Spec {
 
 interface CaseSpec {
   name: string;
-  method: 'chatPost' | 'chatPut' | 'messagePut' | 'messageDelete' | 'messagePost';
+  method: 'chatPost' | 'chatPut' | 'chatDelete' | 'messagePut' | 'messageDelete' | 'messagePost';
   url: string;
   paramId: string;
   body?: Record<string, unknown>;
@@ -148,6 +148,10 @@ async function runCase(
     } else if (c.method === 'chatPut') {
       const { PUT } = await import('@/app/api/v1/chats/[id]/route');
       response = (await PUT(mockRequest(c.url, c.body) as never, params as never)) as never;
+    } else if (c.method === 'chatDelete') {
+      // Bug 25 (`bd419ae9`): stop-impersonate moved POST -> DELETE.
+      const { DELETE } = await import('@/app/api/v1/chats/[id]/route');
+      response = (await DELETE(mockRequest(c.url, c.body) as never, params as never)) as never;
     } else if (c.method === 'messagePut') {
       const { PUT } = await import('@/app/api/v1/messages/[id]/route');
       response = (await PUT(mockRequest(c.url, c.body) as never, params as never)) as never;
@@ -220,7 +224,7 @@ async function main(): Promise<void> {
   const mbase = (id: string) => `http://localhost/api/v1/messages/${id}`;
   const cases: CaseSpec[] = [
     { name: 'impersonate', method: 'chatPost', url: `${cbase}?action=impersonate`, paramId: GROUP, body: { participantId: USER_P } },
-    { name: 'stop_impersonate', method: 'chatPost', url: `${cbase}?action=stop-impersonate`, paramId: GROUP, body: { participantId: USER_P } },
+    { name: 'stop_impersonate', method: 'chatDelete', url: `${cbase}?action=stop-impersonate`, paramId: GROUP, body: { participantId: USER_P } },
     { name: 'set_active_speaker', method: 'chatPost', url: `${cbase}?action=set-active-speaker`, paramId: GROUP, body: { participantId: USER_P } },
     { name: 'turn_query', method: 'chatPost', url: `${cbase}?action=turn`, paramId: GROUP, body: { action: 'query' }, random01: 0.42 },
     { name: 'turn_nudge', method: 'chatPost', url: `${cbase}?action=turn`, paramId: GROUP, body: { action: 'nudge', participantId: LLM_P }, random01: 0.42 },

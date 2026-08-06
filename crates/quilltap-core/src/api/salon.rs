@@ -359,6 +359,15 @@ fn assemble_chat_get(
         get_v("lastTurnParticipantId").unwrap_or(Value::Null),
     );
     out.insert("isPaused".into(), json!(bool_or("isPaused", false)));
+    // v4 `bd419ae9` (bug 37): surfaced so the client can explain a silent
+    // all-LLM pause (opens AllLLMPauseModal). `?? 0` (materialized f64; the
+    // harness's canon_numbers collapses an integer-valued float).
+    out.insert(
+        "allLLMPauseTurnCount".into(),
+        get_v("allLLMPauseTurnCount")
+            .filter(|v| !v.is_null())
+            .unwrap_or(json!(0)),
+    );
     out.insert(
         "isManuallyRenamed".into(),
         json!(bool_or("isManuallyRenamed", false)),
@@ -401,6 +410,25 @@ fn assemble_chat_get(
     out.insert(
         "turnSkippingEnabled".into(),
         get_v("turnSkippingEnabled").unwrap_or(Value::Null),
+    );
+    // v4 `bd419ae9` (bug 22): controlled selects in chat settings — projected so
+    // the UI reflects the saved value on reload instead of snapping to its
+    // default. All `?? null`.
+    out.insert(
+        "timelineMode".into(),
+        get_v("timelineMode").unwrap_or(Value::Null),
+    );
+    out.insert(
+        "alertCharactersOfLanternImages".into(),
+        get_v("alertCharactersOfLanternImages").unwrap_or(Value::Null),
+    );
+    out.insert(
+        "showThinking".into(),
+        get_v("showThinking").unwrap_or(Value::Null),
+    );
+    out.insert(
+        "answerConfirmationOverride".into(),
+        get_v("answerConfirmationOverride").unwrap_or(Value::Null),
     );
     out.insert(
         "agentModeEnabled".into(),
@@ -1631,6 +1659,21 @@ pub async fn chat_impersonate(db: &Db, chat_id: &str, participant_id: &str) -> R
     if !participant_present(participant.get("status").and_then(Value::as_str)) {
         return bad_request("Participant is not active or silent");
     }
+    // v4 `bd419ae9` (bug 27): impersonation means the operator now speaks as this
+    // character, so flip it to user-controlled BEFORE adding the impersonation —
+    // the same invariant handleParticipantUpdate maintains for the "User (you
+    // type)" option. Without it, findActiveUserParticipant never honours the
+    // selection and the operator's next message lands under their own character.
+    let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
+    if let Err(e) = db
+        .write(move |w| {
+            crate::db::chats_participants::ChatParticipantsRepository::new(w.main().connection())
+                .update_participant(&cid, &pid, &json!({ "controlledBy": "user" }))
+        })
+        .await
+    {
+        return internal(e);
+    }
     let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
     let ok = match db
         .write(move |w| {
@@ -1651,6 +1694,9 @@ pub async fn chat_impersonate(db: &Db, chat_id: &str, participant_id: &str) -> R
         Ok(v) => v.unwrap_or(Value::Null),
         Err(e) => return internal(e),
     };
+    // v4 `bd419ae9`: controlledBy changed, which alters {{user}}/{{persona}} for
+    // everyone — recompile all identity stacks. Non-fatal (read-through fallback).
+    crate::services::chat_participants::compile_all_stacks_best_effort(db, updated.clone()).await;
     let name = read_main_mount(db, |main, mount| {
         Ok(character_name(main, mount, &participant))
     })
@@ -1695,7 +1741,10 @@ pub async fn chat_stop_impersonate(
         return internal("Failed to stop impersonation");
     }
 
-    // Optional new connection profile → flip controlledBy:'llm'.
+    // Hand the character back to the LLM — the mirror of the controlledBy flip in
+    // impersonate (v4 `bd419ae9`, bug 27). A new profile may accompany the
+    // hand-back (the client prompts for one when the character has none); otherwise
+    // the character keeps its existing profile but is still flipped to 'llm'.
     if let Some(new_cp) = new_connection_profile_id {
         let ncp = new_cp.to_string();
         let exists = match db
@@ -1727,6 +1776,20 @@ pub async fn chat_stop_impersonate(
         {
             return internal(e);
         }
+    } else {
+        // v4's NEW else branch: no profile supplied, still flip controlledBy:'llm'.
+        let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
+        if let Err(e) = db
+            .write(move |w| {
+                crate::db::chats_participants::ChatParticipantsRepository::new(
+                    w.main().connection(),
+                )
+                .update_participant(&cid, &pid, &json!({ "controlledBy": "llm" }))
+            })
+            .await
+        {
+            return internal(e);
+        }
     }
 
     let chat_id_owned = chat_id.to_string();
@@ -1734,6 +1797,8 @@ pub async fn chat_stop_impersonate(
         Ok(v) => v.unwrap_or(Value::Null),
         Err(e) => return internal(e),
     };
+    // v4 `bd419ae9`: controlledBy changed back — recompile identity stacks. Non-fatal.
+    crate::services::chat_participants::compile_all_stacks_best_effort(db, updated.clone()).await;
     let name = read_main_mount(db, |main, mount| {
         Ok(character_name(main, mount, &participant))
     })

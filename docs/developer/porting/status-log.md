@@ -102,6 +102,81 @@ harness/oracle/cases/announcement-attribution.ts >
 `QT_ORACLE_ANNOUNCEMENT_ATTRIBUTION=… cargo test -p quilltap-harness --test
 announcement_attribution_equivalence`. core 0.0.489, harness 0.0.414.
 
+### Unit 4 — the salon + chat-cast bundle: bugs 22/37/36/27/25/23/24 (v4 `bd419ae9`)
+
+These SIX bugs are **one coupled unit** — they share two fixtures whose regens
+cannot be split. Bug 36's `EnrichedConnectionProfile.allowToolUse` feeds BOTH
+`chat_cast` (the PUT-bag response enriches via `assemble_chat_get`) AND
+`salon_reads`; the salon-fixture seed feeds `salon_reads`/`_mutations`/`_skip`;
+`salon_mutations` needs bug 27 + the bug-25 oracle DELETE rewrite; `chat_cast`
+needs bugs 23/24. So a green per-commit gate forces them together.
+
+- **Bugs 22+37 (chat-GET projection):** `assemble_chat_get` emits
+  `allLLMPauseTurnCount` (`?? 0`, after `isPaused`) + `timelineMode`,
+  `alertCharactersOfLanternImages`, `showThinking`, `answerConfirmationOverride`
+  (all `?? null`, after `turnSkippingEnabled`). Fixture-blind, so `salon.json` +
+  `build-salon-fixture.ts` seed the Solo chat with NON-default values
+  (`narrative`/true/true/`OFF`/3) — `salon_reads` proves the SAVED value, not the
+  null default.
+- **Bug 36 (`allowToolUse` on the enriched profile):** the field added to BOTH
+  `chat_enrichment::EnrichedConnectionProfile` AND
+  `chat_participants::EnrichedParticipantConnectionProfile`, between `modelName`
+  and `apiKey`, value `profile.allowToolUse ?? true`. The salon fixture gained a
+  second `OPENAI_COMPATIBLE` profile "No Tools" (`allowToolUse:false`) assigned to
+  Bram's group participant → `salon_reads` proves the `false` arm (one false among
+  trues).
+- **Bug 23 (`controlledBy` fall-through):** the step-6 early return DELETED in
+  `chat_participants::handle_participant_update`; the patch now reaches the
+  status/`isActive` sync + a NEW step-9 `compile_all_stacks_best_effort` branch
+  (`controlledBy.is_some()`). Module-header ruling #2 rewritten (the quirk is fixed
+  on both sides now). New shared helper `compile_all_stacks[_best_effort]`.
+- **Bug 24 (post-cleanup remove reply):** `api::chat_cast` remove-participant now
+  re-reads the chat after the impersonation cleanup write and returns THAT (v4's
+  `finalChat = cleanedChat`); v5's `update` returns bool, so a re-read stands in.
+- **Bug 27 (impersonation flips `controlledBy` + recompiles):** `chat_impersonate`
+  writes `controlledBy:'user'` before `add_impersonation` and recompiles;
+  `chat_stop_impersonate` gained the else branch (`controlledBy:'llm'` when no
+  profile) and both flips recompile all stacks (best-effort). Proven by
+  `salon_mutations` (stop-impersonate restores Cleo's dropped stack: 2→3 keys),
+  the `turn_pause_filters` twin (`active-impersonation-before/after` —
+  `findActiveUserParticipant` honours the seat only after the flip), and
+  `chats_impersonation_tier2` (neutral). Mutation-proven (disabling the flips +
+  recompiles reds both impersonate arms).
+- **Bug 25 (stop-impersonate POST→DELETE):** oracle-only — v5's typed verb already
+  converged. `salon-mutations.test.ts` gained a `chatDelete` method arm importing
+  the route's `DELETE`; the `stop_impersonate` case switched to it (the POST form
+  now 400s at HEAD, a hard regen blocker).
+
+**⚠ BUG-27 RULING CONFLICT (flagged loud for the human).**
+`dogfood-findings.md:1056-1081` records a POST-5.0 v5-divergence design for
+finding #39 whose explicit instruction is "Do NOT mutate the participant's
+`controlledBy`". v4's shipped `bd419ae9` fix does exactly that, and the port
+discipline (v5 follows v4) governs the PRESENT — so this lane landed v4's
+behavior faithfully. The #39 design note is about a FUTURE
+multi-turn-impersonation feature whose premise has moved. Per the order, this
+lane did NOT edit `dogfood-findings.md` (the unifier's sweep flags it for
+re-ruling). **The next human ruling should reconcile finding #39 with the now-
+shipped v4 behavior.**
+
+Corpus/fixture: `salon-{main,mount}.db` regenerated (2nd profile + Bram reassign +
+Solo projection seeds); `chat-cast` pinned case renamed
+`update_controlled_by_with_status_early_return` →
+`…_falls_through` (both sides); `salon_mutations` gained
+`scrub_minted_timestamps` (bug-27's participant-updatedAt mint, the only non-seed
+timestamp). **Every salon-fixture consumer re-run green:** `salon_reads` (6),
+`salon_mutations` (17), `salon_skip` (2), `salon_swipe_generate` (4, tier-3
+neutral). `chat_cast_routes` (74, `allowToolUse` in 35 cases + the renamed
+fall-through case), `turn_pause_filters` (twin), `connection_profiles_tier2`
+(neutral). **e2e note for the unifier:** the salon-fixture regen adds a
+2nd `OPENAI_COMPATIBLE` profile + reassigns Bram; the e2e's `baseUrl` rewrite is
+provider-wide (`WHERE provider='OPENAI_COMPATIBLE'`), so both profiles round-trip
+to the mock — but re-run the M4/Salon Playwright walks to confirm.
+
+Regen (all TZ=UTC, /tmp jest mirror): salon fixture
+`node --import tsx build-salon-fixture.ts` (writes committed `salon-{main,mount}.db`),
+then the four salon jest cases + `chat-cast-routes` jest + `turn-pause-filters`
+tsx. core 0.0.490, harness 0.0.415.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →

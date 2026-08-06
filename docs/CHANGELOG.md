@@ -145,6 +145,18 @@ over-budget cases (message-boundary split, a single-message boundary
 walk, a split interchange 0 carrying the metadata header, and astral
 content for the UTF-16 proof), all byte-exact against the reference
 renderer.
+Fixed a cluster of chat-state and impersonation bugs (v4 bugs 22, 23, 24, 27,
+36, 37). "Speak as an AI character" now attributes correctly: starting it flips
+the chosen character to user-controlled (and hands it back to the LLM on stop),
+so the operator's next message lands under the right speaker and the badges are
+truthful. A `controlledBy` change to a participant no longer short-circuits the
+rest of the update, and removing an impersonating participant returns the chat
+as it stands after cleanup (no more stale "still impersonating" state until a
+refetch). The chat view now remembers saved values for the timeline mode,
+lantern-image alerts, show-thinking, and answer-confirmation selects across a
+reload, exposes the all-LLM pause count, and reports whether a connection
+profile permits tool use (so the tool-settings dialog can warn when it doesn't).
+
 Staff-signed announcements now carry their author's name into the model's
 context (v4 bug 28). An Insert-Announcement line signed as the Host (or any
 Staff voice) used to reach every character as an anonymous block of prose, so

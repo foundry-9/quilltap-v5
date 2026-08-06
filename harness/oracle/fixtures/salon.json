@@ -10,6 +10,15 @@
    "modelName": "mock-model",
    "baseUrl": "http://127.0.0.1:1/v1",
    "apiKeyId": "a0000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "c0000001-0000-4000-8000-000000000002",
+   "name": "No Tools",
+   "provider": "OPENAI_COMPATIBLE",
+   "modelName": "mock-model",
+   "baseUrl": "http://127.0.0.1:1/v1",
+   "apiKeyId": "a0000001-0000-4000-8000-000000000001",
+   "allowToolUse": false
   }
  ],
  "apiKeys": [
@@ -129,6 +138,11 @@
    "tags": [
     "70000001-0000-4000-8000-000000000001"
    ],
+   "timelineMode": "narrative",
+   "alertCharactersOfLanternImages": true,
+   "showThinking": true,
+   "answerConfirmationOverride": "OFF",
+   "allLLMPauseTurnCount": 3,
    "participants": [
     {
      "id": "b1000000-0000-4000-8000-000000000001",
@@ -216,7 +230,7 @@
      "id": "b2000000-0000-4000-8000-000000000002",
      "character": "a1000000-0000-4000-8000-000000000002",
      "controlledBy": "llm",
-     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000002"
     },
     {
      "id": "b2000000-0000-4000-8000-000000000003",

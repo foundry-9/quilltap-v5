@@ -459,14 +459,17 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
         return bad_request("Cannot remove the last character from the chat");
     }
 
-    let result_chat = match handle_remove_participant(db, chat_id, participant_id).await {
+    let mut final_chat = match handle_remove_participant(db, chat_id, participant_id).await {
         Ok(c) => c,
         Err(e) => return from_participant_error(e),
     };
 
-    // Impersonation clean-up. v4 issues this AFTER building `result.chat`, so
-    // the returned chat deliberately still carries the pre-cleanup ids.
-    let impersonating: Vec<String> = result_chat
+    // Impersonation clean-up. v4 `bd419ae9` (bug 24): the cleanup update happens
+    // AFTER `result.chat` was captured, so the RESPONSE must reflect it — otherwise
+    // it still lists the removed participant in `impersonatingParticipantIds`
+    // (stale client state until a refetch). v4 captures the update's return into
+    // `finalChat`; v5's `update` returns a bool, so we re-read the post-cleanup row.
+    let impersonating: Vec<String> = final_chat
         .get("impersonatingParticipantIds")
         .and_then(Value::as_array)
         .map(|a| {
@@ -482,7 +485,7 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
             .cloned()
             .collect();
         let promote =
-            s(&result_chat, "activeTypingParticipantId").as_deref() == Some(participant_id);
+            s(&final_chat, "activeTypingParticipantId").as_deref() == Some(participant_id);
         let patch = ChatUpdate {
             active_typing_participant_id: promote.then(|| cleaned.first().cloned()),
             impersonating_participant_ids: Some(cleaned),
@@ -494,6 +497,13 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
             .await
         {
             return internal(e);
+        }
+        // v4 `finalChat = cleanedChat` (only when the update returned a row).
+        let cid = chat_id.to_string();
+        match db.read_main(move |conn| chats_read::find_by_id(conn, &cid)) {
+            Ok(Some(c)) => final_chat = c,
+            Ok(None) => {}
+            Err(e) => return internal(e),
         }
     }
 
@@ -509,7 +519,7 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
         .await;
     }
 
-    ok(json!({ "success": true, "chat": result_chat }))
+    ok(json!({ "success": true, "chat": final_chat }))
 }
 
 // ===========================================================================

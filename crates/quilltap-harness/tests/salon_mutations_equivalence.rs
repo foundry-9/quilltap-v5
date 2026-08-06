@@ -4,8 +4,11 @@
 //! route handlers (the impersonation verbs, the turn action, and the message
 //! edit/delete/swipe). Both sides run each case over a FRESH copy of the committed
 //! salon fixture; the response body + the affected MAIN-db tables (`chats` /
-//! `chat_messages`) are diffed byte-for-byte. Every case is zero-mint (skipUserTurn
-//! is excluded), so no id/timestamp remap is needed.
+//! `chat_messages`) are diffed byte-for-byte. Almost every case is zero-mint
+//! (skipUserTurn is excluded); the exception is impersonate/stop-impersonate,
+//! whose bug-27 `controlledBy` flip mints the target participant's `updatedAt`
+//! (normalized to `<ts>` by [`scrub_minted_timestamps`] — the only non-seed
+//! timestamps in the corpus).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-salon-mutations.ndjson npx jest -- salon-mutations
@@ -75,10 +78,38 @@ fn sorted(v: &Value) -> Value {
         _ => v.clone(),
     }
 }
+/// The fixture's seed timestamp (`salon.json` `seedTimestamp`). Every seed row
+/// carries it; a value that ISN'T it was minted at write time.
+const SEED_TS: &str = "2026-02-01T00:00:00.000Z";
+
+/// Replace any ISO-8601 timestamp that is NOT the seed sentinel with `<ts>`.
+///
+/// Bug 27 (`bd419ae9`): impersonate/stop-impersonate now flip the target
+/// participant's `controlledBy`, which mints that participant's `updatedAt`
+/// (inside the `participants` JSON string) — the first mint in this otherwise
+/// zero-mint corpus. Both sides mint it at wall-clock, so it must be normalized.
+/// A non-seed value on ONE side only still diverges (`<ts>` vs the literal seed),
+/// so "who minted" stays diffable.
+fn scrub_minted_timestamps(s: &str) -> String {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE
+        .get_or_init(|| regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z").unwrap());
+    re.replace_all(s, |caps: &regex::Captures| {
+        let m = &caps[0];
+        if m == SEED_TS {
+            m.to_string()
+        } else {
+            "<ts>".to_string()
+        }
+    })
+    .into_owned()
+}
+
 fn norm(v: &Value) -> String {
     let mut v = v.clone();
     canon_numbers(&mut v);
-    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+    scrub_minted_timestamps(&serde_json::to_string_pretty(&sorted(&v)).unwrap())
 }
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();

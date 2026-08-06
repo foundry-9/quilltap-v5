@@ -86,6 +86,17 @@ rows.push({ kind: 'find', id: 'active-fallback', fn: 'active', participants: mix
 rows.push({ kind: 'find', id: 'active-empty-id', fn: 'active', participants: mixed, activeId: '', out: findActiveId(mixed, '') }); // '' falsy → fallback
 rows.push({ kind: 'find', id: 'active-null', fn: 'active', participants: mixed, activeId: null, out: findActiveId(mixed, null) });
 
+// Bug 27 (`bd419ae9`): "Speak as an AI character" routes through impersonation,
+// which now flips the chosen character to controlledBy:'user'. Before the flip,
+// selecting the still-LLM character is a dead affordance (fallback to the first
+// user-controlled seat); after the flip, the same seat IS honoured. Pins the
+// attribution side of that fix.
+const jackie = p('p-jackie', 'active', 'user', 'char-jackie');
+const abigailLLM = p('p-abigail', 'active', 'llm', 'char-abigail');
+const abigailUser = p('p-abigail', 'active', 'user', 'char-abigail');
+rows.push({ kind: 'find', id: 'active-impersonation-before', fn: 'active', participants: [jackie, abigailLLM], activeId: 'p-abigail', out: findActiveId([jackie, abigailLLM], 'p-abigail') });
+rows.push({ kind: 'find', id: 'active-impersonation-after', fn: 'active', participants: [jackie, abigailUser], activeId: 'p-abigail', out: findActiveId([jackie, abigailUser], 'p-abigail') });
+
 // list filters
 for (const [id, ps] of [['mixed', mixed], ['allLLM', allLLM], ['empty', empty]] as Array<[string, WirePart[]]>) {
   rows.push({ kind: 'list', id: `userCtrl-${id}`, fn: 'userControlled', participants: ps, out: ids(findUserControlledParticipants(asParts(ps))) });
