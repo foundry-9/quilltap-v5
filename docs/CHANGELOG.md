@@ -84,6 +84,10 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+Corrected a stale scope note on the conversation-chunks repository doc
+(it described `upsert` and its siblings as unimplemented, though the
+Scriptorium slices landed them). Comment cleanup only.
+
 The Almanack's embedding-pipeline census now counts failed embedding
 rows instead of a status value nothing writes (v4 Bug 19). The "Failed
 rows" line — renamed from "Permanently failed rows" — now reflects the

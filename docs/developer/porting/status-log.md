@@ -60385,3 +60385,27 @@ Regen: the two jest recipes in `almanack-render.test.ts` /
 `almanack-routes.test.ts` headers (TZ=UTC, /tmp cases mirror; the tier-2
 DBs read from /tmp copies of the committed files). Versions: core
 0.0.491, harness 0.0.415.
+
+### Unit 8 (tier 2) — bug-14 verification + stale-comment sweep + gate
+
+**Bug 14 (VERIFY-ONLY):** v4's ledger claims a v5 export-embedding-strip
+mirror is owed, but it was already ported by **P4.D46** (writer + reader
++ re-embed on import; the strip lives in
+`services/qtap_export/records.rs`). The v4-side claim is STALE. This lane
+does not own the system families — `system_export_equivalence` regen +
+re-run is P4.D51's (it runs the system families this round); recorded
+here only.
+
+**Stale-comment sweep** (this lane's files, rewritten to v4's post-fix
+why): the renderer's module doc gained a Sub-chunking section; the
+reconcile module header carries three arms + the arm-(C) exception; the
+dimension-reconcile ⚠ dead-code section became the Bug-16 fix; the
+fold-pass bug comment became the Bug-26 preserve-the-links why; the
+almanack #67/#68 comments became CONVERGED; and the pre-existing stale
+`conversation_chunks.rs` scope note (which wrongly called `upsert` et al.
+"out of scope" after P4.6BL/BM landed them) was corrected.
+
+**Boot-behavior note (arm C):** a real instance carrying pre-sub-chunking
+oversize conversation chunks triggers a one-time render+embed burst at
+the first boot after this lands (self-limiting). The dogfood pass
+inherits the live proof. Versions: core 0.0.492.

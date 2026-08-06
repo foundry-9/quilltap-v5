@@ -6,12 +6,12 @@
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
 //! Scope: `create`, `update`, and `delete` (the three abstract methods, each a
-//! straight delegate to `_create`/`_update`/`_delete`). The custom helpers —
-//! `countByChatIds`, `findByChatId`, `findByInterchangeIndex`, `upsert`,
-//! `findAllWithEmbeddings`, `deleteAllForChat`, `updateEmbedding` — are out of
-//! scope (the `upsert`/`updateEmbedding` paths need the remap-normalization form
-//! for their internal `now`/`generateId()`, deferred like the other repos'
-//! `upsert*`).
+//! straight delegate to `_create`/`_update`/`_delete`), plus the custom helpers
+//! the render/embedding pipeline needs — `countByChatIds`, `findByChatId`,
+//! `findByInterchangeIndex`, `upsert`, `findAllWithEmbeddings`,
+//! `clearEmbeddingsForChat`, `updateEmbedding` — each landed by the P4.6BL/P4.6BM
+//! Scriptorium slices. `upsert` takes its `now`/`id` as injected parameters (the
+//! render handler mints them), so it needs no remap-normalization form.
 //!
 //! ## A BLOB column, after `help_docs`
 //!
