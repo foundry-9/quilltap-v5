@@ -236,6 +236,12 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
   `.qt-text-danger` alias and the search-dialog body portal — so their
   "deliberate v5 divergence" comments are retired to convergence notes
   (no behavior change).
+- Bug 37: an all-LLM room that auto-pauses (at 3, 6, 12, 24… turns) now
+  explains itself with the All-LLM Pause dialog — continue, stop, or take
+  control of a character — instead of stalling silently. The opener keys
+  off the projected `isPaused`/`allLLMPauseTurnCount` (P4.D53) and rides
+  the existing chain-complete refetch, so it also surfaces on loading an
+  already-paused room.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

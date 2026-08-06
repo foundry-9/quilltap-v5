@@ -51,6 +51,8 @@ import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-mod
 import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { MergeConversationModal } from '../../chat/merge-conversation-modal';
 import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal';
+import { AllLLMPauseModal, type AllLLMPauseParticipant } from '../../chat/all-llm-pause-modal';
+import { getNextPauseThreshold } from '../../chat/all-llm-pause';
 import { RunToolModal } from '../../chat/tools/run-tool-modal';
 import { SearchReplaceModal } from '../../chat/tools/search-replace-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
@@ -226,6 +228,7 @@ interface CascadePrompt {
     ChatProjectModal,
     MergeConversationModal,
     ChatToolSettingsModal,
+    AllLLMPauseModal,
     RunToolModal,
     SearchReplaceModal,
     ReattributeMessageDialog,
@@ -609,6 +612,18 @@ interface CascadePrompt {
         [profileToolsDisabled]="profileToolsDisabled()"
         (saved)="onToolSettingsSaved()"
         (close)="showToolSettings.set(false)"
+      />
+    }
+
+    @if (showAllLLMPause() && chat()) {
+      <qt-all-llm-pause-modal
+        [turnCount]="allLLMPauseTurnCount()"
+        [nextPauseAt]="allLLMNextPauseAt()"
+        [participants]="allLLMPauseParticipants()"
+        (continueRun)="onAllLLMContinue()"
+        (stopRun)="onAllLLMStop()"
+        (takeOver)="onAllLLMTakeOver($event)"
+        (close)="showAllLLMPause.set(false)"
       />
     }
 
@@ -1257,25 +1272,98 @@ export class SalonConversation {
   // P4.9E4B: `qt-library-file-picker-modal`, opened from the composer gutter's
   // file-plus button, which had been ABSENT rather than refusing.
   //
-  // ## Tier-3 deferral (LOUD — rendered nowhere, nothing stubbed)
+  // ## The all-LLM pause modal (v4 `AllLLMPauseModal.tsx`, bug 37)
   //
-  // **`AllLLMPauseModal`** (v4 `components/chat/AllLLMPauseModal.tsx`, 148 LOC)
-  // is NOT ported, because it is unreachable in v4 itself. `ChatModals.tsx:423`
-  // mounts it and `SalonView` wires all three of its handlers, but
-  // `setAllLLMPauseModalOpen(true)` appears NOWHERE in v4 at `e8a49597` — every
-  // occurrence passes `false`. The pause it describes is real and already
-  // ported: the chain driver stops the chat itself when the turn count hits a
-  // threshold (v4 `turn-orchestrator.service.ts:126` →
-  // `services/turn_orchestrator.rs:455`, over the differential-verified
-  // `quilltap-core::all_llm_pause`), writing `isPaused` and never telling the
-  // client. And `allLLMPauseTurnCount`, which the modal's copy is built from, is
-  // in neither app's chat-GET projection.
-  //
-  // So porting it would mean shipping a dialog with no opener, and adding an
-  // opener would be v5 inventing a control v4 does not have. The pure helpers
-  // are likewise NOT copied into TypeScript: their only v4 client consumer is
-  // `ChatModals.tsx:427`, computing this dead modal's `nextPauseAt`.
+  // Long deferred because it was unreachable in v4 itself:
+  // `setAllLLMPauseModalOpen(true)` appeared nowhere, and neither app projected
+  // `allLLMPauseTurnCount`. v4 `bd419ae9` gave it an opener — `chat.isPaused &&
+  // isAllLLM`, keyed off the projected `isPaused`/`allLLMPauseTurnCount` and
+  // riding the existing chain-complete refetch — so the deferral is void. The
+  // pause it describes is the same one the chain driver already sets server-side
+  // (v4 `turn-orchestrator.service.ts:126` → `services/turn_orchestrator.rs:455`,
+  // over the differential-verified `quilltap-core::all_llm_pause`); the modal
+  // just makes it visible instead of silent. See `all-llm-pause-modal.ts` +
+  // `all-llm-pause.ts` (the `nextPauseAt` helpers' TS twin).
   // -------------------------------------------------------------------------
+
+  /** v4 `allLLMPauseModalOpen` (`useModalState.ts:37`), opened by the effect below. */
+  protected readonly showAllLLMPause = signal(false);
+  /**
+   * Whether every present participant is LLM-controlled and no USER message has
+   * been sent (v4 `useParticipants.isAllLLM` = `isAllLLMChat(participantsAsBase)
+   * && !messages.some(role === 'USER')`).
+   */
+  protected readonly isAllLLM = computed(() => {
+    const c = this.chat();
+    if (!c) return false;
+    const anyUserControlled = c.participants.some(
+      (p) => isParticipantPresent(p.status) && p.controlledBy === 'user',
+    );
+    if (anyUserControlled) return false;
+    return !c.messages.some((m) => m.role === 'USER');
+  });
+  /** v4's opener predicate — `chat.isPaused && isAllLLM` (`SalonView.tsx:1228`). */
+  private readonly allLLMPauseActive = computed(() => !!this.chat()?.isPaused && this.isAllLLM());
+  private prevAllLLMPauseActive = false;
+  /** v4 `chat.allLLMPauseTurnCount ?? 0` — the count the modal's copy reads. */
+  protected readonly allLLMPauseTurnCount = computed(() => this.chat()?.allLLMPauseTurnCount ?? 0);
+  /** v4 `getNextPauseThreshold(allLLMPauseTurnCount)` (`ChatModals.tsx:436`). */
+  protected readonly allLLMNextPauseAt = computed(() =>
+    getNextPauseThreshold(this.allLLMPauseTurnCount()),
+  );
+  /** v4 `useParticipants.llmParticipants` — the take-over roster. */
+  protected readonly allLLMPauseParticipants = computed<AllLLMPauseParticipant[]>(() => {
+    const impersonating = this.impersonatingIds();
+    return (this.chat()?.participants ?? [])
+      .filter(
+        (p) =>
+          p.type === 'CHARACTER' &&
+          p.isActive &&
+          p.controlledBy !== 'user' &&
+          !impersonating.includes(p.id),
+      )
+      .map((p) => ({
+        id: p.id,
+        characterName: p.character?.name || 'Unknown',
+        avatarUrl: p.character?.avatarUrl ?? null,
+      }));
+  });
+
+  /**
+   * Surface the all-LLM pause so it is no longer silent (v4 `SalonView.tsx:1220-
+   * 1231`). The pause fires server-side and the chain-complete refetch flips the
+   * projected `isPaused`, so this opens on both a live pause and loading an
+   * already-paused all-LLM room. Only the false→true edge opens it, so closing
+   * the modal (Continue/Stop/Take Over) never immediately reopens it while the
+   * chat stays paused.
+   */
+  private readonly allLLMPauseOpener = effect(() => {
+    const active = this.allLLMPauseActive();
+    if (active && !this.prevAllLLMPauseActive) {
+      this.showAllLLMPause.set(true);
+    }
+    this.prevAllLLMPauseActive = active;
+  });
+
+  /** v4 `handleAllLLMContinue` — dismiss; the chain resumes on the next nudge. */
+  protected onAllLLMContinue(): void {
+    this.showAllLLMPause.set(false);
+  }
+
+  /** v4 `handleAllLLMStop` — `chatControls.setPauseState(true)`. */
+  protected async onAllLLMStop(): Promise<void> {
+    this.showAllLLMPause.set(false);
+    const chatId = this.chatId();
+    if (!chatId) return;
+    await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: true } });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /** v4 `handleAllLLMTakeOver` — start impersonating the chosen character. */
+  protected async onAllLLMTakeOver(participantId: string): Promise<void> {
+    this.showAllLLMPause.set(false);
+    await this.onImpersonate(participantId);
+  }
 
   /** v4 `libraryFilePickerOpen` (`useModalState.ts:38`), opened from the gutter. */
   protected readonly showLibraryPicker = signal(false);

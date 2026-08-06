@@ -60967,3 +60967,31 @@ the §1 name-for-name contract diff at unification.
   v5 divergence, ruled 2026-07-31" comment at `search-dialog.ts` is rewritten to
   a convergence note. Code unchanged in both; the `page-toolbar-flow.spec.ts:212`
   e2e pin stays as-is.
+
+- **Bug 37 (AllLLMPauseModal port + opener) — DONE.** v5 had deferred this
+  148-LOC dialog LOUD because it was unreachable in v4 itself
+  (`setAllLLMPauseModalOpen(true)` appeared nowhere; `allLLMPauseTurnCount` was
+  unprojected). v4 `bd419ae9` gave it an opener (`chat.isPaused && isAllLLM`,
+  riding the chain-complete refetch, no SSE change) and projected
+  `isPaused`/`allLLMPauseTurnCount`, so the deferral is void. Ported:
+  - `all-llm-pause.ts` — the `nextPauseAt`-family pure helpers, a client-safe TS
+    twin of v4's `lib/chat/turn-manager/all-llm-pause.ts` (server logger import
+    dropped; the Rust twins in `crates/quilltap-core/src/all_llm_pause.rs` drive
+    the actual pause — these only name the next threshold).
+  - `all-llm-pause-modal.ts` — the Angular `qt-all-llm-pause-modal` (v4's copy +
+    classes verbatim; `closeOnClickOutside=false` → `[closeOnBackdrop]`; three
+    actions each emit + request close).
+  - `salon-conversation.ts` — the tier-3 deferral block replaced with the ported
+    state: `isAllLLM` computed (v4's `isAllLLMChat && no USER message`), the
+    take-over roster, `allLLMNextPauseAt`, the three handlers (Continue dismiss /
+    Stop `chatUpdate {isPaused:true}` / Take Over impersonate), and the
+    edge-triggered opener effect (only false→true opens, so closing while paused
+    never reopens — v4's transition semantics via a `prevAllLLMPauseActive`
+    tracker rather than a React dep array).
+  Specs: v4's whole `all-llm-pause.test.ts` ported case-for-case (48 assertions,
+  exact doubling sequence) + a modal component spec (copy, the three action
+  outputs, per-participant take-over buttons, empty-roster arm). All green.
+  **e2e beat DEFERRED LOUD (tier-2 item 9):** a live opener needs a seeded
+  all-LLM, already-`isPaused`, zero-USER-message chat — a P4.D53 fixture +
+  server-projection dependency this SPA-only branch cannot stand up. Covered at
+  spec level; named for a follow-up once P4.D53's fixtures land.
