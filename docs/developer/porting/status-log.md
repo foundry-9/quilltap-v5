@@ -199,6 +199,14 @@ Regen (all TZ=UTC, /tmp jest mirror): salon fixture
 then the four salon jest cases + `chat-cast-routes` jest + `turn-pause-filters`
 tsx. core 0.0.490, harness 0.0.415.
 ## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), IN PROGRESS
+## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), ALL FIVE BUGS LANDED
+
+**Tier 1 + tier 2 complete.** All five v4 `43a1b5b1` fixes ported and
+differential-verified; the tier-2 comment sweep folded into each unit's
+edits. One tier-3 loud deferral (the vision path's request headers +
+abort behavior — no harness family pins request headers). Four commits:
+bug 32, bug 35, bugs 31/33/34, then this record. The lane branch is
+`claude/p4-provider-attachments-streaming-28e119`.
 
 Branch `claude/p4-provider-attachments-streaming-28e119`. Absorbs v4
 `43a1b5b1` (session 8) — five provider-plugin fixes, all Faithful
