@@ -2053,9 +2053,51 @@ records THERE. Update this summary only when a phase or round completes.
   `status-log.md`. **💸 Live proofs owed to the next dogfood pass:**
   the Almanack's first real-data report, the live Taboo section on a
   real turn, + the P4.D49 budget/attribution proofs.
+- **The fallback + wire + embedding-profiles round (P4.41 ∥ P4.42 ∥
+  P4.9H2A ∥ P4.9H2B): UNIFIED on main (2026-08-06) — ALL FOUR CLOSED
+  (P4.9H2A tier 2 deferred loudly); the baseline STAYS `3adefeba`.**
+  The OpenAI conversation-chaining fallback restored (dogfood #69 —
+  a failed chained Responses-API request retries once with full
+  input; the wedge is gone; fake-transport quartet + wire-byte pin +
+  a tier-3 driving v4's REAL provider with the SDK mocked below it) ∥
+  the Serper web-search wire (the assembly carries the PROVIDER and
+  the inventory bool derives from `is_some()` — advertised and
+  executed cannot disagree; live on chats, Carina, Brahma, Run Tool,
+  AND the production enclave; `mock-serper.ts` is the repo's first
+  mocked non-LLM external HTTP provider; 💸 the live-key smoke is a
+  dogfood item) ∥ embedding-profiles management server-side (eleven
+  verbs + REST edges + the P4.d27-banked PUT trigger matrix proven as
+  `background_jobs`/`embedding_status` STATE over the new committed
+  `embedding-profiles-{main,mount}.db` family, 34-case routes
+  differential; the EMBEDDING_REAPPLY_PROFILE handler with
+  VACUUM-INTO backups — ⚠ the differential's MOUNT leg is
+  sandbox-blind on both sides; the real-instance proof is owed) ∥ the
+  SPA (the Embedding Profiles / Memory Deduplication / Regenerate
+  Conversation Summaries cards in v4's order, the `p4.9o` Scriptorium
+  badge live on both chat-card sites). **Units 6+7 (dedup +
+  summaries implementations) refuse loudly by name** — the cards and
+  gated beats (`P49H2A_MAINTENANCE_LANDED`) await the follow-up. The
+  §3 review caught the PUT echo-null wire defect (fixed +
+  corpus-pinned + mutation-proven), the leaked-error 500 arms (all 25
+  → v4's fixed sentences), five per-action body-parse divergences,
+  and — via the freshly-activated CRUD beat failing its FIRST live
+  run — the vintage e2e fixture's missing embedding tables. Gate:
+  417 binaries / 1,931 / 0 zero SKIP; nine differentials by name over
+  pin-fresh oracles; clippy both sets; release build; ng 292/3,956;
+  full Playwright 185 passed / 2 gated skips (the one red is the
+  documented wardrobe `set_all` intermittent, green in isolation ×3).
+  **⚠ v4 DRIFTED during the round (4 commits past `3adefeba` + a
+  dirty tree, all on ported surfaces — several arms are v4 ADOPTING
+  this port's queued fixes, so the convergence pins will trip at the
+  baseline move by design): the drift catch-up is the top next
+  candidate; pin `3adefeba` for every regen until it runs.**
+  Versions: core 0.0.486, harness 0.0.411, host 0.0.61, web 0.0.63,
+  SPA 0.5.422. Round record: `status-log.md`.
 - **Oracle baseline: `3adefeba` (2026-08-06, v4 HEAD, tree clean),
   adopted at the Taboo + maintenance round's unification — NO v4
-  drift debt remains.** `3adefeba` is release-notes docs atop
+  drift debt remains.** ⚠ SUPERSEDED note (2026-08-06, the fallback +
+  wire round): v4 has since moved to `7bcd8515` with a dirty tree —
+  see the round bullet above; pin regens at `3adefeba`. `3adefeba` is release-notes docs atop
   `7df7de8e` (the Taboo feature, absorbed by P4.D50), lib-identical
   to it. Oracles may regenerate straight from
   `~/source/quilltap-server` while HEAD stays `3adefeba`; pin a

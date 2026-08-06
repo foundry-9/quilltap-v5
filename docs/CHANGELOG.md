@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+Unified the fallback + wire + embedding-profiles round — four lanes, all
+landed. OpenAI conversations no longer wedge when the provider forgets a
+prior response: a failed chained request now retries once with the full
+conversation, matching the reference app (finding #69). Web search is
+connected end to end: with a Serper key set, the search tool actually
+runs on every surface (chats, autonomous rooms, Carina, the Brahma
+Console, Run Tool), and what the tool picker advertises is now derived
+from the same source that executes, so they can never disagree.
+Embedding profiles are manageable from Settings → Commonplace Book:
+create, edit, delete, set default (with the update rules that queue the
+right re-embedding work — full reindex, vocabulary refit, or the local
+Matryoshka re-apply, which now has a live job handler taking a backup
+before any rewrite). The Memory Deduplication and Regenerate
+Conversation Summaries cards are built and answer an honest
+not-yet-available message until their server halves land. Chat cards
+grew the three-state Scriptorium badge with click-to-re-render. The
+unification review fixed one wire defect before it shipped (an
+explicit-null profile update dropped keys from the echo) and aligned
+every error sentence with the reference app. Gate: 417 test binaries /
+1,931 tests / 0 failed with all round differentials fresh at the pinned
+baseline; SPA tests 292 files / 3,956; full Playwright 185 passed + 2
+gated skips (the one flake is the documented wardrobe intermittent,
+green in isolation). Versions: core 0.0.486, harness 0.0.411, host
+0.0.61, web 0.0.63, SPA 0.5.422.
+
 Restored the OpenAI conversation-chaining fallback (finding #69). When a
 multi-turn OpenAI chat sends a prior-response reference the server can no
 longer find — routine, because both apps send unstored responses — the

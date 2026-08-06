@@ -59889,3 +59889,102 @@ follow-up; per the order, P4.42's specs are off-limits to this lane. A
 one-off foundation-cascade seen mid-investigation was an artifact of
 back-to-back reruns (leftover server/instance state), not reproduced on
 a clean-reset run.
+
+## Round record — the fallback + wire + embedding-profiles round (P4.41 ∥ P4.42 ∥ P4.9H2A ∥ P4.9H2B), UNIFIED 2026-08-06
+
+All four lanes cherry-picked onto `unify/p4.41-42-9h2` in dependency
+order (P4.41 → P4.9H2A → P4.42 → P4.9H2B), version files recounted as
+base + bumps (the pick silently kept lower lane values — the standing
+trap, fired again), the §1 contract diffed name-for-name (all fifteen
+tags + fields match; the tri-state rides `?: T | null` client-side and
+the flattened raw body server-side).
+
+**⚠ v4 DRIFTED during the round — a catch-up is OWED.** v4 moved four
+commits past `3adefeba` (`d60fc34d` bug-catalogue docs; `13ddc5ee`
+vault-overlay guards + help sync; `3bb664f0` backup/store-delete
+integrity — several arms are v4 ADOPTING fixes this port found and
+queued, so v5's self-retiring convergence pins will trip when the
+baseline moves; `7bcd8515` mount-index blobless GC / sibling reindex /
+`reconcile-embedding-dimensions` / doc attach / thumbnail sweep), and
+its tree is DIRTY with in-flight `memory-service`/`fold-episode` work.
+**The oracle baseline STAYS `3adefeba`; every regen this round ran from
+the detached pin `/tmp/qt-v4-pin-unify-3adefeba`.** The drift lands on
+PORTED surfaces (store-overlay, backup/restore, mount-index, the
+embedding reconcile) — the catch-up round is the top next candidate.
+
+**The unification wires:** `P49H2A_SERVER_LANDED` flipped true (the
+profile-CRUD beat activated); the two maintenance beats re-gated on the
+new named `P49H2A_MAINTENANCE_LANDED` (H2A's units 6+7 landed as loud
+refusals — a blanket flip would have activated beats against refusing
+verbs). One lane-record correction: P4.42's "the enclave keeps the
+not-configured boundary" refers only to core-side TEST literals — the
+production enclave driver (`spine.rs` `run_step`, :1639) passes
+`web_search: self.web_search.clone()`, so autonomous rooms CAN search
+when the key is set, matching v4's env-key reach.
+
+**The §3 review — what it caught (fixed on the unify branch,
+`a5b0f803` + `578886f0`):**
+
+1. **BLOCKING (would have shipped): the PUT echo dropped
+   `dimensions`/`truncateToDimensions` on an explicit-null clear** where
+   v4's Zod keeps the key present-as-null — the same function handled
+   `apiKeyId` correctly, and the corpus had no numeric-nullable clear
+   case, so the differential was blind. Fixed; pinned by the new
+   `update_clear_truncate_dims_null` case (routes family 33 → 34),
+   mutation-proven red on the reverted code.
+2. The 500 arms leaked `e.to_string()` where v4 answers per-route FIXED
+   sentences (the P4.D50 Almanack class) — all 25 arms now answer v4's
+   constants with the real error moved to tracing.
+3. The REST edges' body parsing diverged from v4 on five arms — now
+   per-action faithful: create/PUT throw into the 500 fixed sentence on
+   empty/malformed; reindex guards its parse and defaults `'all'` (v4's
+   own comment); refit/reapply never read the body.
+4. The reapply service: v4's in-service no-truncation throw restored;
+   the backup-failure job error now persists the RAW error (v4 rethrows;
+   the context prefix moved to tracing).
+5. SPA fidelity minors: the dropped-refetch/5s-poll badge divergence
+   DOCUMENTED on both cards (it was half-noted), the stale "re-render
+   omitted" comment corrected, an invented saving-ellipsis removed,
+   `Queuing...` matched to v4's bytes, `autofocus` restored.
+6. **The freshly-activated CRUD beat FAILED its first live run** (the
+   write-the-skipped-beat rule, again): the vintage salon e2e fixture
+   lacks the embedding tables; global-setup materialized
+   `embedding_profiles` (P4.6z) but not `tfidf_vocabularies`, so the
+   FIRST BUILTIN profile ever created 500'd every subsequent list via
+   the `vocabularyStats` probe — masked on the wire by the (correct)
+   fixed sentence; only the server log named the table. Fixed by
+   materializing `tfidf_vocabularies` + `embedding_status` in
+   global-setup (fresh_schema DDL verbatim, the same-file precedent).
+   Note the interplay: fix 2 (fixed sentences) made fix 6 harder to
+   see — the tracing arm it added is what named the real error.
+
+**Recorded, not changed (documented divergences, H2A's order header):**
+the degenerate-input arms (non-string `apiKeyId` ignored vs v4's 404;
+non-object PUT body 400 vs v4's accidental no-op/500; `isDefault`
+coercion vs v4's Zod 500; `find_by_name` DB-error 500 vs v4's
+`safeQuery`-to-null), the reapply handler's malformed-payload string,
+the PUT-echo key order for previously-NULL keys (the differential sorts
+keys), the provider-list order (manifest order + BUILTIN last).
+
+**The gate (all on the unify branch, oracles fresh from the pin):**
+`cargo fmt` clean; clippy both feature sets clean; release build; **417
+test binaries / 1,931 tests / 0 failed** with the round's env block,
+zero SKIP lines; the round's differentials re-run BY NAME with
+`--nocapture` (embedding_profiles_routes 34 cases, embedding_profiles
+tier-2, embedding_reapply, primary_stream_tier3 incl. the fallback
+case, tool_wire_call_site 7, web_search_runner_wire 3,
+web_search_tool + web_search_wire) — all ok, zero SKIP; `ng test` 292
+files / 3,956; `ng build` clean; full Playwright **185 passed / 2
+gated skips (named constant) / 1 documented wardrobe `set_all`
+full-suite intermittent, re-proven green in isolation** (the
+settings-memory CRUD beat passes in-suite and in isolation).
+
+**💸 Live proofs owed to the next dogfood pass:** the Serper live-key
+smoke (one real call), the chaining fallback on a real OpenAI enclave
+(the finding-#69 wedge un-wedging), the production MOUNT-partition
+reapply + encrypted VACUUM-INTO backup (the differential's mount leg is
+sandbox-blind on BOTH sides — flagged per the CLAUDE.md crypto rule),
+and the profile-management surface on the Friday copy.
+
+Versions: core 0.0.486, harness 0.0.411, host 0.0.61, web 0.0.63,
+SPA 0.5.422; cli 0.0.5, tauri 0.0.6 unchanged.

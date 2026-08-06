@@ -4144,3 +4144,53 @@ almanack-family NDJSON `baseline:` markers name the CASE vintage
 baseline keeps them consistent until the case itself moves. The
 distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+## The fallback + wire + embedding-profiles round (P4.41 ∥ P4.42 ∥ P4.9H2A ∥ P4.9H2B) — UNIFIED 2026-08-06
+
+All four orders CLOSED (P4.9H2A with units 6+7 deferred loudly — the
+four maintenance verbs refuse by name; the SPA cards + gated beats
+already exist). The chaining fallback un-wedges OpenAI multi-turn chats
+(finding #69); `search_web` executes on every tool-running surface
+incl. the production enclave, with the inventory bool DERIVED from the
+provider's presence; embedding-profiles management is live end to end
+(CRUD + the PUT trigger matrix + the reapply handler + REST edges +
+the Settings cards + the `p4.9o` Scriptorium badge). The §3 review
+caught the PUT echo-null wire defect before it shipped and the
+first-run CRUD beat exposed the vintage-fixture embedding-table gap
+(both fixed on the unify branch). Round record: `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **⚠ The v4 drift catch-up — OWED.** v4 moved four commits past
+   `3adefeba` DURING the round (`13ddc5ee` vault-overlay guards + help
+   sync; `3bb664f0` backup/store-delete integrity — several arms are
+   v4 ADOPTING this port's queued fixes, so the self-retiring
+   convergence pins will trip at the baseline move, by design;
+   `7bcd8515` mount-index blobless GC / sibling reindex / the
+   embedding-dimension reconcile / doc attach / thumbnail sweep;
+   `d60fc34d` docs) and its tree is DIRTY with in-flight
+   memory-service/fold-episode work. All on PORTED surfaces. Pin a
+   detached worktree at `3adefeba` for every regen until it runs.
+2. **The P4.9H2A units 6+7 follow-up** — memory-dedup (the 446-LOC
+   synchronous union-find algorithm) + conversation-summaries regen
+   (+ its handler), each with its differential; the verbs, SPA cards,
+   gated beats (`P49H2A_MAINTENANCE_LANDED`), deps, and the fixture's
+   crafted near-duplicate memories are all in place.
+3. **A dogfood pass** — the owed 💸 queue: the Serper live-key smoke,
+   the chaining fallback on a real OpenAI enclave, the MOUNT-partition
+   reapply + encrypted VACUUM-INTO backup (sandbox-blind in the
+   differential), profile management on the Friday copy, plus the
+   standing backlog (the Almanack first report, live Taboo, the P4.D49
+   budget/attribution proofs, OpenRouter pricing with a real key).
+4. **The standing pools:** `p4.9i2` (help surface), `p4.9l` (composer
+   toolbar), the rest of the `p4.9h2` bucket (prompt library, global
+   Core Whisper card, tag pickers, memory editor), the BUILTIN TF-IDF
+   manifest decision, the P4.D41 tier-2 item 9 fixture.
+
+**Standing regen note:** the oracle baseline is **`3adefeba`**
+(unchanged this round). **⚠ v4 HEAD is `7bcd8515`, FOUR commits past
+it, tree DIRTY — pin a detached worktree at `3adefeba` for EVERY
+oracle regen until the catch-up round absorbs the drift**
+(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+The distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.
