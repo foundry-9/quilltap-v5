@@ -225,6 +225,10 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
   The `core-contract.ts` mirror gains `showThinking`,
   `answerConfirmationOverride` and `allLLMPauseTurnCount`; the three
   write-only-select divergence records are retired.
+- Bug 36: the LLM Tool Settings dialog now shows its "tools disabled by
+  connection profile" warning when an LLM participant's profile has tool
+  use turned off — the projected `connectionProfile.allowToolUse` (P4.D53)
+  makes v4's long-dead-code condition computable, and the binding fires it.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

@@ -33,26 +33,20 @@ import { ToolSettingsContent } from './tool-settings-content';
  *   project modal passes false; the Prospero sibling is not this lane's.)
  * - The footer note is v4's, word for word.
  *
- * ## The `allowToolUse` warning box — v4-FAITHFUL by outcome (disposition closed)
+ * ## The `allowToolUse` warning box — LIVE since bug 36
  *
  * v4 shows a warning when any LLM participant's connection profile has
- * `allowToolUse === false` (`ChatModals.tsx:392`), because then nothing below
- * matters. v5's chat read does not project `allowToolUse` on a participant's
- * connection profile, so the condition cannot be computed in the browser, and
- * the box is not rendered.
+ * `allowToolUse === false` (`ChatModals.tsx:401`), because then nothing below
+ * matters. That box was long dead code in v4 itself: `getConnectionProfile`
+ * (`lib/services/chat-enrichment.service.ts`) returned only
+ * `{id, name, provider, modelName, apiKey}`, so the condition compared
+ * `undefined === false` and never fired (P4.9E4B's survey; v5 carried the input
+ * and gated box against the day v4 grew the projection).
  *
- * P4.9E3C escalated that as a v5 server gap. **P4.9E4B's survey closed it: v4
- * does not project the field either.** `getConnectionProfile`
- * (`lib/services/chat-enrichment.service.ts:354-379`) returns exactly
- * `{id, name, provider, modelName, apiKey}`, so v4's own condition compares
- * `undefined === false` and the box is **dead code in v4 itself** — it can never
- * render there. v5 not rendering it is therefore not a reduction at all; the two
- * apps behave identically, and no server change is owed.
- *
- * The `profileToolsDisabled` input and the gated box STAY, so that if v4 ever
- * grows the projection, one binding turns it on. The upstream choice — project
- * the field or delete the box — is recorded on `dogfood-findings.md`'s post-5.0
- * v4-side list, the same family as the unreachable `AllLLMPauseModal`.
+ * v4 `bd419ae9` (bug 36) added `allowToolUse` to the enriched connection profile,
+ * so the condition is now computable in both apps. The parent
+ * (`salon-conversation.ts`) makes v4's exact binding — `some(p => p.controlledBy
+ * === 'llm' && p.connectionProfile?.allowToolUse === false)` — and the box fires.
  */
 @Component({
   selector: 'qt-chat-tool-settings-modal',
@@ -111,7 +105,8 @@ export class ChatToolSettingsModal {
   readonly chatId = input.required<string>();
   readonly disabledTools = input.required<string[]>();
   readonly disabledToolGroups = input.required<string[]>();
-  /** See the class note: v5's chat read cannot supply this yet. */
+  /** See the class note: bound from the projected `connectionProfile.allowToolUse`
+   *  (bug 36); true ⇒ the "tools disabled by profile" warning box renders. */
   readonly profileToolsDisabled = input(false);
 
   /** v4 `onSuccess(newDisabledTools, newDisabledToolGroups)`. */

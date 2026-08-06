@@ -2529,7 +2529,18 @@ export interface ParticipantDetail {
   status: ParticipantStatusWire;
   removedAt?: string | null;
   character: DetailCharacter | null;
-  connectionProfile: { id: string; name: string; provider: string; modelName: string } | null;
+  /**
+   * `allowToolUse` (default true) is projected since v4 `bd419ae9` (bug 36) so
+   * the tool-settings dialog can warn that per-chat tool toggles are moot when a
+   * participant's profile forbids tool use (P4.D53 §1).
+   */
+  connectionProfile: {
+    id: string;
+    name: string;
+    provider: string;
+    modelName: string;
+    allowToolUse: boolean;
+  } | null;
   imageProfile: { id: string; name: string; provider: string; modelName: string } | null;
   selectedSystemPromptId?: string | null;
   talkativeness?: number | null;

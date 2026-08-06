@@ -60929,3 +60929,17 @@ the §1 name-for-name contract diff at unification.
   two sidebar specs. **Assumes P4.D53's server emissions at unification** — the
   §1 name-for-name diff is the unifier's; the live reload round-trip is the
   tier-2 e2e beat (ACTIVATE-AT-UNIFY).
+
+- **Bug 36 (`allowToolUse` binding) — DONE.** v4 `bd419ae9` added
+  `allowToolUse` to the enriched connection profile, making the tool-settings
+  dialog's "tools disabled by profile" warning — long DEAD CODE in v4 itself
+  (`getConnectionProfile` never projected the field, so `undefined === false`
+  never fired) — finally computable. v5 had carried the `profileToolsDisabled`
+  input + gated box against exactly this day (P4.9E4B). Now made live:
+  `ParticipantDetail.connectionProfile` gains `allowToolUse: boolean` (all
+  fixtures use `connectionProfile: null`, so a required field breaks nothing);
+  `salon-conversation.ts` binds `profileToolsDisabled` from v4's exact condition
+  (`some(p => p.controlledBy === 'llm' && p.connectionProfile?.allowToolUse ===
+  false)`); the modal's disposition comment rewritten from "dead code, stays for
+  the day v4 grows the projection" to "LIVE since bug 36". Spec: the warning box
+  renders only when the input is set. 10/10.

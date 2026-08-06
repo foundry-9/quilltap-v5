@@ -606,6 +606,7 @@ interface CascadePrompt {
         [chatId]="c.id"
         [disabledTools]="c.disabledTools ?? []"
         [disabledToolGroups]="c.disabledToolGroups ?? []"
+        [profileToolsDisabled]="profileToolsDisabled()"
         (saved)="onToolSettingsSaved()"
         (close)="showToolSettings.set(false)"
       />
@@ -1292,6 +1293,16 @@ export class SalonConversation {
   protected readonly showMerge = signal(false);
   /** v4 `toolSettingsModalOpen`, opened from the Chat section's Tools… entry. */
   protected readonly showToolSettings = signal(false);
+  /**
+   * Whether any LLM participant's connection profile forbids tool use, in which
+   * case the tool-settings dialog shows a warning that its toggles are moot (v4
+   * `ChatModals.tsx:401`, bug 36). Projected since v4 `bd419ae9`.
+   */
+  protected readonly profileToolsDisabled = computed(() =>
+    (this.chat()?.participants ?? []).some(
+      (p) => p.controlledBy === 'llm' && p.connectionProfile?.allowToolUse === false,
+    ),
+  );
   /** v4 `runToolModalOpen`, opened from the Chat section's Run Tool… entry. */
   protected readonly showRunTool = signal(false);
   /** v4 `searchReplaceOpen`, opened from the Edit Content section. */

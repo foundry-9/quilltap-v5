@@ -41,6 +41,7 @@ function stubClient(): Partial<CoreClient> {
       [chatId]="'chat-1'"
       [disabledTools]="disabledTools()"
       [disabledToolGroups]="disabledGroups()"
+      [profileToolsDisabled]="profileToolsDisabled()"
       (saved)="saves.push($event)"
       (close)="closed = closed + 1"
     />
@@ -49,6 +50,7 @@ function stubClient(): Partial<CoreClient> {
 class Host {
   readonly disabledTools = signal<string[]>([]);
   readonly disabledGroups = signal<string[]>([]);
+  readonly profileToolsDisabled = signal(false);
   readonly saves: { disabledTools: string[]; disabledToolGroups: string[] }[] = [];
   closed = 0;
 }
@@ -231,5 +233,16 @@ describe('ChatToolSettingsModal', () => {
     await settle(fixture);
     expect(toasts()).toEqual([{ type: 'error', message: 'the cabinet is jammed' }]);
     expect(fixture.componentInstance.closed).toBe(0);
+  });
+
+  it('renders the profile-tools-disabled warning box only when the input is set (bug 36)', async () => {
+    const fixture = await render();
+    const box = () => fixture.nativeElement.querySelector('.qt-warning-box');
+    expect(box()).toBeNull();
+
+    fixture.componentInstance.profileToolsDisabled.set(true);
+    fixture.detectChanges();
+    expect(box()).not.toBeNull();
+    expect(box().textContent).toContain('Tools disabled by connection profile');
   });
 });
