@@ -59434,3 +59434,21 @@ QT_EP_MGMT_MOUNT → the committed .db paths), then run
 QT_EP_MGMT_MAIN/MOUNT + QT_ORACLE_OUT; run the Rust diff with QT_ORACLE_EP_ROUTES.
 
 Version: harness 0.0.409 → 0.0.410.
+
+### Unit 3 — the REST edges (`quilltap-web`)
+
+New `embedding_profiles_routes.rs` + the router lines in `lib.rs`, giving v4-URL
+parity for the SPA (the verbs also ride `POST /api/dispatch`): `GET/POST
+/api/v1/embedding-profiles` (+ `?action=list-providers|list-models|fetch-models`),
+`GET/PUT/DELETE /api/v1/embedding-profiles/{id}`, and `POST …/{id}?action=refit|
+reindex|reapply`. Each edge unwraps the `Response::EmbeddingProfile` envelope to
+v4's raw body; create answers 201, the rest 200; errors map through
+`error_to_http`. Unknown/missing `[id]` POST actions answer v4's `withActionDispatch`
+sentences verbatim (`{error: "Unknown action: …", availableActions}` /
+`{error: "Action parameter required", availableActions}`, both 400). The reindex
+scope rides `body.scope` (a non-string value drops to its JSON text so the
+handler's `Invalid scope: …` arm fires). `characters_routes.rs:608`'s hardcoded
+`"embeddingProfiles": 0` was reviewed and left AS-IS: it is the `reset_builtins`
+count, which touches only characters + memories, so zero is correct there.
+
+Version: web 0.0.62 → 0.0.63.

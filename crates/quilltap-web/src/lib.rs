@@ -27,6 +27,7 @@ pub mod brahma_routes;
 pub mod characters_routes;
 pub mod custom_tools_routes;
 pub mod dispatch;
+pub mod embedding_profiles_routes;
 pub mod events;
 pub mod files_routes;
 pub mod health;
@@ -297,6 +298,20 @@ pub fn build_router(state: SharedState) -> Router {
             get(wardrobe_routes::chat_action_get).post(wardrobe_routes::chat_action_post),
         )
         // === end P4.6ak ===
+        // === P4.9H2A: embedding-profiles management REST edges ===
+        .route(
+            "/api/v1/embedding-profiles",
+            get(embedding_profiles_routes::collection_get)
+                .post(embedding_profiles_routes::collection_post),
+        )
+        .route(
+            "/api/v1/embedding-profiles/{id}",
+            get(embedding_profiles_routes::item_get)
+                .put(embedding_profiles_routes::item_put)
+                .delete(embedding_profiles_routes::item_delete)
+                .post(embedding_profiles_routes::item_post),
+        )
+        // === end P4.9H2A ===
         // === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
         .route(
             "/api/v1/wardrobe",

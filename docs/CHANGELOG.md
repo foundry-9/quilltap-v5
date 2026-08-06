@@ -21,6 +21,10 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Exposed the embedding-profiles management API at its standard web
+addresses (in addition to the shared request endpoint), so the settings
+screens can reach it by URL.
+
 Added a differential test and committed test fixtures covering the
 embedding-profiles management API against the reference app, including
 the re-embed trigger matrix. Test-only.
