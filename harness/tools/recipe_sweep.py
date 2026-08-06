@@ -464,17 +464,7 @@ def scan_venue(r: Recipe, joined: str) -> None:
     produces are only mechanically knowable up to the driver's write scan.
     """
     text = PLACEHOLDER_WORKTREE.sub("$V5W", joined)
-    for line in re.sub(r"\\\n", " ", text).splitlines():
-        if "jest" not in line:
-            continue
-        for m in JEST_ROOTS_ARG.finditer(line):
-            root = m.group(1)
-            if V5_REF.search(root) or root.rstrip("/").endswith("harness/oracle/cases"):
-                warning = f"unstaged_jest_roots {root}"
-                if warning not in r.warnings:
-                    r.warnings.append(warning)
 
-    produced = set(r.tmp_writes)
     # An ASSIGNMENT is not a creation. `TMPO=/tmp/qt-oracle-run` followed by
     # `--roots "$TMPO/cases"` and no mkdir is precisely the "leans on another
     # recipe's staging" defect (compression_cache_tier3, found by P4.34's phase
@@ -483,6 +473,29 @@ def scan_venue(r: Recipe, joined: str) -> None:
     assigns: dict[str, str] = {}
     for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)=(/(?:private/)?tmp/\S+)", text):
         assigns.setdefault(m.group(1), m.group(2).strip('"').rstrip(";").rstrip("/"))
+
+    for line in re.sub(r"\\\n", " ", text).splitlines():
+        if "jest" not in line:
+            continue
+        for m in JEST_ROOTS_ARG.finditer(line):
+            root = m.group(1)
+            # P4.40: the `endswith` arm alone is a FALSE POSITIVE on the very
+            # convention it exists to demand — a staged mirror keeps the
+            # `harness/oracle/cases` layout (the case reads its spec via
+            # `join(here,'..','fixtures',…)`, so it must), and `$STAGE/harness/
+            # oracle/cases` therefore ends exactly like an unstaged root. That
+            # warned 27 families that were already correct, and `--run` REFUSED
+            # every one of them from a lane worktree. Expand the leading
+            # variable first: a root that resolves under /tmp IS the staged
+            # mirror, whatever its tail.
+            if expand_tmp(root, assigns).startswith(("/tmp", "/private/tmp")):
+                continue
+            if V5_REF.search(root) or root.rstrip("/").endswith("harness/oracle/cases"):
+                warning = f"unstaged_jest_roots {root}"
+                if warning not in r.warnings:
+                    r.warnings.append(warning)
+
+    produced = set(r.tmp_writes)
     for m in re.finditer(r"\bmkdir\s+(?:-[a-zA-Z]+\s+)*(.+)$", text, re.M):
         for tok in m.group(1).split():
             produced.add(expand_tmp(tok, assigns))
@@ -995,6 +1008,26 @@ def cmd_self_test() -> int:
     check(
         not any(w.startswith("unstaged_jest_roots") for w in r2.warnings),
         f"F2 false positive: {r2.warnings}",
+    )
+    # P4.40: the staged mirror keeps the `harness/oracle/cases` layout, so a
+    # correct recipe's root ENDS exactly like an unstaged one. Both forms of it
+    # — the literal /tmp path and the `$STAGE`-variable form every header
+    # actually writes — must stay silent.
+    r2b = Recipe("x", Path("x"))
+    scan_venue(
+        r2b,
+        'STAGE=/tmp/qt-oracle-fam\nmkdir -p $STAGE/harness/oracle/cases\n'
+        'npx jest --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- x',
+    )
+    check(
+        not any(w.startswith("unstaged_jest_roots") for w in r2b.warnings),
+        f"F2 staged-mirror false positive: {r2b.warnings}",
+    )
+    r2c = Recipe("x", Path("x"))
+    scan_venue(r2c, 'npx jest --roots "$PWD" --roots "/tmp/qt-x/harness/oracle/cases" -- x')
+    check(
+        not any(w.startswith("unstaged_jest_roots") for w in r2c.warnings),
+        f"F2 literal staged-mirror false positive: {r2c.warnings}",
     )
     check(
         not any(w.startswith("external_tmp_input") for w in r2.warnings),

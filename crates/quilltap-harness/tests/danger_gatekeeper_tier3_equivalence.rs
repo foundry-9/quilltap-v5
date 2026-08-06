@@ -16,8 +16,12 @@
 //! aggregate + Concierge post mint fresh values); the minted system-event /
 //! Concierge id + createdAt are placeholdered.
 //!
-//! W4.10b: `logLLMCall` runs REAL now, so both sides also dump `llm_logs` and
-//! diff the written `DANGER_CLASSIFICATION` rows (one per LLM-classify case).
+//! W4.10b: `logLLMCall` runs REAL now, so both sides also dump `llm_logs`, and
+//! the written `DANGER_CLASSIFICATION` rows are compared one per LLM-classify
+//! case. (P4.40: that sentence used to begin with the word "diff", which the
+//! sweep driver's extractor reads as the START of a shell command — the F3
+//! prose-leak class — so the recipe ran the doc sentence and died on a bash
+//! syntax error. Never open a header sentence with a command word.)
 //! v4's moderation path ALSO logs (`modelName:'moderation'`), but that logging is
 //! a tracked unported seam — those rows are filtered out on both sides.
 //!

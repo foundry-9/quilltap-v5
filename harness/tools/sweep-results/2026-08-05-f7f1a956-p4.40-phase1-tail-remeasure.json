@@ -1,0 +1,142 @@
+{
+  "label": "P4.40 item 3 \u2014 the P4.34 phase-1 tail, re-measured at the f7f1a956 pin",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423",
+  "venue_is_worktree": true,
+  "requested": [
+    "chat_regenerate_title_tier3_equivalence",
+    "compression_cache_tier3_equivalence",
+    "courier_transport_tier3_equivalence",
+    "regenerate_swipe_tier3_equivalence",
+    "chat_tasks_equivalence",
+    "context_compression_equivalence",
+    "context_summary_equivalence",
+    "enclave_budget_equivalence",
+    "compression_tier3_equivalence",
+    "enclave_step_tier3_equivalence",
+    "orchestrator_tier3_equivalence",
+    "brahma_console_tier3_equivalence",
+    "brahma_orchestrator_tier3_equivalence",
+    "fictional_clock_anchor_equivalence",
+    "openrouter_sdk_pricing_equivalence",
+    "autonomous_rooms_routes_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "chat_regenerate_title_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "compression_cache_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "courier_transport_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "regenerate_swipe_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chat_tasks_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "context_compression_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "context_summary_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "enclave_budget_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "compression_tier3_equivalence",
+      "status": "regen_failed",
+      "cause": "    > 258 |   const rawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<\n          |                        ^\n      259 |     Record<string, unknown>\n      260 |   >;\n      261 |   const rows = rawRows\n      at Database.prepare (../../../Users/csebold/source/quilltap-server/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers/lib/methods/wrappers.js:5:21)\n      at prepare (../qt-compression-oracle-compression_tier3_equivalence/cases/compression-tier3.test.ts:258:24)\n      at Object.<anonymous> (../qt-compression-oracle-compression_tier3_equivalence/cases/compression-tier3.test.ts:286:3)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        1.078 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "enclave_step_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "brahma_console_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "brahma_orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "fictional_clock_anchor_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "openrouter_sdk_pricing_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 15,
+    "regen_failed": 1
+  }
+}

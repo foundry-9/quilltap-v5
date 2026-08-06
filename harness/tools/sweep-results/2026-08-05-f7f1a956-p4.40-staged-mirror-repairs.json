@@ -1,0 +1,101 @@
+{
+  "label": "P4.40: the nine headers repaired to the staged-mirror convention + the two F3 prose-leak repairs, all run from a .claude/ LANE WORKTREE venue (the venue the unstaged form cannot survive). v4 pinned at f7f1a956.",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423",
+  "venue_is_worktree": true,
+  "requested": [
+    "danger_resolver_equivalence",
+    "embedding_refit_tier3_equivalence",
+    "embedding_wire_equivalence",
+    "memory_gate_tier3_equivalence",
+    "memory_watermark_tier3_equivalence",
+    "pricing_fetcher_equivalence",
+    "rng_executor_equivalence",
+    "wardrobe_transfers_tier2_equivalence",
+    "write_apply_equivalence",
+    "state_sql_tools_equivalence",
+    "danger_gatekeeper_tier3_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "danger_resolver_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_refit_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_wire_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_gate_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_watermark_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pricing_fetcher_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "rng_executor_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "wardrobe_transfers_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "write_apply_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_sql_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "danger_gatekeeper_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 11
+  }
+}

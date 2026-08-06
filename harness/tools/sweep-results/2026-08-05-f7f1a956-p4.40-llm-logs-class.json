@@ -1,0 +1,116 @@
+{
+  "label": "P4.40 item 3 \u2014 the llm_logs-dumping class swept for the unit-1 defect (non-UUID connectionProfileId), at the f7f1a956 pin",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423",
+  "venue_is_worktree": true,
+  "requested": [
+    "answer_confirmation_tier3_equivalence",
+    "attach_mount_file_equivalence",
+    "avatar_job_tier3_equivalence",
+    "courier_images_routes_equivalence",
+    "danger_gatekeeper_tier3_equivalence",
+    "image_generation_tier3_equivalence",
+    "pascal_custom_tools_route_equivalence",
+    "pascal_run_custom_handler_equivalence",
+    "pascal_workbench_route_equivalence",
+    "primary_stream_tier3_equivalence",
+    "story_background_job_tier3_equivalence",
+    "llm_logs_routes_equivalence",
+    "llm_log_cleanup_enqueue_equivalence",
+    "llm_log_cleanup_jobs_equivalence",
+    "file_attachment_tier3_equivalence",
+    "self_inventory_equivalence",
+    "llm_logs_tier2_equivalence",
+    "state_sql_tools_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "answer_confirmation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "attach_mount_file_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "avatar_job_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "courier_images_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "danger_gatekeeper_tier3_equivalence",
+      "status": "regen_failed",
+      "cause": "bash: -c: line 2: syntax error near unexpected token `('",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "image_generation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_custom_tools_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_run_custom_handler_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_workbench_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "primary_stream_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "story_background_job_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "llm_logs_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 11,
+    "regen_failed": 1
+  }
+}

@@ -5,10 +5,13 @@
 //!
 //! Generate the oracle (jest, Node 24):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-embedding-wire-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/embedding-wire.test.ts" "$TMPO/harness/oracle/cases/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-embedding-wire.ndjson \
 //!     $N/npx jest --silent --watchman=false \
-//!       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- embedding-wire
+//!       --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- embedding-wire
 //! Run:
 //!   QT_ORACLE_EMBEDDING_WIRE=/tmp/oracle-embedding-wire.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_wire_equivalence

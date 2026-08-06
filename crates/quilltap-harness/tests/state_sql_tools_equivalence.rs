@@ -9,7 +9,7 @@
 //! js-number + preserve_order.
 //!
 //! - `state` cases (tier-2): drive `execute_state_tool` + `format_state_results`,
-//!   diff resultJson + formatted, dump the `chats` table (proves chat-state writes;
+//!   compare resultJson + formatted, dump the `chats` table (proves chat-state writes;
 //!   no `updatedAt` mint → ZERO normalization), and read back the project's `state`
 //!   (proves the project-state store-overlay write — the read-back approach per the
 //!   `vault_wardrobe_public` precedent, since the overlay bytes are already proven
@@ -21,7 +21,8 @@
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). Case files under
 //! any `.claude/` path are invisible to jest, so STAGE them outside first:
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   WT=<this worktree root>   STAGE=/tmp/qt-oracle-stage
+//!   WT=<this worktree root>
+//!   STAGE=/tmp/qt-state-sql-tools-oracle
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $WT/harness/oracle/cases/state-sql-tools.test.ts $STAGE/harness/oracle/cases/
 //!   cp $WT/harness/oracle/fixtures/state-sql-tools.json  $STAGE/harness/oracle/fixtures/

@@ -34,12 +34,16 @@
 //! Generate the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-wardrobe-transfers-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/wardrobe-transfers.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/wardrobe-transfers-tier2.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_WTR_MAIN=/tmp/qt-wtr-main.db QT_FIXTURE_WTR_MOUNT=/tmp/qt-wtr-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-wardrobe-transfers-fixture.ts
 //!   QT_FIXTURE_WTR_MAIN=/tmp/qt-wtr-main.db QT_FIXTURE_WTR_MOUNT=/tmp/qt-wtr-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-wtr.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- wardrobe-transfers
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- wardrobe-transfers
 //! Run:
 //!   QT_ORACLE_WTR=/tmp/oracle-wtr.ndjson \
 //!   QT_FIXTURE_WTR_MAIN=/tmp/qt-wtr-main.db QT_FIXTURE_WTR_MOUNT=/tmp/qt-wtr-mount.db \

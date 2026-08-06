@@ -73,6 +73,17 @@ every add and remove and renders back exactly what the server stored,
 so the normalization is visible where you made the edit. The Taboo help
 page from the reference app is not carried over — this build has no help
 surface to show it on.
+Fixed a check in the oracle-recipe sweep tool that was flagging
+correct recipes as broken. It warned whenever a recipe pointed the
+test runner at a directory ending in the standard layout — which the
+correct, staged form also ends in — so sixteen already-correct
+comparisons were reported as debt and the tool refused to run them
+from a working branch. All sixteen now run there, proven by running
+them. Nine recipes that really were in the old form were converted,
+and two doc comments that opened a sentence with a command word (and
+so were being executed as shell) were reworded. No product code
+changed.
+
 Repaired the last broken oracle-regeneration recipes and gave the
 sweep driver the one option a catch-up round needs: a way to point
 every recipe at a pinned copy of the reference app, so a sweep run

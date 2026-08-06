@@ -58839,3 +58839,63 @@ and prompt-family case files (P4.D50's) and the almanack families
 checked against BOTH sibling orders' Ownership lists before being
 touched: it is named in neither, and the change is a fixture corpus, not
 a case file or a recipe a sibling regenerates.
+
+---
+
+### Lane record — P4.40 unit 5: the `unstaged_jest_roots` false positive
+
+**The driver was warning — and REFUSING — on the very convention it
+exists to demand.** `scan_venue`'s test was
+`V5_REF.search(root) or root.endswith("harness/oracle/cases")`, but a
+correct staged mirror KEEPS that layout (the oracle case reads its spec
+via `join(here, '..', 'fixtures', …)`, so the mirror must carry
+`cases/` and `fixtures/` as siblings). `$STAGE/harness/oracle/cases`
+therefore ends exactly like an unstaged root, and **16 of the 27 flagged
+families were already correct**. From a lane worktree `--run` refused
+every one of them by name — which is why P4.34's venue rule reads as a
+large standing debt when most of it was already paid.
+
+The fix expands the root's leading variable through the `assigns` map
+the function already builds (moved above the jest scan) and skips any
+root that resolves under `/tmp`. Two new `--self-test` assertions cover
+the `$STAGE`-variable form and the literal `/tmp/.../harness/oracle/
+cases` form; the existing F2 hit and miss both still hold.
+
+**Proof, not analysis:** all 16 were then run through `--run-all` FROM
+THIS `.claude/` LANE WORKTREE — the venue the false warning claimed they
+could not survive — at the `f7f1a956` pin. **15 ok**; the 16th
+(`state_sql_tools`) failed for an unrelated reason found on the way (see
+below). Artifact:
+`harness/tools/sweep-results/2026-08-05-f7f1a956-p4.40-venue-false-positives.json`.
+
+**The 11 genuinely-unstaged families: 9 repaired, 2 skipped by name.**
+Each of the nine gained a per-family `TMPO` staging block before its
+`cd`, copying its case (+ its fixture spec where the case reads one) and
+rewiring its jest `--roots` to the mirror. All nine then ran end-to-end
+from this worktree venue — the repair's whole point. Artifact:
+`…-p4.40-staged-mirror-repairs.json` (11 ok, the two prose-leak repairs
+included). **Skipped, per the order's sibling rule:**
+`first_message_context_equivalence` and `knowledge_injector_equivalence`
+— both prompt-family, which P4.D50's Ownership claims ("the prompt-family
+case files it extends"). They are the only two `unstaged_jest_roots`
+warnings left, and the repair for them is the identical block above.
+
+**Two F3 prose leaks, same shape, both fixed.** A header sentence that
+BEGINS with a command word is read by the extractor as the start of a
+shell statement, so the recipe runs the doc sentence and dies on a bash
+syntax error. `danger_gatekeeper_tier3` ("diff the written
+`DANGER_CLASSIFICATION` rows (one per LLM-classify case).") and
+`state_sql_tools` ("diff resultJson + formatted, dump the `chats` table
+(proves …") both opened a sentence with `diff`. Reworded, with the rule
+recorded inline where the next author will see it: **never open a header
+sentence with a command word.** `state_sql_tools` also carried two
+assignments on ONE line (`WT=… STAGE=/tmp/qt-oracle-stage`), which
+defeats the driver's per-family scratch suffix (policy 2) and left it on
+the old SHARED mirror name the README warns against; split and renamed.
+
+**A defect-class sweep, not just the named tail.** Since unit 1's defect
+is a corpus one, every family whose oracle dumps `llm_logs` was swept for
+it (16 families + the tail's own): all green apart from
+`compression_tier3` (unit 4) and the two prose leaks. Artifacts:
+`…-p4.40-llm-logs-class.json` and `…-p4.40-llm-logs-class-remainder.json`.
+No further instances of the non-UUID `connectionProfileId` defect exist.

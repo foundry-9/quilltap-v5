@@ -20,12 +20,16 @@
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-embedding-refit-tier3-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/embedding-refit-tier3.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/embedding-refit-tier3.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_REFIT_MAIN=/tmp/qt-refit-main.db QT_FIXTURE_REFIT_MOUNT=/tmp/qt-refit-mount.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-refit-fixture.ts
 //!   QT_FIXTURE_REFIT_MAIN=/tmp/qt-refit-main.db QT_FIXTURE_REFIT_MOUNT=/tmp/qt-refit-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-refit.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- embedding-refit-tier3
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- embedding-refit-tier3
 //! Run:
 //!   QT_ORACLE_REFIT=/tmp/oracle-refit.ndjson \
 //!   QT_FIXTURE_REFIT_MAIN=/tmp/qt-refit-main.db QT_FIXTURE_REFIT_MOUNT=/tmp/qt-refit-mount.db \

@@ -18,13 +18,17 @@
 //!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+//!   TMPO=/tmp/qt-danger-manual-flip-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5W/harness/oracle/cases/danger-manual-flip.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/danger-manual-flip.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   $N/npx tsx $V5W/harness/oracle/cases/danger-resolver.ts > /tmp/oracle-danger-resolver.ndjson
 //!   QT_FIXTURE_OUT=/tmp/qt-danger-manual-flip.db \
 //!     $N/npx tsx $V5W/harness/oracle/fixtures/build-danger-manual-flip-fixture.ts
 //!   QT_FIXTURE_MANUAL_FLIP=/tmp/qt-danger-manual-flip.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-danger-manual-flip.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5W/harness/oracle/cases" \
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" \
 //!       -- danger-manual-flip
 //! Run:
 //!   QT_ORACLE_DANGER_RESOLVER=/tmp/oracle-danger-resolver.ndjson \

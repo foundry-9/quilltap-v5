@@ -5,10 +5,13 @@
 //!
 //! Generate the oracle (jest, Node 24):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-pricing-fetcher-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/pricing-fetcher.test.ts" "$TMPO/harness/oracle/cases/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-pricing-fetcher.ndjson \
 //!     $N/npx jest --silent --watchman=false \
-//!       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- pricing-fetcher
+//!       --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- pricing-fetcher
 //! Run:
 //!   QT_ORACLE_PRICING_FETCHER=/tmp/oracle-pricing-fetcher.ndjson \
 //!     cargo test -p quilltap-harness --test pricing_fetcher_equivalence

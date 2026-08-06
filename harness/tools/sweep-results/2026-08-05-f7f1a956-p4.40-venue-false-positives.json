@@ -1,0 +1,142 @@
+{
+  "label": "P4.40: the 16 families the unstaged_jest_roots detector falsely flagged \u2014 run from a .claude/ LANE WORKTREE venue, which is what the false warning refused. v4 pinned at f7f1a956.",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423",
+  "venue_is_worktree": true,
+  "requested": [
+    "doc_blob_equivalence",
+    "doc_enum_equivalence",
+    "doc_fm_equivalence",
+    "doc_fs_equivalence",
+    "doc_text_equivalence",
+    "doc_ui_equivalence",
+    "image_gen_leaves_equivalence",
+    "mail_carina_tools_equivalence",
+    "photo_tools_equivalence",
+    "precompute_equivalence",
+    "recall_replay_equivalence",
+    "search_tools_equivalence",
+    "state_cascade_equivalence",
+    "state_routes_equivalence",
+    "state_sql_tools_equivalence",
+    "web_search_tool_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "doc_blob_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "doc_enum_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "doc_fm_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "doc_fs_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "doc_text_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "doc_ui_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "image_gen_leaves_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "mail_carina_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "photo_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "precompute_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "recall_replay_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "search_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_cascade_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_sql_tools_equivalence",
+      "status": "regen_failed",
+      "cause": "bash: -c: line 1: syntax error near unexpected token `('",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "web_search_tool_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 15,
+    "regen_failed": 1
+  }
+}

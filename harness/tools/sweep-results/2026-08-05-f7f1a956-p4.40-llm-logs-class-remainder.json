@@ -1,0 +1,72 @@
+{
+  "label": "P4.40 item 3 \u2014 the llm_logs class, remainder",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423",
+  "venue_is_worktree": true,
+  "requested": [
+    "llm_log_cleanup_equivalence",
+    "file_attachment_tier3_equivalence",
+    "self_inventory_equivalence",
+    "llm_logs_tier2_equivalence",
+    "state_sql_tools_equivalence",
+    "enclave_step_tier3_equivalence",
+    "orchestrator_tier3_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "llm_log_cleanup_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "file_attachment_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "self_inventory_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "llm_logs_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_sql_tools_equivalence",
+      "status": "refused_venue",
+      "cause": "the recipe hands jest a root under the v5 checkout and this checkout is under /.claude/ (/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-40-maintenance-sweep-add423) \u2014 v4 jest ignores those paths, so the run would find ZERO tests and fail for a reason that is not the recipe's. Re-run from the main checkout (--v5w ~/source/quilltap-v5), repair to a staged mirror, or pass --force. [unstaged_jest_roots $STAGE/harness/oracle/cases]",
+      "exit": 4,
+      "warnings": [
+        "unstaged_jest_roots $STAGE/harness/oracle/cases"
+      ]
+    },
+    {
+      "family": "enclave_step_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 6,
+    "refused_venue": 1
+  }
+}

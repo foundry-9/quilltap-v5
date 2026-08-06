@@ -26,12 +26,16 @@
 //!
 //! Generate the oracle output + fixture (Node, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-memory-gate-tier3-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/memory-gate-tier3.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/memory-gate-tier3.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-memory-gate-fixture.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-memory-gate-fixture.ts
 //!   QT_FIXTURE_GATE=/tmp/qt-memory-gate-fixture.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-memory-gate.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- memory-gate-tier3
+//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- memory-gate-tier3
 //! Run:
 //!   QT_ORACLE_GATE=/tmp/oracle-memory-gate.ndjson \
 //!   QT_FIXTURE_GATE=/tmp/qt-memory-gate-fixture.db \

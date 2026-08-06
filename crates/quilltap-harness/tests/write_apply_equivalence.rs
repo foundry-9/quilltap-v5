@@ -14,9 +14,13 @@
 //! `getRepositories()` singletons are `jest.mock`-injected). Generate it:
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
+//!   TMPO=/tmp/qt-write-apply-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/harness/oracle/cases" "$TMPO/harness/oracle/fixtures"
+//!   cp "$V5/harness/oracle/cases/write-apply.test.ts" "$TMPO/harness/oracle/cases/"
+//!   cp "$V5/harness/oracle/fixtures/write-apply.json" "$TMPO/harness/oracle/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-write-apply.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- write-apply
+//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- write-apply
 //! Run:
 //!   QT_ORACLE_WRITE_APPLY=/tmp/oracle-write-apply.ndjson \
 //!     cargo test -p quilltap-harness --test write_apply_equivalence
