@@ -15,6 +15,13 @@ request to a from-scratch non-chained build of the same call (no
 prior-response reference, the full conversation). Version: harness
 0.0.409.
 
+Added a differential test proving the chaining fallback recovers a turn
+exactly as the reference app does: both run their real code (the
+reference app's provider with its SDK made to fail once then succeed; our
+streaming provider with the transport made to do the same) and the
+recovered stream and retry pattern are compared. Version: harness
+0.0.410.
+
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining
 fallback that finding #69 showed was dropped in the port (P4.41),

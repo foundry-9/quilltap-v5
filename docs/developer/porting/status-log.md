@@ -59247,3 +59247,69 @@ byte-identical to a one-call reference run of the SAME params with no chaining
 cannot give (its canned key ignores `previous_response_id`): the retry carries
 the full input and drops the id, byte-for-byte a never-chained build. Runs in
 plain `cargo test`, no oracle env. All 7 `tool_wire_call_site` tests pass.
+
+### Unit 3 — the tier-3 fallback differential (harness 0.0.410)
+
+The existing `primary-stream-tier3` family mocks `createLLMProvider().stream
+Message` wholesale — ABOVE the provider — so v4's chaining fallback (INSIDE
+`OpenAIProvider.streamMessage`) never runs there; a fallback case shoehorned in
+would test a reimplementation, not v4. So a SEPARATE, self-contained oracle
+drives the REAL provider with the SDK mocked below it: `harness/oracle/cases/
+openai-chaining-fallback-tier3.test.ts` instantiates `OpenAIProvider` directly
+(a default-constructed `TextProvider`, no plugin registry), `jest.doMock('openai')`
+throws once on `responses.create` (the chained attempt) then returns a
+Responses-API async-iterable (the full-input attempt), and emits the recovered
+`(content, done, usage)` chunk sequence + the fingerprint (`sdkCreateCount:2`,
+`firstChained:true`, `secondChained:false`). The prototype confirmed v4's real
+fallback fires: two creates, the first carrying `previous_response_id=resp_dead`,
+the retry dropping it.
+
+The Rust side (`primary_stream_tier3_equivalence.rs::openai_chaining_fallback_
+tier3_matches_oracle`, env `QT_ORACLE_OPENAI_FALLBACK`) drives the REAL
+`WireStreamingProvider::stream_message("OPENAI", …)` with a `FallbackTransport`
+that fails the first `execute_stream` and serves the SAME Responses-API SSE on
+the retry, then asserts the normalized chunk sequence equals the oracle's and
+the fingerprint matches (two attempts, the first chained, the retry not). It is
+sensitive: without the fallback the first Err would surface as a single error
+chunk (the `.expect` panics) and the attempt count would be 1, not 2.
+
+Scope note: this diffs the provider's recovered stream, NOT the full
+`run_primary_stream` spine — the fallback is entirely provider-internal and
+transparent, so a fallback-recovered turn persists byte-identically to a plain
+successful turn (already covered by the family's `clean_stream`). Diffing the
+provider's recovered chunk sequence against v4's REAL fallback is the faithful
+scope for the ported unit (`WireStreamingProvider::stream_message` ↔
+`OpenAIProvider.streamMessage`).
+
+Oracle regen (Node 24, from ~/source/quilltap-server; the case is self-contained,
+no fixture DB): stage the case in /tmp (jest ignores `.claude/`) and run —
+  TMPO=/tmp/qt-openai-fallback-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+  cp harness/oracle/cases/openai-chaining-fallback-tier3.test.ts "$TMPO/cases/"
+  cd ~/source/quilltap-server
+  QT_ORACLE_OUT=/tmp/oracle-openai-fallback.ndjson \
+    ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false \
+      --roots "$PWD" --roots "$TMPO/cases" -- openai-chaining-fallback-tier3
+Run: `QT_ORACLE_OPENAI_FALLBACK=/tmp/oracle-openai-fallback.ndjson cargo test
+-p quilltap-harness --test primary_stream_tier3_equivalence
+openai_chaining_fallback_tier3_matches_oracle -- --nocapture`.
+
+### Tier-2 regression note (deliverable 5)
+
+The recovery / provider-failover paths are unaffected: `previous_response_id` is
+only ever set non-`None` at ONE production site (`services/orchestrator.rs:2089`,
+fed by `find_previous_response_id`); every other construction in the tree is a
+hard-coded `None` literal (recovery, native_tool_loop, text_tool_loop,
+provider_failover, carina_query, initial_greeting, brahma ×2), verified by
+grep. The non-streaming completion path hard-codes `None`
+(`completion_provider.rs:91`) and needs no fallback. So the fallback is inert on
+every path but the primary streaming turn, and `primary_stream_tier3` (the
+recovery + four failover legs) is unchanged and stays green.
+
+### Deferrals (loud)
+
+- v4's NON-streaming chained path (`sendMessage` also chains + falls back). v5's
+  completion path cannot chain by construction (`completion_provider.rs:91`
+  hard-codes `previous_response_id: None`); if v5 ever grows a chained completion
+  path the fallback must come with it.
+- The stale-id CLEANUP (proactively clearing a dead `rawResponse.id`) — v4
+  doesn't do it either; the fallback makes it moot.

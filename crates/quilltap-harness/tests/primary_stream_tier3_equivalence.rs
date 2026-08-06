@@ -60,6 +60,11 @@ use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
     StreamUsage, StreamingCompletionProvider,
 };
+use quilltap_core::model::streaming_provider::{ProviderKeySource, WireStreamingProvider};
+use quilltap_core::model::transport::{
+    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
+    TransportResponse,
+};
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::primary_stream::{
@@ -807,4 +812,185 @@ fn sort_rows_by(dump: &mut Value, col: &str) {
             av.cmp(bv)
         });
     }
+}
+
+// ===========================================================================
+// P4.41 — the OpenAI conversation-chaining fallback (dogfood #69), tier-3.
+//
+// A SEPARATE oracle from the primary-stream family above: that family mocks
+// `createLLMProvider().streamMessage` wholesale (ABOVE the provider), so v4's
+// fallback — which lives INSIDE `OpenAIProvider.streamMessage` — never runs
+// there. This case drives the REAL provider on v4 (SDK mocked fail-then-succeed,
+// `harness/oracle/cases/openai-chaining-fallback-tier3.test.ts`) and the REAL
+// `WireStreamingProvider` here (transport mocked fail-then-succeed), and diffs
+// the recovered chunk sequence + the fallback fingerprint (two attempts, the
+// first chained, the retry NOT). The byte proof that the retry drops the id and
+// carries the full input is the unit + wire tests; this proves turn-level
+// outcome parity against v4's real fallback.
+// ===========================================================================
+
+/// Fails the FIRST `execute_stream` (the chained attempt) and serves the scripted
+/// Responses-API SSE on the retry, recording every request body.
+struct FallbackTransport {
+    calls: Mutex<usize>,
+    seen: Mutex<Vec<TransportRequest>>,
+    retry_frame: Vec<u8>,
+}
+
+impl ProviderTransport for FallbackTransport {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+        Box::pin(async move {
+            Err(TransportError {
+                message: "non-streaming not scripted".to_string(),
+                status: None,
+            })
+        })
+    }
+    fn execute_stream<'a>(
+        &'a self,
+        request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
+        self.seen.lock().unwrap().push(request.clone());
+        let n = {
+            let mut c = self.calls.lock().unwrap();
+            *c += 1;
+            *c
+        };
+        let frame = self.retry_frame.clone();
+        Box::pin(async move {
+            if n == 1 {
+                Err(TransportError {
+                    message: "400 previous_response_not_found".to_string(),
+                    status: None,
+                })
+            } else {
+                let (tx, rx) = tokio::sync::mpsc::channel(1);
+                let _ = tx.send(Ok(frame)).await;
+                Ok(rx)
+            }
+        })
+    }
+}
+
+struct FallbackKeys;
+impl ProviderKeySource for FallbackKeys {
+    fn key_for(&self, _provider: &str) -> Option<String> {
+        Some("test-key".to_string())
+    }
+}
+
+/// Normalize a decoded [`StreamChunk`] to the oracle's `(content, done, usage)`
+/// shape (camelCase usage keys matching the TS oracle).
+fn normalize_fallback_chunk(c: &StreamChunk) -> Value {
+    json!({
+        "content": c.content,
+        "done": c.done,
+        "usage": c.usage.as_ref().map(|u| json!({
+            "promptTokens": u.prompt_tokens,
+            "completionTokens": u.completion_tokens,
+            "totalTokens": u.total_tokens,
+        })),
+    })
+}
+
+#[tokio::test]
+async fn openai_chaining_fallback_tier3_matches_oracle() {
+    let oracle_path = match std::env::var("QT_ORACLE_OPENAI_FALLBACK") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!(
+                "SKIP: set QT_ORACLE_OPENAI_FALLBACK to the oracle NDJSON (see \
+                 harness/oracle/cases/openai-chaining-fallback-tier3.test.ts)."
+            );
+            return;
+        }
+    };
+    let oracle_text =
+        std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
+    let oracle: Value =
+        serde_json::from_str(oracle_text.trim().lines().next().expect("oracle line"))
+            .expect("parse oracle line");
+    assert_eq!(oracle["kind"], "fallback", "unexpected oracle row kind");
+
+    // The retry SSE the mocked SDK yields on v4's full-input attempt, mirrored
+    // byte-for-byte so both sides decode the same recovered stream.
+    let retry_frame = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"model\":\"gpt-4o\",\"output_text\":\"Hi\",\"output\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"total_tokens\":12}}}\n\n",
+    )
+    .as_bytes()
+    .to_vec();
+
+    let params = StreamParams {
+        messages: vec![
+            StreamMessage::system("You are Byron."),
+            StreamMessage::user("Roll a die."),
+            StreamMessage::assistant("I rolled a 4."),
+            StreamMessage::user("Roll again."),
+        ],
+        model: "gpt-4o".to_string(),
+        temperature: Some(0.7),
+        max_tokens: Some(1024),
+        top_p: None,
+        tools: None,
+        web_search_enabled: false,
+        profile_parameters: None,
+        cache_key: None,
+        previous_response_id: Some("resp_dead".to_string()),
+        stop: Vec::new(),
+    };
+
+    let wire = WireStreamingProvider::new(
+        FallbackTransport {
+            calls: Mutex::new(0),
+            seen: Mutex::new(Vec::new()),
+            retry_frame,
+        },
+        FallbackKeys,
+        TransportPolicy::default(),
+        "Quilltap/test".to_string(),
+    );
+
+    let mut rx = wire.stream_message("OPENAI", None, &params).await;
+    let mut got_chunks: Vec<Value> = Vec::new();
+    while let Some(item) = rx.recv().await {
+        let chunk = item.expect("the fallback must recover the turn, not error");
+        got_chunks.push(normalize_fallback_chunk(&chunk));
+    }
+
+    // The recovered chunk sequence matches v4's real fallback output.
+    assert_eq!(
+        Value::Array(got_chunks),
+        oracle["chunks"],
+        "the recovered chunk sequence diverges from v4's fallback"
+    );
+
+    // The fallback fingerprint: two attempts, the first chained, the retry not.
+    let seen = wire.transport_ref().seen.lock().unwrap().clone();
+    assert_eq!(
+        seen.len() as i64,
+        oracle["sdkCreateCount"].as_i64().unwrap(),
+        "attempt count diverges (v4 issued two SDK creates)"
+    );
+    let has_prev = |req: &TransportRequest| -> bool {
+        serde_json::from_slice::<Value>(&req.body)
+            .ok()
+            .and_then(|b| b.get("previous_response_id").cloned())
+            .is_some()
+    };
+    assert_eq!(
+        has_prev(&seen[0]),
+        oracle["firstChained"].as_bool().unwrap(),
+        "the first attempt's chaining differs from v4"
+    );
+    assert_eq!(
+        has_prev(&seen[1]),
+        oracle["secondChained"].as_bool().unwrap(),
+        "the retry's chaining differs from v4 (it must drop the id)"
+    );
 }
