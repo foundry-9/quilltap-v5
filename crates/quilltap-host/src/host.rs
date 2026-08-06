@@ -523,6 +523,18 @@ impl EngineAssembler for HostAssembler {
             ),
         );
         // === end P4.9H2A ===
+        // === P4.43: the conversation-summaries re-mirror backfill — seam-free
+        // (DB only, no model wire; it re-mirrors existing contextSummaries into
+        // the vaults). Before this the Settings "Regenerate conversation
+        // summaries" button minted REGENERATE_CONVERSATION_SUMMARIES jobs with
+        // nothing to run them (each retried and died). ===
+        registry.register(
+            "REGENERATE_CONVERSATION_SUMMARIES",
+            Box::new(
+                quilltap_core::services::conversation_summaries_regen::RegenerateConversationSummariesHandler,
+            ),
+        );
+        // === end P4.43 ===
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }

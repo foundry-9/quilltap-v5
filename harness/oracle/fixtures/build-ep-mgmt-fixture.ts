@@ -68,6 +68,18 @@ interface Spec {
   }>;
   reapplyMemories: Array<{ id: string; characterId: string; content: string; summary: string; embedding: number[] }>;
   dedupMemories: Array<{ id: string; characterId: string; content: string; summary: string; importance: number; embedding: number[] }>;
+  mergeMemories: Array<{
+    id: string;
+    characterId: string;
+    content: string;
+    summary: string;
+    importance: number;
+    embedding: number[];
+    occurredAt: string | null;
+    narrativeTime: string | null;
+    entities: string[];
+    kind: string;
+  }>;
   conversationChunks: Array<{ id: string; content: string; embedding: number[] }>;
   helpDocs: Array<{ id: string; title: string; path: string; url: string; content: string; embedding: number[] }>;
   vectorEntries: Array<{ id: string; characterId: string; embedding: number[] }>;
@@ -324,6 +336,38 @@ async function main(): Promise<void> {
       { id: m.id, createdAt: TS, updatedAt: TS }
     );
   }
+  // Merge-path memories (4-dim) — episodic-column-bearing so a survivor whose
+  // content is REWRITTEN with novel-detail footnotes exercises occurredAt /
+  // entities / kind in the memories dump.
+  for (const m of spec.mergeMemories) {
+    await repos.memories.create(
+      {
+        characterId: m.characterId,
+        aboutCharacterId: null,
+        chatId: null,
+        projectId: null,
+        content: m.content,
+        summary: m.summary,
+        occurredAt: m.occurredAt,
+        narrativeTime: m.narrativeTime,
+        entities: m.entities,
+        kind: m.kind,
+        keywords: [],
+        tags: [],
+        importance: m.importance,
+        embedding: vec(m.embedding),
+        source: 'AUTO',
+        witnessedContext: null,
+        sourceMessageId: null,
+        lastAccessedAt: null,
+        reinforcementCount: 1,
+        lastReinforcedAt: null,
+        relatedMemoryIds: [],
+        reinforcedImportance: m.importance,
+      } as never,
+      { id: m.id, createdAt: TS, updatedAt: TS }
+    );
+  }
 
   // Conversation chunks (8-dim). `chatId` is non-null in the schema; a
   // placeholder id suffices (the reapply walk selects by `embedding IS NOT NULL`
@@ -402,7 +446,7 @@ async function main(): Promise<void> {
 
   process.stderr.write(
     `built embedding-profiles mgmt fixture: ${outMain} / ${outMount} ` +
-      `(${spec.embeddingProfiles.length} profiles, ${spec.reapplyMemories.length + spec.dedupMemories.length} memories)\n`
+      `(${spec.embeddingProfiles.length} profiles, ${spec.reapplyMemories.length + spec.dedupMemories.length + spec.mergeMemories.length} memories)\n`
   );
   process.exit(0);
 }

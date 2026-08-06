@@ -378,6 +378,13 @@ pub fn build_router(state: SharedState) -> Router {
                 .post(system_data_routes::system_job_post),
         )
         // === end P4.9G1 ===
+        // === P4.43: the conversation-summaries regeneration edge ===
+        .route(
+            "/api/v1/system/conversation-summaries",
+            get(system_data_routes::system_conversation_summaries_get)
+                .post(system_data_routes::system_conversation_summaries_post),
+        )
+        // === end P4.43 ===
         // === P4.9G3: the jobs COLLECTION edge + the change-passphrase alias ===
         .route(
             "/api/v1/system/jobs",

@@ -2455,21 +2455,41 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
-            // --- Memory maintenance (P4.9H2A tier 2 — deferred loudly) ------
-            Request::MemoryDedupPreview { .. } => match self.ready_db() {
-                Ok(_) => super::memory_maintenance::memory_dedup(true),
+            // --- Memory maintenance (P4.9H2A tier 2 — landed P4.43) ---------
+            Request::MemoryDedupPreview { threshold } => match self.ready_db() {
+                Ok(db) => {
+                    super::memory_maintenance::memory_dedup(&db, SINGLE_USER_ID, threshold, true)
+                        .await
+                }
                 Err(r) => r,
             },
-            Request::MemoryDedupRun { .. } => match self.ready_db() {
-                Ok(_) => super::memory_maintenance::memory_dedup(false),
+            Request::MemoryDedupRun { threshold } => match self.ready_db() {
+                Ok(db) => {
+                    super::memory_maintenance::memory_dedup(&db, SINGLE_USER_ID, threshold, false)
+                        .await
+                }
                 Err(r) => r,
             },
             Request::ConversationSummariesRegenerateStatus => match self.ready_db() {
-                Ok(_) => super::memory_maintenance::conversation_summaries_regenerate(true),
+                Ok(db) => {
+                    super::memory_maintenance::conversation_summaries_regenerate(
+                        &db,
+                        SINGLE_USER_ID,
+                        true,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ConversationSummariesRegenerate => match self.ready_db() {
-                Ok(_) => super::memory_maintenance::conversation_summaries_regenerate(false),
+                Ok(db) => {
+                    super::memory_maintenance::conversation_summaries_regenerate(
+                        &db,
+                        SINGLE_USER_ID,
+                        false,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
 

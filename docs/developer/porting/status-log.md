@@ -60745,3 +60745,123 @@ almanack #67/#68 comments became CONVERGED; and the pre-existing stale
 oversize conversation chunks triggers a one-time render+embed burst at
 the first boot after this lands (self-limiting). The dogfood pass
 inherits the live proof. Versions: core 0.0.492.
+---
+
+## Lane record — P4.43 (the P4.9H2A maintenance remainder: memory-dedup + conversation-summaries regeneration)
+
+**Branch:** `claude/p4-43-memory-maintenance-78f867`. **Baseline:** v4
+`f4955e0e` (clean; drift-checked at lane start — HEAD was exactly
+`f4955e0e`, `git log f4955e0e..HEAD` empty). Closes the two units
+P4.9H2A deferred loudly (its status header's units 6+7). Both units
+ship differential-verified + mutation-proven; the SPA constant flip
+activates the two gated Playwright beats.
+
+### Unit 6 — memory-dedup (preview/run) — LANDED
+
+- `services/memory_dedup.rs`: the synchronous inline dedup port of v4's
+  `lib/tools/memory-dedup.ts` — `score_memory` (importance×100 +
+  len×0.1 + specificity, the three JS regexes ported with the
+  `(?-u:\b)`/`[0-9]`/`(?i)` fragments), a Union-Find (path compression +
+  union-by-rank), dim-grouped pairwise `cosine_similarity` union at
+  `>= threshold`, STABLE score-sort survivor selection, `extract_novel_details`
+  merged as `[+]` footnotes (deduped by lowercased+trimmed key), and — on
+  apply — content updates + `delete_many_with_unlink` (neighbour scrub) +
+  best-effort `CharacterVectorStore` cleanup. Result JSON mirrors v4's
+  `DedupResult` name-/key-order-for-key-order.
+- The two verbs un-refused in `api/memory_maintenance.rs` (`{success, result}`,
+  v4's `[0.5,1.0]` threshold 400 sentence; the fixed 500 sentences logged
+  per P4.D50). REST edge: `?action=memory-dedup-preview` (GET) /
+  `memory-dedup` (POST) added to `system_data_routes.rs`'s existing
+  `/api/v1/system/tools` handlers (the SPA rides the dispatch verb; the
+  edge is v4-URL parity). ⚠ Rust `parse::<f64>` is stricter than JS
+  `parseFloat` on trailing garbage ("0.8x") — a documented minor edge on
+  the parity-only GET edge.
+- Differential `memory_dedup_equivalence` (new): drives v4's REAL
+  `deduplicateAllMemories` over the committed `embedding-profiles-*`
+  fixture family in BOTH modes (preview + apply), diffing the result JSON
+  (processedAt normalized) AND the memories table post-state (episodic
+  columns included). GREEN first run; mutation-proven (reversing the
+  score-sort → red). The fixture was WIDENED (a new Cleo character + a
+  `mergeMemories` cluster carrying occurredAt/entities/kind) so the merge
+  path + episodic columns are exercised — `ep-mgmt.json` +
+  `build-ep-mgmt-fixture.ts`. Blast radius: `embedding_reapply` regen
+  (byte-identical, 7 rows; +2 already-at-target); `embedding_profiles_routes`
+  re-run neutral; `embedding_profiles_tier2` untouched (separate fixture).
+
+### Unit 7 — conversation-summaries regeneration — LANDED
+
+- `services/conversation_summaries_regen.rs`: `count_in_flight`,
+  `handle_regenerate_conversation_summaries` (walk the user's chats with a
+  non-empty trimmed `contextSummary`, per chat dedupe participant character
+  ids, `get_messages` + `compute_conversation_stats` +
+  `write_conversation_summary_to_vaults`, best-effort per chat), and the
+  seam-free `RegenerateConversationSummariesHandler`.
+- `queue_service::enqueue_regenerate_conversation_summaries` (dedupe on an
+  in-flight REGENERATE row, `maxAttempts: 1`, empty payload). The two verbs
+  un-refused in `api/memory_maintenance.rs`
+  (`{success, inFlight}` / `{success, jobId, message}` forking on isNew).
+  REST edge `GET/POST /api/v1/system/conversation-summaries?action=regenerate`
+  (new module handlers + router line). Handler registered in the host's
+  seam-free registry (`host.rs:468-510` block, beside EMBEDDING_REAPPLY_PROFILE).
+- Differential `conversation_summaries_regen_equivalence` (new): drives v4's
+  REAL `enqueueRegenerateConversationSummaries` + `handleRegenerateConversationSummaries`
+  + the route status count over a NEW committed
+  `conversation-summaries-regen-{main,mount}.db` fixture (3 vault-provisioned
+  characters, 5 chats exercising selection). Diffs: the status counts; the
+  enqueue responses (enqueue2 dedupes — "already in flight"); the
+  background_jobs state (1 row, maxAttempts 1, payload `{}` — `status`
+  EXCLUDED as a v4-oracle-processor artifact, PENDING vs PROCESSING; the
+  initial-PENDING is proven in queue_service); the summary-document CONTENT
+  byte-for-byte (the one wall-clock `updatedAt:` frontmatter line normalized);
+  and the summary placements as (vault-name, relativePath). GREEN first run;
+  mutation-proven (filter `js_trim` → raw `is_empty` → the whitespace chat
+  leaks → red). Byte-content of summary FILES separately proven by
+  `vault_summary_mirror_tier2`.
+
+### Fixtures changed / oracles
+
+- WIDENED (committed): `crates/quilltap-web/tests/fixtures/embedding-profiles-{main,mount}.db`
+  (+ Cleo + the mergeMemories cluster). Re-run BY NAME after: `embedding_reapply`
+  (regen), `embedding_profiles_routes` (regen, neutral). `embedding_profiles_tier2`
+  unaffected (its fixture is `build-embedding-profiles-fixture.ts`, not ep-mgmt).
+- NEW (committed): `crates/quilltap-web/tests/fixtures/conversation-summaries-regen-{main,mount}.db`
+  + `harness/oracle/fixtures/{conversation-summaries-regen.json,build-conversation-summaries-regen-fixture.ts}`.
+- Regen recipes (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`, from `~/source/quilltap-server`):
+  - dedup fixture: `QT_EP_MGMT_MAIN=<fix>/embedding-profiles-main.db QT_EP_MGMT_MOUNT=<fix>/embedding-profiles-mount.db npx tsx <v5>/harness/oracle/fixtures/build-ep-mgmt-fixture.ts`
+  - dedup oracle: cp `<v5>/harness/oracle/cases/memory-dedup.test.ts` to a `/tmp` mirror; `QT_EP_MGMT_MAIN=… QT_EP_MGMT_MOUNT=… QT_ORACLE_OUT=/tmp/oracle-memory-dedup.ndjson npx jest --roots "$PWD" --roots <tmp>/cases -- memory-dedup` → `QT_ORACLE_MEMORY_DEDUP`.
+  - summaries fixture: `QT_CSR_MAIN=<fix>/conversation-summaries-regen-main.db QT_CSR_MOUNT=<fix>/conversation-summaries-regen-mount.db npx tsx <v5>/harness/oracle/fixtures/build-conversation-summaries-regen-fixture.ts`
+  - summaries oracle: `QT_CSR_MAIN=… QT_CSR_MOUNT=… npx tsx <v5>/harness/oracle/cases/conversation-summaries-regen-tier2.ts > /tmp/oracle-csr.ndjson` → `QT_ORACLE_CSR`.
+  - reapply oracle (regen after the widen): the `embedding-reapply.test.ts` header recipe → `QT_ORACLE_EP_REAPPLY`.
+  - routes oracle: the `embedding-profiles-routes.test.ts` header recipe → `QT_ORACLE_EP_ROUTES`.
+
+### Gotchas worth a memory note
+
+- The jest-incomplete `@/lib/embedding/embedding-service` trap
+  ([[p4.9h2a-embedding-profiles-lane]]) bit the dedup oracle too
+  (`cosineSimilarity` is undefined without `jest.doMock(... requireActual)`).
+- The summaries oracle's v4 DB has a live job processor that claims the
+  enqueued row to PROCESSING (no such processor in the sandbox `Db`), so the
+  background_jobs `status` column is nondeterministic across the two sides —
+  exclude it from the diff; `enqueueJob`'s initial PENDING is proven in
+  queue_service.
+- A handler that stamps `updatedAt = now_iso()` into content-addressed vault
+  documents makes the file bytes + sha256s nondeterministic; normalize the
+  frontmatter `updatedAt:` line and diff the CONTENT, and prove placement via
+  (vault-name, relativePath) — don't try to id-remap content-hash columns.
+- `repos.chats.addMessage` (fixture builder) validates `role` UPPERCASE
+  (`USER`/`ASSISTANT`), not lowercase.
+
+### Verification gate
+
+fmt clean; clippy `-D warnings` both feature sets (default + `quilltap-core/native-transport`);
+`cargo test --workspace --no-fail-fast` with `QT_ORACLE_MEMORY_DEDUP` /
+`QT_ORACLE_CSR` / `QT_ORACLE_EP_REAPPLY` / `QT_ORACLE_EP_ROUTES` set (the four
+lane families RAN, zero SKIP); the two new families BY NAME with `--nocapture`.
+SPA gate (constant flip touches `apps/web`): `ng test`, `ng build`, full
+Playwright with both formerly-gated maintenance beats ACTIVE. Version bumps:
+quilltap-core 0.0.486 → 0.0.487, quilltap-harness 0.0.411 → 0.0.412,
+quilltap-web 0.0.63 → 0.0.64, quilltap-host 0.0.61 → 0.0.62 (unifier recounts).
+
+**Ownership note for the unifier:** the dedup REST edges were added to the
+existing `system_data_routes.rs` `/api/v1/system/tools` handlers (v4 mounts
+memory-dedup there); no P4.D51–D55 lane touches that file, verified at planning.

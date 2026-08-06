@@ -157,6 +157,42 @@ pub async fn enqueue_memory_regenerate_all(
     Ok((id, true))
 }
 
+/// v4 `enqueueRegenerateConversationSummaries` (queue-service.ts:742, P4.43) —
+/// the summaries re-mirror backfill, deduped on an in-flight
+/// `REGENERATE_CONVERSATION_SUMMARIES` for the user (only one regeneration per
+/// user at a time). Returns `(jobId, isNew)`. `maxAttempts: 1` — the work is
+/// idempotent, but a retry would re-walk every chat. The dedup-check failure is
+/// non-fatal (v4 warns and enqueues anyway).
+pub async fn enqueue_regenerate_conversation_summaries(
+    db: &Db,
+    user_id: &str,
+) -> Result<(String, bool), DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    if let Ok(jobs) = in_flight {
+        if let Some(existing) = jobs
+            .iter()
+            .find(|j| j.job_type == "REGENERATE_CONVERSATION_SUMMARIES")
+        {
+            return Ok((existing.id.clone(), false));
+        }
+    }
+    let id = enqueue_job(
+        db,
+        user_id,
+        "REGENERATE_CONVERSATION_SUMMARIES",
+        Value::Object(serde_json::Map::new()),
+        1.0,
+    )
+    .await?;
+    Ok((id, true))
+}
+
 /// v4 `EMBEDDING_ENTITY_PRIORITIES` — real-time entity kinds (MEMORY,
 /// CONVERSATION_CHUNK) get higher priority than the batch kinds (HELP_DOC,
 /// MOUNT_CHUNK) and any unknown type.

@@ -198,6 +198,17 @@ the client-side attachment-capability map instead of "unsupported" (v4 bug
 32), so a new OpenRouter connection profile that omits the flag defaults to
 image upload enabled — the client vision gate onto the now-working
 non-streaming vision path.
+Landed the memory-maintenance remainder (P4.43): the Settings → Commonplace
+Book "Memory Deduplication" and "Regenerate Conversation Summaries" cards now
+work. Analyze Memories finds semantically duplicate memories across all
+characters (grouped by embedding width, clustered by cosine similarity), keeps
+the best of each cluster, folds unique details from the discards in as
+footnotes, and — on Run — removes the duplicates; preview costs nothing and
+changes nothing. Regenerate Conversation Summaries re-mirrors every summarized
+chat's summary into its participant vaults (the files the Commonplace Book reads
+before a character's turn), deduping to one run at a time. Both are live over
+the dispatch verbs and v4's `/api/v1/system/tools` and
+`/api/v1/system/conversation-summaries` URLs.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

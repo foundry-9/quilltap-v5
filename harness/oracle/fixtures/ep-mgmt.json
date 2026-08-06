@@ -22,7 +22,8 @@
   ],
   "characters": [
     { "id": "c1000000-0000-4000-8000-000000000001", "name": "Aria" },
-    { "id": "c2000000-0000-4000-8000-000000000002", "name": "Bram" }
+    { "id": "c2000000-0000-4000-8000-000000000002", "name": "Bram" },
+    { "id": "c3000000-0000-4000-8000-000000000003", "name": "Cleo" }
   ],
   "embeddingProfiles": [
     {
@@ -129,6 +130,18 @@
     { "id": "d0000000-0000-4000-8000-000000000101", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "Bram loves the API and SQL databases.", "summary": "Bram loves API and SQL", "importance": 0.9, "embedding": [1, 0.05, 0, 0] },
     { "id": "d0000000-0000-4000-8000-000000000102", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "Bram likes databases.", "summary": "Bram likes databases", "importance": 0.4, "embedding": [0.999, 0.02, 0, 0] },
     { "id": "d0000000-0000-4000-8000-000000000103", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "The weather was cold in Berlin.", "summary": "Cold in Berlin", "importance": 0.5, "embedding": [0, 0, 1, 0] }
+  ],
+  "$merge_comment": [
+    "Cleo (c3) exercises the MERGE path that Bram's cluster does not: the discard",
+    "(d...202) carries proper nouns absent from the survivor (d...201), so",
+    "extractNovelDetails yields '[+] Marcus' / '[+] Monday' footnotes appended to the",
+    "survivor's content (a memories-table content WRITE). Both rows carry the episodic",
+    "columns (occurredAt/entities/kind) so the survivor's dumped row exercises them.",
+    "cos([1,0,0,0],[0.98,0.02,0,0]) = 0.98 >= 0.80 -> cluster; survivor by score."
+  ],
+  "mergeMemories": [
+    { "id": "d0000000-0000-4000-8000-000000000201", "characterId": "c3000000-0000-4000-8000-000000000003", "content": "Cleo trained at Dawn.", "summary": "Cleo trained at Dawn", "importance": 0.9, "embedding": [1, 0, 0, 0], "occurredAt": "2026-02-01T00:00:00.000Z", "narrativeTime": "the first frost", "entities": ["Cleo", "Dawn"], "kind": "episodic" },
+    { "id": "d0000000-0000-4000-8000-000000000202", "characterId": "c3000000-0000-4000-8000-000000000003", "content": "Cleo trained with Marcus on Monday.", "summary": "Cleo trained with Marcus", "importance": 0.3, "embedding": [0.98, 0.02, 0, 0], "occurredAt": "2026-02-01T12:00:00.000Z", "narrativeTime": null, "entities": ["Cleo", "Marcus"], "kind": "episodic" }
   ],
   "conversationChunks": [
     { "id": "d0000000-0000-4000-8000-000000000010", "content": "A short conversation chunk about roses.", "embedding": [0, 0, 1, 0, 0, 0, 0, 0] }

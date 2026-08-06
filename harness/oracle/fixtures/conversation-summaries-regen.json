@@ -1,0 +1,86 @@
+{
+  "$comment": [
+    "P4.43 unit 7 fixture spec — conversation-summaries regeneration (v4",
+    "lib/background-jobs/handlers/regenerate-conversation-summaries.ts + the",
+    "enqueue/status route). One committed file drives the builder",
+    "(build-conversation-summaries-regen-fixture.ts) that materializes the committed",
+    "conversation-summaries-regen-{main,mount}.db family, and the",
+    "conversation_summaries_regen_equivalence differential that reads it.",
+    "",
+    "THREE characters WITH vaults (via v4's REAL repos.characters.create, pinned ids +",
+    "full vault provisioning). FIVE chats (pinned ids/timestamps) exercising the",
+    "handler's SELECTION: a summarized 2-participant chat (mirrored into BOTH vaults), a",
+    "summarized 1-participant chat (mirrored into ONE vault), a whitespace-only summary",
+    "(skipped by the trim filter), a null summary (skipped), and a summarized chat with",
+    "NO character participants (skipped by the empty-participants guard). Messages are",
+    "materialized on the two mirrored chats so computeConversationStats has real data.",
+    "background_jobs is ensureCollection'd (empty) so the enqueue + status ops write/dump.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the shared fixture key), NOT",
+    "the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "characters": [
+    { "id": "c1000000-0000-4000-8000-000000000001", "name": "Evangeline", "controlledBy": "llm" },
+    { "id": "c2000000-0000-4000-8000-000000000002", "name": "Thaddeus", "controlledBy": "user" },
+    { "id": "c3000000-0000-4000-8000-000000000003", "name": "Cassia", "controlledBy": "user" }
+  ],
+  "chats": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "title": "Council Meeting",
+      "contextSummary": "The council convened at dusk to weigh the harvest against the coming frost.",
+      "compactionGeneration": 2,
+      "participants": [
+        { "id": "b1a00000-0000-4000-8000-0000000000a1", "characterId": "c1000000-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "b1b00000-0000-4000-8000-0000000000b1", "characterId": "c2000000-0000-4000-8000-000000000002", "controlledBy": "user" }
+      ],
+      "messages": [
+        { "id": "e1a00000-0000-4000-8000-0000000000a1", "role": "USER", "content": "Shall we ration the grain?", "createdAt": "2020-01-02T09:00:00.000Z", "participantId": "b1b00000-0000-4000-8000-0000000000b1" },
+        { "id": "e1b00000-0000-4000-8000-0000000000b1", "role": "ASSISTANT", "content": "Only if the frost holds.", "createdAt": "2020-01-02T09:05:00.000Z", "participantId": "b1a00000-0000-4000-8000-0000000000a1" }
+      ]
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "title": "Cassia's Journal",
+      "contextSummary": "Cassia recorded the day's small triumphs before sleep.",
+      "compactionGeneration": 0,
+      "participants": [
+        { "id": "b2a00000-0000-4000-8000-0000000000a2", "characterId": "c3000000-0000-4000-8000-000000000003", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e2a00000-0000-4000-8000-0000000000a2", "role": "ASSISTANT", "content": "The bread rose well today.", "createdAt": "2020-01-03T20:00:00.000Z", "participantId": "b2a00000-0000-4000-8000-0000000000a2" }
+      ]
+    },
+    {
+      "id": "d3000000-0000-4000-8000-000000000003",
+      "title": "Blank Slate",
+      "contextSummary": "   ",
+      "compactionGeneration": 0,
+      "participants": [
+        { "id": "b3a00000-0000-4000-8000-0000000000a3", "characterId": "c3000000-0000-4000-8000-000000000003", "controlledBy": "user" }
+      ],
+      "messages": []
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000004",
+      "title": "No Summary Yet",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "participants": [
+        { "id": "b4a00000-0000-4000-8000-0000000000a4", "characterId": "c1000000-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ],
+      "messages": []
+    },
+    {
+      "id": "d5000000-0000-4000-8000-000000000005",
+      "title": "Ghost Room",
+      "contextSummary": "A summary with no one to hear it.",
+      "compactionGeneration": 1,
+      "participants": [],
+      "messages": []
+    }
+  ]
+}

@@ -4,8 +4,8 @@
 //! also ride `POST /api/dispatch`; these edges give v4-URL parity for the
 //! Settings "Data & System" tab.
 //!
-//! - `GET  /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data-preview`
-//! - `POST /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data`
+//! - `GET  /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data-preview|memory-dedup-preview`
+//! - `POST /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data|memory-dedup`
 //! - `GET  /api/v1/system/jobs/{id}`
 //! - `DELETE /api/v1/system/jobs/{id}`
 //! - `POST /api/v1/system/jobs/{id}?action=pause|resume`
@@ -67,6 +67,25 @@ fn unknown_action(action: &str) -> AxumResponse {
         StatusCode::BAD_REQUEST,
         &format!("Unknown action: {action}"),
     )
+}
+
+/// Unwrap a `Response::MemoryMaintenance(Value)` (the memory-dedup carrier) to
+/// v4's raw route body at 200 (P4.43).
+async fn dispatch_memory_maintenance(state: &SharedState, req: CoreRequest) -> AxumResponse {
+    match dispatch_core(state, req).await {
+        Ok(CoreResponse::MemoryMaintenance(v)) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        Ok(CoreResponse::Error(e)) => error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(r) => r,
+    }
 }
 
 // ── GET /api/v1/system/tools ─────────────────────────────────────────────────
@@ -185,6 +204,20 @@ pub async fn system_tools_get(
             )
             .await
         }
+        // === P4.43: memory-dedup preview (v4's `?action=memory-dedup-preview`) ===
+        "memory-dedup-preview" => {
+            // v4: `thresholdParam ? parseFloat(thresholdParam) : 0.80`.
+            // Absent/empty → default (None). Present-and-numeric → `Some`;
+            // present-non-numeric → `Some(NaN)` so the handler answers v4's exact
+            // 400. (Rust's `parse` is stricter than JS `parseFloat` on trailing
+            // garbage like "0.8x" — a documented minor edge; the SPA rides the
+            // dispatch verb, not this parity edge.)
+            let threshold = q
+                .get("threshold")
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse::<f64>().unwrap_or(f64::NAN));
+            dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupPreview { threshold }).await
+        }
         other => unknown_action(other),
     }
 }
@@ -296,8 +329,39 @@ pub async fn system_tools_post(
             )
             .await
         }
+        // === P4.43: memory-dedup apply (v4's `?action=memory-dedup`) ===
+        "memory-dedup" => {
+            // v4: `typeof thresholdParam === 'number' ? thresholdParam : 0.80`.
+            let threshold = parsed.get("threshold").and_then(Value::as_f64);
+            dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupRun { threshold }).await
+        }
         other => unknown_action(other),
     }
+}
+
+// ── /api/v1/system/conversation-summaries (P4.43) ────────────────────────────
+//
+// v4 `app/api/v1/system/conversation-summaries/route.ts` — only `?action=regenerate`
+// is recognized; anything else answers v4's `badRequest('Unknown or missing action.')`.
+
+pub async fn system_conversation_summaries_get(
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    if q.get("action").map(String::as_str) != Some("regenerate") {
+        return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
+    }
+    dispatch_memory_maintenance(&state, CoreRequest::ConversationSummariesRegenerateStatus).await
+}
+
+pub async fn system_conversation_summaries_post(
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    if q.get("action").map(String::as_str) != Some("regenerate") {
+        return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
+    }
+    dispatch_memory_maintenance(&state, CoreRequest::ConversationSummariesRegenerate).await
 }
 
 // ── /api/v1/system/jobs/{id} ─────────────────────────────────────────────────
