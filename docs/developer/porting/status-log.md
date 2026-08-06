@@ -58464,3 +58464,92 @@ ambiguous. Located by role with `exact: true` instead.
 
 Gate for this unit: `ng build` clean, `ng test` 287 files / 3,926 tests /
 0 failed, `npx playwright test foundation settings-taboo` 2 passed.
+
+## Lane record — P4.D50 unit 4 (the blast-radius regen, the docs mirror, the gate)
+
+**Drift.** v4 HEAD was `3adefeba` at lane start and STILL `3adefeba` after the
+sweep, tree clean both times. `git diff 7df7de8e..3adefeba` is
+`docs/releases/4.8.0.md` and nothing else, so the checkout is
+**lib-identical to the lane baseline** — which is why the sweep's recipes
+(`cd ~/source/quilltap-server`) regenerate at the pin without rewriting. The
+lane-unique pinned worktree `/tmp/qt-v4-pin-p4d50-7df7de8e` was used for the
+three families this lane authors or extends; the two sibling pins at
+`f7f1a956` were left untouched.
+
+**Blast radius.** Enumerated by grepping `harness/oracle/cases/` for
+importers of the four drifted lib files. `lib/llm/cache-key.ts` has NO oracle
+importer, and no corpus bakes a versioned cache key — the request-envelope
+corpus supplies literal `cacheKey` values (`char-7`, …), so the
+`PROMPT_CACHE_STRUCTURE_VERSION` 2 → 3 bump moves no comparand anywhere.
+`lib/chat/context-manager.ts` has no direct importer either; its reach is the
+seven families that drive `buildContext`.
+
+Fourteen families regenerated and re-run through
+`harness/tools/recipe_sweep.py --run-all` (results artifact
+`/tmp/p4d50-blast-radius.json`), plus `recall_history_equivalence` run by
+hand:
+
+| family | result |
+|---|---|
+| orchestrator_tier3 / salon_swipe_generate / regenerate_swipe_tier3 / enclave_step_tier3 | ok |
+| precompute / self_inventory / post_office_commonplace / announcer_tier3 | ok |
+| carina_memory_extraction_tier3 / memory_pipeline_jobs_tier3 | ok |
+| maintenance_ops_tier2 / system_restore / turn_orchestrator_tier2 | ok |
+| recall_history | ok (run by hand — see below) |
+
+All output-neutral, as v4's design claim predicts: a fixture with no `taboo`
+row yields the empty list, the section is omitted entirely, and the prompt
+bytes do not move.
+
+**A recipe-rot finding for P4.40, NOT fixed here** (that lane owns the
+recipe tail): `recall_history_equivalence`'s header run stage is a bare
+`cargo test -p quilltap-harness` with no `--test`, so the sweep driver runs
+the WHOLE package and classifies the family `skipped` on a *different*
+family's SKIP line (`QT_ORACLE_ABOUT_CHARACTER_MATCHERS`). The recipe is
+sound; only its run stage is imprecise. Run by hand it is green (14 parse /
+5 set / 10 append / 11 parseSig / 8 appendSig).
+
+**Tier-2 item 10.** `docs/developer/features/complete/taboo.md` mirrored to
+`docs/v4/developer/features/complete/taboo.md` (196 lines, byte copy).
+
+**Tier-3 deferrals, loud and named.** `help/taboo.md` (new, 61 lines) and
+`help/chat-settings.md` (+12) → the **`p4.9i2` bank**. v5 has no help
+surface; nothing refuses at runtime because nothing reaches for them.
+Nothing else in this feature deferred — it landed whole.
+
+**Verified, not edited.** `NON_PORTABLE_INSTANCE_SETTING_KEYS` needed no
+change (v4 left `taboo` portable by default, and v4's own
+`portable-settings.test.ts` addition just asserts that); a v5 unit test now
+pins it.
+
+**Verification gate (whole lane).**
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH
+  feature sets (plain and `--features quilltap-core/native-transport`).
+- `cargo test --workspace --no-fail-fast` with the lane's oracle env vars:
+  **413 test binaries / 1,905 tests / 0 failed**, exit 0.
+- The lane's four differentials by name with `--nocapture`, **zero SKIP**:
+  `system_prompt_equivalence` (65 rows, 2 goldens),
+  `build_context_tier3_equivalence`, `settings_routes_equivalence`
+  (50 cases), `recall_history_equivalence`.
+- The 14-family blast-radius sweep: 13 ok via the driver + `recall_history`
+  by hand, all green.
+- `ng build` clean; `ng test` **287 files / 3,926 tests / 0 failed**.
+- Full Playwright: **182 passed / 1 skipped / 0 failed** (17.3 m). The one
+  skip is the SIBLING lane's `P437_SERVER_LANDED` ACTIVATE-AT-UNIFY gate in
+  `settings-almanack-flow.spec.ts`, untouched by this lane; the new
+  `settings-taboo-flow` beat is LIVE and green.
+
+Versions at hand-off: core **0.0.477**, harness **0.0.405**, web
+**0.0.62**, SPA **0.5.414**; host / cli / tauri unchanged.
+
+**For the unifier.** The baseline move `f7f1a956` → `7df7de8e` is yours —
+this lane edited neither `CLAUDE.md` nor `phase-4.md`. The §1 fold: P4.37's
+four `SystemAlmanack*` arms come first, then this lane's `TabooSettings` /
+`TabooSettingsUpdate` (`Request`) and `Response::Taboo`, all appended after
+the last existing variant with `=== P4.D50 ===` markers — no existing
+variant moved, so the fold is mechanical. The name-for-name §1 diff against
+`core-contract.ts` is clean (`tabooSettings` / `tabooSettingsUpdate`, field
+`phrases`). There is NO ACTIVATE-AT-UNIFY marker in this lane: the server
+half and the SPA half both land here, and the e2e beat is already live.
