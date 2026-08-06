@@ -2147,6 +2147,15 @@ pub(crate) fn fan_out_group_file_id(
 /// would silently keep every payload forever. Deleting children first is a
 /// no-op where the cascade does exist.
 ///
+/// The payload tables are created lazily by their repositories on first access
+/// (`doc_mount_blobs` has no Zod schema, so `generateDDL` never mints it; a
+/// document-only, restored, or hand-built index may likewise never have held a
+/// blob). Deleting from a table that was never created throws `no such table` —
+/// a hard failure on the SECOND write to any path. So each payload delete is
+/// guarded behind a table-existence check (v4 `7bcd8515`, bug 13); a missing
+/// table has nothing to collect anyway. `doc_mount_files` stays unguarded — the
+/// content row we are collecting had to exist for the link to point at it.
+///
 /// Runs inside the caller's transaction (`conn` is the transaction handle).
 ///
 /// Returns `true` when the row was collected.
@@ -2159,19 +2168,38 @@ pub(crate) fn gc_orphaned_file_row(conn: &Connection, file_id: &str) -> Result<b
     if still > 0 {
         return Ok(false);
     }
-    conn.execute(
-        "DELETE FROM doc_mount_documents WHERE fileId = ?1",
-        params![file_id],
-    )?;
-    conn.execute(
-        "DELETE FROM doc_mount_blobs WHERE fileId = ?1",
-        params![file_id],
-    )?;
+    if table_exists_sync(conn, "doc_mount_documents")? {
+        conn.execute(
+            "DELETE FROM doc_mount_documents WHERE fileId = ?1",
+            params![file_id],
+        )?;
+    }
+    if table_exists_sync(conn, "doc_mount_blobs")? {
+        conn.execute(
+            "DELETE FROM doc_mount_blobs WHERE fileId = ?1",
+            params![file_id],
+        )?;
+    }
     conn.execute(
         "DELETE FROM doc_mount_files WHERE id = ?1",
         params![file_id],
     )?;
     Ok(true)
+}
+
+/// True when `table` exists in the connection's schema — v4 `tableExistsSync`
+/// (`doc-mount-file-links.repository.ts`, bug 13). Used to guard the lazily
+/// created payload deletes in [`gc_orphaned_file_row`].
+fn table_exists_sync(conn: &Connection, table: &str) -> Result<bool, DbError> {
+    let exists: Option<String> = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![table],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(no_rows_to_none)?;
+    Ok(exists.is_some())
 }
 
 /// Collect the backlog of content rows abandoned by content-addressed rewrites
@@ -2503,6 +2531,53 @@ mod orphan_backlog_tests {
         assert!(!gc_orphaned_file_row(&db, "shared").unwrap());
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 1);
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 1);
+    }
+
+    /// Bug 13 (v4 `7bcd8515`): a document-only / restored / hand-built index
+    /// never held a blob, so `doc_mount_blobs` was never lazily created. Before
+    /// the table guards, `gc_orphaned_file_row`'s `DELETE FROM doc_mount_blobs`
+    /// threw `no such table: doc_mount_blobs` — a hard failure on the second
+    /// write to any path. The guard must skip the missing table (not create it)
+    /// and still collect the file + document rows.
+    #[test]
+    fn gc_survives_a_mount_index_without_the_blobs_table() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE \"doc_mount_files\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"sha256\" TEXT NOT NULL, \"fileSizeBytes\" REAL);\
+             CREATE TABLE \"doc_mount_documents\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"content\" TEXT);\
+             CREATE TABLE \"doc_mount_file_links\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"linkGroupId\" TEXT);",
+        )
+        .unwrap();
+        // Content the way a native-text-only index holds it: a files row + a
+        // documents row, no blob (the table does not exist at all).
+        db.execute(
+            "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes) VALUES ('solo', 'solo', 10)",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO doc_mount_documents (id, fileId, content) VALUES ('solo-d', 'solo', 'x')",
+            [],
+        )
+        .unwrap();
+        // No link references it → gc must collect it.
+        assert!(
+            gc_orphaned_file_row(&db, "solo").unwrap(),
+            "gc should collect the orphan and NOT throw on the absent blobs table"
+        );
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 0);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 0);
+        // …and the guard skipped the table rather than creating it.
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='doc_mount_blobs'"
+            ),
+            0
+        );
     }
 }
 

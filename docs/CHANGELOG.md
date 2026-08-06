@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.D51 (bug 13): garbage-collecting an orphaned mount-index file row no
+longer crashes on an index that never held a blob (a document-only,
+restored, or hand-built store). The blob and document payload deletes are
+now guarded behind a table-existence check, so the second write to a path
+succeeds instead of failing with "no such table: doc_mount_blobs".
+
 P4.D51 (bug 18): the help-doc sync no longer wipes the in-app Guide when
 the only Markdown on disk is blank. A `help/` directory whose files are
 all whitespace-only walks non-empty but produces no usable content;
