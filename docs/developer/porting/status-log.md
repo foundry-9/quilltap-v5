@@ -9,6 +9,38 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), in progress
+
+Baseline `f4955e0e` (drift-checked clean at lane start). Owns `api/salon.rs`,
+`api/chat_cast.rs`, `services/chat_participants.rs`, `services/chat_enrichment.rs`,
+`announcement_attribution.rs`, `services/message_context.rs`, `db/chats.rs`,
+`db/conversation_annotations.rs`, `content_disposition.rs`, and its families'
+harness/oracle files. `api/types.rs` FROZEN (every wire change is inside JSON
+bodies).
+
+### Unit 1 — bug 41: `Content-Disposition` ext-value widening (v4 `ea4dc011`)
+
+`content_disposition::encode_ext_value` now escapes the full RFC 8187 stray set
+`' ( ) * !` (each → `%XX`-upper), byte-for-byte with v4's `encodeExtValue`
+`/['()*!]/g` regex. v5 had escaped only `'` (the dogfood-#46 fix); v4 went
+further, so the two converged and the deliberate divergence is retired:
+`markdown_transcript_equivalence`'s `EXPECTED_DIVERGENCES` is now empty (the
+`ascii-apostrophe-with-non-ascii` vector is an ordinary must-match; the
+`seen_divergences` machinery stays wired so a future divergence re-arms without
+touching the loop). `encode_uri_component` itself is untouched — its
+`api::ui_search` consumer wants JS semantics.
+
+Corpus: added a `stray-attr-chars-with-non-ascii` vector (`a'()*!—b.txt` →
+`filename*=UTF-8''a%27%28%29%2A%21%E2%80%94b.txt`, v4's own test vector) to
+`markdown-transcript.ts`. Differential `markdown_transcript_equivalence` green
+(55 rows: 10 disposition / 10 filename / 35 transcript); `chat_export_equivalence`
++ the almanack disposition check stay ASCII-title neutral (re-run at gate).
+
+Regen: `cd ~/source/quilltap-server && TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx
+tsx <v5>/harness/oracle/cases/markdown-transcript.ts > /tmp/oracle-markdown-transcript.ndjson`;
+run `QT_ORACLE_MARKDOWN_TRANSCRIPT=… cargo test -p quilltap-harness --test
+markdown_transcript_equivalence`.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →

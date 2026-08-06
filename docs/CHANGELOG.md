@@ -145,6 +145,12 @@ over-budget cases (message-boundary split, a single-message boundary
 walk, a split interchange 0 carrying the metadata header, and astral
 content for the UTF-16 proof), all byte-exact against the reference
 renderer.
+Widened the `Content-Disposition` `filename*` escaping to cover the full RFC
+8187 stray set — `' ( ) * !` are now all percent-encoded, matching the
+reference app (v4 bug 41). v5 previously escaped only the apostrophe; v4 has
+since caught up to the full set, so the two now agree and the deliberate
+divergence is retired. Filenames with parentheses, asterisks, or exclamation
+marks beside non-ASCII characters download with their real names intact.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

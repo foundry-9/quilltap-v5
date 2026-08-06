@@ -613,9 +613,13 @@ const dispositionCases: Array<[string, string, 'inline' | 'attachment' | null]> 
   // percent-encoded — which is exactly why this family never saw the bug that
   // dogfood #46 found on a real chat title. `encodeURIComponent` keeps a
   // straight `'`, and RFC 8187 uses it as the charset'lang'value delimiter, so
-  // v4 emits an ungrammatical parameter that browsers discard. v5 DIVERGES here
-  // and percent-encodes it; the Rust side asserts the difference explicitly.
+  // an unescaped `'` makes the parameter ungrammatical. As of bug 41 (`ea4dc011`)
+  // v4 escapes it too, so v5 and v4 now AGREE here (the carve-out is retired).
   ['ascii-apostrophe-with-non-ascii', "Wings Over Suparṇā's Quiet Governance.md", 'attachment'],
+  // Bug 41: the whole RFC 8187 stray set `' ( ) * !` beside a non-ASCII char —
+  // `encodeURIComponent` leaves all five untouched; the widened escape percent-
+  // encodes each. v4's own test asserts a%27%28%29%2A%21%E2%80%94b.txt.
+  ['stray-attr-chars-with-non-ascii', "a'()*!—b.txt", 'attachment'],
   ['quote-in-ascii-name', 'a"b.md', 'attachment'],
   ['empty-name', '', 'attachment'],
 ]

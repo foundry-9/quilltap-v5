@@ -30,17 +30,14 @@ use std::collections::{BTreeMap, HashMap};
 
 /// Vectors where v5 deliberately does NOT match v4, with the ruling behind each.
 ///
-/// Dogfood #46 (ruled 2026-07-31, human): `encodeURIComponent` keeps a straight
-/// `'`, but RFC 8187 uses it as the `charset'language'value` delimiter, so v4's
-/// ext-value is ungrammatical whenever a filename carries BOTH an apostrophe and
-/// a non-ASCII character — browsers discard the parameter and fall back to the
-/// underscored ASCII name. v5 percent-encodes it. The identical fix is queued
-/// for v4; when it lands, the `divergence_vanished` arm fires and this entry
-/// should be retired.
-const EXPECTED_DIVERGENCES: &[(&str, &str)] = &[(
-    "ascii-apostrophe-with-non-ascii",
-    "dogfood #46 — the apostrophe is RFC 8187's delimiter; v5 percent-encodes it",
-)];
+/// EMPTY as of bug 41 (`ea4dc011`, 2026-08-06): the sole entry —
+/// `ascii-apostrophe-with-non-ascii`, dogfood #46 — retired when v4 shipped the
+/// same `encodeURIComponent`-plus-`'()*!` escape v5 had carried alone. Both sides
+/// now emit `%27` there, so the row is an ordinary vector that must MATCH. The
+/// `seen_divergences` machinery below stays wired so that re-introducing a
+/// divergence (add an entry here) restores the both-directions assertion without
+/// touching the loop.
+const EXPECTED_DIVERGENCES: &[(&str, &str)] = &[];
 
 use quilltap_core::content_disposition::{build_content_disposition, Disposition as CdDisposition};
 use quilltap_core::services::markdown_transcript::{
