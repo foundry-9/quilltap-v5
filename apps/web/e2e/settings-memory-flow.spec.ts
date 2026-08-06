@@ -16,12 +16,24 @@ import { E2E_PASSPHRASE } from './support/env';
  * main the describe SKIPS on a NAMED constant (never a capability probe). The
  * unifier flips `P49H2A_SERVER_LANDED` to `true`.
  *
+ * FLIPPED at the P4.41/42/9H2 unification (2026-08-06): the profile verbs are
+ * LIVE, so the CRUD beat runs. P4.9H2A landed its tier-2 units 6+7 as LOUD
+ * REFUSALS (`memoryDedup*` / `conversationSummariesRegenerate*` answer the
+ * named not-available arm), so the two maintenance beats stay gated on their
+ * OWN named constant below until the follow-up ports the implementations.
+ *
  * The shared e2e instance has NO API keys and a mock-pointed default embedding
  * profile — so these beats create/edit/delete a NON-default BUILTIN profile
  * only, never flipping the default or triggering a reindex/refit (which would
  * unset the instance default or mint embedding jobs).
  */
-const P49H2A_SERVER_LANDED = false;
+const P49H2A_SERVER_LANDED = true;
+/**
+ * The memory-dedup + conversation-summaries implementations (P4.9H2A units 6+7,
+ * deferred loudly — `api/memory_maintenance.rs`). The follow-up lane that ports
+ * them flips this and the two beats below activate.
+ */
+const P49H2A_MAINTENANCE_LANDED = false;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -100,6 +112,10 @@ test.describe('P4.9H2B — the Commonplace Book management cards', () => {
   test('memory deduplication: preview renders and Run is disabled at zero removable', async ({
     page,
   }) => {
+    test.skip(
+      !P49H2A_MAINTENANCE_LANDED,
+      'memoryDedupPreview refuses loudly (P4.9H2A units 6+7 deferred) — flip P49H2A_MAINTENANCE_LANDED when the dedup port lands',
+    );
     const card = await openMemoryCard(page, 'memory-deduplication');
     const analyzed = nextDispatch(page);
     await card.getByRole('button', { name: 'Analyze Memories' }).click();
@@ -117,6 +133,10 @@ test.describe('P4.9H2B — the Commonplace Book management cards', () => {
   });
 
   test('conversation summaries: a single click enqueues a regeneration', async ({ page }) => {
+    test.skip(
+      !P49H2A_MAINTENANCE_LANDED,
+      'conversationSummariesRegenerate refuses loudly (P4.9H2A units 6+7 deferred) — flip P49H2A_MAINTENANCE_LANDED when the summaries port lands',
+    );
     const card = await openMemoryCard(page, 'conversation-summaries-regenerate');
     const enqueued = nextDispatch(page);
     await card.getByRole('button', { name: 'Regenerate conversation summaries' }).click();
