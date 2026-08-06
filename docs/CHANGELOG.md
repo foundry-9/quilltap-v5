@@ -10,6 +10,11 @@ instead of failing it. Before this, such a turn errored and left the chat
 wedged on the same dead reference. Matches the reference app's behavior;
 the retry is a second request only on failure. Version: core 0.0.483.
 
+Added a wire-byte regression test pinning the chaining fallback's retry
+request to a from-scratch non-chained build of the same call (no
+prior-response reference, the full conversation). Version: harness
+0.0.409.
+
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining
 fallback that finding #69 showed was dropped in the port (P4.41),

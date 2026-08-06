@@ -59234,3 +59234,16 @@ full input, stream proceeds to a done chunk); (b) chained fail-then-fail
 fail with NO id (single error, exactly ONE call — the gate);
 (d) `pre_stream_failure_is_a_single_error` unchanged and still green. All
 12 `streaming_provider` unit tests pass; clippy clean both feature sets.
+
+### Unit 2 — the wire-byte pin (harness 0.0.409)
+
+`tool_wire_call_site.rs::chaining_fallback_retry_bytes_match_a_nonchained_build`:
+drives the REAL `WireStreamingProvider` on OPENAI with a
+`FailFirstStreamTransport` (fails the first `execute_stream`, serves an empty
+stream on the retry, records every request). A run with `previous_response_id`
+set makes the fallback fire; the SECOND recorded request's BYTES are asserted
+byte-identical to a one-call reference run of the SAME params with no chaining
+(the existing `RecordingStreamTransport`). This is the byte proof the tier-3
+cannot give (its canned key ignores `previous_response_id`): the retry carries
+the full input and drops the id, byte-for-byte a never-chained build. Runs in
+plain `cargo test`, no oracle env. All 7 `tool_wire_call_site` tests pass.

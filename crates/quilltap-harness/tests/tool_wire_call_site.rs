@@ -40,7 +40,7 @@
 use std::sync::Mutex;
 
 use quilltap_core::db::runtime::Db;
-use quilltap_core::model::stream::StreamParams;
+use quilltap_core::model::stream::{StreamMessage, StreamParams, StreamingCompletionProvider};
 use quilltap_core::model::streaming_provider::{ProviderKeySource, WireStreamingProvider};
 use quilltap_core::model::transport::{
     BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
@@ -549,4 +549,150 @@ async fn drop_providers_strip_the_attachment_from_the_bytes() {
             "{provider}: the stripped attachment's bytes leaked into the body"
         );
     }
+}
+
+// ============================================================================
+// P4.41 — the chaining-fallback wire-byte pin (finding #69)
+// ============================================================================
+
+/// Fails the FIRST `execute_stream` (a chained request OpenAI can't resolve) and
+/// serves an empty stream on every later call, recording every request — so the
+/// retry the fallback issues is captured for a byte diff.
+struct FailFirstStreamTransport {
+    calls: Mutex<usize>,
+    requests: Mutex<Vec<TransportRequest>>,
+}
+
+impl ProviderTransport for FailFirstStreamTransport {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+        Box::pin(async move {
+            Err(TransportError {
+                message: "non-streaming not scripted".to_string(),
+                status: None,
+            })
+        })
+    }
+    fn execute_stream<'a>(
+        &'a self,
+        request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
+        self.requests.lock().unwrap().push(request.clone());
+        let n = {
+            let mut c = self.calls.lock().unwrap();
+            *c += 1;
+            *c
+        };
+        Box::pin(async move {
+            if n == 1 {
+                Err(TransportError {
+                    message: "HTTP 400: previous_response_not_found".to_string(),
+                    status: None,
+                })
+            } else {
+                let (_tx, rx) = tokio::sync::mpsc::channel(1);
+                Ok(rx)
+            }
+        })
+    }
+}
+
+/// The base OpenAI streaming params the two runs share (only `previous_response_id`
+/// differs between the chained run and the reference build).
+fn chaining_base_params() -> StreamParams {
+    StreamParams {
+        messages: vec![
+            StreamMessage::system("You are Byron."),
+            StreamMessage::user("Roll a die."),
+            StreamMessage::assistant("I rolled a 4."),
+            StreamMessage::user("Roll again."),
+        ],
+        model: "gpt-4o".to_string(),
+        temperature: Some(0.7),
+        max_tokens: Some(1024),
+        top_p: None,
+        tools: None,
+        web_search_enabled: false,
+        profile_parameters: None,
+        cache_key: None,
+        previous_response_id: None,
+        stop: Vec::new(),
+    }
+}
+
+/// The fallback's retry request must be byte-for-byte a from-scratch NON-chained
+/// build of the same params: the same `input` (full item array), the same body
+/// otherwise, and NO `previous_response_id`. This is the byte proof the tier-3
+/// (whose canned key ignores the id) cannot give.
+#[tokio::test]
+async fn chaining_fallback_retry_bytes_match_a_nonchained_build() {
+    // The chained run: a `previous_response_id` set, the first (chained)
+    // execute_stream fails pre-stream, the fallback retries with the full input.
+    let mut chained_params = chaining_base_params();
+    chained_params.previous_response_id = Some("resp_dead".to_string());
+    let chained_wire = WireStreamingProvider::new(
+        FailFirstStreamTransport {
+            calls: Mutex::new(0),
+            requests: Mutex::new(Vec::new()),
+        },
+        TestKeys,
+        TransportPolicy::default(),
+        "Quilltap/test".to_string(),
+    );
+    // Awaiting resolves after BOTH transport calls have run (the fallback happens
+    // inside the async block before the receiver is returned).
+    let _rx = chained_wire
+        .stream_message("OPENAI", None, &chained_params)
+        .await;
+    let chained_requests = chained_wire
+        .transport_ref()
+        .requests
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        chained_requests.len(),
+        2,
+        "chained attempt + the full-input retry"
+    );
+
+    // Sanity: the FIRST (chained) request carried the id + the last-user-only input.
+    let chained_body: Value = serde_json::from_slice(&chained_requests[0].body).unwrap();
+    assert_eq!(chained_body["previous_response_id"], "resp_dead");
+
+    // The reference build: the SAME params with no chaining, one clean call.
+    let reference_wire = WireStreamingProvider::new(
+        RecordingStreamTransport {
+            requests: Mutex::new(Vec::new()),
+        },
+        TestKeys,
+        TransportPolicy::default(),
+        "Quilltap/test".to_string(),
+    );
+    let _rx = reference_wire
+        .stream_message("OPENAI", None, &chaining_base_params())
+        .await;
+    let reference_requests = reference_wire
+        .transport_ref()
+        .requests
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(reference_requests.len(), 1, "one non-chained call");
+
+    // The proof: the retry's BYTES equal a from-scratch non-chained build.
+    assert_eq!(
+        chained_requests[1].body, reference_requests[0].body,
+        "the fallback retry must be byte-identical to a never-chained request"
+    );
+    // And it explicitly dropped the chaining id.
+    let retry_body: Value = serde_json::from_slice(&chained_requests[1].body).unwrap();
+    assert!(
+        retry_body.get("previous_response_id").is_none(),
+        "the retry must not carry previous_response_id"
+    );
 }
