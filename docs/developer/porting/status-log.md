@@ -9,7 +9,29 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
-## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), in progress
+## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
+
+**All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no
+tier-3 deferrals.** Units: (1) bug 41 disposition, (2) bug 10 annotations sweep,
+(3) bug 28 staff attribution, (4) the salon+cast bundle (bugs 22/37/36/27/25/23/24).
+
+**Final gate — every lane differential re-run BY NAME, fresh at `f4955e0e`, zero
+SKIP:** direct — `markdown_transcript` (55), `chats_tier2` (8+1 ann),
+`announcement_attribution` (37), `salon_reads` (6), `salon_mutations` (17),
+`salon_skip` (2), `salon_swipe_generate` (4), `chat_cast_routes` (74),
+`turn_pause_filters` (twin). Neutrality (all green) — `message_context_leaves`,
+`build_context_tier3`, `announcer_tier3`, `post_office_host`, `chat_export`,
+`chats_read`, `chats_participants_tier2`, `conversation_annotations_tier2` +
+`_upsert`, `connection_profiles_tier2`, `chats_impersonation_tier2`. The
+almanack disposition path is ASCII-title (the plain arm, no ext-value) →
+structurally neutral, not re-run. fmt/clippy both feature sets/`cargo test
+--workspace` all green. **No `apps/web` touched — the SPA mirror of §1 + the
+joint e2e are P4.D54's / the unifier's.** ⚠ e2e note: the salon-fixture regen
+added a 2nd `OPENAI_COMPATIBLE` profile + reassigned Bram's participant; the e2e
+`baseUrl` rewrite is provider-wide, so both round-trip to the mock — re-run the
+M4/Salon Playwright walks to confirm. Versions: core 0.0.490, harness 0.0.415.
+
+
 
 Baseline `f4955e0e` (drift-checked clean at lane start). Owns `api/salon.rs`,
 `api/chat_cast.rs`, `services/chat_participants.rs`, `services/chat_enrichment.rs`,
