@@ -183,10 +183,19 @@ const TXT_ATT_B64 = { id: 'att-txt-1', filename: 'notes.txt', mimeType: 'text/pl
 // Raw text data (contains a newline) — v4 sends it as-is.
 const TXT_ATT_RAW = { id: 'att-txt-2', filename: 'raw.txt', mimeType: 'text/plain', size: 17, data: 'line one\nline two' };
 // Base64-LOOKING but strictly-invalid data (newline-free, base64 charset, bad
-// length). Node's Buffer.from never throws — it leniently mangles ("hello" →
-// "��e") — so v4's decode-failure catch is dead and the mojibake
-// ships. Pins the §3-review finding on the lenient-decode arm.
+// length). Node's Buffer.from never throws. v4 bug 34's decodeBase64Text
+// round-trips (decode, re-encode, compare) so this ships VERBATIM ("hello")
+// instead of the old mojibake — the mangled-b64 anthropic vectors flip.
 const TXT_ATT_MANGLED = { id: 'att-txt-3', filename: 'word.txt', mimeType: 'text/plain', size: 5, data: 'hello' };
+// "x=1" — base64 charset, decode stops at "=" → 0 bytes; v4 bug 34 round-trips
+// so it ships VERBATIM ("x=1") instead of "". Absent before; v4's tests cover it.
+const TXT_ATT_X1 = { id: 'att-txt-4', filename: 'expr.txt', mimeType: 'text/plain', size: 3, data: 'x=1' };
+// A text file missing its data — v4 bug 33 makes Grok's `File data not loaded`
+// arm reachable for text (it now passes the widened isHandledMimeType gate).
+const TXT_ATT_NO_DATA = { id: 'att-txt-5', filename: 'empty.txt', mimeType: 'text/plain', size: 0 };
+// A binary (zip) that is NOT image/text/pdf — reaches v4 bug 33's new suffixed
+// Grok rejection ("... supports: <images>, text/*").
+const ZIP_ATT = { id: 'att-zip-1', filename: 'archive.zip', mimeType: 'application/zip', size: 8, data: 'UEsDBBQA' };
 const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
 
 /// `modes` restricts a case to a subset of `stream` / `send` (default: both).
@@ -217,6 +226,8 @@ function casesFor(provider) {
     add('text-attachment-b64', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_B64] }] });
     add('text-attachment-raw', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_RAW] }] });
     add('text-attachment-mangled-b64', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_MANGLED] }] });
+    // v4 bug 34: base64-looking-but-not "x=1" now ships verbatim (was "").
+    add('text-attachment-x-equals-1', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_X1] }] });
     add('attachment-no-data', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
     add('multi-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, PDF_ATT] }] });
     add('image-attachment-caching', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG], profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });
@@ -291,6 +302,19 @@ function casesFor(provider) {
     add('image-attachment', { ...base, model: 'openai/gpt-4o', messages: [SYS, USER_IMG] });
     add('image-attachment-tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, USER_IMG] });
     add('attachment-no-data', { ...base, model: 'openai/gpt-4o', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] }, ['send']);
+    // v4 bug 31 — the NON-STREAMING vision send path (sendViaChatCompletions),
+    // send-only: an image escapes the SDK to a direct chat-completions POST, a
+    // THIRD body shape whose assignment order IS wire order. Each vector crosses
+    // an image with one feature so the new arm is actually exercised (every
+    // pre-bug-31 openrouter vector is image-free). The streaming half of these
+    // combos is already ported (streamViaChatCompletions); the send arm is new.
+    add('image-cache-key', { ...base, model: 'openai/gpt-4o', cacheKey: 'char-5', messages: [SYS, USER_IMG] }, ['send']);
+    add('image-web-search', { ...base, model: 'openai/gpt-4o', webSearchEnabled: true, messages: [SYS, USER_IMG] }, ['send']);
+    add('image-response-format-schema', { ...base, model: 'openai/gpt-4o', responseFormat: { type: 'json_schema', jsonSchema: { name: 'out', strict: true, schema: { type: 'object', properties: { a: { type: 'string' } } } } }, messages: [SYS, USER_IMG] }, ['send']);
+    add('image-fallback-models', { ...base, model: 'openai/gpt-4o', profileParameters: { fallbackModels: ['anthropic/claude-3'] }, messages: [SYS, USER_IMG] }, ['send']);
+    add('image-provider-prefs', { ...base, model: 'openai/gpt-4o', profileParameters: { enableZDR: true, providerPreferences: { order: ['openai', 'azure'], allowFallbacks: false, requireParameters: true, ignore: ['bad'], only: ['good'] } }, messages: [SYS, USER_IMG] }, ['send']);
+    add('image-reasoning-effort', { ...base, model: 'openai/gpt-4o', profileParameters: { reasoningEffort: 'high' }, messages: [SYS, USER_IMG] }, ['send']);
+    add('image-tool-roundtrip', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, USER_IMG, ASSISTANT_TOOLCALL, TOOL_RESULT] }, ['send']);
     // Stream-only result-string pins (the send drive does not surface the
     // SDK-path response's attachmentResults): the non-image arm and the
     // missing-data arm, each alongside a body the raw-fetch path records.
@@ -328,11 +352,19 @@ function casesFor(provider) {
     add('plain', { ...base, model: 'grok-4' });
     add('web-search', { ...base, model: 'grok-4', webSearchEnabled: true });
     add('tools-stop-cache', { ...base, model: 'grok-4', tools: [TOOL], stop: ['S'], cacheKey: 'char-3' });
-    // P4.21 — Grok input_image; a text file FAILS the images-only
-    // supportedMimeTypes gate FIRST (the plugin's text/plain branch is dead
-    // code in v4 itself — recorded to pin the gate order).
+    // P4.21 — Grok input_image.
     add('image-attachment', { ...base, model: 'grok-4', messages: [SYS, USER_IMG] });
-    add('unsupported-attachment', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Read this file.', attachments: [TXT_ATT_RAW] }] });
+    // v4 bug 33: the gate is now isHandledMimeType, so text/* is SENT inline
+    // (base64-round-tripped, bug 34) and PDF reaches the honest Files-API
+    // refusal; a binary reaches the new ", text/*"-suffixed rejection. The old
+    // (now-lying) `unsupported-attachment` text case is renamed `text-attachment`.
+    add('text-attachment', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Read this file.', attachments: [TXT_ATT_RAW] }] });
+    // A Grok text file carrying REAL base64 (Grok has no charset pre-guard — its
+    // decodeBase64Text round-trip is otherwise pinned nowhere).
+    add('text-attachment-b64', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_B64] }] });
+    add('text-attachment-no-data', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_NO_DATA] }] });
+    add('pdf-attachment', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Summarize this.', attachments: [PDF_ATT] }] });
+    add('binary-attachment', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [ZIP_ATT] }] });
   } else if (provider === 'google') {
     add('plain', { ...base, model: 'gemini-2.5-flash' });
     add('tools', { ...base, model: 'gemini-2.5-flash', tools: [{ name: 'search', description: 'Search.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }] });

@@ -29,7 +29,7 @@
 use std::fs;
 use std::path::Path;
 
-use quilltap_core::model::response_parse::{parse_for_provider, NonStreamingResponse};
+use quilltap_core::model::response_parse::{parse_for_provider_ex, NonStreamingResponse};
 use serde_json::{json, Map, Value};
 
 fn fixture_path() -> std::path::PathBuf {
@@ -163,8 +163,15 @@ fn response_parse_matches_v4_recorded_llm_responses() {
         }
         let body: Value =
             serde_json::from_str(rec["body"].as_str().expect("body string")).expect("body JSON");
+        // v4 bug 31: an OpenRouter case driven WITH an image records the
+        // raw-wire vision LLMResponse (sendViaChatCompletions), so the parse
+        // must use the vision flavor — the recorder marks it `visionPath`.
+        let openrouter_vision = rec
+            .get("visionPath")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let mut want = rec["response"].clone();
-        let mut got = to_v4_json(&parse_for_provider(provider, &body));
+        let mut got = to_v4_json(&parse_for_provider_ex(provider, &body, openrouter_vision));
 
         // attachmentResults is request-side (see the module note).
         want.as_object_mut().unwrap().remove("attachmentResults");

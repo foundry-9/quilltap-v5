@@ -21,8 +21,10 @@ use crate::model::completion::{
     CompletionError, CompletionParams, CompletionResponse, CompletionUsage,
 };
 use crate::model::provider_auth::apply_auth;
-use crate::model::request_builder::{build_request, RequestInput};
-use crate::model::response_parse::parse_for_provider;
+use crate::model::request_builder::{
+    build_request, openrouter_non_streaming_is_vision, RequestInput,
+};
+use crate::model::response_parse::parse_for_provider_ex;
 use crate::model::stream::StreamMessage;
 use crate::model::transport::{
     transport_headers, BoxFuture, ProviderTransport, TransportPolicy, TransportRequest,
@@ -155,7 +157,14 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
             .json()
             .map_err(|e| CompletionError::new(format!("response parse: {e}")))?;
 
-        let parsed = parse_for_provider(provider, &json);
+        // v4 bug 31: an OpenRouter non-streaming send that carried a formattable
+        // image escaped the SDK to `sendViaChatCompletions`, so its wire body is
+        // read by the raw-wire vision parse rather than the SDK-normalized one
+        // (same bytes, a different LLMResponse). The predicate mirrors the
+        // builder's own routing choice.
+        let openrouter_vision =
+            provider == "OPENROUTER" && openrouter_non_streaming_is_vision(&input.messages);
+        let parsed = parse_for_provider_ex(provider, &json, openrouter_vision);
         Ok(CompletionResponse {
             content: parsed.content,
             usage: Some(CompletionUsage {

@@ -84,14 +84,14 @@ const ANTHROPIC_SUPPORTED_MIME_TYPES: &[&str] = &[
     "text/plain",
 ];
 
-/// v4's text/plain document data: base64-LOOKING data (no newline, only the
-/// base64 charset) is decoded to text first; anything else ships as-is.
-/// `toString('utf-8')` maps invalid sequences to replacement chars, hence the
-/// lossy conversion. Node's `Buffer.from(s, 'base64')` NEVER throws — v4's
-/// decode-failure `catch` (ship as-is) is dead code — so content that merely
-/// LOOKS like base64 is mangled, not passed through: `"hello"` becomes
-/// `"\u{FFFD}\u{FFFD}e"` on both sides (pinned by the corpus's
-/// `text-attachment-mangled-b64` vectors).
+/// v4's text/plain document data. The newline/charset pre-guard is UNCHANGED
+/// (only base64-charset, newline-free, non-empty data is a decode candidate);
+/// v4 bug 34 (`43a1b5b1`) replaced the inner bare decode with the round-trip
+/// `decodeBase64Text` ([`super::responses_api::decode_base64_text`]), so
+/// base64-LOOKING-but-not data now ships VERBATIM instead of mangled: `"hello"`
+/// stays `"hello"` (was `"\u{FFFD}\u{FFFD}e"`), `"x=1"` stays `"x=1"` (was
+/// `""`), while genuine base64 still decodes. Anything failing the pre-guard
+/// ships as-is.
 fn anthropic_text_document_data(data: &str) -> String {
     let looks_base64 = !data.contains('\n')
         && !data.is_empty()
@@ -101,7 +101,7 @@ fn anthropic_text_document_data(data: &str) -> String {
     if !looks_base64 {
         return data.to_string();
     }
-    String::from_utf8_lossy(&super::responses_api::node_lenient_base64(data)).into_owned()
+    super::responses_api::decode_base64_text(data)
 }
 
 /// v4 `formatMessagesWithAttachments`. Batches consecutive tool results, expands

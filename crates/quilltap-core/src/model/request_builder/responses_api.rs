@@ -52,17 +52,34 @@ fn user_content(
             .get("mimeType")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if !mimes.contains(&mime) {
-            att_fail(
-                results,
-                a,
-                format!(
+        // The gate + its rejection string are flavor-specific. OpenAI stays
+        // images-only. v4 bug 33 (`43a1b5b1`) widened Grok's gate to
+        // `isHandledMimeType` — supported images OR `text/*` OR `application/pdf`
+        // — so the text/PDF arms below (dead code behind the old images-only
+        // gate) are now LIVE. Grok's rejection lists the images then appends
+        // `, text/*` AFTER the joined list (PDF is not mentioned).
+        let handled = match flavor {
+            ResponsesFlavor::OpenAi => mimes.contains(&mime),
+            ResponsesFlavor::Grok => {
+                mimes.contains(&mime) || mime.starts_with("text/") || mime == "application/pdf"
+            }
+        };
+        if !handled {
+            let reject = match flavor {
+                ResponsesFlavor::OpenAi => format!(
                     "Unsupported file type: {mime}. {label} supports: {}",
                     mimes.join(", ")
                 ),
-            );
+                ResponsesFlavor::Grok => format!(
+                    "Unsupported file type: {mime}. {label} supports: {}, text/*",
+                    mimes.join(", ")
+                ),
+            };
+            att_fail(results, a, reject);
             continue;
         }
+        // v4 bug 33: text/PDF now reach this data check first — `File data not
+        // loaded` is newly reachable for them.
         let Some(data) = att_str(a, "data") else {
             att_fail(results, a, "File data not loaded");
             continue;
@@ -77,11 +94,11 @@ fn user_content(
                 results.sent.push(att_id(a));
             }
             ResponsesFlavor::Grok => {
-                // v4's grok branches AFTER the (images-only) supported gate, so
-                // the text/* and PDF arms below are dead code in v4 itself —
-                // ported as written, per the vestigial-cruft rule; a text file
-                // reaches the "Unsupported file type" arm above instead
-                // (pinned by the grok `unsupported-attachment` vector).
+                // v4 bug 33 made this branch live (it was dead behind the old
+                // images-only gate). Images send inline; `text/*` embeds inline
+                // (base64-round-tripped, bug 34); PDF reaches the honest
+                // Files-API refusal; anything else that passed the gate is
+                // unreachable here (only image/text/pdf pass `isHandledMimeType`).
                 if mime.starts_with("image/") {
                     parts.push(json!({
                         "type": "input_image",
@@ -90,12 +107,10 @@ fn user_content(
                     }));
                     results.sent.push(att_id(a));
                 } else if mime.starts_with("text/") {
-                    // v4's `catch` → "Failed to decode text file" is DEAD CODE:
-                    // Node's Buffer.from never throws, so the sent arm always
-                    // runs (this whole text/* branch is itself dead in v4 —
-                    // the images-only supported-mime gate runs first).
-                    let bytes = node_lenient_base64(data);
-                    let text = String::from_utf8_lossy(&bytes);
+                    // v4 bug 34: `data` may be raw text OR base64;
+                    // `decode_base64_text` round-trips to tell which (a bare
+                    // decode would mangle already-plain text — see the helper).
+                    let text = decode_base64_text(data);
                     let filename = a
                         .get("filename")
                         .and_then(Value::as_str)
@@ -106,6 +121,8 @@ fn user_content(
                     }));
                     results.sent.push(att_id(a));
                 } else {
+                    // application/pdf (the only remaining `isHandledMimeType`
+                    // arm): the honest Files-API refusal (deferred in v4 too).
                     att_fail(
                         results,
                         a,
@@ -151,6 +168,58 @@ pub(crate) fn node_lenient_base64(data: &str) -> Vec<u8> {
         }
     }
     out
+}
+
+/// v4 bug 34 (`43a1b5b1`)'s `decodeBase64Text`. `Buffer.from(s,'base64')` never
+/// throws — a bare decode silently mangles already-plain text (`"hello"` →
+/// mojibake, `"x=1"` → `""`) — so a try/catch cannot tell base64 from plain
+/// text. Round-trip instead: decode ([`node_lenient_base64`], the exact
+/// `Buffer.from` byte-behaviour), re-encode (standard base64), normalize BOTH
+/// (strip whitespace + trailing `=`) and compare. A match means the input really
+/// was base64 → return the utf-8 decode (lossy, `toString('utf-8')`); a mismatch
+/// means plain text all along → return it verbatim. Applied in the Anthropic
+/// text/plain document arm and the Grok `text/*` arm.
+pub(crate) fn decode_base64_text(data: &str) -> String {
+    use base64::Engine as _;
+    let decoded = node_lenient_base64(data);
+    let reencoded = base64::engine::general_purpose::STANDARD.encode(&decoded);
+    if normalize_base64(&reencoded) == normalize_base64(data) {
+        String::from_utf8_lossy(&decoded).into_owned()
+    } else {
+        data.to_string()
+    }
+}
+
+/// v4's `normalize`: `s.replace(/\s+/g, '').replace(/=+$/, '')` — strip every
+/// JS-`\s` whitespace char, then trailing `=` padding.
+fn normalize_base64(s: &str) -> String {
+    let no_ws: String = s.chars().filter(|c| !is_js_whitespace(*c)).collect();
+    no_ws.trim_end_matches('=').to_string()
+}
+
+/// JS regex `\s` — the exact set `String.prototype.replace(/\s+/g,'')` strips
+/// (Unicode whitespace plus `﻿`, which is `\s` in JS but NOT Rust's
+/// `char::is_whitespace`; and NOT ``, which Rust would include).
+fn is_js_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
 }
 
 fn function_call_items(tool_calls: &[ToolCallPayload]) -> Vec<Value> {
@@ -514,7 +583,27 @@ pub fn build_grok_body(input: &RequestInput, results: &mut StreamAttachmentResul
 
 #[cfg(test)]
 mod tests {
-    use super::node_lenient_base64;
+    use super::{decode_base64_text, node_lenient_base64};
+
+    /// v4 bug 34's `decodeBase64Text` round-trip. Node-24-verified consequences
+    /// (the fix's whole point): base64-LOOKING-but-not text ships VERBATIM
+    /// instead of mangled, while genuine base64 still decodes.
+    #[test]
+    fn decode_base64_text_round_trip() {
+        // Plain text that merely looks base64 → verbatim (was mojibake / "").
+        assert_eq!(decode_base64_text("hello"), "hello");
+        assert_eq!(decode_base64_text("x=1"), "x=1");
+        // Raw text with a newline (Grok has no pre-guard) → verbatim.
+        assert_eq!(
+            decode_base64_text("line one\nline two"),
+            "line one\nline two"
+        );
+        // Genuine base64 still decodes.
+        assert_eq!(decode_base64_text("aGVsbG8="), "hello");
+        assert_eq!(decode_base64_text("aGVsbG8gd29ybGQ="), "hello world");
+        // Whitespace inside genuine base64 is normalized away on both sides.
+        assert_eq!(decode_base64_text("aGVs bG8="), "hello");
+    }
 
     /// Every vector probed on Node 24 (`Buffer.from(s, 'base64')`) at the §3
     /// unification review — the decoder must be byte-faithful, incl. the

@@ -41,6 +41,7 @@ use serde_json::Value;
 
 use crate::provider_manifest::Registry;
 
+pub use chat_completions::openrouter_non_streaming_is_vision;
 pub use google::sanitize_schema_for_google;
 
 // ============================================================================

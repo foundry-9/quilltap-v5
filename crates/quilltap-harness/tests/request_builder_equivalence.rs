@@ -183,14 +183,15 @@ fn stream_from_mode(row: &Value) -> bool {
 const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
     // The @openrouter/sdk's ChatToolMessage schema wants `toolCallId`; v4 sends
     // `tool_call_id`, so a tool round-trip fails the SDK's INPUT validation and
-    // no request leaves the process. (v4's own defect, carried faithfully.)
+    // no request leaves the process. (v4's own defect, carried faithfully.) This
+    // is the IMAGE-FREE tool round-trip: v4 bug 31 escapes the image case to the
+    // raw vision path, where a tool-role message is fine (the
+    // `image-tool-roundtrip` send vector succeeds).
     ("OPENROUTER", "tool-roundtrip", "send"),
-    // P4.21: a formattable image switches `buildMessageContent` to a
-    // content-parts array, which the SDK's message schema ALSO rejects at input
-    // validation — v4's non-streaming vision sends nothing at all. (v4's own
-    // defect, carried faithfully; the streaming path routes around the SDK.)
-    ("OPENROUTER", "image-attachment", "send"),
-    ("OPENROUTER", "image-attachment-tools", "send"),
+    // v4 bug 31 (`43a1b5b1`) RETIRED the two non-streaming vision refusals: an
+    // image attachment now routes the send around the SDK to a direct
+    // chat-completions POST, so `image-attachment[send]` and
+    // `image-attachment-tools[send]` produce bodies, not refusals.
 ];
 
 #[test]

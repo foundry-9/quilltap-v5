@@ -86,6 +86,13 @@ pub enum ChatFlavor {
     ZAi,
     /// OpenRouter: camelCase normalized fields + `message.reasoning` + `cachedTokens`.
     OpenRouter,
+    /// OpenRouter VISION (v4 bug 31's `sendViaChatCompletions`): the raw
+    /// snake_case wire read DIRECTLY (no SDK zod), `message.reasoning`,
+    /// `finish_reason || 'stop'`, and `prompt_tokens_details.cached_tokens`
+    /// materialized into `cacheUsage` (`{cacheReadInputTokens, cachedTokens}`)
+    /// — unlike the SDK path, whose `usage.cachedTokens` never exists. Same wire
+    /// body, a DIFFERENT `LLMResponse` from [`ChatFlavor::OpenRouter`].
+    OpenRouterVision,
 }
 
 fn i64_at(v: &Value, key: &str) -> i64 {
@@ -214,6 +221,58 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                 raw: normalized.clone(),
             }
         }
+        ChatFlavor::OpenRouterVision => {
+            // v4 bug 31's `sendViaChatCompletions` reads the RAW snake_case wire
+            // body directly (no SDK zod): `content`, `finish_reason || 'stop'`,
+            // `message.reasoning`, and `usage.prompt_tokens_details.cached_tokens`
+            // (materialized into cacheUsage, unlike the SDK path). `raw: data` is
+            // the wire body itself.
+            let content = msg
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let finish_reason = Some(
+                choice
+                    .get("finish_reason")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("stop")
+                    .to_string(),
+            );
+            let reasoning = msg
+                .get("reasoning")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            // v4: `cachedTokens = usage.prompt_tokens_details?.cached_tokens`;
+            // cacheUsage when it is present AND > 0; `cacheRead = cachedTokens ?? 0`.
+            let cached = usage
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(Value::as_i64);
+            let cache_usage = cached.filter(|&c| c > 0).map(|c| StreamCacheUsage {
+                cached_tokens: Some(c),
+                cache_read_input_tokens: Some(c),
+                cache_discount: None,
+                cache_creation_input_tokens: None,
+            });
+            let read = cached.unwrap_or(0);
+            NonStreamingResponse {
+                content,
+                finish_reason,
+                usage: StreamUsage {
+                    prompt_tokens: sub_floor(i64_at(&usage, "prompt_tokens"), read),
+                    completion_tokens: i64_at(&usage, "completion_tokens"),
+                    total_tokens: sub_floor(i64_at(&usage, "total_tokens"), read),
+                },
+                tool_calls: Vec::new(),
+                reasoning_content: reasoning,
+                thought_signature: None,
+                cache_usage,
+                raw: response.clone(),
+            }
+        }
         _ => {
             // snake_case OpenAI shape (base / deepseek / z-ai).
             let content = msg
@@ -262,7 +321,7 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                     });
                     (reasoning, extract_openai_tool_calls(msg), cache)
                 }
-                ChatFlavor::OpenRouter => unreachable!(),
+                ChatFlavor::OpenRouter | ChatFlavor::OpenRouterVision => unreachable!(),
             };
             let read = cache_usage
                 .and_then(|c| c.cache_read_input_tokens)
@@ -854,14 +913,30 @@ pub fn parse_ollama(response: &Value) -> NonStreamingResponse {
 
 /// Dispatch the non-streaming parse for the canonical provider id (the transport
 /// picks the family from the manifest's stream decoder; the non-streaming shape
-/// mirrors it).
+/// mirrors it). See [`parse_for_provider_ex`] for the OpenRouter vision variant.
 pub fn parse_for_provider(provider: &str, response: &Value) -> NonStreamingResponse {
+    parse_for_provider_ex(provider, response, false)
+}
+
+/// Like [`parse_for_provider`], but `openrouter_vision` selects OpenRouter's
+/// raw-wire vision parse (v4 bug 31): a non-streaming OpenRouter request that
+/// carried a formattable image escaped the SDK to `sendViaChatCompletions`, so
+/// its wire body is read DIRECTLY rather than through the SDK zod. Same wire
+/// bytes, a different `LLMResponse`. Ignored for every non-OpenRouter provider.
+pub fn parse_for_provider_ex(
+    provider: &str,
+    response: &Value,
+    openrouter_vision: bool,
+) -> NonStreamingResponse {
     use super::provider_io::ProviderKind;
     match ProviderKind::of(provider) {
         Some(ProviderKind::Anthropic) => parse_anthropic(response),
         Some(ProviderKind::OpenAi | ProviderKind::Grok) => parse_responses_api(response),
         Some(ProviderKind::Google) => parse_google(response),
         Some(ProviderKind::Ollama) => parse_ollama(response),
+        Some(ProviderKind::OpenRouter) if openrouter_vision => {
+            parse_chat_completions(response, ChatFlavor::OpenRouterVision)
+        }
         Some(kind) => parse_chat_completions(
             response,
             kind.chat_parse_flavor()

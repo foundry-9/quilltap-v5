@@ -176,6 +176,16 @@ reference app (v4 bug 41). v5 previously escaped only the apostrophe; v4 has
 since caught up to the full set, so the two now agree and the deliberate
 divergence is retired. Filenames with parentheses, asterisks, or exclamation
 marks beside non-ASCII characters download with their real names intact.
+OpenRouter non-streaming image sends now reach the model (v4 bug 31): a
+completion carrying an image routes around the SDK — whose client-side
+validation silently rejected image content — to a direct chat-completions
+request, so regenerate and continuation legs with a picture no longer send
+nothing. Grok text and PDF attachments are handled (v4 bug 33): text files
+embed inline and PDFs get an honest "requires the Files API" message instead
+of a blanket "unsupported file type" rejection. Text attachments that are
+plain text (not base64) now ship verbatim instead of garbled, on both Grok
+and Anthropic (v4 bug 34).
+
 The Ollama streaming decoder now buffers across network reads (v4 bug 35):
 a JSON object split across two reads reassembles instead of being silently
 dropped, a multi-byte UTF-8 character split across reads is no longer

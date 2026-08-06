@@ -191,9 +191,19 @@ fn openrouter_collect_attachment_results(
     }
 }
 
+/// Whether a non-streaming OpenRouter request takes the raw-wire VISION send
+/// path (v4 bug 31: a formattable image escapes the SDK to
+/// `sendViaChatCompletions`). The non-streaming RESPONSE parse flavor depends on
+/// this — the same wire body yields two different `LLMResponse`s — so the
+/// completion composer threads it into
+/// [`crate::model::response_parse::parse_for_provider_ex`].
+pub fn openrouter_non_streaming_is_vision(messages: &[StreamMessage]) -> bool {
+    openrouter_has_formattable_images(messages)
+}
+
 /// Does any message carry an image OpenRouter would format inline? (v4
 /// `hasImageAttachments` — the vision trigger for both the streaming
-/// chat-completions routing and the SDK's non-streaming refusal.)
+/// chat-completions routing and the non-streaming vision send.)
 fn openrouter_has_formattable_images(messages: &[StreamMessage]) -> bool {
     messages.iter().any(|m| {
         m.attachments().iter().any(|a| {
@@ -568,15 +578,23 @@ fn openrouter_fallback_models(input: &RequestInput) -> Option<&Vec<Value>> {
         .filter(|a| !a.is_empty())
 }
 
-/// The two OpenRouter request builders. v4's `streamMessage` and `sendMessage`
-/// take **completely different code paths**, so this is not a flag flip:
+/// The OpenRouter request builders. v4's `streamMessage` and `sendMessage` take
+/// **completely different code paths**, so this is not a flag flip — and the
+/// non-streaming half now itself forks on whether an image rides along (v4 bug
+/// 31):
 ///
 /// - streaming (tools / vision) → [`build_openrouter_stream_body`], a raw
 ///   `fetch` to `/chat/completions` with a hand-built chat-completions body;
-/// - non-streaming → [`build_openrouter_send_body`], `@openrouter/sdk`'s
-///   `chat.send()`, whose Speakeasy-generated zod codec re-emits the body in the
-///   SDK's own (camelCase-alphabetical) field order, renames camelCase to
-///   snake_case, and DROPS every key its schema does not declare.
+/// - non-streaming, NO image → [`build_openrouter_send_body`],
+///   `@openrouter/sdk`'s `chat.send()`, whose Speakeasy-generated zod codec
+///   re-emits the body in the SDK's own (camelCase-alphabetical) field order,
+///   renames camelCase to snake_case, and DROPS every key its schema does not
+///   declare;
+/// - non-streaming, WITH a formattable image →
+///   [`build_openrouter_vision_send_body`], a THIRD shape: a direct raw `fetch`
+///   (bug 31's escape hatch around the SDK's content-parts rejection) whose
+///   assignment order IS wire order — snake_case, raw tools passthrough,
+///   assignment-order `provider`, `reasoning.exclude:false`.
 pub fn build_openrouter_body(
     input: &RequestInput,
     results: &mut StreamAttachmentResults,
@@ -758,11 +776,23 @@ fn openrouter_send_response_format(input: &RequestInput) -> Option<Value> {
 /// Keys the schema does not declare are dropped — which is why v4's
 /// `route: 'fallback'` and `reasoning.exclude` never reach the wire here.
 fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError> {
+    // v4 bug 31 (`43a1b5b1`): a formattable image now routes the non-streaming
+    // send AROUND the SDK to a direct `POST /chat/completions` (stream:false) —
+    // the same escape hatch `streamMessage` uses — because the @openrouter/sdk
+    // 1.2.2 `chat.send()` rejects OpenAI content-parts (image_url) messages at
+    // client-side zod validation, so the image never reached the model. The raw
+    // vision path handles content-parts AND tool-role messages fine, so it is
+    // checked FIRST (a vision tool round-trip succeeds where the image-free path
+    // refuses). No-image sends keep the SDK path unchanged.
+    if openrouter_has_formattable_images(&input.messages) {
+        return Ok(build_openrouter_vision_send_body(input));
+    }
     // v4 drops tool messages without a toolCallId (unrepresentable in the
     // carrying enum — the id-less case is the user-text fallback upstream, so
     // that FILTER half is gone), then hands the rest to the SDK — where a
     // `tool`-role message fails input validation and NO request is made.
-    // Reproduce the refusal rather than inventing a body v4 never sends.
+    // Reproduce the refusal rather than inventing a body v4 never sends. (The
+    // image case above escapes the SDK, so the refusal is IMAGE-FREE only.)
     let messages: Vec<&StreamMessage> = input.messages.iter().collect();
     if messages
         .iter()
@@ -772,18 +802,6 @@ fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError>
             "OPENROUTER: the @openrouter/sdk rejects a tool-role message on the \
              non-streaming path (its schema wants toolCallId, not tool_call_id), \
              so v4 sends no request at all"
-                .to_string(),
-        ));
-    }
-    // A formattable image switches `buildMessageContent` to a content-parts
-    // array, which the SDK's message schema also REJECTS at input validation —
-    // v4's non-streaming vision sends nothing (recorded: the
-    // `image-attachment`/`image-attachment-tools` send vectors are refusals).
-    if openrouter_has_formattable_images(&input.messages) {
-        return Err(BuildError::ProviderRefused(
-            "OPENROUTER: the @openrouter/sdk rejects a content-parts (vision) \
-             message on the non-streaming path — input validation fails and v4 \
-             sends no request at all"
                 .to_string(),
         ));
     }
@@ -845,6 +863,158 @@ fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError>
         }
     }
     Ok(b.into_value())
+}
+
+/// v4 bug 31's `OpenRouterProvider.sendViaChatCompletions` — the non-streaming
+/// VISION path: a direct `POST https://openrouter.ai/api/v1/chat/completions`
+/// with `stream:false`, hand-built (no SDK), so JS assignment order IS wire
+/// order. Feature parity with the SDK path (cache key, tools, web search,
+/// structured output, fallback models, provider preferences incl. ZDR,
+/// reasoning), but the SHAPES differ from `build_openrouter_send_body`: raw
+/// snake_case keys, `tools` a RAW passthrough (not the SDK reshape), `provider`
+/// in v4's ASSIGNMENT order (not the SDK's alphabetical), `reasoning` keeping
+/// `exclude:false`, and the `delete body.model` fallback interplay. The message
+/// shape is the STREAM path's (content-parts, tool_calls kept, tool-role
+/// messages carried) — the same `chat_messages(..openrouter_message_content)`
+/// the streaming builder uses.
+fn build_openrouter_vision_send_body(input: &RequestInput) -> Value {
+    let messages = chat_messages(
+        &input.messages,
+        false,
+        false,
+        &mut openrouter_message_content,
+    );
+    let mut b = Body::new();
+    // v4 literal: `{ model, messages, stream:false, temperature, max_tokens,
+    // top_p, stop }`. `model` is deleted below when fallbacks are configured.
+    b.set("model", json!(input.model))
+        .set("messages", messages)
+        .set("stream", json!(false))
+        .set("temperature", num(input.temperature.unwrap_or(0.7)))
+        .set("max_tokens", num(input.max_tokens.unwrap_or(4096) as f64))
+        .set("top_p", num(input.top_p.unwrap_or(1.0)));
+    b.set_opt("stop", stop_value(input));
+    // `user` on a non-empty cacheKey.
+    if let Some(k) = &input.cache_key {
+        if !k.is_empty() {
+            b.set("user", json!(k));
+        }
+    }
+    // `tools` RAW passthrough (params.tools verbatim — NOT the openrouter_tool
+    // reshape the streaming raw-fetch path applies) + tool_choice.
+    if input.tools.as_ref().is_some_and(|t| !t.is_empty()) {
+        b.set(
+            "tools",
+            Value::Array(input.tools.clone().unwrap_or_default()),
+        )
+        .set("tool_choice", json!("auto"));
+    }
+    if input.web_search_enabled {
+        b.set("plugins", json!([{ "id": "web", "max_results": 5 }]));
+    }
+    b.set_opt("response_format", openrouter_vision_response_format(input));
+    // fallbackModels: `models` REPLACES `model` (v4 sets models + route then
+    // `delete body.model`; the order-preserving remove keeps models/route in
+    // their assignment slot).
+    if let Some(fallbacks) = openrouter_fallback_models(input) {
+        let mut models = vec![json!(input.model)];
+        models.extend(fallbacks.iter().cloned());
+        b.set("models", Value::Array(models))
+            .set("route", json!("fallback"));
+        b.remove("model");
+    }
+    b.set_opt("provider", openrouter_vision_send_provider(input));
+    // reasoning is ALWAYS set and KEEPS `exclude:false` (raw fetch, no SDK
+    // schema to drop it).
+    b.set(
+        "reasoning",
+        match openrouter_reasoning_effort(input) {
+            Some(e) => json!({ "effort": e, "exclude": false }),
+            None => json!({ "exclude": false }),
+        },
+    );
+    b.into_value()
+}
+
+/// v4 `resolveProviderPrefs`: the merged `providerPreferences` map (plus
+/// `enableZDR` → `dataCollection:'deny'`), or `None` when the merge is empty
+/// (v4 returns undefined and emits no `provider` key at all).
+fn openrouter_resolve_provider_prefs(
+    input: &RequestInput,
+) -> Option<serde_json::Map<String, Value>> {
+    let profile = input.profile_parameters.as_ref()?;
+    let mut merged = profile
+        .get("providerPreferences")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if profile.get("enableZDR").and_then(Value::as_bool) == Some(true) {
+        merged.insert("dataCollection".to_string(), json!("deny"));
+    }
+    if merged.is_empty() {
+        None
+    } else {
+        Some(merged)
+    }
+}
+
+/// `provider` for the raw vision path, in v4's ASSIGNMENT order (`order,
+/// allow_fallbacks, require_parameters, data_collection, ignore, only`) — NOT
+/// the SDK's alphabetical order. v4 emits `body.provider = {}` whenever
+/// `resolveProviderPrefs` is truthy, then adds the guarded keys, so an empty
+/// object is possible when every guard skips (unreachable by any realistic
+/// vector, carried faithfully).
+fn openrouter_vision_send_provider(input: &RequestInput) -> Option<Value> {
+    let merged = openrouter_resolve_provider_prefs(input)?;
+    let mut p = Body::new();
+    // `order` — truthiness guard.
+    if let Some(v) = merged.get("order").filter(|v| truthy(v)) {
+        p.set("order", v.clone());
+    }
+    // `allowFallbacks` — v4's `!== undefined`: present at all (even `false`).
+    if let Some(v) = merged.get("allowFallbacks") {
+        p.set("allow_fallbacks", v.clone());
+    }
+    if let Some(v) = merged.get("requireParameters").filter(|v| truthy(v)) {
+        p.set("require_parameters", v.clone());
+    }
+    if let Some(v) = merged.get("dataCollection").filter(|v| truthy(v)) {
+        p.set("data_collection", v.clone());
+    }
+    if let Some(v) = merged.get("ignore").filter(|v| truthy(v)) {
+        p.set("ignore", v.clone());
+    }
+    if let Some(v) = merged.get("only").filter(|v| truthy(v)) {
+        p.set("only", v.clone());
+    }
+    Some(p.into_value())
+}
+
+/// `response_format` for the raw vision path, in v4's ASSIGNMENT order (`type`
+/// first, then `json_schema:{name, strict, schema}`) — NOT the SDK's schema
+/// order. Same branch logic as [`openrouter_send_response_format`].
+fn openrouter_vision_response_format(input: &RequestInput) -> Option<Value> {
+    let rf = input.response_format.as_ref()?;
+    let ty = rf.get("type").and_then(Value::as_str)?;
+    if ty == "json_schema" {
+        if let Some(schema) = rf.get("jsonSchema") {
+            let mut js = Body::new();
+            js.set("name", schema.get("name").cloned().unwrap_or(Value::Null))
+                .set(
+                    "strict",
+                    schema.get("strict").cloned().unwrap_or(json!(true)),
+                )
+                .set_opt("schema", schema.get("schema").cloned());
+            let mut out = Body::new();
+            out.set("type", json!("json_schema"))
+                .set("json_schema", js.into_value());
+            return Some(out.into_value());
+        }
+    }
+    if ty == "text" {
+        return None;
+    }
+    Some(json!({ "type": ty }))
 }
 
 // ============================================================================

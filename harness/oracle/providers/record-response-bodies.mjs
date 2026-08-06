@@ -97,6 +97,13 @@ function bodiesFor(provider) {
         { name: 'plain', model: 'openai/gpt-4o', body: j({ id: 'gen-1', model: 'openai/gpt-4o', object: 'chat.completion', created: 1700000000, system_fingerprint: null, choices: [{ logprobs: null, finish_reason: 'stop', index: 0, message: { role: 'assistant', content: 'Hello from OpenRouter.', refusal: null, reasoning: null } }], usage: { prompt_tokens: 10, completion_tokens: 7, total_tokens: 17 } }) },
         { name: 'reasoning', model: 'openai/gpt-4o', body: j({ id: 'gen-2', model: 'openai/gpt-4o', object: 'chat.completion', created: 1700000001, system_fingerprint: null, choices: [{ logprobs: null, finish_reason: 'stop', index: 0, message: { role: 'assistant', content: 'Reasoned reply.', refusal: null, reasoning: 'the model reasoning text' } }], usage: { prompt_tokens: 11, completion_tokens: 8, total_tokens: 19 } }) },
         { name: 'cached', model: 'openai/gpt-4o', body: j({ id: 'gen-3', model: 'openai/gpt-4o', object: 'chat.completion', created: 1700000002, system_fingerprint: null, choices: [{ logprobs: null, finish_reason: 'stop', index: 0, message: { role: 'assistant', content: 'Cache-aware reply.', refusal: null, reasoning: null } }], usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18, prompt_tokens_details: { cached_tokens: 3 }, cost: 0.001 } }) },
+        // v4 bug 31 — the raw-wire VISION path (sendViaChatCompletions). Driven
+        // WITH an image, so sendMessage escapes the SDK and reads this body
+        // DIRECTLY (snake_case, message.reasoning, finish_reason || 'stop', and
+        // prompt_tokens_details.cached_tokens MATERIALIZED into cacheUsage —
+        // where the SDK `cached` case above leaves it absent). Same wire shape,
+        // a different LLMResponse. `raw` is the wire body, not the SDK object.
+        { name: 'vision', model: 'openai/gpt-4o', attachments: [{ id: 'att-img-1', filename: 'photo.png', mimeType: 'image/png', size: 68, data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }], body: j({ id: 'gen-4', model: 'openai/gpt-4o', object: 'chat.completion', created: 1700000003, choices: [{ finish_reason: 'stop', index: 0, message: { role: 'assistant', content: 'I see an image.', reasoning: 'looked closely' } }], usage: { prompt_tokens: 15, completion_tokens: 8, total_tokens: 23, prompt_tokens_details: { cached_tokens: 5 } } }) },
       ];
     case 'ollama':
       return [
@@ -172,10 +179,16 @@ async function main() {
     let failure = null;
     const origFetch = globalThis.fetch;
     globalThis.fetch = async () => makeResponse(c.body);
+    // A case carrying `attachments` rides them on the (single) user message —
+    // for OpenRouter this routes sendMessage onto v4 bug 31's raw-wire vision
+    // path (sendViaChatCompletions), whose LLMResponse differs from the SDK
+    // path. `visionPath` tells the harness to use the raw-wire parse flavor.
+    const visionPath = Array.isArray(c.attachments) && c.attachments.length > 0;
     try {
       const inst = await make();
+      const user = visionPath ? { ...USER, attachments: c.attachments } : USER;
       const params = {
-        messages: [SYS, USER],
+        messages: [SYS, user],
         model: c.model,
         temperature: 0.5,
         maxTokens: 1000,
@@ -199,6 +212,7 @@ async function main() {
         body: c.body,
         response,
         error: failure,
+        ...(visionPath ? { visionPath: true } : {}),
       }),
     );
     if (failure) console.error(`  [${provider}/${c.name}] sendMessage threw: ${failure}`);

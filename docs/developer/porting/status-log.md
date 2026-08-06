@@ -254,6 +254,89 @@ Differential green: ollama at 3 chunkings incl. byte (the
 `ollama-unicode.wire` multi-byte content is the split proof). Versions:
 core 0.0.488, harness 0.0.412.
 
+**Unit — Bugs 31 + 33 + 34 (one commit — the shared request/response
+corpora reflect the full v4 state at the pin, so they cannot be
+regenerated per-bug).**
+
+*Bug 31 (OpenRouter non-streaming vision) — LANDED.*
+`chat_completions.rs`: the `openrouter_has_formattable_images` refusal
+DELETED; an image now routes `build_openrouter_send_body` to the new
+`build_openrouter_vision_send_body` (v4's `sendViaChatCompletions`) — a
+THIRD body shape: raw `chat/completions` POST, assignment-order = wire
+order, `tools` RAW passthrough, `provider` in v4's assignment order
+(new `openrouter_vision_send_provider` + `openrouter_resolve_provider_prefs`),
+`response_format` assignment order (`openrouter_vision_response_format`),
+`reasoning.exclude:false` kept, and the `delete body.model` fallback
+interplay. The image check is FIRST, so the tool-role refusal is
+IMAGE-FREE only (a vision tool round-trip succeeds).
+`response_parse.rs`: new `ChatFlavor::OpenRouterVision` (raw snake_case
+wire read directly — `message.reasoning`, `finish_reason || 'stop'`,
+`prompt_tokens_details.cached_tokens` materialized into cacheUsage;
+`raw` = the wire body) + `parse_for_provider_ex(provider, response,
+openrouter_vision)` (`parse_for_provider` = the false wrapper).
+`completion_provider.rs`: the production non-streaming path threads the
+vision predicate (`openrouter_non_streaming_is_vision`, re-exported from
+the builder) so an OpenRouter vision completion reads the raw-wire parse
+— same wire bytes, a different LLMResponse. `EXPECTED_REFUSALS` shrank
+3 → 1 (only the image-free `tool-roundtrip[send]`; the count assertion
+reads `.len()`, auto-adjusts).
+
+*Bug 33 (Grok text/PDF arms live) — LANDED.* `responses_api.rs`: the
+Grok gate widened to `isHandledMimeType` (images OR `text/*` OR
+`application/pdf`); the rejection string appends `, text/*` after the
+joined list; the `File data not loaded` arm + the text/PDF branches are
+now reachable (rewrote the dead-code comments). OpenAI stays images-only.
+
+*Bug 34 (base64 round-trip) — LANDED.* `responses_api.rs`: new
+`decode_base64_text` (decode via `node_lenient_base64`, re-encode
+standard base64, normalize both — a faithful JS-`\s` stripper +
+trailing-`=` — compare; match → utf-8, mismatch → verbatim), applied at
+the Grok `text/*` arm AND `anthropic.rs`'s text/plain arm (pre-guard
+UNCHANGED). `node_lenient_base64` stays (the decode half); the
+`node_lenient_base64_matches_node_24` pin stays green. New
+`decode_base64_text_round_trip` unit test (`"hello"`→verbatim,
+`"x=1"`→verbatim, real base64→decoded).
+
+**Corpora (regenerated at the pin, Node 24, from the plugin dirs):**
+- `request-envelopes.recorded.ndjson` 146 → 163: the 2 openrouter image
+  refusals (`image-attachment`/`image-attachment-tools`[send]) flipped
+  refused → body; +7 openrouter vision SEND vectors (image × cache-key,
+  web-search, response-format-schema, fallback-models [delete model +
+  route], provider-prefs [ZDR + assignment order], reasoning-effort,
+  tool-roundtrip [succeeds where image-free refuses]); grok
+  `unsupported-attachment` renamed `text-attachment` (now SENT verbatim)
+  + `text-attachment-b64`/`text-attachment-no-data`/`pdf-attachment`/
+  `binary-attachment` (the new suffixed rejection); anthropic
+  `text-attachment-mangled-b64` flipped mojibake → `"hello"` +
+  `text-attachment-x-equals-1` (new). **Byte-identity asserted
+  programmatically: every untouched (provider,case,mode) vector is
+  byte-identical to the pre-regen corpus; the ONLY differences are the
+  two deliberate bug-31 flips** (checked with a keyed diff).
+- `response-bodies.recorded.ndjson` 29 → 30: +1 openrouter `vision`
+  case (driven WITH an image → the raw-wire parse; body carries
+  `prompt_tokens_details.cached_tokens:5` so cacheUsage materializes and
+  15/23 → 10/18). The recorder gained a `visionPath` line flag (only
+  OpenRouter cares); the 29 pre-existing lines are BYTE-IDENTICAL.
+  `response_parse_equivalence` uses `parse_for_provider_ex` with that
+  flag. **Mutation-proven: forcing the flag false diverges exactly the
+  vision case.**
+
+Differentials green BY NAME: `request_builder_equivalence` (163
+envelopes, 1 recorded refusal; coverage-asserted),
+`response_parse_equivalence` (30 cases), `stream_decoders_equivalence`,
+`tool_wire_call_site` + `tool_wire_equivalence` (neutrality). The
+recorders (`record-request-envelopes.mjs`, `record-response-bodies.mjs`)
+are the lane's; regen recipes are `regenerate-request-envelopes.sh` /
+`regenerate-response-bodies.sh` (Node 24, `V4=~/source/quilltap-server`
+at the pin, `V5=<worktree>`). **Tier-3 deferral (loud):** the vision
+path's new request HEADERS + whole-request abort behavior are invisible
+to `request_builder_equivalence` (it pins `{method,url,body}` +
+attachmentResults only); no existing provider_io/transport family pins
+request headers, so this is recorded, not built into new harness
+machinery mid-drift. **💸** the vision path's LIVE proof (a real image
+send on a real key) joins the owed dogfood queue — no live spend here.
+Versions: core 0.0.489, harness 0.0.413.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →
