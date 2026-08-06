@@ -80,6 +80,15 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Ported the Regenerate Conversation Summaries card into the Settings →
+Memory tab (P4.9H2B), last in v4's card order on the
+`conversation-summaries-regenerate` deep link: a single-click enqueue
+that re-mirrors every summarised chat into its participants' vaults, an
+in-flight line that polls every 5s while a run drains and stops at zero,
+and swallowed status-read failures (the button still works). This
+completes the Commonplace Book tab — every card the reference app ships
+now renders. SPA 0.5.420.
+
 Ported the Memory Deduplication card into the Settings → Memory tab
 (P4.9H2B), between Recall Relevance and Regenerate Memories on the
 `memory-deduplication` deep link: the similarity-threshold slider

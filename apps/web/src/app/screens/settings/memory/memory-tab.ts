@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { ConversationSummaryRegenerateCard } from './conversation-summary-regenerate-card';
 import { EmbeddingProfilesCard } from './embedding-profiles/embedding-profiles-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
 import { MemoryDedupCard } from './memory-dedup-card';
@@ -12,20 +13,18 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
 
 /**
  * The Settings → Memory tab (v4 `components/settings/tabs/
- * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): the CollapsibleCards
- * for embedding profiles, backfill, housekeeping, recall, and regenerate. v4's
- * card titles/descriptions + `sectionId`s (the `?section=` deep link) are ported
- * verbatim, in v4's card order (Embedding Profiles first).
- *
- * DEFERRED LOUDLY (rendered as NOTHING — no dead cards): the Memory Deduplication
- * card and the Regenerate Conversation Summaries card land in this lane's later
- * commits; enumerated in this lane's closing notes.
+ * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): every
+ * CollapsibleCard v4 ships — Embedding Profiles, Repair Missing Embeddings,
+ * Housekeeping, Recall Relevance, Memory Deduplication, Regenerate Memories, and
+ * Regenerate Conversation Summaries — in v4's card order, on v4's `sectionId`
+ * `?section=` deep links, ported verbatim.
  */
 @Component({
   selector: 'qt-settings-memory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CollapsibleCard,
+    ConversationSummaryRegenerateCard,
     EmbeddingProfilesCard,
     MemoryBackfillCard,
     MemoryDedupCard,
@@ -94,6 +93,15 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
           [forceOpen]="section() === 'memory-regenerate'"
         >
           <qt-memory-regenerate-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Regenerate Conversation Summaries"
+          description="Re-mirror every summarised chat into its characters' vaults for relevant-conversation recall"
+          sectionId="conversation-summaries-regenerate"
+          [forceOpen]="section() === 'conversation-summaries-regenerate'"
+        >
+          <qt-conversation-summary-regenerate-card />
         </qt-collapsible-card>
       </div>
     </div>

@@ -551,10 +551,9 @@ test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
     await expect(page.getByRole('heading', { name: 'Recall Relevance' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Memory Deduplication' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Regenerate Memories' })).toBeVisible();
-    // P4.9H2B commit 4 adds the conversation-summary card; still absent here.
     await expect(
       page.getByRole('heading', { name: 'Regenerate Conversation Summaries' }),
-    ).toHaveCount(0);
+    ).toBeVisible();
   });
 
   test('a Recall Relevance toggle round-trips through the server', async ({ page }) => {

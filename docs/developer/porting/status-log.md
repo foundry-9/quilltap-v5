@@ -59795,3 +59795,26 @@ Spec: `memory-dedup-card.spec.ts` (3 cases — zero-removable Run disable,
 the enabled Run + exact success toast, the inline-only preview failure).
 
 Gate: `ng build` clean, `ng test` 290 files / 3945 tests green.
+
+### Unit 4 — the Regenerate Conversation Summaries card (SPA 0.5.420)
+
+`screens/settings/memory/conversation-summary-regenerate-card.ts` (v4
+`components/tools/conversation-summary-regenerate-card.tsx`): the
+description, the single-click enqueue toasting the server's `message`
+(with v4's fallback) + `notifyQueueChange`, and the in-flight line that
+polls every 5s while a run drains and stops at zero (an `injectQuery`
+`refetchInterval`, the memory-regenerate-card precedent). Status reads
+are swallowed — the button still works (v4 :23-25).
+
+Wired into `memory-tab.ts` LAST, on the
+`conversation-summaries-regenerate` `?section=` deep link. The tab's
+deferral comment is fully retired — every v4 Commonplace Book card now
+renders. The P4.6t `settings-flow.spec.ts` "cards render" beat's
+summaries guard flips from `toHaveCount(0)` to a visibility check.
+
+Spec: `conversation-summary-regenerate-card.spec.ts` (6 cases — no
+in-flight at zero, the in-flight line pluralised both ways, the
+swallowed status failure, the enqueue toasting the server message, the
+error path).
+
+Gate: `ng build` clean, `ng test` 291 files / 3951 tests green.
