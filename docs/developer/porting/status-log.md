@@ -9,6 +9,41 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 resume item 3 (the Almanack host wire), 2026-08-06
+
+`EngineAssembly.almanack_host` is LIVE: `quilltap-host` gains
+`almanack_services.rs` (`HostAlmanackServices`), constructed per assembly from
+the base dir, the app version, the env pepper, the resolved IANA zone, the
+process start instant and `SystemClock`, with the disk backend built the same
+way the backup host and spine build theirs (`LocalStorageBackend` over
+`<base>/files`). The four `SystemAlmanack*` verbs now reach the report
+pipeline in production; the not-assembled refusal arm remains for unwired
+assemblies (focused tests).
+
+Decisions worth recording:
+
+- **The runtime block reports HONEST Rust-host facts** (the phase-1 divergence
+  the module headers already document): `nodeVersion` carries
+  `quilltap-host/<version>`, `osType`/`osRelease` come from `uname -s`/`-r`
+  (the same sources Node's `os.type()`/`os.release()` read on unix), total
+  memory from `sysctl hw.memsize` / `/proc/meminfo`, FREE memory is an honest
+  0 (no dependency-free portable read — a visible zero over an invented
+  number), uptime is the host process's own, `runtimeType` keeps v4's
+  vocabulary (`docker`/`node`).
+- **The passphrase flag re-runs `provision()`** (a pure read) with the env
+  pepper the host booted with — byte-faithful to v4's startup-captured
+  `getHasUserPassphrase()`, including case 1 (env pepper + `.dbkey` → false).
+- `node_env` is `NODE_ENV` with a `production` fallback — a running v5 host
+  binary is a production build unless told otherwise (v4's default is
+  `development`; the field is a recorded, differential-normalized divergence
+  either way).
+
+The live proof is the P4.38 e2e beat (`P437_SERVER_LANDED` — flipped in the
+next lane commit) plus the next dogfood pass's report generation on the Friday
+copy (💸 none — the report makes no model calls).
+
+Versions: host 0.0.60.
+
 ## Lane record — P4.37 resume item 4 (the space-form date stamp), 2026-08-06
 
 The §3 review finding from the `f7f1a956` unification, discharged. v4's

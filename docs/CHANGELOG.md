@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+The Almanack is now reachable in production: the server supplies the
+report pipeline its database paths, backups directory, honest runtime
+facts (host version, platform, uname, total memory, process uptime,
+timezone), the passphrase-protection flag, the application version, a
+clock, and the disk storage layer. Until now the four report actions
+answered a clear "not assembled" refusal even though the collectors were
+fully built. The runtime section describes the actual host process — a
+documented difference from the reference app's Node facts.
+
 The system report's date columns now render the plain space-separated
 timestamps older database rows carry ("2026-08-05 09:07:03") instead of
 "N/A". The reference app's JavaScript date parser has always accepted

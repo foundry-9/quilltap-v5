@@ -231,6 +231,9 @@ impl Host {
         let assembler = HostAssembler {
             base_dir: config.base_dir.clone(),
             backup_services: backup_services.clone(),
+            version: config.version.clone(),
+            env_pepper: config.env_pepper.clone(),
+            started: std::time::Instant::now(),
             spine: config.spine,
             terminal: config.terminal,
             terminal_slot: terminal_slot.clone(),
@@ -345,6 +348,12 @@ struct HostAssembler {
     /// P4.9G5: shared with the `Host` so the web-edge download leg and the
     /// dispatch verb see the same temp store.
     backup_services: Arc<HostBackupServices>,
+    /// P4.37: the almanack host seam's inputs — the app version, the env
+    /// pepper (for the passphrase flag's `provision` re-read) and the process
+    /// start instant (the report's honest uptime).
+    version: String,
+    env_pepper: Option<String>,
+    started: std::time::Instant,
     spine: Option<Arc<dyn SpineFactory>>,
     terminal: bool,
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
@@ -627,13 +636,20 @@ impl EngineAssembler for HostAssembler {
         ));
 
         Ok(EngineAssembly {
-            // === P4.37: the Almanack host seam ===
-            // DEFERRED, loudly: the four `SystemAlmanack*` arms answer the
-            // not-assembled refusal until a host impl of `AlmanackHost` is
-            // wired here (paths + runtime facts + version + clock + the disk
-            // storage backend). The recipe is in the P4.37 lane record; this
-            // line is deliberately the ONLY host change the lane makes.
-            almanack_host: None,
+            // === P4.37: the Almanack host seam — LIVE (resume item 3) ===
+            // Paths + honest runtime facts + the passphrase flag + version +
+            // clock + the disk storage backend; the four `SystemAlmanack*`
+            // verbs now reach the report pipeline in production.
+            almanack_host: Some(Arc::new(
+                crate::almanack_services::HostAlmanackServices::new(
+                    self.base_dir.clone(),
+                    self.version.clone(),
+                    self.env_pepper.clone(),
+                    self.tz.clone(),
+                    self.started,
+                    Arc::new(SystemClock),
+                ),
+            )),
             shutdown: Box::new(HostShutdown {
                 stop: stop_tx,
                 terminal_slot: self.terminal_slot.clone(),

@@ -31,6 +31,7 @@
 //! maintenance / the danger-scan enqueuer, each stop-aware in `host`), and
 //! the **production `SelfInventoryEnv`** + runtime-mode probes ([`env`])).
 
+pub mod almanack_services;
 pub mod apply_fs;
 pub mod avatar_preview;
 // === P4.9G5 ===
