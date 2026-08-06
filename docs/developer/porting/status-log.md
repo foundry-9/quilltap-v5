@@ -59184,3 +59184,53 @@ Baseline versions at planning: core 0.0.482, harness 0.0.408, host
 0.0.60, web 0.0.62, cli 0.0.5, tauri 0.0.6, SPA 0.5.416. Bump
 ownership is assigned per order; the unifier recounts as base +
 total bumps.
+
+---
+
+## Lane record — P4.41 (the OpenAI conversation-chaining fallback, finding #69)
+
+Branch `claude/openai-chaining-fallback-3aa365`. Baseline v4 `3adefeba`
+(HEAD, tree clean at lane start — `git log 3adefeba..HEAD` empty; the only
+working-tree change was an unrelated `found-bugs.md` edit). Restores v4's
+best-effort OpenAI chaining fallback that the port dropped: when a chained
+Responses-API stream fails pre-stream and the request carried a
+`previous_response_id`, retry ONCE with the full input and no chaining.
+Owns `crates/quilltap-core/src/model/streaming_provider.rs`,
+`crates/quilltap-harness/tests/tool_wire_call_site.rs` (additive),
+`crates/quilltap-harness/tests/primary_stream_tier3_equivalence.rs` (+ its
+oracle case). Collision-free vs P4.42 / P4.9H2A / P4.9H2B.
+
+### Unit 1 — the fallback + fake-transport unit tests (core 0.0.483)
+
+`WireStreamingProvider::stream_message`: the full-input request is prepared
+up front (a `params` clone with `previous_response_id = None`) whenever the
+call carried an id — `prepare` is a pure function of `(provider, base_url,
+params)`, so computing it synchronously keeps the async block's borrows
+identical to today (no capture of the `&str`/`&StreamParams` args). On a
+pre-stream `execute_stream` Err: if the fallback prep exists (i.e. the call
+chained), `tracing::warn!` ("Conversation chaining failed, falling back to
+full input", target `quilltap::model::streaming_provider`, matching v4's
+`provider.ts:539` sentence for operator grepability — log output is outside
+the differential contract per P4.18), swap in the full-input build's decoder
++ attachment report, and retry `execute_stream` ONCE; the retry's failure is
+`single_error` with the RETRY's message (v4 surfaces the second failure).
+A plain pre-stream failure with no id is unchanged byte-for-byte
+(`fallback_prepared` is `None` → the existing `single_error(e.message)`).
+Rebuilding with `None` is byte-identical to a never-chained request
+(`responses_api.rs:456-460` else-arm); only OpenAI's builder reads the id,
+so the extra prep is inert for every other provider and only ever consumed
+on a chained pre-stream failure. Non-streaming (`completion_provider.rs:91`)
+hard-codes `None` and needs no fallback — recorded, not built (Tier-3
+deferral 1).
+
+Tests: extended the `mod tests` with a `ScriptedStreamTransport` sibling
+(the existing `FakeStreamTransport` is single-shot — `fail_before_stream`
+fails every call, `seen` holds only the last) that front-pops a per-call
+outcome (`Err(msg)` pre-stream failure / `Ok(frames)` stream) and records
+`Vec<TransportRequest>`. Four cases: (a) chained fail → full-input retry
+(two calls, retry body drops `previous_response_id` and carries the larger
+full input, stream proceeds to a done chunk); (b) chained fail-then-fail
+(single error with the retry's message, exactly two calls); (c) pre-stream
+fail with NO id (single error, exactly ONE call — the gate);
+(d) `pre_stream_failure_is_a_single_error` unchanged and still green. All
+12 `streaming_provider` unit tests pass; clippy clean both feature sets.

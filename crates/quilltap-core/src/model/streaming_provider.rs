@@ -319,15 +319,72 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
         // Prepare synchronously; the async part is only the transport call.
         let prepared = self.prepare(provider, base_url, params);
+        // The conversation-chaining fallback (dogfood #69). v4's OpenAI provider
+        // wraps the chained `responses.create` in a try/catch: when the request
+        // carried `previous_response_id` and the create fails BEFORE the first
+        // chunk (`previous_response_not_found` is routine on the `store: false`
+        // responses both apps send), it logs and re-issues ONCE with the full
+        // conversation and no chaining ("conversation chaining failed, falling
+        // back to full input", `provider.ts:463-533`). Restore that best-effort
+        // fallback: build the full-input request up front (so the Err arm can
+        // retry without a second borrow of the call args). Rebuilding with the id
+        // set to `None` is byte-identical to a never-chained request — only
+        // OpenAI's builder reads the id, so this prep is inert for every other
+        // provider and is only ever CONSUMED on a pre-stream failure of a chained
+        // request.
+        let fallback_prepared = if params.previous_response_id.is_some() {
+            let mut fallback_params = params.clone();
+            fallback_params.previous_response_id = None;
+            Some(self.prepare(provider, base_url, &fallback_params))
+        } else {
+            None
+        };
         async move {
-            let (request, mut decoder, attachment_results) = match prepared {
+            let (request, mut decoder, mut attachment_results) = match prepared {
                 Ok(p) => p,
                 Err(e) => return single_error(e.message),
             };
 
             let bytes_rx = match self.transport.execute_stream(&request, &self.policy).await {
                 Ok(rx) => rx,
-                Err(e) => return single_error(e.message),
+                Err(e) => {
+                    // Pre-stream failure. If this was a chained request, retry once
+                    // with the full input (the fallback); a plain pre-stream failure
+                    // with no chaining keeps today's single-error behavior
+                    // byte-for-byte.
+                    let fallback = match fallback_prepared {
+                        Some(fb) => fb,
+                        None => return single_error(e.message),
+                    };
+                    let (fallback_request, fallback_decoder, fallback_attachment_results) =
+                        match fallback {
+                            Ok(p) => p,
+                            // The full-input build can only fail where the chained
+                            // build already did (and that returned above), but stay
+                            // loud rather than swallow.
+                            Err(pe) => return single_error(pe.message),
+                        };
+                    tracing::warn!(
+                        target: "quilltap::model::streaming_provider",
+                        provider = %request.provider,
+                        "Conversation chaining failed, falling back to full input"
+                    );
+                    match self
+                        .transport
+                        .execute_stream(&fallback_request, &self.policy)
+                        .await
+                    {
+                        Ok(rx) => {
+                            // Swap in the full-input build's decoder + attachment
+                            // report for the pump below.
+                            decoder = fallback_decoder;
+                            attachment_results = fallback_attachment_results;
+                            rx
+                        }
+                        // v4 surfaces the SECOND failure (the retry's error).
+                        Err(retry_err) => return single_error(retry_err.message),
+                    }
+                }
             };
 
             let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunkResult>(32);
@@ -452,6 +509,69 @@ mod tests {
         }
     }
 
+    /// A transport that scripts a per-call outcome (a pre-stream failure or a
+    /// scripted stream) and records EVERY request it sees — the chaining-fallback
+    /// tests need two calls with different outcomes and both bodies read back
+    /// (the single-shot [`FakeStreamTransport`] keeps only the last).
+    struct ScriptedStreamTransport {
+        // Front-popped per call: `Err(message)` = pre-stream failure; `Ok(frames)`
+        // = a scripted byte stream.
+        outcomes: Mutex<std::collections::VecDeque<Result<Vec<StreamBytes>, String>>>,
+        seen: Mutex<Vec<TransportRequest>>,
+    }
+
+    impl ScriptedStreamTransport {
+        fn new(outcomes: Vec<Result<Vec<StreamBytes>, String>>) -> Self {
+            Self {
+                outcomes: Mutex::new(outcomes.into()),
+                seen: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl ProviderTransport for ScriptedStreamTransport {
+        fn execute<'a>(
+            &'a self,
+            _request: &'a TransportRequest,
+            _policy: &'a TransportPolicy,
+        ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+            Box::pin(async move {
+                Err(TransportError {
+                    message: "non-streaming not scripted".to_string(),
+                    status: None,
+                })
+            })
+        }
+        fn execute_stream<'a>(
+            &'a self,
+            request: &'a TransportRequest,
+            _policy: &'a TransportPolicy,
+        ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
+        {
+            self.seen.lock().unwrap().push(request.clone());
+            let outcome = self.outcomes.lock().unwrap().pop_front();
+            Box::pin(async move {
+                match outcome {
+                    Some(Err(message)) => Err(TransportError {
+                        message,
+                        status: None,
+                    }),
+                    Some(Ok(frames)) => {
+                        let (tx, rx) = tokio::sync::mpsc::channel(frames.len().max(1));
+                        for f in frames {
+                            let _ = tx.send(f).await;
+                        }
+                        Ok(rx)
+                    }
+                    None => Err(TransportError {
+                        message: "scripted transport: no outcome queued".to_string(),
+                        status: None,
+                    }),
+                }
+            })
+        }
+    }
+
     fn params(model: &str) -> StreamParams {
         StreamParams {
             messages: vec![crate::model::stream::StreamMessage::user("hi")],
@@ -466,6 +586,22 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
         }
+    }
+
+    /// [`params`] for OpenAI's responses API with a conversation-chaining id set.
+    fn openai_params_with_prev(prev: Option<&str>) -> StreamParams {
+        let mut p = params("gpt-4o");
+        p.previous_response_id = prev.map(|s| s.to_string());
+        p
+    }
+
+    /// One responses-API content delta; EOF drives the decoder's terminal chunk.
+    fn responses_api_stream(text: &str) -> Vec<StreamBytes> {
+        let frame = format!(
+            "event: response.output_text.delta\ndata: {{\"type\":\"response.output_text.delta\",\"delta\":{}}}\n\n",
+            serde_json::Value::String(text.to_string())
+        );
+        vec![Ok(frame.into_bytes())]
     }
 
     async fn drain(
@@ -789,6 +925,113 @@ mod tests {
         assert_eq!(
             items[0].as_ref().unwrap_err().message,
             "HTTP 401: unauthorized"
+        );
+    }
+
+    /// The chaining fallback (finding #69): a chained OpenAI request whose stream
+    /// fails pre-stream retries ONCE with the full input and no
+    /// `previous_response_id`, and the retry's stream proceeds.
+    #[tokio::test]
+    async fn chaining_fallback_retries_with_full_input() {
+        let mut prms = openai_params_with_prev(Some("resp_dead"));
+        // Two user turns: the chained request sends only the LAST; the full-input
+        // retry sends both — so the retry's `input` array is strictly larger.
+        prms.messages = vec![
+            crate::model::stream::StreamMessage::system("You are Byron."),
+            crate::model::stream::StreamMessage::user("first"),
+            crate::model::stream::StreamMessage::user("second"),
+        ];
+        let t = ScriptedStreamTransport::new(vec![
+            Err("HTTP 400: previous_response_not_found".to_string()),
+            Ok(responses_api_stream("Hi")),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OPENAI", None, &prms).await).await;
+
+        // The stream proceeds: content emitted + a terminal done chunk.
+        let chunks: Vec<_> = items.iter().map(|r| r.as_ref().unwrap()).collect();
+        let text: String = chunks.iter().map(|c| c.content.as_str()).collect();
+        assert_eq!(text, "Hi");
+        assert!(chunks.last().unwrap().done, "the retry stream terminates");
+
+        // Exactly two transport calls: the chained attempt, then the full-input retry.
+        let seen = p.transport.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "expected chained + full-input retry");
+
+        let chained: serde_json::Value = serde_json::from_slice(&seen[0].body).unwrap();
+        assert_eq!(
+            chained["previous_response_id"], "resp_dead",
+            "the first attempt chains"
+        );
+        let chained_input_len = chained["input"].as_array().unwrap().len();
+
+        let retry: serde_json::Value = serde_json::from_slice(&seen[1].body).unwrap();
+        assert!(
+            retry.get("previous_response_id").is_none(),
+            "the retry drops the chaining id"
+        );
+        let retry_input = retry["input"].as_array().unwrap();
+        assert!(
+            retry_input.len() > chained_input_len,
+            "the retry carries the FULL input (both turns), not just the last user message"
+        );
+    }
+
+    /// Both attempts fail → a single error carrying the RETRY's message (v4
+    /// surfaces the second failure), exactly two transport calls.
+    #[tokio::test]
+    async fn chaining_fallback_both_fail_is_single_error() {
+        let prms = openai_params_with_prev(Some("resp_dead"));
+        let t = ScriptedStreamTransport::new(vec![
+            Err("HTTP 400: previous_response_not_found".to_string()),
+            Err("HTTP 500: server error".to_string()),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OPENAI", None, &prms).await).await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].as_ref().unwrap_err().message,
+            "HTTP 500: server error"
+        );
+        assert_eq!(
+            p.transport.seen.lock().unwrap().len(),
+            2,
+            "one retry, then stop"
+        );
+    }
+
+    /// A pre-stream failure with NO chaining keeps the single-error behavior — no
+    /// retry, exactly one transport call (the gate on `previous_response_id`).
+    #[tokio::test]
+    async fn pre_stream_failure_without_chaining_does_not_retry() {
+        let prms = openai_params_with_prev(None);
+        let t = ScriptedStreamTransport::new(vec![Err("HTTP 401: unauthorized".to_string())]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OPENAI", None, &prms).await).await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].as_ref().unwrap_err().message,
+            "HTTP 401: unauthorized"
+        );
+        assert_eq!(
+            p.transport.seen.lock().unwrap().len(),
+            1,
+            "no retry without a chaining id"
         );
     }
 

@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Restored the OpenAI conversation-chaining fallback (finding #69). When a
+multi-turn OpenAI chat sends a prior-response reference the server can no
+longer find — routine, because both apps send unstored responses — the
+streaming provider now retries the turn once with the full conversation
+instead of failing it. Before this, such a turn errored and left the chat
+wedged on the same dead reference. Matches the reference app's behavior;
+the retry is a second request only on failure. Version: core 0.0.483.
+
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining
 fallback that finding #69 showed was dropped in the port (P4.41),
