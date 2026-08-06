@@ -73,6 +73,18 @@ every add and remove and renders back exactly what the server stored,
 so the normalization is visible where you made the edit. The Taboo help
 page from the reference app is not carried over — this build has no help
 surface to show it on.
+Fixed a test that could report the job runner had stopped logging
+failures when it had not. The check installed its log capture only for
+its own thread, but the logging library decides once, process-wide,
+whether a given log statement is worth evaluating — and a sibling test
+running first, with no capture installed, could switch that statement
+off for everyone. Under a parallel run the check failed roughly two
+times in three. The capture is now installed process-wide with
+per-thread buffers, which is what makes the statement reachable no
+matter which test ran first. Nothing it proves changed: the failure
+event must still be a warning on the same log target, and the job row
+must still end up marked failed.
+
 Repaired two differential test oracles that could no longer be
 regenerated. Both drive the reference app's real memory and
 conversation-summary code, and both had started failing outright

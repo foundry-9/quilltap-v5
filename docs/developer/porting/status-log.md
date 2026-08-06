@@ -58652,3 +58652,50 @@ QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
 QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
   cargo test -p quilltap-harness --test memory_processor_tier3_equivalence -- --nocapture
 ```
+
+---
+
+### Lane record — P4.40 unit 2: the `failed_job_emits_a_tracing_event` race
+
+**Reproduced deterministically before touching anything: 17 failures in
+25 runs** of `quilltap_core job_runner:: --test-threads=8`, and **0 in 5**
+at `--test-threads=1`. The captured output in every failure was
+**completely empty** — not even the `"Dispatching job"` INFO that fires
+first — which is what ruled out the ordered hypothesis (that the event
+fires on some other thread than the one holding the thread-local
+subscriber). If that were it, the INFO would have been missing too but
+the row would still have gone FAILED on a different thread; an empty
+capture with a correct FAILED row says the macros never evaluated at
+all.
+
+**Cause: `tracing` caches each callsite's `Interest` GLOBALLY, on first
+use.** `handler_failure_marks_failed` — a sibling in the same module —
+drives the same `tracing::warn!(… "Job failed")` callsite. Whichever
+test reaches it first registers it; if that thread has no subscriber,
+`NoSubscriber` answers `Interest::never()` and the callsite is skipped
+process-wide from then on. `tracing::subscriber::set_default` is
+thread-local and does **not** rebuild the interest cache, so the capture
+test could not undo a sibling's registration. Single-threaded runs pass
+only because the alphabetical order happens to put this test first.
+
+**Fix, in the test module only.** The capturing layer is installed ONCE
+as the process-**global** default (`set_global_default`, behind a
+`std::sync::Once`) — that call *does* rebuild the interest cache, so the
+callsite becomes live regardless of who registered it — and it captures
+into a **per-thread** buffer that is `Some` only while a test is inside
+the new `capture_events` helper. The two halves are jointly necessary:
+global for reachability, per-thread + armed so the now-always-on
+subscriber cannot leak a sibling's events into this test's capture (or
+accumulate strings in every other test in the binary).
+
+**Nothing the test proves was weakened.** Same three assertions: the
+message `Job failed`, the exact `WARN quilltap::jobs` level+target, and
+the durable effect (`status_of(&db, "boom1") == "FAILED"`). Verified by
+mutation on the PRODUCTION emit site, both reverted: downgrading
+`tracing::warn!` → `tracing::info!` fails the level+target assertion, and
+renaming the message fails the message assertion; the reverted source is
+green.
+
+**After the fix: 0 failures in 30 runs** of the same
+`--test-threads=8` repro, and the full `quilltap-core` lib binary
+(1,301 tests) green 3/3 at `--test-threads=16`.
