@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Planned the next porting round and committed its work orders — three
+lanes. The first resumes the held Almanack server work from its
+preserved branch: the report collectors get the equivalence test they
+were held back for, the host wiring that makes the report reachable in
+production, and a date-format arm for the space-form timestamps real
+instances carry. The second absorbs the reference app's newest
+feature, Taboo — an instance-wide list of phrases no character may
+utter, stored in instance settings, normalized on save (trimmed,
+deduplicated case-insensitively, order preserved), rendered into the
+cacheable prefix of every character's system prompt, and edited from a
+new Settings → Chat card. The third is a maintenance sweep: repairing
+the two differential oracles that can no longer regenerate, curing a
+flaky tracing test and three intermittent end-to-end beats, and
+working down the remaining broken regeneration recipes. Documentation
+only — the implementation is the two new work orders plus the resume
+assignment added to the Almanack order.
+
 Image-generation calls now record how long the provider actually took.
 Two internal call-log sites (the avatar/story-background job path and
 the in-chat image tool) were writing a duration of zero on every image

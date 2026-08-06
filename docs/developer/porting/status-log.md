@@ -57882,3 +57882,94 @@ averages, medians), so a hardcoded zero reads as an unmeasured row.
   instance generates no real images by design).
 
 Versions: core 0.0.475.
+
+## Round planned — the Taboo + maintenance round (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-05
+
+**The drift-check ran first (per the skill), and the human merged
+into BOTH repos while planning ran ("keep an eye out" — heeded): v4
+HEAD finished at `3adefeba`, THREE commits past the `f7f1a956`
+baseline, tree clean; v5 main gained `a892b153` mid-planning. Every
+lane pins a detached worktree for regens.** Classification:
+
+- **`44e2e4fe` — "docs(prompt): rewrite PROMPT_ARCHITECTURE…" —
+  NO-PORT** (docs only; already dispositioned in the `f7f1a956`
+  round's post-round addendum).
+- **`3adefeba` — "docs: the 4.8.0 release notes take in the third
+  batch of post-draft work" — NO-PORT** (release-notes docs; this is
+  the previously dirty `docs/releases/4.8.0.md`, now committed —
+  v4's tree is clean at it).
+- **v5 `a892b153` (main, mid-planning) — "Measure real durationMs on
+  both image-path llm_logs sites"** — the P4.D49 §3 follow-up chip,
+  landed with its own unit pins (a sleeping mock provider asserting
+  presence AND span bracketing). This DISCHARGED the maintenance
+  lane's planned item 2 before the round started; P4.40 was
+  re-scoped at planning and does not own
+  `image_job_common.rs`/`generate_image.rs`.
+- **`7df7de8e` — "feat(taboo): instance-wide forbidden phrases in
+  the system prompt" — REAL drift, → P4.D50.** Storage is one
+  `instance_settings['taboo']` row (`{"phrases":[...]}`; portable by
+  default — v4's NON-portable denylist is unchanged, so v5's mirror
+  at `db/instance_settings.rs:402` needs no edit); the setter
+  normalizes (trim / drop-empty / case-insensitive dedupe keeping
+  FIRST, order preserved, never sorted — the order is part of the
+  cacheable prefix) and returns what it stored so PUT echoes
+  storage. `renderTabooSection` emits between the universal math
+  note and the per-turn tool instructions inside system block 1;
+  empty list emits NOTHING, so a no-taboo instance's prompt is
+  byte-identical (v4's own golden-hash claim — the catch-up holds v5
+  to it). `buildSystemPrompt` stays synchronous; `buildContext` does
+  the fail-soft async read. `PROMPT_CACHE_STRUCTURE_VERSION` 2 → 3
+  (v5: `cheap_llm.rs:19` + the `cache_prefix_hashes.rs` goldens).
+  `self_inventory` deliberately omits the section (comment-only
+  delta — port the comment). New route
+  `GET/PUT /api/v1/settings/taboo` with merge-over-current PUT
+  semantics (`{}` can never wipe the list) and Zod
+  `phrases: array(string().trim().min(1).max(200)).max(500)
+  .default([])`. SPA: a Taboo card between Dangerous Content and
+  Data Retention on Settings → Chat. Help docs → the `p4.9i2` bank.
+  The end-to-end template is the data-retention family (same
+  instance-settings class): verbs `TabooSettings`/
+  `TabooSettingsUpdate` after `DataRetentionSettings`/`…Update`, the
+  `settings-routes.test.ts` oracle + `settings_routes_equivalence`
+  diff, the SPA card next to `data-retention-settings.ts`.
+
+**The round:**
+
+1. **P4.37-resumed** — the Almanack server remainder, from the
+   resume list in its own status header (rebase the held
+   `a3623ac8`/`80b7c5da` off branch
+   `claude/almanack-server-porting-693d77`, unit 12's fixture family
+   + tier-2 differential, the `AlmanackHost` wire, the space-form
+   date arm, the `P437_SERVER_LANDED` flip, the §1 re-diff). A
+   ROUND ASSIGNMENT block was added to its header: do not stop on
+   the classified two-commit drift; keep every regen pinned at
+   `f7f1a956`.
+2. **P4.D50** (`p4.d50-taboo-drift.md`) — the Taboo catch-up, server
+   + SPA in one lane; regens pinned at `7df7de8e` (it absorbs the
+   drift); blast-radius regen of the prompt/cache-key/
+   instance-settings-transitive families.
+3. **P4.40** (`p4.40-maintenance-sweep.md`) — the escalated debt:
+   the two tier-3 oracles unregenerable at `f7f1a956`
+   (`context_summary_service_tier3` + `memory_processor_tier3`,
+   `no such table: llm_logs`, the P4.36 stale-mock class), the
+   `failed_job_emits_a_tracing_event` thread-local race, the
+   recipe-rot tail via the sweep driver, and the deflake trio from
+   the `f7f1a956` gate (the two terminal-pane beats + Rename Chat).
+   (The image-path `durationMs` zeros were this lane's planned
+   item 2 until `a892b153` landed them mid-planning — see the
+   classification above.) Regens pinned at `f7f1a956`.
+
+**Cross-lane wiring pinned at planning:** the §1 fold (P4.37's four
+`SystemAlmanack*` arms picked first, P4.D50's two Taboo arms
+additive; the SPA mirrors for the almanack arms are ALREADY on main
+via P4.38, and P4.D50 lands its own); ownership deltas written into
+all three headers; version bumps per lane with the unifier
+recounting; the baseline move `f7f1a956` → `7df7de8e` is the
+unifier's. Deliberately left out of the round: the dogfood pass
+(candidate 3 — human-driven, and best run AFTER this round lands so
+it can cover the Almanack + Taboo live surfaces in one walk) and the
+standing pools (candidate 5). Mixed regen baselines are deliberate
+and precedented (the P4.6ay round): P4.37/P4.40 at `f7f1a956`,
+P4.D50 at `7df7de8e`; the Taboo commit touches no almanack or
+context-summary/memory-processor import (verified at planning), so
+the pins compose.
