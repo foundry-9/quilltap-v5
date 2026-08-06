@@ -40,24 +40,17 @@ export interface ChatSectionState {
  *
  * ## Two things worth knowing before reading the selects
  *
- * **1. v4's chat GET does not return four of these columns.** The route
- * (`app/api/v1/chats/[id]/handlers/get.ts:528-568`) projects an explicit object,
- * and `timelineMode`, `alertCharactersOfLanternImages`, `showThinking` and
- * `answerConfirmationOverride` are not in it — even though v4's own `Chat` type
- * declares them (`app/salon/[id]/types.ts:253-262`). So in v4 those props are
- * permanently `undefined` and their controlled selects snap back to the default
- * option the moment a save re-renders: the write lands, the display does not.
- * v5's server ports v4's projection faithfully (`api/salon.rs:303-422`), so the
- * same fields are missing here, and this lane may not change the server.
- *
- * **The one deliberate divergence:** every write-only select keeps the value the
- * operator just chose (a local signal seeded from the prop and re-synced when the
- * prop moves). That is not an invention — it is v4's OWN idiom for the sibling
- * control on the same panel (`selectedTemplateId` + its re-sync effect,
- * `ChatSidebar.tsx:892/901-904`), applied to the controls whose prop the route
- * forgets to send. A reload still shows the default, exactly as v4 does, because
- * neither client can read the column back. The gap is a v4-side bug and is
- * reported as such; v5 does not "fix" it by inventing a projection field.
+ * **1. The controlled selects survive a reload.** Each is a local signal seeded
+ * from the prop and re-synced when the prop moves — v4's OWN idiom for the
+ * sibling control on the same panel (`selectedTemplateId` + its re-sync effect,
+ * `ChatSidebar.tsx:892/901-904`). Historically v4's chat GET forgot to project
+ * `timelineMode`, `alertCharactersOfLanternImages`, `showThinking` and
+ * `answerConfirmationOverride`, so those props arrived `undefined`, the seed was
+ * a no-op, and each select snapped back to its default the moment a save
+ * re-rendered — the write landed, the display did not (v5 carried this as a
+ * deliberate reload divergence). v4 `bd419ae9` (bug 22) added all four to the
+ * projection; v5's server mirrors it (P4.D53 §1). The seed now finds a real
+ * value, so a reload shows the saved choice — the divergence is retired.
  *
  * **2. The outcomes are toasts**, v4's own (`ChatSidebar.tsx:950-1081`), with
  * v4's copy verbatim.

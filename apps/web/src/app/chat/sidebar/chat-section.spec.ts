@@ -159,6 +159,17 @@ describe('ChatSection — the Story’s Clock', () => {
     expect(select.value).toBe('realtime');
   });
 
+  it('seeds the select from the projected column so it survives a reload (bug 22)', async () => {
+    // A reload delivers the saved column through the projection (v4 `bd419ae9`);
+    // the seed effect adopts it and the select shows the stored clock.
+    const fixture = await render();
+    fixture.componentInstance.chatState.set(state({ timelineMode: 'narrative' }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(clockSelect(fixture).value).toBe('narrative');
+  });
+
   it('carries v4’s helper copy for both clocks, byte for byte', async () => {
     const fixture = await render();
     expect(clockHelp(fixture)).toBe(
@@ -185,8 +196,9 @@ describe('ChatSection — the Story’s Clock', () => {
       { type: 'chatUpdate', chatId: 'chat-1', chat: { timelineMode: 'narrative' } },
     ]);
     expect(fixture.componentInstance.refetched).toBe(1);
-    // The chat GET never returns the column (a v4 route gap ported faithfully),
-    // so the select would snap back without the local adoption.
+    // The local adoption keeps the choice immediately; since v4 `bd419ae9`
+    // (bug 22) the chat GET also projects the column, so the refetch that
+    // follows shows the same value rather than snapping back.
     expect(clockSelect(fixture).value).toBe('narrative');
     expect(toasts().at(-1)).toEqual({
       type: 'success',

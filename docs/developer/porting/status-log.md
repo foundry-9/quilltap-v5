@@ -60906,3 +60906,26 @@ the §1 name-for-name contract diff at unification.
   `resolveWhisperTargetLabel` cases in `whisper-visibility.spec.ts`; a
   rendered "whispered to you" case in `message-row.spec.ts`. 64/64 across
   the two specs.
+
+- **Bug 22 (projection consumers) — DONE.** v4 `bd419ae9` added
+  `timelineMode`, `alertCharactersOfLanternImages`, `showThinking`,
+  `answerConfirmationOverride` (+ `allLLMPauseTurnCount`, `isPaused` — bug 37)
+  to the chat GET projection, so the four controlled sidebar selects survive a
+  reload instead of snapping to their defaults. v5 had carried this as a
+  deliberate write-only-select divergence in three consumer records; all three
+  are retired. `core-contract.ts` §1 mirror: the stale doc-comment on
+  `timelineMode`/`alertCharactersOfLanternImages` corrected, and `showThinking?`,
+  `answerConfirmationOverride?` (v4 `?? null`), `allLLMPauseTurnCount?` (v4
+  `?? 0`) added (additive mirrors of P4.D53's emissions — the unifier diffs
+  names). `salon-conversation.ts`: `chatSectionState` comment corrected;
+  `visibilityState` now populates `showThinking`/`answerConfirmationOverride`
+  from the projection (the enum narrowed exactly as v4's
+  `onAnswerConfirmationChange` coerces). `chat-section.ts` and
+  `visibility-section.ts` doc-comments re-ruled from divergence to convergence;
+  the seed-from-prop + `!== undefined` guard idiom is unchanged (v4's own
+  `selectedTemplateId` / `useChatControls` shape). Specs: two new
+  reload-seeding cases (chat-section clock, visibility thinking/answer-conf) +
+  two stale "GET never returns the column" comments corrected. 25/25 across the
+  two sidebar specs. **Assumes P4.D53's server emissions at unification** — the
+  §1 name-for-name diff is the unifier's; the live reload round-trip is the
+  tier-2 e2e beat (ACTIVATE-AT-UNIFY).

@@ -218,6 +218,13 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
 - Bug 30: a private user-initiated run reads "whispered to you" instead
   of "whispered to unknown" — the whisper label resolves the operator's
   own userId to "you" (both the bubble label and the Staff header tag).
+- Bug 22: the four controlled chat-sidebar selects (Story's Clock,
+  Lantern image announcements, Thinking visibility, Answer Confirmation)
+  now survive a reload instead of snapping back to their defaults — the
+  server projects the columns (P4.D53) and the sidebar seeds from them.
+  The `core-contract.ts` mirror gains `showThinking`,
+  `answerConfirmationOverride` and `allLLMPauseTurnCount`; the three
+  write-only-select divergence records are retired.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

@@ -1841,8 +1841,8 @@ export class SalonConversation {
       roleplayTemplateId: c?.roleplayTemplateId ?? null,
       // Projected by the route (v4 `get.ts:558`), so this one IS authoritative.
       avatarGenerationEnabled: c?.avatarGenerationEnabled ?? null,
-      // v4's chat GET never returns `timelineMode` (see `chat-section.ts`), so
-      // this seeds the control once and the section keeps the operator's choice.
+      // Projected since v4 `bd419ae9` (bug 22) — a reload now shows the saved
+      // clock instead of snapping to 'realtime' (see `chat-section.ts`).
       timelineMode: c?.timelineMode ?? null,
       imageProfileId: c?.imageProfileId ?? null,
       alertCharactersOfLanternImages: c?.alertCharactersOfLanternImages ?? null,
@@ -1854,7 +1854,11 @@ export class SalonConversation {
     };
   });
 
-  /** The Visibility section's slice. The two write-only columns stay absent. */
+  /**
+   * The Visibility section's slice. `showThinking` and `answerConfirmationOverride`
+   * are projected since v4 `bd419ae9` (bug 22), so they now survive a reload
+   * instead of snapping to their defaults (see `visibility-section.ts`).
+   */
   protected readonly visibilityState = computed<VisibilityState>(() => {
     const c = this.chat();
     return {
@@ -1862,6 +1866,15 @@ export class SalonConversation {
       coreWhisperEnabled: c?.coreWhisperEnabled ?? null,
       coreWhisperInterval: c?.coreWhisperInterval ?? null,
       turnSkippingEnabled: c?.turnSkippingEnabled ?? null,
+      showThinking: c?.showThinking ?? null,
+      // The projected column is a free string; narrow it to the control's enum
+      // exactly as v4's onAnswerConfirmationChange coerces (`'ON'|'OFF'|null`).
+      answerConfirmationOverride:
+        c?.answerConfirmationOverride === 'ON'
+          ? 'ON'
+          : c?.answerConfirmationOverride === 'OFF'
+            ? 'OFF'
+            : null,
     };
   });
 

@@ -2595,13 +2595,13 @@ export interface ChatDetail {
   dangerCategories: string[];
   conciergeOverride: 'OFF' | null;
   /**
-   * The chat sidebar's slice of the record (P4.9H1). The first three ARE in the
-   * server's projection (`api/salon.rs:303-422`, v4 `handlers/get.ts:528-568`);
-   * `timelineMode` and `alertCharactersOfLanternImages` are declared here for the
-   * same reason v4 declares them on its `Chat` type (`app/salon/[id]/types.ts`) —
-   * the client passes them to the controls — but **v4's route does not project
-   * them**, so they arrive `undefined` and the sidebar keeps the operator's
-   * in-session choice instead. See `chat/sidebar/chat-section.ts`.
+   * The chat sidebar's slice of the record (P4.9H1). All of these are in the
+   * server's projection (`api/salon.rs:303-422`, v4 `handlers/get.ts:528-568`).
+   * `timelineMode`, `alertCharactersOfLanternImages`, `showThinking` and
+   * `answerConfirmationOverride` were the four controlled selects v4's route once
+   * forgot to project, so on reload they snapped back to their defaults; v4
+   * `bd419ae9` (bug 22) added them to the projection and v5's server mirrors it
+   * (P4.D53 §1), so the sidebar now reflects the saved value after a reload.
    */
   imageProfileId?: string | null;
   allowCrossCharacterVaultReads?: boolean;
@@ -2609,8 +2609,18 @@ export interface ChatDetail {
   coreWhisperInterval?: number | null;
   timelineMode?: 'realtime' | 'narrative' | null;
   alertCharactersOfLanternImages?: boolean | null;
+  /** Thinking-visibility + answer-confirmation per-chat overrides (v4
+   *  `get.ts:564-566`, projected since `bd419ae9`; both `?? null`). */
+  showThinking?: boolean | null;
+  answerConfirmationOverride?: string | null;
   /** The per-chat avatar-generation switch (v4 `get.ts:558` DOES project it). */
   avatarGenerationEnabled?: boolean | null;
+  /**
+   * All-LLM-pause bookkeeping (v4 `get.ts:549`, `?? 0`) — the turn count the
+   * AllLLMPauseModal explains when an all-LLM room hits a pause threshold
+   * (3, 6, 12, 24…). Projected since `bd419ae9` (bug 37); consumers default 0.
+   */
+  allLLMPauseTurnCount?: number;
   offSceneCharacters: OffSceneCharacter[];
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;

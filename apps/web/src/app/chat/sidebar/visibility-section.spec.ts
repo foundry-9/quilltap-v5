@@ -201,10 +201,24 @@ describe('VisibilitySection', () => {
       { type: 'chatUpdate', chatId: 'chat-1', chat: { showThinking: true } },
       { type: 'chatUpdate', chatId: 'chat-1', chat: { answerConfirmationOverride: 'OFF' } },
     ]);
-    // Neither column comes back from the chat GET, so the section must keep the
-    // choice (v4's `useChatControls` state does the same).
+    // The local set keeps the choice immediately; since v4 `bd419ae9` (bug 22)
+    // both columns are projected, so the refetch shows the same value.
     expect((control(fixture, 'Thinking visibility') as HTMLSelectElement).value).toBe('on');
     expect((control(fixture, 'Answer confirmation') as HTMLSelectElement).value).toBe('OFF');
+  });
+
+  it('seeds the thinking and answer-confirmation controls from the projected record (bug 22)', async () => {
+    // Once projected, a reload delivers the saved columns and the seed effect
+    // adopts them — the selects show the stored value, not their defaults.
+    const fixture = await render();
+    fixture.componentInstance.visibility.set(
+      state({ showThinking: false, answerConfirmationOverride: 'ON' }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect((control(fixture, 'Thinking visibility') as HTMLSelectElement).value).toBe('off');
+    expect((control(fixture, 'Answer confirmation') as HTMLSelectElement).value).toBe('ON');
   });
 
   it('seeds the controls from the chat record', async () => {

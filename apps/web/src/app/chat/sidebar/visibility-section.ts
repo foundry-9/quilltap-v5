@@ -6,10 +6,11 @@ import { ToastService } from '../../ui/toast.service';
 /**
  * The per-chat visibility overrides this section edits. `null` ⇒ inherit.
  *
- * The last two are OPTIONAL because v4's chat GET never returns them (see
- * `chat-section.ts` for the full account), so no caller can supply them —
- * `undefined` means "the record cannot tell us", and the control keeps whatever
- * the operator last chose, exactly as v4's `useChatControls` does.
+ * The last two are OPTIONAL only for `undefined` during the initial load — v4's
+ * chat GET once forgot to project them (see `chat-section.ts`), a gap v4
+ * `bd419ae9` (bug 22) closed; the parent now supplies them from the projected
+ * record, so the seeding effect finds a real value and the control survives a
+ * reload. The `!== undefined` guard is v4's defensive `useChatControls` idiom.
  */
 export interface VisibilityState {
   allowCrossCharacterVaultReads: boolean;
@@ -45,10 +46,10 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
  * the writes here, but the shape is v4's exactly — an optimistic local set, the
  * `{chat: {…}}` PUT, and a revert plus v4's error copy when it fails
  * (`useChatControls.ts:207-345`). Local state is seeded from the chat record
- * only when the field is DEFINED (v4's `if (chat?.X !== undefined)` guards), so
- * the two columns v4's GET never returns — `showThinking` and
- * `answerConfirmationOverride` — keep the operator's in-session choice, as they
- * do in v4. (The reload gap is v4's; see `chat-section.ts`.)
+ * only when the field is DEFINED (v4's `if (chat?.X !== undefined)` guards).
+ * `showThinking` and `answerConfirmationOverride` are now among the projected
+ * columns (v4 `bd419ae9`, bug 22), so the seed finds them and both controls
+ * survive a reload instead of snapping to their defaults (see `chat-section.ts`).
  *
  * All-Whispers is display-only and belongs to the Salon, so it stays an
  * input/output pair (v4 `showAllWhispers` / `onToggleAllWhispers`).
