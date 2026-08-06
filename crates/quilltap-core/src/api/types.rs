@@ -3612,9 +3612,11 @@ mod tests {
     /// `undefined`, never for `null`.
     #[test]
     fn taboo_update_phrases_tristate_survives_serde() {
-        let absent: Request =
-            serde_json::from_str(r#"{"type":"tabooSettingsUpdate"}"#).unwrap();
-        assert!(matches!(absent, Request::TabooSettingsUpdate { phrases: None }));
+        let absent: Request = serde_json::from_str(r#"{"type":"tabooSettingsUpdate"}"#).unwrap();
+        assert!(matches!(
+            absent,
+            Request::TabooSettingsUpdate { phrases: None }
+        ));
 
         let null: Request =
             serde_json::from_str(r#"{"type":"tabooSettingsUpdate","phrases":null}"#).unwrap();

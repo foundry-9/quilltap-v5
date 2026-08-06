@@ -238,12 +238,24 @@ pub fn collect_chat_breakdown(db: &Db, user_id: &str) -> Result<ChatBreakdownInf
         },
     );
 
+    // DELIBERATE DIVERGENCE from v4 — dogfood finding #67 (ruled 2026-08-06,
+    // "fix v5 now + queue v4"). v4's `GROUP BY participants` binds the bare
+    // name to the raw `participants` JSON COLUMN, not the `json_array_length`
+    // alias, so v4 emits one row per DISTINCT cast (every distinct participant
+    // array is its own group) instead of one row per cast SIZE — the "Cast
+    // sizes" histogram degrades to a per-chat list on any real instance.
+    // Proven in v4's own better-sqlite3 engine (SQLite 3.53.2, the version v5
+    // links): the bare name resolves to the column in both. v5 groups (and
+    // orders) by the length expression so the histogram rolls up by size, as
+    // the report intends. The tier-2 differential pins this divergence in both
+    // directions (self-retiring when v4 fixes its own GROUP BY).
     let participant_histogram = main_rows(
         db,
         r#"SELECT json_array_length("participants") AS participants, COUNT(*) AS chats
        FROM "chats"
        WHERE "userId" = ? AND "participants" IS NOT NULL AND json_valid("participants")
-       GROUP BY participants ORDER BY participants"#,
+       GROUP BY json_array_length("participants")
+       ORDER BY json_array_length("participants")"#,
         &[&user_id],
         "ledgers.participantHistogram",
         |r| {
@@ -517,8 +529,20 @@ pub fn collect_character_breakdown(
             SUM(CASE WHEN "controlledBy" = 'user' THEN 1 ELSE 0 END)                     AS userControlled,
             SUM(CASE WHEN "canBeCarina" = 1 THEN 1 ELSE 0 END)                           AS carina,
             SUM(CASE WHEN "systemTransparency" = 1 THEN 1 ELSE 0 END)                    AS transparent,
-            SUM(CASE WHEN "canDressThemselves" = 1 THEN 1 ELSE 0 END)                    AS dress,
-            SUM(CASE WHEN "canCreateOutfits" = 1 THEN 1 ELSE 0 END)                      AS outfits,
+            -- DELIBERATE DIVERGENCE from v4 — dogfood finding #68 (ruled
+            -- 2026-08-06, "fix v5 now + queue v4"). v4 counts `= 1` (explicit
+            -- opt-in), but the RUNTIME permission is `!== false` — NULL means
+            -- ALLOWED (orchestrator.service.ts:818,
+            -- `character?.canDressThemselves !== false`). So v4's "May dress
+            -- themselves" / "May create outfits" read 0 on any instance where
+            -- the flags were never toggled, badly under-reporting the effective
+            -- permission. `IS NOT 0` is the null-safe form of `!== false`:
+            -- NULL and 1 count, an explicit 0 (false) does not. coreWhisper
+            -- stays `IS NOT NULL` (it counts characters with an explicit
+            -- override, which 0 correctly reports as none). The tier-2
+            -- differential pins this in both directions (self-retiring).
+            SUM(CASE WHEN "canDressThemselves" IS NOT 0 THEN 1 ELSE 0 END)               AS dress,
+            SUM(CASE WHEN "canCreateOutfits" IS NOT 0 THEN 1 ELSE 0 END)                 AS outfits,
             SUM(CASE WHEN "coreWhisperEnabled" IS NOT NULL THEN 1 ELSE 0 END)            AS coreWhisper
      FROM "characters" WHERE "userId" = ?"#,
         &[&user_id],
@@ -1106,3 +1130,115 @@ pub fn collect_storage_stats(db: &Db, user_id: &str) -> Result<StorageStats, DbE
     })
 }
 
+#[cfg(test)]
+mod dogfood_divergence_tests {
+    //! Findings #67 (cast-size histogram) and #68 (wardrobe-permission counts):
+    //! deliberate divergences from v4, ruled 2026-08-06 ("fix v5 now + queue
+    //! v4"). These pin v5's corrected behavior AND its guards; the tier-2
+    //! differential (`almanack_tier2_equivalence`) pins the v4↔v5 divergence.
+    use super::{collect_character_breakdown, collect_chat_breakdown};
+    use crate::db::runtime::Db;
+
+    // The 32-byte all-`testpepper` base64 used across the core write tests.
+    const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn test_db() -> Db {
+        let dir = std::env::temp_dir().join(format!(
+            "qt-almanack-ledgers-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open_main(dir.join("main.db"), TEST_PEPPER).unwrap();
+        db.write_blocking(|writers| {
+            writers.main().connection().execute_batch(
+                "CREATE TABLE chats (
+                    id TEXT PRIMARY KEY, userId TEXT NOT NULL, participants TEXT,
+                    chatType TEXT, isPaused INTEGER, documentEditingMode INTEGER,
+                    equippedOutfit TEXT, pendingOutfitNotifications TEXT,
+                    timelineMode TEXT, state TEXT);
+                 CREATE TABLE chat_documents (chatId TEXT, isActive INTEGER);
+                 CREATE TABLE characters (
+                    id TEXT PRIMARY KEY, userId TEXT NOT NULL,
+                    characterDocumentMountPointId TEXT, npc INTEGER,
+                    controlledBy TEXT, canBeCarina INTEGER, systemTransparency INTEGER,
+                    canDressThemselves INTEGER, canCreateOutfits INTEGER,
+                    coreWhisperEnabled INTEGER);",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        db
+    }
+
+    fn exec(db: &Db, sql: &str) {
+        let sql = sql.to_string();
+        db.write_blocking(move |writers| {
+            writers.main().connection().execute_batch(&sql)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// #67 — the "Cast sizes" histogram rolls up by cast SIZE, so two
+    /// 1-participant chats with DIFFERENT casts collapse to one `{1, chats:2}`
+    /// row. Reverting to v4's `GROUP BY participants` (the raw column) reds this
+    /// (it would emit two separate `{1, chats:1}` rows).
+    #[test]
+    fn participant_histogram_rolls_up_by_cast_size() {
+        let db = test_db();
+        exec(
+            &db,
+            r#"INSERT INTO chats (id, userId, participants) VALUES
+                 ('c0','u','[]'),
+                 ('c1','u','[{"id":"p1","characterId":"a"}]'),
+                 ('c2','u','[{"id":"p2","characterId":"b"}]'),
+                 ('c3','u','[{"id":"p3","characterId":"a"},{"id":"p4","characterId":"b"}]');"#,
+        );
+        let out = collect_chat_breakdown(&db, "u").unwrap();
+        let hist: Vec<(i64, i64)> = out
+            .participant_histogram
+            .iter()
+            .map(|r| (r.participants as i64, r.chats as i64))
+            .collect();
+        assert_eq!(
+            hist,
+            vec![(0, 1), (1, 2), (2, 1)],
+            "the histogram must roll up by cast SIZE (v4's per-cast bug would give [(0,1),(1,1),(1,1),(2,1)])"
+        );
+    }
+
+    /// #68 — dress/outfit counts reflect the EFFECTIVE permission (`!== false`):
+    /// NULL (never toggled) counts as allowed and only an explicit `0`/false is
+    /// excluded. The explicit-false row (`k3`) is the guard: reverting to `= 1`
+    /// reds the counts to 1, and a naive `IS NOT NULL` would wrongly count `k3`.
+    /// coreWhisper is unchanged — it counts explicit overrides only.
+    #[test]
+    fn dress_outfit_counts_are_effective_permission() {
+        let db = test_db();
+        exec(
+            &db,
+            r#"INSERT INTO characters (id, userId, canDressThemselves, canCreateOutfits, coreWhisperEnabled) VALUES
+                 ('k1','u',1,1,1),          -- explicit true
+                 ('k2','u',NULL,NULL,NULL), -- default → allowed, no whisper override
+                 ('k3','u',0,0,NULL),       -- explicit false → NOT allowed
+                 ('k4','u',NULL,1,0);       -- dress NULL (allowed), outfit true, explicit whisper override"#,
+        );
+        let out = collect_character_breakdown(&db, "u").unwrap();
+        // dress: k1(true) + k2(null) + k4(null) = 3; k3(false) excluded.
+        assert_eq!(
+            out.can_dress_themselves as i64, 3,
+            "dress counts true + NULL, excludes an explicit false"
+        );
+        // outfits: k1(true) + k2(null) + k4(true) = 3; k3(false) excluded.
+        assert_eq!(
+            out.can_create_outfits as i64, 3,
+            "outfits counts true + NULL, excludes an explicit false"
+        );
+        // coreWhisper: k1(1) + k4(0) are explicit overrides = 2; k2/k3 NULL excluded.
+        assert_eq!(
+            out.core_whisper_overrides as i64, 2,
+            "coreWhisper counts characters with an explicit override (IS NOT NULL) only"
+        );
+    }
+}

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Fixed two defects in the system report ("The Almanack"), found while
+reviewing the report against real data. The "Cast sizes" table now
+groups conversations by their number of participants instead of listing
+one row per conversation. The character summary's "may dress themselves"
+and "may create outfits" counts now reflect the effective permission — a
+character left at its default is permitted, and only an explicit opt-out
+is excluded — where before they counted only characters explicitly
+switched on and so read zero on most instances. Both changes match how
+the reference app behaves at runtime rather than how its report counted;
+they are recorded as intentional differences that revert automatically
+if the reference app adopts the same fix. Versions: core 0.0.482,
+harness 0.0.408.
+
 Unified the Taboo + maintenance round — three lanes, all closed. The
 system report ("The Almanack") is now fully live: its collectors are
 verified against the reference implementation by a new 72-check
