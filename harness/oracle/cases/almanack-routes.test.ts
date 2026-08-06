@@ -44,7 +44,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$W/harness/oracle/cases/almanack-routes.test.ts" "$TMPO/cases/"
  *   cp "$W/harness/oracle/fixtures/almanack.json" "$TMPO/fixtures/"
- *   cd /tmp/qt-v4-pin-p437-f7f1a956   # or ~/source/quilltap-server when clean at baseline
+ *   cd ~/source/quilltap-server   # behind-baseline? pass --v4 <pin> to recipe_sweep.py
  *   QT_FIXTURE_ALM_MAIN=$W/crates/quilltap-web/tests/fixtures/almanack-main.db \
  *   QT_FIXTURE_ALM_MOUNT=$W/crates/quilltap-web/tests/fixtures/almanack-mount.db \
  *   QT_FIXTURE_ALM_LLM=$W/crates/quilltap-web/tests/fixtures/almanack-llmlogs.db \
