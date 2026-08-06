@@ -59988,3 +59988,82 @@ and the profile-management surface on the Friday copy.
 
 Versions: core 0.0.486, harness 0.0.411, host 0.0.61, web 0.0.63,
 SPA 0.5.422; cli 0.0.5, tauri 0.0.6 unchanged.
+
+## Round planned — the `f4955e0e` found-bugs convergence round (P4.D51 ∥ P4.D52 ∥ P4.D53 ∥ P4.D54 ∥ P4.D55 ∥ P4.43), 2026-08-06
+
+**The drift.** v4 moved ELEVEN commits past `3adefeba` to `f4955e0e`
+(4.8.0-dev.175, tree CLEAN — the mid-round dirty-tree warning resolved
+into `62ab1bc8`). This is v4's coordinated "bugs 8–43" batch: the human
+catalogued 36 bugs in `docs/developer/found-bugs.md`, batched them into
+nine session specs (`docs/developer/bugfix-sessions/`), and landed all
+nine in one day. **At `f4955e0e` every catalogued bug 1–43 is fixed in
+v4.** A large share is v4 ADOPTING fixes this port made first, so the
+self-retiring convergence pins across seven differential families trip
+at the baseline move BY DESIGN. Classification per commit:
+
+| v4 commit | Bugs | Disposition → lane |
+|---|---|---|
+| `d60fc34d` docs (bug catalogue + session specs) | — | NO-PORT (docs; mirror nothing — found-bugs is v4-internal) |
+| `13ddc5ee` vault/help guards | 8, 18 | 8 convergence, 18 faithful-mirror → **P4.D51** |
+| `3bb664f0` backup/store-delete/import integrity | 9–12 | convergence (P4.31/P4.33/P4.d23/P4.22-era pins trip) + bug 10's NEW per-chat annotations sweep → **P4.D51** (per-chat half re-binned → **P4.D53**) |
+| `7bcd8515` mount-index/file hygiene | 13, 15, 16, 38, 43 | 13/38 faithful-mirror, 15 convergence, 43 new surface → **P4.D51**; 16 re-binned → **P4.D52** (shares the `embedding_remainder` family + committed fixture with bug 17) |
+| `62ab1bc8` scriptorium/memory | 17, 26 | faithful-mirror (17 is the round's largest genuine port: interchange sub-chunking, UTF-16 budget) → **P4.D52** (bug 14 was fixed pre-`3adefeba` in `7189a968`; v5's mirror ALREADY landed as P4.D46 — verify-only) |
+| `e6554b6e` almanack ledgers | 19, 20, 21 | 19 faithful-mirror (the `permanentlyFailed`→`failed` rename — serde hazard: regenerated oracles PANIC at deserialization until the Rust rename lands), 20/21 convergence (#67/#68 reconciler pins trip, #67 short-circuits #68) → **P4.D52** |
+| `ea4dc011` UI polish | 39–42 | 39/40 convergence (stale comments only — NOTE the session-9 doc's "`_utilities.css` corpus" tripwire claim is WRONG, no such corpus exists), 41 v4-went-further (escape set `'()*!` vs v5's `'` — the `markdown_transcript` pin self-retires), 42 faithful-mirror (v5 owes the toast animation it correctly refused to ship as dead CSS) → 41 → **P4.D53**, rest → **P4.D54** |
+| `99d5fc7d` attribution/tool cards/whispers | 28, 29, 30 | v4 adopting the queued findings #54/#33/#29 fixes; 28 is a BOTH-APPS fix per the 2026-08-02 ruling → server half **P4.D53**, SPA halves **P4.D54** |
+| `bd419ae9` chat state/participants/impersonation | 22–25, 27, 36, 37 | 25 converged (v5 already correct; but the salon-mutations oracle case must be rewritten POST→DELETE before ANY regen of that family); the rest faithful-mirror → server **P4.D53**, SPA consumers + the AllLLMPauseModal port **P4.D54**. **⚠ Bug 27 conflicts with the finding-#39 post-5.0 design note** (`dogfood-findings.md:1056-1081` forbade mutating `controlledBy`; v4's shipped fix does exactly that) — the round mirrors v4 per the port discipline and the human is asked to RE-RULE the #39 design item |
+| `43a1b5b1` provider plugins | 31–35 | faithful-mirror ×5 (a THIRD OpenRouter body shape; two `EXPECTED_REFUSALS` retire; the ollama boundary-sensitivity unit test INVERTS) → **P4.D55** |
+| `f4955e0e` version normalization | — | NO-PORT |
+
+**The sixth lane** is not drift: **P4.43** carries out P4.9H2A's open
+units 6+7 (memory-dedup + conversation-summaries regen). Verified at
+planning: none of the eleven commits touches `memory-dedup.ts`, the
+system tools route, `queue-service.ts`, `memory-gate.ts`, or
+`embedding-service.ts`, so the H2A survey stands and the lane is
+file-disjoint from all five drift lanes.
+
+**Re-binning decisions (fixture-collision driven):** bug 16 → P4.D52
+(one regeneration of `embedding-remainder-{main,mount}.db` covers bugs
+16 + 17 — two lanes must never regenerate one committed fixture); bug
+10's per-chat sweep → P4.D53 (owns `db/chats.rs` + the chats
+families); bug 41 → P4.D53 (`content_disposition.rs` is core-side and
+its corpus family Rust-owned). `api/types.rs` is FROZEN for the whole
+round — no lane adds a verb (every wire change is a JSON-body shape;
+P4.43's verbs already exist as refusals).
+
+**Predicted OpenRouter vision-send body** (bug 31, for the recorder to
+confirm, never to trust):
+`{"model":"openai/gpt-4o","messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":[{"type":"text","text":"What is in this image?"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0…"}}]}],"stream":false,"temperature":0.5,"max_tokens":1000,"top_p":0.9,"reasoning":{"exclude":false}}`
+(`stop` undefined → dropped); the tools variant inserts raw
+`"tools":[…],"tool_choice":"auto"` between `top_p` and `reasoning`.
+
+**Unifier duties (recorded here so no lane pre-empts them):**
+1. The baseline move `3adefeba` → `f4955e0e` in CLAUDE.md +
+   phase-4.md, and the round bullet.
+2. **The dogfood-findings discharge sweep — ONE editor.** Items the
+   drift discharges: #46 (`:1097`), #57 (`:1111`), #58's v4 halves
+   (`:1135`), #47 (`:1198` — the URGENT item, now landed), the
+   sub-chunking item (`:1082`), #67/#68 (`:593`), the export-bloat
+   item (`:649` — discharged pre-range by `7189a968`), the import
+   trio (`:1225-1244`), the gen2-restore item (`:1327`), #36's
+   dead-code box (`:1389`), the store-attach root cause (`:1410`),
+   the mount-chunk dead-count (`:1426` — v5 follows via P4.D52),
+   #29/#33/#54 (`:1500/:1509/:1521`). Still NOT adopted by v4:
+   #61 (`:1178`), #59's dialog surfacing (`:1188`), #65's hidden
+   types (`:76`), #17's Play-As revert (`:1544`), #49's effect
+   bootstrap (`:1546`).
+3. **Flag for the human: the finding-#39 re-ruling** (bug 27 above).
+4. The §1 chat-GET/enrichment contract diffed name-for-name between
+   P4.D53's emissions and P4.D54's `core-contract.ts`.
+5. 💸 additions to the owed dogfood queue: the OpenRouter vision
+   live send; arm (C)'s one-time boot render+embed burst on the
+   Friday copy; the P4.43 dedup/summaries first live run.
+
+**Execution recommendation:** P4.D51, P4.D52, P4.D55, and P4.43 are
+mutually independent Rust lanes; P4.D53 (server) and P4.D54 (SPA)
+share the §1 contract and meet only at unification. All six can run
+in parallel (the c4d4b0de-round precedent); if staggering for disk
+(50–70 GB per Rust lane — playbook §B), hold P4.43 for the second
+wave. Oracles regenerate straight from `~/source/quilltap-server`
+while HEAD stays `f4955e0e`; pin a detached worktree on any further
+drift.

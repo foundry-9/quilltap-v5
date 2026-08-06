@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the `f4955e0e` found-bugs convergence round: six committed
+work orders (P4.D51 guards/backup/mount convergence, P4.D52
+scriptorium/memory/almanack, P4.D53 chat-API/attribution server,
+P4.D54 Salon/UI-polish SPA, P4.D55 provider attachments/streaming,
+P4.43 memory-maintenance remainder) absorbing v4's eleven-commit
+"bugs 8–43" batch — at the new baseline every catalogued v4 bug is
+fixed, much of it v4 adopting fixes this port made first, so the
+round is largely convergence-pin retirement plus four genuine ports
+(interchange sub-chunking, the AllLLMPauseModal, the OpenRouter
+vision path, the thumbnail sweep). Docs only; no code changed.
+
 Unified the fallback + wire + embedding-profiles round — four lanes, all
 landed. OpenAI conversations no longer wedge when the provider forgets a
 prior response: a failed chained request now retries once with the full
