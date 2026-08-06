@@ -32,6 +32,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::jsstr::js_trim;
+use crate::staff_display_names::staff_display_name;
 
 /// The `customAnnouncer` column's shape, structural so callers stay decoupled
 /// (v4 `CustomAnnouncer`). `kind` is carried as the raw string: v4 types it
@@ -67,16 +68,26 @@ impl CustomAnnouncer {
     }
 }
 
-/// v4's structural `AnnouncerAttributable` — the two fields the pass reads, plus
-/// the `{...m, content}` spread it uses to rewrite one of them.
+/// v4's structural `AnnouncerAttributable` — the fields the pass reads, plus the
+/// `{...m, content}` / `{...m, opaqueContent}` spreads it uses to rewrite them.
 pub trait AnnouncerAttributable: Clone {
     fn content(&self) -> Option<&str>;
     /// Returned by value so a JSON-shaped carrier can read the column on demand
     /// (the announcer bag is three short strings and only announcement rows carry
     /// one, so the copy is not worth a lifetime).
     fn custom_announcer(&self) -> Option<CustomAnnouncer>;
+    /// `typeof m.opaqueContent === 'string'` — `Some` only when the column is a
+    /// string (an absent or null `opaqueContent` is `None`, matching v4's guard).
+    fn opaque_content(&self) -> Option<&str>;
+    /// The `systemSender` column (the Staff signer) — `None` when absent/null/"".
+    fn system_sender(&self) -> Option<&str>;
+    /// The `systemKind` column; the staff fallback fires only for `"announcement"`.
+    fn system_kind(&self) -> Option<&str>;
     /// v4 `{ ...m, content }` — every other field survives untouched.
     fn with_content(&self, content: String) -> Self;
+    /// v4 `next.opaqueContent = …` — rewrites only `opaqueContent`. Separate from
+    /// [`Self::with_content`] because the pass writes both, independently.
+    fn with_opaque_content(&self, opaque_content: String) -> Self;
 }
 
 /// Resolve the display name for an announcer, or `None` when it can't be named
@@ -85,29 +96,45 @@ pub trait AnnouncerAttributable: Clone {
 /// A `character` announcer whose id resolves to nothing — deleted since the
 /// announcement was posted — returns `None` rather than a placeholder: a wrong or
 /// invented name is worse than no name, because the model treats a name as fact.
+///
+/// When no `customAnnouncer` is present the announcement was signed as Staff (the
+/// Insert Announcement dialog's `staff` mode writes a `systemSender` and no
+/// `customAnnouncer`). Those still need a speaker: an operator-authored line signed
+/// as the Host is not prose the Host wrote, so it carries no self-naming, and
+/// without a fallback it reaches the model as an anonymous `user` turn. Fall back
+/// to the `systemSender`, resolved through the single staff-name table.
 pub fn resolve_announcer_name(
     announcer: Option<CustomAnnouncer>,
     character_names_by_id: &HashMap<String, String>,
+    system_sender: Option<&str>,
 ) -> Option<String> {
-    let announcer = announcer?;
+    if let Some(announcer) = announcer {
+        if announcer.kind == "character" {
+            // `if (!announcer.characterId) return null` — the empty string is falsy.
+            let id = announcer
+                .character_id
+                .as_deref()
+                .filter(|s| !s.is_empty())?;
+            return character_names_by_id
+                .get(id)
+                .map(|n| js_trim(n).to_string())
+                .filter(|n| !n.is_empty());
+        }
 
-    if announcer.kind == "character" {
-        // `if (!announcer.characterId) return null` — the empty string is falsy.
-        let id = announcer
-            .character_id
+        return announcer
+            .display_name
             .as_deref()
-            .filter(|s| !s.is_empty())?;
-        return character_names_by_id
-            .get(id)
             .map(|n| js_trim(n).to_string())
             .filter(|n| !n.is_empty());
     }
 
-    announcer
-        .display_name
-        .as_deref()
-        .map(|n| js_trim(n).to_string())
-        .filter(|n| !n.is_empty())
+    // v4 `if (systemSender) return staffDisplayName(systemSender).trim() || null`.
+    // `if (systemSender)` is JS-truthy, so "" is excluded but a whitespace-only
+    // sender is NOT — it reaches `staffDisplayName` (returns the raw tag) and the
+    // `.trim() || null` then nulls it out.
+    let sender = system_sender.filter(|s| !s.is_empty())?;
+    let name = js_trim(&staff_display_name(Some(sender))).to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 /// Character ids an announcement references, for a single up-front name lookup
@@ -132,10 +159,18 @@ pub fn collect_announcer_character_ids<T: AnnouncerAttributable>(messages: &[T])
 /// Prefix each ad-hoc announcement's body with its speaker (v4
 /// `attributeAdhocAnnouncements`).
 ///
-/// Messages without a `customAnnouncer` pass through untouched — Staff
-/// announcements carry their identity in their prose already, and participant
-/// messages are attributed by the multi-character path. An announcer that can't be
-/// named also passes through unchanged.
+/// A `customAnnouncer` (character/custom mode) names the speaker directly. A
+/// `staff`-mode announcement carries a `systemSender` instead — but only ad-hoc
+/// announcements (`systemKind === 'announcement'`) take that fallback: ordinary
+/// Staff whispers (image notices, tool bubbles, memory recalls) also carry a
+/// `systemSender` and name themselves in their own prose, so prefixing them here
+/// would double-tag every one. A message with neither field, and an announcer that
+/// can't be named, both pass through unchanged.
+///
+/// The prefix lands on `opaqueContent` too when present: an opaque-anywhere chat
+/// swaps that persona-free body into the LLM context in place of `content`
+/// ([`crate::services::message_context::normalize_whisper_roles`]), so tagging only
+/// `content` would leave the model's copy anonymous in exactly that mode.
 pub fn attribute_adhoc_announcements<T: AnnouncerAttributable>(
     messages: &[T],
     character_names_by_id: &HashMap<String, String>,
@@ -143,17 +178,33 @@ pub fn attribute_adhoc_announcements<T: AnnouncerAttributable>(
     messages
         .iter()
         .map(|m| {
-            let Some(name) = resolve_announcer_name(m.custom_announcer(), character_names_by_id)
+            // v4 `const systemSender = m.systemKind === 'announcement' ? m.systemSender : undefined`.
+            let system_sender = if m.system_kind() == Some("announcement") {
+                m.system_sender()
+            } else {
+                None
+            };
+            let Some(name) =
+                resolve_announcer_name(m.custom_announcer(), character_names_by_id, system_sender)
             else {
                 return m.clone();
             };
-            // v4 `m.content ?? ''`.
-            let body = m.content().unwrap_or("");
+            let tag = format!("[{name}]");
             // Idempotent: re-running (a retry, a regenerate) must not stack tags.
-            if body.starts_with(&format!("[{name}]")) {
-                return m.clone();
+            let prefix = |text: &str| {
+                if text.starts_with(&tag) {
+                    text.to_string()
+                } else {
+                    format!("{tag} {text}")
+                }
+            };
+            // v4 `{ ...m, content: prefix(m.content ?? '') }`.
+            let mut next = m.with_content(prefix(m.content().unwrap_or("")));
+            // v4 `if (typeof m.opaqueContent === 'string') next.opaqueContent = prefix(m.opaqueContent)`.
+            if let Some(opaque) = m.opaque_content() {
+                next = next.with_opaque_content(prefix(opaque));
             }
-            m.with_content(format!("[{name}] {body}"))
+            next
         })
         .collect()
 }
@@ -169,10 +220,27 @@ impl AnnouncerAttributable for Value {
     fn custom_announcer(&self) -> Option<CustomAnnouncer> {
         CustomAnnouncer::from_value(self.get("customAnnouncer"))
     }
+    fn opaque_content(&self) -> Option<&str> {
+        // `typeof === 'string'`: a null/absent opaqueContent is not a string.
+        self.get("opaqueContent").and_then(Value::as_str)
+    }
+    fn system_sender(&self) -> Option<&str> {
+        self.get("systemSender").and_then(Value::as_str)
+    }
+    fn system_kind(&self) -> Option<&str> {
+        self.get("systemKind").and_then(Value::as_str)
+    }
     fn with_content(&self, content: String) -> Value {
         let mut v = self.clone();
         if let Some(o) = v.as_object_mut() {
             o.insert("content".to_string(), Value::String(content));
+        }
+        v
+    }
+    fn with_opaque_content(&self, opaque_content: String) -> Value {
+        let mut v = self.clone();
+        if let Some(o) = v.as_object_mut() {
+            o.insert("opaqueContent".to_string(), Value::String(opaque_content));
         }
         v
     }
@@ -193,7 +261,28 @@ mod tests {
             character_id: Some("gone".into()),
             display_name: None,
         };
-        assert_eq!(resolve_announcer_name(Some(gone), &names()), None);
-        assert_eq!(resolve_announcer_name(None, &names()), None);
+        assert_eq!(resolve_announcer_name(Some(gone), &names(), None), None);
+        assert_eq!(resolve_announcer_name(None, &names(), None), None);
+    }
+
+    #[test]
+    fn staff_sender_is_the_fallback_speaker() {
+        // No announcer, a Staff signer → the staff display name (bug 28).
+        assert_eq!(
+            resolve_announcer_name(None, &names(), Some("host")),
+            Some("The Host".to_string())
+        );
+        // A whitespace-only sender is JS-truthy but trims empty → None.
+        assert_eq!(resolve_announcer_name(None, &names(), Some("   ")), None);
+        // An announcer, when present, wins over the sender.
+        let ariel = CustomAnnouncer {
+            kind: "character".into(),
+            character_id: Some("ariel".into()),
+            display_name: None,
+        };
+        assert_eq!(
+            resolve_announcer_name(Some(ariel), &names(), Some("host")),
+            Some("Ariel".to_string())
+        );
     }
 }

@@ -55,7 +55,7 @@ const lines: string[] = [];
 // resolveAnnouncerName
 // ---------------------------------------------------------------------------
 
-const resolveCases: Array<{ name: string; announcer: unknown }> = [
+const resolveCases: Array<{ name: string; announcer: unknown; systemSender?: string | null }> = [
   { name: 'character_named', announcer: { kind: 'character', characterId: ARIEL } },
   { name: 'character_name_is_trimmed', announcer: { kind: 'character', characterId: BEA } },
   { name: 'character_name_blank_is_null', announcer: { kind: 'character', characterId: 'blank-name' } },
@@ -69,6 +69,20 @@ const resolveCases: Array<{ name: string; announcer: unknown }> = [
   { name: 'custom_absent_display_name_is_null', announcer: { kind: 'custom' } },
   { name: 'announcer_null', announcer: null },
   { name: 'announcer_undefined', announcer: undefined },
+  // Bug 28 (v4 `99d5fc7d`): the Staff-sender fallback. No `customAnnouncer`, a
+  // `systemSender` names the speaker through the staff-name table.
+  { name: 'staff_sender_host', announcer: null, systemSender: 'host' },
+  { name: 'staff_sender_suparna', announcer: null, systemSender: 'suparna' },
+  // An unknown sender falls back to the raw tag (staffDisplayName `?? sender`).
+  { name: 'staff_sender_unknown_is_raw', announcer: null, systemSender: 'newcomer' },
+  // JS-truthy but whitespace-only → staffDisplayName returns the raw tag, `.trim()`
+  // empties it, `|| null` nulls it.
+  { name: 'staff_sender_whitespace_is_null', announcer: null, systemSender: '   ' },
+  // Empty string is falsy → the `if (systemSender)` guard is skipped → null.
+  { name: 'staff_sender_empty_is_null', announcer: null, systemSender: '' },
+  // An announcer, when present, wins over the sender (returns from the announcer
+  // branch before the fallback is reached).
+  { name: 'announcer_wins_over_sender', announcer: { kind: 'character', characterId: ARIEL }, systemSender: 'host' },
 ];
 
 for (const c of resolveCases) {
@@ -77,9 +91,10 @@ for (const c of resolveCases) {
       kind: 'resolve',
       name: c.name,
       announcer: c.announcer ?? null,
+      systemSender: c.systemSender ?? null,
       names: NAME_ENTRIES,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      output: resolveAnnouncerName(c.announcer as never, NAMES),
+      output: resolveAnnouncerName(c.announcer as never, NAMES, c.systemSender ?? undefined),
     }),
   );
 }
@@ -188,6 +203,60 @@ const attributeCases: Array<{ name: string; messages: Msg[]; twice?: boolean }> 
       { content: 'a01', role: 'ASSISTANT', customAnnouncer: { kind: 'character', characterId: ARIEL } },
       { content: 'a02', role: 'ASSISTANT', customAnnouncer: { kind: 'custom', displayName: 'A Distant Bell' } },
       { content: 'a03', role: 'ASSISTANT', customAnnouncer: { kind: 'character', characterId: 'gone' } },
+    ],
+  },
+  // ---- Bug 28: the Staff-sender fallback + the opaque body ----
+  {
+    // A staff-signed ad-hoc announcement (no customAnnouncer, systemKind
+    // 'announcement') is tagged with the resolved staff name.
+    name: 'tags_a_staff_announcement',
+    messages: [
+      { content: 'The hour grows late.', systemSender: 'host', systemKind: 'announcement' },
+    ],
+  },
+  {
+    // An ordinary Staff whisper (a NON-announcement systemKind) carries a
+    // systemSender too, but names itself in its own prose — it must NOT be tagged.
+    name: 'leaves_non_announcement_staff_whispers_untouched',
+    messages: [
+      { content: 'A Lantern image was shared.', systemSender: 'lantern', systemKind: 'image' },
+    ],
+  },
+  {
+    // The prefix lands on opaqueContent as well as content, so the opaque-anywhere
+    // body swap (normalizeWhisperRoles) still reaches the model attributed.
+    name: 'tags_both_content_and_opaque_content',
+    messages: [
+      {
+        content: 'A bell tolls thrice.',
+        opaqueContent: 'A bell tolls thrice.',
+        systemSender: 'host',
+        systemKind: 'announcement',
+      },
+    ],
+  },
+  {
+    // A null opaqueContent is not a string — only content is tagged.
+    name: 'null_opaque_content_is_left_alone',
+    messages: [
+      {
+        content: 'Only content here.',
+        opaqueContent: null,
+        customAnnouncer: { kind: 'custom', displayName: 'The Narrator' },
+      },
+    ],
+  },
+  {
+    // Idempotent across a re-run for the staff arm too (retry / regenerate).
+    name: 'idempotent_staff_across_a_rerun',
+    twice: true,
+    messages: [
+      {
+        content: 'The doors close.',
+        opaqueContent: 'The doors close.',
+        systemSender: 'suparna',
+        systemKind: 'announcement',
+      },
     ],
   },
 ];

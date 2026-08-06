@@ -145,6 +145,14 @@ over-budget cases (message-boundary split, a single-message boundary
 walk, a split interchange 0 carrying the metadata header, and astral
 content for the UTF-16 proof), all byte-exact against the reference
 renderer.
+Staff-signed announcements now carry their author's name into the model's
+context (v4 bug 28). An Insert-Announcement line signed as the Host (or any
+Staff voice) used to reach every character as an anonymous block of prose, so
+the model had to guess who spoke; it now arrives tagged with the resolved staff
+name — and the tag lands on the opaque body too, so an opaque-anywhere chat
+stays attributed. Ordinary Staff whispers (image notices, tool bubbles) are
+left alone, since they name themselves in their own prose.
+
 Deleting a conversation now also sweeps its per-message annotations (v4 bug
 10). Annotations sat on no cascade, so a deleted chat left its annotation rows
 behind — harmless day to day, but a later restore of a migrated instance could

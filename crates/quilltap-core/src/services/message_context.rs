@@ -127,10 +127,31 @@ impl AnnouncerAttributable for WhisperMessage {
     fn custom_announcer(&self) -> Option<CustomAnnouncer> {
         self.custom_announcer.clone()
     }
+    fn opaque_content(&self) -> Option<&str> {
+        // `typeof m.opaqueContent === 'string'` — only a present string body takes
+        // the opaque prefix; the field is `str_field`, so an absent/null column is
+        // already `None`.
+        self.opaque_content.as_deref()
+    }
+    fn system_sender(&self) -> Option<&str> {
+        self.system_sender.as_deref()
+    }
+    fn system_kind(&self) -> Option<&str> {
+        self.system_kind.as_deref()
+    }
     /// v4's `{ ...m, content }` spread — every other field survives.
     fn with_content(&self, content: String) -> WhisperMessage {
         WhisperMessage {
             content: Some(content),
+            ..self.clone()
+        }
+    }
+    /// v4's `next.opaqueContent = …` — rewrites only `opaqueContent`. The A2 pass
+    /// prefixes it BEFORE [`normalize_whisper_roles`] swaps it into the body for an
+    /// opaque-anywhere chat, so the model's copy is tagged in that mode too.
+    fn with_opaque_content(&self, opaque_content: String) -> WhisperMessage {
+        WhisperMessage {
+            opaque_content: Some(opaque_content),
             ..self.clone()
         }
     }

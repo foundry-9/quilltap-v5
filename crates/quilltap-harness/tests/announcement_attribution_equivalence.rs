@@ -80,7 +80,11 @@ fn announcement_attribution_matches_oracle() {
         let (got, want): (Value, Value) = match kind {
             "resolve" => {
                 let announcer = CustomAnnouncer::from_value(Some(&rec["announcer"]));
-                let out = resolve_announcer_name(announcer, &name_map(&rec["names"]));
+                // The staff fallback (bug 28): the record carries an optional
+                // `systemSender` (null when absent).
+                let system_sender = rec["systemSender"].as_str();
+                let out =
+                    resolve_announcer_name(announcer, &name_map(&rec["names"]), system_sender);
                 (json!(out), rec["output"].clone())
             }
             "collect" => {

@@ -66,6 +66,42 @@ chats-tier2.ts > /tmp/oracle-chats.ndjson`; run `QT_ORACLE_CHATS=…
 QT_FIXTURE_CHATS=… cargo test -p quilltap-harness --test chats_tier2_equivalence`.
 core 0.0.488, harness 0.0.413.
 
+### Unit 3 — bug 28: staff-signed announcements attributed (v4 `99d5fc7d`, finding #54)
+
+`announcement_attribution` widened end-to-end: the `AnnouncerAttributable` trait
+gained `opaque_content`/`system_sender`/`system_kind` readers + a
+`with_opaque_content` writer (separate from `with_content` — the pass writes both
+independently); `resolve_announcer_name` gained a `system_sender` param and v4's
+Staff fallback (`if (systemSender) return staffDisplayName(systemSender).trim() ||
+null` — whitespace-only sender trims to `None`, "" is falsy, an announcer wins over
+the sender); `attribute_adhoc_announcements` computes `systemSender = systemKind ==
+'announcement' ? systemSender : None` (so ordinary Staff whispers are NOT tagged),
+prefixes `content` AND string `opaqueContent` idempotently. BOTH impls updated: the
+`Value` impl (what the differential drives) and the production `WhisperMessage`
+impl. The A2→`normalize_whisper_roles` ordering already held (A2 at
+message_context.rs:640, normalize at :665), so the opaque prefix reaches the
+opaque-anywhere body swap.
+
+Per the human's 2026-08-02 ruling on finding #54, this is a genuine v5 FIX, not
+just a mirror.
+
+Corpus: `announcement-attribution.ts` grew staff `resolve` arms
+(host/suparna/unknown-raw/whitespace-null/empty-null/announcer-wins) and staff
+`attribute` arms (staff announcement tagged; NON-announcement staff whisper NOT
+tagged; content+opaqueContent both tagged; null-opaque left alone; idempotent
+staff re-run). 37 records. Differential `announcement_attribution_equivalence`
+green; **mutation-proven** (D24) both ways — disabling the fallback reds the six
+staff arms; skipping the opaque prefix reds the two opaque arms. Neutrality:
+`message_context_leaves` re-run green at `f4955e0e`; `build_context_tier3`,
+`announcer_tier3`, post-office whisper families deferred to the final gate
+(fixtures carry no staff ad-hoc announcements — expected neutral).
+
+Regen: `~/.nvm/versions/node/v24.13.1/bin/npx tsx
+harness/oracle/cases/announcement-attribution.ts >
+/tmp/oracle-announcement-attribution.ndjson`; run
+`QT_ORACLE_ANNOUNCEMENT_ATTRIBUTION=… cargo test -p quilltap-harness --test
+announcement_attribution_equivalence`. core 0.0.489, harness 0.0.414.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →
