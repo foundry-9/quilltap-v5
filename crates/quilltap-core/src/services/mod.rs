@@ -83,6 +83,7 @@ pub mod delete_all;
 pub mod embedding_generate_job;
 // === end P4.6BL ===
 pub mod embedding_provider;
+pub mod embedding_reapply_profile;
 pub mod embedding_refit_job;
 pub mod file_fallback;
 pub mod file_storage;

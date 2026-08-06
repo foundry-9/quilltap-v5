@@ -59452,3 +59452,42 @@ handler's `Invalid scope: …` arm fires). `characters_routes.rs:608`'s hardcode
 count, which touches only characters + memories, so zero is correct there.
 
 Version: web 0.0.62 → 0.0.63.
+
+### Unit 4 + Unit 5 (reapply) — the EMBEDDING_REAPPLY_PROFILE handler + differential
+
+New `services/embedding_reapply_profile.rs` — a port of v4's 435-line
+`reapply-profile.ts` + the thin handler. The whole pass runs in ONE `db.write`
+closure over both partitions (each connection self-reports its file via
+`pragma_database_list` for the `VACUUM INTO` backup — no path storage on `Db`
+needed). Preserves every v4 invariant: decoded-dim (not byte length),
+VACUUM-INTO backups fatal-on-failure both partitions, empty-corpus clean-zero,
+refuse-to-grow (the exact two sentences), degenerate skip, per-table transaction,
+allowlisted tables. Registered in the **host.rs:468-510 seam-free block** beside
+EMBEDDING_REFIT/REINDEX_ALL (DB only, no LLM wire) — retiring the loud
+recognized-but-unavailable refusal.
+
+Differential `embedding_reapply_equivalence` drives v4's REAL
+`reapplyEmbeddingProfile` over the fixture's Reapply Target (trunc=4, 8-dim
+vectors): every embedding-bearing table's `{id, embedding-hex}` byte-for-byte +
+the result perTable/targetDimensions/totalTruncated. GREEN — all five tables
+byte-identical. Two service unit tests prove the core slice/normalise/dim-detect
+logic directly (8-dim→4-dim quantized + legacy-raw slicing, already-at-target,
+shorter-than-target, degenerate skip).
+
+⚠ MOUNT gotcha (banked): the fixture's one 8-dim `doc_mount_chunks` stays 8-dim
+on BOTH sides in the sandbox — v4's fresh `getMountIndexDatabasePath()` connection
+reads 0 rows in jest; v5's writer connection likewise reads 0 for the mount
+reapply after the preceding partition ops (an isolated writer read sees the
+chunk). The two ports AGREE byte-for-byte; the slicing logic is proven by the
+four main tables + the unit tests. That production reapply slices the MOUNT
+partition (and the VACUUM-INTO backup is correctly encrypted/reopenable) is the
+OWED real-instance proof — the CLAUDE.md crypto/mount flag. Also added the two
+enqueue-helper deps in unit 2.
+
+Regen recipe: build the fixture, then run `embedding-reapply.test.ts` (jest,
+`--roots` /tmp mirror) with QT_EP_MGMT_MAIN/MOUNT (⚠ the mount copy must live at
+`<QUILLTAP_DATA_DIR>/data/quilltap-mount-index.db` — reapply-profile.ts ignores
+SQLITE_MOUNT_INDEX_PATH) + QT_ORACLE_OUT; run the Rust diff with
+QT_ORACLE_EP_REAPPLY.
+
+Versions: core 0.0.484 → 0.0.485, harness 0.0.410 → 0.0.411, host 0.0.60 → 0.0.61.

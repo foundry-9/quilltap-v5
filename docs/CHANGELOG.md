@@ -21,6 +21,12 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Implemented the embedding re-apply job: when a profile's Matryoshka
+dimensions are narrowed, the stored vectors are re-sliced and
+renormalized in place (with a safety backup of each database taken
+first) instead of re-embedding from scratch. The narrow arm of the
+profile-edit trigger now does real work.
+
 Exposed the embedding-profiles management API at its standard web
 addresses (in addition to the shared request endpoint), so the settings
 screens can reach it by URL.

@@ -509,6 +509,20 @@ impl EngineAssembler for HostAssembler {
             Box::new(ConversationRenderHandler { now_iso: None }),
         );
         // === end P4.6BM ===
+        // === P4.9H2A: the Matryoshka re-apply job — seam-free (DB only, no
+        // provider call). Before this the embedding-profiles PUT matrix's
+        // narrow arm + the ?action=reapply route minted EMBEDDING_REAPPLY_PROFILE
+        // jobs with nothing to run them (each retried three times and died). ===
+        registry.register(
+            "EMBEDDING_REAPPLY_PROFILE",
+            Box::new(
+                quilltap_core::services::embedding_reapply_profile::EmbeddingReapplyProfileHandler {
+                    now_iso: None,
+                    millis: None,
+                },
+            ),
+        );
+        // === end P4.9H2A ===
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
