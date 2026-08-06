@@ -5,6 +5,7 @@ import {
   isMessageVisibleToOperator,
   isOperatorAuthoredAnnouncement,
   isOverheardWhisper,
+  resolveWhisperTargetLabel,
 } from './whisper-visibility';
 
 /**
@@ -231,5 +232,27 @@ describe('isOverheardWhisper', () => {
       targetParticipantIds: [CHARACTER_A],
     });
     expect(isOverheardWhisper(ownAside, userIds)).toBe(false);
+  });
+});
+
+describe('resolveWhisperTargetLabel (v4 whisper-visibility.ts, Bug 30)', () => {
+  const OPERATOR = 'operator-user-id';
+  const NAMES: Record<string, string> = { [CHARACTER_A]: 'Ariel', [CHARACTER_B]: 'Prospero' };
+
+  it('resolves the operator\'s own userId to "you"', () => {
+    // A private user-initiated run whispers to the operator's userId, which is
+    // never a participant id — without this it read "whispered to unknown".
+    expect(resolveWhisperTargetLabel(OPERATOR, NAMES, OPERATOR)).toBe('you');
+    expect(resolveWhisperTargetLabel(OPERATOR, {}, OPERATOR)).toBe('you');
+  });
+
+  it('resolves a participant id to its display name', () => {
+    expect(resolveWhisperTargetLabel(CHARACTER_A, NAMES, OPERATOR)).toBe('Ariel');
+  });
+
+  it('keeps the "unknown" fallback for an id that is neither operator nor participant', () => {
+    expect(resolveWhisperTargetLabel('stranger', NAMES, OPERATOR)).toBe('unknown');
+    // No operator id known: a self-targeted whisper still falls back, unchanged.
+    expect(resolveWhisperTargetLabel(OPERATOR, NAMES, null)).toBe('unknown');
   });
 });

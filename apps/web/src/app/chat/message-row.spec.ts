@@ -475,6 +475,14 @@ describe('MessageRow — whisper label (P4.17 unit 3)', () => {
     expect(label.textContent.trim()).toBe('whispered to Lorian, unknown');
   });
 
+  it('resolves the operator\'s own userId to "you" (Bug 30)', () => {
+    // A private user-initiated run whispers to the operator's userId (chat.user.id
+    // = 'user1'), which is never a participant id — it read "unknown" before.
+    const fixture = render(message({ targetParticipantIds: ['user1'] }));
+    const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
+    expect(label.textContent.trim()).toBe('whispered to you');
+  });
+
   /** P4.D38 tier 2 (v4 `isOverheardWhisper`) — the row only APPLIES the class;
    *  the list computes it (see `message-list.spec.ts`). */
   it('applies the overheard-dim class only when the input is set', () => {

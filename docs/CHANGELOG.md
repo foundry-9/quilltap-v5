@@ -215,6 +215,9 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
   `resolveToolRowAttributionMessage`, which heads an `initiatedBy: 'user'`
   row as the operator; character-initiated rows keep the positional
   borrow.
+- Bug 30: a private user-initiated run reads "whispered to you" instead
+  of "whispered to unknown" — the whisper label resolves the operator's
+  own userId to "you" (both the bubble label and the Staff header tag).
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

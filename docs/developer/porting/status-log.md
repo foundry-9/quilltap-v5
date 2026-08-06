@@ -60890,3 +60890,19 @@ the §1 name-for-name contract diff at unification.
   exercises the USER-boundary walk stop. The `undefined`-vs-`null`
   participant assertion follows v5's `MessageDto` (`null`, not v4's
   optional `undefined`). `ng test` bug-29 specs: 43/43.
+
+- **Bug 30 (whisper "you") — DONE.** v4 `99d5fc7d` added
+  `resolveWhisperTargetLabel(targetId, participantNames, currentUserId)` —
+  `'you'` when the target is the operator's own userId (a private
+  user-initiated run whispers to the userId, never a participant id, so it
+  read "whispered to unknown"), else name-or-`'unknown'`. v5 mirror:
+  the helper (v4's exact signature) added to `whisper-visibility.ts`; the
+  `whisperTargets` computed in `message-row.ts` builds a `participantNames`
+  record and calls it, and `staffWhisperNames` reuses `whisperTargets()`
+  so the header tag gets the fix for free. **No prop threading** — v4
+  threads `currentUserId` SalonView → VirtualizedMessageList → MessageRow;
+  v5's row already takes the full `ChatDetail`, so `chat().user.id` is in
+  scope (documented at the computed). Specs: v4's three
+  `resolveWhisperTargetLabel` cases in `whisper-visibility.spec.ts`; a
+  rendered "whispered to you" case in `message-row.spec.ts`. 64/64 across
+  the two specs.

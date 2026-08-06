@@ -13,6 +13,7 @@ import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
+import { resolveWhisperTargetLabel } from './whisper-visibility';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
@@ -586,16 +587,25 @@ export class MessageRow {
   /**
    * The whisper label's target names (v4 `MessageRow.tsx:321-327` +
    * `participantNames` `SalonView.tsx:181`): each `targetParticipantId` mapped to
-   * its participant's character name, or "unknown", comma-joined. Replaces the
-   * former hardcoded "Private whisper" so the operator sees who a private line
-   * went to.
+   * its participant's character name, comma-joined. Replaces the former hardcoded
+   * "Private whisper" so the operator sees who a private line went to.
+   *
+   * A private user-initiated run whispers to the operator's own userId, which is
+   * never a participant id, so it used to render "whispered to unknown"; the
+   * self-target now resolves to "you" (Bug 30, v4 `99d5fc7d`
+   * `resolveWhisperTargetLabel`). v4 threads `currentUserId` SalonView →
+   * VirtualizedMessageList → MessageRow; v5's row already takes the full
+   * `ChatDetail`, so `chat().user.id` is in scope and no prop threading is
+   * needed.
    */
   protected readonly whisperTargets = computed(() => {
     const ids = this.message().targetParticipantIds ?? [];
-    const participants = this.chat().participants;
-    return ids
-      .map((id) => participants.find((p) => p.id === id)?.character?.name || 'unknown')
-      .join(', ');
+    const names: Record<string, string> = {};
+    for (const p of this.chat().participants) {
+      if (p.character?.name) names[p.id] = p.character.name;
+    }
+    const currentUserId = this.chat().user.id;
+    return ids.map((id) => resolveWhisperTargetLabel(id, names, currentUserId)).join(', ');
   });
 
   /**
