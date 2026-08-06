@@ -9,6 +9,50 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.37 resumed-lane gate, 2026-08-06
+
+The full verification gate on the final tree, branch
+`claude/almanack-server-porting-99b135`:
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (default and
+  `quilltap-core/native-transport`); `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the lane's env block
+  (`QT_ORACLE_ALMANACK_RENDER` + `QT_ORACLE_ALMANACK_TIER2`): **414 test
+  binaries / 1,875 tests / 0 failed**.
+- The lane's two differentials re-run BY NAME with `--nocapture`, zero SKIP:
+  `almanack_render_equivalence` "8 cases byte-identical" (the family grew
+  7 → 8 with the space-form case) and `almanack_tier2_equivalence` 72 OK
+  checks — both over oracles regenerated FRESH from the pinned
+  `f7f1a956` worktree (each NDJSON line carries a `baseline: f7f1a956`
+  marker the Rust side asserts; a stale regen cannot pass silently).
+- SPA gate (owed — the lane touched `apps/web`: the spec flip, the beat's
+  locator fix, and the `_surfaces.css` host-display fix): `ng test` 286
+  files / **3,914 passed**; `ng build` clean; **full Playwright 182 passed /
+  0 failed / 0 skipped (17.0 m)** — the suite grew 181 → 182 with the
+  activated Almanack walk, and the whole run is the proof the
+  `qt-entity-tabs` host-display rule moved no other screen.
+
+Drift status at lane end: v4 HEAD is `3adefeba` — exactly the three commits
+the round plan classified (`44e2e4fe` docs NO-PORT, `7df7de8e` = P4.D50's
+Taboo drift, `3adefeba` docs NO-PORT); v4's tree is clean. No stop condition
+was reached; every oracle regenerated from the lane-unique pinned worktree
+`/tmp/qt-v4-pin-p437-f7f1a956` (removed at lane end).
+
+**P4.37 is COMPLETE under its order**: units 1–12 all landed and verified,
+the host wire is live, the space-form date arm is pinned, the e2e walk is
+active, and the §1 contract diffs clean against the SPA mirror
+(name-for-name verbs; byte-equal phase manifest). Deferred loud (named in
+the unit-12 record): the BUILTIN provider row is absent from v5's report
+(no TF-IDF manifest in the compiled-in registry — pinned both directions;
+a provider-manifest follow-up), and the `is not valid JSON:` engine-wording
+seam continues (normalized with the prefix pinned). The
+`claude/almanack-server-porting-693d77` branch's held commits are absorbed
+into this branch; the old branch can be deleted at unification.
+
+Versions at lane end: core 0.0.478, harness 0.0.405, host 0.0.60,
+SPA 0.5.413; web/cli/tauri unchanged.
+
 ## Lane record — P4.37 resume item 5 (`P437_SERVER_LANDED` flipped; the beat's first live run), 2026-08-06
 
 The gated compile → phase bar → viewer → download → delete walk is ACTIVE and
