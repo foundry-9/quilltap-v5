@@ -65,10 +65,13 @@ pub struct DatabaseSecurityInfo {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupInfo {
+    // Field order follows v4's RUNTIME literal (`phase1-premises.ts:172-182` —
+    // oldestDate before newestDate), not its interface; every struct in this
+    // module keys serde order off the emitted object (§3 review, 2026-08-06).
     pub label: String,
     pub count: f64,
-    pub newest_date: Option<String>,
     pub oldest_date: Option<String>,
+    pub newest_date: Option<String>,
     pub total_size_bytes: f64,
 }
 

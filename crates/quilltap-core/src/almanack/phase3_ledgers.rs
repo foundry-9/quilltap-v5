@@ -22,7 +22,6 @@
 
 use std::collections::HashMap;
 
-use rusqlite::types::Value as SqlValue;
 use serde_json::Value;
 
 use crate::db::runtime::Db;
@@ -633,6 +632,11 @@ pub fn default_feature_config() -> FeatureConfigInfo {
 /// v4 `collectFeatureConfig` — every dial on `chat_settings` with its effective
 /// value. The `??` chain is faithful: an absent key AND an explicit `null` both
 /// take the default.
+///
+/// Error-arm divergence, recorded (§3 review, 2026-08-06): the `?` on the
+/// chat-settings read fails the WHOLE section onto its fallback, zeroing the
+/// rule counts too, where v4's safeQuery-null yields defaults + the real
+/// `text_replacement_rules` counts. Reachable only on a failed settings read.
 pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInfo, DbError> {
     let settings = db
         .read_main(|c| crate::db::chat_settings::find_by_user_id(c, user_id))?
@@ -779,6 +783,10 @@ pub fn collect_instance_settings(
         "ledgers.staleChatCandidates",
         |r| Ok((text(r, 0)?, opt_text(r, 1)?)),
     );
+    // Error-arm divergence, recorded (§3 review, 2026-08-06): v4 increments
+    // `eligible` per row and KEEPS the partial count when `isStale` throws
+    // mid-loop; the one-closure shape here reports 0 on any error. Reachable
+    // only when a per-chat staleness read fails — a happy path never sees it.
     let mut eligible = 0.0;
     let counted = db.read_main(|conn| {
         let mut n = 0.0;
@@ -1098,8 +1106,3 @@ pub fn collect_storage_stats(db: &Db, user_id: &str) -> Result<StorageStats, DbE
     })
 }
 
-/// Bind an owned string list as `&dyn ToSql` params — the `IN (…)` helper every
-/// mount-side collector needs (kept here so phases 4 and 5 share one shape).
-pub fn sql_params(values: &[String]) -> Vec<SqlValue> {
-    values.iter().map(|v| SqlValue::Text(v.clone())).collect()
-}

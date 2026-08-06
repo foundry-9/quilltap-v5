@@ -21,9 +21,11 @@
  *   cp "$V5W/harness/oracle/fixtures/settings.json"        "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+ *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
+ *   QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
  *   QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
- *       --roots "$PWD" --roots "$TMPO/cases" -- settings-routes
+ *       --roots "$PWD" --roots "$TMPO/cases" -- "settings-routes\.test\.ts$"
  */
 
 import * as fs from 'fs';

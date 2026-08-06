@@ -222,11 +222,14 @@ pub async fn system_tools_post(
         "capabilities-report-generate" => {
             // v4 zod-parses `{progressId?: uuid}` and treats a missing/invalid
             // body as "untracked" rather than an error (the card only sends one
-            // when it is watching).
+            // when it is watching) — so a non-UUID progressId must fall back to
+            // untracked too, not ride through (§3 review, 2026-08-06).
+            // (36-char gate: `Uuid::parse_str` also accepts simple/braced/urn
+            // forms Zod's uuid regex refuses.)
             let progress_id = parsed
                 .get("progressId")
                 .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
+                .filter(|s| s.len() == 36 && uuid::Uuid::parse_str(s).is_ok())
                 .map(str::to_string);
             dispatch_system(
                 &state,

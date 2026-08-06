@@ -131,6 +131,11 @@ pub fn generate_almanack_data(
     // `collect_runtime_environment` reads only host-supplied facts, so it needs
     // no fallback shape of its own (v4 says the same of its `os`/`process` read).
     let runtime_environment = phase1_premises::collect_runtime_environment(&ctx.facts, &ctx.paths);
+    // Error-arm divergence, recorded (§3 review, 2026-08-06): v4 wraps these
+    // three in `collect()` (whole-section fallback on throw); the v5 shapes are
+    // infallible-by-construction (per-query soft reads), so a dead main DB
+    // still stats the three files and keeps the host's passphrase flag where
+    // v4 would answer `databases: []` / `passphraseProtected: false`.
     let database_security =
         phase1_premises::collect_database_security(d, &ctx.paths, ctx.passphrase_protected);
     let backup_status = phase1_premises::collect_backup_status(&ctx.paths);
@@ -155,7 +160,7 @@ pub fn generate_almanack_data(
         phase2_machinery::collect_provider_info(d, ctx.registry, user)
     });
     let models_by_provider = collect("models", Vec::new(), || {
-        phase2_machinery::collect_models(d, user)
+        phase2_machinery::collect_models(d, ctx.registry, user)
     });
     let provider_model_cache = collect("providerModelCache", Vec::new(), || {
         phase2_machinery::collect_provider_model_cache(d)

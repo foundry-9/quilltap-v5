@@ -48,11 +48,9 @@ use super::types::{ErrorKind, Response};
 /// Everything the report needs from the host process (P4.0: the core discovers
 /// no paths, no clock and no runtime facts of its own). `None` on
 /// [`super::engine::EngineAssembly`] → the four arms answer the loud
-/// not-assembled refusal.
-///
-/// **The host wire is DEFERRED to unification** — this lane owns neither
-/// `quilltap-host` nor its version bump (the `avatar_preview` /
-/// `announcement_preview` precedent); the recipe is in the lane record.
+/// not-assembled refusal. Wired LIVE by `quilltap-host`'s
+/// `HostAlmanackServices` (P4.37 resume item 3) — the production spine always
+/// supplies it.
 pub trait AlmanackHost: Send + Sync {
     /// The disk storage backend (`<base>/files`), for the download/delete legs.
     /// A report's own bytes live in the Uploads mount, so this only matters for
@@ -73,8 +71,23 @@ pub trait AlmanackHost: Send + Sync {
     fn now_ms(&self) -> i64;
 }
 
-fn internal(e: impl std::fmt::Display) -> Response {
-    Response::error(ErrorKind::Internal, e.to_string())
+/// v4's route arms answer FIXED sentences (`serverError('Failed to …')`) and
+/// log the detail server-side (`route.ts` catch blocks) — leaking `e` into the
+/// body was the P4.D29 wording-drift class (§3 review, 2026-08-06).
+fn internal(action_sentence: &str, e: impl std::fmt::Display) -> Response {
+    tracing::error!("[Almanack] {action_sentence}: {e}");
+    Response::error(ErrorKind::Internal, action_sentence)
+}
+
+/// v4 `JSON.stringify` of an integral JS number has no fraction digits —
+/// `"size":46061`, never `46061.0` (the P4.6an "the `1` not `1.0`" rule). The
+/// row's column reads as REAL, so the value arrives as `f64`.
+fn js_size_number(size: f64) -> Value {
+    if size.is_finite() && size.fract() == 0.0 {
+        json!(size as i64)
+    } else {
+        json!(size)
+    }
 }
 
 /// One listed report (v4's `{id, filename, storageKey, createdAt, size}`).
@@ -118,7 +131,7 @@ fn read_report_rows(db: &Db, user_id: &str) -> Result<Vec<ReportRow>, DbError> {
 pub fn almanack_list(db: &Db, user_id: &str) -> Response {
     let mut rows = match read_report_rows(db, user_id) {
         Ok(r) => r,
-        Err(e) => return internal(e),
+        Err(e) => return internal("Failed to list reports", e),
     };
     // v4 sorts by `new Date(createdAt).getTime()` descending. An unparseable or
     // absent stamp becomes NaN there, which `sort` treats as "no opinion"; here
@@ -137,7 +150,7 @@ pub fn almanack_list(db: &Db, user_id: &str) -> Response {
             m.insert("filename".into(), Value::String(r.filename.clone()));
             m.insert("storageKey".into(), Value::String(r.storage_key.clone()));
             m.insert("createdAt".into(), Value::String(r.created_at.clone()));
-            m.insert("size".into(), json!(r.size));
+            m.insert("size".into(), js_size_number(r.size));
             Value::Object(m)
         })
         .collect();
@@ -169,14 +182,14 @@ pub fn almanack_get_bytes(
 ) -> Result<Option<(String, Vec<u8>)>, Response> {
     let entry = match find_report_entry(db, user_id, report_id) {
         Ok(e) => e,
-        Err(e) => return Err(internal(e)),
+        Err(e) => return Err(internal("Failed to get report", e)),
     };
     let Some(entry) = entry else {
         return Ok(None);
     };
     match download_file(db, backend, &entry) {
         Ok(bytes) => Ok(Some((entry.original_filename.clone(), bytes))),
-        Err(e) => Err(internal(e)),
+        Err(e) => Err(internal("Failed to get report", e)),
     }
 }
 
@@ -213,13 +226,13 @@ pub async fn almanack_delete(
 ) -> Response {
     let entry = match find_report_entry(db, user_id, report_id) {
         Ok(e) => e,
-        Err(e) => return internal(e),
+        Err(e) => return internal("Failed to delete report", e),
     };
     let Some(entry) = entry else {
         return Response::error(ErrorKind::NotFound, "Report not found");
     };
     if let Err(e) = delete_file(db, backend, &entry).await {
-        return internal(e);
+        return internal("Failed to delete report", e);
     }
     let id = entry.id.clone();
     match db
@@ -227,7 +240,7 @@ pub async fn almanack_delete(
         .await
     {
         Ok(_) => Response::System(json!({ "success": true })),
-        Err(e) => internal(e),
+        Err(e) => internal("Failed to delete report", e),
     }
 }
 
@@ -286,7 +299,7 @@ pub async fn almanack_generate(
             Ok(stored) => stored,
             Err(e) => {
                 progress.fail(e.to_string());
-                return internal(e);
+                return internal("Failed to generate report", e);
             }
         }
     };
@@ -328,7 +341,7 @@ pub async fn almanack_generate(
         .await
     {
         progress.fail(e.to_string());
-        return internal(e);
+        return internal("Failed to generate report", e);
     }
 
     progress.finish();
@@ -337,7 +350,7 @@ pub async fn almanack_generate(
         "reportId": report_id,
         "filename": filename,
         "storageKey": storage_key,
-        "size": size,
+        "size": js_size_number(size),
         "content": markdown,
     }))
 }

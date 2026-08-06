@@ -156,8 +156,15 @@ fn cached_models(db: &Db, provider: &str, model_type: &str) -> Vec<String> {
 }
 
 /// v4 `collectModels` — the CACHE branch (see the module header on the live
-/// fallback). v4 caps each provider's list at 50 after sorting.
-pub fn collect_models(db: &Db, user_id: &str) -> Result<Vec<ModelInfo>, DbError> {
+/// fallback). v4 caps each provider's list at 50 after sorting, and SKIPS a
+/// provider whose key exists but which the registry no longer knows
+/// (`phase2-machinery.ts:200-205`, warn + continue) — reachable here with an
+/// orphaned key + a warm cache row (§3 review, 2026-08-06).
+pub fn collect_models(
+    db: &Db,
+    registry: &crate::provider_manifest::Registry,
+    user_id: &str,
+) -> Result<Vec<ModelInfo>, DbError> {
     // v4 keys off the ACTIVE api keys only, one per provider.
     let providers: Vec<String> = main_rows(
         db,
@@ -169,6 +176,11 @@ pub fn collect_models(db: &Db, user_id: &str) -> Result<Vec<ModelInfo>, DbError>
 
     let mut out: Vec<ModelInfo> = Vec::new();
     for provider in providers {
+        if !registry.has_provider(&provider) {
+            // v4: `providerRegistry.getProvider()` unknown → warn + continue.
+            tracing::warn!(provider = %provider, "[Almanack] skipping models for unknown provider");
+            continue;
+        }
         let mut models = cached_models(db, &provider, "chat");
         if models.is_empty() {
             // Cold cache: v4 would go and ask the provider. See the header.
@@ -264,13 +276,18 @@ fn designated_from_profile(profile: &Value) -> DesignatedProfileInfo {
 }
 
 /// v4 `collectCheapLLMInfo` — the profile designated as the cheap background
-/// worker.
-pub fn collect_cheap_llm_info(db: &Db, _user_id: &str) -> Result<DesignatedProfileInfo, DbError> {
+/// worker. v4 reads through the USER-SCOPED repo
+/// (`getUserRepositories(userId).connections.findAll()` → `findByUserId`), so
+/// the scan is filtered to the user's rows in rowid order — on a multi-user DB
+/// an unscoped scan could report another user's cheap profile (§3 review,
+/// 2026-08-06; the single-user fixture is blind to it).
+pub fn collect_cheap_llm_info(db: &Db, user_id: &str) -> Result<DesignatedProfileInfo, DbError> {
     let profiles = db
         .read_main(connection_profiles::find_all)
         .unwrap_or_default();
     Ok(profiles
         .iter()
+        .filter(|p| p.get("userId").and_then(Value::as_str) == Some(user_id))
         .find(|p| p.get("isCheap").and_then(Value::as_bool).unwrap_or(false))
         .map(designated_from_profile)
         .unwrap_or_default())
