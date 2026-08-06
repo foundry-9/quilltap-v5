@@ -21,6 +21,10 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Added a differential test and committed test fixtures covering the
+embedding-profiles management API against the reference app, including
+the re-embed trigger matrix. Test-only.
+
 Added the embedding-profiles management API: listing profiles (with
 their API key, tags, and — for the built-in model — vocabulary and
 embedding-progress stats), viewing, creating, updating, and deleting a

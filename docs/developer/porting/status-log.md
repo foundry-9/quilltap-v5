@@ -59395,3 +59395,42 @@ catalog shapes. Compiles + clippy clean (both feature sets); the CRUD/matrix are
 differential-verified in unit 5 (the routes family) — the immediate next unit.
 
 Version: core 0.0.483 → 0.0.484.
+
+### Unit 5 (routes half) — the routes differential + committed fixture family
+
+Delivered the committed `crates/quilltap-web/tests/fixtures/embedding-profiles-{main,mount}.db`
+family + its builder (`harness/oracle/fixtures/build-ep-mgmt-fixture.ts`, spec
+`ep-mgmt.json`): five profiles (OPENAI default + apiKey + two tags; BUILTIN + a
+fitted `tfidf_vocabulary`; an OPENAI truncation-bearing; an OLLAMA
+truncation-free; a small-dim Reapply Target trunc=4), one api_key, two tags,
+`embedding_status` rows for the default profile, `background_jobs` (empty, table
+present so both sides enqueue/dump), and 8-dim vectors across every main
+embedding table + mount `doc_mount_chunks` plus 4-dim near-duplicate/distinct
+memories (for reapply + dedup, next units).
+
+`embedding_profiles_routes_equivalence` (33 cases) drives v4's REAL route
+handlers (jest-real-DB oracle, `embedding-profiles-routes.test.ts`) vs the v5
+handler: reads, create (happy/default-triggers-reindex/dup-409/validation/
+apikey-404), the WHOLE PUT trigger matrix (default-model→REINDEX_ALL;
+builtin-became-default→REFIT; external-became-default→REINDEX_ALL;
+narrow→REAPPLY_PROFILE; widen→REINDEX_ALL; non-default→no job; normalizeL2-only→
+no job; clear-apikey), delete, refit (+non-BUILTIN 400 / 404), reindex
+(all/legacy-no-body/mismatched/no-target-400/bad-scope-400), reapply
+(has-trunc/no-trunc-400/404). Each matrix/action case diffs the post-op
+`background_jobs` types + `embedding_status` counts (the matrix claim is STATE).
+GREEN first run over a fresh `3adefeba` oracle; **mutation-proven twice** (disable
+the BUILTIN refit split → red; break the NARROW/WIDEN test → red), per the order.
+
+Gotcha banked: jest returns an INCOMPLETE `@/lib/embedding/embedding-service`
+module (the `invalidateAllEmbeddings` export reads `undefined`) unless it is
+`jest.requireActual`'d — image-profiles never exercised this path, so the mock
+set had to grow. `list-providers`/`list-models`/`fetch-models` are NOT in this
+differential (v4 registers no plugins in the sandbox → returns []); they are
+pinned by the handler's Rust unit tests instead.
+
+Regen recipe: build the fixture via `build-ep-mgmt-fixture.ts` (QT_EP_MGMT_MAIN /
+QT_EP_MGMT_MOUNT → the committed .db paths), then run
+`embedding-profiles-routes.test.ts` (jest, `--roots` /tmp mirror) with
+QT_EP_MGMT_MAIN/MOUNT + QT_ORACLE_OUT; run the Rust diff with QT_ORACLE_EP_ROUTES.
+
+Version: harness 0.0.409 → 0.0.410.

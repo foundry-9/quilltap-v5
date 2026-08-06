@@ -1,0 +1,149 @@
+{
+  "$comment": [
+    "P4.9H2A embedding-profiles MANAGEMENT fixture spec. One committed file drives",
+    "the fixture builder (build-ep-mgmt-fixture.ts) that materializes the committed",
+    "embedding-profiles-{main,mount}.db family, plus the routes / reapply / dedup",
+    "differentials that read it. SAFETY: testPepperBase64 is a THROWAWAY 32-byte",
+    "key (the shared fixture key), NOT the real Friday pepper — safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "userId": "aa000000-0000-4000-8000-0000000000aa",
+  "secondUserId": "bb000000-0000-4000-8000-0000000000bb",
+  "apiKey": {
+    "id": "ca000000-0000-4000-8000-0000000000c1",
+    "label": "OpenAI Key",
+    "provider": "OPENAI",
+    "keyValue": "sk-test-embed-key"
+  },
+  "tags": [
+    { "id": "7a000000-0000-4000-8000-0000000000d1", "name": "Prod", "nameLower": "prod" },
+    { "id": "7b000000-0000-4000-8000-0000000000d2", "name": "Experimental", "nameLower": "experimental" }
+  ],
+  "characters": [
+    { "id": "c1000000-0000-4000-8000-000000000001", "name": "Aria" },
+    { "id": "c2000000-0000-4000-8000-000000000002", "name": "Bram" }
+  ],
+  "embeddingProfiles": [
+    {
+      "id": "e0000000-0000-4000-8000-000000000001",
+      "name": "OpenAI Default",
+      "provider": "OPENAI",
+      "apiKeyId": "ca000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "modelName": "text-embedding-3-small",
+      "dimensions": 1536,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": true,
+      "tags": ["7a000000-0000-4000-8000-0000000000d1", "7b000000-0000-4000-8000-0000000000d2"]
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000002",
+      "name": "Built-in TF-IDF",
+      "provider": "BUILTIN",
+      "apiKeyId": null,
+      "baseUrl": null,
+      "modelName": "tfidf-bm25-v1",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false,
+      "tags": []
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000003",
+      "name": "OpenAI Truncated",
+      "provider": "OPENAI",
+      "apiKeyId": null,
+      "baseUrl": null,
+      "modelName": "text-embedding-3-large",
+      "dimensions": 3072,
+      "truncateToDimensions": 1024,
+      "normalizeL2": true,
+      "isDefault": false,
+      "tags": []
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000004",
+      "name": "Ollama Untruncated",
+      "provider": "OLLAMA",
+      "apiKeyId": null,
+      "baseUrl": "http://localhost:11434",
+      "modelName": "nomic-embed-text",
+      "dimensions": 768,
+      "truncateToDimensions": null,
+      "normalizeL2": false,
+      "isDefault": false,
+      "tags": []
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000005",
+      "name": "Reapply Target",
+      "provider": "OPENAI",
+      "apiKeyId": null,
+      "baseUrl": null,
+      "modelName": "text-embedding-3-small",
+      "dimensions": 8,
+      "truncateToDimensions": 4,
+      "normalizeL2": true,
+      "isDefault": false,
+      "tags": []
+    }
+  ],
+  "$vocab_comment": "A fitted TF-IDF vocabulary for the BUILTIN profile (vocabularyStats enrichment).",
+  "vocabulary": {
+    "id": "f0000000-0000-4000-8000-000000000001",
+    "profileId": "e0000000-0000-4000-8000-000000000002",
+    "vocabulary": "[[\"quill\",0],[\"tap\",1]]",
+    "idf": "[0.5,0.5]",
+    "avgDocLength": 12.5,
+    "vocabularySize": 2,
+    "includeBigrams": false,
+    "fittedAt": "2026-01-02T00:00:00.000Z"
+  },
+  "$status_comment": [
+    "embedding_status rows for the DEFAULT profile (e...001): 2 EMBEDDED, 1 PENDING,",
+    "1 FAILED -> embeddingStats {total:4, pending:1, embedded:2, failed:1}. The",
+    "matrix's invalidateAllEmbeddings flips all four to PENDING and returns 4."
+  ],
+  "statusRows": [
+    { "id": "a0000000-0000-4000-8000-000000000001", "entityType": "MEMORY", "entityId": "d0000000-0000-4000-8000-000000000001", "profileId": "e0000000-0000-4000-8000-000000000001", "status": "EMBEDDED" },
+    { "id": "a0000000-0000-4000-8000-000000000002", "entityType": "MEMORY", "entityId": "d0000000-0000-4000-8000-000000000002", "profileId": "e0000000-0000-4000-8000-000000000001", "status": "EMBEDDED" },
+    { "id": "a0000000-0000-4000-8000-000000000003", "entityType": "CONVERSATION_CHUNK", "entityId": "d0000000-0000-4000-8000-000000000010", "profileId": "e0000000-0000-4000-8000-000000000001", "status": "PENDING" },
+    { "id": "a0000000-0000-4000-8000-000000000004", "entityType": "HELP_DOC", "entityId": "d0000000-0000-4000-8000-000000000020", "profileId": "e0000000-0000-4000-8000-000000000001", "status": "FAILED" }
+  ],
+  "$reapply_comment": [
+    "Reapply/dedup corpus. 8-dim vectors in every embedding-bearing table (main:",
+    "memories/vector_entries/conversation_chunks/help_docs; mount: doc_mount_chunks)",
+    "so the Reapply Target profile (trunc=4) slices 8->4 across all of them. The",
+    "dedup memories are 4-dim with crafted cosines: m-dup-a & m-dup-b >= 0.80",
+    "(cluster), m-distinct < 0.80 (separate). The 8-dim and 4-dim memories form two",
+    "dim groups, proving dedup never compares mismatched dims."
+  ],
+  "reapplyMemories": [
+    { "id": "d0000000-0000-4000-8000-000000000001", "characterId": "c1000000-0000-4000-8000-000000000001", "content": "Aria met the Duke on Tuesday.", "summary": "Aria met the Duke", "embedding": [1, 0, 0, 0, 0, 0, 0, 0] },
+    { "id": "d0000000-0000-4000-8000-000000000002", "characterId": "c1000000-0000-4000-8000-000000000001", "content": "The garden had 3 roses.", "summary": "3 roses", "embedding": [0, 1, 0, 0, 0, 0, 0, 0] }
+  ],
+  "dedupMemories": [
+    { "id": "d0000000-0000-4000-8000-000000000101", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "Bram loves the API and SQL databases.", "summary": "Bram loves API and SQL", "importance": 0.9, "embedding": [1, 0.05, 0, 0] },
+    { "id": "d0000000-0000-4000-8000-000000000102", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "Bram likes databases.", "summary": "Bram likes databases", "importance": 0.4, "embedding": [0.999, 0.02, 0, 0] },
+    { "id": "d0000000-0000-4000-8000-000000000103", "characterId": "c2000000-0000-4000-8000-000000000002", "content": "The weather was cold in Berlin.", "summary": "Cold in Berlin", "importance": 0.5, "embedding": [0, 0, 1, 0] }
+  ],
+  "conversationChunks": [
+    { "id": "d0000000-0000-4000-8000-000000000010", "content": "A short conversation chunk about roses.", "embedding": [0, 0, 1, 0, 0, 0, 0, 0] }
+  ],
+  "helpDocs": [
+    { "id": "d0000000-0000-4000-8000-000000000020", "title": "Getting Started", "path": "getting-started.md", "url": "/help/getting-started", "content": "Welcome to Quilltap.", "embedding": [0, 0, 0, 1, 0, 0, 0, 0] }
+  ],
+  "vectorEntries": [
+    { "id": "d0000000-0000-4000-8000-000000000001", "characterId": "c1000000-0000-4000-8000-000000000001", "embedding": [1, 0, 0, 0, 0, 0, 0, 0] }
+  ],
+  "docMountPoint": {
+    "id": "b0000000-0000-4000-8000-000000000001",
+    "name": "Docs Mount"
+  },
+  "docMountChunks": [
+    { "id": "d0000000-0000-4000-8000-000000000030", "content": "A mounted document chunk.", "embedding": [0, 0, 0, 0, 1, 0, 0, 0] }
+  ]
+}
