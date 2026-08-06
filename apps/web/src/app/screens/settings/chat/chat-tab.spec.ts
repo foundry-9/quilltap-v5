@@ -17,7 +17,7 @@ import { ChatTab } from './chat-tab';
  * so it is pinned here against `ChatTabContent.tsx` L70-206.
  */
 
-/** v4 `ChatTabContent.tsx` L70-206, top to bottom. */
+/** v4 `ChatTabContent.tsx` L70-210, top to bottom (Taboo added at `7df7de8e`). */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
@@ -34,6 +34,7 @@ const V4_CARD_ORDER = [
   ['Thinking / Reasoning', 'thinking-display'],
   ['Answer Confirmation', 'answer-confirmation'],
   ['Dangerous Content', 'dangerous-content'],
+  ['Taboo', 'taboo'],
   ['Data Retention', 'data-retention'],
   ['Autonomous Rooms', 'autonomous-rooms'],
   ['Scheduled Autonomous Rooms', 'autonomous-room-schedules'],
@@ -53,6 +54,7 @@ function mount(section: string | null = null) {
           dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'],
           dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
           getDataRetentionSettings: async () => ({ staleChatDays: 30 }),
+          getTabooSettings: async () => ({ phrases: [] }),
           getAutonomousRooms: async () => [],
         },
       },
@@ -70,7 +72,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all eighteen v4 cards in v4\'s exact order', () => {
+  it('mounts all nineteen v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),

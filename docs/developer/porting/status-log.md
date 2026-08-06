@@ -58422,3 +58422,45 @@ QT_ORACLE_OUT=/tmp/oracle-settings-routes-p4d50.ndjson \
   $N/npx jest --silent --watchman=false --testTimeout=120000 \
     --roots "$PWD" --roots "$TMPO/cases" -- "settings-routes\.test\.ts$"
 ```
+
+## Lane record — P4.D50 unit 3 (the Settings → Chat Taboo card)
+
+`apps/web/src/app/screens/settings/chat/taboo-settings.ts` — v4's
+`TabooSettings.tsx` ported: the self-fetching instance-scoped card (the
+Data Retention precedent), the add form with Enter wired EXPLICITLY (v4's
+own note: the card promises "Press Enter or use Add", and implicit form
+submission varies with browser and input method), the badge list with
+per-phrase remove, the three client guards (blank, over-long, duplicate)
+that must not reach the network, and both toast sentences. Slotted into
+`chat-tab.ts` BETWEEN Dangerous Content and Data Retention, v4's exact
+position, with `sectionId="taboo"`; the chat-tab spec's card census goes
+18 → 19.
+
+The card never recomputes the list locally: every add and remove sends the
+WHOLE array and the response — already normalized by the server — is what
+it renders. That is what makes the dedupe visible in the UI without the
+client duplicating the rule.
+
+**Specs.** `taboo-settings.spec.ts` ports v4's 227-line component test
+case-for-case (12 cases), plus one v5 addition: a failed save keeps the
+draft for a retry. Two locator traps worth remembering: the badge's icon
+renders its own `<span>` inside the badge, so the label needs
+`> span:first-child`; and the remove button's `aria-label` embeds double
+quotes, so it must be matched by value rather than through a CSS attribute
+selector.
+
+**e2e.** `settings-taboo-flow.spec.ts` — one LIVE beat against the real
+verbs (no ACTIVATE-AT-UNIFY gate; the server half is on this branch):
+add → the case-duplicate guard refusing before the network → a second add
+→ RELOAD and re-read from `instance_settings` → remove → remove, ending
+with the list empty so the shared instance is left as it was found. The
+reload is the point — it is the only way the walk proves the server stored
+what the card is showing.
+
+A third locator trap, this one caught by the first live run:
+`getByLabel('Forbidden phrase')` is a SUBSTRING match, so it also matched
+the enclosing form's `aria-label="Add a forbidden phrase"` — strict-mode
+ambiguous. Located by role with `exact: true` instead.
+
+Gate for this unit: `ng build` clean, `ng test` 287 files / 3,926 tests /
+0 failed, `npx playwright test foundation settings-taboo` 2 passed.

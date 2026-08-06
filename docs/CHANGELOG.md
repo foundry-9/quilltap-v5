@@ -66,7 +66,11 @@ accordingly. The list travels: it exports with instance settings and
 rides along in full backups. Introspection (the self-inventory tool)
 deliberately omits the section, matching the reference app. The list is
 read and written over `/api/v1/settings/taboo`, which merges a partial
-body over the stored value so an incomplete request can never wipe it.
+body over the stored value so an incomplete request can never wipe it,
+and is edited from a new Taboo card on Settings → Chat, between
+Dangerous Content and Data Retention. The card sends the whole list on
+every add and remove and renders back exactly what the server stored,
+so the normalization is visible where you made the edit.
 
 Planned the next porting round and committed its work orders — three
 lanes. The first resumes the held Almanack server work from its

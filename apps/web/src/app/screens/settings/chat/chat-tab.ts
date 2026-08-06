@@ -22,6 +22,7 @@ import { ContextCompressionSettings } from './context-compression-settings';
 import { CustomToolsSettings } from './custom-tools-settings';
 import { DangerousContentSettings } from './dangerous-content-settings';
 import { DataRetentionSettings } from './data-retention-settings';
+import { TabooSettings } from './taboo-settings';
 import { GeneralStateSettings } from './general-state-settings';
 import { ImageDescriptionSettings } from './image-description-settings';
 import { MemoryCascadeSettings } from './memory-cascade-settings';
@@ -69,6 +70,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     GeneralStateSettings,
     ImageDescriptionSettings,
     MemoryCascadeSettings,
+    TabooSettings,
     TextReplacementSettings,
     ThinkingDisplaySettings,
     TokenDisplaySettings,
@@ -215,6 +217,15 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'dangerous-content'"
         >
           <qt-dangerous-content-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Taboo"
+          description="Phrases no character may utter, anywhere in the house"
+          sectionId="taboo"
+          [forceOpen]="section() === 'taboo'"
+        >
+          <qt-taboo-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card
