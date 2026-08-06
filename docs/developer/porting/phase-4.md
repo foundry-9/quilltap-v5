@@ -4095,3 +4095,52 @@ silently clobbered); the distill + llm-log-cleanup recipes carry it,
 and both families now zone-mark their NDJSONs. The distill-transitive
 TZ pins, the committed-fixture rule, and the recipe-sweep venue rules
 stand unchanged.
+
+## The Taboo + maintenance round (P4.37-resumed ∥ P4.D50 ∥ P4.40) — UNIFIED 2026-08-06
+
+All three orders CLOSED (headers + the round record in `status-log.md`).
+The Almanack is LIVE end to end (collectors oracle-verified, host wire
+live, walk active); the Taboo feature is absorbed whole (storage →
+prompt section → cache-key v3 → verbs/REST → the Settings card, all
+differential-pinned); the maintenance debt is cleared (both escalated
+tier-3 oracles regenerable, `compression_tier3`'s standing red closed
+by the same corpus defect, the tracing race fixed, two e2e beats
+hardened, the sweep driver drift-safe via `--v4`). The §3 unification
+review fixed the Taboo `double_option` dispatch-leg bug and five
+Almanack fidelity minors on the unify branch.
+
+**Next candidates, in rough value order:**
+
+1. **A dogfood pass** — now unambiguously top; the owed queue: the
+   Almanack's first report on the Friday copy (💸 none — no model
+   calls), the live Taboo section on a real turn (add a phrase, see
+   the prompt carry it; the cache-key v3 rollover), the P4.D49 live
+   proofs (enclave daily budget binding on real spend; llm_logs
+   profile attribution), plus the standing backlog (walk Parts C
+   17–19 / D / G / H, the P4.D31/P4.21/D33 💸 proofs, the OpenRouter
+   pricing fix with a real key).
+2. **The standing pools:** `p4.9h` (embedding-profiles management +
+   the banked PUT trigger matrix), `p4.9i2` (the help surface — the
+   bank now holds the two Taboo docs + the three Almanack-era docs +
+   earlier), `p4.9l` (the composer-toolbar slice), the P4.D41 tier-2
+   item 9 fixture, the P4.31 note-grade items.
+3. **The BUILTIN (TF-IDF) provider-manifest decision** — the
+   Almanack's provider table omits the BUILTIN row until a manifest
+   exists (pinned both directions; P4.37's named deferral).
+4. **D21 / release-grade packaging** remains deliberately unstarted
+   (the "don't initiate a release" standing rule).
+
+**Standing regen note:** the oracle baseline is **`3adefeba`**
+(2026-08-06, v4 HEAD, tree clean), adopted at this round's
+unification — lib-identical to `7df7de8e` (the Taboo feature; the
+only delta above it is `docs/releases/4.8.0.md`). NO v4 drift debt
+remains. Oracles may regenerate straight from
+`~/source/quilltap-server` while HEAD stays `3adefeba`; pin a
+detached worktree on drift/dirty (`oracle-regen-pinned-v4-worktree`),
+or sweep with `recipe_sweep.py --v4 <pin>` (P4.40's addition —
+recipes never name a pin themselves; the two rules compose). The
+almanack-family NDJSON `baseline:` markers name the CASE vintage
+(`f7f1a956`), not the pin — regenerating at any lib-identical-or-later
+baseline keeps them consistent until the case itself moves. The
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.

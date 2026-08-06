@@ -9,6 +9,150 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →
+`3adefeba`** (v4 HEAD, tree clean — release-notes docs atop
+`7df7de8e`, lib-identical to it). Branch `unify/taboo-maintenance`:
+the 18 lane commits cherry-picked in dependency order (P4.37's seven,
+P4.D50's five, P4.40's six), versions recounted per the playbook
+(base + total bumps: core 0.0.475+3+2+1 = **0.0.481**, harness
+0.0.403+2+2 = **0.0.407**, host **0.0.60**, web **0.0.62**, SPA
+0.5.412+4 = **0.5.416**; cli/tauri unchanged; both locks synced). The
+only cross-lane file overlaps were the contracted set — version files
+plus `api/types.rs`/`api/engine.rs` between P4.37 and P4.D50, folded
+purely additively as the round plan pinned.
+
+**What landed** (detail: the three order headers + the lane records
+below): the Almanack server remainder — the held collectors absorbed
+and finally ORACLE-VERIFIED (the committed
+`almanack-{main,mount,llmlogs,llmlogs-legacy}.db` family + the
+72-check `almanack_tier2_equivalence`, mutation-proven ×3; two v5
+defects caught by its first runs), `AlmanackHost` wired LIVE, the
+space-form date arm (render family 7 → 8, red→green proven), the walk
+ACTIVE (its first live run caught the `qt-entity-tabs` inline-host
+bug + a strict-mode locator) ∥ the whole Taboo feature end to end,
+differential-pinned at every layer (routes 32 → 50 cases; the
+system-prompt family 56 → 65 rows + BOTH v4 cache goldens reproduced,
+the base one UNCHANGED per v4's own claim; a seeded
+`build_context_tier3` op; a live e2e beat) ∥ the maintenance debt
+cleared — the two escalated tier-3 oracles regenerable again (the
+cause was NON-UUID corpus profile ids v4's `0cde7fbc`
+`UUIDSchema` refuses at the repository create, NOT the predicted
+stale-mock shape; venue-only fix, mutation-proven), and
+**`compression_tier3`'s two-round standing red closed by the same
+defect — its owed un-mock order is MOOT**; the
+`failed_job_emits_a_tracing_event` Interest-cache race fixed
+(17-in-25 → 0-in-30, nothing weakened); two of the three e2e
+intermittents reproduced-then-hardened (the WS-transport
+drop-before-OPEN and the stale-toast strict-mode shapes), the third
+honestly unreproduced and recorded; the sweep driver gained
+`--v4 <pin>` and the `unstaged_jest_roots` false-positive fix (16 of
+27 flagged families were already correct — proven by running them
+from a `.claude/` venue).
+
+**The unification wires:** the three cross-lane recipe leftovers each
+lane had named as the other's — the staged-mirror blocks for
+`first_message_context_equivalence` + `knowledge_injector_equivalence`
+and `recall_history`'s run-stage anchor; the §1 name-for-name diff vs
+`core-contract.ts` (clean — and the six new verbs are also proven at
+runtime by the two LIVE walks); no ACTIVATE-AT-UNIFY marker remained
+(P4.37 flipped its own gate in-lane; P4.D50's beat shipped live).
+
+**The §3 review** (two agent-assisted adversarial fidelity passes —
+Almanack vs v4 at the pin, Taboo vs the `7df7de8e` diff — plus the
+unifier's own read of every shared hunk) **found and fixed on the
+unify branch:**
+
+1. **The one that would have shipped live-wrong:**
+   `TabooSettingsUpdate.phrases` lacked the repo's `double_option`
+   deserializer, so an explicit `{"phrases": null}` over the dispatch
+   JSON leg collapsed to key-absent — silently KEEPING the stored
+   list where v4 answers `validationError`. The route differential
+   was structurally blind: the web edge hand-constructs the variant
+   in-process, so the null arm never crossed serde. Fixed + pinned by
+   a serde tri-state unit test in `api/types.rs` (the leg the
+   differential misses).
+2. **Almanack fidelity minors**, each verified against v4 at the pin:
+   `collect_cheap_llm_info` dropped v4's user scoping (an unscoped
+   `find_all` could report another user's cheap profile; the
+   single-user fixture was blind); the four route error arms leaked
+   `e.to_string()` where v4 answers fixed sentences (`Failed to
+   list/get/delete/generate …` — the P4.D29 wording class; detail
+   moved to `tracing::error!`); `size` serialized `46061.0` where v4
+   emits the integer (the P4.6an rule — the harness's number
+   canonicalization had concealed it, and `get` vs `generate` were
+   internally inconsistent); the `progressId` zod-uuid gate was
+   dropped (a non-UUID id must fall back to UNTRACKED; 36-char +
+   parse gate, since `Uuid::parse_str` alone accepts forms Zod
+   refuses); `collect_models` listed a warm-cached provider the
+   registry no longer knows (v4 skips with a warn).
+3. **Hygiene:** two stale "host wire DEFERRED" comments retired (the
+   wire is live); `BackupInfo` serde order moved to v4's runtime
+   literal (`oldestDate` first — the one struct that matched the
+   interface instead); the dead `sql_params` helper deleted; two
+   error-arm-only divergences DOCUMENTED at their sites
+   (stale-eligibility partial count on mid-loop throw;
+   feature-config's whole-section fallback).
+4. **Recipe rot the unify regen itself exposed:** P4.37's two
+   committed recipe headers named the lane's dead `/tmp` pin — the
+   exact `stale_v4_pin_path` class P4.40 codified THIS round, caught
+   by the repaired driver's first `--list` on the unify branch; the
+   settings-routes case header had never carried its fixture-BUILD
+   stage (the assembled recipe died on a nonexistent fixture); and
+   `build-first-message-context-fixture.ts` predated the `40319484`
+   GC and died v4-side (`no such table: doc_mount_blobs`) — the
+   lazy-DDL block the newer builders carry was ported in.
+
+Recorded, not fixed (noted for their standing homes): the Taboo
+`validationError` body still omits v4's Zod `details` array (the
+standing P4.6bb error-envelope deferral); the taboo parse-failure
+warn drops the reason field; the Almanack backup-date TZ seam (in-
+module) and the synchronous-collection perf note.
+
+**The regen + gate.** ONE unify pin (`/tmp/qt-v4-pin-unify-7df7de8e`,
+removed at cleanup) served all 11 families — the round plan's
+mixed-pin design collapses at unification because `7df7de8e` is where
+the baseline lands and the almanack/maintenance families are
+taboo-untouched (either pin yields identical output; the almanack
+NDJSON `baseline:` markers name the CASE vintage `f7f1a956`, not the
+pin). **The predicted union hazard — P4.40's llm_logs-dumping
+families vs P4.D50's `PROMPT_CACHE_STRUCTURE_VERSION` bump — did NOT
+materialize**: `context_summary_service_tier3` /
+`memory_processor_tier3` / `compression_tier3` all green at the new
+pin. All 11 families regenerated + run BY NAME via
+`recipe_sweep.py --run-all --v4 <pin>` (results committed:
+`harness/tools/sweep-results/2026-08-06-7df7de8e-unify-gate-*.json`):
+almanack_render (8 byte-identical), almanack_tier2 (72 checks),
+system_prompt (65 rows + 2 goldens), build_context_tier3,
+settings_routes (50), recall_history, context_summary_service_tier3,
+memory_processor_tier3, compression_tier3, first_message_context,
+knowledge_injector — zero SKIP.
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets; `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the round's 21-var env
+  block: **414 test binaries / 1,911 passed / 0 failed**, exit 0.
+- SPA: `ng test` **287 files / 3,926 passed / 0 failed**; `ng build`
+  clean. (An earlier ng-test run under concurrent clippy+release load
+  reported 8 reds whose detail a tail-pipe destroyed before reading —
+  the tail-masking trap firing AGAIN; the clean full run on the final
+  quiet tree is the gate.)
+- Full Playwright over the fresh dist + release binaries: **183
+  passed / 0 failed / 0 skipped (4.2 m)** — the suite grew 182 → 183
+  with the Taboo beat beside the activated Almanack walk.
+
+**Cleanup:** the three lane worktrees + branches deleted; the old
+held branch `claude/almanack-server-porting-693d77` deleted
+(absorbed); the unify pin + /tmp oracle artifacts removed.
+
+**Standing after the round:** the dogfood pass is now unambiguously
+the top candidate (phase-4.md) — it owes the Almanack's first
+real-data report (💸 none), the live Taboo section on a real turn,
+and the P4.D49 budget/attribution proofs, atop the standing walk
+backlog. The BUILTIN (TF-IDF) provider-manifest decision is P4.37's
+named deferral. No recipe-rot debt is currently known.
+
 ## Lane record — P4.37 resumed-lane gate, 2026-08-06
 
 The full verification gate on the final tree, branch

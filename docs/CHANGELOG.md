@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+Unified the Taboo + maintenance round — three lanes, all closed. The
+system report ("The Almanack") is now fully live: its collectors are
+verified against the reference implementation by a new 72-check
+equivalence suite over a committed four-database fixture family, the
+host wiring makes the report reachable in production, timestamps in the
+plain space-separated database vintage render correctly, and the
+end-to-end walk (compile, per-phase progress, viewer, download, delete)
+runs on every test pass. The reference app's newest feature, Taboo, is
+absorbed whole: an instance-wide list of phrases no character may
+utter, normalized on save, rendered into the cacheable prefix of every
+character's system prompt (verified byte-for-byte including both cache
+goldens), served over new settings endpoints, and edited from a new
+Settings → Chat card. The maintenance sweep repaired the two
+differential oracles that could no longer regenerate (a corpus defect,
+not a port bug — and the same defect turned out to explain a
+long-standing red in a third suite), fixed a flaky tracing test at its
+real cause, hardened two intermittent end-to-end checks, and taught the
+recipe sweep driver to regenerate safely while the reference app is
+mid-drift. The unification review caught and fixed a real bug before it
+shipped — an explicit null sent to the new Taboo endpoint would
+silently keep the stored list where the reference app rejects it — plus
+five report-fidelity nits (user scoping, error wording, number shape, a
+dropped id-format gate, an unknown-provider skip) and three rotted
+regeneration recipes. Gate: 414 Rust test binaries / 1,911 tests / 0
+failed with eleven equivalence families re-proven fresh; SPA 3,926
+tests / 0; full Playwright 183 passed / 0 failed / 0 skipped. Versions:
+core 0.0.481, harness 0.0.407, host 0.0.60, web 0.0.62, SPA 0.5.416.
+
 The system-report card's end-to-end test walk is active: compile,
 per-phase progress, viewer, download, delete. Activating it caught two
 real issues fixed here: the report card's and the settings tab

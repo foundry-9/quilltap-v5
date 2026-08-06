@@ -1,0 +1,102 @@
+{
+  "label": "unify/taboo-maintenance gate: the round's 11 families fresh from the 7df7de8e pin",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "almanack_render_equivalence",
+    "almanack_tier2_equivalence",
+    "system_prompt_equivalence",
+    "build_context_tier3_equivalence",
+    "settings_routes_equivalence",
+    "recall_history_equivalence",
+    "context_summary_service_tier3_equivalence",
+    "memory_processor_tier3_equivalence",
+    "compression_tier3_equivalence",
+    "first_message_context_equivalence",
+    "knowledge_injector_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "almanack_render_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "almanack_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_prompt_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "build_context_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "settings_routes_equivalence",
+      "status": "regen_failed",
+      "cause": "      136 |   const mountWork = join(work, 'mount.db');\n    > 137 |   copyFileSync(fixtureMain, mainWork);\n          |               ^\n      138 |   process.env.SQLITE_PATH = mainWork;\n      139 |   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;\n      140 |\n      at runCase (../qt-settings-oracle-settings_routes_equivalence/cases/settings-routes.test.ts:137:15)\n      at Object.runCase (../qt-settings-oracle-settings_routes_equivalence/cases/settings-routes.test.ts:541:25)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        0.254 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "recall_history_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "context_summary_service_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_processor_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "compression_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "first_message_context_equivalence",
+      "status": "regen_failed",
+      "cause": "fixture build failed: SqliteError: no such table: doc_mount_blobs\n    at Database.prepare (/Users/csebold/source/quilltap-server/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)\n    at gcOrphanedFileRow (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/doc-mount-file-links.repository.ts:144:6)\n    at <anonymous> (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/doc-mount-file-links.repository.ts:1070:11)\n    at sqliteTransaction (/Users/csebold/source/quilltap-server/node_modules/better-sqlite3/lib/methods/transaction.js:65:24)\n    at DocMountFileLinksRepository.linkDocumentContent (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/doc-mount-file-links.repository.ts:1097:71)\n    at async writeDatabaseDocument (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/mount-index/database-store.ts:121:3)\n    at async writeCharacterVaultManagedFields (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/vault-overlay/managed-fields.ts:218:3)\n    at async ensureCharacterVault (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/mount-index/character-vault.ts:173:3)\n    at async safeQuery.userId (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/characters.repository.ts:248:9)\n    at async safeQuery (/private/tmp/qt-v4-pin-unify-7df7de8e/lib/database/repositories/safe-query.ts:53:12)\n    at async main (/Users/csebold/source/quilltap-v5/harness/oracle/fixtures/build-first-message-context-fixture.ts:126:5)",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "knowledge_injector_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 9,
+    "regen_failed": 2
+  }
+}

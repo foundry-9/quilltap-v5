@@ -1,0 +1,45 @@
+{
+  "label": "unify: re-run after the \u00a73 fixes + the two regen repairs",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "almanack_render_equivalence",
+    "almanack_tier2_equivalence",
+    "settings_routes_equivalence",
+    "first_message_context_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "almanack_render_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "almanack_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "settings_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "first_message_context_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 4
+  }
+}

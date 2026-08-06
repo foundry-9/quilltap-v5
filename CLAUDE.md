@@ -2005,6 +2005,69 @@ records THERE. Update this summary only when a phase or round completes.
   maintenance lane). Gate: see the round record. Versions: core
   0.0.474, harness 0.0.403, host 0.0.59, web 0.0.61, tauri 0.0.6,
   SPA 0.5.412. Round record: `status-log.md`.
+- **The Taboo + maintenance round (P4.37-resumed ∥ P4.D50 ∥ P4.40):
+  UNIFIED on main (2026-08-06) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `3adefeba` and the drift debt is CLEARED.** The Almanack
+  server remainder (the held collectors absorbed + oracle-VERIFIED:
+  the committed `almanack-{main,mount,llmlogs,llmlogs-legacy}.db`
+  family + the 72-check `almanack_tier2_equivalence`, mutation-proven,
+  two v5 defects caught by its first runs; `AlmanackHost` wired LIVE
+  in `quilltap-host` — **the report is reachable end-to-end in
+  production, 💸 none**; the space-form date arm; the walk ACTIVE —
+  its first live run caught the `qt-entity-tabs` inline-host bug) ∥
+  the whole Taboo feature (`instance_settings['taboo']` storage with
+  v4's normalization, the byte-equal `[STYLE: FORBIDDEN PHRASES]`
+  section between the math note and tool instructions,
+  `PROMPT_CACHE_STRUCTURE_VERSION` 2 → 3 with BOTH v4 goldens
+  reproduced, `TabooSettings`/`TabooSettingsUpdate` + the REST edge
+  with merge-over-current PUT, the Settings → Chat card in v4's slot;
+  `settings_routes_equivalence` 32 → 50, `system_prompt_equivalence`
+  56 → 65 + 2 goldens, a `build_context_tier3` op; help docs → the
+  `p4.9i2` bank) ∥ the maintenance sweep (the two escalated tier-3
+  oracles regenerable again — the cause was NON-UUID corpus profile
+  ids v4's `0cde7fbc` Zod refuses, not the predicted stale-mock;
+  **`compression_tier3`'s two-round standing red closed by the same
+  defect, its owed un-mock order MOOT**; the tracing Interest-cache
+  race fixed with nothing weakened; two of the three e2e
+  intermittents reproduced-then-hardened, the third honestly
+  unreproduced and recorded; the sweep driver gained `--v4 <pin>` +
+  the venue false-positive fix — 16-of-27 flagged families were
+  already correct). **The §3 unification review fixed, on the unify
+  branch: the Taboo `double_option` dispatch-leg bug (an explicit
+  `null` silently kept the list where v4 400s — the web edge's
+  hand-built variant made the differential blind; serde-pinned) and
+  five Almanack fidelity minors** (cheap-LLM user scoping; the four
+  route error arms' fixed v4 sentences; integral `size` JSON; the
+  `progressId` zod-uuid gate; the registry-membership skip) plus
+  recipe repairs the unify regen exposed (the lane-pin purge, the
+  settings-routes build stage, the fmc builder's `doc_mount_blobs`).
+  Wires: the three cross-lane recipe leftovers; the §1 name-for-name
+  diff clean. Gate: 414 test binaries / 1,911 / 0 with the round's
+  env block; the 11 families by name zero SKIP over the single
+  `7df7de8e` unify pin (the predicted cache-key union hazard did NOT
+  materialize); clippy both feature sets; release build; ng test 287
+  files / 3,926; ng build clean; full Playwright green zero skips
+  (numbers in the round record) — the Almanack walk + the Taboo beat
+  both LIVE. Versions: core 0.0.481, harness 0.0.407, host 0.0.60,
+  web 0.0.62, SPA 0.5.416; cli/tauri unchanged. Round record:
+  `status-log.md`. **💸 Live proofs owed to the next dogfood pass:**
+  the Almanack's first real-data report, the live Taboo section on a
+  real turn, + the P4.D49 budget/attribution proofs.
+- **Oracle baseline: `3adefeba` (2026-08-06, v4 HEAD, tree clean),
+  adopted at the Taboo + maintenance round's unification — NO v4
+  drift debt remains.** `3adefeba` is release-notes docs atop
+  `7df7de8e` (the Taboo feature, absorbed by P4.D50), lib-identical
+  to it. Oracles may regenerate straight from
+  `~/source/quilltap-server` while HEAD stays `3adefeba`; pin a
+  detached worktree on drift/dirty
+  (`oracle-regen-pinned-v4-worktree`), or pass the pin to the sweep
+  driver (`recipe_sweep.py --v4 <pin>` — P4.40's addition; committed
+  recipes never name a pin). The almanack NDJSON `baseline:` markers
+  name the CASE vintage (`f7f1a956`), not the regen pin. The
+  distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged. Drift-check before every
+  round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `f7f1a956` (2026-08-05), adopted at the
   `f7f1a956` Almanack round's unification. ⚠ v4 HEAD is `7df7de8e` —
   TWO commits past it: `44e2e4fe` (docs-only, NO-PORT) and
