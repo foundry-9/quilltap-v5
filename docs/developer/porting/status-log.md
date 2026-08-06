@@ -60943,3 +60943,14 @@ the §1 name-for-name contract diff at unification.
   false)`); the modal's disposition comment rewritten from "dead code, stays for
   the day v4 grows the projection" to "LIVE since bug 36". Spec: the warning box
   renders only when the input is set. 10/10.
+
+- **Bug 42 (toast animation) — DONE.** v4 `ea4dc011` defined the previously
+  nonexistent `slideInUp` keyframes and dropped the dead `animate-in …` classes,
+  so toasts now slide up and fade in. v5 had shipped no animation (the observable
+  match to v4's inert markup). Now mirrored on `.qt-toast`: a `qt-toast-in`
+  keyframe (v5's `qt-`-prefixed, layered convention; same curve — opacity 0→1,
+  translateY 0.75rem→0, 0.3s ease-out) plus a `prefers-reduced-motion: reduce`
+  guard. No dead `animate-in` utilities (v5's class shape kept). The `_toast.css`
+  finding note rewritten from "deliberately NOT ported" to a convergence note.
+  CSS-only, no unit spec; visual behavior verified by inspection and covered
+  incidentally by the full Playwright suite (toasts fire on every save).

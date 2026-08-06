@@ -229,6 +229,9 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
   connection profile" warning when an LLM participant's profile has tool
   use turned off — the projected `connectionProfile.allowToolUse` (P4.D53)
   makes v4's long-dead-code condition computable, and the binding fires it.
+- Bug 42: toasts slide up and fade in on appearance (a 0.3s entry
+  animation with a reduced-motion guard), matching v4's now-live
+  `slideInUp`.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52
