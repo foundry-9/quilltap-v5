@@ -576,6 +576,36 @@ catch, since every fixture is built fresh.
   Mode. Until then the tier-2 differential sentinels the counts, so it stays
   green.
 
+- **NEEDS AN ORDER (2026-08-06) — Serper web search is fully ported and
+  differential-verified but NEVER WIRED into the running engine, so `search_web`
+  refuses at runtime even with `SERPER_API_KEY` set.** Found by inspection while
+  dogfooding (not a walk finding). The whole Serper implementation is on main and
+  green: `crate::tools::web_search` — `build_serper_request` (exact POST to
+  `https://google.serper.dev/search`), `map_serper_results` (organic + the
+  `knowledgeGraph` unshift), `format_web_search_results`, the two distinct error
+  sets, and `RealWebSearchProvider` (live provider over a blocking HTTP wire),
+  covered by `web_search_wire_equivalence` + `web_search_tool_equivalence`. The
+  host even has the ready constructor `HostProviders::web_search_provider()`
+  (`quilltap-host/src/providers.rs:274`). **What's missing is one host-wire:**
+  the production tool runner is built with `web_search::NotConfiguredWebSearch`
+  (`tools/executor.rs:392`), and `with_web_search_provider(...)` +
+  `HostProviders::web_search_provider()` have **zero callers anywhere** (checked
+  workspace-wide). `EngineAssembly` carries only the `web_search_configured`
+  BOOL (the tools-inventory advertisement, P4.9E3B), not a provider field like
+  the live `outfit_llm_choose` / vision-describe seams (`Option<Arc<dyn …>>` +
+  host construction). **The fix is not a port** — follow the existing seam
+  pattern: add an `EngineAssembly` provider field, build `RealWebSearchProvider`
+  in the host via the existing constructor + a `SearchApiKeyLookup`, and chain it
+  through `with_web_search_provider` when the engine builds its `BuiltInToolRunner`.
+  ⚠ It hits a **paid external API (one Serper call per search)**, so it wants a
+  deliberate order with an e2e beat (mocked-transport wire test + a live-key
+  smoke), not a dogfood commit. **Latent inconsistency to fix with it:** with the
+  key set, `web_search_configured` = true advertises `search_web` as available,
+  but every call fails "No search provider configured" — the advertisement and
+  the execution seam disagree. The Serper-PLUGIN half of v4's OR stays the
+  standing no-plugin-runtime deferral; this note is only about the env-key path,
+  which is built and just unconnected.
+
 - **v4-side item (2026-08-04, from measuring the #63 archive) — an entity export
   is 99.7% embeddings, and they are derived data.** Breaking down the real
   791 MB characters `.qtap` by record kind:
