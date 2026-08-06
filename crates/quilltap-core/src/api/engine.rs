@@ -223,13 +223,20 @@ pub struct EngineAssembly {
     /// ⚠ LIVE means real money: one cheap-LLM call per regeneration.
     pub regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E3A ===
-    // === P4.9E3B ===
-    /// The host's `isWebSearchConfigured()` fact for the tools inventory
-    /// (v4: Serper plugin registered OR `SERPER_API_KEY` set; v5 has no plugin
-    /// registry, so the host passes the env-key half). `false` for canned test
-    /// factories — the `search_web` row then reads "No search provider
-    /// configured…", v4's own unconfigured arm.
-    pub web_search_configured: bool,
+    // === P4.9E3B / P4.42 ===
+    /// The web-search boundary (P4.42). This ONE `Option` is the single source of
+    /// truth for web search: the host threads it into the spine's tool runner
+    /// (`search_web` executes through it) AND the tools inventory derives its
+    /// `web_search_configured` bool from `is_some()` — so what is advertised and
+    /// what executes can never disagree (the dogfood "advertised-vs-refusing"
+    /// finding). `None` for canned test factories + read-only embedders → the
+    /// `search_web` row reads "No search provider configured…" (v4's own
+    /// unconfigured arm) and the runner refuses.
+    ///
+    /// v4's `isWebSearchConfigured()` is `searchProviderRegistry.isSearchConfigured()
+    /// || SERPER_API_KEY`; v5 has no plugin registry (the standing deferral), so the
+    /// host builds this iff `SERPER_API_KEY` is set (`serper_registered = false`).
+    pub web_search: Option<Arc<dyn crate::tools::web_search::WebSearchProvider>>,
     /// The out-of-create `llm_choose` outfit runner (P4.9E3B) — the host holds
     /// the completion provider + a per-call logging cheap executor (the
     /// `RegenerateTitleDriver` arrangement). `None` → both call sites fall
@@ -292,8 +299,8 @@ impl EngineAssembly {
             operator_tool_runner: None,
             regenerate_title: None,
             // === end P4.9E3A ===
-            // === P4.9E3B ===
-            web_search_configured: false,
+            // === P4.9E3B / P4.42 ===
+            web_search: None,
             outfit_llm_choose: None,
             // === end P4.9E3B ===
             // === P4.9E4A ===
@@ -468,8 +475,12 @@ struct ReadyEngine {
     operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
     regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E2A ===
-    // === P4.9E3B ===
-    web_search_configured: bool,
+    // === P4.9E3B / P4.42 ===
+    /// The web-search boundary (P4.42). The tools inventory derives
+    /// `web_search_configured` from `is_some()` (see [`Self::web_search_configured`]),
+    /// so the advertised availability is LITERALLY the presence of the provider the
+    /// runner would use.
+    web_search: Option<Arc<dyn crate::tools::web_search::WebSearchProvider>>,
     outfit_llm_choose: Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
     // === end P4.9E3B ===
     // === P4.9E4A ===
@@ -4430,11 +4441,14 @@ impl CoreEngine {
     /// validation / character / connection-profile arms and only refuses at the
     /// rewrite step (mirrors v4, where those checks precede the generation).
     #[allow(clippy::type_complexity)]
-    /// The host's web-search-configured fact (P4.9E3B) — `false` when locked
-    /// or unassembled (the `ToolsList` arm gates on `ready_db` first).
+    /// The host's web-search-configured fact (P4.9E3B / P4.42) — DERIVED from the
+    /// presence of the actual [`web_search`](ReadyEngine::web_search) provider the
+    /// runner uses, so the tools inventory can never advertise `search_web` while
+    /// the runner refuses it. `false` when locked or unassembled (the `ToolsList`
+    /// arm gates on `ready_db` first).
     fn web_search_configured(&self) -> bool {
         match &*self.inner.state.lock().unwrap() {
-            EngineState::Ready(r) => r.web_search_configured,
+            EngineState::Ready(r) => r.web_search.is_some(),
             EngineState::Locked { .. } => false,
         }
     }
@@ -5138,8 +5152,8 @@ fn open_ready(
         operator_tool_runner: assembly.operator_tool_runner,
         regenerate_title: assembly.regenerate_title,
         // === end P4.9E2A ===
-        // === P4.9E3B ===
-        web_search_configured: assembly.web_search_configured,
+        // === P4.9E3B / P4.42 ===
+        web_search: assembly.web_search,
         outfit_llm_choose: assembly.outfit_llm_choose,
         // === end P4.9E3B ===
         // === P4.9E4A ===

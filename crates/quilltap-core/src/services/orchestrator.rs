@@ -493,6 +493,12 @@ pub struct OrchestratorDeps<
     /// OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the differential injects a
     /// fixed committed stream.
     pub rng_bytes: &'a mut dyn RandomBytes,
+    /// The web-search boundary the per-turn `search_web` tool runs through (P4.42).
+    /// The spine wires the host's `RealWebSearchProvider` here; `None` (the
+    /// default for existing constructions — the enclave, canned differentials)
+    /// keeps the not-configured boundary, so those turns refuse `search_web`
+    /// exactly as before.
+    pub web_search: Option<std::sync::Arc<dyn crate::tools::web_search::WebSearchProvider>>,
 }
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
@@ -2159,8 +2165,14 @@ where
     // The per-turn built-in tool runner, with the injected Carina engine wired for
     // the `ask_carina` dispatch (v4's real `executeToolCallWithContext` routes it
     // there); `not_available` by default keeps a no-engine build's loud fallback.
-    let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env())
+    let mut tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env())
         .with_ask_carina(deps.ask_carina.clone());
+    // P4.42: the in-chat `search_web` runs through the host's web-search provider
+    // when one is wired (SERPER_API_KEY set); `None` leaves the not-configured
+    // boundary, so the tool refuses exactly as it did before this lane.
+    if let Some(web_search) = &deps.web_search {
+        tool_runner = tool_runner.with_web_search_provider(std::sync::Arc::clone(web_search));
+    }
     // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
     // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
     // reshape/parse both key off the provider manifest, so a native call is parsed
@@ -3841,6 +3853,7 @@ mod tests {
                 carina_query: &mut carina,
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
+                web_search: None,
             };
             execute_turn_chain(
                 &mut deps,

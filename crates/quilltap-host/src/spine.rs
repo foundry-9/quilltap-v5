@@ -195,6 +195,33 @@ impl ProviderKeySource for DbProviderKeys {
     }
 }
 
+/// A DB-backed [`SearchApiKeyLookup`](quilltap_core::tools::web_search::SearchApiKeyLookup)
+/// (P4.42): the acting user's first active key for the search provider — v4's
+/// `getAllApiKeys().find(provider === X && isActive)`, the exact analogue of
+/// [`DbProviderKeys`] over the same `find_active_api_key_for_provider` resolver.
+///
+/// DELIBERATELY inert on this lane's runtime path: `serper_registered` stays
+/// `false` (the plugin registry is the standing deferral), so
+/// [`RealWebSearchProvider`](quilltap_core::tools::web_search::RealWebSearchProvider)
+/// never consults it — the env-key fallback is the only live path. It is wired so
+/// that when the plugin half lands, the api-key-row path is already correct.
+#[derive(Clone)]
+pub struct DbSearchApiKeys(pub Db);
+
+impl quilltap_core::tools::web_search::SearchApiKeyLookup for DbSearchApiKeys {
+    fn find_active_key(&self, provider: &str, user_id: &str) -> Option<String> {
+        let provider = provider.to_string();
+        let user_id = user_id.to_string();
+        self.0
+            .read_main(move |conn| {
+                api_key_service::find_active_api_key_for_provider(conn, &user_id, &provider)
+            })
+            .ok()
+            .flatten()
+            .map(|k| k.key_value)
+    }
+}
+
 // ===========================================================================
 // The production non-streaming CompletionProvider
 // ===========================================================================
@@ -855,6 +882,12 @@ where
     /// (P4.6bd; `None` for canned test spines — the tool then fails soft into
     /// the author's `errorMessage`, the pre-wire behavior).
     pub consult: Option<Arc<dyn ConsultRunner>>,
+    /// The Serper web-search provider `search_web` runs through (P4.42; `None`
+    /// for canned test spines + when `SERPER_API_KEY` is unset — the tool then
+    /// answers v4's "not configured" error). ONE `Option` feeds both the in-chat
+    /// turn (via [`OrchestratorDeps`]) and the carina/Brahma/Run-Tool engines
+    /// (via [`Self::tool_runner`]).
+    pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
 }
 
 impl<EMB, CMP, STR, PF> ChatSpine<EMB, CMP, STR, PF>
@@ -878,6 +911,7 @@ where
             image_transcoder: Arc::clone(&self.image_transcoder),
             scrollback: self.scrollback.clone(),
             consult: self.consult.clone(),
+            web_search: self.web_search.clone(),
         }
     }
 
@@ -890,6 +924,11 @@ where
         }
         if let Some(consult) = &self.consult {
             runner = runner.with_consult(Arc::clone(consult));
+        }
+        // P4.42: the operator Run Tool modal + carina/ask_carina + the Brahma
+        // Console all reach `search_web` through this one runner.
+        if let Some(web_search) = &self.web_search {
+            runner = runner.with_web_search_provider(Arc::clone(web_search));
         }
         runner
     }
@@ -1226,6 +1265,9 @@ where
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
+            // P4.42: the in-chat turn's `search_web` provider (None until
+            // SERPER_API_KEY is set).
+            web_search: self.web_search.clone(),
         };
 
         let input = ProcessMessageInput {
@@ -1592,6 +1634,9 @@ where
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
+            // P4.42: the in-chat turn's `search_web` provider (None until
+            // SERPER_API_KEY is set).
+            web_search: self.web_search.clone(),
         };
 
         let now_fn = quilltap_core::enclave::announce::system_now_ms;
@@ -2842,6 +2887,13 @@ pub struct SpineBundle {
     /// the attach still succeeds (v4's own any-failure arm).
     /// ⚠ LIVE: one vision-LLM call per attach of an undescribed image.
     pub image_describe: Option<Arc<dyn quilltap_core::api::chat_media::ImageDescribeDriver>>,
+    /// The Serper web-search provider (P4.42) — the SAME `Option` held by the
+    /// bundle's `ChatSpine`. The host places it in the `EngineAssembly` so the
+    /// tools inventory's `web_search_configured` derives from the same source the
+    /// runner uses. `None` for canned test factories + when `SERPER_API_KEY` is
+    /// unset → `search_web` refuses (v4's unconfigured arm) and the inventory
+    /// advertises it unavailable.
+    pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2931,6 +2983,25 @@ impl SpineFactory for ProductionSpineFactory {
         // P4.9E4A: the attach-mount-file describe shares the same provider Arc.
         let describe_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
+        // P4.42: build the Serper web-search provider iff SERPER_API_KEY is set —
+        // the SINGLE source of truth. `serper_registered = false` (the plugin
+        // registry is the standing deferral), so the env key is the only live
+        // path; the `DbSearchApiKeys` lookup is wired inert for the plugin half.
+        // This one `Option` feeds BOTH the runner (ChatSpine below) AND the tools
+        // inventory bool (via the SpineBundle → EngineAssembly), so advertised and
+        // executed can never disagree.
+        let web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>> =
+            std::env::var("SERPER_API_KEY")
+                .ok()
+                .filter(|k| !k.is_empty())
+                .map(|env_key| {
+                    Arc::new(self.io.web_search_provider(
+                        DbSearchApiKeys(db.clone()),
+                        false,
+                        Some(env_key),
+                    ))
+                        as Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>
+                });
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
@@ -2944,6 +3015,7 @@ impl SpineFactory for ProductionSpineFactory {
             image_transcoder: Arc::new(HostImageCodec),
             scrollback,
             consult: Some(Arc::clone(&consult)),
+            web_search: web_search.clone(),
         });
         let chat_create: Arc<dyn ChatCreateDriver> = Arc::new(ChatCreateSpine {
             db: db.clone(),
@@ -3103,6 +3175,9 @@ impl SpineFactory for ProductionSpineFactory {
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),
+            // P4.42: the same provider the spine's runner holds — the host derives
+            // the tools-inventory bool from `is_some()`.
+            web_search,
             job_handlers,
         }
     }

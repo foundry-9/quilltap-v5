@@ -155,6 +155,7 @@ impl SpineFactory for CreateSpineFactory {
             image_transcoder: Arc::new(HostImageCodec),
             scrollback: None,
             consult: None,
+            web_search: None,
         });
         let chat_create = Arc::new(ChatCreateSpine {
             db: db.clone(),
@@ -188,6 +189,7 @@ impl SpineFactory for CreateSpineFactory {
             // P4.9E4A: no vision-describe runner in the smoke assembly — the
             // attach ladder then resolves to '' (v4's own any-failure arm).
             image_describe: None,
+            web_search: None,
             job_handlers: Vec::new(),
         }
     }

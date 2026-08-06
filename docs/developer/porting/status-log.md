@@ -59565,3 +59565,53 @@ ndjson $N/npx jest --silent --watchman=false --roots "$PWD" --roots
 "$STAGE/harness/oracle/cases" -- web-search-tool` → run with
 `QT_ORACLE_WEB_SEARCH=/tmp/oracle-web-search-tool.ndjson cargo test -p
 quilltap-harness --test web_search_tool_equivalence`.
+
+### Unit 2 — the wire (tier 1 items 1–3)
+
+ONE `Option<Arc<dyn WebSearchProvider>>` is now the single source of truth. Design
+choice (recorded per the order): rather than store BOTH `web_search_configured:
+bool` and a provider (which leaves one field dead under clippy `-D warnings`), the
+engine now carries `web_search: Option<Arc<dyn WebSearchProvider>>` (renamed from
+the old `web_search_configured: bool`) and the reader `web_search_configured()`
+DERIVES the inventory bool from `r.web_search.is_some()`. So the tools-inventory
+answer is LITERALLY the presence of the provider the runner uses — the strongest
+form of the "cannot disagree" mandate. This is the order's four-step recipe
+(field near :232 / `shutdown_only` :296 / ready field :472 / copy :5041 / reader
+:4334); the ToolsList arm :1332 is untouched (still `self.web_search_configured()`).
+
+- **Consumption site 1 (in-chat turn):** `OrchestratorDeps` gains a `web_search`
+  field; `orchestrator.rs:2162` chains `.with_web_search_provider(...)` when
+  `Some`. Both production spine `OrchestratorDeps` literals feed
+  `self.web_search.clone()`; the enclave step, the orchestrator.rs test literal,
+  and the two harness tier-3 test literals get a mechanical `web_search: None`
+  (preserving prior behavior — the enclave keeps the not-configured boundary;
+  its own wiring is out of scope, recorded as a deliberate boundary).
+- **Consumption site 2 (host engines):** `ChatSpine` gains a `web_search` field
+  (+ `clone_state` + `tool_runner()` chains `.with_web_search_provider`), so the
+  carina / ask_carina / Brahma Console / operator Run-Tool runners all reach
+  `search_web`.
+- **Host construction:** `ProductionSpineFactory::build` computes the ONE
+  `web_search` local (`SERPER_API_KEY` set → `ProviderIo::web_search_provider(
+  DbSearchApiKeys(db), serper_registered=false, Some(env_key))`; else `None`),
+  clones it into the `ChatSpine` AND the `SpineBundle`; `host.rs` destructures
+  `bundle.web_search` (the 16→17-element tuple + the `None` arm — the predicted
+  P4.9H2A hand-merge point) and places it in `EngineAssembly.web_search`. New
+  `DbSearchApiKeys(Db)` in `spine.rs` beside `DbProviderKeys`, over the existing
+  `api_key_service::find_active_api_key_for_provider` (so `db/api_keys.rs` needed
+  no new finder — the order's premise superseded). `DbSearchApiKeys` is inert on
+  the live path (`serper_registered=false`), wired for when the plugin half lands.
+- Neutrality: `cargo test --workspace` green (414 binaries), both web-search
+  families still green (`web_search_tool` regenerated at the pin; `web_search_wire`
+  over the committed corpus). Versions unchanged for core (0.0.483) / host (0.0.61);
+  harness → 0.0.409 (its two tier-3 test literals moved).
+
+**⚠ Unifier note (host.rs collision, as the order predicted):** this lane rewrote
+the 16-element SpineBundle destructure tuple at `host.rs:515-560` into 17 elements
+(added `web_search` / `bundle.web_search` / one more `None`) and replaced
+`web_search_configured: std::env::var(...).is_ok()` at `host.rs:761` with
+`web_search,`. P4.9H2A owns the seam-free registry block above (`:468-513`); the
+tuple will not git-merge cleanly against it — hand-merge expected. This lane did
+NOT touch `host.rs:468-513`. Also: quilltap-web's two integration tests
+(`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) each gained `web_search: None`
+in their `ChatSpine` + `SpineBundle` literals (mechanical, forced by the new
+struct fields — no sibling owns those files).

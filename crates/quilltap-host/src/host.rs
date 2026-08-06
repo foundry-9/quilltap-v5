@@ -543,6 +543,9 @@ impl EngineAssembler for HostAssembler {
             regenerate_title,
             outfit_llm_choose,
             image_describe,
+            // P4.42: the web-search provider (the tools-inventory bool derives
+            // from `is_some()`; the spine's own copy runs `search_web`).
+            web_search,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -565,11 +568,12 @@ impl EngineAssembler for HostAssembler {
                     bundle.regenerate_title,
                     bundle.outfit_llm_choose,
                     bundle.image_describe,
+                    bundle.web_search,
                 )
             }
             None => (
                 None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None,
+                None, None, None,
             ),
         };
 
@@ -767,12 +771,15 @@ impl EngineAssembler for HostAssembler {
             regenerate_title,
             // === end P4.9E3A ===
             // === end P4.9E2A ===
-            // === P4.9E3B: the tools inventory's `isWebSearchConfigured()` fact.
-            // v4 is `searchProviderRegistry.isSearchConfigured() || SERPER_API_KEY`;
-            // v5 has no plugin registry (the standing deferral), so the env-key
-            // half is the whole answer — matching the executor's own web-search
-            // fallback wiring. ===
-            web_search_configured: std::env::var("SERPER_API_KEY").is_ok(),
+            // === P4.42: the web-search provider, wired LIVE from the spine (built
+            // iff SERPER_API_KEY is set; the plugin-registry half stays deferred).
+            // The engine derives the tools-inventory `web_search_configured` bool
+            // from `web_search.is_some()`, and the spine's own copy of this same
+            // provider runs `search_web` — so advertised and executed cannot
+            // disagree (the dogfood finding). Spine-less assemblies (read-only
+            // embedders) get `None` → the tool is advertised unavailable AND
+            // refuses, consistently. ===
+            web_search,
             // The out-of-create llm_choose pick, LIVE from the spine's
             // completion provider (⚠ one cheap-LLM call per pick); spine-less
             // assemblies keep None → the default-outfit fallback.

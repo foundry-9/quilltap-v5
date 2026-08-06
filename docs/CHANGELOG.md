@@ -61,6 +61,21 @@ in-process mock; by default the request is unchanged and goes to the
 real Serper endpoint byte-for-byte. No behavior change on its own — the
 provider is still not connected to the running engine yet. Versions:
 core 0.0.483, host 0.0.61.
+Connected the web search tool to the running engine (P4.42). The
+`search_web` tool was fully built and verified but never wired in, so
+it refused at runtime even with a search key set, while the tools list
+advertised it as available. Now, when `SERPER_API_KEY` is set, the host
+builds the Serper provider once and threads it into every tool-running
+surface — the in-chat turn, the character/ask-carina and Brahma Console
+engines, and the operator Run Tool modal — so searches actually run
+(one Serper call each). The tools list's "web search configured" flag
+now derives from the very same provider, so it can never again claim
+the tool is available while the tool refuses. The plugin-registry path
+(a search plugin supplying the key) stays deferred; the environment-key
+path is what this connects. Also added an optional endpoint-URL override
+(default: the real Serper endpoint, byte-for-byte unchanged) so a test
+can point the request at an in-process mock. Versions: core 0.0.483,
+host 0.0.61, harness 0.0.409.
 
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining

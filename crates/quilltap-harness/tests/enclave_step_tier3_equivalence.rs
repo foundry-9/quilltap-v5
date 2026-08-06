@@ -570,6 +570,7 @@ fn enclave_step_tier3_matches_oracle() {
             carina_query: &mut carina,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
+            web_search: None,
         };
         let sdeps = StepDeps {
             now_ms: &now_ms,

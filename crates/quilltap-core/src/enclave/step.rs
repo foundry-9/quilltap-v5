@@ -1839,6 +1839,9 @@ mod tests {
                 carina_query: &mut carina,
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
+                // P4.42: the enclave turn keeps the not-configured web-search
+                // boundary (its own wiring is out of this lane's scope).
+                web_search: None,
             };
             let now_ms = crate::enclave::announce::system_now_ms;
             let mint = crate::enclave::announce::system_mint_uuid;

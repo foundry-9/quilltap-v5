@@ -768,6 +768,7 @@ fn orchestrator_tier3_matches_oracle() {
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
+            web_search: None,
         };
         // The spine now constructs the real registry-backed tool detector +
         // provider-text strategy internally (W4.7c). The corpus carries no native
