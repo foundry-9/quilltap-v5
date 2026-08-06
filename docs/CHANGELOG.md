@@ -232,6 +232,10 @@ P4.D54 (Salon + UI-polish SPA drift, `f4955e0e` round — in progress):
 - Bug 42: toasts slide up and fade in on appearance (a 0.3s entry
   animation with a reduced-motion guard), matching v4's now-live
   `slideInUp`.
+- Bugs 39/40: two v5-first fixes v4 has now converged on — the
+  `.qt-text-danger` alias and the search-dialog body portal — so their
+  "deliberate v5 divergence" comments are retired to convergence notes
+  (no behavior change).
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

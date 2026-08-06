@@ -60954,3 +60954,16 @@ the §1 name-for-name contract diff at unification.
   finding note rewritten from "deliberately NOT ported" to a convergence note.
   CSS-only, no unit spec; visual behavior verified by inspection and covered
   incidentally by the full Playwright suite (toasts fire on every save).
+
+- **Bugs 39/40 (stale-divergence retirement) — DONE.** Both are v5-first fixes
+  v4 has now converged on. Bug 39 (`.qt-text-danger`): v4 `ea4dc011` defined the
+  alias v5 already shipped (finding #42); the 20-line divergence header at
+  `_utilities.css` is retired to a plain rule comment. **Corpus-claim correction:
+  the session-9 found-bugs doc says a "corpus" fires on this rule — it does not.
+  There is no `_utilities.css` corpus; nothing mechanized guards this alias, so
+  the retirement is comment-only.** Bug 40 (search-dialog portal): v4 `ea4dc011`
+  converged with `createPortal(..., document.body)`; v5's
+  `document.body.appendChild` reparenting is the same intent, so the "deliberate
+  v5 divergence, ruled 2026-07-31" comment at `search-dialog.ts` is rewritten to
+  a convergence note. Code unchanged in both; the `page-toolbar-flow.spec.ts:212`
+  e2e pin stays as-is.

@@ -169,7 +169,8 @@ export class SearchDialog {
   private currentQuery = '';
 
   constructor() {
-    // PORTAL (a deliberate v5 divergence, ruled 2026-07-31 — dogfood #45).
+    // PORTAL to document.body (v5 fixed first — dogfood #45; v4 `ea4dc011`
+    // converged with `createPortal`, bug 40).
     //
     // `SearchBar` renders this dialog inline, and the bar lives inside
     // `.qt-page-toolbar`, which carries `backdrop-filter` (_layout.css:709).
@@ -177,13 +178,9 @@ export class SearchDialog {
     // `position: fixed` descendants, so the backdrop's `fixed inset-0`
     // resolved against the toolbar instead of the viewport — measured at
     // 1224x64 in a 1280x720 window. Clicking anywhere outside the toolbar hit
-    // the page, not the backdrop, so only Escape closed the dialog.
-    //
-    // v4 has the identical defect (its SearchBar also renders SearchDialog
-    // inline, with no portal, inside the same toolbar div); the human ruled
-    // that v5 fixes it now and the same fix is queued for v4. This restores
-    // v4's INTENT — the backdrop element and its `qt-dialog-overlay` class are
-    // untouched, it simply gets a containing block that is the viewport.
+    // the page, not the backdrop, so only Escape closed the dialog. Reparenting
+    // to the body gives the fixed backdrop the viewport as its containing block;
+    // the backdrop element and its `qt-dialog-overlay` class are untouched.
     //
     // NB `slide-over-panel.ts` records the standing "v5 renders inline"
     // decision, whose stated premise was that no ancestor carries a
