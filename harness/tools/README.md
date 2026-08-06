@@ -17,6 +17,9 @@ python3 harness/tools/recipe_sweep.py --run-all [--families a,b] [--exclude c,d]
     --results harness/tools/sweep-results/<date>-<v4-baseline>-<label>.json
 python3 harness/tools/recipe_sweep.py --collisions
 python3 harness/tools/recipe_sweep.py --self-test
+
+# during a drift round, pin v4 (see "The v4 pin" below)
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-<order>-<sha> --run <family>
 ```
 
 `<family>` is a test-file stem, e.g. `characters_read_equivalence`. The scan
@@ -73,6 +76,35 @@ the staged-mirror convention below, after which the recipe runs from any
 venue. Until a family is repaired, run its recipe with
 `--v5w ~/source/quilltap-v5` from the main checkout.
 
+**P4.40 corrected the detector.** It used to fire on ANY root ending in
+`harness/oracle/cases` — which the correct staged mirror also ends in, since
+the case reads its spec via `join(here,'..','fixtures',…)` and the mirror
+must keep `cases/` and `fixtures/` as siblings. That warned 16 already-correct
+families and made `--run` refuse them from a lane worktree, which is most of
+why the venue rule read as a large standing debt. The check now expands the
+root's leading variable and skips anything resolving under `/tmp`. If you
+change it, keep both self-test false-positive assertions.
+
+## The v4 pin (`--v4`)
+
+Every recipe reaches v4 through a literal `cd ~/source/quilltap-server`, and
+headers are forbidden from naming a `/tmp` pin (a detached pin does not
+survive the round that made it — the `stale_v4_pin_path` refusal). So a lane
+whose baseline is BEHIND v4 HEAD — the normal state during a drift round, and
+v4 ships daily — must pass its pin on the command line:
+
+```bash
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-<order>-<sha> <sha>
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-pin-<order>-<sha>/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-pin-<order>-<sha>/packages/quilltap/node_modules
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-<order>-<sha> --run-all …
+```
+
+Without it a sweep regenerates every oracle against whatever v4 has shipped
+since, silently baking an unabsorbed drift into the comparands. The default is
+a byte-for-byte no-op, and `--self-test` asserts both that and the redirect.
+
 ## The two P4.D32 sweep hazards, enforced as policy
 
 1. **No recipe writes into the repo.** `--run` refuses any recipe whose
@@ -122,6 +154,16 @@ venue. Until a family is repaired, run its recipe with
   The `mkdir` is load-bearing in its own right: a recipe that assigns
   `TMPO=` and never creates it leans on whatever an earlier recipe left
   behind (`external_tmp_input`).
+- **Never open a header sentence with a command word.** The extractor keeps
+  shell-looking lines, and a sentence starting `diff the written …` is
+  indistinguishable from a `diff` invocation — the recipe then runs the doc
+  sentence and dies on a bash syntax error (the F3 prose-leak class; P4.40
+  found two more, in `danger_gatekeeper_tier3` and `state_sql_tools`).
+  Rewrite as "the written … are compared".
+- **One assignment per line.** `WT=… STAGE=/tmp/qt-oracle-stage` on a single
+  line defeats the per-family scratch suffix (policy 2 anchors on `^VAR=`),
+  so the family silently shares a mirror with every other family that used
+  the same name.
 - **Never name a `/tmp` v4 pin worktree in a header.** A detached pin does
   not survive the round that made it, so the recipe is dead on arrival
   (`stale_v4_pin_path`). Regenerate from `~/source/quilltap-server`; if the

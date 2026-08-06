@@ -58899,3 +58899,44 @@ it (16 families + the tail's own): all green apart from
 `compression_tier3` (unit 4) and the two prose leaks. Artifacts:
 `…-p4.40-llm-logs-class.json` and `…-p4.40-llm-logs-class-remainder.json`.
 No further instances of the non-UUID `connectionProfileId` defect exist.
+
+---
+
+### Lane record — P4.40: the verification gate
+
+Run from `claude/p4-40-maintenance-sweep-add423`, v4 pinned at
+`f7f1a956` for every regen (`--v4 /tmp/qt-v4-pin-p440-f7f1a956`).
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and
+  again with `--features quilltap-core/native-transport`.
+- `cargo test --workspace --no-fail-fast` with the lane's oracle env
+  block (`QT_ORACLE_CTXSUM` + its two fixtures, `QT_ORACLE_PROCESSOR` +
+  its two, `QT_ORACLE_COMPRESSION`): **413 test binaries / 1,870 passed
+  / 0 failed**, cargo exit 0, and **zero `SKIP` lines in the whole log**.
+- The three repaired families BY NAME with `--nocapture`, over oracles
+  regenerated fresh at the pin: `context_summary_service_tier3`,
+  `memory_processor_tier3`, `compression_tier3` — all ok, zero SKIP.
+- `ng test` **286 files / 3,914 passed**; `ng build` clean; release
+  binaries rebuilt.
+- Full Playwright over the fresh dist + release binaries: **181 passed /
+  1 skipped / 0 failed** in 4.6 m. The skip is P4.37's gated Almanack
+  beat (`P437_SERVER_LANDED = false`), by design and not this lane's.
+  Both hardened beats pass in full-suite context, and so does the
+  `workspace-flow` pop-out beat this lane could not make fail.
+- **The suite ran on PRIVATE PORTS** (`PORT` 4419, `MOCK_LLM_PORT`
+  45401, characters-flow's two private ports +100) because a sibling
+  lane's suite held 4319 at the time — the documented isolation trick.
+  `env.ts` and `characters-flow.spec.ts` were reverted immediately
+  afterwards and are NOT part of this lane's diff; `git status` is clean
+  on both.
+
+**Sweep artifacts committed** under `harness/tools/sweep-results/`:
+`…-p4.40-phase1-tail-remeasure.json` (P4.34's non-ok set, 15 ok / 1),
+`…-p4.40-llm-logs-class.json` + `…-remainder.json` (the defect-class
+sweep), `…-p4.40-venue-false-positives.json` (the 16, run from a
+`.claude/` venue), `…-p4.40-staged-mirror-repairs.json` (the 9 repairs +
+2 prose leaks, same venue).
+
+Versions: quilltap-core 0.0.476 (test module only), SPA 0.5.413 (e2e
+specs only). No other crate touched.
