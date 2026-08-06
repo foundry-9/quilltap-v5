@@ -6,10 +6,11 @@
 //! Scope: `create`, `update`, `delete` (the three abstract methods over the base
 //! repo), and `upsert` (the custom method that find-by-unique-key then routes to
 //! the update or create path — ported in the minted-values/remap tier-2 form,
-//! since it mints its own id + timestamps). The remaining custom query helpers —
-//! `findByChatId`, `findByMessageIndex`, `deleteAnnotation`, `deleteAllForChat` —
-//! are out of scope here. Single source: `ConversationAnnotationSchema` from
-//! `scriptorium.types`, used by Project Scriptorium's conversation rendering.
+//! since it mints its own id + timestamps), plus the custom query helpers as
+//! their callers arrived — `findByChatId`, `findByMessageIndex`,
+//! `deleteAnnotation`, and `deleteAllForChat` (the last for the Bug 10 chat-delete
+//! sweep). Single source: `ConversationAnnotationSchema` from `scriptorium.types`,
+//! used by Project Scriptorium's conversation rendering.
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -324,6 +325,20 @@ impl<'c> ConversationAnnotationsRepository<'c> {
             Some(id) => self.delete(&id),
             None => Ok(false),
         }
+    }
+
+    /// Delete every annotation for a chat (v4 `deleteAllForChat` →
+    /// `deleteMany({chatId})`). The chat-delete sweep (Bug 10, v4 `3bb664f0`) calls
+    /// this: annotations live on no FK cascade, so a deleted chat would otherwise
+    /// leak its rows — and a later restore of a migrated instance collides on the
+    /// `UNIQUE(chatId, messageIndex, characterName)` constraint. Returns the number
+    /// of rows deleted (v4 discards the count).
+    pub fn delete_all_for_chat(&self, chat_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM conversation_annotations WHERE chatId = ?1",
+            params![chat_id],
+        )?;
+        Ok(affected)
     }
 }
 

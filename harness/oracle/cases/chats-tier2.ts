@@ -102,10 +102,25 @@ async function main(): Promise<void> {
   ).map((c) => c.name);
   const rawRows = (await rawQuery('SELECT * FROM chats')) as Array<Record<string, unknown>>;
 
+  // Bug 10: dump conversation_annotations too, so the chat-delete sweep is proven
+  // as state (the cccc… rows must be gone, the bbbb… row must remain).
+  const annColumns = (
+    (await rawQuery('PRAGMA table_info(conversation_annotations)')) as Array<{ name: string }>
+  ).map((c) => c.name);
+  const annRawRows = (await rawQuery(
+    'SELECT * FROM conversation_annotations',
+  )) as Array<Record<string, unknown>>;
+
   await closeDatabase();
 
   const dump = canonicalizeRows({ table: 'chats', columns, rawRows, orderBy: 'id' });
-  process.stdout.write(JSON.stringify({ case: 'chats-tier2', ...dump }) + '\n');
+  const annotations = canonicalizeRows({
+    table: 'conversation_annotations',
+    columns: annColumns,
+    rawRows: annRawRows,
+    orderBy: 'id',
+  });
+  process.stdout.write(JSON.stringify({ case: 'chats-tier2', ...dump, annotations }) + '\n');
   process.exit(0);
 }
 

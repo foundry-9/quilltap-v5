@@ -2,12 +2,15 @@
 //! (Phase-2, the conversation capstone, sub-unit 1 — create / update / delete).
 //!
 //! Both sides run the SAME op sequence (`chats-tier2.json`) on a fresh copy of
-//! the empty-table seed fixture, then the `chats` table is dumped canonically and
-//! the post-op state is asserted identical. Exercises the ~96-column surface:
-//! the typed `participants` array column (incl. an integer-valued `talkativeness`
-//! rendered as `1`), the JSON-array columns, the open-JSON `state` (single-key),
-//! the number-affinity / boolean / enum / nullable columns, the
-//! updatedAt-PRESERVED vs explicit-updatedAt `update` branches, and `delete`.
+//! the seed fixture, then the `chats` table (and, for Bug 10,
+//! `conversation_annotations`) is dumped canonically and the post-op state is
+//! asserted identical. Exercises the ~96-column surface: the typed `participants`
+//! array column (incl. an integer-valued `talkativeness` rendered as `1`), the
+//! JSON-array columns, the open-JSON `state` (single-key), the number-affinity /
+//! boolean / enum / nullable columns, the updatedAt-PRESERVED vs
+//! explicit-updatedAt `update` branches, and `delete` — whose annotation sweep
+//! (Bug 10) must clear the deleted chat's annotation rows and leave others alone
+//! (the seed carries two rows on the deleted chat + one on a surviving chat).
 //!
 //! NORMALIZATION: none. `update` never mints `updatedAt` (preserved unless the
 //! caller passes one), so every id + timestamp is pinned on both sides.
@@ -256,6 +259,11 @@ fn chats_tier2_matches_oracle() {
     }
 
     let got = writer.dump_table_json("chats", "id").expect("dump chats");
+    // Bug 10: the chat-delete sweep must have removed the deleted chat's
+    // annotations and left every other chat's alone.
+    let got_ann = writer
+        .dump_table_json("conversation_annotations", "id")
+        .expect("dump conversation_annotations");
     let _ = std::fs::remove_file(&work);
 
     assert_eq!(got["table"], oracle["table"], "table name");
@@ -266,7 +274,24 @@ fn chats_tier2_matches_oracle() {
         got["rows"], oracle["rows"]
     );
 
+    let oracle_ann = &oracle["annotations"];
+    assert_eq!(
+        got_ann["columns"], oracle_ann["columns"],
+        "conversation_annotations column set / order"
+    );
+    assert_eq!(
+        got_ann["rows"], oracle_ann["rows"],
+        "conversation_annotations row state diverged (Bug 10 sweep)\n  rust:   {}\n  oracle: {}",
+        got_ann["rows"], oracle_ann["rows"]
+    );
+    // The surviving-chat annotation must remain; the deleted chat's must be gone.
+    let ann_rows = got_ann["rows"].as_array().map(|a| a.len()).unwrap_or(0);
+    assert_eq!(
+        ann_rows, 1,
+        "expected exactly the surviving chat's annotation after the sweep, got {ann_rows}"
+    );
+
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
-    eprintln!("OK: chats tier-2 matched oracle ({n} rows).");
+    eprintln!("OK: chats tier-2 matched oracle ({n} rows, {ann_rows} annotation rows).");
 }

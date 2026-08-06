@@ -1248,8 +1248,10 @@ impl<'c> ChatsRepository<'c> {
     }
 
     /// `delete` — drop the slim `chats` row + its `chat_messages` rows (v4 deletes
-    /// both). Returns `Ok(false)` when no chat row matched. The participant-vault
-    /// summary sweep is deferred (external subsystem; see module docs).
+    /// both), then sweep the chat's `conversation_annotations` (Bug 10, v4
+    /// `3bb664f0`). Returns `Ok(false)` when no chat row matched. The
+    /// participant-vault summary sweep is deferred (external subsystem; see module
+    /// docs).
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         let n = self
             .conn
@@ -1259,6 +1261,22 @@ impl<'c> ChatsRepository<'c> {
         }
         self.conn
             .execute("DELETE FROM chat_messages WHERE chatId = ?1", params![id])?;
+        // Sweep this conversation's per-message annotations. They live on no FK
+        // cascade, so without this a deleted chat leaks its rows — and a later
+        // restore of a migrated instance collides on the
+        // `UNIQUE(chatId, messageIndex, characterName)` constraint. v4 wraps this in
+        // a try/catch→warn (best-effort — the chat row is already gone); v5 swallows
+        // a sweep error the same way rather than failing the whole delete.
+        if let Err(e) =
+            super::conversation_annotations::ConversationAnnotationsRepository::new(self.conn)
+                .delete_all_for_chat(id)
+        {
+            tracing::warn!(
+                chat_id = %id,
+                error = %e,
+                "[Chats] Failed to delete conversation annotations for chat"
+            );
+        }
         Ok(true)
     }
 

@@ -41,6 +41,31 @@ tsx <v5>/harness/oracle/cases/markdown-transcript.ts > /tmp/oracle-markdown-tran
 run `QT_ORACLE_MARKDOWN_TRANSCRIPT=… cargo test -p quilltap-harness --test
 markdown_transcript_equivalence`.
 
+### Unit 2 — bug 10: per-chat conversation-annotations sweep (v4 `3bb664f0`)
+
+`db::conversation_annotations::delete_all_for_chat` (v4 `deleteAllForChat` →
+`deleteMany({chatId})`) added; `db::chats::delete` calls it after the
+chats/chat_messages deletes, in a swallow-and-`tracing::warn!` best-effort arm
+matching v4's try/catch→warn (the chat row is already gone; a sweep error must
+not fail the delete). Annotations sit on no FK cascade, so a deleted chat would
+otherwise leak rows and a later restore of a migrated instance collides on
+`UNIQUE(chatId, messageIndex, characterName)`.
+
+State proof: `chats_tier2_equivalence` now ALSO dumps `conversation_annotations`.
+The `build-chats-fixture.ts` seed gained three annotation rows — two on the chat
+the op sequence DELETEs (`cccc…`), one on a chat it only UPDATEs (`bbbb…`) — and
+the oracle case (`chats-tier2.ts`) dumps the table under an `annotations` key.
+After the delete only the `bbbb…` row survives; both sides agree. **Mutation-
+proven** (D24): targeting the sweep at a non-matching id leaves all three rows and
+the differential goes RED. Neutrality: `conversation_annotations_tier2` +
+`conversation_annotations_upsert_tier2` re-run green (the method is additive).
+
+Regen (Node 24): `QT_FIXTURE_OUT=/tmp/qt-chats-fixture.db npx tsx
+build-chats-fixture.ts`; `QT_FIXTURE_CHATS=/tmp/qt-chats-fixture.db npx tsx
+chats-tier2.ts > /tmp/oracle-chats.ndjson`; run `QT_ORACLE_CHATS=…
+QT_FIXTURE_CHATS=… cargo test -p quilltap-harness --test chats_tier2_equivalence`.
+core 0.0.488, harness 0.0.413.
+
 ## Round record — the Taboo + maintenance round unification (P4.37-resumed ∥ P4.D50 ∥ P4.40), 2026-08-06
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `f7f1a956` →

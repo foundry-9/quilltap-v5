@@ -145,6 +145,11 @@ over-budget cases (message-boundary split, a single-message boundary
 walk, a split interchange 0 carrying the metadata header, and astral
 content for the UTF-16 proof), all byte-exact against the reference
 renderer.
+Deleting a conversation now also sweeps its per-message annotations (v4 bug
+10). Annotations sat on no cascade, so a deleted chat left its annotation rows
+behind — harmless day to day, but a later restore of a migrated instance could
+collide on the unique constraint. The sweep is scoped to the deleted chat.
+
 Widened the `Content-Disposition` `filename*` escaping to cover the full RFC
 8187 stray set — `' ( ) * !` are now all percent-encoded, matching the
 reference app (v4 bug 41). v5 previously escaped only the apostrophe; v4 has
