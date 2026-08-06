@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './support/fixtures';
 
-import { E2E_PASSPHRASE } from './support/env';
+import { E2E_PASSPHRASE, MOCK_SERPER_PORT } from './support/env';
+import { MOCK_SERPER_KG_TITLE, startMockSerper, type MockSerper } from './support/mock-serper';
 import { openSidebarSection } from './support/sidebar';
 
 /**
@@ -447,13 +448,105 @@ test.describe('P4.9E3C — Search & Replace', () => {
     await expect(dialog.getByText('No matches found')).toBeVisible({ timeout: 15_000 });
     await expect(next).toBeDisabled();
 
-    // Back reaches the scope step with the chat preselected.
+    // Back reaches the scope step with the chat preselected. (`getByText` is a
+    // strict-mode hazard here — the step heading AND a breadcrumb span both read
+    // "Select Scope"; target the heading, the same deflake pattern this file's
+    // `renamedToast` uses.)
     await dialog.getByRole('button', { name: 'Back' }).click();
-    await expect(dialog.getByText('Select Scope')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Select Scope' })).toBeVisible();
     await expect(dialog.getByLabel('Current Chat')).toBeChecked();
 
     // Nothing was written: this beat deliberately never executes.
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog.getByText('Select Scope')).toHaveCount(0);
+  });
+});
+
+/**
+ * P4.42 — the web-search wire. Before this lane `search_web` was ported but never
+ * connected, so it REFUSED at runtime while the tools inventory advertised it
+ * AVAILABLE. This beat asserts both halves of the fix over the real binary +
+ * spine + `RealWebSearchProvider`:
+ *   1. the Run Tool picker lists `search_web` as AVAILABLE (not the
+ *      "No search provider configured…" refusal), and
+ *   2. a run round-trips through the provider (to the in-worker mock Serper) and
+ *      renders a Web Search result card.
+ *
+ * The server was launched (global setup) with `SERPER_API_KEY` set +
+ * `QUILLTAP_SERPER_BASE_URL` pointed at this mock, and the OPENAI_COMPATIBLE
+ * profile has `allowWebSearch = 1`, so the tool clears BOTH inventory gates. No
+ * live Serper call, no spend.
+ */
+test.describe('P4.42 — Web search', () => {
+  let serper: MockSerper;
+
+  test.beforeAll(async () => {
+    serper = await startMockSerper(MOCK_SERPER_PORT);
+  });
+  test.afterAll(async () => {
+    await serper?.close();
+  });
+
+  test('the picker advertises search_web available and a run round-trips through the provider', async ({
+    page,
+  }) => {
+    await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Chat');
+    await page.getByRole('button', { name: 'Run Tool…' }).click();
+
+    // Count the existing tool-run chips (the P4.17 seed leaves one on Solo Voyage)
+    // so the run's own chip can be awaited by count rather than raced.
+    const runChips = page.getByRole('button', { name: 'Expand Prospero tool run message' });
+    const chipsBefore = await runChips.count();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Run Tool', { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // Narrow to search_web (the filter matches the id → the sole entry) and prove
+    // it is ADVERTISED AVAILABLE — the consistency the whole lane exists for. The
+    // old wiring left it advertised-but-refusing; the refusal reason must be
+    // absent, and the picker button enabled.
+    await dialog.getByLabel('Search tools').fill('search_web');
+    const entry = dialog.locator('.qt-dialog-body button').first();
+    await expect(entry).toBeVisible({ timeout: 10_000 });
+    await expect(entry).toBeEnabled();
+    await expect(dialog.getByText('No search provider configured')).toHaveCount(0);
+    // Capture the inventory display name ("Search Web") off the row so the form
+    // title assertion never hard-codes it.
+    const toolName = (await entry.locator('.font-medium').first().innerText()).trim();
+    await entry.click();
+
+    // Step into the form and supply the required query.
+    await expect(dialog.getByText(`Run Tool: ${toolName}`)).toBeVisible({ timeout: 10_000 });
+    await dialog.locator('#field-query').fill('history of lighthouses');
+
+    // The run must round-trip through the real provider to the mock: the dispatch
+    // response carries the mock's knowledge-graph title.
+    const ran = page.waitForResponse(
+      async (r) => {
+        if (!r.url().includes('/api/dispatch')) return false;
+        const text = await r.text().catch(() => '');
+        return text.includes(MOCK_SERPER_KG_TITLE);
+      },
+      { timeout: 20_000 },
+    );
+    await dialog.getByRole('button', { name: 'Run Tool' }).click();
+    await ran;
+
+    // The result posts as an operator-initiated run — v4 renders it as a collapsed
+    // "Prospero tool run" announcement chip (like the P4.17 seed). WAIT for the
+    // run's OWN chip to render (the transcript refetch appends it after the modal
+    // closes — racing `.last()` before it lands would expand the seed's chip
+    // instead), then expand the newest to reveal the tool-result card
+    // ("… ran search_web", Success) and — the round-trip's payload — the mock's 4
+    // results: the three organic rows PLUS the knowledge-graph unshift
+    // (results.length 3 < maxResults 5), proving map_serper_results ran on the
+    // real wire.
+    await expect(runChips).toHaveCount(chipsBefore + 1, { timeout: 15_000 });
+    await runChips.last().click();
+    const card = page.locator('qt-tool-message').filter({ hasText: 'search_web' }).last();
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await expect(card.locator('.qt-badge-success').first()).toHaveText('Success');
+    await expect(page.getByText('Found 4 search results:')).toBeVisible({ timeout: 10_000 });
   });
 });

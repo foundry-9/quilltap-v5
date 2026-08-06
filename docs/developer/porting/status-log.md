@@ -59615,3 +59615,94 @@ NOT touch `host.rs:468-513`. Also: quilltap-web's two integration tests
 (`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) each gained `web_search: None`
 in their `ChatSpine` + `SpineBundle` literals (mechanical, forced by the new
 struct fields — no sibling owns those files).
+
+### Unit 3 — the wire tests (tier 1 items 4–5)
+
+New `crates/quilltap-harness/tests/web_search_runner_wire.rs` (NOT a differential
+— no oracle, no env var; a pure Rust wiring proof of facts the two web-search
+differentials structurally cannot see):
+
+- `runner_with_provider_executes_search_web` — a `BuiltInToolRunner` built the
+  host way (`::new(...).with_web_search_provider(RealWebSearchProvider over a
+  CannedSyncWireTransport, serper_registered=false, Some(env_key))`) dispatches
+  `search_web` through the provider (fresh empty main DB — `run_web_search` never
+  touches it), asserting v4's success shape + `formattedText`.
+- `runner_without_provider_refuses_not_configured` — the DEFAULT runner (the
+  pre-lane state) answers v4's exact "Web search is not configured…" bytes.
+- `web_search_advertised_iff_executable` — the consistency pin. Over a
+  web-search-ENABLED chat (schema from the committed `chat-admin-main.db`; a
+  `cp-1` profile with `allowWebSearch=1` + a `chat-1` referencing it, inserted via
+  the repos), for BOTH provider-Some and None: `configured = web_search.is_some()`
+  (the host's exact derivation); `tools_list(...,configured)` marks `search_web`
+  available iff configured (and the unconfigured refusal reason is v4's
+  "No search provider configured…", proving the `web_search_configured` gate is
+  the one exercised, not `allowWebSearch`); the runner executes iff configured.
+  All three agree — advertised-but-refusing is impossible.
+
+Green (`cargo test -p quilltap-harness --test web_search_runner_wire`, 3/3), and
+both existing web-search differentials green UNMODIFIED
+(`web_search_tool_equivalence` over a freshly regenerated oracle;
+`web_search_wire_equivalence` over the committed corpus).
+
+### Unit 4 — the e2e beat (tier 2 item 7)
+
+New `apps/web/e2e/support/mock-serper.ts` (in-process `node:http`; a fixed body of
+three organic results + a `knowledgeGraph` with description, so the response
+exercises v4's kg-unshift). `env.ts` gains `MOCK_SERPER_PORT = 45303`.
+
+⚠ **Shared-infra touch (flagged for the unifier):** `apps/web/e2e/global-setup.ts`
+is NOT in this lane's bulleted Ownership, but tier-2 item 7 explicitly authorizes
+"the global-setup or per-spec env plumb", and the server (launched ONCE in global
+setup) is the only place `SERPER_API_KEY` can reach the process. Three surgical
+additions: (1) `SERPER_API_KEY` + `QUILLTAP_SERPER_BASE_URL=http://127.0.0.1:45303/
+search` on the server spawn env (so the host builds the provider at unlock and
+points it at the mock); and, so `search_web` clears BOTH tools-inventory gates
+DETERMINISTICALLY (not by luck of an earlier beat's state — the original
+single-profile write flaked order-dependently), (2) `allowWebSearch = 1` on EVERY
+connection profile, and (3) a `json_set` over Solo Voyage's participants pinning
+each `connectionProfileId` to the (now web-enabled) default profile — because
+`build_chat_context` reads the ACTIVE CHARACTER participant's OWN
+`connectionProfileId` → that profile's `allowWebSearch`. Without (2)+(3) the
+picker lists `search_web` DISABLED ("Web search must be enabled in the connection
+profile"). P4.9H2B touches settings specs + `apps/web/src` (not global-setup), and
+no other spec references `search_web` or asserts Solo Voyage's `connectionProfileId`
+(verified) — so no collision is expected, but the unifier should be aware this
+file moved.
+
+The beat in `salon-dialogs-flow.spec.ts` (`P4.42 — Web search`) starts the mock
+in-worker, opens the Run Tool modal on Solo Voyage, asserts `search_web` is
+ADVERTISED AVAILABLE (the picker row enabled, no "No search provider configured"
+reason — directly the advertised-vs-refusing consistency), runs it with a query,
+and waits for the dispatch response carrying the mock's knowledge-graph title (the
+round-trip through the real `RealWebSearchProvider` over the real blocking
+transport → mock, NO spend). The operator run renders as a collapsed "Prospero
+tool run" chip (v4's user-initiated shape); expanding the newest reveals the
+"… ran search_web" card with a Success badge AND "Found 4 search results:" — the
+three organic rows PLUS the knowledge-graph unshift (results.length 3 <
+maxResults 5), proving `map_serper_results` ran live on the wire. Verified green
+in isolation (1 passed) + the full suite. SPA → 0.5.417.
+
+### Tier-3 deferrals (recorded loud, not built)
+
+- The Serper-PLUGIN registry half of v4's `isSearchConfigured() || SERPER_API_KEY`
+  OR — `serper_registered` stays `false`; the standing no-plugin-runtime deferral.
+  `DbSearchApiKeys` is wired but inert until it lands (recorded above).
+- 💸 The live-key smoke (one real Serper call, `SERPER_API_KEY` a real key) — a
+  DOGFOOD item, not CI. Owed to the next dogfood pass alongside the round's other
+  live proofs.
+- `with_embedding_provider` (executor.rs:457, likewise uncalled) — NOT this
+  lane's; belongs to the P4.9H2A family's world. Recorded only.
+
+**Two e2e robustness fixes found during the full-suite gate (both in this lane's
+owned `salon-dialogs-flow.spec.ts`):** (1) the P4.42 beat's card assertion raced
+the transcript refetch — `.last()` chip was evaluated before the run's own
+"Prospero tool run" chip rendered, so it expanded the P4.17 SEED's chip instead;
+fixed by capturing the chip count before the run and awaiting `chipsBefore + 1`
+before expanding the newest. (2) A PRE-EXISTING strict-mode flake in the sibling
+`P4.9E3C — Search & Replace` beat (NOT this lane's feature, but this lane's file):
+`getByText('Select Scope')` matched two elements (the step `<h3>` AND a breadcrumb
+`<span>`); hardened to `getByRole('heading', …)` — the same deflake pattern this
+file's `renamedToast` documents. Unrelated to the wire; my global-setup changes
+cannot reach that scope dialog, and the mock-serper server only starts in the
+P4.42 describe's `beforeAll` (after that beat runs) — it surfaced under run-to-run
+timing variance and is now hardened permanently.

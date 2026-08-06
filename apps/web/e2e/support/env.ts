@@ -27,6 +27,16 @@ export const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
  */
 export const MOCK_LLM_PORT = 45301;
 
+/**
+ * The fixed port the P4.42 mock Serper listens on. Global setup launches the
+ * server with `SERPER_API_KEY` set + `QUILLTAP_SERPER_BASE_URL` pointed here, so
+ * a real `search_web` run round-trips through the real binary + spine +
+ * `RealWebSearchProvider` without a live Serper call; the spec starts the mock on
+ * this port in-worker (the MOCK_LLM_PORT precedent). 45302 is taken by the
+ * settings-flow mock.
+ */
+export const MOCK_SERPER_PORT = 45303;
+
 /** The passphrase the e2e locks the fixture behind, and the wrong one it tries. */
 export const E2E_PASSPHRASE = 'open sesame please';
 export const E2E_WRONG_PASSPHRASE = 'not the passphrase';

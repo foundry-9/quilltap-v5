@@ -17,6 +17,7 @@ import {
   INSTANCE_DATA_DIR,
   INSTANCE_DIR,
   MOCK_LLM_PORT,
+  MOCK_SERPER_PORT,
   PID_FILE,
   PORT,
   SERVER_LOG,
@@ -463,6 +464,25 @@ export default async function globalSetup(): Promise<void> {
       `AND NOT EXISTS (SELECT 1 FROM connection_profiles WHERE isDefault = 1);`,
   );
 
+  // P4.42: make `search_web` clear BOTH inventory gates for the salon-dialogs
+  // web-search beat, deterministically (not by luck of an earlier beat's state).
+  // (a) the profile gate: `allowWebSearch = 1` on every profile; and
+  // (b) the chat gate: `build_chat_context` reads the ACTIVE CHARACTER
+  //     participant's OWN `connectionProfileId` → that profile's allowWebSearch,
+  //     so point Solo Voyage's participants at the (now web-enabled) default
+  //     profile via json_set. Absent this, the picker lists `search_web` DISABLED
+  //     ("Web search must be enabled in the connection profile"). The server is
+  //     also launched with SERPER_API_KEY + QUILLTAP_SERPER_BASE_URL below, so the
+  //     run executes through the in-worker mock Serper.
+  runCliWrite(cli, `UPDATE connection_profiles SET allowWebSearch = 1;`);
+  runCliWrite(
+    cli,
+    `UPDATE chats SET participants = (` +
+      `SELECT json_group_array(json_set(value, '$.connectionProfileId', ` +
+      `(SELECT id FROM connection_profiles WHERE provider = 'OPENAI_COMPATIBLE' LIMIT 1))) ` +
+      `FROM json_each(chats.participants)) WHERE title = 'Solo Voyage';`,
+  );
+
   // P4.17: seed a tool-run turn on "Solo Voyage" so `salon-tool-message-flow
   // .spec.ts` walks the tool-result card affordance over real data. v4/v5 both
   // persist tool results as `role:'TOOL'` rows (`saveToolMessages`), but the
@@ -508,11 +528,24 @@ export default async function globalSetup(): Promise<void> {
   );
 
   // Launch the real server (no env pepper → locked) serving the built SPA.
+  // P4.42: SERPER_API_KEY makes the host build the web-search provider at
+  // unlock (so `search_web` runs + the inventory advertises it);
+  // QUILLTAP_SERPER_BASE_URL points that provider's real blocking HTTP transport
+  // at the in-worker mock Serper (no live call, no spend). A synthetic key — it
+  // never leaves this process, and the mock ignores it.
   const logFd = openSync(SERVER_LOG, 'w');
   const child = spawn(
     web,
     ['--host', '127.0.0.1', '--port', String(PORT), '--data-dir', INSTANCE_DIR, '--spa-dir', dist],
-    { stdio: ['ignore', logFd, logFd], detached: true, env: withoutPepper() },
+    {
+      stdio: ['ignore', logFd, logFd],
+      detached: true,
+      env: {
+        ...withoutPepper(),
+        SERPER_API_KEY: 'e2e-mock-serper-key',
+        QUILLTAP_SERPER_BASE_URL: `http://127.0.0.1:${MOCK_SERPER_PORT}/search`,
+      },
+    },
   );
   child.unref();
   writeFileSync(PID_FILE, String(child.pid));

@@ -74,8 +74,12 @@ the tool is available while the tool refuses. The plugin-registry path
 (a search plugin supplying the key) stays deferred; the environment-key
 path is what this connects. Also added an optional endpoint-URL override
 (default: the real Serper endpoint, byte-for-byte unchanged) so a test
-can point the request at an in-process mock. Versions: core 0.0.483,
-host 0.0.61, harness 0.0.409.
+can point the request at an in-process mock. A new wiring test proves a
+runner built the production way actually runs a search (and refuses with
+today's message when unconfigured), and pins the advertised-vs-executed
+consistency both ways. An end-to-end browser beat runs a search through
+a mock Serper server and shows the result card. Versions: core 0.0.483,
+host 0.0.61, harness 0.0.409, SPA 0.5.417.
 
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining
