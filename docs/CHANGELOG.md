@@ -84,6 +84,15 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+The Almanack's embedding-pipeline census now counts failed embedding
+rows instead of a status value nothing writes (v4 Bug 19). The "Failed
+rows" line — renamed from "Permanently failed rows" — now reflects the
+real FAILED count for the current profile. The cast-size histogram and
+the wardrobe-permission counts, which this port had fixed ahead of the
+reference app, are now matched by the reference app too, so their
+differential divergence pins are retired to plain comparisons (v4 Bugs
+20 and 21).
+
 The fold-episode pass no longer discards the memory links its own gate
 just created (v4 Bug 26). When a consolidated episode is written as a new
 memory linked to a related memory, folding in the per-turn fragment

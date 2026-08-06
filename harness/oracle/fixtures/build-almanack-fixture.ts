@@ -1120,9 +1120,10 @@ async function main(): Promise<void> {
       entityType: 'CONVERSATION_CHUNK',
       entityId: CONV_CHUNK_2,
       profileId: EMB_PROFILE,
-      // v4's schema can only store PENDING/EMBEDDED/FAILED; the almanack's
-      // 'PERMANENTLY_FAILED' filter matches a value nothing can write (a v4
-      // quirk carried faithfully — that census cell is structurally 0).
+      // v4's schema can only store PENDING/EMBEDDED/FAILED. v4 `e6554b6e`
+      // (Bug 19) fixed the almanack's census to count FAILED (was
+      // 'PERMANENTLY_FAILED', which nothing can write, so the cell was always
+      // 0). This row is now counted in the `failed` cell.
       status: 'FAILED',
       embeddedAt: null,
       error: 'input too large',

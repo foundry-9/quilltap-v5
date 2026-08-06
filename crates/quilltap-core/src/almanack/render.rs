@@ -1233,9 +1233,10 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
         js_num(ep.help_docs.total),
         js_num(ep.help_docs.unembedded)
     ));
+    // v4 `e6554b6e` (Bug 19): two concatenated pieces, single space before `_(`.
     push!(format!(
-        "- **Permanently failed rows**: {}",
-        js_num(ep.permanently_failed)
+        "- **Failed rows**: {} _(permanent for the current profile)_",
+        js_num(ep.failed)
     ));
     push!(format!(
         "- **Active profile dimensions**: {}",

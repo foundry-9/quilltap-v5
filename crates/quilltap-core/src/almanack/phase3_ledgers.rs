@@ -238,17 +238,12 @@ pub fn collect_chat_breakdown(db: &Db, user_id: &str) -> Result<ChatBreakdownInf
         },
     );
 
-    // DELIBERATE DIVERGENCE from v4 — dogfood finding #67 (ruled 2026-08-06,
-    // "fix v5 now + queue v4"). v4's `GROUP BY participants` binds the bare
-    // name to the raw `participants` JSON COLUMN, not the `json_array_length`
-    // alias, so v4 emits one row per DISTINCT cast (every distinct participant
-    // array is its own group) instead of one row per cast SIZE — the "Cast
-    // sizes" histogram degrades to a per-chat list on any real instance.
-    // Proven in v4's own better-sqlite3 engine (SQLite 3.53.2, the version v5
-    // links): the bare name resolves to the column in both. v5 groups (and
-    // orders) by the length expression so the histogram rolls up by size, as
-    // the report intends. The tier-2 differential pins this divergence in both
-    // directions (self-retiring when v4 fixes its own GROUP BY).
+    // dogfood finding #67 — CONVERGED with v4 (`e6554b6e`, Bug 20). v4's old
+    // `GROUP BY participants` bound the bare name to the raw `participants` JSON
+    // COLUMN, not the `json_array_length` alias, so v4 emitted one row per
+    // DISTINCT cast instead of one per cast SIZE — the "Cast sizes" histogram
+    // degraded to a per-chat list. v4 now groups by the length expression, as
+    // this port always did, so both roll up by size.
     let participant_histogram = main_rows(
         db,
         r#"SELECT json_array_length("participants") AS participants, COUNT(*) AS chats
@@ -529,18 +524,17 @@ pub fn collect_character_breakdown(
             SUM(CASE WHEN "controlledBy" = 'user' THEN 1 ELSE 0 END)                     AS userControlled,
             SUM(CASE WHEN "canBeCarina" = 1 THEN 1 ELSE 0 END)                           AS carina,
             SUM(CASE WHEN "systemTransparency" = 1 THEN 1 ELSE 0 END)                    AS transparent,
-            -- DELIBERATE DIVERGENCE from v4 — dogfood finding #68 (ruled
-            -- 2026-08-06, "fix v5 now + queue v4"). v4 counts `= 1` (explicit
-            -- opt-in), but the RUNTIME permission is `!== false` — NULL means
-            -- ALLOWED (orchestrator.service.ts:818,
-            -- `character?.canDressThemselves !== false`). So v4's "May dress
-            -- themselves" / "May create outfits" read 0 on any instance where
-            -- the flags were never toggled, badly under-reporting the effective
-            -- permission. `IS NOT 0` is the null-safe form of `!== false`:
-            -- NULL and 1 count, an explicit 0 (false) does not. coreWhisper
-            -- stays `IS NOT NULL` (it counts characters with an explicit
-            -- override, which 0 correctly reports as none). The tier-2
-            -- differential pins this in both directions (self-retiring).
+            -- dogfood finding #68 — CONVERGED with v4 (`e6554b6e`, Bug 21). The
+            -- RUNTIME permission is `!== false` — NULL means ALLOWED — at TWO
+            -- call sites (`orchestrator.service.ts:818` and
+            -- `pseudo-tool.service.ts:124`, both `character?.canDressThemselves
+            -- !== false`). v4's census once counted `= 1` (explicit opt-in), so
+            -- it read 0 on any instance where the flags were never toggled,
+            -- under-reporting the effective permission; v4 now counts the
+            -- effective form too. `IS NOT 0` is the null-safe `!== false`: NULL
+            -- and 1 count, an explicit 0 (false) does not. coreWhisper stays
+            -- `IS NOT NULL` (it counts characters with an explicit override,
+            -- which 0 correctly reports as none).
             SUM(CASE WHEN "canDressThemselves" IS NOT 0 THEN 1 ELSE 0 END)               AS dress,
             SUM(CASE WHEN "canCreateOutfits" IS NOT 0 THEN 1 ELSE 0 END)                 AS outfits,
             SUM(CASE WHEN "coreWhisperEnabled" IS NOT NULL THEN 1 ELSE 0 END)            AS coreWhisper
@@ -1012,9 +1006,13 @@ pub fn collect_embedding_pipeline(
     let dimension_mismatch =
         active_dims.is_some_and(|d| stored_dimensions.iter().any(|row| row.dimensions != d));
 
-    let permanently_failed: f64 = status_rows
+    // v4 `e6554b6e` (Bug 19): `EmbeddingStatusEnum` only holds PENDING /
+    // EMBEDDED / FAILED — the old 'PERMANENTLY_FAILED' filter matched nothing and
+    // the cell was structurally always 0. FAILED is "permanent for the current
+    // profile": a maintenance sweep can drain it when the active profile changes.
+    let failed: f64 = status_rows
         .iter()
-        .filter(|r| r.status == "PERMANENTLY_FAILED")
+        .filter(|r| r.status == "FAILED")
         .map(|r| r.count)
         .sum();
 
@@ -1023,7 +1021,7 @@ pub fn collect_embedding_pipeline(
 
     Ok(EmbeddingPipelineInfo {
         status_by_entity_type: status_rows,
-        permanently_failed,
+        failed,
         conversation_chunks: EmbeddedTableCensus {
             total: chunk_total,
             unembedded: chunk_unembedded,

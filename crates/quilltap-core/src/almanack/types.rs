@@ -594,7 +594,9 @@ pub struct StoredDimensionRow {
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddingPipelineInfo {
     pub status_by_entity_type: Vec<EmbeddingStatusRow>,
-    pub permanently_failed: f64,
+    /// Rows in the FAILED terminal state — permanent for the current embedding
+    /// profile (v4 `e6554b6e`, Bug 19; was `permanentlyFailed`, always 0).
+    pub failed: f64,
     pub conversation_chunks: EmbeddedTableCensus,
     pub help_docs: EmbeddedTableCensus,
     /// Distinct stored vector widths, decoded from the self-describing header.

@@ -1,7 +1,7 @@
 //! P4.37 unit 12 — the Almanack tier-2 differential: report DATA, rendered
 //! MARKDOWN, route envelopes, progress frames and persisted rows, diffed
 //! against v4's REAL `lib/tools/almanack` + `system/tools` route handlers at
-//! `f7f1a956` over the committed `almanack-*` fixture family.
+//! `f4955e0e` over the committed `almanack-*` fixture family.
 //!
 //! ## The comparison contract
 //!
@@ -211,88 +211,6 @@ fn strip_builtin_provider(v4_data: &mut Value, v5_data: &Value) -> Result<(), St
         if let Some(rows) = v4_data.get_mut(list).and_then(Value::as_array_mut) {
             rows.retain(|r| r[key].as_str() != Some("BUILTIN"));
         }
-    }
-    Ok(())
-}
-
-/// EXPECTED DIVERGENCE — dogfood findings #67 + #68 (pinned in BOTH directions;
-/// ruled 2026-08-06, "fix v5 now + queue v4"). The two v4 SQL bugs live in
-/// `phase3_ledgers.rs`; v5 corrects them. Here v4's buggy aggregates are folded
-/// to v5's corrected shape before the `:data` compare, and each arm self-retires
-/// if v4 fixes its own SQL (the bug's fingerprint vanishes) — at which point the
-/// pin trips and the collector fix must be reverted or re-ruled.
-///
-/// - #67 — the cast-size histogram. v4's `GROUP BY participants` binds the bare
-///   name to the raw `participants` JSON COLUMN, not the `json_array_length`
-///   alias, so v4 emits one row per DISTINCT cast rather than one per SIZE
-///   (proven in v4's own better-sqlite3). v5 groups by the length expression, so
-///   its histogram rolls up by size. v4's per-cast rows are folded down to v5's
-///   shape; if v4's histogram is already rolled up (no duplicate size key), the
-///   bug is gone.
-/// - #68 — the wardrobe-permission counts. v4 counts `= 1` (explicit opt-in) but
-///   the runtime permission is `!== false` (NULL means ALLOWED,
-///   orchestrator.service.ts:818), so v4 under-reports. v5 counts `IS NOT 0`
-///   (the effective permission), so its count is never smaller and is strictly
-///   larger whenever a flag was left at its NULL default. v4's two counts are
-///   lifted to v5's; if they already agree the divergence is not exercised.
-fn reconcile_ledger_divergences(v4_data: &mut Value, v5_data: &Value) -> Result<(), String> {
-    // ── #67: roll up v4's per-cast histogram by cast size ────────────────────
-    let hist = v4_data
-        .pointer("/chatBreakdown/participantHistogram")
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or("v4 data has no chatBreakdown/participantHistogram")?;
-    let mut seen = std::collections::HashSet::new();
-    let bug_present = hist
-        .iter()
-        .any(|r| !seen.insert(r["participants"].as_i64().unwrap_or(-1)));
-    if !bug_present {
-        return Err(
-            "v4's participant histogram is already rolled up by cast size — retire the #67 pin"
-                .into(),
-        );
-    }
-    let mut folded: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
-    for r in &hist {
-        *folded
-            .entry(r["participants"].as_i64().unwrap_or(0))
-            .or_insert(0) += r["chats"].as_i64().unwrap_or(0);
-    }
-    let rolled: Vec<Value> = folded
-        .into_iter()
-        .map(|(participants, chats)| json!({ "participants": participants, "chats": chats }))
-        .collect();
-    v4_data["chatBreakdown"]["participantHistogram"] = json!(rolled);
-
-    // ── #68: lift v4's explicit dress/outfit counts to the effective form ────
-    let mut any_strictly_greater = false;
-    for key in ["canDressThemselves", "canCreateOutfits"] {
-        let ptr = format!("/characterBreakdown/{key}");
-        let v4c = v4_data
-            .pointer(&ptr)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| format!("v4 data missing {ptr}"))?;
-        let v5c = v5_data
-            .pointer(&ptr)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| format!("v5 data missing {ptr}"))?;
-        if v5c < v4c {
-            return Err(format!(
-                "v5's effective {key} ({v5c}) is below v4's explicit count ({v4c}) — a null-safe \
-                 `!== false` can never count fewer; investigate"
-            ));
-        }
-        if v5c > v4c {
-            any_strictly_greater = true;
-        }
-        v4_data["characterBreakdown"][key] = v5_data["characterBreakdown"][key].clone();
-    }
-    if !any_strictly_greater {
-        return Err(
-            "the fixture no longer has a NULL/true dress or outfit flag, so #68's divergence is \
-             not exercised — retire the pin or reseed the fixture"
-                .into(),
-        );
     }
     Ok(())
 }
@@ -608,8 +526,8 @@ fn almanack_tier2_matches_oracle() {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         assert_eq!(
             v["baseline"].as_str(),
-            Some("f7f1a956"),
-            "oracle regenerated at a different baseline — regenerate at f7f1a956"
+            Some("f4955e0e"),
+            "oracle regenerated at a different baseline — regenerate at f4955e0e"
         );
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
@@ -703,10 +621,11 @@ fn almanack_tier2_matches_oracle() {
             Ok(()) => eprintln!("OK {case}:builtin_divergence_pin"),
             Err(e) => failed.0.push(format!("{case}:builtin_divergence_pin: {e}")),
         }
-        match reconcile_ledger_divergences(&mut v4_norm, &v5_norm) {
-            Ok(()) => eprintln!("OK {case}:ledger_divergence_pin"),
-            Err(e) => failed.0.push(format!("{case}:ledger_divergence_pin: {e}")),
-        }
+        // dogfood #67 (cast-size histogram) + #68 (wardrobe-permission counts):
+        // v4 `e6554b6e` ADOPTED both fixes this port made first, so v4's data now
+        // agrees with v5's — the reconcile shim is retired and these are plain
+        // comparisons in the `data` check below. The fixture still seeds duplicate
+        // cast sizes and a NULL-flag character, so the comparison stays meaningful.
         normalize_data(&mut v4_norm);
         normalize_data(&mut v5_norm);
         canonicalize_numbers(&mut v4_norm);

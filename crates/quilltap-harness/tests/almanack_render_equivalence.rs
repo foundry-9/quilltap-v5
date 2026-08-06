@@ -36,7 +36,7 @@ const EXPECTED_CASES: [&str; 8] = [
 /// The v4 commit the committed recipe pins. A stale NDJSON regenerated against
 /// a different baseline fails loudly rather than passing silently
 /// (`oracle-regen-silent-stale-pass`).
-const BASELINE: &str = "f7f1a956";
+const BASELINE: &str = "f4955e0e";
 
 #[test]
 fn almanack_render_matches_oracle() {

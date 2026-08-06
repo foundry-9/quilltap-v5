@@ -60346,3 +60346,42 @@ Regen (jest, TZ irrelevant — see the family header): build the /tmp
 fixture via `build-fold-episode-fixture.ts`, then
 `npx jest … -- fold-episode-tier3` with a `/tmp` cases mirror. Versions:
 core 0.0.490, harness 0.0.414.
+
+### Unit 6 — bug 19 permanentlyFailed→failed rename + unit 7 — bugs 20/21 retire #67/#68 pins (ONE almanack oracle regen)
+
+**Bug 19** (v4 `e6554b6e`): `EmbeddingPipelineInfo.permanently_failed` →
+`failed` (camelCase serde, no default) across `almanack/types.rs`,
+`phase3_ledgers.rs` (filter `PERMANENTLY_FAILED` → `FAILED` — the old
+value nothing writes, so the cell was structurally always 0),
+`render.rs` (`- **Failed rows**: {} _(permanent for the current
+profile)_` — v4's two concatenated pieces, single space before `_(`),
+and `mod.rs` (fallback key). The committed almanack DB fixture already
+seeds a `FAILED` chunk row, so the tier-2 `failed` cell moves 0 → 1 with
+NO DB regen; only its stale comment updated.
+
+**Bugs 20/21** (v4 `e6554b6e`): v4 ADOPTED the #67 (cast-size histogram
+`GROUP BY json_array_length`) and #68 (wardrobe-permission `!== false`
+counts) fixes this port made first, so v4's tier-2 data now agrees with
+v5's. Retired `reconcile_ledger_divergences` (the fold/lift shim) + its
+doc header from `almanack_tier2_equivalence.rs` — both are plain `data`
+comparisons now. The fixture keeps duplicate cast sizes + a NULL-flag
+character so the comparisons stay meaningful. Updated both
+`phase3_ledgers.rs` comments to CONVERGED, naming #68's TWO runtime call
+sites (`orchestrator.service.ts:818` AND `pseudo-tool.service.ts:124`).
+
+**Oracle:** both almanack NDJSON oracles regenerated at `f4955e0e`
+(the render family over v4's `makeAlmanackFixture`, which v4 also edited
+COMPLETED→EMBEDDED / PERMANENTLY_FAILED→FAILED; the tier-2 family over
+the committed `almanack-*.db` read-only). The four `baseline` markers
+(`almanack-render.test.ts`, `almanack-routes.test.ts`,
+`almanack_render_equivalence.rs:BASELINE`,
+`almanack_tier2_equivalence.rs`) moved `f7f1a956` → `f4955e0e` in
+lockstep. `EXPECTED_CASES` was already 8. Both differentials green (base
+case: `failed=1`, histogram rolled up by size, effective dress/outfit
+counts). Only `almanack_tier2_equivalence` consumes the committed
+almanack DB fixture — no other family affected.
+
+Regen: the two jest recipes in `almanack-render.test.ts` /
+`almanack-routes.test.ts` headers (TZ=UTC, /tmp cases mirror; the tier-2
+DBs read from /tmp copies of the committed files). Versions: core
+0.0.491, harness 0.0.415.

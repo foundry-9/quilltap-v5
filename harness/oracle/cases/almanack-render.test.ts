@@ -414,7 +414,7 @@ async function main(): Promise<void> {
   for (const v of variants()) {
     const data = v.build();
     const markdown = renderAlmanackMarkdown(data);
-    lines.push(JSON.stringify({ name: v.name, data, markdown, baseline: 'f7f1a956' }));
+    lines.push(JSON.stringify({ name: v.name, data, markdown, baseline: 'f4955e0e' }));
   }
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`almanack-render oracle wrote ${outPath} (${lines.length} cases)\n`);

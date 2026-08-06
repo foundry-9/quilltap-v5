@@ -72,7 +72,7 @@ interface Spec {
   backups: BackupSpec[];
 }
 
-const BASELINE = 'f7f1a956';
+const BASELINE = 'f4955e0e';
 const PROGRESS_ID = 'fd000000-0000-4000-8000-000000000001';
 
 function applyMocks(userId: string): void {

@@ -369,7 +369,7 @@ pub fn generate_almanack_data(
         "embeddingPipeline",
         EmbeddingPipelineInfo {
             status_by_entity_type: Vec::new(),
-            permanently_failed: 0.0,
+            failed: 0.0,
             conversation_chunks: EmbeddedTableCensus {
                 total: 0.0,
                 unembedded: 0.0,
