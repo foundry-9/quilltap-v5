@@ -161,6 +161,32 @@ export default async function globalSetup(): Promise<void> {
       "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
       'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
   );
+  // The P4.9H2A list enrichment reads TWO more embedding tables the vintage
+  // fixture lacks: `tfidf_vocabularies` (the BUILTIN `vocabularyStats` probe —
+  // with it absent the FIRST BUILTIN profile 500s every list, which is exactly
+  // how the P4.9H2B CRUD beat found this) and `embedding_status` (the
+  // `embeddingStats` probe swallows its error, but the empty table is the honest
+  // state, and the boot conversation-render reconcile reads it too). DDL from
+  // fresh_schema.json, verbatim; IF NOT EXISTS keeps both no-ops when a future
+  // fixture regen carries them — schema materialization, NOT a fixture regen.
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "tfidf_vocabularies" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "profileId" TEXT NOT NULL, ' +
+      '"userId" TEXT NOT NULL, "vocabulary" TEXT NOT NULL, "idf" TEXT NOT NULL, ' +
+      '"avgDocLength" REAL NOT NULL, "vocabularySize" REAL NOT NULL, ' +
+      '"includeBigrams" INTEGER DEFAULT 1, "fittedAt" TEXT NOT NULL, ' +
+      '"createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);',
+  );
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "embedding_status" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "userId" TEXT NOT NULL, ' +
+      '"entityType" TEXT NOT NULL, "entityId" TEXT NOT NULL, ' +
+      '"profileId" TEXT NOT NULL, "status" TEXT DEFAULT \'PENDING\', ' +
+      '"embeddedAt" TEXT, "error" TEXT, ' +
+      '"createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);',
+  );
   // The Salon fixture predates the roleplay-templates table; P4.30 threads the
   // chat's template into every rendered message, so the sidebar's template
   // picker, the Templates settings tab and the by-id GET all read
