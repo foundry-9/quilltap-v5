@@ -61,6 +61,40 @@ async function readTitle(
 }
 
 /**
+ * The success toast the rename raises — narrowed to the SUCCESS type, the way
+ * the 2026-07-31 deflake narrowed the error probe.
+ *
+ * P4.40: `getByText('Chat renamed')` on its own is a strict-mode hazard. Toasts
+ * dismiss on a `setTimeout` running on the page's main thread, so under load
+ * that timer starves and an earlier success toast is STILL on screen when the
+ * next one arrives — two matches, and the assertion fails with "resolved to 2
+ * elements" (reproduced deterministically at 20x CPU throttling; the full-suite
+ * failure the `f7f1a956` gate saw). `.first()` would paper over it and, worse,
+ * would be satisfied by the STALE toast even if the second rename never
+ * happened, so the beat pairs the probe with {@link chatUpdateCommitting} — the
+ * round trip is the proof, the toast is the UI's report of it.
+ */
+const renamedToast = (page: Page) =>
+  page.locator('[role="toast-container"] div.qt-toast-success', { hasText: 'Chat renamed' });
+
+/**
+ * The `chatUpdate` dispatch that commits `title` — matched on the RESPONSE BODY
+ * so the waiter is immune to which invalidation produced it and to earlier
+ * in-flight responses (the 2026-07-31 trap-10 shape). Register it BEFORE the
+ * click that triggers it.
+ */
+const chatUpdateCommitting = (page: Page, title: string) =>
+  page.waitForResponse(
+    async (r) => {
+      if (!r.url().includes('/api/dispatch')) return false;
+      if (!(r.request().postData() ?? '').includes('"chatUpdate"')) return false;
+      const text = await r.text().catch(() => '');
+      return text.includes(`"title":${JSON.stringify(title)}`);
+    },
+    { timeout: 15_000 },
+  );
+
+/**
  * ACTIVATE-AT-UNIFY. `GET /api/v1/chats/{id}?action=export` is P4.9E3B's byte
  * route; on this lane's branch it does not exist yet. FLIPPED at the round's unification
  * (2026-07-27).
@@ -128,8 +162,10 @@ test.describe('P4.9E3C — Rename Chat', () => {
       },
       { timeout: 15_000 },
     );
+    const committed = chatUpdateCommitting(page, 'Solo Voyage, Revisited');
     await save.click();
-    await expect(page.getByText('Chat renamed')).toBeVisible({ timeout: 15_000 });
+    await committed;
+    await expect(renamedToast(page).first()).toBeVisible({ timeout: 15_000 });
     // The trim is the assertion: v4 writes `title.trim()`, not what was typed,
     // and unticking the box is what sets `isManuallyRenamed`.
     expect(await readTitle(page, chatId)).toEqual({
@@ -173,8 +209,10 @@ test.describe('P4.9E3C — Rename Chat', () => {
     // manual-rename FLAG stays set: no affordance in either app clears it
     // without regenerating, and Save is hidden while automatic naming is on.
     await field.fill(before.title!);
+    const restored = chatUpdateCommitting(page, before.title!);
     await save.click();
-    await expect(page.getByText('Chat renamed')).toBeVisible({ timeout: 15_000 });
+    await restored;
+    await expect(renamedToast(page).first()).toBeVisible({ timeout: 15_000 });
     expect((await readTitle(page, chatId)).title).toBe(before.title);
   });
 });

@@ -206,6 +206,27 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     // exit stamp: the dead-session fallback closes the pane on its own, OR
     // the pane survives and xterm prints its "[session ended …]" line.
     await expect(terminalPane.locator('.xterm')).toBeVisible({ timeout: 15_000 });
+    // P4.40 deflake. The xterm canvas mounts BEFORE its WebSocket opens, and
+    // the transport DROPS anything sent while the socket is not OPEN —
+    // silently, by design (`terminal-stream-transport.ts:84`). So typing the
+    // moment `.xterm` is visible can send NOTHING, and the beat then waits out
+    // its whole `toPass` window below for a shell that never heard the `exit`.
+    // That is the full-suite failure: the pane is up, the assertion is right,
+    // and the gesture never happened. Reproduced deterministically by holding
+    // the terminal WebSocket handshake for 8 s.
+    //
+    // Bytes can only REACH the pane once the same socket is open, so the
+    // shell's own first output is the round trip that proves the input path is
+    // live — the trap-10 shape (await the page's own downstream traffic, not
+    // just the affordance that triggered it). Generous window on purpose: the
+    // prompt lands only after the rc files are sourced, which is the >10 s nvm
+    // case the beat's timeout already accounts for.
+    await expect
+      .poll(async () => (await terminalPane.locator('.xterm').innerText()).trim().length, {
+        timeout: 45_000,
+        intervals: [250],
+      })
+      .toBeGreaterThan(0);
     await terminalPane.locator('.xterm').click();
     await page.keyboard.type('exit');
     await page.keyboard.press('Enter');

@@ -73,6 +73,19 @@ every add and remove and renders back exactly what the server stored,
 so the normalization is visible where you made the edit. The Taboo help
 page from the reference app is not carried over — this build has no help
 surface to show it on.
+Hardened two end-to-end checks that could fail on a busy machine
+without anything being wrong with the app. The terminal check typed
+its "exit" the moment the terminal appeared, but the connection
+underneath opens a moment later and silently discards anything sent
+before it does — so on a slow run the command was never sent and the
+check waited out its clock for a shell that had not heard it; it now
+waits for the shell's own first output first. The rename check looked
+for a "Chat renamed" notice by text alone, and when an earlier notice
+had not yet faded there were two on screen and the lookup became
+ambiguous; it now waits for the save round trip and matches the
+success notice specifically. Both failures were reproduced on demand
+before being fixed, and neither check asserts less than it did.
+
 Fixed a test that could report the job runner had stopped logging
 failures when it had not. The check installed its log capture only for
 its own thread, but the logging library decides once, process-wide,

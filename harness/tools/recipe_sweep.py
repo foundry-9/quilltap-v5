@@ -104,6 +104,17 @@ EXEMPT_FAMILIES = {
 
 NODE_BIN_DEFAULT = "~/.nvm/versions/node/v24.13.1/bin"
 
+# The v4 checkout every recipe's `cd ~/source/quilltap-server` reaches.
+#
+# P4.40: a lane whose baseline is BEHIND v4 HEAD (the normal state during a
+# drift round — v4 ships daily) must regenerate from a detached worktree pinned
+# at its baseline, or the sweep bakes an unabsorbed drift into every oracle it
+# touches. The recipes deliberately do NOT name a pin (a `/tmp` pin does not
+# survive the round that made it — that is the `stale_v4_pin_path` refusal), so
+# the pin belongs on the driver's command line instead: `--v4 <pin>`.
+V4_CHECKOUT_DEFAULT = "~/source/quilltap-server"
+V4_CHECKOUT = V4_CHECKOUT_DEFAULT
+
 # Families whose recipe writes into the repo BY DESIGN, with the safeguard that
 # makes it sound. These are not policy-1 violations; `--run` still refuses them
 # (regenerating a committed artifact is a lane decision, never a sweep's).

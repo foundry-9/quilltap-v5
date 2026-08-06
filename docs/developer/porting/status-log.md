@@ -58699,3 +58699,85 @@ green.
 **After the fix: 0 failures in 30 runs** of the same
 `--test-threads=8` repro, and the full `quilltap-core` lib binary
 (1,301 tests) green 3/3 at `--test-threads=16`.
+
+---
+
+### Lane record — P4.40 unit 3: the deflake trio
+
+All three were reproduced (or honestly failed to reproduce) BEFORE any
+edit, per the deflake round's rule. Two general tools did the work and
+are worth reusing: **CDP CPU throttling**
+(`page.context().newCDPSession(page)` →
+`Emulation.setCPUThrottlingRate`) models a loaded machine far more
+faithfully than a blanket `page.route` delay — a 2 s delay on every API
+call put the workspace in a state it never reaches in production and
+broke an unrelated earlier assertion, which is exactly the "speculative
+repro" the order warns about; and an **init-script WebSocket wrapper**
+that holds the handshake for N seconds while reporting `CONNECTING`,
+which is the only way to exercise a transport whose failure mode is
+silence.
+
+**1. `salon-documents-flow.spec.ts` — the stacked-panes beat. FIXED.**
+Root cause: `terminal-stream-transport.ts:84` DROPS every send while the
+socket is not `OPEN`, silently and by design. The beat typed `exit` as
+soon as `.xterm` was visible — but the canvas mounts before the socket
+opens, so under load the keystrokes went nowhere and the beat then waited
+out its whole 30 s `toPass` window for a `session ended` line that could
+never arrive. Reproduced deterministically by holding the terminal
+WebSocket handshake for 8 s: the beat failed at exactly that `toPass`,
+every time. The fix is the trap-10 shape — bytes can only REACH the pane
+over the same socket, so the beat now waits for the shell's own first
+output (a non-empty `.xterm`) before clicking and typing. With the 8 s
+handshake delay STILL injected the hardened beat passes in 9.9 s. No
+assertion weakened; the `toPass` window, the kill/confirm unwind, and the
+final pane-count assertions are untouched.
+
+**2. `salon-dialogs-flow.spec.ts` — the Rename Chat beat. FIXED.**
+Reproduced deterministically at 20× CPU throttling, and the failure was
+not a timeout at all: **`getByText('Chat renamed')` resolved to TWO
+elements** and failed strict mode. Toasts dismiss on a main-thread
+`setTimeout`, so under load the timer starves and the first rename's
+success toast is still on screen when the second arrives (the page
+snapshot showed all three toasts of the beat stacked, none dismissed).
+This is the same stale-toast class the 2026-07-31 deflake identified and
+fixed for the ERROR probe — it narrowed that one to `div.qt-toast-error`
+and left both `Chat renamed` probes bare.
+
+`.first()` would have papered it over AND weakened the beat: the stale
+toast satisfies it even if the second rename never happened. So each of
+the two sites now registers a `chatUpdateCommitting` waiter BEFORE the
+click — a `page.waitForResponse` matched on the RESPONSE BODY carrying
+`"title":"<the title>"`, immune to which invalidation produced it — and
+the toast probe is narrowed to `[role="toast-container"]
+div.qt-toast-success`. The round trip is the proof; the toast is the
+UI's report of it. Mutation-proven: changing the probe's text to
+`Chat re-named` fails the beat at that assertion, so the locator resolves
+against real content and is not vacuous. Passes with the 20× throttle
+still injected.
+
+**3. `workspace-flow.spec.ts` — the terminal pop-out beat. NOT
+REPRODUCED; left alone, per the order.** Three attempts, all recorded so
+the next lane does not repeat them:
+
+- *A leftover live PTY session* (the residue beat 1 leaves when its
+  `exit` is dropped — a real cascade, named in beat 1's own comment, and
+  the tempting explanation because both terminal beats failed in the SAME
+  gate run). Spawned a second live session on Solo Voyage before the
+  beat: it passes in 1.4 s. **Refuted.** There is also no session cap in
+  `quilltap-web` for an accumulating-sessions story to lean on.
+- *A blanket 2 s delay on every page API call.* Breaks a DIFFERENT,
+  earlier assertion (the salon-list card resolves but stays `hidden`) in
+  a regime the app never sees. Discarded as unfaithful rather than
+  reported as a repro.
+- *CPU throttling at 12× / 20× / 40×.* Passes at every rate — every
+  assertion holds. The one honest measurement worth carrying: at 40× the
+  beat takes **22 s of its 30 s test budget**, so if this beat has a real
+  failure mode under load it is far more likely the per-test TIMEOUT than
+  any assertion in it. That is a budget, not an assertion, and raising it
+  on a beat I could not make fail would be the speculative fix the order
+  forbids — so it stands unchanged and this measurement is the note for
+  whoever sees it fail next.
+
+**Verification.** Each hardened beat green in isolation under its own
+injected repro, and all three spec files green together unthrottled
+(25/25 in 53 s). The full-suite run is in the lane's gate.
