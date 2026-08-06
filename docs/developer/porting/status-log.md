@@ -59363,3 +59363,35 @@ QT_FIXTURE_EMBEDDING_PROFILES=/tmp/qt-ep-fixture.db \
 ```
 
 Versions: core 0.0.482 → 0.0.483, harness 0.0.408 → 0.0.409.
+
+### Unit 2 — the eleven profile verbs + handler + the PUT trigger matrix
+
+New `api/embedding_profiles.rs` (modeled on `api/image_profiles.rs`), the §1
+Request variants, the `Response::EmbeddingProfile` / `MemoryMaintenance` arms, and
+the engine dispatch arms. Handlers:
+
+- list (enriched: apiKey + tags + BUILTIN `vocabularyStats` + `embeddingStats`
+  when total>0; default-first / createdAt-DESC), get, create (validation + apiKey
+  existence + dup-name 409 + isDefault→unset + created-as-default reindex enqueue
+  + 201 `{...profile, apiKey}`), update (per-field gating + **the PUT trigger
+  matrix**, doctrine comment carried verbatim), delete, refit (BUILTIN gate),
+  reindex (scope + invalidate-up-front + counts), reapply (no-truncation 400).
+- `list-providers` / `list-models` reproduce v4's static plugin catalogs from
+  v5's manifest (`embeddings`-capable) + the manifest-omitted BUILTIN (documented
+  deterministic ordering — v4's plugin-load order is unpinnable in the oracle
+  sandbox, which registers no plugins; the SET + per-model data are byte-faithful).
+  `list-models` carries v4's non-fatal `provider_models` cache side-effect.
+- `fetch-models` refuses loudly (the `imageProfileListModels` precedent + the
+  P4.D33 OpenRouter-SDK bank).
+
+The two 409 shapes v4 warns about (create's hand-rolled `{error}` vs PUT's
+`conflict()`) are byte-identical bodies — both `ErrorKind::Conflict`.
+`invalidateAllEmbeddings` = `mark_all_pending_by_profile_id`. Added the two
+enqueue helpers (`enqueue_embedding_refit`, `enqueue_embedding_reapply_profile`)
++ the `Some(scope)` reindex caller its doc predicted. Fixed the two stale
+`MemoryGenerateEmbeddings`/`MemoryRebuildIndex` "recognized-but-refused" doc
+riders (live since P4.6BL). Two Rust unit tests pin the provider set + the model
+catalog shapes. Compiles + clippy clean (both feature sets); the CRUD/matrix are
+differential-verified in unit 5 (the routes family) — the immediate next unit.
+
+Version: core 0.0.483 → 0.0.484.

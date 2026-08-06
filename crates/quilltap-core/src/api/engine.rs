@@ -2361,6 +2361,89 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- Embedding profiles management (P4.9H2A) --------------------
+            Request::EmbeddingProfileList => match self.ready_db() {
+                Ok(db) => super::embedding_profiles::embedding_profile_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileGet { profile_id } => match self.ready_db() {
+                Ok(db) => super::embedding_profiles::embedding_profile_get(&db, &profile_id),
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileCreate { body } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_create(&db, SINGLE_USER_ID, body)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileUpdate { profile_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                        body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileDelete { profile_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_delete(&db, &profile_id).await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileRefit { profile_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_refit(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileReindex { profile_id, scope } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_reindex(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                        scope,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileReapply { profile_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_reapply(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileListProviders => match self.ready_db() {
+                Ok(_) => super::embedding_profiles::embedding_provider_list(),
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileListModels { provider } => match self.ready_db() {
+                Ok(db) => {
+                    super::embedding_profiles::embedding_profile_list_models(&db, provider).await
+                }
+                Err(r) => r,
+            },
+            Request::EmbeddingProfileFetchModels { .. } => match self.ready_db() {
+                Ok(_) => super::embedding_profiles::embedding_profile_fetch_models(),
+                Err(r) => r,
+            },
+
             // --- Global mount points (P4.6p) --------------------------------
             Request::MountPointList => match self.ready_db() {
                 Ok(db) => super::mount_points::mount_point_list(&db),

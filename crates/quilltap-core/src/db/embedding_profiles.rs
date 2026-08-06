@@ -483,6 +483,24 @@ pub fn find_full_json_by_id(
     })
 }
 
+/// v4 `repos.embeddingProfiles.findByUserId(userId)` as the full net-read shape —
+/// UNSORTED (v4's `findByFilter({userId})` carries no ORDER BY; the management
+/// list route applies the default-first + createdAt-DESC sort itself).
+pub fn find_by_user_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {EP_FULL_COLUMNS} FROM embedding_profiles WHERE userId = ?1"
+    ))?;
+    let rows = stmt.query_map(params![user_id], marshal_ep_full_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// v4 `repos.embeddingProfiles.findAll()` as the full net-read shape — insertion
 /// (rowid) order, matching v4's unsorted `collection.find({})`.
 pub fn find_all_full_json(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {

@@ -792,6 +792,37 @@ pub async fn enqueue_embedding_reindex_all(
     enqueue_job_with_priority(db, user_id, "EMBEDDING_REINDEX_ALL", payload, -1.0, 3.0).await
 }
 
+/// v4 `enqueueEmbeddingRefit` — enqueue an `EMBEDDING_REFIT` (TF-IDF vocabulary
+/// rebuild) at `priority = -1`, `maxAttempts` = the default 3. `trigger_reindex`
+/// controls whether the refit handler fans out reindex jobs after fitting; the
+/// embedding-profiles PUT matrix (BUILTIN branch) and the `?action=refit` route
+/// both pass `true`. Payload `{profileId, triggerReindex}`.
+pub async fn enqueue_embedding_refit(
+    db: &Db,
+    user_id: &str,
+    profile_id: &str,
+    trigger_reindex: bool,
+) -> Result<String, DbError> {
+    let payload = serde_json::json!({
+        "profileId": profile_id,
+        "triggerReindex": trigger_reindex,
+    });
+    enqueue_job_with_priority(db, user_id, "EMBEDDING_REFIT", payload, -1.0, 3.0).await
+}
+
+/// v4 `enqueueEmbeddingReapplyProfile` — enqueue an `EMBEDDING_REAPPLY_PROFILE`
+/// (Matryoshka slice + renormalize, a pure-local rewrite, no provider call) at
+/// `priority = -1`, `maxAttempts` = the default 3. The PUT matrix's narrow-only
+/// arm and the `?action=reapply` route fire it. Payload `{profileId}`.
+pub async fn enqueue_embedding_reapply_profile(
+    db: &Db,
+    user_id: &str,
+    profile_id: &str,
+) -> Result<String, DbError> {
+    let payload = serde_json::json!({ "profileId": profile_id });
+    enqueue_job_with_priority(db, user_id, "EMBEDDING_REAPPLY_PROFILE", payload, -1.0, 3.0).await
+}
+
 // ============================================================================
 // Retention windows (v4 `lib/background-jobs/maintenance/retention-constants.ts`)
 // ============================================================================

@@ -853,6 +853,78 @@ pub enum Request {
         #[serde(default)]
         api_key_id: Option<String>,
     },
+    // --- Embedding profiles management (P4.9H2A) ---
+    /// v4 `GET /api/v1/embedding-profiles` → `{profiles, count}` (enriched +
+    /// default-first / createdAt-DESC sorted).
+    EmbeddingProfileList,
+    /// v4 `GET /api/v1/embedding-profiles/[id]` → profile + `apiKey` + tags.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileGet {
+        profile_id: String,
+    },
+    /// v4 `POST /api/v1/embedding-profiles` → created profile + `apiKey` (201).
+    /// The body flattens the §1 create fields (`name`, `provider`, `apiKeyId?`,
+    /// `baseUrl?`, `modelName`, `dimensions?`, `isDefault?`; v4's route also
+    /// accepts `truncateToDimensions`/`normalizeL2`) — flattened into a `Value`
+    /// so the handler reads presence/null/value exactly as v4's raw body.
+    EmbeddingProfileCreate {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `PUT /api/v1/embedding-profiles/[id]` → updated + enrichment +
+    /// `reembeddingTriggered`. The tri-state (`apiKeyId??`/`baseUrl??`/
+    /// `dimensions??`/`truncateToDimensions??`) is preserved by flattening the
+    /// body (a present-but-null key survives; an absent key does not).
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileUpdate {
+        profile_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/embedding-profiles/[id]` → `{message}`.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileDelete {
+        profile_id: String,
+    },
+    /// v4 `POST /api/v1/embedding-profiles/[id]?action=refit` (BUILTIN only) →
+    /// `{message, jobId}`.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileRefit {
+        profile_id: String,
+    },
+    /// v4 `POST /api/v1/embedding-profiles/[id]?action=reindex` →
+    /// `{message, jobId, scope, invalidatedCount}`. `scope` absent = v4's legacy
+    /// no-body call = `'all'`.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileReindex {
+        profile_id: String,
+        #[serde(default)]
+        scope: Option<String>,
+    },
+    /// v4 `POST /api/v1/embedding-profiles/[id]?action=reapply` →
+    /// `{message, jobId, targetDimensions}`.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileReapply {
+        profile_id: String,
+    },
+    /// v4 `GET /api/v1/embedding-profiles?action=list-providers` →
+    /// `{providers}`.
+    EmbeddingProfileListProviders,
+    /// v4 `GET /api/v1/embedding-profiles?action=list-models` → `{provider,
+    /// models}` (with a provider) or the bare `Record<provider, models[]>`.
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileListModels {
+        #[serde(default)]
+        provider: Option<String>,
+    },
+    /// v4 `GET /api/v1/embedding-profiles?action=fetch-models` — LIVE provider
+    /// call; a loud refusal arm this round (the P4.D33 OpenRouter-SDK bank).
+    #[serde(rename_all = "camelCase")]
+    EmbeddingProfileFetchModels {
+        provider: String,
+        #[serde(default)]
+        base_url: Option<String>,
+    },
     // --- Global mount points (P4.6p) ---
     /// v4 `GET /api/v1/mount-points` → `{mountPoints}` (createdAt DESC).
     MountPointList,
@@ -1273,16 +1345,16 @@ pub enum Request {
         #[serde(default)]
         batch_size: Option<i64>,
     },
-    /// v4 POST `?action=embeddings` — deferred (the `generateMissingEmbeddings`
-    /// service is unported); recognized-but-refused.
+    /// v4 POST `?action=embeddings` — the `generateMissingEmbeddings` service,
+    /// LIVE since P4.6BL (`engine.rs`).
     #[serde(rename_all = "camelCase")]
     MemoryGenerateEmbeddings {
         character_id: String,
         #[serde(default)]
         batch_size: Option<i64>,
     },
-    /// v4 PUT `?action=embeddings` — deferred (the `rebuildVectorIndex` service is
-    /// unported); recognized-but-refused.
+    /// v4 PUT `?action=embeddings` — the `rebuildVectorIndex` service, LIVE since
+    /// P4.6BL (`engine.rs`).
     #[serde(rename_all = "camelCase")]
     MemoryRebuildIndex {
         character_id: String,
@@ -2953,6 +3025,16 @@ pub enum Response {
     /// `{valid, message, modelCount?}` verdict, …). Pinned by
     /// `image_profiles_routes_equivalence`.
     ImageProfile(serde_json::Value),
+    /// An embedding-profiles-management-family body (P4.9H2A): `{profiles,
+    /// count}`, the enriched profile, the created profile + `apiKey`, the updated
+    /// profile + `reembeddingTriggered`, `{message}`, `{message, jobId, …}`,
+    /// `{providers}`, `{provider, models}` / `Record<provider, models[]>`. Pinned
+    /// by `embedding_profiles_routes_equivalence`.
+    EmbeddingProfile(serde_json::Value),
+    /// A memory-maintenance-family body (P4.9H2A): dedup `{success, result}`,
+    /// summaries `{success, jobId, message}` / `{success, inFlight}`. Pinned by
+    /// the memory-dedup + summaries-regen differentials.
+    MemoryMaintenance(serde_json::Value),
     /// A mount-points-family body (`{mountPoints}`, `{mountPoint}`,
     /// `{mountPoint, warning?}`, `{message}`). Pinned by
     /// `mount_points_routes_equivalence`.

@@ -45,6 +45,7 @@ pub mod photos;
 pub mod chat_outfits;
 pub mod wardrobe;
 // === end P4.9f1 ===
+pub mod embedding_profiles;
 pub mod groups;
 pub mod image_profiles;
 // === P4.6ar: the llm-logs read surface (lane A) ===

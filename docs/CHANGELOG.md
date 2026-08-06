@@ -21,6 +21,16 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Added the embedding-profiles management API: listing profiles (with
+their API key, tags, and — for the built-in model — vocabulary and
+embedding-progress stats), viewing, creating, updating, and deleting a
+profile, and the manual re-embed / vocabulary-refit / re-apply actions.
+Editing the default profile's model, provider, or dimensions now
+re-embeds the whole corpus; narrowing a Matryoshka profile's dimensions
+re-applies locally instead. Available embedding providers and their
+models are listed for the settings screens. Wired into the request
+dispatcher; the browser screens land in the companion change.
+
 Extended the embedding-profiles data layer with the query helpers the
 management surface needs: looking a profile up by name (for the
 duplicate-name check when creating or renaming), clearing the default
