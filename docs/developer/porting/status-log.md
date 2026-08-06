@@ -58234,3 +58234,130 @@ and precedented (the P4.6ay round): P4.37/P4.40 at `f7f1a956`,
 P4.D50 at `7df7de8e`; the Taboo commit touches no almanack or
 context-summary/memory-processor import (verified at planning), so
 the pins compose.
+
+---
+
+## Lane record — P4.D50 unit 1 (storage + prompt section + the buildContext thread + the cache-key bump)
+
+*(the `7df7de8e` Taboo drift catch-up, 2026-08-05 — branch
+`claude/p4-taboo-drift-work-orders-a6e75e`)*
+
+**Drift check at lane start.** v4 HEAD is `3adefeba`, exactly what the
+order predicted, tree clean. `git diff 7df7de8e..3adefeba` is
+`docs/releases/4.8.0.md` alone — HEAD is lib-identical to the lane
+baseline. Regens still run from a pinned detached worktree
+(`/tmp/qt-v4-pin-p4d50-7df7de8e`, lane-unique path per
+[[oracle-regen-pinned-v4-worktree]]) because the human merges into v4
+live; two sibling pins at `f7f1a956` were already present and were left
+alone.
+
+**What landed.**
+
+- `db/instance_settings.rs`: `KEY_TABOO`, `parse_taboo_settings` (the
+  Zod-faithful `TabooSettingsSchema` parse), `normalize_taboo_phrases`,
+  `get_taboo_settings`, `set_taboo_settings`. v4's `taboo.test.ts` is
+  mirrored case-for-case (21 unit tests).
+- `system_prompt.rs`: `TABOO_SECTION_PREAMBLE` (byte-extracted from v4's
+  source, never retyped), `render_taboo_section`, the
+  `BuildSystemPromptOptions.taboo_phrases` option, and the push between
+  the math note and the tool instructions. v4's `taboo-section.test.ts`
+  mirrored case-for-case.
+- `services/build_context.rs`: the fail-soft read + pass-down (a read
+  failure warns through `tracing` and continues with `[]`).
+- `cheap_llm.rs`: `PROMPT_CACHE_STRUCTURE_VERSION` 2 → 3 with v4's
+  history comment; the `cache_key_shape` unit test moved to `:v3`.
+- `tools/self_inventory.rs` + `services/announcer/character_voiced.rs`:
+  `taboo_phrases: None` with v4's "known, accepted fidelity gap" comment
+  carried at the self-inventory site.
+
+**Three Zod subtleties the port had to get right** (all pinned by unit
+tests, all reachable from the route arms in unit 2):
+
+1. `.trim()` is an *overwrite check* that runs BEFORE `.min(1)`/`.max(200)`,
+   so a 201-unit entry that trims to 200 is VALID and a whitespace-only
+   entry is REJECTED (it trims to 0) rather than silently dropped.
+2. `.max(200)` measures JS `String.length` — UTF-16 code units. 101 astral
+   characters is 202 units and fails; the port uses `jsstr::utf16_len`.
+3. `phrases: null` is not `undefined`, so `.default([])` does NOT fire —
+   an explicit null fails the array check.
+
+`set_taboo_settings` returns `Ok(None)` for v4's throw (validation
+refused, nothing written). That is deliberately not a `DbError`: no
+database operation failed, and the PUT route pre-parses, so the arm is
+reachable only from a direct caller — which is exactly what v4's own
+accessor suite exercises.
+
+**Verified, not edited:** `taboo` is absent from
+`NON_PORTABLE_INSTANCE_SETTING_KEYS`, so it is portable by default and
+rides `.qtap` instance-settings exports and full backups (v4's
+`portable-settings.test.ts` addition is the same claim). A unit test now
+pins it — this discharges the order's tier-2 item 9 as a v5 unit test
+over `list_portable_instance_settings` rather than a fixture change, per
+that item's own alternative.
+
+**Differentials.**
+
+- `system_prompt_equivalence` (tier 1) — the `systemPrompt` wire row grew
+  `tabooPhrases` (`null` = v4's OMITTED option, `[]` = explicit-empty),
+  and the family grew **nine** Taboo rows plus **two** golden rows. 56 →
+  65 rows total. The placement claim is in the DIFFED BYTES: the
+  `taboo-two-phrases-with-tools` row carries a roleplay template AND tool
+  instructions, so a misplaced section fails on the string compare, not a
+  substring assertion.
+- **The golden tier landed differently from the order's wording, on
+  purpose.** The order said to update "every golden in
+  `cache_prefix_hashes.rs` that embeds the version" — there are none; v5
+  has no analog of v4's `__tests__/unit/cache-determinism/system-prompt.test.ts`
+  at all (`cache_prefix_hashes.rs` is the port of a different v4 file,
+  `lib/llm/cache-prefix-hashes.ts`). Rather than hand-build a second copy
+  of v4's fixture in Rust (which would rot independently), the fixture is
+  now two oracle rows — `cache-golden-base` / `cache-golden-with-taboo`,
+  v4's `FIXTURE_OPTIONS` / `FIXTURE_OPTIONS_WITH_TABOO` verbatim — and the
+  differential hashes the **Rust** output and asserts v4's checked-in
+  constants. Both reproduce exactly: `bd27b1ca407d9901` (base) and
+  `911204033cd41164` (with Taboo). **The base golden is UNCHANGED from
+  its pre-Taboo value, which is v4's own design claim** — an untouched
+  instance's cacheable prefix does not move. A `golden_hits == 2`
+  assertion means a truncated or stale oracle cannot pass by simply not
+  carrying the rows.
+- `build_context_tier3` (tier 3) — a new op
+  `taboo_phrases_in_system_prompt` seeded with
+  `["  weight-bearing  ", "that's not nothing", "as {{char}} always says"]`
+  (leading/trailing blanks to exercise normalization, template syntax to
+  prove the section never passes through `processTemplate`). Both sides
+  write `instance_settings['taboo']` through their real setter before
+  EVERY op — unconditionally, with the empty list for the fifteen ops that
+  predate the feature — because the ops share one working database copy
+  and a leaked row would silently move a later op's prompt.
+  **Mutation-proven:** flipping the call site to `taboo_phrases: None`
+  turns the family RED.
+
+**Fixture change (blast radius).** `build-context-tier3-fixture.ts` now
+creates the `instance_settings` table exactly as v4's version guard does
+(`lib/startup/version-guard.ts:161`). The seeded fixture never ran the
+guard, so `setTabooSettings` died on `no such table: instance_settings`
+— a real instance always has it. The fixture is built into `/tmp` by the
+recipe and is NOT committed, so no sibling family is invalidated; the
+corpus JSON (`build-context-tier3.json`) gained only the one op.
+
+**Regen recipes** (from the pin; both families' committed headers stay
+runnable from `~/source/quilltap-server`, which is lib-identical here):
+
+```
+PIN=/tmp/qt-v4-pin-p4d50-7df7de8e
+cd $PIN && TZ=UTC npx tsx $V5W/harness/oracle/cases/system-prompt.ts \
+  > /tmp/oracle-system-prompt-p4d50.ndjson
+# build-context: stage case+corpus in /tmp (jest ignores .claude/), then
+TZ=UTC QT_FIXTURE_OUT=/tmp/qt-build-context-main-p4d50.db \
+QT_FIXTURE_MOUNT_OUT=/tmp/qt-build-context-mount-p4d50.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-context-tier3-fixture.ts
+TZ=UTC QT_FIXTURE_BC_MAIN=… QT_FIXTURE_BC_MOUNT=… \
+QT_ORACLE_OUT=/tmp/oracle-build-context-p4d50.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "build-context-tier3\.test\.ts$"
+```
+
+Both NDJSONs were grepped for a fresh-baseline marker before the diff was
+trusted ([[oracle-regen-silent-stale-pass]]): 7 `FORBIDDEN PHRASES`
+occurrences in the system-prompt oracle, 1 in the build-context oracle
+plus 2 mentions of the new op name.

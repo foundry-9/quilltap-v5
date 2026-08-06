@@ -326,6 +326,9 @@ where
         timezone: None,
         scenario_text: None,
         precompiled_identity_stack: None,
+        // v4 omits `tabooPhrases` here — the character-voiced announcer is not a
+        // conversational turn, so it carries no Taboo section (`7df7de8e`).
+        taboo_phrases: None,
         now_ms: 0,
         local_offset_minutes: 0,
     }) {

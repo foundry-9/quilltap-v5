@@ -388,6 +388,12 @@ pub struct BuildSystemPromptOptions<'a> {
     pub scenario_text: Option<&'a str>,
     /// Phase H: precompiled identity-stack from `chats.compiledIdentityStacks`.
     pub precompiled_identity_stack: Option<&'a str>,
+    /// Instance-wide Taboo phrases (`instance_settings['taboo']`), read by the
+    /// async caller and passed down because this builder is deliberately
+    /// synchronous. `None` (v4: omitting the option) omits the section — which
+    /// is the intended default for the non-conversational call sites (the
+    /// character-voiced announcer, `self_inventory`).
+    pub taboo_phrases: Option<&'a [String]>,
     /// Injected `Date.now()` (ms) for the `{{timestamp}}` path.
     pub now_ms: i64,
     /// Injected host `getTimezoneOffset()` (minutes, positive = west of UTC).
@@ -402,6 +408,59 @@ pub struct BuildSystemPromptOptions<'a> {
 /// and their formulas render as literal text. The bytes are v4's template
 /// literal AFTER escape resolution (single-backslash LaTeX).
 const MATH_FORMATTING_INSTRUCTION: &str = "[FORMATTING: MATHEMATICAL NOTATION]\nResponses render as Markdown with KaTeX math support. To display a formula, wrap the LaTeX in DOUBLE dollar signs — $$...$$ — which renders correctly both inline within a sentence and as its own centered block. Do NOT use single dollar signs ($x$), single quotes, or backticks for math; only $$...$$ is recognized.\n- Inline example: The area of a circle is $$A = \\pi r^2$$ for radius r.\n- Block example:\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$";
+
+/// Preamble of the Taboo section (v4 `TABOO_SECTION_PREAMBLE`, `7df7de8e`) —
+/// the instance-wide list of phrases no character may utter (Settings → Chat →
+/// Taboo, `instance_settings['taboo']`).
+///
+/// DO NOT "simplify" this into a bare list of banned strings. Every clause is
+/// load-bearing against a known failure mode:
+///
+///  - *"worn-out clichés, beneath you"* — printing the forbidden tokens into
+///    every context raises their salience (the pink-elephant effect), and
+///    weaker models parrot what they have just read. An aversive frame beats a
+///    neutral mention.
+///  - *"say what you actually mean in plain, specific words"* — prohibition
+///    alone leaves a vacuum the model refills with the banned phrase's nearest
+///    neighbour. Pairing the ban with a positive instruction outperforms it.
+///  - *"not as inflections, rewordings, or near-variants"* — banning the exact
+///    string invites trivial dodges ("load-bearing" for "weight-bearing"). The
+///    blanket preamble generalizes each entry so the settings UI can keep
+///    asking users for bare phrases rather than hand-written variant lists.
+///  - *"Never mention, quote, or allude to this list"* — without it, characters
+///    start joking about the phrases they are not allowed to say.
+///
+/// Voice follows the universal-section precedent set by
+/// [`MATH_FORMATTING_INSTRUCTION`]: bracketed all-caps tag, imperative,
+/// addressed to the speaking character.
+const TABOO_SECTION_PREAMBLE: &str = "[STYLE: FORBIDDEN PHRASES]\nThe phrases below are worn-out clichés, beneath you. They never appear in anything you say — not verbatim, and not as inflections, rewordings, or near-variants of the same formula. When one of them would be the easy thing to reach for, say what you actually mean in plain, specific words instead. Never mention, quote, or allude to this list.";
+
+/// Render the Taboo section, or `None` when there is nothing to forbid — v4
+/// `renderTabooSection`.
+///
+/// An empty list yields no section at all — no header, no blank block — so an
+/// instance that never touches the feature produces a byte-identical prompt to
+/// one built before the feature existed.
+///
+/// Phrases are emitted verbatim in stored order and deliberately NOT run
+/// through `processTemplate`: a user phrase may legitimately contain `{{...}}`
+/// and must reach the model literally. (The math note sets the same
+/// template-free precedent.)
+pub fn render_taboo_section(phrases: Option<&[String]>) -> Option<String> {
+    let phrases = phrases.filter(|p| !p.is_empty())?;
+    let mut bullets: Vec<String> = Vec::new();
+    for phrase in phrases {
+        let trimmed = js_trim(phrase);
+        if trimmed.is_empty() {
+            continue;
+        }
+        bullets.push(format!("- \"{trimmed}\""));
+    }
+    if bullets.is_empty() {
+        return None;
+    }
+    Some(format!("{TABOO_SECTION_PREAMBLE}\n{}", bullets.join("\n")))
+}
 
 /// Build the per-turn system prompt for a character — v4 `buildSystemPrompt`
 /// (system-prompt-builder.ts:206).
@@ -467,6 +526,14 @@ pub fn build_system_prompt(
     // every character regardless of the selected roleplay template, pushed
     // UNCONDITIONALLY between the template and the tool instructions.
     parts.push(MATH_FORMATTING_INSTRUCTION.to_string());
+
+    // Universal Taboo section — instance-wide, character-independent, and stable
+    // between edits, so it belongs here with the other universal material rather
+    // than down among the per-turn additions. Sits inside system block 1 (the
+    // cacheable prefix) and never passes through `process_template`.
+    if let Some(taboo_section) = render_taboo_section(options.taboo_phrases) {
+        parts.push(taboo_section);
+    }
 
     // Tool instructions (per-turn dynamic). `if (toolInstructions)` — non-empty.
     let has_tools = matches!(options.tool_instructions, Some(t) if !t.is_empty());
@@ -640,6 +707,7 @@ mod tests {
             timezone: None,
             scenario_text: None,
             precompiled_identity_stack: None,
+            taboo_phrases: None,
             now_ms: 0,
             local_offset_minutes: 0,
         }
@@ -735,5 +803,187 @@ mod tests {
         let s = build_identity_reinforcement("Ada");
         assert!(s.starts_with("## Identity Reminder\nYou are Ada, and you control ONLY Ada."));
         assert!(!s.contains("{{char}}"));
+    }
+}
+
+#[cfg(test)]
+mod p4d50_taboo_section_tests {
+    //! Mirrors v4's `__tests__/unit/lib/chat/context/taboo-section.test.ts`
+    //! case-for-case (`7df7de8e`). Two things are load-bearing:
+    //!
+    //!  - **Empty means absent.** An instance that never touches the feature
+    //!    must produce a byte-identical prompt to one built before the feature
+    //!    existed, or the golden cache-determinism hash moves for everybody.
+    //!  - **Placement.** The section belongs between the universal
+    //!    math-formatting note and the per-turn tool instructions, so it stays
+    //!    inside the cacheable system block 1.
+
+    use super::*;
+
+    const MATH_MARKER: &str = "[FORMATTING: MATHEMATICAL NOTATION]";
+    const TABOO_MARKER: &str = "[STYLE: FORBIDDEN PHRASES]";
+
+    fn character() -> Character {
+        Character {
+            name: "Test Character".to_string(),
+            personality: Some("Friendly and helpful".to_string()),
+            system_prompts: vec![SystemPromptEntry {
+                id: "prompt-1".to_string(),
+                content: "You are a helpful assistant.".to_string(),
+                is_default: true,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn opts(character: &Character) -> BuildSystemPromptOptions<'_> {
+        BuildSystemPromptOptions {
+            character,
+            user_character: None,
+            roleplay_template: None,
+            tool_instructions: None,
+            selected_system_prompt_id: None,
+            timestamp_config: None,
+            is_initial_message: false,
+            timezone: None,
+            scenario_text: None,
+            precompiled_identity_stack: None,
+            taboo_phrases: None,
+            now_ms: 0,
+            local_offset_minutes: 0,
+        }
+    }
+
+    fn v(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ---- renderTabooSection ----
+
+    #[test]
+    fn returns_none_for_an_empty_list() {
+        assert_eq!(render_taboo_section(Some(&[])), None);
+    }
+
+    #[test]
+    fn returns_none_when_the_phrases_are_absent_entirely() {
+        assert_eq!(render_taboo_section(None), None);
+    }
+
+    #[test]
+    fn returns_none_when_every_phrase_is_blank() {
+        assert_eq!(render_taboo_section(Some(&v(&["", "   "]))), None);
+    }
+
+    #[test]
+    fn renders_each_phrase_as_a_quoted_bullet_in_stored_order() {
+        let section =
+            render_taboo_section(Some(&v(&["weight-bearing", "that's not nothing"]))).unwrap();
+        assert_eq!(
+            section,
+            format!("{TABOO_SECTION_PREAMBLE}\n- \"weight-bearing\"\n- \"that's not nothing\"")
+        );
+        assert!(section.starts_with(TABOO_MARKER));
+    }
+
+    #[test]
+    fn preserves_the_given_order_rather_than_sorting() {
+        let section = render_taboo_section(Some(&v(&["zeta", "alpha", "mu"]))).unwrap();
+        assert!(section.find("\"zeta\"") < section.find("\"alpha\""));
+        assert!(section.find("\"alpha\"") < section.find("\"mu\""));
+    }
+
+    #[test]
+    fn carries_the_positive_instruction_and_the_do_not_mention_clause() {
+        // These clauses defend against prohibition-without-alternative and
+        // against characters joking about the list; a "simplification" to a bare
+        // list of banned strings should fail here.
+        let section = render_taboo_section(Some(&v(&["weight-bearing"]))).unwrap();
+        assert!(section.contains("say what you actually mean in plain, specific words instead"));
+        assert!(section.contains("Never mention, quote, or allude to this list"));
+        assert!(section.contains("inflections, rewordings, or near-variants"));
+    }
+
+    #[test]
+    fn trims_blanks_out_of_an_otherwise_populated_list() {
+        let section =
+            render_taboo_section(Some(&v(&["  weight-bearing  ", "   ", "tapestry"]))).unwrap();
+        assert!(section.contains("- \"weight-bearing\""));
+        assert!(section.contains("- \"tapestry\""));
+        assert!(!section.contains("- \"\""));
+    }
+
+    #[test]
+    fn emits_phrases_literally_without_template_processing() {
+        // A user is free to forbid a phrase containing template syntax; it must
+        // reach the model as typed rather than being substituted or stripped.
+        let section = render_taboo_section(Some(&v(&["as {{char}} always says"]))).unwrap();
+        assert!(section.contains("- \"as {{char}} always says\""));
+    }
+
+    // ---- buildSystemPrompt — Taboo integration ----
+
+    #[test]
+    fn omits_the_section_entirely_when_the_option_is_absent() {
+        // The announcer and self_inventory call sites rely on this default.
+        let ch = character();
+        let prompt = build_system_prompt(&opts(&ch)).unwrap();
+        assert!(!prompt.contains(TABOO_MARKER));
+    }
+
+    #[test]
+    fn produces_a_byte_identical_prompt_for_absent_and_empty_list() {
+        let ch = character();
+        let without = build_system_prompt(&opts(&ch)).unwrap();
+        let empty = build_system_prompt(&BuildSystemPromptOptions {
+            taboo_phrases: Some(&[]),
+            ..opts(&ch)
+        })
+        .unwrap();
+        assert_eq!(empty, without);
+    }
+
+    #[test]
+    fn places_the_section_after_the_math_note_and_before_tool_instructions() {
+        let ch = character();
+        let phrases = v(&["weight-bearing"]);
+        let prompt = build_system_prompt(&BuildSystemPromptOptions {
+            tool_instructions: Some("Tools available: foo, bar."),
+            taboo_phrases: Some(&phrases),
+            ..opts(&ch)
+        })
+        .unwrap();
+        let math_idx = prompt.find(MATH_MARKER).expect("math note present");
+        let taboo_idx = prompt.find(TABOO_MARKER).expect("taboo section present");
+        let tool_idx = prompt
+            .find("Tools available: foo, bar.")
+            .expect("tool instructions present");
+        assert!(taboo_idx > math_idx);
+        assert!(tool_idx > taboo_idx);
+    }
+
+    #[test]
+    fn still_sits_after_the_math_note_when_there_are_no_tool_instructions() {
+        let ch = character();
+        let phrases = v(&["weight-bearing"]);
+        let prompt = build_system_prompt(&BuildSystemPromptOptions {
+            taboo_phrases: Some(&phrases),
+            ..opts(&ch)
+        })
+        .unwrap();
+        assert!(prompt.find(TABOO_MARKER) > prompt.find(MATH_MARKER));
+    }
+
+    #[test]
+    fn does_not_template_process_the_phrases_it_renders() {
+        let ch = character();
+        let phrases = v(&["as {{char}} always says"]);
+        let prompt = build_system_prompt(&BuildSystemPromptOptions {
+            taboo_phrases: Some(&phrases),
+            ..opts(&ch)
+        })
+        .unwrap();
+        assert!(prompt.contains("- \"as {{char}} always says\""));
+        assert!(!prompt.contains("as Test Character always says"));
     }
 }

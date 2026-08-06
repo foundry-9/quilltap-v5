@@ -89,6 +89,9 @@ type SystemPromptRow = {
   timezone?: string | null
   scenarioText?: string | null
   precompiledIdentityStack?: string | null
+  /** P4.D50 (v4 `7df7de8e`): the instance-wide Taboo phrases. `null` is v4's
+   *  OMITTED option (no section); `[]` is the explicit-empty arm. */
+  tabooPhrases?: string[] | null
   nowMs: number
   localOffsetMin: number
   out: string
@@ -345,6 +348,7 @@ function pushSystemPrompt(
     timezone?: string
     scenarioText?: string | null
     precompiledIdentityStack?: string | null
+    tabooPhrases?: string[]
   },
   nowMs: number,
 ) {
@@ -364,6 +368,10 @@ function pushSystemPrompt(
     timezone: opts.timezone ?? null,
     scenarioText: opts.scenarioText ?? null,
     precompiledIdentityStack: opts.precompiledIdentityStack ?? null,
+    // `undefined` (the option omitted) is emitted as null so the Rust side can
+    // tell "no option" from "explicit empty list" — the two arms whose byte
+    // identity keeps the golden prompt hash stable.
+    tabooPhrases: opts.tabooPhrases ?? null,
     nowMs,
     localOffsetMin,
     out,
@@ -467,6 +475,115 @@ pushSystemPrompt(
     isInitialMessage: true,
     timezone: 'UTC',
   },
+  T_MAIN,
+)
+
+// ==== P4.D50: the Taboo section (v4 `7df7de8e`) ============================
+// The section is rendered into the UNIVERSAL portion of system block 1, between
+// the math note and the per-turn tool instructions. Placement is proven by the
+// diffed bytes (not a substring assertion), so the two placement rows carry
+// both a roleplay template and tool instructions.
+const TABOO_CHAR = ch({
+  name: 'Ada',
+  personality: 'Curious.',
+  pronouns: { subject: 'she', object: 'her', possessive: 'hers' },
+})
+// Absent vs explicit-empty: these two MUST come out byte-identical — that is
+// what keeps an untouched instance's cacheable prefix unchanged by the feature.
+pushSystemPrompt('taboo-absent', { character: TABOO_CHAR }, T_MAIN)
+pushSystemPrompt('taboo-empty-list', { character: TABOO_CHAR, tabooPhrases: [] }, T_MAIN)
+pushSystemPrompt(
+  'taboo-two-phrases-with-tools',
+  {
+    character: TABOO_CHAR,
+    roleplayTemplate: { systemPrompt: 'Prose only, {{char}}.' },
+    toolInstructions: 'Tools: search, edit.',
+    tabooPhrases: ["that's not nothing", 'weight-bearing'],
+  },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'taboo-no-tools-after-math-note',
+  { character: TABOO_CHAR, tabooPhrases: ['weight-bearing'] },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'taboo-order-preserved',
+  { character: TABOO_CHAR, tabooPhrases: ['zeta', 'alpha', 'mu'] },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'taboo-blank-entries-dropped',
+  { character: TABOO_CHAR, tabooPhrases: ['  weight-bearing  ', '   ', 'tapestry'] },
+  T_MAIN,
+)
+// Every entry blank → no section at all (the renderer's second null arm).
+pushSystemPrompt(
+  'taboo-all-blank-omits-section',
+  { character: TABOO_CHAR, tabooPhrases: ['', '   '] },
+  T_MAIN,
+)
+// A phrase may legitimately contain template syntax; it must reach the model
+// literally (the section never passes through processTemplate).
+pushSystemPrompt(
+  'taboo-template-syntax-literal',
+  { character: TABOO_CHAR, tabooPhrases: ['as {{char}} always says'] },
+  T_MAIN,
+)
+// Non-ASCII + a quote inside the phrase (the bullet wraps it in double quotes).
+pushSystemPrompt(
+  'taboo-nonascii-and-quotes',
+  { character: TABOO_CHAR, tabooPhrases: ['un « je-ne-sais-quoi » 🎩', 'the "obvious" answer'] },
+  T_MAIN,
+)
+
+// ==== P4.D50: v4's cache-determinism golden fixture ========================
+// The EXACT `FIXTURE_OPTIONS` / `FIXTURE_OPTIONS_WITH_TABOO` from v4's
+// `__tests__/unit/cache-determinism/system-prompt.test.ts`. The Rust
+// differential additionally hashes these two rows' output and asserts v4's
+// checked-in golden constants — v5 inherits the golden through byte-identity
+// rather than duplicating the fixture in Rust.
+const GOLDEN_CHARACTER = ch({
+  name: 'Iris Volney',
+  description: 'A junior cartographer with a keen eye for geometric anomalies.',
+  personality: 'Methodical, sceptical, and easily charmed by elegant proofs.',
+  aliases: ['Vee', 'The Mapmaker'],
+  pronouns: { subject: 'she', object: 'her', possessive: 'hers' },
+  systemPrompts: [
+    {
+      id: '22222222-2222-2222-2222-222222222222',
+      name: 'default',
+      content: 'You are a careful cartographer; you reason from triangulation, not flourish.',
+      isDefault: true,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    },
+  ] as any,
+  scenarios: [] as any,
+  exampleDialogues: '"Two readings off — never one." Iris tapped the brass dial of her sextant.',
+  physicalDescription: phys({
+    name: 'standard',
+    shortPrompt: 'auburn hair, ink-stained fingers, brass goggles around her neck',
+    mediumPrompt: '',
+    longPrompt: '',
+    completePrompt: '',
+    fullDescription: '',
+    usageContext: 'general',
+  }),
+})
+const GOLDEN_OPTS = {
+  character: GOLDEN_CHARACTER,
+  userCharacter: { name: 'Wren', description: 'a passing scholar' },
+  roleplayTemplate: { systemPrompt: 'Respond in measured prose. Do not break role.' },
+  toolInstructions: 'When invoking tools, do so via tool_use blocks; never narrate the call.',
+  selectedSystemPromptId: '22222222-2222-2222-2222-222222222222',
+  scenarioText: 'A draughty observatory two hours past midnight.',
+  precompiledIdentityStack: null,
+}
+pushSystemPrompt('cache-golden-base', GOLDEN_OPTS, T_MAIN)
+pushSystemPrompt(
+  'cache-golden-with-taboo',
+  { ...GOLDEN_OPTS, tabooPhrases: ["that's not nothing", 'weight-bearing'] },
   T_MAIN,
 )
 

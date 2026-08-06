@@ -188,6 +188,10 @@ enum Row {
         scenario_text: Option<String>,
         #[serde(rename = "precompiledIdentityStack", default)]
         precompiled_identity_stack: Option<String>,
+        /// P4.D50 (v4 `7df7de8e`). `null` = v4's OMITTED option (no section);
+        /// `[]` = the explicit-empty arm, which must render identically.
+        #[serde(rename = "tabooPhrases", default)]
+        taboo_phrases: Option<Vec<String>>,
         #[serde(rename = "nowMs")]
         now_ms: i64,
         #[serde(rename = "localOffsetMin")]
@@ -335,6 +339,14 @@ fn assert_others(
     }
 }
 
+/// v4's cache-determinism hash: SHA-256 of the UTF-8 bytes, hex, first 16 chars.
+fn golden_hash(s: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(s.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    hex[..16].to_string()
+}
+
 #[test]
 fn system_prompt_matches_oracle() {
     let path = match std::env::var("QT_ORACLE_SYSTEM_PROMPT") {
@@ -347,6 +359,9 @@ fn system_prompt_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
+    // P4.D50: the two cache-determinism golden rows must both be present — a
+    // truncated / stale oracle must not pass by simply not carrying them.
+    let mut golden_hits = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::IdentityStack {
@@ -389,6 +404,7 @@ fn system_prompt_matches_oracle() {
                 timezone,
                 scenario_text,
                 precompiled_identity_stack,
+                taboo_phrases,
                 now_ms,
                 local_offset_min,
                 out,
@@ -407,11 +423,32 @@ fn system_prompt_matches_oracle() {
                     timezone: timezone.as_deref(),
                     scenario_text: scenario_text.as_deref(),
                     precompiled_identity_stack: precompiled_identity_stack.as_deref(),
+                    taboo_phrases: taboo_phrases.as_deref(),
                     now_ms,
                     local_offset_minutes: local_offset_min,
                 })
                 .unwrap_or_else(|e| panic!("systemPrompt '{id}' errored: {e}"));
                 assert_eq!(got, out, "systemPrompt '{id}'");
+                // P4.D50: v4's cache-determinism goldens
+                // (`__tests__/unit/cache-determinism/system-prompt.test.ts` at
+                // `7df7de8e`), byte-copied. v5 has no golden fixture of its own;
+                // it inherits these by producing v4's exact bytes for v4's exact
+                // fixture. The BASE golden is the pre-Taboo value UNCHANGED —
+                // that is v4's own design claim (an untouched instance's
+                // cacheable prefix does not move), so if it drifts, something
+                // other than this feature did it.
+                if let Some(golden) = match id.as_str() {
+                    "cache-golden-base" => Some("bd27b1ca407d9901"),
+                    "cache-golden-with-taboo" => Some("911204033cd41164"),
+                    _ => None,
+                } {
+                    assert_eq!(
+                        golden_hash(&got),
+                        golden,
+                        "systemPrompt '{id}' cache-determinism golden hash"
+                    );
+                    golden_hits += 1;
+                }
             }
             Row::OtherParticipants {
                 id,
@@ -450,5 +487,10 @@ fn system_prompt_matches_oracle() {
     }
 
     assert!(count > 0, "oracle file looks empty: {count}");
-    eprintln!("OK: system-prompt matched oracle ({count} rows).");
+    assert_eq!(
+        golden_hits, 2,
+        "expected both cache-determinism golden rows (cache-golden-base / \
+         cache-golden-with-taboo) — regenerate the oracle"
+    );
+    eprintln!("OK: system-prompt matched oracle ({count} rows, {golden_hits} goldens).");
 }

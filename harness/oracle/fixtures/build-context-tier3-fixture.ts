@@ -169,6 +169,18 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repos = getRepositories();
 
+  // [P4.D50] Every real boot creates `instance_settings` via the version guard
+  // (`lib/startup/version-guard.ts:161`, `CREATE TABLE IF NOT EXISTS`), which
+  // this fixture never runs. buildContext now READS that table (the Taboo list),
+  // and the per-op seed WRITES it, so create it here exactly as the guard does —
+  // the fixture then carries the table a real instance always has.
+  {
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery(
+      'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)'
+    );
+  }
+
   // Materialize the mount-index content tables (the vault scaffold needs them).
   const midb = getRawMountIndexDatabase();
   if (!midb) throw new Error('mount-index DB handle unavailable');

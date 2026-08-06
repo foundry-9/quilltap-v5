@@ -1496,6 +1496,11 @@ fn build_prompt_section(
     // carries no timestampConfig, so v4's `chat.timestampConfig ?? null` is null and
     // the timestamp template path never fires); now_ms/local_offset therefore unused.
     let sys = to_sys_char(character);
+    // Deliberately omits `taboo_phrases`: this is introspection, not a live turn,
+    // and the instance-settings read isn't worth threading through for a
+    // reporting path. The reconstructed prompt is therefore missing the Taboo
+    // section a real turn would carry — a known, accepted fidelity gap
+    // (v4 `lib/tools/handlers/self-inventory/builders.ts`, `7df7de8e`).
     let system_prompt = crate::system_prompt::build_system_prompt(
         &crate::system_prompt::BuildSystemPromptOptions {
             character: &sys,
@@ -1508,6 +1513,7 @@ fn build_prompt_section(
             timezone: None,
             scenario_text: json_str(&chat, "scenarioText").as_deref(),
             precompiled_identity_stack: None,
+            taboo_phrases: None,
             now_ms: 0,
             local_offset_minutes: 0,
         },

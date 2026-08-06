@@ -98,6 +98,9 @@ struct SpecOp {
     messages_with_participants: Vec<SpecMwp>,
     skip_memories: bool,
     compression_enabled: bool,
+    /// P4.D50: the instance-wide Taboo list this op runs under (absent = empty).
+    #[serde(default)]
+    taboo_phrases: Vec<String>,
     /// P4.d13 retro arm: cheap-LLM selection WITHOUT compression (distill only).
     #[serde(default)]
     distill_enabled: bool,
@@ -731,6 +734,20 @@ async fn build_context_tier3_matches_oracle() {
                 ..Default::default()
             }),
         };
+
+        // P4.D50: seed `instance_settings['taboo']` for THIS op through the real
+        // setter (the oracle does the same, unconditionally, so the row can never
+        // leak between ops — both sides share one working database copy).
+        let seed_taboo = op.taboo_phrases.clone();
+        db.write(move |w| {
+            quilltap_core::db::instance_settings::set_taboo_settings(
+                w.main().connection(),
+                &seed_taboo,
+            )
+            .map(|_| ())
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: seed taboo failed: {e}", op.name));
 
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
             .await

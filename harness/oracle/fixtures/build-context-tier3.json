@@ -869,6 +869,25 @@
       "compressionEnabled": false,
       "distillEnabled": true,
       "timestampMode": null
+    },
+    {
+      "name": "taboo_phrases_in_system_prompt",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "tabooPhrases": [
+        "  weight-bearing  ",
+        "that's not nothing",
+        "as {{char}} always says"
+      ]
     }
   ],
   "vaultConversationSummaries": [

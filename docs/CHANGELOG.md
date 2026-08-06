@@ -51,6 +51,20 @@ the download link, and per-phase progress on the live event stream.
 NOT YET VERIFIED against the reference app and NOT YET REACHABLE: the
 report's equivalence test is still to be built, and the server answers a
 clear "not assembled" until the host supplies its paths and version.
+Characters can now be told which phrases they may never utter. An
+instance-wide Taboo list is stored in instance settings and rendered
+into the universal, cache-stable portion of every character's system
+prompt on conversational turns, between the math-notation note and the
+per-turn tool instructions. Saving normalizes the list — each entry
+trimmed, blanks dropped, case-insensitive duplicates removed keeping
+the first — while deliberately preserving the order you arranged, so
+the cached prompt prefix only shifts when you actually edit the list.
+An empty list renders nothing at all, so an instance that never touches
+the feature produces a byte-identical prompt to one built before it
+existed. The prompt-structure cache version moved from 2 to 3
+accordingly. The list travels: it exports with instance settings and
+rides along in full backups. Introspection (the self-inventory tool)
+deliberately omits the section, matching the reference app.
 
 Planned the next porting round and committed its work orders — three
 lanes. The first resumes the held Almanack server work from its

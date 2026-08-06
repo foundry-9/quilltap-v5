@@ -16,7 +16,15 @@ use crate::cheap_model::get_cheapest_model;
 
 /// Major version of the cacheable prompt structure (v4
 /// `PROMPT_CACHE_STRUCTURE_VERSION`, `lib/llm/cache-key.ts`).
-pub const PROMPT_CACHE_STRUCTURE_VERSION: u32 = 2;
+///
+/// v4's history, carried verbatim:
+/// 1 — initial chatId-scoped structure (post-commit 68a9eba6).
+/// 2 — re-keyed to per-character (persona block became the actual prefix);
+///     see docs/developer/features/per-character-prompt-caching.md.
+/// 3 — Taboo section added to the universal portion of the system prompt
+///     (between the math note and tool instructions); see
+///     docs/developer/features/complete/taboo.md.
+pub const PROMPT_CACHE_STRUCTURE_VERSION: u32 = 3;
 
 /// v4 `buildCharacterCacheKey`: the per-character provider cache identifier.
 pub fn build_character_cache_key(character_id: Option<&str>) -> Option<String> {
@@ -350,7 +358,8 @@ mod tests {
     fn cache_key_shape() {
         assert_eq!(
             build_character_cache_key(Some("abc")).as_deref(),
-            Some("quilltap:char:abc:v2")
+            // v3 since P4.D50 (the Taboo section joined the cacheable prefix).
+            Some("quilltap:char:abc:v3")
         );
         assert_eq!(build_character_cache_key(None), None);
         assert_eq!(build_character_cache_key(Some("")), None);

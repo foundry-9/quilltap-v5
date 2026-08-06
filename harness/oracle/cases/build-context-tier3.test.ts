@@ -99,6 +99,11 @@ interface Op {
   }>;
   skipMemories: boolean;
   compressionEnabled: boolean;
+  /** P4.D50: the instance-wide Taboo list this op runs under. Written through
+   *  the REAL `setTabooSettings` before EVERY op (an absent field writes the
+   *  empty list) so the row can never leak from one op to the next — the ops
+   *  share one working database copy. */
+  tabooPhrases?: string[];
   /** P4.d13 retro arm: set cheapLLMSelection WITHOUT compression so the only
    * canned completion the op consumes is the distillation's. */
   distillEnabled?: boolean;
@@ -275,6 +280,9 @@ async function main(): Promise<void> {
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { buildContext } = await import('@/lib/chat/context-manager');
+  // P4.D50: buildContext reads `instance_settings['taboo']` itself; the op seed
+  // goes through v4's real setter (normalization included).
+  const { setTabooSettings } = await import('@/lib/instance-settings');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -409,6 +417,11 @@ async function main(): Promise<void> {
       options.recallSignals = op.recallSignals;
       options.cheapLLMSelection = cheapLLMSelection;
     }
+
+    // P4.D50: set the instance-wide Taboo list for THIS op (empty for the ops
+    // that predate the feature — which is byte-identical to never having
+    // written the row, and is what keeps their prompts unchanged).
+    await setTabooSettings({ phrases: op.tabooPhrases ?? [] });
 
     const result = await buildContext(options as never);
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));

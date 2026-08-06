@@ -182,6 +182,141 @@ pub fn set_data_retention_settings(main: &Connection, stale_chat_days: i64) -> R
     write_setting(main, KEY_DATA_RETENTION, &value.to_string())
 }
 
+// ---------------------------------------------------------------------------
+// P4.D50 — the Taboo list (`instance_settings['taboo']`, v4 `7df7de8e`).
+// ---------------------------------------------------------------------------
+
+/// v4 `KEY_TABOO` — the per-instance list of phrases no character may utter.
+/// Same instance-settings class as `dataRetention` (single-user model), so it
+/// needs no migration and — being absent from
+/// [`NON_PORTABLE_INSTANCE_SETTING_KEYS`] — is portable by default: it exports
+/// with `.qtap` instance-settings and rides along in full backups.
+const KEY_TABOO: &str = "taboo";
+
+/// v4 `TabooSettingsSchema`: `z.string().trim().min(1).max(200)` per entry.
+/// The bound is JS `String.length` — UTF-16 code units, not chars.
+pub const TABOO_MAX_PHRASE_LENGTH: usize = 200;
+/// v4 `TabooSettingsSchema`: `.max(500)` on the array.
+pub const TABOO_MAX_PHRASES: usize = 500;
+
+/// Parse a candidate value against v4's `TabooSettingsSchema`
+/// (`z.object({ phrases: z.array(z.string().trim().min(1).max(200)).max(500)
+/// .default([]) })`), returning the parsed (TRIMMED) phrases or `None` when Zod
+/// would throw.
+///
+/// Zod check ORDER is load-bearing: `.trim()` is an overwrite check that runs
+/// BEFORE `.min(1)`/`.max(200)`, so a 201-character entry that trims to 200 is
+/// valid and a whitespace-only entry is rejected (it trims to length 0, failing
+/// `.min(1)`) rather than silently dropped. Unknown keys are stripped, as Zod's
+/// default object mode does; `phrases` absent → `.default([])`.
+pub fn parse_taboo_settings(value: &serde_json::Value) -> Option<Vec<String>> {
+    use crate::jsstr::{js_trim, utf16_len};
+
+    let obj = value.as_object()?; // `z.object` throws on a non-object
+    let Some(raw) = obj.get("phrases") else {
+        return Some(Vec::new()); // `.default([])`
+    };
+    // An explicit `undefined` cannot survive JSON; `null` is NOT undefined and
+    // fails the array check (Zod's `.default` only fires for `undefined`).
+    let arr = raw.as_array()?;
+    if arr.len() > TABOO_MAX_PHRASES {
+        return None;
+    }
+    let mut out = Vec::with_capacity(arr.len());
+    for entry in arr {
+        let s = entry.as_str()?; // `z.string()` throws on a non-string
+        let trimmed = js_trim(s);
+        let len = utf16_len(trimmed);
+        if !(1..=TABOO_MAX_PHRASE_LENGTH).contains(&len) {
+            return None;
+        }
+        out.push(trimmed.to_string());
+    }
+    Some(out)
+}
+
+/// v4 `normalizeTabooPhrases(phrases)` — trim each entry, drop the ones that
+/// trimmed away to nothing, and drop case-insensitive duplicates keeping the
+/// FIRST occurrence.
+///
+/// Order is deliberately preserved rather than sorted. The rendered section sits
+/// inside the cacheable system-prompt prefix, so the byte order matters; leaving
+/// it under the user's control means it only shifts when they actually edit the
+/// list (a legitimate cache invalidation) instead of every time a phrase is
+/// added in the "wrong" alphabetical spot.
+pub fn normalize_taboo_phrases(phrases: &[String]) -> Vec<String> {
+    use crate::jsstr::js_trim;
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+    for raw in phrases {
+        let phrase = js_trim(raw);
+        if phrase.is_empty() {
+            continue;
+        }
+        // v4's fingerprint is `phrase.toLowerCase()`; Phase 1 proved
+        // `str::to_lowercase` byte-identical to JS `toLowerCase`.
+        let fingerprint = phrase.to_lowercase();
+        if !seen.insert(fingerprint) {
+            continue;
+        }
+        out.push(phrase.to_string());
+    }
+    out
+}
+
+/// v4 `getTabooSettings()` — the per-instance Taboo list, the phrases no
+/// character may utter.
+///
+/// Returns an empty list when the setting has never been written, which is what
+/// suppresses the prompt section entirely (see
+/// [`crate::system_prompt::render_taboo_section`]). A stored blob that does not
+/// parse (bad JSON, wrong shape, an out-of-range phrase) is v4's `catch` arm:
+/// warn and fall back to the default. Read once per turn on the conversational
+/// path ([`crate::services::build_context::build_context`]).
+pub fn get_taboo_settings(main: &Connection) -> Result<Vec<String>, DbError> {
+    let Some(raw) = read_setting(main, KEY_TABOO) else {
+        return Ok(Vec::new());
+    };
+    let parsed = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| parse_taboo_settings(&v));
+    match parsed {
+        Some(phrases) => Ok(phrases),
+        None => {
+            tracing::warn!("[InstanceSettings] taboo failed to parse — using defaults");
+            Ok(Vec::new())
+        }
+    }
+}
+
+/// v4 `setTabooSettings(value)` — persist the Taboo list, normalized (see
+/// [`normalize_taboo_phrases`]). Returns exactly what was stored so callers —
+/// the PUT route, and through it the settings UI — echo the normalized list
+/// rather than the raw one they submitted.
+///
+/// v4 re-validates the normalized list through the schema before writing and
+/// lets a violation THROW (which the PUT route's catch turns into its 500).
+/// `Ok(None)` IS that throw — nothing is written, and it is deliberately not a
+/// [`DbError`] because no database operation failed. Normalization never
+/// introduces a violation the input did not already carry, and the route
+/// pre-parses, so the refusal is reachable only from a direct caller (v4's own
+/// accessor suite exercises exactly that).
+pub fn set_taboo_settings(
+    main: &Connection,
+    phrases: &[String],
+) -> Result<Option<Vec<String>>, DbError> {
+    let normalized = normalize_taboo_phrases(phrases);
+    let candidate = serde_json::json!({ "phrases": normalized });
+    let Some(validated) = parse_taboo_settings(&candidate) else {
+        return Ok(None);
+    };
+    let value = serde_json::json!({ "phrases": validated });
+    write_setting(main, KEY_TABOO, &value.to_string())?;
+    Ok(Some(validated))
+}
+
 /// v4 `KEY_MEMORY_EXTRACTION_CONCURRENCY` — the per-instance MEMORY_EXTRACTION
 /// concurrency cap (default **1**, distinct from `maxConcurrentJobs`'s 4).
 const KEY_MEMORY_EXTRACTION_CONCURRENCY: &str = "memoryExtractionConcurrency";
@@ -454,6 +589,263 @@ pub fn set_user_uploads_mount_point_id(main: &Connection, id: &str) -> Result<()
 /// v4 `setLanternBackgroundsMountPointId` — persist the Lantern Backgrounds id.
 pub fn set_lantern_backgrounds_mount_point_id(main: &Connection, id: &str) -> Result<(), DbError> {
     write_setting(main, KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID, id)
+}
+
+#[cfg(test)]
+mod p4d50_taboo_tests {
+    //! Mirrors v4's `__tests__/unit/lib/instance-settings/taboo.test.ts`
+    //! case-for-case (`7df7de8e`).
+
+    use super::*;
+
+    fn store() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);",
+        )
+        .unwrap();
+        c
+    }
+
+    fn v(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ---- getTabooSettings ----
+
+    #[test]
+    fn get_returns_empty_when_unset() {
+        assert_eq!(get_taboo_settings(&store()).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn get_returns_the_stored_list_in_stored_order() {
+        let c = store();
+        write_setting(
+            &c,
+            KEY_TABOO,
+            r#"{"phrases":["weight-bearing","that's not nothing"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            get_taboo_settings(&c).unwrap(),
+            v(&["weight-bearing", "that's not nothing"])
+        );
+    }
+
+    #[test]
+    fn get_falls_back_on_unparseable_json() {
+        let c = store();
+        write_setting(&c, KEY_TABOO, "not json").unwrap();
+        assert_eq!(get_taboo_settings(&c).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn get_falls_back_when_the_stored_shape_is_wrong() {
+        let c = store();
+        write_setting(&c, KEY_TABOO, r#"{"phrases":"nope"}"#).unwrap();
+        assert_eq!(get_taboo_settings(&c).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn get_falls_back_when_a_stored_phrase_is_out_of_range() {
+        let c = store();
+        let long = "x".repeat(201);
+        write_setting(
+            &c,
+            KEY_TABOO,
+            &serde_json::json!({ "phrases": [long] }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(get_taboo_settings(&c).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn get_falls_back_when_the_table_is_missing() {
+        // v4's `readSetting` catch arm — the read itself resolves to null.
+        let c = Connection::open_in_memory().unwrap();
+        assert_eq!(get_taboo_settings(&c).unwrap(), Vec::<String>::new());
+    }
+
+    // ---- normalizeTabooPhrases ----
+
+    #[test]
+    fn normalize_trims_each_entry() {
+        assert_eq!(
+            normalize_taboo_phrases(&v(&["  weight-bearing  "])),
+            v(&["weight-bearing"])
+        );
+    }
+
+    #[test]
+    fn normalize_drops_entries_that_trim_away_to_nothing() {
+        assert_eq!(
+            normalize_taboo_phrases(&v(&["", "   ", "\t\n", "kept"])),
+            v(&["kept"])
+        );
+    }
+
+    #[test]
+    fn normalize_drops_case_insensitive_duplicates_keeping_the_first() {
+        assert_eq!(
+            normalize_taboo_phrases(&v(&["Weight-Bearing", "weight-bearing", "WEIGHT-BEARING"])),
+            v(&["Weight-Bearing"])
+        );
+    }
+
+    #[test]
+    fn normalize_treats_a_whitespace_only_difference_as_a_duplicate() {
+        assert_eq!(
+            normalize_taboo_phrases(&v(&["tapestry", "  tapestry  "])),
+            v(&["tapestry"])
+        );
+    }
+
+    #[test]
+    fn normalize_preserves_user_order_rather_than_sorting() {
+        assert_eq!(
+            normalize_taboo_phrases(&v(&["zeta", "alpha", "mu"])),
+            v(&["zeta", "alpha", "mu"])
+        );
+    }
+
+    #[test]
+    fn normalize_returns_empty_for_empty_input() {
+        assert_eq!(normalize_taboo_phrases(&[]), Vec::<String>::new());
+    }
+
+    // ---- setTabooSettings ----
+
+    #[test]
+    fn set_round_trips_through_get() {
+        let c = store();
+        set_taboo_settings(&c, &v(&["that's not nothing", "weight-bearing"])).unwrap();
+        assert_eq!(
+            get_taboo_settings(&c).unwrap(),
+            v(&["that's not nothing", "weight-bearing"])
+        );
+    }
+
+    #[test]
+    fn set_normalizes_on_write_and_returns_exactly_what_was_stored() {
+        let c = store();
+        let saved = set_taboo_settings(
+            &c,
+            &v(&[
+                "  weight-bearing ",
+                "",
+                "WEIGHT-BEARING",
+                "that's not nothing",
+            ]),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(saved, v(&["weight-bearing", "that's not nothing"]));
+        assert_eq!(get_taboo_settings(&c).unwrap(), saved);
+    }
+
+    #[test]
+    fn set_stores_an_empty_list_without_complaint() {
+        let c = store();
+        assert_eq!(
+            set_taboo_settings(&c, &[]).unwrap(),
+            Some(Vec::<String>::new())
+        );
+        assert_eq!(get_taboo_settings(&c).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn set_rejects_a_phrase_longer_than_200_without_writing() {
+        let c = store();
+        assert_eq!(
+            set_taboo_settings(&c, &v(&[&"x".repeat(201)])).unwrap(),
+            None
+        );
+        assert_eq!(read_setting(&c, KEY_TABOO), None);
+    }
+
+    #[test]
+    fn set_rejects_more_than_500_phrases_without_writing() {
+        let c = store();
+        let too_many: Vec<String> = (0..501).map(|i| format!("phrase {i}")).collect();
+        assert_eq!(set_taboo_settings(&c, &too_many).unwrap(), None);
+        assert_eq!(read_setting(&c, KEY_TABOO), None);
+    }
+
+    #[test]
+    fn set_accepts_exactly_500_phrases_and_a_200_character_phrase() {
+        let c = store();
+        let max_length = "x".repeat(200);
+        let mut at_cap = vec![max_length.clone()];
+        at_cap.extend((0..499).map(|i| format!("phrase {i}")));
+        let saved = set_taboo_settings(&c, &at_cap).unwrap().unwrap();
+        assert_eq!(saved.len(), 500);
+        assert_eq!(saved[0], max_length);
+    }
+
+    // ---- the schema's check ORDER (v4's route arms depend on it) ----
+
+    #[test]
+    fn parse_trims_before_measuring_length() {
+        // 201 raw units that trim to 200 — valid, and the stored value is the
+        // trimmed one. (Zod runs `.trim()` before `.min`/`.max`.)
+        let raw = format!("  {}  ", "x".repeat(200));
+        let parsed = parse_taboo_settings(&serde_json::json!({ "phrases": [raw] })).expect("valid");
+        assert_eq!(parsed, vec!["x".repeat(200)]);
+        // …and a whitespace-only entry is REJECTED (trims to 0, failing `.min(1)`)
+        // rather than dropped.
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({ "phrases": ["   "] })),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_measures_length_in_utf16_code_units() {
+        // 101 astral characters = 202 UTF-16 units — JS `String.length` rejects.
+        let astral = "🎩".repeat(101);
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({ "phrases": [astral] })),
+            None
+        );
+        let ok = "🎩".repeat(100);
+        assert!(parse_taboo_settings(&serde_json::json!({ "phrases": [ok] })).is_some());
+    }
+
+    #[test]
+    fn parse_defaults_an_absent_phrases_key_and_strips_unknown_ones() {
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({})),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({ "nope": 1 })),
+            Some(Vec::new())
+        );
+        // …but a non-object and a non-string entry both throw.
+        assert_eq!(parse_taboo_settings(&serde_json::json!("nope")), None);
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({ "phrases": [42] })),
+            None
+        );
+        assert_eq!(
+            parse_taboo_settings(&serde_json::json!({ "phrases": null })),
+            None
+        );
+    }
+
+    #[test]
+    fn taboo_is_portable_by_default() {
+        // v4 leaves `taboo` OUT of `NON_PORTABLE_INSTANCE_SETTING_KEYS`, so it
+        // exports with `.qtap` instance-settings and rides full backups.
+        assert!(!NON_PORTABLE_INSTANCE_SETTING_KEYS.contains(&KEY_TABOO));
+        let c = store();
+        set_taboo_settings(&c, &v(&["weight-bearing"])).unwrap();
+        let portable = list_portable_instance_settings(&c).unwrap();
+        assert!(portable
+            .iter()
+            .any(|(k, val)| k == KEY_TABOO && val == r#"{"phrases":["weight-bearing"]}"#));
+    }
 }
 
 #[cfg(test)]

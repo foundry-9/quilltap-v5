@@ -1776,6 +1776,23 @@ where
         }
     };
 
+    // Instance-wide Taboo list (`instance_settings['taboo']`, v4 `7df7de8e`).
+    // `build_system_prompt` is synchronous by design, so the read happens here
+    // and the phrases are handed down. A failure to read is never worth losing
+    // the turn over — the section is style guidance.
+    let taboo_phrases: Vec<String> =
+        match db.read_main(crate::db::instance_settings::get_taboo_settings) {
+            Ok(phrases) => phrases,
+            Err(e) => {
+                tracing::warn!(
+                    chat_id = %input.chat.id,
+                    error = %e,
+                    "[ContextManager] Failed to read Taboo settings — continuing without them"
+                );
+                Vec::new()
+            }
+        };
+
     // System prompt (block 1).
     let system_prompt = build_system_prompt(&BuildSystemPromptOptions {
         character: &input.character.sys,
@@ -1788,6 +1805,7 @@ where
         timezone: input.timezone.as_deref(),
         scenario_text: input.chat.scenario_text.as_deref(),
         precompiled_identity_stack: input.chat.precompiled_identity_stack.as_deref(),
+        taboo_phrases: Some(&taboo_phrases),
         now_ms: input.now_ms,
         local_offset_minutes: input.local_offset_minutes,
     })
