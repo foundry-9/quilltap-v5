@@ -84,6 +84,20 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+The Scriptorium conversation renderer now sub-chunks an oversize
+interchange (v4 Bug 17). An interchange whose rendered text exceeds a
+24,000-character budget is split into sequential in-context chunks — at
+message boundaries first, then within a single very long message at
+natural boundaries (paragraph, sentence, whitespace, and a hard cut only
+when a single token itself overflows) — so a long conversation turn no
+longer produces one chunk the embedding model can never accept and that
+stays unsearchable forever. Anything under budget is unchanged, byte for
+byte. All budget arithmetic counts UTF-16 code units, matching the
+reference app. The conversation-markdown differential corpus grew four
+over-budget cases (message-boundary split, a single-message boundary
+walk, a split interchange 0 carrying the metadata header, and astral
+content for the UTF-16 proof), all byte-exact against the reference
+renderer.
 
 Planned the `f4955e0e` found-bugs convergence round: six committed
 work orders (P4.D51 guards/backup/mount convergence, P4.D52

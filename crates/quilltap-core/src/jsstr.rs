@@ -84,3 +84,22 @@ pub fn js_index_of(haystack: &str, needle: &str, from: usize) -> Option<usize> {
     let last = hay.len() - nee.len();
     (start..=last).find(|&i| hay[i..i + nee.len()] == nee[..])
 }
+
+/// The UTF-16 code-unit index of the LAST occurrence of `needle` in `haystack`,
+/// matching JS `haystack.lastIndexOf(needle)` (no `fromIndex` — the whole string
+/// is searched). Returns `None` for no match (JS `-1`). An empty needle returns
+/// `Some(haystack.len())` (JS's empty-string search returns the string length).
+/// All indices are UTF-16 code units, so surrogate offsets align with JS
+/// `String.prototype`.
+pub fn js_last_index_of(haystack: &str, needle: &str) -> Option<usize> {
+    let hay: Vec<u16> = haystack.encode_utf16().collect();
+    let nee: Vec<u16> = needle.encode_utf16().collect();
+    if nee.is_empty() {
+        return Some(hay.len());
+    }
+    if nee.len() > hay.len() {
+        return None;
+    }
+    let last = hay.len() - nee.len();
+    (0..=last).rev().find(|&i| hay[i..i + nee.len()] == nee[..])
+}

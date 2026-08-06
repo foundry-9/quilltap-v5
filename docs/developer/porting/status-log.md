@@ -60190,3 +60190,44 @@ fixture with no orphaned store children — the shape agrees at zeros.
 --no-fail-fast` with the lane env block = **417 binaries / 1,933 passed /
 0 failed / 0 ignored**, every lane differential RUN (zero SKIP). Versions:
 core 0.0.494, host 0.0.62, harness 0.0.420.
+## Lane record — P4.D52 (scriptorium + memory + almanack drift), 2026-08-06
+
+Part of the `f4955e0e` found-bugs convergence round. v4 baseline
+`f4955e0e` (4.8.0-dev.175); drift-checked clean at lane start
+(`git log f4955e0e..HEAD` empty, tree clean), so oracles regenerate
+straight from `~/source/quilltap-server`.
+
+### Unit 1 — bug 17 sub-chunking renderer (FAITHFUL, the big port)
+
+Ported v4 `62ab1bc8`'s interchange sub-chunking into
+`services/conversation_markdown.rs` byte-exactly: `enforce_chunk_budget`
+splits any interchange whose rendered text (metadata prefix included)
+exceeds the exported `CHUNK_CHAR_BUDGET = 24_000` UTF-16 code units, at
+message boundaries first (`split_interchange`) then within a single
+oversize message at natural boundaries (`split_oversize_text` →
+paragraph `\n\n` → sentence `. ` → newline `\n` → space ` ` → hard cut).
+The renderer now builds a `RawInterchange` list carrying each message's
+`entries` and a separate `metadata_prefix` (interchange 0 only, riding
+piece 0 of a split), and `- Interchange Count:` is computed from the
+PRE-split raw list (v4 :375). Added `jsstr::js_last_index_of` (UTF-16
+`lastIndexOf`); all budget arithmetic goes through the `jsstr` UTF-16
+primitives (`utf16_len`/`utf16_truncate`/`utf16_slice_from`), never
+bytes.
+
+**Corpus (the deliverable's other half):** the committed
+`conversation-markdown.json` grew four over-budget cases —
+`oversize-message-boundary-split`, `oversize-single-message-boundary-walk`
+(covers all five split branches), `oversize-interchange-zero-with-metadata`
+(the metadata-prefix-on-piece-0 rule), `oversize-astral-utf16` (the
+UTF-16 proof). The v4 empty-run participant-fallback (`run.names.length >
+0 ? … : ic.participantNames`) is UNREACHABLE — every packed run and every
+`split_oversize_text` piece carries ≥1 name — so no case exercises it;
+noted, not seeded. The 11 pre-existing cases are byte-identical (verified
+against `git show HEAD:…`). Differential green: 15/15 cases, 33
+interchanges, byte-for-byte.
+
+Regen (Node 24, from the v4 checkout, TZ=UTC):
+`TZ=UTC $N/npx tsx $V5/harness/oracle/cases/conversation-markdown.ts >
+/tmp/oracle-conversation-markdown.ndjson`; run
+`QT_ORACLE_CONVERSATION_MARKDOWN=… cargo test -p quilltap-harness
+--test conversation_markdown_equivalence`. Versions: core 0.0.487.
