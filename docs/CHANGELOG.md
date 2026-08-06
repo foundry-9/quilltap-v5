@@ -84,6 +84,13 @@ corrupt now fails a save loudly instead of clobbering the six vault-only
 fields — a fix this port made first (finding #47), and the reference app
 has since adopted it, so the two now refuse identically. The refusal
 message matches the reference app's character-vault wording.
+The fold-episode pass no longer discards the memory links its own gate
+just created (v4 Bug 26). When a consolidated episode is written as a new
+memory linked to a related memory, folding in the per-turn fragment
+links used to overwrite the whole related-memory list, dropping the
+gate's link. It now preserves the gate's links and adds the fragments on
+top; a plain insert still starts empty.
+
 The startup reconcile now re-renders a conversation whose only stuck
 chunk is over the per-chunk budget but under the transport cap (v4 Bug
 17 arm C) — exactly the oversize chunk that could never embed before

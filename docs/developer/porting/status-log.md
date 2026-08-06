@@ -60312,3 +60312,37 @@ tsx …/build-embedding-remainder-fixture.ts`, copy over
 `crates/quilltap-web/tests/fixtures/embedding-remainder-{main,mount}.db`,
 then the jest oracle recipe in the family header (against /tmp copies,
 TZ=UTC). Versions: core 0.0.489, harness 0.0.413.
+
+### Unit 4 — bug 26 fold-pass INSERT_RELATED seed split (FAITHFUL)
+
+v4 `62ab1bc8` (`memory-service.ts:445-466`): the INSERT_RELATED arm now
+returns the POST-LINK row (`{...memory, relatedMemoryIds: linkedIds}`), so
+the fold-episode pass that unions `memory.relatedMemoryIds` no longer
+clobbers the gate's links to `[]`. v5's gate was ALREADY correct
+(`memory_gate.rs:330` returns `related_memory_ids: linked`); the clobber
+lived in `fold_episode_pass.rs`, whose `episode_links` seed collapsed
+Insert AND InsertRelated to `Vec::new()`. Split the arms:
+`InsertRelated => outcome.related_memory_ids.clone()`, `Insert =>
+Vec::new()` (v4's plain-INSERT object still carries `[]` — collapsing
+InsertRelated into a row re-read would be correct-by-accident and a
+divergence from v4's post-fix code). Rewrote the bug comment.
+
+**Corpus:** the fold-episode corpus never reached INSERT_RELATED (all
+seeds embedding-less → the gate's store search found nothing). Added an
+EMBEDDED Aria seed `f5…f5` (embedding `[0.78,-0.589586,0.131019,
+0.163774]`, dot 0.78 with candidate #1's `[1,0,0,0]` → the `[0.70,0.85)`
+INSERT_RELATED band), with a matching `vector_entries` row + meta so the
+gate can find it, and a `sourceMessageId` outside the window so it is not
+a fold fragment. The builder gained a per-seed `embedding` hook that also
+writes the vector entry. The "visited Lighthouse Point" Aria episode now
+folds INSERT_RELATED and its `relatedMemoryIds` carries `f5` + the two
+window fragments (before the fix: fragments only). Harness sanity counts
+moved 8→9 memories / 4→5 vector entries. Differential green;
+**mutation-proven** (reverting the seed split reddens the `memories` row
+state). `memory_gate_tier3` (`QT_ORACLE_GATE`) and
+`memory_housekeeping_tier2` re-run as neutrality in the final gate.
+
+Regen (jest, TZ irrelevant — see the family header): build the /tmp
+fixture via `build-fold-episode-fixture.ts`, then
+`npx jest … -- fold-episode-tier3` with a `/tmp` cases mirror. Versions:
+core 0.0.490, harness 0.0.414.

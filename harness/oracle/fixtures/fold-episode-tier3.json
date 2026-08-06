@@ -90,6 +90,20 @@
       "content": "I dislike the smell of low tide.",
       "summary": "dislikes low tide",
       "sourceMessageId": "e9000000-0000-4000-8000-0000000000e9"
+    },
+    {
+      "id": "f5000000-0000-4000-8000-0000000000f5",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "On an earlier voyage Aria and Bram first sighted Lighthouse Point from the water.",
+      "summary": "An earlier sighting of Lighthouse Point.",
+      "sourceMessageId": "e9000000-0000-4000-8000-0000000000e0",
+      "comment": "Bug 26: an EMBEDDED Aria memory (+ vector entry) in the INSERT_RELATED band ([0.70,0.85)) with candidate #1's [1,0,0,0] embedding (dot 0.78). Not a window fragment. The gate links it; the fold pass must PRESERVE that link, not clobber it.",
+      "embedding": [
+        0.78,
+        -0.589586,
+        0.131019,
+        0.163774
+      ]
     }
   ],
   "runs": [

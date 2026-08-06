@@ -426,13 +426,14 @@ async fn fold_episode_tier3_matches_oracle() {
         );
     }
 
-    // Sanity: the 4 seeded fragments + 4 episode memories (2 episodes × 2
-    // present characters; the absent participant gets none), and 4 vector
-    // entries (one per episode write — the fragments were seeded without).
+    // Sanity: the 4 seeded fragments + 1 embedded Bug-26 seed + 4 episode
+    // memories (2 episodes × 2 present characters; the absent participant gets
+    // none) = 9, and 5 vector entries (one per episode write plus the embedded
+    // seed's — the fragments were seeded without).
     let mem_rows = got[0]["rows"].as_array().expect("memory rows");
-    assert_eq!(mem_rows.len(), 8, "expected 8 memory rows");
+    assert_eq!(mem_rows.len(), 9, "expected 9 memory rows");
     let entry_rows = got[1]["rows"].as_array().expect("entry rows");
-    assert_eq!(entry_rows.len(), 4, "expected 4 vector entries");
+    assert_eq!(entry_rows.len(), 5, "expected 5 vector entries");
 
     eprintln!("OK: fold-episode tier-3 matched oracle (results + 3 tables).");
 }

@@ -332,26 +332,26 @@ pub async fn run_fold_episode_pass<C: CompletionProvider, E: EmbeddingProvider>(
                 continue;
             }
 
-            // v4 reads `outcome.memory.relatedMemoryIds` — the object as the
-            // gate RETURNED it. On INSERT_RELATED that object predates
-            // `linkRelatedMemories`, so its array is still empty and the write
-            // below CLOBBERS the gate's links. Ported faithfully (v4 bug, and
-            // the comment above it in v4 claims the opposite): an
-            // INSERT/INSERT_RELATED starts from `[]`, everything else from the
-            // row.
-            let mut episode_links: Vec<String> = if matches!(
-                outcome.action,
-                GateAction::Insert | GateAction::InsertRelated
-            ) {
-                Vec::new()
-            } else {
-                let mid = memory_id.clone();
-                db.read_main(move |conn| memories_read::find_by_id(conn, &mid))
-                    .ok()
-                    .flatten()
-                    .as_ref()
-                    .map(related_ids)
-                    .unwrap_or_default()
+            // v4 reads `outcome.memory.relatedMemoryIds` — the object as the gate
+            // RETURNED it. v4 Bug 26 (`62ab1bc8`) fixed the INSERT_RELATED arm to
+            // return the POST-LINK row, so that object now carries the gate's
+            // links; folding them in preserves them instead of clobbering to `[]`.
+            // A plain INSERT still carries `[]` (v4's object does), and everything
+            // else re-reads the row. Split the arms explicitly — collapsing
+            // INSERT_RELATED into a row re-read would be correct-by-accident and a
+            // divergence from v4's post-fix code.
+            let mut episode_links: Vec<String> = match outcome.action {
+                GateAction::InsertRelated => outcome.related_memory_ids.clone(),
+                GateAction::Insert => Vec::new(),
+                _ => {
+                    let mid = memory_id.clone();
+                    db.read_main(move |conn| memories_read::find_by_id(conn, &mid))
+                        .ok()
+                        .flatten()
+                        .as_ref()
+                        .map(related_ids)
+                        .unwrap_or_default()
+                }
             };
             let mut episode_links_changed = false;
             for fragment_id in &fragment_ids {

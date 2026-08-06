@@ -49,7 +49,14 @@ interface SeedMemory {
   characterId: string;
   content: string;
   summary: string;
-  sourceMessageId: string;
+  sourceMessageId: string | null;
+  /**
+   * Bug 26: an embedded seed (with a matching vector entry) so the gate can
+   * find it and decide INSERT_RELATED. A `sourceMessageId` outside the window
+   * keeps it out of the fold's fragment set, so the link it earns is purely the
+   * gate's — which is exactly what the clobber used to drop.
+   */
+  embedding?: number[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -194,6 +201,10 @@ async function main(): Promise<void> {
     );
   }
 
+  const { VectorIndicesRepository } = await import(
+    '@/lib/database/repositories/vector-indices.repository'
+  );
+  const vectors = new VectorIndicesRepository();
   for (const seed of spec.seedMemories) {
     await repos.memories.create(
       {
@@ -206,7 +217,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.5,
-        embedding: null,
+        embedding: seed.embedding ?? null,
         source: 'AUTO',
         witnessedContext: null,
         occurredAt: null,
@@ -222,6 +233,17 @@ async function main(): Promise<void> {
       } as never,
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
+    // Bug 26: an embedded seed also needs a vector entry, or the gate's store
+    // search (which reads `vector_entries`, not `memories.embedding`) can't find
+    // it. The meta row fixes the character's index width.
+    if (seed.embedding) {
+      await vectors.saveMeta(seed.characterId, seed.embedding.length);
+      await vectors.addEntry({
+        id: seed.id,
+        characterId: seed.characterId,
+        embedding: seed.embedding,
+      });
+    }
   }
 
   closeMountIndexSQLiteClient();
