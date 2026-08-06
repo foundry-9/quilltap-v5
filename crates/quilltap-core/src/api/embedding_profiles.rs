@@ -32,8 +32,18 @@ use super::types::{ErrorKind, Response};
 // Response helpers
 // ===========================================================================
 
-fn internal(e: impl std::fmt::Display) -> Response {
-    Response::error(ErrorKind::Internal, e.to_string())
+/// v4's outer-catch fixed sentences (`serverError('Failed to …')`) — the wire
+/// answers the route's FIXED sentence and the underlying error goes to tracing
+/// at the swallow site (the P4.18 arm; log output is outside the differential
+/// contract). §3 unify-review fix: the original `internal(e)` leaked
+/// `e.to_string()` onto the wire where v4 answers a constant.
+fn internal_fixed(sentence: &str, e: impl std::fmt::Display) -> Response {
+    tracing::error!(
+        target: "quilltap::api::embedding_profiles",
+        error = %e,
+        "{sentence}"
+    );
+    Response::error(ErrorKind::Internal, sentence)
 }
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
@@ -229,7 +239,7 @@ pub fn embedding_profile_list(db: &Db, user_id: &str) -> Response {
     });
     match result {
         Ok(v) => Response::EmbeddingProfile(v),
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to fetch embedding profiles", e),
     }
 }
 
@@ -243,7 +253,7 @@ pub fn embedding_profile_get(db: &Db, profile_id: &str) -> Response {
     match result {
         Ok(Some(v)) => Response::EmbeddingProfile(v),
         Ok(None) => not_found("Embedding profile"),
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to fetch embedding profile", e),
     }
 }
 
@@ -295,7 +305,7 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
         match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
             Ok(Some(_)) => {}
             Ok(None) => return not_found("API key"),
-            Err(e) => return internal(e),
+            Err(e) => return internal_fixed("Failed to create embedding profile", e),
         }
     }
     match db.read_main({
@@ -305,7 +315,7 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
     }) {
         Ok(Some(_)) => return conflict("An embedding profile with this name already exists"),
         Ok(None) => {}
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to create embedding profile", e),
     }
     let base_url = body
         .get("baseUrl")
@@ -349,7 +359,7 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
         })
         .await;
     if let Err(e) = write {
-        return internal(e);
+        return internal_fixed("Failed to create embedding profile", e);
     }
 
     // Created-as-default → trigger initial embedding immediately (v4:
@@ -365,7 +375,7 @@ pub async fn embedding_profile_create(db: &Db, user_id: &str, body: Value) -> Re
     // tags raw [].
     let api_key = match db.read_main(|conn| enrich_api_key(conn, api_key_id.as_deref())) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to create embedding profile", e),
     };
     let mut obj = Map::new();
     obj.insert("id".into(), Value::String(id));
@@ -416,7 +426,7 @@ pub async fn embedding_profile_update(
     let existing = match db.read_main(|conn| ep::find_full_json_by_id(conn, profile_id)) {
         Ok(Some(p)) => p,
         Ok(None) => return not_found("Embedding profile"),
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to update embedding profile", e),
     };
     let Some(body_obj) = body.as_object() else {
         return bad_request("Expected object");
@@ -464,7 +474,7 @@ pub async fn embedding_profile_update(
                 return conflict("An embedding profile with this name already exists")
             }
             Ok(_) => {}
-            Err(e) => return internal(e),
+            Err(e) => return internal_fixed("Failed to update embedding profile", e),
         }
         mo.insert("name".into(), Value::String(name.clone()));
         patch.name = Some(name);
@@ -486,7 +496,7 @@ pub async fn embedding_profile_update(
             match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
                 Ok(Some(_)) => {}
                 Ok(None) => return not_found("API key"),
-                Err(e) => return internal(e),
+                Err(e) => return internal_fixed("Failed to update embedding profile", e),
             }
             mo.insert("apiKeyId".into(), Value::String(id.to_string()));
             patch.api_key_id = Some(Some(id.to_string()));
@@ -518,7 +528,12 @@ pub async fn embedding_profile_update(
     if let Some(dv) = body_obj.get("dimensions") {
         if dv.is_null() {
             dimensions_changed = existing_dimensions.is_some();
-            mo.remove("dimensions");
+            // v4's Zod keeps an explicitly-cleared `.nullable().optional()` key
+            // present-as-null in the PUT echo (base.repository `_update` →
+            // validate) — same as the `apiKeyId` clear above. (§3 review fix:
+            // this was `mo.remove(...)`, dropping the key; pinned by the
+            // `update_clear_truncate_dims_null` corpus case, mutation-proven.)
+            mo.insert("dimensions".into(), Value::Null);
             patch.dimensions = Some(None);
         } else {
             match dv.as_f64() {
@@ -534,7 +549,8 @@ pub async fn embedding_profile_update(
     if let Some(tv) = body_obj.get("truncateToDimensions") {
         if tv.is_null() {
             truncate_changed = existing_truncate.is_some();
-            mo.remove("truncateToDimensions");
+            // Present-as-null in the echo, as with `dimensions` above (§3 fix).
+            mo.insert("truncateToDimensions".into(), Value::Null);
             patch.truncate_to_dimensions = Some(None);
         } else {
             match tv.as_f64() {
@@ -585,7 +601,7 @@ pub async fn embedding_profile_update(
         })
         .await;
     if let Err(e) = write {
-        return internal(e);
+        return internal_fixed("Failed to update embedding profile", e);
     }
 
     // ── The PUT trigger matrix ─────────────────────────────────────────────
@@ -610,7 +626,7 @@ pub async fn embedding_profile_update(
     if needs_full_reindex {
         // Invalidate all existing embeddings, then trigger the right reindex.
         if let Err(e) = invalidate_all_embeddings(db, profile_id, &now).await {
-            return internal(e);
+            return internal_fixed("Failed to update embedding profile", e);
         }
         let enqueued = if updated_provider == "BUILTIN" {
             // BUILTIN: refit vocabulary first (which will trigger reindex).
@@ -620,7 +636,7 @@ pub async fn embedding_profile_update(
             queue_service::enqueue_embedding_reindex_all(db, user_id, profile_id, None).await
         };
         if let Err(e) = enqueued {
-            return internal(e);
+            return internal_fixed("Failed to update embedding profile", e);
         }
     } else if truncate_changed && updated_is_default {
         // Matryoshka truncation change alone: narrowing is a pure-local
@@ -635,16 +651,16 @@ pub async fn embedding_profile_update(
             if let Err(e) =
                 queue_service::enqueue_embedding_reapply_profile(db, user_id, profile_id).await
             {
-                return internal(e);
+                return internal_fixed("Failed to update embedding profile", e);
             }
         } else {
             if let Err(e) = invalidate_all_embeddings(db, profile_id, &now).await {
-                return internal(e);
+                return internal_fixed("Failed to update embedding profile", e);
             }
             if let Err(e) =
                 queue_service::enqueue_embedding_reindex_all(db, user_id, profile_id, None).await
             {
-                return internal(e);
+                return internal_fixed("Failed to update embedding profile", e);
             }
         }
     }
@@ -657,7 +673,7 @@ pub async fn embedding_profile_update(
         Ok::<_, crate::db::DbError>((api_key, tags_enriched))
     }) {
         Ok(v) => v,
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to update embedding profile", e),
     };
     let mo = merged.as_object_mut().unwrap();
     mo.insert("apiKey".into(), enriched.0);
@@ -692,7 +708,7 @@ pub async fn embedding_profile_delete(db: &Db, profile_id: &str) -> Response {
     match existing {
         Ok(Some(_)) => {}
         Ok(None) => return not_found("Embedding profile"),
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to delete embedding profile", e),
     }
     let id = profile_id.to_string();
     let out = db
@@ -702,7 +718,7 @@ pub async fn embedding_profile_delete(db: &Db, profile_id: &str) -> Response {
         Ok(_) => Response::EmbeddingProfile(json!({
             "message": "Embedding profile deleted successfully"
         })),
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to delete embedding profile", e),
     }
 }
 
@@ -712,7 +728,7 @@ pub async fn embedding_profile_refit(db: &Db, user_id: &str, profile_id: &str) -
     let profile = match db.read_main(|conn| ep::find_by_id(conn, profile_id)) {
         Ok(Some(p)) => p,
         Ok(None) => return not_found("Embedding profile"),
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to trigger refit", e),
     };
     if profile.provider != "BUILTIN" {
         return bad_request(
@@ -724,7 +740,7 @@ pub async fn embedding_profile_refit(db: &Db, user_id: &str, profile_id: &str) -
             "message": "Vocabulary refit job enqueued",
             "jobId": job_id,
         })),
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to trigger refit", e),
     }
 }
 
@@ -741,7 +757,7 @@ pub async fn embedding_profile_reindex(
     let profile = match db.read_main(|conn| ep::find_by_id(conn, profile_id)) {
         Ok(Some(p)) => p,
         Ok(None) => return not_found("Embedding profile"),
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to trigger reindex", e),
     };
     // Optional body `{scope}`; absent = 'all'; anything else 400.
     let scope = match scope.as_deref() {
@@ -770,7 +786,7 @@ pub async fn embedding_profile_reindex(
     if scope == "all" {
         match invalidate_all_embeddings(db, profile_id, &now).await {
             Ok(n) => invalidated_count = n,
-            Err(e) => return internal(e),
+            Err(e) => return internal_fixed("Failed to trigger reindex", e),
         }
     }
 
@@ -788,7 +804,7 @@ pub async fn embedding_profile_reindex(
                 "invalidatedCount": invalidated_count,
             }))
         }
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to trigger reindex", e),
     }
 }
 
@@ -799,7 +815,7 @@ pub async fn embedding_profile_reapply(db: &Db, user_id: &str, profile_id: &str)
     let profile = match db.read_main(|conn| ep::find_by_id(conn, profile_id)) {
         Ok(Some(p)) => p,
         Ok(None) => return not_found("Embedding profile"),
-        Err(e) => return internal(e),
+        Err(e) => return internal_fixed("Failed to trigger re-apply", e),
     };
     // `!profile.truncateToDimensions` — a null OR a falsy 0 both fall through.
     let target = match profile.truncate_to_dimensions {
@@ -816,7 +832,7 @@ pub async fn embedding_profile_reapply(db: &Db, user_id: &str, profile_id: &str)
             "jobId": job_id,
             "targetDimensions": crate::db::js_number_to_json(target),
         })),
-        Err(e) => internal(e),
+        Err(e) => internal_fixed("Failed to trigger re-apply", e),
     }
 }
 

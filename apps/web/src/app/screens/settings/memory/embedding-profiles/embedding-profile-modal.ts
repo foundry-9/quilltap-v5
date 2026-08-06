@@ -58,6 +58,7 @@ import { Modal } from '../../../../ui/modal';
               type="text"
               class="qt-input"
               placeholder="My OpenAI Embeddings"
+              autofocus
               [value]="name()"
               (input)="name.set($any($event.target).value)"
             />
@@ -178,7 +179,7 @@ import { Modal } from '../../../../ui/modal';
 
         <div qt-modal-footer>
           <qt-form-actions
-            [submitLabel]="saving() ? submitLabel() + '…' : submitLabel()"
+            [submitLabel]="submitLabel()"
             [isLoading]="saving()"
             [isDisabled]="!isValid()"
             (cancel)="close.emit()"
@@ -214,7 +215,7 @@ import { Modal } from '../../../../ui/modal';
               [disabled]="reembedLoading()"
               (click)="confirmReembed()"
             >
-              {{ reembedLoading() ? 'Queuing…' : 'Re-embed Everything' }}
+              {{ reembedLoading() ? 'Queuing...' : 'Re-embed Everything' }}
             </button>
           </div>
         </div>

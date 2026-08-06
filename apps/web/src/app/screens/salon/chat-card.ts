@@ -196,8 +196,11 @@ export class ChatCard {
   /**
    * Queue an on-demand Scriptorium render (v4 `handleRenderConversation`): POST
    * the render-conversation action, toast, and wake the toolbar queue badges.
-   * v5 skips v4's immediate list refetch — the render is a background job, so
-   * the badge only changes once it completes (the next natural list load).
+   * DOCUMENTED DIVERGENCE (P4.9H2B): v5 skips v4's immediate list refetch AND
+   * its 5 s status poll (v4 re-fetches until the chat reads `embedded`, so the
+   * badge walks red→amber→green live). Here the render is a background job and
+   * the badge only changes on the next natural list load — the mutation stays
+   * inside the card instead of threading a refetch through every list parent.
    */
   protected async renderConversation(): Promise<void> {
     if (this.rendering()) return;

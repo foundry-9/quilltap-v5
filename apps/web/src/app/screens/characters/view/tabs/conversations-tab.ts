@@ -27,8 +27,9 @@ const SEARCH_DEBOUNCE_MS = 300;
  * the per-character chat list with a debounced search box and offset pagination
  * (v4 `CHATS_PER_PAGE = 10`, infinite scroll). Each card links into the Salon
  * conversation. The v4 "Refresh Conversation Archive" / "New Chat" actions and
- * per-card delete / re-extract / re-render hit routes outside this vertical's
- * contract and are omitted (a follow-up vertical, per the P4.6g deferral list).
+ * per-card delete / re-extract hit routes outside this vertical's contract and
+ * are omitted (a follow-up vertical, per the P4.6g deferral list); the per-card
+ * re-render went LIVE with the P4.9H2B scriptorium badge.
  */
 @Component({
   selector: 'qt-character-conversations-tab',

@@ -257,6 +257,14 @@ pub async fn reapply_embedding_profile(
     millis: u128,
 ) -> Result<ReapplyResult, String> {
     let profile_id = profile_id.to_string();
+    // v4's in-service defensive throw (`reapply-profile.ts:288-293`) — every
+    // current caller pre-validates, but a future direct caller must hit v4's
+    // sentence rather than back up and count every row degenerate (§3 review).
+    if target_dim <= 0 {
+        return Err(format!(
+            "Embedding profile {profile_id} has no truncateToDimensions set — nothing to re-apply."
+        ));
+    }
     let date_stamp = now.split('T').next().unwrap_or(now).to_string();
     let target = target_dim as usize;
 
@@ -303,7 +311,13 @@ Vectors cannot grow without re-embedding — use the reindex flow instead."
                 };
                 match vacuum_into_backup(main, &main_path, &date_stamp, millis) {
                     Ok(p) => result.backup_path = Some(p),
-                    Err(e) => return Ok(Err(format!("Main DB backup failed — aborting: {e}"))),
+                    // v4 LOGS "…backup failed — aborting" and rethrows the RAW
+                    // error, so the persisted job error is the bare SQLite
+                    // message (§3 review — the context stays in tracing).
+                    Err(e) => {
+                        tracing::error!(error = %e, "Main DB backup failed — aborting");
+                        return Ok(Err(e.to_string()));
+                    }
                 }
 
                 // Walk main tables.
@@ -329,10 +343,11 @@ Vectors cannot grow without re-embedding — use the reindex flow instead."
                         };
                         match vacuum_into_backup(mount, &mount_path, &date_stamp, millis) {
                             Ok(p) => result.mount_backup_path = Some(p),
+                            // Raw error persisted, context in tracing (see the
+                            // main-partition arm — §3 review).
                             Err(e) => {
-                                return Ok(Err(format!(
-                                    "Mount index DB backup failed — aborting: {e}"
-                                )))
+                                tracing::error!(error = %e, "Mount index DB backup failed — aborting");
+                                return Ok(Err(e.to_string()));
                             }
                         }
                         result

@@ -300,6 +300,10 @@ async function main(): Promise<void> {
     { name: 'update_nondefault_model_no_job', run: () => putProfile(EP_TRUNC, { modelName: 'text-embedding-3-small' }) },
     { name: 'update_default_normalizeL2_only_no_job', run: () => putProfile(EP_DEFAULT, { normalizeL2: false }) },
     { name: 'update_clear_apikey', run: () => putProfile(EP_DEFAULT, { apiKeyId: null }) },
+    // Explicit-null clears on the NUMERIC nullables: Zod keeps the cleared keys
+    // present-as-null in the PUT echo (the §3 unify review's blind spot — v5
+    // dropped the keys). EP_TRUNC is non-default, so no matrix branch fires.
+    { name: 'update_clear_truncate_dims_null', run: () => putProfile(EP_TRUNC, { truncateToDimensions: null, dimensions: null }) },
     {
       name: 'update_dup_409',
       run: async () => respond(await (await idRoute()).PUT(mockRequest(`${B}/${EP_TRUNC}`, { name: 'OpenAI Default' }), params(EP_TRUNC))),

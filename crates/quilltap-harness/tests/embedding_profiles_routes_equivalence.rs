@@ -389,6 +389,15 @@ fn embedding_profiles_routes_match_oracle() {
         json!({ "apiKeyId": null }),
         &mut failed,
     );
+    // §3 review: the numeric-nullable clears must ECHO present-as-null (v4's Zod
+    // keeps the cleared key); v5 originally dropped both keys — this case is the
+    // regression pin (mutation-proven: `mo.remove` in the update handler reds it).
+    matrix(
+        "update_clear_truncate_dims_null",
+        EP_TRUNC,
+        json!({ "truncateToDimensions": null, "dimensions": null }),
+        &mut failed,
+    );
     err(
         "update_dup_409",
         &rt.block_on(ep::embedding_profile_update(

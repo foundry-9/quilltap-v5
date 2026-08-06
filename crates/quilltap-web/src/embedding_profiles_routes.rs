@@ -41,20 +41,39 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
     }
 }
 
-/// v4's `await req.json()` with the empty-body tolerance the routes rely on. On a
-/// malformed body returns the 400 arm directly (boxed to keep the `Ok` path
-/// small — `clippy::result_large_err`).
-fn parse_body(body: &axum::body::Bytes) -> Result<Value, Box<AxumResponse>> {
+/// v4's `await req.json()` on the create/PUT routes: an EMPTY or malformed body
+/// THROWS into the route's outer catch, which answers the route's FIXED 500
+/// sentence (`serverError('Failed to …')`) — there is no tolerance on these two
+/// routes. (§3 unify-review fix: v5 originally tolerated empty → `{}` and
+/// answered a v5-invented 400 on malformed.) The boxed Err keeps the `Ok` path
+/// small (`clippy::result_large_err`).
+fn parse_body_strict(
+    body: &axum::body::Bytes,
+    fixed_sentence: &str,
+) -> Result<Value, Box<AxumResponse>> {
+    serde_json::from_slice(body).map_err(|e| {
+        tracing::error!(
+            target: "quilltap_web::embedding_profiles_routes",
+            error = %e,
+            "{fixed_sentence}"
+        );
+        Box::new(error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            fixed_sentence,
+        ))
+    })
+}
+
+/// v4's reindex route deliberately GUARDS its parse and defaults `scope='all'`
+/// ([id]/route.ts:338-355 — "the legacy call sites POST with no body, which
+/// Next.js's req.json() would reject — so guard the parse and default to
+/// 'all'"): an empty OR malformed body is simply "no scope". The refit/reapply
+/// routes never read the body at all.
+fn parse_body_lenient(body: &axum::body::Bytes) -> Value {
     if body.is_empty() {
-        Ok(Value::Object(Default::default()))
-    } else {
-        serde_json::from_slice(body).map_err(|e| {
-            Box::new(error_json(
-                StatusCode::BAD_REQUEST,
-                &format!("Invalid body: {e}"),
-            ))
-        })
+        return Value::Object(Default::default());
     }
+    serde_json::from_slice(body).unwrap_or_else(|_| Value::Object(Default::default()))
 }
 
 // ===========================================================================
@@ -88,7 +107,7 @@ pub async fn collection_post(
     State(state): State<SharedState>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let json_body = match parse_body(&body) {
+    let json_body = match parse_body_strict(&body, "Failed to create embedding profile") {
         Ok(v) => v,
         Err(r) => return *r,
     };
@@ -120,7 +139,7 @@ pub async fn item_put(
     Path(id): Path<String>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let json_body = match parse_body(&body) {
+    let json_body = match parse_body_strict(&body, "Failed to update embedding profile") {
         Ok(v) => v,
         Err(r) => return *r,
     };
@@ -152,24 +171,25 @@ pub async fn item_post(
     Query(query): Query<HashMap<String, String>>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let json_body = match parse_body(&body) {
-        Ok(v) => v,
-        Err(r) => return *r,
-    };
     let available = json!(["refit", "reindex", "reapply"]);
     let req = match query.get("action").map(String::as_str) {
+        // v4's refit/reapply handlers never read the body; only reindex parses
+        // it, leniently (see `parse_body_lenient`).
         Some("refit") => CoreRequest::EmbeddingProfileRefit { profile_id: id },
-        Some("reindex") => CoreRequest::EmbeddingProfileReindex {
-            profile_id: id,
-            // v4 reads `body.scope`; a present non-string value drops to its JSON
-            // text so the handler's `Invalid scope: …` arm fires (an absent scope
-            // defaults to 'all').
-            scope: json_body.get("scope").map(|v| {
-                v.as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| v.to_string())
-            }),
-        },
+        Some("reindex") => {
+            let json_body = parse_body_lenient(&body);
+            CoreRequest::EmbeddingProfileReindex {
+                profile_id: id,
+                // v4 reads `body.scope`; a present non-string value drops to its
+                // JSON text so the handler's `Invalid scope: …` arm fires (an
+                // absent scope defaults to 'all').
+                scope: json_body.get("scope").map(|v| {
+                    v.as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| v.to_string())
+                }),
+            }
+        }
         Some("reapply") => CoreRequest::EmbeddingProfileReapply { profile_id: id },
         // v4 `withActionDispatch`: unknown action / missing action → 400 with the
         // dispatcher's exact sentence + availableActions.

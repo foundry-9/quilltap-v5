@@ -171,6 +171,13 @@ export class CharacterConversationCard {
    * badges. Like the Salon card, v5 skips v4's immediate list refetch — the
    * render is a background job.
    */
+  /**
+   * DOCUMENTED DIVERGENCE (P4.9H2B, same as the salon card): v4's tab re-fetches
+   * immediately after queueing and then polls every 5 s until the chat reads
+   * `embedded` (`character-conversations-tab.tsx:185-217` — the live badge
+   * progression). v5 toasts + wakes the queue badges and lets the badge update
+   * on the next natural load.
+   */
   protected async renderConversation(): Promise<void> {
     if (this.rendering()) return;
     this.rendering.set(true);
