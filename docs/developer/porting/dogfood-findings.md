@@ -92,6 +92,7 @@ catch, since every fixture is built fresh.
 | 66 | The Almanack's **Calliope (Themes)** card reports Total Themes / With Dark Mode / With CSS Overrides / Shipping+Total Icon Overrides all **0**, though it correctly shows the Active Theme (`madmans-box`) and Colour Mode (`system`) | **NOT A BUG — a documented architectural divergence.** v4's theme registry is SERVER-side (`@/lib/themes/theme-registry`, `getAllThemes()`/`getThemeStats()`); v5's theme packs are CLIENT-side Angular assets, so the Rust report core has no catalog to enumerate. `activeThemeId`/`colorMode` come off `chat_settings` and are ported exactly — which is why those two read right and every count is 0. Already recorded verbatim in `almanack/phase2_machinery.rs`'s module header, and the tier-2 differential already sentinels the theme stats (`normalize_data` → `themeInfo.{stats,themes,themesWithIcons,totalIconOverrides,totalUnknownIconOverrides}` = `<registry>`) | **NOT A BUG (v5)** (2026-08-06) — recorded so it is not re-reported, and NOT fixed: closing the wart needs a new seam (the SPA feeding its client-side theme list into the report verb, or the report omitting the counts) — a follow-up, not a fix. See the standing note |
 | 67 | The Almanack's **"Cast sizes"** table lists one row per CHAT (a long run of `participants 1 / chats 1`, then `2 / 1` …) instead of a histogram rolled up by cast size; only the `0 / 48` row aggregates | **Faithfully ported v4 bug — v4's OWN engine reproduces it exactly.** The query means a histogram (`json_array_length("participants") AS participants … GROUP BY participants`), but `GROUP BY participants` binds the bare name to the raw `participants` JSON COLUMN, not the `json_array_length` alias, so every DISTINCT cast is its own group. Proven three ways: system sqlite3 3.51.0, AND v4's own `better-sqlite3-multiple-ciphers` (SQLite **3.53.2**, the version v5 links) returns the identical per-row result `[{1,1},{1,1},{1,1},{3,1}]` on the differential fixture. `0 → 48` rolls up only because all empty casts share the string `[]`. v5's SQL was byte-identical to v4's, so `almanack_tier2_equivalence` passed (the fixture's casts didn't distinguish column-vs-alias grouping — the class synthetic fixtures cannot catch) | **✅ RULED 2026-08-06 (human): fix v5 now + queue v4 — FIXED** `<commit>`. v5 groups AND orders by `json_array_length("participants")` so the histogram rolls up by size. `reconcile_ledger_divergences` in the tier-2 differential folds v4's per-cast rows to v5's shape and self-retires when v4's histogram is no longer per-cast; a collector unit test (`participant_histogram_rolls_up_by_cast_size`) pins the corrected shape, mutation-proven. The v4 one-liner (`GROUP BY json_array_length(...)`) is queued on the post-5.0 v4-side list |
 | 68 | The Almanack's **Characters** card shows "May dress themselves: 0", "May create outfits: 0", "With a Core-whisper override: 0" on a 38-character instance | **Faithfully ported v4 behavior — byte-identical query.** v4 counts `canDressThemselves = 1` / `canCreateOutfits = 1` (explicit opt-in) off the `characters` table; v5's query matched line for line. But the RUNTIME permission is `character?.canDressThemselves !== false` (`orchestrator.service.ts:818`) — **NULL means ALLOWED** — so on any instance where the flags were never toggled, all characters effectively may dress themselves, yet the report counts only explicit `= 1` rows → 0, under-reporting the effective permission. Core-whisper-override 0 is genuinely correct and NOT changed — it counts characters with an explicit `coreWhisperEnabled` override (`IS NOT NULL`), the v4-faithful semantic. **Re-questioned by the human and verified against the Friday copy** (`quilltap db`): 0 of 38 characters, 0 of 779 chats, and 0 participant-JSON entries carry any `coreWhisperEnabled` value — there are no core-whisper overrides anywhere on the instance, so 0 is the true count (the column exists and is readable, ruling out a missing-column artifact) | **✅ RULED 2026-08-06 (human): fix v5 now + queue v4 — FIXED** `<commit>`. v5 counts dress/outfits with `IS NOT 0` (the null-safe form of `!== false`: NULL and 1 count, an explicit `0`/false does not); coreWhisper stays `IS NOT NULL` (it counts explicit overrides, which 0 correctly reports as none). Same differential carve-out (both-directions, self-retiring) + unit test `dress_outfit_counts_are_effective_permission` (the explicit-false row is the guard). The v4 semantic change is queued on the post-5.0 v4-side list |
+| 69 | An enclave turn fails with `primary stream failed: HTTP 400 … previous_response_not_found` — the OpenAI Responses-API chaining request references a `resp_…` id OpenAI can't find, even one created ~2.5 min earlier | **Port divergence — v5 dropped v4's best-effort chaining FALLBACK.** Both apps send `store: false` + `previous_response_id` (v5 faithful), and `store: false` responses are not reliably chainable, so chained requests fail often (not just after retention). v4's OpenAI provider wraps the chained `responses.create` in a `try/catch` and on ANY failure re-issues with the FULL conversation and no `previous_response_id` (*"conversation chaining failed, falling back to full input"*, `provider.ts:463-533`); chaining is a mere cache optimization. v5's `WireStreamingProvider::stream_message` has no such fallback — it `single_error`s and the enclave swallows it, and since a failed turn writes no new `resp_` id the chat WEDGES. **Exposes every OpenAI multi-turn chat, not just enclaves/old data.** Full scope + the exact fix (retry once with `previous_response_id: None` at the pre-stream `execute_stream` Err arm) in the standing note | **✅ RULED 2026-08-06 (human): record as an ORDER, not a dogfood commit** — the fix is v4-faithful (restores dropped behavior, no oracle divergence) but sits in the differential-verified streaming spine and adds a retry API call, so it wants a proper lane with a fake-transport test + tier-3. See "NEEDS AN ORDER (finding #69)" in the standing notes |
 
 - **The 2026-08-06 Almanack + Taboo round walk (Part A — the Almanack over a
   COPY of real Friday).** The report compiled in parallel over the real
@@ -549,6 +550,45 @@ catch, since every fixture is built fresh.
   (documented at `recall_replay_cmd.rs:130` `pad_end`).
 
 ## Standing notes for the next orders
+
+- **NEEDS AN ORDER (finding #69, 2026-08-06, human-ruled to order not fix-in-place)
+  — v5 dropped v4's OpenAI conversation-chaining FALLBACK, so a failed
+  `previous_response_id` kills the turn instead of retrying without it.** Surfaced
+  live on an enclave: `primary stream failed: HTTP 400 … previous_response_not_found`
+  for a `resp_…` id that was only ~2.5 min old. Both apps send `store: false` +
+  `previous_response_id` (v5 faithful — `responses_api.rs:358/453` ↔ v4
+  `provider.ts:318/470`), and `store: false` responses are NOT reliably chainable,
+  so the chained request fails OFTEN, not just after retention expiry. **v4 makes
+  this transparent:** `OpenAIProvider.streamMessage`/`sendMessage`
+  (`plugins/dist/qtap-plugin-openai/provider.ts:463-533`) wrap the chained
+  `responses.create` in a `try/catch` and on ANY error log *"conversation chaining
+  failed, falling back to full input"* and re-issue the request with the FULL
+  conversation and no `previous_response_id`. Chaining is a best-effort cache
+  optimization. **v5 has no fallback** — `WireStreamingProvider::stream_message`
+  (`crates/quilltap-core/src/model/streaming_provider.rs`) returns `single_error`
+  the moment `transport.execute_stream` fails; the only ported fallbacks are
+  temperature + uncensored-provider (`model/completion.rs`), not chaining. **So
+  every OpenAI multi-turn chat is exposed** whenever OpenAI can't find the prior
+  response — the enclave shell just swallows it (v4 shell semantics), and because
+  a failed turn writes no new `resp_` id, `find_previous_response_id`
+  (`services/primary_stream.rs:1227`, a verbatim v4 port) keeps returning the same
+  dead id → the chat WEDGES (the cache-collapse sweep only clears `rawResponse`
+  once a chat goes stale, which an active enclave never does). **The fix (v4-faithful,
+  restores dropped behavior → makes v5 MATCH the oracle, no divergence):** at the
+  `execute_stream` Err arm in `stream_message`, if `params.previous_response_id.is_some()`,
+  rebuild via `prepare` with a `params` clone whose `previous_response_id = None`
+  (v5 already builds chained-vs-full-input correctly — `responses_api.rs:441` uses
+  `extract_last_user_message` + the id when present, full `item_input` otherwise)
+  and retry `execute_stream` ONCE; on the retry's failure, `single_error` as today.
+  Gate it on pre-stream failure only (mid-stream errors are a different catch in v4
+  too). Only the streaming path needs it — the non-streaming completion path always
+  sets `previous_response_id: None` (`completion_provider.rs:91`). **Test:** the
+  existing fake-transport harness (streaming_provider.rs tests) — fail the first
+  (chained) `execute_stream`, succeed the second, assert the retry's body carries no
+  `previous_response_id`; a tier-3 could inject the same fail-then-succeed both
+  sides. ⚠ The retry is a second real API call **on failure only** (v4 does the
+  same). It's in the differential-verified streaming spine, which is why it was
+  ruled an order rather than a dogfood commit.
 
 - **v4-side items (findings #67 + #68, 2026-08-06) — two Almanack ledger-collector
   bugs, ruled "fix v5 now + queue v4", now queued on the v4 side.** (1) #67: the
