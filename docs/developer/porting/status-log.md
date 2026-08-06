@@ -59491,3 +59491,32 @@ SQLITE_MOUNT_INDEX_PATH) + QT_ORACLE_OUT; run the Rust diff with
 QT_ORACLE_EP_REAPPLY.
 
 Versions: core 0.0.484 → 0.0.485, harness 0.0.410 → 0.0.411, host 0.0.60 → 0.0.61.
+
+### Units 6 + 7 (tier 2) — DEFERRED LOUDLY (contract completed)
+
+The two tier-2 surfaces — memory-dedup (preview/run) and conversation-summaries
+regeneration (status/enqueue + the `REGENERATE_CONVERSATION_SUMMARIES` handler) —
+are **deferred loudly** this round. The four §1 verbs (`MemoryDedupPreview`,
+`MemoryDedupRun`, `ConversationSummariesRegenerateStatus`,
+`ConversationSummariesRegenerate`) are DEFINED and wired through dispatch to a
+named `not_available` refusal (new `api/memory_maintenance.rs`), so the §1
+contract is complete for the P4.9H2B SPA (a clean refusal, not a parse error) and
+the `Response::MemoryMaintenance` arm is reserved for the landing round.
+
+Everything the implementations need is already in place for a follow-up: the deps
+(`cosine_similarity`, `extract_novel_details`, `db::memories::delete_many_with_unlink`,
+`update_for_character`, `characters_read::find_all`, the vault-mirror machinery,
+the `REGENERATE_CONVERSATION_SUMMARIES`/`memory_pipeline_jobs` precedents) AND the
+committed `embedding-profiles-{main,mount}.db` fixture's crafted 4-dim
+near-duplicate/distinct memories (m-dup-a/b ≥ 0.80, m-distinct < 0.80; 8-dim vs
+4-dim two-group split). The deferral is a budget call at the tail of a long lane,
+NOT a missing-dependency block — the faithful port of v4's 446-LOC
+`deduplicateAllMemories` (union-find + JS-Map cluster ordering + the
+scoreMemory regex + the novel-detail merge) plus the summaries handler each want
+their own differential-iteration, which is the follow-up's scope.
+
+The REST edges for these (system/tools `?action=memory-dedup[-preview]`;
+`/api/v1/system/conversation-summaries`) defer with the implementations — the SPA
+reaches the refusal via `POST /api/dispatch` meanwhile.
+
+Version: core 0.0.485 → 0.0.486.

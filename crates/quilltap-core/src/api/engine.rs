@@ -2444,6 +2444,24 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- Memory maintenance (P4.9H2A tier 2 — deferred loudly) ------
+            Request::MemoryDedupPreview { .. } => match self.ready_db() {
+                Ok(_) => super::memory_maintenance::memory_dedup(true),
+                Err(r) => r,
+            },
+            Request::MemoryDedupRun { .. } => match self.ready_db() {
+                Ok(_) => super::memory_maintenance::memory_dedup(false),
+                Err(r) => r,
+            },
+            Request::ConversationSummariesRegenerateStatus => match self.ready_db() {
+                Ok(_) => super::memory_maintenance::conversation_summaries_regenerate(true),
+                Err(r) => r,
+            },
+            Request::ConversationSummariesRegenerate => match self.ready_db() {
+                Ok(_) => super::memory_maintenance::conversation_summaries_regenerate(false),
+                Err(r) => r,
+            },
+
             // --- Global mount points (P4.6p) --------------------------------
             Request::MountPointList => match self.ready_db() {
                 Ok(db) => super::mount_points::mount_point_list(&db),

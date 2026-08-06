@@ -925,6 +925,33 @@ pub enum Request {
         #[serde(default)]
         base_url: Option<String>,
     },
+    // --- Memory maintenance (P4.9H2A tier 2) ---
+    /// v4 `GET /api/v1/system/tools?action=memory-dedup-preview` → `{success,
+    /// result}` (dry run). **DEFERRED LOUDLY** — the synchronous inline dedup
+    /// algorithm (union-find + dim-grouped cosine + scoreMemory) is a follow-up;
+    /// its deps (`cosine_similarity`, `extract_novel_details`, the delete-with-
+    /// unlink chokepoint) and the committed dedup fixture are already in place.
+    #[serde(rename_all = "camelCase")]
+    MemoryDedupPreview {
+        #[serde(default)]
+        threshold: Option<f64>,
+    },
+    /// v4 `POST /api/v1/system/tools?action=memory-dedup` → `{success, result}`.
+    /// **DEFERRED LOUDLY** (see `MemoryDedupPreview`).
+    #[serde(rename_all = "camelCase")]
+    MemoryDedupRun {
+        #[serde(default)]
+        threshold: Option<f64>,
+    },
+    /// v4 `GET /api/v1/system/conversation-summaries?action=regenerate` →
+    /// `{success, inFlight}`. **DEFERRED LOUDLY** — the status + enqueue +
+    /// `REGENERATE_CONVERSATION_SUMMARIES` handler (re-mirror existing
+    /// `contextSummary`s into vaults) is a follow-up over the existing
+    /// vault-mirror machinery.
+    ConversationSummariesRegenerateStatus,
+    /// v4 `POST /api/v1/system/conversation-summaries?action=regenerate` →
+    /// `{success, jobId, message}`. **DEFERRED LOUDLY** (see the status verb).
+    ConversationSummariesRegenerate,
     // --- Global mount points (P4.6p) ---
     /// v4 `GET /api/v1/mount-points` → `{mountPoints}` (createdAt DESC).
     MountPointList,

@@ -21,6 +21,10 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Defined the memory-deduplication and conversation-summary-regeneration
+maintenance actions in the request dispatcher; they currently return a
+clear "not yet available" response pending their implementation.
+
 Implemented the embedding re-apply job: when a profile's Matryoshka
 dimensions are narrowed, the stored vectors are re-sliced and
 renormalized in place (with a safety backup of each database taken
