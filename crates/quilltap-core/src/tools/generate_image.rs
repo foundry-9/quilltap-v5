@@ -2075,9 +2075,10 @@ struct GenError {
 /// provider attempt (success/failure/reroute-success/reroute-failure),
 /// fire-and-forget. Awaited here (the writer never throws — the watermark
 /// precedent); `LogContext::none()` on the request path. `durationMs` is v4's
-/// `Date.now()`-delta around the provider call — the differential pins the clock,
-/// so it is 0. The request is a single `user` message carrying the tool prompt;
-/// no usage/cache/hashes on this path.
+/// `Date.now()`-delta around the provider call — a REAL wall-clock span (the
+/// P4.D49 cheap-path pattern; the differentials normalize non-NULL durations,
+/// so a measured value stays oracle-neutral). The request is a single `user`
+/// message carrying the tool prompt; no usage/cache/hashes on this path.
 #[allow(clippy::too_many_arguments)]
 async fn log_image_generation(
     db: &Db,
@@ -2179,8 +2180,10 @@ where
     let mut active_provider = image_profile.provider.clone();
     let mut active_model = image_profile.model_name.clone();
 
-    // Call the provider. v4 stamps `Date.now()` around the call for `durationMs`.
-    let gen_start = deps.now_ms;
+    // Call the provider. v4 stamps `Date.now()` around the call for `durationMs`
+    // — a real wall-clock read, NOT the pinned `deps.now_ms` (same-field
+    // subtraction made every duration structurally 0).
+    let gen_start = crate::clock::now_unix_ms();
     let response = match deps
         .image_provider
         .generate_image(&image_profile.provider, &image_profile.api_key, &merged)
@@ -2196,7 +2199,7 @@ where
                 &tool_input.prompt,
                 image_gen_success_content(&r, ""),
                 None,
-                (deps.now_ms - gen_start) as f64,
+                (crate::clock::now_unix_ms() - gen_start) as f64,
             )
             .await;
             r
@@ -2211,7 +2214,7 @@ where
                 &tool_input.prompt,
                 String::new(),
                 Some(error.message.clone()),
-                (deps.now_ms - gen_start) as f64,
+                (crate::clock::now_unix_ms() - gen_start) as f64,
             )
             .await;
             // Post-hoc Concierge reroute on a moderation rejection.
@@ -2261,7 +2264,7 @@ where
                 &reroute_models,
                 reroute_support.as_ref(),
             );
-            let reroute_start = deps.now_ms;
+            let reroute_start = crate::clock::now_unix_ms();
             match deps
                 .image_provider
                 .generate_image(&reroute.profile.provider, &reroute.api_key, &reroute_merged)
@@ -2277,7 +2280,7 @@ where
                         &tool_input.prompt,
                         image_gen_success_content(&r, " (Concierge reroute)"),
                         None,
-                        (deps.now_ms - reroute_start) as f64,
+                        (crate::clock::now_unix_ms() - reroute_start) as f64,
                     )
                     .await;
                     active_provider = reroute.profile.provider.clone();
@@ -2294,7 +2297,7 @@ where
                         &tool_input.prompt,
                         String::new(),
                         Some(reroute_error.message.clone()),
-                        (deps.now_ms - reroute_start) as f64,
+                        (crate::clock::now_unix_ms() - reroute_start) as f64,
                     )
                     .await;
                     return Err(GenError {
@@ -2424,4 +2427,166 @@ fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
         .flatten()
         .and_then(|p| p.get("parameters").cloned())
         .unwrap_or(Value::Null)
+}
+
+#[cfg(test)]
+mod duration_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::db::Writer;
+    use crate::model::completion::CannedCompletionProvider;
+    use crate::model::image::{ImageGenError, ImageGenResponse, PassthroughTranscoder};
+    use crate::services::dangerous_content::gatekeeper::NoModerationProvider;
+    use crate::services::dangerous_content::provider_routing::NoApiKeys;
+
+    // === The f7f1a956-round §3 finding: `durationMs` must be a MEASURED span ===
+    //
+    // The `gen_start = deps.now_ms` shape made every tool-path duration
+    // structurally 0 (same-field subtraction), and the differentials cannot see
+    // it — `normalize_duration_ms` collapses every non-NULL duration. This pin
+    // asserts what no oracle diff can: the failure-arm row's duration BRACKETS
+    // the provider call (a provider that takes a real ~30 ms must produce a
+    // duration in that ballpark, not 0). The failure arm is used because it
+    // returns before the save path, needing no mount/main-DB scaffolding; the
+    // success arm shares the same `gen_start` read.
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provider that takes a real ~30 ms and then fails with a NON-moderation
+    /// error (so no reroute is attempted and the arm returns immediately).
+    struct SlowFailingProvider;
+
+    impl ImageProvider for SlowFailingProvider {
+        async fn generate_image(
+            &self,
+            _provider: &str,
+            _api_key: &str,
+            _params: &ImageGenParams,
+        ) -> Result<ImageGenResponse, ImageGenError> {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            Err(ImageGenError {
+                message: "provider exploded".to_string(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn failure_row_duration_brackets_the_provider_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let orientation_data: Box<OrientationDataFn> = Box::new(|_p: &str| (Vec::new(), None));
+        let deps = ImageGenDeps {
+            image_provider: &SlowFailingProvider,
+            completion: &CannedCompletionProvider::new(),
+            moderation: &NoModerationProvider,
+            api_keys: &NoApiKeys,
+            transcoder: &PassthroughTranscoder,
+            lantern: &NoLanternNotification,
+            executor: &CheapLlmTaskExecutor::new(),
+            now_ms: 1_700_000_000_000,
+            orientation_data_for: &orientation_data,
+        };
+        let tool_input = ImageGenerationToolInput {
+            prompt: "a prompt".to_string(),
+            negative_prompt: None,
+            orientation: None,
+            size: None,
+            style: None,
+            quality: None,
+            aspect_ratio: None,
+            count: Some(1),
+        };
+        let image_profile = LoadedProfile {
+            id: "profile-1".to_string(),
+            name: "Test Profile".to_string(),
+            provider: "OPENAI".to_string(),
+            model_name: "gpt-image-1".to_string(),
+            parameters: serde_json::json!({}),
+            api_key: "sk-test".to_string(),
+        };
+        let danger_settings = DangerousContentSettings {
+            mode: "OFF".to_string(),
+            threshold: 0.7,
+            scan_text_chat: false,
+            scan_image_prompts: false,
+            scan_image_generation: false,
+            uncensored_text_profile_id: None,
+            uncensored_image_profile_id: None,
+            display_mode: "BLUR".to_string(),
+            show_warning_badges: false,
+            custom_classification_prompt: None,
+        };
+        let db_ctx = DbContext {
+            chat: None,
+            is_dangerous_chat: false,
+            recent_chat_messages: Vec::new(),
+            all_profiles: Vec::new(),
+            chat_settings: None,
+            appearance_inputs: Vec::new(),
+        };
+        let ctx = ImageToolExecutionContext {
+            user_id: "user-1".to_string(),
+            profile_id: "profile-1".to_string(),
+            chat_id: None,
+            calling_participant_id: None,
+        };
+
+        let out = generate_images_with_provider(
+            &db,
+            &deps,
+            &tool_input,
+            &image_profile,
+            &tool_input,
+            &danger_settings,
+            &db_ctx,
+            &ctx,
+        )
+        .await;
+        assert!(
+            out.is_err(),
+            "the non-moderation failure arm must return Err"
+        );
+
+        let durations: Vec<Option<f64>> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn.prepare("SELECT durationMs FROM llm_logs")?;
+                let out = stmt
+                    .query_map([], |row| row.get::<_, Option<f64>>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+        assert_eq!(durations.len(), 1, "exactly one llm_logs row written");
+        let d = durations[0].expect("durationMs must be present");
+        assert!(
+            d >= 20.0,
+            "durationMs must bracket the ~30 ms provider call, got {d}"
+        );
+    }
 }

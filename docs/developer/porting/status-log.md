@@ -57835,3 +57835,50 @@ TWO commits past the `f7f1a956` baseline (`44e2e4fe` docs-only NO-PORT +
 upgraded from "brewing" to OWED. Nothing in this round's gate is
 affected: every oracle regenerated from a worktree PINNED at
 `f7f1a956`, and the pin predated the landing.
+
+## Follow-up — the image-path durationMs measurement fix (2026-08-05, single follow-up lane)
+
+The f7f1a956 round's §3 review chip discharged: the two PRE-EXISTING v5
+divergences that made every image-path `llm_logs` row read as unmeasured
+(`durationMs = 0`) are fixed. Since v4 `0cde7fbc` (the Almanack)
+`durationMs` feeds real latency figures (`durationMs > 0` filters,
+averages, medians), so a hardcoded zero reads as an unmeasured row.
+
+- **Site 1** (`services/image_job_common.rs`): `log_image_gen_job`
+  hardcoded `duration_ms: Some(0.0)` where v4 measures
+  `Date.now() - genStartTime` (character-avatar.ts / story-background).
+  Its comment conflated the differentials' pinned handler clock with
+  production behavior. Now: `generate_with_reroute` brackets the primary
+  attempt and `reroute_or_fail` the Concierge reroute with real
+  `crate::clock::now_unix_ms()` reads (v4's `genStartTime` /
+  `rerouteStartTime`), both arms each, threaded into the log writer.
+- **Site 2** (`tools/generate_image.rs`): `gen_start = deps.now_ms` with
+  `deps.now_ms - gen_start` deltas — a plain i64 field, same read, so
+  every tool-path duration was STRUCTURALLY 0. All four log sites now
+  read the real clock; `deps.now_ms` keeps its one legitimate job (the
+  pinned `generated_<ts>` provider filename).
+- **Why no differential ever saw it**: the harness's
+  `normalize_duration_ms` collapses every non-NULL duration to `"<ms>"`
+  — 0.0 and a real measurement are indistinguishable there, by design.
+  The absence is made visible at the unit tier instead: three new pins
+  (`image_job_common::tests` success + failure arms;
+  `generate_image::duration_tests` failure arm — it returns before the
+  save path, and the success arm shares the same `gen_start` read) drive
+  a mock provider that takes a real ~30 ms and assert the written row's
+  `durationMs` is present AND >= 20 ms — duration present, span
+  brackets the provider call. The P4.D49 cheap-path pattern
+  (`cheap_llm_exec.rs` `started_at`) is now uniform across both image
+  paths.
+- **Gate**: the four llm_logs-dumping image families re-run by name over
+  oracles regenerated FRESH from a worktree PINNED at `f7f1a956` (v4
+  HEAD is `7df7de8e`, the Taboo drift, tree dirty — pin per the standing
+  rule; stale NDJSONs deleted before regen): `avatar_job_tier3` 2/2,
+  `story_background_job_tier3` 2/2, `image_generation_tier3` 1/1, and
+  `image_generate_route` 1/1 (not on the chip, but it drives the same
+  tool path — run for completeness), zero SKIPs. `cargo test -p
+  quilltap-core` 1,301/0; clippy both feature sets clean.
+- **Live proof owed**: the next dogfood pass should see real latency
+  figures on IMAGE_GENERATION rows in the Almanack/Inspector (the e2e
+  instance generates no real images by design).
+
+Versions: core 0.0.475.

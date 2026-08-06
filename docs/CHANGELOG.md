@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Image-generation calls now record how long the provider actually took.
+Two internal call-log sites (the avatar/story-background job path and
+the in-chat image tool) were writing a duration of zero on every image
+call, which made those rows read as unmeasured in the system report's
+latency figures; both now measure the real wall clock around the
+provider call, on the primary attempt and the Concierge reroute alike,
+matching the reference app. Unit tests pin that the logged duration
+actually brackets the provider call.
+
 Unified the `f7f1a956` Almanack round (partially): the reference app's
 system-report rewrite is absorbed on every already-ported surface, and
 the new report's foundations are in. The LLM call log gains the two

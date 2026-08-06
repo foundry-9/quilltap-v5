@@ -204,9 +204,13 @@ pub(crate) struct GenOutcome {
 /// v4 `logLLMCall` (character-avatar.ts / story-background.ts) — one
 /// `IMAGE_GENERATION` row per provider attempt. The avatar handler passes a
 /// `characterId`; the story handler does not (`character_id = None`). `durationMs`
-/// is v4's `Date.now()`-delta; the handler clocks are pinned in the differentials,
-/// so it is 0. Awaited (the writer never throws); `LogContext::none()` on the job
-/// path (Unit 4 supplies the autonomous run id later).
+/// is v4's `Date.now() - genStartTime` — a REAL wall clock bracketing the
+/// provider call (the P4.D49 cheap-path pattern; the differentials normalize
+/// non-NULL durations, so a measured value stays oracle-neutral). Since v4
+/// `0cde7fbc` (the Almanack) it feeds real latency figures, so a hardcoded 0
+/// reads as an unmeasured row. Awaited (the writer never throws);
+/// `LogContext::none()` on the job path (Unit 4 supplies the autonomous run id
+/// later).
 #[allow(clippy::too_many_arguments)]
 async fn log_image_gen_job(
     db: &Db,
@@ -221,6 +225,7 @@ async fn log_image_gen_job(
     prompt: &str,
     content: String,
     error: Option<String>,
+    duration_ms: f64,
 ) {
     let params = LogLlmCallParams {
         user_id: user_id.to_string(),
@@ -252,8 +257,7 @@ async fn log_image_gen_job(
         cache_usage: None,
         raw_provider_usage: None,
         request_hashes: None,
-        // Pinned clock in the differential → 0 (v4 `Date.now() - genStartTime`).
-        duration_ms: Some(0.0),
+        duration_ms: Some(duration_ms),
     };
     let _ = log_llm_call(db, params, &LogContext::none()).await;
 }
@@ -316,11 +320,16 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
         resolved.aspect_ratio.clone(),
     );
 
+    // v4 `const genStartTime = Date.now()` — a real wall-clock read bracketing
+    // the provider attempt (NOT the handlers' pinned `now_ms`, which stamps
+    // filenames/timestamps and would make every duration structurally 0).
+    let gen_start = crate::clock::now_unix_ms();
     match image_provider
         .generate_image(provider, api_key, &params)
         .await
     {
         Ok(response) => {
+            let gen_duration_ms = (crate::clock::now_unix_ms() - gen_start) as f64;
             log_image_gen_job(
                 db,
                 user_id,
@@ -332,6 +341,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
                 final_prompt,
                 job_success_content(&response, ""),
                 None,
+                gen_duration_ms,
             )
             .await;
             Ok(GenOutcome {
@@ -341,6 +351,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
             })
         }
         Err(error) => {
+            let gen_duration_ms = (crate::clock::now_unix_ms() - gen_start) as f64;
             log_image_gen_job(
                 db,
                 user_id,
@@ -352,6 +363,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
                 final_prompt,
                 String::new(),
                 Some(error.message.clone()),
+                gen_duration_ms,
             )
             .await;
             reroute_or_fail(
@@ -440,11 +452,15 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
         resolved.aspect_ratio.clone(),
     );
 
+    // v4 `const rerouteStartTime = Date.now()` — the reroute attempt gets its
+    // own wall-clock span.
+    let reroute_start = crate::clock::now_unix_ms();
     match image_provider
         .generate_image(&reroute.profile.provider, &reroute.api_key, &params)
         .await
     {
         Ok(response) => {
+            let reroute_duration_ms = (crate::clock::now_unix_ms() - reroute_start) as f64;
             log_image_gen_job(
                 db,
                 user_id,
@@ -456,6 +472,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 final_prompt,
                 job_success_content(&response, " (Concierge reroute)"),
                 None,
+                reroute_duration_ms,
             )
             .await;
             Ok(GenOutcome {
@@ -465,6 +482,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
             })
         }
         Err(reroute_error) => {
+            let reroute_duration_ms = (crate::clock::now_unix_ms() - reroute_start) as f64;
             log_image_gen_job(
                 db,
                 user_id,
@@ -476,6 +494,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 final_prompt,
                 String::new(),
                 Some(reroute_error.message.clone()),
+                reroute_duration_ms,
             )
             .await;
             Err(format!(
@@ -588,4 +607,156 @@ where
         f(main, mount)
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::db::Writer;
+    use crate::image_gen::Orientation;
+    use crate::model::image::GeneratedImageData;
+    use crate::services::dangerous_content::provider_routing::NoApiKeys;
+
+    // === The f7f1a956-round §3 finding: `durationMs` must be a MEASURED span ===
+    //
+    // The differentials cannot see this — `normalize_duration_ms` collapses
+    // every non-NULL duration to a placeholder, which is how a hardcoded
+    // `Some(0.0)` survived differential-verified for a whole phase. Since v4
+    // `0cde7fbc` (the Almanack) `durationMs` feeds real latency figures
+    // (`durationMs > 0` filters, averages, medians), so these pins assert the
+    // two properties no oracle diff can: the row's duration is PRESENT, and the
+    // span BRACKETS the provider call (a provider that takes a real ~30 ms must
+    // produce a duration in that ballpark, not 0).
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provider that takes a real ~30 ms and then answers (or fails with a
+    /// NON-moderation error, so no reroute is attempted).
+    struct SlowImageProvider {
+        fail: bool,
+    }
+
+    impl ImageProvider for SlowImageProvider {
+        fn generate_image(
+            &self,
+            _provider: &str,
+            _api_key: &str,
+            _params: &ImageGenParams,
+        ) -> impl std::future::Future<Output = Result<ImageGenResponse, ImageGenError>> + Send
+        {
+            let fail = self.fail;
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                if fail {
+                    Err(ImageGenError {
+                        message: "provider exploded".to_string(),
+                    })
+                } else {
+                    Ok(ImageGenResponse {
+                        images: vec![GeneratedImageData {
+                            data: Some("aGk=".to_string()),
+                            url: None,
+                            mime_type: Some("image/png".to_string()),
+                            revised_prompt: None,
+                        }],
+                    })
+                }
+            }
+        }
+    }
+
+    fn open_db(dir: &std::path::Path) -> Db {
+        let main_path = dir.join("main.db");
+        let ll_path = dir.join("llm-logs.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    async fn logged_durations(db: &Db) -> Vec<Option<f64>> {
+        db.read_llm_logs(|conn| {
+            let mut stmt = conn.prepare("SELECT durationMs FROM llm_logs")?;
+            let out = stmt
+                .query_map([], |row| row.get::<_, Option<f64>>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(out)
+        })
+        .unwrap()
+    }
+
+    async fn run_gen(db: &Db, fail: bool) -> Result<GenOutcome, String> {
+        let orientation_data: Box<OrientationDataFn> = Box::new(|_p: &str| (Vec::new(), None));
+        generate_with_reroute(
+            db,
+            &SlowImageProvider { fail },
+            &NoApiKeys,
+            "profile-1",
+            "OPENAI",
+            "gpt-image-1",
+            &Value::Null,
+            "sk-test",
+            "a prompt",
+            Orientation::Square,
+            &orientation_data,
+            "OFF",
+            None,
+            "user-1",
+            None,
+            None,
+            "Image generation failed",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn success_row_duration_brackets_the_provider_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        let out = run_gen(&db, false).await;
+        assert!(out.is_ok());
+        let durations = logged_durations(&db).await;
+        assert_eq!(durations.len(), 1, "exactly one llm_logs row written");
+        let d = durations[0].expect("durationMs must be present");
+        assert!(
+            d >= 20.0,
+            "durationMs must bracket the ~30 ms provider call, got {d}"
+        );
+    }
+
+    #[tokio::test]
+    async fn failure_row_duration_brackets_the_provider_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        let out = run_gen(&db, true).await;
+        assert!(out.is_err());
+        let durations = logged_durations(&db).await;
+        assert_eq!(durations.len(), 1, "exactly one llm_logs row written");
+        let d = durations[0].expect("durationMs must be present");
+        assert!(
+            d >= 20.0,
+            "durationMs must bracket the ~30 ms provider call, got {d}"
+        );
+    }
 }
