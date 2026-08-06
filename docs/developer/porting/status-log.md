@@ -59313,3 +59313,53 @@ recovery + four failover legs) is unchanged and stays green.
   path the fallback must come with it.
 - The stale-id CLEANUP (proactively clearing a dead `rawResponse.id`) — v4
   doesn't do it either; the fallback makes it moot.
+## Lane record — P4.9H2A (embedding-profiles management, server half)
+
+Order: `work-orders/p4.9h2a-embedding-profiles-server.md`. Branch
+`claude/embedding-profiles-server-93c02c`. v4 baseline `3adefeba` (drift-checked
+clean at lane start except `docs/developer/found-bugs.md`, not in the STOP set).
+Oracles regenerated from a pinned detached worktree
+`/tmp/qt-v4-pin-p4.9h2a-3adefeba`.
+
+### Unit 1 — the repo ops (`db/embedding_profiles.rs`)
+
+Added the three custom query helpers the management routes need:
+
+- `find_by_name(conn, user_id, name) -> Option<serde_json::Value>` — v4
+  `findByName` (`findOneByFilter({userId, name})`), returning the full net-read
+  shape (null nullable columns OMITTED, matching v4's Zod-drops-undefined).
+- `EmbeddingProfilesRepository::unset_all_defaults(user_id, updated_at) -> usize`
+  — v4 `unsetAllDefaults` (`updateMany({userId, isDefault:true}, {isDefault:false})`
+  with the one wall-clock `updatedAt` stamp). Mirrors the `image_profiles`
+  precedent.
+- The `EpUpdate` nullable columns (`api_key_id`, `base_url`, `dimensions`,
+  `truncate_to_dimensions`) became the tri-state `Option<Option<T>>`
+  (`Some(None)` = SQL NULL) — the `IpUpdate` pattern — so the PUT matrix's
+  clear-to-null arm can land. The only other `EpUpdate` caller
+  (`quilltap_import/reconcile.rs`) uses `..Default::default()` and is unaffected.
+
+Differential: extended `embedding_profiles_tier2_equivalence` to multi-record
+NDJSON — a clear-to-NULL update op (proves the tri-state setters through the
+dump) plus five `findByName` probe records (user-scoping, exact match, post-op
+visibility, wrong-user miss). Fixture spec + oracle case + Rust test all extended.
+Green over a fresh `3adefeba` oracle; mutation-proven twice (drop `find_by_name`'s
+`userId` scope → red; skip the `Some(None)` truncate clear → red). `unset_all_defaults`
+is proven by the routes family (unit 5, where its un-pinnable `updateMany` stamp is
+normalized) plus a Rust unit test for its SQL shape; two more db unit tests pin the
+tri-state clears and `find_by_name` scoping.
+
+Regen recipe (from the pinned worktree; cwd = pin, case = v5 worktree):
+```
+N=~/.nvm/versions/node/v24.13.1/bin; PIN=/tmp/qt-v4-pin-p4.9h2a-3adefeba
+V5=<v5-worktree>
+cd $PIN
+QT_FIXTURE_OUT=/tmp/qt-ep-fixture.db LOG_LEVEL=error \
+  $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-profiles-fixture.ts
+QT_FIXTURE_EP=/tmp/qt-ep-fixture.db LOG_LEVEL=error \
+  $N/npx tsx $V5/harness/oracle/cases/embedding-profiles-tier2.ts > /tmp/oracle-ep.ndjson
+QT_ORACLE_EMBEDDING_PROFILES=/tmp/oracle-ep.ndjson \
+QT_FIXTURE_EMBEDDING_PROFILES=/tmp/qt-ep-fixture.db \
+  cargo test -p quilltap-harness --test embedding_profiles_tier2_equivalence
+```
+
+Versions: core 0.0.482 → 0.0.483, harness 0.0.408 → 0.0.409.

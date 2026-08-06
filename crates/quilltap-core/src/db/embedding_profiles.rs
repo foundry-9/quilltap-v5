@@ -6,10 +6,12 @@
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
 //! Scope: `create`, `update`, and `delete` (the three abstract methods over the
-//! base repo). The custom query helpers — `findByName`, `findDefault`,
-//! `unsetAllDefaults` — are out of scope here. v4's `update` strips `id` and
-//! `createdAt` before `_update`, which is a no-op for this port since we preserve
-//! both anyway. There is **no built-in guard** (unlike `prompt_templates`).
+//! base repo), plus the custom query helpers `findDefault`, `findByName`, and
+//! `unsetAllDefaults` (the last two added by P4.9H2A for the management route
+//! family — the create/PUT duplicate-name probe and the default flip). v4's
+//! `update` strips `id` and `createdAt` before `_update`, which is a no-op for
+//! this port since we preserve both anyway. There is **no built-in guard**
+//! (unlike `prompt_templates`).
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -45,10 +47,12 @@
 //! `folders`/`tags`/`text_replacement_rules`/`prompt_templates`/
 //! `conversation_annotations`/`provider_models`/`image_profiles` use.
 //!
-//! Deferred (not in the corpus, mirroring `image_profiles`/`provider_models`):
-//! setting a nullable column (`apiKeyId`, `baseUrl`, `dimensions`,
-//! `truncateToDimensions`) **to NULL** via `update` — the patch models a provided
-//! field as "set to this value", so a nullable setter lands when an op needs it.
+//! The four nullable columns (`apiKeyId`, `baseUrl`, `dimensions`,
+//! `truncateToDimensions`) ride a **tri-state** [`EpUpdate`] field
+//! (`Option<Option<T>>`, the `image_profiles` `IpUpdate` precedent): `None` skips
+//! the column, `Some(None)` sets it to SQL NULL (the PUT's explicit
+//! `truncateToDimensions: null` / `apiKeyId: null`), `Some(Some(v))` sets the
+//! value. This is what the P4.9H2A PUT trigger matrix's clear-to-null arm needs.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -167,6 +171,31 @@ pub fn find_default_id_name(
     .map_err(Into::into)
 }
 
+/// v4 `repos.embeddingProfiles.findByName(userId, name)` — the user-scoped
+/// duplicate probe (`findOneByFilter({ userId, name })`). Returns the matching
+/// profile as the full net-read shape (v4 returns the whole `EmbeddingProfile`),
+/// or `None`. The create/PUT routes read `.id` off the result (existence for
+/// create's 409; `dup.id !== id` for the PUT 409).
+pub fn find_by_name(
+    conn: &Connection,
+    user_id: &str,
+    name: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        &format!(
+            "SELECT {EP_FULL_COLUMNS} FROM embedding_profiles \
+             WHERE userId = ?1 AND name = ?2 LIMIT 1"
+        ),
+        params![user_id, name],
+        marshal_ep_full_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
 /// Fields for creating an embedding profile (the `Omit<EmbeddingProfile,'id'|
 /// timestamps>` shape). `api_key_id`/`base_url` are the nullable string columns;
 /// `dimensions`/`truncate_to_dimensions` are the nullable REAL columns;
@@ -209,11 +238,18 @@ pub struct CreateOptions {
 pub struct EpUpdate {
     pub name: Option<String>,
     pub provider: Option<String>,
-    pub api_key_id: Option<String>,
-    pub base_url: Option<String>,
+    /// The nullable-clearing tri-state (P4.9H2A): `None` skips the column,
+    /// `Some(None)` sets it to SQL NULL (v4 PUT's explicit `apiKeyId: null`),
+    /// `Some(Some(v))` sets the value.
+    pub api_key_id: Option<Option<String>>,
+    /// The nullable-clearing tri-state — v4 PUT's `baseUrl: baseUrl || null`.
+    pub base_url: Option<Option<String>>,
     pub model_name: Option<String>,
-    pub dimensions: Option<f64>,
-    pub truncate_to_dimensions: Option<f64>,
+    /// The nullable-clearing tri-state — v4 PUT's explicit `dimensions: null`.
+    pub dimensions: Option<Option<f64>>,
+    /// The nullable-clearing tri-state — v4 PUT's explicit
+    /// `truncateToDimensions: null` (the matrix's clear-to-null arm).
+    pub truncate_to_dimensions: Option<Option<f64>>,
     pub normalize_l2: Option<bool>,
     pub is_default: Option<bool>,
     /// Re-serialized to compact JSON text when provided.
@@ -285,6 +321,7 @@ impl<'c> EmbeddingProfilesRepository<'c> {
             values.push(Box::new(provider.clone()));
         }
         if let Some(api_key_id) = &patch.api_key_id {
+            // `Option<String>` binds NULL for `None`, the value for `Some`.
             assignments.push(format!("apiKeyId = ?{}", values.len() + 1));
             values.push(Box::new(api_key_id.clone()));
         }
@@ -296,13 +333,13 @@ impl<'c> EmbeddingProfilesRepository<'c> {
             assignments.push(format!("modelName = ?{}", values.len() + 1));
             values.push(Box::new(model_name.clone()));
         }
-        if let Some(dimensions) = patch.dimensions {
+        if let Some(dimensions) = &patch.dimensions {
             assignments.push(format!("dimensions = ?{}", values.len() + 1));
-            values.push(Box::new(dimensions));
+            values.push(Box::new(*dimensions));
         }
-        if let Some(truncate_to_dimensions) = patch.truncate_to_dimensions {
+        if let Some(truncate_to_dimensions) = &patch.truncate_to_dimensions {
             assignments.push(format!("truncateToDimensions = ?{}", values.len() + 1));
-            values.push(Box::new(truncate_to_dimensions));
+            values.push(Box::new(*truncate_to_dimensions));
         }
         if let Some(normalize_l2) = patch.normalize_l2 {
             assignments.push(format!("normalizeL2 = ?{}", values.len() + 1));
@@ -342,6 +379,21 @@ impl<'c> EmbeddingProfilesRepository<'c> {
             .conn
             .execute("DELETE FROM embedding_profiles WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    /// v4 `unsetAllDefaults(userId)` — `updateMany({userId, isDefault:true},
+    /// {isDefault:false})`. The base `updateMany` injects a fresh `updatedAt` into
+    /// every matched row's `$set`, so this mints `updated_at` on all flipped rows
+    /// (one wall-clock stamp for the whole `UPDATE`, matching v4's single
+    /// `getCurrentTimestamp()`). Returns the modified-row count (v4's
+    /// `modifiedCount`). Mirrors the `image_profiles` `unset_all_defaults`.
+    pub fn unset_all_defaults(&self, user_id: &str, updated_at: &str) -> Result<usize, DbError> {
+        let n = self.conn.execute(
+            "UPDATE embedding_profiles SET isDefault = 0, updatedAt = ?1 \
+             WHERE userId = ?2 AND isDefault = 1",
+            params![updated_at, user_id],
+        )?;
+        Ok(n)
     }
 
     /// True iff a row with this id exists — v4's `_update` `findById` precondition
@@ -441,4 +493,116 @@ pub fn find_all_full_json(conn: &Connection) -> Result<Vec<serde_json::Value>, D
         out.push(r?);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A minimal `embedding_profiles` table for the SQL-shape unit tests (the
+    /// differential fixtures build the real DDL via v4's `ensureCollection`).
+    fn open_scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE embedding_profiles (
+                id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT,
+                apiKeyId TEXT, baseUrl TEXT, modelName TEXT, dimensions REAL,
+                truncateToDimensions REAL, normalizeL2 INTEGER, isDefault INTEGER,
+                tags TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed(conn: &Connection, id: &str, user: &str, name: &str, is_default: bool) {
+        EmbeddingProfilesRepository::new(conn)
+            .create(
+                &EpCreate {
+                    user_id: user.into(),
+                    name: name.into(),
+                    provider: "OPENAI".into(),
+                    api_key_id: Some("key-1".into()),
+                    base_url: Some("https://x".into()),
+                    model_name: "text-embedding-3-small".into(),
+                    dimensions: Some(1536.0),
+                    truncate_to_dimensions: Some(512.0),
+                    normalize_l2: true,
+                    is_default,
+                    tags: vec![],
+                },
+                &CreateOptions {
+                    id: id.into(),
+                    created_at: "2026-01-01T00:00:00.000Z".into(),
+                    updated_at: "2026-01-01T00:00:00.000Z".into(),
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn unset_all_defaults_scopes_to_user_and_stamps_updated_at() {
+        let conn = open_scratch();
+        seed(&conn, "p1", "userA", "A default", true);
+        seed(&conn, "p2", "userA", "A other", false);
+        seed(&conn, "p3", "userB", "B default", true);
+
+        let n = EmbeddingProfilesRepository::new(&conn)
+            .unset_all_defaults("userA", "2026-05-05T00:00:00.000Z")
+            .unwrap();
+        // Only userA's one default row is modified.
+        assert_eq!(n, 1);
+
+        let row = |id: &str| -> (i64, String) {
+            conn.query_row(
+                "SELECT isDefault, updatedAt FROM embedding_profiles WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+            )
+            .unwrap()
+        };
+        // p1 flipped to 0 with the new stamp; p2 untouched; p3 (userB) untouched.
+        assert_eq!(row("p1"), (0, "2026-05-05T00:00:00.000Z".into()));
+        assert_eq!(row("p2"), (0, "2026-01-01T00:00:00.000Z".into()));
+        assert_eq!(row("p3"), (1, "2026-01-01T00:00:00.000Z".into()));
+    }
+
+    #[test]
+    fn update_tri_state_clears_nullable_columns_to_null() {
+        let conn = open_scratch();
+        seed(&conn, "p1", "userA", "A", false);
+
+        let patch = EpUpdate {
+            api_key_id: Some(None),
+            base_url: Some(None),
+            dimensions: Some(None),
+            truncate_to_dimensions: Some(None),
+            updated_at: "2026-06-06T00:00:00.000Z".into(),
+            ..Default::default()
+        };
+        assert!(EmbeddingProfilesRepository::new(&conn)
+            .update("p1", &patch)
+            .unwrap());
+
+        let (aki, bu, dim, trunc): (Option<String>, Option<String>, Option<f64>, Option<f64>) =
+            conn.query_row(
+                "SELECT apiKeyId, baseUrl, dimensions, truncateToDimensions \
+                 FROM embedding_profiles WHERE id = 'p1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((aki, bu, dim, trunc), (None, None, None, None));
+    }
+
+    #[test]
+    fn find_by_name_is_user_scoped() {
+        let conn = open_scratch();
+        seed(&conn, "p1", "userA", "Shared", false);
+        seed(&conn, "p2", "userB", "Shared", false);
+
+        let a = find_by_name(&conn, "userA", "Shared").unwrap().unwrap();
+        assert_eq!(a["id"], serde_json::json!("p1"));
+        assert!(find_by_name(&conn, "userC", "Shared").unwrap().is_none());
+        assert!(find_by_name(&conn, "userA", "Nope").unwrap().is_none());
+    }
 }

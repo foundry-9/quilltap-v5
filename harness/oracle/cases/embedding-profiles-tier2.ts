@@ -47,9 +47,15 @@ interface Op {
   options?: { id: string; createdAt: string; updatedAt: string };
 }
 
+interface Probe {
+  userId: string;
+  name: string;
+}
+
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
+  probes?: Probe[];
 }
 
 async function main(): Promise<void> {
@@ -99,6 +105,25 @@ async function main(): Promise<void> {
     }
   }
 
+  // findByName read probes (P4.9H2A) — run AFTER the ops on the final state.
+  // Each becomes its own NDJSON record so the Rust `find_by_name` port can be
+  // diffed field-for-field. v4 returns the whole validated EmbeddingProfile (or
+  // null); emit that verbatim.
+  const probes = spec.probes ?? [];
+  const probeRecords: string[] = [];
+  for (const probe of probes) {
+    const result = await repo.findByName(probe.userId, probe.name);
+    probeRecords.push(
+      JSON.stringify({
+        case: 'embedding-profiles-tier2',
+        kind: 'findByName',
+        userId: probe.userId,
+        name: probe.name,
+        result: result ?? null,
+      })
+    );
+  }
+
   // Read RAW on-disk state through v4's own connected backend. table_info gives
   // schema column order; SELECT * gives the persisted rows (booleans as 0/1,
   // integer-valued REALs as integers, tags as the compact JSON text).
@@ -120,8 +145,11 @@ async function main(): Promise<void> {
     orderBy: 'id',
   });
 
+  // NDJSON: the findByName records first, the dump record last.
+  for (const rec of probeRecords) process.stdout.write(rec + '\n');
   process.stdout.write(
-    JSON.stringify({ case: 'embedding-profiles-tier2', ...dump }) + '\n'
+    JSON.stringify({ case: 'embedding-profiles-tier2', kind: 'dump', ...dump }) +
+      '\n'
   );
   process.exit(0);
 }

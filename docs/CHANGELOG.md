@@ -21,6 +21,12 @@ reference app's provider with its SDK made to fail once then succeed; our
 streaming provider with the transport made to do the same) and the
 recovered stream and retry pattern are compared. Version: harness
 0.0.410.
+Extended the embedding-profiles data layer with the query helpers the
+management surface needs: looking a profile up by name (for the
+duplicate-name check when creating or renaming), clearing the default
+flag across a user's profiles, and clearing a profile's optional
+numeric or key fields back to empty. Internal groundwork for the
+embedding-profiles management screens; no user-visible change yet.
 
 Planned the next porting round and committed four work orders (docs
 only, no code change): restore the OpenAI conversation-chaining

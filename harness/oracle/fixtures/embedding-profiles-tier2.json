@@ -121,9 +121,56 @@
       }
     },
     {
+      "kind": "update",
+      "comment": "Clear-to-NULL (P4.9H2A): the created OpenRouter row (3c) had apiKeyId/baseUrl/dimensions/truncateToDimensions all set; this op sets all four nullable columns explicitly to null (the EpUpdate tri-state Some(None), riding double_option). Proves the nullable-to-NULL setters. updatedAt pinned.",
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "apiKeyId": null,
+        "baseUrl": null,
+        "dimensions": null,
+        "truncateToDimensions": null,
+        "updatedAt": "2026-03-03T00:00:00.000Z"
+      }
+    },
+    {
       "kind": "delete",
       "comment": "Delete the second created profile (New Built-in Embed).",
       "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ],
+  "$probes_comment": [
+    "P4.9H2A findByName read probes, run AFTER the op sequence on the final",
+    "state. Prove v4 `EmbeddingProfilesRepository.findByName(userId, name)`",
+    "(findOneByFilter {userId, name}) against the Rust `find_by_name`:",
+    "user-scoping, exact-name match, post-op visibility (renamed away /",
+    "deleted), and the wrong-user miss. The oracle emits each probe's full",
+    "profile (or null) as its own NDJSON record, then the dump record last."
+  ],
+  "probes": [
+    {
+      "comment": "Existing name (the OpenRouter create, now with its nullables cleared) -> the full profile.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "New OpenRouter Embed"
+    },
+    {
+      "comment": "The renamed seed row 1 -> found under its NEW name.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed OpenAI Large (renamed)"
+    },
+    {
+      "comment": "The seed row 1's OLD name -> null (renamed away).",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed OpenAI Large"
+    },
+    {
+      "comment": "The deleted BUILTIN profile's name -> null.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "New Built-in Embed"
+    },
+    {
+      "comment": "A different user, an existing name -> null (user-scoped).",
+      "userId": "bb000000-0000-4000-8000-0000000000bb",
+      "name": "New OpenRouter Embed"
     }
   ]
 }

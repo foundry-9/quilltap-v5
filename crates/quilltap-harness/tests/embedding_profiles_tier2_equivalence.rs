@@ -1,4 +1,5 @@
-//! Tier-2 differential test: the `embedding_profiles` repo (Phase-2).
+//! Tier-2 differential test: the `embedding_profiles` repo (Phase-2, extended by
+//! P4.9H2A).
 //!
 //! Structural DB diff. Both sides start from the SAME seed fixture (built by
 //! harness/oracle/fixtures/build-embedding-profiles-fixture.ts), run the SAME
@@ -13,7 +14,21 @@
 //! `isDefault`), two nullable string columns (`apiKeyId`, `baseUrl`), and an enum
 //! TEXT column (`provider`).
 //!
-//! Generate the oracle output + fixture (Node 24, from the v4 checkout):
+//! P4.9H2A additions:
+//!   - a clear-to-NULL update op (all four nullable columns set to null via the
+//!     [`EpUpdate`] tri-state `Some(None)`, riding double_option) — proves the
+//!     nullable-to-NULL setters through the dump;
+//!   - `findByName` read probes: the oracle emits each probe's full profile (or
+//!     null) as its own NDJSON record and the Rust port diffs `find_by_name`
+//!     against them field-for-field (the dump record comes last).
+//!
+//! `unset_all_defaults` is proven by the routes family
+//! (`embedding_profiles_routes_equivalence`, create-as-default / PUT-becomes-
+//! default), where the un-pinnable `updateMany` wall-clock stamp is normalized;
+//! its SQL shape is also unit-tested in `db::embedding_profiles`.
+//!
+//! Generate the oracle output + fixture (Node 24, from the v4 checkout). The
+//! oracle is now MULTI-RECORD NDJSON (findByName probes + the dump):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-ep-fixture.db \
@@ -28,10 +43,22 @@
 
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::embedding_profiles::{CreateOptions, EpCreate, EpUpdate};
+use quilltap_core::db::embedding_profiles::{self, CreateOptions, EpCreate, EpUpdate};
 use quilltap_core::db::Writer;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+
+/// serde double-option (mirrors `api::types::double_option`, which is private):
+/// an ABSENT field decodes to `None`, an explicit `null` to `Some(None)`, and a
+/// value to `Some(Some(v))` — the null-vs-absent distinction the spec's
+/// clear-to-NULL op depends on.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
 
 /// The committed fixture spec — the single source driving both ports.
 #[derive(Deserialize)]
@@ -39,6 +66,15 @@ struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
     ops: Vec<Op>,
+    #[serde(default)]
+    probes: Vec<Probe>,
+}
+
+#[derive(Deserialize)]
+struct Probe {
+    #[serde(rename = "userId")]
+    user_id: String,
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -93,16 +129,20 @@ struct UpdateData {
     name: Option<String>,
     #[serde(default)]
     provider: Option<String>,
-    #[serde(default, rename = "apiKeyId")]
-    api_key_id: Option<String>,
-    #[serde(default, rename = "baseUrl")]
-    base_url: Option<String>,
+    #[serde(default, rename = "apiKeyId", deserialize_with = "double_option")]
+    api_key_id: Option<Option<String>>,
+    #[serde(default, rename = "baseUrl", deserialize_with = "double_option")]
+    base_url: Option<Option<String>>,
     #[serde(default, rename = "modelName")]
     model_name: Option<String>,
-    #[serde(default)]
-    dimensions: Option<f64>,
-    #[serde(default, rename = "truncateToDimensions")]
-    truncate_to_dimensions: Option<f64>,
+    #[serde(default, deserialize_with = "double_option")]
+    dimensions: Option<Option<f64>>,
+    #[serde(
+        default,
+        rename = "truncateToDimensions",
+        deserialize_with = "double_option"
+    )]
+    truncate_to_dimensions: Option<Option<f64>>,
     #[serde(default, rename = "normalizeL2")]
     normalize_l2: Option<bool>,
     #[serde(default, rename = "isDefault")]
@@ -144,10 +184,27 @@ fn embedding_profiles_tier2_matches_oracle() {
         .unwrap_or_else(|e| panic!("cannot read fixture spec: {e}"));
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse fixture spec");
 
-    // Parse the oracle's expected post-op dump (one NDJSON object).
+    // Parse the oracle's NDJSON: N `findByName` records, then one `dump` record.
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    let records: Vec<Value> = oracle_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).expect("parse oracle NDJSON record"))
+        .collect();
+    let find_by_name_records: Vec<&Value> = records
+        .iter()
+        .filter(|r| r.get("kind").and_then(Value::as_str) == Some("findByName"))
+        .collect();
+    let oracle = records
+        .iter()
+        .find(|r| r.get("kind").and_then(Value::as_str) == Some("dump"))
+        .expect("oracle NDJSON must carry a `dump` record");
+    assert_eq!(
+        find_by_name_records.len(),
+        spec.probes.len(),
+        "oracle findByName record count must equal the spec's probe count"
+    );
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
     let work = std::env::temp_dir().join(format!("qt-ep-rust-{}.db", std::process::id()));
@@ -211,6 +268,20 @@ fn embedding_profiles_tier2_matches_oracle() {
                 }
             }
         }
+    }
+
+    // findByName probes on the final state — diff each against the oracle record.
+    for (probe, oracle_rec) in spec.probes.iter().zip(find_by_name_records.iter()) {
+        let got =
+            embedding_profiles::find_by_name(writer.connection(), &probe.user_id, &probe.name)
+                .expect("find_by_name")
+                .unwrap_or(Value::Null);
+        let want = oracle_rec.get("result").cloned().unwrap_or(Value::Null);
+        assert_eq!(
+            got, want,
+            "find_by_name({}, {:?}) diverged\n  rust:   {got}\n  oracle: {want}",
+            probe.user_id, probe.name
+        );
     }
 
     let got = writer
