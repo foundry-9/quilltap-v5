@@ -59843,3 +59843,49 @@ three states, the click emitting render with preventDefault/
 stopPropagation, the busy disable).
 
 Gate: `ng build` clean, `ng test` 292 files / 3956 tests green.
+
+### Unit 6 — the e2e beats (SPA 0.5.422)
+
+`e2e/m4-salon.spec.ts` gains the ungated Scriptorium-badge beat (LIVE now
+— the `chatRenderConversation` chain is fully live): on the shared
+server's Salon list it clicks the "Group Expedition" card's
+`button[title^="Scriptorium:"]`, waits for the render dispatch, and
+asserts v4's `Conversation rendering queued` toast while staying on the
+list (the badge swallows the card-link click).
+
+`e2e/settings-memory-flow.spec.ts` (NEW; rides the shared global-setup
+server, sorts after `foundation`, workers:1) carries three gated beats
+behind the NAMED constant `P49H2A_SERVER_LANDED = false` (the
+ACTIVATE-AT-UNIFY idiom — **the unifier flips it to `true` once
+P4.9H2A's server verbs are on main**): the embedding-profile CRUD
+round-trip on a NON-default BUILTIN profile (create → listed → rename →
+delete, so the shared instance's default profile is never touched), the
+dedup preview zero-state (table renders, Run disabled at zero
+removable), and the summaries single-click enqueue.
+
+Also updated the P4.6t `settings-flow.spec.ts` cards-render beat across
+units 3–4 (dedup + summaries visibility).
+
+Gate: `npx playwright test --list` collects all five; `ng build` + `ng
+test` green (292 files / 3956 tests); the full Playwright suite run over
+a fresh dist + release binaries — **the Scriptorium beat passes LIVE on
+every run (#24, ~450ms), the three gated beats SKIP correctly, and 183
+of the 187 live tests pass.**
+
+⚠ **Pre-existing full-suite flakes found, NOT this lane's and NOT
+touched:** across four valid full-suite runs, exactly one test failed
+per run and it ALTERNATED nondeterministically between
+`salon-dialogs-flow.spec.ts:431` (P4.42's file — "Select Scope" resolved
+to 2 elements) and `workbench-flow.spec.ts` (P4.6bb's — "Cleared the
+gate." resolved to 2 elements). Both are the same "text rendered twice"
+strict-mode race in a step/dialog transition; **both PASS in isolation**
+(`salon-dialogs-flow.spec.ts` alone: 8/8 green); neither is in this
+lane's code path (this lane touches neither file, and its SPA changes —
+the memory cards + the salon/character chat-card badge — are nowhere in
+the Search-&-Replace wizard or the Workbench roll surfaces). This
+matches the repo's documented full-suite-only-intermittent class (the
+2026-08-01 deflake follow-up). Left for the unifier / a deflake
+follow-up; per the order, P4.42's specs are off-limits to this lane. A
+one-off foundation-cascade seen mid-investigation was an artifact of
+back-to-back reruns (leftover server/instance state), not reproduced on
+a clean-reset run.

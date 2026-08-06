@@ -80,6 +80,13 @@ today's message when unconfigured), and pins the advertised-vs-executed
 consistency both ways. An end-to-end browser beat runs a search through
 a mock Serper server and shows the result card. Versions: core 0.0.483,
 host 0.0.61, harness 0.0.409, SPA 0.5.417.
+Added the P4.9H2B e2e beats: a live Salon walk clicking the Scriptorium
+badge to enqueue a conversation render (asserting the dispatch + toast,
+not job completion), plus the gated Commonplace Book management walk
+(profile create → rename → delete on a non-default BUILTIN profile,
+dedup preview zero-state, summaries enqueue) that activates once the
+P4.9H2A server verbs land. SPA 0.5.422.
+
 Made the chat-card Scriptorium badge clickable to queue an on-demand
 conversation render (P4.9H2B rider, p4.9o). The three-state badge
 (not-rendered / rendered / rendered-and-embedded) is now a shared

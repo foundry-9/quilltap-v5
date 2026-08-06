@@ -77,4 +77,32 @@ test.describe('M4 — Salon vertical (list → open → read → send)', () => {
     await page.reload();
     await expect(page.getByText(MOCK_LLM_REPLY).first()).toBeVisible({ timeout: 15_000 });
   });
+
+  /**
+   * P4.9H2B rider (p4.9o): the Scriptorium badge on a Salon list card queues an
+   * on-demand render over the already-live `chatRenderConversation` verb. This
+   * asserts the ENQUEUE (the dispatch + v4's toast), not job completion.
+   */
+  test('the Scriptorium badge on a list card enqueues a render', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+
+    const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
+    await expect(card).toBeVisible();
+    const badge = card.locator('button[title^="Scriptorium:"]');
+    await expect(badge).toBeVisible();
+
+    // Clicking the badge dispatches the render (and must NOT navigate into the
+    // chat — the badge swallows the link click).
+    const enqueued = page.waitForResponse(
+      (res) => res.url().includes('/api/dispatch') && res.status() === 200,
+      { timeout: 30_000 },
+    );
+    await badge.click();
+    await enqueued;
+
+    // v4's success toast confirms the enqueue; we're still on the list.
+    await expect(page.getByText('Conversation rendering queued')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  });
 });
