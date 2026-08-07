@@ -61192,3 +61192,59 @@ banner. v4 HEAD moves to `3fa36825` — zero lib, NO-PORT; the baseline
 stays `f4955e0e`. When v4 IMPLEMENTS Bug 44, that is a real drift
 round (salon_mutations / chat_cast_routes / turn-chain move, and the
 impersonation beat re-gestures back).
+
+## Round planned — the Bug 44 impersonation-overlay drift catch-up (P4.D56, single lane), 2026-08-07
+
+**The drift.** v4 moved THREE commits past `f4955e0e` to `62c63dc3`
+(4.8.0-dev.178, tree CLEAN at planning). Classification:
+
+| v4 commit | Disposition |
+|---|---|
+| `cc0bbebf` test-only (two mount-index jest suites load the real SQLite driver by absolute path for CI) | NO-PORT (already dispositioned at the f4955e0e unification) |
+| `3fa36825` docs-only (the Bug 44 catalogue entry) | NO-PORT (already dispositioned; main `94fdc646` points the #39 records at it) |
+| `62c63dc3` "fix(chats): impersonation overlays the seat instead of mutating controlledBy (bug 44)" | **THE ROUND — P4.D56** |
+
+**This is the pre-announced drift round.** The #39 ruling (2026-08-06,
+this log → "Ruling — the #39 impersonation mechanism") queued the
+overlay correction v4-FIRST and said in so many words: "when v4
+IMPLEMENTS Bug 44, that is a real drift round (salon_mutations /
+chat_cast_routes / turn-chain move, and the impersonation beat
+re-gestures back)." `62c63dc3` is that implementation: the
+`controlledBy` writes and identity-stack recompiles come out of both
+impersonation handlers, a new `isUserDrivenSeat(participant,
+impersonatingParticipantIds)` helper is consulted at the attribution
+and who-responds gates (findActiveUserParticipant /
+findUserParticipantName's selected branch / resolveUserIdentity;
+selectNextSpeaker's buildResult / the resolveRespondingParticipant
+LLM-candidate filter / shouldChainNext's pause / turn.ts's
+skipUserTurn gate), answer-confirmation's isUserDrivenTurn is
+restructured onto the helper (truth-table-neutral), and the
+owner-seat readers (findUserParticipant / isAllLLMChat / the
+participant-update sync / set-active-speaker's lazy-add) DELIBERATELY
+keep reading the column — which is what returns the card's
+Stop-Impersonate button with ZERO client changes. Transition ruling
+carried: legacy-flipped seats are left alone.
+
+**Why one lane.** The scope is one connected vertical — one helper
+threaded through the turn-resolution spine plus the two `salon.rs`
+handlers; the SPA side is an e2e beat re-gesture (back to the overlay
+semantics, per the ruling) plus a component-spec mock sweep, with no
+client component change (v4 shipped none and v5's gates are
+byte-parallel). Two lanes would sit in the same files. The order —
+`work-orders/p4.d56-impersonation-overlay-drift.md` — carries the
+full v4/v5 site-by-site survey (dated 2026-08-07, line numbers
+verified), the change-list AND the keep-list (the keep-list is half
+the fix), the twelve moving oracle families + the neutrality set with
+their regen traps (the turn_pause_filters sweep env-name rot, the
+salon-mutations POST-registration note, the committed-fixture rule,
+the TZ pins), and the case-extension requirement: the tier-1 corpora
+must GROW overlay-exercising cases mirroring v4's rewritten unit
+tests, mutation-tested — a regen that never passes a non-empty ids
+array proves nothing.
+
+**Displaced, deliberately:** the owed dogfood pass (phase-4.md
+candidate 1) stays queued BEHIND this round — the drift lands on the
+very surfaces a walk would exercise (impersonation, turn pause,
+skip), so absorbing first means the walk tests the semantics that
+will ship. The baseline moves to `62c63dc3` at unification (the
+unifier's edit, as always).

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned the Bug 44 impersonation-overlay drift catch-up (work order
+P4.D56, single lane): the reference app has now implemented the ruled
+correction — impersonation becomes a pure overlay and the seat's
+controlledBy column is never written — so this port absorbs it as the
+pre-announced drift round. The order carries the site-by-site survey
+(the change-list and, just as binding, the keep-list of owner-seat
+readers that stay on the column), the twelve moving differential
+families plus the neutrality set, and the e2e re-gesture that returns
+the Stop-Impersonate button to the participant card.
+
 The #39 mechanism correction is now catalogued upstream as v4 Bug 44
 (reference-app docs commit `3fa36825`): the full account of what is
 wrong with the mutate-and-restore impersonation mechanism and the
