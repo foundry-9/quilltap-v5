@@ -30,10 +30,10 @@ import { E2E_PASSPHRASE } from './support/env';
 const P49H2A_SERVER_LANDED = true;
 /**
  * The memory-dedup + conversation-summaries implementations (P4.9H2A units 6+7,
- * deferred loudly — `api/memory_maintenance.rs`). The follow-up lane that ports
- * them flips this and the two beats below activate.
+ * landed by P4.43 — `services/memory_dedup.rs` +
+ * `services/conversation_summaries_regen.rs`). Both beats below are now active.
  */
-const P49H2A_MAINTENANCE_LANDED = false;
+const P49H2A_MAINTENANCE_LANDED = true;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -139,12 +139,16 @@ test.describe('P4.9H2B — the Commonplace Book management cards', () => {
     );
     const card = await openMemoryCard(page, 'conversation-summaries-regenerate');
     const enqueued = nextDispatch(page);
-    await card.getByRole('button', { name: 'Regenerate conversation summaries' }).click();
+    // `exact` so the action button doesn't also match the collapsible card
+    // header, whose title text is "Regenerate Conversation Summaries …".
+    await card
+      .getByRole('button', { name: 'Regenerate conversation summaries', exact: true })
+      .click();
     await enqueued;
     // The card re-reads the in-flight status; the button returns to its resting
     // label (proof the enqueue resolved, not the job).
     await expect(
-      card.getByRole('button', { name: 'Regenerate conversation summaries' }),
+      card.getByRole('button', { name: 'Regenerate conversation summaries', exact: true }),
     ).toBeEnabled({ timeout: 15_000 });
   });
 });
