@@ -60067,3 +60067,126 @@ in parallel (the c4d4b0de-round precedent); if staggering for disk
 wave. Oracles regenerate straight from `~/source/quilltap-server`
 while HEAD stays `f4955e0e`; pin a detached worktree on any further
 drift.
+
+## Lane record — P4.D51 (the `f4955e0e` guards + backup + mount-index convergence), 2026-08-06
+
+**Branch:** `claude/sleepy-morse-febf79`. **v4 baseline:** `f4955e0e` (HEAD,
+tree clean at lane start; no drift during the lane). Ten bugs (8, 18, 13, 15,
+11, 10, 12, 9, 43, 38) landed; bug 43 tier 2 DEFERRED LOUDLY. Twelve commits.
+
+**The convergences (v4 adopted fixes v5 made first — both-directions pins
+retired to plain equalities):**
+
+- **Bug 8** (`13ddc5ee`): the corrupt-`properties.json` character-vault write
+  refusal. v4 now throws `CharacterVaultUnavailableError`. `characters_update_tier2`'s
+  `V4_CLOBBERED_BAG` divergence retired. ⚠ **A measured surprise the order did
+  not anticipate:** v4's character error wording (`… has no usable **vault**
+  (**characterDocumentMountPointId**=…)`) differs from the project/group
+  document-store wording v5 emitted for all three. To make the plain equality
+  hold, I converged v5's character-write message to v4's at the ONE
+  `OverlayError::Unavailable` Display site (`document_store_overlay.rs`, keyed on
+  `entity_label == "character"`). **⚠ `document_store_overlay.rs` is not in this
+  lane's explicit file list (bug 8 was scoped "comments"); it is unowned by any
+  sibling. Flag for the unifier.** Mutation-proven.
+- **Bug 10** delete-all half (`3bb664f0`): v4 clears `conversation_annotations`
+  on delete-all. `system_delete_data`'s `ANNOTATION_DIVERGENCE_KEY` retired;
+  `restore_vintage_state`'s module doc corrected.
+- **Bug 11** (`3bb664f0`): import store-identity-by-id + `preserveArchiveId` +
+  overwrite-clears-folders. `system_import_state`'s FOLDER_CLEAR_DIVERGENCE,
+  STORE_ID_PRESERVED_ON_CREATE, and the four `store_identity_*` per-engine
+  expectations all retired. **⚠ Cross-lane carve-out (P4.D53):** the import
+  overwrite path deletes chats via `chats::delete`, and v4's bug-10 PER-CHAT
+  annotation sweep lives there — that half is P4.D53's (`db/chats.rs`). So
+  `main.conversation_annotations` is carved out of the two overwrite/replace
+  arms with a self-retiring tripwire (`ANNOTATION_SWEEP_PENDING_P4D53`) that
+  fires when P4.D53 lands and the counts equalize.
+- **Bug 9** (`3bb664f0`): single-transaction store-delete cascade. v4 leaks no
+  orphaned documents/group-links. `store_delete`'s `leaked_documents` /
+  `leaked_group_links` arms retired; `PLANTED_ORPHANS` (2,4,3) survives and the
+  reap arm reaps exactly it. `mount_points.rs`'s "three deliberate divergences"
+  prose corrected.
+- **Bug 15** (`7bcd8515`): `reindexLinkGroupSiblings` alive (v4 adds
+  `l.linkGroupId` to `queryJoined`). `doc_mount_file_links_tier2`'s
+  CHUNK_DIVERGENCES retired → `doc_mount_chunks` is a strict row equality.
+
+**Bug 12 (`3bb664f0`) — the significant finding.** v4's convergence is
+**PARTIAL.** It adopted v5's `carried_store_rows` skip check (the link-id-loss
+half — storageKeys now agree, gen-2 archive fully converges to a plain equality),
+but KEPT its 22a-bis file phase (v5 keeps its later slot per the 2026-07-26
+ruling). So two divergences persist and are pinned both-directions with a
+self-retiring liveness tripwire:
+- **uploads (replace mode):** v4's replay races into `restored/`, colliding with
+  the doc-store folder phase — v4 warns and loses the `restored` folder; v5
+  restores the tree whole.
+- **compact (>3 MB carried file):** ⚠ **NEW v4 bug the order did not predict.**
+  v4 cannot dedup the archive's >3 MB (multi-chunk) carried file (the
+  sparse-array export boundary makes its skip check miss), so it invents a
+  PHANTOM doc-store copy the archive never linked. MEASURED: the compact
+  archive's `doc-mount-file-links.json` names `uploads/atlas-plates.bin` ONCE
+  (Uploads mount); v4 also lands an `atlas-plates.bin` in "Project Files: The
+  Voyage" (mp e06e6d68), which the archive never references. v5 restores exactly
+  the one archived file. `restore_uploads_new_account` converged off the
+  re-ingest but retains the ruled phase-order insertion difference + the uploads
+  stats gap, so it moved to `PHASE_ORDER_RESIDUAL` + `V5_STATS_GAP`. The
+  predicted CarriedBlob mimeType/size live-diff did NOT materialize.
+  **Both v4 bugs queued on the post-5.0 v4-side list.** Retire tripwire
+  mutation-proven.
+
+**The faithful mirrors (v5 owed the fix):**
+- **Bug 13** (`7bcd8515`): `gc_orphaned_file_row` guards its two payload deletes
+  behind a `table_exists_sync` check (blobless index no longer throws). New v5
+  unit test over a blobless index; mutation-proven.
+- **Bug 18** (`13ddc5ee`): the help-sync prune guard widened
+  (`paths_on_disk.is_empty() && !existing_docs.is_empty()`). All three help
+  families re-run; `only-empty-files` flips deleted:3 → deleted:0.
+- **Bug 38** (`7bcd8515`): native-text documents attach instead of 404ing.
+  `native_text_attachment_mime` + the attach / file-list / load-as-attachment
+  fall-throughs. **Committed `attach-file-*` fixture EXTENDED** (a native-text
+  document `library/notes.md` seeded through the real `writeDatabaseDocument`) +
+  a new `attach_native_text` corpus arm. Mutation-proven.
+
+**The new surface + cross-cutting:**
+- **Bug 43 sweep** (`7bcd8515`): the orphan-thumbnail sweep. `THUMBNAIL_KEY_PREFIX`
+  + `parse_thumbnail_storage_key` (v4's exact UUID regex), a `list` capability on
+  `StorageBackend` (default unsupported; `LocalStorageBackend` enumerates the
+  dir), `list_raw` + `sweep_orphaned_thumbnails`, scheduled step 7 threading the
+  backend from the host's maintenance loop. **The maintenance-summary reshape**
+  (bug 9 cross-cutting): store-children reaper now runs BEFORE the orphaned-files
+  sweep, reports `orphanedStoreChildrenSwept {links, folders, documents}`; the
+  thumbnail sweep reports `orphanedThumbnailsSwept {scanned, deleted, unparseable}`;
+  failures vocab gains `orphan-store-children` + `orphan-thumbnails`.
+  **Reaper-shape reconciliation:** v5's reaper is strictly broader (also reaps
+  orphaned chunks + content); the maintenance fixture has no orphaned store
+  children so the `{links,folders,documents}` shape agrees, and the chunk-reaping
+  divergence stays covered by `store_delete`'s reaper arm.
+  `maintenance_ops_tier2` regenerated with a thumbnail corpus (live/orphan/garbage
+  — a `files` row added to the builder for the live one). Mutation-proven.
+- **Bug 43 tier 2 DEFERRED LOUDLY:** the eager per-delete/overwrite
+  `cleanup_thumbnails` at `api/files.rs:537`/`:1123` needs a `StorageBackend`
+  seam threaded through `file_delete`/`file_upload` + the engine + host — a
+  moderate cascade for a best-effort DB-invisible side effect that the LANDED
+  daily orphan-thumbnail sweep already reaps. The two skip-site comments name
+  the deferral.
+
+**Fixtures changed:** `attach-file-{main,mount,llmlogs}.db` + `.meta.json`
+(bug 38 — native-text document added; consumed ONLY by `attach_mount_file`,
+regenerated in this lane). No other committed fixture moved.
+
+**Regen recipes (all fresh at `f4955e0e`, from `~/source/quilltap-server`;
+Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):** each family's header carries
+its runnable recipe. The lane's env vars for the workspace gate are in the
+final report.
+
+**Gotchas worth a memory note:** (1) a convergence lane must MEASURE v4's actual
+output — bug 8's message wording and bug 12's >3 MB phantom were both surprises
+the order's "plain equality" premise missed. (2) A committed fixture consumed by
+only one family can be safely extended by adding a pinned row to its builder
+(bug 38). (3) The reaper-shape / summary-key reconciliation is invisible on a
+fixture with no orphaned store children — the shape agrees at zeros.
+
+**Lane gate (this branch, pre-unification):** `cargo fmt --all --check`;
+`cargo clippy --workspace --all-targets` clean on BOTH feature sets
+(default + `quilltap-core/native-transport`); `cargo test --workspace
+--no-fail-fast` with the lane env block = **417 binaries / 1,933 passed /
+0 failed / 0 ignored**, every lane differential RUN (zero SKIP). Versions:
+core 0.0.494, host 0.0.62, harness 0.0.420.
