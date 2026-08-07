@@ -267,6 +267,19 @@ pub fn detect_native_text(relative_path: &str) -> Option<NativeTextType> {
     }
 }
 
+/// v4 `nativeTextAttachmentMime` (bug 38): a clean, parameter-free MIME type for
+/// a native-text document, suitable for a provider attachment. Unlike
+/// [`mime_for_extension`] this drops the `; charset=utf-8` suffix, because the
+/// provider text whitelist and the file-attachment fallback's `is_text_file`
+/// compare EXACT strings. `None` for paths that aren't a native-text type.
+pub fn native_text_attachment_mime(relative_path: &str) -> Option<&'static str> {
+    match detect_native_text(relative_path)? {
+        NativeTextType::Markdown => Some("text/markdown"),
+        NativeTextType::Txt => Some("text/plain"),
+        NativeTextType::Json | NativeTextType::Jsonl => Some("application/json"),
+    }
+}
+
 /// v4 `mimeForExtension`: best-effort MIME type from a path extension. Used when
 /// a write has no caller-supplied MIME (cross-storage byte copies and CLI writes).
 pub fn mime_for_extension(relative_path: &str) -> &'static str {

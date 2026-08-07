@@ -160,7 +160,55 @@ fn load_mount_file_as_attachment(
             crate::db::doc_mount_blobs::DocMountBlobsRepository::new(c).find_by_file_id(&file_id)
         })
         .ok()
-        .flatten()?;
+        .flatten();
+    let blob = match blob {
+        Some(b) => b,
+        // Native-text documents (.md/.txt/.json in a database store) have no
+        // blob; their bytes live in `doc_mount_documents`. Serve the document
+        // text so an attached markdown document actually reaches the LLM
+        // (v4 bug 38, `7bcd8515`) instead of 404ing.
+        None => {
+            if let Some(text_mime) =
+                crate::services::mount_index::path_utils::native_text_attachment_mime(
+                    &mount_link.relative_path,
+                )
+            {
+                let fid = mount_link.file_id.clone();
+                if let Some(content) = db
+                    .read_mount_index(move |c| {
+                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(c)
+                            .find_content_by_file_id(&fid)
+                    })
+                    .ok()
+                    .flatten()
+                {
+                    use base64::Engine;
+                    let bytes = content.into_bytes();
+                    let size = bytes.len();
+                    let url = format!(
+                        "/api/v1/mount-points/{}/files/{}",
+                        mount_link.mount_point_id,
+                        crate::tools::photo::encode_uri(&mount_link.relative_path)
+                    );
+                    let filename = mount_link
+                        .original_file_name
+                        .clone()
+                        .unwrap_or_else(|| mount_link.file_name.clone());
+                    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    return Some(json!({
+                        "id": mount_link.id,
+                        "filepath": url,
+                        "filename": filename,
+                        "mimeType": text_mime,
+                        "size": size,
+                        "data": data,
+                        "url": url,
+                    }));
+                }
+            }
+            return None;
+        }
+    };
 
     let blob_id = blob.id.clone();
     let bytes = db

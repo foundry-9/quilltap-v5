@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.D51 (bug 38): a native-text document (a `.md`/`.txt`/`.json` written into a
+document store, held with no image blob) can now be attached to a chat and
+reaches the model as text, instead of failing with "Mount-point file blob not
+found". The attach path, the file list, and the send-time attachment loader
+all fall back to the document row for these files, serving their text with the
+`/files/` route.
+
 P4.D51 (bug 43): the daily maintenance pass now sweeps orphaned thumbnails —
 `_thumbnails/{fileId}_{size}.webp` cache entries whose source file left by a
 route that never cleaned them up (a restore, a delete-all, an out-of-app

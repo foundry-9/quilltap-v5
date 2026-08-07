@@ -898,7 +898,46 @@ pub fn chat_files_list(db: &Db, chat_id: &str) -> Response {
                         let blob = db.read_mount_index(move |c| {
                             DocMountBlobsRepository::new(c).find_by_file_id(&fid)
                         });
-                        let Ok(Some(blob)) = blob else { continue };
+                        let Ok(Some(blob)) = blob else {
+                            // No blob → a native-text document (bug 38). Surface it
+                            // from the document row with the `/files/` route so the
+                            // attached markdown shows in the chat file list.
+                            if let Some(text_mime) = crate::services::mount_index::path_utils::
+                                native_text_attachment_mime(&relative_path)
+                            {
+                                let fid = file_id.clone();
+                                let doc = db
+                                    .read_mount_index(move |c| {
+                                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(c)
+                                            .find_content_by_file_id(&fid)
+                                    })
+                                    .ok()
+                                    .flatten();
+                                if doc.is_some() {
+                                    let fid = file_id.clone();
+                                    let size = db
+                                        .read_mount_index(move |c| file_size_bytes_for(c, &fid))
+                                        .unwrap_or(0);
+                                    let url = format!(
+                                        "/api/v1/mount-points/{}/files/{}",
+                                        mount_point_id,
+                                        crate::tools::photo::encode_uri(&relative_path)
+                                    );
+                                    files.push(json!({
+                                        "id": id,
+                                        "filename": original.unwrap_or(file_name),
+                                        "filepath": url,
+                                        "mimeType": text_mime,
+                                        "size": size,
+                                        "url": url,
+                                        "createdAt": created_at,
+                                        "type": "mountFile",
+                                    }));
+                                    seen.insert(id);
+                                }
+                            }
+                            continue;
+                        };
                         let url = format!(
                             "/api/v1/mount-points/{}/blobs/{}",
                             mount_point_id,
@@ -1533,11 +1572,41 @@ pub async fn chat_attach_mount_file(
     }) {
         Ok(Some(b)) => b,
         Ok(None) => {
+            // Native-text fall-through (v4 bug 38, `7bcd8515`): a .md/.txt/.json
+            // PUT into a database store becomes a document (`doc_mount_documents`,
+            // no blob row). The picker lists them, so a blob-only attach path
+            // 404'd on exactly those. Serve the document to the Librarian instead
+            // — its text is what the LLM needs, and `load_mount_file_as_attachment`
+            // resolves the same document back to bytes.
+            if let Some(text_mime) =
+                crate::services::mount_index::path_utils::native_text_attachment_mime(relative_path)
+            {
+                let fid = mount_file.file_id.clone();
+                let has_document = db
+                    .read_mount_index(move |c| {
+                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(c)
+                            .find_content_by_file_id(&fid)
+                    })
+                    .ok()
+                    .flatten()
+                    .is_some();
+                if has_document {
+                    return attach_mount_document(
+                        db,
+                        chat_id,
+                        mount_point_id,
+                        relative_path,
+                        &mount_file,
+                        text_mime,
+                    )
+                    .await;
+                }
+            }
             tracing::warn!(
                 chat_id = %chat_id,
                 mount_point_id = %mount_point_id,
                 relative_path = %relative_path,
-                "[Chats v1 Files] Mount file has no blob row, refusing to attach"
+                "[Chats v1 Files] Mount file has no blob or document row, refusing to attach"
             );
             return not_found("Mount-point file blob");
         }
@@ -1625,6 +1694,102 @@ pub async fn chat_attach_mount_file(
             "filepath": url,
             "mimeType": blob.stored_mime_type,
             "size": blob.size_bytes,
+            "url": url,
+            "type": "mountFile",
+        },
+        "announcement": {
+            "id": announcement.get("id").cloned().unwrap_or(Value::Null),
+            "createdAt": announcement.get("createdAt").cloned().unwrap_or(Value::Null),
+        },
+    }))
+}
+
+/// The `doc_mount_files.fileSizeBytes` for a file id (v4's
+/// `mountLink.fileSizeBytes`) — used to size a native-text document in the file
+/// list, which has no blob to read `sizeBytes` from. `0` when the row is gone.
+fn file_size_bytes_for(
+    conn: &rusqlite::Connection,
+    file_id: &str,
+) -> Result<i64, crate::db::DbError> {
+    conn.query_row(
+        "SELECT fileSizeBytes FROM doc_mount_files WHERE id = ?1",
+        [file_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(0),
+        other => Err(other),
+    })
+    .map_err(crate::db::DbError::from)
+}
+
+/// v4 `handleAttachMountDocument` (`chats/[id]/files/route.ts`, bug 38): attach a
+/// native-text document (a `.md`/`.txt`/`.json` in a database store, held in
+/// `doc_mount_documents` with no blob). Posts the SAME Librarian announcement as
+/// the blob path — the catalogue entry, not the bytes, is what rides into chat
+/// history — carrying the link id so `load_mount_file_as_attachment` resolves it
+/// back to text. The description is empty (no image to describe) and the URL is
+/// the `/files/` document route (not `/blobs/`).
+async fn attach_mount_document(
+    db: &Db,
+    chat_id: &str,
+    mount_point_id: &str,
+    relative_path: &str,
+    mount_file: &crate::db::doc_mount_file_links::LinkRow,
+    mime_type: &str,
+) -> Response {
+    use crate::db::doc_mount_points::DocMountPointsRepository;
+    use crate::services::librarian_notifications::{
+        post_librarian_attach_announcement, LibrarianAttachAnnouncement,
+    };
+
+    let mp = mount_point_id.to_string();
+    let mount_point_name = db
+        .read_mount_index(move |c| DocMountPointsRepository::new(c).find_id_and_name_by_id(&mp))
+        .ok()
+        .flatten()
+        .map(|(_, name)| name);
+    let display_title = mount_file.file_name.clone();
+
+    let announcement = post_librarian_attach_announcement(
+        db,
+        &LibrarianAttachAnnouncement {
+            chat_id: chat_id.to_string(),
+            display_title: display_title.clone(),
+            file_path: relative_path.to_string(),
+            mount_point: mount_point_name,
+            mount_file_id: mount_file.id.clone(),
+            mime_type: mime_type.to_string(),
+            description: Some(String::new()),
+        },
+    )
+    .await;
+
+    let Some(announcement) = announcement else {
+        return internal("Failed to post Librarian attachment announcement");
+    };
+
+    let url = format!(
+        "/api/v1/mount-points/{}/files/{}",
+        mount_point_id,
+        crate::tools::photo::encode_uri(relative_path)
+    );
+    tracing::info!(
+        chat_id = %chat_id,
+        mount_file_id = %mount_file.id,
+        mount_point_id = %mount_point_id,
+        relative_path = %relative_path,
+        mime_type = %mime_type,
+        "[Chats v1 Files] Mount-point document attached via Librarian"
+    );
+
+    Response::ChatMedia(json!({
+        "file": {
+            "id": mount_file.id,
+            "filename": display_title,
+            "filepath": url,
+            "mimeType": mime_type,
+            "size": mount_file.file_size_bytes,
             "url": url,
             "type": "mountFile",
         },

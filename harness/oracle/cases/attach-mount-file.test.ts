@@ -395,6 +395,9 @@ async function main(): Promise<void> {
     attachCase('attach_refusal_retry', 'library/refuses.png'),
     attachCase('attach_reasoning', 'library/reasoning.png', 'reasoning'),
     attachCase('attach_non_image', 'library/ledger.txt'),
+    // Bug 38: a native-text DOCUMENT (no blob) attaches via the document
+    // fallback + posts the same Librarian announcement, where ghost.md 404s.
+    attachCase('attach_native_text', 'library/notes.md'),
     // ── The error arms ────────────────────────────────────────────────────
     {
       name: 'attach_missing_file',

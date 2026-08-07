@@ -491,6 +491,13 @@ async function main(): Promise<void> {
       TS,
     );
 
+  // 5c. Bug 38: a native-text DOCUMENT — a `.md` written into the database store
+  //     through the real `writeDatabaseDocument`, so it has a
+  //     `doc_mount_documents` row + link but NO blob. It ATTACHES via the
+  //     native-text fallback, where `ghost.md` (a link with no document) 404s.
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  await writeDatabaseDocument(MP_ROOM, 'library/notes.md', '# Notes\n\nAttach me as text.');
+
   // 6. Pin the live-clock stamps `linkBlobContent` writes, so a rebuild is
   //    byte-reproducible everywhere except the minted ids (echoed to the sidecar).
   midb.prepare('UPDATE "doc_mount_file_links" SET "createdAt" = ?, "updatedAt" = ?').run(TS, TS);

@@ -480,6 +480,14 @@ fn attach_mount_file_matches_oracle() {
             "library/ledger.txt",
             spec.user_id.as_str(),
         ),
+        // Bug 38: a native-text DOCUMENT (no blob) — attaches via the document
+        // fallback + posts the same Librarian announcement, where ghost.md 404s.
+        (
+            "attach_native_text",
+            "nativetext",
+            "library/notes.md",
+            spec.user_id.as_str(),
+        ),
     ] {
         let db = fresh_db(&spec, tag);
         let describe: Arc<dyn ImageDescribeDriver> = Arc::new(TestDescribeRunner {
