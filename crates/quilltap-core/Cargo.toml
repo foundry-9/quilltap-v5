@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.494"
+version = "0.0.508"
 edition = "2021"
 publish = false
 
