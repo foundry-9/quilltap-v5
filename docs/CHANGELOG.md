@@ -2,6 +2,35 @@
 
 ## Recent Changes
 
+Unified the `f4955e0e` found-bugs convergence round — six lanes, all
+closed, the oracle baseline moved to v4 4.8.0-dev.175. The reference
+app's coordinated bug sweep (every catalogued v4 bug 1-43 is now fixed
+there, much of it adopting fixes this port made first) is absorbed
+whole: roughly twenty-five deliberate-divergence pins across seven
+differential families retired into plain equalities, and the four
+genuinely new pieces landed. Long conversation interchanges now
+sub-chunk at a 24,000-character budget so they can actually embed and
+be searched (with the boot pass re-rendering previously stranded
+chats once); the all-LLM pause finally has its dialog, opening
+automatically with take-over buttons for the cast; OpenRouter sends
+images (a dedicated non-streaming vision path, plus the capability map
+now saying so); Grok accepts text attachments; almost-base64 text
+attachments arrive as their actual bytes; Ollama streaming no longer
+drops content split across network reads; the chat record projects
+five more fields so the sidebar's controlled selects survive a reload;
+staff-signed announcements reach the model with their author's name;
+impersonation genuinely hands the seat over (and back); tool cards
+initiated by the operator wear the operator's face; self-targeted
+whispers read "whispered to you"; deleted chats sweep their
+annotations; orphaned thumbnails get a daily reaper; corrupt
+character-vault edits are refused in both apps now; and Memory
+Deduplication + Regenerate Conversation Summaries went live in
+Settings, closing the embedding-profiles order whole. Gate: 419 Rust
+test binaries / 1,951 tests, every round differential fresh at the
+new baseline with zero skips, ng 294 files / 4,015, full Playwright
+189/189 zero skips. Versions: core 0.0.508, harness 0.0.431, host
+0.0.63, web 0.0.65, SPA 0.5.430.
+
 P4.D51: stale "queued v4-side" / "deliberate divergence" prose in the
 store-delete, import, delete-all, and character-vault comments is corrected
 now that the reference app has converged (bugs 8/9/10/11). The per-delete

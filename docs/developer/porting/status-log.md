@@ -61006,3 +61006,132 @@ the §1 name-for-name contract diff at unification.
   ([[e2e-playwright-traps]] §7). Item 9 (AllLLMPause live opener): deferred loud
   — see the bug-37 record (needs a seeded paused, all-LLM, zero-USER-message
   chat, a P4.D53 fixture dependency). Component + helper specs cover the modal.
+## Round record — the `f4955e0e` found-bugs convergence round UNIFIED (P4.D51 ∥ P4.D52 ∥ P4.D53 ∥ P4.D54 ∥ P4.D55 ∥ P4.43), 2026-08-06
+
+**ALL SIX ORDERS CLOSED; the oracle baseline MOVES `3adefeba` →
+`f4955e0e`; the drift debt is CLEARED; P4.9H2A closes WHOLE.** v4's
+"bugs 8–43" batch absorbed end-to-end. v4 HEAD `cc0bbebf` (one commit
+past the pin) verified test-only (two jest suites + CHANGELOG, zero
+lib) — NO-PORT; regens ran straight from the checkout.
+
+**The cherry-pick:** 37 lane commits in dependency order (D51 → D52 →
+D53 → D55 → P4.43 → D54), version conflicts auto-resolved
+version-only-verified per branch; finals recounted base + total bumps.
+
+**The predicted cross-lane tripwire FIRED and retired on evidence:**
+`ANNOTATION_SWEEP_PENDING_P4D53` (D51's carve-out for D53's per-chat
+annotations sweep) went red on both flagged arms at the unified gate
+("v5 3 vs v4 3"), exactly as designed; retired,
+`system_import_state` green as a plain equality.
+
+**The §3 review (four parallel reviewers + own pass over the whole
+combined diff) — zero unfixable blockers; fixed on the unify branch
+(`cb93a431` + follow-ups):**
+1. **The one that would have shipped:** the bug-38 attach path dropped
+   v4's `originalFileName || fileName` display-title fallback —
+   `LinkRow`/`join_query` deliberately narrowed the projection, the
+   corpus seed (a `writeDatabaseDocument` doc, which never sets
+   originalFileName) could not see it, and the sibling sites all
+   honour the fallback. Widened + fixed at the attach site.
+2. The thumbnail sweep swallowed what v4 THROWS — v4's doc-comment
+   says "never throws" but its code has no try/catch around
+   `listRaw`/`findByIds`, so the scheduler's step-7 catch is what
+   populates `orphan-thumbnails`; v5's swallow made that failures key
+   dead vocabulary and the port carried the comment, not the code.
+   Now Result-propagating with the step-7 catch.
+3. The OpenRouter vision `response_format` emitted `"name": null`
+   where v4's JSON.stringify drops the key (the sibling SDK path got
+   it right) — `set_opt`.
+4. The AllLLMPause take-over roster dropped the `defaultImage` avatar
+   fallback v4's `<Avatar>` resolves — `participantAvatar()`.
+5. The ollama decoder used Rust `trim` where the house `js_trim`
+   exists (JS strips U+FEFF, Rust strips U+0085).
+6. The retired #67/#68 reconcile shim was ALSO the almanack fixture's
+   shape guard — re-pinned mechanically (hist rollup ≥ 2, effective
+   dress count ≥ 2), and the embedding-remainder sanity floor raised
+   to `incomplete_chats >= 5` so arm (C)'s +1 is load-bearing.
+7. The bug-28 carrier pin widened to `with_opaque_content`; the
+   duplicated `table_exists` closure deduped; a dead computation
+   removed (and its unused binding — caught by clippy); stale
+   comments (#67/#68 test-module doc, the D55 duplicate heading, the
+   file_storage module-doc contradiction) rewritten; the maintenance
+   `documents` summary key documented as a DIFFERENT quantity than
+   v4's (files-GC'd vs partition-wide document rows; equal only at
+   zero).
+
+**Recorded, not changed (§3 notes):** the jsstr surrogate-split
+lossiness at a hard cut (unreachable by the boundary chain's shapes;
+inherent to Rust's String); the unmodelled explicit-null upsert
+embedding arm; the uncovered `upsert` create arm (needs minted-id
+normalizer machinery — a named follow-up); D55's vision-path
+headers/abort pinning gap; the pre-existing system/assistant
+image-content-part gap on OpenRouter (predates bug 31); the
+`strict ?? null` divergence class (pre-existing); P4.43's engine.rs
+ownership deviation (necessary — the refusing arms discarded the Db
+and threshold; accepted, no sibling touched the file).
+
+**The unification wires:** `PROJECTION_ROUNDTRIP_SERVER_LANDED`
+flipped true (D54's Story's-Clock reload beat runs live over D53's
+projection); the dogfood-findings BATCH DISCHARGE block (v4's sweep
+adopted nearly the whole post-5.0 v4-side queue — per-item → commit
+table; five items remain unadopted: #61, #59's dialog surfacing,
+#65's hidden types, #17's Play-As revert, #49's effect bootstrap);
+the **finding-#39 RE-RULING flag** (its "do NOT mutate `controlledBy`"
+premise conflicts with shipped v4 bug-27 behavior v5 now mirrors);
+the round's NEW measured v4-side items appended (the 22a-bis
+`restored/`-folder replay collision; the >3 MB phantom-copy dedup
+miss; three shared bug-17 adjacencies: the zero-chunk hole, the
+`(continued k)` read-conversation tally inflation, arm (C)'s
+scalar-vs-UTF-16 LENGTH window).
+
+**Survivor pins verified both-directions:** `PHASE_ORDER_RESIDUAL`
+(grew three `restore_uploads_new_account` entries), `V5_STATS_GAP`,
+`PLANTED_ORPHANS` (2,4,3).
+
+**The gate:** `cargo fmt` clean; clippy both feature sets clean (0 errors);
+release build clean. Oracles: the sweep driver regenerated + ran 47
+families ok (`/tmp/unify-sweep-results.json`, label `f4955e0e-unify`);
+5 recipe-rot casualties re-run manually from their headers, all green
+(help_doc_sync_guards — the driver missed its fixture staging;
+turn_pause_filters — the driver bound a WRONG env name; the three
+P4.43/H2A jest families — prose parens broke the driver's bash
+extraction); `system_import_state` green after the tripwire
+retirement. **Every round family RAN, zero SKIP.** `cargo test
+--workspace --no-fail-fast` with the round's 50-var env block: **419
+test binaries / 1,951 tests / 0 failed** (the first full run's single
+red was the §3 `join_query` widening's blast radius — `pascal/
+roster.rs`'s hand-rolled links-table mirror lacked the new column, the
+twin-DDL-in-another-venue class — fixed, binary re-run green). `ng
+test` **294 files / 4,015 tests**; `ng build` clean. Full Playwright:
+first run 181/189 with 8 reds, ALL diagnosed to two unification-only
+causes and repaired without weakening an assertion — (a) the
+`seed-pascal-tools-fixture` ARIA_VAULT transcribed literal went stale
+when P4.D53 regenerated the salon fixture (the file's own
+PASCAL_VAULT_A comment predicts exactly this; now derived from the
+shared instance at seed time — five Pascal/Workbench beats), (b) the
+Story's-Clock beats' baselines assumed the pre-round NULL seed and the
+impersonation beat encoded pre-bug-27 semantics (both re-gestured to
+the new v4-faithful truth; the reload beat now asserts the
+DISCRIMINATING direction), plus one documented run-order flake that
+passed in isolation and in the re-run. **Final full Playwright:
+189/189, zero skips** — both formerly-gated beats LIVE.
+
+**A v4-side product consequence measured by the re-gesture:** with bug
+27, impersonating a character in a chat where she becomes the first
+present user-controlled participant hides the card's Speak/Stop
+affordance in BOTH apps (`findUserParticipant` → `!isUserParticipant`
+gate, verified byte-parallel) — stop-impersonate becomes unreachable
+from the card in that shape. Queued on the v4-side list.
+
+**💸 Live proofs owed to the next dogfood pass:** the OpenRouter
+vision send (a real image on a real key), arm (C)'s one-time boot
+render+embed burst on the Friday copy, the memory-dedup preview/run +
+conversation-summaries regeneration first live run — atop the
+standing queue (Serper live-key smoke, the OpenAI chaining fallback,
+the MOUNT reapply + encrypted VACUUM-INTO backup, profile management
+on the Friday copy, the Almanack first report, live Taboo, the
+P4.D49 budget/attribution proofs, OpenRouter pricing with a real
+key).
+
+Versions: core 0.0.508, harness 0.0.431, host 0.0.63, web 0.0.65,
+SPA 0.5.430; cli 0.0.5, tauri 0.0.6 unchanged.

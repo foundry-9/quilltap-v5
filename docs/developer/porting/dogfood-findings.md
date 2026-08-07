@@ -1541,6 +1541,13 @@ catch, since every fixture is built fresh.
     archive never linked (measured on the committed compact archive:
     `atlas-plates.bin` lands in a project store the archive never names).
     v5 restores exactly the one archived file; pinned both-directions.
+  - **(The unification's e2e re-gesture, bug-27 territory) stop-impersonate
+    is unreachable from the participant card in BOTH apps** when the
+    impersonated character becomes the first present user-controlled
+    participant (bug 27 flips her `controlledBy`, `findUserParticipant`
+    then resolves the user seat to HER, and the card's Speak/Stop button
+    sits behind `!isUserParticipant` — verified byte-parallel v4↔v5). A
+    product consequence of v4's own fix; the stop still works by verb.
   - **(P4.D52, bug-17 adjacencies, all shared/faithful — one-line notes for
     v4's found-bugs):** (a) an entry-less interchange whose metadata prefix
     alone exceeds the budget emits ZERO chunks and the metadata header

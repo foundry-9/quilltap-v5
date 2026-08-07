@@ -2093,6 +2093,61 @@ records THERE. Update this summary only when a phase or round completes.
   candidate; pin `3adefeba` for every regen until it runs.**
   Versions: core 0.0.486, harness 0.0.411, host 0.0.61, web 0.0.63,
   SPA 0.5.422. Round record: `status-log.md`.
+- **The `f4955e0e` found-bugs convergence round (P4.D51 ∥ P4.D52 ∥
+  P4.D53 ∥ P4.D54 ∥ P4.D55 ∥ P4.43): UNIFIED on main (2026-08-06) —
+  ALL SIX ORDERS CLOSED; the oracle baseline MOVES to `f4955e0e`, the
+  drift debt is CLEARED, and P4.9H2A closes WHOLE.** v4's coordinated
+  "bugs 8–43" batch (eleven commits; at the new baseline every
+  catalogued v4 bug 1–43 is fixed) absorbed end-to-end: ~25
+  both-direction convergence pins retired to plain equalities across
+  seven families (v4 adopting fixes this port made first — incl. the
+  #47 vault clobber, the store-delete cascade, the import
+  store-identity trio, the gen-2 restore skip check, the
+  sibling-reindex, #67/#68, #45/#46, and the #29/#33/#54 attribution
+  set), the four genuine ports landed (interchange sub-chunking
+  UTF-16 end-to-end + the chunks-repo embedding-NULL + reconcile arm
+  (C); the AllLLMPauseModal + opener; the OpenRouter non-streaming
+  vision path + capability-map flip + the Grok/base64/Ollama stream
+  fixes; the orphan-thumbnail sweep over a new `StorageBackend` list
+  seam), the five-field chat-GET projection + `allowToolUse` reached
+  the SPA's controlled selects, impersonation mirrors v4's
+  `controlledBy` flips, and P4.43 landed memory-dedup +
+  conversation-summaries regeneration LIVE (both beats active). The
+  cross-lane `ANNOTATION_SWEEP_PENDING_P4D53` tripwire fired at the
+  unified gate exactly as designed and was retired on the evidence.
+  **The §3 review's headline catch:** the bug-38 attach path dropped
+  v4's `originalFileName` fallback behind a deliberately narrowed
+  projection the corpus could not see; also fixed — the thumbnail
+  sweep's error shape (v4's CODE throws where its doc-comment claims
+  never), a vision `response_format` `name:null` v4 would drop, and
+  the retired #67/#68 shim's implicit fixture-shape guards re-pinned
+  mechanically. Bug 12's convergence measured PARTIAL — two NEW v4
+  restore bugs found and queued (`PHASE_ORDER_RESIDUAL`/
+  `V5_STATS_GAP`/`PLANTED_ORPHANS` survive). Gate: 419 test binaries
+  / 1,951 / 0; ~53 families fresh at `f4955e0e`, zero SKIP; clippy
+  both feature sets; release build; ng 294 files / 4,015; full
+  Playwright **189/189 zero skips** (the salon-fixture regen staled a
+  transcribed vault-id literal in the Pascal e2e seed — now derived;
+  two beats re-gestured to the fixture's new seeds + bug-27
+  semantics). **Standing:** the finding-#39 re-ruling is OWED the
+  human (its no-`controlledBy`-mutation premise conflicts with
+  shipped v4 bug-27 behavior — flagged in `dogfood-findings.md`); 💸
+  the round's live proofs join the owed dogfood pass (the OpenRouter
+  vision send, arm (C)'s boot burst on the Friday copy, the
+  dedup/summaries first run). Versions: core 0.0.508, harness
+  0.0.431, host 0.0.63, web 0.0.65, SPA 0.5.430. Round record:
+  `status-log.md`.
+- **Oracle baseline: `f4955e0e` (2026-08-06, v4 4.8.0-dev.175),
+  adopted at the found-bugs convergence round's unification — NO v4
+  drift debt remains.** v4 HEAD `cc0bbebf` is ONE commit past it:
+  test-only (two jest suites + CHANGELOG, zero lib — verified by
+  name), NO-PORT, lib-identical. Oracles regenerate straight from
+  `~/source/quilltap-server`; pin a detached worktree on any further
+  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  <pin>`). The distill-transitive TZ pins, the committed-fixture
+  rule, and the venue/staging rules stand unchanged. Drift-check
+  before every round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `3adefeba` (2026-08-06, v4 HEAD, tree clean),
   adopted at the Taboo + maintenance round's unification — NO v4
   drift debt remains.** ⚠ SUPERSEDED note (2026-08-06, the fallback +
