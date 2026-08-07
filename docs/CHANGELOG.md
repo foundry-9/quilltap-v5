@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Re-gestured the salon impersonation walk to the Bug 44 overlay: it now
+checks that the seat's control column does not flip, that the
+Stop-Impersonate button stays on the participant card, and that stopping
+through that button returns the Speak-as affordance. No client component
+changed — the healed Stop button falls out of the server no longer
+flipping the column.
+
 Impersonation is now a pure overlay instead of mutating a participant's
 control column (Bug 44, ported from the reference app). Starting to
 speak as a character no longer writes controlledBy to user or recompiles

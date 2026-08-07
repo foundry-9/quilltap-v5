@@ -334,7 +334,7 @@ test.describe('P4.9E3C — Export', () => {
  * five component tests instead, and this is recorded in the lane record.
  */
 test.describe('P4.9E3C — speaking as a character', () => {
-  test('the cast card holds the impersonation across the refetch it triggers', async ({ page }) => {
+  test('the cast card holds the impersonation as an overlay and heals its own Stop button', async ({ page }) => {
     const chatId = await openChat(page, 'Solo Voyage');
     await openSidebarSection(page, 'Participants');
 
@@ -343,39 +343,38 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
     await speakAs.click();
 
-    // Bug 27 (v4 `bd419ae9`, mirrored by P4.D53): impersonation now WRITES
-    // `controlledBy:'user'` onto the participant, so after the dispatch's own
-    // refetch the impersonated character IS the first user-controlled seat —
-    // `userParticipantId` resolves to her and the card hides the Speak/Stop
-    // button (v4's `!isUserParticipant` gate does the same). The held state's
-    // visible signal is the impersonation badge; the original claim — the
-    // local impersonation surviving the refetch — is unchanged.
+    // Bug 44 (v4 `62c63dc3`, absorbed by P4.D56): impersonation is now a pure
+    // OVERLAY — the seat's `controlledBy` is NOT written, only the chat's
+    // `impersonatingParticipantIds` / `activeTypingParticipantId` move. The
+    // impersonation badge is the held state's visible signal.
     const card = page.locator('qt-participant-card').filter({ hasText: name });
     await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
-    await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 5_000 });
 
-    // The server side of bug 27, through the wire: the participant flipped.
-    const flipped = await page.request.post('/api/dispatch', {
+    // The server side of Bug 44, through the wire: the column did NOT flip — the
+    // seat stays LLM-owned, which is exactly what keeps it from becoming the
+    // chat's user seat (`chatGet` does not project `impersonatingParticipantIds`,
+    // so the overlay itself is pinned by the badge above and the healed Stop
+    // button below, not by this projection).
+    const gotChat = await page.request.post('/api/dispatch', {
       data: { type: 'chatGet', chatId },
     });
-    const flippedBody = (await flipped.json()) as {
+    const gotBody = (await gotChat.json()) as {
       data?: { chat?: { participants?: Array<{ id: string; controlledBy?: string; character?: { name?: string } }> } };
     };
-    const target = (flippedBody.data?.chat?.participants ?? []).find(
+    const target = (gotBody.data?.chat?.participants ?? []).find(
       (p) => p.character?.name === name,
     );
-    expect(target?.controlledBy).toBe('user');
+    expect(target?.controlledBy).toBe('llm');
 
-    // Stop without a profile — v4's new else arm hands the seat back to the
-    // model (`controlledBy:'llm'`). The card's button is hidden in this shape
-    // (see above), so the stop rides the verb; the reload then proves the
-    // round trip through the UI: the Speak-as affordance is back.
-    const stopResp = await page.request.post('/api/dispatch', {
-      data: { type: 'chatStopImpersonate', chatId, participantId: target!.id },
-    });
-    expect(stopResp.ok()).toBe(true);
-    await page.reload();
-    await openSidebarSection(page, 'Participants');
+    // The measured UX casualty of the old mutate-and-restore mechanism, healed:
+    // because the column never flipped, the impersonated seat is NOT the chat's
+    // user seat, so the card's own Stop-speaking-as button stays reachable
+    // (`!isUserParticipant()`). Stop THROUGH THE UI (not the raw verb) — the
+    // Solo Voyage character has a connection profile, so no Hand Off dialog —
+    // then the Speak-as affordance returns.
+    const stopButton = card.locator(`button[title="Stop speaking as ${name}"]`);
+    await expect(stopButton).toBeVisible({ timeout: 15_000 });
+    await stopButton.click();
     await expect(page.locator(`qt-participant-card button[title="Speak as ${name}"]`)).toBeVisible({
       timeout: 15_000,
     });
