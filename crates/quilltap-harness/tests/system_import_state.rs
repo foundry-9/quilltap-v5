@@ -318,52 +318,12 @@ fn derived_hashes(state: &StateDump, literals: &HashSet<String>) -> HashSet<Stri
 // carve-outs are gone. The `store_identity_*` and `execute_folder_overwrite`
 // arms assert the converged behavior directly (see their runners).
 
-/// ⚠ CROSS-LANE DEPENDENCY (bug 10's per-chat annotation sweep — **P4.D53's**).
-///
-/// The import overwrite/replace path deletes each colliding chat through
-/// `chats.delete`, and v4's bug-10 fix (`chats.repository.ts:336-350`) now sweeps
-/// that chat's `conversation_annotations` there. v5's `chats::delete` does not
-/// yet sweep them — that half of bug 10 is P4.D53's lane (it owns `db/chats.rs`
-/// and `db/conversation_annotations.rs`), which this lane must NOT touch. So on
-/// these two arms v5 keeps the pre-existing annotation husks the overwrite should
-/// have removed, and `main.conversation_annotations` diverges (v5 > v4).
-///
-/// [`carve_out_pending_annotation_sweep`] pulls that table out of the whole-state
-/// comparison on these arms and asserts the divergence in BOTH directions: v5's
-/// row set must be a strict superset of v4's (the imported rows plus the husks).
-/// **When P4.D53 lands the sweep the counts equalize and this tripwire fires** —
-/// at unification the two lanes' code meets on main and this carve-out is removed.
-const ANNOTATION_SWEEP_PENDING_P4D53: &[&str] = &["execute_overwrite_all", "route_replace_remap"];
-
-/// Remove `main.conversation_annotations` from both dumps on the flagged arms and
-/// assert the P4.D53 cross-lane divergence (v5 keeps the un-swept husks). See
-/// [`ANNOTATION_SWEEP_PENDING_P4D53`].
-fn carve_out_pending_annotation_sweep(
-    name: &str,
-    got_state: &mut StateDump,
-    want_state: &mut StateDump,
-    failures: &mut Vec<String>,
-) {
-    if !ANNOTATION_SWEEP_PENDING_P4D53.contains(&name) {
-        return;
-    }
-    let take = |state: &mut StateDump| -> usize {
-        state
-            .get_mut("main")
-            .and_then(|t| t.remove("conversation_annotations"))
-            .map(|rows| rows.len())
-            .unwrap_or(0)
-    };
-    let got = take(got_state);
-    let want = take(want_state);
-    if got <= want {
-        failures.push(format!(
-            "[{name}] main.conversation_annotations no longer diverges (v5 {got} vs v4 {want}) — \
-             P4.D53's per-chat annotation sweep has landed in v5's chats::delete. Remove \
-             ANNOTATION_SWEEP_PENDING_P4D53 and let this table be a plain equality again."
-        ));
-    }
-}
+// (The P4.D51-round `ANNOTATION_SWEEP_PENDING_P4D53` cross-lane carve-out lived
+// here: the import overwrite path deletes chats through `chats::delete`, and
+// until P4.D53's per-chat annotation sweep landed there, v5 kept husks v4's
+// bug-10 fix removed. The carve-out's tripwire fired at the f4955e0e-round
+// unification exactly as designed (v5 3 vs v4 3 on both flagged arms) and was
+// retired — `main.conversation_annotations` is a plain equality again.)
 
 struct Normalizer {
     literals: HashSet<String>,
@@ -1266,7 +1226,6 @@ fn run_execute_case(
     let want_labels: BTreeMap<String, String> = BTreeMap::new();
 
     // ⚠ bug 10's per-chat annotation sweep is P4.D53's — carve it out until then.
-    carve_out_pending_annotation_sweep(name, &mut got_state, &mut want_state, failures);
 
     compare_execute(
         name,
@@ -1429,7 +1388,6 @@ fn run_route_case(
                 let got_labels: BTreeMap<String, String> = BTreeMap::new();
                 let want_labels: BTreeMap<String, String> = BTreeMap::new();
                 // ⚠ bug 10's per-chat annotation sweep is P4.D53's — carve out.
-                carve_out_pending_annotation_sweep(name, &mut got_state, &mut want_state, failures);
                 compare_execute(
                     name,
                     &got_body,
