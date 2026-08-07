@@ -611,7 +611,7 @@ mod read_tool_file_tests {
                allowCharacterRead INTEGER, allowCharacterWrite INTEGER,
                extractedText TEXT, originalMimeType TEXT, conversionStatus TEXT,
                chunkCount INTEGER, description TEXT, extractionStatus TEXT,
-               allowEmbed INTEGER);",
+               allowEmbed INTEGER, originalFileName TEXT);",
         )
         .unwrap();
         conn
