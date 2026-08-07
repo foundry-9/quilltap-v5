@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.D51: stale "queued v4-side" / "deliberate divergence" prose in the
+store-delete, import, delete-all, and character-vault comments is corrected
+now that the reference app has converged (bugs 8/9/10/11). The per-delete
+eager thumbnail cleanup (bug 43 tier 2) is deferred with a loud note — the
+landed daily orphan-thumbnail sweep covers those strays until a storage
+backend is threaded through the file delete/upload paths.
+
 P4.D51 (bug 38): a native-text document (a `.md`/`.txt`/`.json` written into a
 document store, held with no image blob) can now be attached to a chat and
 reaches the model as text, instead of failing with "Mount-point file blob not

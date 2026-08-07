@@ -535,7 +535,10 @@ pub async fn file_delete(
     }
 
     // Storage + thumbnail deletes are best-effort DB-invisible side effects (v4
-    // try/catch-and-log) — skipped.
+    // try/catch-and-log) — skipped. ⚠ P4.D51 bug 43 TIER 2 DEFERRED: the eager
+    // `cleanup_thumbnails` per delete needs a `StorageBackend` seam threaded
+    // through `file_delete`; the landed daily orphan-thumbnail sweep
+    // (`sweep_orphaned_thumbnails`) reaps these strays instead until then.
     let fid3 = file.id.clone();
     match db
         .write(move |ws| FilesRepository::new(ws.main().connection()).delete(&fid3))
@@ -1121,7 +1124,11 @@ fn save_file_entry(
 
     // findAndPrepareOverwrite: same-scope filename match reuses the fileId (its old
     // bytes + thumbnails are v4-best-effort-deleted — a DB-invisible side effect,
-    // skipped here, matching v4's try/catch-and-log).
+    // skipped here, matching v4's try/catch-and-log). ⚠ P4.D51 bug 43 TIER 2
+    // DEFERRED: the eager `cleanup_thumbnails` per overwrite needs a
+    // `StorageBackend` seam threaded through `file_upload`; the landed daily
+    // orphan-thumbnail sweep (`sweep_orphaned_thumbnails`) reaps these strays
+    // instead until then.
     let overwrite = files
         .find_by_filename_in_scope(user_id, project_id, folder_path, &sanitized)?
         .into_iter()

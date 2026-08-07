@@ -520,9 +520,10 @@ pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
 ///
 /// The detach watcher is a fire-and-forget host seam and is omitted, as before.
 /// Chunks / links / folders / project-links stay exactly v4's scoped deletes.
-/// **Three deliberate divergences from v4** (`app/api/v1/mount-points/[id]/
-/// route.ts:167-215` at `49769ec4`), each pinned in BOTH directions by
-/// `store_delete_equivalence` so it fails the day v4 repairs its own side:
+/// **Three fixes v5 made first, which v4 has since CONVERGED to** (`3bb664f0`,
+/// bug 9: `delete-store-cascade.ts`) — so `store_delete_equivalence` now
+/// compares them as plain equalities (the both-directions divergence pins are
+/// retired). The history, kept because the code shape follows it:
 ///
 ///  1. **The whole cascade is one transaction.** v4 runs seven independent
 ///     awaited repo calls; a failure at any of them leaves the store half-gone
@@ -549,12 +550,12 @@ pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
 ///     `deleteByGroupId`, which no store delete calls. A group that had linked
 ///     the store keeps a join row pointing at nothing.
 ///
-/// A quieter fourth difference rides divergences 2–3: v4's repos wrap these
-/// deletes in `safeQuery`, so a mount index MISSING one of the named tables
-/// still answers 200; v5 names them without a gate, so the same delete 500s
-/// and rolls back whole. Deliberate — both tables are in `fresh_schema.json`
-/// and referenced all over v5, so the arm is unreachable on any ensured
-/// schema, and a half-vintage index failing LOUDLY beats it half-cascading.
+/// A quieter fourth difference remains: v4's repos wrap these deletes in
+/// `safeQuery`, so a mount index MISSING one of the named tables still answers
+/// 200; v5 names them without a gate, so the same delete 500s and rolls back
+/// whole. Deliberate — both tables are in `fresh_schema.json` and referenced
+/// all over v5, so the arm is unreachable on any ensured schema, and a
+/// half-vintage index failing LOUDLY beats it half-cascading.
 fn cascade_delete(conn: &Connection, mount_point_id: &str) -> Result<(), DbError> {
     let tx = conn.unchecked_transaction()?;
 
