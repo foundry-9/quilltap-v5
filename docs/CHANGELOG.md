@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+The impersonation-mechanism ruling (finding #39) is recorded: the
+overlay design stands, and the reference app's recent impersonation
+fix — which rewrites who controls a character's seat and restores it
+afterward — is ruled a mistake to be corrected there first, since it
+is the oracle. Until that correction lands, this app faithfully
+matches the shipped behavior; the ruling, its reasoning, and the two
+gate sites the correction touches are recorded in the porting docs.
+
 Unified the `f4955e0e` found-bugs convergence round — six lanes, all
 closed, the oracle baseline moved to v4 4.8.0-dev.175. The reference
 app's coordinated bug sweep (every catalogued v4 bug 1-43 is now fixed

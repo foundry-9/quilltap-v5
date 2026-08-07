@@ -4227,10 +4227,14 @@ dedup miss), both pinned and queued v4-side.
    Friday copy, the Almanack first real-data report, live Taboo, the
    P4.D49 budget/attribution proofs, OpenRouter pricing with a real
    key).
-2. **The finding-#39 re-ruling (HUMAN):** the multi-turn impersonation
-   design's "do NOT mutate `controlledBy`" premise conflicts with
-   shipped v4 bug-27 behavior v5 now mirrors — flagged in
-   `dogfood-findings.md`.
+2. ~~**The finding-#39 re-ruling (HUMAN)**~~ — **✅ RULED 2026-08-06
+   (same day): the overlay design STANDS; v4's bug-27
+   mutate-and-restore mechanism is ruled a MISTAKE and its correction
+   is queued v4-FIRST** (it moves the oracle — the two overlay gate
+   sites are named on `dogfood-findings.md`'s #39 entry; ruling
+   record in `status-log.md` → "Ruling — the #39 impersonation
+   mechanism"). v5 stays faithful to bug-27's shipped flips until v4
+   migrates, then absorbs it as an ordinary drift re-port.
 3. **Small follow-ups recorded this round:** the conversation-chunks
    `upsert` create-arm corpus op (needs minted-id normalizer machinery
    in that family); P4.D55's vision-path headers/abort pinning gap; the

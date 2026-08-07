@@ -2129,9 +2129,12 @@ records THERE. Update this summary only when a phase or round completes.
   Playwright **189/189 zero skips** (the salon-fixture regen staled a
   transcribed vault-id literal in the Pascal e2e seed — now derived;
   two beats re-gestured to the fixture's new seeds + bug-27
-  semantics). **Standing:** the finding-#39 re-ruling is OWED the
-  human (its no-`controlledBy`-mutation premise conflicts with
-  shipped v4 bug-27 behavior — flagged in `dogfood-findings.md`); 💸
+  semantics). **Standing:** the finding-#39 re-ruling was RULED the
+  same day (human): the overlay design STANDS and v4's bug-27
+  mutate-and-restore is a MISTAKE — the correction is queued
+  v4-FIRST (`dogfood-findings.md` #39; ruling record in
+  `status-log.md` → "Ruling — the #39 impersonation mechanism"); v5
+  stays faithful to the shipped flips until v4 migrates; 💸
   the round's live proofs join the owed dogfood pass (the OpenRouter
   vision send, arm (C)'s boot burst on the Friday copy, the
   dedup/summaries first run). Versions: core 0.0.508, harness

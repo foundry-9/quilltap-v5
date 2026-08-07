@@ -61135,3 +61135,45 @@ key).
 
 Versions: core 0.0.508, harness 0.0.431, host 0.0.63, web 0.0.65,
 SPA 0.5.430; cli 0.0.5, tauri 0.0.6 unchanged.
+
+## Ruling — the #39 impersonation mechanism (2026-08-06, human)
+
+**Door #2: the overlay design stands; v4's bug-27 mechanism is ruled a
+MISTAKE.** The human, on the f4955e0e round's re-ruling flag: *"Door #2
+is what I want. That was a mistake on the v4 bug fix's part."*
+
+**What was decided.** Finding #39's 2026-07-29 design realization is
+re-affirmed: impersonation is a BEHAVIOR change, not a state change —
+the participant's `controlledBy` and `connectionProfileId` are never
+mutated; the already-persisted `impersonatingParticipantIds` +
+`activeTypingParticipantId` are the whole of the state, and turn
+resolution consults the impersonation overlay BEFORE the
+`controlledBy` gate. v4's bug-27 fix (`bd419ae9` — impersonate writes
+`controlledBy:'user'`, a profile-less stop writes `'llm'`) chose the
+opposite mechanism and is to be CORRECTED in v4, not adopted as the
+foundation for #39.
+
+**Why door #2 (the reasoning, for the record).** The overlay preserves
+the two properties the mutate-and-restore forfeits: (1) nothing to
+restore on flip-off — the character's LLM assignment is never
+disturbed, so the restore arm and its edge cases (what if the stop
+never comes; what if the profile changed mid-impersonation) do not
+exist; (2) `findUserParticipant`-family resolution stays stable — the
+unification's e2e re-gesture MEASURED the mutate mechanism's UX
+casualty (the impersonated character becomes the first user-controlled
+seat, so the participant card hides its own Stop affordance in BOTH
+apps). Bug 27's genuine defect (the turn manager honouring an
+impersonated formerly-LLM character) is equally fixed by the overlay's
+two gate widenings, so nothing bug 27 repaired is lost.
+
+**Sequencing (binding).** This is a v4-FIRST change — it lands on
+differential-pinned core turn-resolution, so v5 must NOT move
+unilaterally. v5 remains faithful to bug-27's shipped flips (P4.D53)
+until v4 migrates; when it does, the salon-mutations / chat-cast /
+turn-chain families move and v5 absorbs it as an ordinary drift
+re-port (at which point the impersonation beat re-gestured at this
+round's unification re-gestures BACK — the Stop button returns to the
+card). The v4-side item is queued on `dogfood-findings.md`'s #39 entry
+with the two gate sites named; the multi-turn #39 feature itself
+remains post-5.0 and now builds on the re-affirmed overlay once the
+v4 correction lands.

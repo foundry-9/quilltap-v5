@@ -1053,13 +1053,29 @@ catch, since every fixture is built fresh.
   pre-emptively restructured for this** — it is the reason a merely-inherited
   awkwardness can be left alone now and revisited later, and the reason the
   provider-I/O divergence is deliberately a one-off rather than a first step.
-- **⚠ RE-RULING OWED (flagged 2026-08-06, the f4955e0e-round unification):
-  this design's premise MOVED.** Its explicit instruction — "Do NOT mutate the
-  participant's `controlledBy`" — now conflicts with SHIPPED v4 behavior: v4's
-  bug-27 fix (`bd419ae9`) makes impersonate write `controlledBy:'user'` and a
-  profile-less stop write `'llm'`, and v5 mirrors it faithfully (P4.D53, per
-  the port discipline). The multi-turn design below needs a fresh human ruling
-  against the new baseline before anyone builds it. The original entry:
+- **✅ RE-RULED 2026-08-06 (human): the OVERLAY DESIGN STANDS — v4's bug-27
+  mechanism was a MISTAKE and the v4-side correction is queued.** The human's
+  words: door #2 — "That was a mistake on the v4 bug fix's part." The original
+  design realization below (impersonation is a BEHAVIOR change; never mutate
+  `controlledBy`/`connectionProfileId`) is re-affirmed as the intended
+  mechanism. **The v4-side item this mints (v4-FIRST — it moves the oracle):**
+  migrate v4's impersonation off the bug-27 mutate-and-restore (the
+  `controlledBy:'user'` write in `handleImpersonate`, the `'llm'` write in the
+  profile-less `handleStopImpersonate` arm) onto the overlay gates the design
+  names — the two sites gate on `controlledBy === 'user' || id ∈
+  impersonatingParticipantIds` instead, so bug 27's actual defect (the turn
+  manager honouring an impersonated formerly-LLM character) stays fixed
+  WITHOUT touching the column. Two bonuses the overlay recovers: nothing to
+  restore on flip-off (the profile is never disturbed — bug 27's restore arm
+  and its edge cases go away), and the stop-affordance UX hole measured at
+  this round's unification (the card hiding Speak/Stop because the
+  impersonated character becomes the first user-controlled seat) disappears,
+  since `userParticipantId` no longer shifts. **Until v4 lands the migration,
+  v5 stays faithful to bug-27's flips as shipped (P4.D53)** — when v4 moves,
+  the salon-mutations / chat-cast / turn-chain differentials move with it and
+  v5 absorbs it as an ordinary drift re-port. Ruling record:
+  `status-log.md` → "Ruling — the #39 impersonation mechanism". The
+  original entry:
   **Post-5.0 v5 DIVERGENCE (human, 2026-07-29) — multi-turn impersonation that
   actually speaks as the chosen character (finding #39).** Today "Speak as X" is
   v4-faithful: it only relabels your message if X is `controlledBy === 'user'`,
