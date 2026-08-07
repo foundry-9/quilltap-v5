@@ -240,7 +240,7 @@ const rows: unknown[] = [];
 // ---- findUserParticipantName ---------------------------------------------
 {
   const chars = { 'c-user': 'Bertie', 'c-user2': 'Jeeves', 'c-blank': '' };
-  const cases: Array<{ id: string; participants: unknown[]; activeTyping: string | null }> = [
+  const cases: Array<{ id: string; participants: unknown[]; activeTyping: string | null; impersonating?: string[] }> = [
     {
       id: 'active-typing-selected',
       participants: [
@@ -279,10 +279,33 @@ const rows: unknown[] = [];
       ],
       activeTyping: null,
     },
+    // Bug 44 overlay: the actively-selected seat is an impersonated LLM
+    // character (column still 'llm'); honour the overlay so the typed message is
+    // labelled with that character's name, not the fallback owner seat's.
+    {
+      id: 'active-typing-impersonated-llm',
+      participants: [
+        { id: 'u1', type: 'CHARACTER', characterId: 'c-user', controlledBy: 'user', status: 'active' },
+        { id: 'abigail', type: 'CHARACTER', characterId: 'c-user2', controlledBy: 'llm', status: 'active' },
+      ],
+      activeTyping: 'abigail',
+      impersonating: ['abigail'],
+    },
+    // The fallback stays on the column: an impersonated seat that is NOT the
+    // selection loses to the genuine owner seat.
+    {
+      id: 'impersonated-not-selected-fallback',
+      participants: [
+        { id: 'abigail', type: 'CHARACTER', characterId: 'c-user2', controlledBy: 'llm', status: 'active' },
+        { id: 'u1', type: 'CHARACTER', characterId: 'c-user', controlledBy: 'user', status: 'active' },
+      ],
+      activeTyping: null,
+      impersonating: ['abigail'],
+    },
   ];
   for (const c of cases) {
-    const out = findUserParticipantName(asParts(c.participants), asChars(chars), c.activeTyping);
-    rows.push({ kind: 'userName', id: c.id, participants: c.participants, characters: chars, activeTyping: c.activeTyping, out: out ?? null });
+    const out = findUserParticipantName(asParts(c.participants), asChars(chars), c.activeTyping, c.impersonating);
+    rows.push({ kind: 'userName', id: c.id, participants: c.participants, characters: chars, activeTyping: c.activeTyping, impersonating: c.impersonating ?? null, out: out ?? null });
   }
 }
 

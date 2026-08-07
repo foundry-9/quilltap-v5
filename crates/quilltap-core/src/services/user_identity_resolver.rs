@@ -145,9 +145,23 @@ pub async fn resolve_user_identity(
     let participants = participants_of(chat);
     let filter_participants: Vec<ParticipantView> =
         participants.iter().map(to_filter_participant).collect();
+    // v4 Bug 44: honour the impersonation overlay when resolving the "Speaking As"
+    // seat (its durable `controlledBy` is still `'llm'`).
+    let impersonating: Vec<String> = chat
+        .get("impersonatingParticipantIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
 
-    let user_controlled =
-        find_active_user_participant(&filter_participants, active_typing_participant_id);
+    let user_controlled = find_active_user_participant(
+        &filter_participants,
+        active_typing_participant_id,
+        Some(&impersonating),
+    );
 
     if let Some(ucp) = user_controlled {
         if let Some(cid) = &ucp.character_id {

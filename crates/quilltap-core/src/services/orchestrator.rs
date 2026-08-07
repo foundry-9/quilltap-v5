@@ -3360,6 +3360,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         scene_state: args.chat.get("sceneState").cloned(),
         precompiled_identity_stack: None,
         timeline_mode: json_str(args.chat, "timelineMode"),
+        impersonating_participant_ids: json_str_array(args.chat, "impersonatingParticipantIds"),
     };
 
     // v4 `buildMessageContext` passes `respondingParticipant` in BOTH single- and

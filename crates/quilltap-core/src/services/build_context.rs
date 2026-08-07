@@ -438,6 +438,10 @@ pub struct ContextChat {
     /// Which clock the chat's story runs on (`"realtime" | "narrative"`, v4
     /// `chat.timelineMode`, episodic spine). `None` → realtime.
     pub timeline_mode: Option<String>,
+    /// The chat's `impersonatingParticipantIds` — the impersonation overlay (v4
+    /// Bug 44). Only consulted by the multi-character attribution name lookup;
+    /// empty for single-character chats and every non-impersonating chat.
+    pub impersonating_participant_ids: Vec<String>,
 }
 
 /// The full input bag (v4 `BuildContextOptions`, the subset in scope).
@@ -3052,6 +3056,7 @@ where
                 &attr_participants,
                 &name_map,
                 input.active_user_participant_id.as_deref(),
+                Some(&input.chat.impersonating_participant_ids),
             )
         } else {
             None

@@ -187,6 +187,9 @@ enum Row {
         characters: HashMap<String, String>,
         #[serde(rename = "activeTyping", default)]
         active_typing: Option<String>,
+        /// v4 Bug 44 overlay: `impersonatingParticipantIds`.
+        #[serde(default)]
+        impersonating: Option<Vec<String>>,
         out: Option<String>,
     },
 }
@@ -353,11 +356,17 @@ fn message_attribution_matches_oracle() {
                 participants,
                 characters,
                 active_typing,
+                impersonating,
                 out,
             } => {
                 let parts: Vec<AttributionParticipant> =
                     participants.iter().map(WPart::to_participant).collect();
-                let got = find_user_participant_name(&parts, &characters, active_typing.as_deref());
+                let got = find_user_participant_name(
+                    &parts,
+                    &characters,
+                    active_typing.as_deref(),
+                    impersonating.as_deref(),
+                );
                 assert_eq!(got, out, "userName '{id}'");
             }
         }

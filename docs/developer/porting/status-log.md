@@ -61248,3 +61248,142 @@ very surfaces a walk would exercise (impersonation, turn pause,
 skip), so absorbing first means the walk tests the semantics that
 will ship. The baseline moves to `62c63dc3` at unification (the
 unifier's edit, as always).
+
+---
+
+## Lane record — P4.D56 the Bug 44 impersonation-overlay drift catch-up (`62c63dc3`)
+
+**UNIFIED-READY on `claude/p4-impersonation-overlay-drift-49df8c` (2026-08-07).**
+Single-lane round. Drift-check at start: v4 HEAD == `62c63dc3` exactly, clean
+tree — no drift, oracles regenerated straight from `~/source/quilltap-server`
+(no pinned worktree needed).
+
+v4's `62c63dc3` replaces Bug 27's mutate-and-restore impersonation mechanism
+with the ruled pure overlay. v5 had mirrored the SHIPPED flips (P4.D53 server /
+P4.D54 SPA). This lane absorbs the correction as an ordinary drift re-port.
+
+### What landed (all tier-1 + tier-2; the two tier-3 items are dispositions)
+
+**The `is_user_driven_seat` helper** (`participant_filters.rs`) — `controlledBy
+== 'user'` OR overlay membership; v4's ownership-vs-driving doc comment ported.
+Primitive-field signature `(id, controlled_by, Option<&[String]>)` so every
+participant representation (`ParticipantView` / `SpeakerParticipant` / raw
+`Value`) consults one function. No separate re-export surface needed (v5's
+module IS the analog of v4's turn-manager/index.ts; the fn is `pub`).
+
+**The two `salon.rs` handlers** stripped of their `controlledBy` writes +
+`compile_all_stacks_best_effort` recompiles: `chat_impersonate` is now just
+`add_impersonation`; `chat_stop_impersonate`'s no-profile arm is a pure
+`remove_impersonation` (no participant update), its `newConnectionProfileId` arm
+a `connectionProfileId`-only update. Response envelopes byte-unchanged.
+
+**Overlay threaded through EXACTLY the v4 change-list sites** (signatures widened
+where v4 widened): `find_active_user_participant` (+ids), `find_user_participant_name`
+(the SELECTED branch consults the helper; the fallback stays on the column, per
+v4), `select_next_speaker`/`build_result` (+ids), `is_llm_candidate` (+ids, the
+`!is_user_driven_seat` filter), the `turn_orchestrator` pause gate + both select
+calls, `message_finalizer::calculate_next_speaker`, `user_identity_resolver`,
+`build_context` (new `ContextChat.impersonating_participant_ids`, threaded from
+`orchestrator::build_context_input`), the `salon.rs` `skipUserTurn` gate, and
+`enclave/step.rs`'s select call (passes `None` — v4's enclave passes no overlay).
+`answer_confirmation::is_user_driven_turn` restructured onto the helper,
+**truth-table-neutral** (proven: `answer_confirmation_tier3` green output-neutral
++ the extended unit test).
+
+**The keep-list audit (half the fix — verified against `62c63dc3`, NOT
+"improved"):** `find_user_participant`, `get_active_llm_participants`,
+`is_all_llm_chat` (all gained v4's new ownership-reader doc comments, code
+unchanged); the repos (`chats_impersonation`), `chat_participants` step-6 sync,
+`chat_set_active_speaker` lazy-add, `skip_signal`, `turn_order/state/predicates`
+— all UNCHANGED, all neutrality-green. **The one hunt the order flagged
+(`orchestrator.rs:1119`, the turn-skip offer gate on `controlledBy != 'user'`):
+found v4's analog `orchestrator.service.ts:519` is UNCHANGED at `62c63dc3` — so
+KEEP. Reasoning inherited from v4's audit-by-meaning: the responding participant
+already went through `resolve_responding_participant`, which excludes impersonated
+seats via the overlay, so an impersonated seat can never reach this gate as the
+responder; reading the bare column is harmless and v4 left it alone.**
+
+**Rust unit tests mirroring v4's three rewritten suites** case-for-case:
+`participant_filters::tests` (`find_active_user` overlay + solo + ownership-reader
+keep, column-never-moves asserted), `select_speaker::tests`
+(`impersonated_llm_seat_is_user_turn_via_overlay`, column asserted 'llm'),
+`answer_confirmation` (overlay-with-record arm + no-record raw membership),
+`participant_resolver::tests::is_llm_candidate` (overlay exclusion). v4's
+`turn-orchestrator.test.ts` `+2` mock is covered by the widened callers'
+differential.
+
+### Differentials — every family regenerated FRESH at `62c63dc3`, by name, green
+
+Twelve MOVING families (all zero SKIP): `select_speaker`,
+`turn_pause_filters` (the helper's pinning home — grew `active-impersonation-after`
+[overlay honoured, column 'llm'], `-solo`, `-fallback-owner`), `message_attribution`
+(grew `active-typing-impersonated-llm`, `impersonated-not-selected-fallback`),
+`participant_resolver_tier2`, `user_identity_resolver`, `turn_orchestrator_tier2`,
+`message_finalizer_tier3`, `answer_confirmation_tier3` (output-NEUTRAL, proving the
+restructure), `salon_mutations`, `salon_skip`, `chat_cast_routes`,
+`build_context_tier3` (TZ=UTC).
+
+Neutrality families regenerated + re-run by name, all green:
+`orchestrator_tier3`, `enclave_step_tier3`, `salon_swipe_generate`,
+`regenerate_swipe_tier3` (all TZ=UTC), `identity_compiler`,
+`chats_impersonation_tier2`, `chats_participants_tier2`, `skip_signal`,
+`turn_order`, `turn_state`, `turn_predicates`, `salon_reads`.
+
+**Mutation proof (D24 first-run-green rule):** disabling the overlay branch in
+`is_user_driven_seat` reds the extended tier-1 corpora (verified on
+`message_attribution`; select/turn-pause share the helper).
+
+### The scrubber note (tier-2 item 10) — KEEP, re-verified
+
+`salon_mutations_equivalence::scrub_minted_timestamps` STAYS. Under Bug 44 the
+impersonate arm no longer flips the participant → no participant `updatedAt`
+mint. But `add_impersonation`/`remove_impersonation` (and the other chat-writing
+verbs) still bump the CHAT row's `updatedAt` on both sides, so the scrubber is
+still load-bearing; the one-sided-mint sensitivity note holds and now proves the
+participant row is UNTOUCHED. Comment updated to name Bug 44.
+
+### SPA (apps/web) — e2e re-gesture only; NO component change owed
+
+- The `salon-dialogs-flow` P4.9E3C beat re-gestured BACK to overlay semantics:
+  wire proof INVERTED (`chatGet` participant `controlledBy === 'llm'`, non-flip),
+  the **Stop-speaking-as button visible ON THE CARD** (the measured UX casualty,
+  healed — because the column no longer flips, the impersonated seat is not the
+  chat's user seat so `!isUserParticipant()` keeps the button), stopped THROUGH
+  THE UI (Solo Voyage's character has a profile → no Hand Off dialog), Speak-as
+  affordance returns. Bug-27 comment block deleted; cites Bug 44.
+- **Component-spec sweep: no old-flip mock found.** The impersonation-adjacent
+  specs (`salon-conversation.spec` Speaking-As override, `add-character-dialog.spec`
+  user-option, `participant-card.spec`/`chat-sidebar.spec` genuine user seats)
+  test the byte-parallel client bridge + genuine `controlledBy:'user'` ownership,
+  none of which changed. The behavior shift (Stop button returns) falls out of
+  the server no longer flipping the column. No `apps/web` component/service logic
+  touched — v4's client is unchanged.
+
+### Tier-3 dispositions (loud)
+
+- **`help/chat-participants.md` → the `p4.9i2` bank.** v5 has no help surface;
+  v4's help edit (Stop-Impersonate "always present"; profile-picker phrasing;
+  "nothing else about the seat is disturbed") is banked for the p4.9i2 help lane.
+- **Legacy-flipped-seats transition: NOTHING built.** v4 leaves seats flipped by
+  the old mechanism alone (no migration, no repair pass) per the #39 ruling; v5
+  matches by inaction. Recorded so the next reader does not invent a repair pass.
+
+### Traps worth a memory note
+
+- The order's "salon-mutations POST-registration workaround" note is **STALE**:
+  Bug 25 (fixed v4 2026-08-06, before this baseline) moved stop-impersonate from
+  POST to DELETE; the `salon-mutations.test.ts` case already drives `chatDelete`.
+  No workaround needed at `62c63dc3`.
+- `docs/v4/developer/API.md` mirror carries pre-existing pre-Bug-25 staleness
+  (still documents stop-impersonate as POST); this lane refreshed only the
+  three impersonation SEMANTICS paragraphs (add-participant ownership note,
+  impersonate overlay response, stop-impersonate reassignment note) to
+  `62c63dc3` text. The verb-header staleness is out of this lane's scope.
+
+### Fixtures
+
+No fixture rebuilt (no schema change, no new seed). Consumed read-only: the
+committed `salon-*.db` (P4.D53 vintage), `chat-cast-{main,mount}.db`, and the
+turn-family builders' /tmp fixtures. The three tier-1 pure families
+(`select-speaker`, `turn-pause-filters`, `message-attribution`) grew
+in-case-constructed overlay inputs — no committed DB touched.

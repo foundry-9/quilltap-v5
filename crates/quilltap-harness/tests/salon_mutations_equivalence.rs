@@ -84,12 +84,17 @@ const SEED_TS: &str = "2026-02-01T00:00:00.000Z";
 
 /// Replace any ISO-8601 timestamp that is NOT the seed sentinel with `<ts>`.
 ///
-/// Bug 27 (`bd419ae9`): impersonate/stop-impersonate now flip the target
-/// participant's `controlledBy`, which mints that participant's `updatedAt`
-/// (inside the `participants` JSON string) — the first mint in this otherwise
-/// zero-mint corpus. Both sides mint it at wall-clock, so it must be normalized.
+/// Bug 44 (`62c63dc3`): impersonate/stop-impersonate are now a PURE OVERLAY — the
+/// target participant's `controlledBy` is no longer flipped, so the participant's
+/// `updatedAt` inside the `participants` JSON is NOT minted (verified: the
+/// impersonate/stop cases keep the seed sentinel on the participant row). What
+/// still mints is the CHAT row's own `updatedAt`: `add_impersonation` /
+/// `remove_impersonation` (and the other chat-writing verbs — set-active-speaker,
+/// turn, message edit/delete/swipe) write the chat, bumping `updatedAt` (and
+/// `lastMessageAt`) to wall-clock on BOTH sides. So the scrubber stays load-bearing.
 /// A non-seed value on ONE side only still diverges (`<ts>` vs the literal seed),
-/// so "who minted" stays diffable.
+/// so "who minted" stays diffable — which is exactly what proves the participant
+/// row is now UNTOUCHED by the impersonation verbs (no one-sided mint on it).
 fn scrub_minted_timestamps(s: &str) -> String {
     use std::sync::OnceLock;
     static RE: OnceLock<regex::Regex> = OnceLock::new();

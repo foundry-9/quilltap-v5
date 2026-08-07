@@ -33,7 +33,7 @@ const asParts = (ps: WirePart[]) => ps as unknown as ChatParticipantBase[];
 
 type Row =
   | { kind: 'pause'; id: string; fn: string; turnCount: number; out: number | boolean }
-  | { kind: 'find'; id: string; fn: 'user' | 'active'; participants: WirePart[]; activeId: string | null; out: string | null }
+  | { kind: 'find'; id: string; fn: 'user' | 'active'; participants: WirePart[]; activeId: string | null; impersonating?: string[]; out: string | null }
   | { kind: 'list'; id: string; fn: 'userControlled' | 'activeLLM' | 'activeChar'; participants: WirePart[]; out: string[] }
   | { kind: 'pred'; id: string; fn: 'multi' | 'allLLM'; participants: WirePart[]; out: boolean };
 
@@ -70,8 +70,8 @@ const findUserId = (ps: WirePart[]): string | null => {
   const r = findUserParticipant(asParts(ps));
   return r ? (r as unknown as WirePart).id : null;
 };
-const findActiveId = (ps: WirePart[], activeId: string | null): string | null => {
-  const r = findActiveUserParticipant(asParts(ps), activeId);
+const findActiveId = (ps: WirePart[], activeId: string | null, impersonating?: string[]): string | null => {
+  const r = findActiveUserParticipant(asParts(ps), activeId, impersonating);
   return r ? (r as unknown as WirePart).id : null;
 };
 const ids = (rs: ChatParticipantBase[]): string[] => rs.map(r => (r as unknown as WirePart).id);
@@ -86,16 +86,22 @@ rows.push({ kind: 'find', id: 'active-fallback', fn: 'active', participants: mix
 rows.push({ kind: 'find', id: 'active-empty-id', fn: 'active', participants: mixed, activeId: '', out: findActiveId(mixed, '') }); // '' falsy → fallback
 rows.push({ kind: 'find', id: 'active-null', fn: 'active', participants: mixed, activeId: null, out: findActiveId(mixed, null) });
 
-// Bug 27 (`bd419ae9`): "Speak as an AI character" routes through impersonation,
-// which now flips the chosen character to controlledBy:'user'. Before the flip,
-// selecting the still-LLM character is a dead affordance (fallback to the first
-// user-controlled seat); after the flip, the same seat IS honoured. Pins the
-// attribution side of that fix.
+// Bug 44 (`62c63dc3`): "Speak as an AI character" routes through impersonation,
+// which is an OVERLAY — the chosen seat's `controlledBy` stays 'llm'; only the
+// chat's `impersonatingParticipantIds` records it. Attribution honours the
+// overlaid seat as the active speaker WITHOUT the column ever moving. Before the
+// overlay, selecting the still-LLM character is a dead affordance (fallback to
+// the first user-controlled seat). Pins the attribution side of that fix.
 const jackie = p('p-jackie', 'active', 'user', 'char-jackie');
 const abigailLLM = p('p-abigail', 'active', 'llm', 'char-abigail');
-const abigailUser = p('p-abigail', 'active', 'user', 'char-abigail');
 rows.push({ kind: 'find', id: 'active-impersonation-before', fn: 'active', participants: [jackie, abigailLLM], activeId: 'p-abigail', out: findActiveId([jackie, abigailLLM], 'p-abigail') });
-rows.push({ kind: 'find', id: 'active-impersonation-after', fn: 'active', participants: [jackie, abigailUser], activeId: 'p-abigail', out: findActiveId([jackie, abigailUser], 'p-abigail') });
+rows.push({ kind: 'find', id: 'active-impersonation-after', fn: 'active', participants: [jackie, abigailLLM], activeId: 'p-abigail', impersonating: ['p-abigail'], out: findActiveId([jackie, abigailLLM], 'p-abigail', ['p-abigail']) });
+// Solo impersonation: no owner seat, but the selected branch resolves because
+// addImpersonation always sets activeTypingParticipantId.
+rows.push({ kind: 'find', id: 'active-impersonation-solo', fn: 'active', participants: [abigailLLM], activeId: 'p-abigail', impersonating: ['p-abigail'], out: findActiveId([abigailLLM], 'p-abigail', ['p-abigail']) });
+// The overlay does NOT touch the ownership fallback: a non-selected impersonated
+// seat still loses to the genuine owner seat when no valid selection is present.
+rows.push({ kind: 'find', id: 'active-impersonation-fallback-owner', fn: 'active', participants: [jackie, abigailLLM], activeId: null, impersonating: ['p-abigail'], out: findActiveId([jackie, abigailLLM], null, ['p-abigail']) });
 
 // list filters
 for (const [id, ps] of [['mixed', mixed], ['allLLM', allLLM], ['empty', empty]] as Array<[string, WirePart[]]>) {

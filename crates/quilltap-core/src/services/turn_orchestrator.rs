@@ -309,6 +309,20 @@ pub(crate) fn participants_array(chat: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// The chat's `impersonatingParticipantIds` (v4 `chat.impersonatingParticipantIds`),
+/// tolerating absence the `|| []` way — consulted by the who-responds gates for
+/// the impersonation overlay (v4 Bug 44).
+fn impersonating_ids(chat: &Value) -> Vec<String> {
+    chat.get("impersonatingParticipantIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// JSON-encode a list of ids exactly as JS `JSON.stringify` does (compact).
 fn json_ids(ids: &[String]) -> String {
     serde_json::to_string(ids).expect("string array always serializes")
@@ -422,6 +436,7 @@ pub async fn should_chain_next(
     let participants = participants_array(&fresh_chat);
     let filter_participants: Vec<FilterParticipant> =
         participants.iter().map(to_filter_participant).collect();
+    let impersonating = impersonating_ids(&fresh_chat);
 
     let spoken_json = fresh_chat
         .get("spokenThisCycleParticipantIds")
@@ -516,6 +531,7 @@ pub async fn should_chain_next(
             &turn_state.spoken_since_user_turn,
             turn_state.last_speaker_id.as_deref(),
             random01,
+            Some(&impersonating),
         );
 
         next_participant_id = result.next_speaker_id.clone();
@@ -541,8 +557,15 @@ pub async fn should_chain_next(
         return Ok(ChainDecision::stop(ChainReason::Error));
     };
 
-    if str_field(&next_participant, "controlledBy") == Some("user") {
-        // Surface which user character is "up" so the UI can label the pause.
+    if crate::participant_filters::is_user_driven_seat(
+        str_field(&next_participant, "id").unwrap_or_default(),
+        str_field(&next_participant, "controlledBy").unwrap_or("llm"),
+        Some(&impersonating),
+    ) {
+        // Surface which user character is "up" so the UI can label the pause. A
+        // seat the human is impersonating (v4 Bug 44 overlay — `controlledBy`
+        // still `'llm'`) pauses the chain just like a genuine user seat, so the
+        // operator types the character's line instead of the model generating it.
         let character_name = character_name_for(db, &next_participant)?;
         return Ok(ChainDecision {
             chain: false,
@@ -734,6 +757,7 @@ pub async fn handle_turn_action(
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
         random01,
+        Some(&impersonating_ids(&chat)),
     );
 
     // Persist turnQueue + lastTurnParticipantId for state-modifying actions.

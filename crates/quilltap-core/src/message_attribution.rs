@@ -276,21 +276,35 @@ pub fn find_user_participant_name(
     all_participants: &[AttributionParticipant],
     participant_characters: &HashMap<String, String>,
     active_typing_participant_id: Option<&str>,
+    impersonating_participant_ids: Option<&[String]>,
 ) -> Option<String> {
-    let is_user_character = |p: &AttributionParticipant| {
+    // The selected speaker may be a seat the human is impersonating (v4 Bug 44
+    // overlay — `controlledBy` still `'llm'`), so honour the overlay rather than
+    // the bare column; otherwise a message typed while "speaking as" a character
+    // would fall through to the wrong name. The fallback stays on the column (a
+    // genuine owner seat).
+    let is_present_character = |p: &AttributionParticipant| {
         p.participant_type == "CHARACTER"
-            && p.controlled_by == "user"
             && is_participant_present(p.status)
             && p.character_id.as_deref().is_some_and(|c| !c.is_empty())
     };
 
     let selected = active_typing_participant_id.and_then(|atid| {
+        all_participants.iter().find(|p| {
+            p.id == atid
+                && is_present_character(p)
+                && crate::participant_filters::is_user_driven_seat(
+                    &p.id,
+                    &p.controlled_by,
+                    impersonating_participant_ids,
+                )
+        })
+    });
+    let user_character_participant = selected.or_else(|| {
         all_participants
             .iter()
-            .find(|p| p.id == atid && is_user_character(p))
+            .find(|p| p.controlled_by == "user" && is_present_character(p))
     });
-    let user_character_participant =
-        selected.or_else(|| all_participants.iter().find(|p| is_user_character(p)));
 
     if let Some(p) = user_character_participant {
         if let Some(cid) = p.character_id.as_deref() {

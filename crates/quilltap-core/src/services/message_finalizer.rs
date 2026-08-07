@@ -1575,6 +1575,7 @@ async fn calculate_next_speaker(
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
         0.0,
+        Some(&chat.impersonating_participant_ids),
     );
     let _ = (character_participant, user_participant_id);
 

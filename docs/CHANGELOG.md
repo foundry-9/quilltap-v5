@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Impersonation is now a pure overlay instead of mutating a participant's
+control column (Bug 44, ported from the reference app). Starting to
+speak as a character no longer writes controlledBy to user or recompiles
+identity stacks, and stopping no longer writes it back to llm; recording
+the seat in impersonatingParticipantIds is the whole change. A shared
+is_user_driven_seat helper is consulted at the turn-resolution gates
+(attribution and who-responds); owner-seat readers keep reading the
+column, which restores the Stop-Impersonate button on the participant
+card with no client change. The stop flow's new-profile arm is now a
+plain connection-profile reassignment. Twelve differential families were
+regenerated against the reference app and re-run; the neutrality set is
+unchanged.
+
 Planned the Bug 44 impersonation-overlay drift catch-up (work order
 P4.D56, single lane): the reference app has now implemented the ruled
 correction — impersonation becomes a pure overlay and the seat's

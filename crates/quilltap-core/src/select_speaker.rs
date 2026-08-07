@@ -105,9 +105,19 @@ fn build_result(
     participant: &SpeakerParticipant,
     reason: &'static str,
     cycle_complete: bool,
+    impersonating_participant_ids: Option<&[String]>,
     debug: Option<SelectionDebug>,
 ) -> SelectionResult {
-    let reason = if participant.controlled_by == "user" {
+    // A seat the human owns OR is impersonating this session takes a *user* turn —
+    // the orchestrator pauses the chain so the human types or skips. Impersonation
+    // is an overlay (v4 Bug 44): `controlledBy` stays `'llm'`, so consult the
+    // overlay rather than the bare column, otherwise a weighted pick would try to
+    // generate an LLM response as the character the human is speaking for.
+    let reason = if crate::participant_filters::is_user_driven_seat(
+        &participant.id,
+        &participant.controlled_by,
+        impersonating_participant_ids,
+    ) {
         "user_turn"
     } else {
         reason
@@ -161,6 +171,7 @@ pub fn get_selection_explanation(result: &SelectionResult) -> &'static str {
 
 /// Select the next speaker. See module docs for the algorithm; `random01` is the
 /// injected `Math.random()` value used by the weighted picks.
+#[allow(clippy::too_many_arguments)]
 pub fn select_next_speaker(
     participants: &[SpeakerParticipant],
     characters: &HashMap<String, f64>,
@@ -168,6 +179,7 @@ pub fn select_next_speaker(
     spoken_since_user_turn: &[String],
     last_speaker_id: Option<&str>,
     random01: f64,
+    impersonating_participant_ids: Option<&[String]>,
 ) -> SelectionResult {
     // Step 1: the manual queue wins.
     if let Some(first) = queue.first() {
@@ -195,7 +207,13 @@ pub fn select_next_speaker(
 
     // Single character: let them continue (the no-back-to-back guard is moot).
     if active.len() == 1 {
-        return build_result(active[0], "only_character", false, None);
+        return build_result(
+            active[0],
+            "only_character",
+            false,
+            impersonating_participant_ids,
+            None,
+        );
     }
 
     // Step 2: eligible = active minus { last speaker, already-spoken }.
@@ -218,6 +236,7 @@ pub fn select_next_speaker(
             picked,
             "weighted_selection",
             false,
+            impersonating_participant_ids,
             Some(SelectionDebug {
                 eligible_speakers: eligible.iter().map(|p| p.id.clone()).collect(),
                 weights: pick.weights,
@@ -252,6 +271,7 @@ pub fn select_next_speaker(
         picked,
         "weighted_selection",
         true,
+        impersonating_participant_ids,
         Some(SelectionDebug {
             eligible_speakers: new_cycle.iter().map(|p| p.id.clone()).collect(),
             weights: pick.weights,
@@ -259,4 +279,56 @@ pub fn select_next_speaker(
             all_llm_new_cycle: true,
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn character(id: &str) -> SpeakerParticipant {
+        SpeakerParticipant {
+            id: id.to_string(),
+            participant_type: "CHARACTER".to_string(),
+            status: ParticipantStatus::Active,
+            character_id: Some(format!("char-{id}")),
+            controlled_by: "llm".to_string(),
+            talkativeness: None,
+        }
+    }
+
+    // v4 turn-manager.test.ts (Bug 44): an impersonated LLM seat takes a *user*
+    // turn via the overlay, without the column moving.
+    #[test]
+    fn impersonated_llm_seat_is_user_turn_via_overlay() {
+        let impersonated = character("p1");
+        let characters = HashMap::new();
+
+        // Without the overlay it is an ordinary LLM speaker (only_character).
+        let llm_turn = select_next_speaker(
+            std::slice::from_ref(&impersonated),
+            &characters,
+            &[],
+            &[],
+            None,
+            0.5,
+            None,
+        );
+        assert_eq!(llm_turn.next_speaker_id.as_deref(), Some("p1"));
+        assert_eq!(llm_turn.reason, "only_character");
+
+        // With the overlay it pauses for the human, without the column moving.
+        let overlay = ["p1".to_string()];
+        let user_turn = select_next_speaker(
+            std::slice::from_ref(&impersonated),
+            &characters,
+            &[],
+            &[],
+            None,
+            0.5,
+            Some(&overlay),
+        );
+        assert_eq!(user_turn.next_speaker_id.as_deref(), Some("p1"));
+        assert_eq!(user_turn.reason, "user_turn");
+        assert_eq!(impersonated.controlled_by, "llm");
+    }
 }

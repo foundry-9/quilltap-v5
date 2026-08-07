@@ -75,6 +75,9 @@ enum OracleRow {
         participants: Vec<WirePart>,
         #[serde(rename = "activeId")]
         active_id: Option<String>,
+        /// v4 Bug 44 overlay: `impersonatingParticipantIds` for the `active` fn.
+        #[serde(default)]
+        impersonating: Option<Vec<String>>,
         out: Option<String>,
     },
     #[serde(rename = "list")]
@@ -152,12 +155,17 @@ fn turn_pause_filters_matches_oracle() {
                 func,
                 participants,
                 active_id,
+                impersonating,
                 out,
             } => {
                 let core = parts_to_core(&participants);
                 let got = match func.as_str() {
                     "user" => find_user_participant(&core),
-                    "active" => find_active_user_participant(&core, active_id.as_deref()),
+                    "active" => find_active_user_participant(
+                        &core,
+                        active_id.as_deref(),
+                        impersonating.as_deref(),
+                    ),
                     other => panic!("unknown find fn {other}"),
                 };
                 assert_eq!(got.map(|p| p.id.clone()), out, "find '{id}'");

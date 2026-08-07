@@ -806,8 +806,27 @@ pub async fn turn_action(
             return bad_request("Participant is not active");
         }
         if action == TurnAction::SkipUserTurn
-            && participant.get("controlledBy").and_then(Value::as_str) != Some("user")
+            && !crate::participant_filters::is_user_driven_seat(
+                participant
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                participant
+                    .get("controlledBy")
+                    .and_then(Value::as_str)
+                    .unwrap_or("llm"),
+                chat.get("impersonatingParticipantIds")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect::<Vec<_>>()
+                    })
+                    .as_deref(),
+            )
         {
+            // A seat the human is impersonating (v4 Bug 44 overlay) is skippable
+            // too, even though its durable `controlledBy` is still `'llm'`.
             return bad_request("Only user-controlled participants can be skipped");
         }
     }
@@ -1659,21 +1678,14 @@ pub async fn chat_impersonate(db: &Db, chat_id: &str, participant_id: &str) -> R
     if !participant_present(participant.get("status").and_then(Value::as_str)) {
         return bad_request("Participant is not active or silent");
     }
-    // v4 `bd419ae9` (bug 27): impersonation means the operator now speaks as this
-    // character, so flip it to user-controlled BEFORE adding the impersonation —
-    // the same invariant handleParticipantUpdate maintains for the "User (you
-    // type)" option. Without it, findActiveUserParticipant never honours the
-    // selection and the operator's next message lands under their own character.
-    let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
-    if let Err(e) = db
-        .write(move |w| {
-            crate::db::chats_participants::ChatParticipantsRepository::new(w.main().connection())
-                .update_participant(&cid, &pid, &json!({ "controlledBy": "user" }))
-        })
-        .await
-    {
-        return internal(e);
-    }
+    // v4 `62c63dc3` (bug 44): impersonation is a BEHAVIOR change, not a state
+    // change. The seat's durable ownership (`controlledBy`) and connection
+    // profile stay exactly where they were. `add_impersonation` — which records
+    // the id in `impersonatingParticipantIds` and sets `activeTypingParticipantId`
+    // — is the whole state change. The attribution and turn-taking resolvers
+    // honour that overlay (see `is_user_driven_seat`), so no column moves and no
+    // identity stack recompiles. Not mutating `controlledBy` is what keeps the
+    // "user seat" stable and the card's own Stop button reachable.
     let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
     let ok = match db
         .write(move |w| {
@@ -1694,9 +1706,6 @@ pub async fn chat_impersonate(db: &Db, chat_id: &str, participant_id: &str) -> R
         Ok(v) => v.unwrap_or(Value::Null),
         Err(e) => return internal(e),
     };
-    // v4 `bd419ae9`: controlledBy changed, which alters {{user}}/{{persona}} for
-    // everyone — recompile all identity stacks. Non-fatal (read-through fallback).
-    crate::services::chat_participants::compile_all_stacks_best_effort(db, updated.clone()).await;
     let name = read_main_mount(db, |main, mount| {
         Ok(character_name(main, mount, &participant))
     })
@@ -1741,10 +1750,16 @@ pub async fn chat_stop_impersonate(
         return internal("Failed to stop impersonation");
     }
 
-    // Hand the character back to the LLM — the mirror of the controlledBy flip in
-    // impersonate (v4 `bd419ae9`, bug 27). A new profile may accompany the
-    // hand-back (the client prompts for one when the character has none); otherwise
-    // the character keeps its existing profile but is still flipped to 'llm'.
+    // v4 `62c63dc3` (bug 44): impersonation is an overlay — the seat was never
+    // disturbed on start, so there is nothing to restore. `remove_impersonation`
+    // is the whole state change. A new connection profile may accompany the
+    // hand-back — the client's stop flow offers one when the character has none,
+    // so a formerly-impersonated seat isn't left LLM-controlled with no way to
+    // answer. This is a DELIBERATE seat reassignment, a separate concern from
+    // stopping the impersonation: route it through a plain participant update
+    // (profile only — `controlledBy` never moved, so there is nothing to flip and
+    // nothing to recompile). Without a new profile there is no participant update
+    // at all.
     if let Some(new_cp) = new_connection_profile_id {
         let ncp = new_cp.to_string();
         let exists = match db
@@ -1769,22 +1784,8 @@ pub async fn chat_stop_impersonate(
                 .update_participant(
                     &cid,
                     &pid,
-                    &json!({ "connectionProfileId": ncp, "controlledBy": "llm" }),
+                    &json!({ "connectionProfileId": ncp }),
                 )
-            })
-            .await
-        {
-            return internal(e);
-        }
-    } else {
-        // v4's NEW else branch: no profile supplied, still flip controlledBy:'llm'.
-        let (cid, pid) = (chat_id.to_string(), participant_id.to_string());
-        if let Err(e) = db
-            .write(move |w| {
-                crate::db::chats_participants::ChatParticipantsRepository::new(
-                    w.main().connection(),
-                )
-                .update_participant(&cid, &pid, &json!({ "controlledBy": "llm" }))
             })
             .await
         {
@@ -1797,8 +1798,6 @@ pub async fn chat_stop_impersonate(
         Ok(v) => v.unwrap_or(Value::Null),
         Err(e) => return internal(e),
     };
-    // v4 `bd419ae9`: controlledBy changed back — recompile identity stacks. Non-fatal.
-    crate::services::chat_participants::compile_all_stacks_best_effort(db, updated.clone()).await;
     let name = read_main_mount(db, |main, mount| {
         Ok(character_name(main, mount, &participant))
     })

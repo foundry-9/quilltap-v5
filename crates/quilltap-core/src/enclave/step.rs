@@ -643,6 +643,8 @@ where
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
         sdeps.random01,
+        // Autonomous rooms never impersonate (v4 passes no overlay here).
+        None,
     );
 
     let Some(responding_participant_id) = selection.next_speaker_id.clone() else {

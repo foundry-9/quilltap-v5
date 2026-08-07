@@ -40,6 +40,10 @@ struct Scenario {
     #[serde(rename = "lastSpeakerId")]
     last_speaker_id: Option<String>,
     random01: f64,
+    /// v4 Bug 44 overlay: the chat's `impersonatingParticipantIds` (absent on
+    /// pre-Bug-44 scenarios, which pass no overlay).
+    #[serde(default)]
+    impersonating: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -124,6 +128,7 @@ fn select_speaker_matches_oracle() {
             &scenario.spoken,
             scenario.last_speaker_id.as_deref(),
             scenario.random01,
+            scenario.impersonating.as_deref(),
         );
 
         assert_eq!(

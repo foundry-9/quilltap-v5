@@ -191,10 +191,31 @@ fn is_active_character(p: &Value) -> bool {
         && nonempty_character_id(p).is_some()
 }
 
-/// v4's LLM-candidate predicate: `is_active_character` AND `controlledBy !==
-/// 'user'` (a user-controlled participant waits for the human).
-fn is_llm_candidate(p: &Value) -> bool {
-    is_active_character(p) && str_field(p, "controlledBy") != Some("user")
+/// v4's LLM-candidate predicate: `is_active_character` AND NOT user-driven — a
+/// user-controlled seat OR a seat the human is impersonating this session waits
+/// for the human (v4 Bug 44: impersonation is an overlay, `controlledBy` stays
+/// `'llm'`, so an impersonated seat must be excluded via the overlay, not the
+/// column).
+fn is_llm_candidate(p: &Value, impersonating_participant_ids: Option<&[String]>) -> bool {
+    is_active_character(p)
+        && !crate::participant_filters::is_user_driven_seat(
+            str_field(p, "id").unwrap_or_default(),
+            str_field(p, "controlledBy").unwrap_or("llm"),
+            impersonating_participant_ids,
+        )
+}
+
+/// The chat's `impersonatingParticipantIds` (v4 `chat.impersonatingParticipantIds`),
+/// tolerating absence the `|| []` way.
+fn impersonating_ids(chat: &Value) -> Vec<String> {
+    chat.get("impersonatingParticipantIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn participants_of(chat: &Value) -> Vec<Value> {
@@ -303,10 +324,15 @@ pub async fn resolve_responding_participant(
     let participants = participants_of(chat);
     let filter_participants: Vec<FilterParticipant> =
         participants.iter().map(to_filter_participant).collect();
+    let impersonating = impersonating_ids(chat);
 
-    // User participant (honoring the "Speaking As" selection).
-    let user_participant_view =
-        find_active_user_participant(&filter_participants, active_user_participant_id);
+    // User participant (honoring the "Speaking As" selection + the impersonation
+    // overlay, v4 Bug 44).
+    let user_participant_view = find_active_user_participant(
+        &filter_participants,
+        active_user_participant_id,
+        Some(&impersonating),
+    );
     let user_participant_id = user_participant_view.map(|p| p.id.clone());
     // The full participant JSON object (v4 returns the participant, not the view).
     let user_participant = user_participant_id.as_ref().and_then(|uid| {
@@ -347,7 +373,7 @@ pub async fn resolve_responding_participant(
         // Normal / continue-without-specific: weighted next LLM responder.
         let llm_candidates: Vec<&Value> = participants
             .iter()
-            .filter(|p| is_llm_candidate(p))
+            .filter(|p| is_llm_candidate(p, Some(&impersonating)))
             .collect();
 
         if llm_candidates.is_empty() {
@@ -394,6 +420,7 @@ pub async fn resolve_responding_participant(
                 &turn_state.spoken_since_user_turn,
                 turn_state.last_speaker_id.as_deref(),
                 random01,
+                Some(&impersonating),
             );
 
             if let Some(next_id) = &selection.next_speaker_id {
@@ -640,12 +667,17 @@ mod tests {
         let user = json!({ "id": "u", "type": "CHARACTER", "status": "active", "characterId": "cu", "controlledBy": "user" });
         let llm = json!({ "id": "l", "type": "CHARACTER", "status": "active", "characterId": "cl", "controlledBy": "llm" });
         let absent = json!({ "id": "a", "type": "CHARACTER", "status": "removed", "characterId": "ca", "controlledBy": "llm" });
-        assert!(!is_llm_candidate(&user));
-        assert!(is_llm_candidate(&llm));
-        assert!(!is_llm_candidate(&absent));
+        assert!(!is_llm_candidate(&user, None));
+        assert!(is_llm_candidate(&llm, None));
+        assert!(!is_llm_candidate(&absent, None));
         // A default controlledBy (missing) is 'llm' → candidate.
         let dflt =
             json!({ "id": "d", "type": "CHARACTER", "status": "active", "characterId": "cd" });
-        assert!(is_llm_candidate(&dflt));
+        assert!(is_llm_candidate(&dflt, None));
+        // v4 Bug 44: an impersonated LLM seat is excluded via the overlay, even
+        // though its column stays 'llm'; other LLM seats are unaffected.
+        let overlay = ["l".to_string()];
+        assert!(!is_llm_candidate(&llm, Some(&overlay)));
+        assert!(is_llm_candidate(&dflt, Some(&overlay)));
     }
 }

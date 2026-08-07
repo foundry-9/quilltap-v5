@@ -163,23 +163,33 @@ pub fn find_latest_commonplace_whisper(messages: &[Value], participant_id: &str)
 /// `confirmed: null`.
 ///
 /// `participants` are the raw chat participant JSON objects; a participant matches
-/// on `id`, and is user-driven when its `controlledBy` is `"user"`.
+/// on `id`, and is user-driven when its `controlledBy` is `"user"` OR it is in the
+/// impersonation overlay (v4 Bug 44). Truth-table-identical to the pre-Bug-44
+/// shape (overlay OR column); restructured onto the shared `is_user_driven_seat`
+/// helper so the overlay/ownership distinction lives in one place.
 pub fn is_user_driven_turn(
     impersonating_participant_ids: &[String],
     participants: &[Value],
     participant_id: &str,
 ) -> bool {
-    if impersonating_participant_ids
+    let participant = participants
         .iter()
-        .any(|id| id == participant_id)
-    {
-        return true;
-    }
-    participants
-        .iter()
-        .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))
-        .and_then(|p| p.get("controlledBy").and_then(Value::as_str))
-        == Some("user")
+        .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id));
+    let Some(participant) = participant else {
+        // No participant record: fall back to the raw overlay membership check.
+        return impersonating_participant_ids
+            .iter()
+            .any(|id| id == participant_id);
+    };
+    let controlled_by = participant
+        .get("controlledBy")
+        .and_then(Value::as_str)
+        .unwrap_or("llm");
+    crate::participant_filters::is_user_driven_seat(
+        participant_id,
+        controlled_by,
+        Some(impersonating_participant_ids),
+    )
 }
 
 /// Compactly serialize an in-scope tool result for the reference block (v4
@@ -837,6 +847,9 @@ mod tests {
             json!({"id":"p1","controlledBy":"llm"}),
             json!({"id":"p2","controlledBy":"user"}),
         ];
+        // v4 Bug 44: an impersonated seat with a participant record whose column
+        // is still 'llm' is user-driven via the overlay (the restructured helper
+        // must honour it exactly as the pre-Bug-44 overlay-first check did).
         assert!(is_user_driven_turn(
             &["p1".to_string()],
             &participants,
@@ -844,6 +857,15 @@ mod tests {
         ));
         assert!(is_user_driven_turn(&[], &participants, "p2"));
         assert!(!is_user_driven_turn(&[], &participants, "p1"));
+        // The column was never touched: p1 stays 'llm' in the input.
+        assert_eq!(participants[0].get("controlledBy").unwrap(), "llm");
+        // No participant record for the id → raw overlay membership decides.
+        assert!(is_user_driven_turn(
+            &["ghost".to_string()],
+            &participants,
+            "ghost"
+        ));
+        assert!(!is_user_driven_turn(&[], &participants, "ghost"));
     }
 
     #[test]

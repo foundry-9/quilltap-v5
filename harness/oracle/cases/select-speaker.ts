@@ -57,6 +57,7 @@ type Scenario = {
   spoken: string[];
   lastSpeakerId: string | null;
   random01: number;
+  impersonating?: string[];
 };
 
 const p = (id: string, type: string, status: string, characterId: string | null, controlledBy: string, talkativeness: number | null): WirePart =>
@@ -92,6 +93,13 @@ const scenarios: Scenario[] = [
   { id: 'zero-weights', participants: [p('A', 'CHARACTER', 'active', 'ca', 'llm', 0), p('B', 'CHARACTER', 'active', 'cb', 'llm', 0)], characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.6 }, // rv 1.2 → B
   // talkativeness fallback: participant null → character value → 0.5 default.
   { id: 'char-fallback', participants: [p('A', 'CHARACTER', 'active', 'ca', 'llm', null), p('B', 'CHARACTER', 'active', 'cb', 'llm', null)], characters: { ca: 0.9 }, queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 }, // A0.9(char), B0.5(default) total1.4; rv0.7<0.9 → A
+  // Bug 44 overlay: a single LLM seat is only_character without the overlay, and
+  // a *user_turn* (pause for the human) once impersonated — the column stays 'llm'.
+  { id: 'impersonated-off', participants: [p('p1', 'CHARACTER', 'active', 'char-1', 'llm', null)], characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 },
+  { id: 'impersonated-on', participants: [p('p1', 'CHARACTER', 'active', 'char-1', 'llm', null)], characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.5, impersonating: ['p1'] },
+  // Bug 44 overlay in a weighted pick: the pick lands on an impersonated LLM seat
+  // (rv 0.2 < 0.9 → A), whose reason becomes user_turn via the overlay.
+  { id: 'impersonated-weighted', participants: trio, characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.1, impersonating: ['A'] },
 ];
 
 type Row = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult };
@@ -99,7 +107,7 @@ const rows: Row[] = [];
 
 for (const s of scenarios) {
   const result = withRandom(s.random01, () =>
-    selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId), null),
+    selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId), null, s.impersonating),
   );
   rows.push({ kind: 'select', id: s.id, scenario: s, out: result });
 }

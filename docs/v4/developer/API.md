@@ -1886,7 +1886,7 @@ Add a character to the chat.
 
 **Notes**:
 
-- `controlledBy` accepts `"llm"` (default) or `"user"` (user-impersonated). `connectionProfileId` is required for LLM control and ignored for user control.
+- `controlledBy` accepts `"llm"` (default) or `"user"` (a seat the human owns and types for directly). `connectionProfileId` is required for LLM control and ignored for user control. Note this is durable seat **ownership** and is distinct from impersonation, which overlays a seat via `impersonatingParticipantIds` without changing `controlledBy` (see `action=impersonate`).
 - `hasHistoryAccess` (default `false`) controls whether the new participant sees messages from before they joined.
 - `joinScenario` is optional context describing how the character entered; surfaced as a Host announcement targeted at the new participant when `hasHistoryAccess` is false.
 - `outfitSelection` is optional. Modes: `default` (wardrobe defaults), `manual` (provide a `slots` object), `llm_choose` (cheap LLM picks), `none` (start undressed). Omitting it on a fresh add defaults to `mode: "default"` so the new arrival is dressed; on reactivation of a previously-removed participant, omitting it preserves their previous outfit.
@@ -2033,7 +2033,7 @@ Start impersonating a character in the chat.
 
 **Response**: `200 OK`
 
-Returns updated chat metadata with `impersonatingParticipantIds` including the new participant.
+Returns updated chat metadata with `impersonatingParticipantIds` including the new participant. Impersonation is an **overlay**, not an ownership change: the participant's durable `controlledBy` (and its connection profile) are left untouched. Recording the id in `impersonatingParticipantIds` — and pointing `activeTypingParticipantId` at it — is the whole state change. The attribution and turn-taking resolvers treat an impersonated seat as user-driven from that overlay (so the operator's messages are attributed to the character and it drops out of the LLM responder rotation) without the column ever moving.
 
 #### `POST /api/v1/chats/[id]?action=stop-impersonate`
 
@@ -2048,7 +2048,7 @@ Stop impersonating a character.
 }
 ```
 
-**Note**: `newConnectionProfileId` is required when the character doesn't have a default connection profile. This assigns the LLM profile that will control the character after you stop impersonating.
+Clearing the impersonation is the whole action — because the overlay never disturbed the seat, there is nothing to restore. `newConnectionProfileId` is optional and independent: supplying it is a **deliberate seat reassignment** (offered by the client when the character has no default connection profile, so a seat that goes back to LLM control isn't left unable to answer). It sets `connectionProfileId` only; `controlledBy` is never written by either path.
 
 #### `POST /api/v1/chats/[id]?action=set-active-speaker`
 
