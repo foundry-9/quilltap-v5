@@ -2140,6 +2140,43 @@ records THERE. Update this summary only when a phase or round completes.
   dedup/summaries first run). Versions: core 0.0.508, harness
   0.0.431, host 0.0.63, web 0.0.65, SPA 0.5.430. Round record:
   `status-log.md`.
+- **The P4.D56 Bug 44 impersonation-overlay drift round: CLOSED,
+  UNIFIED on main (2026-08-07, single lane) — the oracle baseline
+  MOVES to `62c63dc3` and the drift debt is CLEARED.** v4 implemented
+  the #39-ruled overlay (the pre-announced round): impersonation
+  never writes `controlledBy` or recompiles identity stacks — the
+  new `is_user_driven_seat` helper gates attribution
+  (`find_active_user_participant` / the attribution name lookup's
+  selected branch / user-identity) and who-responds (selection's
+  user_turn reason / the LLM-candidate filter / the chain pause /
+  the skipUserTurn gate), answer-confirmation restructured
+  truth-table-neutral, and the owner-seat readers (the keep-list —
+  half the fix) verified untouched. Stop's profile arm is a
+  profile-only reassignment. The impersonation beat re-gestured BACK
+  (the Stop button returned to the card; stop driven through the
+  UI). Twelve moving + twelve neutrality families fresh at the pin
+  (the sweep's six-family SKIP-masquerade re-run manually — the rot
+  repair is a named maintenance item). §3 review: no blocking
+  findings; one style note (the four-site `impersonating_ids`
+  extraction). Gate: 419 binaries / 1,956 / 0; ng 294 / 4,015; full
+  Playwright 189/189 zero skips. Versions: core 0.0.509, harness
+  0.0.432, SPA 0.5.431. **The owed dogfood pass is now the top next
+  candidate** — it gains this round's live surface (a real
+  impersonate → pause → stop cycle). Round record: `status-log.md`.
+- **Oracle baseline: `62c63dc3` (2026-08-07, v4 4.8.0-dev.178),
+  adopted at the P4.D56 unification — NO v4 drift debt remains.**
+  The two commits between `f4955e0e` and it stayed NO-PORT as
+  dispositioned (`cc0bbebf` test-only, `3fa36825` docs-only).
+  Oracles regenerate straight from `~/source/quilltap-server` while
+  HEAD stays `62c63dc3`; pin a detached worktree on any further
+  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py
+  --v4 <pin>`). At the round's regen v4's tree carried two dirty
+  files (`app/about/AboutView.tsx` + an image), verified outside
+  every oracle import graph (justification in the round record).
+  The distill-transitive TZ pins, the committed-fixture rule, and
+  the venue/staging rules stand unchanged. Drift-check before every
+  round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `f4955e0e` (2026-08-06, v4 4.8.0-dev.175),
   adopted at the found-bugs convergence round's unification — NO v4
   drift debt remains.** v4 HEAD `3fa36825` is TWO commits past it,

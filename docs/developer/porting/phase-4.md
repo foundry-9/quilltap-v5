@@ -4256,3 +4256,63 @@ detached worktree on any further drift
 The distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged. Drift-check before every round —
 v4 ships daily.
+
+## The P4.D56 Bug 44 impersonation-overlay round (2026-08-07) — CLOSED
+
+The pre-announced drift round ran and UNIFIED on main the same day v4
+shipped it: `62c63dc3` (4.8.0-dev.178) implements the #39-ruled overlay
+— impersonation never writes `controlledBy`, the new
+`isUserDrivenSeat` helper gates attribution and who-responds, and the
+owner-seat readers deliberately stay on the column. v5 absorbed it
+whole (order `work-orders/p4.d56-impersonation-overlay-drift.md`,
+CLOSED; round record in `status-log.md`): the helper + the two
+`salon.rs` handler rewrites + the exact change-list threading, the
+keep-list verified against v4, twelve moving + twelve neutrality
+families fresh at the pin, and the impersonation beat re-gestured BACK
+(the Stop button returned to the participant card, stop driven through
+the UI). Gate: 419 binaries / 1,956 / 0; ng 294 / 4,015; Playwright
+189/189 zero skips. Versions: core 0.0.509, harness 0.0.432, SPA
+0.5.431.
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass — long owed, now unblocked** (no drift debt
+   remains): the standing 💸 queue (the OpenRouter vision live send,
+   arm (C)'s boot burst on the Friday copy, the memory-dedup +
+   summaries-regen first run, the Serper live-key smoke, the OpenAI
+   chaining fallback, the MOUNT-partition reapply + encrypted
+   VACUUM-INTO backup, profile management, the Almanack first
+   real-data report, live Taboo, the P4.D49 budget/attribution proofs,
+   OpenRouter pricing with a real key) **plus this round's live
+   surface: a real impersonate → turn-pause → skip → stop cycle on the
+   Friday copy** (the overlay end-to-end, including the healed Stop
+   affordance).
+2. **The sweep-driver rot maintenance pass:** the six tier-1 turn
+   families SKIP-masquerade in `recipe_sweep.py` (extraction rot,
+   flagged at the f4955e0e round, re-confirmed at this one) plus the
+   four families named in the f4955e0e round record (prose parens; the
+   wrong env name for `turn_pause_filters`; `help-sync-guards`
+   staging).
+3. **Small follow-ups:** the conversation-chunks `upsert` create-arm
+   corpus op (minted-id normalizer machinery); P4.D55's vision-path
+   headers/abort pinning gap; the P4.D54 AllLLMPause live-opener e2e
+   beat (seeded paused all-LLM chat); P4.D51's bug-43 tier-2 per-delete
+   `cleanup_thumbnails` (`StorageBackend` seam); the
+   `impersonating_ids` four-site extraction consolidation (this
+   round's style note).
+4. **The standing pools:** `p4.9i2` (help surface — now also carrying
+   `help/chat-participants.md`), `p4.9l` (composer toolbar), the rest
+   of the `p4.9h2` bucket, the BUILTIN TF-IDF manifest decision, the
+   P4.D41 tier-2 item 9 fixture.
+
+**Standing regen note:** the oracle baseline is **`62c63dc3`**
+(4.8.0-dev.178, adopted at the P4.D56 unification). Oracles regenerate
+straight from `~/source/quilltap-server` while HEAD stays there; pin a
+detached worktree on any further drift
+(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+At this round's regen v4's tree carried two dirty files
+(`app/about/AboutView.tsx` + an image) — verified outside every oracle
+import graph, justification in the round record. The
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged. Drift-check before every round —
+v4 ships daily.

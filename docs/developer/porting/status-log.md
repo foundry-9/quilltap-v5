@@ -61387,3 +61387,72 @@ committed `salon-*.db` (P4.D53 vintage), `chat-cast-{main,mount}.db`, and the
 turn-family builders' /tmp fixtures. The three tier-1 pure families
 (`select-speaker`, `turn-pause-filters`, `message-attribution`) grew
 in-case-constructed overlay inputs — no committed DB touched.
+
+---
+
+## Round record — the P4.D56 Bug 44 impersonation-overlay drift catch-up (2026-08-07)
+
+**UNIFIED on main. P4.D56 CLOSED; the oracle baseline MOVES `f4955e0e` →
+`62c63dc3` (v4 4.8.0-dev.178) and the drift debt is CLEARED.** Single-lane
+round (branch `claude/p4-impersonation-overlay-drift-49df8c`, two commits,
+zero cherry-pick conflicts). The pre-announced Bug 44 round: v4 implemented
+the #39-ruled overlay correction and v5 absorbed it as an ordinary drift
+re-port. The impersonation beat re-gestured BACK exactly as the ruling
+predicted — the Stop-Impersonate button returns to the participant card.
+
+**The §3 unification review: NO blocking findings.** The whole combined diff
+was read hunk-by-hunk against v4's `62c63dc3`: the change-list sites match
+one-for-one (including the subtle halves — `find_user_participant_name`'s
+fallback staying on the column while only the selected branch widens;
+`is_user_driven_turn`'s restructure proven truth-table-neutral by the
+output-neutral `answer_confirmation_tier3` regen plus the extended unit
+test), the keep-list is genuinely untouched (ownership readers gained v4's
+new doc comments, code unchanged), the enclave select call passes `None`
+faithfully (v4's enclave omits the optional param), and no SPA component
+logic moved (v4 shipped zero client changes; v5's gates are byte-parallel).
+One non-blocking style note: the `impersonatingParticipantIds` JSON
+extraction is duplicated at four sites (`participant_resolver`,
+`turn_orchestrator`, `user_identity_resolver`, `salon.rs` inline) — a
+post-port consolidation candidate, not corrected here to keep the round
+drift-only.
+
+**Gate (all green):** fmt; clippy both feature sets; release build;
+`cargo test --workspace` with the round's 40+-var env block = **419 test
+binaries / 1,956 tests / 0 failed** (exit 0; +5 unit tests from the round's
+mirrored v4 suites); ng test **294 files / 4,015**; ng build clean; full
+Playwright **189/189 zero skips (4.7 m)** including the re-gestured
+impersonation beat driving Stop through the UI.
+
+**Oracle regen at the pin:** all 24 families (12 moving + 12 neutrality)
+regenerated FRESH from `~/source/quilltap-server` at `62c63dc3` and re-run
+by name. v4's tree carried two dirty files at regen time
+(`app/about/AboutView.tsx` + `public/images/about.webp` — in-flight v4
+About-screen client work); both are outside every oracle case's import
+graph (cases drive `lib/` + `app/api/v1/` only), so the checkout regen is
+sound — recorded here as the justification the dirty-tree rule requires.
+The sweep driver ran 18-of-24; the six tier-1 turn families
+(`select_speaker`, `turn_pause_filters`, `message_attribution`,
+`skip_signal`, `turn_order`, `turn_state`) hit the sweep's known
+SKIP-masquerade (extraction rot flagged at the f4955e0e round — still
+unrepaired) and were regenerated + run manually from their test headers,
+each seen passing with the fresh NDJSONs carrying the new overlay rows
+(3 / 4 / 7 `impersonat*` markers). The sweep-rot repair remains a
+maintenance item.
+
+**What the fresh corpora now pin:** an impersonated LLM seat is honoured as
+the active speaker / takes a user_turn / is excluded from the LLM-candidate
+set / is skippable — all with `controlledBy` asserted still `'llm'`; the
+ownership fallback still loses to a genuine owner seat; solo impersonation
+resolves via the selected branch; `salon_mutations`' impersonate arms no
+longer mint the participant row (the scrubber's one-sided-mint sensitivity
+now proves the row is untouched) and `compiledIdentityStacks` no longer
+moves; `chat_cast_routes` / `salon_skip` / the tier-3 spine families all
+green at the new baseline.
+
+**Standing after the round:** the owed dogfood pass is now unblocked and is
+the top next candidate — it inherits the standing 💸 queue plus this
+round's live surface (a real impersonate → turn-pause → stop cycle on the
+Friday copy would exercise the overlay end-to-end). The f4955e0e-round
+sweep-driver rot (six turn families + the four families named there) still
+wants its maintenance pass. Versions: core 0.0.509, harness 0.0.432, SPA
+0.5.431; host/web/cli/tauri unchanged.

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Unified the Bug 44 impersonation-overlay round (single lane): the
+reference-app baseline moves to 4.8.0-dev.178 and the drift debt is
+cleared. Impersonation is a pure overlay end to end — starting or
+stopping never writes the seat's control column or recompiles identity
+stacks, the turn-resolution gates consult the overlay, and the
+participant card's Stop-Impersonate button is back in solo-shaped
+casts, proven by the re-gestured end-to-end walk driving Stop through
+the card itself. Gate: 419 test binaries with 1,956 tests and no
+failures, all twenty-four affected differential families regenerated
+fresh against the reference app and green, the Angular suite at 4,015
+tests, and the full end-to-end suite at 189 passing with zero skips.
+Versions: core 0.0.509, harness 0.0.432, SPA 0.5.431.
+
 Re-gestured the salon impersonation walk to the Bug 44 overlay: it now
 checks that the seat's control column does not flip, that the
 Stop-Impersonate button stays on the participant card, and that stopping
