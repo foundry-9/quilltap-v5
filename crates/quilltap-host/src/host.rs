@@ -646,6 +646,7 @@ impl EngineAssembler for HostAssembler {
             FsTranscriptStore {
                 transcripts_dir: self.base_dir.join("logs").join("terminals"),
             },
+            crate::files_store::LocalStorageBackend::new(self.base_dir.join("files")),
         ));
         self.rt.spawn(danger_scan_loop(
             db.clone(),
@@ -1223,6 +1224,7 @@ async fn maintenance_loop(
     grace_ms: u64,
     interval_ms: u64,
     transcripts: FsTranscriptStore,
+    backend: crate::files_store::LocalStorageBackend,
 ) {
     if !sleep_or_stop(&mut stop, grace_ms).await {
         return;
@@ -1232,13 +1234,13 @@ async fn maintenance_loop(
         .read_main(quilltap_core::db::instance_settings::get_last_maintenance_sweep_at)
         .unwrap_or(None); // read failure → run anyway (v4 warns + runs)
     if should_run_startup_tick(now, last) {
-        let _ = run_scheduled_maintenance(&db, now, &transcripts).await;
+        let _ = run_scheduled_maintenance(&db, now, &transcripts, &backend).await;
     }
     loop {
         if !sleep_or_stop(&mut stop, interval_ms).await {
             break;
         }
-        let _ = run_scheduled_maintenance(&db, now_unix_ms(), &transcripts).await;
+        let _ = run_scheduled_maintenance(&db, now_unix_ms(), &transcripts, &backend).await;
     }
 }
 

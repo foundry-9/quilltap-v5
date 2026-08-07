@@ -159,11 +159,37 @@ pub fn build_folder_storage_path(project_id: Option<&str>, folder_path: &str) ->
     }
 }
 
+/// The storage-key prefix (directory) every cached thumbnail lives under — v4
+/// `THUMBNAIL_KEY_PREFIX` (`thumbnail-utils.ts`).
+pub const THUMBNAIL_KEY_PREFIX: &str = "_thumbnails";
+
 /// v4 `buildThumbnailStorageKey` (`thumbnail-utils.ts:51`) —
 /// `_thumbnails/{fileId}_{size}.webp` (the deprecated `userId` param is ignored
 /// in v4 and dropped here).
 pub fn build_thumbnail_storage_key(file_id: &str, size: i64) -> String {
-    format!("_thumbnails/{file_id}_{size}.webp")
+    format!("{THUMBNAIL_KEY_PREFIX}/{file_id}_{size}.webp")
+}
+
+/// Inverse of [`build_thumbnail_storage_key`] — v4 `parseThumbnailStorageKey`
+/// (`thumbnail-utils.ts`, bug 43). Pull the source `fileId` back out of a
+/// thumbnail storage key, returning `None` for anything that doesn't match the
+/// canonical `_thumbnails/{uuid}_{size}.webp` shape (so the orphan sweep skips
+/// rather than blindly deletes). Transcribes v4's exact regex: the UUID's
+/// 8-4-4-4-12 hex shape (hyphens, never underscores) so the last underscore
+/// reliably separates it from the size.
+pub fn parse_thumbnail_storage_key(storage_key: &str) -> Option<(String, i64)> {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(
+            r"^_thumbnails/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_(\d+)\.webp$",
+        )
+        .expect("thumbnail key regex")
+    });
+    let caps = re.captures(storage_key)?;
+    let file_id = caps.get(1)?.as_str().to_string();
+    let size = caps.get(2)?.as_str().parse::<i64>().ok()?;
+    Some((file_id, size))
 }
 
 /// v4 `isMountBlobStorageKey` (`project-store-bridge.ts:70`).
@@ -487,6 +513,19 @@ pub trait StorageBackend: Send + Sync {
     /// Idempotent (a missing file succeeds — v4's ENOENT-tolerant delete).
     fn delete(&self, key: &str) -> Result<(), String>;
     fn exists(&self, key: &str) -> Result<bool, String>;
+
+    /// v4 `getMetadata().capabilities.list` — whether this backend can enumerate
+    /// storage keys under a prefix. Default `false`, so the orphan-thumbnail
+    /// sweep reports zeros on a backend that cannot list (v4 `listRaw`).
+    fn supports_list(&self) -> bool {
+        false
+    }
+    /// List every storage key under `prefix` recursively (v4 `backend.list`).
+    /// Only called when [`supports_list`](StorageBackend::supports_list) is true;
+    /// the default is unsupported. `max_keys` caps the result.
+    fn list(&self, _prefix: &str, _max_keys: Option<usize>) -> Result<Vec<String>, String> {
+        Err("list is not supported by this storage backend".to_string())
+    }
 }
 
 /// A backend for an instance with no disk layer wired: every op fails loud
@@ -605,6 +644,127 @@ pub fn delete_raw(backend: &dyn StorageBackend, storage_key: &str) -> Result<(),
     backend
         .delete(storage_key)
         .map_err(|msg| format!("Failed to delete raw content at '{storage_key}': {msg}"))
+}
+
+/// v4 `FileStorageManager.listRaw` (`manager.ts`, bug 43) — every storage key
+/// under `prefix` (recursive). A backend without the `list` capability yields an
+/// empty list rather than throwing; a listing FAILURE is wrapped and returned.
+pub fn list_raw(
+    backend: &dyn StorageBackend,
+    prefix: &str,
+    max_keys: Option<usize>,
+) -> Result<Vec<String>, String> {
+    if !backend.supports_list() {
+        return Ok(Vec::new());
+    }
+    backend
+        .list(prefix, max_keys)
+        .map_err(|msg| format!("Failed to list raw content under '{prefix}': {msg}"))
+}
+
+/// The orphaned-thumbnail sweep's result — v4 `OrphanedThumbnailSweepResult`
+/// (`sweep-orphaned-thumbnails.ts`, bug 43).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OrphanedThumbnailSweep {
+    /// Total cache entries examined.
+    pub scanned: usize,
+    /// Entries whose source file was gone and were deleted.
+    pub deleted: usize,
+    /// Entries whose name didn't match the canonical shape (skipped, not deleted).
+    pub unparseable: usize,
+}
+
+/// v4 `sweepOrphanedThumbnails` (`sweep-orphaned-thumbnails.ts`, bug 43).
+///
+/// `_thumbnails/{fileId}_{size}.webp` is a derived cache regenerated on demand.
+/// In-app deletes call `cleanup_thumbnails`, but a file that left by any OTHER
+/// route (a restore, a delete-all, an out-of-app edit) strands its thumbnails and
+/// nothing reaps them, so the directory only grows. This enumerates the cache,
+/// parses the leading `fileId` off each entry, and deletes those whose source
+/// `files` row is gone. Because the cache is derived, deletion is always safe;
+/// unparseable names are skipped (never deleted blind). Never throws — a
+/// storage/DB error on one entry is swallowed and the sweep reports what it
+/// managed.
+pub fn sweep_orphaned_thumbnails(db: &Db, backend: &dyn StorageBackend) -> OrphanedThumbnailSweep {
+    let mut result = OrphanedThumbnailSweep::default();
+
+    let keys = match list_raw(backend, THUMBNAIL_KEY_PREFIX, None) {
+        Ok(keys) => keys,
+        Err(e) => {
+            tracing::warn!(target: "quilltap::maintenance", error = %e, "Orphaned-thumbnail sweep: listing failed");
+            return result;
+        }
+    };
+    result.scanned = keys.len();
+    if keys.is_empty() {
+        return result;
+    }
+
+    // Parse every key up front so the DB existence check can be batched.
+    let mut key_to_file_id: Vec<(String, String)> = Vec::new();
+    for key in keys {
+        match parse_thumbnail_storage_key(&key) {
+            Some((file_id, _size)) => key_to_file_id.push((key, file_id)),
+            None => result.unparseable += 1,
+        }
+    }
+    if key_to_file_id.is_empty() {
+        return result;
+    }
+
+    let unique_ids: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        key_to_file_id
+            .iter()
+            .filter(|(_, id)| seen.insert(id.clone()))
+            .map(|(_, id)| id.clone())
+            .collect()
+    };
+    let existing: std::collections::HashSet<String> = match db
+        .read_main(move |c| existing_file_ids(c, &unique_ids))
+    {
+        Ok(set) => set,
+        Err(e) => {
+            tracing::warn!(target: "quilltap::maintenance", error = %e, "Orphaned-thumbnail sweep: files existence check failed");
+            return result;
+        }
+    };
+
+    for (key, file_id) in &key_to_file_id {
+        if existing.contains(file_id) {
+            continue;
+        }
+        match delete_raw(backend, key) {
+            Ok(()) => result.deleted += 1,
+            Err(e) => {
+                tracing::warn!(target: "quilltap::maintenance", key = %key, error = %e, "Failed to delete orphaned thumbnail — continuing");
+            }
+        }
+    }
+    result
+}
+
+/// The subset of `ids` that have a surviving `files` row (v4
+/// `files.findByIds(...).map(f => f.id)`).
+fn existing_file_ids(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<std::collections::HashSet<String>, DbError> {
+    let mut out = std::collections::HashSet::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("SELECT id FROM files WHERE id IN ({placeholders})");
+    let mut stmt = conn.prepare(&sql)?;
+    let params = rusqlite::params_from_iter(ids.iter());
+    let rows = stmt.query_map(params, |r| r.get::<_, String>(0))?;
+    for id in rows {
+        out.insert(id?);
+    }
+    Ok(out)
 }
 
 /// v4 `deleteMountBlob` (`project-store-bridge.ts:198`) — drop every link to
@@ -1440,6 +1600,38 @@ impl crate::photos::save_image_to_album::FileBytesStore for ProductionFileBytes 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thumbnail_storage_key_round_trips_and_rejects_garbage() {
+        let id = "f1000000-0000-4000-8000-000000000001";
+        let key = build_thumbnail_storage_key(id, 150);
+        assert_eq!(
+            key,
+            "_thumbnails/f1000000-0000-4000-8000-000000000001_150.webp"
+        );
+        assert_eq!(
+            parse_thumbnail_storage_key(&key),
+            Some((id.to_string(), 150))
+        );
+        // Non-canonical shapes are skipped (return None) so the sweep never
+        // deletes them blind (v4's regression cases).
+        assert_eq!(
+            parse_thumbnail_storage_key("_thumbnails/bad-name.webp"),
+            None
+        );
+        assert_eq!(
+            parse_thumbnail_storage_key("_thumbnails/not-a-uuid_150.webp"),
+            None
+        );
+        assert_eq!(
+            parse_thumbnail_storage_key("other/f1000000-0000-4000-8000-000000000001_150.webp"),
+            None
+        );
+        assert_eq!(
+            parse_thumbnail_storage_key("_thumbnails/f1000000-0000-4000-8000-000000000001_150.png"),
+            None
+        );
+    }
 
     #[test]
     fn safe_filename_matches_v4() {

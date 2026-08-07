@@ -115,6 +115,24 @@ async function main(): Promise<void> {
     [],
   );
 
+  // Bug 43: one LIVE thumbnail source. Its `_thumbnails/{id}_{size}.webp` cache
+  // entry (seeded on disk by the oracle case + the Rust test) must SURVIVE the
+  // orphan-thumbnail sweep, where the orphan's (a fileId with NO files row) is
+  // reaped and a garbage name is skipped. The id is pinned so all three seed the
+  // same corpus.
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      sha256: '0'.repeat(64),
+      originalFilename: 'live-thumb-source.png',
+      mimeType: 'image/png',
+      size: 10,
+      source: 'UPLOADED',
+      category: 'IMAGE',
+    } as never,
+    { id: 'f1000000-0000-4000-8000-000000000001' },
+  );
+
   const now = Date.now();
   const ago = (days: number) => new Date(now - days * DAY_MS).toISOString();
 

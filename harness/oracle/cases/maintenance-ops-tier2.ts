@@ -83,6 +83,22 @@ async function main(): Promise<void> {
   if (existsSync(spec.explicitTranscriptPath)) rmSync(spec.explicitTranscriptPath);
   writeFileSync(spec.explicitTranscriptPath, 'old explicit-path transcript\n');
 
+  // Bug 43: the orphan-thumbnail sweep corpus, on disk under
+  // `<QUILLTAP_DATA_DIR>/files/_thumbnails/` (the local backend's base). A LIVE
+  // entry (its fileId f1000000… has a `files` row → survives), an ORPHAN
+  // (f2000000… has none → deleted), and a GARBAGE name (unparseable → skipped).
+  const thumbsDir = join(scratch, 'files', '_thumbnails');
+  mkdirSync(thumbsDir, { recursive: true });
+  writeFileSync(
+    join(thumbsDir, 'f1000000-0000-4000-8000-000000000001_150.webp'),
+    'live-thumbnail',
+  );
+  writeFileSync(
+    join(thumbsDir, 'f2000000-0000-4000-8000-000000000002_300.webp'),
+    'orphan-thumbnail',
+  );
+  writeFileSync(join(thumbsDir, 'bad-name.webp'), 'garbage');
+
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'

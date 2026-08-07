@@ -12,15 +12,20 @@
 //!    markdown/HTML, raw provider payloads, thinking traces, memory-gate debug
 //!    logs) plus cold-tiering of their conversation-chunk embeddings — the ported
 //!    [`crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches`];
-//! 4. orphaned mount-index files (belt-and-suspenders after the collapse) —
+//! 4. orphaned store children — mount-index rows whose STORE is gone (v4 bug 9,
+//!    `3bb664f0`) — [`crate::db::doc_mount_file_links::sweep_orphaned_store_children`].
+//!    Runs BEFORE the orphaned-files sweep so a reaped link can drop its file
+//!    too; the boot hook runs it as well, healing a server that has not restarted
+//!    in weeks;
+//! 5. orphaned mount-index files (belt-and-suspenders after the collapse) —
 //!    [`crate::db::doc_mount_file_links::sweep_orphaned_files`];
-//!    (4b, v5-only, P4.31) mount-index rows whose STORE is gone —
-//!    [`crate::db::doc_mount_file_links::sweep_orphaned_store_children`]. The
-//!    boot hook runs it too; this is the arm that heals a server which has not
-//!    restarted in weeks;
-//! 5. closed terminal (Ariel) PTY sessions and their transcript files —
+//! 6. closed terminal (Ariel) PTY sessions and their transcript files —
 //!    [`cleanup_closed_sessions`], the transcript unlink behind the injected
-//!    [`TranscriptStore`] seam (the fs lives host-side).
+//!    [`TranscriptStore`] seam (the fs lives host-side);
+//! 7. orphaned thumbnails — `_thumbnails/{fileId}_{size}.webp` cache entries
+//!    whose source file is gone (v4 bug 43, `7bcd8515`) —
+//!    [`crate::services::file_storage::sweep_orphaned_thumbnails`], over the
+//!    injected [`crate::services::file_storage::StorageBackend`].
 //!
 //! Each sweep runs in order and independently try/caught (a failure in one
 //! cannot abort the rest); `lastMaintenanceSweepAt` is recorded at the end
@@ -86,17 +91,38 @@ pub struct MaintenanceSweepSummary {
     pub caches_chat_rows_cleared: usize,
     pub caches_message_rows_cleared: usize,
     pub caches_chunk_embeddings_cleared: usize,
+    /// v4 `orphanedStoreChildrenSwept` (bug 9, `3bb664f0`): links / folders /
+    /// documents reaped because their mount point vanished. Runs BEFORE the
+    /// orphaned-files sweep so a reaped link can drop its file too.
+    ///
+    /// ⚠ The reaper this maps from ([`crate::db::doc_mount_file_links::
+    /// sweep_orphaned_store_children`]) is STRICTLY BROADER than v4's: v5 also
+    /// reaps orphaned `doc_mount_chunks` and collected content, where v4 reaps
+    /// only documents. On this maintenance fixture there are no orphaned store
+    /// children, so `documents` and every value are 0 and the shapes agree; the
+    /// chunk-reaping divergence is exercised (and pinned) in
+    /// `store_delete_equivalence`'s reaper arm instead.
+    pub orphaned_store_children_swept: OrphanedStoreChildrenSwept,
     /// Orphaned `doc_mount_files` rows swept.
     pub orphaned_files_swept: usize,
-    /// P4.31 (v5-only): rows reaped because their mount point no longer exists
-    /// — links / folders / chunks / collected content, summed.
-    pub parentless_store_rows_reaped: usize,
+    /// v4 `orphanedThumbnailsSwept` (bug 43, `7bcd8515`).
+    pub orphaned_thumbnails_swept: crate::services::file_storage::OrphanedThumbnailSweep,
     /// Terminal-session rows reaped / transcript files removed.
     pub terminal_rows: usize,
     pub terminal_transcripts: usize,
-    /// Sweeps that threw (and were swallowed so the rest could run):
-    /// `jobs` / `assets` / `orphans` / `parentless` / `terminals`.
+    /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
+    /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
+    /// `orphan-thumbnails` (v4's failure vocabulary).
     pub failures: Vec<String>,
+}
+
+/// v4 `orphanedStoreChildrenSwept` summary shape (bug 9): `{links, folders,
+/// documents}`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OrphanedStoreChildrenSwept {
+    pub links: usize,
+    pub folders: usize,
+    pub documents: usize,
 }
 
 /// v4 `terminalSessions.cleanupClosedSessions(olderThan)`: reap closed terminal
@@ -148,6 +174,7 @@ pub async fn run_scheduled_maintenance(
     db: &Db,
     now_ms: i64,
     transcripts: &dyn TranscriptStore,
+    backend: &dyn crate::services::file_storage::StorageBackend,
 ) -> MaintenanceSweepSummary {
     let mut summary = MaintenanceSweepSummary {
         jobs_completed: 0,
@@ -160,8 +187,9 @@ pub async fn run_scheduled_maintenance(
         caches_chat_rows_cleared: 0,
         caches_message_rows_cleared: 0,
         caches_chunk_embeddings_cleared: 0,
+        orphaned_store_children_swept: OrphanedStoreChildrenSwept::default(),
         orphaned_files_swept: 0,
-        parentless_store_rows_reaped: 0,
+        orphaned_thumbnails_swept: Default::default(),
         terminal_rows: 0,
         terminal_transcripts: 0,
         failures: Vec::new(),
@@ -198,9 +226,44 @@ pub async fn run_scheduled_maintenance(
         Err(_) => summary.failures.push("caches".to_string()),
     }
 
-    // 4. Orphaned mount-index files — AFTER the collapse, mopping up stragglers.
-    // An absent mount-index partition is v4's `getRawMountIndexDatabase() ===
-    // null → 0` (not a failure).
+    // 4. Orphaned store children — v4 bug 9 (`3bb664f0`). Runs BEFORE the
+    // orphaned-files sweep so a reaped link can drop its file too. v5's reaper is
+    // STRICTLY BROADER (it also reaps orphaned chunks + collected content — see
+    // the summary field's note); the v4-shaped `{links, folders, documents}`
+    // summary maps `documents` from v5's content count. `ensure_builtin_mounts`
+    // runs the reaper at boot too (healing a desktop instance on next launch); a
+    // long-running server may not restart for weeks, so it rides the daily sweep.
+    // An absent mount-index partition is v4's `null → 0` (not a failure).
+    match db
+        .write(|writers| match writers.mount_index() {
+            Some(w) => {
+                crate::db::doc_mount_file_links::sweep_orphaned_store_children(w.connection())
+            }
+            None => Ok(Default::default()),
+        })
+        .await
+    {
+        Ok(r) => {
+            summary.orphaned_store_children_swept = OrphanedStoreChildrenSwept {
+                links: r.links,
+                folders: r.folders,
+                documents: r.content,
+            }
+        }
+        Err(e) => {
+            // The swallow-site rule (P4.9G3's lesson): a failure that only
+            // becomes a summary key leaves nothing to diagnose with.
+            tracing::error!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "The orphaned-store-children reaper failed during the maintenance sweep",
+            );
+            summary.failures.push("orphan-store-children".to_string());
+        }
+    }
+
+    // 5. Orphaned mount-index files — AFTER the store-children reaper, mopping up
+    // stragglers. An absent mount-index partition is v4's `null → 0`.
     match db
         .write(|writers| match writers.mount_index() {
             Some(w) => crate::db::doc_mount_file_links::sweep_orphaned_files(w.connection()),
@@ -212,36 +275,7 @@ pub async fn run_scheduled_maintenance(
         Err(_) => summary.failures.push("orphans".to_string()),
     }
 
-    // 4b. P4.31 (v5-only, dogfood finding #58): the parentless-store reaper.
-    // `ensure_builtin_mounts` runs it at boot, which heals a desktop instance on
-    // its next launch; a long-running server (the Docker deployment) may not
-    // restart for weeks, so it rides the daily sweep too. Same failure shape as
-    // 4 above: an absent mount-index partition is v4's `null → 0`, not a
-    // failure. v4 has no counterpart, so this is reported under its own key and
-    // never joins `failures`' v4-shaped list under an existing name.
-    match db
-        .write(|writers| match writers.mount_index() {
-            Some(w) => {
-                crate::db::doc_mount_file_links::sweep_orphaned_store_children(w.connection())
-            }
-            None => Ok(Default::default()),
-        })
-        .await
-    {
-        Ok(r) => summary.parentless_store_rows_reaped = r.links + r.folders + r.chunks + r.content,
-        Err(e) => {
-            // The swallow-site rule (P4.9G3's lesson): a failure that only
-            // becomes a summary key leaves nothing to diagnose with.
-            tracing::error!(
-                target: "quilltap::maintenance",
-                error = %e,
-                "The parentless-store-children reaper failed during the maintenance sweep",
-            );
-            summary.failures.push("parentless".to_string());
-        }
-    }
-
-    // 5. Closed terminal sessions + transcript files.
+    // 6. Closed terminal sessions + transcript files.
     let cutoff = retention_cutoff_iso(CLOSED_TERMINAL_RETENTION_DAYS, now_ms);
     match cleanup_closed_sessions(db, &cutoff, transcripts).await {
         Ok((rows, files)) => {
@@ -250,6 +284,13 @@ pub async fn run_scheduled_maintenance(
         }
         Err(_) => summary.failures.push("terminals".to_string()),
     }
+
+    // 7. Orphaned thumbnails — v4 bug 43 (`7bcd8515`). The sweep never throws
+    // (storage/DB errors are swallowed internally and logged), so — like v4's
+    // `sweepOrphanedThumbnails` — the `orphan-thumbnails` failure key is
+    // effectively unreachable and never joins `failures`.
+    summary.orphaned_thumbnails_swept =
+        crate::services::file_storage::sweep_orphaned_thumbnails(db, backend);
 
     // Record the pass regardless of per-sweep failures ("last attempted pass").
     // A record failure is warned-and-swallowed in v4; same here.
@@ -389,7 +430,13 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let summary = rt.block_on(run_scheduled_maintenance(&db, now_ms, &NoTranscriptStore));
+        let backend = crate::services::file_storage::NotConfiguredStorageBackend;
+        let summary = rt.block_on(run_scheduled_maintenance(
+            &db,
+            now_ms,
+            &NoTranscriptStore,
+            &backend,
+        ));
 
         // jobs + assets + caches failed (missing chats/background_jobs tables);
         // orphans hit the absent mount-index partition → 0, NOT a failure;

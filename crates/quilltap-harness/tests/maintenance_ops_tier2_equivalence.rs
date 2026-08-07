@@ -1,18 +1,22 @@
 //! Tier-2 differential test: the whole daily maintenance pass (P4.1d, v4
-//! `runScheduledMaintenance`) — proving the two newly-ported repo ops
-//! (`sweep_orphaned_files`, `cleanup_closed_sessions`) inside the real
-//! four-sweep orchestration + the `lastMaintenanceSweepAt` stamp.
+//! `runScheduledMaintenance`) — proving the ported repo ops inside the real
+//! seven-step orchestration (bug 9's store-children reaper runs before the
+//! orphaned-files sweep; bug 43's orphan-thumbnail sweep is step 7) + the
+//! `lastMaintenanceSweepAt` stamp.
 //!
 //! Both sides COPY the same two-DB fixture, create the same transcript files
 //! (the default-path one in their own logs dir + the pinned explicit-path
-//! one), and run one maintenance pass with their own wall clock (the
-//! fixture's rows are keyed in DAYS relative to build time, so minutes of
-//! skew cannot flip a window). Diffed exactly: the summary counts (jobs
-//! completed/dead, assets zeros, orphans swept, terminal rows/transcripts,
-//! failures EMPTY), the surviving `background_jobs` (id+status) /
-//! `terminal_sessions` / `doc_mount_files` rows, the transcript-file
-//! outcomes, and the stamp's presence (its VALUE is wall-clock — presence +
-//! parseability only).
+//! one), seed the same `_thumbnails/` corpus on disk (a live entry whose
+//! `files` row exists, an orphan, and a garbage name), and run one
+//! maintenance pass with their own wall clock (the fixture's rows are keyed
+//! in DAYS relative to build time, so minutes of skew cannot flip a window).
+//! Diffed exactly: the summary counts (jobs completed/dead, assets zeros,
+//! `orphanedStoreChildrenSwept` {0,0,0}, orphans swept,
+//! `orphanedThumbnailsSwept` {scanned 3, deleted 1, unparseable 1}, terminal
+//! rows/transcripts, failures EMPTY), the surviving `background_jobs`
+//! (id+status) / `terminal_sessions` / `doc_mount_files` rows, the
+//! transcript-file outcomes, and the stamp's presence (its VALUE is
+//! wall-clock — presence + parseability only).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -31,6 +35,7 @@
 use quilltap_core::clock::now_unix_ms;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::scheduled_maintenance::{run_scheduled_maintenance, TranscriptStore};
+use quilltap_host::files_store::LocalStorageBackend;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -138,7 +143,34 @@ fn maintenance_ops_match_oracle() {
     let store = FsStore {
         dir: transcripts_dir.clone(),
     };
-    let summary = rt.block_on(run_scheduled_maintenance(&db, now_unix_ms(), &store));
+
+    // Bug 43: the orphan-thumbnail sweep corpus, on disk under `<files>/_thumbnails/`
+    // (the local backend base). Mirrors the oracle case: a LIVE entry (its fileId
+    // f1000000… has a `files` row in the fixture → survives), an ORPHAN (f2000000…
+    // has none → deleted), and a GARBAGE name (unparseable → skipped).
+    let files_dir = std::env::temp_dir().join(format!("qt-maint-ops-files-{pid}"));
+    let _ = std::fs::remove_dir_all(&files_dir);
+    let thumbs_dir = files_dir.join("_thumbnails");
+    std::fs::create_dir_all(&thumbs_dir).unwrap();
+    std::fs::write(
+        thumbs_dir.join("f1000000-0000-4000-8000-000000000001_150.webp"),
+        "live-thumbnail",
+    )
+    .unwrap();
+    std::fs::write(
+        thumbs_dir.join("f2000000-0000-4000-8000-000000000002_300.webp"),
+        "orphan-thumbnail",
+    )
+    .unwrap();
+    std::fs::write(thumbs_dir.join("bad-name.webp"), "garbage").unwrap();
+    let backend = LocalStorageBackend::new(files_dir.clone());
+
+    let summary = rt.block_on(run_scheduled_maintenance(
+        &db,
+        now_unix_ms(),
+        &store,
+        &backend,
+    ));
 
     // 1) Summary equality (v4 camelCase shape).
     let got_summary = json!({
@@ -155,21 +187,26 @@ fn maintenance_ops_match_oracle() {
             "messageRowsCleared": summary.caches_message_rows_cleared,
             "chunkEmbeddingsCleared": summary.caches_chunk_embeddings_cleared,
         },
-        // `parentless_store_rows_reaped` is deliberately absent: it is P4.31's
-        // v5-only sweep (step 4b), which v4's summary has no key for. It must be
-        // a no-op on THIS fixture, or the row diffs below would compare v5's
-        // reaped state against v4's un-reaped one — asserted just below rather
-        // than assumed.
+        // [bug 9] v4 now emits `orphanedStoreChildrenSwept` too (`3bb664f0`),
+        // run BEFORE the files sweep. It is {0,0,0} on this fixture (no orphaned
+        // store children — the chunk-reaping divergence is covered in
+        // store_delete_equivalence's reaper arm), so the shapes agree.
+        "orphanedStoreChildrenSwept": {
+            "links": summary.orphaned_store_children_swept.links,
+            "folders": summary.orphaned_store_children_swept.folders,
+            "documents": summary.orphaned_store_children_swept.documents,
+        },
         "orphanedFilesSwept": summary.orphaned_files_swept,
+        // [bug 43] The orphan-thumbnail sweep: {scanned:3, deleted:1 (the orphan),
+        // unparseable:1 (bad-name.webp)} — the live entry survives.
+        "orphanedThumbnailsSwept": {
+            "scanned": summary.orphaned_thumbnails_swept.scanned,
+            "deleted": summary.orphaned_thumbnails_swept.deleted,
+            "unparseable": summary.orphaned_thumbnails_swept.unparseable,
+        },
         "terminals": { "rows": summary.terminal_rows, "transcripts": summary.terminal_transcripts },
         "failures": summary.failures,
     });
-    assert_eq!(
-        summary.parentless_store_rows_reaped, 0,
-        "the maintenance fixture grew rows whose mount point is gone; P4.31's v5-only \
-         sweep now reaps them here, so this family no longer compares like for like. \
-         Either restore the fixture or move the coverage to store_delete_equivalence."
-    );
     let want_summary = oracle_line(&oracle_text, "summary");
     assert_eq!(
         &got_summary,

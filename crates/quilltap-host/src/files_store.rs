@@ -182,6 +182,67 @@ impl StorageBackend for LocalStorageBackend {
             Err(e) => Err(format!("Failed to check if file '{key}' exists: {e}")),
         }
     }
+
+    /// v4 `LocalFileStorageBackend.getMetadata().capabilities.list` = true.
+    fn supports_list(&self) -> bool {
+        true
+    }
+
+    /// v4 `LocalFileStorageBackend.list` (`local/index.ts:492`): recurse the
+    /// prefix directory, skipping hidden files (`.`-prefixed) and legacy
+    /// `.meta.json` sidecars, returning `{currentPrefix}/{name}` keys. A missing
+    /// prefix directory (ENOENT) yields the keys collected so far rather than
+    /// throwing; any other read error propagates.
+    fn list(&self, prefix: &str, max_keys: Option<usize>) -> Result<Vec<String>, String> {
+        let prefix_path = self.build_safe_path(prefix)?;
+        let start_prefix = prefix.trim_end_matches('/').to_string();
+        let mut results: Vec<String> = Vec::new();
+        list_dir(&prefix_path, &start_prefix, max_keys, &mut results)
+            .map_err(|e| format!("Failed to list files with prefix '{prefix}': {e}"))?;
+        Ok(results)
+    }
+}
+
+/// Recursive helper for [`LocalStorageBackend::list`] — v4's inner `listDir`.
+fn list_dir(
+    dir_path: &Path,
+    current_prefix: &str,
+    max_keys: Option<usize>,
+    results: &mut Vec<String>,
+) -> io::Result<()> {
+    if max_keys.is_some_and(|m| results.len() >= m) {
+        return Ok(());
+    }
+    let entries = match with_fs_retry(|| std::fs::read_dir(dir_path)) {
+        Ok(rd) => rd,
+        // A missing / inaccessible directory is not an error (v4 returns).
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    for entry in entries {
+        if max_keys.is_some_and(|m| results.len() >= m) {
+            break;
+        }
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // Skip hidden files and legacy .meta.json sidecars (v4).
+        if name.starts_with('.') || name.ends_with(".meta.json") {
+            continue;
+        }
+        let full_key = if current_prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{current_prefix}/{name}")
+        };
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            list_dir(&entry.path(), &full_key, max_keys, results)?;
+        } else {
+            results.push(full_key);
+        }
+    }
+    Ok(())
 }
 
 // ============================================================================

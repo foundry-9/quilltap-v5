@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.D51 (bug 43): the daily maintenance pass now sweeps orphaned thumbnails —
+`_thumbnails/{fileId}_{size}.webp` cache entries whose source file left by a
+route that never cleaned them up (a restore, a delete-all, an out-of-app
+edit) — deleting the strays and skipping unparseable names. Adds a `list`
+capability to the storage backend (the local-disk backend enumerates the
+directory; backends that cannot list report zero). The maintenance summary is
+reshaped to the reference app's order and shape (the store-children reaper now
+runs before the orphaned-files sweep, and reports `{links, folders,
+documents}`; the thumbnail sweep reports `{scanned, deleted, unparseable}`).
+
 P4.D51 (bug 9): the reference app now deletes a document store's children
 in one transaction, leaking no orphaned document bodies or group links —
 the cascade fix this port made first. The store-delete differential's
