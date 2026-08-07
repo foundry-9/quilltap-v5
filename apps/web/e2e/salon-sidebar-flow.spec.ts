@@ -134,7 +134,10 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     page,
   }) => {
     const chatId = await openSoloVoyage(page);
-    expect(await readTimelineMode(page, chatId)).toBeNull();
+    // The P4.D53 salon-fixture regen seeds Solo Voyage `timelineMode:
+    // 'narrative'` (a NON-default value, so the bug-22 projection is provable).
+    // The beat starts from that seeded state and still walks both directions.
+    expect(await readTimelineMode(page, chatId)).toBe('narrative');
 
     await openSidebarSection(page, 'Chat');
     const clock = page
@@ -142,26 +145,26 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
       .filter({ hasText: 'The Story’s Clock' })
       .locator('select');
     await expect(clock).toBeVisible({ timeout: 10_000 });
-    // A NULL column reads as Real time (v4's `=== 'narrative' ? … : 'realtime'`),
-    // and the helper paragraph is the calendar-on-the-wall one.
-    await expect(clock).toHaveValue('realtime');
-    await expect(page.locator('qt-chat-section')).toContainText(
-      'Memories are filed by the calendar on the wall',
-    );
-
-    await clock.selectOption('narrative');
-    await expect(page.getByText('The story now keeps its own hours')).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(clock).toHaveValue('narrative');
     await expect(page.locator('qt-chat-section')).toContainText('The tale keeps its own hours');
-    // The real column moved.
-    expect(await readTimelineMode(page, chatId)).toBe('narrative');
 
     await clock.selectOption('realtime');
     await expect(page.getByText('The story is back on the clock on the wall')).toBeVisible({
       timeout: 15_000,
     });
+    await expect(page.locator('qt-chat-section')).toContainText(
+      'Memories are filed by the calendar on the wall',
+    );
+    // The real column moved.
     expect(await readTimelineMode(page, chatId)).toBe('realtime');
+
+    await clock.selectOption('narrative');
+    await expect(page.getByText('The story now keeps its own hours')).toBeVisible({
+      timeout: 15_000,
+    });
+    // Back at the fixture's seeded steady state, so no later beat inherits a
+    // surprise.
+    expect(await readTimelineMode(page, chatId)).toBe('narrative');
   });
 
   /**
@@ -187,6 +190,15 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
         .locator('select');
     await expect(clock()).toBeVisible({ timeout: 10_000 });
 
+    // The fixture seeds Solo Voyage at 'narrative', so flip AWAY and BACK —
+    // a real write each time (selecting the current value fires no change).
+    // 'narrative' is the discriminating direction: an unprojected select
+    // seeds to the 'realtime' default, so the post-reload assert below can
+    // only pass if the fresh GET actually delivered the saved column.
+    await clock().selectOption('realtime');
+    await expect(page.getByText('The story is back on the clock on the wall')).toBeVisible({
+      timeout: 15_000,
+    });
     await clock().selectOption('narrative');
     await expect(page.getByText('The story now keeps its own hours')).toBeVisible({
       timeout: 15_000,
@@ -196,12 +208,7 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     await page.reload();
     await openSidebarSection(page, 'Chat');
     await expect(clock()).toHaveValue('narrative');
-
-    // Leave Solo Voyage on the clock the sibling tests expect.
-    await clock().selectOption('realtime');
-    await expect(page.getByText('The story is back on the clock on the wall')).toBeVisible({
-      timeout: 15_000,
-    });
+    // 'narrative' is also the fixture's seeded steady state — nothing to restore.
   });
 
   /**

@@ -52,12 +52,30 @@ const PASCAL_VAULT_A = (
     readFileSync(resolve(FIXTURES_DIR, 'pascal-run-custom-main.db.meta.json'), 'utf8'),
   ) as { vaultA: string }
 ).vaultA;
-/** Aria's vault in the committed salon fixture (survey-verified 2026-07-17). */
-const ARIA_VAULT = '7e056034-f5ae-4fc6-a6ec-6c646b72d016';
+/**
+ * Aria's vault id, READ from the SHARED instance's main partition at seed
+ * time (`characters.characterDocumentMountPointId`). The salon fixture's
+ * vault ids RE-MINT on every rebuild — the f4955e0e round's regen staled the
+ * previous transcribed literal exactly the way the PASCAL_VAULT_A comment
+ * above predicts, so this id is now derived, never transcribed.
+ */
+function ariaVaultId(cli: string): string {
+  const rows = readMainRows(
+    cli,
+    INSTANCE_DIR,
+    "SELECT characterDocumentMountPointId AS v FROM characters WHERE name = 'Aria'",
+  );
+  const v = rows[0]?.v;
+  if (typeof v !== 'string' || v.length === 0) {
+    throw new Error('pascal-tools-fixture: Aria has no vault in the shared instance');
+  }
+  return v;
+}
 
 type Row = Record<string, unknown>;
 
 export function seedPascalToolsFixture(cli: string): void {
+  const ariaVault = ariaVaultId(cli);
   // 1. The throwaway read instance over the committed pascal fixture.
   const src = resolve(ARTIFACTS_DIR, 'pascal-src');
   const srcData = resolve(src, 'data');
@@ -110,7 +128,7 @@ export function seedPascalToolsFixture(cli: string): void {
     }
     const cols = Object.keys(rows[0]);
     const values = rows
-      .map((row) => `(${cols.map((c) => lit(remapVault(row[c]))).join(', ')})`)
+      .map((row) => `(${cols.map((c) => lit(remapVault(row[c], ariaVault))).join(', ')})`)
       .join(',\n');
     runWrite(
       cli,
@@ -123,11 +141,24 @@ export function seedPascalToolsFixture(cli: string): void {
 }
 
 /** The one remap: vault A's mount id → Aria's salon vault. */
-function remapVault(v: unknown): unknown {
+function remapVault(v: unknown, ariaVault: string): unknown {
   if (typeof v !== 'string') {
     return v;
   }
-  return v.split(PASCAL_VAULT_A).join(ARIA_VAULT);
+  return v.split(PASCAL_VAULT_A).join(ariaVault);
+}
+
+/** One CLI `--json` raw-SQL read against `dir`'s MAIN partition. */
+function readMainRows(cli: string, dir: string, sql: string): Row[] {
+  const res = spawnSync(cli, ['db', '--data-dir', dir, '--json', sql], {
+    env: { ...process.env, QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (res.status !== 0) {
+    throw new Error(`pascal-tools-fixture main read failed (${sql}):\n${res.stdout}\n${res.stderr}`);
+  }
+  return JSON.parse(res.stdout) as Row[];
 }
 
 /** One CLI `--json` raw-SQL read against `dir`'s mount partition. */

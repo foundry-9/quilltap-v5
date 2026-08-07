@@ -335,7 +335,7 @@ test.describe('P4.9E3C — Export', () => {
  */
 test.describe('P4.9E3C — speaking as a character', () => {
   test('the cast card holds the impersonation across the refetch it triggers', async ({ page }) => {
-    await openChat(page, 'Solo Voyage');
+    const chatId = await openChat(page, 'Solo Voyage');
     await openSidebarSection(page, 'Participants');
 
     const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();
@@ -343,14 +343,39 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
     await speakAs.click();
 
-    // Neither app's chat GET projects `impersonatingParticipantIds`, so this
-    // sticking at all is the assertion: v5 used to bind the card straight to the
-    // chat record, and the dispatch's own refetch wiped it a moment later.
-    const stop = page.locator(`qt-participant-card button[title="Stop speaking as ${name}"]`);
-    await expect(stop).toBeVisible({ timeout: 15_000 });
-    await expect(stop).toBeVisible({ timeout: 5_000 });
+    // Bug 27 (v4 `bd419ae9`, mirrored by P4.D53): impersonation now WRITES
+    // `controlledBy:'user'` onto the participant, so after the dispatch's own
+    // refetch the impersonated character IS the first user-controlled seat —
+    // `userParticipantId` resolves to her and the card hides the Speak/Stop
+    // button (v4's `!isUserParticipant` gate does the same). The held state's
+    // visible signal is the impersonation badge; the original claim — the
+    // local impersonation surviving the refetch — is unchanged.
+    const card = page.locator('qt-participant-card').filter({ hasText: name });
+    await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 5_000 });
 
-    await stop.click();
+    // The server side of bug 27, through the wire: the participant flipped.
+    const flipped = await page.request.post('/api/dispatch', {
+      data: { type: 'chatGet', chatId },
+    });
+    const flippedBody = (await flipped.json()) as {
+      data?: { chat?: { participants?: Array<{ id: string; controlledBy?: string; character?: { name?: string } }> } };
+    };
+    const target = (flippedBody.data?.chat?.participants ?? []).find(
+      (p) => p.character?.name === name,
+    );
+    expect(target?.controlledBy).toBe('user');
+
+    // Stop without a profile — v4's new else arm hands the seat back to the
+    // model (`controlledBy:'llm'`). The card's button is hidden in this shape
+    // (see above), so the stop rides the verb; the reload then proves the
+    // round trip through the UI: the Speak-as affordance is back.
+    const stopResp = await page.request.post('/api/dispatch', {
+      data: { type: 'chatStopImpersonate', chatId, participantId: target!.id },
+    });
+    expect(stopResp.ok()).toBe(true);
+    await page.reload();
+    await openSidebarSection(page, 'Participants');
     await expect(page.locator(`qt-participant-card button[title="Speak as ${name}"]`)).toBeVisible({
       timeout: 15_000,
     });
