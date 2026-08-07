@@ -1514,10 +1514,6 @@ fn assert_replay_dedupe(
         .get("main")
         .and_then(|p| p.get("files"))
         .unwrap_or(&empty);
-    let want_files: Vec<Value> = want["main"]["files"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
     let got_keys = storage_keys_by_name(got_files);
     let got_blob_ids: HashSet<String> = got
         .get("mountIndex")

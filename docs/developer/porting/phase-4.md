@@ -4194,3 +4194,61 @@ oracle regen until the catch-up round absorbs the drift**
 (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
 The distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+## The `f4955e0e` found-bugs convergence round (P4.D51 ∥ P4.D52 ∥ P4.D53 ∥ P4.D54 ∥ P4.D55 ∥ P4.43) — UNIFIED 2026-08-06
+
+**ALL SIX ORDERS CLOSED; the oracle baseline MOVES to `f4955e0e` and the
+drift debt is CLEARED.** v4's coordinated "bugs 8–43" batch (eleven
+commits; at the new baseline every catalogued v4 bug 1–43 is fixed) was
+absorbed whole: the convergence sweep retired ~25 named both-direction
+pins across seven differential families (v4 adopting fixes this port
+made first), the four genuine ports landed (interchange sub-chunking
+UTF-16 end-to-end, the AllLLMPauseModal + opener, the OpenRouter vision
+send path, the orphan-thumbnail sweep with the new `StorageBackend`
+list seam), and P4.43 closed P4.9H2A whole (memory-dedup +
+conversation-summaries regeneration LIVE, both beats active). v4 HEAD
+`cc0bbebf` (one commit past the baseline) is test-only — NO-PORT,
+lib-identical; oracles regenerate straight from the checkout.
+
+**Survivor pins (deliberate, still both-directions):**
+`PHASE_ORDER_RESIDUAL`, `V5_STATS_GAP`, `PLANTED_ORPHANS` — plus TWO
+NEW v4 restore bugs P4.D51 measured while retiring bug 12's pins (the
+22a-bis `restored/`-folder replay collision; the >3 MB phantom-copy
+dedup miss), both pinned and queued v4-side.
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass — now carrying the round's 💸 queue on top of the
+   standing one:** the OpenRouter vision live send, arm (C)'s one-time
+   boot render+embed burst on the Friday copy, the memory-dedup +
+   summaries-regen first live run, plus the standing items (the Serper
+   live-key smoke, the OpenAI chaining fallback, the MOUNT-partition
+   reapply + encrypted VACUUM-INTO backup, profile management on the
+   Friday copy, the Almanack first real-data report, live Taboo, the
+   P4.D49 budget/attribution proofs, OpenRouter pricing with a real
+   key).
+2. **The finding-#39 re-ruling (HUMAN):** the multi-turn impersonation
+   design's "do NOT mutate `controlledBy`" premise conflicts with
+   shipped v4 bug-27 behavior v5 now mirrors — flagged in
+   `dogfood-findings.md`.
+3. **Small follow-ups recorded this round:** the conversation-chunks
+   `upsert` create-arm corpus op (needs minted-id normalizer machinery
+   in that family); P4.D55's vision-path headers/abort pinning gap; the
+   P4.D54 AllLLMPause live-opener e2e beat (needs a seeded paused
+   all-LLM chat); P4.D51's bug-43 tier-2 per-delete
+   `cleanup_thumbnails` (needs a `StorageBackend` seam through
+   `file_delete`/`file_upload`).
+4. **The standing pools:** `p4.9i2` (help surface), `p4.9l` (composer
+   toolbar), the rest of the `p4.9h2` bucket (prompt library, global
+   Core Whisper card, tag pickers, memory editor), the BUILTIN TF-IDF
+   manifest decision, the P4.D41 tier-2 item 9 fixture.
+
+**Standing regen note:** the oracle baseline is **`f4955e0e`**
+(4.8.0-dev.175, adopted at this round's unification). v4 HEAD
+`cc0bbebf` is test-only past it (lib-identical, verified by name) —
+oracles regenerate straight from `~/source/quilltap-server`; pin a
+detached worktree on any further drift
+(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+The distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged. Drift-check before every round —
+v4 ships daily.
