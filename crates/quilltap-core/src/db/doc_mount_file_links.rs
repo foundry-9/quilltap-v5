@@ -116,6 +116,9 @@ pub struct LinkRow {
     /// share one by coincidence. Only a non-null group means "these are one
     /// file". Read by the sibling re-index pass.
     pub link_group_id: Option<String>,
+    /// `l.originalFileName` — v4's `queryJoined` selects it and the bug-38
+    /// attach path reads `originalFileName || fileName` for the display title.
+    pub original_file_name: Option<String>,
 }
 
 /// A link row joined with its file-row content fields — v4
@@ -1785,7 +1788,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                l.allowCharacterRead, l.allowCharacterWrite, \
                l.extractedText, l.originalMimeType, l.conversionStatus, l.chunkCount, \
                f.sha256, f.fileSizeBytes, f.fileType, f.source, l.description, \
-               l.extractionStatus, l.allowEmbed, l.linkGroupId \
+               l.extractionStatus, l.allowEmbed, l.linkGroupId, l.originalFileName \
              FROM doc_mount_file_links l \
              JOIN doc_mount_files f ON f.id = l.fileId \
              {where_clause}"
@@ -1821,6 +1824,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
             extraction_status: row.get(19)?,
             allow_embed: coerce_allow(row.get::<_, Option<i64>>(20)?),
             link_group_id: row.get(21)?,
+            original_file_name: row.get(22)?,
         })
     }
 }
@@ -2332,17 +2336,7 @@ impl ReapedStoreChildren {
 /// dead under a live store. Both key on something other than `mountPointId`;
 /// P4.28 named the first as unmeasured and neither is what #58 is.
 pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChildren, DbError> {
-    let table_exists = |table: &str| -> Result<bool, DbError> {
-        let exists: Option<String> = conn
-            .query_row(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                params![table],
-                |row| row.get(0),
-            )
-            .map(Some)
-            .or_else(no_rows_to_none)?;
-        Ok(exists.is_some())
-    };
+    let table_exists = |table: &str| table_exists_sync(conn, table);
     for table in [
         "doc_mount_points",
         "doc_mount_file_links",

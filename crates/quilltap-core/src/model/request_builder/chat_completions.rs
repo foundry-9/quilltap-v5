@@ -999,7 +999,9 @@ fn openrouter_vision_response_format(input: &RequestInput) -> Option<Value> {
     if ty == "json_schema" {
         if let Some(schema) = rf.get("jsonSchema") {
             let mut js = Body::new();
-            js.set("name", schema.get("name").cloned().unwrap_or(Value::Null))
+            // v4's JSON.stringify DROPS an undefined `name` — mirror the SDK-path
+            // builder's set_opt rather than emitting "name": null.
+            js.set_opt("name", schema.get("name").cloned())
                 .set(
                     "strict",
                     schema.get("strict").cloned().unwrap_or(json!(true)),

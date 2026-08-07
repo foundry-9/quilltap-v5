@@ -1749,7 +1749,14 @@ async fn attach_mount_document(
         .ok()
         .flatten()
         .map(|(_, name)| name);
-    let display_title = mount_file.file_name.clone();
+    // v4: `mountFile.originalFileName || mountFile.fileName` — JS `||`, so an
+    // empty originalFileName also falls back (same idiom as the sibling sites).
+    let display_title = mount_file
+        .original_file_name
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&mount_file.file_name)
+        .to_string();
 
     let announcement = post_librarian_attach_announcement(
         db,

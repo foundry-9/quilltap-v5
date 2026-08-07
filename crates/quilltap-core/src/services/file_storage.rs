@@ -677,27 +677,31 @@ pub struct OrphanedThumbnailSweep {
 /// v4 `sweepOrphanedThumbnails` (`sweep-orphaned-thumbnails.ts`, bug 43).
 ///
 /// `_thumbnails/{fileId}_{size}.webp` is a derived cache regenerated on demand.
-/// In-app deletes call `cleanup_thumbnails`, but a file that left by any OTHER
+/// v4's in-app deletes call `cleanupThumbnails` (v5's tier-2 deferral — see
+/// `api/files.rs`, so this sweep is v5's ONLY reaper), and a file that left by any OTHER
 /// route (a restore, a delete-all, an out-of-app edit) strands its thumbnails and
 /// nothing reaps them, so the directory only grows. This enumerates the cache,
 /// parses the leading `fileId` off each entry, and deletes those whose source
 /// `files` row is gone. Because the cache is derived, deletion is always safe;
-/// unparseable names are skipped (never deleted blind). Never throws — a
-/// storage/DB error on one entry is swallowed and the sweep reports what it
-/// managed.
-pub fn sweep_orphaned_thumbnails(db: &Db, backend: &dyn StorageBackend) -> OrphanedThumbnailSweep {
+/// unparseable names are skipped (never deleted blind).
+///
+/// Error shape follows v4's CODE, not its doc-comment (which claims "never
+/// throws"): the cache LISTING failure and the `files` existence-check failure
+/// both propagate — v4 has no try/catch around `listRaw`/`findByIds`, so they
+/// reach scheduled maintenance's step-7 catch and become the
+/// `orphan-thumbnails` failures entry. Only the per-entry DELETE is swallowed
+/// (v4's inner try/catch) so one bad entry cannot stop the sweep.
+pub fn sweep_orphaned_thumbnails(
+    db: &Db,
+    backend: &dyn StorageBackend,
+) -> Result<OrphanedThumbnailSweep, String> {
     let mut result = OrphanedThumbnailSweep::default();
 
-    let keys = match list_raw(backend, THUMBNAIL_KEY_PREFIX, None) {
-        Ok(keys) => keys,
-        Err(e) => {
-            tracing::warn!(target: "quilltap::maintenance", error = %e, "Orphaned-thumbnail sweep: listing failed");
-            return result;
-        }
-    };
+    let keys = list_raw(backend, THUMBNAIL_KEY_PREFIX, None)
+        .map_err(|e| format!("Orphaned-thumbnail sweep: listing failed: {e}"))?;
     result.scanned = keys.len();
     if keys.is_empty() {
-        return result;
+        return Ok(result);
     }
 
     // Parse every key up front so the DB existence check can be batched.
@@ -709,7 +713,7 @@ pub fn sweep_orphaned_thumbnails(db: &Db, backend: &dyn StorageBackend) -> Orpha
         }
     }
     if key_to_file_id.is_empty() {
-        return result;
+        return Ok(result);
     }
 
     let unique_ids: Vec<String> = {
@@ -720,15 +724,9 @@ pub fn sweep_orphaned_thumbnails(db: &Db, backend: &dyn StorageBackend) -> Orpha
             .map(|(_, id)| id.clone())
             .collect()
     };
-    let existing: std::collections::HashSet<String> = match db
+    let existing: std::collections::HashSet<String> = db
         .read_main(move |c| existing_file_ids(c, &unique_ids))
-    {
-        Ok(set) => set,
-        Err(e) => {
-            tracing::warn!(target: "quilltap::maintenance", error = %e, "Orphaned-thumbnail sweep: files existence check failed");
-            return result;
-        }
-    };
+        .map_err(|e| format!("Orphaned-thumbnail sweep: files existence check failed: {e}"))?;
 
     for (key, file_id) in &key_to_file_id {
         if existing.contains(file_id) {
@@ -741,7 +739,7 @@ pub fn sweep_orphaned_thumbnails(db: &Db, backend: &dyn StorageBackend) -> Orpha
             }
         }
     }
-    result
+    Ok(result)
 }
 
 /// The subset of `ids` that have a surviving `files` row (v4

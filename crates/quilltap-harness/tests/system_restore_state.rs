@@ -1519,7 +1519,6 @@ fn assert_replay_dedupe(
         .cloned()
         .unwrap_or_default();
     let got_keys = storage_keys_by_name(got_files);
-    let want_keys = storage_keys_by_name(&want_files);
     let got_blob_ids: HashSet<String> = got
         .get("mountIndex")
         .and_then(|p| p.get("doc_mount_blobs"))
@@ -1533,7 +1532,6 @@ fn assert_replay_dedupe(
     //    file the user expected back. (The storageKey VALUES are not compared
     //    across engines: `new_account` mode remaps every mount id, so the keys
     //    differ mechanically there even when the content is identical.)
-    let _ = &want_keys;
     for (filename, archive_key) in &carried {
         let Some(v5) = got_keys.get(filename) else {
             failures.push(format!(

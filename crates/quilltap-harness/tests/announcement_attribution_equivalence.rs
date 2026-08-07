@@ -144,3 +144,15 @@ fn value_carrier_spread_replaces_only_content() {
     assert_eq!(out["id"], json!("m1"));
     assert_eq!(out["role"], json!("ASSISTANT"));
 }
+
+/// Bug 28 gave the pass a SECOND independently-written field. Pin the opaque
+/// writer the same way — the spread must replace only `opaqueContent`.
+#[test]
+fn value_carrier_spread_replaces_only_opaque_content() {
+    let m = json!({ "id": "m1", "role": "ASSISTANT", "content": "hi", "opaqueContent": "raw" });
+    let out = m.with_opaque_content("[X] raw".to_string());
+    assert_eq!(out["opaqueContent"], json!("[X] raw"));
+    assert_eq!(out["content"], json!("hi"));
+    assert_eq!(out["id"], json!("m1"));
+    assert_eq!(out["role"], json!("ASSISTANT"));
+}

@@ -624,8 +624,28 @@ fn almanack_tier2_matches_oracle() {
         // dogfood #67 (cast-size histogram) + #68 (wardrobe-permission counts):
         // v4 `e6554b6e` ADOPTED both fixes this port made first, so v4's data now
         // agrees with v5's — the reconcile shim is retired and these are plain
-        // comparisons in the `data` check below. The fixture still seeds duplicate
-        // cast sizes and a NULL-flag character, so the comparison stays meaningful.
+        // comparisons in the `data` check below. The retired shim was ALSO the
+        // fixture's shape guard, so re-pin the two shapes mechanically: without
+        // a rolled-up multi-chat cast size and a non-zero effective-permission
+        // count, both comparisons pass trivially on a hollowed fixture.
+        if case == "data_exact" {
+            let hist = v4_norm["chatBreakdown"]["participantHistogram"].as_array();
+            let rolled = hist
+                .map(|rows| {
+                    rows.iter()
+                        .any(|r| r["chats"].as_f64().unwrap_or(0.0) >= 2.0)
+                })
+                .unwrap_or(false);
+            failed.check(&format!("{case}:hist_shape_guard"), rolled, || {
+                "the fixture stopped seeding duplicate cast sizes — the #67 rollup is unexercised".into()
+            });
+            let dress = v4_norm["characterBreakdown"]["canDressThemselves"]
+                .as_f64()
+                .unwrap_or(0.0);
+            failed.check(&format!("{case}:dress_shape_guard"), dress >= 2.0, || {
+                "the fixture stopped seeding NULL-flag characters — the #68 effective count is unexercised".into()
+            });
+        }
         normalize_data(&mut v4_norm);
         normalize_data(&mut v5_norm);
         canonicalize_numbers(&mut v4_norm);

@@ -1131,9 +1131,11 @@ pub fn collect_storage_stats(db: &Db, user_id: &str) -> Result<StorageStats, DbE
 #[cfg(test)]
 mod dogfood_divergence_tests {
     //! Findings #67 (cast-size histogram) and #68 (wardrobe-permission counts):
-    //! deliberate divergences from v4, ruled 2026-08-06 ("fix v5 now + queue
-    //! v4"). These pin v5's corrected behavior AND its guards; the tier-2
-    //! differential (`almanack_tier2_equivalence`) pins the v4↔v5 divergence.
+    //! v5 fixed both first (ruled 2026-08-06, "fix v5 now + queue v4") and v4
+    //! `e6554b6e` ADOPTED both — the divergences are CONVERGED and the tier-2
+    //! reconcile shim is retired. These tests remain as the pins of v5's
+    //! corrected behavior (the rollup and the effective-permission counting),
+    //! now plain v4-agreeing semantics rather than divergences.
     use super::{collect_character_breakdown, collect_chat_breakdown};
     use crate::db::runtime::Db;
 

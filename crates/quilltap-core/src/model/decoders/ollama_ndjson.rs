@@ -134,7 +134,9 @@ impl OllamaNdjsonDecoder {
     /// Parse one already-`trim`med, non-empty line and dispatch it (v4's
     /// `JSON.parse(trimmedLine)` with the failure silently skipped).
     fn handle_line(&mut self, line: &str, out: &mut Vec<StreamChunk>) {
-        let trimmed = line.trim();
+        // JS String.prototype.trim, not Rust trim: the sets differ (JS strips
+        // U+FEFF, Rust strips U+0085) and the house helper exists for this.
+        let trimmed = crate::jsstr::js_trim(line);
         if trimmed.is_empty() {
             return;
         }

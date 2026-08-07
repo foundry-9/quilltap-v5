@@ -160,6 +160,10 @@ pub struct CcUpsert {
     pub participant_names: Vec<String>,
     pub message_ids: Vec<String>,
     /// `None` = not supplied (v4 `undefined`); `Some(v)` supplied (empty → NULL).
+    /// v4's explicit-`null` arm (`input.embedding === null` → unconditional
+    /// NULL, since `null !== undefined`) is UNMODELLED — `Option` cannot carry
+    /// the tri-state and no production caller passes `null` (the render handler
+    /// omits the key entirely).
     pub embedding: Option<Vec<f32>>,
 }
 

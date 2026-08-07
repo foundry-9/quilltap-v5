@@ -247,6 +247,15 @@ pub async fn run_scheduled_maintenance(
             summary.orphaned_store_children_swept = OrphanedStoreChildrenSwept {
                 links: r.links,
                 folders: r.folders,
+                // ⚠ A DIFFERENT quantity than v4's `documents`: v4 counts
+                // `doc_mount_documents` rows deleted by a partition-wide
+                // orphaned-documents DELETE; v5's reaper counts
+                // `doc_mount_files` rows (with their document/blob payload)
+                // GC'd for the reaped links specifically. A blob-backed orphan
+                // counts here but not in v4, and document rows orphaned by
+                // OTHER causes count in v4 but are `sweep_orphaned_link_
+                // content`'s job in v5. Equal only at zero (the fixture's
+                // steady state); the summary is a log surface, not a wire.
                 documents: r.content,
             }
         }
@@ -285,12 +294,23 @@ pub async fn run_scheduled_maintenance(
         Err(_) => summary.failures.push("terminals".to_string()),
     }
 
-    // 7. Orphaned thumbnails — v4 bug 43 (`7bcd8515`). The sweep never throws
-    // (storage/DB errors are swallowed internally and logged), so — like v4's
-    // `sweepOrphanedThumbnails` — the `orphan-thumbnails` failure key is
-    // effectively unreachable and never joins `failures`.
-    summary.orphaned_thumbnails_swept =
-        crate::services::file_storage::sweep_orphaned_thumbnails(db, backend);
+    // 7. Orphaned thumbnails — v4 bug 43 (`7bcd8515`). v4's sweep propagates a
+    // LISTING or existence-check failure (no try/catch around
+    // `listRaw`/`findByIds` despite its doc-comment) and THIS catch is what
+    // pushes `orphan-thumbnails`; per-entry delete failures are swallowed
+    // inside the sweep.
+    match crate::services::file_storage::sweep_orphaned_thumbnails(db, backend) {
+        Ok(r) => summary.orphaned_thumbnails_swept = r,
+        Err(e) => {
+            // The swallow-site rule: log the real error where it happened.
+            tracing::error!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "The orphaned-thumbnail sweep failed during the maintenance sweep",
+            );
+            summary.failures.push("orphan-thumbnails".to_string());
+        }
+    }
 
     // Record the pass regardless of per-sweep failures ("last attempted pass").
     // A record failure is warned-and-swallowed in v4; same here.

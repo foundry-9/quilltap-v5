@@ -198,7 +198,6 @@ Regen (all TZ=UTC, /tmp jest mirror): salon fixture
 `node --import tsx build-salon-fixture.ts` (writes committed `salon-{main,mount}.db`),
 then the four salon jest cases + `chat-cast-routes` jest + `turn-pause-filters`
 tsx. core 0.0.490, harness 0.0.415.
-## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), IN PROGRESS
 ## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), ALL FIVE BUGS LANDED
 
 **Tier 1 + tier 2 complete.** All five v4 `43a1b5b1` fixes ported and

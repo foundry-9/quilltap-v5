@@ -1325,7 +1325,10 @@ export class SalonConversation {
       .map((p) => ({
         id: p.id,
         characterName: p.character?.name || 'Unknown',
-        avatarUrl: p.character?.avatarUrl ?? null,
+        // v4 hands the whole character to <Avatar>, which falls back to
+        // defaultImage when avatarUrl is absent — the house idiom for that
+        // resolution is participantAvatar() (same as the sibling roster).
+        avatarUrl: participantAvatar(p),
       }));
   });
 

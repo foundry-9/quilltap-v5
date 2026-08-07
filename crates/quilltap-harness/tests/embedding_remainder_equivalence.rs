@@ -642,12 +642,16 @@ async fn embedding_remainder_matches_oracle() {
     // A reconcile that found nothing would agree with a port that did nothing,
     // so pin the corpus's own shape: BOTH arms fire, the dedupe reuses, and
     // (P4.D25) the staleness gate actually SKIPS cold-tiered chats.
+    // `>= 5` is load-bearing for arm (C): the pre-bug-17 corpus produced
+    // exactly 4 incomplete chats from arms (A)+(B), so a fixture edit that
+    // stopped seeding the in-window over-budget chunk would fall back to 4 and
+    // fail here rather than letting arm (C) go silently unexercised.
     assert!(
-        want_reconcile.incomplete_chats >= 2
+        want_reconcile.incomplete_chats >= 5
             && want_reconcile.enqueued >= 1
             && want_reconcile.reused >= 1
             && want_reconcile.skipped_stale >= 1,
-        "the corpus stopped exercising both reconcile arms + the dedupe + the stale skip: {want_reconcile:?}"
+        "the corpus stopped exercising the reconcile arms (incl. arm C's in-window chunk) + the dedupe + the stale skip: {want_reconcile:?}"
     );
     // The reconcile is a BOOT pass: synchronous, on the writer connection. Under
     // the async test runtime that needs a blocking thread (`write_blocking`
