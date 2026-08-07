@@ -1214,8 +1214,8 @@ fn run_execute_case(
         .expect("execute_import ran");
     drop(db);
 
-    let mut got_state = read_state(&scratch);
-    let mut want_state = state_from_value(&case["state"]);
+    let got_state = read_state(&scratch);
+    let want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
 
     // [P4.33 → bug 11] The folder-clear and store-create divergences RETIRED:
@@ -1380,8 +1380,8 @@ fn run_route_case(
             }
             let literals = literals_for(&pre, &export_data);
             if case.get("state").filter(|v| !v.is_null()).is_some() {
-                let mut got_state = read_state(&scratch);
-                let mut want_state = state_from_value(&case["state"]);
+                let got_state = read_state(&scratch);
+                let want_state = state_from_value(&case["state"]);
                 // [P4.33 → bug 11] The folder-clear divergence RETIRED — v4
                 // converged, so `route_replace_remap` is a plain equality.
                 let (got_body, want_body) = (got_body.clone(), body.clone());
