@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Dogfood fix: an impersonated character's paused turn now shows the
+"type as them, or skip" prompt and its Skip button. Since impersonation
+became a pure overlay, the seat keeps its LLM control column while the
+server correctly reports the turn as the user's; the Salon was still
+deciding whose turn it was from the bare column, so an impersonated
+seat's turn surfaced neither the prompt nor the Skip control. The turn
+banner now consults the impersonation overlay the same way the engine
+does. SPA 0.5.432.
+
 Unified the Bug 44 impersonation-overlay round (single lane): the
 reference-app baseline moves to 4.8.0-dev.178 and the drift debt is
 cleared. Impersonation is a pure overlay end to end — starting or

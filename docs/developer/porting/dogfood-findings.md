@@ -93,6 +93,8 @@ catch, since every fixture is built fresh.
 | 67 | The Almanack's **"Cast sizes"** table lists one row per CHAT (a long run of `participants 1 / chats 1`, then `2 / 1` …) instead of a histogram rolled up by cast size; only the `0 / 48` row aggregates | **Faithfully ported v4 bug — v4's OWN engine reproduces it exactly.** The query means a histogram (`json_array_length("participants") AS participants … GROUP BY participants`), but `GROUP BY participants` binds the bare name to the raw `participants` JSON COLUMN, not the `json_array_length` alias, so every DISTINCT cast is its own group. Proven three ways: system sqlite3 3.51.0, AND v4's own `better-sqlite3-multiple-ciphers` (SQLite **3.53.2**, the version v5 links) returns the identical per-row result `[{1,1},{1,1},{1,1},{3,1}]` on the differential fixture. `0 → 48` rolls up only because all empty casts share the string `[]`. v5's SQL was byte-identical to v4's, so `almanack_tier2_equivalence` passed (the fixture's casts didn't distinguish column-vs-alias grouping — the class synthetic fixtures cannot catch) | **✅ RULED 2026-08-06 (human): fix v5 now + queue v4 — FIXED** `<commit>`. v5 groups AND orders by `json_array_length("participants")` so the histogram rolls up by size. `reconcile_ledger_divergences` in the tier-2 differential folds v4's per-cast rows to v5's shape and self-retires when v4's histogram is no longer per-cast; a collector unit test (`participant_histogram_rolls_up_by_cast_size`) pins the corrected shape, mutation-proven. The v4 one-liner (`GROUP BY json_array_length(...)`) is queued on the post-5.0 v4-side list |
 | 68 | The Almanack's **Characters** card shows "May dress themselves: 0", "May create outfits: 0", "With a Core-whisper override: 0" on a 38-character instance | **Faithfully ported v4 behavior — byte-identical query.** v4 counts `canDressThemselves = 1` / `canCreateOutfits = 1` (explicit opt-in) off the `characters` table; v5's query matched line for line. But the RUNTIME permission is `character?.canDressThemselves !== false` (`orchestrator.service.ts:818`) — **NULL means ALLOWED** — so on any instance where the flags were never toggled, all characters effectively may dress themselves, yet the report counts only explicit `= 1` rows → 0, under-reporting the effective permission. Core-whisper-override 0 is genuinely correct and NOT changed — it counts characters with an explicit `coreWhisperEnabled` override (`IS NOT NULL`), the v4-faithful semantic. **Re-questioned by the human and verified against the Friday copy** (`quilltap db`): 0 of 38 characters, 0 of 779 chats, and 0 participant-JSON entries carry any `coreWhisperEnabled` value — there are no core-whisper overrides anywhere on the instance, so 0 is the true count (the column exists and is readable, ruling out a missing-column artifact) | **✅ RULED 2026-08-06 (human): fix v5 now + queue v4 — FIXED** `<commit>`. v5 counts dress/outfits with `IS NOT 0` (the null-safe form of `!== false`: NULL and 1 count, an explicit `0`/false does not); coreWhisper stays `IS NOT NULL` (it counts explicit overrides, which 0 correctly reports as none). Same differential carve-out (both-directions, self-retiring) + unit test `dress_outfit_counts_are_effective_permission` (the explicit-false row is the guard). The v4 semantic change is queued on the post-5.0 v4-side list |
 | 69 | An enclave turn fails with `primary stream failed: HTTP 400 … previous_response_not_found` — the OpenAI Responses-API chaining request references a `resp_…` id OpenAI can't find, even one created ~2.5 min earlier | **Port divergence — v5 dropped v4's best-effort chaining FALLBACK.** Both apps send `store: false` + `previous_response_id` (v5 faithful), and `store: false` responses are not reliably chainable, so chained requests fail often (not just after retention). v4's OpenAI provider wraps the chained `responses.create` in a `try/catch` and on ANY failure re-issues with the FULL conversation and no `previous_response_id` (*"conversation chaining failed, falling back to full input"*, `provider.ts:463-533`); chaining is a mere cache optimization. v5's `WireStreamingProvider::stream_message` has no such fallback — it `single_error`s and the enclave swallows it, and since a failed turn writes no new `resp_` id the chat WEDGES. **Exposes every OpenAI multi-turn chat, not just enclaves/old data.** Full scope + the exact fix (retry once with `previous_response_id: None` at the pre-stream `execute_stream` Err arm) in the standing note | **✅ RULED 2026-08-06 (human): record as an ORDER, not a dogfood commit** — the fix is v4-faithful (restores dropped behavior, no oracle divergence) but sits in the differential-verified streaming spine and adds a retry API call, so it wants a proper lane with a fake-transport test + tier-3. See "NEEDS AN ORDER (finding #69)" in the standing notes |
+| 70 | While impersonating a character, when the rotation reaches THAT character's turn, the Salon shows no "type as them" prompt and no Skip button — the turn just sits there | **Port divergence — a P4.D56 SPA gap the round's e2e couldn't reach.** Since Bug 44 made impersonation a pure overlay, an impersonated seat keeps `controlledBy: 'llm'` and its id sits in `impersonatingParticipantIds`. The engine honours the overlay: `select_speaker`/`turn_orchestrator` return `reason: 'user_turn'` (`is_users_turn: true`) for the seat and PAUSE the chain (no LLM generation — confirmed by code, `turn_orchestrator.rs:560-577`). But the SPA's `userTurnName`/`mustSpeak` re-derived user-turn-ness from `nextSpeaker().controlledBy === 'user'` — `'llm'` for the overlay seat — dropping the server's authoritative `reason`/`isUsersTurn`, so `qt-turn-controls` rendered neither the banner nor Skip. A genuine user seat (`controlledBy === 'user'`) was unaffected (verified: Cleo's ordinary user-turn banner renders), which is why the round's e2e never caught it | **FIXED** `21669c93` — added `isUserDrivenSeat(id, controlledBy, impersonatingIds)` to `skip-signal-helpers.ts` (client mirror of the core `is_user_driven_seat` / v4 `lib/chat/turn-manager/utils.ts`); `userTurnName` + `mustSpeak` now consult it. Unit test over all four arms (`skip-signal-helpers.spec.ts`), mutation-implicit via the overlay arm. **No deterministic e2e:** the fixture's user seat wins turn selection regardless of which LLM seat is impersonated, so no seeded chat can force the impersonated seat to be the next speaker (recorded in the impersonation beat, like the Hand Off dialog note) |
+| 71 | While impersonating, a just-sent message first renders attributed to your own character, then re-renders correct on the next paint | **NOT A BUG — faithfully ported v4 behavior (identical code).** The optimistic user bubble attributes to `activeTypingParticipantId` in BOTH apps (v5 `salon-conversation.ts` `makeTempUserMessage`; v4 `useSSEStreaming.ts:648` — `participantId: activeTypingParticipantIdRef.current`), and impersonation keeps an already-set `activeTypingParticipantId` on both sides (v5 `add_impersonation` `chat.activeTypingParticipantId \|\| participantId`; v4 `handleImpersonate`). When the server attributes the persisted message to the impersonated seat (its user-driven turn) the optimistic guess is corrected on refetch. v4 flickers identically | **NOT A BUG (v5)** (2026-08-07) — recorded so it isn't re-reported; not fixed (diverging would need the SPA to replicate the server's attribution resolution optimistically, which v4 does not do) |
 
 - **The 2026-08-06 Almanack + Taboo round walk (Part A — the Almanack over a
   COPY of real Friday).** The report compiled in parallel over the real
@@ -550,6 +552,49 @@ catch, since every fixture is built fresh.
   (documented at `recall_replay_cmd.rs:130` `pad_end`).
 
 ## Standing notes for the next orders
+
+- **NEEDS A REPRO (2026-08-07, dogfood #70 walk) — the Skip button is missing
+  "about half the time when it's my turn," and it PREDATES the impersonation
+  overlay.** Raised by the human alongside #70 but framed as a separate, older
+  bug. #70's fix (the overlay-seat arm of `userTurnName`/`mustSpeak`) does NOT
+  address it. The engine represents SOME user turns with `nextSpeakerId: null`
+  (`select_speaker.rs`: active-empty → `user_turn`/null; new-cycle-empty →
+  `cycle_complete`/null), and the SPA's `nextSpeaker()` returns null for those
+  (it looks the participant up by id), so `userTurnName` returns null → no
+  banner, no Skip — where v4's client gates Skip on exactly
+  `turnSelectionResult.nextSpeakerId === null` (`ChatSidebar.tsx:650,785`), i.e.
+  v4 SHOWS Skip in precisely the case v5 hides it. That is the leading
+  hypothesis but is NOT confirmed: the common user turn (a weighted pick landing
+  on the user seat) returns `nextSpeakerId = <user-seat-id>` and DOES render
+  (proven live — Cleo's banner). **The human confirmed 2026-08-07 it is ALWAYS a
+  multi-character chat** (consistent with the null-nextSpeaker hypothesis — a
+  cycle boundary only exists with ≥2 characters) and is watching for the exact
+  trigger. Still needed: WHEN it happens (right after an LLM just responded / at
+  a cycle boundary / at chat start before anyone has spoken vs mid-conversation).
+  If confirmed as the null-nextSpeaker case, the v4-faithful
+  fix is to have `userTurnName`/`mustSpeak`/the skip target consult the server's
+  authoritative `isUsersTurn`/`reason` (which the SPA already receives from the
+  turn query and currently drops) rather than re-deriving from `nextSpeaker()`,
+  and to pick the user seat to prompt when `nextSpeakerId` is null. Note: the
+  same "drop the server's `reason`/`isUsersTurn` and re-derive locally" shortcut
+  is what caused #70, so this is likely one root, two symptoms.
+
+- **NOT A BUG, recorded (2026-08-07, dogfood #70 walk) — "the LLM took the
+  impersonated character's turn."** The human observed this and was unsure
+  whether impersonation is persistent or one-shot. It IS persistent (v4 Bug 44:
+  the id stays in `impersonatingParticipantIds` until stop-impersonate, and each
+  of that seat's turns is a user turn). The v5 engine is provably correct — both
+  the chain (`turn_orchestrator.rs:560-577`) and the responder resolver
+  (`participant_resolver.rs`) treat the impersonated seat as user-driven and
+  PAUSE rather than generate; there is no client-side auto-advance. So a genuine
+  LLM generation on the impersonated seat cannot happen from the code as written;
+  the observation was most likely a transient (impersonation not yet persisted at
+  that instant) or a mis-read compounded by #70 (with no banner, the paused turn
+  looked like nothing was happening). #70's fix makes the pause VISIBLE — re-test
+  it: with the banner now showing "[impersonated char]'s turn — type as them, or
+  skip," confirm the LLM does not generate on that seat. If it genuinely does,
+  that is a NEW server finding needing the exact chat state (does the chat's
+  `impersonatingParticipantIds` actually contain the seat at that moment?).
 
 - **NEEDS AN ORDER (finding #69, 2026-08-06, human-ruled to order not fix-in-place)
   — v5 dropped v4's OpenAI conversation-chaining FALLBACK, so a failed

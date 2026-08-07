@@ -350,6 +350,16 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const card = page.locator('qt-participant-card').filter({ hasText: name });
     await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
 
+    // ⚠ The turn-banner side of the overlay fix (dogfood #70 — an impersonated
+    // seat's paused turn must surface the "type as them"/Skip banner, since the
+    // server returns `reason: 'user_turn'` for it while `controlledBy` stays
+    // `'llm'`) has NO deterministic beat against this fixture: no seeded chat can
+    // force the impersonated LLM seat to be the NEXT speaker (turn selection is
+    // weighted-random, and the fixture's user seat wins the turn regardless of
+    // which LLM seat you impersonate). The fix is proven by the `isUserDrivenSeat`
+    // unit test (`skip-signal-helpers.spec.ts`) that `userTurnName`/`mustSpeak`
+    // now consult; recorded like the Hand Off dialog note above.
+
     // The server side of Bug 44, through the wire: the column did NOT flip — the
     // seat stays LLM-owned, which is exactly what keeps it from becoming the
     // chat's user seat (`chatGet` does not project `impersonatingParticipantIds`,

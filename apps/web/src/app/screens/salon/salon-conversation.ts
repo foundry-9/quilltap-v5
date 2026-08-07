@@ -70,7 +70,7 @@ import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
 import { type ControlledCharacter } from '../../chat/speaker-selector';
-import { isParticipantPresent } from '../../chat/skip-signal-helpers';
+import { isParticipantPresent, isUserDrivenSeat } from '../../chat/skip-signal-helpers';
 import {
   computeSkipEligibility,
   qualifiesForTurnSkipping,
@@ -1820,11 +1820,17 @@ export class SalonConversation {
     return (this.chat()?.participants ?? []).find((p) => p.id === id) ?? null;
   });
 
-  /** The name whose (user-controlled) turn it is, or null when it isn't. */
+  /**
+   * The name whose (user-driven) turn it is, or null when it isn't. A seat the
+   * human is impersonating (v4 Bug 44 overlay — `controlledBy` stays `'llm'`)
+   * counts as user-driven, matching the server, which returns `reason:
+   * 'user_turn'` for it; keying on the bare column would leave the impersonated
+   * seat's paused turn with no "type as them" prompt and no Skip button.
+   */
   protected readonly userTurnName = computed<string | null>(() => {
     if (this.busy()) return null;
     const next = this.nextSpeaker();
-    if (!next || next.controlledBy !== 'user') return null;
+    if (!next || !isUserDrivenSeat(next.id, next.controlledBy, this.impersonatingIds())) return null;
     return next.character?.name ?? 'this character';
   });
 
@@ -1832,7 +1838,13 @@ export class SalonConversation {
   protected readonly mustSpeak = computed<boolean>(() => {
     const chat = this.chat();
     const next = this.nextSpeaker();
-    if (!chat || !next || next.controlledBy !== 'user' || !next.character) return false;
+    if (
+      !chat ||
+      !next ||
+      !isUserDrivenSeat(next.id, next.controlledBy, this.impersonatingIds()) ||
+      !next.character
+    )
+      return false;
     try {
       const events: SkipEvent[] = chat.messages.map((m) => ({
         type: 'message',

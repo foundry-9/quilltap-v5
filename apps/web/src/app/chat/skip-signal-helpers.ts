@@ -39,6 +39,25 @@ export function isParticipantPresent(status: string | null | undefined): boolean
 }
 
 /**
+ * A seat is "user-driven" when its durable `controlledBy` is `'user'` OR the
+ * human is impersonating it this session. v4 Bug 44's overlay
+ * (`62c63dc3`) leaves `controlledBy` at `'llm'` and records the id in
+ * `impersonatingParticipantIds` instead, so turn-taking — the "type as them"
+ * prompt and the Skip button — must consult the overlay, not the bare column,
+ * or an impersonated seat's paused turn surfaces neither affordance. Client
+ * mirror of v4's `isUserDrivenSeat` (`lib/chat/turn-manager/utils.ts`) and the
+ * core `is_user_driven_seat` (`participant_filters.rs`).
+ */
+export function isUserDrivenSeat(
+  participantId: string,
+  controlledBy: 'llm' | 'user' | null | undefined,
+  impersonatingParticipantIds: readonly string[] | null | undefined,
+): boolean {
+  if (controlledBy === 'user') return true;
+  return Array.isArray(impersonatingParticipantIds) && impersonatingParticipantIds.includes(participantId);
+}
+
+/**
  * Normalize LLM response content that may be wrapped in Anthropic content-block
  * array format (`[{'type': 'text', 'text': "..."}]`). Pure string transform.
  */
