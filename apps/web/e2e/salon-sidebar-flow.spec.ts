@@ -7,11 +7,10 @@ import { openSidebarSection } from './support/sidebar';
  * ACTIVATE-AT-UNIFY (P4.D54 bug 22 / P4.D53 §1): the chat GET now projects the
  * four controlled sidebar selects (timelineMode, alertCharactersOfLanternImages,
  * showThinking, answerConfirmationOverride), so a saved value survives a reload
- * instead of snapping back. This SPA-only lane's server does not emit them yet —
- * they land with P4.D53. Flip to `true` at unification once P4.D53's projection
- * is on the branch. See [[e2e-playwright-traps]] §7 (gate by NAMED constant).
+ * instead of snapping back. Flipped `true` at the f4955e0e-round unification:
+ * P4.D53's chat-GET projection is on the branch, so the round-trip runs live.
  */
-const PROJECTION_ROUNDTRIP_SERVER_LANDED = false;
+const PROJECTION_ROUNDTRIP_SERVER_LANDED = true;
 
 /**
  * P4.9H1 — the Salon chat sidebar (v4 `components/chat/ChatSidebar.tsx`), and

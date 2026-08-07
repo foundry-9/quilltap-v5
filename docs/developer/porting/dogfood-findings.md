@@ -1053,7 +1053,14 @@ catch, since every fixture is built fresh.
   pre-emptively restructured for this** — it is the reason a merely-inherited
   awkwardness can be left alone now and revisited later, and the reason the
   provider-I/O divergence is deliberately a one-off rather than a first step.
-- **Post-5.0 v5 DIVERGENCE (human, 2026-07-29) — multi-turn impersonation that
+- **⚠ RE-RULING OWED (flagged 2026-08-06, the f4955e0e-round unification):
+  this design's premise MOVED.** Its explicit instruction — "Do NOT mutate the
+  participant's `controlledBy`" — now conflicts with SHIPPED v4 behavior: v4's
+  bug-27 fix (`bd419ae9`) makes impersonate write `controlledBy:'user'` and a
+  profile-less stop write `'llm'`, and v5 mirrors it faithfully (P4.D53, per
+  the port discipline). The multi-turn design below needs a fresh human ruling
+  against the new baseline before anyone builds it. The original entry:
+  **Post-5.0 v5 DIVERGENCE (human, 2026-07-29) — multi-turn impersonation that
   actually speaks as the chosen character (finding #39).** Today "Speak as X" is
   v4-faithful: it only relabels your message if X is `controlledBy === 'user'`,
   so impersonating an AI character silently falls back to your own seat. The
@@ -1195,7 +1202,10 @@ catch, since every fixture is built fresh.
   which is what v5 now does via a `skippedFiles` key that is absent when nothing
   was skipped, so v4 can adopt it without moving the healthy-path body.
 
-- **⚠ v4-side URGENT — NOT post-5.0 (ruled 2026-07-31, human): a corrupt
+- **✅ DISCHARGED by v4 `13ddc5ee` (bug 8, 2026-08-06 — the found-bugs 8–43
+  batch; absorbed by v5's P4.D51, the `V4_CLOBBERED_BAG` pin retired).** The
+  original urgent note follows for history:
+  **⚠ v4-side URGENT — NOT post-5.0 (ruled 2026-07-31, human): a corrupt
   character-vault `properties.json` destroys six fields on the next edit
   (finding #47).** This is the one v4-side item on this page that should NOT
   wait for retirement, because **v4 runs against live Friday** and the loss is
@@ -1221,6 +1231,32 @@ catch, since every fixture is built fresh.
   ⚠ **Landing the v4 fix MOVES THE ORACLE** for the characters families — see
   `work-orders/p4.22-character-vault-properties-clobber.md`, which reclassifies
   from "deliberate divergence" to "ordinary drift re-port" if v4 goes first.
+
+- **✅ THE 2026-08-06 BATCH DISCHARGE — v4's found-bugs 8–43 sweep
+  (`3adefeba..f4955e0e`, eleven commits) adopted nearly this whole queue.**
+  Absorbed by v5's f4955e0e convergence round (P4.D51–D55 + P4.43); the
+  convergence pins named per item all fired and were retired. Discharged →
+  by which v4 commit: the import overwrite trio → `3bb664f0` (bug 11); the
+  gen-2 restore link-id loss → `3bb664f0` (bug 12 — v4's convergence is
+  PARTIAL: it adopted the skip check but kept its 22a-bis phase, and the
+  round MEASURED two NEW v4 restore bugs, queued below); #57 annotations →
+  `3bb664f0` (bug 10); #58's store-delete root cause + sweep → `3bb664f0`
+  (bug 9); #47 vault clobber → `13ddc5ee` (bug 8); the sibling-reindex dead
+  code → `7bcd8515` (bug 15); the mount-chunk dead count → `7bcd8515`
+  (bug 16 — v5 followed, per its own note); the store-attach native-text
+  404 → `7bcd8515` (bug 38); interchange sub-chunking → `62ab1bc8`
+  (bug 17); #67/#68 Almanack ledgers → `e6554b6e` (bugs 20/21); #46
+  Content-Disposition → `ea4dc011` (bug 41 — v4 went FURTHER, escaping
+  `'()*!`; v5 widened to match); #45 search-dialog portal → `ea4dc011`
+  (bug 40); the #42-adjacent danger CSS → `ea4dc011` (bug 39); #29/#33/#54
+  attribution items → `99d5fc7d` (bugs 30/29/28); the #36 dead warning
+  box → `bd419ae9` (v4 took the add-the-projection branch); the export
+  embedding bloat → `7189a968` (pre-`3adefeba`; v5's mirror was already
+  P4.D46). **Still NOT adopted by v4:** #61 (import-preview blank error),
+  #59's dialog surfacing of skipped backup files, #65's hidden export
+  types, #17's Play-As revert, #49's effect bootstrap — plus the NEW
+  v4-side items this round measured, appended at the end of this list.
+  Per-item text below stands as history.
 
 - **Post-5.0 v4-side FIXES (human, 2026-07-24) — real v4 bugs v5 has already
   fixed, whose v4 half is queued rather than dropped.** Distinct from the
@@ -1491,6 +1527,31 @@ catch, since every fixture is built fresh.
   other deferral recorded at `organize-section.ts:17-21` and `chat-section.ts:71`
   was blaming a missing verb that has since landed. Those comments were corrected
   in place 2026-07-27; do not re-derive the lane's size from an older reading.
+
+- **NEW v4-side items measured by the f4955e0e convergence round (2026-08-06)
+  — found while retiring the pins v4's own sweep tripped:**
+  - **(P4.D51, bug-12 territory) v4's 22a-bis replay collides with the
+    doc-store folder phase on an uploads-mode replace** — v4 warns and loses
+    the `restored/` folder where v5 (its later slot) restores the tree whole.
+    Pinned both-directions in `system_restore_state` with a self-retiring
+    liveness tripwire.
+  - **(P4.D51, bug-12 territory) v4 cannot dedup a >3 MB (multi-chunk)
+    carried file** — the sparse-array export boundary makes its skip check
+    miss, so a replace-mode restore invents a PHANTOM doc-store copy the
+    archive never linked (measured on the committed compact archive:
+    `atlas-plates.bin` lands in a project store the archive never names).
+    v5 restores exactly the one archived file; pinned both-directions.
+  - **(P4.D52, bug-17 adjacencies, all shared/faithful — one-line notes for
+    v4's found-bugs):** (a) an entry-less interchange whose metadata prefix
+    alone exceeds the budget emits ZERO chunks and the metadata header
+    vanishes from the markdown (v4's `runs.forEach` on `[]`, mirrored);
+    (b) the `(continued k)` sub-chunk headers match `read_conversation`'s
+    `^## Interchange \d+` tallies, so a sub-chunked chat reports duplicate
+    interchange numbers and an inflated total (both apps); (c) arm (C)'s
+    SQL `LENGTH()` counts Unicode scalars while the chunk budget counts
+    UTF-16 units, so an astral-heavy stranded chunk under 24k scalars but
+    over 24k UTF-16 units is never reclaimed (an inherited hole in v4's own
+    fix — no false-positive direction).
 
 - **Post-5.0 product improvements (v4-first) — the running list of dogfood-surfaced
   UX papercuts that are v4-faithful today and therefore must change in v4 FIRST,
