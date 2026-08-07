@@ -61177,3 +61177,18 @@ card). The v4-side item is queued on `dogfood-findings.md`'s #39 entry
 with the two gate sites named; the multi-turn #39 feature itself
 remains post-5.0 and now builds on the re-affirmed overlay once the
 v4 correction lands.
+
+**Addendum to the #39 ruling (2026-08-06):** the v4-side correction is
+now CATALOGUED UPSTREAM as **v4 Bug 44** (`quilltap-server`
+`docs/developer/found-bugs.md`, commit `3fa36825`, docs-only): the full
+account — the restore-arm failure modes, the two-sources-of-truth
+hazard, the measured hidden-Stop-button casualty, the exact fix sites
+(both writes + recompiles out of `actions/participants.ts`; the two
+overlay gate widenings; the `controlledBy`-reader audit by meaning),
+the Bug-27 test rewrites, the API.md rewrite, the transition
+disposition (leave legacy-flipped seats; the repair is ambiguous), and
+the v4-first sequencing note. Bug 27's v4 section carries a correction
+banner. v4 HEAD moves to `3fa36825` — zero lib, NO-PORT; the baseline
+stays `f4955e0e`. When v4 IMPLEMENTS Bug 44, that is a real drift
+round (salon_mutations / chat_cast_routes / turn-chain move, and the
+impersonation beat re-gestures back).

@@ -2142,9 +2142,12 @@ records THERE. Update this summary only when a phase or round completes.
   `status-log.md`.
 - **Oracle baseline: `f4955e0e` (2026-08-06, v4 4.8.0-dev.175),
   adopted at the found-bugs convergence round's unification — NO v4
-  drift debt remains.** v4 HEAD `cc0bbebf` is ONE commit past it:
-  test-only (two jest suites + CHANGELOG, zero lib — verified by
-  name), NO-PORT, lib-identical. Oracles regenerate straight from
+  drift debt remains.** v4 HEAD `3fa36825` is TWO commits past it,
+  BOTH zero-lib NO-PORT (verified by name): `cc0bbebf` test-only
+  (two jest suites + CHANGELOG) and `3fa36825` docs-only (the Bug 44
+  catalogue — the #39 mechanism correction specced upstream; when
+  v4 IMPLEMENTS Bug 44, that lands on ported turn-resolution and is
+  a real drift round). Oracles regenerate straight from
   `~/source/quilltap-server`; pin a detached worktree on any further
   drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
   <pin>`). The distill-transitive TZ pins, the committed-fixture

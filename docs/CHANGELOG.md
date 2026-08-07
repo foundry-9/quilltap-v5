@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The #39 mechanism correction is now catalogued upstream as v4 Bug 44
+(reference-app docs commit `3fa36825`): the full account of what is
+wrong with the mutate-and-restore impersonation mechanism and the
+ruled overlay fix, specced at the exact sites. This app's records
+point at it; the oracle baseline is unchanged (docs-only upstream).
+
 The impersonation-mechanism ruling (finding #39) is recorded: the
 overlay design stands, and the reference app's recent impersonation
 fix — which rewrites who controls a character's seat and restores it
