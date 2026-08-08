@@ -296,7 +296,7 @@ interface CascadePrompt {
         <qt-chat-sidebar
           [participants]="c.participants"
           [turnState]="turnState()"
-          [turnSelectionResult]="turnSelection()"
+          [turnSelectionResult]="effectiveTurnSelection()"
           [isGenerating]="busy()"
           [isPaused]="c.isPaused"
           [userParticipantId]="userParticipantId()"
@@ -1766,6 +1766,31 @@ export class SalonConversation {
    */
   private readonly activeSpeakerOverride = signal<string | null>(null);
 
+  /**
+   * v4 Bug 48's client turn presentation (`SalonView.tsx`
+   * `handleImpersonateAndTakeTurn`). v4 computes the turn CLIENT-side from history
+   * and just overwrites `turnSelectionResult`; v5's turn is SERVER-authoritative
+   * and auto-refreshed ({@link _turnEffect} → {@link refreshTurn} on every chat
+   * settle), so a direct write would be clobbered by the next query — especially
+   * once P4.D60's GET projection makes the post-impersonate refetch change
+   * `chat()`. This override LAYERS above the server turn (the same way
+   * {@link activeSpeakerOverride} layers above the persisted speaking-as) and
+   * survives until a message is sent ({@link runTurn} clears it), matching v4's
+   * "recomputed from history once a message is sent". Set only for a user-driven
+   * (impersonated) seat, so its presence means "an impersonated user turn".
+   */
+  private readonly turnOverride = signal<TurnSelectionResult | null>(null);
+
+  /** The turn seat the UI presents: the client override (Bug 48) wins over the server query. */
+  private readonly effectiveNextSpeakerId = computed<string | null>(
+    () => this.turnOverride()?.nextSpeakerId ?? this.turnInfo()?.nextSpeakerId ?? null,
+  );
+
+  /** The selection envelope the sidebar reads: the override wins, else the server's. */
+  protected readonly effectiveTurnSelection = computed<TurnSelectionResult | null>(
+    () => this.turnOverride() ?? this.turnSelection(),
+  );
+
   /** Re-query the next speaker whenever the chat settles and no turn is running. */
   private readonly _turnEffect = effect(() => {
     const chat = this.chat();
@@ -1857,7 +1882,7 @@ export class SalonConversation {
   );
 
   private readonly nextSpeaker = computed<ParticipantDetail | null>(() => {
-    const id = this.turnInfo()?.nextSpeakerId;
+    const id = this.effectiveNextSpeakerId();
     if (!id) return null;
     return (this.chat()?.participants ?? []).find((p) => p.id === id) ?? null;
   });
@@ -1954,6 +1979,9 @@ export class SalonConversation {
   /** The next LLM speaker's name — the Nudge target, or null when it's a user turn. */
   protected readonly nudgeTargetName = computed<string | null>(() => {
     if (this.busy()) return null;
+    // Bug 48: an impersonate-takes-turn override is always a user-driven (paused)
+    // turn — show the banner, never a Nudge.
+    if (this.turnOverride()) return null;
     const info = this.turnInfo();
     if (!info?.nextSpeakerId || info.nextSpeakerControlledBy === 'user') return null;
     const next = this.nextSpeaker();
@@ -2410,7 +2438,14 @@ export class SalonConversation {
     }
   }
 
-  /** v4 `useImpersonation.handleStartImpersonation`. */
+  /**
+   * v4 `useImpersonation.handleStartImpersonation` wrapped by
+   * `handleImpersonateAndTakeTurn` (`SalonView.tsx`, Bug 48). Both of v4's
+   * impersonate entry points (the sidebar's `onImpersonate` and the AllLLMPause
+   * take-over) route through the wrapper; in v5 they both route through this
+   * method, so the take-the-turn logic lives here once and covers both
+   * ({@link onAllLLMTakeOver} delegates here).
+   */
   protected async onImpersonate(participantId: string): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
@@ -2425,6 +2460,16 @@ export class SalonConversation {
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to start impersonation');
       return;
+    }
+    // Bug 48: impersonating is an explicit "I'll take this character now", so —
+    // unless an LLM is mid-generation — hand the current turn to that seat. The
+    // banner then reads its turn and, via the Bug 49 follow, the composer speaks
+    // as it, so a typed message lands in turn. `!busy()` is v5's
+    // `!streamingRef.current` (the {@link _turnEffect} gate's source of truth):
+    // an LLM mid-stream is left undisturbed. The override survives the refetch
+    // below because it layers above the server-queried turn.
+    if (!this.busy()) {
+      this.turnOverride.set({ nextSpeakerId: participantId, reason: 'queue', cycleComplete: false });
     }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
@@ -2568,6 +2613,8 @@ export class SalonConversation {
   }
 
   protected onNudge(): void {
+    // Bug 48: an impersonate-takes-turn override is a user-driven turn — no nudge.
+    if (this.turnOverride()) return;
     const info = this.turnInfo();
     if (!info?.nextSpeakerId || info.nextSpeakerControlledBy === 'user') return;
     void this.runTurn({
@@ -2606,6 +2653,10 @@ export class SalonConversation {
     if (!chatId || this.busy()) {
       return;
     }
+    // Bug 48: a turn action supersedes the optimistic impersonate-takes-turn
+    // override — v4 recomputes `turnSelectionResult` from history once a message
+    // is sent, so the server's post-send turn governs from here on.
+    this.turnOverride.set(null);
 
     const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
     const pending = opts.pending ?? [];

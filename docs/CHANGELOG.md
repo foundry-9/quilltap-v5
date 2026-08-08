@@ -34,6 +34,14 @@ pure helper that projects the turn rotation one step past a user's just-typed,
 unpersisted message, so a multi-seat room's first responder honors the full
 roster instead of an LLM-only shortlist. Tier-1 differential extended
 (`select-speaker` gains eight `select-after` cases against v4's real helper).
+Fixed (v4 Bug 48; P4.D61): impersonating a character now hands them the current
+turn — unless an LLM is mid-generation — so the composer's user-turn banner
+names them and a typed message lands in turn. v5's turn is server-authoritative
+and auto-refreshed, so this is a client turn override that layers above the
+server-queried turn and is cleared when a message is sent (matching v4, which
+recomputes the turn from history once a message is sent). Both impersonate entry
+points (the sidebar and the AllLLMPause take-over) inherit it. SPA 0.5.442.
+
 Fixed (v4 Bug 51, client half; P4.D61): the impersonation overlay
 (`impersonatingParticipantIds` / `activeTypingParticipantId`) is now held as a
 client-local mirror that the chat record only SEEDS, never overrides live. The

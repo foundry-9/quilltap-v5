@@ -1445,6 +1445,73 @@ describe('SalonConversation — the persisted impersonation overlay is seeded, n
   });
 });
 
+/**
+ * v4 Bug 48 (`SalonView.tsx` `handleImpersonateAndTakeTurn`, `f6eac168`):
+ * impersonating a character hands them the CURRENT turn — unless an LLM is
+ * mid-generation — so the banner names them and a typed message lands in turn.
+ * v5's turn is server-authoritative and auto-refreshed, so this is a client
+ * `turnOverride` that layers above the server-queried turn (see the lane
+ * record). Both v4 wiring sites route through `onImpersonate` here, so the
+ * AllLLMPause take-over inherits it.
+ */
+describe('SalonConversation — impersonating takes the current turn (v4 Bug 48)', () => {
+  type Host = {
+    onImpersonate(id: string): Promise<void>;
+    onAllLLMTakeOver(id: string): Promise<void>;
+    userTurnName(): string | null;
+    turnOverride(): { nextSpeakerId: string | null; reason: string; cycleComplete: boolean } | null;
+    stream: { set(v: unknown): void };
+  };
+
+  function takeTurnClient(chat: ChatDetail): Partial<CoreClient> {
+    const base = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatchData = vi.fn(async (req: CoreRequest) =>
+      req.type === 'chatImpersonate'
+        ? { impersonatingParticipantIds: [req.participantId as string], activeTypingParticipantId: req.participantId as string }
+        : { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null },
+    );
+    return { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
+  }
+
+  it('hands the turn to the impersonated seat when idle — the banner names it', async () => {
+    const fixture = await render(takeTurnClient(chatDetail()));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.userTurnName()).toBeNull(); // no user turn before impersonating
+
+    await inst.onImpersonate('p1'); // p1 = Friday, an LLM seat
+    fixture.detectChanges();
+
+    expect(inst.turnOverride()?.nextSpeakerId).toBe('p1');
+    expect(inst.turnOverride()?.reason).toBe('queue');
+    expect(inst.turnOverride()?.cycleComplete).toBe(false);
+    // The banner reads the override (via the overlay) and names the impersonated
+    // seat, whose bare `controlledBy` is still 'llm'.
+    expect(inst.userTurnName()).toBe('Friday');
+  });
+
+  it('leaves an in-flight generation untouched (no override while streaming)', async () => {
+    const fixture = await render(takeTurnClient(chatDetail()));
+    const inst = fixture.componentInstance as unknown as Host;
+    // An LLM is mid-stream — busy() is true.
+    inst.stream.set({ waitingForResponse: true });
+    fixture.detectChanges();
+
+    await inst.onImpersonate('p1');
+    fixture.detectChanges();
+    // The impersonation applied, but the current turn was NOT seized mid-stream.
+    expect(inst.turnOverride()).toBeNull();
+  });
+
+  it('the AllLLMPause take-over path inherits the turn handoff', async () => {
+    const fixture = await render(takeTurnClient(chatDetail()));
+    const inst = fixture.componentInstance as unknown as Host;
+    await inst.onAllLLMTakeOver('p1');
+    fixture.detectChanges();
+    expect(inst.turnOverride()?.nextSpeakerId).toBe('p1');
+    expect(inst.userTurnName()).toBe('Friday');
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };

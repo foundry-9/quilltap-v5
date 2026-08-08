@@ -62075,3 +62075,19 @@ against the old computed** [`['p1']` vs `[]`] before the fix, per the
 pre-seeded-DTO discipline); seed-once survives a forced refetch. Gate: the
 affected impersonation/speaking-as/banner suites green (62/62 across
 salon-conversation + salon-turn-controls); `ng build` clean. SPA 0.5.441.
+
+**Unit 2 — Bug 48 (impersonate takes the turn).** Added the client `turnOverride`
+signal + `effectiveNextSpeakerId` / `effectiveTurnSelection` computeds; re-pointed
+`nextSpeaker` (the banner's source) at the effective id and the sidebar's
+`turnSelectionResult` binding at `effectiveTurnSelection()`; `onImpersonate` sets
+the override `{nextSpeakerId: participantId, reason:'queue', cycleComplete:false}`
+when `!busy()` (v5's `!streamingRef.current`), covering BOTH v4 wiring sites since
+`onAllLLMTakeOver` delegates to `onImpersonate`; `runTurn` clears the override
+(v4 recomputes from history once a message is sent); `nudgeTargetName`/`onNudge`
+guard on the override (an impersonated turn shows the banner, not a Nudge). The
+override LAYERS above the server turn so v5's `_turnEffect`/`refreshTurn`
+auto-query cannot clobber it (and, once P4.D60's GET projection makes the
+post-impersonate refetch change `chat()`, it still survives). Parity specs: takes
+the turn when idle (banner names the impersonated seat); leaves an in-flight
+stream untouched; the AllLLMPause take-over inherits it. Gate: salon specs 65/65;
+`ng build` clean. SPA 0.5.442.
