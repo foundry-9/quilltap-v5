@@ -284,6 +284,13 @@ pub fn build_router(state: SharedState) -> Router {
                 .put(text_replacements_routes::taboo_settings_put),
         )
         // === end P4.D50 ===
+        // === P4.D57: the instance-wide Brahma Console turn budget ===
+        .route(
+            "/api/v1/settings/brahma-console",
+            get(text_replacements_routes::brahma_console_settings_get)
+                .put(text_replacements_routes::brahma_console_settings_put),
+        )
+        // === end P4.D57 ===
         .route(
             "/api/v1/settings/text-replacements/{id}",
             axum::routing::patch(text_replacements_routes::text_replacement_patch)

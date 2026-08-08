@@ -69,6 +69,16 @@ web-edge state-collapse the Taboo §3 review caught. The wire field name
 present-invalid arm. `cargo test -p quilltap-core --lib
 api::types::tests::brahma_console` green; clippy clean.
 
+**Unit 4 — the REST edge (web 0.0.66).** `GET / PUT
+/api/v1/settings/brahma-console` in `text_replacements_routes.rs` (the taboo edge
+lives there), registered in `lib.rs`. GET → `BrahmaConsoleSettings`; PUT maps the
+raw body's `maxAgentTurns` to the tri-state variant (`Null → Some(None)`, present
+→ `Some(other)`, absent → `None`) and carries a present-but-invalid value RAW so
+the dispatch handler 400s it, not the edge. A malformed JSON body 500s (v4's
+`await req.json()` inside the try). GET/PUT both answer `Response::BrahmaConsole`,
+already handled by `unwrap_to_http` (the CRUD family). `cargo build/clippy
+-p quilltap-web` clean.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

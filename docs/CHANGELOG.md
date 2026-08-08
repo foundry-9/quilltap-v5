@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): added the REST edge
+`GET / PUT /api/v1/settings/brahma-console` (byte-faithful to the reference
+route: GET returns `{maxAgentTurns}`, PUT merges over current, validates,
+persists, echoes; a malformed body 500s, an invalid value 400s). web 0.0.66.
+
 P4.D57 (Brahma Console turn budget, server): added the dispatch surface the
 settings card consumes — `brahmaConsoleSettings` (GET, `{maxAgentTurns}`) and
 `brahmaConsoleSettingsUpdate` (PUT, merge-over-current, validate, echo the
