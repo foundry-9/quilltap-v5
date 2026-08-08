@@ -200,7 +200,12 @@ UNRELATED 8-test flake in `courier-bubble.spec.ts` (a sibling spec freezes
 `navigator.clipboard` non-configurable and worker sharding occasionally lands
 courier-bubble after it → `Cannot assign to read only property 'clipboard'`; it
 passes 8/8 in isolation, imports none of this lane's files, and did NOT reproduce
-on a clean re-run). `ng build` clean. Full Playwright: [pending in report].
+on a clean re-run). `ng build` clean. Full Playwright: **189 passed, 0 failed, 0 skipped (4.9m)** —
+the salon-dialogs "speaking as a character" beat (test #5, 507ms) exercises the
+new cue. (A FIRST full-suite run flaked: the live server crashed mid-run at the
+image-detail spec — `net::ERR_CONNECTION_REFUSED`, cascading connection failures
++ a few 15 s timeouts — server-side and unrelated to this SPA-only lane; the
+beat passes 9/9 in isolation, and a clean re-run was 189/189.)
 
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
