@@ -61848,3 +61848,72 @@ QT_ORACLE_SELECT_SPEAKER=/tmp/oracle-select-speaker.ndjson \
   cargo test -p quilltap-harness --test select_speaker_equivalence
 ```
 Green: 15 select + 8 select-after. Versions: core 0.0.513, harness 0.0.435.
+
+### Unit 2 — the spine pause guard + `maybe_pause_for_user_seat_turn` (Bug 50) + tier-3 differential
+
+Ported v4's fair-rotation guard (orchestrator.service.ts:294–326) and
+`maybePauseForUserSeatTurn` (:1703–1853) into `services/orchestrator.rs`. The
+guard fires BEFORE responder resolution when `!continueMode && !responding &&
+!targetParticipantIds.length && !nudge && content && isMultiCharacterChat` — it
+builds the full-roster filter list (the misnamed `getActiveCharacterParticipants`
+returns LLM seats only, so the count reads the FULL roster). The pause fn:
+resolves the poster via `find_active_user_participant` (overlay-aware), early-outs
+when `< 2` user-driven seats, builds the vault-overlaid characterId→talkativeness
+map, projects via `select_next_speaker_after_user_message`, and — when the next
+seat is another user-driven seat — persists the user message (participantId =
+poster, which advances `spokenThisCycle` via `add_message`), warns-on-fail links
+files, moves `lastTurnParticipantId` to the next seat, and emits the existing
+`chain_complete { reason: "user_turn", nextSpeakerId, chainDepth: 0 }` frame. The
+terminal `ProcessMessageResult { has_content: false, ... }` makes
+`execute_turn_chain` early-return (no second frame), matching v4.
+
+**⚠ Carina markup side effect DEFERRED loud.** v4's pause path also fires the
+inline `@Name` markup query (`runCarinaMarkupQuery`) as a side effect. v5's
+`process_message` has NEVER wired the user-message markup pass — it is the
+standing `OrchestratorSeams::user_message_carina` deferral. Wiring it only on the
+pause path would be asymmetric with the still-unwired MAIN path, so this port
+omits it; the module seam note (orchestrator.rs:45-58) now names BOTH sites, and
+the pause corpus case uses non-`@Name` content so the missing side effect cannot
+silently diverge a case.
+
+Consolidation note: exposed five participant_resolver helpers as `pub(crate)`
+(`to_filter_participant`, `to_speaker_participant`, `participants_of`,
+`is_active_character`, `impersonating_ids`) so the pause fn reuses them; the
+`impersonating_ids` reuse is a tier-2 rider target (five copies to unify).
+
+**Differential (tier-3 mocked-LLM):** the orchestrator fixture gained the
+`fair-pause` chat (charlie `user` + lorian impersonated `llm` + kumar `llm`;
+`impersonatingParticipantIds: [lorian]`; a seed kumar-ASSISTANT opener so kumar
+is in `spokenThisCycle`) and the `fair_rotation_pause` call (charlie posts,
+non-`@Name`). The oracle drives v4's REAL `handleSendMessage`; the diff asserts
+events `[status(initializing), chainComplete{user_turn, lorian, 0}]`, the
+persisted charlie USER message, `chats.lastTurnParticipantId = lorian`, and
+`spokenThisCycle = [kumar, charlie]`. The existing `sentinel_prose` case (two
+genuine user seats, rotation lands on the LLM) proves the guard is inert when an
+LLM is up (case b); every existing single-user-seat case proves the `< 2`
+early-out (case c). The fixture builder gained pass-through for
+`impersonatingParticipantIds` / `activeTypingParticipantId`.
+
+Mutation-proven: inverting the `next_is_user_driven` filter → `fair_rotation_pause`
+falls through to generation (no canned stream) → event-trace red, as designed.
+
+Regen recipe (Node 24; jest /tmp mirror; TZ=UTC — distill-transitive):
+```
+WT=<worktree>; TMPO=/tmp/qt-orch-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$WT/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+cp "$WT/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server                     # HEAD f6eac168, clean
+QT_FIXTURE_OUT=/tmp/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-orch-mount.db \
+  ~/.nvm/versions/node/v24.13.1/bin/npx tsx "$WT/harness/oracle/fixtures/build-orchestrator-fixture.ts"
+QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db \
+TZ=UTC QT_ORACLE_OUT=/tmp/oracle-orchestrator.ndjson \
+  ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots ~/source/quilltap-server --roots "$TMPO/cases" -- orchestrator-tier3
+QT_ORACLE_ORCHESTRATOR=/tmp/oracle-orchestrator.ndjson \
+QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db \
+  cargo test -p quilltap-harness --test orchestrator_tier3_equivalence
+```
+Green (30 calls incl. `fair_rotation_pause`). Fixture invalidates: only the
+orchestrator family consumes `orchestrator-tier3.json` + the two work DBs (built
+fresh per run). Version: core 0.0.514.

@@ -163,7 +163,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
         .map(String::from)
 }
 
-fn to_filter_participant(p: &Value) -> FilterParticipant {
+pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         status: parse_status(str_field(p, "status")),
@@ -172,7 +172,7 @@ fn to_filter_participant(p: &Value) -> FilterParticipant {
     }
 }
 
-fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
+pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
     SpeakerParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
@@ -185,7 +185,7 @@ fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
 
 /// v4's continue-/normal-mode candidate predicate: a present CHARACTER carrying a
 /// character id.
-fn is_active_character(p: &Value) -> bool {
+pub(crate) fn is_active_character(p: &Value) -> bool {
     str_field(p, "type") == Some("CHARACTER")
         && is_participant_present(parse_status(str_field(p, "status")))
         && nonempty_character_id(p).is_some()
@@ -207,7 +207,7 @@ fn is_llm_candidate(p: &Value, impersonating_participant_ids: Option<&[String]>)
 
 /// The chat's `impersonatingParticipantIds` (v4 `chat.impersonatingParticipantIds`),
 /// tolerating absence the `|| []` way.
-fn impersonating_ids(chat: &Value) -> Vec<String> {
+pub(crate) fn impersonating_ids(chat: &Value) -> Vec<String> {
     chat.get("impersonatingParticipantIds")
         .and_then(Value::as_array)
         .map(|a| {
@@ -218,7 +218,7 @@ fn impersonating_ids(chat: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn participants_of(chat: &Value) -> Vec<Value> {
+pub(crate) fn participants_of(chat: &Value) -> Vec<Value> {
     chat.get("participants")
         .and_then(Value::as_array)
         .cloned()

@@ -85,6 +85,11 @@ interface ChatSpec {
   isDangerousChat?: boolean;
   /** P4.d2: the "nothing to add" per-chat toggle (b90cd1f5). NULL/absent = on. */
   turnSkippingEnabled?: boolean;
+  /** P4.D60 (Bug 50/51): the impersonation overlay seed — participant ids the
+   * human is impersonating this session (their `controlledBy` stays 'llm'). */
+  impersonatingParticipantIds?: string[];
+  /** P4.D60 (Bug 51): the seat the human is currently speaking as. */
+  activeTypingParticipantId?: string | null;
 }
 interface Spec {
   testPepperBase64: string;
@@ -316,6 +321,12 @@ async function main(): Promise<void> {
         ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
         ...(chat.turnSkippingEnabled !== undefined
           ? { turnSkippingEnabled: chat.turnSkippingEnabled }
+          : {}),
+        ...(chat.impersonatingParticipantIds !== undefined
+          ? { impersonatingParticipantIds: chat.impersonatingParticipantIds }
+          : {}),
+        ...(chat.activeTypingParticipantId !== undefined
+          ? { activeTypingParticipantId: chat.activeTypingParticipantId }
           : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }

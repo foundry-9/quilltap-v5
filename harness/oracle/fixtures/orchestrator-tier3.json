@@ -1008,6 +1008,42 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "fa170001-0000-4000-8000-0000000000f1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "impersonatingParticipantIds": [
+    "fa1b0002-0000-4000-8000-0000000000b2"
+   ],
+   "participants": [
+    {
+     "id": "fa1a0001-0000-4000-8000-0000000000a1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    },
+    {
+     "id": "fa1b0002-0000-4000-8000-0000000000b2",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "fa1c0003-0000-4000-8000-0000000000c3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "fa100001-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "Kumar surveys the room and waits.",
+     "participantId": "fa1c0003-0000-4000-8000-0000000000c3"
+    }
+   ]
   }
  ],
  "calls": [
@@ -1346,6 +1382,16 @@
      "createdAt": "2026-01-02T03:04:05.000Z"
     }
    ]
+  },
+  {
+   "name": "fair_rotation_pause",
+   "kind": "single",
+   "chatId": "fa170001-0000-4000-8000-0000000000f1",
+   "content": "Charlie steps forward and speaks.",
+   "continueMode": false,
+   "streamLabel": "fair_rotation_pause",
+   "cheapLLMSettings": true,
+   "summaryCheck": false
   }
  ],
  "streams": {

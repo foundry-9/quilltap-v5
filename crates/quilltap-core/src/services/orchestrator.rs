@@ -46,6 +46,12 @@
 //!   `!continueMode && content`. The corpus keeps the user content free of carina
 //!   markup and passes no pending tool results, so each detector returns "none"
 //!   and writes nothing (the [`OrchestratorSeams`] `user_message_carina` method).
+//!   ⚠ This seam has TWO call sites in v4, both deferred: the MAIN send path
+//!   (here) AND the Bug-50 fair-rotation pause path
+//!   ([`maybe_pause_for_user_seat_turn`], which in v4 fires the same
+//!   `runCarinaMarkupQuery` after persisting the paused user message). The pause
+//!   path omits it for the same reason and its corpus cases use non-`@Name`
+//!   content — wiring it on only one path would be an asymmetric divergence.
 //! * **Agent mode** (W4.4, real): the cascade resolver runs on the spine
 //!   (`resolve_agent_mode_setting` over chat / project / character / global
 //!   settings). The corpus's `agent_mode_on` chat opts in at the Chat level, so
@@ -658,6 +664,202 @@ pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionC
     )
 }
 
+/// Fair-rotation pause for rooms where the human drives two or more seats (v4
+/// `maybePauseForUserSeatTurn`, orchestrator.service.ts:1703–1853, Bug 50).
+///
+/// Called on a fresh, non-whisper user send before any responder is resolved.
+/// Returns `Some(terminal ProcessMessageResult)` — so the caller returns
+/// immediately and the turn chain does not run — when the rotation's next speaker
+/// after this post is ANOTHER seat the human drives: it persists the user's
+/// message and pauses for that seat. Returns `None` in every other case (single
+/// user seat, or an LLM is genuinely up next), letting the normal generation path
+/// proceed untouched.
+///
+/// ⚠ **Carina markup side effect deferred (loud seam).** v4's pause path also
+/// fires the inline `@Name` / `@Name?` markup query (`runCarinaMarkupQuery`) as a
+/// side effect, mirroring the MAIN path. v5's `process_message` has NEVER wired
+/// the user-message markup pass — it is the standing [`OrchestratorSeams`]
+/// `user_message_carina` deferral (see the seam note atop this module). Wiring it
+/// only on the pause path would be an asymmetric divergence from the still-unwired
+/// main path, so this port omits it too; the corpus's pause cases use non-`@Name`
+/// content so the missing side effect cannot silently diverge a differential case.
+#[allow(clippy::too_many_arguments)]
+async fn maybe_pause_for_user_seat_turn<SNK>(
+    db: &Db,
+    sink: &SNK,
+    chat_id: &str,
+    chat: &Value,
+    options: &SendMessageOptions,
+    speaking_as: Option<&str>,
+    now_ms: i64,
+    random01: f64,
+) -> Result<Option<ProcessMessageResult>, DbError>
+where
+    SNK: EventSink + Sync,
+{
+    use super::participant_resolver::{
+        impersonating_ids, is_active_character, participants_of, to_filter_participant,
+        to_speaker_participant,
+    };
+    use crate::participant_filters::{find_active_user_participant, is_user_driven_seat};
+
+    let participants = participants_of(chat);
+    let impersonating = impersonating_ids(chat);
+
+    // Which seat is the human speaking as? (overlay-aware — an impersonated seat
+    // counts, Bug 44.)
+    let filter_parts: Vec<crate::participant_filters::ParticipantView> =
+        participants.iter().map(to_filter_participant).collect();
+    let Some(poster_seat) =
+        find_active_user_participant(&filter_parts, speaking_as, Some(&impersonating))
+    else {
+        return Ok(None);
+    };
+    let poster_id = poster_seat.id.clone();
+
+    // Only relevant when the human drives 2+ seats; otherwise the LLM answering a
+    // human post is exactly right and this guard must not change anything.
+    // NB: v4's `getActiveCharacterParticipants` is a misnomer (LLM seats only), so
+    // filter the FULL roster here — a user-controlled seat AND the impersonated
+    // overlay must both count.
+    let active_chars: Vec<&Value> = participants
+        .iter()
+        .filter(|p| is_active_character(p))
+        .collect();
+    let user_driven_seat_count = active_chars
+        .iter()
+        .filter(|p| {
+            is_user_driven_seat(
+                p.get("id").and_then(Value::as_str).unwrap_or_default(),
+                p.get("controlledBy")
+                    .and_then(Value::as_str)
+                    .unwrap_or("llm"),
+                Some(&impersonating),
+            )
+        })
+        .count();
+    if user_driven_seat_count < 2 {
+        return Ok(None);
+    }
+
+    // Talkativeness lives on the character record — build the weight map
+    // (characterId → talkativeness), vault-overlaid like v4's `findById`.
+    let mut characters_map: HashMap<String, f64> = HashMap::new();
+    for p in &active_chars {
+        let Some(cid) = p
+            .get("characterId")
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty())
+        else {
+            continue;
+        };
+        let cid_owned = cid.to_string();
+        if let Some(ch) = db.read_main(|main| {
+            db.read_mount_index(|mount| {
+                crate::db::characters_read::find_by_id(main, mount, &cid_owned)
+            })
+        })? {
+            if let Some(t) = ch.get("talkativeness").and_then(Value::as_f64) {
+                characters_map.insert(cid.to_string(), t);
+            }
+        }
+    }
+
+    let speaker_parts: Vec<crate::select_speaker::SpeakerParticipant> =
+        participants.iter().map(to_speaker_participant).collect();
+    let next = crate::select_speaker::select_next_speaker_after_user_message(
+        &speaker_parts,
+        &characters_map,
+        &poster_id,
+        chat.get("spokenThisCycleParticipantIds")
+            .and_then(Value::as_str),
+        chat.get("turnQueue").and_then(Value::as_str),
+        Some(&poster_id),
+        random01,
+        Some(&impersonating),
+    );
+    let next_seat = next.next_speaker_id.as_ref().and_then(|nid| {
+        participants
+            .iter()
+            .find(|p| p.get("id").and_then(Value::as_str) == Some(nid.as_str()))
+    });
+    let next_is_user_driven = next_seat.is_some_and(|p| {
+        is_user_driven_seat(
+            p.get("id").and_then(Value::as_str).unwrap_or_default(),
+            p.get("controlledBy")
+                .and_then(Value::as_str)
+                .unwrap_or("llm"),
+            Some(&impersonating),
+        )
+    });
+
+    // An LLM (or nobody) is up next — let the normal path generate its reply.
+    let Some(next_seat) = next_seat.filter(|_| next_is_user_driven) else {
+        return Ok(None);
+    };
+    let next_seat_id = next_seat
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    // The floor after this post belongs to another seat the human drives. Persist
+    // the message (which advances the persisted cycle via add_message) and pause.
+    let user_message_id = uuid::Uuid::new_v4().to_string();
+    let now = crate::clock::iso_from_unix_ms(now_ms);
+    let mut msg = serde_json::Map::new();
+    msg.insert("id".into(), json!(user_message_id));
+    msg.insert("type".into(), json!("message"));
+    msg.insert("role".into(), json!("USER"));
+    msg.insert("content".into(), json!(options.content));
+    msg.insert("createdAt".into(), json!(now));
+    msg.insert("attachments".into(), json!(options.file_ids));
+    msg.insert("participantId".into(), json!(poster_id));
+    msg.insert("targetParticipantIds".into(), Value::Null);
+    let write_chat_id = chat_id.to_string();
+    let event: crate::db::chats_messages::ChatEventInput =
+        serde_json::from_value(Value::Object(msg))
+            .map_err(|e| DbError::Key(format!("paused user message marshal: {e}")))?;
+    db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
+        .await?;
+
+    // Link file attachments (warn-on-fail, like v4; corpus keeps this empty).
+    for fid in &options.file_ids {
+        let fid = fid.clone();
+        let mid = user_message_id.clone();
+        if let Err(error) = db
+            .write(move |w| w.main().files().add_link(&fid, &mid).map(|_| ()))
+            .await
+        {
+            tracing::warn!(
+                chat_id = %chat_id,
+                error = %format!("{error:?}"),
+                "[TurnFairness] Failed to link attachment on paused user turn",
+            );
+        }
+    }
+
+    // Persist the pending turn and tell the client whose floor it is (the client's
+    // own recompute lands on the same seat; the frame settles its streaming state).
+    super::turn_orchestrator::persist_turn_participant_id(db, chat_id, Some(&next_seat_id)).await?;
+    sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
+        reason: "user_turn".to_string(),
+        next_speaker_id: Some(next_seat_id),
+        chain_depth: 0,
+    }));
+
+    Ok(Some(ProcessMessageResult {
+        is_multi_character: true,
+        has_content: false,
+        message_id: user_message_id,
+        user_participant_id: Some(poster_id),
+        is_paused: chat.get("isPaused").and_then(Value::as_bool) == Some(true),
+        scene_tracking_character_ids: None,
+        skipped: false,
+        skipped_participant_id: None,
+    }))
+}
+
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
 /// reproducing every unported-subsystem gate and routing the subsystem body
 /// through an [`OrchestratorSeams`] method. Returns the [`ProcessMessageResult`]
@@ -737,6 +939,50 @@ where
                 .and_then(Value::as_str)
                 .map(String::from)
         });
+
+    // --- Fair-rotation guard for rooms where the human drives 2+ seats
+    // (orchestrator.service.ts:294–326, Bug 50) ---
+    // The first responder after a human post used to be picked from an LLM-ONLY
+    // shortlist (participant-resolver), so a room with a single LLM had that LLM
+    // answer EVERY human turn (Charlie→Kumar→Lorian→Kumar…). When the rotation's
+    // next speaker after this post is ANOTHER seat the human drives, the floor is
+    // theirs: persist the message and pause for that seat. A whisper, a nudge, an
+    // explicit responding participant, or a continue-mode turn all bypass this
+    // (they name their own speaker), as does any single-user-seat room.
+    let multi_character_for_guard = {
+        let filter_parts: Vec<crate::participant_filters::ParticipantView> =
+            super::participant_resolver::participants_of(&chat)
+                .iter()
+                .map(super::participant_resolver::to_filter_participant)
+                .collect();
+        crate::participant_filters::is_multi_character_chat(&filter_parts)
+    };
+    if !is_continue_mode
+        && input.options.responding_participant_id.is_none()
+        && input
+            .options
+            .target_participant_ids
+            .as_ref()
+            .is_none_or(|t| t.is_empty())
+        && input.options.nudge != Some(true)
+        && !input.options.content.is_empty()
+        && multi_character_for_guard
+    {
+        if let Some(pause_result) = maybe_pause_for_user_seat_turn(
+            db,
+            sink,
+            &chat_id,
+            &chat,
+            &input.options,
+            speaking_as.as_deref(),
+            input.clock.now_ms,
+            input.clock.random01,
+        )
+        .await?
+        {
+            return Ok(pause_result);
+        }
+    }
 
     let resolution = super::participant_resolver::resolve_responding_participant(
         db,

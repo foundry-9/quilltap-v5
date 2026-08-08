@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Fixed (v4 Bug 50): in a room where the human drives two or more seats alongside
+a single LLM, the LLM answered every human turn. The chat spine now runs a
+fair-rotation pause guard before resolving a responder — when the rotation's
+next speaker after a human post is another seat the human drives, it persists
+the message and pauses for that seat (emitting the existing `user_turn`
+chain-complete frame) instead of forcing the sole LLM to speak out of turn.
+Single-user-seat rooms and whisper/nudge/continue turns are untouched.
+
 Added `select_next_speaker_after_user_message` (v4 Bug 50 fair rotation): the
 pure helper that projects the turn rotation one step past a user's just-typed,
 unpersisted message, so a multi-seat room's first responder honors the full
