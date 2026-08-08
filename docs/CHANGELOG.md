@@ -61,6 +61,15 @@ the differential-proven engine filters. These resolve who the human is driving a
 seat as, honoring the impersonation overlay (an impersonated seat keeps its LLM
 control column). Groundwork for the composer turn banner and message-attribution
 reconciliation. SPA 0.5.434.
+Added the Brahma Console budget card to Settings → Chat (between Data
+Retention and Autonomous Rooms). One number field caps how many tool-use
+turns the Console — and every one-shot @Brahma consultation — may take
+before it must answer, adjustable 5–200 (default 50). It commits on blur
+or Enter, reverts an out-of-range entry without nagging, and skips the
+round-trip when unchanged. This is the SPA half; the setting itself is
+served by the sibling server change. The About workspace-backdrop
+reference-app change is a deliberate no-port: this app ships no About
+background image, so the bug it fixes cannot occur here.
 
 Planned the next porting round: a drift catch-up on three reference-app
 changes (work orders P4.D57/P4.D58/P4.D59). It ports the Brahma Console

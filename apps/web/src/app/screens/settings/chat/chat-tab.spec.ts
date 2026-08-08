@@ -17,7 +17,8 @@ import { ChatTab } from './chat-tab';
  * so it is pinned here against `ChatTabContent.tsx` L70-206.
  */
 
-/** v4 `ChatTabContent.tsx` L70-210, top to bottom (Taboo added at `7df7de8e`). */
+/** v4 `ChatTabContent.tsx` L70-210, top to bottom (Taboo added at `7df7de8e`,
+ *  Brahma Console at `6452e2c3` — between Data Retention and Autonomous Rooms). */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
@@ -36,6 +37,7 @@ const V4_CARD_ORDER = [
   ['Dangerous Content', 'dangerous-content'],
   ['Taboo', 'taboo'],
   ['Data Retention', 'data-retention'],
+  ['Brahma Console', 'brahma-console'],
   ['Autonomous Rooms', 'autonomous-rooms'],
   ['Scheduled Autonomous Rooms', 'autonomous-room-schedules'],
 ];
@@ -72,7 +74,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all nineteen v4 cards in v4\'s exact order', () => {
+  it('mounts all twenty v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),

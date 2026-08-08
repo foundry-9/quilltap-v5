@@ -14,6 +14,7 @@ import { AutonomousRoomsList } from '../../../autonomous/autonomous-rooms-list';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { AgentModeSettings } from './agent-mode-settings';
 import { AnswerConfirmationSettings } from './answer-confirmation-settings';
+import { BrahmaConsoleSettings } from './brahma-console-settings';
 import { AutoScrollSettings } from './auto-scroll-settings';
 import { AutomationSettings } from './automation-settings';
 import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
@@ -32,7 +33,7 @@ import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`) — now FULLY fitted out: all eighteen v4 cards, in v4's
+ * subsystem `salon`) — now FULLY fitted out: all twenty v4 cards, in v4's
  * exact order, with v4's titles/descriptions + `sectionId`s (the `?section=`
  * deep link) ported verbatim.
  *
@@ -47,8 +48,9 @@ import { TokenDisplaySettings } from './token-display-settings';
  *
  * Cards by lineage: Composition Mode + Text Replacement (P4.6al), Data
  * Retention (P4.d3), the two autonomous cards (P4.6ad), the eleven landed by
- * P4.6an, and Custom Tools (P4.6ba — the Workbench button v4 pairs with it is
- * deferred to P4.6bb).
+ * P4.6an, Custom Tools (P4.6ba — the Workbench button v4 pairs with it is
+ * deferred to P4.6bb), and Brahma Console (P4.D59, v4 `6452e2c3` — the
+ * agent-turn budget, between Data Retention and Autonomous Rooms).
  */
 @Component({
   selector: 'qt-settings-chat',
@@ -59,6 +61,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     AutonomousRoomsList,
     AgentModeSettings,
     AnswerConfirmationSettings,
+    BrahmaConsoleSettings,
     AutoScrollSettings,
     AutomationSettings,
     ComposerSpellcheckSettings,
@@ -235,6 +238,15 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'data-retention'"
         >
           <qt-data-retention-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Brahma Console"
+          description="How many tool-use turns the Console may take before it must answer"
+          sectionId="brahma-console"
+          [forceOpen]="section() === 'brahma-console'"
+        >
+          <qt-brahma-console-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card
