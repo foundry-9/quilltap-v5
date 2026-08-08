@@ -3750,6 +3750,28 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.D50 ===
+            // === P4.D57 === (the instance-wide Brahma Console turn budget)
+            Request::BrahmaConsoleSettings => match self.ready_db() {
+                Ok(db) => super::settings::brahma_console_settings_get(&db),
+                Err(resp) => resp,
+            },
+            Request::BrahmaConsoleSettingsUpdate { max_agent_turns } => match self.ready_db() {
+                Ok(db) => {
+                    // An absent key is v4's partial body (the merge keeps the
+                    // stored value); a present one — including an explicit `null`
+                    // — is carried raw so the handler's Zod-faithful parse decides.
+                    let bag = match max_agent_turns {
+                        Some(Some(v)) => serde_json::json!({ "maxAgentTurns": v }),
+                        Some(None) => {
+                            serde_json::json!({ "maxAgentTurns": serde_json::Value::Null })
+                        }
+                        None => serde_json::json!({}),
+                    };
+                    super::settings::brahma_console_settings_update(&db, bag).await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.D57 ===
             // === P4.6ae === (the general files family — lane A, append-only)
             Request::FilesList {
                 project_id,

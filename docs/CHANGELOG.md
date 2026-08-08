@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): added the dispatch surface the
+settings card consumes — `brahmaConsoleSettings` (GET, `{maxAgentTurns}`) and
+`brahmaConsoleSettingsUpdate` (PUT, merge-over-current, validate, echo the
+stored value; 400 on out-of-range/non-integer/null). core 0.0.512.
+
 P4.D57 (Brahma Console turn budget, server): both Brahma paths — the streaming
 orchestrator and the one-shot `@Brahma` — now read the operator-set agent-turn
 budget through a shared resolver (`resolve_brahma_max_agent_turns`) instead of a

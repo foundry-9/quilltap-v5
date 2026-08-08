@@ -2057,6 +2057,69 @@ pub async fn taboo_settings_update(db: &Db, bag: Value) -> Response {
 
 // === end P4.D50 ===
 
+// === P4.D57 === (the instance-wide Brahma Console turn budget — v4 `6452e2c3`)
+
+/// v4 `GET /api/v1/settings/brahma-console` — the instance-wide agent-turn budget
+/// `{maxAgentTurns}` (the default 50 when never written). A read failure is v4's
+/// `serverError('Failed to fetch brahma-console settings')`.
+pub fn brahma_console_settings_get(db: &Db) -> Response {
+    match db.read_main(instance_settings::get_brahma_console_settings) {
+        Ok(max_agent_turns) => Response::BrahmaConsole(json!({ "maxAgentTurns": max_agent_turns })),
+        Err(_) => Response::error(
+            ErrorKind::Internal,
+            "Failed to fetch brahma-console settings",
+        ),
+    }
+}
+
+/// v4 `PUT /api/v1/settings/brahma-console` — read the current settings, merge the
+/// body OVER them (`{...current, ...body}`, so a partial body — `{}` in
+/// particular — can never wipe the value), `safeParse` the merge, persist, and
+/// echo what was stored.
+///
+/// A schema violation (out of range, non-integer, a string, or an explicit
+/// `null`) is v4's `validationError` (400 `{error: 'Validation error', details}`);
+/// the port surfaces the `{error}` envelope, the Zod issue array being
+/// v4-implementation-specific. The taboo `taboo_settings_update` precedent.
+pub async fn brahma_console_settings_update(db: &Db, bag: Value) -> Response {
+    let current = match db.read_main(instance_settings::get_brahma_console_settings) {
+        Ok(v) => v,
+        Err(_) => {
+            return Response::error(
+                ErrorKind::Internal,
+                "Failed to update brahma-console settings",
+            )
+        }
+    };
+    // The schema's only field is `maxAgentTurns`; the merge overlays it when the
+    // body carries it (even an explicit `null` — which Zod rejects), else the
+    // current value survives and is re-validated as v4 re-validates it.
+    let merged = match bag.get("maxAgentTurns") {
+        Some(v) => json!({ "maxAgentTurns": v }),
+        None => json!({ "maxAgentTurns": current }),
+    };
+    let Some(parsed) = instance_settings::parse_brahma_console_settings(&merged) else {
+        return Response::error(ErrorKind::BadRequest, "Validation error");
+    };
+    match db
+        .write(move |w| {
+            instance_settings::set_brahma_console_settings(w.main().connection(), parsed)
+        })
+        .await
+    {
+        // `Ok(None)` is v4's `setBrahmaConsoleSettings` THROW (the schema refused
+        // the value), which lands in the route's catch as the 500 — unreachable
+        // here since the handler pre-parses, but faithful.
+        Ok(Some(saved)) => Response::BrahmaConsole(json!({ "maxAgentTurns": saved })),
+        Ok(None) | Err(_) => Response::error(
+            ErrorKind::Internal,
+            "Failed to update brahma-console settings",
+        ),
+    }
+}
+
+// === end P4.D57 ===
+
 // ===========================================================================
 // General state (P4.d10 §A — v4 `app/api/v1/settings/general-state/route.ts`
 // at `f48f34dc`): the bottom cascade tier, a `state.json` document at the

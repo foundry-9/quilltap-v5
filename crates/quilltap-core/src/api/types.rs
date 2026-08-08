@@ -2886,6 +2886,32 @@ pub enum Request {
         phrases: Option<Option<serde_json::Value>>,
     },
     // === end P4.D50 ===
+    // === P4.D57: the Brahma Console turn budget (v4 `6452e2c3`) — append-only ===
+    /// v4 `GET /api/v1/settings/brahma-console` — the instance-wide agent-turn
+    /// budget, `{maxAgentTurns: number}` (the default 50 when never written).
+    BrahmaConsoleSettings,
+    /// v4 `PUT /api/v1/settings/brahma-console` — merge `{...current, ...body}`,
+    /// `BrahmaConsoleSettingsSchema.safeParse` the merge, persist, and echo the
+    /// STORED `{maxAgentTurns}`.
+    ///
+    /// The raw value rides through — the taboo `phrases` precedent, NOT a typed
+    /// `Option<Option<i64>>` — so the handler runs the Zod-faithful parse itself:
+    /// a partial body (`{}` in particular) leaves the stored value untouched, and
+    /// a present-but-invalid `maxAgentTurns` (out of range, a non-integer like
+    /// `12.5`, a string, or an explicit `null`) 400s rather than being coerced or
+    /// silently dropped. A typed `i64` could not carry `12.5` / `"fifty"` to the
+    /// parse, so the web edge would collapse them to key-absent (keep-current) —
+    /// exactly the web-edge state-collapse the Taboo §3 review caught.
+    ///
+    /// `Option<Option<_>>` tri-state: `None` = key ABSENT (the merge keeps the
+    /// current value), `Some(None)` = an explicit `null` (Zod's `.default(50)`
+    /// does NOT fire for it → 400), `Some(Some(v))` = a present value the handler
+    /// validates. A plain `Option` would collapse absent and null.
+    BrahmaConsoleSettingsUpdate {
+        #[serde(default, rename = "maxAgentTurns", deserialize_with = "double_option")]
+        max_agent_turns: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D57 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -2978,7 +3004,9 @@ pub enum Response {
     Message(serde_json::Value),
     /// v4 brahma-console CRUD bodies (`{ chats }` / `{ chat }` / `{ messages }` /
     /// `{ message }`) — the P4.9I1A dedicated dispatch family. Send's reply is the
-    /// separate `BrahmaConsoleSend` variant.
+    /// separate `BrahmaConsoleSend` variant. Also carries the P4.D57 Brahma
+    /// Console **settings** body (`{ maxAgentTurns }`), which shares the wire
+    /// `type: "brahmaConsole"`; pinned by `settings_routes_equivalence`.
     BrahmaConsole(serde_json::Value),
     /// v4 brahma-console send reply (`{ messageId }`) — the orchestrator's typed
     /// dispatch result; the stream frames ride the Event channel (the `ChatSend`
@@ -3744,5 +3772,55 @@ mod tests {
             } => assert_eq!(v, serde_json::json!(["x"])),
             other => panic!("expected Some(Some(_)), got {other:?}"),
         }
+    }
+
+    /// P4.D57: the `BrahmaConsoleSettingsUpdate.maxAgentTurns` tri-state must
+    /// survive SERDE (the dispatch leg the route differential drives through a
+    /// hand-built bag). Absent ≠ null ≠ value, and a present-but-invalid value
+    /// survives as `Some(Some(_))` so the handler's Zod-faithful parse can 400 it
+    /// rather than the web edge collapsing it to keep-current.
+    #[test]
+    fn brahma_console_update_max_agent_turns_tristate_survives_serde() {
+        let absent: Request =
+            serde_json::from_str(r#"{"type":"brahmaConsoleSettingsUpdate"}"#).unwrap();
+        assert!(matches!(
+            absent,
+            Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns: None
+            }
+        ));
+
+        let null: Request =
+            serde_json::from_str(r#"{"type":"brahmaConsoleSettingsUpdate","maxAgentTurns":null}"#)
+                .unwrap();
+        assert!(matches!(
+            null,
+            Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns: Some(None)
+            }
+        ));
+
+        let value: Request =
+            serde_json::from_str(r#"{"type":"brahmaConsoleSettingsUpdate","maxAgentTurns":80}"#)
+                .unwrap();
+        match value {
+            Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns: Some(Some(v)),
+            } => assert_eq!(v, serde_json::json!(80)),
+            other => panic!("expected Some(Some(_)), got {other:?}"),
+        }
+
+        // A present-but-invalid value is carried raw (as Some(Some(_))) so the
+        // handler 400s — a typed `i64` would fail to deserialize here.
+        let bad: Request = serde_json::from_str(
+            r#"{"type":"brahmaConsoleSettingsUpdate","maxAgentTurns":"fifty"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            bad,
+            Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns: Some(Some(_))
+            }
+        ));
     }
 }

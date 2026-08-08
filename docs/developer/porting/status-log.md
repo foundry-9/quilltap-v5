@@ -49,6 +49,26 @@ fixture lacks it, so its test creates it). The prompt-byte change (25 → 50) is
 proven by the regenerated brahma tier-3 differentials (Unit 6). `cargo test
 -p quilltap-core --lib brahma_console` 24/24; clippy clean.
 
+**Unit 3 — the dispatch verbs + handler + engine arm (core 0.0.512).** Request
+(append-only): `BrahmaConsoleSettings` (wire `brahmaConsoleSettings`, no fields)
+and `BrahmaConsoleSettingsUpdate { max_agent_turns }` (wire
+`brahmaConsoleSettingsUpdate`, field `maxAgentTurns`). Response REUSES the
+existing P4.9I1A `BrahmaConsole(Value)` variant (wire `brahmaConsole`) — the
+Shared contract intends the same wire `type`, the boundary carrying the
+`{maxAgentTurns}` body as a raw Value. Handler in `api/settings.rs`
+(`brahma_console_settings_get`/`_update` — the taboo precedent: GET →
+`{maxAgentTurns}`, PUT merge/parse/persist/echo, 400 on invalid). Engine arm in
+`api/engine.rs`. **⚠ Deliberate deviation from the order's literal
+`Option<Option<i64>>`:** the update field is `Option<Option<serde_json::Value>>`
+(taboo's `phrases` precedent), so a present-but-invalid `maxAgentTurns`
+(`12.5`/`"fifty"`/`null`) reaches the handler's Zod-faithful parse and 400s
+rather than being coerced or silently dropped at the web edge — the exact
+web-edge state-collapse the Taboo §3 review caught. The wire field name
+(`maxAgentTurns`) and the SPA contract are unchanged; only the Rust inner type is
+`Value` not `i64`. The tri-state serde test pins absent/null/value + a
+present-invalid arm. `cargo test -p quilltap-core --lib
+api::types::tests::brahma_console` green; clippy clean.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

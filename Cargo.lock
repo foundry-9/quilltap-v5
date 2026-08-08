@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.511"
+version = "0.0.512"
 dependencies = [
  "aes",
  "aes-gcm",
