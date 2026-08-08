@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Reverted the previous change to the impersonated-seat turn banner. The
+reference app does not announce an impersonated seat's turn in the
+composer banner either (it keys on the seat's control column, which the
+impersonation overlay leaves unchanged), so lighting the banner up for
+impersonated seats was a divergence. The turn banner is back to matching
+the reference behavior. The underlying rough edge — that while
+impersonating, the banner and the message attribution can disagree with
+no on-screen cue — is a shared reference-app issue and will be addressed
+there first. SPA 0.5.433.
+
 Dogfood fix: an impersonated character's paused turn now shows the
 "type as them, or skip" prompt and its Skip button. Since impersonation
 became a pure overlay, the seat keeps its LLM control column while the

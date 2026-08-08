@@ -70,7 +70,7 @@ import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
 import { type ControlledCharacter } from '../../chat/speaker-selector';
-import { isParticipantPresent, isUserDrivenSeat } from '../../chat/skip-signal-helpers';
+import { isParticipantPresent } from '../../chat/skip-signal-helpers';
 import {
   computeSkipEligibility,
   qualifiesForTurnSkipping,
@@ -1821,16 +1821,20 @@ export class SalonConversation {
   });
 
   /**
-   * The name whose (user-driven) turn it is, or null when it isn't. A seat the
-   * human is impersonating (v4 Bug 44 overlay — `controlledBy` stays `'llm'`)
-   * counts as user-driven, matching the server, which returns `reason:
-   * 'user_turn'` for it; keying on the bare column would leave the impersonated
-   * seat's paused turn with no "type as them" prompt and no Skip button.
+   * The name whose (user-controlled) turn it is, or null when it isn't.
+   *
+   * Keyed on the RAW `controlledBy`, matching v4's composer turn banner
+   * (`SalonView.tsx:1391` — `next.controlledBy !== 'user'` over the
+   * non-overlaid `participantData`). An impersonated seat keeps
+   * `controlledBy: 'llm'`, so v4 does NOT announce its turn here either — that
+   * is a faithfully-ported gap, recorded as v4 Bug 46 (the impersonation
+   * turn/speaking-as mismatch); do not re-add an overlay arm without a v4-first
+   * fix (an earlier dogfood pass wrongly did and it was reverted).
    */
   protected readonly userTurnName = computed<string | null>(() => {
     if (this.busy()) return null;
     const next = this.nextSpeaker();
-    if (!next || !isUserDrivenSeat(next.id, next.controlledBy, this.impersonatingIds())) return null;
+    if (!next || next.controlledBy !== 'user') return null;
     return next.character?.name ?? 'this character';
   });
 
@@ -1838,13 +1842,7 @@ export class SalonConversation {
   protected readonly mustSpeak = computed<boolean>(() => {
     const chat = this.chat();
     const next = this.nextSpeaker();
-    if (
-      !chat ||
-      !next ||
-      !isUserDrivenSeat(next.id, next.controlledBy, this.impersonatingIds()) ||
-      !next.character
-    )
-      return false;
+    if (!chat || !next || next.controlledBy !== 'user' || !next.character) return false;
     try {
       const events: SkipEvent[] = chat.messages.map((m) => ({
         type: 'message',
