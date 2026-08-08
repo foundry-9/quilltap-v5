@@ -62105,3 +62105,28 @@ follows a genuine user seat; follows an impersonated LLM seat via the overlay;
 reacts on seat change; a same-turn manual pick sticks; an LLM turn clears the
 latch (and doesn't drag the speaking-as onto it); no next speaker clears the
 latch. Gate: salon specs 71/71; `ng build` clean. SPA 0.5.443.
+
+**Unit 4 — the e2e beats.** (a) Extended the existing impersonation walk
+(`salon-dialogs-flow.spec.ts` "the cast card holds the impersonation as an
+overlay…"): after Speak-as, assert the composer's `.qt-chat-user-turn-banner`
+names the impersonated seat — Bug 48 makes this DETERMINISTIC where the plain
+weighted-random rotation could not (the client override forces the turn), closing
+the e2e gap the `impersonation-overlay-spa-gaps` note recorded. (b) Added a
+reload-restores-impersonation beat (impersonate → hard reload → assert the badge
++ speaking-as cue survive), gated ACTIVATE-AT-UNIFY behind the named constant
+`P4D60_CHAT_GET_PROJECTION_LANDED = false` (it consumes P4.D60's chat-GET
+projection; the unifier flips it). Gate: full Playwright suite 191 passed / 1 skipped (the
+gated reload beat — the one allowed skip) / 0 failed. SPA 0.5.444.
+
+**Unit 5 (tier 2) — the AllLLMPause opener + take-over, and the e2e deferral.**
+The P4.D54 live-opener e2e beat is DEFERRED (loud): the committed salon fixture
+has no all-LLM chat (both chats carry a genuine user seat), the pause THRESHOLD
+needs real LLM turns the key-less e2e instance cannot make, and creating an
+all-LLM chat in-walk triggers auto-greeting streaming that makes any opener
+assertion timing-dependent — the order's escape hatch ("record why … land the
+closest deterministic gesture instead of a flaky beat"). Landed the closest
+deterministic gesture at the UNIT level: an all-LLM paused chat auto-opens the
+modal (`showAllLLMPause`), and take-over closes it, impersonates, and hands the
+character the turn (Bug 48) — `userTurnName` names them, `turnOverride` is set.
+Combined with the existing `AllLLMPauseModal` component specs, this covers the
+opener + take-over chain deterministically. SPA 0.5.444.

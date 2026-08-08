@@ -114,6 +114,17 @@ const TOOLS_INVENTORY_LANDED = true;
  */
 const SEARCH_REPLACE_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D61). The reload-restores-impersonation beat needs the
+ * sibling server lane P4.D60's chat-GET projection of
+ * `impersonatingParticipantIds` / `activeTypingParticipantId` — without it a hard
+ * reload drops the overlay (v4-faithful: the client seeds from the record, and
+ * before P4.D60 the record carries neither field). The unifier flips this to
+ * `true` once P4.D60 is on the branch (a named constant, never a capability
+ * probe — `e2e-playwright-traps` §7).
+ */
+const P4D60_CHAT_GET_PROJECTION_LANDED = false;
+
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
     page,
@@ -362,6 +373,15 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const card = page.locator('qt-participant-card').filter({ hasText: name });
     await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
 
+    // Bug 48 (v4 `f6eac168`): impersonating hands the character the CURRENT turn
+    // (no LLM is mid-generation here), so the composer's user-turn banner now
+    // names the impersonated seat — deterministic where the plain rotation is
+    // weighted-random, because the client override forces it. Its bare
+    // `controlledBy` is still 'llm'; the banner reads it through the overlay.
+    await expect(page.locator('.qt-chat-user-turn-banner')).toContainText(name, {
+      timeout: 15_000,
+    });
+
     // Bug 46(b), the gesture dogfood #76 caught: once impersonating, the
     // composer's "speaking as" portrait must flip to the IMPERSONATED seat. The
     // impersonate reply carries `activeTypingParticipantId` (chatGet projects no
@@ -406,6 +426,65 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const stopButton = card.locator(`button[title="Stop speaking as ${name}"]`);
     await expect(stopButton).toBeVisible({ timeout: 15_000 });
     await stopButton.click();
+    await expect(page.locator(`qt-participant-card button[title="Speak as ${name}"]`)).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  // Bug 51 (v4 `f6eac168`): a hard reload restores impersonation state, because
+  // the chat GET now projects `impersonatingParticipantIds` /
+  // `activeTypingParticipantId` (the sibling server lane P4.D60) and the client
+  // SEEDS its local overlay from them. ACTIVATE-AT-UNIFY behind
+  // {@link P4D60_CHAT_GET_PROJECTION_LANDED}: without the projection a reload
+  // drops the overlay (v4-faithful), so the beat can only pass once P4.D60 lands.
+  test('a reload restores the impersonation overlay and the speaking-as (v4 Bug 51)', async ({
+    page,
+  }) => {
+    test.skip(!P4D60_CHAT_GET_PROJECTION_LANDED, 'chat-GET projection lands with P4.D60');
+
+    const chatId = await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Participants');
+
+    const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();
+    await expect(speakAs).toBeVisible({ timeout: 10_000 });
+    const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
+    await speakAs.click();
+
+    const card = page.locator('qt-participant-card').filter({ hasText: name });
+    await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
+      'aria-label',
+      `Speaking as ${name}`,
+      { timeout: 15_000 },
+    );
+
+    // Hard-reload: the overlay is client-local, so it survives ONLY if the reload
+    // seeds it from the projected chat record.
+    await page.reload();
+    await maybeUnlock(page);
+    // Unlock may land on the Salon list rather than the chat — re-open it so the
+    // assertion measures a fresh load of this chat's projected record.
+    if (!page.url().includes(chatId)) {
+      await page.goto(`/salon/${chatId}`);
+    }
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+
+    // The composer still speaks as the impersonated seat (seeded from
+    // `activeTypingParticipantId`)…
+    await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
+      'aria-label',
+      `Speaking as ${name}`,
+      { timeout: 15_000 },
+    );
+    // …and the seat still reads as impersonated (seeded from
+    // `impersonatingParticipantIds`).
+    await openSidebarSection(page, 'Participants');
+    const reloadedCard = page.locator('qt-participant-card').filter({ hasText: name });
+    await expect(reloadedCard.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
+
+    // Clean up for later specs sharing the instance (Solo Voyage's character has a
+    // connection profile, so Stop goes direct — no Hand Off dialog).
+    await reloadedCard.locator(`button[title="Stop speaking as ${name}"]`).click();
     await expect(page.locator(`qt-participant-card button[title="Speak as ${name}"]`)).toBeVisible({
       timeout: 15_000,
     });

@@ -34,6 +34,15 @@ pure helper that projects the turn rotation one step past a user's just-typed,
 unpersisted message, so a multi-seat room's first responder honors the full
 roster instead of an LLM-only shortlist. Tier-1 differential extended
 (`select-speaker` gains eight `select-after` cases against v4's real helper).
+Tests (P4.D61): extended the impersonation e2e walk to assert Bug 48's
+take-the-turn (after Speak-as the user-turn banner names the impersonated seat),
+and added a reload-restores-impersonation beat gated ACTIVATE-AT-UNIFY behind
+`P4D60_CHAT_GET_PROJECTION_LANDED` (it needs the sibling server lane's chat-GET
+projection). The P4.D54 AllLLMPause live-opener e2e beat stays deferred (the
+committed fixture has no all-LLM chat and the pause threshold needs real LLM
+turns) — its opener → take-over → Bug-48 handoff is instead covered
+deterministically at the unit level. SPA 0.5.444.
+
 Fixed (v4 Bug 49; P4.D61): the composer's speaking-as now follows the current
 user-driven turn — when the rotation lands on a seat the human drives (their own
 character or one they are impersonating) and that seat changes, the speaking-as

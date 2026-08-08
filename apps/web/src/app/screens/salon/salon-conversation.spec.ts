@@ -1609,6 +1609,74 @@ describe('SalonConversation — the speaking-as follows the user-driven turn (v4
   });
 });
 
+/**
+ * The AllLLMPause live opener (v4 `bd419ae9`, the P4.D54 deferral) + its take-over
+ * → Bug 48 handoff. The modal auto-opens when an all-LLM chat becomes paused
+ * (`isPaused && isAllLLM`), and taking over a character from it starts
+ * impersonating AND hands them the current turn.
+ *
+ * ⚠ Covered here at the UNIT level, deterministically, rather than as an e2e
+ * live-opener beat: the committed salon fixture has NO all-LLM chat (both chats
+ * carry a genuine user seat), the pause THRESHOLD needs real LLM turns the
+ * key-less e2e instance cannot make, and creating an all-LLM chat in-walk
+ * triggers auto-greeting streaming that makes any opener assertion
+ * timing-dependent — a flaky beat the order says to avoid. Recorded in the lane
+ * record.
+ */
+describe('SalonConversation — the AllLLMPause opener + take-over hands the turn (v4 bd419ae9 + Bug 48)', () => {
+  type Host = {
+    showAllLLMPause(): boolean;
+    onAllLLMTakeOver(id: string): Promise<void>;
+    turnOverride(): { nextSpeakerId: string | null } | null;
+    userTurnName(): string | null;
+  };
+
+  function allLLMChat(): ChatDetail {
+    return {
+      ...chatDetail(),
+      isPaused: true,
+      allLLMPauseTurnCount: 3,
+      participants: [
+        participant({ id: 'p1', controlledBy: 'llm', character: { id: 'c1', name: 'Friday', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p2', controlledBy: 'llm', character: { id: 'c2', name: 'Aria', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      ],
+      // No USER message → `isAllLLM` stays true.
+      messages: [
+        message({ id: 'a1', role: 'ASSISTANT', participantId: 'p1', content: 'Shall we begin?', createdAt: '2024-01-01T00:00:01.000Z' }),
+      ],
+    };
+  }
+
+  function takeOverClient(chat: ChatDetail): Partial<CoreClient> {
+    const base = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatchData = vi.fn(async (req: CoreRequest) =>
+      req.type === 'chatImpersonate'
+        ? { impersonatingParticipantIds: [req.participantId as string], activeTypingParticipantId: req.participantId as string }
+        : { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null },
+    );
+    return { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
+  }
+
+  it('auto-opens when an all-LLM chat is paused', async () => {
+    const fixture = await render(takeOverClient(allLLMChat()));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.showAllLLMPause()).toBe(true);
+  });
+
+  it('taking over a character closes the modal, impersonates, and hands them the turn (Bug 48)', async () => {
+    const fixture = await render(takeOverClient(allLLMChat()));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.showAllLLMPause()).toBe(true);
+
+    await inst.onAllLLMTakeOver('p1');
+    fixture.detectChanges();
+
+    expect(inst.showAllLLMPause()).toBe(false);
+    expect(inst.turnOverride()?.nextSpeakerId).toBe('p1');
+    expect(inst.userTurnName()).toBe('Friday');
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };
