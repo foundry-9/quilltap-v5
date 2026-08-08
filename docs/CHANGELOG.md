@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the `f6eac168` drift catch-up round (v4 Bugs 47-51) and committed
+three work orders: P4.D60 (server — the fair-rotation first-responder pause,
+the Brahma budget-exhaustion salvage, and the chat-GET impersonation
+projection, plus the `impersonating_ids` consolidation rider), P4.D61 (SPA —
+impersonate-takes-the-turn, the speaking-as turn-follow, seed-once
+reconciliation, plus the AllLLMPause live-opener beat rider), and P4.44
+(three pinning follow-ups: the conversation-chunks upsert create arm,
+per-delete thumbnail cleanup over StorageBackend, and the vision-path
+headers pin). v4 `f521fc0c` classified docs-only NO-PORT. Docs only; no
+version bumps.
+
 Fixed (dogfood #77): while impersonating a character, the human could not switch
 back to speaking as their own character — the Speaking-As selector stayed hidden
 and every typed message went to the impersonated seat. v5's `controlledCharacters`
