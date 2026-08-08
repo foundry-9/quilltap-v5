@@ -79,6 +79,28 @@ the dispatch handler 400s it, not the edge. A malformed JSON body 500s (v4's
 already handled by `unwrap_to_http` (the CRUD family). `cargo build/clippy
 -p quilltap-web` clean.
 
+**Unit 5 — the settings-routes differential (harness 0.0.433).** Extended
+`settings-routes.test.ts` (route `brahmaConsole`, `seedBrahmaConsole`, the
+`after` refetch, the 400-details drop) + `settings_routes_equivalence.rs`
+(`run_handler` brahma GET/PUT mirroring the edge's body→bag map, `response_to_body`
+`BrahmaConsole`, the seed, the `after` refetch, a `brahma_console_cases >= 12`
+count guard). 12 cases: get default/seeded, PUT valid + both boundaries,
+empty-merge-keeps-current, the four 400 arms (below-min / above-max / non-integer
+/ wrong-type), null → 400, non-object body keeps current — the rejected PUTs'
+`after` refetch proves the seeded value survived. v4's real route confirms every
+arm (default 50, boundaries 5/200, 400 `Validation error`, merge-keeps-current).
+Regen recipe: v4 at `1bed814f` (clean), build `qt-settings-fixture.db`, jest the
+case file → `/tmp/oracle-settings-routes.ndjson`, then
+`QT_ORACLE_SETTINGS_ROUTES=… QT_FIXTURE_SETTINGS=… cargo test -p quilltap-harness
+--test settings_routes_equivalence` (62 cases matched, brahma family present).
+Freshness is guarded structurally: a stale pre-P4.D57 oracle has 0 brahma rows →
+the count guard fails.
+
+**⚠ Process note:** the oracle case-file edits first landed in the MAIN checkout
+(`~/source/quilltap-v5/harness/oracle/cases/settings-routes.test.ts`) rather than
+the worktree — the two are separate working trees. Transplanted to the worktree
+and `git checkout`-restored main (verified base-identical first). Main left clean.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

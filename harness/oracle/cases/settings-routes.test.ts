@@ -61,19 +61,24 @@ interface CaseSpec {
     | 'apiKeyItem'
     | 'models'
     | 'dataRetention'
-    | 'taboo';
+    | 'taboo'
+    | 'brahmaConsole';
   method: Method;
   url: string;
   paramId?: string;
   body?: Record<string, unknown>;
   /** Re-fetch the family list after the op (observe the persisted effect via the
    *  already-verified read marshaling), or none. */
-  after?: 'connProfiles' | 'apiKeys' | 'taboo';
+  after?: 'connProfiles' | 'apiKeys' | 'taboo' | 'brahmaConsole';
   /** P4.D50: seed `instance_settings['taboo']` through v4's REAL setter before
    *  the case runs. Each case gets a pristine fixture copy, so this is the only
    *  way to reach the arms that depend on a list already being stored (the
    *  merge-over-current PUT above all). The Rust harness seeds identically. */
   seedTaboo?: string[];
+  /** P4.D57: seed `instance_settings['brahmaConsole'].maxAgentTurns` through v4's
+   *  REAL setter before the case runs — the merge-over-current arms need it.
+   *  The Rust harness seeds identically. */
+  seedBrahmaConsole?: number;
 }
 
 function mockRequest(url: string, method: Method, body?: unknown): unknown {
@@ -148,6 +153,10 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const { setTabooSettings } = await import('@/lib/instance-settings');
       await setTabooSettings({ phrases: c.seedTaboo });
     }
+    if (c.seedBrahmaConsole !== undefined) {
+      const { setBrahmaConsoleSettings } = await import('@/lib/instance-settings');
+      await setBrahmaConsoleSettings({ maxAgentTurns: c.seedBrahmaConsole });
+    }
     const req = mockRequest(c.url, c.method, c.body);
     let response: { status: number; json: () => Promise<unknown> };
     const params = { params: Promise.resolve({ id: c.paramId ?? '' }) };
@@ -174,6 +183,9 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     } else if (c.route === 'taboo') {
       const mod = await import('@/app/api/v1/settings/taboo/route');
       response = (await (c.method === 'GET' ? mod.GET : mod.PUT)(req as never)) as never;
+    } else if (c.route === 'brahmaConsole') {
+      const mod = await import('@/app/api/v1/settings/brahma-console/route');
+      response = (await (c.method === 'GET' ? mod.GET : mod.PUT)(req as never)) as never;
     } else {
       const mod = await import('@/app/api/v1/models/route');
       response = (await mod.GET(req as never)) as never;
@@ -184,7 +196,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     // The Rust port surfaces validation failures as the `{error}` envelope; the
     // Zod issue array is v4-implementation-specific, so drop `details` here.
     if (
-      (c.route === 'dataRetention' || c.route === 'taboo') &&
+      (c.route === 'dataRetention' || c.route === 'taboo' || c.route === 'brahmaConsole') &&
       body &&
       typeof body === 'object' &&
       'details' in (body as Record<string, unknown>)
@@ -205,6 +217,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         body: c.body ?? null,
         after: c.after ?? null,
         seedTaboo: c.seedTaboo ?? null,
+        seedBrahmaConsole: c.seedBrahmaConsole ?? null,
       },
       status,
       body,
@@ -222,6 +235,17 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       // normalized list rather than the submission).
       const mod = await import('@/app/api/v1/settings/taboo/route');
       const r = (await mod.GET(mockRequest('http://x/api/v1/settings/taboo', 'GET') as never)) as never as {
+        json: () => Promise<unknown>;
+      };
+      out.after = await r.json();
+    } else if (c.after === 'brahmaConsole') {
+      // P4.D57: the PUT echoes what the SETTER stored; the refetch proves the
+      // echo and the stored row agree, and that a rejected PUT left the seeded
+      // value untouched.
+      const mod = await import('@/app/api/v1/settings/brahma-console/route');
+      const r = (await mod.GET(
+        mockRequest('http://x/api/v1/settings/brahma-console', 'GET') as never,
+      )) as never as {
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
@@ -535,6 +559,28 @@ describe('settings-routes oracle', () => {
     // 101 astral characters is 202 units and fails while 100 passes.
     { name: 'taboo_put_astral_within_bound', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['\u{1F3A9}'.repeat(100)] }, after: 'taboo' },
     { name: 'taboo_put_astral_over_bound', family: 'taboo', user: 'A', route: 'taboo', method: 'PUT', url: 'http://x/api/v1/settings/taboo', body: { phrases: ['\u{1F3A9}'.repeat(101)] } },
+
+    // P4.D57: the instance-wide Brahma Console turn budget (v4 `6452e2c3`).
+    // GET returns the schema default (50) when never written.
+    { name: 'bc_get_default', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'GET', url: 'http://x/api/v1/settings/brahma-console' },
+    { name: 'bc_get_seeded', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'GET', url: 'http://x/api/v1/settings/brahma-console', seedBrahmaConsole: 120 },
+    // A valid PUT persists and echoes the stored value; the refetch proves it stuck.
+    { name: 'bc_put_valid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 80 }, after: 'brahmaConsole' },
+    { name: 'bc_put_boundary_min', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 5 } },
+    { name: 'bc_put_boundary_max', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 200 } },
+    // An empty body must not wipe the stored value back to the schema default.
+    { name: 'bc_put_empty_merge', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: {}, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    // Rejections (400 `Validation error`, nothing written) — the seeded value survives.
+    { name: 'bc_put_below_min', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 4 }, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    { name: 'bc_put_above_max', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 201 } },
+    { name: 'bc_put_non_integer', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 12.5 } },
+    { name: 'bc_put_wrong_type', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: 'fifty' } },
+    // An explicit `null` is a PRESENT value, so Zod's `.default(50)` does not fire
+    // and the parse fails — distinct from omitting the key entirely.
+    { name: 'bc_put_null', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: { maxAgentTurns: null }, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    // A non-object body: `{...current, ...body}` spreads a string into indexed
+    // keys, contributing no `maxAgentTurns`, so the stored value survives.
+    { name: 'bc_put_string_body', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: 'fifty' as never, seedBrahmaConsole: 120, after: 'brahmaConsole' },
   ];
 
   it('emits all cases', async () => {

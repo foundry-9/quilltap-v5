@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): extended the settings-routes
+differential with 12 brahma-console GET/PUT cases (default, seeded, valid,
+boundaries, empty-merge, and the four 400 arms + null + non-object body), driven
+against the reference route and green over an oracle regenerated at `1bed814f`.
+harness 0.0.433.
+
 P4.D57 (Brahma Console turn budget, server): added the REST edge
 `GET / PUT /api/v1/settings/brahma-console` (byte-faithful to the reference
 route: GET returns `{maxAgentTurns}`, PUT merges over current, validates,

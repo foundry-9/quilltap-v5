@@ -2,7 +2,11 @@
 //! v4's REAL route handlers over the shared settings fixture. Consolidates the
 //! work order's four DB-family differentials (`settings_chat`,
 //! `connection_profiles_routes`, `api_keys_routes`, `provider_models_routes`) —
-//! each case is tagged with its `family`.
+//! each case is tagged with its `family`. Extended by P4.6an
+//! (`dangerousContentSettings`), P4.d3 (`data_retention`), P4.D50 (`taboo`), and
+//! P4.D57 (`brahma_console` — the Brahma Console turn-budget GET/PUT, seeded via
+//! `seedBrahmaConsole`; a stale oracle predating a family is caught by the
+//! per-family `>=` count guards below).
 //!
 //! Both sides run each case over a FRESH copy of the committed fixture; the
 //! response body (+ a post-mutation family-list refetch, observing the persisted
@@ -173,6 +177,19 @@ fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -
             };
             rt.block_on(settings::taboo_settings_update(db, bag))
         }
+        // P4.D57. Like taboo: the oracle emits the raw request body (possibly a
+        // NON-object string, whose spread contributes no `maxAgentTurns`), and
+        // the edge's body→bag mapping is mirrored here — a present value
+        // (including an explicit `null`) rides raw so the handler's Zod-faithful
+        // parse decides, an absent key keeps the current value.
+        ("brahmaConsole", "GET") => settings::brahma_console_settings_get(db),
+        ("brahmaConsole", "PUT") => {
+            let bag = match body.get("maxAgentTurns") {
+                Some(v) => serde_json::json!({ "maxAgentTurns": v }),
+                None => serde_json::json!({}),
+            };
+            rt.block_on(settings::brahma_console_settings_update(db, bag))
+        }
         other => panic!("unhandled route/method: {other:?}"),
     };
     response_to_body(resp)
@@ -187,6 +204,7 @@ fn response_to_body(resp: Response) -> (Value, bool) {
         | Response::ApiKey(v)
         | Response::DataRetention(v)
         | Response::Taboo(v)
+        | Response::BrahmaConsole(v)
         | Response::Models(v) => (v, false),
         Response::Ack(_) => (serde_json::json!({}), true),
         Response::Error(e) => (serde_json::json!({ "error": e.message }), false),
@@ -223,6 +241,7 @@ fn settings_routes_match_v4() {
     let oracle = std::fs::read_to_string(&oracle_path).expect("read oracle ndjson");
     let mut n = 0;
     let mut taboo_cases = 0;
+    let mut brahma_console_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -265,6 +284,19 @@ fn settings_routes_match_v4() {
             .expect("seed taboo");
         }
 
+        // P4.D57: seed `instance_settings['brahmaConsole']` through the real setter
+        // (the oracle does the same) — the merge-over-current arms need it.
+        if let Some(seed) = req["seedBrahmaConsole"].as_i64() {
+            rt.block_on(db.write(move |w| {
+                quilltap_core::db::instance_settings::set_brahma_console_settings(
+                    w.main().connection(),
+                    seed,
+                )
+                .map(|_| ())
+            }))
+            .expect("seed brahma-console");
+        }
+
         let (mut got_body, is_ack) = run_handler(&rt, &db, user, req);
 
         // The `after` refetch (post-mutation family list).
@@ -274,6 +306,7 @@ fn settings_routes_match_v4() {
                 "connProfiles" => settings::connection_profile_list(&db, user, false),
                 "apiKeys" => settings::api_key_list(&db, user),
                 "taboo" => settings::taboo_settings_get(&db),
+                "brahmaConsole" => settings::brahma_console_settings_get(&db),
                 _ => panic!("unknown after: {kind}"),
             };
             response_to_body(r).0
@@ -303,6 +336,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("taboo") {
             taboo_cases += 1;
         }
+        if row["family"].as_str() == Some("brahma_console") {
+            brahma_console_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
@@ -311,6 +347,12 @@ fn settings_routes_match_v4() {
     assert!(
         taboo_cases >= 18,
         "expected >= 18 taboo cases, got {taboo_cases} — regenerate the oracle"
+    );
+    // P4.D57: the Brahma Console turn-budget family must actually be present — a
+    // stale oracle that predates it would otherwise pass by not carrying it.
+    assert!(
+        brahma_console_cases >= 12,
+        "expected >= 12 brahma_console cases, got {brahma_console_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }
