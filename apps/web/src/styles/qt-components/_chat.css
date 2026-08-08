@@ -1252,6 +1252,15 @@
    */
   .qt-chat-composer-actions {
     @apply flex items-center gap-2 flex-wrap justify-end;
+    /* Interim band-aid (dogfood #75) pending the p4.9l composer-toolbar port:
+       v5 flattens v4's compact 2-column gutter grid into one long row, which —
+       inside the composer's `max-w-4xl` cap — out-competes the `flex-1` editor
+       and squeezes it past its width floor, clipping the "Type a message…"
+       placeholder. Take a full-width row so this cluster wraps BELOW the
+       editor+avatar line, handing the editor the dominant share (the avatar
+       stays full-height beside the input). p4.9l replaces this with v4's real
+       2-column layout. */
+    flex-basis: 100%;
   }
 
   /**

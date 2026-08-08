@@ -104,6 +104,33 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
   });
 
+  test('the toolbar cluster wraps below the editor so the input keeps the dominant width (dogfood #75, interim p4.9l band-aid)', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Solo Voyage');
+
+    const input = page.locator('.qt-chat-composer-input').first();
+    const actions = page.locator('.qt-chat-composer-actions').first();
+    await expect(input).toBeVisible();
+    await expect(actions).toBeVisible();
+
+    const inputBox = await input.boundingBox();
+    const actionsBox = await actions.boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+
+    // The gutter/action cluster sits on its OWN row below the editor (its top is
+    // at or past the editor's bottom) rather than crammed onto the same line,
+    // where — inside the composer's max-w-4xl cap — it squeezed the editor past
+    // its width floor and clipped the "Type a message…" placeholder (#75). The
+    // pre-band-aid layout put actions on the same row (actions.y ≈ input.y).
+    expect(actionsBox!.y).toBeGreaterThanOrEqual(inputBox!.y + inputBox!.height - 4);
+    // The editor keeps a dominant share of the composer width.
+    expect(inputBox!.width).toBeGreaterThan(300);
+  });
+
   test('an unsent draft survives leaving and reopening the chat', async ({ page }) => {
     await page.goto('/salon');
     await maybeUnlock(page);

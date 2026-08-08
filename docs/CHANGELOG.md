@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Fixed (dogfood #75, interim): the Salon composer editor collapsed to its width
+floor and the "Type a message…" placeholder clipped to "Type a", because v5's
+one-row gutter cluster (a p4.9l shortcut) plus the speaking-as avatar crammed
+into the composer's max-w-4xl cap. As a band-aid pending the p4.9l composer-
+toolbar port, the action cluster now takes a full-width row and wraps below the
+editor+avatar line, so the editor keeps the dominant width. The proper 2-column
+layout is routed to p4.9l. SPA 0.5.438.
+
 Fixed (dogfood #74): the Brahma Console header (model picker + New conversation)
 scrolled off the top of the workspace tab with the transcript instead of staying
 put. The message-list component host defaulted to `display: block` with no flex
