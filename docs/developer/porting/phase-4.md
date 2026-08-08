@@ -4305,14 +4305,66 @@ the UI). Gate: 419 binaries / 1,956 / 0; ng 294 / 4,015; Playwright
    of the `p4.9h2` bucket, the BUILTIN TF-IDF manifest decision, the
    P4.D41 tier-2 item 9 fixture.
 
-**Standing regen note:** the oracle baseline is **`62c63dc3`**
-(4.8.0-dev.178, adopted at the P4.D56 unification). Oracles regenerate
-straight from `~/source/quilltap-server` while HEAD stays there; pin a
-detached worktree on any further drift
-(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
-At this round's regen v4's tree carried two dirty files
-(`app/about/AboutView.tsx` + an image) — verified outside every oracle
-import graph, justification in the round record. The
-distill-transitive TZ pins, the committed-fixture rule, and the
-venue/staging rules stand unchanged. Drift-check before every round —
-v4 ships daily.
+**Standing regen note (SUPERSEDED by the P4.D57–59 round below):** the
+oracle baseline was **`62c63dc3`** (4.8.0-dev.178, adopted at the P4.D56
+unification); it MOVED to `1bed814f` at the P4.D57∥D58∥D59 unification.
+
+## The `1bed814f` drift catch-up round (P4.D57 ∥ P4.D58 ∥ P4.D59, 2026-08-08) — CLOSED
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f` and
+the drift debt is CLEARED.** v4's three-commit day absorbed whole:
+`6452e2c3` — the Brahma Console agent-turn budget as
+`instance_settings['brahmaConsole']` (default 25 → 50, bounds 5–200,
+one shared resolver read by BOTH Brahma paths, the
+`brahmaConsoleSettings`/`brahmaConsoleSettingsUpdate` dispatch verbs +
+`GET/PUT /api/v1/settings/brahma-console`, the 12-case
+settings-routes family, both brahma tier-3 oracles regenerated with
+the 50-cap prompt, and the Settings → Chat card in v4's slot with a
+LIVE round-trip beat) ∥ `1bed814f` — the salon impersonation
+reconcile (dogfood **#71/#72 CLOSED**: the client
+`isUserDrivenSeat`/`findActiveUserParticipant` twins, the banner gate
+re-diverged onto the overlay, the optimistic-bubble attribution fix,
+and the `SpeakingAsAvatar` composer cue) ∥ `ddd7576b` — the About
+workspace backdrop, dispositioned **NO-PORT** (v5 ships no About
+background asset; recorded in `m6-screen-parity.md` §1.4). The §3
+review found no blocking issues (one fixture-vintage comment
+contradiction fixed on the unify branch); the wire folded the two
+request variants into the SPA contract name-for-name and activated
+the gated beat. Gate + versions: the round record in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass — long owed, still top** (no drift debt
+   remains): the standing 💸 queue (the OpenRouter vision live send,
+   arm (C)'s boot burst on the Friday copy, the memory-dedup +
+   summaries-regen first run, the Serper live-key smoke, the OpenAI
+   chaining fallback, the MOUNT-partition reapply + encrypted
+   VACUUM-INTO backup, profile management, the Almanack first
+   real-data report, live Taboo, the P4.D49 budget/attribution
+   proofs, OpenRouter pricing with a real key), **plus the P4.D56
+   round's impersonate → turn-pause → skip → stop cycle on the Friday
+   copy — which now ALSO walks this round's surface: the impersonated
+   seat's own turn banner + Skip, the speaking-as composer portrait,
+   and a raised Brahma Console budget on a real deep query.**
+2. **The sweep-driver rot maintenance pass:** the six tier-1 turn
+   families SKIP-masquerade in `recipe_sweep.py` (extraction rot,
+   flagged at the f4955e0e round, re-confirmed at P4.D56) plus the
+   four families named in the f4955e0e round record.
+3. **Small follow-ups:** the conversation-chunks `upsert` create-arm
+   corpus op; P4.D55's vision-path headers/abort pinning gap; the
+   P4.D54 AllLLMPause live-opener e2e beat; P4.D51's bug-43 tier-2
+   per-delete `cleanup_thumbnails` (`StorageBackend` seam); the
+   `impersonating_ids` four-site extraction consolidation.
+4. **The standing pools:** `p4.9i2` (help surface — now also carrying
+   `help/chat-participants.md`), `p4.9l` (composer toolbar), the rest
+   of the `p4.9h2` bucket, the BUILTIN TF-IDF manifest decision, the
+   P4.D41 tier-2 item 9 fixture.
+
+**Standing regen note:** the oracle baseline is **`1bed814f`**
+(4.8.0-dev, adopted at the P4.D57∥D58∥D59 unification; v4's tree was
+CLEAN there at the round's regen). Oracles regenerate straight from
+`~/source/quilltap-server` while HEAD stays there; pin a detached
+worktree on any further drift (`oracle-regen-pinned-v4-worktree`, or
+`recipe_sweep.py --v4 <pin>`). The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.
+Drift-check before every round — v4 ships daily.

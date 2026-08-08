@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Unified the `1bed814f` drift catch-up round (P4.D57 ∥ P4.D58 ∥ P4.D59) onto
+main — all three orders closed; the oracle baseline moves to `1bed814f` and
+the drift debt is cleared. The Brahma Console turn budget is live end-to-end
+(server accessors/resolver/verbs/REST edge + the Settings → Chat card), the
+salon impersonation reconcile closes dogfood findings #71/#72 (banner gate,
+optimistic-bubble attribution, the speaking-as composer portrait), and the
+About-backdrop change is a recorded no-port. Unification wires: the two
+brahma-console request variants folded into the SPA contract name-for-name
+and the gated settings e2e beat activated. Gate: fmt/clippy both feature
+sets/release build clean; full workspace tests with the round's oracles
+regenerated fresh at `1bed814f` (the three families re-run by name, zero
+SKIP); ng test 296 files / 4,046; ng build clean; full Playwright green zero
+skips. Final versions: core 0.0.512, harness 0.0.434, web 0.0.66, SPA
+0.5.436.
+
 P4.D57 (Brahma Console turn budget, server): regenerated the two Brahma tier-3
 differentials at the new baseline — the agent-mode system prompt now records the
 default-50 turn cap (was 25), and both the one-shot and orchestrator ports
@@ -36,6 +51,7 @@ agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
 falls back to the default on a missing/unparseable/out-of-range value; write
 validates and refuses out-of-range without storing. Portable by default
 (rides `.qtap` export and full backups). core 0.0.510.
+
 Extended the impersonation end-to-end test to check that the "speaking as"
 composer portrait appears and names the character in play. (Test-only.)
 
@@ -61,6 +77,7 @@ the differential-proven engine filters. These resolve who the human is driving a
 seat as, honoring the impersonation overlay (an impersonated seat keeps its LLM
 control column). Groundwork for the composer turn banner and message-attribution
 reconciliation. SPA 0.5.434.
+
 Added the Brahma Console budget card to Settings → Chat (between Data
 Retention and Autonomous Rooms). One number field caps how many tool-use
 turns the Console — and every one-shot @Brahma consultation — may take

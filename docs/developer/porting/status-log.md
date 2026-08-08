@@ -9,6 +9,85 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`
+(v4 4.8.0-dev, 2026-08-07) and the drift debt is CLEARED.** The round absorbed
+v4's three-commit day: `6452e2c3` (the Brahma Console agent-turn budget becomes
+`instance_settings['brahmaConsole']`, default raised 25 → 50, bounds 5–200) in
+two lanes (P4.D57 server ∥ P4.D59 SPA card), `1bed814f` (the salon
+impersonation reconcile — Bugs 45/46) as P4.D58, and `ddd7576b` (the About
+workspace backdrop) dispositioned **NO-PORT** by P4.D59 (v5 ships no About
+background asset, so the workspace-suppression bug cannot manifest; recorded in
+`m6-screen-parity.md` §1.4). Dogfood findings **#71 and #72 CLOSE** with P4.D58
+(v4 fixed them as Bugs 45/46; v5 absorbed the fix), and #70's history gains its
+epilogue (v4's client moved to the overlay gate, so the P4.D56-reverted change
+is back WITH its v4-client oracle).
+
+**Reconciliation:** all 13 lane commits cherry-picked clean in dependency order
+(D57 → D58 → D59); the only merge machinery needed was the union attribute on
+the two doc files. Versions recounted: core 0.0.512, harness 0.0.434, web
+0.0.66, SPA 0.5.436 (host/cli/tauri unchanged) — each file bumped by exactly
+one lane, no silent-collapse risk.
+
+**The §3 review: NO blocking findings.** The review read the whole combined
+diff and compared the ports against v4's real code (`turn-budget.ts`, the
+brahma-console route, `turn-manager/utils.ts`, `SpeakingAsAvatar.tsx`,
+`BrahmaConsoleSettings.tsx`, `ChatTabContent.tsx`'s card order). Two minor
+items were fixed on the unify branch (the wire commit):
+
+- **A fixture-vintage comment contradiction** — `orchestrator/tests.rs` claimed
+  "the committed fixture HAS the instance_settings table" while the lane record
+  said it lacks it (the code's `CREATE TABLE IF NOT EXISTS` is correct either
+  way); the comment is now agnostic.
+- The **CHANGELOG union seams** (two missing blank lines where lane blocks
+  glued) — fixed in the docs commit.
+
+Also verified and worth recording: P4.D57's one deliberate deviation (the
+update field carries `Option<Option<serde_json::Value>>`, not the order's
+literal `Option<Option<i64>>`, so a present-but-invalid value — `12.5`,
+`"fifty"`, `null` — reaches the handler's Zod-faithful parse and 400s instead
+of collapsing at the web edge; the exact Taboo-round bug shape, prevented by
+design this time) is sound and pinned by the tri-state serde test + the
+12-case differential family; and P4.D59's Tier-2 beat was authored gated
+behind the NAMED `BRAHMA_CONSOLE_SERVER_LANDED` constant exactly per the round
+rule.
+
+**The unification wires (one commit):** the two brahma-console request
+variants folded into the SPA `CoreRequest` union
+(`core-contract.ts` — `BrahmaConsoleSettingsRequest` /
+`BrahmaConsoleSettingsUpdateRequest`, mirroring `api/types.rs` name-for-name:
+wire types `brahmaConsoleSettings`/`brahmaConsoleSettingsUpdate`, field
+`maxAgentTurns`), the `as unknown as CoreRequest` bridges P4.D59 deliberately
+left removed from `brahma-console-settings.api.ts`, and the ACTIVATE-AT-UNIFY
+beat flipped LIVE (`settings-brahma-console-flow.spec.ts` — the Settings →
+Chat → Brahma Console read-default → edit → reload → persist → restore
+round-trip over the live verbs).
+
+**Oracle regen (fresh at `1bed814f`, v4 tree clean, straight from the
+checkout):** `settings-routes` (fixture rebuilt + jest; **12 brahma_console
+rows** — the family count-guard `>= 12` makes a stale pre-P4.D57 oracle a hard
+red), `brahma_console_tier3` and `brahma_orchestrator_tier3` (both grep-proven
+to record `up to **50 tool iterations` — the moved prompt byte).
+
+**Gate:** `cargo fmt --all --check` clean; clippy both feature sets clean;
+release build clean; `cargo test --workspace` with the round's env block —
+**419 test binaries / 1,970 tests / 0 failed** (exit 0), then the three
+families re-run BY NAME with `--nocapture`, zero SKIP
+(`settings_routes_equivalence` **62 cases matched** incl. the 12 brahma_console
+cases; `brahma_console_tier3_equivalence` + `brahma_orchestrator_tier3_equivalence`
+both green over the fresh 50-cap oracles). SPA: `ng test` **296 files / 4,046
+tests / 0 failed**; `ng build` clean; full Playwright against the fresh dist +
+rebuilt debug bins — **190 passed / 0 failed / 0 skipped (4.6m)**; the suite
+grew 189 → 190 with the activated brahma-console beat, and the extended
+impersonation beat (the speaking-as-cue assertion) walked live.
+
+**Round docs:** the three order status headers updated (D57 CLOSED with its
+recorded deviation; D58 CLOSED with the e2e-limitation note; D59 was already
+updated by its lane); dogfood findings #70/#71/#72 annotated;
+`m6-screen-parity.md` §1.4 carries the About-backdrop NO-PORT;
+phase-4.md gained the round section + refreshed candidates.
+
 ## Lane record — P4.D57 (the Brahma Console turn-budget instance setting, server) — v4 `6452e2c3`
 
 Baseline **`1bed814f`** (drift-checked clean at lane start: `git log 1bed814f..HEAD`

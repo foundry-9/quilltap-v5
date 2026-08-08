@@ -2163,6 +2163,50 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.432, SPA 0.5.431. **The owed dogfood pass is now the top next
   candidate** — it gains this round's live surface (a real
   impersonate → pause → stop cycle). Round record: `status-log.md`.
+- **The `1bed814f` drift catch-up round (P4.D57 ∥ P4.D58 ∥ P4.D59):
+  UNIFIED on main (2026-08-08) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `1bed814f` and the drift debt is CLEARED.** v4's
+  three-commit day absorbed whole: the Brahma Console agent-turn
+  budget as an instance setting (default 25 → 50, bounds 5–200; the
+  shared resolver read by BOTH Brahma paths; the
+  `brahmaConsoleSettings`/`Update` verbs + REST edge; the 12-case
+  settings-routes family with a `>= 12` stale-oracle count guard; both
+  brahma tier-3 oracles regenerated with the 50-cap prompt bytes; the
+  Settings → Chat card in v4's slot with a LIVE round-trip beat —
+  ACTIVATE-AT-UNIFY flipped) ∥ the salon impersonation reconcile
+  (dogfood **#71/#72 CLOSED** — the client
+  `isUserDrivenSeat`/`findActiveUserParticipant` twins with parity
+  specs, the turn banner re-diverged onto the overlay [what P4.D56
+  reverted, back WITH its v4-client oracle], the optimistic-bubble
+  attribution fix, the `SpeakingAsAvatar` composer cue; the
+  turn-banner half proven at unit-spec level per the weighted-random
+  e2e limitation) ∥ the About-backdrop NO-PORT (v5 ships no About
+  background asset — recorded in `m6-screen-parity.md` §1.4). One
+  recorded D57 deviation: the update field carries
+  `Option<Option<Value>>` so present-but-invalid values 400 at the
+  handler instead of collapsing at the web edge (the Taboo §3 lesson,
+  prevented by design). §3 review: no blocking findings (one
+  fixture-vintage comment contradiction fixed at the wire). Gate: 419
+  test binaries / 1,970 / 0 (the three families by name zero SKIP over
+  fresh `1bed814f` oracles), clippy both feature sets, release build,
+  ng 296 files / 4,046, full Playwright 190/190 zero skips (the suite
+  grew 189 → 190 with the activated brahma-console beat). Versions:
+  core 0.0.512, harness 0.0.434, web 0.0.66, SPA 0.5.436. **The owed
+  dogfood pass remains the top next candidate** — it gains this
+  round's surface (the impersonated seat's banner + Skip, the
+  speaking-as portrait, a raised Brahma budget on a real deep query).
+  Round record: `status-log.md`.
+- **Oracle baseline: `1bed814f` (2026-08-07, v4 4.8.0-dev), adopted at
+  the P4.D57∥D58∥D59 unification — NO v4 drift debt remains.** v4's
+  tree was CLEAN at `1bed814f` at the round's regens (the P4.D56-era
+  dirty `AboutView.tsx` pair landed as `ddd7576b`, part of this
+  round). Oracles regenerate straight from `~/source/quilltap-server`
+  while HEAD stays `1bed814f`; pin a detached worktree on any further
+  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  <pin>`). The distill-transitive TZ pins, the committed-fixture rule,
+  and the venue/staging rules stand unchanged. Drift-check before
+  every round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `62c63dc3` (2026-08-07, v4 4.8.0-dev.178),
   adopted at the P4.D56 unification — NO v4 drift debt remains.**
   The two commits between `f4955e0e` and it stayed NO-PORT as
