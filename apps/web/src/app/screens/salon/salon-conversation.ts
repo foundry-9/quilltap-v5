@@ -15,7 +15,11 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
-import { ChatComposer, type PendingToolResultChip } from '../../chat/chat-composer';
+import {
+  ChatComposer,
+  type PendingToolResultChip,
+  type SpeakingAsSeat,
+} from '../../chat/chat-composer';
 import {
   LibraryFilePickerModal,
   type LinkedLibraryFile,
@@ -388,6 +392,7 @@ interface CascadePrompt {
       <qt-chat-composer
         [busy]="busy()"
         [chatId]="chatId()!"
+        [speakingAs]="speakingAsSeat()"
         [hasActiveCharacters]="hasActiveCharacters()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
@@ -1820,6 +1825,27 @@ export class SalonConversation {
     const id = this.turnInfo()?.nextSpeakerId;
     if (!id) return null;
     return (this.chat()?.participants ?? []).find((p) => p.id === id) ?? null;
+  });
+
+  /**
+   * The character the human is currently speaking as — resolved exactly the way
+   * the server attributes a typed message (`findActiveUserParticipant`, honouring
+   * the impersonation overlay), then hydrated with its avatar for the
+   * composer-side cue (v4 Bug 46(b), `SalonView.tsx` `speakingAsSeat`). Null when
+   * the human plays no character (e.g. an all-LLM room).
+   */
+  protected readonly speakingAsSeat = computed<SpeakingAsSeat | null>(() => {
+    const participants = this.chat()?.participants ?? [];
+    const resolved = findActiveUserParticipant(
+      participants,
+      this.activeSpeakerId(),
+      this.impersonatingIds(),
+    );
+    const seatId = resolved?.id ?? this.activeSpeakerId();
+    if (!seatId) return null;
+    const p = participants.find((pp) => pp.id === seatId);
+    if (!p?.character) return null;
+    return { name: p.character.name, avatarUrl: participantAvatar(p) };
   });
 
   /**

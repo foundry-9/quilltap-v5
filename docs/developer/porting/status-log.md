@@ -165,6 +165,25 @@ owner seat — the arm the old code got wrong). **⚠ Env note: the worktree's
 TestBed spec failed NG0203); a clean `npm ci` fixed it — copy-from-main is
 unsafe for this SPA, `npm ci` in the worktree.**
 
+**Unit 4 — the `SpeakingAsAvatar` composer cue (Bug 46(b), SPA 0.5.436).** New
+`apps/web/src/app/chat/speaking-as-avatar.ts` (`qt-speaking-as-avatar`): a
+full-height 4:5 portrait of the seat you're speaking as, `title`/`aria-label`
+"Speaking as {name}" (bright) vs "…waiting for the room" (dim), img-or-initial
+fallback — client port of v4 `SpeakingAsAvatar.tsx`. v5 expresses v4's `opacity-60
+brightness-50` gate as the `.qt-speaking-as-avatar-dim` modifier + a
+`.qt-speaking-as-avatar` class in `_chat.css` (geometry + `--radius-md` +
+`--color-muted`; the responsive `hidden sm:flex` wrapper lives on the composer, as
+in v4). Wired through `ChatComposer` (new `speakingAs: SpeakingAsSeat | null`
+input rendered directly left of the action cluster; `canType = hasActiveCharacters
+&& !busy && !disabled`), computed in `salon-conversation.ts` as `speakingAsSeat`
+via `findActiveUserParticipant` + `participantAvatar` hydration. Specs:
+`speaking-as-avatar.spec.ts` (3, mirroring v4's `SpeakingAsAvatar.test.tsx`) +
+composer arms (absent / bright / dim, 22 → 25) + salon `speakingAsSeat` arms
+(impersonated-seat / owner fallback, 46 → 48). Note: v4's `speakingAs` carries a
+`title` field the component never reads (dead prop); v5 omits it. Avatar source
+verified on the v5 wire (`DetailCharacter.avatarUrl` + `defaultImage.filepath` via
+the existing `participantAvatar`) — no Tier-3 avatar refusal owed.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

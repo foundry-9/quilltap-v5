@@ -36,6 +36,13 @@ agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
 falls back to the default on a missing/unparseable/out-of-range value; write
 validates and refuses out-of-range without storing. Portable by default
 (rides `.qtap` export and full backups). core 0.0.510.
+Added a "speaking as" portrait to the Salon composer: a persistent full-height
+picture of the character your typed message will be attributed to, seated just
+left of the send controls. It brightens when the floor is yours and dims while a
+reply is streaming, and it hides on the narrowest screens. Resolved the same way
+the server attributes a message, so it always names whom you're actually speaking
+as — including a character you're impersonating. SPA 0.5.436.
+
 Reconciled the Salon's impersonation attribution to the reference app's updated
 client. The composer turn banner now announces an impersonated seat's own turn
 (offering "type as them" and Skip), where before it stayed silent because the

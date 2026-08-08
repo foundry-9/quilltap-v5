@@ -24,7 +24,14 @@ import {
 import { CustomToolsPopup } from './custom-tools-popup';
 import { RngDropdown, type RngPendingResult } from './rng-dropdown';
 import { FileConflictDialog } from './file-conflict-dialog';
+import { SpeakingAsAvatar } from './speaking-as-avatar';
 import { ToastService } from '../ui/toast.service';
+
+/** The character the human is currently speaking as (v4 `speakingAs` prop). */
+export interface SpeakingAsSeat {
+  name: string;
+  avatarUrl: string | null;
+}
 
 /** What the composer emits on send — the text plus any attached file ids. */
 export interface ComposerSend {
@@ -87,7 +94,7 @@ export interface PendingToolResultChip extends RngPendingResult {
 @Component({
   selector: 'qt-chat-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup, RngDropdown],
+  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup, RngDropdown, SpeakingAsAvatar],
   template: `
     <div class="qt-chat-composer">
       @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
@@ -166,6 +173,20 @@ export interface PendingToolResultChip extends RngPendingResult {
           aria-label="Attach a file"
           (change)="onPick($any($event.target))"
         />
+
+        <!-- "Speaking as" portrait — full-height, directly left of the toolbar
+             cluster; hidden on the narrowest viewports where there's no room.
+             The outer wrapper owns the responsive show/hide so it doesn't
+             collide with the avatar's own layout (v4 ChatComposer :351-366). -->
+        @if (speakingAs(); as seat) {
+          <div class="hidden sm:flex self-stretch flex-shrink-0">
+            <qt-speaking-as-avatar
+              [name]="seat.name"
+              [avatarUrl]="seat.avatarUrl"
+              [canType]="canType()"
+            />
+          </div>
+        }
 
         <div class="qt-chat-composer-actions">
           <button
@@ -370,6 +391,13 @@ export class ChatComposer implements OnInit {
    * the next send as `pendingToolResults`.
    */
   readonly pendingToolResults = input<PendingToolResultChip[]>([]);
+  /**
+   * The character the human is currently speaking as — rendered as a persistent
+   * full-height portrait directly left of the toolbar cluster (v4 `speakingAs`).
+   * Null when the human plays no character (e.g. an all-LLM room); the salon
+   * computes it via `findActiveUserParticipant` so it matches server attribution.
+   */
+  readonly speakingAs = input<SpeakingAsSeat | null>(null);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -420,6 +448,15 @@ export class ChatComposer implements OnInit {
         this.attachedFiles().length > 0 ||
         this.pendingToolResults().length > 0) &&
       this.hasActiveCharacters(),
+  );
+
+  /**
+   * The floor is the human's — bright the "speaking as" cue; otherwise it dims
+   * (v4 `hasActiveCharacters && !sending && !streaming && !waitingForResponse`;
+   * v5's `busy` already folds streaming + waiting).
+   */
+  protected readonly canType = computed(
+    () => this.hasActiveCharacters() && !this.busy() && !this.disabled(),
   );
 
   protected readonly placeholder = computed(() => {

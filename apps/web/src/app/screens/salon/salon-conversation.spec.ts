@@ -1142,6 +1142,32 @@ describe('SalonConversation — the optimistic bubble matches server attribution
   });
 });
 
+/**
+ * The "Speaking As" composer portrait's seat (v4 Bug 46(b), `1bed814f`). It is
+ * resolved via `findActiveUserParticipant` (overlay-aware) and hydrated with the
+ * character's name + avatar so it matches server attribution.
+ */
+describe('SalonConversation — the speaking-as composer seat (v4 Bug 46b)', () => {
+  type SeatHost = { speakingAsSeat(): { name: string; avatarUrl: string | null } | null };
+
+  it('resolves the impersonated LLM seat when the human speaks as it', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const chat = { ...chatDetail(), activeTypingParticipantId: 'p1', impersonatingParticipantIds: ['p1'] };
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as SeatHost;
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Friday', avatarUrl: null });
+  });
+
+  it('falls back to the owner user seat when no valid selection', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // No active-typing id and no overlay → the genuine user seat 'pu'/'Bertie'.
+    const chat = { ...chatDetail(), activeTypingParticipantId: null };
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as SeatHost;
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };

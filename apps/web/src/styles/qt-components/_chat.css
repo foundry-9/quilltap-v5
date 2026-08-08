@@ -1255,6 +1255,30 @@
   }
 
   /**
+   * "Speaking as" composer portrait (v4 Bug 46 cue). Stands the full height of
+   * the composer row as a 4:5 portrait, capped so it never dominates a tall
+   * box; bright when the human may type, dimmed to near-dark while a reply is in
+   * flight. v4 renders it with tailwind `self-stretch aspect-[4/5] max-h-40 …
+   * opacity-100 / opacity-60 brightness-50`; v5 owns the geometry + gate here.
+   */
+  .qt-speaking-as-avatar {
+    @apply flex items-center justify-center flex-shrink-0 overflow-hidden;
+    align-self: stretch;
+    aspect-ratio: 4 / 5;
+    max-height: 10rem;
+    border-radius: var(--radius-md);
+    background-color: var(--color-muted);
+    transition:
+      filter 0.2s ease,
+      opacity 0.2s ease;
+  }
+
+  .qt-speaking-as-avatar-dim {
+    opacity: 0.6;
+    filter: brightness(0.5);
+  }
+
+  /**
    * Send button
    */
   .qt-chat-composer-send {

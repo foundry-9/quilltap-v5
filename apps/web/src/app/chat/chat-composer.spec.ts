@@ -436,4 +436,34 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
       fixture.nativeElement.querySelector('[aria-label="Random number generator"]'),
     ).toBeTruthy();
   });
+
+  /** The "Speaking As" composer portrait (v4 Bug 46(b)). */
+  describe('the speaking-as portrait', () => {
+    it('is absent when no seat is being spoken as', () => {
+      const fixture = render();
+      expect(fixture.nativeElement.querySelector('.qt-speaking-as-avatar')).toBeNull();
+    });
+
+    it('renders the seat and is bright when the human may type', () => {
+      const fixture = render();
+      fixture.componentRef.setInput('hasActiveCharacters', true);
+      fixture.componentRef.setInput('busy', false);
+      fixture.componentRef.setInput('speakingAs', { name: 'Charlie', avatarUrl: '/files/charlie.webp' });
+      fixture.detectChanges();
+      const cue = fixture.nativeElement.querySelector('.qt-speaking-as-avatar') as HTMLElement;
+      expect(cue).not.toBeNull();
+      expect(cue.getAttribute('aria-label')).toBe('Speaking as Charlie');
+      expect(cue.classList.contains('qt-speaking-as-avatar-dim')).toBe(false);
+    });
+
+    it('dims while a reply is in flight (busy)', () => {
+      const fixture = render();
+      fixture.componentRef.setInput('hasActiveCharacters', true);
+      fixture.componentRef.setInput('busy', true);
+      fixture.componentRef.setInput('speakingAs', { name: 'Charlie', avatarUrl: null });
+      fixture.detectChanges();
+      const cue = fixture.nativeElement.querySelector('.qt-speaking-as-avatar') as HTMLElement;
+      expect(cue.classList.contains('qt-speaking-as-avatar-dim')).toBe(true);
+    });
+  });
 });
