@@ -7,7 +7,10 @@
  *   - `queue.ts` — {@link addToQueue} / {@link removeFromQueue} /
  *     {@link nudgeParticipant} (the three the sidebar's optimistic queue
  *     updates call; `popFromQueue`/`resetCycleForUserSkip` are server-side)
- *   - `utils.ts` — {@link getQueuePosition}
+ *   - `utils.ts` — {@link getQueuePosition}, {@link isUserDrivenSeat},
+ *     {@link findUserParticipant}, {@link findActiveUserParticipant} (the
+ *     impersonation-overlay-aware participant filters the composer's turn
+ *     banner and optimistic-bubble attribution consult)
  *   - `types.ts` — {@link TurnState} / {@link TurnSelectionResult}
  *
  * This is DISPLAY-ONLY logic: it never picks a speaker, it only predicts the
@@ -269,4 +272,94 @@ export function computePredictedTurnOrder(options: ComputeTurnOrderOptions): Tur
   }
 
   return entries;
+}
+
+/**
+ * A minimal seat shape for the impersonation-overlay participant filters — the
+ * three fields v4's `ChatParticipantBase` readers touch.
+ */
+export interface SeatView {
+  id: string;
+  controlledBy?: 'llm' | 'user' | string | null;
+  status?: string | null;
+}
+
+/**
+ * True when the human is driving this seat right now — either because they own
+ * it (`controlledBy === 'user'`) or because they are impersonating it this
+ * session (its id is in `impersonatingParticipantIds`).
+ *
+ * Impersonation is an OVERLAY on top of ownership (v4 Bug 44): the seat's durable
+ * `controlledBy` column is left untouched, so any reader that means "who is
+ * typing right now / who does NOT get an LLM turn / whose voice a typed message
+ * carries" must consult this helper rather than the bare column. Readers that
+ * mean "who OWNS this seat" (the stable user seat, `isAllLLM`, the identity
+ * stacks) deliberately keep reading `controlledBy` — that stability is what
+ * keeps the seat from moving mid-conversation.
+ *
+ * Client mirror of v4 `lib/chat/turn-manager/utils.ts` `isUserDrivenSeat` and
+ * the core `participant_filters::is_user_driven_seat` (the differential-proven
+ * authority).
+ */
+export function isUserDrivenSeat(
+  participant: Pick<SeatView, 'id' | 'controlledBy'>,
+  impersonatingParticipantIds?: readonly string[] | null,
+): boolean {
+  if (participant.controlledBy === 'user') return true;
+  return (
+    Array.isArray(impersonatingParticipantIds) &&
+    impersonatingParticipantIds.includes(participant.id)
+  );
+}
+
+/**
+ * Finds the first present, user-controlled participant.
+ *
+ * This is an OWNERSHIP reader — it intentionally reads `controlledBy` only and
+ * ignores the impersonation overlay, because the "user seat" must stay put while
+ * an impersonation comes and goes (v4 Bug 44). Callers that need the seat the
+ * human is currently speaking *as* want {@link findActiveUserParticipant}.
+ *
+ * Client mirror of v4 `lib/chat/turn-manager/utils.ts` `findUserParticipant`.
+ */
+export function findUserParticipant<T extends SeatView>(participants: readonly T[]): T | null {
+  return (
+    participants.find((p) => isParticipantPresent(p.status) && p.controlledBy === 'user') ?? null
+  );
+}
+
+/**
+ * Finds the user-controlled participant the human is currently speaking as —
+ * preferring the selected `activeTypingParticipantId` speaker and falling back
+ * to the first user-controlled participant when no valid selection exists.
+ *
+ * Honours the impersonation overlay (v4 Bug 44): when the selected
+ * `activeTypingParticipantId` is a present seat the human is currently
+ * impersonating, it is returned even though its durable `controlledBy` is still
+ * `'llm'`. The fallback stays on {@link findUserParticipant} (a genuine owner
+ * seat) — during a solo impersonation there is no owner seat, but the server
+ * always sets `activeTypingParticipantId` when impersonating, so the selected
+ * branch resolves.
+ *
+ * This is the correct resolver for any path that attributes a human-authored
+ * message or names the human — the composer's optimistic bubble (v4 Bug 45) and
+ * the "Speaking As" composer cue (v4 Bug 46). Client mirror of v4
+ * `lib/chat/turn-manager/utils.ts` `findActiveUserParticipant` and the core
+ * `participant_filters::find_active_user_participant`.
+ */
+export function findActiveUserParticipant<T extends SeatView>(
+  participants: readonly T[],
+  activeTypingParticipantId?: string | null,
+  impersonatingParticipantIds?: readonly string[] | null,
+): T | null {
+  if (activeTypingParticipantId) {
+    const selected = participants.find(
+      (p) =>
+        p.id === activeTypingParticipantId &&
+        isParticipantPresent(p.status) &&
+        isUserDrivenSeat(p, impersonatingParticipantIds),
+    );
+    if (selected) return selected;
+  }
+  return findUserParticipant(participants);
 }

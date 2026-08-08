@@ -4,9 +4,13 @@ import {
   addToQueue,
   computePredictedTurnOrder,
   createInitialTurnState,
+  findActiveUserParticipant,
+  findUserParticipant,
   getQueuePosition,
+  isUserDrivenSeat,
   nudgeParticipant,
   removeFromQueue,
+  type SeatView,
   type TurnOrderParticipant,
   type TurnState,
 } from './turn-order';
@@ -431,5 +435,107 @@ describe('the queue helpers', () => {
     expect(getQueuePosition(state, 'alice')).toBe(1);
     expect(getQueuePosition(state, 'bob')).toBe(2);
     expect(getQueuePosition(state, 'carol')).toBe(0);
+  });
+});
+
+/**
+ * The impersonation-overlay participant filters — client mirror of v4
+ * `lib/chat/turn-manager/utils.ts` and the differential-proven core
+ * `participant_filters` (`is_user_driven_seat` / `find_user_participant` /
+ * `find_active_user_participant`). Cases mirror v4's
+ * `__tests__/unit/lib/chat/turn-manager.test.ts` `findActiveUserParticipant`
+ * block (v4 Bug 44's overlay arm included) plus the reverted-then-restored
+ * `isUserDrivenSeat` arms.
+ */
+describe('the impersonation-overlay participant filters (v4 turn-manager/utils.ts)', () => {
+  const seat = (over: Partial<SeatView> & { id: string }): SeatView => ({
+    controlledBy: 'llm',
+    status: 'active',
+    ...over,
+  });
+
+  describe('isUserDrivenSeat', () => {
+    it('is true for a genuine user-controlled seat', () => {
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'user' }, null)).toBe(true);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'user' }, ['p2'])).toBe(true);
+    });
+
+    it('is false for a plain LLM seat with no overlay', () => {
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'llm' }, null)).toBe(false);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'llm' }, [])).toBe(false);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'llm' }, ['p2'])).toBe(false);
+    });
+
+    it('is true for an LLM seat the human is impersonating (the overlay arm)', () => {
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'llm' }, ['p1'])).toBe(true);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: 'llm' }, ['p2', 'p1'])).toBe(true);
+    });
+
+    it('tolerates a nullish controlledBy and a nullish overlay list', () => {
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: null }, null)).toBe(false);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: undefined }, undefined)).toBe(false);
+      expect(isUserDrivenSeat({ id: 'p1', controlledBy: undefined }, ['p1'])).toBe(true);
+    });
+  });
+
+  describe('findUserParticipant (ownership reader)', () => {
+    it('finds the first present, user-controlled participant', () => {
+      const char1 = seat({ id: 'p1' });
+      const userChar = seat({ id: 'u1', controlledBy: 'user' });
+      expect(findUserParticipant([char1, userChar])).toBe(userChar);
+    });
+
+    it('ignores absent user seats and returns null when none present', () => {
+      const absentUser = seat({ id: 'u1', controlledBy: 'user', status: 'absent' });
+      expect(findUserParticipant([seat({ id: 'p1' }), absentUser])).toBeNull();
+    });
+  });
+
+  describe('findActiveUserParticipant (Speaking As)', () => {
+    const jackie = seat({ id: 'u-jackie', controlledBy: 'user' });
+    const abigail = seat({ id: 'p-abigail', controlledBy: 'llm' });
+    const revenant = seat({ id: 'u-revenant', controlledBy: 'user' });
+    const participants = [jackie, abigail, revenant];
+
+    it('honors the active speaker when two characters are user-controlled', () => {
+      expect(findActiveUserParticipant(participants, 'u-revenant')).toBe(revenant);
+    });
+
+    it('falls back to the first user-controlled participant when no selection', () => {
+      expect(findActiveUserParticipant(participants, null)).toBe(jackie);
+      expect(findActiveUserParticipant(participants)).toBe(jackie);
+    });
+
+    it('falls back when the selected id is not a user-controlled participant', () => {
+      expect(findActiveUserParticipant(participants, 'p-abigail')).toBe(jackie);
+      expect(findActiveUserParticipant(participants, 'does-not-exist')).toBe(jackie);
+    });
+
+    it('ignores a selected speaker who is no longer present', () => {
+      const absentRevenant = seat({ id: 'u-revenant', controlledBy: 'user', status: 'absent' });
+      expect(findActiveUserParticipant([jackie, abigail, absentRevenant], 'u-revenant')).toBe(
+        jackie,
+      );
+    });
+
+    it('returns null when there are no user-controlled participants', () => {
+      expect(findActiveUserParticipant([abigail], 'anything')).toBeNull();
+    });
+
+    // v4 Bug 44: "Speak as an AI character" routes through impersonation, an
+    // OVERLAY — the chosen seat's `controlledBy` stays 'llm'; only the chat's
+    // `impersonatingParticipantIds` records it.
+    it('honours an impersonated LLM seat via the overlay, without moving controlledBy', () => {
+      const abigailSeat = seat({ id: 'p-abigail', controlledBy: 'llm' });
+      // Without the overlay, selecting the LLM character is not honoured.
+      expect(findActiveUserParticipant([jackie, abigailSeat], 'p-abigail')).toBe(jackie);
+      // With the seat listed in impersonatingParticipantIds, the SAME still-LLM
+      // seat IS honoured as the active speaker.
+      expect(
+        findActiveUserParticipant([jackie, abigailSeat], 'p-abigail', ['p-abigail']),
+      ).toBe(abigailSeat);
+      // The column was never touched.
+      expect(abigailSeat.controlledBy).toBe('llm');
+    });
   });
 });

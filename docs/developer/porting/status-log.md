@@ -122,6 +122,28 @@ workspace gate below.
 (`~/source/quilltap-v5/harness/oracle/cases/settings-routes.test.ts`) rather than
 the worktree — the two are separate working trees. Transplanted to the worktree
 and `git checkout`-restored main (verified base-identical first). Main left clean.
+## Lane record — P4.D58 (the salon impersonation reconcile SPA, bugs 45/46), IN PROGRESS
+
+Ports the SPA half of v4 `1bed814f` ("reconcile impersonation attribution + add
+'speaking as' composer avatar"). Pure `apps/web`; no crate, no oracle. Re-applies
+what P4.D56's revert (`3435055c`) reverted — v4's client has now moved to gate the
+banner on the impersonation overlay — plus Bug 45 (optimistic-bubble
+attribution) and Bug 46(b) (the `SpeakingAsAvatar` composer cue). Drift-check at
+lane start: `git log 1bed814f..HEAD` in `~/source/quilltap-server` was empty
+(v4 HEAD == `1bed814f`).
+
+**Unit 1 — client turn-manager helper twins (SPA 0.5.434).** Added
+`isUserDrivenSeat`, `findUserParticipant`, `findActiveUserParticipant` to
+`apps/web/src/app/chat/turn-order.ts` (the documented client `lib/chat/turn-manager`
+slice — `getQueuePosition` from the same v4 `utils.ts` already lived here, so it
+is the right home, not the `skip-signal-helpers.ts` the revert had removed the
+lone helper from). Byte-faithful to v4 `lib/chat/turn-manager/utils.ts:82,:110,:129`;
+the differential-proven authority is the core `participant_filters`
+(`is_user_driven_seat` / `find_user_participant` / `find_active_user_participant`).
+Parity spec: a new describe block in `turn-order.spec.ts` mirroring v4's
+`__tests__/unit/lib/chat/turn-manager.test.ts` `findActiveUserParticipant` cases
+(overlay arm included) + the reverted-then-restored `isUserDrivenSeat` arms —
+`turn-order.spec.ts` 20 → 32 tests, green.
 
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
