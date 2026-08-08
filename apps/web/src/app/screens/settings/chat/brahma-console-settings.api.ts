@@ -1,5 +1,8 @@
 import type { CoreClient } from '../../../core/core-client';
-import type { CoreRequest } from '../../../core/core-contract';
+import type {
+  BrahmaConsoleSettingsRequest,
+  BrahmaConsoleSettingsUpdateRequest,
+} from '../../../core/core-contract';
 
 /**
  * The Brahma Console agent-turn-budget client surface (v4 `6452e2c3`, the SPA
@@ -15,11 +18,9 @@ import type { CoreRequest } from '../../../core/core-contract';
  * The response is read DEFENSIVELY through `CoreClient.dispatchData` (the
  * settings precedent — data-retention, taboo, text-replacements): the server
  * pins the body `{ maxAgentTurns }`, so no narrowed `CoreResponse` variant is
- * consumed here. P4.D57 owns the Rust dispatch + the wire contract; this lane
- * (P4.D59) owns only the SPA card + its wiring, so the request `type` is bridged
- * with the `as unknown as CoreRequest` cast rather than folding the two request
- * variants into the union (which lives in `core/core-contract.ts`, outside this
- * lane's ownership). The verb NAMES mirror the contract exactly.
+ * consumed here. The two request variants live in `core/core-contract.ts`
+ * (folded into the union at unification, mirroring `api/types.rs`
+ * name-for-name — P4.D57's Shared contract).
  *
  * @module screens/settings/chat/brahma-console-settings.api
  */
@@ -37,17 +38,6 @@ export interface BrahmaConsoleSettingsDto {
   maxAgentTurns: number;
 }
 
-/** v4 GET `/api/v1/settings/brahma-console` (§ Shared contract). */
-interface BrahmaConsoleSettingsRequest {
-  type: 'brahmaConsoleSettings';
-}
-
-/** v4 PUT `/api/v1/settings/brahma-console` — merge + validate + echo the STORED value. */
-interface BrahmaConsoleSettingsUpdateRequest {
-  type: 'brahmaConsoleSettingsUpdate';
-  maxAgentTurns: number;
-}
-
 /** Read `maxAgentTurns` defensively, falling back to the default (v4's own load guard). */
 function readTurns(data: Record<string, unknown>, fallback: number): number {
   return typeof data['maxAgentTurns'] === 'number' ? (data['maxAgentTurns'] as number) : fallback;
@@ -56,7 +46,7 @@ function readTurns(data: Record<string, unknown>, fallback: number): number {
 /** v4 GET `/settings/brahma-console` → the budget `{maxAgentTurns}`. */
 export async function getBrahmaConsoleSettings(core: CoreClient): Promise<BrahmaConsoleSettingsDto> {
   const req: BrahmaConsoleSettingsRequest = { type: 'brahmaConsoleSettings' };
-  const data = await core.dispatchData(req as unknown as CoreRequest);
+  const data = await core.dispatchData(req);
   return { maxAgentTurns: readTurns(data, DEFAULT_MAX_AGENT_TURNS) };
 }
 
@@ -66,6 +56,6 @@ export async function updateBrahmaConsoleSettings(
   maxAgentTurns: number,
 ): Promise<BrahmaConsoleSettingsDto> {
   const req: BrahmaConsoleSettingsUpdateRequest = { type: 'brahmaConsoleSettingsUpdate', maxAgentTurns };
-  const data = await core.dispatchData(req as unknown as CoreRequest);
+  const data = await core.dispatchData(req);
   return { maxAgentTurns: readTurns(data, maxAgentTurns) };
 }

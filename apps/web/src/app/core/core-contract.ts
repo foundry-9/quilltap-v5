@@ -2017,6 +2017,10 @@ export type CoreRequest =
   // --- The instance-wide Taboo list (§1; P4.D50) ---
   | TabooSettingsRequest
   | TabooSettingsUpdateRequest
+  // --- The instance-wide Brahma Console turn budget (§1; P4.D57 owns the
+  //     server half) ---
+  | BrahmaConsoleSettingsRequest
+  | BrahmaConsoleSettingsUpdateRequest
   // --- Embedding-profiles management + memory maintenance (§1; P4.9H2A owns
   //     the server half) ---
   | EmbeddingProfileListRequest
@@ -6047,6 +6051,28 @@ export interface TabooSettingsRequest {
 export interface TabooSettingsUpdateRequest {
   type: 'tabooSettingsUpdate';
   phrases?: string[];
+}
+
+/**
+ * v4 GET `/api/v1/settings/brahma-console` (P4.D57's Shared contract) — the
+ * instance-wide Brahma Console agent-turn budget
+ * (`instance_settings['brahmaConsole']`). The response rides the shared
+ * `brahmaConsole` wire type with body `{ maxAgentTurns }` (read via
+ * `dispatchData`, no narrowed CoreResponse variant).
+ */
+export interface BrahmaConsoleSettingsRequest {
+  type: 'brahmaConsoleSettings';
+}
+
+/**
+ * v4 PUT `/api/v1/settings/brahma-console` — merged over the stored value,
+ * validated (`int`, 5–200, default 50), persisted, and the STORED value echoed.
+ * Omitting `maxAgentTurns` keeps the current budget; the server 400s an
+ * out-of-range or null value.
+ */
+export interface BrahmaConsoleSettingsUpdateRequest {
+  type: 'brahmaConsoleSettingsUpdate';
+  maxAgentTurns?: number;
 }
 
 // ===========================================================================

@@ -19,16 +19,15 @@ import { E2E_PASSPHRASE } from './support/env';
  * (50) at the end, and the setting is instance-wide, so it leaves the shared
  * server as it found it.
  *
- * GATED — P4.D59 is the SPA-only lane; the `brahmaConsole*` verbs land in the
- * SIBLING lane P4.D57 (Rust + dispatch + REST edge). This beat CANNOT pass until
- * those verbs are on the branch, so it is gated behind the named constant below.
- * The UNIFIER flips it to `true` once P4.D57 is cherry-picked (the beat is
- * ACTIVATE-AT-UNIFY; see the lane's status-log record). Gating by a NAMED
- * constant — not a capability probe — is the round rule: a probe would silently
- * activate the beat into a guaranteed failure the moment the verb is DEFINED but
- * still refusing.
+ * ACTIVE since the P4.D57∥D58∥D59 unification: the beat was authored gated
+ * behind the named constant below (P4.D59 was the SPA-only lane; the
+ * `brahmaConsole*` verbs landed in the sibling lane P4.D57), and the unifier
+ * flipped it once both lanes were on one branch. Gating by a NAMED constant —
+ * not a capability probe — is the round rule: a probe would silently activate
+ * the beat into a guaranteed failure the moment the verb is DEFINED but still
+ * refusing.
  */
-const BRAHMA_CONSOLE_SERVER_LANDED = false;
+const BRAHMA_CONSOLE_SERVER_LANDED = true;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {

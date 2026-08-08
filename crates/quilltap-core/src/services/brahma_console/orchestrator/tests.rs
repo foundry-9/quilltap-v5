@@ -163,7 +163,8 @@ async fn loop_bound_forces_a_final_answer_at_the_operator_cap() {
     let (_dir, db) = fixture_copy();
     // Seed a small operator-set budget so the loop proves it reads
     // `resolve_brahma_max_agent_turns` (Settings → Chat → Brahma Console), not a
-    // retired hardcoded constant. The committed fixture has the instance_settings
+    // retired hardcoded constant. Created IF NOT EXISTS so the test is agnostic
+    // to whether the committed fixture's vintage carries the instance_settings
     // table.
     const CAP: i64 = 6;
     db.write(|ws| {
