@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Added `select_next_speaker_after_user_message` (v4 Bug 50 fair rotation): the
+pure helper that projects the turn rotation one step past a user's just-typed,
+unpersisted message, so a multi-seat room's first responder honors the full
+roster instead of an LLM-only shortlist. Tier-1 differential extended
+(`select-speaker` gains eight `select-after` cases against v4's real helper).
+
 Planned the `f6eac168` drift catch-up round (v4 Bugs 47-51) and committed
 three work orders: P4.D60 (server — the fair-rotation first-responder pause,
 the Brahma budget-exhaustion salvage, and the chat-GET impersonation

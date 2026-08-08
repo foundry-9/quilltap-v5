@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use crate::chat_predicates::{is_participant_present, ParticipantStatus};
+use crate::turn_state::{compute_spoken_this_cycle_after_message, MessageView, ParticipantView};
 
 /// A participant in the rotation. `talkativeness` (a per-chat override) wins over
 /// the character's value when set.
@@ -281,6 +282,98 @@ pub fn select_next_speaker(
     )
 }
 
+/// Fail-soft parse of a JSON string-array id list (v4's inline `parseIds`): a
+/// missing/empty/non-array/invalid JSON payload yields `[]`, and only string
+/// elements survive.
+fn parse_ids(json: Option<&str>) -> Vec<String> {
+    let Some(text) = json.filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(serde_json::Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Who speaks next *after* a user's just-typed message — projected one step past
+/// a post that has NOT been persisted yet (v4
+/// `selectNextSpeakerAfterUserMessage`, selection.ts).
+///
+/// The first-responder decision on a fresh user send happens before the message
+/// is written to history, so a turn-state recomputed from history would still
+/// resolve to the poster (whose turn it currently is), not the seat that follows
+/// them. This helper advances the persisted cycle exactly the way the message
+/// write will (via [`compute_spoken_this_cycle_after_message`], so the projection
+/// and the eventual persisted state agree), sets the poster as `last_speaker_id`,
+/// then runs the normal full-rotation [`select_next_speaker`] over ALL
+/// participants.
+///
+/// The caller uses this to detect when the floor after a human's post belongs to
+/// ANOTHER seat the human drives — in which case the chat pauses for that seat
+/// instead of forcing an LLM to answer every human turn (the fair-rotation fix
+/// for rooms where the human drives two or more seats alongside a single LLM).
+///
+/// `user_participant_id` matches v4's parameter; like v4's `selectNextSpeaker` it
+/// is unused by the selection (kept for signature fidelity). `random01` is the
+/// injected `Math.random()` value threaded to the delegated weighted pick.
+#[allow(clippy::too_many_arguments)]
+pub fn select_next_speaker_after_user_message(
+    participants: &[SpeakerParticipant],
+    characters: &HashMap<String, f64>,
+    poster_participant_id: &str,
+    persisted_spoken_this_cycle_json: Option<&str>,
+    turn_queue_json: Option<&str>,
+    _user_participant_id: Option<&str>,
+    random01: f64,
+    impersonating_participant_ids: Option<&[String]>,
+) -> SelectionResult {
+    // v4 builds a synthetic `{ type: 'message', role: 'USER', participantId:
+    // poster }` event and advances the persisted cycle the same way the eventual
+    // message write will.
+    let synthetic_post = MessageView {
+        msg_type: Some("message".to_string()),
+        role: "USER".to_string(),
+        participant_id: Some(poster_participant_id.to_string()),
+        target_participant_ids: None,
+    };
+    let cycle_views: Vec<ParticipantView> = participants
+        .iter()
+        .map(|p| ParticipantView {
+            id: p.id.clone(),
+            participant_type: p.participant_type.clone(),
+            status: p.status,
+            character_id: p.character_id.clone(),
+        })
+        .collect();
+
+    let advanced_json = compute_spoken_this_cycle_after_message(
+        &synthetic_post,
+        &cycle_views,
+        persisted_spoken_this_cycle_json,
+    );
+
+    // `advanced_json === null` means the write is a no-op (poster already
+    // recorded, no wrap) — keep the persisted set as-is.
+    let spoken_since_user_turn = match advanced_json {
+        Some(ref json) => parse_ids(Some(json.as_str())),
+        None => parse_ids(persisted_spoken_this_cycle_json),
+    };
+    let queue = parse_ids(turn_queue_json);
+
+    select_next_speaker(
+        participants,
+        characters,
+        &queue,
+        &spoken_since_user_turn,
+        Some(poster_participant_id),
+        random01,
+        impersonating_participant_ids,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +423,121 @@ mod tests {
         assert_eq!(user_turn.next_speaker_id.as_deref(), Some("p1"));
         assert_eq!(user_turn.reason, "user_turn");
         assert_eq!(impersonated.controlled_by, "llm");
+    }
+
+    // ---- selectNextSpeakerAfterUserMessage (Bug 50 fair rotation) ----
+    //
+    // The reported bug: the human plays Charlie (user) AND impersonates Lorian
+    // (an LLM seat, controlledBy still 'llm' under the Bug 44 overlay), with Kumar
+    // the sole real LLM. The first-responder picker used an LLM-only shortlist, so
+    // Kumar answered EVERY human turn. These mirror v4's four new jest cases.
+
+    fn user_seat(id: &str) -> SpeakerParticipant {
+        SpeakerParticipant {
+            id: id.to_string(),
+            participant_type: "CHARACTER".to_string(),
+            status: ParticipantStatus::Active,
+            character_id: Some(format!("char-{id}")),
+            controlled_by: "user".to_string(),
+            talkativeness: None,
+        }
+    }
+
+    fn fair_room() -> Vec<SpeakerParticipant> {
+        // charlie: user seat; lorian: LLM seat impersonated; kumar: sole real LLM.
+        vec![
+            user_seat("charlie"),
+            character("lorian"),
+            character("kumar"),
+        ]
+    }
+
+    #[test]
+    fn after_user_hands_floor_to_impersonated_seat_pause() {
+        // Kumar already spoke this cycle; Charlie is posting now. The only eligible
+        // seat left is Lorian — and Lorian is user-driven, so the caller pauses.
+        let parts = fair_room();
+        let impersonating = ["lorian".to_string()];
+        let result = select_next_speaker_after_user_message(
+            &parts,
+            &HashMap::new(),
+            "charlie",
+            Some("[\"kumar\"]"),
+            Some("[]"),
+            Some("charlie"),
+            0.5,
+            Some(&impersonating),
+        );
+        assert_eq!(result.next_speaker_id.as_deref(), Some("lorian"));
+        assert_eq!(result.reason, "user_turn");
+    }
+
+    #[test]
+    fn after_impersonated_post_lets_real_llm_answer_no_pause() {
+        // Charlie already spoke; the human just typed as Lorian. The only eligible
+        // seat is Kumar (a real LLM) — the caller must NOT pause.
+        let parts = fair_room();
+        let impersonating = ["lorian".to_string()];
+        let result = select_next_speaker_after_user_message(
+            &parts,
+            &HashMap::new(),
+            "lorian",
+            Some("[\"charlie\"]"),
+            Some("[]"),
+            Some("charlie"),
+            0.5,
+            Some(&impersonating),
+        );
+        assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
+        assert_ne!(result.reason, "user_turn");
+    }
+
+    #[test]
+    fn after_user_wraps_cycle_then_picks_from_fresh_set() {
+        // Kumar and Lorian have spoken; Charlie posting completes the 3-seat cycle,
+        // so it wraps and the next speaker is drawn from {Lorian, Kumar}.
+        let parts = fair_room();
+        let impersonating = ["lorian".to_string()];
+        let result = select_next_speaker_after_user_message(
+            &parts,
+            &HashMap::new(),
+            "charlie",
+            Some("[\"kumar\",\"lorian\"]"),
+            Some("[]"),
+            Some("charlie"),
+            0.1,
+            Some(&impersonating),
+        );
+        let next = result.next_speaker_id.as_deref();
+        assert_ne!(next, Some("charlie"));
+        assert!(matches!(next, Some("lorian") | Some("kumar")));
+    }
+
+    #[test]
+    fn after_user_honours_the_queue_ahead_of_rotation() {
+        let parts = fair_room();
+        let impersonating = ["lorian".to_string()];
+        let result = select_next_speaker_after_user_message(
+            &parts,
+            &HashMap::new(),
+            "charlie",
+            Some("[\"kumar\"]"),
+            Some("[\"kumar\"]"), // Kumar explicitly queued
+            Some("charlie"),
+            0.5,
+            Some(&impersonating),
+        );
+        assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
+        assert_eq!(result.reason, "queue");
+    }
+
+    #[test]
+    fn after_user_bad_json_is_fail_soft_empty() {
+        // Bad/absent JSON id lists parse to `[]` (v4's inline `parseIds`).
+        assert_eq!(parse_ids(None), Vec::<String>::new());
+        assert_eq!(parse_ids(Some("")), Vec::<String>::new());
+        assert_eq!(parse_ids(Some("{not json")), Vec::<String>::new());
+        assert_eq!(parse_ids(Some("\"scalar\"")), Vec::<String>::new());
+        assert_eq!(parse_ids(Some("[1,\"a\",2]")), vec!["a".to_string()]);
     }
 }

@@ -61804,3 +61804,47 @@ the commit gate); `ng build` clean; full Playwright green with the gated beat
 skipped-as-explained (the Rust bins built from this branch are byte-identical to
 main — zero crate change). **Versions:** SPA `package.json` deliberately NOT
 bumped (P4.D58 owns the SPA version bump this round); no crate touched.
+
+---
+
+## Lane record — P4.D60 (fair turn rotation + Brahma budget salvage + chat-GET impersonation projection, server) — v4 `f6eac168`
+
+Ports the SERVER half of v4 `f6eac168` "fix(salon): fair turn rotation for
+multi-seat rooms + Brahma budget salvage (bugs 47-51)". Drift-checked at lane
+start: v4 HEAD is exactly `f6eac168`, tree clean — no drift. Every oracle this
+lane regenerates is taken at `f6eac168` straight from `~/source/quilltap-server`
+(HEAD, clean).
+
+### Unit 1 — the pure helper `select_next_speaker_after_user_message` (Bug 50) + tier-1 differential
+
+Ported v4's new `selectNextSpeakerAfterUserMessage` (selection.ts, +73) into
+`select_speaker.rs`. It builds the synthetic `{type:'message', role:'USER',
+participantId: poster}` event, advances the persisted cycle via
+`compute_spoken_this_cycle_after_message` (a `None` return = no-op → keep the
+persisted set), fail-soft parses both JSON id lists (bad/absent JSON → `[]`),
+sets the poster as `last_speaker_id`, and delegates to `select_next_speaker`
+over the FULL roster (not the LLM-only shortlist). `random01` is threaded to the
+delegated weighted pick; `user_participant_id` is kept for signature fidelity
+(unused by selection, exactly as v4's `_userParticipantId`).
+
+Six unit tests mirror v4's four new jest cases (pause-to-impersonated /
+no-pause-to-LLM / cycle-wrap / queue-honored) plus a fail-soft `parse_ids` test.
+
+**Differential (tier-1 exact):** `harness/oracle/cases/select-speaker.ts` gains
+a `select-after` kind driving v4's REAL `selectNextSpeakerAfterUserMessage`
+across eight arms (pause / no-pause / wrap / queue / `advancedJson===null` no-op
+/ absent-JSON / bad-JSON / no-overlay-LLM-answers), Math.random pinned per case
+and emitted as `random01`. `select_speaker_equivalence.rs` diffs the new rows
+(nextSpeakerId / reason / cycleComplete / debug within 1e-12); it asserts
+`after_count > 0` so a truncated regen fails loud.
+
+Regen recipe (Node 24; tsx imports the WORKTREE case file; oracle is /tmp-only,
+not committed):
+```
+cd ~/source/quilltap-server            # HEAD f6eac168, tree clean
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <worktree>/harness/oracle/cases/select-speaker.ts > /tmp/oracle-select-speaker.ndjson
+QT_ORACLE_SELECT_SPEAKER=/tmp/oracle-select-speaker.ndjson \
+  cargo test -p quilltap-harness --test select_speaker_equivalence
+```
+Green: 15 select + 8 select-after. Versions: core 0.0.513, harness 0.0.435.

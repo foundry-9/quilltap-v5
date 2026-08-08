@@ -13,7 +13,7 @@
  *     > /tmp/oracle-select-speaker.ndjson
  */
 
-import { selectNextSpeaker } from '@/lib/chat/turn-manager/selection';
+import { selectNextSpeaker, selectNextSpeakerAfterUserMessage } from '@/lib/chat/turn-manager/selection';
 import type { TurnState, TurnSelectionResult } from '@/lib/chat/turn-manager/types';
 import type { ChatParticipantBase, Character } from '@/lib/schemas/types';
 
@@ -102,14 +102,79 @@ const scenarios: Scenario[] = [
   { id: 'impersonated-weighted', participants: trio, characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.1, impersonating: ['A'] },
 ];
 
-type Row = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult };
-const rows: Row[] = [];
+// selectNextSpeakerAfterUserMessage (Bug 50 fair rotation): projects the
+// rotation one step past a user's just-typed (unpersisted) message. The persisted
+// spokenThisCycle / turnQueue arrive as JSON strings (fail-soft parsed); the
+// poster is set as lastSpeakerId and the full-rotation selectNextSpeaker runs.
+// Math.random is pinned per case exactly as above so the Rust port (which takes
+// random01) draws identically.
+type AfterScenario = {
+  id: string;
+  participants: WirePart[];
+  characters: WireChars;
+  poster: string;
+  persistedSpokenJson: string | null;
+  turnQueueJson: string | null;
+  userParticipantId: string | null;
+  random01: number;
+  impersonating?: string[];
+};
+
+// The reported room: charlie (user) + lorian (LLM, impersonated) + kumar (sole
+// real LLM). `impersonating: ['lorian']` puts Lorian under the user-driven
+// overlay (controlledBy stays 'llm').
+const fairRoom: WirePart[] = [
+  p('charlie', 'CHARACTER', 'active', 'char-charlie', 'user', null),
+  p('lorian', 'CHARACTER', 'active', 'char-lorian', 'llm', null),
+  p('kumar', 'CHARACTER', 'active', 'char-kumar', 'llm', null),
+];
+
+const afterScenarios: AfterScenario[] = [
+  // Kumar already spoke; Charlie posts → only Lorian eligible → user_turn (pause).
+  { id: 'after-pause-to-impersonated', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.5, impersonating: ['lorian'] },
+  // Charlie already spoke; the human posts as Lorian → only Kumar eligible → no pause.
+  { id: 'after-no-pause-to-llm', participants: fairRoom, characters: {}, poster: 'lorian', persistedSpokenJson: JSON.stringify(['charlie']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.5, impersonating: ['lorian'] },
+  // Kumar+Lorian spoke; Charlie completes the 3-seat cycle → wrap, pick {lorian,kumar}.
+  { id: 'after-cycle-wrap', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar', 'lorian']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.1, impersonating: ['lorian'] },
+  // Queue wins ahead of the rotation.
+  { id: 'after-queue-honored', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar']), turnQueueJson: JSON.stringify(['kumar']), userParticipantId: 'charlie', random01: 0.5, impersonating: ['lorian'] },
+  // advancedJson === null no-op: poster already recorded AND no wrap → the
+  // persisted set is kept. Extra seat 'dave' means the poster reappearing does
+  // not complete the cycle (so computeSpokenThisCycleAfterMessage returns null).
+  { id: 'after-noop-keeps-persisted', participants: [p('charlie', 'CHARACTER', 'active', 'char-charlie', 'user', null), p('kumar', 'CHARACTER', 'active', 'char-kumar', 'llm', null), p('dave', 'CHARACTER', 'active', 'char-dave', 'llm', null)], characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['charlie']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.1, impersonating: [] },
+  // Absent JSON (null) parses to []; a fresh cycle after the poster.
+  { id: 'after-absent-json', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: null, turnQueueJson: null, userParticipantId: 'charlie', random01: 0.1, impersonating: ['lorian'] },
+  // Bad JSON is fail-soft → []; behaves like absent.
+  { id: 'after-bad-json', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: '{not json', turnQueueJson: '{bad', userParticipantId: 'charlie', random01: 0.1, impersonating: ['lorian'] },
+  // No overlay: the same room but nobody impersonated → after Kumar spoke and
+  // Charlie posts, Lorian (a plain LLM) is eligible and answers (no pause).
+  { id: 'after-no-overlay-llm-answers', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.5 },
+];
+
+type SelectRow = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult };
+type AfterRow = { kind: 'select-after'; id: string; scenario: AfterScenario; out: TurnSelectionResult };
+const rows: Array<SelectRow | AfterRow> = [];
 
 for (const s of scenarios) {
   const result = withRandom(s.random01, () =>
     selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId), null, s.impersonating),
   );
   rows.push({ kind: 'select', id: s.id, scenario: s, out: result });
+}
+
+for (const s of afterScenarios) {
+  const result = withRandom(s.random01, () =>
+    selectNextSpeakerAfterUserMessage(
+      asParts(s.participants),
+      asChars(s.characters),
+      s.poster,
+      s.persistedSpokenJson,
+      s.turnQueueJson,
+      s.userParticipantId,
+      s.impersonating,
+    ),
+  );
+  rows.push({ kind: 'select-after', id: s.id, scenario: s, out: result });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');
