@@ -241,6 +241,17 @@ The backdrop row is a consequence of F1, not an independent gap: v5 has no
 tabbed workspace, so there is nothing to arbitrate between
 (`status-log.md:12477-12481`). It resolves with `p4.9j` or never.
 
+**About-backdrop drift `ddd7576b` — NO-PORT (P4.D59, recorded).** v4's
+`ddd7576b` teaches its About surface to report `/images/about.webp` to the
+workspace backdrop registry (`useReportWorkspaceBackdrop`) so its background
+survives inside a workspace tab. v5 ships **no About background asset at all**
+(`screens/about/about-page.ts` §3 — a prior deliberate decision), so the bug
+that fix repairs cannot manifest here: there is nothing to suppress and nothing
+to re-report. Faithfully porting it would first require *adding* the 2.4 MB
+asset + the legacy `--story-background-url` styling — a separate product
+decision, out of scope of this drift. `about-page.ts` and
+`workspace-backdrop.*` are left untouched.
+
 ### 1.5 Settings
 
 v4 and v5 both ship a seven-tab hall in the same order —

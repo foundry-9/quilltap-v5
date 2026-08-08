@@ -61654,3 +61654,74 @@ Friday copy would exercise the overlay end-to-end). The f4955e0e-round
 sweep-driver rot (six turn families + the four families named there) still
 wants its maintenance pass. Versions: core 0.0.509, harness 0.0.432, SPA
 0.5.431; host/web/cli/tauri unchanged.
+
+---
+
+## Lane record — P4.D59 (the Brahma Console settings card + About-backdrop disposition, SPA)
+
+**Branch:** `claude/brahma-card-spa-porting-306484`. Pure `apps/web`; no crate
+touched. v4 baseline `1bed814f` (drift-checked clean at lane start:
+`git log 1bed814f..HEAD` empty). Sibling round: **P4.D57** (the Brahma budget
+SERVER — Rust + dispatch + REST edge; owns all crates + the contract) ∥
+**P4.D58** (the salon impersonation SPA; owns the `apps/web` version bump). All
+files disjoint from both siblings.
+
+**Part 1 — the Brahma Console budget card (v4 `6452e2c3`, SPA half): LANDED.**
+
+- `screens/settings/chat/brahma-console-settings.api.ts` — the instance-scoped
+  client surface over the P4.D57 verbs `brahmaConsoleSettings` /
+  `brahmaConsoleSettingsUpdate`, read defensively through
+  `CoreClient.dispatchData` (the data-retention / taboo / text-replacements
+  settings precedent — the server pins the `{ maxAgentTurns }` body, so no
+  narrowed `CoreResponse` variant is consumed). The two request `type`s are
+  bridged with an `as unknown as CoreRequest` cast at the call site rather than
+  folding them into the union in `core/core-contract.ts` — that file is outside
+  this lane's ownership (`screens/settings/chat/**`), and P4.D57 owns the
+  contract. Bounds/default constants (`MIN 5 / MAX 200 / DEFAULT 50`) exported
+  here.
+- `screens/settings/chat/brahma-console-settings.ts` — the Angular signal card,
+  a near-exact structural mirror of the Data Retention card: number input,
+  load-on-init, commit-on-blur / Enter, revert-out-of-range-without-nagging,
+  no-op-when-unchanged, success/error toasts. v4's steampunk copy carried
+  verbatim (the "telegraph key" paragraph + the stuck-loop reassurance). The
+  echo (`saved.maxAgentTurns`) is what the card renders after a save (the v5
+  data-retention precedent; behaviour-identical to v4 for in-range input, and
+  correct if the server clamps).
+- `screens/settings/chat/chat-tab.ts` — the card mounted in v4's slot (between
+  Data Retention and Autonomous Rooms) with `title="Brahma Console"`,
+  `description="How many tool-use turns the Console may take before it must
+  answer"`, `sectionId="brahma-console"`, `forceOpen` on the `?section=` anchor.
+  The stale "eighteen" count comment corrected to "twenty"; the lineage
+  paragraph gained the P4.D59 line.
+- `brahma-console-settings.spec.ts` — six cases (load, default-fallback,
+  valid-save-on-blur, out-of-range revert, below-minimum revert, unchanged
+  no-op), mocking `dispatchData`. Green (6/6). `chat-tab.spec.ts` updated:
+  `V4_CARD_ORDER` gained `['Brahma Console', 'brahma-console']` between Data
+  Retention and Autonomous Rooms; the "nineteen → twenty" title. Green (3/3).
+
+**Tier 2 — the live settings e2e beat: WRITTEN, GATED (ACTIVATE-AT-UNIFY).**
+`e2e/settings-brahma-console-flow.spec.ts` walks Settings → Chat → Brahma
+Console: read default (50) → edit in range (75) → reload → persisted → restore
+to default. Gated behind `const BRAHMA_CONSOLE_SERVER_LANDED = false` (a NAMED
+constant, not a capability probe — the round rule; the `brahmaConsole*` verbs
+land in P4.D57, so the beat cannot pass on this branch). **The unifier flips it
+to `true` once P4.D57 is cherry-picked.**
+
+**Part 2 — the About workspace backdrop (v4 `ddd7576b`): NO-PORT, recorded.**
+v4 teaches its About surface to report `/images/about.webp` to the workspace
+backdrop registry so the image survives inside a workspace tab, and refreshes
+the 2.4 MB asset. v5 ships **no About background asset at all**
+(`screens/about/about-page.ts` §3 — a prior deliberate decision), so the
+workspace-suppression bug that fix repairs cannot manifest: there is nothing to
+suppress and nothing to re-report. Faithfully porting it would first require
+*adding* the asset + the legacy `--story-background-url` styling — a separate
+product decision, out of this drift's scope. `about-page.ts` and
+`workspace-backdrop.*` left UNTOUCHED; the disposition is recorded here, in the
+order's status header, and in `m6-screen-parity.md` §1.4.
+
+**Gate (this lane):** `ng test` — the two touched specs green
+(brahma-console-settings 6/6, chat-tab 3/3) plus the full SPA unit suite (see
+the commit gate); `ng build` clean; full Playwright green with the gated beat
+skipped-as-explained (the Rust bins built from this branch are byte-identical to
+main — zero crate change). **Versions:** SPA `package.json` deliberately NOT
+bumped (P4.D58 owns the SPA version bump this round); no crate touched.
