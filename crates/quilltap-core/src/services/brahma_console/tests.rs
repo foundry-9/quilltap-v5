@@ -26,9 +26,34 @@ const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 // ---------------------------------------------------------------------------
 
 #[test]
-fn loop_and_guard_constants_match_v4() {
-    assert_eq!(MAX_AGENT_TURNS, 25);
+fn budget_default_and_guard_constants_match_v4() {
+    // v4 `6452e2c3` raised the default 25 → 50 and made it an instance setting;
+    // the stuck-loop guard is independent and unchanged.
+    assert_eq!(turn_budget::DEFAULT_BRAHMA_MAX_AGENT_TURNS, 50);
     assert_eq!(MAX_DUPLICATE_TOOL_CALLS, 2);
+}
+
+#[tokio::test]
+async fn resolver_reads_the_operator_budget_or_defaults() {
+    // A bare db (no instance_settings table) resolves to the default.
+    let dir = tempfile::tempdir().unwrap();
+    let db = Db::open_main(dir.path().join("bare.db"), PEPPER).unwrap();
+    assert_eq!(turn_budget::resolve_brahma_max_agent_turns(&db), 50);
+
+    // A written budget is read back through the resolver.
+    db.write(|ws| {
+        let conn = ws.main().connection();
+        conn.execute(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        crate::db::instance_settings::set_brahma_console_settings(conn, 7).unwrap();
+        Ok::<(), crate::db::DbError>(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(turn_budget::resolve_brahma_max_agent_turns(&db), 7);
 }
 
 #[test]
@@ -229,6 +254,13 @@ async fn seeded_db() -> (tempfile::TempDir, Db) {
     let db = Db::open_main(&path, PEPPER).unwrap();
     db.write(|ws| {
         let conn = ws.main().connection();
+        // The instance-settings K/V store (empty → the brahma budget resolves to
+        // the default 50 unless a test seeds it).
+        conn.execute(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
         conn.execute(
             "CREATE TABLE connection_profiles \
                (id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
@@ -291,14 +323,25 @@ async fn no_profile_sentinel_and_never_throws() {
 }
 
 #[tokio::test]
-async fn loop_bound_forces_a_final_answer_at_the_cap() {
+async fn loop_bound_forces_a_final_answer_at_the_operator_cap() {
     let (_dir, db) = seeded_db().await;
+    // Seed a small operator-set budget so the loop proves it reads
+    // `resolve_brahma_max_agent_turns` (Settings → Chat → Brahma Console), not a
+    // retired hardcoded constant. `seeded_db` already created the schema.
+    const CAP: i64 = 6;
+    db.write(|ws| {
+        crate::db::instance_settings::set_brahma_console_settings(ws.main().connection(), CAP)
+            .unwrap();
+        Ok::<(), crate::db::DbError>(())
+    })
+    .await
+    .unwrap();
 
-    // 24 DISTINCT tool iterations (distinct args ⇒ no dup, distinct results ⇒ no
-    // stale), then the 25th stream (after the force-final push) returns text.
+    // CAP-1 DISTINCT tool iterations (distinct args ⇒ no dup, distinct results ⇒
+    // no stale), then the CAP-th stream (after the force-final push) returns text.
     let mut seqs = Vec::new();
     let mut by_marker = HashMap::new();
-    for n in 1..MAX_AGENT_TURNS {
+    for n in 1..CAP {
         let marker = format!("m{n}");
         seqs.push(tool_stream(&marker));
         let (_m, calls) = one_call(
@@ -324,7 +367,7 @@ async fn loop_bound_forces_a_final_answer_at_the_cap() {
     let r = run_brahma_query(&deps, "u1", "c1", "count things").await;
     assert!(r.ok, "expected ok, got {r:?}");
     assert_eq!(r.answer, "FINAL ANSWER");
-    // All 25 scripted streams consumed — the loop ran to the cap.
+    // All CAP scripted streams consumed — the loop ran to the operator-set cap.
     assert_eq!(streaming.remaining(), 0);
 }
 

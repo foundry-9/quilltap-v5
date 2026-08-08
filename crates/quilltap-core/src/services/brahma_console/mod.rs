@@ -33,6 +33,7 @@
 
 pub mod orchestrator;
 pub mod prompt_text;
+pub mod turn_budget;
 
 use std::future::Future;
 use std::sync::{Arc, Mutex};
@@ -68,10 +69,10 @@ use crate::tools::pseudo_tool_support::ToolMode;
 
 use prompt_text::{BRAHMA_BASE_BRIEF, BRAHMA_SQL_PROMPT};
 
-/// v4's turn cap (`MAX_AGENT_TURNS`).
-const MAX_AGENT_TURNS: i64 = 25;
 /// v4's stuck-loop threshold (`MAX_DUPLICATE_TOOL_CALLS`) — consecutive duplicate
-/// or stale tool iterations before forcing a final answer.
+/// or stale tool iterations before forcing a final answer. Independent of the
+/// operator-set agent-turn budget ([`turn_budget::resolve_brahma_max_agent_turns`]),
+/// which replaced v4's hardcoded `MAX_AGENT_TURNS = 25`.
 const MAX_DUPLICATE_TOOL_CALLS: usize = 2;
 
 // ===========================================================================
@@ -432,7 +433,10 @@ where
     } else if !tools.is_empty() {
         tool_instructions = build_native_tool_system_instructions();
     }
-    let agent_instructions = build_agent_mode_instructions(MAX_AGENT_TURNS);
+    // Operator-set turn budget (Settings → Chat → Brahma Console); shared with
+    // the streaming orchestrator. The stuck-loop guard below is independent of it.
+    let max_agent_turns = turn_budget::resolve_brahma_max_agent_turns(deps.db);
+    let agent_instructions = build_agent_mode_instructions(max_agent_turns);
     tool_instructions = if tool_instructions.is_empty() {
         agent_instructions
     } else {
@@ -459,7 +463,8 @@ where
         character_id: String::new(),
     };
 
-    // 7. The 25-turn agent tool loop (its OWN loop, faithful to v4).
+    // 7. The agent tool loop (its OWN loop, faithful to v4) — bounded by the
+    //    operator-set `max_agent_turns` resolved above.
     let mut agent_turn_count: i64 = 0;
     let mut full_response = String::new();
     let mut tool_call_history: Vec<String> = Vec::new();
@@ -468,10 +473,10 @@ where
     let mut stale_iterations: usize = 0;
     let mut last_tool_result_text = String::new();
 
-    while agent_turn_count <= MAX_AGENT_TURNS {
+    while agent_turn_count <= max_agent_turns {
         agent_turn_count += 1;
 
-        if agent_turn_count == MAX_AGENT_TURNS {
+        if agent_turn_count == max_agent_turns {
             conversation_messages.push(plain_message("user", &build_force_final_message()));
         }
 
@@ -549,7 +554,7 @@ where
             }
         }
 
-        if has_tool_calls && !is_submit_final && agent_turn_count < MAX_AGENT_TURNS {
+        if has_tool_calls && !is_submit_final && agent_turn_count < max_agent_turns {
             let calls = tool_calls_to_process.expect("has_tool_calls implies Some");
             let call_signature = normalize_tool_call_signature(&calls);
             let duplicate_count = tool_call_history

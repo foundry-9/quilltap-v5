@@ -31,6 +31,24 @@ precedent). 12-case unit module mirroring v4's `brahma-console.test.ts` +
 (Unit 5). `cargo test -p quilltap-core db::instance_settings::p4d57` 12/12;
 clippy -p quilltap-core clean.
 
+**Unit 2 — the resolver + both Brahma paths wired (core 0.0.511).** New
+`services/brahma_console/turn_budget.rs` (v4 `turn-budget.ts`):
+`resolve_brahma_max_agent_turns(db)` = `read_main(get_brahma_console_settings)
+.unwrap_or(DEFAULT_BRAHMA_MAX_AGENT_TURNS)` — never throws (v4's outer
+`try/catch`), re-exporting `DEFAULT_BRAHMA_MAX_AGENT_TURNS` from the accessor
+module (one source of truth). Deleted the shared `const MAX_AGENT_TURNS = 25`;
+`run_brahma_query` (one-shot) and `process_brahma_response` (orchestrator) both
+resolve the budget where v4 does (right before `build_agent_mode_instructions`)
+and use it for the loop bound / force-final / `< cap` guard.
+`MAX_DUPLICATE_TOOL_CALLS` untouched. Brahma unit tests updated: the constant
+assertion now checks `DEFAULT_BRAHMA_MAX_AGENT_TURNS == 50`; a new resolver test
+(bare db → 50, seeded → 7); both `loop_bound_forces_a_final_answer_at_the_operator_cap`
+tests seed a small budget (CAP = 6) and loop to it, proving the resolver is read
+(the one-shot `seeded_db` gained the `instance_settings` table; the orchestrator
+fixture lacks it, so its test creates it). The prompt-byte change (25 → 50) is
+proven by the regenerated brahma tier-3 differentials (Unit 6). `cargo test
+-p quilltap-core --lib brahma_console` 24/24; clippy clean.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

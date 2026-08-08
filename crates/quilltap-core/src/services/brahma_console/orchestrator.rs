@@ -77,9 +77,10 @@ use crate::services::tool_execution::{
 };
 use crate::tools::pseudo_tool_support::ToolMode;
 
+use super::turn_budget::resolve_brahma_max_agent_turns;
 use super::{
     b, build_brahma_system_prompt, normalize_tool_call_signature, plain_message, requires_api_key,
-    resolve_brahma_connection_profile, s, MAX_AGENT_TURNS, MAX_DUPLICATE_TOOL_CALLS,
+    resolve_brahma_connection_profile, s, MAX_DUPLICATE_TOOL_CALLS,
 };
 
 // ===========================================================================
@@ -356,7 +357,11 @@ where
     } else if !tools.is_empty() {
         tool_instructions = build_native_tool_system_instructions();
     }
-    let agent_instructions = build_agent_mode_instructions(MAX_AGENT_TURNS);
+    // Agent mode instructions (always enabled). The turn budget is operator-set
+    // (Settings → Chat → Brahma Console); the stuck-loop guard below still stops
+    // a repeating loop well before this cap.
+    let max_agent_turns = resolve_brahma_max_agent_turns(db);
+    let agent_instructions = build_agent_mode_instructions(max_agent_turns);
     tool_instructions = if tool_instructions.is_empty() {
         agent_instructions
     } else {
@@ -416,10 +421,10 @@ where
     let mut prior_reasoning = String::new();
     let mut run_reasoning = String::new();
 
-    while agent_turn_count <= MAX_AGENT_TURNS {
+    while agent_turn_count <= max_agent_turns {
         agent_turn_count += 1;
 
-        if agent_turn_count == MAX_AGENT_TURNS {
+        if agent_turn_count == max_agent_turns {
             conversation_messages.push(plain_message("user", &build_force_final_message()));
         }
 
@@ -512,7 +517,7 @@ where
             }
         }
 
-        if has_tool_calls && !is_submit_final && agent_turn_count < MAX_AGENT_TURNS {
+        if has_tool_calls && !is_submit_final && agent_turn_count < max_agent_turns {
             let calls = tool_calls_to_process.expect("has_tool_calls implies Some");
             let call_signature = normalize_tool_call_signature(&calls);
             let duplicate_count = tool_call_history

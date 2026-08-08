@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): both Brahma paths — the streaming
+orchestrator and the one-shot `@Brahma` — now read the operator-set agent-turn
+budget through a shared resolver (`resolve_brahma_max_agent_turns`) instead of a
+hardcoded 25. A deep ledger investigation can now run to the configured budget
+(default 50) before it is forced to answer; the duplicate/stale-query guard is
+unchanged and still short-circuits a stuck loop. core 0.0.511.
+
 P4.D57 (Brahma Console turn budget, server): added the
 `instance_settings['brahmaConsole']` accessors to the Rust core — the
 agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
