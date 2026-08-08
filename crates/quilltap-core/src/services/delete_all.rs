@@ -17,10 +17,11 @@
 //!    data.
 //! 2. **The file byte sweep is metadata-only.** v4 calls
 //!    `fileStorageManager.deleteFile(file)` before each `files` row delete. In v5
-//!    that byte reclaim is a host seam and the dispatch layer threads no
-//!    `StorageBackend` (the standing files-family precedent — see
-//!    `api::files::file_delete`'s "storage + thumbnail deletes are best-effort
-//!    DB-invisible side effects"). Mount-blob-backed bytes are *not* orphaned:
+//!    that byte reclaim is a host seam and this bulk-wipe path threads no
+//!    `StorageBackend`, so the stored bytes are not reclaimed here (v4's own
+//!    delete-all does no thumbnail cleanup either — that is the per-file
+//!    `api::files::file_delete` path + the daily orphan sweep). Mount-blob-backed
+//!    bytes are *not* orphaned:
 //!    [`clear_format3_entities`] truncates `doc_mount_blobs` /
 //!    `doc_mount_file_links` wholesale. Legacy `<base>/files/**` disk bytes DO
 //!    survive the wipe — the loud, named deferral of this lane.

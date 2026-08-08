@@ -597,7 +597,9 @@ fn files_routes_match_oracle() {
     // ── delete ──
     {
         let db = fresh_db(&spec, "dh");
-        let resp = rt.block_on(files::file_delete(&db, USER_A, F_UNLINKED, false, false));
+        let resp = rt.block_on(files::file_delete(
+            &db, USER_A, F_UNLINKED, false, false, None,
+        ));
         check_ok(
             "delete_happy",
             response_data(&resp),
@@ -608,7 +610,7 @@ fn files_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "ds");
-        let resp = rt.block_on(files::file_delete(&db, USER_A, F_STALE, false, false));
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_STALE, false, false, None));
         check_ok(
             "delete_stale",
             response_data(&resp),
@@ -625,6 +627,7 @@ fn files_routes_match_oracle() {
             F_USERB,
             false,
             false,
+            None,
         )),
         &mut failed,
     );
@@ -740,7 +743,7 @@ fn files_routes_match_oracle() {
     // against v4's `details.associations`.
     {
         let db = fresh_db(&spec, "das");
-        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, false));
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, false, None));
         let rec = &oracle["delete_associations"];
         match &resp {
             Response::Error(e) => {
@@ -776,14 +779,14 @@ fn files_routes_match_oracle() {
     // force override → skips the association check, just deletes.
     {
         let db = fresh_db(&spec, "dfo");
-        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, true, false));
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, true, false, None));
         check_ok("delete_force", response_data(&resp), &[], None, &mut failed);
         check_assoc("delete_force", &dump_assoc(&db), &oracle, &mut failed);
     }
     // dissociate → strips message attachments + character refs, then deletes.
     {
         let db = fresh_db(&spec, "ddi");
-        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, true));
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, true, None));
         check_ok(
             "delete_dissociate",
             response_data(&resp),
@@ -881,6 +884,7 @@ fn files_routes_match_oracle() {
             vec![],
             Some(PROJECT.to_string()),
             None,
+            None,
         ));
         check_ok(
             "upload_new_project",
@@ -901,6 +905,7 @@ fn files_routes_match_oracle() {
             vec![],
             Some(PROJECT.to_string()),
             None,
+            None,
         ));
         check_ok(
             "upload_overwrite_project",
@@ -919,6 +924,7 @@ fn files_routes_match_oracle() {
             "text/plain",
             b"general upload body".to_vec(),
             vec![],
+            None,
             None,
             None,
         ));

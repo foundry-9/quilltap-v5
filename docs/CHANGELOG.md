@@ -71,6 +71,18 @@ just-stopped impersonation nor snaps the composer back to the stale persisted
 seat after each turn. The sidebar's active-typing indicator reads the same local
 source (v4 feeds `impersonation.activeTypingParticipantId`, not the record). SPA
 0.5.441.
+P4.44 item 2 — eager per-delete/overwrite thumbnail cleanup (closes the bug 43
+tier-2 deferral). Deleting or overwriting a library file now eagerly removes its
+cached thumbnails (`_thumbnails/{fileId}_{120,150,300}.webp`) over the host's
+disk `StorageBackend`, matching v4's `cleanupThumbnails` — best-effort,
+DB-invisible, never failing the delete/upload, and gated on
+`canGenerateThumbnail(mimeType)`. `file_delete`/`file_upload` take an optional
+backend, wired at the engine from `qtap_file_storage()`; a diskless host has no
+thumbnails to reap. The daily orphan-thumbnail sweep stays the reaper for strays
+that leave by any other route. The chat-file routes run no cleanup in v4, so
+their twins stay unwired. quilltap-core 0.0.513, quilltap-harness 0.0.436 (the
+`files_routes_equivalence` call sites pass the new optional backend).
+
 P4.44 item 1 — pinned the conversation-chunks `upsert` CREATE arm. The tier-2
 family only ever exercised the update arm (every corpus upsert hit an existing
 `(chatId, interchangeIndex)` row); two new upserts on unseeded pairs now take

@@ -982,7 +982,10 @@ pub fn chat_files_list(db: &Db, chat_id: &str) -> Response {
 /// `linkedTo` (an entry starting `chat-` or exactly 36 chars), verify the chat
 /// exists (v4 `unauthorized` when absent), delete the row → `{ success: true }`. The
 /// storage delete (`fileStorageManager.deleteFile`) is a host seam v4 error-swallows;
-/// the DB effect is the metadata delete.
+/// the DB effect is the metadata delete. NOTE (P4.44): unlike the library
+/// `files::file_delete`, v4's chat-file DELETE + upload routes run NO
+/// `cleanupThumbnails` (verified against `chat-files/[id]/route.ts` +
+/// `chat-files-v2.ts`), so no thumbnail cleanup is wired here.
 pub async fn chat_file_delete(db: &Db, _user_id: &str, file_id: &str) -> Response {
     let id = file_id.to_string();
     let linked: Option<Option<String>> = match db.read_main(move |conn| {

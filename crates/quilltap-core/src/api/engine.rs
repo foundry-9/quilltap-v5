@@ -3835,8 +3835,20 @@ impl CoreEngine {
                 dissociate,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::files::file_delete(&db, SINGLE_USER_ID, &file_id, force, dissociate)
-                        .await
+                    // The backup host's disk backend (LocalStorageBackend over
+                    // `<base>/files`) carries the eager per-delete thumbnail
+                    // cleanup (P4.44). `None` on a host with no disk layer — no
+                    // thumbnails to reap.
+                    let storage = self.qtap_file_storage();
+                    super::files::file_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &file_id,
+                        force,
+                        dissociate,
+                        storage.as_deref(),
+                    )
+                    .await
                 }
                 Err(resp) => resp,
             },
@@ -3905,6 +3917,9 @@ impl CoreEngine {
                     use base64::Engine;
                     match base64::engine::general_purpose::STANDARD.decode(data.as_bytes()) {
                         Ok(bytes) => {
+                            // The disk backend carries the eager per-overwrite
+                            // thumbnail cleanup (P4.44); `None` on a diskless host.
+                            let storage = self.qtap_file_storage();
                             super::files::file_upload(
                                 &db,
                                 SINGLE_USER_ID,
@@ -3914,6 +3929,7 @@ impl CoreEngine {
                                 tags.unwrap_or_default(),
                                 project_id,
                                 folder_path,
+                                storage.as_deref(),
                             )
                             .await
                         }

@@ -192,6 +192,26 @@ pub fn parse_thumbnail_storage_key(storage_key: &str) -> Option<(String, i64)> {
     Some((file_id, size))
 }
 
+/// v4 `cleanupThumbnails` (`thumbnail-utils.ts:163`, bug 43 tier 2) — eagerly
+/// delete a file's cached thumbnails across every [`COMMON_THUMBNAIL_SIZES`]
+/// size when it is deleted or overwritten. Best-effort and DB-invisible: v4
+/// wraps each `deleteRaw` in its own try/catch ("thumbnail may not exist for
+/// this size") and the call NEVER throws, so it cannot fail the delete/upload
+/// it rides on. A backend without a disk layer ([`NotConfiguredStorageBackend`])
+/// simply logs and moves on. The daily [`sweep_orphaned_thumbnails`] remains the
+/// reaper for strays that leave by any OTHER route (restore, delete-all,
+/// out-of-app edit).
+pub fn cleanup_thumbnails(backend: &dyn StorageBackend, file_id: &str) {
+    for &size in COMMON_THUMBNAIL_SIZES {
+        let key = build_thumbnail_storage_key(file_id, size);
+        if let Err(e) = delete_raw(backend, &key) {
+            // v4 silently swallows (the thumbnail may not exist for this size);
+            // v5 logs at warn so a genuinely misbehaving backend is visible.
+            tracing::warn!(target: "quilltap::files", key = %key, error = %e, "Failed to clean up thumbnail — continuing");
+        }
+    }
+}
+
 /// v4 `isMountBlobStorageKey` (`project-store-bridge.ts:70`).
 pub fn is_mount_blob_storage_key(storage_key: Option<&str>) -> bool {
     matches!(storage_key, Some(k) if k.starts_with(MOUNT_BLOB_STORAGE_KEY_PREFIX))
@@ -677,10 +697,11 @@ pub struct OrphanedThumbnailSweep {
 /// v4 `sweepOrphanedThumbnails` (`sweep-orphaned-thumbnails.ts`, bug 43).
 ///
 /// `_thumbnails/{fileId}_{size}.webp` is a derived cache regenerated on demand.
-/// v4's in-app deletes call `cleanupThumbnails` (v5's tier-2 deferral — see
-/// `api/files.rs`, so this sweep is v5's ONLY reaper), and a file that left by any OTHER
-/// route (a restore, a delete-all, an out-of-app edit) strands its thumbnails and
-/// nothing reaps them, so the directory only grows. This enumerates the cache,
+/// v4's in-app deletes/overwrites call `cleanupThumbnails` eagerly (v5 ported
+/// that in P4.44 — see [`cleanup_thumbnails`] + `api/files.rs`), but a file that
+/// left by any OTHER route (a restore, a delete-all, an out-of-app edit) strands
+/// its thumbnails and nothing reaps them, so the directory only grows. This
+/// enumerates the cache,
 /// parses the leading `fileId` off each entry, and deletes those whose source
 /// `files` row is gone. Because the cache is derived, deletion is always safe;
 /// unparseable names are skipped (never deleted blind).
@@ -1628,6 +1649,77 @@ mod tests {
         assert_eq!(
             parse_thumbnail_storage_key("_thumbnails/f1000000-0000-4000-8000-000000000001_150.png"),
             None
+        );
+    }
+
+    /// A `StorageBackend` that only records the keys it is asked to delete (and
+    /// can be told to fail those deletes). The whole point of the
+    /// `cleanup_thumbnails` pin: the side effect is DB-invisible, so the proof is
+    /// the exact key set handed to `delete`.
+    struct RecordingBackend {
+        deleted: std::sync::Mutex<Vec<String>>,
+        fail_deletes: bool,
+    }
+    impl StorageBackend for RecordingBackend {
+        fn upload(&self, _k: &str, _c: &[u8], _ct: &str) -> Result<(), String> {
+            unreachable!("cleanup_thumbnails never uploads")
+        }
+        fn download(&self, _k: &str) -> Result<Vec<u8>, String> {
+            unreachable!("cleanup_thumbnails never downloads")
+        }
+        fn delete(&self, key: &str) -> Result<(), String> {
+            self.deleted.lock().unwrap().push(key.to_string());
+            if self.fail_deletes {
+                Err("simulated backend failure".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        fn exists(&self, _k: &str) -> Result<bool, String> {
+            unreachable!("cleanup_thumbnails never checks existence")
+        }
+    }
+
+    #[test]
+    fn cleanup_thumbnails_deletes_exactly_the_common_sizes() {
+        let id = "f1000000-0000-4000-8000-000000000001";
+        let backend = RecordingBackend {
+            deleted: std::sync::Mutex::new(Vec::new()),
+            fail_deletes: false,
+        };
+        cleanup_thumbnails(&backend, id);
+        let deleted = backend.deleted.lock().unwrap().clone();
+        // Exactly v4's COMMON_THUMBNAIL_SIZES [120, 150, 300], each keyed by the
+        // canonical `_thumbnails/{fileId}_{size}.webp` — and NOTHING else.
+        assert_eq!(
+            deleted,
+            vec![
+                "_thumbnails/f1000000-0000-4000-8000-000000000001_120.webp".to_string(),
+                "_thumbnails/f1000000-0000-4000-8000-000000000001_150.webp".to_string(),
+                "_thumbnails/f1000000-0000-4000-8000-000000000001_300.webp".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn cleanup_thumbnails_swallows_backend_errors() {
+        // v4's per-size try/catch: a failing deleteRaw NEVER throws (the
+        // thumbnail may simply not exist). All three keys are still attempted.
+        let backend = RecordingBackend {
+            deleted: std::sync::Mutex::new(Vec::new()),
+            fail_deletes: true,
+        };
+        cleanup_thumbnails(&backend, "f1000000-0000-4000-8000-000000000002");
+        assert_eq!(backend.deleted.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn cleanup_thumbnails_on_unconfigured_backend_is_a_no_op() {
+        // A host with no disk layer: every deleteRaw errors, all swallowed, no
+        // panic (an all-mount-blob instance deleting an image still succeeds).
+        cleanup_thumbnails(
+            &NotConfiguredStorageBackend,
+            "f1000000-0000-4000-8000-000000000003",
         );
     }
 

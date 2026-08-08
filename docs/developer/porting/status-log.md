@@ -62174,3 +62174,49 @@ supplied-or-NULL embedding) was never differentially exercised.
   Reverted.
 
 No production source changed (test + fixture only). quilltap-harness → 0.0.435.
+
+## Lane record — P4.44 item 2 (eager per-delete/overwrite thumbnail cleanup)
+
+**Branch `claude/p4-44-pinning-followups-4f07c5`, baseline v4 `f6eac168`.**
+
+Closes the bug 43 tier-2 deferral (P4.D51): v4's in-app deletes/overwrites eagerly
+call `cleanupThumbnails`; v5 had only the daily orphan sweep as an interim reaper,
+behind two skip-site comments in `api/files.rs` naming the missing `StorageBackend`
+thread.
+
+- **`services/file_storage.rs`**: `cleanup_thumbnails(backend, file_id)` — v4
+  `thumbnail-utils.ts:163`: for each `COMMON_THUMBNAIL_SIZES` [120,150,300] size,
+  `delete_raw(_thumbnails/{fileId}_{size}.webp)`, error-swallowed (warn-logged),
+  NEVER throwing. The sweep's self-"ONLY reaper" doc-comment updated (it is now the
+  reaper for OUT-OF-APP strays only).
+- **`api/files.rs`**: `file_delete` + `file_upload` take `Option<&dyn
+  StorageBackend>`. Delete: at the former skip site, gated on
+  `can_generate_thumbnail(&file.mime_type)` (v4 `delete.ts:75`). Upload:
+  `save_file_entry` now returns `(Response, Option<Overwritten>)` carrying the
+  overwrite's id + PRE-overwrite mime; `file_upload` runs the cleanup AFTER the
+  write (v4 `overwrite-utils.ts:99` runs it before, inside
+  `findAndPrepareOverwrite` — the cleanup needs the async backend, unavailable in
+  the writer closure; end state identical, the cache is keyed by fileId+size and
+  regenerated on demand). Deferral comments deleted/reworded.
+- **`api/engine.rs`**: both dispatch arms resolve the backend from
+  `qtap_file_storage()` (the backup host's `LocalStorageBackend` over
+  `<base>/files`, so the real `_thumbnails` dir) and pass `.as_deref()`; `None` on
+  a diskless host.
+- **`api/chat_media.rs`**: the chat-file twins were checked against v4
+  (`chat-files/[id]/route.ts` + `chat-files-v2.ts`) — NEITHER runs
+  `cleanupThumbnails`, so they stay UNWIRED (recorded in a code comment).
+- **`services/delete_all.rs`**: comment updated (it referenced the deleted
+  files.rs phrase; v4's delete-all does no thumbnail cleanup either).
+
+**Proof (unit-tier by necessity — the side effect is DB-invisible):**
+`file_storage::tests` — `cleanup_thumbnails_deletes_exactly_the_common_sizes`
+(a `RecordingBackend` asserts the exact three keys, none extra),
+`_swallows_backend_errors` (all three attempted, no throw),
+`_on_unconfigured_backend_is_a_no_op`. Mutation-proven (D24): skipping size 300
+reddens the exact-keys assertion. The `maintenance_ops_tier2_equivalence` family
+stays green (the sweep still finds the seeded orphan) as the no-regression guard.
+
+quilltap-core → 0.0.513; quilltap-harness → 0.0.436 (the ripple: the existing
+`files_routes_equivalence` tier-2 family's `file_delete`/`file_upload` call sites
+pass the new optional backend as `None` — DB-invisible, so its diffs are
+unchanged).

@@ -42,8 +42,8 @@ use crate::folder_utils::{
 };
 use crate::photos::keep_image_markdown::sha256_of_buffer;
 use crate::services::file_storage::{
-    write_project_file_to_mount_store, write_user_upload_to_mount_store, NotConfiguredPixelCodec,
-    StoredBlob,
+    cleanup_thumbnails, write_project_file_to_mount_store, write_user_upload_to_mount_store,
+    NotConfiguredPixelCodec, StorageBackend, StoredBlob,
 };
 
 use super::types::{ErrorKind, FileAssocCharacter, FileAssocMessage, FileAssociations, Response};
@@ -471,6 +471,7 @@ pub async fn file_delete(
     file_id: &str,
     force: bool,
     dissociate: bool,
+    backend: Option<&dyn StorageBackend>,
 ) -> Response {
     // Owner + linked-state read.
     let fid = file_id.to_string();
@@ -534,11 +535,19 @@ pub async fn file_delete(
         }
     }
 
-    // Storage + thumbnail deletes are best-effort DB-invisible side effects (v4
-    // try/catch-and-log) — skipped. ⚠ P4.D51 bug 43 TIER 2 DEFERRED: the eager
-    // `cleanup_thumbnails` per delete needs a `StorageBackend` seam threaded
-    // through `file_delete`; the landed daily orphan-thumbnail sweep
-    // (`sweep_orphaned_thumbnails`) reaps these strays instead until then.
+    // The file's stored BYTES delete (`fileStorageManager.deleteFile`) stays a
+    // best-effort DB-invisible side effect skipped here (v4 try/catch-and-log; the
+    // delete-all files-family precedent). The thumbnail cache cleanup is now
+    // performed eagerly — v4 `delete.ts:75` gates on `canGenerateThumbnail` and
+    // fires `cleanupThumbnails` fire-and-forget before the metadata delete (P4.44,
+    // closing the bug 43 tier-2 deferral). A host with no disk backend (None)
+    // simply has no thumbnails to reap.
+    if let Some(backend) = backend {
+        if can_generate_thumbnail(&file.mime_type) {
+            cleanup_thumbnails(backend, &file.id);
+        }
+    }
+
     let fid3 = file.id.clone();
     match db
         .write(move |ws| FilesRepository::new(ws.main().connection()).delete(&fid3))
@@ -1064,6 +1073,7 @@ pub async fn file_upload(
     link_ids: Vec<String>,
     project_id: Option<String>,
     folder_path_raw: Option<String>,
+    backend: Option<&dyn StorageBackend>,
 ) -> Response {
     let folder_path = match normalize_and_validate_folder_path(folder_path_raw.as_deref()) {
         Ok(p) => p,
@@ -1073,32 +1083,56 @@ pub async fn file_upload(
     let uid = user_id.to_string();
     let filename = filename.to_string();
     let out = db
-        .write(move |ws| -> Result<Response, DbError> {
-            let main = ws.main().connection();
-            let mount = ws
-                .mount_index()
-                .ok_or_else(|| {
-                    DbError::Key("file upload requires the mount-index database".into())
-                })?
-                .connection();
-            save_file_entry(
-                main,
-                mount,
-                &uid,
-                &filename,
-                &data,
-                &mime_type,
-                project_id.as_deref(),
-                &folder_path,
-                "DOCUMENT",
-                &link_ids,
-            )
-        })
+        .write(
+            move |ws| -> Result<(Response, Option<Overwritten>), DbError> {
+                let main = ws.main().connection();
+                let mount = ws
+                    .mount_index()
+                    .ok_or_else(|| {
+                        DbError::Key("file upload requires the mount-index database".into())
+                    })?
+                    .connection();
+                save_file_entry(
+                    main,
+                    mount,
+                    &uid,
+                    &filename,
+                    &data,
+                    &mime_type,
+                    project_id.as_deref(),
+                    &folder_path,
+                    "DOCUMENT",
+                    &link_ids,
+                )
+            },
+        )
         .await;
     match out {
-        Ok(resp) => resp,
+        Ok((resp, overwritten)) => {
+            // v4 `overwrite-utils.ts:99`: an overwrite that reuses a fileId
+            // eagerly cleans the old file's cached thumbnails, gated on the OLD
+            // entry's mime (P4.44). v4 runs this inside `findAndPrepareOverwrite`
+            // before writing the new bytes; v5 runs it after the write (the
+            // cleanup needs the async backend, unavailable inside the writer
+            // closure) — the end state is identical, since the cache is keyed by
+            // fileId+size and regenerated on demand from the new bytes.
+            if let (Some(backend), Some(ow)) = (backend, overwritten) {
+                if can_generate_thumbnail(&ow.old_mime_type) {
+                    cleanup_thumbnails(backend, &ow.file_id);
+                }
+            }
+            resp
+        }
         Err(e) => internal(e),
     }
+}
+
+/// An overwrite that reused an existing `fileId` — the id + its PRE-overwrite
+/// mime type, carried out of the writer closure so [`file_upload`] can eagerly
+/// clean the old file's thumbnails (v4 `findAndPrepareOverwrite`).
+struct Overwritten {
+    file_id: String,
+    old_mime_type: String,
 }
 
 /// v4 `saveFileEntry` (`files/shared.ts:117`) — the shared upload chokepoint,
@@ -1117,22 +1151,27 @@ fn save_file_entry(
     folder_path: &str,
     category: &str,
     link_ids: &[String],
-) -> Result<Response, DbError> {
+) -> Result<(Response, Option<Overwritten>), DbError> {
     let sanitized = sanitize_filename(filename);
     let sha256 = sha256_of_buffer(data);
     let files = FilesRepository::new(main);
 
-    // findAndPrepareOverwrite: same-scope filename match reuses the fileId (its old
-    // bytes + thumbnails are v4-best-effort-deleted — a DB-invisible side effect,
-    // skipped here, matching v4's try/catch-and-log). ⚠ P4.D51 bug 43 TIER 2
-    // DEFERRED: the eager `cleanup_thumbnails` per overwrite needs a
-    // `StorageBackend` seam threaded through `file_upload`; the landed daily
-    // orphan-thumbnail sweep (`sweep_orphaned_thumbnails`) reaps these strays
-    // instead until then.
+    // findAndPrepareOverwrite: a same-scope filename match reuses the fileId. Its
+    // old BYTES are v4-best-effort-deleted (a DB-invisible side effect skipped
+    // here, matching v4's try/catch-and-log); its cached THUMBNAILS are cleaned
+    // eagerly by `file_upload` after this write returns (P4.44), keyed on the
+    // pre-overwrite mime captured below.
     let overwrite = files
         .find_by_filename_in_scope(user_id, project_id, folder_path, &sanitized)?
         .into_iter()
         .next();
+    // The old file's id + mime, captured BEFORE the update rewrites the mime, so
+    // the caller can gate `cleanup_thumbnails` on `canGenerateThumbnail(oldMime)`
+    // exactly as v4 does.
+    let overwritten = overwrite.as_ref().map(|e| Overwritten {
+        file_id: e.id.clone(),
+        old_mime_type: e.mime_type.clone(),
+    });
 
     // Write the bytes (project store vs the Quilltap Uploads mount).
     let codec = NotConfiguredPixelCodec;
@@ -1215,8 +1254,9 @@ fn save_file_entry(
     let entry = files
         .find_full_by_id(&file_id)?
         .ok_or_else(|| DbError::Key("uploaded file vanished after write".to_string()))?;
-    Ok(Response::Files(
-        json!({ "data": serialize_uploaded_file_entry(&entry) }),
+    Ok((
+        Response::Files(json!({ "data": serialize_uploaded_file_entry(&entry) })),
+        overwritten,
     ))
 }
 
