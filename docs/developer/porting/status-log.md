@@ -145,6 +145,26 @@ Parity spec: a new describe block in `turn-order.spec.ts` mirroring v4's
 (overlay arm included) + the reverted-then-restored `isUserDrivenSeat` arms —
 `turn-order.spec.ts` 20 → 32 tests, green.
 
+**Units 2+3 — banner gate + optimistic-bubble attribution (SPA 0.5.435).**
+Committed together — both re-attribute the same `salon-conversation.ts` to the
+impersonation overlay. **Bug 46(a):** `userTurnName`/`mustSpeak` gate on
+`isUserDrivenSeat({ id, controlledBy }, impersonatingIds())` instead of the bare
+`controlledBy !== 'user'`, so an impersonated seat's own paused turn surfaces the
+"type as them" prompt + Skip (matching v4's `SalonView.tsx` since `1bed814f` and
+the server's `reason: 'user_turn'`); the P4.D56 "keep bare column" guard comment
+is gone (v4's client moved). **Bug 45:** `makeTempUserMessage` attributes the
+optimistic bubble via `findActiveUserParticipant(participants, activeSpeakerId(),
+impersonatingIds())` with the `?.id ?? activeSpeakerId() ?? null` fallback —
+where the old lookup used any participant matching the bare `activeSpeakerId`
+(so a non-user-driven selection diverged from the persisted row and flickered).
+Specs added to `salon-conversation.spec.ts` (41 → 46): three banner arms
+(impersonated-seat announced / ordinary-LLM silent / genuine-user unchanged) and
+two attribution arms (overlay honoured / non-user-driven id falls back to the
+owner seat — the arm the old code got wrong). **⚠ Env note: the worktree's
+`apps/web/node_modules` copied from main was duplicate-Angular-broken (every
+TestBed spec failed NG0203); a clean `npm ci` fixed it — copy-from-main is
+unsafe for this SPA, `npm ci` in the worktree.**
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

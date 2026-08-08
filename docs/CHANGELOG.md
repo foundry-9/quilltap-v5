@@ -36,6 +36,14 @@ agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
 falls back to the default on a missing/unparseable/out-of-range value; write
 validates and refuses out-of-range without storing. Portable by default
 (rides `.qtap` export and full backups). core 0.0.510.
+Reconciled the Salon's impersonation attribution to the reference app's updated
+client. The composer turn banner now announces an impersonated seat's own turn
+(offering "type as them" and Skip), where before it stayed silent because the
+seat keeps its LLM control column under the impersonation overlay. And a
+just-sent message's optimistic bubble is now attributed to the same seat the
+server will resolve it onto, so it no longer flickers to the wrong author on
+refetch. SPA 0.5.435.
+
 Added client-side impersonation-overlay participant filters (`isUserDrivenSeat`,
 `findUserParticipant`, `findActiveUserParticipant`) to the chat turn-order
 module — the browser mirror of the reference app's turn-manager utilities and

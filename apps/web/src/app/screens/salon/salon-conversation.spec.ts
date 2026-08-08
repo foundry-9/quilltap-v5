@@ -1051,6 +1051,97 @@ describe('SalonConversation — the Speaking-As override does not outlive its ro
   });
 });
 
+/**
+ * The composer turn banner (v4 Bug 46(a), `1bed814f`). Since impersonation is a
+ * pure overlay (Bug 44), an impersonated seat keeps `controlledBy: 'llm'` and its
+ * id sits in `impersonatingParticipantIds`. v4's client banner now gates on
+ * `isUserDrivenSeat` over the overlay (not the bare column), so an impersonated
+ * seat's OWN turn is announced — matching the server's `reason: 'user_turn'`.
+ * Proven at the computed level: the fixture's genuine user seat always wins
+ * weighted-random turn selection, so an impersonated seat cannot be forced to be
+ * the next speaker in an e2e beat (see the impersonation e2e note).
+ */
+describe('SalonConversation — the user-turn banner honours the impersonation overlay (v4 Bug 46a)', () => {
+  type BannerHost = {
+    userTurnName(): string | null;
+    mustSpeak(): boolean;
+    turnInfo: { set(v: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null }): void };
+    impersonatingLocal: { set(v: string[]): void };
+  };
+
+  it("announces an impersonated LLM seat's own turn, where the bare column would not", async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chatDetail(), events$));
+    const inst = fixture.componentInstance as unknown as BannerHost;
+    // p1 is an LLM-controlled seat whose id is in the impersonation overlay.
+    inst.impersonatingLocal.set(['p1']);
+    inst.turnInfo.set({ nextSpeakerId: 'p1', nextSpeakerControlledBy: 'llm' });
+    fixture.detectChanges();
+    // The banner names the impersonated character — the bare column ('llm')
+    // would have returned null.
+    expect(inst.userTurnName()).toBe('Friday');
+  });
+
+  it('does NOT announce an ordinary LLM seat with no overlay', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chatDetail(), events$));
+    const inst = fixture.componentInstance as unknown as BannerHost;
+    inst.impersonatingLocal.set([]);
+    inst.turnInfo.set({ nextSpeakerId: 'p1', nextSpeakerControlledBy: 'llm' });
+    fixture.detectChanges();
+    expect(inst.userTurnName()).toBeNull();
+    expect(inst.mustSpeak()).toBe(false);
+  });
+
+  it('still announces a genuine user-controlled seat (unchanged)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chatDetail(), events$));
+    const inst = fixture.componentInstance as unknown as BannerHost;
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.userTurnName()).toBe('Bertie');
+  });
+});
+
+/**
+ * The optimistic user bubble's author (v4 Bug 45, `1bed814f`). The bubble must
+ * be attributed to the seat the SERVER will resolve the message onto —
+ * `findActiveUserParticipant`, honouring the impersonation overlay — or it
+ * flickers to the wrong author on refetch. The old code attributed to any
+ * participant matching the raw `activeTypingParticipantId`, which diverged from
+ * the server when that id was not itself a user-driven seat.
+ */
+describe('SalonConversation — the optimistic bubble matches server attribution (v4 Bug 45)', () => {
+  type SendHost = {
+    send(p: { content: string; fileIds: string[] }): void;
+    optimisticUser(): MessageDto | null;
+  };
+
+  it('attributes to an impersonated LLM seat via the overlay (matches the server)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // p1 is LLM-controlled but impersonated this session; the human speaks as it.
+    const chat = { ...chatDetail(), activeTypingParticipantId: 'p1', impersonatingParticipantIds: ['p1'] };
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as SendHost;
+
+    inst.send({ content: 'as Friday, then', fileIds: [] });
+    expect(inst.optimisticUser()?.participantId).toBe('p1');
+  });
+
+  it('falls back to the owner user seat when the active id is not user-driven', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // The active-typing id points at an LLM seat NOT in the overlay (e.g. a stale
+    // selection just after stopping an impersonation). The server would attribute
+    // to the owner user seat; the old bubble wrongly used the LLM seat's id.
+    const chat = { ...chatDetail(), activeTypingParticipantId: 'p1', impersonatingParticipantIds: [] };
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as SendHost;
+
+    inst.send({ content: 'back to me', fileIds: [] });
+    expect(inst.optimisticUser()?.participantId).toBe('pu');
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };

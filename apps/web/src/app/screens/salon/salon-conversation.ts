@@ -86,6 +86,8 @@ import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
 import {
   addToQueue,
   createInitialTurnState,
+  findActiveUserParticipant,
+  isUserDrivenSeat,
   nudgeParticipant,
   removeFromQueue,
   type TurnSelectionResult,
@@ -1821,20 +1823,25 @@ export class SalonConversation {
   });
 
   /**
-   * The name whose (user-controlled) turn it is, or null when it isn't.
+   * The name whose (user-driven) turn it is, or null when it isn't.
    *
-   * Keyed on the RAW `controlledBy`, matching v4's composer turn banner
-   * (`SalonView.tsx:1391` — `next.controlledBy !== 'user'` over the
-   * non-overlaid `participantData`). An impersonated seat keeps
-   * `controlledBy: 'llm'`, so v4 does NOT announce its turn here either — that
-   * is a faithfully-ported gap, recorded as v4 Bug 46 (the impersonation
-   * turn/speaking-as mismatch); do not re-add an overlay arm without a v4-first
-   * fix (an earlier dogfood pass wrongly did and it was reverted).
+   * Gated on `isUserDrivenSeat` over the impersonation overlay, matching v4's
+   * composer turn banner since `1bed814f` (`SalonView.tsx:~1428` —
+   * `isUserDrivenSeat({ id, controlledBy }, impersonatingParticipantIds)`). An
+   * impersonated seat keeps `controlledBy: 'llm'` (v4 Bug 44 overlay), so its
+   * own turn is announced via the overlay — matching what the server returns
+   * (`reason: 'user_turn'`) and `help/chat-turn-manager.md` (v4 Bug 46(a)).
+   * Keying on the bare column would leave the impersonated seat's paused turn
+   * with no "type as them" prompt and no Skip button.
    */
   protected readonly userTurnName = computed<string | null>(() => {
     if (this.busy()) return null;
     const next = this.nextSpeaker();
-    if (!next || next.controlledBy !== 'user') return null;
+    if (
+      !next ||
+      !isUserDrivenSeat({ id: next.id, controlledBy: next.controlledBy ?? 'llm' }, this.impersonatingIds())
+    )
+      return null;
     return next.character?.name ?? 'this character';
   });
 
@@ -1842,7 +1849,13 @@ export class SalonConversation {
   protected readonly mustSpeak = computed<boolean>(() => {
     const chat = this.chat();
     const next = this.nextSpeaker();
-    if (!chat || !next || next.controlledBy !== 'user' || !next.character) return false;
+    if (
+      !chat ||
+      !next ||
+      !isUserDrivenSeat({ id: next.id, controlledBy: next.controlledBy ?? 'llm' }, this.impersonatingIds()) ||
+      !next.character
+    )
+      return false;
     try {
       const events: SkipEvent[] = chat.messages.map((m) => ({
         type: 'message',
@@ -2641,9 +2654,17 @@ export class SalonConversation {
   private makeTempUserMessage(content: string): MessageDto {
     const participants = this.chat()?.participants ?? [];
     const speakingAsId = this.activeSpeakerId();
-    const activeUser =
-      (speakingAsId && participants.find((p) => p.id === speakingAsId)) ||
-      participants.find((p) => p.type === 'CHARACTER' && p.controlledBy === 'user');
+    // Attribute the optimistic bubble to the seat the SERVER will resolve this
+    // message onto — `findActiveUserParticipant`, which honours the impersonation
+    // overlay and falls back to the owner user seat when the active-typing id is
+    // not itself a user-driven seat (v4 Bug 45, `useSSEStreaming.ts`). Using the
+    // bare `activeSpeakerId` here diverged from the persisted row and made the
+    // bubble flicker to the wrong author on refetch.
+    const optimisticAuthor = findActiveUserParticipant(
+      participants,
+      speakingAsId,
+      this.impersonatingIds(),
+    );
     return {
       id: `temp-user-${Date.now()}`,
       role: 'USER',
@@ -2654,7 +2675,7 @@ export class SalonConversation {
       createdAt: new Date().toISOString(),
       swipeGroupId: null,
       swipeIndex: null,
-      participantId: activeUser?.id ?? null,
+      participantId: optimisticAuthor?.id ?? speakingAsId ?? null,
       attachments: [],
       provider: null,
       modelName: null,
