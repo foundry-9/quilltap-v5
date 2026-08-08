@@ -2200,9 +2200,16 @@ records THERE. Update this summary only when a phase or round completes.
   the P4.D57∥D58∥D59 unification — NO v4 drift debt remains.** v4's
   tree was CLEAN at `1bed814f` at the round's regens (the P4.D56-era
   dirty `AboutView.tsx` pair landed as `ddd7576b`, part of this
-  round). Oracles regenerate straight from `~/source/quilltap-server`
-  while HEAD stays `1bed814f`; pin a detached worktree on any further
-  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  round). **v4 HEAD is `2a17b3c4`, ONE commit past the baseline:
+  docs-only — NO-PORT** (it renamed `docs/developer/found-bugs.md` →
+  `docs/developer/bugs.md` and split the catalogue one-file-per-bug
+  under `docs/developer/bugs/`; zero `lib/`/`app/`/dependency change).
+  The v4 bug catalogue now lives at `bugs.md` (index) + `bugs/bug-<n>-
+  <title>.md` per open bug + `bugs/fixed/` (see the `v4-bugs-doc-
+  location` memory). Oracles regenerate straight from
+  `~/source/quilltap-server` while HEAD stays `2a17b3c4`; pin a
+  detached worktree on any further drift
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
   <pin>`). The distill-transitive TZ pins, the committed-fixture rule,
   and the venue/staging rules stand unchanged. Drift-check before
   every round — v4 ships daily.
