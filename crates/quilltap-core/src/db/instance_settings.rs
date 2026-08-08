@@ -317,6 +317,109 @@ pub fn set_taboo_settings(
     Ok(Some(validated))
 }
 
+// ---------------------------------------------------------------------------
+// P4.D57 — the Brahma Console turn budget (`instance_settings['brahmaConsole']`,
+// v4 `6452e2c3`).
+// ---------------------------------------------------------------------------
+
+/// v4 `KEY_BRAHMA_CONSOLE` — the per-instance Brahma Console settings blob (the
+/// agent-turn budget the streaming orchestrator and the one-shot `@Brahma` path
+/// both read). Same instance-settings class as `dataRetention`/`taboo`
+/// (single-user model), so it needs no migration and — being absent from
+/// [`NON_PORTABLE_INSTANCE_SETTING_KEYS`] — is portable by default: it exports
+/// with `.qtap` instance-settings and rides along in full backups.
+const KEY_BRAHMA_CONSOLE: &str = "brahmaConsole";
+
+/// v4 `DEFAULT_BRAHMA_CONSOLE_SETTINGS.maxAgentTurns` / the schema's
+/// `.default(50)` / `DEFAULT_BRAHMA_MAX_AGENT_TURNS` — the documented default,
+/// raised from the old hardcoded 25 when the budget became a setting.
+pub const DEFAULT_BRAHMA_MAX_AGENT_TURNS: i64 = 50;
+
+/// v4 `BrahmaConsoleSettingsSchema.maxAgentTurns`: `z.number().int().min(5)`.
+pub const BRAHMA_MAX_AGENT_TURNS_MIN: i64 = 5;
+/// v4 `BrahmaConsoleSettingsSchema.maxAgentTurns`: `.max(200)`.
+pub const BRAHMA_MAX_AGENT_TURNS_MAX: i64 = 200;
+
+/// Parse a candidate value against v4's `BrahmaConsoleSettingsSchema`
+/// (`z.object({ maxAgentTurns: z.number().int().min(5).max(200).default(50) })`),
+/// returning the validated `maxAgentTurns` or `None` when Zod `.parse` would
+/// throw.
+///
+/// The mirror of [`validate_stale_chat_days`], only object-wrapped like taboo:
+/// `z.object` throws on a non-object; an object that OMITS `maxAgentTurns`
+/// parses via `.default(50)` → 50; a present `maxAgentTurns` must be an
+/// integer-valued number in `[5, 200]` (an explicit `null` fails `z.number()`,
+/// since `.default` fires only for `undefined`).
+pub fn parse_brahma_console_settings(value: &serde_json::Value) -> Option<i64> {
+    let obj = value.as_object()?; // `z.object` throws on a non-object
+    match obj.get("maxAgentTurns") {
+        // Zod `.default(50)` — a present object with the key absent.
+        None => Some(DEFAULT_BRAHMA_MAX_AGENT_TURNS),
+        Some(v) => {
+            let n = v.as_f64()?; // `null` / non-number → `z.number()` throws
+            if !n.is_finite() || n.fract() != 0.0 {
+                return None; // `.int()` rejects non-integers / NaN / Inf
+            }
+            let turns = n as i64;
+            (BRAHMA_MAX_AGENT_TURNS_MIN..=BRAHMA_MAX_AGENT_TURNS_MAX)
+                .contains(&turns)
+                .then_some(turns)
+        }
+    }
+}
+
+/// v4 `getBrahmaConsoleSettings()` — the effective `maxAgentTurns` budget.
+///
+/// Returns the documented default (50) when the setting is unset. When the
+/// stored blob is present but not a valid `BrahmaConsoleSettingsSchema` object
+/// (unparseable, non-object, or a `maxAgentTurns` outside `[5, 200]` / not an
+/// integer) v4 logs a warning and falls back to the default — reproduced here.
+/// A stored object that OMITS `maxAgentTurns` parses via Zod `.default(50)` → 50
+/// (no warning). The read itself is fallible-tolerant (a missing table on a
+/// pre-provisioning instance resolves to the default).
+pub fn get_brahma_console_settings(main: &Connection) -> Result<i64, DbError> {
+    let Some(raw) = read_setting(main, KEY_BRAHMA_CONSOLE) else {
+        return Ok(DEFAULT_BRAHMA_MAX_AGENT_TURNS);
+    };
+    let parsed = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| parse_brahma_console_settings(&v));
+    match parsed {
+        Some(turns) => Ok(turns),
+        None => {
+            tracing::warn!("[InstanceSettings] brahmaConsole failed to parse — using defaults");
+            Ok(DEFAULT_BRAHMA_MAX_AGENT_TURNS)
+        }
+    }
+}
+
+/// v4 `setBrahmaConsoleSettings(value)` — validate then persist the Brahma
+/// Console settings object. The caller has already merged over the current value
+/// (the PUT route's `{...current, ...body}`); this re-validates `maxAgentTurns`
+/// against the schema (v4's `BrahmaConsoleSettingsSchema.parse` before the
+/// write) and stores the canonical JSON, returning the validated value the route
+/// echoes back.
+///
+/// v4's setter lets a schema violation THROW without writing; `Ok(None)` IS that
+/// throw — nothing is written, and it is deliberately not a [`DbError`] because
+/// no database operation failed (the taboo `set_taboo_settings` precedent). The
+/// route pre-parses, so the refusal is reachable only from a direct caller
+/// (v4's own accessor suite exercises exactly that).
+pub fn set_brahma_console_settings(
+    main: &Connection,
+    max_agent_turns: i64,
+) -> Result<Option<i64>, DbError> {
+    let candidate = serde_json::json!({ "maxAgentTurns": max_agent_turns });
+    let Some(validated) = parse_brahma_console_settings(&candidate) else {
+        return Ok(None);
+    };
+    let value = serde_json::json!({ "maxAgentTurns": validated });
+    write_setting(main, KEY_BRAHMA_CONSOLE, &value.to_string())?;
+    Ok(Some(validated))
+}
+
+// === end P4.D57 ===
+
 /// v4 `KEY_MEMORY_EXTRACTION_CONCURRENCY` — the per-instance MEMORY_EXTRACTION
 /// concurrency cap (default **1**, distinct from `maxConcurrentJobs`'s 4).
 const KEY_MEMORY_EXTRACTION_CONCURRENCY: &str = "memoryExtractionConcurrency";
@@ -845,6 +948,152 @@ mod p4d50_taboo_tests {
         assert!(portable
             .iter()
             .any(|(k, val)| k == KEY_TABOO && val == r#"{"phrases":["weight-bearing"]}"#));
+    }
+}
+
+#[cfg(test)]
+mod p4d57_brahma_console_tests {
+    //! Mirrors v4's
+    //! `__tests__/unit/lib/instance-settings/brahma-console.test.ts` (`6452e2c3`).
+
+    use super::*;
+
+    fn store() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);",
+        )
+        .unwrap();
+        c
+    }
+
+    // ---- getBrahmaConsoleSettings ----
+
+    #[test]
+    fn get_returns_the_50_turn_default_when_unset() {
+        assert_eq!(get_brahma_console_settings(&store()).unwrap(), 50);
+    }
+
+    #[test]
+    fn get_returns_the_stored_value() {
+        let c = store();
+        write_setting(&c, KEY_BRAHMA_CONSOLE, r#"{"maxAgentTurns":120}"#).unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 120);
+    }
+
+    #[test]
+    fn get_falls_back_on_unparseable_json() {
+        let c = store();
+        write_setting(&c, KEY_BRAHMA_CONSOLE, "not json").unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    #[test]
+    fn get_falls_back_on_out_of_range_values() {
+        let c = store();
+        write_setting(&c, KEY_BRAHMA_CONSOLE, r#"{"maxAgentTurns":1}"#).unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    #[test]
+    fn get_defaults_an_absent_key_via_the_schema_default() {
+        // A present object OMITTING maxAgentTurns parses via Zod `.default(50)`.
+        let c = store();
+        write_setting(&c, KEY_BRAHMA_CONSOLE, r#"{}"#).unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    #[test]
+    fn get_falls_back_when_the_stored_shape_is_wrong() {
+        let c = store();
+        write_setting(&c, KEY_BRAHMA_CONSOLE, r#"42"#).unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    #[test]
+    fn get_falls_back_when_the_table_is_missing() {
+        // v4's `readSetting` catch arm — the read itself resolves to null.
+        let c = Connection::open_in_memory().unwrap();
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    // ---- setBrahmaConsoleSettings ----
+
+    #[test]
+    fn set_round_trips_through_get() {
+        let c = store();
+        assert_eq!(set_brahma_console_settings(&c, 75).unwrap(), Some(75));
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 75);
+    }
+
+    #[test]
+    fn set_accepts_the_boundary_values() {
+        let c = store();
+        assert_eq!(set_brahma_console_settings(&c, 5).unwrap(), Some(5));
+        assert_eq!(set_brahma_console_settings(&c, 200).unwrap(), Some(200));
+    }
+
+    #[test]
+    fn set_rejects_out_of_range_values_without_writing() {
+        let c = store();
+        assert_eq!(set_brahma_console_settings(&c, 4).unwrap(), None);
+        assert_eq!(set_brahma_console_settings(&c, 201).unwrap(), None);
+        // v4's `expect(mockRawQuery).not.toHaveBeenCalled()` — nothing stored.
+        assert_eq!(read_setting(&c, KEY_BRAHMA_CONSOLE), None);
+    }
+
+    // ---- the schema's parse (v4's route arms depend on it) ----
+
+    #[test]
+    fn parse_defaults_an_absent_key_and_rejects_bad_shapes() {
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({})),
+            Some(50)
+        );
+        // A non-object throws; `null` / a non-integer / out-of-range all fail.
+        assert_eq!(parse_brahma_console_settings(&serde_json::json!(50)), None);
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": null })),
+            None
+        );
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 12.5 })),
+            None
+        );
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": "fifty" })),
+            None
+        );
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 4 })),
+            None
+        );
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 201 })),
+            None
+        );
+        // Boundaries are inclusive.
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 5 })),
+            Some(5)
+        );
+        assert_eq!(
+            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 200 })),
+            Some(200)
+        );
+    }
+
+    #[test]
+    fn brahma_console_is_portable_by_default() {
+        // v4 leaves `brahmaConsole` OUT of `NON_PORTABLE_INSTANCE_SETTING_KEYS`,
+        // so the setting exports with `.qtap` and rides full backups (Tier 2).
+        assert!(!NON_PORTABLE_INSTANCE_SETTING_KEYS.contains(&KEY_BRAHMA_CONSOLE));
+        let c = store();
+        set_brahma_console_settings(&c, 80).unwrap();
+        let portable = list_portable_instance_settings(&c).unwrap();
+        assert!(portable
+            .iter()
+            .any(|(k, val)| k == KEY_BRAHMA_CONSOLE && val == r#"{"maxAgentTurns":80}"#));
     }
 }
 

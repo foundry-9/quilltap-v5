@@ -9,6 +9,28 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D57 (the Brahma Console turn-budget instance setting, server) — v4 `6452e2c3`
+
+Baseline **`1bed814f`** (drift-checked clean at lane start: `git log 1bed814f..HEAD`
+empty, v4 tree clean). Ports v4 `6452e2c3` — the Brahma Console agent-turn cap
+becomes `instance_settings['brahmaConsole'].maxAgentTurns` (default raised 25 → 50,
+bounds 5–200), read by both Brahma paths through one resolver. No schema change,
+no migration. Sibling SPA lanes P4.D58/P4.D59 (disjoint; the P4.D59 card consumes
+this lane's verbs).
+
+**Unit 1 — `db/instance_settings.rs` accessors (core 0.0.510).** `KEY_BRAHMA_CONSOLE`,
+`DEFAULT_BRAHMA_MAX_AGENT_TURNS = 50`, bounds `[5, 200]`, `parse_brahma_console_settings`
+(object-wrapped `validate_stale_chat_days` mirror: non-object throws, absent key →
+`.default(50)`, present → int-in-range or None), `get_brahma_console_settings`
+(parse-fail → default + `tracing::warn!`, mirrors `get_taboo_settings`),
+`set_brahma_console_settings` (re-validate → `Ok(None)` is v4's setter THROW, taboo
+precedent). 12-case unit module mirroring v4's `brahma-console.test.ts` +
+`parse_*` bad-shape cases + the Tier-2 portability assertion
+(`brahmaConsole` ∉ `NON_PORTABLE_INSTANCE_SETTING_KEYS`, round-trips through
+`list_portable_instance_settings`). Proven by the settings-routes differential
+(Unit 5). `cargo test -p quilltap-core db::instance_settings::p4d57` 12/12;
+clippy -p quilltap-core clean.
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

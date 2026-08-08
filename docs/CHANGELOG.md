@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): added the
+`instance_settings['brahmaConsole']` accessors to the Rust core — the
+agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
+falls back to the default on a missing/unparseable/out-of-range value; write
+validates and refuses out-of-range without storing. Portable by default
+(rides `.qtap` export and full backups). core 0.0.510.
+
 Planned the next porting round: a drift catch-up on three reference-app
 changes (work orders P4.D57/P4.D58/P4.D59). It ports the Brahma Console
 turn-budget instance setting, reconciles the impersonated-seat message
