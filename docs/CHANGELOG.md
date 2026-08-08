@@ -71,6 +71,14 @@ just-stopped impersonation nor snaps the composer back to the stale persisted
 seat after each turn. The sidebar's active-typing indicator reads the same local
 source (v4 feeds `impersonation.activeTypingParticipantId`, not the record). SPA
 0.5.441.
+P4.44 item 1 — pinned the conversation-chunks `upsert` CREATE arm. The tier-2
+family only ever exercised the update arm (every corpus upsert hit an existing
+`(chatId, interchangeIndex)` row); two new upserts on unseeded pairs now take
+the create arm (with and without a supplied embedding). The harness placeholders
+the create arm's minted id/createdAt/updatedAt and re-sorts the dump by
+`(chatId, interchangeIndex)` so the comparison is independent of v4's random
+minted id. No production behavior change (test + fixture only). quilltap-harness
+0.0.435.
 
 Planned the `f6eac168` drift catch-up round (v4 Bugs 47-51) and committed
 three work orders: P4.D60 (server — the fair-rotation first-responder pause,

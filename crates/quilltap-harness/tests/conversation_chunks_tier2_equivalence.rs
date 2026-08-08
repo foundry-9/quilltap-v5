@@ -19,6 +19,14 @@
 //! placeholdered on both sides. Every pinned id and timestamp still compares
 //! exactly — which is what makes "the guard SPARED this row" an assertion.
 //!
+//! P4.44 — the `upsert` CREATE arm. The earlier upserts all hit an EXISTING
+//! `(chatId, interchangeIndex)` row, so only the update arm was ever exercised.
+//! Two upserts on pairs NOT in the seed take the create arm, which mints
+//! id/createdAt/updatedAt (v4 a UUID + `new Date()`; v5 a synthetic id +
+//! `UPSERT_NOW_ISO`) and carries the supplied-or-NULL embedding. `normalize`
+//! placeholders every minted field and re-sorts the rows by (chatId,
+//! interchangeIndex) so the comparison is independent of the random v4 id.
+//!
 //! A BLOB case (after `help_docs`): the `embedding` Float32 buffer is exercised
 //! on insert (a non-empty `Vec<f32>` → the storage blob via
 //! `embedding_blob::float32_to_blob`), as NULL (`None`/empty → SQL NULL), and —
@@ -69,11 +77,15 @@ enum Op {
     },
     #[serde(rename = "update")]
     Update { id: String, data: UpdateData },
-    /// Bug 17 (`62ab1bc8`) — v4 `upsert(input)` on an EXISTING `(chatId,
-    /// interchangeIndex)`. The three corpus ops close the embedding arms:
+    /// Bug 17 (`62ab1bc8`) — v4 `upsert(input)`. Arms 1-3 hit an EXISTING
+    /// `(chatId, interchangeIndex)` and close the update-arm embedding branches:
     /// supplied embedding wins / content change NULLs the stale vector /
-    /// identical content preserves it. The update arm mints only `updatedAt`
-    /// (v4 `new Date()`; v5 injects `UPSERT_NOW_ISO`), normalized on both sides.
+    /// identical content preserves it (only `updatedAt` minted → normalized).
+    /// Arms 4-5 (P4.44) hit a pair NOT in the seed → the CREATE arm, minting
+    /// id/createdAt/updatedAt and carrying the supplied-or-NULL embedding
+    /// (v4 `_create`; v5's create branch). The create-arm minted fields are
+    /// placeholdered on both sides and the dump re-sorted by (chatId,
+    /// interchangeIndex) so the row order is independent of the minted id.
     #[serde(rename = "upsert")]
     Upsert { data: CreateData },
     #[serde(rename = "delete")]
@@ -142,12 +154,21 @@ fn spec_path() -> PathBuf {
 /// so this value is v5-side only and must normalize to `<ts>` like the oracle's.
 const CLEAR_NOW_ISO: &str = "2026-06-06T06:06:06.606Z";
 
-/// The `now` the Rust port injects into `upsert`'s update arm (Bug 17). Like
-/// `CLEAR_NOW_ISO`, deliberately NOT in the committed spec — v4's `_update` mints
-/// `new Date()` there — so both sides' `updatedAt` normalize to `<ts>`. (The
-/// `new_id` is unused: the corpus upserts all hit an EXISTING row.)
+/// The `now` the Rust port injects into `upsert` (Bug 17), for BOTH arms: the
+/// update arm's `updatedAt` and the create arm's id-less create (id/createdAt/
+/// updatedAt). Like `CLEAR_NOW_ISO`, deliberately NOT in the committed spec — v4
+/// mints `new Date()` there — so every minted timestamp normalizes to `<ts>`.
 const UPSERT_NOW_ISO: &str = "2026-06-07T07:07:07.707Z";
-const UPSERT_NEW_ID: &str = "00000000-0000-4000-8000-0000000000ff";
+
+/// The synthetic id v5 injects into `upsert`'s CREATE arm, one distinct id per
+/// upsert op so two create-arm upserts cannot collide on the `id` UNIQUE index.
+/// Deliberately NOT in the committed spec (v4 mints a random UUID), so a
+/// create-arm row's id is placeholdered on both sides; the `f0..` last byte
+/// cannot collide with the seed ids (low bytes `01..0a`). An update-arm upsert
+/// never uses its id (the row already exists), so a distinct value there is inert.
+fn upsert_new_id(seq: u8) -> String {
+    format!("00000000-0000-4000-8000-0000000000{:02x}", 0xf0 + seq)
+}
 
 /// Every string literal anywhere in the committed spec — the values BOTH sides
 /// pinned.
@@ -167,8 +188,19 @@ fn pinned_literals(spec: &Value) -> BTreeSet<String> {
     out
 }
 
-/// Placeholder a cold-tiered row's minted `updatedAt`; leave every pinned
-/// timestamp exact.
+/// Placeholder every MINTED string field, leaving every pinned value exact:
+/// a cold-tiered row's `updatedAt` (P4.D25) and a create-arm upsert's minted
+/// `id` / `createdAt` / `updatedAt` (P4.44 Bug 17). "Minted" = the string is not
+/// literally present in the committed spec (v4 mints a UUID + `new Date()`; v5
+/// injects synthetic values), so a value the spec DID pin still compares exactly
+/// — which is what keeps "this row's embedding survived" / "the age guard spared
+/// this row" real assertions rather than placeholdered-away.
+///
+/// Then re-sort the rows by (chatId, interchangeIndex) — unique across the final
+/// table (upsert keys on that pair) — so the row ordering is independent of the
+/// minted id. The oracle dumps `orderBy: 'id'`, and v4's create-arm id is a
+/// RANDOM UUID, so without this the created row lands at a random position while
+/// v5's synthetic id sorts deterministically.
 fn normalize(dump: &mut Value, label: &str, pinned: &BTreeSet<String>) {
     let rows = dump
         .get_mut("rows")
@@ -178,14 +210,31 @@ fn normalize(dump: &mut Value, label: &str, pinned: &BTreeSet<String>) {
         let obj = row
             .as_object_mut()
             .unwrap_or_else(|| panic!("{label}: row is not an object"));
-        let minted = match obj.get("updatedAt") {
-            Some(Value::String(s)) => !pinned.contains(s),
-            _ => false,
-        };
-        if minted {
-            obj.insert("updatedAt".to_string(), Value::String("<ts>".to_string()));
+        for field in ["id", "createdAt", "updatedAt"] {
+            let minted = matches!(obj.get(field), Some(Value::String(s)) if !pinned.contains(s));
+            if minted {
+                let token = if field == "id" { "<id>" } else { "<ts>" };
+                obj.insert(field.to_string(), Value::String(token.to_string()));
+            }
         }
     }
+    rows.sort_by(|a, b| {
+        let key = |r: &Value| {
+            (
+                r.get("chatId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                r.get("interchangeIndex")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+            )
+        };
+        let (ac, ai) = key(a);
+        let (bc, bi) = key(b);
+        ac.cmp(&bc)
+            .then(ai.partial_cmp(&bi).unwrap_or(std::cmp::Ordering::Equal))
+    });
 }
 
 #[test]
@@ -255,6 +304,7 @@ fn conversation_chunks_tier2_matches_oracle() {
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
     let mut got_cleared: Vec<u64> = Vec::new();
+    let mut upsert_seq: u8 = 0;
     {
         let repo = writer.conversation_chunks();
         for op in &spec.ops {
@@ -296,6 +346,8 @@ fn conversation_chunks_tier2_matches_oracle() {
                     assert!(found, "update target {id} not found in fixture");
                 }
                 Op::Upsert { data } => {
+                    let new_id = upsert_new_id(upsert_seq);
+                    upsert_seq += 1;
                     repo.upsert(
                         &CcUpsert {
                             chat_id: data.chat_id.clone(),
@@ -305,7 +357,7 @@ fn conversation_chunks_tier2_matches_oracle() {
                             message_ids: data.message_ids.clone(),
                             embedding: data.embedding.clone(),
                         },
-                        UPSERT_NEW_ID,
+                        &new_id,
                         UPSERT_NOW_ISO,
                     )
                     .unwrap_or_else(|e| panic!("conversation_chunks.upsert: {e}"));

@@ -110,8 +110,10 @@ async function main(): Promise<void> {
     } else if (op.kind === 'upsert') {
       // Bug 17 (`62ab1bc8`): the update arm NULLs a stale vector on a content
       // change, and a supplied `input.embedding` wins over that. v4 mints its
-      // own now/generateId inside upsert; every corpus upsert hits an EXISTING
-      // row so only the minted `updatedAt` lands, normalized on both sides.
+      // own now/generateId inside upsert. Arms 1-3 hit an EXISTING row (only the
+      // minted `updatedAt` lands); P4.44 arms 4-5 hit a pair NOT in the seed, so
+      // v4 falls to `_create` and mints id + createdAt + updatedAt too — all
+      // placeholdered on both sides, the dump re-sorted off the minted id.
       await repo.upsert(op.data as never);
     } else if (op.kind === 'clearEmbeddings') {
       // `undefined` (not null) is what turns the age guard OFF in v4.

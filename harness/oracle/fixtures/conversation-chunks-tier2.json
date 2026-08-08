@@ -42,7 +42,17 @@
     "both spared — `<` is strict), a second identical pass (0 rows, idempotent),",
     "and the guard OFF (no `olderThan` — every embedded row on the chat goes).",
     "A cleared row's `updatedAt` is MINTED (v4 stamps `new Date()`; v5 injects its",
-    "own), so the harness placeholders any timestamp not literally in this spec."
+    "own), so the harness placeholders any timestamp not literally in this spec.",
+    "",
+    "P4.44 (Bug 17 CREATE arm): the earlier upserts all hit an EXISTING",
+    "(chatId, interchangeIndex) row, so only the update arm was covered. Arms 4/5",
+    "upsert on (chatId ffff, index 0/1) pairs NOT in the seed, so v4 falls to",
+    "`_create` and v5 to the create arm — minting id + createdAt + updatedAt (v4 a",
+    "UUID + `new Date()`; v5 a synthetic id + injected now) and carrying the",
+    "supplied-or-NULL embedding. All three minted fields are absent from this spec,",
+    "so the harness placeholders every id/createdAt/updatedAt it does not pin; the",
+    "dump is then re-sorted by (chatId, interchangeIndex) so the row ordering is",
+    "independent of the minted id (v4's is random)."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -374,6 +384,43 @@
         ],
         "messageIds": [
           "m1000000-0000-4000-8000-0000000000c2"
+        ]
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Bug 17 arm 4 — the CREATE arm WITH a supplied embedding. Upsert on a (chatId ffff, interchangeIndex 0) pair NOT in the seed: `findByInterchangeIndex` misses, so v4 falls to `_create(input)` and v5 to the create arm, minting id + createdAt + updatedAt (v4 a UUID + `new Date()`; v5 injects a synthetic id + UPSERT_NOW_ISO) and storing the supplied embedding [0.25,0.5,-0.5,-0.75] (quantized). The id/createdAt/updatedAt are minted, so all three normalize on both sides; the embedding hex is the load-bearing assertion (a create arm that dropped it stores NULL).",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000ffff",
+        "interchangeIndex": 0,
+        "content": "Upsert create delta, embedded.",
+        "participantNames": [
+          "Aurora",
+          "Prospero"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000d1"
+        ],
+        "embedding": [
+          0.25,
+          0.5,
+          -0.5,
+          -0.75
+        ]
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Bug 17 arm 5 — the CREATE arm with NO embedding. Upsert on (chatId ffff, interchangeIndex 1), also not in the seed: the create arm carries the absent embedding through as SQL NULL (v4 `_create` with the schema's null default), the counterpart to arm 4's supplied-embedding create.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000ffff",
+        "interchangeIndex": 1,
+        "content": "Upsert create echo, no vector.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000e1"
         ]
       }
     }

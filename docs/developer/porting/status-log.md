@@ -62130,3 +62130,47 @@ modal (`showAllLLMPause`), and take-over closes it, impersonates, and hands the
 character the turn (Bug 48) — `userTurnName` names them, `turnOverride` is set.
 Combined with the existing `AllLLMPauseModal` component specs, this covers the
 opener + take-over chain deterministically. SPA 0.5.444.
+## Lane record — P4.44 item 1 (conversation-chunks upsert CREATE arm)
+
+**Branch `claude/p4-44-pinning-followups-4f07c5`, baseline v4 `f6eac168`
+(HEAD == baseline, tree clean at lane start).**
+
+The f4955e0e round's §3 banked "the uncovered `upsert` create arm (needs
+minted-id normalizer machinery — a named follow-up)". Every corpus upsert hit an
+EXISTING `(chatId, interchangeIndex)` row, so `conversation_chunks::upsert`'s
+create arm (`db/conversation_chunks.rs:565-581` — mints id + now, carries the
+supplied-or-NULL embedding) was never differentially exercised.
+
+- **Fixture** (`conversation-chunks-tier2.json`): two new `upsert` ops (arms 4-5)
+  on `(chatId ffff, index 0)` WITH a supplied embedding and `(ffff, 1)` with NO
+  embedding key — pairs absent from the seed, so both take the create arm.
+- **Harness** (`conversation_chunks_tier2_equivalence.rs`): a distinct synthetic
+  `new_id` per upsert op (`upsert_new_id(seq)` → `…00f0`, `…00f1`, … so two
+  create-arm inserts cannot collide on the `id` UNIQUE index); `normalize`
+  generalized to placeholder minted `id`/`createdAt`/`updatedAt` (any string not
+  literally in the committed spec — v4 mints a UUID + `new Date()`, v5 injects
+  synthetics); the dump re-sorted by `(chatId, interchangeIndex)` after
+  normalize, so the row order is independent of v4's RANDOM minted id (the oracle
+  dumps `orderBy: 'id'`). The existing pinned-id rows are unaffected (their
+  content is unchanged; only their array position moves, identically on both
+  sides).
+- **Oracle regen** (Node 24, from `~/source/quilltap-server` at `f6eac168`, tsx
+  pointed at the WORKTREE so it reads the edited fixture/case):
+  ```
+  N=~/.nvm/versions/node/v24.13.1/bin
+  WT=<worktree>
+  cd ~/source/quilltap-server
+  rm -f /tmp/qt-cc-fixture.db /tmp/oracle-cc.ndjson
+  QT_FIXTURE_OUT=/tmp/qt-cc-fixture.db $N/npx tsx $WT/harness/oracle/fixtures/build-conversation-chunks-fixture.ts
+  QT_FIXTURE_CC=/tmp/qt-cc-fixture.db $N/npx tsx $WT/harness/oracle/cases/conversation-chunks-tier2.ts > /tmp/oracle-cc.ndjson
+  ```
+  Run:
+  `QT_ORACLE_CONVERSATION_CHUNKS=/tmp/oracle-cc.ndjson
+  QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db cargo test -p quilltap-harness
+  --test conversation_chunks_tier2_equivalence` → **OK, 11 rows** (was 9).
+- **Mutation-proven** (the D24 rule): breaking the create arm's embedding
+  passthrough (`conversation_chunks.rs:573` `input.embedding.clone()` → `None`)
+  reddens exactly on the `(ffff, 0)` row (embedding `null` vs the quantized hex).
+  Reverted.
+
+No production source changed (test + fixture only). quilltap-harness → 0.0.435.
