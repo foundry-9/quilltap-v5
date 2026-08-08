@@ -16,10 +16,13 @@
 //! timestamps dropped) are diffed against the oracle.
 //!
 //! Corpus: a plain no-tool final; a native `run_sql` turn; a text-block tool turn;
-//! the `submit_final_response` arm; the duplicate-call stuck guard. (The 25-turn
-//! cap is a shared structural constant — `MAX_AGENT_TURNS` — proven by the
-//! `loop_bound_forces_a_final_answer_at_the_cap` unit test in the orchestrator's own
-//! `tests`, mirroring the one-shot engine.)
+//! the `submit_final_response` arm; the duplicate-call stuck guard. (The agent-turn
+//! cap is now an operator-set instance setting — `resolve_brahma_max_agent_turns`,
+//! default 50, over a fixture with no `brahmaConsole` key — proven by the
+//! `loop_bound_forces_a_final_answer_at_the_operator_cap` unit test in the
+//! orchestrator's own `tests`, mirroring the one-shot engine. Its default-50 value
+//! also rides the recorded system-prompt bytes here — `build_agent_mode_instructions(50)`
+//! — so this oracle must be regenerated at v4 `6452e2c3`+ (P4.D57).)
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — the oracle lives under
 //! `.claude/`, which jest ignores, so mirror it to /tmp):

@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+P4.D57 (Brahma Console turn budget, server): regenerated the two Brahma tier-3
+differentials at the new baseline — the agent-mode system prompt now records the
+default-50 turn cap (was 25), and both the one-shot and orchestrator ports
+reproduce it byte-for-byte. harness 0.0.434.
+
 P4.D57 (Brahma Console turn budget, server): extended the settings-routes
 differential with 12 brahma-console GET/PUT cases (default, seeded, valid,
 boundaries, empty-merge, and the four 400 arms + null + non-object body), driven

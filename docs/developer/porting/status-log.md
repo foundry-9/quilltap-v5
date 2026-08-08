@@ -96,6 +96,28 @@ case file → `/tmp/oracle-settings-routes.ndjson`, then
 Freshness is guarded structurally: a stale pre-P4.D57 oracle has 0 brahma rows →
 the count guard fails.
 
+**Unit 6 — the two Brahma tier-3 differentials regenerated + re-run green
+(harness 0.0.434).** `build_agent_mode_instructions(N)` embeds the cap in the
+system prompt, part of the tier-3 stream KEY. v4 at `1bed814f` resolves the
+default 50 over the fixtures (no `brahmaConsole` key), so both oracles now record
+`up to **50 tool iterations`; before Unit 2 the port produced `25` → a canned-miss
+→ `llm-failed`. Regenerated both at `1bed814f` and re-ran:
+`brahma_console_tier3_equivalence` (9 cases) and `brahma_orchestrator_tier3_equivalence`
+(5 cases) both green — the ports reproduce the 50-cap prompt byte-for-byte.
+Recipes: the two harness headers (console builds `/tmp/qt-brahma-*.db` via
+`build-brahma-console-fixture.ts`; orchestrator uses the committed
+`brahma-{main,mount}.db`). No committed NDJSON — the oracle is env-passed and
+regenerated per run. Updated the orchestrator tier-3 header's stale
+`MAX_AGENT_TURNS` note to the resolver/default. Grep proof:
+`grep -o "up to \*\*[0-9]* tool iterations" <ndjson>` → `50` on both.
+
+**Lane P4.D57 COMPLETE — all Tier-1 deliverables landed; Tier 2 confirmed
+(portable by default, no allowlist change); no Tier-3 deferrals.** ⚠ One
+recorded deviation from the order's literal spec (Unit 3): the update field is
+`Option<Option<Value>>`, not `Option<Option<i64>>`, so the web edge cannot
+collapse a present-but-invalid value — the wire/SPA contract is unchanged. Full
+workspace gate below.
+
 **⚠ Process note:** the oracle case-file edits first landed in the MAIN checkout
 (`~/source/quilltap-v5/harness/oracle/cases/settings-routes.test.ts`) rather than
 the worktree — the two are separate working trees. Transplanted to the worktree
