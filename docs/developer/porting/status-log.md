@@ -184,6 +184,24 @@ composer arms (absent / bright / dim, 22 → 25) + salon `speakingAsSeat` arms
 verified on the v5 wire (`DetailCharacter.avatarUrl` + `defaultImage.filepath` via
 the existing `participantAvatar`) — no Tier-3 avatar refusal owed.
 
+**Unit 5 (tier 2) — the impersonation e2e beat (test-only, no version bump).**
+Extended the P4.9E3C "speaking as a character" beat in
+`apps/web/e2e/salon-dialogs-flow.spec.ts` to assert the `.qt-speaking-as-avatar`
+cue is visible and labeled `/^Speaking as /` when Solo Voyage loads (it has a
+genuine user seat, so `speakingAsSeat` resolves deterministically). Per the e2e
+limitation (`impersonation-overlay-spa-gaps`), the turn-BANNER half (Bug 46(a))
+has NO deterministic beat — turn selection is weighted-random and Solo Voyage's
+user seat wins, so no seeded chat can force the impersonated LLM seat to be the
+next speaker; that half is proven at the unit-spec level (the three banner arms
+above). The overlay round-trip + column-doesn't-flip assertions are unchanged.
+
+**Gate:** `ng test` 4040/4040 (295 files) — one earlier full run showed an
+UNRELATED 8-test flake in `courier-bubble.spec.ts` (a sibling spec freezes
+`navigator.clipboard` non-configurable and worker sharding occasionally lands
+courier-bubble after it → `Cannot assign to read only property 'clipboard'`; it
+passes 8/8 in isolation, imports none of this lane's files, and did NOT reproduce
+on a clean re-run). `ng build` clean. Full Playwright: [pending in report].
+
 ## Lane record — P4.D53 (the `f4955e0e` chat-API + attribution server drift), COMPLETE
 
 **All nine tier-1 bugs landed across 4 commits; tier-2 comment sweep done; no

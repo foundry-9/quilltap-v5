@@ -336,6 +336,18 @@ test.describe('P4.9E3C — Export', () => {
 test.describe('P4.9E3C — speaking as a character', () => {
   test('the cast card holds the impersonation as an overlay and heals its own Stop button', async ({ page }) => {
     const chatId = await openChat(page, 'Solo Voyage');
+
+    // Bug 46(b) (v4 `1bed814f`): the composer's "speaking as" portrait renders
+    // for the active user seat — Solo Voyage has a genuine user-controlled
+    // character, so `speakingAsSeat` resolves via `findActiveUserParticipant` and
+    // the cue names them. This is the DETERMINISTIC half of the fix: it keys on
+    // the resolved user seat, not on the weighted-random turn winner (which is
+    // why the turn-banner half is proven at the unit-spec level instead — no
+    // seeded chat can force the impersonated LLM seat to be the next speaker).
+    const speakingAsCue = page.locator('.qt-speaking-as-avatar');
+    await expect(speakingAsCue).toBeVisible({ timeout: 15_000 });
+    expect(await speakingAsCue.getAttribute('aria-label')).toMatch(/^Speaking as /);
+
     await openSidebarSection(page, 'Participants');
 
     const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();

@@ -36,6 +36,9 @@ agent-turn budget (default 50, bounds 5–200) both Brahma paths read. Read
 falls back to the default on a missing/unparseable/out-of-range value; write
 validates and refuses out-of-range without storing. Portable by default
 (rides `.qtap` export and full backups). core 0.0.510.
+Extended the impersonation end-to-end test to check that the "speaking as"
+composer portrait appears and names the character in play. (Test-only.)
+
 Added a "speaking as" portrait to the Salon composer: a persistent full-height
 picture of the character your typed message will be attributed to, seated just
 left of the send controls. It brightens when the floor is yours and dims while a
