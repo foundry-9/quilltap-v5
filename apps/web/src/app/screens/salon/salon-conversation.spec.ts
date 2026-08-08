@@ -1324,6 +1324,127 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
   });
 });
 
+/**
+ * v4 Bug 51's CLIENT half (`useImpersonation.ts:34-48`, `f6eac168`). Once the
+ * sibling server lane (P4.D60) projects `impersonatingParticipantIds` /
+ * `activeTypingParticipantId` on the chat GET, those persisted values go STALE
+ * between a mutation reply and the refetch settling. v4 holds the overlay LOCAL
+ * and treats the persisted values as a SEED, not a live source:
+ *  - the impersonating LIST is the local mirror; the record re-seeds it only when
+ *    NON-EMPTY (`:34-36`), and every transition (including → empty) is owned by
+ *    the reply handlers (the refetch after a stop arrives already-consistent);
+ *  - the speaking-as is seeded ONCE, only while still unset
+ *    (`prev => prev ?? activeTypingId ?? null`, `:43`) — a refetch must never snap
+ *    the composer back to the stale persisted seat after each turn.
+ *
+ * These specs seed the chat DTO with the projected fields (which the GET WILL
+ * send once P4.D60 lands) on purpose — the inverse of the pre-seeded-DTO
+ * false-green trap: here the seed is exactly what makes a stale-record clobber
+ * reproducible, and the fix is what keeps the local authoritative. The
+ * clobber-guard spec is RED against the old `fromChat.length > 0 ? fromChat`
+ * computed.
+ */
+describe('SalonConversation — the persisted impersonation overlay is seeded, not re-applied (v4 Bug 51 client)', () => {
+  type Host = {
+    onStopImpersonate(id: string): Promise<void>;
+    impersonatingIds(): readonly string[];
+    activeSpeakerId(): string | null;
+    activeTypingLocal: { set(v: string | null): void };
+  };
+
+  function overlayClient(getChat: () => ChatDetail): Partial<CoreClient> {
+    // A chatGet that returns a FRESH object each call, so an invalidation
+    // genuinely changes `chat()` and re-fires the sync effect (that is the only
+    // condition under which seed-once is observably different from a plain set).
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: getChat() } };
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      }
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async (req: CoreRequest) =>
+      req.type === 'chatStopImpersonate'
+        ? { impersonatingParticipantIds: [], activeTypingParticipantId: null }
+        : { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null },
+    );
+    return {
+      events$: new Subject<ScopedEvent>().asObservable(),
+      dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expect: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  it('re-seeds the impersonating list and speaking-as from a non-empty record (reload)', async () => {
+    // A reloaded chat that (with P4.D60) carries the projected overlay.
+    const chat = () => ({
+      ...chatDetail(),
+      impersonatingParticipantIds: ['p1'],
+      activeTypingParticipantId: 'p1',
+    });
+    const fixture = await render(overlayClient(chat));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect([...inst.impersonatingIds()]).toEqual(['p1']);
+    expect(inst.activeSpeakerId()).toBe('p1'); // seeded once from the record
+  });
+
+  it('a stale non-empty record does NOT resurrect impersonation after a stop (the clobber guard)', async () => {
+    // p1 has a connection profile so the stop goes direct (no hand-off dialog).
+    const chat = () => ({
+      ...chatDetail(),
+      participants: [
+        participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p1', connectionProfile: { id: 'cp1', name: 'GPT' } as ParticipantDetail['connectionProfile'] }),
+      ],
+      impersonatingParticipantIds: ['p1'],
+      activeTypingParticipantId: 'p1',
+    });
+    const fixture = await render(overlayClient(chat));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect([...inst.impersonatingIds()]).toEqual(['p1']); // seeded
+
+    // Stop impersonating. The reply clears the list, but the chat() STILL holds the
+    // stale projected ['p1'] until the next refetch settles.
+    await inst.onStopImpersonate('p1');
+    fixture.detectChanges();
+
+    // THE GUARD: the local mirror is authoritative — the stale record must not
+    // resurrect the overlay. Before the fix, `fromChat.length > 0 ? fromChat` won.
+    expect([...inst.impersonatingIds()]).toEqual([]);
+  });
+
+  it('seeds the speaking-as ONCE — a later refetch does not clobber a moved seat', async () => {
+    const chat = () => ({
+      ...chatDetail(),
+      impersonatingParticipantIds: ['p1'],
+      activeTypingParticipantId: 'p1',
+    });
+    const fixture = await render(overlayClient(chat));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.activeSpeakerId()).toBe('p1'); // seeded once
+
+    // The turn-follow / a manual pick moves the speaking-as to the owner seat.
+    inst.activeTypingLocal.set('pu');
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('pu');
+
+    // Force a refetch: chatGet returns a fresh object, so chat() changes and the
+    // sync effect re-fires. Seed-once (`prev ?? …`) leaves the moved seat alone —
+    // an unconditional re-apply would snap it back to the persisted 'p1'.
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: ['chat', 'chat-1'] });
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(inst.activeSpeakerId()).toBe('pu');
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };

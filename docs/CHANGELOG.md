@@ -34,6 +34,17 @@ pure helper that projects the turn rotation one step past a user's just-typed,
 unpersisted message, so a multi-seat room's first responder honors the full
 roster instead of an LLM-only shortlist. Tier-1 differential extended
 (`select-speaker` gains eight `select-after` cases against v4's real helper).
+Fixed (v4 Bug 51, client half; P4.D61): the impersonation overlay
+(`impersonatingParticipantIds` / `activeTypingParticipantId`) is now held as a
+client-local mirror that the chat record only SEEDS, never overrides live. The
+impersonating list re-seeds from the record only when non-empty (transitions,
+including → empty, are owned by the mutation replies), and the persisted
+speaking-as is seeded once while still unset — so once the sibling server lane
+(P4.D60) projects those fields on the chat GET, a refetch no longer resurrects a
+just-stopped impersonation nor snaps the composer back to the stale persisted
+seat after each turn. The sidebar's active-typing indicator reads the same local
+source (v4 feeds `impersonation.activeTypingParticipantId`, not the record). SPA
+0.5.441.
 
 Planned the `f6eac168` drift catch-up round (v4 Bugs 47-51) and committed
 three work orders: P4.D60 (server — the fair-rotation first-responder pause,

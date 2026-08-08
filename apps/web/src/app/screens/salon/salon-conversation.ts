@@ -302,7 +302,7 @@ interface CascadePrompt {
           [userParticipantId]="userParticipantId()"
           [respondingParticipantId]="stream()?.respondingParticipantId ?? null"
           [impersonatingParticipantIds]="impersonatingIds()"
-          [activeTypingParticipantId]="c.activeTypingParticipantId ?? null"
+          [activeTypingParticipantId]="activeSpeakerId()"
           [isDangerousChat]="c.isDangerousChat === true"
           [chatId]="c.id"
           [chatSectionState]="chatSectionState()"
@@ -1841,20 +1841,19 @@ export class SalonConversation {
   /**
    * v4 `activeTypingParticipantId` useState (`useImpersonation.ts`): the seat the
    * human is currently speaking as, applied from the impersonate / stop replies
-   * (`|| participantId` on start, `|| null` on stop). LOCAL for the same reason
-   * as {@link impersonatingLocal} — the chat GET projects no
-   * `activeTypingParticipantId`, so the reply is the only source and a refetch
-   * must not erase it. Without this the speaking-as portrait (Bug 46(b)) and the
-   * optimistic bubble (Bug 45) fell back to the owner seat while impersonating.
+   * (`|| participantId` on start, `|| null` on stop) and — v4 Bug 49 — from the
+   * turn-follow. LOCAL for the same reason as {@link impersonatingLocal}: the
+   * persisted `activeTypingParticipantId` is only the INITIAL default, so the
+   * {@link impersonationSync} effect SEEDS it once (v4 Bug 51 client,
+   * `useImpersonation.ts:43` `prev => prev ?? activeTypingId ?? null`) and the
+   * local governs thereafter. Reading the chat record LIVE would snap the
+   * composer back to the stale persisted seat after each turn once P4.D60
+   * projects it — the clobber Bug 51 fixes.
    */
   private readonly activeTypingLocal = signal<string | null>(null);
 
   protected readonly activeSpeakerId = computed(
-    () =>
-      this.activeSpeakerOverride() ??
-      this.activeTypingLocal() ??
-      this.chat()?.activeTypingParticipantId ??
-      null,
+    () => this.activeSpeakerOverride() ?? this.activeTypingLocal() ?? null,
   );
 
   private readonly nextSpeaker = computed<ParticipantDetail | null>(() => {
@@ -2443,13 +2442,42 @@ export class SalonConversation {
    * the impersonate dispatch itself triggers — erased the state and the card
    * snapped back to "Speak as". Impersonation could not be entered at all.
    *
-   * v4's sync guard is kept: the chat record overrides only when it carries a
-   * NON-EMPTY list (`:39-42`), so a record that omits the key leaves this alone.
+   * v4's sync guard is kept, but it now lives in {@link impersonationSync}: the
+   * local is authoritative and the chat record only RE-SEEDS it (never overrides
+   * it live), so a stale non-empty record cannot resurrect a just-stopped
+   * impersonation between the reply and the refetch (v4 Bug 51 client — see the
+   * clobber-guard parity spec).
    */
   private readonly impersonatingLocal = signal<string[]>([]);
-  protected readonly impersonatingIds = computed(() => {
-    const fromChat = this.chat()?.impersonatingParticipantIds ?? [];
-    return fromChat.length > 0 ? fromChat : this.impersonatingLocal();
+  protected readonly impersonatingIds = computed(() => this.impersonatingLocal());
+
+  /**
+   * v4 `useImpersonation` chat-sync effect (`useImpersonation.ts:29-48`), Bug 51's
+   * client half. The overlay is HELD LOCAL — the chat GET projected neither field
+   * before P4.D60, and even after it lands the mutation replies own every
+   * transition — so the persisted values are only a SEED:
+   *  - the impersonating LIST is re-applied from the record whenever it is
+   *    NON-EMPTY (`:34-36`); a record that omits it (or carries `[]`) leaves the
+   *    local alone, so the reply handlers own every transition, including → empty
+   *    (the refetch after a stop arrives already-consistent);
+   *  - the speaking-as is seeded ONCE, only while still unset
+   *    (`prev => prev ?? activeTypingId ?? null`, `:43`); re-applying it on every
+   *    refetch would clobber the turn-follow (Bug 49) and any manual pick — the
+   *    composer would snap back to the stale persisted seat after each turn.
+   * (`allLLMPauseTurnCount` is read straight off the chat by a computed, so the
+   * effect need not mirror v4's third `setAllLLMPauseTurnCount` arm.)
+   */
+  private readonly impersonationSync = effect(() => {
+    const chat = this.chat();
+    const ids = chat?.impersonatingParticipantIds;
+    if (ids && ids.length > 0) {
+      this.impersonatingLocal.set([...ids]);
+      untracked(() => {
+        if (this.activeTypingLocal() == null) {
+          this.activeTypingLocal.set(chat.activeTypingParticipantId ?? null);
+        }
+      });
+    }
   });
 
   /**

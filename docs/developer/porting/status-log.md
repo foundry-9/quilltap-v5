@@ -62037,3 +62037,41 @@ Pure de-duplication, zero behavior change, no oracle regen owed. Gate:
 fmt/clippy both feature sets clean; select_speaker / orchestrator_tier3 /
 salon_reads / salon_skip re-run green (salon_skip exercises the touched
 turn-action skip path). Version: core 0.0.517.
+## Lane record — P4.D61 (impersonate-takes-the-turn + speaking-as turn-follow + seed-once, SPA) — v4 `f6eac168` (Bugs 48/49 + Bug 51 client half)
+
+Branch `claude/p4-d61-follow-impersonation-spa-63209e`. SPA-only lane (owns
+`apps/web/**`, bumps only the SPA version). Oracle = v4's CLIENT at `f6eac168`
+(`app/salon/[id]/SalonView.tsx` + `hooks/useImpersonation.ts`); no Rust
+differential owed. Drift-check at lane start: `git log f6eac168..HEAD` empty,
+v4 tree clean.
+
+**The architecture gap this lane had to bridge.** v4 computes the turn
+CLIENT-side from message history (`calculateTurnStateFromHistory` +
+`selectNextSpeaker`, recomputed only when messages change) and simply overwrites
+`turnSelectionResult`. v5 is SERVER-authoritative: `_turnEffect` re-queries the
+turn (`chatTurnAction {action:'query'}`) on every chat settle. So a direct
+Bug-48 write to the turn signal would be clobbered by the next auto-refresh —
+especially once P4.D60's GET projection makes the post-impersonate refetch change
+`chat()`. The port therefore layers a client `turnOverride` ABOVE the
+server-queried turn (the same pattern as the existing `activeSpeakerOverride`
+over the persisted speaking-as), cleared when a message is actually sent
+(`runTurn`) — matching v4's "recomputed from history once a message is sent".
+
+**Unit 1 — Bug 51 (client seed/precedence).** v5 had read the overlay LIVE off
+the chat record (`impersonatingIds = fromChat.length>0 ? fromChat : local`;
+`activeSpeakerId = … ?? chat().activeTypingParticipantId`). Once P4.D60 projects
+those fields that goes stale between a reply and the refetch. Ported v4's
+seed-not-override semantics: added the `impersonationSync` effect (mirrors v4
+`useImpersonation.ts:29-48`) — re-seeds `impersonatingLocal` from the record only
+when NON-EMPTY, seeds `activeTypingLocal` ONCE while unset
+(`prev ?? activeTypingId ?? null`); re-pointed `impersonatingIds` at the local
+and dropped the live `chat().activeTypingParticipantId` fallback from
+`activeSpeakerId`; re-pointed the sidebar's `activeTypingParticipantId` binding
+at `activeSpeakerId()` (v4 feeds `impersonation.activeTypingParticipantId`, the
+local, not the record). Parity specs (salon-conversation.spec.ts, new describe
+block) pin: reload re-seeds list + speaking-as; the clobber guard (stale
+non-empty record does NOT resurrect a stopped impersonation — **shown RED
+against the old computed** [`['p1']` vs `[]`] before the fix, per the
+pre-seeded-DTO discipline); seed-once survives a forced refetch. Gate: the
+affected impersonation/speaking-as/banner suites green (62/62 across
+salon-conversation + salon-turn-controls); `ng build` clean. SPA 0.5.441.
