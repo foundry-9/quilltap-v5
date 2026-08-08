@@ -152,6 +152,18 @@ export function readImpersonatingIds(
 }
 
 /**
+ * v4 `data.activeTypingParticipantId` off an impersonate / stop-impersonate reply
+ * (`useImpersonation.ts:63,107,134`). Like {@link readImpersonatingIds}, the reply
+ * is the AUTHORITATIVE source: the chat GET projects neither key, so the client
+ * must hold both locally. Returns the id, or `null` when the body omits it (the
+ * caller supplies v4's `|| participantId` / `|| null` fallback).
+ */
+export function readActiveTyping(data: Record<string, unknown>): string | null {
+  const id = data['activeTypingParticipantId'];
+  return typeof id === 'string' ? id : null;
+}
+
+/**
  * The LLM document tools whose success invalidates an open pane's cached
  * content / mtime / path, so the pane reloads from the server (v4 SalonView
  * `onToolResult`): open/close reconcile the open set; the write/move/delete
@@ -1817,8 +1829,23 @@ export class SalonConversation {
       })),
   );
 
+  /**
+   * v4 `activeTypingParticipantId` useState (`useImpersonation.ts`): the seat the
+   * human is currently speaking as, applied from the impersonate / stop replies
+   * (`|| participantId` on start, `|| null` on stop). LOCAL for the same reason
+   * as {@link impersonatingLocal} — the chat GET projects no
+   * `activeTypingParticipantId`, so the reply is the only source and a refetch
+   * must not erase it. Without this the speaking-as portrait (Bug 46(b)) and the
+   * optimistic bubble (Bug 45) fell back to the owner seat while impersonating.
+   */
+  private readonly activeTypingLocal = signal<string | null>(null);
+
   protected readonly activeSpeakerId = computed(
-    () => this.activeSpeakerOverride() ?? this.chat()?.activeTypingParticipantId ?? null,
+    () =>
+      this.activeSpeakerOverride() ??
+      this.activeTypingLocal() ??
+      this.chat()?.activeTypingParticipantId ??
+      null,
   );
 
   private readonly nextSpeaker = computed<ParticipantDetail | null>(() => {
@@ -2371,6 +2398,8 @@ export class SalonConversation {
     try {
       const data = await this.core.dispatchData({ type: 'chatImpersonate', chatId, participantId });
       this.impersonatingLocal.set(readImpersonatingIds(data, [participantId]));
+      // v4 `setActiveTypingParticipantId(data.activeTypingParticipantId || participantId)`.
+      this.activeTypingLocal.set(readActiveTyping(data) ?? participantId);
       this.toasts.showSuccess(`Now speaking as ${name}`);
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to start impersonation');
@@ -2426,6 +2455,8 @@ export class SalonConversation {
         participantId,
       });
       this.impersonatingLocal.set(readImpersonatingIds(data, []));
+      // v4 `setActiveTypingParticipantId(data.activeTypingParticipantId || null)`.
+      this.activeTypingLocal.set(readActiveTyping(data));
       this.toasts.showSuccess(`Stopped speaking as ${name}`);
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to stop impersonation');
@@ -2449,6 +2480,8 @@ export class SalonConversation {
         newConnectionProfileId: connectionProfileId,
       });
       this.impersonatingLocal.set(readImpersonatingIds(data, []));
+      // v4 `setActiveTypingParticipantId(data.activeTypingParticipantId || null)`.
+      this.activeTypingLocal.set(readActiveTyping(data));
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to assign LLM profile');
       return;

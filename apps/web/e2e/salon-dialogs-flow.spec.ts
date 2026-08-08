@@ -362,6 +362,18 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const card = page.locator('qt-participant-card').filter({ hasText: name });
     await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
 
+    // Bug 46(b), the gesture dogfood #76 caught: once impersonating, the
+    // composer's "speaking as" portrait must flip to the IMPERSONATED seat. The
+    // impersonate reply carries `activeTypingParticipantId` (chatGet projects no
+    // such field), which must reach a local mirror — before the fix the cue
+    // stayed on the owner seat until a later round trip. Re-check the cue names
+    // the impersonated character now.
+    await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
+      'aria-label',
+      `Speaking as ${name}`,
+      { timeout: 15_000 },
+    );
+
     // The server side of Bug 44, through the wire: the column did NOT flip — the
     // seat stays LLM-owned, which is exactly what keeps it from becoming the
     // chat's user seat (`chatGet` does not project `impersonatingParticipantIds`,

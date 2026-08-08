@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed (dogfood #76): while impersonating a character, the composer speaking-as
+portrait kept showing your own character (not the impersonated one) and a
+just-sent message was optimistically attributed to your character before the
+server corrected it to the impersonated seat. The chat GET projects no
+`activeTypingParticipantId` (v4-faithful), and v5 had no local mirror for it —
+so the speaking-as resolution fell back to the owner seat while impersonating.
+Added the `activeTypingLocal` mirror, applied from the impersonate/stop replies
+like v4, and folded it into the active-speaker resolution. SPA 0.5.439.
+
 Fixed (dogfood #75, interim): the Salon composer editor collapsed to its width
 floor and the "Type a message…" placeholder clipped to "Type a", because v5's
 one-row gutter cluster (a p4.9l shortcut) plus the speaking-as avatar crammed

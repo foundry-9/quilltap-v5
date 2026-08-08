@@ -1168,6 +1168,87 @@ describe('SalonConversation — the speaking-as composer seat (v4 Bug 46b)', () 
   });
 });
 
+/**
+ * The impersonation flow END TO END (v4 Bugs 45 + 46(b)), driven the way the app
+ * actually runs it: `assemble_chat_get` projects NO `activeTypingParticipantId`
+ * (nor `impersonatingParticipantIds`), so the impersonate REPLY is the only
+ * source. `onImpersonate` must apply `data.activeTypingParticipantId` to a local
+ * mirror (v4 `setActiveTypingParticipantId(data.activeTypingParticipantId ||
+ * participantId)`), or the speaking-as portrait and the optimistic bubble fall
+ * back to the owner seat while impersonating — dogfood #76.
+ *
+ * ⚠ The older Bug 45/46b specs seeded `activeTypingParticipantId` onto the chat
+ * DTO — a value the real GET never sends — which is exactly why they stayed green
+ * while the live flow failed. These tests carry NO such phantom field.
+ */
+describe('SalonConversation — impersonation applies the reply, not a phantom chat field (dogfood #76)', () => {
+  type Host = {
+    onImpersonate(id: string): Promise<void>;
+    onStopImpersonate(id: string): Promise<void>;
+    onConfirmHandOff(profileId: string): Promise<void>;
+    speakingAsSeat(): { name: string; avatarUrl: string | null } | null;
+    send(p: { content: string; fileIds: string[] }): void;
+    optimisticUser(): MessageDto | null;
+  };
+
+  function impersonationClient(chat: ChatDetail): Partial<CoreClient> {
+    const base = stubClient(chat, new Subject<ScopedEvent>());
+    // v4's server sets activeTypingParticipantId = it || participantId on start,
+    // and reassigns/clears it on stop; the reply carries both keys.
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'chatImpersonate') {
+        return {
+          impersonatingParticipantIds: [req.participantId],
+          activeTypingParticipantId: req.participantId,
+          characterName: 'Friday',
+        };
+      }
+      if (req.type === 'chatStopImpersonate') {
+        return { impersonatingParticipantIds: [], activeTypingParticipantId: null, characterName: 'Friday' };
+      }
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    return { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
+  }
+
+  it('resolves the impersonated seat for the portrait AND the optimistic bubble — with no activeTypingParticipantId on the chat', async () => {
+    const chat = chatDetail();
+    // The realistic condition the old specs skipped: the GET omits the key.
+    expect((chat as unknown as Record<string, unknown>)['activeTypingParticipantId']).toBeUndefined();
+    const fixture = await render(impersonationClient(chat));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    // Before impersonating, the human speaks as their own owner seat.
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
+
+    // Impersonate the LLM seat p1 (Friday) — the reply is the only source.
+    await inst.onImpersonate('p1');
+    fixture.detectChanges();
+
+    // Bug 46(b): the portrait now shows the impersonated seat.
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Friday', avatarUrl: null });
+    // Bug 45: a just-sent message is optimistically authored as it (matching the
+    // server), with no flicker to Bertie.
+    inst.send({ content: 'as Friday', fileIds: [] });
+    expect(inst.optimisticUser()?.participantId).toBe('p1');
+  });
+
+  it('reverts to the owner seat when impersonation stops (via the hand-off confirm)', async () => {
+    const fixture = await render(impersonationClient(chatDetail()));
+    const inst = fixture.componentInstance as unknown as Host;
+    await inst.onImpersonate('p1');
+    fixture.detectChanges();
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Friday', avatarUrl: null });
+
+    // p1 has no connection profile, so stop diverts to the hand-off dialog; the
+    // confirm dispatches the stop, whose reply clears the active-typing seat.
+    await inst.onStopImpersonate('p1');
+    await inst.onConfirmHandOff('cp1');
+    fixture.detectChanges();
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };
