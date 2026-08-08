@@ -1812,13 +1812,22 @@ export class SalonConversation {
     }
   }
 
-  /** User-controlled, present characters — the Speaking-As selector's options. */
-  protected readonly controlledCharacters = computed<ControlledCharacter[]>(() =>
-    (this.chat()?.participants ?? [])
+  /**
+   * The Speaking-As selector's options: the seats the human may speak as — every
+   * genuine user-controlled character AND every seat impersonated this session
+   * (v4 `useParticipants.ts` `controlledCharacters`:
+   * `(isUserControlled || isImpersonating) && isActive`). Omitting the overlay
+   * arm left the selector hidden while impersonating, so the human was locked to
+   * the impersonated seat and could never switch back to their own character
+   * without stopping (dogfood #77).
+   */
+  protected readonly controlledCharacters = computed<ControlledCharacter[]>(() => {
+    const impersonating = this.impersonatingIds();
+    return (this.chat()?.participants ?? [])
       .filter(
         (p) =>
           p.type === 'CHARACTER' &&
-          p.controlledBy === 'user' &&
+          (p.controlledBy === 'user' || impersonating.includes(p.id)) &&
           p.isActive &&
           isParticipantPresent(p.status),
       )
@@ -1826,8 +1835,8 @@ export class SalonConversation {
         participantId: p.id,
         name: p.character?.name ?? 'Character',
         avatarUrl: participantAvatar(p),
-      })),
-  );
+      }));
+  });
 
   /**
    * v4 `activeTypingParticipantId` useState (`useImpersonation.ts`): the seat the
@@ -1952,20 +1961,33 @@ export class SalonConversation {
     return next?.character?.name ?? 'the next character';
   });
 
-  protected onSelectSpeaker(participantId: string): void {
-    this.activeSpeakerOverride.set(participantId);
+  protected async onSelectSpeaker(participantId: string): Promise<void> {
     const chatId = this.chatId();
-    if (!chatId) {
+    if (!chatId) return;
+    // Optimistic: reflect the pick immediately, before the reply lands.
+    this.activeSpeakerOverride.set(participantId);
+    try {
+      const data = await this.core.dispatchData({
+        type: 'chatSetActiveSpeaker',
+        chatId,
+        participantId,
+      });
+      // v4 `handleSetActiveSpeaker` (`useImpersonation.ts:157-163`): apply the
+      // reply to the LOCAL mirrors — the chat GET projects neither field, so the
+      // reply is the source (same as onImpersonate). The server adds a genuine
+      // user seat to `impersonatingParticipantIds` and returns the updated list;
+      // an LLM seat that is NOT impersonated is rejected (a thrown error here).
+      this.activeTypingLocal.set(participantId);
+      const ids = data['impersonatingParticipantIds'];
+      if (Array.isArray(ids)) {
+        this.impersonatingLocal.set(ids.filter((id): id is string => typeof id === 'string'));
+      }
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to set active speaker');
+    } finally {
+      // The persistent mirror now governs; the transient optimistic latch retires.
       this.activeSpeakerOverride.set(null);
-      return;
     }
-    void this.core
-      .dispatch({ type: 'chatSetActiveSpeaker', chatId, participantId })
-      .then(() => this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }))
-      // Hand authority back to the refetched chat, whether the server took the
-      // choice or refused it (it rejects a participant who is not being
-      // impersonated). Either way the override must not survive the round trip.
-      .finally(() => this.activeSpeakerOverride.set(null));
   }
 
   protected async onSkipUserTurn(): Promise<void> {

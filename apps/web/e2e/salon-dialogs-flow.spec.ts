@@ -374,6 +374,13 @@ test.describe('P4.9E3C — speaking as a character', () => {
       { timeout: 15_000 },
     );
 
+    // The gesture dogfood #77 caught: while impersonating, the human must still
+    // be able to speak as their OWN character. v4's controlledCharacters includes
+    // both the owner seat and the impersonated seat, so the Speaking-As selector
+    // (hidden below two seats) now appears — v5 had listed only user seats, so it
+    // stayed hidden and the human was locked to the impersonated character.
+    await expect(page.locator('qt-speaker-selector')).toBeVisible({ timeout: 15_000 });
+
     // The server side of Bug 44, through the wire: the column did NOT flip — the
     // seat stays LLM-owned, which is exactly what keeps it from becoming the
     // chat's user seat (`chatGet` does not project `impersonatingParticipantIds`,

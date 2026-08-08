@@ -1010,7 +1010,7 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
  */
 describe('SalonConversation — the Speaking-As override does not outlive its round trip', () => {
   type SpeakerHost = {
-    onSelectSpeaker(participantId: string): void;
+    onSelectSpeaker(participantId: string): Promise<void>;
     activeSpeakerId(): string | null;
   };
 
@@ -1021,20 +1021,50 @@ describe('SalonConversation — the Speaking-As override does not outlive its ro
     }
   }
 
-  it('shows the choice immediately, then hands authority to the refetched chat', async () => {
+  it('shows the choice immediately, and an ACCEPTED user seat persists (v4 setActiveTypingParticipantId)', async () => {
     const events$ = new Subject<ScopedEvent>();
-    // The server does NOT persist this speaker (v4/v5 both refuse a participant
-    // who is not being impersonated), so the refetch answers with null.
-    const client = stubClient({ ...chatDetail(), activeTypingParticipantId: null }, events$);
+    // Selecting a genuine user seat (pu) is ACCEPTED — the server adds it to the
+    // impersonating list and returns it (v4 handleSetActiveSpeaker applies the
+    // reply). The chat GET projects no activeTypingParticipantId, so persistence
+    // rides the local mirror, not the refetch.
+    const base = stubClient({ ...chatDetail(), activeTypingParticipantId: null }, events$);
+    const dispatchData = vi.fn(async (req: CoreRequest) =>
+      req.type === 'chatSetActiveSpeaker'
+        ? { impersonatingParticipantIds: ['pu'], activeTypingParticipantId: 'pu' }
+        : { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null },
+    );
+    const client = { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
     const fixture = await render(client);
     const inst = fixture.componentInstance as unknown as SpeakerHost;
 
-    inst.onSelectSpeaker('pu');
-    expect(inst.activeSpeakerId()).toBe('pu'); // the bridge
+    void inst.onSelectSpeaker('pu');
+    expect(inst.activeSpeakerId()).toBe('pu'); // the optimistic bridge
 
     await settle(fixture);
-    // THE GUARD: the stale choice must not survive. Before the fix it did, and
-    // every later optimistic bubble wore that participant's name.
+    // The accepted choice sticks — the optimistic latch retired but the local
+    // mirror carries it.
+    expect(inst.activeSpeakerId()).toBe('pu');
+  });
+
+  it('reverts when the server REFUSES the choice (the optimistic latch does not outlive)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // Selecting a non-impersonated LLM seat (p1) is refused — dispatchData
+    // rejects; the optimistic latch must clear and nothing persists.
+    const base = stubClient({ ...chatDetail(), activeTypingParticipantId: null }, events$);
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'chatSetActiveSpeaker') throw new Error('Participant is not being impersonated');
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    const client = { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as SpeakerHost;
+
+    void inst.onSelectSpeaker('p1');
+    expect(inst.activeSpeakerId()).toBe('p1'); // the bridge
+
+    await settle(fixture);
+    // THE GUARD: a refused choice must not survive. Before the fix a stale latch
+    // did, and every later optimistic bubble wore that participant's name.
     expect(inst.activeSpeakerId()).toBeNull();
   });
 
@@ -1186,6 +1216,8 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     onImpersonate(id: string): Promise<void>;
     onStopImpersonate(id: string): Promise<void>;
     onConfirmHandOff(profileId: string): Promise<void>;
+    onSelectSpeaker(id: string): Promise<void>;
+    controlledCharacters(): ReadonlyArray<{ participantId: string; name: string }>;
     speakingAsSeat(): { name: string; avatarUrl: string | null } | null;
     send(p: { content: string; fileIds: string[] }): void;
     optimisticUser(): MessageDto | null;
@@ -1195,16 +1227,30 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     const base = stubClient(chat, new Subject<ScopedEvent>());
     // v4's server sets activeTypingParticipantId = it || participantId on start,
     // and reassigns/clears it on stop; the reply carries both keys.
+    let impersonating: string[] = [];
     const dispatchData = vi.fn(async (req: CoreRequest) => {
       if (req.type === 'chatImpersonate') {
+        impersonating = [req.participantId];
         return {
-          impersonatingParticipantIds: [req.participantId],
+          impersonatingParticipantIds: [...impersonating],
           activeTypingParticipantId: req.participantId,
           characterName: 'Friday',
         };
       }
       if (req.type === 'chatStopImpersonate') {
+        impersonating = [];
         return { impersonatingParticipantIds: [], activeTypingParticipantId: null, characterName: 'Friday' };
+      }
+      if (req.type === 'chatSetActiveSpeaker') {
+        // The server adds a genuine user seat to the impersonating list (so it is
+        // "user-driven") and returns the updated list + the selected active id.
+        const pid = req.participantId as string;
+        if (!impersonating.includes(pid)) impersonating.push(pid);
+        return {
+          impersonatingParticipantIds: [...impersonating],
+          activeTypingParticipantId: pid,
+          characterName: 'Bertie',
+        };
       }
       return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
     });
@@ -1246,6 +1292,35 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     await inst.onConfirmHandOff('cp1');
     fixture.detectChanges();
     expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
+  });
+
+  // dogfood #77: while impersonating, the human must still be able to speak as
+  // their OWN character. v4's `controlledCharacters` includes both the genuine
+  // user seat and the impersonated seat, so the Speaking-As selector shows and
+  // switches between them; v5 had listed only `controlledBy === 'user'`, hiding
+  // the selector (< 2 seats) and locking the human to the impersonated seat.
+  it('lists both the owner and the impersonated seat, and switches back to the owner (dogfood #77)', async () => {
+    const fixture = await render(impersonationClient(chatDetail()));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    // Only the owner seat before impersonating (the selector stays hidden).
+    expect(inst.controlledCharacters().map((c) => c.name)).toEqual(['Bertie']);
+
+    await inst.onImpersonate('p1');
+    fixture.detectChanges();
+    // Now BOTH seats are offered (selector shows at length >= 2), and the human
+    // is speaking as the impersonated seat.
+    expect(inst.controlledCharacters().map((c) => c.name).sort()).toEqual(['Bertie', 'Friday']);
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Friday', avatarUrl: null });
+
+    // Switch back to the owner seat through the selector — the reply is applied
+    // to the local mirror, so it sticks (no phantom chat field, no refetch reset).
+    await inst.onSelectSpeaker('pu');
+    fixture.detectChanges();
+    expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
+    // A message typed now is authored as the owner seat, not the impersonated one.
+    inst.send({ content: 'back as myself', fileIds: [] });
+    expect(inst.optimisticUser()?.participantId).toBe('pu');
   });
 });
 

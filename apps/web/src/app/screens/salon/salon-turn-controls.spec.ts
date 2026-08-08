@@ -146,7 +146,21 @@ interface StubOptions {
 function stubClient(
   chat: ChatDetail,
   opts: StubOptions = {},
-): { client: Partial<CoreClient>; dispatch: ReturnType<typeof vi.fn> } {
+): {
+  client: Partial<CoreClient>;
+  dispatch: ReturnType<typeof vi.fn>;
+  dispatchData: ReturnType<typeof vi.fn>;
+} {
+  // onSelectSpeaker reads the reply through dispatchData (v4 handleSetActiveSpeaker
+  // applies it — the chat GET projects no activeTypingParticipantId).
+  const dispatchData = vi.fn(async (req: CoreRequest) =>
+    req.type === 'chatSetActiveSpeaker'
+      ? {
+          impersonatingParticipantIds: [req.participantId as string],
+          activeTypingParticipantId: req.participantId as string,
+        }
+      : {},
+  );
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
     switch (req.type) {
       case 'chatGet':
@@ -186,9 +200,11 @@ function stubClient(
   });
   return {
     dispatch,
+    dispatchData,
     client: {
       events$: new Subject<ScopedEvent>().asObservable(),
       dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
       dispatchExpect: (async (req: CoreRequest, expect: string) => {
         const resp = await dispatch(req);
         if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
@@ -348,7 +364,7 @@ describe('Salon turn controls', () => {
         participant({ id: 'pU2', controlledBy: 'user', character: charOf('cU2', 'Jeeves') }),
       ],
     });
-    const { client, dispatch } = stubClient(chat, {
+    const { client, dispatchData } = stubClient(chat, {
       query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
     });
     const fixture = await render(client);
@@ -368,7 +384,7 @@ describe('Salon turn controls', () => {
     option.click();
     await new Promise((r) => setTimeout(r, 0));
 
-    const setSpeaker = calls(dispatch, 'chatSetActiveSpeaker');
+    const setSpeaker = calls(dispatchData, 'chatSetActiveSpeaker');
     expect(setSpeaker).toHaveLength(1);
     expect((setSpeaker[0] as { participantId?: string }).participantId).toBe('pU2');
   });

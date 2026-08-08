@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed (dogfood #77): while impersonating a character, the human could not switch
+back to speaking as their own character — the Speaking-As selector stayed hidden
+and every typed message went to the impersonated seat. v5's `controlledCharacters`
+listed only genuine user seats, where v4 includes impersonated seats too, so the
+selector never reached its two-seat threshold. It now includes impersonated seats
+(matching v4), and `onSelectSpeaker` applies the server reply to the local
+speaking-as/impersonation mirrors so a pick persists (the chat GET projects
+neither field). SPA 0.5.440.
+
 Fixed (dogfood #76): while impersonating a character, the composer speaking-as
 portrait kept showing your own character (not the impersonated one) and a
 just-sent message was optimistically attributed to your character before the
