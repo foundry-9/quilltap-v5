@@ -34,6 +34,15 @@ pure helper that projects the turn rotation one step past a user's just-typed,
 unpersisted message, so a multi-seat room's first responder honors the full
 roster instead of an LLM-only shortlist. Tier-1 differential extended
 (`select-speaker` gains eight `select-after` cases against v4's real helper).
+Fixed (v4 Bug 49; P4.D61): the composer's speaking-as now follows the current
+user-driven turn — when the rotation lands on a seat the human drives (their own
+character or one they are impersonating) and that seat changes, the speaking-as
+defaults to it, so on the impersonated character's own turn you speak as them
+without a manual switch. It is a latch keyed on the turn seat: a deliberate
+same-turn Speaker choice still sticks, and a non-user/absent next speaker clears
+it. Client-only (forwarded per send as `speakingAsParticipantId`; no per-turn
+persistence). SPA 0.5.443.
+
 Fixed (v4 Bug 48; P4.D61): impersonating a character now hands them the current
 turn — unless an LLM is mid-generation — so the composer's user-turn banner
 names them and a typed message lands in turn. v5's turn is server-authoritative

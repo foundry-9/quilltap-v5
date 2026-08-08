@@ -1512,6 +1512,103 @@ describe('SalonConversation — impersonating takes the current turn (v4 Bug 48)
   });
 });
 
+/**
+ * v4 Bug 49 (`SalonView.tsx` turn-follow effect, `f6eac168`): the composer's
+ * speaking-as follows the current user-driven turn. It is a latch keyed on the
+ * turn SEAT — it reacts only when the user-driven seat CHANGES, clears on a
+ * non-user seat or no seat, and never fights a deliberate same-turn pick.
+ */
+describe('SalonConversation — the speaking-as follows the user-driven turn (v4 Bug 49)', () => {
+  type FollowHost = {
+    activeSpeakerId(): string | null;
+    turnInfo: { set(v: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null }): void };
+    impersonatingLocal: { set(v: string[]): void };
+    activeTypingLocal: { set(v: string | null): void };
+    lastFollowedTurnSeat: string | null;
+  };
+
+  function threeSeatChat(): ChatDetail {
+    return {
+      ...chatDetail(),
+      participants: [
+        participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p1', controlledBy: 'llm', character: { id: 'c1', name: 'Friday', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p2', controlledBy: 'user', character: { id: 'u2', name: 'Jeeves', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      ],
+    };
+  }
+
+  async function mount(): Promise<{ fixture: ComponentFixture<SalonConversation>; inst: FollowHost }> {
+    const fixture = await render(stubClient(threeSeatChat(), new Subject<ScopedEvent>()));
+    return { fixture, inst: fixture.componentInstance as unknown as FollowHost };
+  }
+
+  it('defaults the speaking-as to a genuine user-driven turn seat', async () => {
+    const { fixture, inst } = await mount();
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('pu');
+  });
+
+  it('follows an impersonated LLM seat via the overlay (its own turn)', async () => {
+    const { fixture, inst } = await mount();
+    inst.impersonatingLocal.set(['p1']);
+    inst.turnInfo.set({ nextSpeakerId: 'p1', nextSpeakerControlledBy: 'llm' });
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('p1');
+  });
+
+  it('reacts when the user-driven turn seat CHANGES', async () => {
+    const { fixture, inst } = await mount();
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('pu');
+    inst.turnInfo.set({ nextSpeakerId: 'p2', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('p2');
+  });
+
+  it('does NOT fight a deliberate same-turn pick (the latch)', async () => {
+    const { fixture, inst } = await mount();
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('pu'); // followed
+
+    // The human deliberately picks another seat on the SAME turn.
+    inst.activeTypingLocal.set('p2');
+    fixture.detectChanges();
+    // Force the effect to re-run (a tracked dep changes) while the turn seat is
+    // unchanged — the seat latch must leave the manual pick alone.
+    inst.impersonatingLocal.set(['p1']);
+    fixture.detectChanges();
+    expect(inst.activeSpeakerId()).toBe('p2');
+  });
+
+  it('an LLM (non-impersonated) turn clears the latch and does not follow', async () => {
+    const { fixture, inst } = await mount();
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.lastFollowedTurnSeat).toBe('pu');
+
+    inst.turnInfo.set({ nextSpeakerId: 'p1', nextSpeakerControlledBy: 'llm' });
+    fixture.detectChanges();
+    expect(inst.lastFollowedTurnSeat).toBeNull();
+    // The speaking-as was not dragged onto the LLM seat.
+    expect(inst.activeSpeakerId()).toBe('pu');
+  });
+
+  it('no next speaker clears the latch', async () => {
+    const { fixture, inst } = await mount();
+    inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
+    fixture.detectChanges();
+    expect(inst.lastFollowedTurnSeat).toBe('pu');
+
+    inst.turnInfo.set({ nextSpeakerId: null, nextSpeakerControlledBy: null });
+    fixture.detectChanges();
+    expect(inst.lastFollowedTurnSeat).toBeNull();
+  });
+});
+
 describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
   interface AnnouncementHost {
     showAnnouncement: { set(v: boolean): void };

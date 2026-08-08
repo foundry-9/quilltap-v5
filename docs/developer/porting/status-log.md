@@ -62091,3 +62091,17 @@ post-impersonate refetch change `chat()`, it still survives). Parity specs: take
 the turn when idle (banner names the impersonated seat); leaves an in-flight
 stream untouched; the AllLLMPause take-over inherits it. Gate: salon specs 65/65;
 `ng build` clean. SPA 0.5.442.
+
+**Unit 3 — Bug 49 (the speaking-as turn-follow).** Added the `turnFollow` effect
+(mirrors v4 `SalonView.tsx`): watches `effectiveNextSpeakerId`, and when the seat
+is user-driven (`isUserDrivenSeat` over the overlay) AND CHANGES (a
+`lastFollowedTurnSeat` latch), defaults `activeTypingLocal` to it; clears the
+latch on a non-user seat or no next speaker. The `activeTypingLocal` read inside
+is `untracked` so the effect reacts to turn-seat changes only, never to its own
+write — a deliberate same-turn SpeakerSelector pick therefore sticks (and the
+latch guards even a forced re-run). It sets only the client speaking-as, which
+the send path forwards as `speakingAsParticipantId`. Parity specs arm-for-arm:
+follows a genuine user seat; follows an impersonated LLM seat via the overlay;
+reacts on seat change; a same-turn manual pick sticks; an LLM turn clears the
+latch (and doesn't drag the speaking-as onto it); no next speaker clears the
+latch. Gate: salon specs 71/71; `ng build` clean. SPA 0.5.443.

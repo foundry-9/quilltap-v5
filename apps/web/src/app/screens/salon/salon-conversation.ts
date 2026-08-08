@@ -2526,6 +2526,49 @@ export class SalonConversation {
   });
 
   /**
+   * v4 Bug 49 (`SalonView.tsx` turn-follow effect, `f6eac168`): the composer's
+   * speaking-as follows the current user-driven turn. When the turn lands on a
+   * seat the human drives — their own character OR one they are impersonating
+   * (Bug 44 overlay) — and that seat CHANGES, default the speaking-as to it, so
+   * on the impersonated character's own turn you speak as them without a manual
+   * switch.
+   *
+   * Keyed on the turn SEAT (a latch), not on the speaking-as value: a deliberate
+   * SpeakerSelector choice made on the SAME turn still sticks (it moves
+   * `activeTypingLocal` without moving the turn seat, and the latch leaves it
+   * alone until the turn seat itself changes). A non-user seat or no next speaker
+   * clears the latch. It sets only the client speaking-as, which the send path
+   * forwards as `speakingAsParticipantId` — no per-turn persistence. The
+   * `activeTypingLocal` read is `untracked` so the effect reacts to turn-seat
+   * changes only, never to its own write.
+   */
+  private lastFollowedTurnSeat: string | null = null;
+  private readonly turnFollow = effect(() => {
+    const nextId = this.effectiveNextSpeakerId();
+    if (!nextId) {
+      this.lastFollowedTurnSeat = null;
+      return;
+    }
+    const next = (this.chat()?.participants ?? []).find((p) => p.id === nextId);
+    if (
+      !next ||
+      !isUserDrivenSeat({ id: next.id, controlledBy: next.controlledBy ?? 'llm' }, this.impersonatingIds())
+    ) {
+      this.lastFollowedTurnSeat = null;
+      return;
+    }
+    // Only react when the user-driven turn seat itself changes — not when the
+    // human re-picks the speaking-as on the same turn.
+    if (this.lastFollowedTurnSeat === nextId) return;
+    this.lastFollowedTurnSeat = nextId;
+    untracked(() => {
+      if (this.activeTypingLocal() !== nextId) {
+        this.activeTypingLocal.set(nextId);
+      }
+    });
+  });
+
+  /**
    * v4 `useImpersonation.handleStopImpersonation` (`:71-113`).
    *
    * **The early return is the whole point.** If the participant is a character
