@@ -161,4 +161,22 @@ describe('BrahmaConsoleMessageList (v4 BrahmaConsoleMessageList.tsx)', () => {
     const fixture = await render({ messages: [], isStreaming: true });
     expect(text(fixture)).toContain('Thinking…');
   });
+
+  // Dogfood #74: the transcript must scroll WITHIN the list, not push the
+  // console's sticky header off the workspace tab. React renders the
+  // `flex-1 overflow-y-auto` div as the node itself; Angular wraps it in this
+  // host element, so the host must carry the flex sizing or the inner scroll
+  // container has no bounded parent and the whole tab scrolls.
+  it('bounds itself as a flex child so the header stays put (the host carries the sizing)', async () => {
+    const fixture = await render({ messages: [msg({ id: 'u1', content: 'hi' })] });
+    const host = fixture.nativeElement as HTMLElement;
+    for (const cls of ['flex', 'flex-col', 'flex-1', 'min-h-0']) {
+      expect(host.classList.contains(cls)).toBe(true);
+    }
+    // The inner scroll container is the one that scrolls, and it can shrink.
+    const scroller = host.querySelector('.overflow-y-auto') as HTMLElement | null;
+    expect(scroller).not.toBeNull();
+    expect(scroller!.classList.contains('flex-1')).toBe(true);
+    expect(scroller!.classList.contains('min-h-0')).toBe(true);
+  });
 });

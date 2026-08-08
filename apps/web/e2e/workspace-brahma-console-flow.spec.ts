@@ -124,6 +124,22 @@ test.describe('P4.9I1B — the Brahma Console', () => {
     await expect(page.locator('qt-brahma-console-view .qt-help-msg-assistant').first()).toBeVisible({
       timeout: 30_000,
     });
+
+    // Dogfood #74: with a chat open, the header (model picker + New
+    // conversation) is present AND stays put — the transcript scrolls WITHIN
+    // the message list, not by pushing the whole tab. The pre-fix bug was a
+    // `display: block` message-list host with no bounded height, so the scroll
+    // lived on the tab and the header rode off. Assert the header is visible and
+    // the message-list host computes as a bounded flex child.
+    const header = page.locator('qt-brahma-console-view [title="New conversation"]');
+    await expect(header).toBeVisible();
+    const listHost = page.locator('qt-brahma-console-message-list').first();
+    const box = await listHost.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { display: s.display, minHeight: s.minHeight };
+    });
+    expect(box.display).toBe('flex');
+    expect(box.minHeight).toBe('0px');
   });
 
   test('new conversation returns to the launcher listing the just-created chat', async ({

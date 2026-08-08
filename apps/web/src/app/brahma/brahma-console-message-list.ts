@@ -108,9 +108,16 @@ export class BrahmaCopyButton {
 @Component({
   selector: 'qt-brahma-console-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // The host must carry the flex sizing that v4's React root className provided:
+  // in React `<BrahmaConsoleMessageList>` renders the `flex-1 overflow-y-auto`
+  // div DIRECTLY, but Angular wraps it in this host element. Without
+  // `flex-1 min-h-0 flex flex-col` here the inner scroll container has no
+  // bounded parent, so it grows to content and the whole workspace tab scrolls —
+  // carrying the sticky header off-screen. (Dogfood #74.)
+  host: { class: 'flex flex-col flex-1 min-h-0' },
   imports: [Icon, MessageContent, ThinkingBlock, BrahmaToolCall, BrahmaCopyButton],
   template: `
-    <div class="flex flex-col gap-3 p-4 overflow-y-auto flex-1">
+    <div class="flex flex-col gap-3 p-4 overflow-y-auto flex-1 min-h-0">
       @if (renderItems().length === 0 && !isStreaming()) {
         <div class="text-center qt-text-secondary text-sm py-8">
           A direct line to the engine of your choosing. Pose a question to begin.

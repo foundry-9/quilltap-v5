@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed (dogfood #74): the Brahma Console header (model picker + New conversation)
+scrolled off the top of the workspace tab with the transcript instead of staying
+put. The message-list component host defaulted to `display: block` with no flex
+sizing — in v4's React DOM the `flex-1 overflow-y-auto` root is the node itself,
+but Angular wraps it in the host element, so the inner scroll container had no
+bounded parent and the whole tab scrolled. Gave the host `flex flex-col flex-1
+min-h-0` and the inner scroller `min-h-0`; the transcript now scrolls within the
+list and the header is sticky. SPA 0.5.437.
+
 Unified the `1bed814f` drift catch-up round (P4.D57 ∥ P4.D58 ∥ P4.D59) onto
 main — all three orders closed; the oracle baseline moves to `1bed814f` and
 the drift debt is cleared. The Brahma Console turn budget is live end-to-end
