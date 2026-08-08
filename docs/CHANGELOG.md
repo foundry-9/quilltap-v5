@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Planned the next porting round: a drift catch-up on three reference-app
+changes (work orders P4.D57/P4.D58/P4.D59). It ports the Brahma Console
+turn-budget instance setting, reconciles the impersonated-seat message
+attribution and turn banner (with a new "speaking as" composer portrait),
+and dispositions the About workspace-backdrop change. Work orders only;
+no behavior change yet.
+
 Reverted the previous change to the impersonated-seat turn banner. The
 reference app does not announce an impersonated seat's turn in the
 composer banner either (it keys on the seat's control column, which the
