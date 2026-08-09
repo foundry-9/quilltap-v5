@@ -459,9 +459,20 @@ test.describe('P4.9E3C — speaking as a character', () => {
     );
 
     // Hard-reload: the overlay is client-local, so it survives ONLY if the reload
-    // seeds it from the projected chat record.
+    // seeds it from the projected chat record. The session usually stays
+    // unlocked, so the reload lands straight back on the CHAT (no passphrase
+    // screen, no Chats-list heading) — `maybeUnlock`'s wait would time out
+    // there. Wait for passphrase-or-messages instead and unlock only if asked
+    // (the beat's first live run caught this gesture, not the port).
     await page.reload();
-    await maybeUnlock(page);
+    const reloadPassphrase = page.locator('#qt-passphrase');
+    await expect(
+      reloadPassphrase.or(page.locator('.qt-chat-messages-list')).first(),
+    ).toBeVisible({ timeout: 15_000 });
+    if (await reloadPassphrase.count()) {
+      await reloadPassphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
     // Unlock may land on the Salon list rather than the chat — re-open it so the
     // assertion measures a fresh load of this chat's projected record.
     if (!page.url().includes(chatId)) {
@@ -469,18 +480,27 @@ test.describe('P4.9E3C — speaking as a character', () => {
     }
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
 
-    // The composer still speaks as the impersonated seat (seeded from
-    // `activeTypingParticipantId`)…
-    await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
-      'aria-label',
-      `Speaking as ${name}`,
-      { timeout: 15_000 },
-    );
-    // …and the seat still reads as impersonated (seeded from
-    // `impersonatingParticipantIds`).
+    // The seat still reads as impersonated — the deterministic Bug-51 payoff:
+    // the chat GET projected `impersonatingParticipantIds` and the client
+    // seeded its overlay from it.
     await openSidebarSection(page, 'Participants');
     const reloadedCard = page.locator('qt-participant-card').filter({ hasText: name });
     await expect(reloadedCard.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
+
+    // The composer still has a user-driven speaking-as, and the Speaking-As
+    // selector renders — it needs ≥2 speakable seats, i.e. the impersonated
+    // seat was seeded back into `controlledCharacters`. The cue's NAME is
+    // deliberately not pinned: v4's Bug-49 turn-follow supersedes the persisted
+    // seed when the reload's turn belongs to another user-driven seat (v4
+    // f6eac168's own words — the seed "no longer clobbers the turn-follow"),
+    // and the post-reload turn rides a weighted-random rotation over the two
+    // user-driven seats, so a name-equality here is flaky by design. (The
+    // beat's first live run at unification asserted the impersonated name and
+    // caught exactly this: the follow had legitimately moved the speaking-as
+    // to the turn seat.) The seed-once semantics themselves are pinned
+    // mutation-proven in salon-conversation.spec.ts.
+    await expect(page.locator('.qt-speaking-as-avatar')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('qt-speaker-selector')).toBeVisible({ timeout: 15_000 });
 
     // Clean up for later specs sharing the instance (Solo Voyage's character has a
     // connection profile, so Stop goes direct — no Hand Off dialog).
