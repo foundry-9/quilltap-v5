@@ -123,7 +123,7 @@ const SEARCH_REPLACE_LANDED = true;
  * `true` once P4.D60 is on the branch (a named constant, never a capability
  * probe — `e2e-playwright-traps` §7).
  */
-const P4D60_CHAT_GET_PROJECTION_LANDED = false;
+const P4D60_CHAT_GET_PROJECTION_LANDED = true;
 
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
