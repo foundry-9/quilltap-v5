@@ -1419,8 +1419,16 @@ describe('SalonConversation — the persisted impersonation overlay is seeded, n
   });
 
   it('seeds the speaking-as ONCE — a later refetch does not clobber a moved seat', async () => {
+    // Each fetch returns a GENUINELY different object (a bumped `updatedAt`), so
+    // TanStack's structural sharing yields a NEW reference and the sync effect
+    // actually re-fires. A deep-equal stub would be silently kept by reference
+    // (`replaceEqualDeep`), the effect would never re-run, and this spec would
+    // pass even against an unconditional re-apply — the false green the §3
+    // unification review caught.
+    let fetchSeq = 0;
     const chat = () => ({
       ...chatDetail(),
+      updatedAt: `2026-01-01T00:00:0${fetchSeq++ % 10}.000Z`,
       impersonatingParticipantIds: ['p1'],
       activeTypingParticipantId: 'p1',
     });
@@ -1433,9 +1441,10 @@ describe('SalonConversation — the persisted impersonation overlay is seeded, n
     fixture.detectChanges();
     expect(inst.activeSpeakerId()).toBe('pu');
 
-    // Force a refetch: chatGet returns a fresh object, so chat() changes and the
-    // sync effect re-fires. Seed-once (`prev ?? …`) leaves the moved seat alone —
-    // an unconditional re-apply would snap it back to the persisted 'p1'.
+    // Force a refetch: the bumped `updatedAt` changes chat(), so the sync effect
+    // RE-FIRES over the still-non-empty list. Seed-once (`prev ?? …`) leaves the
+    // moved seat alone — an unconditional re-apply would snap it back to the
+    // persisted 'p1'.
     await TestBed.inject(QueryClient).invalidateQueries({ queryKey: ['chat', 'chat-1'] });
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 0));
