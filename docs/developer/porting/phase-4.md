@@ -4368,3 +4368,79 @@ worktree on any further drift (`oracle-regen-pinned-v4-worktree`, or
 `recipe_sweep.py --v4 <pin>`). The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 Drift-check before every round — v4 ships daily.
+
+## The `f6eac168` drift catch-up round (P4.D60 ∥ P4.D61 ∥ P4.44, 2026-08-08) — CLOSED
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `f6eac168` and
+the drift debt is CLEARED.** v4's Bugs 47–51 commit — filed from this
+port's own 2026-08-08 dogfood walk — absorbed whole: **P4.D60** (server)
+landed `select_next_speaker_after_user_message` + the spine's
+`maybe_pause_for_user_seat_turn` fair-rotation pause (bug 50; the
+`fair_rotation_pause` tier-3 case mutation-proven; the Carina markup side
+effect deferred loud at BOTH `user_message_carina` sites), the byte-exact
+Brahma budget-exhaustion salvage in both paths (bug 47; both tier-3
+families grew budget cases via a runtime `maxAgentTurns` override so the
+committed fixtures stayed untouched), the chat-GET projection of
+`impersonatingParticipantIds`/`activeTypingParticipantId` (bug 51;
+`get_impersonated` + the `[]`/`null` default arms), and the five-copy
+`impersonating_ids` consolidation ∥ **P4.D61** (SPA) landed
+impersonate-takes-the-turn as a client `turnOverride` LAYERED above v5's
+server-authoritative turn (a documented mechanism divergence from v4's
+client-computed turn; cleared on send), the latch-keyed speaking-as
+turn-follow, and the seed-once `impersonationSync` port (list re-applied
+when non-empty; speaking-as seeded once; the live `chat()` fallbacks
+removed — the stale-refetch clobber shown red pre-fix), with the reload
+beat ACTIVATE-AT-UNIFY flipped live ∥ **P4.44** closed three standing
+debts: the conversation-chunks upsert CREATE arm (minted-id normalizer
+over spec-pinned literals, 9 → 11 rows), the bug-43 per-delete/overwrite
+`cleanup_thumbnails` over the existing `StorageBackend` seam (both skip
+sites; chat-media twins verified un-wired in v4 itself), and the provider
+request-header pin (recorder + corpus at `f6eac168`, byte-identical on
+every pre-existing key; post-`apply_auth` subset diff + the 8-provider
+coverage floor; abort-arming deferred loud — wall-clock, unit-tier-proven).
+**The §3 unification review caught one would-have-shipped spec defect:**
+the seed-once parity spec was a FALSE GREEN (TanStack structural sharing
+kept the deep-equal stub's reference, so the sync effect never re-fired
+and the spec passed against pre-fix code); repaired with a per-fetch
+`updatedAt` bump and mutation-proven both directions (65/66 red under an
+unconditional re-apply, 66/66 green reverted). Gate: fmt; clippy both
+feature sets; release build; **419 test binaries / 1,978 tests / 0
+failed** with the round's env block; the round's seven differentials by
+name `--nocapture` zero SKIP over oracles regenerated FRESH at `f6eac168`
+(request-envelopes corpus byte-identical); ng test 296 files / 4,065;
+ng build clean; full Playwright green zero unexplained skips (numbers in
+the round record). Versions: core 0.0.518, harness 0.0.440, SPA 0.5.444;
+host/web/cli/tauri unchanged.
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass — long owed, still top** (no drift debt remains):
+   the standing 💸 queue (unchanged from the previous round's list),
+   **plus this round's live surfaces:** a real two-user-seat rotation on
+   the Friday copy (post as one seat, watch the pause hand the floor to
+   the other instead of the sole LLM answering), a Brahma
+   budget-exhaustion run (set the budget low, watch the salvage answer
+   instead of a silent hang), impersonate → reload → the overlay
+   survives, and the speaking-as turn-follow in a real multi-seat room.
+2. **The sweep-driver rot maintenance pass:** the six tier-1 turn
+   families SKIP-masquerade in `recipe_sweep.py` (flagged at f4955e0e,
+   re-confirmed at P4.D56) plus the four families named in the f4955e0e
+   round record.
+3. **Small follow-ups:** the P4.D54 AllLLMPause live-opener e2e beat
+   (needs an all-LLM chat seeded into the e2e fixture — the D61 deferral
+   names the constraint); P4.D51's bug-43 remaining note; the brahma
+   budget-override fixture-residue hardening note (the D60 review's
+   footnote — a reset-after-case or fixture comment).
+4. **The standing pools:** `p4.9i2` (help surface — now also carrying
+   `help/chat-multi-character.md` + `help/chat-turn-manager.md`),
+   `p4.9l` (composer toolbar), the rest of the `p4.9h2` bucket, the
+   BUILTIN TF-IDF manifest decision, the P4.D41 tier-2 item 9 fixture.
+
+**Standing regen note:** the oracle baseline is **`f6eac168`** (v4
+4.8.0-dev, adopted at the P4.D60∥P4.D61∥P4.44 unification; v4's tree was
+CLEAN there at the round's regens). Oracles regenerate straight from
+`~/source/quilltap-server` while HEAD stays there; pin a detached
+worktree on any further drift (`oracle-regen-pinned-v4-worktree`, or
+`recipe_sweep.py --v4 <pin>`). The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.
+Drift-check before every round — v4 ships daily.

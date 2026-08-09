@@ -62276,3 +62276,129 @@ be dead data, so it is deferred rather than faked.
 
 quilltap-harness → 0.0.437. No production source changed (recorder + corpus +
 harness test).
+
+---
+
+## Round record — the `f6eac168` drift catch-up unification (P4.D60 ∥ P4.D61 ∥ P4.44, 2026-08-08)
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `f6eac168`; the
+drift debt is CLEARED.** Unified on `unify/f6eac168-round` (thirteen lane
+commits cherry-picked in dependency order — server → SPA → P4.44 — with
+version-only Cargo.toml conflicts recounted per the playbook) and
+fast-forwarded to main. v4 verified at `f6eac168`, tree clean, at every
+oracle regen.
+
+### What landed (per lane — details in the lane records above)
+
+- **P4.D60 (server, bugs 47/50/51):** `select_next_speaker_after_user_message`
+  + the spine's `maybe_pause_for_user_seat_turn` fair-rotation pause; the
+  byte-exact Brahma budget-exhaustion salvage (both paths); the chat-GET
+  impersonation projection; the five-copy `impersonating_ids` consolidation
+  onto `db::chats_impersonation::read_impersonating`.
+- **P4.D61 (SPA, bugs 48/49/51-client):** the client `turnOverride` layered
+  above v5's server-authoritative turn (documented mechanism divergence);
+  the latch-keyed `turnFollow`; the seed-once `impersonationSync`; the
+  banner assertion + the gated reload beat. The P4.D54 AllLLMPause
+  live-opener beat DEFERRED LOUDLY (no all-LLM chat in the committed
+  fixture) with the unit-tier gesture landed instead.
+- **P4.44:** the conversation-chunks upsert CREATE arm (minted-id
+  normalizer, 9 → 11 rows); eager per-delete/overwrite `cleanup_thumbnails`
+  over `StorageBackend` (bug 43 tier 2 CLOSED; chat-media twins verified
+  un-wired in v4 itself); the provider request-header pin (post-`apply_auth`
+  subset + the 8-provider coverage floor + the OpenRouter-SDK divergence
+  asserted exercised; abort-arming deferred loud — wall-clock,
+  unit-tier-proven in `model::transport`).
+
+### The §3 review — findings (all fixed on the unify branch)
+
+1. **The would-have-shipped one: the seed-once parity spec was a FALSE
+   GREEN** (caught by the review, fixed in `test(salon): make the
+   seed-once parity spec a real mutation-killer`). The spec's stub
+   returned a deep-equal chat DTO on refetch; TanStack's structural
+   sharing (`replaceEqualDeep`) kept the OLD reference, `chat()` never
+   changed, the `impersonationSync` effect never re-fired — the
+   forced-refetch leg was inert and the spec passed even against an
+   unconditional re-apply (and against pre-fix code). Repaired with a
+   per-fetch `updatedAt` bump; mutation-proven BOTH directions
+   (unconditional re-apply → exactly that spec red 65/66; reverted →
+   66/66). **The reusable shape: a TanStack-backed spec that "forces a
+   refetch" with a deep-equal stub tests nothing — structural sharing
+   silently keeps the old reference; bump a field per fetch.**
+2. **The activated reload beat failed its FIRST live run, twice, both
+   spec-side** (the playbook's write-the-skipped-beat rule earning its
+   keep; fixed in `test(salon): fix the reload beat's gesture +
+   over-claiming assertion`). (a) The gesture: after `page.reload()` the
+   session stays unlocked and lands straight on the chat — `maybeUnlock`'s
+   passphrase-or-Chats-heading wait timed out. (b) The assertion
+   over-claimed: it pinned the composer cue to the IMPERSONATED name
+   post-reload, but v4's own Bug-49 turn-follow supersedes the persisted
+   seed when the turn belongs to another user-driven seat (v4 `f6eac168`'s
+   commit message says exactly this), and the post-reload turn rides a
+   weighted-random rotation over the two user-driven seats. The trace
+   proved the server projecting both fields correctly and the follow
+   moving the speaking-as to the turn seat — port correct, assertion
+   wrong. The beat now pins the deterministic Bug-51 payoffs (the
+   impersonation badge + the Speaking-As selector, which requires the
+   overlay seeded into `controlledCharacters`) with cue visibility.
+3. **Review notes recorded, no change:** the brahma budget-override
+   persists in the work DB after its case — safe today only because the
+   budget cases are LAST in both specs and both sides iterate in order; a
+   future case appended after them would silently run under budget 5
+   (symmetric, so green — but not testing what its author thinks). Harden
+   with a reset-after-case when next touching those fixtures. Also: the
+   console fixture's dead `expect` field inconsistency (cosmetic), and the
+   salon-reads Rust injection using `format!` SQL where the oracle
+   parameterizes (harmless with the fixed literal; parameterize if copied).
+4. The header pin's subset direction (v5's headers ⊆ v4's recorded set)
+   was examined for the omission blind spot and ACCEPTED: header PRESENCE
+   is pinned per provider by `model::transport`'s pre-existing unit tests;
+   the differential pins v4-parity of the values. Two layers, both
+   directions.
+
+### The unification wires (§4)
+
+- The §1 shared contract diffed name-for-name: the two projected keys
+  match the SPA mirror (`core-contract.ts:2641-2642`) and the mutation
+  replies exactly (`impersonatingParticipantIds` always `[]`-defaulted,
+  `activeTypingParticipantId` always present nullable).
+- `P4D60_CHAT_GET_PROJECTION_LANDED` flipped true — the reload beat is
+  LIVE (and its first live run did its job; see finding 2).
+- Versions recounted per the playbook (both Rust lanes bumped off the
+  same base): core 0.0.512 + 6 → **0.0.518**, harness 0.0.434 + 6 →
+  **0.0.440**, SPA → **0.5.444**; host/web/cli/tauri unchanged.
+
+### The gate
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets (plain + `quilltap-core/native-transport`); release build
+  clean.
+- **419 test binaries / 1,978 tests / 0 failed** (`cargo test
+  --workspace` exit 0) with the round's env block.
+- The round's SEVEN differentials re-run BY NAME with `--nocapture`, zero
+  SKIP, over oracles regenerated FRESH from `~/source/quilltap-server` at
+  `f6eac168`: select-speaker (15 select + 8 select-after),
+  orchestrator-tier3 (incl. `fair_rotation_pause`; TZ=UTC), brahma-console
+  tier-3 (10 cases incl. `budget_salvage`), brahma-orchestrator tier-3
+  (6 cases incl. `budget_exhausted`), salon-reads (7 cases incl.
+  `get_impersonated`), conversation-chunks tier-2 (11 rows),
+  request-builder (163 envelopes, headers pinned for 8 providers; the
+  corpus regenerated via `regenerate-request-envelopes.sh` and verified
+  BYTE-IDENTICAL to the committed file).
+- SPA: `ng test` **296 files / 4,065 tests / 0 failed**; `ng build`
+  clean; full Playwright **192 passed / 0 failed / 0 skipped** against
+  the fresh dist + rebuilt debug bins (the suite grew 190 → 192: the
+  turn-banner assertion joined the impersonation walk and the reload
+  beat activated).
+
+### Regen recipe notes (for the next unifier)
+
+- The jest mirror staging MUST copy the `fixtures/` sibling next to
+  `cases/` — the case files read `../fixtures/<name>.json` relative to
+  themselves; a cases-only mirror fails at `readFileSync` (this round's
+  first regen attempt did exactly that).
+- `ng test` is vitest-based — do NOT pass karma flags
+  (`--browsers=ChromeHeadless` aborts the runner before any test, and a
+  `| tail` pipeline masks the non-zero exit).
+
+Versions after the round: core 0.0.518, harness 0.0.440, host 0.0.63,
+web 0.0.66, cli 0.0.5, quilltap-tauri 0.0.6, SPA 0.5.444.

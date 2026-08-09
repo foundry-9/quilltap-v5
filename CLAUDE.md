@@ -2196,6 +2196,49 @@ records THERE. Update this summary only when a phase or round completes.
   round's surface (the impersonated seat's banner + Skip, the
   speaking-as portrait, a raised Brahma budget on a real deep query).
   Round record: `status-log.md`.
+- **The `f6eac168` drift catch-up round (P4.D60 ∥ P4.D61 ∥ P4.44):
+  UNIFIED on main (2026-08-08) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `f6eac168` and the drift debt is CLEARED.** v4's Bugs 47–51
+  (filed from this port's own dogfood walk) absorbed whole: the
+  fair-rotation first-responder pause (`select_next_speaker_after_user_
+  message` + the spine guard; Carina markup deferred loud at BOTH
+  `user_message_carina` sites), the byte-exact Brahma budget-exhaustion
+  salvage in both paths (runtime budget override — committed fixtures
+  untouched), the chat-GET impersonation projection + the five-copy
+  `impersonating_ids` consolidation ∥ the SPA client half:
+  impersonate-takes-the-turn as a `turnOverride` layered above v5's
+  server-authoritative turn (documented mechanism divergence), the
+  latch-keyed speaking-as turn-follow, the seed-once `impersonationSync`
+  port, the reload beat ACTIVATE-AT-UNIFY flipped live ∥ P4.44's three
+  standing debts: the chunks upsert CREATE arm (minted-id normalizer),
+  per-delete `cleanup_thumbnails` over `StorageBackend` (bug 43 tier 2
+  CLOSED; chat-media twins verified un-wired in v4 itself), the provider
+  request-header pin (post-`apply_auth` subset + 8-provider coverage
+  floor; abort-arming deferred loud, unit-tier-proven). **The §3 review
+  caught one would-have-shipped defect:** the seed-once parity spec was
+  a FALSE GREEN (TanStack structural sharing kept the deep-equal stub's
+  reference so the sync effect never re-fired) — repaired + mutation-
+  proven both directions. Gate: 419 test binaries / 1,978 / 0 with the
+  round's env block; the seven differentials by name zero SKIP over
+  fresh `f6eac168` oracles (request-envelopes corpus byte-identical);
+  clippy both feature sets; release build; ng 296 files / 4,065; full
+  Playwright green (numbers in the round record). Versions: core
+  0.0.518, harness 0.0.440, SPA 0.5.444. **The owed dogfood pass remains
+  the top next candidate** — it gains this round's surfaces (the
+  two-user-seat rotation pause, the Brahma salvage on a low budget,
+  impersonate → reload). Round record: `status-log.md`.
+- **Oracle baseline: `f6eac168` (2026-08-08, v4 4.8.0-dev), adopted at
+  the P4.D60∥P4.D61∥P4.44 unification — NO v4 drift debt remains.** The
+  two commits past `1bed814f`: `f521fc0c` (Bugs 48/49 filing, docs-only,
+  NO-PORT) and `f6eac168` itself (Bugs 47–51, absorbed by this round).
+  v4's tree was CLEAN at `f6eac168` at the round's regens. Oracles
+  regenerate straight from `~/source/quilltap-server` while HEAD stays
+  `f6eac168`; pin a detached worktree on any further drift
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+  The distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged. Drift-check before every round —
+  v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `1bed814f` (2026-08-07, v4 4.8.0-dev), adopted at
   the P4.D57∥D58∥D59 unification — NO v4 drift debt remains.** v4's
   tree was CLEAN at `1bed814f` at the round's regens (the P4.D56-era
