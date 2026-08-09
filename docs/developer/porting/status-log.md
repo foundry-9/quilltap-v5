@@ -61917,3 +61917,72 @@ QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mou
 Green (30 calls incl. `fair_rotation_pause`). Fixture invalidates: only the
 orchestrator family consumes `orchestrator-tier3.json` + the two work DBs (built
 fresh per run). Version: core 0.0.514.
+
+### Unit 3 — the Brahma budget-exhaustion salvage, both paths (Bug 47) + tier-3 differentials
+
+Ported v4's salvage in both Brahma paths (byte-exact strings). Streaming
+(`brahma_console/orchestrator.rs::process_brahma_response`, after
+`extract_submit_final_response_from_text`): when the trimmed response is empty,
+build `I reached my {N}-turn budget before I could compose a final answer.` +
+(when tool data exists) `\n\nHere is what I gathered before I stopped:\n\n{last}`,
+warn, and emit the salvage as a content chunk — the existing `if !full_response
+.is_empty()` block then persists the assistant message + `done`, so the run
+ALWAYS finalizes (even with no tool data). One-shot
+(`brahma_console/mod.rs::run_brahma_query`): salvage ONLY when `final_answer`
+empty AND `last_tool_result_text` non-empty; otherwise fall through to the
+existing `{ok:false, detail:'empty response'}`.
+
+**Differentials (tier-3 mocked-LLM):** both families gained a budget-exhaustion
+case. The Brahma turn budget is instance-wide (`instance_settings['brahmaConsole']`,
+default 50), and structurally the loop always executes ≥1 tool before the
+forced-final turn (to keep looping you must return tool calls; the first
+executes), so `last_tool_result_text` is always non-empty at exhaustion — hence
+the streaming salvage always fires and the ONE-SHOT no-data fall-through is
+covered by the existing `empty` case (the salvage's `&& !last_tool_result_text
+.is_empty()` guard is exactly what keeps `empty` → `{ok:false}`). To force the
+forced-final turn quickly WITHOUT disturbing the shared committed fixture (which
+also feeds `brahma_console_routes` + Rust unit tests), the budget is set at
+RUNTIME per-case: a new optional `maxAgentTurns` case field is written to a
+just-created `instance_settings` table in the copied work DB on BOTH sides (the
+committed fixture stays budget-50; only the salvage cases touch it). The orch
+salvage reuses `CHAT_A` (a USER_A brahma chat unused by the orch tier-3 cases —
+`handleBrahmaConsoleMessage` requires an existing brahma chat, so no fixture
+rebuild was needed). The console salvage needs no chat (`run_brahma_query` uses
+`chatId` only for logging). Five distinct `bx1..bx5` detection markers
+(`SELECT 1..5 AS n`) avoid the dup/stale-stuck guards; turn 5 is the forced-final
+tool call that goes unexecuted → empty → salvage folding bx4's result.
+
+Mutation-proven: neutering each salvage condition (`if false`) → the respective
+budget case goes red (streaming: frames+messages; one-shot: `{ok:false}` result).
+
+Regen recipes (Node 24, jest /tmp mirror; oracles /tmp-only, fixtures committed):
+```
+# orch (committed brahma-{main,mount}.db, reused as QT_FIXTURE_BRAHMA_*):
+WT=<worktree>; rm -rf /tmp/brahma-orch; mkdir -p /tmp/brahma-orch/{cases,fixtures}
+cp $WT/harness/oracle/cases/brahma-orchestrator-tier3.test.ts /tmp/brahma-orch/cases/
+cp $WT/harness/oracle/fixtures/brahma-orchestrator-tier3.json /tmp/brahma-orch/fixtures/
+cd ~/source/quilltap-server                     # HEAD f6eac168, clean
+QT_FIXTURE_BRAHMA_MAIN=$WT/crates/quilltap-web/tests/fixtures/brahma-main.db \
+QT_FIXTURE_BRAHMA_MOUNT=$WT/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma-orch.ndjson \
+  ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots ~/source/quilltap-server --roots /tmp/brahma-orch/cases -- brahma-orchestrator-tier3
+# console (fresh /tmp fixture from build-brahma-console-fixture.ts):
+QT_FIXTURE_OUT=/tmp/qt-brahma-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-brahma-mount.db \
+  ~/.nvm/versions/node/v24.13.1/bin/npx tsx $WT/harness/oracle/fixtures/build-brahma-console-fixture.ts
+rm -rf /tmp/brahma-oracle; mkdir -p /tmp/brahma-oracle/{cases,fixtures}
+cp $WT/harness/oracle/cases/brahma-console-tier3.test.ts /tmp/brahma-oracle/cases/
+cp $WT/harness/oracle/fixtures/brahma-console-tier3.json /tmp/brahma-oracle/fixtures/
+QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma.ndjson \
+  ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots ~/source/quilltap-server --roots /tmp/brahma-oracle/cases -- brahma-console-tier3
+# run:
+QT_ORACLE_BRAHMA_ORCH=/tmp/oracle-brahma-orch.ndjson \
+QT_ORACLE_BRAHMA=/tmp/oracle-brahma.ndjson \
+QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-brahma-mount.db \
+  cargo test -p quilltap-harness --test brahma_orchestrator_tier3_equivalence --test brahma_console_tier3_equivalence
+```
+Green (orch 6 cases; console 10 cases). The committed brahma fixture is UNCHANGED
+(runtime budget override), so `brahma_console_routes` + the brahma Rust unit tests
+need no regen. Versions: core 0.0.515, harness 0.0.436.

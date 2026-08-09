@@ -1,83 +1,269 @@
 {
-  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
-  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-  "detection": {
-    "sql1": [
-      {
-        "name": "run_sql",
-        "arguments": { "database": "main", "sql": "SELECT COUNT(*) AS n FROM connection_profiles" },
-        "callId": "call_sql1"
-      }
-    ],
-    "submit1": [
-      {
-        "name": "submit_final_response",
-        "arguments": { "response": "Here is my final answer." },
-        "callId": "call_submit1"
-      }
-    ],
-    "same": [
-      {
-        "name": "run_sql",
-        "arguments": { "database": "main", "sql": "SELECT 1" },
-        "callId": "call_same"
-      }
-    ]
-  },
-  "cases": [
-    {
-      "name": "plain",
-      "chatId": "c1000000-0000-4000-8000-00000000000b",
-      "content": "Hello there, Console.",
-      "streams": [
-        [
-          { "reasoning": "Let me think about this." },
-          { "reasoning": "Let me think about this. A greeting will do." },
-          { "content": "Greetings from the Console." },
-          { "done": true, "usage": { "promptTokens": 12, "completionTokens": 6, "totalTokens": 18 } }
-        ]
-      ]
+ "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+ "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+ "detection": {
+  "sql1": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT COUNT(*) AS n FROM connection_profiles"
     },
-    {
-      "name": "run_sql",
-      "chatId": "c1000000-0000-4000-8000-00000000000c",
-      "content": "How many connection profiles do I have?",
-      "streams": [
-        [{ "done": true, "rawResponse": { "marker": "sql1" } }],
-        [
-          { "content": "You have three connection profiles." },
-          { "done": true, "usage": { "promptTokens": 40, "completionTokens": 8, "totalTokens": 48 } }
-        ]
-      ]
+    "callId": "call_sql1"
+   }
+  ],
+  "submit1": [
+   {
+    "name": "submit_final_response",
+    "arguments": {
+     "response": "Here is my final answer."
     },
-    {
-      "name": "textblock",
-      "chatId": "c1000000-0000-4000-8000-00000000000e",
-      "content": "Run a trivial query in text-block mode.",
-      "streams": [
-        [
-          { "content": "Let me check.\n[[run_sql database=\"main\" sql=\"SELECT 1 AS one\"/]]" },
-          { "done": true }
-        ],
-        [{ "content": "The answer is one." }, { "done": true }]
-      ]
+    "callId": "call_submit1"
+   }
+  ],
+  "same": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 1"
     },
-    {
-      "name": "submit_final",
-      "chatId": "c1000000-0000-4000-8000-00000000000f",
-      "content": "Give me your final answer directly.",
-      "streams": [[{ "done": true, "rawResponse": { "marker": "submit1" } }]]
+    "callId": "call_same"
+   }
+  ],
+  "bx1": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 1 AS n"
     },
-    {
-      "name": "dup_stuck",
-      "chatId": "c1000000-0000-4000-8000-000000000010",
-      "content": "Keep querying until you loop.",
-      "streams": [
-        [{ "done": true, "rawResponse": { "marker": "same" } }],
-        [{ "done": true, "rawResponse": { "marker": "same" } }],
-        [{ "done": true, "rawResponse": { "marker": "same" } }],
-        [{ "content": "Stopping — I already have the data." }, { "done": true }]
-      ]
-    }
+    "callId": "call_bx1"
+   }
+  ],
+  "bx2": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 2 AS n"
+    },
+    "callId": "call_bx2"
+   }
+  ],
+  "bx3": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 3 AS n"
+    },
+    "callId": "call_bx3"
+   }
+  ],
+  "bx4": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 4 AS n"
+    },
+    "callId": "call_bx4"
+   }
+  ],
+  "bx5": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 5 AS n"
+    },
+    "callId": "call_bx5"
+   }
   ]
+ },
+ "cases": [
+  {
+   "name": "plain",
+   "chatId": "c1000000-0000-4000-8000-00000000000b",
+   "content": "Hello there, Console.",
+   "streams": [
+    [
+     {
+      "reasoning": "Let me think about this."
+     },
+     {
+      "reasoning": "Let me think about this. A greeting will do."
+     },
+     {
+      "content": "Greetings from the Console."
+     },
+     {
+      "done": true,
+      "usage": {
+       "promptTokens": 12,
+       "completionTokens": 6,
+       "totalTokens": 18
+      }
+     }
+    ]
+   ]
+  },
+  {
+   "name": "run_sql",
+   "chatId": "c1000000-0000-4000-8000-00000000000c",
+   "content": "How many connection profiles do I have?",
+   "streams": [
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "sql1"
+      }
+     }
+    ],
+    [
+     {
+      "content": "You have three connection profiles."
+     },
+     {
+      "done": true,
+      "usage": {
+       "promptTokens": 40,
+       "completionTokens": 8,
+       "totalTokens": 48
+      }
+     }
+    ]
+   ]
+  },
+  {
+   "name": "textblock",
+   "chatId": "c1000000-0000-4000-8000-00000000000e",
+   "content": "Run a trivial query in text-block mode.",
+   "streams": [
+    [
+     {
+      "content": "Let me check.\n[[run_sql database=\"main\" sql=\"SELECT 1 AS one\"/]]"
+     },
+     {
+      "done": true
+     }
+    ],
+    [
+     {
+      "content": "The answer is one."
+     },
+     {
+      "done": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "submit_final",
+   "chatId": "c1000000-0000-4000-8000-00000000000f",
+   "content": "Give me your final answer directly.",
+   "streams": [
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "submit1"
+      }
+     }
+    ]
+   ]
+  },
+  {
+   "name": "dup_stuck",
+   "chatId": "c1000000-0000-4000-8000-000000000010",
+   "content": "Keep querying until you loop.",
+   "streams": [
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "same"
+      }
+     }
+    ],
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "same"
+      }
+     }
+    ],
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "same"
+      }
+     }
+    ],
+    [
+     {
+      "content": "Stopping \u2014 I already have the data."
+     },
+     {
+      "done": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "budget_exhausted",
+   "chatId": "c1000000-0000-4000-8000-00000000000a",
+   "content": "Run a long investigation.",
+   "maxAgentTurns": 5,
+   "streams": [
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "bx1"
+      }
+     }
+    ],
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "bx2"
+      }
+     }
+    ],
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "bx3"
+      }
+     }
+    ],
+    [
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "bx4"
+      }
+     }
+    ],
+    [
+     {
+      "content": ""
+     },
+     {
+      "done": true,
+      "rawResponse": {
+       "marker": "bx5"
+      }
+     }
+    ]
+   ]
+  }
+ ]
 }

@@ -59,6 +59,10 @@ interface CaseSpec {
   userId: string;
   question: string;
   streams: ChunkSpec[][];
+  /** P4.D60 (Bug 47): per-case Brahma turn budget written to instance_settings
+   * before the case runs (absent = the default 50). A small budget forces the
+   * forced-final turn to exercise the salvage. */
+  maxAgentTurns?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -201,12 +205,13 @@ async function main(): Promise<void> {
   // `requiresApiKey` undefined — the barrel circular-init gotcha.
   await import('@/lib/plugins/provider-validation');
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { runBrahmaQuery } = await import('@/lib/services/brahma-console/one-shot.service');
+  const { setBrahmaConsoleSettings } = await import('@/lib/instance-settings');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -216,6 +221,16 @@ async function main(): Promise<void> {
   for (const call of spec.cases) {
     currentCase = call;
     streamCallIndex = 0;
+
+    // Per-case budget override (only the Bug-47 salvage cases set it); the
+    // committed fixture has no instance_settings table, so create it first — the
+    // absent setting resolves to the default 50 for every other case.
+    if (call.maxAgentTurns !== undefined) {
+      rawQuery(
+        'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+      );
+      await setBrahmaConsoleSettings({ maxAgentTurns: call.maxAgentTurns });
+    }
 
     const result = await runBrahmaQuery({
       repos,

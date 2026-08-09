@@ -656,6 +656,33 @@ where
     // Models that output submit_final_response as JSON text.
     full_response = extract_submit_final_response_from_text(&full_response);
 
+    // Budget-exhaustion salvage (Bug 47). The forced final turn (pushed at
+    // `agent_turn_count == max_agent_turns`) executes no tools, so a model that
+    // answers it with yet another native tool call instead of
+    // `submit_final_response` leaves `full_response` empty — native tool calls
+    // carry no prose. Without this, the run would end having spent real API budget
+    // with NO assistant message and NO `done` event: a silent hang that looks
+    // exactly like a crash. Synthesise a short explanatory answer (folding in the
+    // last tool result we captured) so a run that did work always finalises with
+    // something and always signals completion below.
+    if js_trim(&full_response).is_empty() {
+        let digest = if last_tool_result_text.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nHere is what I gathered before I stopped:\n\n{last_tool_result_text}")
+        };
+        full_response = format!(
+            "I reached my {max_agent_turns}-turn budget before I could compose a final answer.{digest}"
+        );
+        tracing::warn!(
+            chat_id = %chat_id,
+            max_agent_turns,
+            had_tool_data = !last_tool_result_text.is_empty(),
+            "Brahma Console exhausted its turn budget without a final response",
+        );
+        sink.emit(ChatEvent::content(full_response.clone()));
+    }
+
     // Save the final assistant message + emit the done frame (v4's `if (fullResponse)`).
     let mut result = BrahmaSendResult::default();
     if !full_response.is_empty() {

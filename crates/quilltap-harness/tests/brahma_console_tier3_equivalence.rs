@@ -76,6 +76,10 @@ struct CaseW {
     name: String,
     user_id: String,
     question: String,
+    /// P4.D60 (Bug 47): per-case Brahma turn budget written to instance_settings
+    /// before the case runs (absent = the default 50).
+    #[serde(default, rename = "maxAgentTurns")]
+    max_agent_turns: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -336,6 +340,24 @@ async fn brahma_console_tier3_matches_oracle() {
     let runner = BuiltInToolRunner::new(db.clone(), dummy_env());
 
     for case in &spec.cases {
+        // Per-case budget override (only the Bug-47 salvage case sets it); the
+        // committed fixture has no instance_settings table, so create it first.
+        if let Some(budget) = case.max_agent_turns {
+            db.write(move |w| {
+                w.main().connection().execute_batch(
+                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" \
+                     (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);",
+                )?;
+                quilltap_core::db::instance_settings::set_brahma_console_settings(
+                    w.main().connection(),
+                    budget,
+                )
+                .map(|_| ())
+            })
+            .await
+            .unwrap();
+        }
+
         let deps = BrahmaQueryDeps {
             db: &db,
             streaming: &streaming,

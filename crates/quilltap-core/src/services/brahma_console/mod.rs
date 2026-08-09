@@ -655,7 +655,26 @@ where
     // Models that output submit_final_response as JSON text.
     full_response = extract_submit_final_response_from_text(&full_response);
 
-    let final_answer = js_trim(&full_response).to_string();
+    let mut final_answer = js_trim(&full_response).to_string();
+
+    // Budget-exhaustion salvage (Bug 47) — the mirror of the streaming
+    // orchestrator's. The forced final turn runs no tools, so a model that answers
+    // it with another native tool call instead of `submit_final_response` leaves
+    // `full_response` empty. Rather than report a bare failure to Carina after
+    // spending real budget, synthesise an explanatory answer from the last tool
+    // result we captured. With no tool data at all there is genuinely nothing to
+    // return, so fall through to the empty-response failure below.
+    if final_answer.is_empty() && !last_tool_result_text.is_empty() {
+        final_answer = format!(
+            "I reached my {max_agent_turns}-turn budget before I could compose a final answer.\n\nHere is what I gathered before I stopped:\n\n{last_tool_result_text}"
+        );
+        tracing::warn!(
+            chat_id = %chat_id,
+            max_agent_turns,
+            "Brahma one-shot exhausted its turn budget without a final response",
+        );
+    }
+
     if final_answer.is_empty() {
         return fail("empty response");
     }

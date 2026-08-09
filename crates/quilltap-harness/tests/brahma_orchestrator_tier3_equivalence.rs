@@ -86,6 +86,10 @@ struct CaseW {
     #[serde(rename = "chatId")]
     chat_id: String,
     content: String,
+    /// P4.D60 (Bug 47): per-case Brahma turn budget written to instance_settings
+    /// before the case runs (default 50 = the fixture's absent-setting value).
+    #[serde(default, rename = "maxAgentTurns")]
+    max_agent_turns: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -421,6 +425,25 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     for case in &spec.cases {
+        // Per-case budget override (only the Bug-47 salvage cases set it); the
+        // committed fixture has no instance_settings table, so create it first.
+        // Every other case reads the absent setting → default 50.
+        if let Some(budget) = case.max_agent_turns {
+            db.write(move |w| {
+                w.main().connection().execute_batch(
+                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" \
+                     (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);",
+                )?;
+                quilltap_core::db::instance_settings::set_brahma_console_settings(
+                    w.main().connection(),
+                    budget,
+                )
+                .map(|_| ())
+            })
+            .await
+            .unwrap();
+        }
+
         let sink = RecordingSink::new();
         let mut cost = NoCostTracking;
         let mut deps = BrahmaSendDeps {

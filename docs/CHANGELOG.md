@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed (v4 Bug 47): the Brahma Console no longer hangs silently when its turn
+budget runs out. The forced final turn runs no tools, so a model that answered
+it with another tool call left an empty response — saving no message and
+signaling no completion. Both Brahma paths now salvage an explanatory answer
+folding in the last tool result: the streaming orchestrator always finalizes
+(message + done event) even with no tool data; the one-shot @Brahma path
+salvages when tool data exists and otherwise falls through to its existing empty
+-response failure.
+
 Fixed (v4 Bug 50): in a room where the human drives two or more seats alongside
 a single LLM, the LLM answered every human turn. The chat spine now runs a
 fair-rotation pause guard before resolving a responder — when the rotation's
