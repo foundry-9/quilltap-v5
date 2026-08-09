@@ -62023,3 +62023,17 @@ QT_ORACLE_SALON_READS=/tmp/oracle-salon-reads.ndjson \
   cargo test -p quilltap-harness --test salon_reads_equivalence
 ```
 Green (7 cases). Versions: core 0.0.516, harness 0.0.437.
+
+### Unit 5 (tier-2 rider) — the `impersonating_ids` consolidation
+
+Discharged the P4.D56 §3 style note: the `impersonatingParticipantIds` JSON
+extraction had FIVE identical copies. Promoted
+`db::chats_impersonation::read_impersonating` to `pub(crate)` as the single shared
+reader and deleted the four other copies — `participant_resolver::impersonating_ids`,
+`turn_orchestrator::impersonating_ids`, the `user_identity_resolver` inline, and
+the `api/salon.rs` turn-action inline (which needed an owned `Vec<String>` bound
+to a local instead of the temporary `.as_deref()`). All call sites re-pointed.
+Pure de-duplication, zero behavior change, no oracle regen owed. Gate:
+fmt/clippy both feature sets clean; select_speaker / orchestrator_tier3 /
+salon_reads / salon_skip re-run green (salon_skip exercises the touched
+turn-action skip path). Version: core 0.0.517.

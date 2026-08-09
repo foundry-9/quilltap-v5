@@ -821,6 +821,7 @@ pub async fn turn_action(
         if !participant_present(participant.get("status").and_then(Value::as_str)) {
             return bad_request("Participant is not active");
         }
+        let impersonating = crate::db::chats_impersonation::read_impersonating(&chat);
         if action == TurnAction::SkipUserTurn
             && !crate::participant_filters::is_user_driven_seat(
                 participant
@@ -831,14 +832,7 @@ pub async fn turn_action(
                     .get("controlledBy")
                     .and_then(Value::as_str)
                     .unwrap_or("llm"),
-                chat.get("impersonatingParticipantIds")
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect::<Vec<_>>()
-                    })
-                    .as_deref(),
+                Some(&impersonating),
             )
         {
             // A seat the human is impersonating (v4 Bug 44 overlay) is skippable

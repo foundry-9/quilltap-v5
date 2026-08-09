@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Refactor: consolidated the five duplicate `impersonatingParticipantIds` JSON
+extractions to one shared `db::chats_impersonation::read_impersonating` reader
+(the P4.D56 §3 style note). Pure de-duplication, no behavior change.
+
 Fixed (v4 Bug 51, server half): the chat GET now projects
 `impersonatingParticipantIds` and `activeTypingParticipantId`, so a reload (or a
 mid-session server restart) restores the impersonation overlay instead of

@@ -147,15 +147,7 @@ pub async fn resolve_user_identity(
         participants.iter().map(to_filter_participant).collect();
     // v4 Bug 44: honour the impersonation overlay when resolving the "Speaking As"
     // seat (its durable `controlledBy` is still `'llm'`).
-    let impersonating: Vec<String> = chat
-        .get("impersonatingParticipantIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
+    let impersonating = crate::db::chats_impersonation::read_impersonating(chat);
 
     let user_controlled = find_active_user_participant(
         &filter_participants,

@@ -698,13 +698,13 @@ where
     SNK: EventSink + Sync,
 {
     use super::participant_resolver::{
-        impersonating_ids, is_active_character, participants_of, to_filter_participant,
-        to_speaker_participant,
+        is_active_character, participants_of, to_filter_participant, to_speaker_participant,
     };
+    use crate::db::chats_impersonation::read_impersonating;
     use crate::participant_filters::{find_active_user_participant, is_user_driven_seat};
 
     let participants = participants_of(chat);
-    let impersonating = impersonating_ids(chat);
+    let impersonating = read_impersonating(chat);
 
     // Which seat is the human speaking as? (overlay-aware — an impersonated seat
     // counts, Bug 44.)

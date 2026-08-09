@@ -309,20 +309,6 @@ pub(crate) fn participants_array(chat: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// The chat's `impersonatingParticipantIds` (v4 `chat.impersonatingParticipantIds`),
-/// tolerating absence the `|| []` way — consulted by the who-responds gates for
-/// the impersonation overlay (v4 Bug 44).
-fn impersonating_ids(chat: &Value) -> Vec<String> {
-    chat.get("impersonatingParticipantIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// JSON-encode a list of ids exactly as JS `JSON.stringify` does (compact).
 fn json_ids(ids: &[String]) -> String {
     serde_json::to_string(ids).expect("string array always serializes")
@@ -436,7 +422,7 @@ pub async fn should_chain_next(
     let participants = participants_array(&fresh_chat);
     let filter_participants: Vec<FilterParticipant> =
         participants.iter().map(to_filter_participant).collect();
-    let impersonating = impersonating_ids(&fresh_chat);
+    let impersonating = crate::db::chats_impersonation::read_impersonating(&fresh_chat);
 
     let spoken_json = fresh_chat
         .get("spokenThisCycleParticipantIds")
@@ -757,7 +743,7 @@ pub async fn handle_turn_action(
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
         random01,
-        Some(&impersonating_ids(&chat)),
+        Some(&crate::db::chats_impersonation::read_impersonating(&chat)),
     );
 
     // Persist turnQueue + lastTurnParticipantId for state-modifying actions.

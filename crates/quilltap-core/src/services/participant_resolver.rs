@@ -205,19 +205,6 @@ fn is_llm_candidate(p: &Value, impersonating_participant_ids: Option<&[String]>)
         )
 }
 
-/// The chat's `impersonatingParticipantIds` (v4 `chat.impersonatingParticipantIds`),
-/// tolerating absence the `|| []` way.
-pub(crate) fn impersonating_ids(chat: &Value) -> Vec<String> {
-    chat.get("impersonatingParticipantIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 pub(crate) fn participants_of(chat: &Value) -> Vec<Value> {
     chat.get("participants")
         .and_then(Value::as_array)
@@ -324,7 +311,7 @@ pub async fn resolve_responding_participant(
     let participants = participants_of(chat);
     let filter_participants: Vec<FilterParticipant> =
         participants.iter().map(to_filter_participant).collect();
-    let impersonating = impersonating_ids(chat);
+    let impersonating = crate::db::chats_impersonation::read_impersonating(chat);
 
     // User participant (honoring the "Speaking As" selection + the impersonation
     // overlay, v4 Bug 44).

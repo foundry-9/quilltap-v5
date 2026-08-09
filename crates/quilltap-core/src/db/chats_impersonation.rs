@@ -31,7 +31,11 @@ use super::{chats_read, DbError};
 
 /// The chat's `impersonatingParticipantIds` (always present in the marshaled
 /// shape — `.default([])`), but tolerate absence the v4 `|| []` way.
-fn read_impersonating(chat: &Value) -> Vec<String> {
+///
+/// The single shared reader (P4.D56 §3 style note, discharged in P4.D60): the
+/// who-responds / who-is-typing gates across `services` and `api` consult this
+/// rather than re-inlining the JSON extraction. Owner of the former five copies.
+pub(crate) fn read_impersonating(chat: &Value) -> Vec<String> {
     chat.get("impersonatingParticipantIds")
         .and_then(Value::as_array)
         .map(|a| {
