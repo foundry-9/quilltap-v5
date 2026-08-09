@@ -27,16 +27,47 @@
 //! grok). Google's genai-SDK wire framing is deferred to the transport; its request
 //! LOGIC is verified in `request_builder_google_equivalence`.
 //!
+//! **Headers (P4.44 item 3).** Each row also carries the outbound `headers` the
+//! v4 plugin/SDK put on the wire. The differential compares them at the
+//! POST-`apply_auth` point — v5's REAL header set is driven through
+//! `execute_completion` (`build_request` → `transport_headers` → `apply_auth`,
+//! completion_provider.rs:140-141), which is where User-Agent, OpenRouter's
+//! `HTTP-Referer`/`X-Title`, and the api key actually land (not on `built.headers`
+//! alone). It is a SUBSET check — every header v5 models must appear in v4's
+//! recorded set with a matching value — because v4's SDKs add `x-stainless-*`
+//! plumbing a single reqwest transport neither sends nor should. The
+//! version-bearing User-Agent and the auth secret are normalized to placeholders.
+//! One documented, OpenRouter-only divergence: v4's `@openrouter/sdk` (speakeasy)
+//! send path overrides the User-Agent with its OWN and omits X-Title, so on those
+//! rows v5's transport-level `user-agent`/`x-title` differ by design (the vision
+//! send path is raw-fetch — it records `Quilltap/` + referer + title, matching
+//! v5). The other providers' stainless SDKs respect the configured Quilltap UA.
+//!
+//! **Abort/timeout arming is deliberately NOT pinned here** (loud deferral): the
+//! recorder observes the fetch ARGUMENTS (method/url/headers/body), but the
+//! abort+timeout wiring is SDK-internal (AbortSignal + duration + retry config,
+//! not a comparable value on the fetch call), and v5's equivalent lives in the
+//! reqwest transport's `TransportPolicy`, not in this sans-IO build path. That
+//! behavior is wall-clock — "no NDJSON corpus can observe it" (the P4.15
+//! falsifiability ruling) — and is proven unit-tier in `model::transport`'s tests.
+//!
 //! The corpus is committed
 //! (`harness/oracle/fixtures/request-envelopes/request-envelopes.recorded.ndjson`);
 //! no env var is needed to run — the family runs in every plain `cargo test`.
 //! Regenerate the corpus (Node 24, only after a v4 provider drift) with
 //! `harness/oracle/providers/regenerate-request-envelopes.sh`.
 
+use quilltap_core::model::completion::{CompletionMessage, CompletionParams};
+use quilltap_core::model::completion_provider::execute_completion;
 use quilltap_core::model::request_builder::{
     build_request, RequestInput, StreamMessage, ToolCallFunction, ToolCallPayload,
 };
+use quilltap_core::model::transport::{
+    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
+    TransportResponse,
+};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 fn corpus_path() -> PathBuf {
@@ -194,6 +225,113 @@ const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
     // `image-attachment-tools[send]` produce bodies, not refusals.
 ];
 
+// ── P4.44 item 3: the outbound-header pin ───────────────────────────────────
+//
+// Records the `TransportRequest` v5 hands the transport — the POST-`apply_auth`
+// header set (`transport_headers` + `apply_auth`, completion_provider.rs:140-141),
+// which is where User-Agent / HTTP-Referer / X-Title / the api key actually land
+// (not on `built.headers` alone). The differential compares only the headers v5
+// MODELS against v4's recorded set (a SUBSET: v4's SDKs add `x-stainless-*`
+// plumbing a single reqwest transport neither sends nor should), normalizing the
+// version-bearing User-Agent and the auth secret.
+struct HeaderCapture {
+    seen: std::sync::Mutex<Option<TransportRequest>>,
+}
+impl ProviderTransport for HeaderCapture {
+    fn execute<'a>(
+        &'a self,
+        request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+        *self.seen.lock().unwrap() = Some(request.clone());
+        Box::pin(async move {
+            Ok(TransportResponse {
+                status: 200,
+                body: b"{}".to_vec(),
+            })
+        })
+    }
+    fn execute_stream<'a>(
+        &'a self,
+        _request: &'a TransportRequest,
+        _policy: &'a TransportPolicy,
+    ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
+        Box::pin(async move {
+            Err(TransportError {
+                message: "unused".to_string(),
+                status: None,
+            })
+        })
+    }
+}
+
+/// v5's REAL outbound headers for `provider`, driven through the production line
+/// (`execute_completion` → `build_request` → `transport_headers` → `apply_auth`).
+/// Headers never depend on the body or the stream flag, so one plain call per
+/// provider serves every recorded row. The parse result is ignored — the request
+/// (with its headers) is captured before any parse. Names lowercased.
+fn v5_headers(rt: &tokio::runtime::Runtime, provider: &str) -> HashMap<String, String> {
+    let params = CompletionParams {
+        messages: vec![CompletionMessage::user("hi")],
+        model: "model".to_string(),
+        temperature: Some(0.5),
+        max_tokens: 1000,
+        strict_max_tokens: false,
+        cache_key: None,
+        profile_parameters: None,
+        attachments: Vec::new(),
+        request_timeout_ms: None,
+    };
+    let cap = HeaderCapture {
+        seen: std::sync::Mutex::new(None),
+    };
+    let policy = TransportPolicy::default();
+    let _ = rt.block_on(execute_completion(
+        &cap,
+        provider,
+        None,
+        "test-api-key",
+        &params,
+        &policy,
+        "Quilltap/TEST",
+        None,
+    ));
+    let req = cap
+        .seen
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| panic!("{provider}: execute_completion made no transport call"));
+    req.headers
+        .into_iter()
+        .map(|(k, v)| (k.to_lowercase(), v))
+        .collect()
+}
+
+/// Fold the version-bearing User-Agent and the auth secret to placeholders, so
+/// the pin is on the header NAME + scheme, not v4's build version or the key.
+/// `name` is already lowercased.
+fn normalize_header(name: &str, value: &str) -> String {
+    match name {
+        "user-agent" => {
+            assert!(
+                value.starts_with("Quilltap/"),
+                "unexpected User-Agent {value:?}"
+            );
+            "Quilltap/<v>".to_string()
+        }
+        "authorization" => {
+            assert!(
+                value.starts_with("Bearer "),
+                "unexpected Authorization {value:?}"
+            );
+            "Bearer <key>".to_string()
+        }
+        "x-api-key" => "<key>".to_string(),
+        _ => value.to_string(),
+    }
+}
+
 #[test]
 fn request_builder_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed request-envelope NDJSON");
@@ -206,6 +344,15 @@ fn request_builder_matches_v4() {
     let mut att_pairs = std::collections::HashSet::new();
     let (mut saw_pdf, mut saw_text_doc, mut saw_no_data, mut saw_multi, mut saw_no_data_failure) =
         (false, false, false, false, false);
+
+    // P4.44 item 3 — header pin. `execute_completion` needs a runtime; v5's
+    // headers are provider-invariant, so memoize one set per provider.
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let mut v5_header_cache: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut header_providers = std::collections::HashSet::new();
+    // The OpenRouter SDK-send path where v4's UA/X-Title legitimately diverge —
+    // asserted exercised so a corpus that lost those rows cannot pass silently.
+    let mut openrouter_sdk_rows = 0usize;
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -304,6 +451,59 @@ fn request_builder_matches_v4() {
             "{provider}/{case}[{mode}] url"
         );
 
+        // Headers (P4.44 item 3): every header v5 MODELS must appear in v4's
+        // recorded set with the same value (UA + auth normalized). A SUBSET check
+        // — v4's SDKs add `x-stainless-*` plumbing v5's single reqwest transport
+        // does not. An absent `headers` field is a pre-P4.44 line (skipped).
+        if let Some(recorded) = row.get("headers").and_then(Value::as_object) {
+            // v4's @openrouter/sdk (speakeasy) SDK-send path overrides the
+            // User-Agent with its OWN and omits X-Title; every other provider's
+            // SDK (the stainless family) respects the configured Quilltap UA. v5
+            // uses ONE reqwest transport for stream+send, so on that path its
+            // transport headers (Quilltap UA + X-Title) legitimately differ — a
+            // documented, OpenRouter-only divergence rooted in the single-
+            // transport design. Detect it by the recorded UA not being Quilltap's.
+            let recorded_ua = recorded
+                .get("user-agent")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let sdk_path = !recorded_ua.is_empty() && !recorded_ua.starts_with("Quilltap/");
+            if sdk_path {
+                assert_eq!(
+                    provider, "OPENROUTER",
+                    "{provider}/{case}[{mode}]: a provider SDK overrode the User-Agent \
+                     ({recorded_ua:?}) — only the @openrouter/sdk does this today; a new \
+                     one is a real divergence to investigate"
+                );
+                openrouter_sdk_rows += 1;
+            }
+            let v5 = v5_header_cache
+                .entry(provider.clone())
+                .or_insert_with(|| v5_headers(&rt, &provider));
+            for (name, value) in v5.iter() {
+                // On v4's SDK-delegated path, v5's transport-level `user-agent`
+                // and `x-title` differ by design — pin the rest.
+                if sdk_path && (name == "user-agent" || name == "x-title") {
+                    continue;
+                }
+                let want = normalize_header(name, value);
+                match recorded.get(name).and_then(Value::as_str) {
+                    Some(got_raw) => {
+                        let got = normalize_header(name, got_raw);
+                        assert_eq!(
+                            got, want,
+                            "{provider}/{case}[{mode}] header `{name}` diverged"
+                        )
+                    }
+                    None => panic!(
+                        "{provider}/{case}[{mode}]: v5 sends header `{name}`={want:?} but v4 \
+                         recorded none — regenerate the corpus or fix the port"
+                    ),
+                }
+            }
+            header_providers.insert(provider.clone());
+        }
+
         // Attachment results (P4.21): the recorder keeps the field only when
         // non-empty, so an absent field means v4 reported NOTHING — and v5
         // must report nothing too, not just "we didn't check".
@@ -376,5 +576,33 @@ fn request_builder_matches_v4() {
         "corpus lost the recorded 'File data not loaded' failure arm"
     );
 
-    eprintln!("OK: {rows} request envelopes ({refusals} recorded refusal(s)) matched v4.");
+    // Header coverage (P4.44 item 3): every provider must have had at least one
+    // row whose recorded headers were checked against v5's modeled set — a corpus
+    // that lost its `headers` key for a provider would silently stop pinning it.
+    for p in [
+        "ANTHROPIC",
+        "OPENAI",
+        "DEEPSEEK",
+        "OLLAMA",
+        "GROK",
+        "Z_AI",
+        "OPENROUTER",
+        "OPENAI_COMPATIBLE",
+    ] {
+        assert!(
+            header_providers.contains(p),
+            "no recorded headers checked for provider {p} — regenerate the corpus"
+        );
+    }
+    assert!(
+        openrouter_sdk_rows > 0,
+        "the OpenRouter SDK-send divergence (speakeasy UA / no X-Title) is no longer \
+         exercised — a lost vector, or the SDK stopped overriding the UA"
+    );
+
+    eprintln!(
+        "OK: {rows} request envelopes ({refusals} recorded refusal(s)) matched v4; \
+         headers pinned for {} providers.",
+        header_providers.len()
+    );
 }

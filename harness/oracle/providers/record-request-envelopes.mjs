@@ -28,8 +28,13 @@
  * concatenates into
  * `fixtures/request-envelopes/request-envelopes.recorded.ndjson`.
  *
- * Line shape: { provider, case, mode, input, method, url, body } (body = raw
- * request string). A line with no `mode` predates P4.11 and means `"stream"`.
+ * Line shape: { provider, case, mode, input, method, url, body, headers } (body =
+ * raw request string; headers = the outbound request headers, lowercased names —
+ * P4.44 item 3). A line with no `mode` predates P4.11 and means `"stream"`; a
+ * line with no `headers` predates P4.44. The Rust differential compares only the
+ * headers v5 MODELS (User-Agent, HTTP-Referer/X-Title, content-type, auth,
+ * anthropic-version) — a subset, since the SDKs add plumbing headers a single
+ * reqwest transport neither sends nor should.
  */
 
 import { writeFileSync } from 'node:fs';
@@ -117,6 +122,30 @@ function tryDecode(body) {
   } catch {
     return String(body);
   }
+}
+
+// Normalize whatever a fetch call carried as `headers` (a Headers instance, a
+// plain object, or an array of [k, v] pairs — the SDKs and the raw-fetch paths
+// each use a different shape) into a plain object with LOWERCASED names. HTTP
+// header names are case-insensitive, so the differential compares case-folded.
+function headersToObject(h) {
+  const out = {};
+  if (!h) return out;
+  if (typeof h.forEach === 'function' && typeof h.entries === 'function') {
+    for (const [k, v] of h.entries()) out[String(k).toLowerCase()] = String(v);
+    return out;
+  }
+  if (Array.isArray(h)) {
+    for (const pair of h) {
+      if (pair && pair.length >= 2) out[String(pair[0]).toLowerCase()] = String(pair[1]);
+    }
+    return out;
+  }
+  if (typeof h === 'object') {
+    for (const [k, v] of Object.entries(h)) out[String(k).toLowerCase()] = String(v);
+    return out;
+  }
+  return out;
 }
 
 function makeResponse(bodyText, contentType) {
@@ -421,7 +450,13 @@ async function main() {
         if (body === null && url && typeof url.text === 'function') {
           try { body = await url.clone().text(); } catch { /* leave null */ }
         }
-        captured = { method, url: u, body };
+        // Outbound headers (P4.44 item 3): from init.headers for a plain fetch,
+        // or off the undici Request object. Lowercased names (HTTP header names
+        // are case-insensitive; the SDKs differ from the raw-fetch paths).
+        const headers = headersToObject(
+          (init && init.headers) || (url && url.headers) || null
+        );
+        captured = { method, url: u, body, headers };
       }
       return mode === 'send'
         ? makeResponse(cannedJson(provider), 'application/json')

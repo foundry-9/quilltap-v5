@@ -62220,3 +62220,59 @@ quilltap-core → 0.0.513; quilltap-harness → 0.0.436 (the ripple: the existin
 `files_routes_equivalence` tier-2 family's `file_delete`/`file_upload` call sites
 pass the new optional backend as `None` — DB-invisible, so its diffs are
 unchanged).
+
+## Lane record — P4.44 item 3 (provider request-header pin)
+
+**Branch `claude/p4-44-pinning-followups-4f07c5`, baseline v4 `f6eac168`.**
+
+Closes the P4.D55 deferral ("the vision path's headers/abort behavior is unpinned
+by any family — recorders capture `{method,url,body}` only"). Confirmed at
+planning: no harness family pinned provider HTTP headers.
+
+- **Recorder** (`record-request-envelopes.mjs`): captures the outbound headers
+  (`headersToObject` normalizes a Headers instance / plain object / [k,v] array,
+  lowercasing names) and adds a `headers` key to each recorded line (off
+  `init.headers`, or the undici `Request`).
+- **Corpus** regenerated at `f6eac168` (all 8 providers × both modes,
+  `regenerate-request-envelopes.sh`). **Additive verified**: the pre-P4.44
+  committed corpus (163 lines) diffs BYTE-IDENTICAL on
+  `{provider,case,mode,input,method,url,body,attachmentResults,refused}` — only
+  `headers` is added (the one line with no headers is the openrouter
+  `tool-roundtrip[send]` refusal, which makes no fetch). v4 tree clean at HEAD ==
+  baseline, so no pinned worktree needed; SDK majors openai 7.2.0 /
+  `@openrouter/sdk` 1.2.2 (match package.json).
+- **Differential** (`request_builder_equivalence.rs`): v5's REAL post-`apply_auth`
+  headers are driven through `execute_completion` (→ `build_request` →
+  `transport_headers` → `apply_auth`, the production line) with a recording
+  `ProviderTransport`; headers are provider-invariant, so one call per provider is
+  memoized. A SUBSET comparison — every header v5 models must appear in v4's
+  recorded set with a matching value (v4's stainless SDKs add `x-stainless-*`
+  plumbing a single reqwest transport neither sends nor should) — normalizing the
+  version-bearing `user-agent` (`Quilltap/<v>`) and the auth secret (`authorization`
+  Bearer scheme + `x-api-key`). Coverage: all 8 providers header-checked; the
+  OpenRouter SDK-send divergence asserted exercised.
+- **The one documented divergence** (OpenRouter-only, both-directions-pinned):
+  v4's `@openrouter/sdk` (speakeasy) SDK-send path overrides the `user-agent` with
+  its own and OMITS `x-title`; v5 uses ONE reqwest transport for stream+send, so
+  its transport headers (Quilltap UA + X-Title) legitimately differ on that path.
+  Detected by the recorded UA not being `Quilltap/...` (the stainless SDKs respect
+  it); asserted OpenRouter-only, and those two headers skipped on those rows. The
+  VISION send path is raw-fetch (v4 bug 31) and records `Quilltap/` + referer +
+  title, matching v5 — so the deferral's actual target (the vision path) pins
+  cleanly.
+- **Mutation-proven** (D24): transiently changing `transport_headers`'s X-Title
+  to `Quilltapp` reddens `OPENROUTER/tools[stream] header x-title`. Reverted.
+
+**Tier-3 deferral (LOUD, with evidence): the abort/timeout-arming half is NOT
+pinned by this family.** The recorder observes the fetch ARGUMENTS
+(method/url/headers/body); the abort+timeout wiring is SDK-internal (an
+`AbortSignal` + a duration + retry config, not a comparable value on the fetch
+call), and v5's equivalent lives in the reqwest transport's `TransportPolicy`,
+not in this sans-IO build path. That behavior is wall-clock — "no NDJSON corpus
+can observe it" (the P4.15 falsifiability ruling, cited in `transport.rs`) — and
+is already proven unit-tier in `model::transport`'s tests. Recording a
+`signalArmed` flag with nothing at this test's level to compare it against would
+be dead data, so it is deferred rather than faked.
+
+quilltap-harness → 0.0.437. No production source changed (recorder + corpus +
+harness test).

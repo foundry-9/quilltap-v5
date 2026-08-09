@@ -71,6 +71,20 @@ just-stopped impersonation nor snaps the composer back to the stale persisted
 seat after each turn. The sidebar's active-typing indicator reads the same local
 source (v4 feeds `impersonation.activeTypingParticipantId`, not the record). SPA
 0.5.441.
+P4.44 item 3 — pinned the provider request HEADERS (the P4.D55 deferral: the
+vision/transport path's headers were unpinned by any family). The request-
+envelope recorder now captures the outbound headers, and
+`request_builder_equivalence` compares them at the post-`apply_auth` point (v5's
+real `transport_headers` + `apply_auth` via `execute_completion`), a subset check
+over the headers v5 models (User-Agent, HTTP-Referer/X-Title, content-type, auth,
+anthropic-version), normalizing the version-bearing User-Agent and the auth
+secret. The corpus widening is additive (every pre-existing method/url/body
+byte-identical). One documented OpenRouter-only divergence: v4's `@openrouter/sdk`
+send path overrides the User-Agent and omits X-Title, where v5's single reqwest
+transport keeps both. The abort/timeout-arming half stays a loud deferral (it is
+wall-clock, unobservable in the fetch-args corpus, and proven unit-tier in
+`model::transport`). quilltap-harness 0.0.437.
+
 P4.44 item 2 — eager per-delete/overwrite thumbnail cleanup (closes the bug 43
 tier-2 deferral). Deleting or overwriting a library file now eagerly removes its
 cached thumbnails (`_thumbnails/{fileId}_{120,150,300}.webp`) over the host's
