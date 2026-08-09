@@ -61986,3 +61986,40 @@ QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-br
 Green (orch 6 cases; console 10 cases). The committed brahma fixture is UNCHANGED
 (runtime budget override), so `brahma_console_routes` + the brahma Rust unit tests
 need no regen. Versions: core 0.0.515, harness 0.0.436.
+
+### Unit 4 — the chat-GET impersonation projection (Bug 51, server half) + tier-2 differential
+
+`api/salon.rs::assemble_chat_get` now inserts `impersonatingParticipantIds`
+(`?? []`) and `activeTypingParticipantId` (`?? null`) immediately after
+`lastTurnParticipantId`, before `isPaused`, carrying v4's why-comment. The DB row
+already decodes both (`chats_read.rs`: `array_or_empty` / `put_opt_string`); the
+mutation replies already project them — the gap was purely the GET. This is the
+Shared contract (BINDING, identical in P4.D61): always-present, same names /
+nullability as the mutation replies.
+
+**Differential (tier-2 structural):** the salon-reads family's regen at
+`f6eac168` adds the two keys to the existing `get_solo`/`get_group` cases
+(proving the DEFAULT `[]`/`null` arm), and a new `get_impersonated` case injects
+live impersonation state onto the group chat's first (LLM) seat at RUNTIME — a
+raw `UPDATE chats` on the fresh work copy on BOTH sides (the committed salon
+fixture is UNCHANGED, so no other salon family needs regen). The GET then projects
+the seat in both fields. The Rust harness injects as the LAST case (its shared db
+copy can't affect the earlier reads). Mutation-proven (force `[]` → `get_impersonated`
+red).
+
+Regen recipe (Node 24, jest /tmp mirror; committed salon fixture untouched):
+```
+WT=<worktree>; TMPO=/tmp/qt-salon-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$WT/harness/oracle/cases/salon-reads.test.ts" "$TMPO/cases/"
+cp "$WT/harness/oracle/fixtures/salon.json"       "$TMPO/fixtures/"
+cd ~/source/quilltap-server                        # HEAD f6eac168, clean
+QT_FIXTURE_SALON_MAIN=$WT/crates/quilltap-web/tests/fixtures/salon-main.db \
+QT_FIXTURE_SALON_MOUNT=$WT/crates/quilltap-web/tests/fixtures/salon-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-salon-reads.ndjson \
+  ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots ~/source/quilltap-server --roots "$TMPO/cases" -- salon-reads
+QT_ORACLE_SALON_READS=/tmp/oracle-salon-reads.ndjson \
+  cargo test -p quilltap-harness --test salon_reads_equivalence
+```
+Green (7 cases). Versions: core 0.0.516, harness 0.0.437.

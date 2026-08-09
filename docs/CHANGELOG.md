@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Fixed (v4 Bug 51, server half): the chat GET now projects
+`impersonatingParticipantIds` and `activeTypingParticipantId`, so a reload (or a
+mid-session server restart) restores the impersonation overlay instead of
+snapping every seat back to LLM-controlled. Both keys are always present (`[]` /
+`null` when unset), matching the mutation replies.
+
 Fixed (v4 Bug 47): the Brahma Console no longer hangs silently when its turn
 budget runs out. The forced final turn runs no tools, so a model that answered
 it with another tool call left an empty response — saving no message and

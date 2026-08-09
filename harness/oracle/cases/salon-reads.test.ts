@@ -46,6 +46,14 @@ interface CaseSpec {
   kind: 'settings' | 'list' | 'get';
   url: string;
   chatId?: string;
+  /** P4.D60 (bug 51): inject live impersonation state into the fresh fixture copy
+   * before the GET, so the projection exercises the non-default (`[]`/`null`) arm.
+   * Written as a raw UPDATE on the `chats` row (both differential sides mirror it). */
+  setImpersonation?: {
+    chatId: string;
+    impersonatingParticipantIds: string[];
+    activeTypingParticipantId: string | null;
+  };
 }
 
 function mockRequest(url: string): unknown {
@@ -118,12 +126,22 @@ async function runCase(
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
 
   await initializeDatabase();
+
+  // P4.D60 (bug 51): inject live impersonation state so the GET projection
+  // exercises the non-default arm (the columns are stored as JSON string / text).
+  if (c.setImpersonation) {
+    rawQuery('UPDATE "chats" SET "impersonatingParticipantIds" = ?, "activeTypingParticipantId" = ? WHERE "id" = ?', [
+      JSON.stringify(c.setImpersonation.impersonatingParticipantIds),
+      c.setImpersonation.activeTypingParticipantId,
+      c.setImpersonation.chatId,
+    ]);
+  }
 
   try {
     let response: { status: number; json: () => Promise<unknown> };
@@ -190,6 +208,20 @@ async function main(): Promise<void> {
       kind: 'get',
       url: `http://localhost/api/v1/chats/${groupId}`,
       chatId: groupId,
+    },
+    // P4.D60 (bug 51): the group chat with live impersonation state — the human
+    // impersonates its first (LLM) seat, so the GET must project the seat in
+    // `impersonatingParticipantIds` + `activeTypingParticipantId`.
+    {
+      name: 'get_impersonated',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${groupId}`,
+      chatId: groupId,
+      setImpersonation: {
+        chatId: groupId,
+        impersonatingParticipantIds: ['b2000000-0000-4000-8000-000000000001'],
+        activeTypingParticipantId: 'b2000000-0000-4000-8000-000000000001',
+      },
     },
   ];
 

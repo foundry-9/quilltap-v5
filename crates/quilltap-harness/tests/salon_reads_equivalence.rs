@@ -225,6 +225,25 @@ fn salon_reads_match_oracle() {
         strip_rendered_html(&mut want);
         cases.push(("get_group".into(), got, want));
     }
+    // get_impersonated (P4.D60, bug 51): inject live impersonation state onto the
+    // group chat, then GET — the projection must echo the seat in both fields.
+    // LAST case: the shared-db mutation cannot affect the earlier reads.
+    {
+        let seat = "b2000000-0000-4000-8000-000000000001";
+        let sql = format!(
+            "UPDATE \"chats\" SET \"impersonatingParticipantIds\" = '[\"{seat}\"]', \
+             \"activeTypingParticipantId\" = '{seat}' WHERE \"id\" = '{group}'"
+        );
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        }))
+        .expect("inject impersonation");
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, group, None)));
+        let mut want = oracle["get_impersonated"]["body"].clone();
+        strip_rendered_html(&mut want);
+        cases.push(("get_impersonated".into(), got, want));
+    }
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

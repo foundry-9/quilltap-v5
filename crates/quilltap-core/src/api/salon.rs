@@ -358,6 +358,22 @@ fn assemble_chat_get(
         "lastTurnParticipantId".into(),
         get_v("lastTurnParticipantId").unwrap_or(Value::Null),
     );
+    // Impersonation overlay state (v4 f6eac168, bug 51) — projected so a reload
+    // (or a mid-session server restart) restores the "speaking as" selection and
+    // the impersonated seats instead of snapping every seat back to
+    // LLM-controlled. Without these the client's useImpersonation sync reads
+    // `undefined` and shows an impersonated character as not impersonated.
+    // ALWAYS present: `?? []` for the id list, `?? null` for the typing seat.
+    out.insert(
+        "impersonatingParticipantIds".into(),
+        get_v("impersonatingParticipantIds")
+            .filter(|v| !v.is_null())
+            .unwrap_or(json!([])),
+    );
+    out.insert(
+        "activeTypingParticipantId".into(),
+        get_v("activeTypingParticipantId").unwrap_or(Value::Null),
+    );
     out.insert("isPaused".into(), json!(bool_or("isPaused", false)));
     // v4 `bd419ae9` (bug 37): surfaced so the client can explain a silent
     // all-LLM pause (opens AllLLMPauseModal). `?? 0` (materialized f64; the
