@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned the character-archive drift catch-up (v4 `f6eac168` →
+`d553f72a`): round 1 of 2, three work orders committed —
+`p4.d62-export-import-archive-substrate.md` (export fidelity, preserveIds,
+Bugs 52/54/55), `p4.d63-archive-schema-guards-crypto.md` (the D23
+three-column re-dump, write guards, the `archived=` chokepoint, archive
+crypto + re-encrypt, wipe/restore options), and `p4.d64-archive-spa.md`
+(the whole client surface, action beats gated). The archive service, API
+actions, and CLI are round 2 (scope recorded in the status log). Docs
+only; no version bumps.
+
 Unified the `f6eac168` drift catch-up round (P4.D60 ∥ P4.D61 ∥ P4.44) onto
 main — all three orders closed; the oracle baseline moves to `f6eac168`
 (v4 Bugs 47-51, filed from this port's own dogfood walk). Server: the

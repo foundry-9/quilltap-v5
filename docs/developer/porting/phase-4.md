@@ -4444,3 +4444,43 @@ worktree on any further drift (`oracle-regen-pinned-v4-worktree`, or
 `recipe_sweep.py --v4 <pin>`). The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 Drift-check before every round — v4 ships daily.
+
+## The character-archive drift catch-up campaign (planned 2026-08-10) — ROUND 1 IN FLIGHT
+
+**v4 drifted `f6eac168` → `d553f72a`** (five commits; classification in the
+status log's "Round planned" record): the complete character-archive
+feature — a D23 schema change (three `characters` columns), export
+fidelity + `preserveIds` (WP A2/B1), the prune-in-place archive service
+with passphrase-keyed AES-GCM bundles, guards/chokepoints across the
+turn/tool/mail surfaces, wipe/restore spare-bundle options, CLI
+subcommands, and a full Aurora client surface — plus Bugs 52/54/55 fixes.
+
+**A two-round campaign** (the archive service composes the export/import
+substrate, so it cannot land in one parallel round — the episodic-recall
+precedent):
+
+- **Round 1 (orders committed):** P4.D62 (the export/import/file-storage
+  substrate) ∥ P4.D63 (schema + guards + chokepoint + crypto/re-encrypt +
+  wipe options + the two verbs refusal-armed) ∥ P4.D64 (the whole SPA,
+  tombstone-read beats ACTIVATE-AT-UNIFY, action beats gated
+  `CHARACTER_ARCHIVE_SERVER_LANDED`). Orders:
+  `work-orders/p4.d62-export-import-archive-substrate.md`,
+  `work-orders/p4.d63-archive-schema-guards-crypto.md`,
+  `work-orders/p4.d64-archive-spa.md`. The Shared contract is identical
+  in all three and binding.
+- **Round 2 (owed after round 1 unifies; write its order at that
+  /setupphase against the then-current v4 HEAD):** the archive service
+  whole + rehydrate + participant flips, the two verbs un-refused, the
+  files-delete `ARCHIVE_BUNDLE_HELD` guard, the export-picker archived
+  filter, the three-key export carry, the CLI `db characters` family,
+  the SPA gate flips + action beats, and the round's e2e archive →
+  rehydrate walk.
+
+**⚠ Standing pin until round 1 unifies:** the oracle baseline stays
+`f6eac168` for all families outside these lanes; the round's own families
+regenerate at `d553f72a` (pin a detached worktree on further drift —
+`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 d553f72a`).
+Bug 53 (file-storage reconciliation) is MOOT for v5 — the subsystem is
+unported; banked in P4.D62's record. The owed dogfood pass and the other
+standing candidates (previous section) queue behind the drift per standing
+practice.

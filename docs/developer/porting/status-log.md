@@ -62402,3 +62402,81 @@ oracle regen.
 
 Versions after the round: core 0.0.518, harness 0.0.440, host 0.0.63,
 web 0.0.66, cli 0.0.5, quilltap-tauri 0.0.6, SPA 0.5.444.
+
+## Round planned — the character-archive drift catch-up, ROUND 1 of 2 (P4.D62 ∥ P4.D63 ∥ P4.D64, 2026-08-10)
+
+**v4 drifted `f6eac168` → `d553f72a` (five commits, tree CLEAN at
+`d553f72a`), classified at planning:**
+
+- `915f3875` + `9fc8de3a` — docs only (the character-archive design doc +
+  implementation spec + Bug 52 filing). Mirror rider assigned to P4.D63.
+- `01e481f6` — **the character-archive feature** (squash-merge; v4's spec
+  `docs/developer/features/character-archive-spec.md`, 1,187 lines, marked
+  COMPLETE): a schema migration (three nullable `characters` columns —
+  D23 territory), export fidelity (character exports carry the vault; Bug
+  52's avatar-id remap), the `preserveIds` import path
+  (refuse-on-collision + rehydrate-only skip-if-present), the
+  prune-in-place archive service with PBKDF2/AES-GCM crypto off the
+  runtime passphrase (never the pepper), write guards + the API-layer
+  `archived=` chokepoint + turn/participant/tool refusal arms, the
+  passphrase-change re-encrypt sweep, wipe/restore spare-bundle options,
+  the one-default embedding rule, API actions, four CLI subcommands, and
+  a full Aurora client surface. Bug 53 (reconciliation clobbering archive
+  rows) fixed inside — **MOOT for v5**: the file-storage reconciliation
+  subsystem is unported (`files_sync` refuses loudly); its three guards
+  are banked in P4.D62's record for that future port.
+- `d69287d9` — one-class Aurora button fix (+ version chores); folded
+  into P4.D64 (port the fixed classes).
+- `d553f72a` — Bugs 54/55: the sha256-dedup skip-if-present classifiers
+  and the typed `FileContentMissingError` → 404 arms; folded into P4.D62.
+
+**The campaign shape (episodic-recall precedent):** the archive service
+COMPOSES the export/import substrate (`createNdjsonStream(preserveIds)` /
+`executeImport(skip-if-present)`), so the feature cannot land in one
+parallel round. Round 1 lands the substrate + the schema/guards/crypto +
+the SPA (action beats gated); **round 2** (order to be written at its own
+/setupphase, against whatever v4 HEAD is then) lands: the archive service
+whole (prune-in-place, bundle write/verify, tombstone commit ordering,
+participant flips, rehydrate + re-chunk/re-embed), the two verbs
+un-refused (shapes pinned in round 1's Shared contract), the files-delete
+`ARCHIVE_BUNDLE_HELD` guard, the export-picker archived filter, the
+three-key export carry on character records, the CLI `db characters`
+subcommands (incl. the offline bundle decrypt), and the SPA gate flips
+(`CHARACTER_ARCHIVE_SERVER_LANDED`).
+
+**Round-1 orders (committed this session):**
+
+- `work-orders/p4.d62-export-import-archive-substrate.md` — export
+  fidelity (streamOneStore + vault emission + carried ids + excluded-files
+  + preview vaults), the whole preserveIds import path, Bug 52's reconcile
+  remap, Bug 54's sha256 arms, Bug 55's typed 404. Owns
+  `services/qtap_export/**` + `services/quilltap_import/**` +
+  `file_storage.rs` + `files_routes.rs` + host backend. Bumps core,
+  harness, web, host.
+- `work-orders/p4.d63-archive-schema-guards-crypto.md` — the D23 re-dump
+  (+ boot ensure + DDL mirrors + read tolerance), the write guard +
+  `archived=` chokepoint + all refusal/filter arms +
+  `setParticipantStatus`, archive-crypto + the engine-held runtime
+  passphrase cache + the re-encrypt sweep + the unlock `archives`
+  response, the wipe/restore spare-bundle options, the one-default
+  embedding rule, the two refusal-armed verbs, the docs mirror. Owns
+  `api/**`, `db/characters*`, the guard sites, `delete_all.rs`, the new
+  `services/character_archive/`. Bumps core, harness, web.
+- `work-orders/p4.d64-archive-spa.md` — the whole client surface
+  (roster/detail/dialogs/settings cards/wizards), strings byte-exact,
+  tombstone-read beats ACTIVATE-AT-UNIFY over a seeded archived character
+  (`ARCHIVE_TOMBSTONE_SEEDED`), action beats gated for round 2. Owns
+  `apps/web/**`. Bumps the SPA.
+
+**Cross-lane rules pinned in every order (the Shared contract):** the
+wire keys/verbs/sentences quoted verbatim; the cross-lane fixture rule
+(P4.D62's `system-data-*` extension stays OLD-schema by mutating copies —
+a fresh `d553f72a` rebuild would drag P4.D63's columns into P4.D62's
+diffs); the delete-data fixture coordination (P4.D62 plants the ARCHIVE
+rows P4.D63's kept/swept arms consume).
+
+**Standing pin until this round unifies:** the oracle baseline stays
+`f6eac168` for everything OUTSIDE these lanes; the round's own families
+regenerate at `d553f72a` (pin a detached worktree if v4 moves again).
+Surveys (2026-08-10, all fresh line numbers at `d553f72a`) are embedded in
+the orders.
