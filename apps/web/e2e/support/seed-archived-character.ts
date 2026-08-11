@@ -118,6 +118,21 @@ function insertCopy(
  * `characters.archivedAt` column is absent — i.e. before P4.D63 lands.
  */
 export function seedArchivedCharacter(cli: string): boolean {
+  // The fixture instance is a copy of the committed salon family, which
+  // predates the archive columns. A REAL instance gains them from the boot
+  // ensure (`db/character_archive_repair.rs`) the moment v5 opens it — but
+  // global setup runs BEFORE the server's first boot, and the server holds
+  // the write lock afterwards (the round-1 unifier's finding: the probe
+  // below found no column and the island silently never seeded). So run the
+  // same three per-column-guarded ALTERs the boot ensure runs — verbatim
+  // v4's `add-character-archive-fields-v1` migration — making this instance
+  // exactly what a booted one is. `allowFail` absorbs "duplicate column
+  // name" once a future fixture regen bakes the columns in.
+  for (const col of ['archivedAt', 'archiveFileId', 'archivedAvatarFileId']) {
+    run(cli, `ALTER TABLE "characters" ADD COLUMN "${col}" TEXT`, {
+      allowFail: true,
+    });
+  }
   // The probe. A read of the column itself, so this is a fact about the
   // instance rather than a guess about which lanes have landed.
   const probe = run(cli, 'SELECT archivedAt FROM characters LIMIT 1', {
@@ -168,6 +183,71 @@ export function seedArchivedCharacter(cli: string): boolean {
       `${sqlLiteral(GROUP_ID)}, ${sqlLiteral(ARCHIVED_GROUP_NAME)}, ` +
       `'Whatever has been tucked away.', ${sqlLiteral(TS)}, ${sqlLiteral(TS)})`,
   );
+  // A group is a STORE-BACKED entity: the overlay read REFUSES a row whose
+  // `officialMountPointId` is null or whose store lacks `properties.json`
+  // (the P4.D29-hardened contextful refusal), and v5 has no boot backfill for
+  // group stores — a real group always gets its store at CREATE. So seed the
+  // minimal official store the create path would have written: the mount
+  // point, one content-addressed file row, its `properties.json` document
+  // (`{}` — the P4.6az empty-bag hydration; row fields shine through), and
+  // the link. Found by the round-1 unifier when the island's first live walk
+  // 503'd the whole groups roster.
+  const STORE_ID = 'd6400000-0000-4000-8000-0000000000d1';
+  const PROPS_FILE_ID = 'd6400000-0000-4000-8000-0000000000d2';
+  const PROPS_DOC_ID = 'd6400000-0000-4000-8000-0000000000d3';
+  const PROPS_LINK_ID = 'd6400000-0000-4000-8000-0000000000d4';
+  // sha256("{}")
+  const EMPTY_BAG_SHA = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a';
+  run(
+    cli,
+    `INSERT INTO "doc_mount_points" ("id", "name", "basePath", "mountType", "storeType", ` +
+      `"enabled", "scanStatus", "conversionStatus", "fileCount", "chunkCount", "totalSizeBytes", ` +
+      `"createdAt", "updatedAt") VALUES (${sqlLiteral(STORE_ID)}, ` +
+      `${sqlLiteral('Group Files: ' + ARCHIVED_GROUP_NAME)}, '', 'database', 'documents', ` +
+      `1, 'idle', 'idle', 1, 0, 2, ${sqlLiteral(TS)}, ${sqlLiteral(TS)})`,
+    { mount: true },
+  );
+  run(
+    cli,
+    `INSERT INTO "doc_mount_files" ("id", "sha256", "fileSizeBytes", "fileType", "source", ` +
+      `"createdAt", "updatedAt") VALUES (${sqlLiteral(PROPS_FILE_ID)}, ` +
+      `${sqlLiteral(EMPTY_BAG_SHA)}, 2, 'json', 'database', ${sqlLiteral(TS)}, ${sqlLiteral(TS)})`,
+    { mount: true },
+  );
+  run(
+    cli,
+    `INSERT INTO "doc_mount_documents" ("id", "fileId", "content", "contentSha256", ` +
+      `"plainTextLength", "createdAt", "updatedAt") VALUES (${sqlLiteral(PROPS_DOC_ID)}, ` +
+      `${sqlLiteral(PROPS_FILE_ID)}, '{}', ${sqlLiteral(EMPTY_BAG_SHA)}, 2, ` +
+      `${sqlLiteral(TS)}, ${sqlLiteral(TS)})`,
+    { mount: true },
+  );
+  run(
+    cli,
+    `INSERT INTO "doc_mount_file_links" ("id", "fileId", "mountPointId", "relativePath", ` +
+      `"fileName", "lastModified", "createdAt", "updatedAt") VALUES (${sqlLiteral(PROPS_LINK_ID)}, ` +
+      `${sqlLiteral(PROPS_FILE_ID)}, ${sqlLiteral(STORE_ID)}, 'properties.json', ` +
+      `'properties.json', ${sqlLiteral(TS)}, ${sqlLiteral(TS)}, ${sqlLiteral(TS)})`,
+    { mount: true },
+  );
+  run(
+    cli,
+    `UPDATE "groups" SET "officialMountPointId" = ${sqlLiteral(STORE_ID)} ` +
+      `WHERE "id" = ${sqlLiteral(GROUP_ID)}`,
+  );
+  // The salon MOUNT fixture predates the `group_character_members` table (a
+  // real instance provisions it — the same fixture-vintage class global setup
+  // already repairs for other families). DDL verbatim from
+  // `provisioning/fresh_schema.json`; found by the round-1 unifier when the
+  // island's first live seeding hit `no such table`.
+  run(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "group_character_members" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "groupId" TEXT NOT NULL, ' +
+      '"characterId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, ' +
+      '"updatedAt" TEXT NOT NULL)',
+    { mount: true },
+  );
   const members: Array<[string, string]> = [[MEMBER_ARCHIVED, CHARACTER_ID]];
   if (live[0]?.['id']) {
     members.push([MEMBER_LIVE, String(live[0]['id'])]);
@@ -208,15 +288,21 @@ export function seedArchivedCharacter(cli: string): boolean {
       status: 'absent',
     },
   ];
+  // Recency floats the seeded chat to the TOP of the salon list: the list is
+  // server-ordered by recency and VIRTUALIZED (dogfood #3b), so a `TS`-old
+  // chat lands below the render window where even scrollIntoViewIfNeeded
+  // cannot reach it (the beat's first live run proved it). No sibling beat
+  // asserts list position — verified at the round-1 unification.
+  const RECENT = new Date().toISOString();
   insertCopy(cli, 'chats', chatTemplate[0], {
     id: CHAT_ID,
     userId: SINGLE_USER_ID,
     title: ARCHIVED_CHAT_TITLE,
     participants: JSON.stringify(participants),
     messageCount: 0,
-    lastMessageAt: null,
+    lastMessageAt: RECENT,
     createdAt: TS,
-    updatedAt: TS,
+    updatedAt: RECENT,
   });
 
   return true;

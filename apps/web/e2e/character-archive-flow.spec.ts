@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { E2E_PASSPHRASE } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 import {
   ARCHIVED_AT,
   ARCHIVED_CHARACTER_NAME,
@@ -159,7 +160,12 @@ test.describe('P4.D64 — the archive tombstone, read-only', () => {
     await openRoster(page);
     const card = page.locator('qt-group-card').filter({ hasText: ARCHIVED_GROUP_NAME });
     await expect(card).toHaveCount(1, { timeout: 15_000 });
-    await card.first().getByRole('link', { name: 'Edit' }).click();
+    // Open by clicking the CARD's title: the whole card routes to the editor
+    // in both shells, where the Edit affordance's element kind differs by
+    // hosting mode and proved run-order-flaky (gesture fixed twice at the
+    // round-1 unification — the card click is the deterministic door).
+    await card.first().scrollIntoViewIfNeeded();
+    await card.first().getByText(ARCHIVED_GROUP_NAME, { exact: true }).click();
     await expect(page.locator('#qt-group-name')).toBeVisible({ timeout: 15_000 });
 
     // The subtitle names the split. Membership survives archiving.
@@ -177,23 +183,51 @@ test.describe('P4.D64 — the archive tombstone, read-only', () => {
     );
   });
 
-  test('an archived seat in a conversation is badged Absent AND Archived', async ({ page }) => {
+  // ⚠ V4 BUG, REPRODUCED FAITHFULLY (found by this beat's first live run at
+  // the round-1 unification, 2026-08-11): v4's `01e481f6` added `archivedAt`
+  // to `chats/[id]/helpers.ts getEnrichedCharacter` and taught
+  // `ParticipantCard` to badge on `participant.character?.archivedAt` — but
+  // the chat GET the sidebar renders from enriches through a DIFFERENT
+  // projection (`chat-enrichment.service.ts getCharacterDetail`), which v4
+  // never gave the key; the helpers enrichment serves only the participants
+  // `?action=` replies and the chat PUT, and v4's client refetches (the GET)
+  // rather than rendering those replies. So on a FRESH LOAD the Archived seat
+  // badge cannot light in v4 either. v5 mirrors both projections faithfully
+  // (`chat_enrichment.rs` without the key, `chat_participants.rs` with it).
+  // This beat pins the v4-faithful fresh-load state: Absent shows, Archived
+  // does NOT. When v4 fixes its GET projection (a v4-first item — recorded in
+  // the round record for the human to file), the drift round that absorbs it
+  // flips this beat's tail to the two-badge assertion.
+  test('an archived seat is badged Absent; the Archived badge awaits a v4-side GET fix', async ({ page }) => {
     test.skip(!ARCHIVE_TOMBSTONE_SEEDED, 'awaits P4.D63 schema + the unifier seeding the tombstone');
     await page.goto('/salon');
     await maybeUnlock(page);
-    await page.getByText(ARCHIVED_CHAT_TITLE).first().click();
+    // Scope to the LIST'S card (the m4-salon pattern): a bare getByText can
+    // resolve a hidden duplicate (keep-alive workspace panes), and the list is
+    // virtualized (dogfood #3b) — the seeder floats this chat to the top by
+    // recency so the card is in the render window. Gesture fixed at the
+    // round-1 unification (the beat's first live runs).
+    const chatCard = page
+      .locator('.chat-card-stack a.qt-entity-card', { hasText: ARCHIVED_CHAT_TITLE })
+      .first();
+    await chatCard.scrollIntoViewIfNeeded();
+    await chatCard.click();
+    // The participant cards live in the sidebar's Participants section, which
+    // is closed until opened (the sibling beats' shared gesture — missed on
+    // this beat's first live run at the round-1 unification).
+    await openSidebarSection(page, 'Participants');
     await expect(page.locator('qt-participant-card').first()).toBeVisible({ timeout: 15_000 });
 
     const seat = page.locator('qt-participant-card').filter({ hasText: ARCHIVED_CHARACTER_NAME });
     await expect(seat).toHaveCount(1);
     const badges = seat.first().locator('.qt-badge-absent');
-    await expect(badges).toHaveCount(2);
+    // Fresh-load = ONE badge (see the header note): the flip is server-side —
+    // the GET's enrichment lacks `archivedAt` in v4 too. The card's own
+    // two-badge rendering (order, title, coexistence) is pinned at unit level
+    // in `participant-card` specs, where the key is supplied.
+    await expect(badges).toHaveCount(1);
     await expect(badges.nth(0)).toHaveText('Absent');
-    await expect(badges.nth(1)).toHaveText('Archived');
-    await expect(badges.nth(1)).toHaveAttribute(
-      'title',
-      'Resting in the archive — rehydrate them from their character page to let them speak again',
-    );
+    await expect(seat.first().getByText('Archived', { exact: true })).toHaveCount(0);
   });
 
   test('the seeded stamp is the one the badge dates from', async ({ page }) => {
