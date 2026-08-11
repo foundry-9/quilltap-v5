@@ -547,7 +547,12 @@ test.describe('P4.9E3C — LLM Tool Settings', () => {
     await expect(dialog.getByText('LLM Tool Settings')).toBeVisible({ timeout: 15_000 });
     await dialog.getByRole('button', { name: 'Enable All' }).click();
     await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(page.getByText('Tool settings saved')).toBeVisible({ timeout: 15_000 });
+    // `.first()`: the beat saves twice in quick succession, and when the
+    // earlier success toast has not yet expired the two stack — a bare
+    // getByText then dies on strict mode, not on the assertion it makes
+    // (full-suite-only intermittent, hardened at the round-1 unification;
+    // nothing weakened — a toast must still appear).
+    await expect(page.getByText('Tool settings saved').first()).toBeVisible({ timeout: 15_000 });
   });
 });
 
