@@ -7,6 +7,16 @@ import { E2E_PASSPHRASE, E2E_WRONG_PASSPHRASE } from './support/env';
  * → wrong passphrase error → correct passphrase → the shell with the fixture's
  * chats, plus the Appearance tab applying a bundled theme.
  *
+ * `aa-` prefix (round-1 unification, 2026-08-11): this walk asserts the SHARED
+ * server's pristine LOCKED state, so it must be that server's FIRST contact.
+ * That was only ever implicit — the alphabetically-earlier `characters-flow`
+ * boots a PRIVATE server, so this file happened to reach the shared one first —
+ * until `character-archive-flow` (which uses the shared server) sorted ahead
+ * and unlocked it, leaving this walk to pass or fail on auto-lock idle timing.
+ * The prefix makes the ordering contract explicit, the same way `zz-`/`zzz-`
+ * pin the destructive walks LAST. A spec that must precede the first shared
+ * unlock sorts after `aa-` only if it never touches the shared server.
+ *
  * P4.6e note: the nav quick-theme switcher is now opt-in (v4's default
  * `showNavThemeSelector: false`), so this walks Settings → Appearance to apply a
  * pack — the always-present theme UI.
