@@ -62,13 +62,12 @@ pub fn run(args: &[String]) -> i32 {
         j += 1;
     }
 
-    // ---- Verb pre-flight (v4 dispatches to db-commands.js here).
+    // ---- Verb pre-flight (v4 `dbCommand`: the first BARE token decides
+    //      whether this is the verb path; the verb itself is then `args[0]`,
+    //      so a leading flag makes `runVerb` throw "Unknown db subcommand").
     if let Some(first_positional) = cleaned.iter().find(|a| !a.starts_with('-')) {
         if DB_VERBS.contains(&first_positional.as_str()) {
-            out::elog(&format!(
-                "Error: db subcommand '{first_positional}' is recognized but not yet available in this build of the quilltap CLI."
-            ));
-            out::exit(1);
+            return run_verb_path(&cleaned, &data_dir_override, &instance_name, &passphrase);
         }
     }
 
@@ -234,6 +233,69 @@ pub fn run(args: &[String]) -> i32 {
         release_write_lock(std::path::Path::new(&data_dir));
     }
     exit_code
+}
+
+/// v4's verb path (`dbCommand`'s first branch): resolve the data dir, print
+/// the default-instance hint, unlock the pepper, build the ctx, then
+/// `runVerb`. Errors surface as `Error: <message>` with v4's exit code
+/// (`err.exitCode ?? (err.ambiguous ? 2 : 1)`).
+fn run_verb_path(
+    cleaned: &[String],
+    data_dir_override: &str,
+    instance_name: &str,
+    passphrase: &str,
+) -> i32 {
+    let registry = InstanceRegistry::at_default_location();
+    let resolved = match resolve_data_dir_and_passphrase(
+        data_dir_override,
+        instance_name,
+        passphrase,
+        &registry,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            out::elog(&format!("Error: {e}"));
+            out::exit(1);
+        }
+    };
+    print_default_instance_hint(&resolved, &registry);
+    let pepper = match load_db_key(&resolved.data_dir, &resolved.passphrase) {
+        Ok(p) => p,
+        Err(e) => {
+            out::elog(&format!("Error: {e}"));
+            out::exit(1);
+        }
+    };
+    let ctx = crate::db_characters::Ctx {
+        data_dir: resolved.data_dir.clone(),
+        pepper,
+    };
+
+    // v4 `runVerb(args, ctx)`: `const [verb, ...rest] = args`.
+    let verb = cleaned.first().map(String::as_str).unwrap_or("");
+    let rest: Vec<String> = cleaned.iter().skip(1).cloned().collect();
+    let result = match verb {
+        "characters" => crate::db_characters::run(&rest, &ctx),
+        other if DB_VERBS.contains(&other) => {
+            out::elog(&format!(
+                "Error: db subcommand '{other}' is recognized but not yet available in this build of the quilltap CLI."
+            ));
+            out::exit(1);
+        }
+        // The bare token that qualified this as the verb path was NOT first —
+        // v4 looks up `args[0]` and throws on the miss.
+        other => Err(crate::db_characters::CmdError {
+            message: format!("Unknown db subcommand: {other}"),
+            exit_code: 1,
+        }),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(e) => {
+            out::elog(&format!("Error: {}", e.message));
+            e.exit_code
+        }
+    }
 }
 
 enum OpenError {

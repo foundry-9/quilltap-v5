@@ -55,6 +55,15 @@ struct CaseOpts<'a> {
     /// `/api/dispatch`) and the connect-error reason (Node's `fetch failed` vs
     /// the Rust io error text).
     normalize_recall: bool,
+    /// P4.D66 `db characters`: the ONE transport truth in the
+    /// could-not-reach-the-server sentence — Node's `err.message` is
+    /// `fetch failed`, Rust's is the OS connect error. Same URL, same
+    /// sentence, same following line; only the reason tail differs.
+    normalize_reach: bool,
+    /// Working directory for the child. `characters export` without `--out`
+    /// resolves its output path against the cwd, so those cases run in a
+    /// scratch dir instead of the crate root.
+    cwd: Option<PathBuf>,
 }
 
 struct RunOut {
@@ -97,6 +106,34 @@ fn normalize_heartbeat(text: &str) -> String {
         } else {
             out.push(text[i..].chars().next().unwrap());
             i += text[i..].chars().next().unwrap().len_utf8();
+        }
+    }
+    out
+}
+
+/// Replace the reason tail of the `Could not reach the Quilltap server at
+/// http://localhost:<port>: <reason>` line. Everything else on the line — and
+/// the whole sentence that follows it — is compared byte-for-byte.
+fn normalize_reach(text: &str) -> String {
+    const HEAD: &str = "Could not reach the Quilltap server at http://localhost:";
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        match line.find(HEAD) {
+            Some(pos) => {
+                let after = &line[pos + HEAD.len()..];
+                // The port runs to the `: ` that introduces the reason.
+                match after.find(": ") {
+                    Some(colon) => {
+                        out.push_str(&line[..pos + HEAD.len() + colon]);
+                        out.push_str(": <REASON>");
+                        if line.ends_with('\n') {
+                            out.push('\n');
+                        }
+                    }
+                    None => out.push_str(line),
+                }
+            }
+            None => out.push_str(line),
         }
     }
     out
@@ -210,6 +247,59 @@ fn spawn_recall_stub(result_json: &'static str, error_arm: bool) -> u16 {
     port
 }
 
+/// A one-answer HTTP stub: every request gets the same status and body.
+///
+/// `db characters archive|rehydrate|export` post the SAME v4 URLs from both
+/// CLIs, so one stub answers both sides and the request/print path is a real
+/// Tier R arm rather than a unit test — the recall-replay precedent, minus
+/// the dialect split.
+fn spawn_canned_stub(status: u16, body: &str) -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let body = body.to_string();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            use std::io::{Read, Write};
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                match stream.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        let text = String::from_utf8_lossy(&buf);
+                        if let Some(hdr_end) = text.find("\r\n\r\n") {
+                            let cl = text
+                                .lines()
+                                .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+                                .and_then(|l| l.split(':').nth(1))
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            if buf.len() >= hdr_end + 4 + cl {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let reason = match status {
+                200 => "OK",
+                400 => "Bad Request",
+                500 => "Internal Server Error",
+                _ => "Error",
+            };
+            let resp = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    port
+}
+
 impl Ctx {
     fn reset_live(&self, opts: &CaseOpts) {
         if self.live.exists() {
@@ -243,6 +333,10 @@ impl Ctx {
             })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(cwd) = &opts.cwd {
+            std::fs::create_dir_all(cwd).unwrap();
+            cmd.current_dir(cwd);
+        }
         for (k, v) in &opts.envs {
             cmd.env(k, v);
         }
@@ -299,6 +393,9 @@ impl Ctx {
             }
             if opts.normalize_recall {
                 text = normalize_recall(&text);
+            }
+            if opts.normalize_reach {
+                text = normalize_reach(&text);
             }
             text.into_bytes()
         };
@@ -789,6 +886,9 @@ fn build_master(master: &Path, live: &Path) {
         .unwrap();
     }
 
+    // ---- The `db characters` family's slice of instance A (P4.D66).
+    build_characters_fixture(master, &data_a);
+
     // The attic's on-disk file.
     let fsdocs = master.join("fsdocs");
     std::fs::create_dir_all(&fsdocs).unwrap();
@@ -807,6 +907,651 @@ fn build_master(master: &Path, live: &Path) {
             )
             .unwrap();
     }
+}
+
+// ============================================================================
+// The `db characters` fixture (P4.D66)
+// ============================================================================
+
+/// Character ids (name-sorted where the table order matters).
+const CH_BRAM: &str = "b0000000-0000-4000-8000-00000000000b";
+const CH_ELOWEN: &str = "e0000000-0000-4000-8000-00000000000e";
+const CH_NELL: &str = "0e000000-0000-4000-8000-0000000000ee";
+const CH_ORRIN: &str = "07000000-0000-4000-8000-0000000000aa";
+const CH_PIPPA: &str = "b1000000-0000-4000-8000-0000000000bb";
+const CH_ROWAN: &str = "40000000-0000-4000-8000-0000000000cc";
+const CH_TWIN_A: &str = "d1000000-0000-4000-8000-0000000000d1";
+const CH_TWIN_B: &str = "d2000000-0000-4000-8000-0000000000d2";
+const CH_SABLE: &str = "5a000000-0000-4000-8000-0000000000f1";
+const CH_TOBIAS: &str = "70000000-0000-4000-8000-0000000000f2";
+const CH_UMBER: &str = "11000000-0000-4000-8000-0000000000f3";
+const CH_VESPER: &str = "0e100000-0000-4000-8000-0000000000f4";
+const CH_WREN: &str = "e1000000-0000-4000-8000-0000000000f5";
+const CH_YARROW: &str = "1a000000-0000-4000-8000-0000000000f6";
+const CH_ZEPHYR: &str = "2e000000-0000-4000-8000-0000000000f7";
+const CH_THORN: &str = "70100000-0000-4000-8000-0000000000f8";
+const CH_CORVID: &str = "c0000000-0000-4000-8000-0000000000f9";
+
+/// The character vaults (mount points in the mount-index DB).
+const VAULT_ELOWEN: &str = "0a000000-0000-4000-8000-0000000000a1";
+const VAULT_BRAM: &str = "0a000000-0000-4000-8000-0000000000a2";
+const VAULT_ORRIN: &str = "0a000000-0000-4000-8000-0000000000a3";
+const VAULT_PIPPA: &str = "0a000000-0000-4000-8000-0000000000a4";
+const VAULT_ROWAN: &str = "0a000000-0000-4000-8000-0000000000a5";
+
+/// The passphrase the Vesper bundle predates.
+const OLD_PASSPHRASE: &str = "the-old-passphrase";
+
+/// v4's `characters` DDL at `ed8934f1` (from `generateDDL`, via
+/// `fresh_schema.json`) — verbatim, because the verb's `PRAGMA table_info`
+/// tolerance keys off exactly which columns exist. Note that the 4.6 vault
+/// cutover ABANDONED the content columns without dropping them, so a modern
+/// instance still reports `preCutover` — the divergence report is the live
+/// path, not the dead one.
+const CHARACTERS_DDL: &str = r#"
+CREATE TABLE "characters" (
+  "id" TEXT PRIMARY KEY NOT NULL,
+  "userId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "title" TEXT,
+  "identity" TEXT,
+  "description" TEXT,
+  "manifesto" TEXT,
+  "personality" TEXT,
+  "scenarios" TEXT DEFAULT '[]',
+  "firstMessage" TEXT,
+  "exampleDialogues" TEXT,
+  "systemPrompts" TEXT DEFAULT '[]',
+  "sillyTavernData" TEXT,
+  "metadata" TEXT,
+  "isFavorite" INTEGER DEFAULT 0,
+  "npc" INTEGER DEFAULT 0,
+  "talkativeness" REAL DEFAULT 0.5,
+  "controlledBy" TEXT DEFAULT 'llm',
+  "characterDocumentMountPointId" TEXT,
+  "archivedAt" TEXT,
+  "archiveFileId" TEXT,
+  "archivedAvatarFileId" TEXT,
+  "systemTransparency" INTEGER,
+  "aliases" TEXT DEFAULT '[]',
+  "pronouns" TEXT,
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL
+);
+CREATE TABLE "files" (
+  "id" TEXT PRIMARY KEY NOT NULL,
+  "userId" TEXT NOT NULL,
+  "sha256" TEXT NOT NULL,
+  "originalFilename" TEXT NOT NULL,
+  "mimeType" TEXT NOT NULL,
+  "size" REAL NOT NULL,
+  "linkedTo" TEXT DEFAULT '[]',
+  "source" TEXT NOT NULL,
+  "category" TEXT NOT NULL,
+  "description" TEXT,
+  "tags" TEXT DEFAULT '[]',
+  "storageKey" TEXT,
+  "fileStatus" TEXT DEFAULT 'ok',
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL
+);
+"#;
+
+/// Build the characters + files rows in the main DB, their vaults in the
+/// mount index, and the ARCHIVE bundle bytes under `<instance>/files/`.
+///
+/// The bundles are planted with **core's own** archive crypto
+/// (`encrypt_archive`), which is the format v4 reads — the same
+/// `QTAPARC1` layout round 1 proved byte-exact against v4's real
+/// `archive-crypto.ts`. That keeps this lane independent of P4.D65's
+/// committed fixture family, whose DBs carry a different pepper and no
+/// on-disk bundle bytes at all.
+fn build_characters_fixture(master: &Path, data_a: &Path) {
+    let w = Writer::open_writable(&data_a.join("quilltap.db"), PEPPER).unwrap();
+    let c = w.connection();
+    c.execute_batch(CHARACTERS_DDL).unwrap();
+
+    // ---- The bundle bytes (planted before the rows so `size` is the truth).
+    let files_dir = master.join("instA/files/archives");
+    std::fs::create_dir_all(&files_dir).unwrap();
+    let plant = |name: &str, bytes: &[u8]| -> f64 {
+        std::fs::write(files_dir.join(name), bytes).unwrap();
+        bytes.len() as f64
+    };
+    let sable_plain = b"{\"kind\":\"character\",\"name\":\"Sable\"}\n{\"kind\":\"memory\"}\n";
+    let sable_bytes = quilltap_core::services::character_archive::crypto::encrypt_archive(
+        sable_plain,
+        quilltap_core::dbkey::INTERNAL_PASSPHRASE,
+        None,
+    )
+    .unwrap();
+    let sable_size = plant("sable.qtaparc", &sable_bytes);
+    // A pre-encryption bundle: no magic, passed through untouched.
+    let umber_size = plant(
+        "umber-plain.qtap",
+        b"{\"kind\":\"character\",\"name\":\"Umber\"}\n",
+    );
+    // Encrypted under a passphrase this instance no longer has.
+    let vesper_bytes = quilltap_core::services::character_archive::crypto::encrypt_archive(
+        b"{\"kind\":\"character\",\"name\":\"Vesper\"}\n",
+        OLD_PASSPHRASE,
+        None,
+    )
+    .unwrap();
+    let vesper_size = plant("vesper.qtaparc", &vesper_bytes);
+    // Cut short of its auth tag: the launcher's OWN length check fires
+    // before any crypto runs.
+    let thorn_full = quilltap_core::services::character_archive::crypto::encrypt_archive(
+        b"{\"kind\":\"character\",\"name\":\"Thorn\"}\n",
+        quilltap_core::dbkey::INTERNAL_PASSPHRASE,
+        None,
+    )
+    .unwrap();
+    let thorn_size = plant("truncated.qtaparc", &thorn_full[..thorn_full.len() - 50]);
+    // Full length, right key, flipped tag: the length check passes, the key
+    // hash matches, and GCM refuses — the corruption arm, distinct from a
+    // wrong passphrase.
+    let mut corvid_bytes = thorn_full.clone();
+    let last = corvid_bytes.len() - 1;
+    corvid_bytes[last] ^= 0xff;
+    let corvid_size = plant("corrupt.qtaparc", &corvid_bytes);
+    let orphan_size = plant("orphan.qtaparc", &sable_bytes);
+
+    // ---- characters.
+    let mut ins = c
+        .prepare(
+            "INSERT INTO characters (id, userId, name, title, identity, description, manifesto, personality,
+                                     scenarios, firstMessage, exampleDialogues, systemPrompts, isFavorite, npc,
+                                     talkativeness, controlledBy, characterDocumentMountPointId, archivedAt,
+                                     archiveFileId, archivedAvatarFileId, systemTransparency, aliases, pronouns,
+                                     createdAt, updatedAt)
+             VALUES (?, 'u1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'llm', ?, ?, ?, NULL, ?, ?, ?, ?, ?)",
+        )
+        .unwrap();
+    // A live, healthy character whose DB columns still agree with the vault.
+    ins.execute(rusqlite::params![
+        CH_ELOWEN,
+        "Elowen",
+        "Cartographer",
+        "I map the coastline.",
+        "A cartographer of tidal charts.",
+        "Chart the unknown.",
+        "Patient, exacting.",
+        r#"[{"id":"s1","name":"The Quay"}]"#,
+        "Hello.",
+        "You: Where to?\nElowen: East.",
+        r#"[{"id":"p1"},{"id":"p2"}]"#,
+        0.5f64,
+        VAULT_ELOWEN,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        1i64,
+        r#"["Ellie","The Cartographer"]"#,
+        "she/her",
+        TS,
+        TS2
+    ])
+    .unwrap();
+    // Three of the five required single files never written.
+    ins.execute(rusqlite::params![
+        CH_BRAM,
+        "Bram",
+        rusqlite::types::Null,
+        "A ledger-keeper.",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        0.5f64,
+        VAULT_BRAM,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        TS,
+        TS
+    ])
+    .unwrap();
+    // No vault at all.
+    ins.execute(rusqlite::params![
+        CH_NELL,
+        "Nell",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        0.5f64,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        TS,
+        TS
+    ])
+    .unwrap();
+    // A vault with no links at all.
+    ins.execute(rusqlite::params![
+        CH_ORRIN,
+        "Orrin",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        0.5f64,
+        VAULT_ORRIN,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        TS,
+        TS
+    ])
+    .unwrap();
+    // Exactly one of the physical-* pair.
+    ins.execute(rusqlite::params![
+        CH_PIPPA,
+        "Pippa",
+        rusqlite::types::Null,
+        "A signal-keeper.",
+        "Keeps the lamps.",
+        rusqlite::types::Null,
+        "Bright.",
+        "[]",
+        rusqlite::types::Null,
+        "You: Evening.\nPippa: Evening.",
+        "[]",
+        0.5f64,
+        VAULT_PIPPA,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        "[]",
+        rusqlite::types::Null,
+        TS,
+        TS
+    ])
+    .unwrap();
+    // Every file present and every comparable field disagreeing.
+    ins.execute(rusqlite::params![
+        CH_ROWAN,
+        "Rowan",
+        "Ferryman",
+        "DB identity, stale.",
+        "DB description, stale.",
+        "DB manifesto.",
+        "DB personality.",
+        r#"[{"id":"sx"}]"#,
+        "DB first message.",
+        "DB dialogues.",
+        r#"[{"id":"px"}]"#,
+        0.5f64,
+        VAULT_ROWAN,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        rusqlite::types::Null,
+        r#"["Ro"]"#,
+        "he/him",
+        TS,
+        TS
+    ])
+    .unwrap();
+    // Two rows sharing a name — the ambiguous-resolution arm (exit code 2).
+    for id in [CH_TWIN_A, CH_TWIN_B] {
+        ins.execute(rusqlite::params![
+            id,
+            "Twin",
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "[]",
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "[]",
+            0.5f64,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "[]",
+            rusqlite::types::Null,
+            TS,
+            TS
+        ])
+        .unwrap();
+    }
+    // The archived shelf. Each one is a distinct export arm; `archivedAt`
+    // values are distinct so `ORDER BY archivedAt DESC` is deterministic.
+    let archived: &[(&str, &str, &str, rusqlite::types::Value)] = &[
+        (
+            CH_SABLE,
+            "Sable",
+            "2026-03-01T00:00:08.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000001".into()),
+        ),
+        (
+            CH_TOBIAS,
+            "Tobias",
+            "2026-03-01T00:00:07.000Z",
+            rusqlite::types::Value::Null,
+        ),
+        (
+            CH_UMBER,
+            "Umber",
+            "2026-03-01T00:00:06.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000003".into()),
+        ),
+        (
+            CH_VESPER,
+            "Vesper",
+            "2026-03-01T00:00:05.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000004".into()),
+        ),
+        (
+            CH_WREN,
+            "Wren",
+            "2026-03-01T00:00:04.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-0000000000ff".into()),
+        ),
+        (
+            CH_YARROW,
+            "Yarrow",
+            "2026-03-01T00:00:03.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000005".into()),
+        ),
+        (
+            CH_ZEPHYR,
+            "Zephyr",
+            "2026-03-01T00:00:02.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000006".into()),
+        ),
+        (
+            CH_THORN,
+            "Thorn",
+            "2026-03-01T00:00:01.000Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000007".into()),
+        ),
+        (
+            CH_CORVID,
+            "Corvid",
+            "2026-03-01T00:00:00.500Z",
+            rusqlite::types::Value::Text("fa000000-0000-4000-8000-000000000008".into()),
+        ),
+    ];
+    for (id, name, archived_at, file_id) in archived {
+        ins.execute(rusqlite::params![
+            id,
+            name,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "[]",
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "[]",
+            0.5f64,
+            rusqlite::types::Null,
+            archived_at,
+            file_id,
+            rusqlite::types::Null,
+            "[]",
+            rusqlite::types::Null,
+            TS,
+            TS
+        ])
+        .unwrap();
+    }
+    drop(ins);
+
+    // ---- files: the ARCHIVE shelf (+ one non-ARCHIVE row the filter drops).
+    let mut f = c
+        .prepare(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, source, category, storageKey, createdAt, updatedAt)
+             VALUES (?, 'u1', ?, ?, 'application/octet-stream', ?, 'archive', ?, ?, ?, ?)",
+        )
+        .unwrap();
+    let mut file_row =
+        |id: &str, filename: &str, size: f64, key: rusqlite::types::Value, created: &str| {
+            f.execute(rusqlite::params![
+                id,
+                "0".repeat(64),
+                filename,
+                size,
+                "ARCHIVE",
+                key,
+                created,
+                created
+            ])
+            .unwrap();
+        };
+    file_row(
+        "fa000000-0000-4000-8000-000000000001",
+        "Sable-a-name-long-enough-to-need-the-forty-four-char-truncation.qtap",
+        sable_size,
+        rusqlite::types::Value::Text("archives/sable.qtaparc".into()),
+        "2026-03-01T00:01:08.000Z",
+    );
+    file_row(
+        "fa000000-0000-4000-8000-000000000003",
+        "Umber-archive.qtap",
+        umber_size,
+        rusqlite::types::Value::Text("archives/umber-plain.qtap".into()),
+        "2026-03-01T00:01:06.000Z",
+    );
+    file_row(
+        "fa000000-0000-4000-8000-000000000004",
+        "Vesper-archive.qtap",
+        vesper_size,
+        rusqlite::types::Value::Text("archives/vesper.qtaparc".into()),
+        "2026-03-01T00:01:05.000Z",
+    );
+    // No storage key: the row exists, the bytes were never written.
+    file_row(
+        "fa000000-0000-4000-8000-000000000005",
+        "Yarrow-archive.qtap",
+        0.0,
+        rusqlite::types::Value::Null,
+        "2026-03-01T00:01:03.000Z",
+    );
+    // A storage key whose file is not on disk.
+    file_row(
+        "fa000000-0000-4000-8000-000000000006",
+        "Zephyr-archive.qtap",
+        321.0,
+        rusqlite::types::Value::Text("archives/absent.qtaparc".into()),
+        "2026-03-01T00:01:02.000Z",
+    );
+    file_row(
+        "fa000000-0000-4000-8000-000000000007",
+        "Thorn-archive.qtap",
+        thorn_size,
+        rusqlite::types::Value::Text("archives/truncated.qtaparc".into()),
+        "2026-03-01T00:01:01.000Z",
+    );
+    file_row(
+        "fa000000-0000-4000-8000-000000000008",
+        "Corvid-archive.qtap",
+        corvid_size,
+        rusqlite::types::Value::Text("archives/corrupt.qtaparc".into()),
+        "2026-03-01T00:01:00.500Z",
+    );
+    // A bundle no character points at — the survivor of a "keep archived
+    // bundles" wipe, importable only.
+    file_row(
+        "fa000000-0000-4000-8000-00000000000a",
+        "Orphan-archive.qtap",
+        orphan_size,
+        rusqlite::types::Value::Text("archives/orphan.qtaparc".into()),
+        "2026-03-01T00:01:00.000Z",
+    );
+    drop(f);
+    c.execute(
+        "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, source, category, storageKey, createdAt, updatedAt)
+         VALUES ('fb000000-0000-4000-8000-000000000001', 'u1', ?, 'portrait.png', 'image/png', 12, 'upload', 'AVATAR', 'images/portrait.png', ?, ?)",
+        rusqlite::params!["1".repeat(64), TS, TS],
+    )
+    .unwrap();
+    drop(w);
+
+    // ---- The vaults themselves, in the mount index.
+    let w = Writer::open_writable(&data_a.join("quilltap-mount-index.db"), PEPPER).unwrap();
+    let c = w.connection();
+    let mut mp = c
+        .prepare(
+            "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, includePatterns, excludePatterns, enabled, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt)
+             VALUES (?, ?, '', 'database', 'character', '[\"*.md\"]', '[]', 1, ?, 'idle', NULL, 'idle', NULL, 0, 0, 0, ?, ?)",
+        )
+        .unwrap();
+    for (id, name) in [
+        (VAULT_ELOWEN, "vault-elowen"),
+        (VAULT_BRAM, "vault-bram"),
+        (VAULT_ORRIN, "vault-orrin"),
+        (VAULT_PIPPA, "vault-pippa"),
+        (VAULT_ROWAN, "vault-rowan"),
+    ] {
+        mp.execute(rusqlite::params![id, name, TS, TS, TS]).unwrap();
+    }
+    drop(mp);
+
+    let mut nth = 0usize;
+    let mut file_stmt = c
+        .prepare("INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) VALUES (?, ?, ?, 'markdown', 'database', ?, ?)")
+        .unwrap();
+    let mut link_stmt = c
+        .prepare(
+            "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, folderId, description, conversionStatus, extractionStatus, chunkCount, lastModified, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, NULL, '', 'converted', 'none', 0, ?, ?, ?)",
+        )
+        .unwrap();
+    let mut doc_stmt = c
+        .prepare("INSERT INTO doc_mount_documents (id, fileId, content, contentSha256, plainTextLength, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .unwrap();
+    let mut vault_doc = |mount: &str, rel: &str, content: &str| {
+        nth += 1;
+        let fid = format!("VF{nth}");
+        file_stmt
+            .execute(rusqlite::params![
+                fid,
+                format!("{:0>64}", nth),
+                content.len() as i64,
+                TS,
+                TS
+            ])
+            .unwrap();
+        link_stmt
+            .execute(rusqlite::params![
+                format!("VL{nth}"),
+                fid,
+                mount,
+                rel,
+                rel.rsplit('/').next().unwrap(),
+                TS,
+                TS,
+                TS
+            ])
+            .unwrap();
+        doc_stmt
+            .execute(rusqlite::params![
+                format!("VD{nth}"),
+                fid,
+                content,
+                format!("{:0>64}", nth),
+                content.len() as i64,
+                TS,
+                TS
+            ])
+            .unwrap();
+    };
+
+    // Elowen: complete, and every comparable field agreeing with the DB.
+    vault_doc(
+        VAULT_ELOWEN,
+        "properties.json",
+        r#"{"pronouns":"she/her","title":"Cartographer","firstMessage":"Hello.","talkativeness":0.5,"aliases":["Ellie","The Cartographer"],"systemTransparency":1}"#,
+    );
+    vault_doc(VAULT_ELOWEN, "identity.md", "I map the coastline.");
+    vault_doc(
+        VAULT_ELOWEN,
+        "description.md",
+        "A cartographer of tidal charts.",
+    );
+    vault_doc(VAULT_ELOWEN, "personality.md", "Patient, exacting.");
+    vault_doc(
+        VAULT_ELOWEN,
+        "example-dialogues.md",
+        "You: Where to?\nElowen: East.",
+    );
+    vault_doc(VAULT_ELOWEN, "manifesto.md", "Chart the unknown.");
+    vault_doc(VAULT_ELOWEN, "prompts/harbour.md", "# Harbour");
+    vault_doc(VAULT_ELOWEN, "prompts/inland.md", "# Inland");
+    vault_doc(VAULT_ELOWEN, "scenarios/the-quay.md", "# The Quay");
+    vault_doc(VAULT_ELOWEN, "wardrobe/oilskin.md", "# Oilskin");
+    vault_doc(VAULT_ELOWEN, "wardrobe/gloves.md", "# Gloves");
+    vault_doc(VAULT_ELOWEN, "wardrobe/boots.md", "# Boots");
+
+    // Bram: two of the five required files.
+    vault_doc(VAULT_BRAM, "properties.json", r#"{"pronouns":null}"#);
+    vault_doc(VAULT_BRAM, "identity.md", "A ledger-keeper.");
+
+    // Pippa: all five, plus exactly one of the physical pair.
+    vault_doc(
+        VAULT_PIPPA,
+        "properties.json",
+        r#"{"pronouns":null,"title":null,"firstMessage":null,"talkativeness":0.5,"aliases":[]}"#,
+    );
+    vault_doc(VAULT_PIPPA, "identity.md", "A signal-keeper.");
+    vault_doc(VAULT_PIPPA, "description.md", "Keeps the lamps.");
+    vault_doc(VAULT_PIPPA, "personality.md", "Bright.");
+    vault_doc(
+        VAULT_PIPPA,
+        "example-dialogues.md",
+        "You: Evening.\nPippa: Evening.",
+    );
+    vault_doc(VAULT_PIPPA, "physical-description.md", "Weathered, tall.");
+
+    // Rowan: complete and thoroughly diverged, including the physical pair
+    // (whose DB side no longer exists at all — `physicalDescriptions` was
+    // dropped from the schema, so v4 compares against the empty string).
+    vault_doc(
+        VAULT_ROWAN,
+        "properties.json",
+        r#"{"pronouns":"they/them","title":"Ferryman","firstMessage":"Vault first message.","talkativeness":0.5,"aliases":["Ro","Rowan of the Ford"],"systemTransparency":0}"#,
+    );
+    vault_doc(VAULT_ROWAN, "identity.md", "Vault identity, current.");
+    vault_doc(VAULT_ROWAN, "description.md", "Vault description, current.");
+    vault_doc(VAULT_ROWAN, "personality.md", "DB personality.");
+    vault_doc(VAULT_ROWAN, "example-dialogues.md", "DB dialogues.");
+    vault_doc(VAULT_ROWAN, "manifesto.md", "DB manifesto.");
+    vault_doc(VAULT_ROWAN, "physical-description.md", "Broad-shouldered.");
+    vault_doc(
+        VAULT_ROWAN,
+        "physical-prompts.json",
+        r#"{"short":"a ferryman","medium":"a broad ferryman","long":"a broad ferryman at the ford","complete":"a broad ferryman at the ford, dusk"}"#,
+    );
+    drop(file_stmt);
+    drop(link_stmt);
+    drop(doc_stmt);
+    drop(w);
 }
 
 fn mount_index_ddl() -> String {
@@ -1439,6 +2184,571 @@ fn cli_differential() {
         assert!(
             !ctx.live.join("instA/data/quilltap.lock").exists(),
             "write lock released after one-shot --write"
+        );
+    }
+
+    // ---------------- db characters (P4.D66) ----------------
+    {
+        let scratch = ctx.live.parent().unwrap().join("cwd");
+        let out_path = format!("{live_s}/exported.qtap");
+        let base = |rest: &[&str]| -> Vec<String> {
+            let mut v = vec!["db".to_string(), "--data-dir".to_string(), inst_a.clone()];
+            v.extend(rest.iter().map(|s| s.to_string()));
+            v
+        };
+
+        // -- status
+        ctx.case_with(
+            "characters default sub",
+            &base(&["characters"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status",
+            &base(&["characters", "status"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status json",
+            &base(&["characters", "status", "--json"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status limit",
+            &base(&["characters", "status", "--limit", "3"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status diverged",
+            &base(&["characters", "status", "--diverged"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status diverged json",
+            &base(&["characters", "status", "--diverged", "--json"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status blocked",
+            &base(&["characters", "status", "--blocked"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status by name",
+            &base(&["characters", "status", "--id", "Elowen"]),
+            CaseOpts::default(),
+        );
+        // The vault-alias fallback: 'Ellie' lives only in properties.json.
+        ctx.case_with(
+            "characters status by alias",
+            &base(&["characters", "status", "--id", "Ellie"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status by uuid",
+            &base(&["characters", "status", "--id", CH_ROWAN]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status by unknown uuid",
+            &base(&[
+                "characters",
+                "status",
+                "--id",
+                "99999999-9999-4999-8999-999999999999",
+            ]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters status no match",
+            &base(&["characters", "status", "--id", "Nobody"]),
+            CaseOpts::default(),
+        );
+        // Two rows share the name — v4's `ambiguous` error exits 2.
+        ctx.case_with(
+            "characters status ambiguous",
+            &base(&["characters", "status", "--id", "Twin"]),
+            CaseOpts::default(),
+        );
+        // v4's parseSubArgs swallows the subcommand as `--json`'s VALUE, so
+        // this runs the DEFAULT sub with JSON off.
+        ctx.case_with(
+            "characters flag before sub",
+            &base(&["characters", "--json", "status"]),
+            CaseOpts::default(),
+        );
+        // A bare `--id` becomes the string 'true'.
+        ctx.case_with(
+            "characters status bare id flag",
+            &base(&["characters", "status", "--id"]),
+            CaseOpts::default(),
+        );
+
+        // The 4.6-cutover shape: the content columns actually dropped. v4
+        // keeps working — no `flag` column, vault-only counts, and no
+        // divergence report at all.
+        let post_cutover_pre = |live: &Path| {
+            let w = Writer::open_writable(&live.join("instA/data/quilltap.db"), PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "ALTER TABLE characters DROP COLUMN identity;
+                     ALTER TABLE characters DROP COLUMN description;
+                     ALTER TABLE characters DROP COLUMN systemPrompts;",
+                )
+                .unwrap();
+        };
+        ctx.case_with(
+            "characters status post-cutover",
+            &base(&["characters", "status"]),
+            CaseOpts {
+                pre: Some(Box::new(post_cutover_pre)),
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "characters status post-cutover json",
+            &base(&["characters", "status", "--json"]),
+            CaseOpts {
+                pre: Some(Box::new(post_cutover_pre)),
+                ..Default::default()
+            },
+        );
+
+        // -- archives
+        ctx.case_with(
+            "characters archives",
+            &base(&["characters", "archives"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters archives json",
+            &base(&["characters", "archives", "--json"]),
+            CaseOpts::default(),
+        );
+        // A database that predates archiving entirely (the `PRAGMA
+        // table_info` tolerance the order pins).
+        let pre_archive_pre = |live: &Path| {
+            let w = Writer::open_writable(&live.join("instA/data/quilltap.db"), PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "ALTER TABLE characters DROP COLUMN archivedAt;
+                     ALTER TABLE characters DROP COLUMN archiveFileId;
+                     ALTER TABLE characters DROP COLUMN archivedAvatarFileId;",
+                )
+                .unwrap();
+        };
+        ctx.case_with(
+            "characters archives pre-archive schema",
+            &base(&["characters", "archives"]),
+            CaseOpts {
+                pre: Some(Box::new(pre_archive_pre)),
+                ..Default::default()
+            },
+        );
+        let empty_shelf_pre = |live: &Path| {
+            let w = Writer::open_writable(&live.join("instA/data/quilltap.db"), PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "UPDATE characters SET archivedAt = NULL, archiveFileId = NULL;
+                     DELETE FROM files WHERE category = 'ARCHIVE';",
+                )
+                .unwrap();
+        };
+        ctx.case_with(
+            "characters archives empty shelf",
+            &base(&["characters", "archives"]),
+            CaseOpts {
+                pre: Some(Box::new(empty_shelf_pre)),
+                ..Default::default()
+            },
+        );
+
+        // -- dispatch
+        ctx.case_with(
+            "characters unknown sub",
+            &base(&["characters", "frobnicate"]),
+            CaseOpts::default(),
+        );
+        // The bare token qualifies the verb path, but `runVerb` reads args[0].
+        ctx.case_with(
+            "db flag before verb",
+            &base(&["--json", "characters"]),
+            CaseOpts::default(),
+        );
+
+        // -- archive / rehydrate (usage + guard, no server needed)
+        ctx.case_with(
+            "characters archive usage",
+            &base(&["characters", "archive"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters archive needs write",
+            &base(&["characters", "archive", "Elowen"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters rehydrate usage",
+            &base(&["characters", "rehydrate"]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters rehydrate needs write",
+            &base(&["characters", "rehydrate", "Sable"]),
+            CaseOpts::default(),
+        );
+        // Resolution runs before the request: ambiguity still exits 2.
+        ctx.case_with(
+            "characters archive ambiguous",
+            &base(&["characters", "archive", "Twin", "--write"]),
+            CaseOpts::default(),
+        );
+
+        // -- archive / rehydrate / export against a canned server. Both CLIs
+        //    POST the SAME v4 URLs, so one stub answers both and the whole
+        //    request+print path is diffed without a live Quilltap.
+        let dead_port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let p = l.local_addr().unwrap().port();
+            drop(l);
+            p
+        };
+        let reach = || CaseOpts {
+            normalize_reach: true,
+            ..Default::default()
+        };
+        ctx.case_with(
+            "characters archive unreachable",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--port",
+                &dead_port.to_string(),
+            ]),
+            reach(),
+        );
+
+        let ok_port = spawn_canned_stub(
+            200,
+            r#"{"archived":true,"archiveFileId":"fa000000-0000-4000-8000-000000000001","pruneComplete":true}"#,
+        );
+        ctx.case_with(
+            "characters archive ok",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--port",
+                &ok_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters archive ok json",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--json",
+                "--port",
+                &ok_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        let partial_port = spawn_canned_stub(
+            200,
+            r#"{"archived":true,"archiveFileId":null,"pruneComplete":false}"#,
+        );
+        ctx.case_with(
+            "characters archive prune incomplete",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--port",
+                &partial_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        let rehydrate_port = spawn_canned_stub(
+            200,
+            r#"{"rehydrated":true,"archived":false,"archiveBundleFileId":"fa000000-0000-4000-8000-000000000001","restored":{"memories":42,"documents":7,"blobs":3},"warnings":["One photograph could not be re-linked.","The mail is short two letters."]}"#,
+        );
+        ctx.case_with(
+            "characters rehydrate ok",
+            &base(&[
+                "characters",
+                "rehydrate",
+                "Sable",
+                "--write",
+                "--port",
+                &rehydrate_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        let bare_rehydrate_port = spawn_canned_stub(
+            200,
+            r#"{"rehydrated":true,"archived":false,"archiveBundleFileId":null,"warnings":[]}"#,
+        );
+        ctx.case_with(
+            "characters rehydrate without restored counts",
+            &base(&[
+                "characters",
+                "rehydrate",
+                "Sable",
+                "--write",
+                "--port",
+                &bare_rehydrate_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        let err_port = spawn_canned_stub(
+            400,
+            r#"{"error":"The archive cannot be sealed: your passphrase has not been entered since Quilltap started. Unlock once (or restart and unlock), then archive again."}"#,
+        );
+        ctx.case_with(
+            "characters archive server error",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--port",
+                &err_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+        let bare_err_port = spawn_canned_stub(503, "not json at all");
+        ctx.case_with(
+            "characters archive non-json error",
+            &base(&[
+                "characters",
+                "archive",
+                "Elowen",
+                "--write",
+                "--port",
+                &bare_err_port.to_string(),
+            ]),
+            CaseOpts::default(),
+        );
+
+        // -- export
+        ctx.case_with(
+            "characters export usage",
+            &base(&["characters", "export"]),
+            CaseOpts::default(),
+        );
+        let export_case = |name: &str, who: &str| -> Vec<String> {
+            let _ = name;
+            base(&["characters", "export", who, "--out", &out_path])
+        };
+        ctx.case_with(
+            "characters export archived",
+            &export_case("archived", "Sable"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export plaintext bundle",
+            &export_case("plaintext", "Umber"),
+            CaseOpts::default(),
+        );
+        // Encrypted under a passphrase this process has not seen: the
+        // internal sentinel fails, the env var is unset, and the prompt has
+        // no TTY.
+        ctx.case_with(
+            "characters export wrong passphrase",
+            &export_case("wrong", "Vesper"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export old passphrase from env",
+            &export_case("env", "Vesper"),
+            CaseOpts {
+                envs: vec![("QUILLTAP_DB_PASSPHRASE", OLD_PASSPHRASE.to_string())],
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "characters export tombstone",
+            &export_case("tombstone", "Tobias"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export missing file row",
+            &export_case("missing row", "Wren"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export no storage key",
+            &export_case("no key", "Yarrow"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export bytes absent",
+            &export_case("absent", "Zephyr"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export truncated bundle",
+            &export_case("truncated", "Thorn"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export corrupt bundle",
+            &export_case("corrupt", "Corvid"),
+            CaseOpts::default(),
+        );
+        ctx.case_with(
+            "characters export live unreachable",
+            &base(&[
+                "characters",
+                "export",
+                "Elowen",
+                "--out",
+                &out_path,
+                "--port",
+                &dead_port.to_string(),
+            ]),
+            reach(),
+        );
+        // A live character on a pre-archive database takes the same server
+        // leg (the `archivedAt` probe simply never runs).
+        ctx.case_with(
+            "characters export pre-archive schema",
+            &base(&[
+                "characters",
+                "export",
+                "Sable",
+                "--out",
+                &out_path,
+                "--port",
+                &dead_port.to_string(),
+            ]),
+            CaseOpts {
+                pre: Some(Box::new(pre_archive_pre)),
+                normalize_reach: true,
+                ..Default::default()
+            },
+        );
+        let export_port = spawn_canned_stub(
+            200,
+            "{\"type\":\"character\",\"name\":\"Elowen\"}\n{\"type\":\"memory\"}\n",
+        );
+        // No `--out`: the path is resolved against the cwd from the
+        // character's name, so this one runs in a scratch directory.
+        ctx.case_with(
+            "characters export live default out",
+            &base(&[
+                "characters",
+                "export",
+                "Elowen",
+                "--port",
+                &export_port.to_string(),
+            ]),
+            CaseOpts {
+                cwd: Some(scratch.clone()),
+                ..Default::default()
+            },
+        );
+        // -- Coverage guard. A green byte-diff proves the two CLIs agree; it
+        //    does NOT prove the fixture reaches the branches. Assert the
+        //    SHAPE of what the fixture produces (never hand-counted totals),
+        //    so a future fixture edit that quietly collapses the report to one
+        //    issue class fails here instead of passing silently.
+        {
+            let opts = CaseOpts::default();
+            ctx.reset_live(&opts);
+            let r = ctx.run_v5(&base(&["characters", "status", "--json"]), &opts);
+            let v: serde_json::Value =
+                serde_json::from_slice(&r.stdout).expect("characters status --json parses");
+            let rows = v["characters"].as_array().expect("characters array");
+            let issues: Vec<&str> = rows
+                .iter()
+                .map(|c| c["issue"].as_str().unwrap_or(""))
+                .collect();
+            for want in [
+                "ok (db matches vault)",
+                "no vault",
+                "vault empty",
+                "physical files incomplete (1 of 2)",
+            ] {
+                assert!(
+                    issues.contains(&want),
+                    "fixture must exercise the '{want}' arm: {issues:?}"
+                );
+            }
+            assert!(
+                issues.iter().any(|i| i.ends_with(" files missing")),
+                "fixture must exercise the missing-files arm: {issues:?}"
+            );
+            assert!(
+                issues.iter().any(|i| i.starts_with("diverged (")),
+                "fixture must exercise the divergence arm: {issues:?}"
+            );
+            // The 4.6 cutover abandoned the content columns without dropping
+            // them, so the divergence report is the LIVE path on a modern
+            // instance. If this ever flips, the post-cutover pre-hook cases
+            // are testing the only path there is.
+            assert!(
+                rows.iter().all(|c| c["preCutover"] == true),
+                "the stock fixture is the pre-cutover (columns present) shape"
+            );
+            let counts = &v["counts"];
+            for key in [
+                "ok",
+                "diverged",
+                "missingFiles",
+                "noVault",
+                "empty",
+                "physIncomplete",
+            ] {
+                assert!(
+                    counts[key].as_u64().unwrap_or(0) > 0,
+                    "summary counter '{key}' must be exercised: {counts}"
+                );
+            }
+
+            let r = ctx.run_v5(&base(&["characters", "archives", "--json"]), &opts);
+            let v: serde_json::Value =
+                serde_json::from_slice(&r.stdout).expect("characters archives --json parses");
+            assert!(
+                v["looseBundles"].as_array().is_some_and(|b| !b.is_empty()),
+                "fixture must carry a loose bundle"
+            );
+            assert!(
+                v["archivedCharacters"]
+                    .as_array()
+                    .is_some_and(|a| a.iter().any(|c| c["archiveFileId"].is_null())),
+                "fixture must carry a pre-bundle tombstone"
+            );
+            assert!(
+                v["bundles"]
+                    .as_array()
+                    .is_some_and(|b| b.len() > v["looseBundles"].as_array().unwrap().len()),
+                "fixture must carry held bundles as well as loose ones"
+            );
+            ctx.cases_run += 1;
+        }
+
+        let export_err_port =
+            spawn_canned_stub(500, r#"{"error":"Export failed inside the pipeline."}"#);
+        ctx.case_with(
+            "characters export live server error",
+            &base(&[
+                "characters",
+                "export",
+                "Elowen",
+                "--out",
+                &out_path,
+                "--port",
+                &export_err_port.to_string(),
+            ]),
+            CaseOpts::default(),
         );
     }
 

@@ -63971,3 +63971,119 @@ CLI-side companion to P4.D67's server-side Bug-56 slice.
 
 Gate for the unit: the Tier R family by name, **136 cases / 0 failures**
 against v4 at `ed8934f1` (was 7 failures before the re-capture).
+
+## Lane record — P4.D66 units 2-3: the `db characters` family (2026-08-11)
+
+The whole five-subcommand family (`status`, `archives`, `archive`,
+`rehydrate`, `export`) ported into `crates/quilltap-cli/src/db_characters.rs`
+with v4 `ed8934f1` as the oracle, plus the plumbing the family needed and the
+CLI did not have: v5 had shipped **no** `db` verb at all — every one of them
+answered the loud not-yet-available refusal — so this lane also built v4's
+verb-path entrance (`dbCommand`'s first branch: resolve → default-instance
+hint → `loadDbKey` → `makeCtx` → `runVerb`) and its error contract
+(`Error: <message>`, exit `err.ambiguous ? 2 : 1`).
+
+**Shape of the port.** `db_characters.rs` reproduces v4's shared launcher
+helpers (`parseSubArgs`'s `--k v`/`--k=v`/bare-flag ladder, `asBool`,
+`asInt`, `truncate` in UTF-16 units, `printTable`/`printJson`) and its
+resolvers (`resolveCharacter` → UUID, exact name, then the fuzzy LIKE
+fallback folded with vault aliases read out of `properties.json`;
+`ambiguous()`'s ten-row list and its exit code 2). `status` carries
+`inspectCharacterVault` entire, including the pre-cutover divergence report.
+Two quirks are ported deliberately and pinned by cases:
+
+- `db characters --json status` runs the DEFAULT sub with JSON **off** —
+  `parseSubArgs` swallows `status` as `--json`'s value, so `positional` is
+  empty. Likewise `--id` with no value resolves the literal string `true`.
+- The verb path qualifies on the first BARE token but `runVerb` reads
+  `args[0]`, so `db --json characters` dies with
+  `Unknown db subcommand: --json`.
+
+**The 4.6 "cutover" never happened.** v4's comments describe a post-cutover
+world where the content columns are gone and the vault is canonical, but
+`generateDDL` at `ed8934f1` still declares `identity`/`description`/
+`systemPrompts`/…, so `preCutover` is TRUE on every modern instance and the
+divergence report is the LIVE path. The fixture therefore uses v4's real
+`characters` DDL, and the dropped-columns shape is exercised by a pre-hook
+that actually drops the three probe columns. A consequence worth recording:
+`physicalDescriptions` (plural) is NOT in the schema, so any character whose
+vault carries `physical-description.md` diverges on
+`physicalDescription.fullDescription` against the empty string — v4's real
+behavior on real data, reproduced.
+
+**Two deliberate deviations from the order's text**, both from the fresh
+survey:
+
+1. The order's quirk note said the offline decrypt "resolves the passphrase
+   the same way the server does (cache → INTERNAL_PASSPHRASE → the named
+   `ArchiveKeyUnavailableError`)". It does not. v4's launcher never calls
+   `resolveArchivePassphrase`: `cmdCharactersExport` tries the internal
+   sentinel, then `QUILLTAP_DB_PASSPHRASE` (the `--passphrase` FLAG is not
+   consulted), then an interactive prompt, and on exhaustion throws its own
+   sentence (*"That passphrase does not open this archive…"*). Ported as
+   written; core's `crypto` is still the only crypto (`decrypt_archive`), so
+   rule 3's freeze holds.
+2. The order gated the archive/rehydrate/export-live arms ACTIVATE-AT-UNIFY
+   behind a named constant because "they need P4.D65's verbs live". They do
+   not: both CLIs POST the SAME v4 URLs, so **one canned stub answers both
+   sides** and the request + print paths are real Tier R arms today (the
+   recall-replay precedent, minus the dialect split). There is no gated arm
+   and no gating constant — the lane ships MORE coverage than the order
+   asked, not less. What a live server would add beyond this is the response
+   SHAPES, which are P4.D65's contract and its differential's subject.
+
+**Launcher-vs-service error text.** `tryDecryptArchiveBundle` calls Node's
+`createDecipheriv` directly, so a failed GCM tag escapes as Node's
+*"Unsupported state or unable to authenticate data"* — not as the service
+layer's `ArchiveIntegrityError` sentence, which no launcher path can print.
+The first differential run caught exactly this (the corrupt-bundle arm), and
+the CLI now maps `Integrity` to Node's string. The launcher's own truncation
+check (`headerLength <= 0 || length < bodyStart + 16`) is likewise local, with
+its own sentence, and fires before any crypto. Remaining seam, recorded not
+fixed: a header that is length-plausible but not JSON would print Node's
+`is not valid JSON:` wording in v4 and core's sentence in v5 — the standing
+wording seam, unreachable from a bundle either app writes.
+
+**Fixture (this lane's own, in the Tier R master).** 17 characters covering
+every issue class (ok / diverged / N files missing / no vault / vault empty /
+physical 1-of-2), a name collision for the ambiguity arm, a vault alias only
+`properties.json` knows, five character vaults in the mount index, and eight
+archived characters each standing for one export arm: a valid encrypted
+bundle, a pre-encryption plaintext bundle, a bundle under a passphrase the
+instance no longer has, a missing `files` row, a NULL `storageKey`, a
+storage key with no bytes on disk, a hard-truncated bundle, and a
+full-length bundle with a flipped auth tag. Bundle bytes are planted with
+**core's own** `encrypt_archive` (the format round 1 proved byte-exact
+against v4's `archive-crypto.ts`), which is why the lane needs nothing from
+P4.D65's committed `character-archive-*` family — those DBs carry a different
+pepper and no on-disk bundle bytes at all. The `files` shelf also carries a
+loose bundle and one non-ARCHIVE row the category filter must drop.
+
+**Verification.** `cli_differential` 136 → **188 cases, 0 failures** against
+v4 at `ed8934f1`. Of the 52 new arms, 51 were green on the first run and one
+was the real find above.
+
+Per the D24 rule those first-run-green arms were **mutation-proven**: three
+deliberate defects (the `--blocked` filter's `" files missing"` suffix, the
+status table's `phys` cell format, the archives table's `held by character`
+state) turned **11 cases red** — including `characters status blocked`, which
+only the filter mutation reaches — and reverting restored 188/0. A permanent
+coverage guard was added alongside: it runs `characters status --json` and
+`characters archives --json` and asserts the fixture still produces every
+issue class, a non-zero count in all six summary counters, a loose bundle,
+held bundles, and a pre-bundle tombstone. Shape, never hand-counted totals
+(the `harness-corpus-shape-constants-rot` rule).
+
+Harness additions (all inside this lane's ownership): `CaseOpts.cwd` (the
+default-`--out` export resolves against the process cwd, so that case runs in
+a scratch dir instead of the crate root), `CaseOpts.normalize_reach` (the ONE
+transport truth — Node's `fetch failed` vs the Rust connect error — inside the
+otherwise byte-compared *"Could not reach the Quilltap server at
+http://localhost:<port>: …"* line), and `spawn_canned_stub`.
+
+Refactors the family required, all CLI-local: `src/http.rs` (the localhost
+POST, now shared with `recall-replay`, with a raw-bytes twin because a
+`.qtap` export body is not text by contract), `src/dbopen.rs` (the read-only
+encrypted open + `sqlite_msg`, previously duplicated in `docs_cmd`), and
+`nodefmt::{node_resolve, utf16_len, slice_utf16}` (the last lifted out of
+`recall_replay_cmd`).

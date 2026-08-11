@@ -53,6 +53,22 @@ P4.D67 unit 1 — ported v4 `ed8934f1`'s new
 byte-exact operator-facing sentences including the containerized
 variants (pinned by unit tests — neither test environment is a
 container). No caller yet; the wire lands with the route arms.
+CLI — ported the whole `quilltap db characters` family (v4 `ed8934f1`):
+`status`, `archives`, `archive`, `rehydrate`, `export`. This is the first
+`db` verb v5 ships at all, so it also lands v4's verb-path entrance
+(resolve → instance hint → dbkey unlock → dispatch) and its error contract
+(`Error: <message>`; exit 2 on an ambiguous name). `status` carries the full
+vault-readiness report including the divergence pass; `archives` lists the
+shelf with loose bundles; `export` decrypts an archived character's bundle
+offline through core's archive crypto — the only way to reach packed-away
+mail, photographs and summaries without rehydrating — and proxies live
+characters to the server. `archive`/`rehydrate` proxy the same v4 URLs.
+Two v4 quirks ported deliberately and pinned: `characters --json status`
+runs the default sub with JSON off, and `db --json characters` reports an
+unknown subcommand. The Tier R differential goes 136 → 188 cases, 0
+failures, over a new 17-character fixture with eight distinct archived-export
+arms; the new arms are mutation-proven and carry a permanent coverage guard.
+
 CLI — absorbed v4's `ed8934f1` text drift into `quilltap-cli`. `db --help`
 picked up the fourteen `characters archives|archive|rehydrate|export` lines
 from the round-1 archive commit; `docs --help` and all three shell-completion

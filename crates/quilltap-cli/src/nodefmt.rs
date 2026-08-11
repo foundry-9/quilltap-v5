@@ -138,6 +138,33 @@ pub fn node_normalize(p: &str) -> String {
     }
 }
 
+/// Node `path.resolve(p)` for one argument: an absolute path is normalized in
+/// place; a relative one is normalized against the process cwd (which is what
+/// v4's `path.resolve(outPath)` does).
+pub fn node_resolve(p: &str) -> String {
+    if p.starts_with('/') {
+        return node_normalize(p);
+    }
+    let cwd = std::env::current_dir()
+        .map(|d| d.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "/".to_string());
+    node_join(&cwd, p)
+}
+
+/// JS `String#length` — UTF-16 code units, not chars or bytes.
+pub fn utf16_len(s: &str) -> usize {
+    s.chars().map(char::len_utf16).sum()
+}
+
+/// JS `String#slice(0, n)` — counts UTF-16 code units. A cut landing inside a
+/// surrogate pair leaves JS holding a lone surrogate, which Node turns into
+/// U+FFFD on the way to a UTF-8 stream; `from_utf16_lossy` is that same
+/// substitution.
+pub fn slice_utf16(s: &str, n: usize) -> String {
+    let units: Vec<u16> = s.encode_utf16().take(n).collect();
+    String::from_utf16_lossy(&units)
+}
+
 /// JS `parseInt(s, 10)`: prefix-parse an optionally-signed decimal integer;
 /// `None` for NaN (no leading digits / missing value).
 pub fn js_parse_int(s: Option<&str>) -> Option<i64> {

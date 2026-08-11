@@ -18,8 +18,11 @@
 //! tool-catalog static-data-transcription precedent.
 
 mod completion_cmd;
+mod db_characters;
 mod db_cmd;
+mod dbopen;
 mod docs_cmd;
+mod http;
 mod instances_cmd;
 mod nodefmt;
 mod out;

@@ -13,6 +13,7 @@
 //! has none (the replay needs the live host's cheap-LLM providers).
 
 use crate::nodefmt;
+use crate::nodefmt::slice_utf16;
 use crate::out;
 
 const RESET: &str = "\x1b[0m";
@@ -141,11 +142,6 @@ fn pad_end(s: &str, width: usize) -> String {
 }
 
 /// JS `.slice(0, n)` over UTF-16 units.
-fn slice_utf16(s: &str, n: usize) -> String {
-    let units: Vec<u16> = s.encode_utf16().take(n).collect();
-    String::from_utf16_lossy(&units)
-}
-
 /// v4 `fmt(n, digits = 3)` — `—` (dimmed) for null/absent, `toFixed` otherwise.
 fn fmt(v: Option<f64>, digits: u32) -> String {
     match v {

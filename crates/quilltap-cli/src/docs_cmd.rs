@@ -15,6 +15,7 @@ use quilltap_core::doc_edit::qtap_uri::{
 use quilltap_core::doc_edit::DocEditScope;
 use quilltap_host::instances::InstanceRegistry;
 
+use crate::dbopen::{open_readonly, sqlite_msg};
 use crate::nodefmt::{cell_to_js_value, format_bytes, js_num_string, json_stringify_pretty};
 use crate::out;
 use crate::resolve::{load_db_key, print_default_instance_hint, resolve_data_dir_and_passphrase};
@@ -312,31 +313,6 @@ fn open_docs_db(flags: &Flags) -> Result<DocsDb, String> {
     })?;
     assert_docs_schema(&conn, &data_dir, &registry);
     Ok(DocsDb { conn, data_dir })
-}
-
-fn open_readonly(db_path: &str, pepper: Option<&str>) -> Result<rusqlite::Connection, String> {
-    use rusqlite::OpenFlags;
-    let conn = rusqlite::Connection::open_with_flags(
-        db_path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|e| sqlite_msg(&e))?;
-    if let Some(pepper) = pepper {
-        let key_hex =
-            quilltap_core::dbkey::pepper_b64_to_key_hex(pepper).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "key", format!("x'{key_hex}'"))
-            .map_err(|e| sqlite_msg(&e))?;
-    }
-    conn.query_row("SELECT 1", [], |_| Ok(()))
-        .map_err(|e| sqlite_msg(&e))?;
-    Ok(conn)
-}
-
-fn sqlite_msg(e: &rusqlite::Error) -> String {
-    match e {
-        rusqlite::Error::SqliteFailure(_, Some(m)) => m.clone(),
-        other => other.to_string(),
-    }
 }
 
 /// v4 `assertDocsSchema` — refuse a pre-link-table mount index with the exact
