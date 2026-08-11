@@ -19,6 +19,7 @@ use crate::db::doc_mount_points::{
 };
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::services::mount_index::base_path_availability::check_base_path_availability;
 
 use super::types::{ErrorKind, Response};
 
@@ -184,8 +185,8 @@ fn parse_string_array(v: &Value) -> Option<Vec<String>> {
 
 /// v4 `POST /api/v1/mount-points` — `createMountPointSchema.parse` (no try/catch,
 /// so a Zod failure → the middleware `Validation error` 400), then create, the
-/// `verifyBasePath` warning seam, and the character-scaffold arm; `{mountPoint,
-/// warning?}`.
+/// `checkBasePathAvailability` warning arm (`ed8934f1` — it replaced
+/// `verifyBasePath`), and the character-scaffold arm; `{mountPoint, warning?}`.
 pub async fn mount_point_create(db: &Db, body: Value) -> Response {
     let fields = match validate_create(&body) {
         Ok(f) => f,
@@ -266,18 +267,28 @@ pub async fn mount_point_create(db: &Db, body: Value) -> Response {
     mp.insert("updatedAt".into(), Value::String(now));
     let mount_point = Value::Object(mp);
 
-    // verifyBasePath seam: a database mount skips the check; every other mount type
-    // is treated as inaccessible (the injected deterministic default — the
-    // differential drives v4 with a nonexistent path, so both produce the warning).
+    // [ed8934f1] A database mount skips the check entirely; every other mount
+    // type gets the real reachability answer, and the warning carries its
+    // diagnosis (which names the remedy — a bare "not accessible" never could).
+    // The old blanket-inaccessible seam is gone: an existing directory now
+    // creates with NO warning key at all, exactly as v4 does.
     if fields.mount_type != "database" {
-        let warning = format!(
-            "Base path '{}' is not currently accessible. The mount point was created but scanning will fail until the path is available.",
-            fields.base_path
-        );
-        Response::MountPoint(json!({ "mountPoint": mount_point, "warning": warning }))
-    } else {
-        Response::MountPoint(json!({ "mountPoint": mount_point }))
+        let availability = check_base_path_availability(&fields.base_path);
+        if let Some(detail) = availability.unavailable() {
+            tracing::warn!(
+                base_path = %fields.base_path,
+                reason = %detail.reason.as_str(),
+                containerized = detail.containerized,
+                "[Mount Points v1] Base path not accessible"
+            );
+            let warning = format!(
+                "{} The store was created, but scanning will fail until the path is reachable.",
+                detail.message
+            );
+            return Response::MountPoint(json!({ "mountPoint": mount_point, "warning": warning }));
+        }
     }
+    Response::MountPoint(json!({ "mountPoint": mount_point }))
 }
 
 fn validate_create(body: &Value) -> Result<CreateFields, Response> {

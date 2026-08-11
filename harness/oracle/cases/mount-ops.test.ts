@@ -9,6 +9,10 @@
  * the RAW eight-table dump. Normalization happens ONCE, in the Rust test
  * (`tests/mount_common/mod.rs`), applied to BOTH sides.
  *
+ * [ed8934f1 / Bug 56] Three folder-create cases point MP_FS's basePath at
+ * PLANTED unreachable conditions (missing / not-a-directory / denied) and pin
+ * the new 409 diagnosis — see the `PLANT_ROOT` block below.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-mount-ops-oracle
@@ -157,6 +161,49 @@ async function dumpTables(): Promise<Record<string, unknown>> {
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown }>;
+  /**
+   * [ed8934f1] Point MP_FS's basePath somewhere other than the per-case fs-tree
+   * copy — the planted Bug-56 reachability conditions. Applied AFTER the
+   * standard rewrite, and only to MP_FS (MP_OBS keeps the tree).
+   */
+  basePath?: string;
+}
+
+// [ed8934f1] The planted base-path conditions for the folder-create refusals.
+// Fixed literal paths, identical on both sides of the diff, so the diagnosis
+// sentences (which embed the path) compare byte-for-byte with no
+// normalization. The root is per-family (`qt-bug56-ops`, not the
+// mount-points family's `qt-bug56-mp`) because cargo runs the two Rust
+// differentials as concurrent test binaries.
+//
+// `denied` is planted as an unreadable PARENT, not a `chmod 000` on the base
+// itself: `fs.stat` takes its EACCES from the parent directory's search
+// permission, and a 000 directory still stats fine and reads as available.
+//
+// ⚠ `containerized` is false in BOTH environments, so the container-variant
+// sentences are pinned by UNIT tests on the message builder, not here.
+const PLANT_ROOT = '/tmp/qt-bug56-ops';
+const PLANT_NOT_A_DIRECTORY = `${PLANT_ROOT}/notdir`;
+const PLANT_DENIED_PARENT = `${PLANT_ROOT}/denied`;
+const PLANT_DENIED = `${PLANT_DENIED_PARENT}/inner`;
+const PLANT_MISSING = `${PLANT_ROOT}/gone`;
+
+function plantBasePaths(): void {
+  unplantBasePaths();
+  mkdirSync(PLANT_DENIED, { recursive: true });
+  fs.writeFileSync(PLANT_NOT_A_DIRECTORY, 'not a directory');
+  fs.chmodSync(PLANT_DENIED_PARENT, 0o000);
+}
+
+function unplantBasePaths(): void {
+  // Restore the denied parent before the recursive remove, or the remove
+  // itself fails and leaks a 000 directory into every later suite.
+  try {
+    fs.chmodSync(PLANT_DENIED_PARENT, 0o755);
+  } catch {
+    /* not planted */
+  }
+  rmSync(PLANT_ROOT, { recursive: true, force: true });
 }
 
 async function loadRoute(
@@ -209,6 +256,9 @@ async function runCase(
   midb
     .prepare('UPDATE doc_mount_points SET basePath = ? WHERE id IN (?, ?)')
     .run(treeWork, MP_FS, 'b6000000-0000-4000-8000-000000000004');
+  if (c.basePath !== undefined) {
+    midb.prepare('UPDATE doc_mount_points SET basePath = ? WHERE id = ?').run(c.basePath, MP_FS);
+  }
 
   try {
     const out = await c.run();
@@ -309,6 +359,24 @@ function cases(): CaseSpec[] {
     { name: 'folder_create_fs', run: mkFolder(MP_FS, { path: 'fresh/sub' }) },
     { name: 'folder_create_unsafe', run: mkFolder(MP_DB, { path: '../evil' }) },
     { name: 'folder_create_bad_chars', run: mkFolder(MP_DB, { path: 'a<b' }) },
+    // [ed8934f1 / Bug 56] The store's own root is unreachable: refuse with a
+    // 409 carrying the diagnosis, instead of letting the recursive mkdir walk
+    // up to the topmost missing ancestor and fabricate the whole chain.
+    {
+      name: 'folder_create_fs_base_missing',
+      run: mkFolder(MP_FS, { path: 'fresh/sub' }),
+      basePath: PLANT_MISSING,
+    },
+    {
+      name: 'folder_create_fs_base_not_a_directory',
+      run: mkFolder(MP_FS, { path: 'fresh/sub' }),
+      basePath: PLANT_NOT_A_DIRECTORY,
+    },
+    {
+      name: 'folder_create_fs_base_denied',
+      run: mkFolder(MP_FS, { path: 'fresh/sub' }),
+      basePath: PLANT_DENIED,
+    },
     {
       name: 'folder_create_then_delete_db',
       run: async () => {
@@ -344,8 +412,13 @@ describe('mount-ops oracle', () => {
     process.env.LOG_LEVEL = 'error';
 
     const rows: unknown[] = [];
-    for (const c of cases()) {
-      rows.push(await runCase(spec, c, scratch, fixtures));
+    plantBasePaths();
+    try {
+      for (const c of cases()) {
+        rows.push(await runCase(spec, c, scratch, fixtures));
+      }
+    } finally {
+      unplantBasePaths();
     }
     fs.writeFileSync(outPath, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
     rmSync(scratch, { recursive: true, force: true });

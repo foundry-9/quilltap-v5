@@ -17,6 +17,19 @@ tier-2 differential against v4's real archive service, diffing the
 returned result, the DECRYPTED bundle, and every table in both
 partitions. (Ciphertext is never compared — a fresh salt and IV per
 bundle make it nondeterministic on both sides.)
+P4.D67 unit 2 — wired the base-path-availability check into the three v4
+consumers (`ed8934f1`, Bug 56). Creating a folder in a filesystem store
+whose own root is unreachable now answers 409 with the diagnosis instead
+of letting the recursive mkdir walk up to the topmost missing ancestor
+and fabricate the entire chain; `verify_base_path` is deleted, and
+store creation's warning is the diagnosis plus "The store was created,
+but scanning will fail until the path is reachable." — so a store on a
+real directory now creates with no warning at all, where v5 previously
+warned unconditionally. Both mount differentials gained planted
+reachability arms (missing / denied / not-a-directory / available) and
+were regenerated at `ed8934f1`: mount-points-routes 15 → 19 cases,
+mount-ops 39 → 42.
+
 P4.D67 unit 1 — ported v4 `ed8934f1`'s new
 `lib/mount-index/base-path-availability.ts` as
 `services/mount_index/base_path_availability.rs`: the never-failing

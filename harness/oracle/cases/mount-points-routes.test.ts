@@ -4,9 +4,25 @@
  * P4.6p GLOBAL MOUNT-POINTS route-surface ORACLE: drives v4's REAL mount-point
  * route handlers over a FRESH copy of the committed groups-projects fixture per
  * case, emitting `{status, body(, tables)}` so `api::mount_points::*` can be diffed
- * byte-for-byte. The fs seams (`verifyBasePath` / watcher attach/refresh/detach)
- * are the real functions; the create differential drives a NONEXISTENT basePath so
- * `verifyBasePath` returns false on both sides (the deterministic warning).
+ * byte-for-byte. The fs seams (`checkBasePathAvailability` / watcher
+ * attach/refresh/detach) are the real functions.
+ *
+ * [ed8934f1 / Bug 56] The store-create warning is now the base-path-availability
+ * DIAGNOSIS, so the create differential drives all four reachability states over
+ * PLANTED conditions under a fixed root (`PLANT_ROOT` below). The paths are
+ * literal and identical on both sides — that is what lets the sentences, which
+ * embed the path, be compared byte-for-byte with no normalization. The root is
+ * per-family (`qt-bug56-mp`, not the mount-ops family's `qt-bug56-ops`) because
+ * the two Rust differentials are separate test binaries and cargo runs them
+ * concurrently.
+ *
+ * `denied` is planted as an unreadable PARENT, not a `chmod 000` on the base
+ * itself: `fs.stat` takes its EACCES from the parent directory's search
+ * permission, and a 000 directory still stats fine and reads as available.
+ *
+ * ⚠ `containerized` is false in BOTH environments (no `/.dockerenv`, no `/app`,
+ * no `LIMA_CONTAINER`), so the container-variant sentences are pinned by UNIT
+ * tests on the message builder (`base_path_availability.rs`), not here.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -31,6 +47,36 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   userId: string;
+}
+
+// [ed8934f1] The planted base-path conditions. Fixed literal paths, identical
+// on both sides of the diff, so the diagnosis sentences (which embed the path)
+// compare byte-for-byte.
+const PLANT_ROOT = '/tmp/qt-bug56-mp';
+const PLANT_AVAILABLE = `${PLANT_ROOT}/available`;
+const PLANT_NOT_A_DIRECTORY = `${PLANT_ROOT}/notdir`;
+const PLANT_DENIED_PARENT = `${PLANT_ROOT}/denied`;
+const PLANT_DENIED = `${PLANT_DENIED_PARENT}/inner`;
+const PLANT_MISSING = `${PLANT_ROOT}/gone`;
+
+function plantBasePaths(): void {
+  unplantBasePaths();
+  mkdirSync(PLANT_AVAILABLE, { recursive: true });
+  mkdirSync(PLANT_DENIED, { recursive: true });
+  fs.writeFileSync(PLANT_NOT_A_DIRECTORY, 'not a directory');
+  // Make the PARENT unreadable — that is where stat()'s EACCES comes from.
+  fs.chmodSync(PLANT_DENIED_PARENT, 0o000);
+}
+
+function unplantBasePaths(): void {
+  // Restore the denied parent before the recursive remove, or the remove
+  // itself fails and leaks a 000 directory into every later suite.
+  try {
+    fs.chmodSync(PLANT_DENIED_PARENT, 0o755);
+  } catch {
+    /* not planted */
+  }
+  rmSync(PLANT_ROOT, { recursive: true, force: true });
 }
 
 const GAMMA_EXTRA_MP = 'b0000000-0000-4000-8000-000000000001'; // database/documents, linked to Gamma
@@ -265,7 +311,49 @@ async function main(): Promise<void> {
       run: async () =>
         respond(
           await (await coll()).POST(
-            mockRequest(B, { name: 'FS Store', mountType: 'filesystem', basePath: '/nonexistent/qt-mp-xyz-98765' }),
+            mockRequest(B, { name: 'FS Store', mountType: 'filesystem', basePath: PLANT_MISSING }),
+          ),
+        ),
+    },
+    // [ed8934f1] The three other reachability states. `available` is the arm
+    // that used to be unreachable in v5 (its warning seam was blanket-false):
+    // a store on a real directory now creates with NO warning key at all.
+    {
+      name: 'create_filesystem_available',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'FS Store Reachable',
+              mountType: 'filesystem',
+              basePath: PLANT_AVAILABLE,
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_filesystem_not_a_directory',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'FS Store On A File',
+              mountType: 'filesystem',
+              basePath: PLANT_NOT_A_DIRECTORY,
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_filesystem_denied',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'FS Store Unreadable',
+              mountType: 'obsidian',
+              basePath: PLANT_DENIED,
+            }),
           ),
         ),
     },
@@ -342,9 +430,14 @@ async function main(): Promise<void> {
   ];
 
   const outLines: string[] = [];
-  for (const c of cases) {
-    const payload = await runCase(spec, c, scratch, fixtures);
-    outLines.push(JSON.stringify(payload));
+  plantBasePaths();
+  try {
+    for (const c of cases) {
+      const payload = await runCase(spec, c, scratch, fixtures);
+      outLines.push(JSON.stringify(payload));
+    }
+  } finally {
+    unplantBasePaths();
   }
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`mount-points oracle wrote ${outPath} (${outLines.length} cases)\n`);

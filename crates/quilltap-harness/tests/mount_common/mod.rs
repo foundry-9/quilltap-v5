@@ -50,6 +50,72 @@ pub fn load_oracle(env_var: &str) -> Option<std::collections::HashMap<String, Va
     Some(oracle)
 }
 
+// ─── [ed8934f1] the planted Bug-56 base-path conditions ────────────────────
+
+/// The four reachability states, planted under a caller-chosen root as FIXED
+/// literal paths so the diagnosis sentences — which embed the path — compare
+/// byte-for-byte across the two sides with no normalization.
+///
+/// Two things here are load-bearing, not incidental:
+///
+/// - **`denied` is an unreadable PARENT.** `stat` takes its EACCES from the
+///   parent directory's search permission; a `chmod 000` on the base path
+///   itself still stats fine and reads as *available*.
+/// - **`Drop` restores the mode before removing.** A leaked 000 directory
+///   breaks every later suite (and the remove itself), so the cleanup runs even
+///   when a case panics.
+///
+/// Each family passes its OWN root: cargo runs the mount differentials as
+/// concurrent test binaries, and a shared root would race.
+pub struct PlantedBases {
+    root: String,
+}
+
+impl PlantedBases {
+    pub fn available(root: &str) -> String {
+        format!("{root}/available")
+    }
+    pub fn not_a_directory(root: &str) -> String {
+        format!("{root}/notdir")
+    }
+    pub fn denied_parent(root: &str) -> String {
+        format!("{root}/denied")
+    }
+    pub fn denied(root: &str) -> String {
+        format!("{root}/denied/inner")
+    }
+    pub fn missing(root: &str) -> String {
+        format!("{root}/gone")
+    }
+
+    pub fn plant(root: &str) -> Self {
+        Self::clear(root);
+        std::fs::create_dir_all(Self::available(root)).unwrap();
+        std::fs::create_dir_all(Self::denied(root)).unwrap();
+        std::fs::write(Self::not_a_directory(root), b"not a directory").unwrap();
+        chmod(&Self::denied_parent(root), 0o000);
+        PlantedBases {
+            root: root.to_string(),
+        }
+    }
+
+    fn clear(root: &str) {
+        chmod(&Self::denied_parent(root), 0o755);
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+impl Drop for PlantedBases {
+    fn drop(&mut self) {
+        Self::clear(&self.root);
+    }
+}
+
+fn chmod(path: &str, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+}
+
 pub fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
     std::fs::create_dir_all(dst).unwrap();
     for entry in std::fs::read_dir(src).unwrap() {
@@ -67,6 +133,15 @@ pub fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
 /// A per-case fresh instance: fixture copies + per-case fs-tree copy + the
 /// sentinel basePath rewrite (the mount-read recipe).
 pub fn fresh_db(pepper: &str, tag: &str) -> (Db, PathBuf) {
+    fresh_db_with_base(pepper, tag, None)
+}
+
+/// [ed8934f1] `fresh_db`, plus an optional override that points MP_FS's
+/// basePath somewhere other than the per-case fs-tree copy — the planted
+/// Bug-56 reachability conditions. Applied AFTER the standard rewrite and only
+/// to MP_FS (MP_OBS keeps the tree), mirroring the oracle's `basePath` case
+/// field.
+pub fn fresh_db_with_base(pepper: &str, tag: &str, base_override: Option<&str>) -> (Db, PathBuf) {
     let scratch = std::env::temp_dir().join(format!("qt-mindex-{}-{}", tag, std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
@@ -84,6 +159,14 @@ pub fn fresh_db(pepper: &str, tag: &str) -> (Db, PathBuf) {
                 rusqlite::params![tree.to_str().unwrap(), MP_FS, MP_OBS],
             )
             .expect("rewrite basePath");
+        if let Some(base) = base_override {
+            w.connection()
+                .execute(
+                    "UPDATE doc_mount_points SET basePath = ?1 WHERE id = ?2",
+                    rusqlite::params![base, MP_FS],
+                )
+                .expect("plant basePath");
+        }
     }
     let db = Db::open(
         DbPaths {

@@ -18,6 +18,7 @@ use crate::db::doc_mount_files::DocMountFilesRepository;
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::DbError;
 
+use super::base_path_availability::{assert_base_path_available, BasePathUnavailableError};
 use super::chunker::{chunk_document, ChunkOptions};
 use super::converters::{convert_to_plain_text, DocumentTextExtractor};
 use super::list::matches_pattern;
@@ -430,19 +431,30 @@ pub fn rescan_database_mount_point(
     Ok(doc_links.len() as i64)
 }
 
-/// v4 `verifyBasePath` — is the path accessible?
-pub fn verify_base_path(base_path: &str) -> bool {
-    std::path::Path::new(base_path).exists()
+/// How `create_filesystem_folder` can refuse. v4 throws three shapes and the
+/// folders route discriminates on all three; a typed enum is how v5 says
+/// `instanceof`.
+#[derive(Debug, Clone)]
+pub enum CreateFolderError {
+    /// v4's `throw new Error('Folder path escapes mount point boundary')` —
+    /// the traversal guard, which the route maps to a 400.
+    Escapes,
+    /// v4 `ed8934f1`: the store's own root is unreachable — a 409 carrying the
+    /// diagnosis.
+    BasePathUnavailable(BasePathUnavailableError),
+    /// Anything the `mkdir -p` itself threw (the route's bare 500).
+    Io(String),
 }
 
 /// v4 `createFilesystemFolder` (scanner.ts:496) — mkdir -p inside the mount,
 /// refusing targets that escape `basePath` (the traversal guard; the folders
-/// route maps the "escapes" message to a 400).
+/// route maps the "escapes" message to a 400) and refusing outright when the
+/// mount's own base path is unreachable (`ed8934f1`).
 pub fn create_filesystem_folder(
     base_path: &str,
     _mount_point_id: &str,
     relative_path: &str,
-) -> Result<(), String> {
+) -> Result<(), CreateFolderError> {
     use std::path::{Component, PathBuf};
     // path.resolve(basePath, relativePath) — normalize `.`/`..` lexically the
     // way Node does (no symlink resolution).
@@ -465,9 +477,20 @@ pub fn create_filesystem_folder(
         format!("{base_str}/")
     };
     if !(target_str == base_str || target_str.starts_with(&base_with_sep)) {
-        return Err("Folder path escapes mount point boundary".to_string());
+        return Err(CreateFolderError::Escapes);
     }
-    std::fs::create_dir_all(&resolved).map_err(|e| e.to_string())
+
+    // The mkdir below is recursive, which is what makes this check load-bearing
+    // rather than merely polite. Without it, a mount whose basePath is absent —
+    // a store pointing at an unmounted volume, or at a host path that was never
+    // bound into this container — sends mkdir walking all the way up to the
+    // topmost missing ancestor and creating the entire chain. Where the process
+    // has the privileges to do that, the folder is reported as created while
+    // living in a fabricated tree that has nothing to do with the user's store.
+    // Fail loudly against the absent base instead.
+    assert_base_path_available(base_path).map_err(CreateFolderError::BasePathUnavailable)?;
+
+    std::fs::create_dir_all(&resolved).map_err(|e| CreateFolderError::Io(e.to_string()))
 }
 
 #[cfg(test)]
@@ -497,7 +520,31 @@ mod tests {
         create_filesystem_folder(base, "m1", "a/b").unwrap();
         assert!(tmp.join("a/b").is_dir());
         let err = create_filesystem_folder(base, "m1", "../escape").unwrap_err();
-        assert!(err.contains("escapes"));
+        assert!(matches!(err, CreateFolderError::Escapes));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// [ed8934f1] The escape guard runs BEFORE the availability assert (v4's
+    /// order), and an absent base refuses instead of `mkdir -p` fabricating the
+    /// whole ancestor chain.
+    #[test]
+    fn create_filesystem_folder_refuses_an_absent_base() {
+        let tmp = std::env::temp_dir().join(format!("qt-scan-absent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let base = tmp.join("never/created");
+        let base = base.to_str().unwrap();
+
+        let err = create_filesystem_folder(base, "m1", "a/b").unwrap_err();
+        match err {
+            CreateFolderError::BasePathUnavailable(e) => {
+                assert_eq!(e.message, format!("The path '{base}' does not exist."));
+            }
+            other => panic!("expected BasePathUnavailable, got {other:?}"),
+        }
+        assert!(!tmp.exists(), "the absent base must not have been created");
+
+        // The traversal guard still wins over the availability check.
+        let err = create_filesystem_folder(base, "m1", "../escape").unwrap_err();
+        assert!(matches!(err, CreateFolderError::Escapes));
     }
 }

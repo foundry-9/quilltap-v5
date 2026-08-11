@@ -12,6 +12,7 @@
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::services::mount_index::base_path_availability::BasePathUnavailableError;
 use crate::services::mount_index::converters::default_text_extractor;
 use crate::services::mount_index::embedding_scheduler::enqueue_embedding_jobs_for_mount_point;
 use crate::services::mount_index::file_op_status::file_op_status_for_code;
@@ -19,7 +20,7 @@ use crate::services::mount_index::list::mount_files_list as svc_list;
 use crate::services::mount_index::read_file::{
     read_mount_file, FileEncoding, MountFileError, ReadMountFileOptions,
 };
-use crate::services::mount_index::scanner::scan_mount_point;
+use crate::services::mount_index::scanner::{scan_mount_point, CreateFolderError};
 
 use super::types::{ErrorKind, Response};
 
@@ -469,6 +470,18 @@ pub fn is_path_safe(rel: &str) -> bool {
 /// v4 `POST /api/v1/mount-points/[id]/folders` — create a folder (database →
 /// an explicit `doc_mount_folders` row; fs → mkdir with the escape guard).
 /// Body: `{path}`.
+///
+/// How the create can refuse. v4 discriminates by `instanceof` inside the
+/// route's catch; the write closure has to carry the shape back out.
+enum FolderCreateRefusal {
+    NotFound,
+    BadRequest(String),
+    /// [ed8934f1] The store's own root is unreachable, so this is a
+    /// configuration problem rather than a bad request or a server fault. Hand
+    /// back the diagnosis — it names the remedy, which a bare 500 never could.
+    BasePathUnavailable(BasePathUnavailableError),
+}
+
 pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> Response {
     if path.is_empty() || path.chars().count() > 1024 {
         return Response::error(ErrorKind::BadRequest, "Folder path is required");
@@ -485,10 +498,12 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
         .write(move |ws| {
             let mount = mount_conn(ws)?;
             let Some(mp) = load_mount_service_info(mount, &id)? else {
-                return Ok(Err("__NOT_FOUND__".to_string()));
+                return Ok(Err(FolderCreateRefusal::NotFound));
             };
             if !mp.enabled {
-                return Ok(Err("Mount point is disabled".to_string()));
+                return Ok(Err(FolderCreateRefusal::BadRequest(
+                    "Mount point is disabled".to_string(),
+                )));
             }
             if mp.mount_type == "database" {
                 let (_, created) =
@@ -496,23 +511,38 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
                 return Ok(Ok(created));
             }
             let Some(base) = mp.base_path.as_deref().filter(|b| !b.is_empty()) else {
-                return Ok(Err("Mount point has no base path configured".to_string()));
+                return Ok(Err(FolderCreateRefusal::BadRequest(
+                    "Mount point has no base path configured".to_string(),
+                )));
             };
             match crate::services::mount_index::scanner::create_filesystem_folder(base, &id, &rel) {
                 Ok(()) => Ok(Ok(rel.clone())),
-                Err(msg) if msg.contains("escapes") => {
-                    Ok(Err("Folder path escapes mount point boundary".to_string()))
+                Err(CreateFolderError::Escapes) => Ok(Err(FolderCreateRefusal::BadRequest(
+                    "Folder path escapes mount point boundary".to_string(),
+                ))),
+                Err(CreateFolderError::BasePathUnavailable(e)) => {
+                    Ok(Err(FolderCreateRefusal::BasePathUnavailable(e)))
                 }
-                Err(msg) => Err(crate::db::DbError::Key(msg)),
+                Err(CreateFolderError::Io(msg)) => Err(crate::db::DbError::Key(msg)),
             }
         })
         .await;
     match out {
         Ok(Ok(created)) => Response::MountFile(serde_json::json!({ "path": created })),
-        Ok(Err(m)) if m == "__NOT_FOUND__" => {
+        Ok(Err(FolderCreateRefusal::NotFound)) => {
             Response::error(ErrorKind::NotFound, "Mount point not found")
         }
-        Ok(Err(m)) => Response::error(ErrorKind::BadRequest, m),
+        Ok(Err(FolderCreateRefusal::BadRequest(m))) => Response::error(ErrorKind::BadRequest, m),
+        Ok(Err(FolderCreateRefusal::BasePathUnavailable(e))) => {
+            tracing::warn!(
+                mount_point_id = %mount_point_id,
+                base_path = %e.base_path,
+                reason = %e.reason.as_str(),
+                containerized = e.containerized,
+                "[Mount Points v1] Folder creation refused — base path unavailable"
+            );
+            Response::error(ErrorKind::Conflict, e.message)
+        }
         Err(e) => {
             eprintln!("[Mount Points v1] Error creating folder in mount point: {e}");
             Response::error(ErrorKind::Internal, "Failed to create folder")

@@ -63786,3 +63786,79 @@ than by the differential — recorded here and in the case headers because
 it is a real coverage boundary, not an oversight. The module has no
 caller in this commit; the wire (scanner assert + the two route arms) and
 its differential arms land in unit 2.
+
+### Unit record — P4.D67 unit 2 (the three consumer arms + the differentials)
+
+The wire, all three of v4 `ed8934f1`'s consumers, with the differentials
+that prove them.
+
+**`create_filesystem_folder`.** `verify_base_path` DELETED (it had no
+caller left once `mount_point_create` moved to the new check), and the
+assert placed between the traversal guard and the recursive create —
+v4's exact order, which matters: an escaping path on an unreachable base
+still answers the 400, not the 409. v4's load-bearing comment is carried
+verbatim. The function's `Result<(), String>` became a typed
+`CreateFolderError` (`Escapes` / `BasePathUnavailable` / `Io`), which is
+how v5 spells the route's three `instanceof` branches; the previous
+`msg.contains("escapes")` sniff is gone with it.
+
+**The folder-create 409.** `mount_folder_create`'s write closure now
+carries a `FolderCreateRefusal` back out instead of a stringly-typed
+`Err(String)` with a `__NOT_FOUND__` sentinel, because the unavailable
+arm has to reach the response layer with its `reason`/`containerized`
+intact for the `tracing::warn!`. `ErrorKind::Conflict` was already
+wired to 409 (P4.d7), so nothing new was invented.
+
+**The store-create warning.** v5's create had a deliberate seam here: a
+non-database mount was treated as ALWAYS inaccessible ("the injected
+deterministic default"), which was only ever safe because the
+differential drove a nonexistent path. That seam is gone — the real
+check runs, and **a store created on a real directory now returns no
+`warning` key at all**, which v5 has never done. The sentence is v4's
+new one; the old "not currently accessible" wording is deleted.
+
+**The differentials.** Both families gained PLANTED reachability
+conditions under a per-family fixed root (`/tmp/qt-bug56-mp`,
+`/tmp/qt-bug56-ops` — separate because cargo runs the two test binaries
+concurrently and a shared root would race). Fixed LITERAL paths on both
+sides are what let the diagnosis sentences, which embed the path, be
+compared byte-for-byte with no normalization at all. Planting and
+cleanup are symmetric (`PlantedBases` in `mount_common`, `Drop`-based;
+try/finally in the oracle), and both restore the denied parent's mode
+BEFORE the recursive remove — a leaked `chmod 000` directory would break
+the remove itself and every later suite.
+
+- `mount_points_routes_equivalence` 15 → **19 cases**: the existing
+  `create_filesystem_warning` re-pointed at the planted missing path,
+  plus `create_filesystem_available` (no warning key),
+  `create_filesystem_not_a_directory`, and `create_filesystem_denied`
+  (driven as an `obsidian` store, so the non-database branch is proven
+  for both types). It also gained a set-equality assertion between the
+  oracle's rows and the driven cases: indexing already panicked on a
+  stale oracle MISSING a row, and this catches the other direction.
+- `mount_ops_equivalence` 39 → **42 cases**: three folder-create arms
+  over MP_FS with its basePath planted (`fresh_db_with_base` mirrors the
+  oracle case's new `basePath` field; MP_OBS keeps the tree).
+
+**The `denied` arm is planted as an unreadable PARENT.** The order
+proposed `chmod 000` on the base path itself; that does not work —
+`stat`/`fs.stat` take EACCES from the parent directory's search
+permission, so a 000 directory stats fine and reads as *available*. The
+parent-denied plant was verified against Node's `fs.stat` before either
+side was written, and the regenerated oracle confirms it (v4 emits the
+`denied` sentence).
+
+**Both families ran GREEN on the first run, so per the D24 rule every
+new arm was mutation-proven red:** (1) altering the `missing` sentence
+reds BOTH families; (2) deleting the assert from
+`create_filesystem_folder` reds the ops arms; (3) 409 → 400 reds them
+too; (4) shortening the store-create warning suffix reds all three
+unavailable mount-points arms; (5) making the create warn even when the
+path IS available reds `create_filesystem_available` — the arm that
+would otherwise have been the easiest to ship inert.
+
+Oracle regen (both fresh at `ed8934f1`; the recipes are in the case
+headers and unchanged apart from the new planted arms). The fresh
+marker for this round is the new sentence itself: no `d553f72a`-vintage
+oracle can carry `The path '…' does not exist.`, since at that pin the
+warning still read "Base path '…' is not currently accessible."

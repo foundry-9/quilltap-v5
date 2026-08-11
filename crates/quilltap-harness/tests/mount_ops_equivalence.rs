@@ -5,6 +5,15 @@
 //! envelopes) AND the eight-table dumps under the shared normalization
 //! (`tests/mount_common/mod.rs`).
 //!
+//! [ed8934f1 / Bug 56] Three folder-create cases point MP_FS's basePath at
+//! PLANTED unreachable conditions (missing / not-a-directory / denied) and pin
+//! the new 409 diagnosis. The planted paths are fixed literals, identical on
+//! both sides — that is what lets the sentences, which embed the path, be
+//! compared byte-for-byte. `denied` is an unreadable PARENT, not a `chmod 000`
+//! base: `stat` takes its EACCES from the parent's search permission.
+//! ⚠ `containerized` is false in BOTH environments, so the container-variant
+//! sentences are pinned by UNIT tests on the message builder, not here.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — /tmp mirror; jest
 //! ignores .claude/ paths):
 //!   TMPO=/tmp/qt-mount-ops-oracle
@@ -30,6 +39,21 @@ use quilltap_core::api::mount_files as mf;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::runtime::Db;
 use serde_json::json;
+
+/// [ed8934f1] The planted base-path conditions — see the module header. The
+/// root is per-family (the mount-points family plants `qt-bug56-mp`).
+const PLANT_ROOT: &str = "/tmp/qt-bug56-ops";
+
+/// The basePath a case wants planted on MP_FS, or `None` for the per-case
+/// fs-tree copy. Mirrors the oracle case's `basePath` field.
+fn planted_base_for(name: &str) -> Option<String> {
+    match name {
+        "folder_create_fs_base_missing" => Some(PlantedBases::missing(PLANT_ROOT)),
+        "folder_create_fs_base_not_a_directory" => Some(PlantedBases::not_a_directory(PLANT_ROOT)),
+        "folder_create_fs_base_denied" => Some(PlantedBases::denied(PLANT_ROOT)),
+        _ => None,
+    }
+}
 
 #[test]
 fn mount_ops_match_oracle() {
@@ -396,6 +420,23 @@ fn mount_ops_match_oracle() {
             "folder_create_bad_chars",
             Box::new(|db, rt| rt.block_on(mf::mount_folder_create(db, MP_DB, "a<b"))),
         ),
+        // [ed8934f1 / Bug 56] The store's own root is unreachable: refuse with a
+        // 409 carrying the diagnosis, instead of letting the recursive mkdir
+        // walk up to the topmost missing ancestor and fabricate the whole
+        // chain. The basePath each of these three drives is planted by
+        // `planted_base_for` below.
+        (
+            "folder_create_fs_base_missing",
+            Box::new(|db, rt| rt.block_on(mf::mount_folder_create(db, MP_FS, "fresh/sub"))),
+        ),
+        (
+            "folder_create_fs_base_not_a_directory",
+            Box::new(|db, rt| rt.block_on(mf::mount_folder_create(db, MP_FS, "fresh/sub"))),
+        ),
+        (
+            "folder_create_fs_base_denied",
+            Box::new(|db, rt| rt.block_on(mf::mount_folder_create(db, MP_FS, "fresh/sub"))),
+        ),
         (
             "folder_create_then_delete_db",
             Box::new(|db, rt| {
@@ -405,12 +446,16 @@ fn mount_ops_match_oracle() {
         ),
     ];
 
+    // Planted for the whole run; `Drop` restores the denied parent's mode and
+    // removes the tree even if a case panics (mirrors the oracle's try/finally).
+    let _planted = PlantedBases::plant(PLANT_ROOT);
+
     let mut checked = 0usize;
     for (name, run) in &cases {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("no oracle row {name}"));
-        let (db, scratch) = fresh_db(&pepper, name);
+        let (db, scratch) = fresh_db_with_base(&pepper, name, planted_base_for(name).as_deref());
         let resp = run(&db, &rt);
         let (status, body) = response_to_status_body(resp);
         let tables = dump_tables(&db);
@@ -426,7 +471,7 @@ fn mount_ops_match_oracle() {
         checked += 1;
     }
 
-    assert_eq!(checked, 39, "expected the 39 mount-ops cases");
+    assert_eq!(checked, 42, "expected the 42 mount-ops cases");
     eprintln!("OK: mount-ops matched oracle ({checked} cases).");
 }
 

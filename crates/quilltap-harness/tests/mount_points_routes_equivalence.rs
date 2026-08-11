@@ -5,11 +5,35 @@
 //! folder-path / per-table-count dumps. Error cases assert the Error kind's HTTP
 //! status + message.
 //!
+//! [ed8934f1 / Bug 56] The store-create warning is the base-path-availability
+//! DIAGNOSIS now, so the create arms drive all four reachability states over
+//! PLANTED conditions under [`PLANT_ROOT`]. The planted paths are fixed literals,
+//! identical on both sides — that is what lets the sentences, which embed the
+//! path, be compared byte-for-byte with no normalization. The root is
+//! per-family (`qt-bug56-mp`, not the mount-ops family's `qt-bug56-ops`) because
+//! cargo runs the two test binaries concurrently.
+//!
+//! `denied` is planted as an unreadable PARENT, not a `chmod 000` on the base
+//! itself: `stat` takes its EACCES from the parent directory's search
+//! permission, and a 000 directory still stats fine and reads as available.
+//!
+//! ⚠ `containerized` is false in BOTH environments, so the container-variant
+//! sentences are pinned by UNIT tests on the message builder
+//! (`services::mount_index::base_path_availability`), not here.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-mount-points-routes.ndjson npx jest -- mount-points-routes
 //! Run:
 //!   QT_ORACLE_MOUNT_ROUTES=/tmp/oracle-mount-points-routes.ndjson \
 //!     cargo test -p quilltap-harness --test mount_points_routes_equivalence
+
+// Only the planted-base helper is borrowed from the shared mount plumbing —
+// deliberately NOT glob-imported, since this family owns its own
+// normalization (`norm`/`sorted`/`canon_numbers` below).
+#[path = "mount_common/mod.rs"]
+mod mount_common;
+
+use mount_common::PlantedBases;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,6 +43,11 @@ use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+/// [ed8934f1] The planted base-path conditions — see the module header. The
+/// root is per-family; `PlantedBases` (shared with `mount_ops_equivalence`)
+/// derives the four paths from it and cleans up on `Drop`.
+const PLANT_ROOT: &str = "/tmp/qt-bug56-mp";
 
 const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 const MP_INDEXED: &str = "b0000000-0000-4000-8000-0000000000c0";
@@ -296,15 +325,47 @@ fn mount_points_routes_match_oracle() {
         CREATED,
         &mut failed,
     );
+    let planted = PlantedBases::plant(PLANT_ROOT);
     ok(
         "create_filesystem_warning",
         &rt.block_on(mp::mount_point_create(
             &fresh_db(&spec, "cfw"),
-            json!({ "name": "FS Store", "mountType": "filesystem", "basePath": "/nonexistent/qt-mp-xyz-98765" }),
+            json!({ "name": "FS Store", "mountType": "filesystem", "basePath": PlantedBases::missing(PLANT_ROOT) }),
         )),
         CREATED,
         &mut failed,
     );
+    // [ed8934f1] The three other reachability states. `available` is the arm
+    // that used to be unreachable in v5 (its warning seam was blanket-false):
+    // a store on a real directory now creates with NO warning key at all.
+    ok(
+        "create_filesystem_available",
+        &rt.block_on(mp::mount_point_create(
+            &fresh_db(&spec, "cfa"),
+            json!({ "name": "FS Store Reachable", "mountType": "filesystem", "basePath": PlantedBases::available(PLANT_ROOT) }),
+        )),
+        CREATED,
+        &mut failed,
+    );
+    ok(
+        "create_filesystem_not_a_directory",
+        &rt.block_on(mp::mount_point_create(
+            &fresh_db(&spec, "cfnd"),
+            json!({ "name": "FS Store On A File", "mountType": "filesystem", "basePath": PlantedBases::not_a_directory(PLANT_ROOT) }),
+        )),
+        CREATED,
+        &mut failed,
+    );
+    ok(
+        "create_filesystem_denied",
+        &rt.block_on(mp::mount_point_create(
+            &fresh_db(&spec, "cfd"),
+            json!({ "name": "FS Store Unreadable", "mountType": "obsidian", "basePath": PlantedBases::denied(PLANT_ROOT) }),
+        )),
+        CREATED,
+        &mut failed,
+    );
+    drop(planted);
     {
         let db = fresh_db(&spec, "ccs");
         let resp = rt.block_on(mp::mount_point_create(
@@ -416,5 +477,43 @@ fn mount_points_routes_match_oracle() {
         &mut failed,
     );
 
+    // Shape, not a hand count: the oracle's rows and the cases driven here must
+    // be the SAME SET. Indexing already panics on a stale oracle that is
+    // MISSING a row; this catches the other direction (an oracle carrying rows
+    // nothing drives — e.g. a case added on the v4 side and never wired here).
+    const DRIVEN: &[&str] = &[
+        "list",
+        "get",
+        "get_404",
+        "create_database",
+        "create_filesystem_warning",
+        "create_filesystem_available",
+        "create_filesystem_not_a_directory",
+        "create_filesystem_denied",
+        "create_character_scaffold",
+        "create_refine_400",
+        "create_name_clash",
+        "patch_happy",
+        "patch_zod_500",
+        "patch_scaffold_flip",
+        "patch_404",
+        "patch_name_clash",
+        "patch_name_case_only_self",
+        "delete",
+        "delete_404",
+    ];
+    let mut oracle_names: Vec<&str> = oracle.keys().map(String::as_str).collect();
+    oracle_names.sort_unstable();
+    let mut driven: Vec<&str> = DRIVEN.to_vec();
+    driven.sort_unstable();
+    assert_eq!(
+        oracle_names, driven,
+        "oracle rows and driven cases disagree (regenerate the oracle — see the header)"
+    );
+
     assert!(failed.is_empty(), "mount-points-routes FAILED: {failed:?}");
+    eprintln!(
+        "OK: mount-points-routes matched oracle ({} cases).",
+        DRIVEN.len()
+    );
 }
