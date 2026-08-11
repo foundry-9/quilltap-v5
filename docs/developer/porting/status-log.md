@@ -64301,3 +64301,146 @@ and the standing 💸 queue); the full-repo `--run-all` sweep (a
 unification/baseline-move activity); round 1's v4-side archived-seat-badge
 GET filing (human item, still owed). Recommended arrangement: two
 parallel worktree lanes, both drift-checking against `de9f70bf` at start.
+
+---
+
+## Lane record — P4.D65 resumed (the Bug-57 convergence + the resume list), 2026-08-11
+
+Branch `claude/p4-archive-service-round2-8850e5`. Drift-checked at lane
+start: v4 HEAD is **`de9f70bf`**, tree clean, nothing past it — the
+addendum's baseline holds.
+
+### The `de9f70bf` convergence (addendum items 1–3)
+
+v4's Bug-57 fix is behavior-identical to v5's existing first-occurrence
+dedupe, exactly as planning predicted, so **zero v5 source changed**.
+What moved:
+
+- The two divergence markers are now convergence notes naming
+  `de9f70bf` — `services/quilltap_import/mod.rs` (carrying v4's own new
+  comment wording for the per-link-join *why*) and
+  `crates/quilltap-web/tests/characters_action_route.rs`'s header, whose
+  rehydrate leg stays as a live regression leg at plain equality. The
+  `dogfood-findings.md` standing note is marked CLOSED.
+- **The owed both-directions pin landed instead as a plain-equality
+  differential arm.** `extend-character-archive-twice-linked-blob.ts`
+  (new, committed, mutation-style extender) gives Sable's vault TWO
+  sha-deduped blobs under two links each: `photos/portrait-copy.webp`
+  over portrait's bytes — whose content row survives the prune, so
+  rehydrate takes the skip-if-present leg — and
+  `photos/landscape-again.webp` over landscape's, whose links are both
+  doomed, so the orphan GC takes the row and rehydrate restores it
+  fresh. One shape would have left the other leg unproven.
+  `archive_then_rehydrate` is the arm; v4 now SUCCEEDS on it
+  (`restored: {memories:3, documents:2, blobs:3}`).
+  **Mutation-proven:** removing v5's dedupe reds it with the exact
+  Bug-57 sentence, `Preserve IDs collision for document store blob
+  f1df4f98… (also seen as document store blob)`.
+- Because the shape lives in the FIXTURE and not in a case gesture, a
+  later fixture edit could vacate the arm in silence. So
+  `assert_fixture_carries_twice_linked_blobs` asserts the SHAPE (exactly
+  two blobs, two links each) rather than a hand count — the
+  `harness-corpus-shape-constants-rot` idiom.
+- **Import-graph regens.** The `execute.ts` importers were enumerated
+  mechanically (`grep` over the oracle cases, not the order's list):
+  `character_archive_tier2_equivalence`, `qtap_import_equivalence`,
+  `reset_builtins_equivalence`, `seed_avatars_equivalence`,
+  `system_import_state`, `system_import_equivalence`. All six
+  regenerated fresh at `de9f70bf` and re-run by name — green.
+
+### Deliverable 4 — the D63 unit-7 re-encrypt wire (OPEN item 1)
+
+`reencrypt.rs` finally has a caller. The sweep runs at the
+**`ChangePassphrase` engine dispatch arm**, not inside
+`change_passphrase` — v4's own structure (phase two lives in the route),
+and forced here anyway because phase one holds the non-reentrant state
+mutex that `ready_db()` + `qtap_file_storage()` both re-acquire. New
+`Response::ChangePassphrase(ChangePassphraseResultDto)` carries
+`{success, archives}`; the quilltap-web alias renders it (it had been
+answering a bare `{"success":true}`). A failed sweep reports
+`total: -1` under `(all archives)` and does NOT fail the passphrase
+change.
+
+**The differential caught a real bug the moment it ran:**
+`reencrypt_one` used `db.write_blocking`, which panics
+(`Cannot block the current thread from within a runtime`) when called
+from the async dispatch arm — i.e. the wire as ordered would have
+panicked on the first real passphrase change. The sweep is now `async`
+and awaits `db.write`.
+
+New family **`archive_reencrypt_tier2_equivalence`** (6 cases,
+`QT_ORACLE_ARCHIVE_REENCRYPT`) over v4's real `reencryptArchiveBundles`,
+sharing the `character-archive-*` fixture. One case archives Sable for
+real (sweeping from the internal sentinel, which is what
+`resolveArchivePassphrase` answers on a passphrase-less instance); the
+rest plant shapes the service cannot produce — a PLAINTEXT
+pre-encryption bundle, one sealed under a THIRD passphrase, a row whose
+storage key names nothing — and `sweep_mixed_library` plants the failing
+bundle FIRST so "a failure never aborts the sweep" is measured, not
+asserted. Ciphertext is never compared (fresh salt+IV per write); the
+`opens` comparand records which passphrase each artifact now answers to,
+and `files.size` proves a failed bundle was left strictly alone.
+**Mutation-proven** in both directions (short-circuit on first failure;
+altered mismatch sentence).
+
+The wire itself is pinned by
+`crates/quilltap-web/tests/change_passphrase_archive_sweep.rs`: a live
+server archives Sable over v4's action URL, changes the passphrase
+(`total: 1, reencrypted: 1` in the HTTP body), and then **rehydrates
+successfully** — which only works if the bundle really was re-sealed
+under the new passphrase. Mutation-proven (stub the sweep → `total: -1`,
+red).
+
+### Deliverable 6 — the files-delete `ARCHIVE_BUNDLE_HELD` guard (OPEN item 2)
+
+Ported at v4's placement (`api/files.rs::file_delete`, after the owner
+check, before dissociate) over `find_all_raw` — v4's "a broken vault must
+not let the holder slip past the guard". The rider rides `CoreError`
+flat (`code` + `character_id`) as `FILE_HAS_ASSOCIATIONS` already does,
+and the web edge renders it into the body; the differential flattens
+v4's `details` bag to compare. ⚠ `character_id` is **boxed**: an inline
+`Option<String>` pushed `CoreError` from 112 to 136 bytes and tripped
+`clippy::result_large_err` across dozens of unrelated
+`Result<_, Response>` helpers.
+
+Three arms on the archive differential, all green and mutation-proven:
+held (400 + the exact sentence + the holder id), `force=true` (deletes),
+and **unheld** — rehydrate first, so the bundle survives as an orphaned
+ARCHIVE file nobody holds and the guard must stand aside. Without that
+third leg a guard that refused EVERY ARCHIVE delete would pass.
+
+### Deliverable 5's coverage gap + the export picker (OPEN items 3–4)
+
+`export_entities`'s characters arm now filters `!archivedAt` (v4
+`system/tools/route.ts:488`), pinned by `export_entities_after_archive`
+and mutation-proven. The non-null export-carry arm
+(`export_all_after_archive`, a deliberate `type: characters, scope: all`
+export taken AFTER an archive — the `.qtap` writer does not filter
+archived characters, only the picker does) **found a real port defect**:
+v5 emitted `archivedAt`/`archiveFileId` at the END of every character
+record where v4 emits them right after `characterDocumentMountPointId`.
+The cause was the committed `schema-key-order.json`, stale since the
+columns landed at `d553f72a`. Regenerated with its own shipped
+generator (`dump-export-key-order.ts`) at `de9f70bf` — the diff is
+exactly the three keys in v4's slot. `archivedAvatarFileId` is absent on
+both sides on a NULL cell, confirming the order's deliverable-5
+correction.
+
+### Still OPEN under this order
+
+- **Item 5 — the banked round-1 tier-2 arms** (P4.D62's preflight
+  exists-check error propagation + the duplicate/preserveIds/name-match
+  arm; P4.D63's unit-8 kept/swept arms, the four archived-character
+  arms, the `setParticipantStatus` `{chat, oldStatus}` wrapper case).
+  NOT started. The preflight propagation in particular needs a repo read
+  that errors identically on both engines — a planted-DB condition, per
+  `planted-fs-conditions-in-differentials`.
+- **Item 6 — the §3 review's owed corpus arms.** NOT started: the
+  POSITIVE `background_jobs` leg (the fixture has no embedding profile,
+  so both sides enqueue zero and the comparand is a tripwire, not a
+  proof), an `avatarOverrides[].imageId` keep-arm, a pre-revision
+  `archivedAvatarFileId` case, the `KeyUnavailable`/`PassphraseMismatch`
+  400 arms end-to-end, and a `pruneComplete: false` / prune-re-run case.
+  The recorded-not-fixed nits from that review stand unchanged.
+
+**P4.D63 CLOSES with this lane** (its unit-7 resume list is discharged).

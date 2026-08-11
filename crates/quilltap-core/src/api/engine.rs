@@ -36,8 +36,8 @@ use super::chat_send::{ChatSendDriver, ChatSendRequest, SwipeGenerateDriver};
 use super::provider_actions::ProviderActionsDriver;
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
-    AckDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, SetupResultDto,
-    UnlockStateDto,
+    AckDto, ChangePassphraseResultDto, ErrorKind, Event, HealthDto, PepperState, Request, Response,
+    SetupResultDto, UnlockStateDto,
 };
 use super::{InstanceDirectory, QuilltapCore};
 
@@ -726,7 +726,10 @@ impl CoreEngine {
             Request::ChangePassphrase {
                 old_passphrase,
                 new_passphrase,
-            } => self.change_passphrase(&old_passphrase, &new_passphrase),
+            } => {
+                self.change_passphrase_with_archive_sweep(&old_passphrase, &new_passphrase)
+                    .await
+            }
             Request::Lock => self.lock(),
             Request::ListInstances => match self.inner.instances.list() {
                 Ok(dto) => Response::Instances(dto),
@@ -5212,6 +5215,93 @@ impl CoreEngine {
     /// under a new passphrase (no DB re-encryption). Only valid when `resolved`
     /// (v4 requires exactly that state — `needs-vault-storage` has no .dbkey to
     /// re-wrap). Either passphrase may be empty (the no-passphrase sentinel).
+    /// v4 `handleChangePassphrase` (`system/unlock/route.ts:325`) whole: the
+    /// `.dbkey` re-wrap, then the archive-library sweep.
+    ///
+    /// The two phases are separate because they cannot share a lock. Phase one
+    /// holds the engine's state mutex (which is not reentrant), and the sweep
+    /// needs `ready_db()` + the storage backend, both of which re-acquire it —
+    /// so the sweep runs HERE, at the dispatch arm, not inside
+    /// `change_passphrase`. That is v4's own structure, where phase two lives in
+    /// the route rather than in `changePassphrase`.
+    ///
+    /// **A failed sweep does not fail the passphrase change**, which has already
+    /// happened and cannot be undone; `archives.total == -1` is v4's marker for
+    /// "the sweep did not run at all", distinct from "ran and found nothing".
+    async fn change_passphrase_with_archive_sweep(
+        &self,
+        old_passphrase: &str,
+        new_passphrase: &str,
+    ) -> Response {
+        match self.change_passphrase(old_passphrase, new_passphrase) {
+            Response::Ack(_) => {}
+            refusal => return refusal,
+        }
+        Response::ChangePassphrase(ChangePassphraseResultDto {
+            success: true,
+            archives: self
+                .reencrypt_archive_library(old_passphrase, new_passphrase)
+                .await,
+        })
+    }
+
+    /// Phase two of the passphrase change. Every failure lands in the result
+    /// rather than in the response's status, so the caller always learns which
+    /// bundles were left behind.
+    async fn reencrypt_archive_library(
+        &self,
+        old_passphrase: &str,
+        new_passphrase: &str,
+    ) -> crate::services::character_archive::reencrypt::ArchiveReencryptResult {
+        use crate::services::character_archive::reencrypt::{
+            reencrypt_archive_bundles, ArchiveReencryptFailure, ArchiveReencryptResult,
+        };
+        // v4's catch arm: the whole sweep is reported as failed, under the
+        // pseudo-file `(all archives)`, rather than silently pretending it ran.
+        let swept_nothing = |reason: String| ArchiveReencryptResult {
+            total: -1,
+            reencrypted: 0,
+            failures: vec![ArchiveReencryptFailure {
+                file_id: String::new(),
+                filename: "(all archives)".to_string(),
+                reason,
+            }],
+        };
+        let db = match self.ready_db() {
+            Ok(db) => db,
+            Err(_) => {
+                return swept_nothing("The database is locked. Unlock it to continue.".into())
+            }
+        };
+        let Some(backend) = self.qtap_file_storage() else {
+            return swept_nothing(
+                "File storage backend not available. Initialize the manager first.".into(),
+            );
+        };
+        // The same empty-string → internal-sentinel rule `changePassphrase`
+        // applied one phase ago, so the sweep sees real key material on both
+        // sides (v4 `unlock/route.ts:352`).
+        let resolve = |p: &str| {
+            if p.is_empty() {
+                crate::dbkey::INTERNAL_PASSPHRASE.to_string()
+            } else {
+                p.to_string()
+            }
+        };
+        match reencrypt_archive_bundles(
+            &db,
+            backend.as_ref(),
+            SINGLE_USER_ID,
+            &resolve(old_passphrase),
+            &resolve(new_passphrase),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => swept_nothing(e.to_string()),
+        }
+    }
+
     fn change_passphrase(&self, old_passphrase: &str, new_passphrase: &str) -> Response {
         let mut state = self.inner.state.lock().unwrap();
         match &mut *state {
@@ -5746,7 +5836,8 @@ mod tests {
             })
             .await
         {
-            Response::Ack(_) => {}
+            // [P4.D65] change-passphrase now answers `{success, archives}`.
+            Response::ChangePassphrase(dto) => assert!(dto.success),
             other => panic!("unexpected: {other:?}"),
         }
         assert_eq!(
@@ -5791,7 +5882,7 @@ mod tests {
             })
             .await
         {
-            Response::Ack(_) => {}
+            Response::ChangePassphrase(dto) => assert!(dto.success),
             other => panic!("unexpected: {other:?}"),
         }
         assert_eq!(
@@ -5952,7 +6043,18 @@ mod tests {
             })
             .await
         {
-            Response::Ack(_) => {}
+            // [P4.D65] The body carries the archive sweep's summary now. This
+            // engine has no backup host (`NoopAssembler`), so the sweep cannot
+            // reach a storage backend and reports itself as wholly not-run —
+            // `total: -1`, v4's marker — WITHOUT failing the passphrase change,
+            // which is the whole point of reporting the two separately.
+            Response::ChangePassphrase(dto) => {
+                assert!(dto.success);
+                assert_eq!(dto.archives.total, -1);
+                assert_eq!(dto.archives.reencrypted, 0);
+                assert_eq!(dto.archives.failures.len(), 1);
+                assert_eq!(dto.archives.failures[0].filename, "(all archives)");
+            }
             other => panic!("unexpected: {other:?}"),
         }
         let data = base.path().join("data");

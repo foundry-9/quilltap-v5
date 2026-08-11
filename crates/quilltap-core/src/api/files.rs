@@ -493,6 +493,37 @@ pub async fn file_delete(
         return forbidden();
     }
 
+    // [P4.D65] A held archive bundle is the only copy of an archived
+    // character's pruned material (character-archive spec §4.2a) — deleting it
+    // leaves a tombstone that can never be rehydrated. v4's note, verbatim:
+    //
+    // > Raw read: a broken vault must not let the holder slip past the guard.
+    //
+    // Hence `find_all_raw`, not the overlaid read: a character whose vault has
+    // gone unreadable still holds their bundle.
+    if file.category == "ARCHIVE" && !force {
+        let holder = match db.read_main(crate::db::characters_read::find_all_raw) {
+            Ok(rows) => rows
+                .into_iter()
+                .find(|c| c.get("archiveFileId").and_then(Value::as_str) == Some(file.id.as_str())),
+            Err(e) => return internal(e),
+        };
+        if let Some(holder) = holder {
+            let name = holder
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let id = holder.get("id").and_then(Value::as_str).unwrap_or_default();
+            return Response::error_bundle_held(
+                format!(
+                    "This bundle holds the only copy of {name}'s archived effects. \
+                     Rehydrate them first, or pass force=true to discard the bundle regardless."
+                ),
+                id,
+            );
+        }
+    }
+
     // v4: dissociate strips every reference (messages + character images + the
     // file's own linkedTo), then re-reads the row so the subsequent (now empty)
     // linkedTo check is a no-op.

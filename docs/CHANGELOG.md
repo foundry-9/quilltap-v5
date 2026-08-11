@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Finished P4.D65's resume list. Changing the instance passphrase now
+re-encrypts the archive library with it: the sweep runs as phase two of
+`POST /api/v1/system/unlock?action=change-passphrase`, and the response
+carries an `archives` summary naming any bundle left holding the old
+passphrase. A failed sweep does not fail the passphrase change. Deleting a
+held archive bundle is refused (`ARCHIVE_BUNDLE_HELD`, naming the character
+whose only copy it is) unless `force=true`. Archived characters no longer
+appear in the export picker. Exported character records carry the three
+archive columns in v4's schema slot — the committed key-order table had
+been stale since the columns landed, so the keys were being appended at the
+end of every character record. Two real defects were caught by the new
+differentials: the re-encryption sweep would have panicked the moment it
+was called from the async dispatch arm (it blocked on the writer channel),
+and the export key order above. New: a six-case archive re-encryption
+differential over v4's real sweep (planted plaintext / foreign-passphrase /
+missing-bytes bundles, plus one the archive service really wrote), a
+live web-edge test that archives, changes the passphrase and rehydrates,
+and five new arms on the archive differential. v4's Bug-57 fix
+(`de9f70bf`) converged onto this port's twice-linked-blob dedupe, so the
+divergence markers retire and the fixture grew the shape as a
+plain-equality arm; the oracle baseline moves to `de9f70bf`.
+
 Planned the P4.D65-finish + sweep-rot round (docs only). v4 fixed its Bug
 57 at `de9f70bf` — converging onto this port's twice-linked-blob rehydrate
 dedupe — so the drift folds into P4.D65's resumed lane as a Round-3

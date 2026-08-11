@@ -546,10 +546,14 @@ pub async fn system_unlock_post(
         new_passphrase: str_field("newPassphrase"),
     };
     match dispatch_core(&state, req).await {
-        Ok(CoreResponse::Ack(_)) => (
+        // [P4.D65] v4 answers `{success: true, archives}` — the archive
+        // re-encryption sweep's summary, which the settings card reads to name
+        // the bundles left holding the old passphrase. It was a bare
+        // `{"success":true}` here while the sweep had no caller.
+        Ok(CoreResponse::ChangePassphrase(dto)) => (
             StatusCode::OK,
             [("content-type", "application/json")],
-            "{\"success\":true}",
+            serde_json::to_string(&dto).unwrap_or_else(|_| "{\"success\":true}".to_string()),
         )
             .into_response(),
         Ok(CoreResponse::Error(e)) => error_to_http(e),

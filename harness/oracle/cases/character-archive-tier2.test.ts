@@ -101,7 +101,32 @@ type CaseName =
   | 'rehydrate_not_archived'
   | 'archive_missing_character'
   | 'rehydrate_no_bundle'
-  | 'rehydrate_missing_bundle_file';
+  | 'rehydrate_missing_bundle_file'
+  // ── P4.D65 resumed: the surfaces an archived character's TOMBSTONE changes ──
+  // These three ride this fixture rather than the files/system families because
+  // the material they need — a real ARCHIVE bundle and the character holding it
+  // — exists only once `archiveCharacter` has actually run.
+  | 'files_delete_bundle_held'
+  | 'files_delete_bundle_force'
+  | 'files_delete_bundle_unheld'
+  | 'export_entities_after_archive'
+  | 'export_all_after_archive';
+
+/** A minimal NextRequest stand-in — the same shape the files/system oracles use. */
+function mockRequest(url: string, method = 'GET', body?: unknown): unknown {
+  return {
+    method,
+    url,
+    nextUrl: new URL(url),
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: jest.fn().mockResolvedValue(body ?? {}),
+  };
+}
+
+async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
+  const resp = r as { status: number; json: () => Promise<unknown> };
+  return { status: resp.status, body: await resp.json() };
+}
 
 async function runCase(
   spec: Spec,
@@ -130,6 +155,34 @@ async function runCase(
     jest.requireActual('@/lib/file-storage/manager'),
   );
   jest.doMock('@/lib/memory/memory-gate', () => jest.requireActual('@/lib/memory/memory-gate'));
+  // The route-driven arms go through `buildRequestContext`, which resolves the
+  // operator from the session; jest.setup resolves it to `null` (→ a bare 500).
+  // Same seam the files/system oracles neutralize.
+  jest.doMock('@/lib/auth/session', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/auth/session'),
+    getServerSession: async () => ({ user: { id: spec.userId } }),
+  }));
+  // jest.setup's `startupState` stub omits the members the route context
+  // consults (`areMigrationsComplete`), so fall through to the real object with
+  // the readiness answers pinned — the files/system oracles' exact seam.
+  jest.doMock('@/lib/startup/startup-state', () => {
+    const actual = jest.requireActual('@/lib/startup/startup-state');
+    return {
+      __esModule: true,
+      ...actual,
+      startupState: {
+        ...actual.startupState,
+        isReady: () => true,
+        waitForReady: async () => true,
+        isPepperResolved: () => true,
+        getPepperState: () => 'resolved',
+        getPhase: () => 'ready',
+        isLockedMode: () => false,
+        areMigrationsComplete: () => true,
+      },
+    };
+  });
 
   const work = mkdtempSync(join(scratch, 'arch-'));
   const mainWork = join(work, 'main.db');
@@ -217,6 +270,89 @@ async function runCase(
         payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
         break;
       }
+
+      // ── The files-delete ARCHIVE_BUNDLE_HELD guard (delete.ts:34–44) ──
+      // A held bundle is the only copy of the pruned material, so deleting it
+      // strands the tombstone forever. All three legs run against a bundle the
+      // archive really wrote, so `characterId` in the refusal envelope is a
+      // real holder rather than a planted row.
+      case 'files_delete_bundle_held':
+      case 'files_delete_bundle_force':
+      case 'files_delete_bundle_unheld': {
+        const archived = (await archiveCharacter(spec.userId, spec.sable)) as {
+          archiveFileId: string | null;
+        };
+        const fileId = archived.archiveFileId ?? '';
+        if (name === 'files_delete_bundle_unheld') {
+          // Rehydrating clears `archiveFileId`, so the bundle survives as an
+          // ordinary orphaned ARCHIVE file — nobody holds it and the guard must
+          // stand aside. Without this leg the guard could refuse EVERY ARCHIVE
+          // delete and still pass.
+          await rehydrateCharacter(spec.userId, spec.sable);
+        }
+        const query = name === 'files_delete_bundle_force' ? '?force=true' : '';
+        const route = await import('@/app/api/v1/files/[id]/route');
+        payload.result = await respond(
+          await (route as never as {
+            DELETE: (r: unknown, c: unknown) => Promise<unknown>;
+          }).DELETE(mockRequest(`http://localhost/api/v1/files/${fileId}${query}`, 'DELETE'), {
+            params: Promise.resolve({ id: fileId }),
+          }),
+        );
+        break;
+      }
+
+      // ── The export picker's archived filter (system/tools/route.ts:488) ──
+      // An archived character must not be offered for export: the tombstone
+      // would carry only the pruned vault, and the full bundle already exists.
+      case 'export_entities_after_archive': {
+        await archiveCharacter(spec.userId, spec.sable);
+        const route = await import('@/app/api/v1/system/tools/route');
+        payload.result = await respond(
+          await (route as never as { GET: (r: unknown) => Promise<unknown> }).GET(
+            mockRequest(
+              'http://localhost/api/v1/system/tools?action=export-entities&type=characters',
+            ),
+          ),
+        );
+        break;
+      }
+
+      // ── The three-key export carry, NON-NULL leg (shared contract rule 4) ──
+      // The `.qtap` writer does NOT filter archived characters (only the picker
+      // does), so a deliberate scope:'all' export taken AFTER an archive is the
+      // one place the three archive columns reach an export record carrying
+      // real values. The absent-COLUMN leg is pinned by the old-schema
+      // `system-data-*` family; this is the present-and-non-null leg.
+      case 'export_all_after_archive': {
+        await archiveCharacter(spec.userId, spec.sable);
+        const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
+        const stream = await createNdjsonStream(spec.userId, {
+          type: 'characters',
+          scope: 'all',
+          includeMemories: false,
+          preserveIds: false,
+        } as never);
+        const chunks: Uint8Array[] = [];
+        const reader = (stream as ReadableStream<Uint8Array>).getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+        const text = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf-8');
+        // Only the character records matter here; the manifest's clock and the
+        // rest of the envelope are already byte-proven by the export family.
+        payload.result = {
+          characters: text
+            .split('\n')
+            .filter((l) => l.trim().length > 0)
+            .map((l) => JSON.parse(l) as { kind?: string; data?: unknown })
+            .filter((r) => r.kind === 'character')
+            .map((r) => r.data),
+        };
+        break;
+      }
     }
 
     // The bundle, DECRYPTED (never the ciphertext — see the header).
@@ -295,6 +431,11 @@ async function main(): Promise<void> {
     'archive_missing_character',
     'rehydrate_no_bundle',
     'rehydrate_missing_bundle_file',
+    'files_delete_bundle_held',
+    'files_delete_bundle_force',
+    'files_delete_bundle_unheld',
+    'export_entities_after_archive',
+    'export_all_after_archive',
   ];
 
   const outLines: string[] = [];

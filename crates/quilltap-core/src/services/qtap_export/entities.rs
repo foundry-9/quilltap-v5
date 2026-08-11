@@ -35,6 +35,15 @@ pub fn export_entities(
     match entity_type {
         "characters" => {
             for c in characters_read::find_all(main, mount)? {
+                // [P4.D65] v4's note, verbatim:
+                //
+                // > Archived characters don't appear in the export picker: a
+                // > tombstone export would carry the pruned vault only, and the
+                // > full bundle already exists as an ARCHIVE file (spec §4.1 —
+                // > "block it").
+                if c.get("archivedAt").and_then(Value::as_str).is_some() {
+                    continue;
+                }
                 let Some(id) = c.get("id").and_then(Value::as_str) else {
                     continue;
                 };

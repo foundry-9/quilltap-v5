@@ -533,6 +533,10 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
                     serde_json::to_value(assoc).unwrap_or(serde_json::Value::Null),
                 );
             }
+            // The ARCHIVE_BUNDLE_HELD holder (P4.D65) rides the same flat body.
+            if let Some(character_id) = e.character_id {
+                body.insert("characterId".to_string(), json!(character_id));
+            }
             (
                 status,
                 [("content-type", "application/json")],

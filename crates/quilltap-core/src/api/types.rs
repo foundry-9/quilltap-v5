@@ -3011,9 +3011,13 @@ pub enum Response {
     UnlockState(UnlockStateDto),
     /// v4 setup response — the minted pepper (shown once) + the save-it message.
     Setup(SetupResultDto),
-    /// The empty-body success ack (v4 `successResponse({})`) — `storePepper` /
-    /// `changePassphrase`.
+    /// The empty-body success ack (v4 `successResponse({})`) — `storePepper`.
     Ack(AckDto),
+    /// v4 `handleChangePassphrase`'s body (`system/unlock/route.ts:379`):
+    /// `{success: true, archives}`. The archive summary is not optional — a
+    /// passphrase change ALWAYS reports what became of the archive library,
+    /// including `total: -1` for a sweep that could not run at all.
+    ChangePassphrase(ChangePassphraseResultDto),
     Instances(InstancesDto),
     /// v4 `handleList`'s `cleanEnrichedChats` output — the enriched chat list.
     Chats(Vec<crate::services::chat_enrichment::EnrichedChatSummary>),
@@ -3335,6 +3339,7 @@ impl Response {
             pepper_state: None,
             code: None,
             associations: None,
+            character_id: None,
             entity: None,
         })
     }
@@ -3350,6 +3355,7 @@ impl Response {
             pepper_state: None,
             code: None,
             associations: None,
+            character_id: None,
             entity: Some(Box::new(UnavailableEntity {
                 label: label.to_string(),
                 id: id.to_string(),
@@ -3370,6 +3376,7 @@ impl Response {
             pepper_state: None,
             code: Some(code.into()),
             associations: None,
+            character_id: None,
             entity: None,
         })
     }
@@ -3389,6 +3396,28 @@ impl Response {
             pepper_state: None,
             code: Some(code.into()),
             associations: Some(associations),
+            character_id: None,
+            entity: None,
+        })
+    }
+
+    /// v4's `ARCHIVE_BUNDLE_HELD` refusal (P4.D65 — `files/[id]/actions/
+    /// delete.ts:34`): a `{error, code, characterId}` body naming the character
+    /// whose only copy of their pruned material this bundle is. `force=true`
+    /// bypasses it, which is why the guard refuses rather than deleting
+    /// silently — the operator can still discard the bundle, but not by
+    /// accident.
+    pub fn error_bundle_held(
+        message: impl Into<String>,
+        character_id: impl Into<String>,
+    ) -> Response {
+        Response::Error(CoreError {
+            kind: ErrorKind::BadRequest,
+            message: message.into(),
+            pepper_state: None,
+            code: Some("ARCHIVE_BUNDLE_HELD".to_string()),
+            associations: None,
+            character_id: Some(Box::new(character_id.into())),
             entity: None,
         })
     }
@@ -3403,6 +3432,7 @@ impl Response {
             pepper_state: Some(pepper_state),
             code: None,
             associations: None,
+            character_id: None,
             entity: None,
         })
     }
@@ -3436,6 +3466,17 @@ pub struct SetupResultDto {
 /// The empty success body (v4 `successResponse({})`). Serializes to `{}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct AckDto {}
+
+/// v4 `POST /api/v1/system/unlock?action=change-passphrase` body (P4.D65 — the
+/// D63 unit-7 wire): `{success, archives}`. `archives.total == -1` means the
+/// re-encryption sweep itself failed; the passphrase change still succeeded,
+/// which is exactly why the two are reported separately.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePassphraseResultDto {
+    pub success: bool,
+    pub archives: crate::services::character_archive::reencrypt::ArchiveReencryptResult,
+}
 
 /// v4 `GET /api/v1/system/unlock` body: `{ state, hasUserPassphrase,
 /// autoLockMinutes }` — `autoLockMinutes` only populated when unlocked and
@@ -3562,6 +3603,20 @@ pub struct CoreError {
     /// linked-file delete refusal, absent everywhere else.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub associations: Option<FileAssociations>,
+    /// v4's `ARCHIVE_BUNDLE_HELD` holder id (P4.D65 — the files-delete guard):
+    /// the character whose `archiveFileId` is the file the caller tried to
+    /// delete. Present ONLY on that refusal, absent everywhere else. v4 nests it
+    /// under `details` alongside the `code`; v5 carries both flat on the error,
+    /// exactly as `FILE_HAS_ASSOCIATIONS` already does, and the transport
+    /// renders them into the body.
+    ///
+    /// **Boxed on purpose**, like `entity` below: `Response` is returned by
+    /// value from dozens of `Result<_, Response>` helpers, and an inline
+    /// `Option<String>` here pushes `CoreError` over clippy's
+    /// `result_large_err` threshold — a workspace-wide lint failure for one
+    /// rarely-populated rider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character_id: Option<Box<String>>,
     /// The store-unavailable entity carry (P4.23): present ONLY on
     /// [`ErrorKind::Unavailable`], absent everywhere else. Lets the transport
     /// answer v4's deliberate contextful 503 body

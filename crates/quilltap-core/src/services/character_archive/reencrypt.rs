@@ -19,7 +19,7 @@
 //! first bad bundle would leave the rest of the library unreachable with no
 //! record of which ones moved.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::crypto::{decrypt_archive, encrypt_archive, is_encrypted_archive, ArchiveCryptoError};
 use crate::db::files::{FileUpdate, FilesRepository};
@@ -32,7 +32,7 @@ pub const ARCHIVE_CATEGORY: &str = "ARCHIVE";
 
 /// v4's per-file failure record. `reason` is surfaced verbatim in the settings
 /// UI, so its wording is contractual.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArchiveReencryptFailure {
     #[serde(rename = "fileId")]
     pub file_id: String,
@@ -42,7 +42,7 @@ pub struct ArchiveReencryptFailure {
 }
 
 /// v4 `ArchiveReencryptResult`.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArchiveReencryptResult {
     /// How many ARCHIVE files exist. **`-1` means the sweep itself failed** —
     /// the unlock route's marker for "this did not run", distinct from "ran
@@ -66,7 +66,7 @@ const MISMATCH_REASON: &str =
 /// caller resolves the empty-passphrase legs to the internal sentinel BEFORE
 /// calling (v4's route does the same), so this function sees real key material
 /// on both sides.
-pub fn reencrypt_archive_bundles(
+pub async fn reencrypt_archive_bundles(
     db: &Db,
     backend: &dyn StorageBackend,
     user_id: &str,
@@ -94,7 +94,7 @@ pub fn reencrypt_archive_bundles(
     );
 
     for (index, file) in archives.iter().enumerate() {
-        match reencrypt_one(db, backend, file, old_passphrase, new_passphrase) {
+        match reencrypt_one(db, backend, file, old_passphrase, new_passphrase).await {
             Ok(()) => {
                 result.reencrypted += 1;
                 tracing::info!(
@@ -135,7 +135,7 @@ pub fn reencrypt_archive_bundles(
 /// One bundle's download → decrypt-or-passthrough → encrypt → upload-in-place
 /// → size update. `Err` carries the `reason` string verbatim (v4's
 /// `error.message`, except the named passphrase-mismatch sentence).
-fn reencrypt_one(
+async fn reencrypt_one(
     db: &Db,
     backend: &dyn StorageBackend,
     file: &crate::db::files::FileFull,
@@ -194,7 +194,7 @@ fn reencrypt_one(
 
     let size = reencrypted.len() as f64;
     let file_id = file.id.clone();
-    db.write_blocking(move |ws| {
+    db.write(move |ws| {
         FilesRepository::new(ws.main().connection()).update(
             &file_id,
             &FileUpdate {
@@ -204,6 +204,7 @@ fn reencrypt_one(
             },
         )
     })
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }

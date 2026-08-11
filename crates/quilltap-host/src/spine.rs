@@ -1128,6 +1128,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                character_id: None,
                 entity: None,
             },
             RegenError::Db(_) => CoreError {
@@ -1136,6 +1137,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                character_id: None,
                 entity: None,
             },
         })
@@ -1331,6 +1333,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 });
             }
@@ -1508,6 +1511,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 })
             }
@@ -1680,6 +1684,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         pepper_state: None,
         code: None,
         associations: None,
+        character_id: None,
         entity: None,
     }
 }
@@ -1746,6 +1751,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                character_id: None,
                 entity: None,
             })?;
 
@@ -1761,6 +1767,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        character_id: None,
                         entity: None,
                     }
                 })?;
@@ -1770,6 +1777,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                character_id: None,
                 entity: None,
             })?;
             Ok(w)
@@ -1880,6 +1888,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        character_id: None,
                         entity: None,
                     }),
                 };
@@ -1892,6 +1901,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 })
             })
@@ -1950,6 +1960,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        character_id: None,
                         entity: None,
                     }),
                 };
@@ -1962,6 +1973,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 })
             })
@@ -1998,6 +2010,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        character_id: None,
                         entity: None,
                     }),
                 };
@@ -2010,6 +2023,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 })
             })
@@ -2047,6 +2061,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        character_id: None,
                         entity: None,
                     }),
                 };
@@ -2059,6 +2074,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    character_id: None,
                     entity: None,
                 })
             })

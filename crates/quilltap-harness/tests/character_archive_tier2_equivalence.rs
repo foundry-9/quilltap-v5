@@ -21,6 +21,12 @@
 //! copy and only tokenizes UUIDs *outside* it. Timestamps other than the seed
 //! stamp collapse to `<ts>`.
 //!
+//! The committed fixture is built by
+//! `harness/oracle/fixtures/build-character-archive-fixture.ts` and then EXTENDED
+//! in place by `extend-character-archive-twice-linked-blob.ts` (v4 Bug 57 /
+//! `de9f70bf` — the sha-deduped blob under two links). Both carry their own
+//! recipes; extend by mutation, never rebuild.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — jest ignores `.claude/`
 //! venues, so the case + spec are copied to a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -460,6 +466,99 @@ fn main_bundles(db: &Db, backend: &dyn StorageBackend, user_id: &str) -> Vec<Val
     out
 }
 
+/// A dispatch `Response` in the `{status, body}` shape v4's route answers with.
+///
+/// The rider keys (`code` / `characterId`) live flat on v5's `CoreError` where
+/// v4 nests them under `details` — the P4.6ah `FILE_HAS_ASSOCIATIONS`
+/// precedent — so the comparison flattens v4's side rather than nesting v5's
+/// (see `flatten_details`).
+fn route_value(resp: &quilltap_core::api::Response) -> Value {
+    use quilltap_core::api::{ErrorKind, Response as R};
+    match resp {
+        R::Error(e) => {
+            let status = match e.kind {
+                ErrorKind::BadRequest => 400,
+                ErrorKind::Unauthorized => 401,
+                ErrorKind::Forbidden => 403,
+                ErrorKind::NotFound => 404,
+                ErrorKind::Conflict => 409,
+                ErrorKind::Unprocessable => 422,
+                ErrorKind::Locked | ErrorKind::Unavailable => 503,
+                ErrorKind::Internal => 500,
+            };
+            let mut body = Map::new();
+            body.insert("error".into(), json!(e.message));
+            if let Some(code) = &e.code {
+                body.insert("code".into(), json!(code));
+            }
+            if let Some(cid) = &e.character_id {
+                body.insert("characterId".into(), json!(cid));
+            }
+            json!({"status": status, "body": Value::Object(body)})
+        }
+        R::Files(v) => json!({"status": 200, "body": v}),
+        other => json!({
+            "status": 200,
+            "body": serde_json::to_value(other).unwrap_or(Value::Null),
+        }),
+    }
+}
+
+/// Lift v4's `details` bag onto the error body, so the two shapes line up.
+fn flatten_details(v: &Value) -> Value {
+    let mut out = v.clone();
+    let Some(body) = out.get_mut("body").and_then(Value::as_object_mut) else {
+        return out;
+    };
+    let Some(details) = body.remove("details") else {
+        return out;
+    };
+    if let Some(map) = details.as_object() {
+        for (k, val) in map {
+            body.insert(k.clone(), val.clone());
+        }
+    }
+    out
+}
+
+/// Every `character` record the `.qtap` writer emits for a `scope: 'all'`
+/// characters export — the comparand for the three-key archive carry.
+fn export_character_records(db: &Db, user_id: &str, app_version: &str) -> Value {
+    use quilltap_core::services::qtap_export::{self, ExportOptions};
+    let opts = ExportOptions {
+        entity_type: "characters".to_string(),
+        scope: "all".to_string(),
+        selected_ids: Vec::new(),
+        include_memories: false,
+    };
+    let records = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                Ok(qtap_export::stream_export_records(
+                    main,
+                    mount,
+                    None,
+                    user_id,
+                    &opts,
+                    false,
+                    // The manifest's clock never reaches a `character` record;
+                    // the envelope is byte-proven by the export family.
+                    "2026-03-01T00:00:00.000Z",
+                    app_version,
+                ))
+            })
+        })
+        .expect("read")
+        .expect("stream export records");
+    Value::Array(
+        records
+            .into_iter()
+            .filter(|r| r.get("kind").and_then(Value::as_str) == Some("character"))
+            .filter_map(|r| r.get("data").cloned())
+            .collect(),
+    )
+}
+
 #[derive(Deserialize)]
 struct OracleCase {
     name: String,
@@ -486,7 +585,7 @@ async fn character_archive_tier2_equivalence() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("oracle line"))
         .collect();
-    assert_eq!(oracle.len(), 8, "the corpus is eight cases");
+    assert_eq!(oracle.len(), 13, "the corpus is thirteen cases");
 
     // The baked id set: every UUID present in the untouched fixture. Anything
     // outside it in a post-op dump was MINTED by the operation.
@@ -494,6 +593,7 @@ async fn character_archive_tier2_equivalence() {
         let work = open_work(&spec);
         let mut set = BTreeSet::new();
         collect_uuids(&dump_state(&work.db), &mut set);
+        assert_fixture_carries_twice_linked_blobs(&work.db);
         set
     };
 
@@ -561,6 +661,63 @@ async fn character_archive_tier2_equivalence() {
                     Err(e) => error_value(&e),
                 }
             }
+            // ── The files-delete ARCHIVE_BUNDLE_HELD guard ──
+            // v4 nests the rider under `details`; v5 carries `code` +
+            // `characterId` flat on the `CoreError` (the P4.6ah
+            // FILE_HAS_ASSOCIATIONS precedent) and the transport renders them
+            // into the body, so the CONTENT is what is compared.
+            name @ ("files_delete_bundle_held"
+            | "files_delete_bundle_force"
+            | "files_delete_bundle_unheld") => {
+                let archived = archive_character(db, &spec.user_id, &spec.sable, &s)
+                    .await
+                    .expect("archive");
+                let file_id = archived.archive_file_id.clone().unwrap_or_default();
+                if name == "files_delete_bundle_unheld" {
+                    rehydrate_character(db, &spec.user_id, &spec.sable, &s)
+                        .await
+                        .expect("rehydrate");
+                }
+                let force = name == "files_delete_bundle_force";
+                let resp = quilltap_core::api::files::file_delete(
+                    db,
+                    &spec.user_id,
+                    &file_id,
+                    force,
+                    false,
+                    Some(work.backend.as_ref()),
+                )
+                .await;
+                route_value(&resp)
+            }
+            // ── The export picker's archived filter ──
+            "export_entities_after_archive" => {
+                archive_character(db, &spec.user_id, &spec.sable, &s)
+                    .await
+                    .expect("archive");
+                let body = db
+                    .read_main(|main| {
+                        db.read_mount_index(|mount| {
+                            Ok(quilltap_core::services::qtap_export::export_entities(
+                                main,
+                                mount,
+                                &spec.user_id,
+                                "characters",
+                            ))
+                        })
+                    })
+                    .expect("read")
+                    .expect("export entities");
+                json!({"status": 200, "body": body})
+            }
+            // ── The three-key export carry, NON-NULL leg ──
+            "export_all_after_archive" => {
+                archive_character(db, &spec.user_id, &spec.sable, &s)
+                    .await
+                    .expect("archive");
+                let characters = export_character_records(db, &spec.user_id, &case.app_version);
+                json!({ "characters": characters })
+            }
             "rehydrate_missing_bundle_file" => {
                 let archived = archive_character(db, &spec.user_id, &spec.sable, &s)
                     .await
@@ -597,7 +754,10 @@ async fn character_archive_tier2_equivalence() {
             minted: HashMap::new(),
         };
         let mut want = norm_want.value(&json!({
-            "result": case.result,
+            // v4 nests an error's rider keys under `details`; v5 carries them
+            // flat (the P4.6ah precedent), so the two shapes are reconciled on
+            // v4's side before the comparison.
+            "result": flatten_details(&case.result),
             "bundles": case.bundles,
             "state": case.state,
         }));
@@ -659,6 +819,46 @@ async fn character_archive_tier2_equivalence() {
         mismatches.is_empty(),
         "character-archive divergences:\n{}",
         mismatches.join("\n\n")
+    );
+}
+
+/// The twice-linked blob shape (v4 Bug 57 / `de9f70bf`) lives in the FIXTURE,
+/// not in a case gesture: `archive_then_rehydrate` is the arm that exercises it,
+/// and it does so only for as long as Sable's vault actually holds one blob
+/// under two links. That makes it exactly the kind of coverage a later fixture
+/// edit can vacate in silence — the case would keep passing while proving
+/// nothing — so the shape is asserted rather than assumed
+/// (`harness-corpus-shape-constants-rot`: assert the shape, not a hand count).
+///
+/// TWO shapes are required, because what happens after the preflight's dedupe
+/// differs: portrait's content row survives the prune (one of its links is
+/// Sable's `defaultImageId`), so rehydrate meets an ALREADY-PRESENT blob id and
+/// takes the skip-if-present leg; landscape's links are both doomed, the orphan
+/// GC takes its content row, and rehydrate restores it fresh.
+fn assert_fixture_carries_twice_linked_blobs(db: &Db) {
+    let multi: Vec<i64> = db
+        .read_mount_index(|c| {
+            let mut stmt = c.prepare(
+                "SELECT COUNT(*) AS links FROM doc_mount_file_links l \
+                 JOIN doc_mount_blobs b ON b.fileId = l.fileId \
+                 GROUP BY l.fileId HAVING links > 1",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>("links"))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .expect("read mount fixture");
+    assert_eq!(
+        multi.len(),
+        2,
+        "the fixture must carry exactly two sha-deduped blobs linked twice each \
+         (the Bug-57 shape); found {multi:?} — re-run \
+         harness/oracle/fixtures/extend-character-archive-twice-linked-blob.ts"
+    );
+    assert!(
+        multi.iter().all(|&n| n == 2),
+        "each twice-linked blob carries exactly two links; found {multi:?}"
     );
 }
 
