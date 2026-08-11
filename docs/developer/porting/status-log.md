@@ -63748,3 +63748,41 @@ coverage, not behavior: no committed corpus yet exports a character whose archiv
 columns are NON-NULL (a bundle is always written *before* the tombstone commit,
 and both export entrances refuse an archived character), so the "present with a
 value" leg is unpinned. That arm stays OPEN under this order.
+### Unit record — P4.D67 unit 1 (the base-path-availability module)
+
+`services/mount_index/base_path_availability.rs` — a fresh survey of v4
+`ed8934f1`'s `lib/mount-index/base-path-availability.ts` (154 ln), ported
+whole: the `BasePathUnavailableReason` trio (`missing` / `denied` /
+`not-a-directory`, wire spellings pinned), the `BasePathAvailability`
+union, `BasePathUnavailableError` (carrying `basePath` / `reason` /
+`containerized`, `Display` = v4's `Error.message` = the diagnosis),
+`is_containerized` (docker OR lima), the byte-exact `explain()`
+sentences, the never-failing `check_base_path_availability`, and
+`assert_base_path_available`.
+
+Three port notes worth keeping:
+
+- **`fs.stat` → `std::fs::metadata`.** Both follow symlinks, and both take
+  their EACCES from the PARENT directory's search permission, not the
+  target's own mode — a `chmod 000` on the base path itself still stats
+  fine and reads as *available*. The planted `denied` arms therefore have
+  to make the parent unreadable, and unit 2's differential does exactly
+  that.
+- **The errno classification.** v4 tests `code === 'EACCES' || code ===
+  'EPERM'` and folds EVERY other errno (ENOENT, but also ENOTDIR on a
+  mid-path component, ELOOP, …) into `missing`. Rust maps both of those
+  errnos to `io::ErrorKind::PermissionDenied`, so the match is one arm.
+- **The container detection is not new code.** v4's `isContainerized()` is
+  `isDockerEnvironment() || isLimaEnvironment()` from `lib/paths`, and v5
+  already owns that pair as pure functions over a `DataDirEnv` snapshot
+  (`services::data_dir`, P4.9c). `is_containerized_in` is the pure half;
+  `is_containerized` is the one impure edge, snapshotting per call the way
+  v4 re-reads `process.env` per call.
+
+`containerized` is `false` in both test environments (no `/.dockerenv`,
+no `/app` directory, no `LIMA_CONTAINER=true`), so the container-variant
+sentences are pinned by UNIT tests transcribed from v4's source rather
+than by the differential — recorded here and in the case headers because
+it is a real coverage boundary, not an oversight. The module has no
+caller in this commit; the wire (scanner assert + the two route arms) and
+its differential arms land in unit 2.

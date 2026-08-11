@@ -205,8 +205,10 @@ mod resolver_split_tests {
 
     fn db_with_profiles(rows: &[(&str, i64)]) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE embedding_profiles (id TEXT PRIMARY KEY, isDefault INTEGER);")
-            .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE embedding_profiles (id TEXT PRIMARY KEY, isDefault INTEGER);",
+        )
+        .unwrap();
         for (id, is_default) in rows {
             conn.execute(
                 "INSERT INTO embedding_profiles (id, isDefault) VALUES (?1, ?2)",

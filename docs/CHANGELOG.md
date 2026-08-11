@@ -17,6 +17,14 @@ tier-2 differential against v4's real archive service, diffing the
 returned result, the DECRYPTED bundle, and every table in both
 partitions. (Ciphertext is never compared — a fresh salt and IV per
 bundle make it nondeterministic on both sides.)
+P4.D67 unit 1 — ported v4 `ed8934f1`'s new
+`lib/mount-index/base-path-availability.ts` as
+`services/mount_index/base_path_availability.rs`: the never-failing
+`check_base_path_availability` (missing / denied / not-a-directory), the
+`assert_base_path_available` refusal carrying the diagnosis, and the
+byte-exact operator-facing sentences including the containerized
+variants (pinned by unit tests — neither test environment is a
+container). No caller yet; the wire lands with the route arms.
 
 Planned the character-archive round 2 + the `ed8934f1` (Bug 56)
 drift-catch-up round: three work orders committed under
