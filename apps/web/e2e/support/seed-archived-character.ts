@@ -299,11 +299,30 @@ export function seedArchivedCharacter(cli: string): boolean {
     userId: SINGLE_USER_ID,
     title: ARCHIVED_CHAT_TITLE,
     participants: JSON.stringify(participants),
-    messageCount: 0,
+    messageCount: 1,
     lastMessageAt: RECENT,
     createdAt: TS,
     updatedAt: RECENT,
   });
+  // One message, so the chat renders the messages LIST rather than the
+  // empty state: `openChatWith` in the courier beats iterates the salon
+  // list from the top asserting `.qt-chat-messages-list` is visible on
+  // every chat it opens, and the recency float (above) puts this chat
+  // first — an empty chat broke that invariant on the full suite's first
+  // run at the round-1 unification. The speaker is the live template
+  // seat (participants[0]), so avatar/name resolution stays coherent.
+  const messageTemplate = read(cli, 'SELECT * FROM chat_messages LIMIT 1');
+  if (messageTemplate[0]) {
+    insertCopy(cli, 'chat_messages', messageTemplate[0], {
+      id: 'd6400000-0000-4000-8000-0000000000f9',
+      chatId: CHAT_ID,
+      participantId: String(seat['id'] ?? ''),
+      role: 'ASSISTANT',
+      content:
+        'The dust sheets are drawn, the keys are turned, and the wing keeps its own counsel.',
+      createdAt: TS,
+    });
+  }
 
   return true;
 }
