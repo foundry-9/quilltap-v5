@@ -34,7 +34,8 @@ use quilltap_core::db::files::FilesRepository;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::files::image_processing::can_resize_image;
 use quilltap_core::services::file_storage::{
-    build_thumbnail_storage_key, download_file, storage_key_exists, upload_raw,
+    build_thumbnail_storage_key, download_file, download_file_result, storage_key_exists,
+    upload_raw, FileDownloadError,
 };
 use quilltap_core::services::mount_index::path_utils::mime_for_extension;
 use quilltap_host::{HostImageCodec, LocalStorageBackend};
@@ -155,8 +156,13 @@ pub async fn files_proxy(
         Ok(None) => return not_found("File"),
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve file"),
     };
-    match download_file(&db, &backend, &entry) {
+    match download_file_result(&db, &backend, &entry) {
         Ok(bytes) => file_bytes_response(&entry.mime_type, &entry.original_filename, bytes),
+        // [Bug 55] Same rule as the by-id download: an absent object is 404,
+        // not 500. v4 `notFound('File content')` → `{"error":"File content not
+        // found"}`. Every other failure keeps v4's `Failed to download file`
+        // 500 (the OUTER catch's `Failed to serve file` is a different arm).
+        Err(FileDownloadError::ContentMissing { .. }) => not_found("File content"),
         Err(_) => error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to download file"),
     }
 }
@@ -255,8 +261,13 @@ pub async fn files_get(
             "File not available - storage key missing",
         );
     }
-    match download_file(&db, &backend, &entry) {
+    match download_file_result(&db, &backend, &entry) {
         Ok(bytes) => file_bytes_response(&entry.mime_type, &entry.original_filename, bytes),
+        // [Bug 55] The row outlived its bytes (a dangling avatar, a deleted
+        // mount point). That is permanent and the client's job to fall back
+        // from, so answer 404 rather than 500 — a server error invites a retry
+        // that can never work.
+        Err(FileDownloadError::ContentMissing { .. }) => not_found("File content"),
         Err(_) => error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve file"),
     }
 }

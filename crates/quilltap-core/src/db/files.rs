@@ -88,7 +88,10 @@ pub struct FileCreate {
     pub linked_to: Vec<String>,
     /// `FileSourceEnum` → TEXT (UPLOADED/GENERATED/IMPORTED/SYSTEM).
     pub source: String,
-    /// `FileCategoryEnum` → TEXT (IMAGE/DOCUMENT/AVATAR/ATTACHMENT/EXPORT/BACKUP).
+    /// `FileCategoryEnum` → TEXT
+    /// (IMAGE/DOCUMENT/AVATAR/ATTACHMENT/EXPORT/BACKUP/ARCHIVE — `ARCHIVE`
+    /// joined the enum at v4 `d553f72a`; v5 stores the category as plain TEXT
+    /// either way, so nothing but this list moved).
     pub category: String,
     /// `None` => SQL NULL.
     pub generation_prompt: Option<String>,
@@ -162,7 +165,7 @@ pub struct FileSweepRow {
     /// `FileSourceEnum`: `'UPLOADED' | 'GENERATED' | 'IMPORTED' | 'SYSTEM'`.
     pub source: String,
     /// `FileCategoryEnum`: `'IMAGE' | 'DOCUMENT' | 'AVATAR' | 'ATTACHMENT' |
-    /// 'EXPORT' | 'BACKUP'`.
+    /// 'EXPORT' | 'BACKUP' | 'ARCHIVE'` (`ARCHIVE` new at v4 `d553f72a`).
     pub category: String,
 }
 

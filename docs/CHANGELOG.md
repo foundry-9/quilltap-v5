@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Serving a file whose bytes have gone missing now answers 404 instead of 500
+(v4 bug 55). A `files` row can outlive its content — a deleted mount point, a
+storage key with nothing at that path — and answering a server error on every
+render invited retries that could never work while burying genuine storage
+faults. Both file routes now tell the two apart; every other failure still
+500s, unchanged.
+
 Ported the `.qtap` export/import substrate the character archive is built
 on (v4 `01e481f6` + `d553f72a`, work order P4.D62). A `characters` export now
 carries each character's whole vault — mount point, folders, documents and

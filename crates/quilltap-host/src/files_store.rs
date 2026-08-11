@@ -154,8 +154,21 @@ impl StorageBackend for LocalStorageBackend {
 
     fn download(&self, key: &str) -> Result<Vec<u8>, String> {
         let path = self.build_safe_path(key)?;
-        with_fs_retry(|| std::fs::read(&path))
-            .map_err(|e| format!("Failed to download file '{key}': {e}"))
+        with_fs_retry(|| std::fs::read(&path)).map_err(|e| {
+            // [Bug 55, v4 `d553f72a`] Nothing at that path is a "gone"
+            // condition, not a read fault — the caller needs to tell the two
+            // apart to answer 404 instead of 500. v4 throws
+            // `FileContentMissingError(key, "No file at storage key '<key>'")`
+            // here; the trait carries `String`, so the marker does
+            // (`quilltap_core::services::file_storage::CONTENT_MISSING_SENTINEL`).
+            if e.kind() == io::ErrorKind::NotFound {
+                tracing::warn!(key = %key, "Download found no file at the storage key");
+                return quilltap_core::services::file_storage::content_missing(format!(
+                    "No file at storage key '{key}'"
+                ));
+            }
+            format!("Failed to download file '{key}': {e}")
+        })
     }
 
     /// v4 `delete`: idempotent (ENOENT succeeds) + the legacy `.meta.json`

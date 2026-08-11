@@ -593,28 +593,129 @@ fn mount_blob_exists(db: &Db, storage_key: &str) -> Result<bool, DbError> {
         .is_some())
 }
 
+/// v4 `FileContentMissingError` (`lib/file-storage/errors.ts`, NEW at
+/// `d553f72a`, Bug 55) reduced to a marker a `String`-error backend can carry.
+///
+/// v4's storage layer wraps most failures in a generic `Error`, which loses the
+/// one distinction an HTTP caller needs: *is the object absent, or did the read
+/// fail?* An absent object is a "gone" condition — the row outlived its bytes —
+/// and answering 500 invites a retry that can never work while burying real
+/// storage faults.
+///
+/// v5's [`StorageBackend`] trait is `Result<_, String>`, and widening it would
+/// churn every backend and caller for one arm. Instead a backend that finds
+/// NOTHING at the key prefixes its message with this marker; [`download_file_result`]
+/// strips it and answers [`FileDownloadError::ContentMissing`]. The marker never
+/// reaches a user-visible string: every path that renders one goes through
+/// [`FileDownloadError`]'s `Display`, which emits v4's text exactly.
+pub const CONTENT_MISSING_SENTINEL: &str = "\u{1}quilltap-file-content-missing\u{1}";
+
+/// Wrap a backend error as "the object is absent" (see [`CONTENT_MISSING_SENTINEL`]).
+pub fn content_missing(message: impl std::fmt::Display) -> String {
+    format!("{CONTENT_MISSING_SENTINEL}{message}")
+}
+
+/// The typed outcome of a download — v4's `FileContentMissingError` vs
+/// everything else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileDownloadError {
+    /// The `files` row exists but its content does not: a mount-blob whose blob
+    /// (or whose whole mount point) has been deleted, or a filesystem key with
+    /// nothing at that path. v4's manager passes this through UN-wrapped, at
+    /// warn level — so the message carries no `Failed to download file '<name>':`
+    /// prefix.
+    ContentMissing {
+        storage_key: String,
+        message: String,
+    },
+    /// Any other failure — permissions, corruption, a backend that is down. v4
+    /// keeps these generic, wrapped, and 500-producing.
+    Other(String),
+}
+
+impl std::fmt::Display for FileDownloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileDownloadError::ContentMissing { message, .. } => write!(f, "{message}"),
+            FileDownloadError::Other(m) => write!(f, "{m}"),
+        }
+    }
+}
+
 /// v4 `FileStorageManager.downloadFile` (`manager.ts:378`) — dispatch on the
 /// storage key: `mount-blob:` → the ported `doc_mount_blobs` read, else the
 /// disk backend. Error strings match v4's wrapper.
+///
+/// The `String` form every existing caller uses; [`download_file_result`] is the
+/// typed one the HTTP edge needs to tell 404 from 500.
 pub fn download_file(
     db: &Db,
     backend: &dyn StorageBackend,
     entry: &FileEntry,
 ) -> Result<Vec<u8>, String> {
-    let inner = || -> Result<Vec<u8>, String> {
-        let key = effective_storage_key(entry)
-            .ok_or_else(|| "File has no storage key. Cannot download.".to_string())?;
-        if is_mount_blob_storage_key(Some(key)) {
-            let bytes = read_mount_blob(db, key).map_err(|e| e.to_string())?;
-            return bytes.ok_or_else(|| format!("Mount-blob not found for storageKey: {key}"));
+    download_file_result(db, backend, entry).map_err(|e| e.to_string())
+}
+
+/// [`download_file`] with v4's `d553f72a` error typing (Bug 55).
+pub fn download_file_result(
+    db: &Db,
+    backend: &dyn StorageBackend,
+    entry: &FileEntry,
+) -> Result<Vec<u8>, FileDownloadError> {
+    let key = match effective_storage_key(entry) {
+        Some(k) => k.to_string(),
+        None => {
+            return Err(FileDownloadError::Other(format!(
+                "Failed to download file '{}': File has no storage key. Cannot download.",
+                entry.original_filename
+            )))
         }
-        backend.download(key)
     };
-    inner().map_err(|msg| {
-        format!(
+
+    let inner: Result<Vec<u8>, FileDownloadError> = if is_mount_blob_storage_key(Some(&key)) {
+        match read_mount_blob(db, &key) {
+            // v4 `throw new FileContentMissingError(key, \`Mount-blob not found
+            // for storageKey: ${key}\`)` (`manager.ts:389`).
+            Ok(None) => Err(FileDownloadError::ContentMissing {
+                storage_key: key.clone(),
+                message: format!("Mount-blob not found for storageKey: {key}"),
+            }),
+            Ok(Some(bytes)) => Ok(bytes),
+            Err(e) => Err(FileDownloadError::Other(e.to_string())),
+        }
+    } else {
+        backend
+            .download(&key)
+            .map_err(|msg| match msg.strip_prefix(CONTENT_MISSING_SENTINEL) {
+                Some(rest) => FileDownloadError::ContentMissing {
+                    storage_key: key.clone(),
+                    message: rest.to_string(),
+                },
+                None => FileDownloadError::Other(msg),
+            })
+    };
+
+    inner.map_err(|e| match e {
+        // v4's catch passes the typed error through UN-wrapped, logging it at
+        // warn rather than crying error on every render of a dangling avatar.
+        FileDownloadError::ContentMissing {
+            storage_key,
+            message,
+        } => {
+            tracing::warn!(
+                file_id = %entry.id,
+                storage_key = %storage_key,
+                "File content is missing; the row outlived its bytes"
+            );
+            FileDownloadError::ContentMissing {
+                storage_key,
+                message,
+            }
+        }
+        FileDownloadError::Other(msg) => FileDownloadError::Other(format!(
             "Failed to download file '{}': {msg}",
             entry.original_filename
-        )
+        )),
     })
 }
 

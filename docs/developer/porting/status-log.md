@@ -62660,3 +62660,52 @@ QT_ORACLE_OUT=/tmp/oracle-system-export.ndjson \
 `system-import-execute` (`--testTimeout=600000`). `qtap-import` regenerates
 through its two `npx tsx` steps (fixture builder, then case) exactly as its
 header records.
+
+## Lane record — P4.D62 unit 2: Bug 55, the typed missing-content 404 (2026-08-10)
+
+v4 `d553f72a`'s second half. `lib/file-storage/errors.ts` is new there: a
+`FileContentMissingError` carrying the storage key, thrown for a missing
+mount-blob (`manager.ts:389`) and on the local backend's ENOENT, passed
+through the manager's catch UN-wrapped at warn level, and mapped to 404 by
+both file routes. Everything else stays generic and still 500s.
+
+**The typed carry, and why it is a sentinel.** v5's `StorageBackend` trait is
+`Result<_, String>`; widening it would churn every backend and every caller
+for one arm. So `file_storage.rs` gained `CONTENT_MISSING_SENTINEL` +
+`content_missing()` (what a backend prefixes when it finds NOTHING at the
+key), the `FileDownloadError` enum, and `download_file_result` — the typed
+entrance. `download_file` is now a one-line wrapper over it, so all its
+existing callers are untouched, and the sentinel never reaches a
+user-visible string: every rendered message goes through `FileDownloadError`'s
+`Display`, which emits v4's text exactly (the missing arm UN-prefixed, the
+other arm wrapped with `Failed to download file '<name>': `). The choice is
+documented at the constant.
+
+Sites: the host's `LocalStorageBackend::download` ENOENT arm (with v4's warn
+and its `No file at storage key '<key>'` message), the manager's mount-blob
+miss, and the two `files_routes.rs` arms.
+
+**Correction to the order's survey.** It flagged the proxy route's 500
+wording (`Failed to download file`) as a pre-existing v5 divergence from
+v4's `Failed to serve file`. It is not: v4's proxy has TWO catches — the
+download catch answers `serverError('Failed to download file')`
+(`route.ts:66`) and only the OUTER catch says `Failed to serve file`. v5
+already matched both. No change made, and tier-2 item 9's wording
+reconciliation is discharged on that evidence.
+
+**The test.** `crates/quilltap-web/tests/file_content_missing_404.rs` — a
+web-edge test rather than an oracle NDJSON, because the arms are fixed
+sentences quoted from v4's `responses.ts` and what needs proving is the
+plumbing no diff can see. Three rows over the committed `photos-*` family
+(the one instance fixture with a provisioned `files` table): bytes present →
+200 on both routes; a `mount-blob:` key whose blob does not exist → 404 with
+`{"error":"File content not found"}` on both routes; a disk key with nothing
+at that path → the same, which is the leg proving the sentinel survives the
+trait. A fourth arm clears the storage key entirely and asserts it still 500s
+with a DIFFERENT body, so the 404 cannot leak onto a genuine failure.
+Mutation-proven twice: removing the web arms and removing the host's sentinel
+each turn the 404s into 500s.
+
+Also in this unit: `db/files.rs`'s two stale `FileCategoryEnum` doc lists
+gained `ARCHIVE` (tier-2 item 9a; v5 stores the category as plain TEXT, so
+nothing but the comments moved).
