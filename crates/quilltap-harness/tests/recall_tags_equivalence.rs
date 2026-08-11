@@ -10,7 +10,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/recall-tags.ts \
 //!     > /tmp/oracle-recall-tags.ndjson
 //! Run:
-//!   QT_ORACLE_RECALL_TAGS=/tmp/oracle-recall-tags.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_RECALL_TAGS=/tmp/oracle-recall-tags.ndjson \
+//!     cargo test -p quilltap-harness --test recall_tags_equivalence
 
 // Data-driven case tables use multi-field tuples by design; the complexity lint
 // is noise here.

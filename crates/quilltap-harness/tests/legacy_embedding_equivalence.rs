@@ -9,7 +9,7 @@
 //!     > /tmp/oracle-legacy-embedding.ndjson
 //! Run:
 //!   QT_ORACLE_LEGACY_EMBEDDING=/tmp/oracle-legacy-embedding.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test legacy_embedding_equivalence
 
 use quilltap_core::embedding_blob::parse_legacy_embedding_text;
 use serde::Deserialize;

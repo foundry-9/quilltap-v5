@@ -10,7 +10,7 @@
 //!     > /tmp/oracle-canonicalize.ndjson
 //! Run:
 //!   QT_ORACLE_CANONICALIZE=/tmp/oracle-canonicalize.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test canonicalize_equivalence
 
 use quilltap_core::canonicalize::{
     canonicalize_universal_tool, canonicalize_universal_tools, UniversalTool,

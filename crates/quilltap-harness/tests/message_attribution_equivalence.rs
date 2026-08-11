@@ -11,7 +11,7 @@
 //!     > /tmp/oracle-message-attribution.ndjson
 //! Run:
 //!   QT_ORACLE_MESSAGE_ATTRIBUTION=/tmp/oracle-message-attribution.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test message_attribution_equivalence
 
 use std::collections::HashMap;
 

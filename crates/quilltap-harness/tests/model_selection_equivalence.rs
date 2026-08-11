@@ -11,7 +11,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/model-selection.ts \
 //!     > /tmp/oracle-model-selection.ndjson
 //! Run:
-//!   QT_ORACLE_MODEL_SELECTION=/tmp/oracle-model-selection.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_MODEL_SELECTION=/tmp/oracle-model-selection.ndjson \
+//!     cargo test -p quilltap-harness --test model_selection_equivalence
 
 use quilltap_core::model_classes::get_model_class;
 use quilltap_core::model_classes::is_valid_model_class_name;

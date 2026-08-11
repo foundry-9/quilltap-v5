@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/turn-pause-filters.ts \
 //!     > /tmp/oracle-turn-pause-filters.ndjson
 //! Run:
-//!   QT_ORACLE_TURN_PAUSE_FILTERS=/tmp/oracle-turn-pause-filters.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_TURN_PAUSE_FILTERS=/tmp/oracle-turn-pause-filters.ndjson \
+//!     cargo test -p quilltap-harness --test turn_pause_filters_equivalence
 
 use quilltap_core::all_llm_pause::{
     get_current_pause_threshold, get_next_pause_interval, get_next_pause_threshold,

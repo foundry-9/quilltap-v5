@@ -11,7 +11,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/pricing.ts \
 //!     > /tmp/oracle-pricing.ndjson
 //! Run:
-//!   QT_ORACLE_PRICING=/tmp/oracle-pricing.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_PRICING=/tmp/oracle-pricing.ndjson \
+//!     cargo test -p quilltap-harness --test pricing_equivalence
 
 use quilltap_core::pricing::{estimate_cost, ModelCost};
 use serde::Deserialize;

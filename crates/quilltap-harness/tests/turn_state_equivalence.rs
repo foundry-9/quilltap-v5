@@ -10,7 +10,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/turn-state.ts \
 //!     > /tmp/oracle-turn-state.ndjson
 //! Run:
-//!   QT_ORACLE_TURN_STATE=/tmp/oracle-turn-state.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_TURN_STATE=/tmp/oracle-turn-state.ndjson \
+//!     cargo test -p quilltap-harness --test turn_state_equivalence
 
 use quilltap_core::chat_predicates::ParticipantStatus;
 use quilltap_core::turn_state::{

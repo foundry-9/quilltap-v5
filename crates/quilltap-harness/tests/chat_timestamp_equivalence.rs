@@ -25,7 +25,8 @@
 //!   TZ=UTC npx tsx ~/source/quilltap-v5/harness/oracle/cases/chat-timestamp.ts \
 //!     > /tmp/oracle-chat-timestamp.ndjson
 //! Run:
-//!   QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson \
+//!     cargo test -p quilltap-harness --test chat_timestamp_equivalence
 
 use quilltap_core::chat_timestamp::{
     calculate_current_timestamp, calculate_timestamp_at, ensure_fictional_base_real_time,

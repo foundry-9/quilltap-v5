@@ -12,7 +12,8 @@
 //!   npx tsx <worktree>/harness/oracle/cases/select-speaker.ts \
 //!     > /tmp/oracle-select-speaker.ndjson
 //! Run:
-//!   QT_ORACLE_SELECT_SPEAKER=/tmp/oracle-select-speaker.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_SELECT_SPEAKER=/tmp/oracle-select-speaker.ndjson \
+//!     cargo test -p quilltap-harness --test select_speaker_equivalence
 
 use std::collections::HashMap;
 

@@ -11,7 +11,7 @@
 //!     > /tmp/oracle-extract-novel-details.ndjson
 //! Run:
 //!   QT_ORACLE_EXTRACT_NOVEL_DETAILS=/tmp/oracle-extract-novel-details.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test extract_novel_details_equivalence
 
 use quilltap_core::memory_gate::extract_novel_details;
 use serde::Deserialize;

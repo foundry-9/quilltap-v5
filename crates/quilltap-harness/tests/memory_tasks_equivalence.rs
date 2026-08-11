@@ -19,7 +19,7 @@
 //!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/cases" -- memory-tasks-tier1
 //! Run:
 //!   QT_ORACLE_MEMORY_TASKS=/tmp/oracle-memory-tasks.ndjson \
-//!     cargo test -p quilltap-harness memory_tasks
+//!     cargo test -p quilltap-harness --test memory_tasks_equivalence
 
 use quilltap_core::memory_format::Pronouns;
 use quilltap_core::memory_tasks::{

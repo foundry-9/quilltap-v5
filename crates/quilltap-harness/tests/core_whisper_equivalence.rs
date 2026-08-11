@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/core-whisper.ts \
 //!     > /tmp/oracle-core-whisper.ndjson
 //! Run:
-//!   QT_ORACLE_CORE_WHISPER=/tmp/oracle-core-whisper.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_CORE_WHISPER=/tmp/oracle-core-whisper.ndjson \
+//!     cargo test -p quilltap-harness --test core_whisper_equivalence
 
 use quilltap_core::core_whisper::{
     should_fire_core_whisper, CoreWhisperReason, ShouldFireCoreWhisperOptions, WhisperEvent,

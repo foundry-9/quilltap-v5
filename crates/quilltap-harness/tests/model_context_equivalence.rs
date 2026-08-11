@@ -10,7 +10,7 @@
 //!     > /tmp/oracle-model-context.ndjson
 //! Run:
 //!   QT_ORACLE_MODEL_CONTEXT=/tmp/oracle-model-context.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test model_context_equivalence
 
 use quilltap_core::model_context::{
     get_model_context_limit, get_safe_input_limit, has_extended_context, ModelInfo, PricingRow,

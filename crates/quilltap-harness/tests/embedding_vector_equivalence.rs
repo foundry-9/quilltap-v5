@@ -10,7 +10,7 @@
 //!     > /tmp/oracle-embedding-vector.ndjson
 //! Run:
 //!   QT_ORACLE_EMBEDDING_VECTOR=/tmp/oracle-embedding-vector.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test embedding_vector_equivalence
 
 use quilltap_core::embedding_blob::{blob_to_float32, float32_to_blob};
 use quilltap_core::embedding_vector::{

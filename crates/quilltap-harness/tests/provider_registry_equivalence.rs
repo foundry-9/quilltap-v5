@@ -12,7 +12,7 @@
 //!     > /tmp/oracle-provider-registry.ndjson
 //! Run:
 //!   QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
-//!     cargo test -p quilltap-harness provider_registry
+//!     cargo test -p quilltap-harness --test provider_registry_equivalence
 //!
 //! This is also the drift-catch point for the four seam-input replacements: the
 //! registry values these getters expose are the SAME values the leaf consumers

@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/turn-order.ts \
 //!     > /tmp/oracle-turn-order.ndjson
 //! Run:
-//!   QT_ORACLE_TURN_ORDER=/tmp/oracle-turn-order.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_TURN_ORDER=/tmp/oracle-turn-order.ndjson \
+//!     cargo test -p quilltap-harness --test turn_order_equivalence
 
 use quilltap_core::turn_order::{compute_predicted_turn_order, TurnOrderParticipant};
 use serde::Deserialize;

@@ -9,7 +9,7 @@
 //!     > /tmp/oracle-jsnum-formatters.ndjson
 //! Run:
 //!   QT_ORACLE_JSNUM_FORMATTERS=/tmp/oracle-jsnum-formatters.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test jsnum_formatters_equivalence
 
 use quilltap_core::format_bytes::format_bytes;
 use quilltap_core::format_tokens::{format_cost_for_display, format_token_count};

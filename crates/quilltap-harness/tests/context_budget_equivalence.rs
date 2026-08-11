@@ -11,7 +11,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/context-budget.ts \
 //!     > /tmp/oracle-context-budget.ndjson
 //! Run:
-//!   QT_ORACLE_CONTEXT_BUDGET=/tmp/oracle-context-budget.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_CONTEXT_BUDGET=/tmp/oracle-context-budget.ndjson \
+//!     cargo test -p quilltap-harness --test context_budget_equivalence
 
 use quilltap_core::context_budget::{
     calculate_max_available, calculate_recent_message_count, get_recommended_context_allocation,

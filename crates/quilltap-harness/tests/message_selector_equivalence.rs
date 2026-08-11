@@ -7,7 +7,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/message-selector.ts \
 //!     > /tmp/oracle-message-selector.ndjson
 //! Run:
-//!   QT_ORACLE_MESSAGE_SELECTOR=/tmp/oracle-message-selector.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_MESSAGE_SELECTOR=/tmp/oracle-message-selector.ndjson \
+//!     cargo test -p quilltap-harness --test message_selector_equivalence
 
 use quilltap_core::message_selector::{select_recent_messages, SelectableMessage};
 use quilltap_core::token_estimation::DEFAULT_CHARS_PER_TOKEN;

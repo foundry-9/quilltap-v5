@@ -10,7 +10,7 @@
 //!     > /tmp/oracle-template-prompt-hint.ndjson
 //! Run:
 //!   QT_ORACLE_TEMPLATE_PROMPT_HINT=/tmp/oracle-template-prompt-hint.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test template_prompt_hint_equivalence
 
 use quilltap_core::template_prompt_hint::{
     generate_formatting_prompt_hint, NarrationDelimiters, TemplateDelimiter, WrapDelimiters,

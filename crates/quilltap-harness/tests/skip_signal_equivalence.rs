@@ -22,7 +22,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/skip-signal.ts \
 //!     > /tmp/oracle-skip-signal.ndjson
 //! Run:
-//!   QT_ORACLE_SKIP_SIGNAL=/tmp/oracle-skip-signal.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_SKIP_SIGNAL=/tmp/oracle-skip-signal.ndjson \
+//!     cargo test -p quilltap-harness --test skip_signal_equivalence
 
 use quilltap_core::skip_signal::{
     compute_skip_eligibility, detect_skip_sentinel, find_skipped_since_last_substantive,

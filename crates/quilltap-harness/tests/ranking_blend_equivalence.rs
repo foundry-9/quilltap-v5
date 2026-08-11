@@ -7,7 +7,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/ranking-blend.ts \
 //!     > /tmp/oracle-ranking.ndjson
 //! Run:
-//!   QT_ORACLE_RANKING=/tmp/oracle-ranking.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_RANKING=/tmp/oracle-ranking.ndjson \
+//!     cargo test -p quilltap-harness --test ranking_blend_equivalence
 
 use std::collections::HashMap;
 

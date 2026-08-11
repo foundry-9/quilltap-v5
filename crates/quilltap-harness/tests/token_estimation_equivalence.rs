@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/token-estimation.ts \
 //!     > /tmp/oracle-token-estimation.ndjson
 //! Run:
-//!   QT_ORACLE_TOKEN_ESTIMATION=/tmp/oracle-token-estimation.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_TOKEN_ESTIMATION=/tmp/oracle-token-estimation.ndjson \
+//!     cargo test -p quilltap-harness --test token_estimation_equivalence
 
 use quilltap_core::token_estimation::{
     count_message_tokens, count_messages_tokens, estimate_tokens, get_context_usage_percent,

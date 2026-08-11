@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Scoped every differential family's `cargo test` recipe line to its own test
+binary. Thirty-two families' run lines read `cargo test -p quilltap-harness`
+with no `--test <family>`, so following the recipe compiled and ran EVERY
+harness test binary with only one family's oracle env var set: every sibling
+family found its own env var missing, printed its skip notice and passed. A
+run like that proves nothing about the family whose recipe it is, and the
+sweep driver's fail-on-skip guard could not tell whose skip it was seeing —
+which is why three consecutive rounds had to re-run these families by hand.
+Developer tooling only — no test body, fixture or oracle case changed.
+
 Fixed the sweep driver's prose-leak class at its root: a differential
 family's regeneration recipe is now recognized by INDENTATION (a command
 sits two spaces past `//!` or `*`; prose sits at the marker's margin)

@@ -9,7 +9,7 @@
 //!     > /tmp/oracle-about-character-matchers.ndjson
 //! Run:
 //!   QT_ORACLE_ABOUT_CHARACTER_MATCHERS=/tmp/oracle-about-character-matchers.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test about_character_matchers_equivalence
 
 use quilltap_core::about_character::{
     count_name_occurrences, name_appears, resolve_about_character_id, AboutFlipReason,

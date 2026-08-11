@@ -9,7 +9,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/small-utils.ts \
 //!     > /tmp/oracle-small-utils.ndjson
 //! Run:
-//!   QT_ORACLE_SMALL_UTILS=/tmp/oracle-small-utils.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_SMALL_UTILS=/tmp/oracle-small-utils.ndjson \
+//!     cargo test -p quilltap-harness --test small_utils_equivalence
 
 use quilltap_core::char_count::char_count_class;
 use quilltap_core::chat_predicates::{

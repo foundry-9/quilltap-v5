@@ -64514,3 +64514,45 @@ there.)
 
 No test body, assertion, fixture or oracle case changed — the `git diff`
 over `crates/quilltap-harness/tests/` is comment-only.
+
+---
+
+## Lane record — P4.45 unit 2: the SKIP-masquerade closed in the headers, 2026-08-11
+
+**The census is 32 files, not 30.** The order's grep
+(`cargo test -p quilltap-harness$`) is anchored at end-of-line, so it missed
+`memory_tasks_equivalence` and `provider_registry_equivalence`, whose run
+lines end in a POSITIONAL test-name filter (`… quilltap-harness memory_tasks`).
+A positional filter narrows what runs but does not scope it to a binary, and
+it is fragile in a way `--test` is not — it matches test NAMES across every
+binary in the crate, so a sibling family that ever names a test containing the
+same substring silently rejoins the run. Both were repaired to the canonical
+form; both binaries' test fns were checked to contain the filter substring
+first, so nothing that used to run stopped running.
+
+Every one of the 32 now reads:
+
+```text
+//!   QT_ORACLE_X=/tmp/oracle-x.ndjson \
+//!     cargo test -p quilltap-harness --test <file stem>
+```
+
+which is the form the other 328 families already use — `turn_predicates_
+equivalence`, sitting alongside the six turn families the order names, was
+already correct and served as the model. After the repair
+`ggrep -c '^UNSCOPED'` over every extracted run stage is **0**, and the five
+`quilltap-web` families were verified already scoped.
+
+**Ownership:** all 32 are lane-owned. None is an archive / import / qtap /
+characters family, so the sibling lane has nothing to arbitrate and the
+tier-2 "record, don't edit" list is EMPTY. Two are character-adjacent by name
+only — `about_character_matchers_equivalence` and
+`mentioned_characters_equivalence` are pure text-matcher differentials, not
+the characters CRUD/archive surface.
+
+Comment-only: the `git diff` over `crates/quilltap-harness/tests/` is 32
+files, all inside the leading `//!` block. `--list` totals are unchanged by
+this unit (`ok` 288 / `ok_restored` 72 / `committed_corpus` 12 / `exempt` 6 /
+`no_oracle` 19) — scoping does not change extractability, which is exactly
+why the masquerade survived four rounds of `--list` runs. Unit 3 makes it
+change the classification.

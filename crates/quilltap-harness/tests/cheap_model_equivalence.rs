@@ -10,7 +10,7 @@
 //!     > /tmp/oracle-cheap-model.ndjson
 //! Run:
 //!   QT_ORACLE_CHEAP_MODEL=/tmp/oracle-cheap-model.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test cheap_model_equivalence
 
 use quilltap_core::cheap_model::{estimate_model_cost, get_cheapest_model, is_cheap_model};
 use serde::Deserialize;

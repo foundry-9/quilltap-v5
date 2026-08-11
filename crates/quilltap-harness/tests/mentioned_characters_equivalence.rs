@@ -9,7 +9,7 @@
 //!     > /tmp/oracle-mentioned-characters.ndjson
 //! Run:
 //!   QT_ORACLE_MENTIONED_CHARACTERS=/tmp/oracle-mentioned-characters.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test mentioned_characters_equivalence
 
 use quilltap_core::mentioned_characters::{find_mentioned_character_ids, MentionCandidate};
 use serde::Deserialize;

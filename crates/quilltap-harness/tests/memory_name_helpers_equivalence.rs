@@ -9,7 +9,7 @@
 //!     > /tmp/oracle-memory-name-helpers.ndjson
 //! Run:
 //!   QT_ORACLE_MEMORY_NAME_HELPERS=/tmp/oracle-memory-name-helpers.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test memory_name_helpers_equivalence
 
 use quilltap_core::about_character::{names_for_about_character, names_for_holder};
 use quilltap_core::memory_format::{format_name_with_pronouns, Pronouns};

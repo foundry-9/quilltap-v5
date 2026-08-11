@@ -8,7 +8,7 @@
 //!     > /tmp/oracle-canon-scenario.ndjson
 //! Run:
 //!   QT_ORACLE_CANON_SCENARIO=/tmp/oracle-canon-scenario.ndjson \
-//!     cargo test -p quilltap-harness
+//!     cargo test -p quilltap-harness --test canon_scenario_equivalence
 
 use quilltap_core::canon::{
     load_canon_for_self, render_other_canon_block, render_self_canon_block, CanonSource,

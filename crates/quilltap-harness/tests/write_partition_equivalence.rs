@@ -11,7 +11,8 @@
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/write-partition.ts \
 //!     > /tmp/oracle-write-partition.ndjson
 //! Run:
-//!   QT_ORACLE_WRITE_PARTITION=/tmp/oracle-write-partition.ndjson cargo test -p quilltap-harness
+//!   QT_ORACLE_WRITE_PARTITION=/tmp/oracle-write-partition.ndjson \
+//!     cargo test -p quilltap-harness --test write_partition_equivalence
 
 use std::collections::HashMap;
 
