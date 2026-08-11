@@ -53,6 +53,13 @@ P4.D67 unit 1 — ported v4 `ed8934f1`'s new
 byte-exact operator-facing sentences including the containerized
 variants (pinned by unit tests — neither test environment is a
 container). No caller yet; the wire lands with the route arms.
+Docs — P4.D66's order status header closed out: what landed (the whole
+`db characters` family, Tier 1 and Tier 2 both), the one deferral that is not
+from this family (`docs docker-mounts`), and the two places the lane
+deliberately departs from the order's text (v4's launcher has its own
+passphrase ladder; the archive/rehydrate arms need no ACTIVATE-AT-UNIFY gate
+because one stub answers both CLIs). Docs only; no version bumps.
+
 CLI — ported the whole `quilltap db characters` family (v4 `ed8934f1`):
 `status`, `archives`, `archive`, `rehydrate`, `export`. This is the first
 `db` verb v5 ships at all, so it also lands v4's verb-path entrance
