@@ -198,6 +198,314 @@ function dumpPartition(db: import('better-sqlite3').Database): Record<string, un
  * Build the merged all-type payload from v4's OWN exports over the live fixture.
  * One export per type, `scope: 'all'`; memories ride the characters export.
  */
+/**
+ * [P4.D62] A `characters` export on its own — which, since `01e481f6`, carries
+ * each character's whole VAULT (mount point + folders + documents + blobs).
+ * That is what the `preserveIds` arms need: a bundle whose ids reach every
+ * table the archive/rehydrate path claims.
+ */
+async function buildCharactersExport(
+  userId: string,
+  selectedIds?: string[],
+): Promise<{ manifest: unknown; data: Record<string, unknown[]> }> {
+  const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
+  const bytes = await drainBytes(
+    createNdjsonStream(userId, {
+      type: 'characters',
+      scope: selectedIds ? 'selected' : 'all',
+      selectedIds,
+      includeMemories: true,
+      preserveIds: true,
+    } as never),
+  );
+  return loadQtap(bytes);
+}
+
+// ── The fixture ids the hand-built preserveIds payloads lean on ─────────────
+// Lorian's vault, and two CONTENT rows that live OUTSIDE it. Bug 54's whole
+// point is that a content row can be present with the right bytes while having
+// no link in the rehydrate target's vault — so these two are what make the
+// sha-first classifier discriminating rather than shadowed by the
+// link-in-target fallback.
+const LORIAN_VAULT = 'c5e2a72d-b5f1-4486-8325-8308f783c90e';
+/** `doc_mount_files` row linked ONLY in Riya's vault, with its true hash. */
+const RIYA_ONLY_CONTENT = '06d2d56a-d8d4-46ba-953b-d13b7141f7bf';
+const RIYA_ONLY_CONTENT_SHA =
+  'd3a87080d6e3ee8b060ccf3ccbffe0dd0aa029e6d219c436fc96f5c2231ef7bf';
+/** `doc_mount_blobs` row in the Uploads mount, with its true hash. */
+const UPLOADS_BLOB = 'b585b1ed-f355-4c48-b597-9ef47812ef8e';
+const UPLOADS_BLOB_SHA =
+  '1065ee92208d16fbd02af1041248cb76ee38cdb68c7c2d89e4facac052b41d05';
+
+/**
+ * [Bug 54] A bundle claiming a content row and a blob row that BOTH already
+ * exist outside the rehydrate target's vault. With `matching` the carried
+ * hashes are the live ones — dedup, so skip-if-present sanctions them and the
+ * import proceeds; with `matching: false` they are a same-id/different-bytes
+ * clash and the whole import refuses.
+ *
+ * `linkId` / the blob's `fileId` are deliberately ids nothing owns, so the
+ * link and content checks pass on absence and the ONLY thing under test is the
+ * sha-first classifier.
+ */
+function sharedContentPayload(matching: boolean): { manifest: unknown; data: Record<string, unknown> } {
+  const wrong = '0000000000000000000000000000000000000000000000000000000000000000';
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'document-stores',
+      createdAt: '2026-03-01T00:00:00.000Z',
+      appVersion: 'test',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      mountPoints: [],
+      folders: [],
+      documents: [
+        {
+          mountPointId: LORIAN_VAULT,
+          relativePath: 'notes/shared.md',
+          fileName: 'shared.md',
+          fileType: 'markdown',
+          content: 'shared',
+          contentSha256: matching ? RIYA_ONLY_CONTENT_SHA : wrong,
+          plainTextLength: 6,
+          lastModified: '2026-03-01T00:00:00.000Z',
+          folderId: null,
+          fileId: RIYA_ONLY_CONTENT,
+          linkId: 'ca000000-0000-4000-8000-000000000001',
+          linkGroupId: null,
+        },
+      ],
+      blobs: [
+        {
+          mountPointId: LORIAN_VAULT,
+          relativePath: 'images/shared.bin',
+          originalFileName: 'shared.bin',
+          originalMimeType: 'application/octet-stream',
+          storedMimeType: 'application/octet-stream',
+          sizeBytes: 3,
+          sha256: matching ? UPLOADS_BLOB_SHA : wrong,
+          description: '',
+          descriptionUpdatedAt: null,
+          fileId: 'ca000000-0000-4000-8000-000000000002',
+          linkId: 'ca000000-0000-4000-8000-000000000003',
+          blobId: UPLOADS_BLOB,
+          extractedText: null,
+          extractedTextSha256: null,
+          extractionStatus: 'none',
+          extractionError: null,
+          dataBase64: Buffer.from('abc').toString('base64'),
+        },
+      ],
+      projectLinks: [],
+    },
+  };
+}
+
+/**
+ * [WP B1 / F4] A hand-built bundle whose every id is FREE — one character with
+ * a memory and a whole vault (mount point, a folder and a NESTED folder, a text
+ * document, a blob). Under `preserveIds` every one of those rows must land at
+ * the carried id, and reconciliation must repoint the character at the imported
+ * vault and tear down the scaffold `create()` provisioned.
+ *
+ * Hand-built rather than taken from the fixture's own characters export,
+ * because that export's five managed-field links all share ONE empty content
+ * row which also carries a blob — so the assembled bundle claims the same
+ * `linkId` under both `documents` and `blobs`, and the preflight's
+ * repeat-detection refuses it before any of this is reached. (That refusal IS
+ * v4's behaviour and is pinned by `execute_preserve_ids_refuse_existing`; it is
+ * simply not what these arms are for.)
+ *
+ * Re-imported a second time under `skip-if-present` (see the case list), where
+ * every id now exists INSIDE the target and must be skipped rather than refused.
+ */
+function preserveIdsVaultPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const CHAR = 'cc000000-0000-4000-8000-000000000001';
+  const VAULT = 'cc000000-0000-4000-8000-000000000002';
+  const FOLDER = 'cc000000-0000-4000-8000-000000000003';
+  const NESTED = 'cc000000-0000-4000-8000-000000000004';
+  const DOC_FILE = 'cc000000-0000-4000-8000-000000000005';
+  const DOC_LINK = 'cc000000-0000-4000-8000-000000000006';
+  const BLOB_FILE = 'cc000000-0000-4000-8000-000000000007';
+  const BLOB_LINK = 'cc000000-0000-4000-8000-000000000008';
+  const BLOB = 'cc000000-0000-4000-8000-000000000009';
+  const MEMORY = 'cc000000-0000-4000-8000-00000000000a';
+  const PROPS_FILE = 'cc000000-0000-4000-8000-00000000000b';
+  const PROPS_LINK = 'cc000000-0000-4000-8000-00000000000c';
+  const content = '# Ancients\n\nThe first age.\n';
+  // A character vault is only usable with its managed-field sidecar; a real
+  // export always carries one, and without it the repoint below lands the
+  // character on a store the read overlay refuses ("properties.json missing").
+  const properties = JSON.stringify(
+    {
+      pronouns: null,
+      aliases: [],
+      title: null,
+      firstMessage: null,
+      talkativeness: 0.5,
+      canChooseOutfit: false,
+    },
+    null,
+    2,
+  );
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'characters',
+      createdAt: '2026-03-01T00:00:00.000Z',
+      appVersion: 'test',
+      settings: { includeMemories: true, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      characters: [
+        {
+          id: CHAR,
+          name: 'Ulugh Beg',
+          identity: 'An astronomer.',
+          description: 'Patient.',
+          personality: 'Exacting.',
+          characterDocumentMountPointId: VAULT,
+          avatarOverrides: [],
+          tags: [],
+        },
+      ],
+      memories: [
+        {
+          id: MEMORY,
+          characterId: CHAR,
+          content: 'The tables were finished at Samarkand.',
+          summary: 'the tables',
+          importance: 0.7,
+          source: 'AUTO',
+          keywords: [],
+          tags: [],
+        },
+      ],
+      mountPoints: [
+        {
+          id: VAULT,
+          name: 'Ulugh Beg Character Vault',
+          basePath: '',
+          mountType: 'database',
+          storeType: 'character',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+        },
+      ],
+      folders: [
+        { id: FOLDER, mountPointId: VAULT, parentId: null, name: 'lore', path: 'lore' },
+        {
+          id: NESTED,
+          mountPointId: VAULT,
+          parentId: FOLDER,
+          name: 'ancients',
+          path: 'lore/ancients',
+        },
+      ],
+      documents: [
+        {
+          mountPointId: VAULT,
+          relativePath: 'properties.json',
+          fileName: 'properties.json',
+          fileType: 'json',
+          content: properties,
+          contentSha256: createHash('sha256').update(properties, 'utf8').digest('hex'),
+          plainTextLength: properties.length,
+          lastModified: '2026-03-01T00:00:00.000Z',
+          folderId: null,
+          fileId: PROPS_FILE,
+          linkId: PROPS_LINK,
+          linkGroupId: null,
+        },
+        {
+          mountPointId: VAULT,
+          relativePath: 'lore/ancients/first-age.md',
+          fileName: 'first-age.md',
+          fileType: 'markdown',
+          content,
+          contentSha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+          plainTextLength: content.length,
+          lastModified: '2026-03-01T00:00:00.000Z',
+          folderId: NESTED,
+          fileId: DOC_FILE,
+          linkId: DOC_LINK,
+          linkGroupId: null,
+        },
+      ],
+      blobs: [
+        {
+          mountPointId: VAULT,
+          relativePath: 'images/portrait.bin',
+          originalFileName: 'portrait.bin',
+          originalMimeType: 'application/octet-stream',
+          storedMimeType: 'application/octet-stream',
+          sizeBytes: 9,
+          sha256: createHash('sha256').update(Buffer.from('astrolabe')).digest('hex'),
+          description: '',
+          descriptionUpdatedAt: null,
+          fileId: BLOB_FILE,
+          linkId: BLOB_LINK,
+          blobId: BLOB,
+          extractedText: null,
+          extractedTextSha256: null,
+          extractionStatus: 'none',
+          extractionError: null,
+          dataBase64: Buffer.from('astrolabe').toString('base64'),
+        },
+      ],
+      projectLinks: [],
+    },
+  };
+}
+
+/** The rehydrate target the second run of `execute_preserve_ids_vault` names. */
+const PRESERVE_IDS_VAULT_TARGET = {
+  mode: 'skip-if-present',
+  targetCharacterId: 'cc000000-0000-4000-8000-000000000001',
+  targetVaultMountPointId: 'cc000000-0000-4000-8000-000000000002',
+};
+
+/**
+ * [WP B1] The same id claimed under TWO kinds inside one bundle — the
+ * "(also seen as …)" refusal shape. Neither id exists in the instance, so the
+ * repeat is the only thing that can refuse it.
+ */
+function repeatedIdPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const shared = 'cb000000-0000-4000-8000-000000000001';
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'tags',
+      createdAt: '2026-03-01T00:00:00.000Z',
+      appVersion: 'test',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      characters: [
+        {
+          id: shared,
+          name: 'Collider',
+          identity: '',
+          description: '',
+          personality: '',
+          avatarOverrides: [],
+          tags: [],
+        },
+      ],
+      tags: [{ id: shared, name: 'collider', nameLower: 'collider' }],
+    },
+  };
+}
+
 async function buildMergedExport(
   userId: string,
 ): Promise<{ manifest: unknown; data: Record<string, unknown[]> }> {
@@ -871,6 +1179,42 @@ function executeTwiceCase(
   };
 }
 
+/**
+ * kind 'execute_then_rehydrate' [P4.D62]: run v4's REAL `executeImport` over the
+ * SAME payload twice with DIFFERENT options — run 1 lands the bundle at its
+ * carried ids (refuse-on-collision), run 2 replays it as a rehydrate
+ * (skip-if-present), where every id now exists INSIDE the target and must be
+ * skipped rather than refused. Nothing may be duplicated by the second run.
+ */
+function executeThenRehydrateCase(
+  name: string,
+  payload: (spec: Spec) => Promise<unknown> | unknown,
+  options: Record<string, unknown>,
+  options2: Record<string, unknown>,
+) {
+  return {
+    name,
+    run: async (spec: Spec, dumpAll: () => Record<string, unknown>) => {
+      const exportData = await payload(spec);
+      const preState = dumpAll();
+      const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+      const result = await executeImport(spec.userId, exportData as never, options as never);
+      const result2 = await executeImport(spec.userId, exportData as never, options2 as never);
+      await settle();
+      return {
+        kind: 'execute_then_rehydrate',
+        exportData,
+        options,
+        options2,
+        result,
+        result2,
+        preState,
+        state: dumpAll(),
+      };
+    },
+  };
+}
+
 function mockRequest(url: string, method: string, body: unknown): unknown {
   return {
     method,
@@ -1027,9 +1371,27 @@ async function main(): Promise<void> {
   const merged = await runCase(spec, '_build', scratch, fixtures, async () => ({
     payload: await buildMergedExport(spec.userId),
     filesPayload: await buildFilesExport(spec.userId),
+    charactersPayload: await buildCharactersExport(spec.userId),
+    lorianPayload: await buildCharactersExport(spec.userId, [
+      'a1000000-0000-4000-8000-000000000001',
+    ]),
   }));
   const mergedPayload = merged.payload as { manifest: unknown; data: Record<string, unknown[]> };
   const filesPayload = merged.filesPayload as { manifest: unknown; data: Record<string, unknown[]> };
+  const charactersPayload = merged.charactersPayload as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const lorianPayload = merged.lorianPayload as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const LORIAN = 'a1000000-0000-4000-8000-000000000001';
+  const SKIP_IF_PRESENT_LORIAN = {
+    mode: 'skip-if-present',
+    targetCharacterId: LORIAN,
+    targetVaultMountPointId: LORIAN_VAULT,
+  };
 
   const cases = [
     executeCase('execute_skip_all', () => mergedPayload, {
@@ -1153,6 +1515,85 @@ async function main(): Promise<void> {
     // `_bytesMissing` row skips with its warning on every arm); `overwrite`
     // deletes + recreates by id; `duplicate` re-mints; the cross-instance arm
     // exercises the linkedTo drop/keep logic over foreign ids.
+    // ── [P4.D62] preserveIds — WP B1 + Bugs 52/54 ─────────────────────────
+    // Every id in the bundle already exists here, so refuse-on-collision must
+    // refuse on the FIRST check kind and write nothing at all.
+    executeCase('execute_preserve_ids_refuse_existing', () => charactersPayload, {
+      conflictStrategy: 'skip',
+      includeMemories: true,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
+    // The same id under two kinds inside one bundle — the "(also seen as …)"
+    // shape, which nothing else can produce.
+    executeCase('execute_preserve_ids_repeat_in_bundle', () => repeatedIdPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
+    // A stranger's bundle into free id space: every row — the character, its
+    // memory, the vault mount, both folders, the document and the blob — must
+    // land AT the carried id, and reconciliation must repoint the character at
+    // its imported vault and tear down the scaffold `create()` provisioned.
+    // Then the SAME bundle replayed as a rehydrate: every id now exists inside
+    // the target, so skip-if-present must skip rather than refuse, and the
+    // second run may not duplicate a single row.
+    executeThenRehydrateCase(
+      'execute_preserve_ids_vault',
+      () => preserveIdsVaultPayload(),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: true,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+      {
+        conflictStrategy: 'skip',
+        includeMemories: true,
+        includeRelatedEntities: false,
+        preserveIds: true,
+        preserveIdsMode: PRESERVE_IDS_VAULT_TARGET,
+      },
+    ),
+    // The fixture's OWN characters bundle replayed as a rehydrate of Lorian:
+    // its five managed-field links share one content row that also carries a
+    // blob, so the same linkId is claimed under both `documents` and `blobs` —
+    // the in-bundle repeat refuses before the target check is reached. Pinned
+    // because it is the shape a real vault export of this fixture produces.
+    executeCase('execute_preserve_ids_skip_if_present', () => lorianPayload, {
+      conflictStrategy: 'skip',
+      includeMemories: true,
+      includeRelatedEntities: false,
+      preserveIds: true,
+      preserveIdsMode: SKIP_IF_PRESENT_LORIAN,
+    }),
+    // …but a collision ANYWHERE ELSE still refuses the whole import: the same
+    // rehydrate target with a bundle that also carries the OTHER character.
+    executeCase('execute_preserve_ids_skip_foreign_refuses', () => charactersPayload, {
+      conflictStrategy: 'skip',
+      includeMemories: true,
+      includeRelatedEntities: false,
+      preserveIds: true,
+      preserveIdsMode: SKIP_IF_PRESENT_LORIAN,
+    }),
+    // [Bug 54] Content-addressed rows the target legitimately owned, whose only
+    // surviving links are in a CO-OWNER's vault. Matching bytes are dedup and
+    // pass; a same-id/different-bytes row is a real clash and refuses.
+    executeCase('execute_preserve_ids_dedup_by_sha', () => sharedContentPayload(true), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+      preserveIdsMode: SKIP_IF_PRESENT_LORIAN,
+    }),
+    executeCase('execute_preserve_ids_sha_mismatch_refuses', () => sharedContentPayload(false), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+      preserveIdsMode: SKIP_IF_PRESENT_LORIAN,
+    }),
     executeCase('execute_files_skip', () => filesPayload, {
       conflictStrategy: 'skip',
       includeMemories: false,

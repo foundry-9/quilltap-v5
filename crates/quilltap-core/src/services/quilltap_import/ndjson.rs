@@ -393,6 +393,15 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     "descriptionUpdatedAt".into(),
                     nullish(&obj, "descriptionUpdatedAt"),
                 );
+                // `01e481f6`: the three carried row ids, assembled between
+                // `descriptionUpdatedAt` and `extractedText`. These DO take the
+                // `?? null` (v4 `fileId: blobRec.data.fileId ?? null`), so an
+                // older bundle that predates the writer's id carry assembles
+                // explicit nulls here rather than absent keys — which is what
+                // lets the preflight's `isNonEmpty` filter drop them uniformly.
+                meta.insert("fileId".into(), nullish(&obj, "fileId"));
+                meta.insert("linkId".into(), nullish(&obj, "linkId"));
+                meta.insert("blobId".into(), nullish(&obj, "blobId"));
                 meta.insert("extractedText".into(), nullish(&obj, "extractedText"));
                 meta.insert(
                     "extractedTextSha256".into(),
@@ -771,6 +780,28 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
             d.insert("characters".into(), Value::Array(c.characters));
             if !c.memories.is_empty() {
                 d.insert("memories".into(), Value::Array(c.memories));
+            }
+            // `01e481f6` (WP A2): a characters bundle now carries each
+            // character's whole vault, so the doc-store collections have to be
+            // handed to the importer from THIS arm too. Each is spread only
+            // when non-empty, exactly like `memories` — so a bundle written
+            // before WP A2 assembles byte-identically to before.
+            if !c.mount_points.is_empty() {
+                d.insert("mountPoints".into(), Value::Array(c.mount_points));
+            }
+            if !c.folders.is_empty() {
+                d.insert("folders".into(), Value::Array(c.folders));
+            }
+            if !c.documents.is_empty() {
+                d.insert("documents".into(), Value::Array(c.documents));
+            }
+            if !c.blobs.is_empty() {
+                d.insert("blobs".into(), Value::Array(c.blobs));
+            }
+            // A character vault never has project links (the writer passes
+            // `skipProjectLinks`), but v4 spreads the collection anyway.
+            if !c.project_links.is_empty() {
+                d.insert("projectLinks".into(), Value::Array(c.project_links));
             }
         }
         "chats" => {

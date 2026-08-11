@@ -18,9 +18,9 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{ConflictStrategy, IdMap, ImportOptions};
+use super::{ConflictStrategy, IdMaps, ImportOptions};
 use crate::db::character_plugin_data::CharacterPluginDataRepository;
-use crate::db::character_vault::create_character;
+use crate::db::character_vault::create_character_with_options;
 use crate::db::characters::{
     AvatarOverride, CharacterCreate, CharactersRepository, PartnerLink, TimestampConfig,
 };
@@ -162,6 +162,29 @@ impl ImportedSlim {
     }
 }
 
+/// v4 `rememberBundleVault` (`import-characters.ts:50`, `01e481f6`) — record
+/// which vault mount point the bundle claimed for a character we just created.
+/// v4's note, verbatim:
+///
+/// > `characters.create()` deliberately drops the incoming pointer and
+/// > provisions a scaffold vault, so this is the only surviving trace of the
+/// > store the bundle meant — reconciliation needs it to repoint the character
+/// > at its imported vault and tear the scaffold down.
+/// >
+/// > Characters exported before WP A2 carry no vault, so nothing is recorded
+/// > and reconciliation leaves the scaffold in place.
+fn remember_bundle_vault(id_maps: &mut IdMaps, exported: &Value, new_character_id: &str) {
+    if let Some(vault_id) = exported
+        .get("characterDocumentMountPointId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        id_maps
+            .character_vault_mounts
+            .set(new_character_id.to_string(), vault_id.to_string());
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn import_characters(
     main: &Connection,
@@ -169,7 +192,7 @@ pub(super) fn import_characters(
     user_id: &str,
     characters: &[Value],
     options: &ImportOptions,
-    id_map: &mut IdMap,
+    id_maps: &mut IdMaps,
     warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
@@ -208,6 +231,22 @@ pub(super) fn import_characters(
             .to_string();
 
         let out: Result<(), String> = (|| {
+            // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): this IS the
+            // character being rehydrated — its row survived the archive. Map it
+            // to itself and move on. v4's note on why this is NOT the
+            // conflict-strategy `skip` branch below, verbatim:
+            //
+            // > that one adds the vault to skippedCharacterVaults, which would
+            // > drop the very store records this import exists to restore. Nor
+            // > rememberBundleVault: the character still points at its own
+            // > vault, so reconciliation must not repoint anything or tear down
+            // > a "scaffold".
+            if options.preserve_ids && id_maps.preserve_ids_skips.contains(&source_id) {
+                id_maps.characters.set(source_id.clone(), source_id.clone());
+                skipped += 1;
+                return Ok(());
+            }
+
             // Check by ID first (same-instance re-import), then by name
             // (cross-instance).
             let existing_id: Option<String> =
@@ -226,7 +265,19 @@ pub(super) fn import_characters(
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
                         skipped += 1;
-                        id_map.set(source_id.clone(), existing_id);
+                        id_maps.characters.set(source_id.clone(), existing_id);
+                        // The existing character keeps its own vault untouched,
+                        // so the bundle's store must not be imported at all —
+                        // it would land as a store nothing points at.
+                        if let Some(vault_id) = character
+                            .get("characterDocumentMountPointId")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                        {
+                            id_maps
+                                .skipped_character_vaults
+                                .insert(vault_id.to_string());
+                        }
                         return Ok(());
                     }
                     ConflictStrategy::Overwrite => {
@@ -234,7 +285,9 @@ pub(super) fn import_characters(
                         // related entities get re-linked to the replacement should
                         // the create below fail; the create's real id then
                         // overwrites this entry.
-                        id_map.set(source_id.clone(), existing_id.clone());
+                        id_maps
+                            .characters
+                            .set(source_id.clone(), existing_id.clone());
                         CharactersRepository::new(main)
                             .delete(&existing_id)
                             .map_err(|e| e.to_string())?;
@@ -269,9 +322,23 @@ pub(super) fn import_characters(
             let vault: CharacterVaultWriteInput =
                 serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
 
-            let new_id = create_character(main, mount, &slim.into_create(user_id), &vault)
-                .map_err(|e| e.to_string())?;
-            id_map.set(source_id.clone(), new_id.clone());
+            // v4 `01e481f6`: under `preserveIds` the create claims the
+            // bundle's own character id (`create(createData, { id })`).
+            let (new_row_id, now) = super::mint_or_preserve(options, &source_id);
+            let new_id = create_character_with_options(
+                main,
+                mount,
+                &slim.into_create(user_id),
+                &vault,
+                &crate::db::characters::CreateOptions {
+                    id: new_row_id,
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            id_maps.characters.set(source_id.clone(), new_id.clone());
+            remember_bundle_vault(id_maps, &character, &new_id);
 
             // Per-character wardrobe items (folding any legacy outfitPresets into
             // composites for pre-rework `.qtap` exports).

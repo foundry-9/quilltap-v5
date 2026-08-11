@@ -556,7 +556,11 @@ pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
 /// whole. Deliberate — both tables are in `fresh_schema.json` and referenced
 /// all over v5, so the arm is unreachable on any ensured schema, and a
 /// half-vintage index failing LOUDLY beats it half-cascading.
-fn cascade_delete(conn: &Connection, mount_point_id: &str) -> Result<(), DbError> {
+/// Visible to the crate (not just this module) since `01e481f6`: the import
+/// reconcile's Bug-52 scaffold teardown is a second in-process caller, and v4's
+/// `discardScaffoldVault` is explicit that it must go through the chokepoint
+/// rather than a bare mount-point delete.
+pub(crate) fn cascade_delete(conn: &Connection, mount_point_id: &str) -> Result<(), DbError> {
     let tx = conn.unchecked_transaction()?;
 
     // 1. chunks.

@@ -33,6 +33,9 @@ pub fn preview_export(
 
     let mut entities: Vec<Value> = Vec::new();
     let mut memory_count: i64 = 0;
+    // v4 `let vaults: ExportPreview['vaults']` — assigned only by the
+    // `characters` branch and emitted only when it counted a store.
+    let mut vaults: Option<Value> = None;
 
     match options.entity_type.as_str() {
         "characters" => {
@@ -41,11 +44,19 @@ pub fn preview_export(
             } else {
                 entity_ids
             };
+            let mut vault_mount_ids: Vec<String> = Vec::new();
             for id in ids {
                 let Some(c) = characters_read::find_by_id(main, mount, &id)? else {
                     continue;
                 };
                 push_entity(&mut entities, &c, "name");
+                if let Some(vault_id) = c
+                    .get("characterDocumentMountPointId")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    vault_mount_ids.push(vault_id.to_string());
+                }
                 if options.include_memories {
                     // v4 `collectCharacterMemories` swallows failures to `[]`.
                     memory_count += memories_read::find_by_character_id(main, &id)
@@ -53,6 +64,7 @@ pub fn preview_export(
                         .unwrap_or(0);
                 }
             }
+            vaults = Some(summarize_character_vaults(mount, &vault_mount_ids));
         }
         "chats" => {
             let ids = if all {
@@ -189,10 +201,7 @@ pub fn preview_export(
             let ids: Vec<String> = if all {
                 all_files
                     .iter()
-                    .filter(|f| {
-                        f.get("category").and_then(Value::as_str) != Some("BACKUP")
-                            && f.get("folderPath").and_then(Value::as_str) != Some("/backups")
-                    })
+                    .filter(|f| !super::is_file_excluded_from_export(f))
                     .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
                     .collect()
             } else {
@@ -313,7 +322,82 @@ pub fn preview_export(
     if memory_count > 0 {
         out.insert("memoryCount".into(), Value::from(memory_count));
     }
+    // v4 `...(vaults && vaults.stores > 0 && { vaults })` — present only when
+    // at least one character actually had a vault.
+    if let Some(v) = vaults.filter(|v| v.get("stores").and_then(Value::as_i64).unwrap_or(0) > 0) {
+        out.insert("vaults".into(), v);
+    }
     Ok(Value::Object(out))
+}
+
+/// v4 `summarizeCharacterVaults` (`quilltap-export-service.ts:60`, `01e481f6`) —
+/// what a `characters` export's vault payload will roughly weigh, so the wizard
+/// can warn that a bundle with photos in it is not a small file.
+///
+/// Best-effort by design: a store that fails to read is left out of the totals
+/// rather than failing the preview — this only ever feeds a UI hint. v4
+/// increments `stores` BEFORE the reads, so a store that throws still counts
+/// itself; that ordering is carried.
+///
+/// The arithmetic is v4's exactly: text documents contribute
+/// `plainTextLength ?? content.length ?? 0` (JS UTF-16 units), and blob bytes
+/// contribute `Math.ceil(sizeBytes * (4/3))` because they travel base64-encoded.
+/// The key order — `stores`, `documents`, `blobs`, `estimatedBytes` — is the
+/// object-literal's.
+fn summarize_character_vaults(mount: &Connection, mount_point_ids: &[String]) -> Value {
+    let mut stores = 0i64;
+    let mut documents = 0i64;
+    let mut blobs = 0i64;
+    let mut estimated_bytes = 0i64;
+
+    // v4 returns the zeroed summary immediately for an empty list.
+    if !mount_point_ids.is_empty() {
+        for mount_point_id in mount_point_ids {
+            stores += 1;
+
+            let docs = crate::db::doc_mount_documents::find_full_json_by_mount_point_id(
+                mount,
+                mount_point_id,
+            );
+            let Ok(docs) = docs else {
+                continue;
+            };
+            documents += docs.len() as i64;
+            for doc in &docs {
+                estimated_bytes += match doc.get("plainTextLength").and_then(Value::as_i64) {
+                    // `?? content?.length ?? 0` — a NULL/absent length falls
+                    // back to the content's own UTF-16 length. A stored ZERO is
+                    // not nullish and does NOT fall through.
+                    Some(n) => n,
+                    None => doc
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .map(|s| s.encode_utf16().count() as i64)
+                        .unwrap_or(0),
+                };
+            }
+
+            let blob_metas = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount)
+                .list_full_json_by_mount_point(mount_point_id, None);
+            let Ok(blob_metas) = blob_metas else {
+                continue;
+            };
+            blobs += blob_metas.len() as i64;
+            for blob in &blob_metas {
+                let size = blob.get("sizeBytes").and_then(Value::as_i64).unwrap_or(0);
+                // Blob bytes travel base64-encoded, which costs a third more.
+                // JS `Math.ceil(size * (4/3))` in f64, reproduced exactly.
+                estimated_bytes += (size as f64 * (4.0 / 3.0)).ceil() as i64;
+            }
+        }
+    }
+
+    let mut m = Map::new();
+    m.insert("stores".into(), Value::from(stores));
+    m.insert("documents".into(), Value::from(documents));
+    m.insert("blobs".into(), Value::from(blobs));
+    m.insert("estimatedBytes".into(), Value::from(estimated_bytes));
+    Value::Object(m)
 }
 
 fn is_user_template(t: &Value, user_id: &str) -> bool {

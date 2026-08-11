@@ -13,13 +13,24 @@
 //!   `docMountFiles.deleteByMountPointId` then snapshots an already-emptied link
 //!   set and is a no-op. [`overwrite_clear_mount`] reproduces the four calls'
 //!   net effect in v4's exact order.
-//! - **Folder `parentId` is NOT remapped** (`import-document-stores.ts:122-127`
-//!   says so itself) — imported folders keep their source `parentId`, which
-//!   dangles because every created folder row gets a fresh id.
 //! - **Document `folderId` is ignored**: v4's `linkDocumentContent` derives the
 //!   folder from `relativePath` and only logs when the caller's disagrees, so
 //!   passing `doc.folderId ?? null` is observably a no-op — v5's
-//!   `link_document_content` derives identically.
+//!   `link_document_content` derives identically. v4's `resolveTargetFolderId`
+//!   ([`resolve_target_folder_id`]) is ported for the same reason it exists
+//!   there: to keep the caller's value honest. It has no observable consumer on
+//!   either side.
+//!
+//! ## The folder `parentId` quirk is GONE (v4 `01e481f6`)
+//!
+//! v4 used to leave an imported folder's `parentId` at its SOURCE value, which
+//! dangled because every created folder row got a fresh id — its own comment
+//! said so. `01e481f6` resolves the parent BY PATH on the ordinary path (folders
+//! arrive parent-first, shortest path first, so the parent is already in the
+//! map) and takes the verbatim `parentId` only under `preserveIds`, where the
+//! bundle's folder ids ARE the created ids and the source parent is simply
+//! correct. That is a real behavior change on the ORDINARY import path, and v5
+//! no longer carries the quirk.
 
 use base64::Engine;
 use rusqlite::Connection;
@@ -53,6 +64,20 @@ fn s(v: &Value, key: &str) -> String {
 
 fn opt_s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(|x| x.to_string())
+}
+
+/// Insertion-ordered `Map.set` over a `Vec` of pairs (the shape the rest of
+/// this module already uses for id maps).
+fn set_pair(v: &mut Vec<(String, String)>, key: String, value: String) {
+    match v.iter_mut().find(|(k, _)| *k == key) {
+        Some(slot) => slot.1 = value,
+        None => v.push((key, value)),
+    }
+}
+
+/// `Map.get` over the same shape.
+fn get_pair(v: &[(String, String)], key: &str) -> Option<String> {
+    v.iter().find(|(k, _)| k == key).map(|(_, val)| val.clone())
 }
 
 fn str_array(v: &Value, key: &str) -> Vec<String> {
@@ -126,6 +151,15 @@ pub(super) fn import_document_stores(
     for mp in mount_points {
         let mp_name = s(mp, "name");
         let source_id = s(mp, "id");
+        // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): the mount survived
+        // the prune. Resolve source → target as identity and leave its settings
+        // untouched.
+        if options.preserve_ids && id_maps.preserve_ids_skips.contains(&source_id) {
+            id_maps
+                .mount_points
+                .set(source_id.clone(), source_id.clone());
+            continue;
+        }
         let out: Result<(), DbError> = (|| {
             let existing = existing_ids.get(&source_id).cloned();
             let mount_type = s(mp, "mountType");
@@ -194,7 +228,12 @@ pub(super) fn import_document_stores(
             // A payload without one, or one already spoken for (the `duplicate`
             // arm, which is creating a SECOND copy of the store it matched),
             // still mints.
-            let new_id = if source_id.is_empty() || taken_ids.contains(&source_id) {
+            // `01e481f6` additionally forces the claim under `preserveIds`,
+            // where a taken id is impossible: the preflight already refused (or
+            // sanctioned a skip) for every colliding mount-point id.
+            let new_id = if source_id.is_empty()
+                || (taken_ids.contains(&source_id) && !options.preserve_ids)
+            {
                 uuid::Uuid::new_v4().to_string()
             } else {
                 source_id.clone()
@@ -235,8 +274,23 @@ pub(super) fn import_document_stores(
     }
 
     // Folders — database-backed only; import before documents so document
-    // folderId FKs resolve correctly (v4's stated intent; in practice folder ids
-    // are minted fresh and `parentId` stays unremapped — the carried quirk).
+    // folderId FKs resolve correctly.
+    //
+    // v4 `01e481f6` keeps two lookup maps so later records can resolve their
+    // folder in the TARGET store. Its own note rides verbatim:
+    //
+    // >  - folderIdBySourceId: source folder id → created folder id (exports
+    // >    carry `id` on folder records since F4; older bundles omit it);
+    // >  - folderIdByPath: (target mount, path) → created folder id, used to
+    // >    resolve parentId (folders arrive parent-first, shortest path first)
+    // >    and as the fallback for bundles that predate carried folder ids.
+    // >
+    // > The folder namespace is case-insensitive, so path keys are lowercased.
+    let mut folder_id_by_source_id: Vec<(String, String)> = Vec::new();
+    let mut folder_id_by_path: Vec<(String, String)> = Vec::new();
+    let folder_path_key =
+        |mount_id: &str, path: &str| format!("{mount_id}::{}", path.to_lowercase());
+
     let folders_repo = DocMountFoldersRepository::new(mount);
     for folder in folders {
         let Some(target_mount_id) = id_maps.mount_points.get(&s(folder, "mountPointId")) else {
@@ -244,25 +298,113 @@ pub(super) fn import_document_stores(
         };
         let target_mount_id = target_mount_id.to_string();
         let path = s(folder, "path");
+        let source_folder_id = opt_s(folder, "id").filter(|v| !v.is_empty());
+
+        let remember_folder = |created_id: &str,
+                               by_source: &mut Vec<(String, String)>,
+                               by_path: &mut Vec<(String, String)>| {
+            if let Some(src) = &source_folder_id {
+                set_pair(by_source, src.clone(), created_id.to_string());
+            }
+            set_pair(
+                by_path,
+                folder_path_key(&target_mount_id, &path),
+                created_id.to_string(),
+            );
+        };
+
+        // Skip-if-present rehydrate (spec §6/F4): the folder survived the prune
+        // at exactly this id — record it for path/parent resolution and move on.
+        if options.preserve_ids
+            && source_folder_id
+                .as_deref()
+                .is_some_and(|id| id_maps.preserve_ids_skips.contains(id))
+        {
+            let surviving = source_folder_id.clone().expect("checked just above");
+            remember_folder(
+                &surviving,
+                &mut folder_id_by_source_id,
+                &mut folder_id_by_path,
+            );
+            continue;
+        }
+
+        // v4's note on the two parent resolutions, verbatim:
+        //
+        // > Under preserveIds the bundle's folder ids ARE the created ids, so
+        // > the verbatim parentId is simply correct — the parent row was created
+        // > at exactly that id one iteration earlier. Without preserveIds the
+        // > source parentId means nothing here; resolve the parent by path
+        // > instead (parent-first ordering guarantees it is already in the map).
+        let preserve_folder_id = if options.preserve_ids {
+            source_folder_id.clone()
+        } else {
+            None
+        };
+        let parent_path = match path.rfind('/') {
+            Some(i) => path[..i].to_string(),
+            None => String::new(),
+        };
+        let parent_id = if preserve_folder_id.is_some() {
+            opt_s(folder, "parentId")
+        } else if parent_path.is_empty() {
+            None
+        } else {
+            get_pair(
+                &folder_id_by_path,
+                &folder_path_key(&target_mount_id, &parent_path),
+            )
+        };
+
+        let created_id = preserve_folder_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let now = crate::clock::now_iso();
         let created = folders_repo.create(
             &doc_mount_folders::DmfCreate {
-                mount_point_id: target_mount_id,
-                parent_id: opt_s(folder, "parentId"),
+                mount_point_id: target_mount_id.clone(),
+                parent_id,
                 name: s(folder, "name"),
                 path: path.clone(),
             },
             &doc_mount_folders::CreateOptions {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: created_id.clone(),
                 created_at: now.clone(),
                 updated_at: now,
             },
         );
         match created {
-            Ok(()) => counts.folders += 1,
+            Ok(()) => {
+                remember_folder(
+                    &created_id,
+                    &mut folder_id_by_source_id,
+                    &mut folder_id_by_path,
+                );
+                counts.folders += 1;
+            }
             Err(e) => warnings.push(format!("Failed to import folder \"{path}\": {e}")),
         }
     }
+
+    // v4 `resolveTargetFolderId` (`import-document-stores.ts`, `01e481f6`).
+    let resolve_target_folder_id = |source_folder_id: Option<&str>,
+                                    relative_path: &str,
+                                    target_mount_id: &str|
+     -> Option<String> {
+        if let Some(src) = source_folder_id.filter(|s| !s.is_empty()) {
+            if let Some(mapped) = get_pair(&folder_id_by_source_id, src) {
+                return Some(mapped);
+            }
+        }
+        let dir = match relative_path.rfind('/') {
+            Some(i) => &relative_path[..i],
+            None => "",
+        };
+        if dir.is_empty() {
+            return None;
+        }
+        get_pair(&folder_id_by_path, &folder_path_key(target_mount_id, dir))
+    };
 
     // Documents — database-backed only. `linkDocumentContent` handles file +
     // document + link in one shot (and derives the folder from relativePath).
@@ -281,26 +423,73 @@ pub(super) fn import_document_stores(
         let target_mount_id = target_mount_id.to_string();
         let relative_path = s(doc, "relativePath");
         let content = s(doc, "content");
-        let out = links_repo.link_document_content(&LinkDocumentInput {
-            mount_point_id: target_mount_id,
-            relative_path: relative_path.clone(),
-            file_name: s(doc, "fileName"),
-            file_type: s(doc, "fileType"),
-            // v4 `fileSizeBytes: Buffer.byteLength(doc.content, 'utf-8')`;
-            // `plainTextLength` rides the payload (JS UTF-16 units).
-            file_size_bytes: content.len() as i64,
-            plain_text_length: doc
-                .get("plainTextLength")
-                .and_then(Value::as_i64)
-                .unwrap_or_default(),
-            content_sha256: s(doc, "contentSha256"),
-            content,
-            allow_embed: None,
-            allow_character_read: None,
-            allow_character_write: None,
-        });
+        let carried_link_id = opt_s(doc, "linkId").filter(|v| !v.is_empty());
+
+        // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): this link survived
+        // the prune — the live row wins over the bundle's copy.
+        if options.preserve_ids
+            && carried_link_id
+                .as_deref()
+                .is_some_and(|id| id_maps.preserve_ids_skips.contains(id))
+        {
+            let surviving = carried_link_id.clone().expect("checked just above");
+            id_maps
+                .doc_mount_file_links
+                .set(surviving.clone(), surviving);
+            continue;
+        }
+
+        // Under `preserveIds` the bundle's carried row ids are CLAIMED — but
+        // only honored for rows actually created; content-addressed dedup wins
+        // (see `CarriedRowIds`). v4 passes `fileId` / `linkId` and no document
+        // id, so the document row still mints.
+        let carried = if options.preserve_ids {
+            crate::db::doc_mount_file_links::CarriedRowIds {
+                file_id: opt_s(doc, "fileId").filter(|v| !v.is_empty()),
+                document_id: None,
+                blob_id: None,
+                link_id: carried_link_id.clone(),
+            }
+        } else {
+            Default::default()
+        };
+        // v4 hands `linkDocumentContent` the resolved folder so its
+        // "caller folderId disagrees" warning stays meaningful; the writer
+        // derives the real value from `relativePath` either way, so this call
+        // is observably a no-op on both engines (see the module header).
+        let _resolved_folder_id = resolve_target_folder_id(
+            opt_s(doc, "folderId").as_deref(),
+            &relative_path,
+            &target_mount_id,
+        );
+        let out = links_repo.link_document_content_with_ids(
+            &LinkDocumentInput {
+                mount_point_id: target_mount_id,
+                relative_path: relative_path.clone(),
+                file_name: s(doc, "fileName"),
+                file_type: s(doc, "fileType"),
+                // v4 `fileSizeBytes: Buffer.byteLength(doc.content, 'utf-8')`;
+                // `plainTextLength` rides the payload (JS UTF-16 units).
+                file_size_bytes: content.len() as i64,
+                plain_text_length: doc
+                    .get("plainTextLength")
+                    .and_then(Value::as_i64)
+                    .unwrap_or_default(),
+                content_sha256: s(doc, "contentSha256"),
+                content,
+                allow_embed: None,
+                allow_character_read: None,
+                allow_character_write: None,
+            },
+            &carried,
+        );
         match out {
             Ok(result) => {
+                if let Some(carried_link_id) = &carried_link_id {
+                    id_maps
+                        .doc_mount_file_links
+                        .set(carried_link_id.clone(), result.link_id.clone());
+                }
                 if let Some(exported_group) = opt_s(doc, "linkGroupId") {
                     // Insertion order preserved (v4 iterates a Map) — the anchor
                     // is the first member the document loop imported.
@@ -346,6 +535,33 @@ pub(super) fn import_document_stores(
         };
         let target_mount_id = target_mount_id.to_string();
         let relative_path = s(blob, "relativePath");
+        let carried_link_id = opt_s(blob, "linkId").filter(|v| !v.is_empty());
+
+        // Skip-if-present rehydrate (spec §6/F4): the avatar blob and its link
+        // survived the prune — the live rows win over the bundle's copy.
+        if options.preserve_ids
+            && carried_link_id
+                .as_deref()
+                .is_some_and(|id| id_maps.preserve_ids_skips.contains(id))
+        {
+            let surviving = carried_link_id.clone().expect("checked just above");
+            id_maps
+                .doc_mount_file_links
+                .set(surviving.clone(), surviving);
+            continue;
+        }
+
+        let carried = if options.preserve_ids {
+            crate::db::doc_mount_file_links::CarriedRowIds {
+                file_id: opt_s(blob, "fileId").filter(|v| !v.is_empty()),
+                document_id: None,
+                blob_id: opt_s(blob, "blobId").filter(|v| !v.is_empty()),
+                link_id: carried_link_id.clone(),
+            }
+        } else {
+            Default::default()
+        };
+        let mut created_link_id: Option<String> = None;
         let out: Result<(), String> = (|| {
             // v4 `Buffer.from(dataBase64, 'base64')` is lenient and never throws;
             // a genuinely undecodable payload can only come from a hand-corrupted
@@ -355,19 +571,23 @@ pub(super) fn import_document_stores(
                 .decode(s(blob, "dataBase64"))
                 .map_err(|e| format!("invalid blob base64: {e}"))?;
             let created = blobs_repo
-                .create(&CreateBlobInput {
-                    mount_point_id: target_mount_id,
-                    relative_path: relative_path.clone(),
-                    original_file_name: s(blob, "originalFileName"),
-                    original_mime_type: s(blob, "originalMimeType"),
-                    stored_mime_type: s(blob, "storedMimeType"),
-                    sha256: s(blob, "sha256"),
-                    data,
-                    description: opt_s(blob, "description"),
-                    file_name: None,
-                    file_type: None,
-                })
+                .create_with_ids(
+                    &CreateBlobInput {
+                        mount_point_id: target_mount_id,
+                        relative_path: relative_path.clone(),
+                        original_file_name: s(blob, "originalFileName"),
+                        original_mime_type: s(blob, "originalMimeType"),
+                        stored_mime_type: s(blob, "storedMimeType"),
+                        sha256: s(blob, "sha256"),
+                        data,
+                        description: opt_s(blob, "description"),
+                        file_name: None,
+                        file_type: None,
+                    },
+                    &carried,
+                )
                 .map_err(|e| e.to_string())?;
+            created_link_id = Some(created.link_id.clone());
             // ⚠ v5 type gap, corrected here rather than at the source.
             //
             // v4 passes `blob.originalFileName` / `originalMimeType` straight
@@ -422,6 +642,11 @@ pub(super) fn import_document_stores(
             counts.blobs += 1;
             Ok(())
         })();
+        if let (Some(carried_link_id), Some(created)) = (&carried_link_id, &created_link_id) {
+            id_maps
+                .doc_mount_file_links
+                .set(carried_link_id.clone(), created.clone());
+        }
         if let Err(e) = out {
             warnings.push(format!("Failed to import blob \"{relative_path}\": {e}"));
         }

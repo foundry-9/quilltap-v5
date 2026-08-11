@@ -75,6 +75,35 @@ use crate::clock::now_iso;
 ///
 /// `allow_character_read` / `allow_character_write` are stored as SQLite 0/1;
 /// v4's `coerceAllow` maps absent/NULL → permissive `true`, else `!= 0` → bool.
+/// Explicit row ids a `preserveIds` import asks the two content writers to
+/// claim (v4 `01e481f6`, spec F4). v4 hangs these off `LinkBlobInput` /
+/// `LinkDocumentInput`; v5 passes them as their own argument so the dozen
+/// ordinary call sites — every one of which wants all three absent — stay
+/// untouched. v4's note on the semantics rides verbatim:
+///
+/// > Honored only when the row in question is actually being **created**; an
+/// > existing row found by sha256 or (mountPointId, relativePath) keeps its own
+/// > id — the content-addressed dedup and path-upsert invariants win.
+#[derive(Default, Clone, Debug)]
+pub struct CarriedRowIds {
+    /// The `doc_mount_files` content row.
+    pub file_id: Option<String>,
+    /// The `doc_mount_documents` row (text writes only).
+    pub document_id: Option<String>,
+    /// The `doc_mount_blobs` row (binary writes only).
+    pub blob_id: Option<String>,
+    /// The `doc_mount_file_links` row.
+    pub link_id: Option<String>,
+}
+
+/// A `doc_mount_files` CONTENT row, narrowed to what the `preserveIds`
+/// preflight asks of it (see [`DocMountFileLinksRepository::find_content_row_by_id`]).
+#[derive(Clone, Debug)]
+pub struct ContentRow {
+    pub id: String,
+    pub sha256: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct LinkRow {
     pub id: String,
@@ -690,6 +719,17 @@ impl<'c> DocMountFileLinksRepository<'c> {
         &self,
         input: &LinkDocumentInput,
     ) -> Result<LinkDocumentResult, DbError> {
+        self.link_document_content_with_ids(input, &CarriedRowIds::default())
+    }
+
+    /// [`Self::link_document_content`] with explicit row ids for the rows this
+    /// call CREATES — the `preserveIds` import path's entrance (see
+    /// [`CarriedRowIds`]). Every other caller wants the plain form.
+    pub fn link_document_content_with_ids(
+        &self,
+        input: &LinkDocumentInput,
+        carried: &CarriedRowIds,
+    ) -> Result<LinkDocumentResult, DbError> {
         let now = now_iso();
 
         // Per-document policy: derive from markdown frontmatter, else permissive.
@@ -724,7 +764,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         {
             Some(id) => id,
             None => {
-                let id = new_id();
+                // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+                // ONLY here, where the row is actually being created.
+                let id = carried.file_id.clone().unwrap_or_else(new_id);
                 tx.execute(
                     "INSERT INTO doc_mount_files \
                        (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
@@ -754,7 +796,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         {
             Some(id) => id,
             None => {
-                let id = new_id();
+                // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+                // ONLY here, where the row is actually being created.
+                let id = carried.document_id.clone().unwrap_or_else(new_id);
                 tx.execute(
                     "INSERT INTO doc_mount_documents \
                        (id, fileId, content, contentSha256, plainTextLength, createdAt, updatedAt) \
@@ -841,7 +885,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
             }
             link_id
         } else {
-            let link_id = new_id();
+            // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+            // ONLY here, where the row is actually being created.
+            let link_id = carried.link_id.clone().unwrap_or_else(new_id);
             tx.execute(
                 "INSERT INTO doc_mount_file_links ( \
                    id, fileId, mountPointId, relativePath, fileName, folderId, \
@@ -911,6 +957,17 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// same column DEFAULTs on the unset columns (the `link_document_content`
     /// precedent). Mints `now` + any new ids internally.
     pub fn link_blob_content(&self, input: &LinkBlobInput) -> Result<LinkBlobResult, DbError> {
+        self.link_blob_content_with_ids(input, &CarriedRowIds::default())
+    }
+
+    /// [`Self::link_blob_content`] with explicit row ids for the rows this call
+    /// CREATES — the `preserveIds` import path's entrance (see
+    /// [`CarriedRowIds`]). Every other caller wants the plain form.
+    pub fn link_blob_content_with_ids(
+        &self,
+        input: &LinkBlobInput,
+        carried: &CarriedRowIds,
+    ) -> Result<LinkBlobResult, DbError> {
         // v4 lazily creates the blob table on first repo access (P4.6y parity
         // for stores minted at runtime).
         crate::db::doc_mount_blobs::DocMountBlobsRepository::ensure_table(self.conn)?;
@@ -946,7 +1003,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         {
             Some(id) => id,
             None => {
-                let id = new_id();
+                // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+                // ONLY here, where the row is actually being created.
+                let id = carried.file_id.clone().unwrap_or_else(new_id);
                 tx.execute(
                     "INSERT INTO doc_mount_files \
                        (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
@@ -983,7 +1042,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         {
             Some(id) => id,
             None => {
-                let id = new_id();
+                // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+                // ONLY here, where the row is actually being created.
+                let id = carried.blob_id.clone().unwrap_or_else(new_id);
                 tx.execute(
                     "INSERT INTO doc_mount_blobs \
                        (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) \
@@ -1066,7 +1127,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
             }
             link_id
         } else {
-            let link_id = new_id();
+            // [`01e481f6`] A `preserveIds` import may claim this row's id — honored
+            // ONLY here, where the row is actually being created.
+            let link_id = carried.link_id.clone().unwrap_or_else(new_id);
             tx.execute(
                 "INSERT INTO doc_mount_file_links ( \
                    id, fileId, mountPointId, relativePath, fileName, folderId, \
@@ -1625,6 +1688,31 @@ impl<'c> DocMountFileLinksRepository<'c> {
                 &Self::join_query("WHERE l.id = ?1"),
                 params![link_id],
                 Self::map_link_row,
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `docMountFiles.findById` — the CONTENT row (`doc_mount_files`) by
+    /// primary key, not a link. Only its `sha256` is ever wanted: the
+    /// `preserveIds` preflight (`01e481f6`, Bug 54) settles a carried
+    /// content-row id by comparing the live row's hash against the bundle's,
+    /// because the content tables are found-or-created by sha256 and a matching
+    /// row means dedup rather than a collision.
+    pub fn find_content_row_by_id(&self, file_id: &str) -> Result<Option<ContentRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, sha256 FROM doc_mount_files WHERE id = ?1",
+                params![file_id],
+                |row| {
+                    Ok(ContentRow {
+                        id: row.get(0)?,
+                        sha256: row.get(1)?,
+                    })
+                },
             )
             .map(Some)
             .or_else(|e| match e {

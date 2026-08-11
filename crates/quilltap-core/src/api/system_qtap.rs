@@ -109,6 +109,9 @@ pub fn export_stream(
             storage.as_deref(),
             &uid,
             &options,
+            // v4's `?action=export` route never sets `preserveIds` — only the
+            // character-archive service (round 2) does.
+            false,
             &created_at,
             &app_version,
         ))
@@ -264,6 +267,12 @@ pub async fn run_import_execute(
         include_memories: js_truthy(options.get("importMemories")),
         include_related_entities: false,
         selected_ids: options.get("selectedIds").cloned(),
+        // v4's import WIZARD never sets `preserveIds`: silently skipping (or
+        // claiming) a colliding id there is exactly the partial application the
+        // refuse rule exists to prevent. Only the character-archive rehydrate
+        // path (round 2) passes them.
+        preserve_ids: false,
+        preserve_ids_mode: crate::services::quilltap_import::PreserveIdsMode::RefuseOnCollision,
     };
 
     // A missing `data` key reads as `undefined` in v4, so `executeImport`'s

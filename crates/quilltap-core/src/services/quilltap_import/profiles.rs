@@ -153,7 +153,15 @@ pub(super) fn import_connection_profiles(
                             &taken_names,
                         );
                         taken_names.insert(normalize_profile_name(&unique));
-                        create_connection_profile(&repo, user_id, p, raw_profile, unique)?;
+                        create_connection_profile(
+                            options,
+                            &source_id,
+                            &repo,
+                            user_id,
+                            p,
+                            raw_profile,
+                            unique,
+                        )?;
                         imported += 1;
                         return Ok(());
                     }
@@ -165,7 +173,15 @@ pub(super) fn import_connection_profiles(
             };
             let unique = make_unique_profile_name(&p.name, &taken_names);
             taken_names.insert(normalize_profile_name(&unique));
-            let new_id = create_connection_profile(&repo, user_id, p, raw_profile, unique)?;
+            let new_id = create_connection_profile(
+                options,
+                &source_id,
+                &repo,
+                user_id,
+                p,
+                raw_profile,
+                unique,
+            )?;
             id_map.set(source_id.clone(), new_id);
             imported += 1;
             Ok(())
@@ -193,6 +209,8 @@ fn parse_connection_profile(raw: &Value) -> Option<ImportedConnectionProfile> {
 }
 
 fn create_connection_profile(
+    options: &ImportOptions,
+    source_id: &str,
     repo: &connection_profiles::ConnectionProfilesRepository,
     user_id: &str,
     p: ImportedConnectionProfile,
@@ -233,9 +251,14 @@ fn create_connection_profile(
         total_completion_tokens: p.total_completion_tokens,
         message_count: p.message_count,
     };
-    let now = crate::clock::now_iso();
+    // v4 `01e481f6` forks BOTH profile arms — the name-conflict `duplicate`
+    // branch as well as the plain one. The duplicate branch's idMap entry stays
+    // the phantom v4 minted, so under `preserveIds` the row is created at the
+    // source id while the map points elsewhere; carried faithfully (unreachable
+    // in practice — the rehydrate path never runs `duplicate`).
+    let (new_id, now) = super::mint_or_preserve(options, source_id);
     let opts = connection_profiles::CreateOptions {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: new_id,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -296,7 +319,7 @@ pub(super) fn import_image_profiles(
                             return Ok(());
                         };
                         let name = format!("{} (imported)", p.name);
-                        create_image_profile(&repo, user_id, p, name)?;
+                        create_image_profile(options, &source_id, &repo, user_id, p, name)?;
                         imported += 1;
                         return Ok(());
                     }
@@ -306,7 +329,7 @@ pub(super) fn import_image_profiles(
                 return Ok(());
             };
             let name = p.name.clone();
-            let new_id = create_image_profile(&repo, user_id, p, name)?;
+            let new_id = create_image_profile(options, &source_id, &repo, user_id, p, name)?;
             id_map.set(source_id.clone(), new_id);
             imported += 1;
             Ok(())
@@ -319,6 +342,8 @@ pub(super) fn import_image_profiles(
 }
 
 fn create_image_profile(
+    options: &ImportOptions,
+    source_id: &str,
     repo: &image_profiles::ImageProfilesRepository,
     user_id: &str,
     p: ImportedImageProfile,
@@ -336,9 +361,9 @@ fn create_image_profile(
         is_dangerous_compatible: p.is_dangerous_compatible,
         tags: p.tags,
     };
-    let now = crate::clock::now_iso();
+    let (new_id, now) = super::mint_or_preserve(options, source_id);
     let opts = image_profiles::CreateOptions {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: new_id,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -402,7 +427,7 @@ pub(super) fn import_embedding_profiles(
                             return Ok(());
                         };
                         let name = format!("{} (imported)", p.name);
-                        create_embedding_profile(&repo, user_id, p, name)?;
+                        create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
                         imported += 1;
                         return Ok(());
                     }
@@ -412,7 +437,7 @@ pub(super) fn import_embedding_profiles(
                 return Ok(());
             };
             let name = p.name.clone();
-            let new_id = create_embedding_profile(&repo, user_id, p, name)?;
+            let new_id = create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
             id_map.set(source_id.clone(), new_id);
             imported += 1;
             Ok(())
@@ -425,6 +450,8 @@ pub(super) fn import_embedding_profiles(
 }
 
 fn create_embedding_profile(
+    options: &ImportOptions,
+    source_id: &str,
     repo: &embedding_profiles::EmbeddingProfilesRepository,
     user_id: &str,
     p: ImportedEmbeddingProfile,
@@ -443,9 +470,9 @@ fn create_embedding_profile(
         is_default: p.is_default,
         tags: p.tags,
     };
-    let now = crate::clock::now_iso();
+    let (new_id, now) = super::mint_or_preserve(options, source_id);
     let opts = embedding_profiles::CreateOptions {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: new_id,
         created_at: now.clone(),
         updated_at: now,
     };

@@ -63,7 +63,7 @@ use quilltap_core::api::system_qtap;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::quilltap_import::{
-    execute_import, ConflictStrategy, ImportOptions, QuilltapExport,
+    execute_import, ConflictStrategy, ImportOptions, PreserveIdsMode, QuilltapExport,
 };
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
@@ -562,6 +562,29 @@ fn export_of(export_data: &Value) -> QuilltapExport {
     }
 }
 
+/// v4's `preserveIdsMode` bag, as the oracle emits it:
+/// `{"mode":"skip-if-present","targetCharacterId":…,"targetVaultMountPointId":…}`
+/// or absent (= `refuse-on-collision`).
+fn preserve_ids_mode_of(options: &Value) -> PreserveIdsMode {
+    let Some(mode) = options.get("preserveIdsMode") else {
+        return PreserveIdsMode::RefuseOnCollision;
+    };
+    match mode.get("mode").and_then(Value::as_str) {
+        Some("skip-if-present") => PreserveIdsMode::SkipIfPresent {
+            target_character_id: mode
+                .get("targetCharacterId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            target_vault_mount_point_id: mode
+                .get("targetVaultMountPointId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        },
+        _ => PreserveIdsMode::RefuseOnCollision,
+    }
+}
+
 fn options_of(options: &Value) -> ImportOptions {
     let strategy = match options.get("conflictStrategy").and_then(Value::as_str) {
         Some("skip") => ConflictStrategy::Skip,
@@ -570,6 +593,11 @@ fn options_of(options: &Value) -> ImportOptions {
         other => panic!("oracle execute case with unexpected strategy {other:?}"),
     };
     ImportOptions {
+        preserve_ids: options
+            .get("preserveIds")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        preserve_ids_mode: preserve_ids_mode_of(options),
         conflict_strategy: strategy,
         include_memories: options
             .get("includeMemories")
@@ -933,7 +961,7 @@ fn system_import_execute_state_equivalence() {
             // [40319484] The only arm that can prove a re-imported archive does
             // not FUSE with its earlier copy: the same payload, twice, into one
             // instance.
-            "execute_twice" => {
+            "execute_twice" | "execute_then_rehydrate" => {
                 run_execute_case(name, case, &user_id, &mut failures, 2);
                 ran += 1;
             }
@@ -962,8 +990,27 @@ fn system_import_execute_state_equivalence() {
 
     // 13 from P4.9G4/P4.31 + P4.33's four `store_identity_*` arms + P4.D46's
     // four `execute_files_*` arms and two `execute_prepped` embedding-enqueue
-    // bail-out arms.
-    assert_eq!(ran, 23, "expected 23 cases, ran {ran}");
+    // bail-out arms + P4.D62's seven `execute_preserve_ids_*` arms.
+    assert_eq!(ran, 30, "expected 30 cases, ran {ran}");
+    // …and the preserveIds family asserted by SHAPE, not just by the total, so a
+    // truncated oracle cannot pass by arithmetic (the corpus-shape lesson). Each
+    // arm is the only one covering its behaviour: the two refusal SENTENCES, the
+    // land-then-rehydrate round trip, the fixture's own repeat-shaped bundle, the
+    // foreign-collision refusal, and Bug 54's two sha-first outcomes.
+    for arm in [
+        "execute_preserve_ids_refuse_existing",
+        "execute_preserve_ids_repeat_in_bundle",
+        "execute_preserve_ids_vault",
+        "execute_preserve_ids_skip_if_present",
+        "execute_preserve_ids_skip_foreign_refuses",
+        "execute_preserve_ids_dedup_by_sha",
+        "execute_preserve_ids_sha_mismatch_refuses",
+    ] {
+        assert!(
+            cases.iter().any(|c| c["name"] == arm),
+            "the oracle is missing the `{arm}` preserveIds arm — regenerate it"
+        );
+    }
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
@@ -1188,7 +1235,15 @@ fn run_execute_case(
     }
 
     let export = export_of(&case["exportData"]);
+    // [P4.D62] `execute_then_rehydrate` runs the SAME payload twice under
+    // DIFFERENT options: run 1 lands it (refuse-on-collision), run 2 replays it
+    // as a rehydrate (skip-if-present). Every other multi-run kind repeats one
+    // bag, which `options2` absent reproduces.
     let opts = options_of(&case["options"]);
+    let opts2 = match case.get("options2") {
+        Some(o) if !o.is_null() => options_of(o),
+        _ => opts.clone(),
+    };
     let uid = user_id.to_string();
 
     let db = open_db(&scratch);
@@ -1197,9 +1252,10 @@ fn run_execute_case(
             let main = ws.main().connection();
             let mount = ws.mount_index().expect("fixture has a mount partition");
             let mut out = Vec::new();
-            for _ in 0..runs {
+            for i in 0..runs {
+                let opts = if i == 0 { &opts } else { &opts2 };
                 out.push(
-                    execute_import(main, mount.connection(), &uid, &export, &opts, None).map_err(
+                    execute_import(main, mount.connection(), &uid, &export, opts, None).map_err(
                         |e| match e {
                             quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
                             other => {

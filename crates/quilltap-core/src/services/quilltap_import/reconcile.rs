@@ -15,7 +15,7 @@ use rusqlite::Connection;
 use serde_json::{Map, Value};
 
 use super::{IdMap, IdMaps};
-use crate::db::characters::{CharacterUpdate, CharactersRepository};
+use crate::db::characters::{AvatarOverride, CharacterUpdate, CharactersRepository};
 use crate::db::chats::{ChatParticipant, ChatUpdate, ChatsRepository};
 use crate::db::roleplay_templates::{RoleplayTemplatesRepository, RtUpdate};
 use crate::db::{
@@ -57,6 +57,97 @@ fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(Value::as_str)
 }
 
+/// v4 `discardScaffoldVault` (`reconcile.ts:36`, `01e481f6`, Bug 52) — tear down
+/// the scaffold vault `characters.create()` provisioned, now that the character
+/// points at the vault its bundle carried. v4's note, verbatim:
+///
+/// > Goes through `deleteStoreCascade` — the chokepoint that runs link-group
+/// > orphan GC — never a bare mount-point delete.
+/// >
+/// > Also hands the canonical vault name back: store names live in one
+/// > case-insensitive namespace, so with the scaffold holding
+/// > "<name> Character Vault" the imported vault was uniquified to "… (2)" on
+/// > the way in. With the scaffold gone the plain name is free, and a character
+/// > whose vault is permanently named "(2)" is a visible wart in the
+/// > Scriptorium.
+///
+/// v5's chokepoint is `api::mount_points::cascade_delete` (P4.31, dogfood #58) —
+/// the same rule, in one transaction.
+fn discard_scaffold_vault(
+    mount: &Connection,
+    scaffold_mount_id: &str,
+    imported_vault_id: &str,
+    character_id: &str,
+    warnings: &mut Vec<String>,
+) {
+    let out: Result<(), String> = (|| {
+        let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+        // v4 reads the scaffold BEFORE deleting it — the name handback needs it.
+        let scaffold = points
+            .find_full_json_by_id(scaffold_mount_id)
+            .map_err(|e| e.to_string())?;
+        crate::api::mount_points::cascade_delete(mount, scaffold_mount_id)
+            .map_err(|e| e.to_string())?;
+        tracing::debug!(
+            character_id,
+            scaffold_mount_id,
+            imported_vault_id,
+            "Discarded scaffold vault in favour of the imported one"
+        );
+
+        let Some(scaffold) = scaffold else {
+            return Ok(());
+        };
+        let scaffold_name = scaffold
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let all_stores =
+            crate::db::doc_mount_points::find_all_full_json(mount).map_err(|e| e.to_string())?;
+        // v4: *"The scaffold itself never counts as holding the name — we just
+        // deleted it, and a read served from a stale cache would otherwise block
+        // the rename forever."*
+        let name_taken = all_stores.iter().any(|mp| {
+            let id = mp.get("id").and_then(Value::as_str).unwrap_or_default();
+            id != imported_vault_id
+                && id != scaffold_mount_id
+                && mp
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|n| n.to_lowercase())
+                    == Some(scaffold_name.to_lowercase())
+        });
+        if name_taken {
+            return Ok(());
+        }
+        let imported = all_stores
+            .iter()
+            .find(|mp| mp.get("id").and_then(Value::as_str) == Some(imported_vault_id));
+        if let Some(imported) = imported {
+            if imported.get("name").and_then(Value::as_str) != Some(scaffold_name.as_str()) {
+                points
+                    .update(
+                        imported_vault_id,
+                        &crate::db::doc_mount_points::DmpUpdate {
+                            name: Some(scaffold_name.clone()),
+                            updated_at: crate::clock::now_iso(),
+                            ..Default::default()
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })();
+    if let Err(e) = out {
+        warnings.push(format!(
+            "Failed to remove the placeholder vault for an imported character: {e}"
+        ));
+        tracing::warn!(character_id, scaffold_mount_id, error = %e, "Failed to discard scaffold vault");
+    }
+}
+
 /// v4 `reconcileRelationships`.
 pub(super) fn reconcile_relationships(
     main: &Connection,
@@ -65,7 +156,15 @@ pub(super) fn reconcile_relationships(
     warnings: &mut Vec<String>,
 ) {
     // ── Characters ─────────────────────────────────────────────────────────
-    for (_backup_id, new_id) in id_maps.characters.iter() {
+    for (backup_id, new_id) in id_maps.characters.iter() {
+        // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): the surviving
+        // character was never re-created — every id it references maps to
+        // itself, so there is nothing to remap and no scaffold to tear down.
+        // v4: *"Attempting the identity patch anyway would be refused by the
+        // archived-row write guard and surface as a spurious warning."*
+        if backup_id == new_id && id_maps.preserve_ids_skips.contains(new_id) {
+            continue;
+        }
         let out: Result<(), String> = (|| {
             let Some(character) =
                 characters_read::find_by_id(main, mount, new_id).map_err(|e| e.to_string())?
@@ -116,15 +215,113 @@ pub(super) fn reconcile_relationships(
                 has_updates = true;
             }
 
-            // Only rewrite when the imported value resolves to a remapped
-            // mount-point row — the freshly-provisioned vault FK must survive a
-            // failed remap (v4's orphaned-vault fix).
-            if let Some(new_mount) = remap_id(
-                str_of(&character, "characterDocumentMountPointId"),
-                &id_maps.mount_points,
-            ) {
-                patch.character_document_mount_point_id = Some(new_mount);
+            // The bundle carried this character's whole vault (WP A2,
+            // `01e481f6`), and `create()` has already provisioned a scaffold
+            // vault whose fresh id is what the row currently holds. **Bundle
+            // wins, whole-store**: repoint at the imported store, then tear the
+            // scaffold down after the update lands. Never merge the two.
+            //
+            // `scaffold_mount_id` is the store to cascade-delete once the
+            // repoint has landed.
+            let mut scaffold_mount_id: Option<String> = None;
+            let stored_vault = str_of(&character, "characterDocumentMountPointId")
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            let bundle_vault_id = id_maps.character_vault_mounts.get(new_id);
+            let imported_vault_id =
+                bundle_vault_id.and_then(|b| remap_id(Some(b), &id_maps.mount_points));
+            if let Some(imported) = imported_vault_id
+                .clone()
+                .filter(|v| Some(v.as_str()) != stored_vault.as_deref())
+            {
+                scaffold_mount_id = stored_vault.clone();
+                patch.character_document_mount_point_id = Some(imported);
                 has_updates = true;
+            } else if stored_vault.is_some() {
+                // Pre-A2 bundle (no vault records): only rewrite when the stored
+                // value resolves to a remapped mount-point row — the
+                // freshly-provisioned scaffold FK must survive a failed remap
+                // (v4's orphaned-vault fix).
+                if let Some(new_mount) = remap_id(stored_vault.as_deref(), &id_maps.mount_points) {
+                    patch.character_document_mount_point_id = Some(new_mount);
+                    has_updates = true;
+                }
+            }
+
+            // [Bug 52] Remap the avatar ids through the imported document-store
+            // link map. These values are `doc_mount_file_links.id` values in the
+            // SOURCE instance's vault. v4: *"If the source used a legacy
+            // files.id, leave it unchanged; otherwise null it with a warning so
+            // the character never keeps a dangling reference after import."*
+            let character_name = str_of(&character, "name").unwrap_or_default().to_string();
+            let files_repo = crate::db::files::FilesRepository::new(main);
+            let mut clear_default_image_id = false;
+            if let Some(default_image_id) =
+                str_of(&character, "defaultImageId").filter(|s| !s.is_empty())
+            {
+                if let Some(remapped) =
+                    remap_id(Some(default_image_id), &id_maps.doc_mount_file_links)
+                {
+                    patch.default_image_id = Some(remapped);
+                    has_updates = true;
+                } else if files_repo
+                    .find_by_id(default_image_id)
+                    .map_err(|e| e.to_string())?
+                    .is_none()
+                {
+                    warnings.push(format!(
+                        "Character \"{character_name}\" defaultImageId could not be remapped and was cleared: {default_image_id}"
+                    ));
+                    clear_default_image_id = true;
+                    has_updates = true;
+                }
+            }
+
+            let overrides: Vec<AvatarOverride> = character
+                .get("avatarOverrides")
+                .and_then(Value::as_array)
+                .map(|a| serde_json::from_value(Value::Array(a.clone())).unwrap_or_default())
+                .unwrap_or_default();
+            if !overrides.is_empty() {
+                let mut overrides_changed = false;
+                let mut remapped: Vec<AvatarOverride> = Vec::new();
+                for override_entry in &overrides {
+                    if let Some(new_image_id) = remap_id(
+                        Some(override_entry.image_id.as_str()),
+                        &id_maps.doc_mount_file_links,
+                    ) {
+                        overrides_changed = true;
+                        remapped.push(AvatarOverride {
+                            chat_id: override_entry.chat_id.clone(),
+                            image_id: new_image_id,
+                        });
+                        continue;
+                    }
+                    if files_repo
+                        .find_by_id(&override_entry.image_id)
+                        .map_err(|e| e.to_string())?
+                        .is_some()
+                    {
+                        remapped.push(override_entry.clone());
+                        continue;
+                    }
+                    warnings.push(format!(
+                        "Character \"{character_name}\" avatar override could not be remapped and was dropped: {}",
+                        override_entry.image_id
+                    ));
+                    // v4: *"Drop the entry rather than nulling its imageId: the
+                    // schema requires a string there, so a null would fail the
+                    // next validated read of the character."*
+                    overrides_changed = true;
+                }
+                // v4: *"Only touch the field when something actually moved — an
+                // unconditional write forces a pointless update (and a vault
+                // round-trip) on every character that merely happens to own
+                // overrides."*
+                if overrides_changed {
+                    patch.avatar_overrides = Some(remapped);
+                    has_updates = true;
+                }
             }
 
             if has_updates {
@@ -132,6 +329,30 @@ pub(super) fn reconcile_relationships(
                 CharactersRepository::new(main)
                     .update(new_id, &patch)
                     .map_err(|e| e.to_string())?;
+                // ⚠ v5 lane-boundary workaround (the `document_stores.rs`
+                // `originalFileName` precedent). `CharacterUpdate` cannot
+                // express "clear this nullable column" — `default_image_id` is
+                // `Option<String>`, where `None` means "leave alone" — and
+                // widening it lives in `db/characters.rs`, a SIBLING lane's file
+                // this round (P4.D63). The net row state is v4's exactly: the
+                // repo update above stamps `updatedAt` (so the write happens
+                // where v4's does), and this clears the one column it could not.
+                // When that type is widened, this collapses into the patch.
+                if clear_default_image_id {
+                    main.execute(
+                        "UPDATE characters SET defaultImageId = NULL WHERE id = ?1",
+                        rusqlite::params![new_id],
+                    )
+                    .map_err(|e| crate::db::DbError::from(e).to_string())?;
+                }
+            }
+
+            // v4: *"Only now that the character points at its imported vault is
+            // the scaffold safe to remove: reversing the order would leave a
+            // window where the row references a store that no longer exists, and
+            // any overlay read in it throws CharacterVaultUnavailableError."*
+            if let (Some(scaffold), Some(imported)) = (&scaffold_mount_id, &imported_vault_id) {
+                discard_scaffold_vault(mount, scaffold, imported, new_id, warnings);
             }
             Ok(())
         })();

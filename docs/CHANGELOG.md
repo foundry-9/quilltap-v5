@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Ported the `.qtap` export/import substrate the character archive is built
+on (v4 `01e481f6` + `d553f72a`, work order P4.D62). A `characters` export now
+carries each character's whole vault — mount point, folders, documents and
+blobs — so a cross-instance import no longer lands a faceless, mail-less
+character; export records carry their source row ids; character-archive
+bundles and anything under `/archives` are excluded from exports alongside
+backups; and the export preview reports the vault weight a bundle will add.
+The import side gained the `preserveIds` path: a bundle can be restored at
+its original ids, refusing the whole import on any collision, or — for
+rehydration only — skipping ids that already exist inside the target
+character's own vault. Content rows and blobs settle that by content hash
+first, so a conversation summary shared with a group chat no longer blocks a
+rehydrate (v4 bug 54). Imported characters are repointed at the vault their
+bundle carried and the placeholder vault is discarded, and avatar pointers
+are remapped through it — a dangling default image is cleared and an
+unresolvable per-chat override is dropped, each with a warning (v4 bug 52).
+Imported memories are now embedded under the default profile whatever its
+provider, instead of being left unembedded under the built-in one. Folder
+parents on an ordinary import resolve by path rather than keeping a source
+id that never existed here.
+
 Planned the character-archive drift catch-up (v4 `f6eac168` →
 `d553f72a`): round 1 of 2, three work orders committed —
 `p4.d62-export-import-archive-substrate.md` (export fidelity, preserveIds,

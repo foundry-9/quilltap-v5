@@ -62480,3 +62480,183 @@ rows P4.D63's kept/swept arms consume).
 regenerate at `d553f72a` (pin a detached worktree if v4 moves again).
 Surveys (2026-08-10, all fresh line numbers at `d553f72a`) are embedded in
 the orders.
+
+---
+
+## Lane record — P4.D62 unit 1: the export/import `preserveIds` substrate (2026-08-10)
+
+Branch `claude/p4-export-import-archive-65e46d`. v4 pinned at `d553f72a`
+(HEAD, tree clean — drift-checked at lane start and again before every
+regen). Tier-1 items 1–5 + 8 and tier-2 item 8 of the order; Bug 55 and the
+fixture extension follow in their own commits.
+
+### The export writer
+
+- **`stream_one_store` extracted** (`records.rs`) exactly as v4 extracted it,
+  with `skip_project_links`; `stream_document_stores` is now a loop over it
+  and `stream_characters` calls it inline for
+  `character.characterDocumentMountPointId`, wrapped in v4's warn-and-continue.
+  The RECORD POSITION is the contract — after `character_plugin_data`, before
+  `memory` — and the differential diffs it line for line.
+- **Carried row ids** at v4's exact key positions: folder `id` FIRST,
+  document `fileId`/`linkId` between `folderId` and `linkGroupId`, blob
+  `fileId`/`linkId`/`blobId` between `descriptionUpdatedAt` and
+  `extractedText`. None of the three take a `?? null` on the WRITE side (v4
+  spreads them straight through); the READER's do (`ndjson.rs`), which is
+  what lets the preflight's `isNonEmpty` filter drop them uniformly on an
+  older bundle.
+- **`excluded_files.rs`** (new) is v4's `lib/export/excluded-files.ts`:
+  `['BACKUP','ARCHIVE']` × `['/backups','/archives']`. It replaces FOUR
+  inline filters — v4's `streamFiles` + `resolveExportIds` plus v5's
+  `preview` and `entities`, which v4 reaches through the same picker.
+  `services::backup::collect`'s own BACKUP rule is a different rule v4 did
+  not touch and is left alone.
+- **`settings.preserveIds`** joins the manifest after `selectedIds`.
+  ⚠ **Recorded shape divergence:** v4 hangs `preserveIds` off `ExportOptions`;
+  v5 threads it as a parameter of `build_manifest` / `stream_export_records`,
+  because `ExportOptions` is also constructed by the preview arm in
+  `api/engine.rs` — a SIBLING lane's file this round (P4.D63). Emitted bytes
+  are identical; a later round that owns `engine.rs` may lift it onto the
+  struct.
+- **`summarize_character_vaults`** in `preview.rs`, arithmetic byte-for-byte
+  (`plainTextLength ?? content.length ?? 0`, blob bytes
+  `ceil(sizeBytes * 4/3)`), `stores` incremented BEFORE the reads so a
+  throwing store still counts itself, emitted only when `stores > 0`.
+
+### The reader
+
+Blob assembly carries `fileId`/`linkId`/`blobId` (`?? null`), and
+`build_export_data_for_type`'s characters arm conditionally spreads
+`mountPoints`/`folders`/`documents`/`blobs`/`projectLinks` — so a pre-WP-A2
+bundle assembles byte-identically to before.
+
+### The `preserveIds` import path
+
+`PreserveIdsMode` + `ImportOptions.{preserve_ids,preserve_ids_mode}`, the
+four new `IdMaps` members (`doc_mount_file_links`, `character_vault_mounts`,
+`skipped_character_vaults`, `preserve_ids_skips`), and
+`preflight_preserve_ids` — sixteen check kinds in v4's declaration order,
+both error sentences byte-exact, pushed to `warnings` before the refusal, no
+partial application (`execute_import` returns `success: false` before any
+write). The per-entity create forks landed at exactly the sites v4 forks:
+the PLAIN arm for characters / tags / templates / projects / groups / chats /
+memories / document stores, and **both** arms for the three profile kinds
+(v4's diff forks the name-conflict `duplicate` branch there too — carried
+faithfully although unreachable, since rehydrate never runs `duplicate`).
+`DUPLICATE_MINTS` names the empty source id the rename branches pass.
+
+- **Bug 54** — the file and blob `skippable` classifiers settle by content
+  sha256 FIRST, falling back to "is it linked in the target vault?". Only
+  consulted in skip-if-present mode.
+- **Folders** gained `folderIdBySourceId` + `folderIdByPath` and the
+  skip-if-present arm; **the ordinary path now resolves the parent BY PATH**,
+  which retires v5's carried "parentId stays unremapped" quirk — a real
+  behavior change on the ordinary import path, not just the archive one.
+  `resolve_target_folder_id` is ported and, as in v4, has no observable
+  consumer (both writers derive `folderId` from `relativePath`).
+- **Carried ids reach the writers** through a new `CarriedRowIds` bag and
+  `link_document_content_with_ids` / `link_blob_content_with_ids` /
+  `DocMountBlobsRepository::create_with_ids`. v4 hangs the three ids off its
+  input structs; v5 passes them separately so the dozen ordinary call sites —
+  every one of which wants all three absent — stay untouched. Honored ONLY
+  where a row is actually created; sha256 dedup and the path upsert win.
+
+### Bug 52 — the avatar remap and the scaffold teardown
+
+`reconcile.rs` repoints an imported character at the vault its bundle
+carried (`character_vault_mounts` → `mount_points`), remaps `defaultImageId`
+and every `avatarOverrides[].imageId` through `doc_mount_file_links`, keeps a
+legacy `files.id` as-is, CLEARS an unresolvable default image and DROPS an
+unresolvable override (v4's asymmetry: the schema requires a string there),
+both warning sentences byte-exact — and only then tears the scaffold down,
+through the P4.31 store-delete chokepoint (`api::mount_points::cascade_delete`,
+made `pub(crate)`), with v4's canonical-name handback. The teardown-LAST
+ordering is load-bearing on both sides.
+
+⚠ **Lane-boundary workaround, recorded:** `CharacterUpdate.default_image_id`
+is `Option<String>`, where `None` means "leave alone", so it cannot express
+v4's `updates.defaultImageId = null`; widening it lives in
+`db/characters.rs`, P4.D63's file this round. The repo update still runs (so
+`updatedAt` moves where v4's does) and a targeted `UPDATE … SET
+defaultImageId = NULL` follows it. Same shape as the existing
+`document_stores.rs` `originalFileName` precedent. When that type is widened
+this collapses into the patch.
+
+### The embedding follow-up (tier 2, item 8)
+
+v4's rewrite ported: the BUILTIN early-return is gone, the system default
+profile embeds everything whatever its provider, and only the
+no-profile-at-all case warns (new sentence, byte-exact).
+
+⚠ **DEFERRED LOUDLY — `scheduleRefit`.** v4 additionally schedules a
+debounced vocabulary refit for a BUILTIN default. That helper is a 5-second
+in-process `setTimeout` — a host-cadence seam under this port's locked
+job-runner rule — and v5 has no refit scheduler; its only `EMBEDDING_REFIT`
+enqueue is async over `&Db`, unreachable from inside the `Db::write` closure
+this runs in. Nothing is stubbed: the per-row enqueues run for BUILTIN
+exactly as v4's now do, so imported rows ARE embedded; only the vocabulary
+refit that would improve those vectors is missing, and the boot reconcile
+remains the backstop. The differential cannot see it either way — v4's
+debounce means the job row does not exist when `executeImport` returns and
+the state is dumped. Named at the site in `quilltap_import/mod.rs`.
+
+### Differentials
+
+All regenerated FRESH at `d553f72a` and run by name.
+
+- `system_export_equivalence` — 57 cases, green FIRST RUN, then
+  mutation-proven four ways: dropping the vault emission (3 cases red),
+  moving the folder `id` off the first key position (4 red), dropping
+  `settings.preserveIds` (21 red), and using 1.0 instead of 4/3 for the
+  preview's base64 inflation (3 red).
+- `system_import_equivalence` — 27 cases; mutation-proven by dropping the
+  blob id carry (4 red) and by dropping the characters arm's `mountPoints`
+  spread (2 red).
+- `system_import_state` — **23 → 30 cases**, seven new `execute_preserve_ids_*`
+  arms, and the count is now backed by a SHAPE assertion naming each arm so a
+  truncated oracle cannot pass by arithmetic. New oracle kind
+  `execute_then_rehydrate` (the same payload twice under DIFFERENT options)
+  for the land-then-rehydrate round trip. Mutation-proven: disabling the
+  preflight (15 red), removing the Bug-54 sha arm (1 red), removing the
+  skip-if-present character arm (1 red).
+- `qtap_import_equivalence` — re-run, output-neutral as predicted (the seed
+  bundle predates the id fields).
+
+**Two findings worth carrying.**
+
+1. The fixture's own characters bundle **refuses its own rehydrate**, on both
+   engines: `doc_mount_blobs` row `bc000000-…0001` hangs off the EMPTY
+   markdown content row that five managed-field links share, so the assembled
+   bundle claims the same `linkId` under both `documents` and `blobs` and the
+   preflight's repeat-detection fires. That is v4's real behaviour on this
+   fixture shape and is pinned as `execute_preserve_ids_skip_if_present`; it
+   is also why the create-fork and skip arms run over a hand-built
+   `preserveIdsVaultPayload` instead. The fixture row is structurally
+   impossible in production (a real `link_blob_content` mints its own
+   `fileType: 'blob'` content row) — a fixture defect worth repairing in some
+   later round, deliberately NOT touched here.
+2. **The folder path-parent mutation stayed GREEN** (M10), exactly as the
+   order predicted: every folder in the committed fixture is a single path
+   segment with a NULL parent, so verbatim and path-resolved agree. The arm
+   becomes discriminating with this lane's fixture extension (`lore/ancients`
+   carries a real parent) and is re-run there.
+
+### Regen recipes
+
+Each case file's header carries its own; the three this unit re-ran, all
+from `~/source/quilltap-server` at `d553f72a` (clean tree, no pinned worktree
+needed), with `$V5W` = this worktree and the jest mirror under `/tmp` because
+jest ignores `.claude/` paths:
+
+```
+QT_FIXTURE_SD_{MAIN,MOUNT,LLM}=$V5W/crates/quilltap-web/tests/fixtures/system-data-{main,mount,llmlogs}.db \
+QT_ORACLE_OUT=/tmp/oracle-system-export.ndjson \
+  npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots /tmp/qt-sysexport-oracle/cases -- system-export
+```
+
+…and the same shape for `system-import` (`--testTimeout=300000`, match
+`'/system-import.test'` so the execute case does not also run) and
+`system-import-execute` (`--testTimeout=600000`). `qtap-import` regenerates
+through its two `npx tsx` steps (fixture builder, then case) exactly as its
+header records.

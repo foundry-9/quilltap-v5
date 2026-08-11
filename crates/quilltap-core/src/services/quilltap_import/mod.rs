@@ -54,6 +54,39 @@ pub enum ConflictStrategy {
     Duplicate,
 }
 
+/// v4 `PreserveIdsMode` (`quilltap-import/types.ts:138`, `01e481f6`) — how a
+/// `preserveIds` import treats a claimed id that already exists. v4's own note
+/// rides verbatim, because the distinction is the whole safety story:
+///
+/// > - `refuse-on-collision` (the default, WP B1): any collision refuses the
+/// >   whole import before a single write — no partial application, no silent
+/// >   remint. Right for importing a stranger's bundle into supposedly-empty
+/// >   space.
+/// > - `skip-if-present` (spec §6 / F4, **rehydrate only**): rehydration
+/// >   restores a bundle into a mount that still exists, so it collides by
+/// >   construction on the mount point, every surviving folder, the managed
+/// >   documents, the avatar blob and its link. An id already present inside
+/// >   the *target character's own vault* (or the target character itself, or
+/// >   its own memories) is skipped — the surviving row wins and the record is
+/// >   not imported. An id that exists anywhere else — a different mount, a
+/// >   different character, another character's memory — still refuses the
+/// >   whole import, atomically, exactly as `refuse-on-collision` would.
+/// >
+/// > The ordinary import wizard must never pass `skip-if-present`: silently
+/// > skipping a colliding id there is precisely the partial application the
+/// > refuse rule exists to prevent.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum PreserveIdsMode {
+    #[default]
+    RefuseOnCollision,
+    SkipIfPresent {
+        /// The archived character being rehydrated.
+        target_character_id: String,
+        /// Its surviving vault mount point (`None` when it never had one).
+        target_vault_mount_point_id: Option<String>,
+    },
+}
+
 /// v4 `ImportOptions` (`types.ts:88`). `include_related_entities` and
 /// `selected_ids` are **read by nothing** in the v4 pipeline (grep-confirmed) —
 /// carried for fidelity with the route's call site.
@@ -65,6 +98,14 @@ pub struct ImportOptions {
     pub include_related_entities: bool,
     /// Dead option — the route forwards it, nothing consumes it.
     pub selected_ids: Option<Value>,
+    /// v4 `ImportOptions.preserveIds` (`01e481f6`) — claim the bundle's own row
+    /// ids instead of minting. Only the character-archive rehydrate path (round
+    /// 2) sets it; v4's import wizard never does.
+    pub preserve_ids: bool,
+    /// v4 `ImportOptions.preserveIdsMode`, defaulted to
+    /// [`PreserveIdsMode::RefuseOnCollision`] and IGNORED when `preserve_ids`
+    /// is false.
+    pub preserve_ids_mode: PreserveIdsMode,
 }
 
 impl ImportOptions {
@@ -76,6 +117,8 @@ impl ImportOptions {
             include_memories: true,
             include_related_entities: false,
             selected_ids: None,
+            preserve_ids: false,
+            preserve_ids_mode: PreserveIdsMode::RefuseOnCollision,
         }
     }
 }
@@ -245,7 +288,8 @@ impl IdMap {
     }
 }
 
-/// v4 `IdMappingState` (`types.ts:107`) — the ten insertion-ordered maps.
+/// v4 `IdMappingState` (`types.ts:107`) — the ten insertion-ordered maps, plus
+/// the four members `01e481f6` added.
 #[derive(Default)]
 pub(crate) struct IdMaps {
     pub tags: IdMap,
@@ -258,6 +302,68 @@ pub(crate) struct IdMaps {
     pub projects: IdMap,
     pub groups: IdMap,
     pub mount_points: IdMap,
+    /// Source `doc_mount_file_links.id` → the created (or surviving) link id.
+    /// Reconciliation remaps `defaultImageId` / `avatarOverrides[].imageId`
+    /// through it — those are link ids in the SOURCE instance's vault (Bug 52).
+    pub doc_mount_file_links: IdMap,
+    /// v4 `characterVaultMounts`. New character id → the vault mount-point id
+    /// the bundle claimed in the *source* instance. v4's note, verbatim:
+    ///
+    /// > Populated only for characters the importer actually created, because
+    /// > `characters.create()` drops the incoming pointer and provisions a
+    /// > scaffold vault of its own — so the character row can no longer tell
+    /// > reconciliation which store the bundle meant. Reconciliation uses it to
+    /// > repoint the character at its imported vault and cascade-delete the
+    /// > scaffold (bundle wins, whole-store).
+    pub character_vault_mounts: IdMap,
+    /// v4 `skippedCharacterVaults`. Source vault mount-point ids belonging to
+    /// characters the importer *skipped*. Their store records are dropped
+    /// before the document-store phase: importing them would strand an orphan
+    /// store no character points at.
+    pub skipped_character_vaults: std::collections::HashSet<String>,
+    /// v4 `preserveIdsSkips`. Ids the `skip-if-present` preflight sanctioned as
+    /// already-present inside the rehydrate target (see [`PreserveIdsMode`]).
+    /// Importers skip these records — the surviving row wins — instead of
+    /// re-creating them. Always empty under `refuse-on-collision`, where the
+    /// preflight guarantees no claimed id exists at all.
+    pub preserve_ids_skips: std::collections::HashSet<String>,
+}
+
+/// The id a `preserveIds` create should claim, or a fresh one — v4's
+/// `const createOptions = options.preserveIds ? { id: x.id } : undefined`
+/// spelled once instead of at the fourteen call sites that repeat it.
+///
+/// An ABSENT source id falls back to minting, matching v4's
+/// `options?.id ?? randomUUID()` when the record carries no `id` at all. (v4
+/// would honor an explicit empty string, since `??` only tests null/undefined;
+/// no writer can emit one, and honoring it would violate the primary key on
+/// both engines.)
+pub(crate) fn mint_or_preserve(options: &ImportOptions, source_id: &str) -> (String, String) {
+    let now = crate::clock::now_iso();
+    if options.preserve_ids && !source_id.is_empty() {
+        (source_id.to_string(), now)
+    } else {
+        (uuid::Uuid::new_v4().to_string(), now)
+    }
+}
+
+/// v4 `getPreserveIdsCreateOptions` (`execute.ts:55`, `01e481f6`).
+///
+/// **Dead in v4 too** — nothing calls it; every importer inlines the same
+/// ternary. Ported under the vestigial-cruft rule (port dead code faithfully,
+/// clean up after the port) so a later reader diffing the two files does not
+/// have to wonder whether v5 dropped a live helper. [`mint_or_preserve`] is
+/// what v5's call sites actually use.
+#[cfg(test)]
+pub(crate) fn get_preserve_ids_create_options(
+    source_id: Option<&str>,
+    options: &ImportOptions,
+) -> Option<String> {
+    let source_id = source_id.filter(|s| !s.is_empty())?;
+    if !options.preserve_ids {
+        return None;
+    }
+    Some(source_id.to_string())
 }
 
 /// `item.id` as a string (v4 reads it untyped; absent → `""`).
@@ -331,6 +437,419 @@ fn validate_export_format(data: &Value) -> Result<(), ImportError> {
     Ok(())
 }
 
+/// v4 `preflightPreserveIds` (`execute.ts:71`, `01e481f6`) — pre-scan every id
+/// the bundle would claim and check it against the live instance, before a
+/// single write happens.
+///
+/// The two modes are [`PreserveIdsMode`]'s. The fifteen check kinds run in v4's
+/// declaration order, and the loop is v4's exactly: a REPEAT inside the bundle
+/// throws the "(also seen as …)" shape; an id that already exists throws the
+/// plain shape unless skip-if-present classifies it as living inside the
+/// rehydrate target. Both messages are pushed to `warnings` BEFORE the throw,
+/// so a refused import answers with the collision named.
+///
+/// Returns the collision message on refusal; `Ok(())` when the bundle may
+/// proceed (including the no-op when `preserve_ids` is off).
+fn preflight_preserve_ids(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    data: &serde_json::Map<String, Value>,
+    options: &ImportOptions,
+    warnings: &mut Vec<String>,
+    id_maps: &mut IdMaps,
+) -> Result<(), String> {
+    if !options.preserve_ids {
+        return Ok(());
+    }
+
+    let skip_target = match &options.preserve_ids_mode {
+        PreserveIdsMode::RefuseOnCollision => None,
+        PreserveIdsMode::SkipIfPresent {
+            target_character_id,
+            target_vault_mount_point_id,
+        } => Some((
+            target_character_id.clone(),
+            target_vault_mount_point_id.clone(),
+        )),
+    };
+
+    let arr = |key: &str| -> Vec<Value> {
+        data.get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let documents = arr("documents");
+    let blobs = arr("blobs");
+
+    // v4 `isNonEmpty` — a falsy id is dropped before any check runs.
+    let non_empty = |v: Option<&Value>| -> Option<String> {
+        v.and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let ids_of = |rows: &[Value]| -> Vec<String> {
+        rows.iter()
+            .map(|r| {
+                r.get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect()
+    };
+
+    // Hard-link groups share one content row, so the same fileId legitimately
+    // appears on several document/blob records — dedupe rather than treating
+    // the repeat as a duplicate claim. (v4 dedupes ONLY the file ids; link and
+    // blob ids are 1:1 with their records and a repeat there is a real clash.)
+    let mut carried_file_ids: Vec<String> = Vec::new();
+    for row in documents.iter().chain(blobs.iter()) {
+        if let Some(id) = non_empty(row.get("fileId")) {
+            if !carried_file_ids.contains(&id) {
+                carried_file_ids.push(id);
+            }
+        }
+    }
+    let carried_link_ids: Vec<String> = documents
+        .iter()
+        .chain(blobs.iter())
+        .filter_map(|r| non_empty(r.get("linkId")))
+        .collect();
+    let carried_blob_ids: Vec<String> = blobs
+        .iter()
+        .filter_map(|r| non_empty(r.get("blobId")))
+        .collect();
+    let carried_folder_ids: Vec<String> = arr("folders")
+        .iter()
+        .filter_map(|r| non_empty(r.get("id")))
+        .collect();
+
+    // [Bug 54] The content hashes the bundle claims for each carried content id.
+    // v4's reasoning, verbatim:
+    //
+    // > The two content-addressed tables are found-or-created **by sha256**
+    // > (`linkDocumentContent` / `linkBlobContent`), so when a row for these
+    // > exact bytes already exists the writer reuses it and never honors the
+    // > carried id — dedup, not a claim.
+    let mut carried_content_sha: Vec<(String, String)> = Vec::new();
+    let push_sha = |v: &mut Vec<(String, String)>, k: Option<String>, s: Option<String>| {
+        if let (Some(k), Some(s)) = (k, s) {
+            match v.iter_mut().find(|(kk, _)| *kk == k) {
+                Some(slot) => slot.1 = s,
+                None => v.push((k, s)),
+            }
+        }
+    };
+    for doc in &documents {
+        push_sha(
+            &mut carried_content_sha,
+            non_empty(doc.get("fileId")),
+            non_empty(doc.get("contentSha256")),
+        );
+    }
+    for blob in &blobs {
+        push_sha(
+            &mut carried_content_sha,
+            non_empty(blob.get("fileId")),
+            non_empty(blob.get("sha256")),
+        );
+    }
+    let mut carried_blob_sha: Vec<(String, String)> = Vec::new();
+    for blob in &blobs {
+        push_sha(
+            &mut carried_blob_sha,
+            non_empty(blob.get("blobId")),
+            non_empty(blob.get("sha256")),
+        );
+    }
+    let lookup = |v: &[(String, String)], k: &str| -> Option<String> {
+        v.iter().find(|(kk, _)| kk == k).map(|(_, s)| s.clone())
+    };
+
+    let target_vault: Option<String> = skip_target.as_ref().and_then(|(_, v)| v.clone());
+    let target_character: Option<String> = skip_target.as_ref().map(|(c, _)| c.clone());
+    // Is this mount the rehydrate target's own vault?
+    let is_target_vault = |mount_point_id: Option<&str>| -> bool {
+        match (&target_vault, mount_point_id) {
+            (Some(t), Some(m)) => t == m,
+            _ => false,
+        }
+    };
+    // Does this content row have a link inside the target vault?
+    let file_linked_in_target_vault = |file_id: &str| -> bool {
+        let Some(target) = target_vault.as_deref() else {
+            return false;
+        };
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
+            .find_by_file_id(file_id)
+            .map(|links| links.iter().any(|l| l.mount_point_id == target))
+            .unwrap_or(false)
+    };
+
+    // v4's `checks` array, in declaration order. `exists` and `skippable` are
+    // spelled as one classifier per kind returning `(exists, skippable)`.
+    enum Kind {
+        Character,
+        Tag,
+        ConnectionProfile,
+        ImageProfile,
+        EmbeddingProfile,
+        RoleplayTemplate,
+        Project,
+        Group,
+        Chat,
+        Memory,
+        DocumentStore,
+        File,
+        DocumentStoreFolder,
+        DocumentStoreFile,
+        DocumentStoreLink,
+        DocumentStoreBlob,
+    }
+    let checks: Vec<(&str, Vec<String>, Kind)> = vec![
+        ("character", ids_of(&arr("characters")), Kind::Character),
+        ("tag", ids_of(&arr("tags")), Kind::Tag),
+        (
+            "connection profile",
+            ids_of(&arr("connectionProfiles")),
+            Kind::ConnectionProfile,
+        ),
+        (
+            "image profile",
+            ids_of(&arr("imageProfiles")),
+            Kind::ImageProfile,
+        ),
+        (
+            "embedding profile",
+            ids_of(&arr("embeddingProfiles")),
+            Kind::EmbeddingProfile,
+        ),
+        (
+            "roleplay template",
+            ids_of(&arr("roleplayTemplates")),
+            Kind::RoleplayTemplate,
+        ),
+        ("project", ids_of(&arr("projects")), Kind::Project),
+        ("group", ids_of(&arr("groups")), Kind::Group),
+        ("chat", ids_of(&arr("chats")), Kind::Chat),
+        ("memory", ids_of(&arr("memories")), Kind::Memory),
+        (
+            "document store",
+            ids_of(&arr("mountPoints")),
+            Kind::DocumentStore,
+        ),
+        ("file", ids_of(&arr("files")), Kind::File),
+        (
+            "document store folder",
+            carried_folder_ids,
+            Kind::DocumentStoreFolder,
+        ),
+        (
+            "document store file",
+            carried_file_ids,
+            Kind::DocumentStoreFile,
+        ),
+        (
+            "document store link",
+            carried_link_ids,
+            Kind::DocumentStoreLink,
+        ),
+        (
+            "document store blob",
+            carried_blob_ids,
+            Kind::DocumentStoreBlob,
+        ),
+    ];
+
+    let links_repo = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+    let folders_repo = crate::db::doc_mount_folders::DocMountFoldersRepository::new(mount);
+    let blobs_repo = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount);
+
+    let mut seen_ids: Vec<(String, &str)> = Vec::new();
+    for (kind_name, ids, kind) in &checks {
+        for id in ids {
+            // v4 `if (!id) continue` — a falsy id is skipped entirely.
+            if id.is_empty() {
+                continue;
+            }
+            if let Some((_, existing_kind)) = seen_ids.iter().find(|(k, _)| k == id) {
+                let message = format!(
+                    "Preserve IDs collision for {kind_name} {id} (also seen as {existing_kind})"
+                );
+                warnings.push(message.clone());
+                return Err(message);
+            }
+            let (exists, skippable) = match kind {
+                Kind::Character => {
+                    let e = crate::db::characters_read::find_by_id_raw(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some();
+                    (e, target_character.as_deref() == Some(id.as_str()))
+                }
+                Kind::Tag => (
+                    crate::db::tags::find_full_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::ConnectionProfile => (
+                    crate::db::connection_profiles::find_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::ImageProfile => (
+                    crate::db::image_profiles::find_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::EmbeddingProfile => (
+                    crate::db::embedding_profiles::find_full_json_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::RoleplayTemplate => (
+                    crate::db::roleplay_templates::find_full_json_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::Project => (
+                    crate::db::projects::ProjectsRepository::new(main, mount)
+                        .find_by_id(id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::Group => (
+                    crate::db::groups::GroupsRepository::new(main, mount)
+                        .find_by_id(id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::Chat => (
+                    crate::db::chats_read::find_by_id(main, id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::Memory => {
+                    // The rehydrate target's own memories may already be back (a
+                    // partial restore being re-run); another character's memory
+                    // refuses.
+                    let row = crate::db::memories_read::find_by_id(main, id)
+                        .ok()
+                        .flatten();
+                    let owner = row
+                        .as_ref()
+                        .and_then(|m| m.get("characterId").and_then(Value::as_str))
+                        .map(str::to_string);
+                    // v4 compares `memory?.characterId === skipTarget?.targetCharacterId`
+                    // — with BOTH undefined that is true, but the arm is only
+                    // consulted when the row exists and a skip target is set.
+                    (row.is_some(), owner == target_character)
+                }
+                Kind::DocumentStore => (
+                    crate::db::doc_mount_points::DocMountPointsRepository::new(mount)
+                        .find_full_json_by_id(id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    is_target_vault(Some(id)),
+                ),
+                Kind::File => (
+                    crate::db::files::FilesRepository::new(main)
+                        .find_by_id(id)
+                        .ok()
+                        .flatten()
+                        .is_some(),
+                    false,
+                ),
+                Kind::DocumentStoreFolder => {
+                    let folder = folders_repo.find_by_id(id).ok().flatten();
+                    let skippable =
+                        is_target_vault(folder.as_ref().map(|f| f.mount_point_id.as_str()));
+                    (folder.is_some(), skippable)
+                }
+                Kind::DocumentStoreFile => {
+                    // [Bug 54] Matching bytes settle membership before the
+                    // link-in-target-vault question. v4's note, verbatim:
+                    //
+                    // > Content rows are content-addressed and shared across
+                    // > every vault holding the same bytes — a conversation
+                    // > summary from a group chat lives on one row with one link
+                    // > per participant. Archiving deletes the target's link but
+                    // > leaves the row standing on its co-owners' links, so "is
+                    // > it linked in the target vault?" answers no for content
+                    // > the target legitimately owned. Matching bytes settle it
+                    // > instead: the writer find-or-creates by sha256 and
+                    // > discards the carried id, so an id whose content is
+                    // > already present is dedup rather than a collision. A
+                    // > same-id/different-bytes row is a real clash and still
+                    // > refuses.
+                    let existing = links_repo.find_content_row_by_id(id).ok().flatten();
+                    let carried_sha = lookup(&carried_content_sha, id);
+                    let skippable = match (&existing, &carried_sha) {
+                        (Some(row), Some(sha)) if &row.sha256 == sha => true,
+                        _ => file_linked_in_target_vault(id),
+                    };
+                    (existing.is_some(), skippable)
+                }
+                Kind::DocumentStoreLink => {
+                    let link = links_repo.find_link_row_by_id(id).ok().flatten();
+                    let skippable =
+                        is_target_vault(link.as_ref().map(|l| l.mount_point_id.as_str()));
+                    (link.is_some(), skippable)
+                }
+                Kind::DocumentStoreBlob => {
+                    // [Bug 54] Same reasoning as the content row above: a blob
+                    // row is 1:1 with its content row, which `linkBlobContent`
+                    // resolves by sha256 before reusing whatever blob row
+                    // already hangs off it.
+                    let blob = blobs_repo.find_by_id(id).ok().flatten();
+                    match blob {
+                        None => (false, false),
+                        Some(b) => {
+                            let carried_sha = lookup(&carried_blob_sha, id);
+                            let skippable = match &carried_sha {
+                                Some(sha) if &b.sha256 == sha => true,
+                                _ => file_linked_in_target_vault(&b.file_id),
+                            };
+                            (true, skippable)
+                        }
+                    }
+                }
+            };
+            if exists {
+                if skip_target.is_some() && skippable {
+                    id_maps.preserve_ids_skips.insert(id.clone());
+                    seen_ids.push((id.clone(), kind_name));
+                    continue;
+                }
+                let message = format!("Preserve IDs collision for {kind_name} {id}");
+                warnings.push(message.clone());
+                return Err(message);
+            }
+            seen_ids.push((id.clone(), kind_name));
+        }
+    }
+
+    Ok(())
+}
+
 /// v4 `executeImport` (`execute.ts:41`) — the full dependency-ordered pipeline
 /// over the MAIN + MOUNT-INDEX connections (run inside one `Db::write` closure).
 ///
@@ -379,6 +898,22 @@ pub fn execute_import(
         }
         None => &empty,
     };
+
+    // v4 runs the preflight AFTER `getExportData` and BEFORE any write; a
+    // refusal answers `success: false` with the collision already in
+    // `warnings` and nothing applied (`execute.ts:479`).
+    if let Err(message) =
+        preflight_preserve_ids(main, mount, data, options, &mut warnings, &mut id_maps)
+    {
+        tracing::warn!(error = %message, "Preserve IDs preflight failed");
+        return Ok(ImportResult {
+            success: false,
+            imported,
+            skipped,
+            warnings,
+            imported_character_ids: id_maps.characters.values(),
+        });
+    }
 
     // The one-big-try body: a chokepoint error → success:false (v4's catch).
     let not_configured = crate::services::file_storage::NotConfiguredPixelCodec;
@@ -467,25 +1002,47 @@ fn enqueue_imported_memory_embeddings(
             None
         });
 
-    // The BUILTIN TF-IDF profile is corpus-derived rather than model-derived;
-    // per-row generates against it are not the right repair, so those rows are
-    // left to the boot reconcile just as when no profile exists at all.
-    let profile_id = match profile {
-        Some((id, provider)) if provider != "BUILTIN" => id,
-        other => {
-            let reason = if other.is_some() {
-                "the configured embedding profile is the built-in TF-IDF one"
-            } else {
-                "no default embedding profile is configured"
-            };
+    // v4 `01e481f6` rewrote this arm: the **system default profile**, whatever
+    // its provider, embeds everything — memories, chunks, help docs — so
+    // imported rows use it too, never a different or second-guessed one. Only
+    // the no-profile-at-all case warns now; the BUILTIN early-return is gone.
+    let (profile_id, provider) = match profile {
+        Some((id, provider)) => (id, provider),
+        None => {
             warnings.push(format!(
-                "{} memories were imported without embeddings because {reason}; \
-                 they will be indexed once an embedding profile is configured.",
+                "{} memories were imported without embeddings because no default \
+                 embedding profile is configured; they will be indexed once one is.",
                 memory_refs.len()
             ));
             return;
         }
     };
+    // ⚠ DEFERRED LOUDLY — v4's BUILTIN follow-up (`scheduleRefit`).
+    //
+    // v4 additionally calls `scheduleRefit(userId, profile.id)` for a BUILTIN
+    // default (`lib/embedding/embedding-job-scheduler.ts:32`): a corpus-derived
+    // TF-IDF vocabulary just grew, so a refit-with-reindex is queued. That
+    // helper is a **5-second debounced in-process `setTimeout`**, which is a
+    // host-cadence seam under this port's locked job-runner rule (timers are
+    // the host's), and v5 has no refit scheduler at all — its only
+    // `EMBEDDING_REFIT` enqueue is the async `queue_service::
+    // enqueue_embedding_refit(&Db, …)`, unreachable from inside the
+    // `Db::write` closure this runs in. Nothing is stubbed: the per-row
+    // enqueues below run for BUILTIN exactly as v4's now do, so imported rows
+    // are embedded; only the vocabulary refit that would improve those vectors
+    // is missing, and the boot reconcile remains the backstop.
+    //
+    // The differential cannot see it either way — v4's debounce means the job
+    // row does not exist when `executeImport` returns and the state is dumped.
+    // Recorded in the P4.D62 lane record; the wire belongs with a host-side
+    // refit scheduler.
+    if provider == "BUILTIN" {
+        tracing::debug!(
+            profile_id = %profile_id,
+            "Imported memories embed under the BUILTIN default; the debounced \
+             vocabulary refit v4 schedules here is not ported (P4.D62 deferral)"
+        );
+    }
 
     let jobs = crate::db::background_jobs::BackgroundJobsRepository::new(main);
     let mut enqueued = 0usize;
@@ -545,6 +1102,42 @@ fn enqueue_imported_memory_embeddings(
             memory_refs.len() - enqueued,
             memory_refs.len()
         ));
+    }
+}
+
+#[cfg(test)]
+mod preserve_ids_helper_tests {
+    use super::*;
+
+    /// v4's dead `getPreserveIdsCreateOptions` — pinned rather than merely
+    /// present, so the shape survives if a future round gives it a caller.
+    #[test]
+    fn dead_helper_matches_v4s_shape() {
+        let mut off = ImportOptions::seed_defaults();
+        assert_eq!(get_preserve_ids_create_options(Some("abc"), &off), None);
+        off.preserve_ids = true;
+        assert_eq!(
+            get_preserve_ids_create_options(Some("abc"), &off),
+            Some("abc".to_string())
+        );
+        // A falsy source id short-circuits BEFORE the flag is read.
+        assert_eq!(get_preserve_ids_create_options(None, &off), None);
+        assert_eq!(get_preserve_ids_create_options(Some(""), &off), None);
+    }
+
+    /// The live fork the importers actually use.
+    #[test]
+    fn mint_or_preserve_claims_only_under_the_flag() {
+        let mut opts = ImportOptions::seed_defaults();
+        let (minted, _) = mint_or_preserve(&opts, "abc");
+        assert_ne!(minted, "abc");
+        opts.preserve_ids = true;
+        let (claimed, _) = mint_or_preserve(&opts, "abc");
+        assert_eq!(claimed, "abc");
+        // An absent source id still mints (v4's `?? randomUUID()`).
+        let (fallback, _) = mint_or_preserve(&opts, "");
+        assert_ne!(fallback, "");
+        assert_ne!(fallback, "abc");
     }
 }
 
@@ -660,15 +1253,8 @@ fn import_body(
 
     // 6. Characters.
     if let Some(items) = non_empty_array(data, "characters") {
-        let c = characters::import_characters(
-            main,
-            mount,
-            user_id,
-            items,
-            options,
-            &mut id_maps.characters,
-            warnings,
-        )?;
+        let c =
+            characters::import_characters(main, mount, user_id, items, options, id_maps, warnings)?;
         imported.characters = c.imported;
         skipped.characters = c.skipped;
     }
@@ -795,8 +1381,25 @@ fn import_body(
     //    dead-last for a long time, so in a mixed archive every group's linked
     //    stores were silently dropped. It still has to follow importProjects —
     //    its project links remap through `id_maps.projects`.
-    if let Some(mount_points) = non_empty_array(data, "mountPoints") {
-        let mount_points = mount_points.clone();
+    //
+    //    A characters bundle carries each character's vault here too (WP A2,
+    //    `01e481f6`). Vaults belonging to characters the conflict strategy
+    //    skipped are dropped: the existing character keeps the vault it already
+    //    has, so importing the bundle's copy would strand an orphan store.
+    //    Dropping the mount point is enough — its folders, documents and blobs
+    //    resolve through `id_maps.mount_points` and are skipped with it.
+    let importable_mount_points: Vec<Value> = data
+        .get("mountPoints")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter(|mp| !id_maps.skipped_character_vaults.contains(&id_of(mp)))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    if !importable_mount_points.is_empty() {
+        let mount_points = importable_mount_points;
         let arr = |key: &str| -> Vec<Value> {
             data.get(key)
                 .and_then(Value::as_array)
@@ -886,7 +1489,7 @@ fn import_body(
     let mut imported_memory_refs: Vec<(String, String)> = Vec::new();
     if options.include_memories {
         if let Some(items) = non_empty_array(data, "memories") {
-            let c = memories::import_memories(main, items, id_maps, warnings)?;
+            let c = memories::import_memories(main, items, options, id_maps, warnings)?;
             imported.memories = c.imported;
             skipped.memories = c.skipped;
             imported_memory_refs = c.created_ids;

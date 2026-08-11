@@ -115,6 +115,37 @@ pub(super) fn stream_characters(
             }
         }
 
+        // The character's vault travels with the character (WP A2, `01e481f6`).
+        // v4's reason, verbatim, because it is the whole point of Bug 52:
+        //
+        // > Without it a cross-instance import lands a faceless, mail-less,
+        // > photo-less character: `defaultImageId` and every
+        // > `avatarOverrides[].imageId` are `doc_mount_file_links.id` values in
+        // > *this* instance's vault, so with no store records to remap through
+        // > they dangle.
+        // >
+        // > Doc-store records are parented by `mountPointId`, not `characterId`,
+        // > so their position relative to the `character` line is free; they sit
+        // > here for readability. `skipProjectLinks` because a character vault
+        // > never has any — the flag just keeps the bundle clean.
+        //
+        // The position IS the contract for the differential: after
+        // `character_plugin_data`, before `memory`.
+        if let Some(vault_id) =
+            get_str(&character, "characterDocumentMountPointId").filter(|s| !s.is_empty())
+        {
+            // v4 wraps the whole emission in try/warn — an unreadable vault
+            // must not sink the export.
+            if let Err(e) = stream_one_store(mount, &vault_id, counts, out, true) {
+                tracing::warn!(
+                    character_id = %id,
+                    mount_point_id = %vault_id,
+                    error = %e,
+                    "Failed to export character vault"
+                );
+            }
+        }
+
         if include_memories {
             if let Ok(memories) = memories_read::find_by_character_id(main, id) {
                 for memory in memories {
@@ -530,13 +561,46 @@ pub(super) fn stream_document_stores(
     counts: &mut Counts,
     out: &mut Vec<Value>,
 ) -> Result<(), ExportError> {
+    for id in ids {
+        stream_one_store(mount, id, counts, out, false)?;
+    }
+    Ok(())
+}
+
+/// v4 `streamOneStore` (`ndjson-writer.ts:556`, `01e481f6`) — emit ONE document
+/// store in full: the mount-point row, then — for database-backed mounts —
+/// parent-first folders and text documents, then every blob header with its
+/// ordered chunks, and finally the store's project links.
+///
+/// v4's own note on the extraction rides verbatim:
+///
+/// > Extracted from `streamDocumentStores` so a character vault can be emitted
+/// > inline by `streamCharacters` (WP A2). The body closes over nothing but its
+/// > arguments, so both callers get identical records.
+/// >
+/// > Chunking invariants live with `BLOB_CHUNK_BYTES` and must not be
+/// > disturbed: each chunk is base64-encoded separately, the reader rejoins the
+/// > *encoded* strings and detects completion by counting chunks, and a
+/// > `doc_mount_blob` always precedes its chunks.
+///
+/// `skip_project_links` omits `project_doc_mount_link` records. Character
+/// vaults never carry project links, so the characters path passes it to keep
+/// bundles clean.
+fn stream_one_store(
+    mount: &Connection,
+    mount_point_id: &str,
+    counts: &mut Counts,
+    out: &mut Vec<Value>,
+    skip_project_links: bool,
+) -> Result<(), ExportError> {
     let points = DocMountPointsRepository::new(mount);
     let folders = DocMountFoldersRepository::new(mount);
     let blobs = DocMountBlobsRepository::new(mount);
 
-    for id in ids {
+    {
+        let id = mount_point_id;
         let Some(mp) = points.find_full_json_by_id(id)? else {
-            continue;
+            return Ok(());
         };
 
         let mount_type = get_str(&mp, "mountType").unwrap_or_default();
@@ -579,6 +643,9 @@ pub(super) fn stream_document_stores(
             rows.sort_by_key(|f| f.path.chars().count());
             for folder in rows {
                 let mut d = Map::new();
+                // `01e481f6`: the source row id rides FIRST, carried so a
+                // `preserveIds` import can restore the folder at its own id.
+                d.insert("id".into(), Value::String(folder.id.clone()));
                 d.insert(
                     "mountPointId".into(),
                     Value::String(folder.mount_point_id.clone()),
@@ -611,6 +678,16 @@ pub(super) fn stream_document_stores(
                     "plainTextLength",
                     "lastModified",
                     "folderId",
+                    // `01e481f6`: the source CONTENT row and LINK row ids,
+                    // carried between `folderId` and `linkGroupId` so a
+                    // `preserveIds` import can claim them — and so an avatar
+                    // pointer (a `doc_mount_file_links.id` in the source
+                    // instance) has something to remap through (Bug 52).
+                    // Unlike `linkGroupId` these have NO `?? null`: v4 spreads
+                    // `d.fileId` / `d.linkId` straight through, and the joined
+                    // projection always has both, so both are always present.
+                    "fileId",
+                    "linkId",
                     // v4 `40319484`: `linkGroupId: d.linkGroupId ?? null` —
                     // ALWAYS present, null when unlinked. (The type comment in
                     // v4's `export/types.ts` says "omitted"; the writer does not
@@ -656,6 +733,20 @@ pub(super) fn stream_document_stores(
                 "descriptionUpdatedAt".into(),
                 nullish(meta.get("descriptionUpdatedAt")),
             );
+            // `01e481f6`: the source content-row / link-row / blob-row ids,
+            // carried between `descriptionUpdatedAt` and `extractedText`. Like
+            // the document arm these are plain spreads — no `?? null` — but
+            // `blobId` reads the BLOB row's own `id` (v4 `blobId: meta.id`),
+            // not a `blobId` column.
+            d.insert(
+                "fileId".into(),
+                meta.get("fileId").cloned().unwrap_or(Value::Null),
+            );
+            d.insert(
+                "linkId".into(),
+                meta.get("linkId").cloned().unwrap_or(Value::Null),
+            );
+            d.insert("blobId".into(), Value::String(blob_id.clone()));
             d.insert("extractedText".into(), nullish(meta.get("extractedText")));
             d.insert(
                 "extractedTextSha256".into(),
@@ -691,14 +782,16 @@ pub(super) fn stream_document_stores(
             }
         }
 
-        for link_project_id in
-            project_doc_mount_links::find_project_ids_by_mount_point_id(mount, id)?
-        {
-            let mut d = Map::new();
-            d.insert("projectId".into(), Value::String(link_project_id));
-            d.insert("mountPointId".into(), Value::String(id.clone()));
-            out.push(kind_data("project_doc_mount_link", Value::Object(d)));
-            counts.bump("documentStoreProjectLinks");
+        if !skip_project_links {
+            for link_project_id in
+                project_doc_mount_links::find_project_ids_by_mount_point_id(mount, id)?
+            {
+                let mut d = Map::new();
+                d.insert("projectId".into(), Value::String(link_project_id));
+                d.insert("mountPointId".into(), Value::String(id.to_string()));
+                out.push(kind_data("project_doc_mount_link", Value::Object(d)));
+                counts.bump("documentStoreProjectLinks");
+            }
         }
     }
     Ok(())
@@ -782,11 +875,9 @@ pub(super) fn stream_files(
         if !id_set.contains(file_id.as_str()) {
             continue;
         }
-        // Backups are excluded exactly as the backup service excludes them —
-        // nobody wants last month's archive riding inside this month's.
-        if get_str(file, "category").as_deref() == Some("BACKUP")
-            || get_str(file, "folderPath").as_deref() == Some("/backups")
-        {
+        // Backups and character-archive bundles are both `.qtap` files in their
+        // own right; neither rides inside another export.
+        if super::is_file_excluded_from_export(file) {
             continue;
         }
 

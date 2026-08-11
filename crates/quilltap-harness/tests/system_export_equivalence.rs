@@ -131,6 +131,7 @@ fn system_export_matches_oracle() {
                                 None,
                                 &user,
                                 &opts,
+                                false,
                                 &created_at,
                                 &app_version,
                             ))
@@ -239,6 +240,7 @@ fn system_export_matches_oracle() {
                                     None,
                                     &user,
                                     &opts,
+                                    false,
                                     "T",
                                     &app_version,
                                 )
@@ -310,6 +312,7 @@ fn system_export_matches_oracle() {
                     None,
                     &user,
                     &strip_opts,
+                    false,
                     "T",
                     &app_version,
                 ))

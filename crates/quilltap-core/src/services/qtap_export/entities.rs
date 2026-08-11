@@ -123,7 +123,8 @@ pub fn export_entities(
             }
         }
         "files" => {
-            // Backups are never offered — mirrors the backup service's own rule.
+            // Backups and character-archive bundles are both `.qtap` files in
+            // their own right; neither is ever offered for export.
             for f in crate::services::backup::marshal::query_all(
                 main,
                 "files",
@@ -131,9 +132,7 @@ pub fn export_entities(
                 "",
                 &[],
             )? {
-                if f.get("category").and_then(Value::as_str) == Some("BACKUP")
-                    || f.get("folderPath").and_then(Value::as_str) == Some("/backups")
-                {
+                if super::is_file_excluded_from_export(&f) {
                     continue;
                 }
                 entities.push(id_name(&f, "originalFilename"));

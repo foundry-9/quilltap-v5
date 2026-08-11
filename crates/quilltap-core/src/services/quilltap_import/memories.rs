@@ -27,7 +27,7 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
-use super::IdMaps;
+use super::{IdMaps, ImportOptions};
 use crate::db::memories::{CreateOptions, MemCreate, MemoriesRepository};
 use crate::db::DbError;
 
@@ -42,6 +42,7 @@ pub(super) struct Counts {
 pub(super) fn import_memories(
     main: &Connection,
     memories: &[Value],
+    options: &ImportOptions,
     id_maps: &IdMaps,
     warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
@@ -52,6 +53,16 @@ pub(super) fn import_memories(
     let repo = MemoriesRepository::new(main);
 
     for memory in memories {
+        // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): the memory is
+        // already back — a partial restore being re-run. The surviving row
+        // wins. v4 checks this BEFORE the character remap, so a sanctioned skip
+        // never trips the "references non-existent character" warning.
+        let source_id = super::id_of(memory);
+        if options.preserve_ids && id_maps.preserve_ids_skips.contains(&source_id) {
+            skipped += 1;
+            continue;
+        }
+
         // Remap character ID (required — a memory with no destination character is
         // dropped with a warning).
         let source_character_id = memory
@@ -133,8 +144,9 @@ pub(super) fn import_memories(
         };
 
         let now = crate::clock::now_iso();
+        let (new_id, _now) = super::mint_or_preserve(options, &source_id);
         let opts = CreateOptions {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: new_id,
             created_at: now.clone(),
             updated_at: now,
         };

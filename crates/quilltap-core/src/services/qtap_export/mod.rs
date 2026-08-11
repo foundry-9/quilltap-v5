@@ -41,9 +41,12 @@ use crate::db::{
 };
 
 mod entities;
+mod excluded_files;
 mod key_order;
 mod preview;
 mod records;
+
+use excluded_files::is_file_excluded_from_export;
 
 pub use entities::{export_entities, unknown_entity_type_message};
 pub use preview::preview_export;
@@ -177,8 +180,23 @@ impl Counts {
 /// v4 `buildManifest(options, counts)` (`ndjson-writer.ts:85`). `created_at` is
 /// injected (v4 reads `new Date().toISOString()`); `app_version` is injected too
 /// (v4 reads `packageJson.version`) so the differential can pin both.
+///
+/// ## `preserve_ids` rides as a parameter, not on [`ExportOptions`]
+///
+/// v4 hangs `preserveIds` off `ExportOptions` (`export/types.ts:868`,
+/// `01e481f6`) — "restore the archive at its original IDs (refuse on
+/// collision)". The writer only ever RECORDS it in the manifest; the honoring
+/// is entirely the import side's (`quilltap_import::ImportOptions`), and the
+/// preview path never emits a manifest at all. v5 threads it as an explicit
+/// parameter of the two writer entrances instead of adding a field to
+/// `ExportOptions`, because that struct is also constructed by the preview
+/// dispatch arm in `api/engine.rs`, which belongs to a sibling lane this round
+/// (P4.D63). The emitted bytes are identical either way; a later round that
+/// owns `engine.rs` may lift it onto the struct. Nothing but the
+/// character-archive service (round 2) ever passes `true`.
 pub fn build_manifest(
     options: &ExportOptions,
+    preserve_ids: bool,
     counts: Value,
     created_at: &str,
     app_version: &str,
@@ -199,6 +217,9 @@ pub fn build_manifest(
                 .collect(),
         ),
     );
+    // v4 `preserveIds: options.preserveIds ?? false` (`01e481f6`) — last key of
+    // the settings bag, after `selectedIds`.
+    settings.insert("preserveIds".into(), Value::Bool(preserve_ids));
 
     let mut m = Map::new();
     m.insert("format".into(), Value::String("quilltap-export".into()));
@@ -263,11 +284,7 @@ pub fn resolve_export_ids(
             &[],
         )?
         .iter()
-        // Backups are never exported (mirrors the backup service's own rule).
-        .filter(|f| {
-            f.get("category").and_then(Value::as_str) != Some("BACKUP")
-                && f.get("folderPath").and_then(Value::as_str) != Some("/backups")
-        })
+        .filter(|f| !is_file_excluded_from_export(f))
         .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
         .collect(),
         "prompt-templates" => crate::services::backup::marshal::query_all(
@@ -317,12 +334,16 @@ fn id_list(rows: &[Value]) -> Vec<String> {
 
 /// v4 `streamExportRecords` (`ndjson-writer.ts:658`) materialized as a `Vec` in
 /// yield order. See the module header for the envelope/footer discipline.
+#[allow(clippy::too_many_arguments)]
 pub fn stream_export_records(
     main: &Connection,
     mount: &Connection,
     storage: Option<&dyn crate::services::file_storage::StorageBackend>,
     user_id: &str,
     options: &ExportOptions,
+    // See `build_manifest` — the manifest's `settings.preserveIds`, threaded as
+    // a parameter rather than a field of `ExportOptions`.
+    preserve_ids: bool,
     created_at: &str,
     app_version: &str,
 ) -> Result<Vec<Value>, ExportError> {
@@ -338,7 +359,13 @@ pub fn stream_export_records(
     envelope.insert(
         "manifest".into(),
         // The empty-counts quirk (v4 :677 passes a literal `{}`).
-        build_manifest(options, Value::Object(Map::new()), created_at, app_version),
+        build_manifest(
+            options,
+            preserve_ids,
+            Value::Object(Map::new()),
+            created_at,
+            app_version,
+        ),
     );
     out.push(Value::Object(envelope));
 
@@ -527,11 +554,14 @@ mod tests {
             selected_ids: vec![],
             include_memories: false,
         };
-        let m = build_manifest(&opts, Value::Object(Map::new()), "T", "1.2.3");
+        let m = build_manifest(&opts, false, Value::Object(Map::new()), "T", "1.2.3");
         assert_eq!(
             m.to_string(),
-            r#"{"format":"quilltap-export","version":"1.0","exportType":"tags","createdAt":"T","appVersion":"1.2.3","settings":{"includeMemories":false,"scope":"all","selectedIds":[]},"counts":{}}"#
+            r#"{"format":"quilltap-export","version":"1.0","exportType":"tags","createdAt":"T","appVersion":"1.2.3","settings":{"includeMemories":false,"scope":"all","selectedIds":[],"preserveIds":false},"counts":{}}"#
         );
+        // …and the archive service's arm (round 2's only caller).
+        let m = build_manifest(&opts, true, Value::Object(Map::new()), "T", "1.2.3");
+        assert_eq!(m.pointer("/settings/preserveIds"), Some(&Value::Bool(true)));
     }
 
     #[test]

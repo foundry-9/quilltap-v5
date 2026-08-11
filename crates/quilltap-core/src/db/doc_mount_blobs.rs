@@ -281,6 +281,21 @@ impl<'c> DocMountBlobsRepository<'c> {
     /// to `link_blob_content` (dedup-by-sha + upsert the link row), then reads the
     /// joined view back. Reuses the SAME connection (v4 late-binds the link repo).
     pub fn create(&self, input: &CreateBlobInput) -> Result<BlobWithLink, DbError> {
+        self.create_with_ids(
+            input,
+            &crate::db::doc_mount_file_links::CarriedRowIds::default(),
+        )
+    }
+
+    /// [`Self::create`] forwarding explicit row ids for the rows the write
+    /// actually CREATES — v4's `CreateBlobInput.fileId` / `.linkId` / `.blobId`
+    /// (`01e481f6`), which it passes straight through to `linkBlobContent`.
+    /// Only the `preserveIds` import path supplies them.
+    pub fn create_with_ids(
+        &self,
+        input: &CreateBlobInput,
+        carried: &crate::db::doc_mount_file_links::CarriedRowIds,
+    ) -> Result<BlobWithLink, DbError> {
         let file_name = input
             .file_name
             .clone()
@@ -290,8 +305,8 @@ impl<'c> DocMountBlobsRepository<'c> {
             .clone()
             .unwrap_or_else(|| "blob".to_string());
 
-        let result =
-            DocMountFileLinksRepository::new(self.conn).link_blob_content(&LinkBlobInput {
+        let result = DocMountFileLinksRepository::new(self.conn).link_blob_content_with_ids(
+            &LinkBlobInput {
                 mount_point_id: input.mount_point_id.clone(),
                 relative_path: input.relative_path.clone(),
                 file_name,
@@ -306,7 +321,9 @@ impl<'c> DocMountBlobsRepository<'c> {
                 extracted_text: None,
                 extracted_text_sha256: None,
                 extraction_status: None,
-            })?;
+            },
+            carried,
+        )?;
 
         self.find_by_mount_point_and_path(&input.mount_point_id, &input.relative_path)?
             .ok_or_else(|| {

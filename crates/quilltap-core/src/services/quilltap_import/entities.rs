@@ -33,8 +33,39 @@ pub(super) struct Counts {
     pub messages: u32,
 }
 
+/// The plain mint (v4's `create(data)` with no options) — used by the arms
+/// that never claim a source id (v4's `duplicate` rename branches).
 fn mint() -> (String, String) {
     (uuid::Uuid::new_v4().to_string(), crate::clock::now_iso())
+}
+
+/// v4's `01e481f6` create fork: `options.preserveIds ? { id: x.id } : undefined`.
+fn mint_or_preserve(options: &ImportOptions, source_id: &str) -> (String, String) {
+    super::mint_or_preserve(options, source_id)
+}
+
+/// The source id a `duplicate`-strategy create passes: none. v4's `01e481f6`
+/// diff forks exactly ONE create per importer — the plain arm — so a
+/// conflict-strategy rename still mints, even under `preserveIds`. (Profiles
+/// are the exception and fork both arms; see `profiles.rs`.)
+const DUPLICATE_MINTS: &str = "";
+
+/// The same fork for the store-backed kinds (projects / groups), whose create
+/// options are all-optional: v4 passes `undefined` on the ordinary path, which
+/// is `Default::default()` here, and `{ id }` under `preserveIds`.
+fn store_create_options(
+    options: &ImportOptions,
+    source_id: &str,
+) -> crate::db::store_backed::StoreCreateOptions {
+    if options.preserve_ids && !source_id.is_empty() {
+        crate::db::store_backed::StoreCreateOptions {
+            id: Some(source_id.to_string()),
+            created_at: None,
+            updated_at: None,
+        }
+    } else {
+        Default::default()
+    }
 }
 
 // ===========================================================================
@@ -124,7 +155,7 @@ pub(super) fn import_tags(
             let Ok(t) = serde_json::from_value::<ImportedTag>(raw.clone()) else {
                 return Ok(());
             };
-            let (id, now) = mint();
+            let (id, now) = mint_or_preserve(options, &source_id);
             repo.create(
                 &tags::TagCreate {
                     user_id: user_id.to_string(),
@@ -302,7 +333,7 @@ pub(super) fn import_roleplay_templates(
                             return Ok(());
                         };
                         let name = format!("{} (imported)", t.name);
-                        create_template(&repo, user_id, t, name)?;
+                        create_template(&repo, user_id, t, name, options, DUPLICATE_MINTS)?;
                         imported += 1;
                         return Ok(());
                     }
@@ -312,7 +343,7 @@ pub(super) fn import_roleplay_templates(
                 return Ok(());
             };
             let name = t.name.clone();
-            let new_id = create_template(&repo, user_id, t, name)?;
+            let new_id = create_template(&repo, user_id, t, name, options, &source_id)?;
             id_map.set(source_id.clone(), new_id);
             imported += 1;
             Ok(())
@@ -333,6 +364,8 @@ fn create_template(
     user_id: &str,
     t: ImportedTemplate,
     name: String,
+    options: &ImportOptions,
+    source_id: &str,
 ) -> Result<String, DbError> {
     let create = RtCreate {
         user_id: Some(user_id.to_string()),
@@ -346,7 +379,7 @@ fn create_template(
         dialogue_detection: t.dialogue_detection,
         narration_delimiters: t.narration_delimiters,
     };
-    let (id, now) = mint();
+    let (id, now) = mint_or_preserve(options, source_id);
     repo.create(
         &create,
         &roleplay_templates::CreateOptions {
@@ -423,13 +456,19 @@ pub(super) fn import_projects(
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        create_project(&repo, raw, Some(format!("{name} (imported)")))?;
+                        create_project(
+                            &repo,
+                            raw,
+                            Some(format!("{name} (imported)")),
+                            options,
+                            DUPLICATE_MINTS,
+                        )?;
                         imported += 1;
                         return Ok(());
                     }
                 }
             }
-            let created_id = create_project(&repo, raw, None)?;
+            let created_id = create_project(&repo, raw, None, options, &source_id)?;
             id_map.set(source_id.clone(), created_id);
             imported += 1;
             Ok(())
@@ -450,6 +489,8 @@ fn create_project(
     repo: &projects::ProjectsRepository,
     raw: &Value,
     name_override: Option<String>,
+    options: &ImportOptions,
+    source_id: &str,
 ) -> Result<String, String> {
     let input = projects::ProjectCreateInput {
         name: name_override.unwrap_or_else(|| display_name(raw)),
@@ -462,7 +503,7 @@ fn create_project(
         ),
     };
     let created = repo
-        .create(&input, &projects::ProjectCreateOptions::default())
+        .create(&input, &store_create_options(options, source_id))
         .map_err(|e| e.to_string())?;
     Ok(created
         .get("id")
@@ -502,13 +543,19 @@ pub(super) fn import_groups(
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        create_group(&repo, raw, Some(format!("{name} (imported)")))?;
+                        create_group(
+                            &repo,
+                            raw,
+                            Some(format!("{name} (imported)")),
+                            options,
+                            DUPLICATE_MINTS,
+                        )?;
                         imported += 1;
                         return Ok(());
                     }
                 }
             }
-            let created_id = create_group(&repo, raw, None)?;
+            let created_id = create_group(&repo, raw, None, options, &source_id)?;
             id_map.set(source_id.clone(), created_id);
             imported += 1;
             Ok(())
@@ -529,6 +576,8 @@ fn create_group(
     repo: &groups::GroupsRepository,
     raw: &Value,
     name_override: Option<String>,
+    options: &ImportOptions,
+    source_id: &str,
 ) -> Result<String, String> {
     let input = groups::GroupCreateInput {
         name: name_override.unwrap_or_else(|| display_name(raw)),
@@ -539,7 +588,7 @@ fn create_group(
         icon: opt_str_field(raw, "icon"),
     };
     let created = repo
-        .create(&input, &groups::GroupCreateOptions::default())
+        .create(&input, &store_create_options(options, source_id))
         .map_err(|e| e.to_string())?;
     Ok(created
         .get("id")
@@ -604,7 +653,21 @@ pub(super) fn import_chats(
                 }
             }
 
-            let new_chat_id = create_chat(&repo, user_id, raw, title_override.clone())?;
+            // v4 forks only the non-duplicate create: the `duplicate` arm
+            // renames and mints, and its map entry is a phantom anyway.
+            let create_source_id = if title_override.is_some() {
+                DUPLICATE_MINTS
+            } else {
+                source_id.as_str()
+            };
+            let new_chat_id = create_chat(
+                &repo,
+                user_id,
+                raw,
+                title_override.clone(),
+                options,
+                create_source_id,
+            )?;
             // The non-duplicate paths record the REAL created id.
             if title_override.is_none() {
                 id_map.set(source_id.clone(), new_chat_id.clone());
@@ -644,6 +707,8 @@ fn create_chat(
     user_id: &str,
     raw: &Value,
     title_override: Option<String>,
+    options: &ImportOptions,
+    source_id: &str,
 ) -> Result<String, String> {
     // v4 strips id/userId/messages/createdAt/updatedAt and re-injects the
     // importing user's id (the user-scoped repo). serde ignores the stripped
@@ -659,7 +724,7 @@ fn create_chat(
     obj.remove("updatedAt");
     let create: ChatCreate =
         serde_json::from_value(Value::Object(obj)).map_err(|e| e.to_string())?;
-    let (id, now) = mint();
+    let (id, now) = mint_or_preserve(options, source_id);
     repo.create(
         &create,
         &crate::db::chats::CreateOptions {

@@ -157,6 +157,22 @@ impl<'c> DocMountFoldersRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `docMountFolders.findById` — one folder row by primary key. The
+    /// `preserveIds` preflight (`01e481f6`) is the caller: it has to ask which
+    /// mount an already-present carried folder id lives in before deciding
+    /// whether the collision is inside the rehydrate target.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<FolderRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, mountPointId, parentId, name, path, createdAt \
+               FROM doc_mount_folders WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], Self::map_folder_row)?;
+        match rows.next() {
+            Some(r) => Ok(Some(r?)),
+            None => Ok(None),
+        }
+    }
+
     fn map_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FolderRow> {
         Ok(FolderRow {
             id: row.get(0)?,
