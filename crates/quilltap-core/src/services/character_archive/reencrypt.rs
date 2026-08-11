@@ -182,7 +182,16 @@ async fn reencrypt_one(
     let reencrypted =
         encrypt_archive(&plaintext, new_passphrase, None).map_err(|e| e.to_string())?;
 
-    backend.upload(
+    // Upload through the MANAGER wrapper too, for the same reason as the
+    // download above: v4's sweep writes via `fileStorageManager.uploadRaw`
+    // (`archive-reencrypt.ts:84`), whose failure arm wraps as
+    // `Failed to upload raw content at '<storageKey>': <msg>` — and that
+    // wrapped string is what reaches the contractual `failures[].reason`. A
+    // raw `backend.upload` here leaked the bare backend error (caught by the
+    // §3 unification review as the upload-leg twin of the round-1 download
+    // finding, the sweep having gained its production caller on this branch).
+    crate::services::file_storage::upload_raw(
+        backend,
         storage_key,
         &reencrypted,
         if file.mime_type.is_empty() {
@@ -212,6 +221,75 @@ async fn reencrypt_one(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Download succeeds (plaintext NDJSON, so the decrypt leg passes through);
+    /// upload fails. Pins the §3-review fix: the contractual
+    /// `failures[].reason` must carry v4's `uploadRaw` wrapper sentence, not
+    /// the bare backend error.
+    struct FailingUploadBackend;
+    impl StorageBackend for FailingUploadBackend {
+        fn upload(&self, _key: &str, _content: &[u8], _content_type: &str) -> Result<(), String> {
+            Err("disk full".to_string())
+        }
+        fn download(&self, _key: &str) -> Result<Vec<u8>, String> {
+            Ok(b"{\"kind\":\"manifest\"}\n".to_vec())
+        }
+        fn delete(&self, _key: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn exists(&self, _key: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+    }
+
+    fn archive_file_row() -> crate::db::files::FileFull {
+        crate::db::files::FileFull {
+            id: "file-1".to_string(),
+            user_id: "u".to_string(),
+            original_filename: "sable.qtarc".to_string(),
+            mime_type: "application/octet-stream".to_string(),
+            sha256: String::new(),
+            size: 21,
+            width: None,
+            height: None,
+            category: ARCHIVE_CATEGORY.to_string(),
+            description: None,
+            linked_to: Vec::new(),
+            project_id: None,
+            folder_path: None,
+            storage_key: Some("archives/sable.qtarc".to_string()),
+            file_status: None,
+            created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_failure_reason_carries_v4s_upload_raw_wrapper() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: Some(dir.path().join("mount.db")),
+                llm_logs: None,
+            },
+            "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
+        )
+        .unwrap();
+        let err = reencrypt_one(
+            &db,
+            &FailingUploadBackend,
+            &archive_file_row(),
+            "old-pass",
+            "new-pass",
+        )
+        .await
+        .expect_err("upload failure must fail the bundle");
+        assert_eq!(
+            err,
+            "Failed to upload raw content at 'archives/sable.qtarc': disk full"
+        );
+    }
 
     #[test]
     fn the_result_serializes_in_v4s_shape() {

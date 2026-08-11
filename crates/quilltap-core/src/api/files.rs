@@ -506,7 +506,13 @@ pub async fn file_delete(
             Ok(rows) => rows
                 .into_iter()
                 .find(|c| c.get("archiveFileId").and_then(Value::as_str) == Some(file.id.as_str())),
-            Err(e) => return internal(e),
+            Err(e) => {
+                // v4's whole delete handler masks any throw as a fixed 500
+                // (`delete.ts:113` — `Failed to delete file`); do not leak the
+                // DbError text (§3 review).
+                tracing::error!("archive-holder lookup failed during file delete: {e}");
+                return internal("Failed to delete file");
+            }
         };
         if let Some(holder) = holder {
             let name = holder
