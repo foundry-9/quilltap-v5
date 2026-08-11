@@ -526,8 +526,9 @@ fn preflight_preserve_ids(
     // vault: an archived character with a twice-linked photo cannot come back
     // in v4 at all. The repeats are identical claims (same row, one id), the
     // same shape the fileId dedupe above already sanctions. Reader-side only —
-    // the export bytes still carry v4's duplicates. v4-side fix queued
-    // post-5.0 (`dogfood-findings.md`, the v4-side list).
+    // the export bytes still carry v4's duplicates. Filed as v4 Bug 57
+    // (`docs/developer/bugs/bug-57-rehydrate-duplicate-blob-claim.md` in the
+    // v4 repo); this divergence becomes plain convergence when it lands.
     let mut carried_blob_ids: Vec<String> = Vec::new();
     for row in blobs.iter() {
         if let Some(id) = non_empty(row.get("blobId")) {

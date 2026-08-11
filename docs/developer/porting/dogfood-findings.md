@@ -560,8 +560,9 @@ catch, since every fixture is built fresh.
 ## Standing notes for the next orders
 
 - **v4-side item (2026-08-11, the archive round-2 §3 unification review) —
-  v4 cannot rehydrate an archived character whose vault links the same
-  bytes twice.** Two v4 facts compose into a rehydrate-killer: the export's
+  FILED as v4 Bug 57 (`bugs/bug-57-rehydrate-duplicate-blob-claim.md`,
+  v4 commit `0472cf6c`): v4 cannot rehydrate an archived character whose
+  vault links the same bytes twice.** Two v4 facts compose into a rehydrate-killer: the export's
   blob listing (`doc-mount-blobs.repository.ts:439` `listByMountPoint`)
   joins FROM the links, one row per link, so a blob whose content is linked
   twice in one store — an ordinary sha-deduped gallery save — is emitted

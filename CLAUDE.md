@@ -2295,8 +2295,12 @@ records THERE. Update this summary only when a phase or round completes.
   see phase-4.md.
 - **Oracle baseline: `ed8934f1` (2026-08-10, v4 4.8.0-dev), adopted at
   the character-archive round-2 unification — NO v4 drift debt
-  remains.** v4 HEAD == the baseline, tree clean (verified at the
-  round's gate). Oracles regenerate straight from
+  remains.** v4 HEAD is `0472cf6c`, ONE commit past the baseline:
+  docs-only (the Bug-57 filing — the rehydrate duplicate-blob-claim bug
+  this port found and diverged on; zero `lib/`/`app/` change) — NO-PORT.
+  When v4 FIXES Bug 57, that lands on the ported preflight and is a
+  small drift round that retires v5's divergence pin to a plain
+  equality. Oracles regenerate straight from
   `~/source/quilltap-server`; pin a detached worktree on any further
   drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
   <pin>`). The distill-transitive TZ pins, the committed-fixture rule,
