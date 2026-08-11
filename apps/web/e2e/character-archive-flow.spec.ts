@@ -33,7 +33,7 @@ import {
  * setup logs `seeded the archived-character island` when the seeder ran, which
  * is the confirmation to look for.
  */
-const ARCHIVE_TOMBSTONE_SEEDED = false;
+const ARCHIVE_TOMBSTONE_SEEDED = true;
 
 /**
  * ROUND 2 flips this — the archive/rehydrate ACTIONS answer P4.D63's loud
