@@ -63115,3 +63115,55 @@ numbers") — that is v4 behavior, pinned by spec, not a v5 shortcut.
 **Gate:** `ng test` 297 files / 4,075 tests, 0 failed (was 296 / 4,065 — the new
 `characters.api.spec.ts` adds 10); `ng build` clean. SPA 0.5.444 → 0.5.445. No
 file outside `apps/web/**` touched except the append-only CHANGELOG and this log.
+
+### Lane record — P4.D64 unit 2 (the roster surface)
+
+**Landed** (v4 `AuroraView.tsx` at `d553f72a`, strings verbatim).
+
+- The toggle: FIRST in the toolbar row, `folder` icon, `Show Archived` /
+  `Hide Archived`, titles `Show characters resting in the archive` / `Tuck the
+  archived characters back out of sight`, active `qt-bg-primary/20
+  qt-text-primary` vs inactive `qt-bg-muted/70 qt-text-primary
+  hover:qt-bg-muted`. Plain local signal — v4 puts NOTHING in the URL, so a
+  reload lands back on the live shelf.
+- The fetch: `archived=include` when on, the param OMITTED when off (absent IS
+  the exclude default), keyed `list({archived:'include'})` vs `list()`.
+- `sortCharacters` rule 0 (archived last) AHEAD of NPC/favorite/chats/name.
+- Every post-mutation invalidation widened `list()` → `characterKeys.all` (five
+  sites), and the optimistic toggle now writes to the ACTIVE key rather than the
+  unfiltered one — with "Show Archived" on, the rows on screen live under the
+  other key, so the old code would have optimistically updated an invisible
+  cache entry.
+- The card: `Archived` badge beside the name (title `Resting in the archive
+  since <toLocaleDateString>`), the favorite/Carina/controlled-by cluster
+  hidden, and ONE inert span (`Resting in the archive`) in place of the
+  actions, with Delete surviving.
+
+**Two deliberate, recorded divergences.**
+
+1. **The inert span covers THREE actions, not two.** v4's card has Chat + one
+   JSON export; v5's grew a second (PNG) export in P4.6f. v4's own tooltip
+   states the intent — "An archived character neither chats nor exports" — so
+   the span replaces Chat and BOTH exports. The order calls this out; the spec
+   asserts all three affordances are gone.
+2. **The name row keeps v5's truncation.** v4 turns the `h2` into a flex line to
+   seat the badge. v5's `h2` also carries `truncate`, which does nothing on a
+   flex container, so the name sits in its own truncating span inside the row —
+   otherwise every long name on every card (archived or not) would stop
+   ellipsizing. Layout-only.
+
+**The Invalid-Date question, decided v4's way.** v4 interpolates
+`new Date(archivedAt).toLocaleDateString()` into the badge tooltip with no
+guard. A first pass here hid the badge when the stamp was unparseable; that is
+worse than v4 — it loses the fact that the character IS archived — so badge
+VISIBILITY keys off `Boolean(archivedAt)` and the tooltip carries v4's
+unguarded formatting, "Invalid Date" and all.
+
+**Mutation proofs (D24 rule — both specs passed first run).** Dropping sort rule
+0 reds `sinks archived characters below everything else…`; making the roster's
+`queryKey` constant (the "one cache entry for both states" bug) reds `refetches
+with archived: include under a DISTINCT cache key, and reverts`. Both reverted
+green.
+
+**Gate:** `ng test` 297 files / 4,085 tests, 0 failed (+10); `ng build` clean.
+SPA 0.5.445 → 0.5.446.

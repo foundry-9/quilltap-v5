@@ -49,7 +49,21 @@ import { processTemplate, resolveUserToken } from '../templates';
             </div>
           }
           <div class="flex-grow min-w-0">
-            <h2 class="qt-heading-3 text-foreground truncate">{{ character().name }}</h2>
+            <!-- v4 makes the name row a flex line to seat the Archived badge
+                 (AuroraView.tsx:497). v5's h2 additionally TRUNCATES long
+                 names, and "truncate" does nothing on a flex container, so the
+                 name keeps its own truncating span inside the row. -->
+            <h2 class="qt-heading-3 text-foreground flex min-w-0 items-center gap-2">
+              <span class="truncate">{{ character().name }}</span>
+              @if (isArchived()) {
+                <span
+                  class="qt-badge inline-flex flex-shrink-0 items-center rounded-full border qt-border-default qt-bg-muted px-2 py-0.5 text-xs font-medium qt-text-secondary"
+                  [title]="'Resting in the archive since ' + archivedSince()"
+                >
+                  Archived
+                </span>
+              }
+            </h2>
             @if (character().title) {
               <p class="qt-text-small truncate">{{ character().title }}</p>
             }
@@ -64,6 +78,9 @@ import { processTemplate, resolveUserToken } from '../templates';
             }
           </div>
         </a>
+        <!-- P4.D64 (v4 AuroraView.tsx:522): the favorite / Carina /
+             controlled-by cluster is HIDDEN on an archived card. -->
+        @if (!isArchived()) {
         <div class="flex items-center gap-1 ml-2 flex-shrink-0">
           <button
             type="button"
@@ -104,37 +121,53 @@ import { processTemplate, resolveUserToken } from '../templates';
             <qt-icon name="user" class="w-6 h-6" />
           </button>
         </div>
+        }
       </div>
 
       <p class="line-clamp-3 qt-text-small">{{ descriptionPreview() }}</p>
 
       <div class="qt-entity-card-actions character-card-actions">
-        <a
-          [routerLink]="inTab() ? null : ['/characters', character().id]"
-          [queryParams]="inTab() ? null : { action: 'chat' }"
-          (click)="inTab() && onDrillChat($event)"
-          class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground qt-shadow-sm transition hover:qt-bg-success/90"
-          title="Start a chat with this character"
-        >
-          <qt-icon name="chat" class="w-5 h-5" />
-          Chat
-        </a>
-        <button
-          type="button"
-          class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-          title="Export as SillyTavern JSON"
-          (click)="exportCharacter.emit()"
-        >
-          <qt-icon name="download" class="w-5 h-5" />
-        </button>
-        <button
-          type="button"
-          class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-          title="Export as SillyTavern PNG card"
-          (click)="exportPng.emit()"
-        >
-          <qt-icon name="image" class="w-5 h-5" />
-        </button>
+        @if (isArchived()) {
+          <!-- P4.D64 (v4 AuroraView.tsx:559-565): ONE inert span replaces the
+               action affordances. v4's card has Chat + a single JSON export;
+               v5's grew a second (PNG) export, and v4's intent is that "an
+               archived character neither chats nor exports", so the span covers
+               all THREE. Delete stays — an archived character can still be
+               thrown away. -->
+          <span
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/50 px-4 py-2 text-sm qt-text-secondary"
+            title="An archived character neither chats nor exports; open their page to rehydrate them."
+          >
+            Resting in the archive
+          </span>
+        } @else {
+          <a
+            [routerLink]="inTab() ? null : ['/characters', character().id]"
+            [queryParams]="inTab() ? null : { action: 'chat' }"
+            (click)="inTab() && onDrillChat($event)"
+            class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground qt-shadow-sm transition hover:qt-bg-success/90"
+            title="Start a chat with this character"
+          >
+            <qt-icon name="chat" class="w-5 h-5" />
+            Chat
+          </a>
+          <button
+            type="button"
+            class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+            title="Export as SillyTavern JSON"
+            (click)="exportCharacter.emit()"
+          >
+            <qt-icon name="download" class="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+            title="Export as SillyTavern PNG card"
+            (click)="exportPng.emit()"
+          >
+            <qt-icon name="image" class="w-5 h-5" />
+          </button>
+        }
         <button
           type="button"
           class="character-card__action qt-button-destructive qt-shadow-sm"
@@ -206,6 +239,20 @@ export class CharacterCard {
     e.preventDefault();
     this.openChat.emit();
   }
+
+  /** P4.D64: `archivedAt` non-null ⇒ the tombstone card (v4 `Boolean(archivedAt)`). */
+  protected readonly isArchived = computed(() => Boolean(this.character().archivedAt));
+
+  /**
+   * The badge tooltip's date. v4 interpolates
+   * `new Date(archivedAt).toLocaleDateString()` with no guard, so a malformed
+   * stamp reads "Invalid Date" in the tooltip — carried verbatim rather than
+   * "improved" into hiding the badge, which would lose the fact that the
+   * character IS archived. Badge VISIBILITY keys off `isArchived()`.
+   */
+  protected readonly archivedSince = computed(() =>
+    new Date(this.character().archivedAt ?? '').toLocaleDateString(),
+  );
 
   protected readonly avatarSrc = computed(() =>
     characterAvatarSrc(this.character().defaultImage, this.character().defaultImageId),

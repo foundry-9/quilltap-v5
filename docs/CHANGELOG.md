@@ -74,6 +74,16 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 2: the character roster shows the archive. A "Show Archived"
+toggle leads the toolbar (folder icon, v4 labels and tooltips both ways);
+its two states fetch and cache separately, and every character mutation now
+refreshes both. Archived characters sort to the very end of the shelf ahead
+of every other ordering rule, wear an "Archived" badge dated to when they
+were put away, lose the favorite / Carina / control toggles, and trade Chat
+and both export actions for one inert "Resting in the archive" note —
+Delete stays. Sort rule 0 and the distinct-cache-key refetch were
+mutation-proven.
+
 P4.D64 unit 1: mirrored the character-archive client contract (v4
 `d553f72a`) and added the archive data layer. `core-contract.ts` gains the
 `archived` list filter, `archivedAt` on the character list/detail DTOs plus

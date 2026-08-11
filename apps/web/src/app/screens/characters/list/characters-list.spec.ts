@@ -678,3 +678,208 @@ describe('CharactersList (in-tab Create + Chat arms)', () => {
     expect(navigate).toHaveBeenCalledWith(['/salon/new'], { queryParams: { characterId: 'c1' } });
   });
 });
+
+// ===========================================================================
+// P4.D64 — the archive tombstone on the roster (v4 `AuroraView.tsx`, `d553f72a`)
+// ===========================================================================
+
+describe('sortCharacters — archived last (P4.D64 rule 0)', () => {
+  it('sinks archived characters below everything else, outranking every other key', () => {
+    // Rule 0 sits AHEAD of NPC / favorite / chat-count / name, so the most
+    // favoured, busiest character still lands last once archived.
+    const list = [
+      character({ id: 'arch-fav', name: 'Aaron', isFavorite: true, _count: { chats: 99 } }),
+      character({ id: 'npc', name: 'Zeno', npc: true }),
+      character({ id: 'plain', name: 'Mabel' }),
+    ];
+    list[0].archivedAt = '2026-08-01T00:00:00.000Z';
+    expect(sortCharacters(list).map((c) => c.id)).toEqual(['plain', 'npc', 'arch-fav']);
+  });
+
+  it('orders two archived characters by the remaining keys', () => {
+    const a = character({ id: 'a', name: 'Zeb', isFavorite: true });
+    const b = character({ id: 'b', name: 'Abe' });
+    a.archivedAt = '2026-08-01T00:00:00.000Z';
+    b.archivedAt = '2026-08-02T00:00:00.000Z';
+    // Both archived ⇒ rule 0 is a tie and the favorite wins (rule 2).
+    expect(sortCharacters([b, a]).map((c) => c.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('CharactersList — the Show Archived toggle (P4.D64)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** The toolbar toggle, located by its v4 label in either state. */
+  function toggle(fixture: ComponentFixture<CharactersList>): HTMLButtonElement {
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
+    const found = buttons.find(
+      (b) => b.textContent?.includes('Show Archived') || b.textContent?.includes('Hide Archived'),
+    );
+    expect(found).toBeTruthy();
+    return found!;
+  }
+
+  it('is FIRST in the toolbar row, labelled Show Archived, with v4 title + inactive styling', async () => {
+    const fixture = await render(stubClient([character({})]));
+    const row = fixture.nativeElement.querySelector('.flex.flex-wrap.gap-3') as HTMLElement;
+    const first = row.querySelector('button') as HTMLButtonElement;
+    expect(first.textContent).toContain('Show Archived');
+    expect(first.getAttribute('title')).toBe('Show characters resting in the archive');
+    expect(first.className).toContain('qt-bg-muted/70');
+    expect(first.className).not.toContain('qt-bg-primary/20');
+  });
+
+  it('flips its label, title and styling when switched on', async () => {
+    const fixture = await render(stubClient([character({})]));
+    toggle(fixture).click();
+    fixture.detectChanges();
+    const on = toggle(fixture);
+    expect(on.textContent).toContain('Hide Archived');
+    expect(on.getAttribute('title')).toBe('Tuck the archived characters back out of sight');
+    expect(on.className).toContain('qt-bg-primary/20');
+    expect(on.className).toContain('qt-text-primary');
+  });
+
+  it('refetches with `archived: include` under a DISTINCT cache key, and reverts', async () => {
+    // The mutation-killer: a shared cache key would serve the first fetch's rows
+    // for both states, so the second dispatch would never happen and the
+    // archived row would never appear. Assert BOTH the wire and the rows.
+    const seen: Array<Record<string, unknown>> = [];
+    const live = character({ id: 'live', name: 'Bertie' });
+    const tomb = character({ id: 'tomb', name: 'Marchpane' });
+    tomb.archivedAt = '2026-08-01T00:00:00.000Z';
+    const client: Partial<CoreClient> = {
+      dispatchData: (async (req: Record<string, unknown>) => {
+        seen.push(req);
+        if (req['type'] === 'characterList') {
+          return { characters: req['archived'] === 'include' ? [live, tomb] : [live] };
+        }
+        if (req['type'] === 'connectionProfileList') return { profiles: [] };
+        return {};
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+    expect(fixture.nativeElement.textContent).not.toContain('Marchpane');
+
+    toggle(fixture).click();
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(seen.filter((r) => r['type'] === 'characterList' && r['archived'] === 'include')).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Marchpane');
+
+    toggle(fixture).click();
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.textContent).not.toContain('Marchpane');
+    // The OFF fetch never carries the param — absent IS the exclude default.
+    expect(seen.filter((r) => r['type'] === 'characterList' && !('archived' in r)).length).toBeGreaterThan(0);
+  });
+
+  it('widens delete invalidation to the characters PREFIX so the other variant refreshes', async () => {
+    const client: Partial<CoreClient> = {
+      dispatchData: (async (req: Record<string, unknown>) => {
+        switch (req['type']) {
+          case 'characterList':
+            return { characters: [character({ id: 'c1', name: 'Bertie' })] };
+          case 'connectionProfileList':
+            return { profiles: [] };
+          case 'characterCascadePreview':
+            return {
+              characterId: 'c1',
+              characterName: 'Bertie',
+              exclusiveChats: [],
+              exclusiveCharacterImageCount: 0,
+              exclusiveChatImageCount: 0,
+              totalExclusiveImageCount: 0,
+              memoryCount: 0,
+            };
+          default:
+            return { success: true };
+        }
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+    const qc = TestBed.inject(QueryClient);
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const del = fixture.nativeElement.querySelector('.qt-button-destructive') as HTMLButtonElement;
+    del.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const confirm = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Delete Character',
+    ) as HTMLButtonElement;
+    expect(confirm).toBeTruthy();
+    confirm.click();
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // v4 `:72-73` — `characters.all`, not `characters.list`.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['characters'] });
+  });
+});
+
+describe('CharacterCard — the archived tombstone card (P4.D64)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function archivedCard(): Promise<ComponentFixture<CharactersList>> {
+    const tomb = character({ id: 'tomb', name: 'Marchpane', isFavorite: true });
+    tomb.archivedAt = '2026-08-01T00:00:00.000Z';
+    return render(stubClient([tomb]));
+  }
+
+  it('badges the name with Archived and dates the tooltip', async () => {
+    const fixture = await archivedCard();
+    const badge = fixture.nativeElement.querySelector('.qt-badge') as HTMLElement;
+    expect(badge.textContent?.trim()).toBe('Archived');
+    expect(badge.getAttribute('title')).toBe(
+      `Resting in the archive since ${new Date('2026-08-01T00:00:00.000Z').toLocaleDateString()}`,
+    );
+  });
+
+  it('hides the favorite / Carina / controlled-by cluster', async () => {
+    const fixture = await archivedCard();
+    const text = fixture.nativeElement.textContent as string;
+    // The favorite affordance is the only ⭐/☆ on the card.
+    expect(text).not.toContain('☆');
+    expect(text).not.toContain('⭐');
+    expect(fixture.nativeElement.querySelector('qt-icon[name="monitor"]')).toBeNull();
+  });
+
+  it('replaces Chat AND both exports with one inert span, keeping Delete', async () => {
+    const fixture = await archivedCard();
+    const actions = fixture.nativeElement.querySelector('.character-card-actions') as HTMLElement;
+    expect(actions.querySelector('.character-card__action--chat')).toBeNull();
+    expect(actions.querySelector('qt-icon[name="download"]')).toBeNull();
+    expect(actions.querySelector('qt-icon[name="image"]')).toBeNull();
+    const span = actions.querySelector('span') as HTMLElement;
+    expect(span.textContent?.trim()).toBe('Resting in the archive');
+    expect(span.getAttribute('title')).toBe(
+      'An archived character neither chats nor exports; open their page to rehydrate them.',
+    );
+    // Delete survives — an archived character can still be thrown away.
+    expect(actions.querySelector('.qt-button-destructive')).toBeTruthy();
+  });
+
+  it('leaves a live card\u2019s actions and toggles untouched', async () => {
+    const fixture = await render(stubClient([character({ id: 'live', name: 'Bertie' })]));
+    const actions = fixture.nativeElement.querySelector('.character-card-actions') as HTMLElement;
+    expect(actions.querySelector('.character-card__action--chat')).toBeTruthy();
+    expect(actions.querySelector('qt-icon[name="download"]')).toBeTruthy();
+    expect(actions.querySelector('qt-icon[name="image"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.qt-badge')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('☆');
+  });
+});

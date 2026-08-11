@@ -16,6 +16,7 @@ import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
+import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { ToastService } from '../../../ui/toast.service';
 import {
@@ -52,9 +53,21 @@ export function formatCharacterDeleteSuccess(data: Record<string, unknown>): str
   return parts.join('. ');
 }
 
-/** v4 `AuroraView.tsx:125-140` sort: NPCs last → favorites first → chats desc → name. */
+/**
+ * v4 `AuroraView.tsx:125-140` sort: archived last → NPCs last → favorites first
+ * → chats desc → name.
+ *
+ * P4.D64 added rule 0 AHEAD of the other three (v4 `:147-153`): "Archived
+ * characters at the very end of the shelf". It outranks every other key, so a
+ * favorite with nine chats still sinks below a plain NPC once archived.
+ */
 export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
   return [...list].sort((a, b) => {
+    const aArchived = Boolean(a.archivedAt);
+    const bArchived = Boolean(b.archivedAt);
+    if (aArchived !== bArchived) {
+      return aArchived ? 1 : -1;
+    }
     if (a.npc !== b.npc) {
       return a.npc ? 1 : -1;
     }
@@ -82,6 +95,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    Icon,
     LoadingState,
     ErrorAlert,
     CharacterCard,
@@ -111,6 +125,26 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
         >
           <h1 class="qt-page-title">Characters</h1>
           <div class="flex flex-wrap gap-3">
+            <!-- P4.D64: "Show Archived" (v4 AuroraView.tsx:402-409) — FIRST in
+                 the toolbar row, plain local state with no URL component. -->
+            <button
+              type="button"
+              [class]="
+                'qt-button character-toolbar__button inline-flex items-center gap-1.5 rounded-lg border qt-border-default px-4 py-2 text-sm qt-shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
+                (showArchived()
+                  ? 'qt-bg-primary/20 qt-text-primary'
+                  : 'qt-bg-muted/70 qt-text-primary hover:qt-bg-muted')
+              "
+              [title]="
+                showArchived()
+                  ? 'Tuck the archived characters back out of sight'
+                  : 'Show characters resting in the archive'
+              "
+              (click)="showArchived.set(!showArchived())"
+            >
+              <qt-icon name="folder" class="w-4 h-4" />
+              {{ showArchived() ? 'Hide Archived' : 'Show Archived' }}
+            </button>
             <button
               type="button"
               class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
@@ -281,16 +315,33 @@ export class CharactersList {
   /** Drilled group's back — restore the list AND refetch (v4 refetches on remount). */
   protected onGroupBack(): void {
     this.selectedGroupId.set(null);
-    void this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+    void this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 
   protected readonly importOpen = signal(false);
   protected readonly resetOpen = signal(false);
   protected readonly deleteTarget = signal<CharacterListItem | null>(null);
 
+  /**
+   * P4.D64 (v4 `AuroraView.tsx:47-49`): "Show archived" opts into the tombstones
+   * the API hides by default. Plain local state — v4 puts nothing in the URL, so
+   * a reload lands back on the live shelf.
+   */
+  protected readonly showArchived = signal(false);
+
+  /**
+   * The active list key / fetch filter. The two toggle states cache under
+   * DISTINCT keys so they never cross-contaminate (v4 `:53`), and the param is
+   * OMITTED entirely when the toggle is off — absent IS the exclude default.
+   */
+  private readonly listFilter = computed(() =>
+    this.showArchived() ? ({ archived: 'include' } as const) : undefined,
+  );
+
   protected readonly charactersQuery = injectQuery(() => ({
-    queryKey: characterKeys.list(),
-    queryFn: (): Promise<CharacterListItem[]> => fetchCharacterList(this.core),
+    queryKey: characterKeys.list(this.listFilter()),
+    queryFn: (): Promise<CharacterListItem[]> =>
+      fetchCharacterList(this.core, this.listFilter()),
   }));
 
   private readonly profilesQuery = injectQuery(() => ({
@@ -357,7 +408,9 @@ export class CharactersList {
     apply: (c: CharacterListItem) => CharacterListItem,
     failureMessage: string,
   ): Promise<void> {
-    const key = characterKeys.list();
+    // The ACTIVE key, not the unfiltered one: with "Show Archived" on, the rows
+    // on screen live under `list({archived:'include'})` (v4 `:66` `activeKey`).
+    const key = characterKeys.list(this.listFilter());
     const previous = this.queryClient.getQueryData<CharacterListItem[]>(key);
     this.queryClient.setQueryData<CharacterListItem[]>(key, (prev) =>
       (prev ?? []).map((c) => (c.id === id ? apply(c) : c)),
@@ -367,7 +420,9 @@ export class CharactersList {
     } catch (err) {
       // Roll back to server truth on failure (v4 `AuroraView.tsx:206-249`).
       this.queryClient.setQueryData<CharacterListItem[]>(key, previous);
-      await this.queryClient.invalidateQueries({ queryKey: key });
+      // Prefix invalidation so the other archived-filter variant refreshes too
+      // (v4 `:72-73`).
+      await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
       this.toasts.showError(err instanceof Error ? err.message : failureMessage);
     }
   }
@@ -397,7 +452,7 @@ export class CharactersList {
         cascadeImages: choice.cascadeImages,
       });
       this.deleteTarget.set(null);
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+      await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
       this.toasts.showSuccess(formatCharacterDeleteSuccess(data));
     } catch (err) {
       // v4 `AuroraView.tsx:201-203` leaves the dialog open and does not refetch.
@@ -406,11 +461,11 @@ export class CharactersList {
   }
 
   protected async onImported(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+    await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 
   protected async onReset(): Promise<void> {
     this.resetOpen.set(false);
-    await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+    await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 }
