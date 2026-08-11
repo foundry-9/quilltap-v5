@@ -516,19 +516,25 @@ fn preflight_preserve_ids(
         .chain(blobs.iter())
         .filter_map(|r| non_empty(r.get("linkId")))
         .collect();
-    // ⚠ DELIBERATE v5 DIVERGENCE (§3 review, the archive-round-2 round): blob
-    // ids are deduped first-occurrence where v4's `carriedBlobIds`
-    // (`execute.ts:115`) is not. The export's blob listing joins FROM the
-    // links (`listByMountPoint`, one row per link), so a blob whose content is
-    // linked twice in one store — an ordinary sha-deduped gallery save — is
-    // emitted once PER LINK, and v4's undeduped list makes its own preflight
-    // throw `(also seen as document store blob)` on every rehydrate of such a
-    // vault: an archived character with a twice-linked photo cannot come back
-    // in v4 at all. The repeats are identical claims (same row, one id), the
-    // same shape the fileId dedupe above already sanctions. Reader-side only —
-    // the export bytes still carry v4's duplicates. Filed as v4 Bug 57
-    // (`docs/developer/bugs/bug-57-rehydrate-duplicate-blob-claim.md` in the
-    // v4 repo); this divergence becomes plain convergence when it lands.
+    // Blob ids dedupe first-occurrence, for the same repeat-by-construction
+    // reason as the file ids above. v4's own wording (`execute.ts:115`):
+    //
+    // > The blob leg of the export emits one record per LINK
+    // > (`listByMountPoint` joins from `doc_mount_file_links`), so a
+    // > content-addressed blob linked at two paths appears twice under one
+    // > blobId — identical claims over a single row, not a duplicate claim.
+    // > Dedupe, as with `carriedFileIds` above; the sha-match skip below still
+    // > refuses a genuine same-id/different-bytes clash.
+    //
+    // CONVERGENCE (v4 `de9f70bf`, Bug 57): v5 carried this as a pinned
+    // divergence from the archive round-2 §3 review — v4's undeduped list made
+    // its own preflight throw `(also seen as document store blob)` on every
+    // rehydrate of such a vault, so an archived character with a twice-linked
+    // photo could not come back in v4 at all. Found BY this port's unification
+    // wire test; v4 adopted the dedupe and the two readers now agree. (Reader
+    // side only on both: the export writer still emits the per-link
+    // duplicates.) `carriedLinkIds` stays undeduped on both sides — each
+    // record carries its own link's id, so a repeat there is a real clash.
     let mut carried_blob_ids: Vec<String> = Vec::new();
     for row in blobs.iter() {
         if let Some(id) = non_empty(row.get("blobId")) {

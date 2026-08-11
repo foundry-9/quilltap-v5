@@ -561,7 +561,9 @@ catch, since every fixture is built fresh.
 
 - **v4-side item (2026-08-11, the archive round-2 §3 unification review) —
   FILED as v4 Bug 57 (`bugs/bug-57-rehydrate-duplicate-blob-claim.md`,
-  v4 commit `0472cf6c`): v4 cannot rehydrate an archived character whose
+  v4 commit `0472cf6c`) and ✅ FIXED v4-side the same day in `de9f70bf`
+  ("fix(archive): rehydrate no longer refuses a twice-linked blob"): v4 could
+  not rehydrate an archived character whose
   vault links the same bytes twice.** Two v4 facts compose into a rehydrate-killer: the export's
   blob listing (`doc-mount-blobs.repository.ts:439` `listByMountPoint`)
   joins FROM the links, one row per link, so a blob whose content is linked
@@ -571,13 +573,14 @@ catch, since every fixture is built fresh.
   `carriedFileIds` one list up, whose comment sanctions exactly this repeat
   shape), so the within-bundle duplicate throws `Preserve IDs collision for
   document store blob … (also seen as document store blob)` on EVERY
-  rehydrate of such a vault. The v4 fix is the same one-list dedupe v5 now
-  carries (first-occurrence, reader-side; the writer's bytes are untouched).
-  v5 DIVERGES deliberately as of the round-2 unification
-  (`quilltap_import/mod.rs`, live-pinned by
-  `crates/quilltap-web/tests/characters_action_route.rs`'s rehydrate leg
-  over a twice-linked-blob vault; the differential-level both-directions pin
-  rides P4.D65's resume list).
+  rehydrate of such a vault. The v4 fix is the same one-list dedupe v5 already
+  carried (first-occurrence, reader-side; the writer's bytes are untouched).
+  **CLOSED (P4.D65 resumed, 2026-08-11):** v5's divergence markers
+  (`quilltap_import/mod.rs`, `characters_action_route.rs`) are retired to
+  convergence notes naming `de9f70bf`, and the owed both-directions pin
+  landed instead as a PLAIN-EQUALITY differential arm
+  (`character_archive_tier2_equivalence`'s twice-linked-blob case), which
+  stays mutation-sensitive: removing v5's dedupe reds it.
 
 - **ROUTED to `p4.9l` (finding #75, 2026-08-08) — the Salon composer layout is
   functionally degraded, not just cosmetically off.** In a wide pane (and worse

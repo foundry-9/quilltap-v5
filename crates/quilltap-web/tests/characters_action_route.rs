@@ -11,12 +11,14 @@
 //! into the P4.D65 dispatch arms, and answers v4's envelope (raw result bag on
 //! success, `{error}` + status on failure).
 //!
-//! The rehydrate leg is also the LIVE pin for the carried-blob-id dedupe
-//! divergence (`quilltap_import/mod.rs`): the photos fixture's first vaulted
+//! The rehydrate leg is also a live regression leg for the carried-blob-id
+//! dedupe (`quilltap_import/mod.rs`): the photos fixture's first vaulted
 //! character carries a twice-linked (sha-deduped) blob, exactly the shape
-//! whose per-link export duplication makes v4's own preflight refuse every
+//! whose per-link export duplication used to make the preflight refuse every
 //! rehydrate — remove the dedupe and this test's rehydrate answers 400
-//! `Preserve IDs collision … (also seen as document store blob)`.
+//! `Preserve IDs collision … (also seen as document store blob)`. This was a
+//! pinned v5 divergence when the round-2 unification found it; v4 CONVERGED in
+//! `de9f70bf` (Bug 57), so the leg is now a plain equality on both sides.
 //!
 //! Run: `cargo test -p quilltap-web --test characters_action_route`
 
