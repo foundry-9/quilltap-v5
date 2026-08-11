@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Proved all 39 repaired differential families runnable end-to-end through the
+sweep driver — regenerate the oracle from v4, then run the diff, one clean
+invocation each — and committed the per-family results. The run exposed four
+more broken recipes and fixed them: one that annotated a command line with a
+parenthesis (bash died on it), one that expected a temp-built fixture to
+"already exist" and so was dead the first time the temp directory was cleaned,
+and two whose regeneration step was silently dropped because it invoked its
+tool by full path, which the extractor did not recognize as a command. A fifth
+suspected class — a recipe reading a fixture no step of it builds — is recorded
+with its candidates rather than half-detected. Developer tooling only.
+
 Closed a hole in the sweep driver's own stale-oracle guard: it deleted a
 family's previous oracle only when the recipe wrote it through a shell
 redirect, which is the tsx convention. Every jest-based family writes through

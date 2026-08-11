@@ -21,13 +21,19 @@
  * in-handler filters still run).
  *
  * Run (Node 24 — cp to a /tmp mirror; jest ignores .claude/ paths). The
- * fixture must already exist (build-ui-search-fixture.ts):
+ * fixture is /tmp-built, never committed, so the build stage is part of this
+ * recipe — it used to say "the fixture must already exist", which made the
+ * family dead the first time /tmp was cleaned (P4.45):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-ui-search-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/ui-search.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/ui-search.json" "$TMPO/fixtures/"
+ *   mkdir -p /tmp/qt-ui-search-fixture
  *   cd ~/source/quilltap-server   # or the pinned detached worktree on drift
+ *   QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+ *   QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+ *     $N/node --import tsx "$V5W/harness/oracle/fixtures/build-ui-search-fixture.ts"
  *   QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
  *   QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-ui-search.ndjson \

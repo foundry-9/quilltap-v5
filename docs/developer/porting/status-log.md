@@ -64628,3 +64628,79 @@ redirect scan. Checked before relying on it: no family derives an NDJSON path
 from `$TMPO`/`$STAGE`, so the per-family scratch suffix cannot make the driver
 delete a path different from the one the script writes. Self-test pins both
 conventions.
+
+---
+
+## Lane record — P4.45 unit 4: the green proof, and the four repairs it exposed, 2026-08-11
+
+The proof run: `recipe_sweep.py --run-all` over every family this lane
+repaired, at the `de9f70bf` pin (v4 HEAD re-verified at the run, tree clean, so
+the checkout IS the pin and no detached worktree was needed). The committed
+artifact is `harness/tools/sweep-results/2026-08-11-de9f70bf-p4.45-repairs.json`
+— per-family status + cause, written after every family.
+
+**Freshness.** `--run` deletes each family's oracle NDJSON before the regen
+stage (unit 3b made that cover both output conventions), so a green line here
+cannot be a stale-oracle pass: the file the run stage read did not exist when
+the run began. That is a stronger guarantee than the `oracle-regen-silent-
+stale-pass` marker grep, which infers freshness from content; this one removes
+the file.
+
+**The first pass found two families that could not regenerate at all** — both
+outside the order's named set, both in the shape the order named, so they were
+repaired rather than merely recorded (tier 3's "diagnose enough to classify"
+was satisfied in a line, and the fix was a comment):
+
+1. `embedding_reapply_equivalence` — `regen_failed`, `bash: syntax error near
+   unexpected token '('`. Its case header annotates a real command inline:
+   `cd ~/source/quilltap-server   (or a pinned worktree)`. An indented line is
+   extracted verbatim, so the parenthetical reached bash. Reworded to a `#`
+   comment, which is what every other header uses.
+2. `ui_search_equivalence` — `regen_failed`, the case throwing
+   `fixture ui-search-main missing`. Its recipe said "the fixture must already
+   exist (build-ui-search-fixture.ts)" and omitted the build stage. The fixture
+   is /tmp-built and deliberately never committed, so the family was dead the
+   first time /tmp was cleaned — which is where it was found. The builder's own
+   header carries its invocation; that stage is now part of the recipe, and the
+   family runs from nothing.
+
+**Then the detector work found two more families whose regen was a no-op**, and
+these are the more interesting ones because nothing was failing — they were
+`ok_restored` and would have run "green" while regenerating nothing:
+
+3. `SHELL_START` did not recognize a command invoked by PATH
+   (`~/.nvm/versions/node/v24.13.1/bin/npx tsx …`). Such a line was dropped as
+   prose — and with it every continuation line, since a continuation only
+   continues a KEPT line. `annotations_rendering_patterns_equivalence` therefore
+   extracted a regen stage consisting of exactly `cd ~/source/quilltap-server`,
+   and `announcement_attribution_equivalence` fell back to a restored variant.
+   Both now extract their own header's full command; both run green. Verified
+   by the same before/after script diff used in unit 1: precisely those two
+   families changed, nothing else. `--list` moves `ok` 288 → 290 /
+   `ok_restored` 72 → 70 — two families no longer NEED anchored restoration.
+4. `scan_writes` matched `>` but not `>>`, so a multi-pass regen that
+   accumulates its NDJSON (`builtin_mounts` loops three states into one file)
+   did not count that file as its own output. Extraction is byte-unchanged by
+   this fix; four families' outputs became tracked.
+
+**Recorded, NOT taken — a fifth shape with an honest blocker.** `ui_search`'s
+defect generalizes: a recipe can READ a /tmp fixture that no stage of it
+writes. The driver already has that warning class (`external_tmp_input`) but
+only inspects jest roots, `cp` sources and script paths — never `QT_FIXTURE*`
+env values, which is how every fixture reaches an oracle. Extending it there
+was measured three ways: naively it warns on 67 families (mostly wrong — the
+env value on a builder invocation is an OUTPUT); made builder-aware it drops to
+8; and of those 8 at least two are still false (`builtin_mounts` writes its
+NDJSON with `>>`, `provisioning` writes through `QT_ORACLE_PROVISION=`). The
+blocker is that direction is genuinely ambiguous from the text —
+`QT_FIXTURE_X=/tmp/x.db $N/node build-x-fixture.ts` writes it and
+`QT_FIXTURE_X=/tmp/x.db $N/npx jest …` reads it — and a warning class that is
+half wrong trains the next author to ignore it. The candidate list, for whoever
+takes it: `builtin_mounts`, `builtin_templates`, `embedding_profiles_routes`,
+`ensure_character_metadata_file`, `help_doc_sync_guards`,
+`metadata_vault_roundtrip`, `reset_builtins`, `seed_avatars` — the last four
+look like true "leans on another family's staging" cases by inspection.
+
+Files touched outside `crates/`: two oracle CASE headers
+(`embedding-reapply.test.ts`, `ui-search.test.ts`), comment-only, neither
+belonging to the sibling lane's archive/import/qtap/characters set.

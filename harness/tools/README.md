@@ -206,6 +206,20 @@ a byte-for-byte no-op, and `--self-test` asserts both that and the redirect.
 - **Markdown code fences are not a recipe marker.** ` ```text ` blocks are
   invisible to the extractor; indent the block instead (P4.45 converted the
   one header that used a fence, `memory_weighting_equivalence`).
+- **Keep annotations off command lines — a `#` comment, never a parenthesis.**
+  An indented line is extracted verbatim, so
+  `cd ~/source/quilltap-server   (or a pinned worktree)` reaches bash as-is and
+  dies on the `(`. Write `# or the pinned detached worktree on drift`
+  (`embedding_reapply`'s case header did the former until P4.45).
+- **A /tmp fixture your recipe READS, your recipe must BUILD.** "The fixture
+  must already exist" is not a recipe: /tmp gets cleaned and the family is dead
+  the next round, which is exactly what happened to `ui_search_equivalence`.
+  Fold the builder invocation (it has its own recipe in
+  `harness/oracle/fixtures/build-*.ts`) into the regen stage.
+- **Invoking by path is fine** (`~/.nvm/…/bin/npx tsx …`) as well as by name.
+  It was not before P4.45 — such a line was dropped as prose, taking its
+  continuation lines with it, which is how `annotations_rendering_patterns`
+  came to extract a regen consisting of one `cd`.
 - **One assignment per line.** `WT=… STAGE=/tmp/qt-oracle-stage` on a single
   line defeats the per-family scratch suffix (policy 2 anchors on `^VAR=`),
   so the family silently shares a mirror with every other family that used

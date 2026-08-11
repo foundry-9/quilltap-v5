@@ -1,0 +1,325 @@
+{
+  "label": "P4.45 repaired families, re-run at the de9f70bf baseline (v4 HEAD, tree clean)",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-45-sweep-driver-rot-2b350d",
+  "venue_is_worktree": true,
+  "requested": [
+    "about_character_matchers_equivalence",
+    "canon_scenario_equivalence",
+    "canonicalize_equivalence",
+    "chat_timestamp_equivalence",
+    "cheap_model_equivalence",
+    "context_budget_equivalence",
+    "core_whisper_equivalence",
+    "embedding_vector_equivalence",
+    "extract_novel_details_equivalence",
+    "jsnum_formatters_equivalence",
+    "legacy_embedding_equivalence",
+    "memory_name_helpers_equivalence",
+    "memory_tasks_equivalence",
+    "memory_weighting_equivalence",
+    "mentioned_characters_equivalence",
+    "message_attribution_equivalence",
+    "message_selector_equivalence",
+    "model_context_equivalence",
+    "model_selection_equivalence",
+    "pricing_equivalence",
+    "provider_registry_equivalence",
+    "ranking_blend_equivalence",
+    "recall_tags_equivalence",
+    "select_speaker_equivalence",
+    "skip_signal_equivalence",
+    "small_utils_equivalence",
+    "template_prompt_hint_equivalence",
+    "token_estimation_equivalence",
+    "turn_order_equivalence",
+    "turn_pause_filters_equivalence",
+    "turn_state_equivalence",
+    "write_partition_equivalence",
+    "danger_gatekeeper_tier3_equivalence",
+    "state_sql_tools_equivalence",
+    "documents_routes_equivalence",
+    "embedding_reapply_equivalence",
+    "ui_search_equivalence",
+    "annotations_rendering_patterns_equivalence",
+    "announcement_attribution_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "about_character_matchers_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "canon_scenario_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "canonicalize_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chat_timestamp_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "cheap_model_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "context_budget_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "core_whisper_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_vector_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "extract_novel_details_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "jsnum_formatters_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "legacy_embedding_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_name_helpers_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_tasks_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "memory_weighting_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "mentioned_characters_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "message_attribution_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "message_selector_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "model_context_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "model_selection_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pricing_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "provider_registry_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "ranking_blend_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "recall_tags_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "select_speaker_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "skip_signal_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "small_utils_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "template_prompt_hint_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "token_estimation_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "turn_order_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "turn_pause_filters_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "turn_state_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "write_partition_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "danger_gatekeeper_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "state_sql_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "documents_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_reapply_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "ui_search_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "annotations_rendering_patterns_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "announcement_attribution_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 39
+  }
+}

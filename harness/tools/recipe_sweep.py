@@ -151,6 +151,13 @@ SHELL_START = re.compile(
     r"…\s*\S"
     r"|[A-Za-z_][A-Za-z0-9_]*=\S"  # VAR=value (env prefix or assignment)
     r"|cd\s|cp\s|mv\s|rm\s|mkdir\s|ln\s|export\s|for\s|do\s|done\b|touch\s"
+    # P4.45: a command invoked by PATH rather than by name
+    # (`~/.nvm/versions/node/v24.13.1/bin/npx tsx …`). Three headers open their
+    # regen that way and the whole stage was dropped as prose — including its
+    # continuation lines, since a continuation only continues a kept line — so
+    # `annotations_rendering_patterns` and `announcement_attribution` extracted
+    # to a bare `cd ~/source/quilltap-server` and could never regenerate.
+    r"|~?/\S+\s"
     r"|\$N/|\$\{?N\}?/|npx\s|node\s|cargo\s|python3?\s|bash\s|sh\s|diff\s"
     r"|brctl\s|sqlite3\s|tar\s|unzip\s|curl\s"
     r")"
@@ -520,7 +527,11 @@ def scan_writes(r: Recipe, joined: str) -> None:
             args = m.group(1).split()
             if len(args) >= 2:
                 record(resolve(args[-1]), line)
-        for rm_ in re.finditer(r"(?:^|\s)>\s*(\S+)", line):
+        # `>` and `>>` alike (P4.45: the append form is how a multi-pass regen
+        # accumulates its NDJSON — `builtin_mounts` loops three states into one
+        # file — and it was invisible to the write scan, so those outputs were
+        # not counted as the recipe's own).
+        for rm_ in re.finditer(r"(?:^|\s)>>?\s*(\S+)", line):
             record(resolve(rm_.group(1)), line)
         for rm_ in re.finditer(r"(?:QT_[A-Z0-9_]*_|QT_)(?:OUT|OUTPUT)[A-Z0-9_]*=(\S+)", line):
             record(resolve(rm_.group(1)), line)
@@ -1004,6 +1015,10 @@ SELF_TEST_SHELL = [
     # F8: an elided command must survive classification, or `extract`'s own
     # `…` check never fires and anchored restoration is skipped.
     "… QT_ORACLE_OUT=/tmp/oracle-x.ndjson \\",
+    # P4.45: a command invoked by PATH, not by name — two headers open their
+    # regen this way and lost the whole stage (continuations included).
+    "~/.nvm/versions/node/v24.13.1/bin/npx tsx \\",
+    "/usr/bin/env node --import tsx build.ts",
 ]
 
 # P4.45: real prose lines, verbatim, that open with a command word and defeat
@@ -1082,6 +1097,14 @@ def cmd_self_test() -> int:
         {p for p in r_out.tmp_writes if p.endswith(".ndjson")}
         == {"/tmp/oracle-jest.ndjson", "/tmp/oracle-tsx.ndjson"},
         f"stale-oracle deletion would miss an output: {sorted(r_out.tmp_writes)}",
+    )
+    # …and the APPEND form a multi-pass regen uses (`builtin_mounts` loops three
+    # states into one NDJSON), which the write scan used to miss entirely.
+    r_app = Recipe("x", Path("x"))
+    scan_writes(r_app, "QT_STATE=$S npx tsx case.ts >> /tmp/oracle-appended.ndjson")
+    check(
+        "/tmp/oracle-appended.ndjson" in r_app.tmp_writes,
+        f"append redirect not counted as a write: {sorted(r_app.tmp_writes)}",
     )
 
     # P4.45's attribution rule: the exact run-line shapes that carried the
