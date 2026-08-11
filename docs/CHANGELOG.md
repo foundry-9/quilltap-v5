@@ -74,6 +74,17 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 5: the settings surfaces account for archive bundles. The
+Encryption Passphrase card counts the bundles sealed under the current
+passphrase and warns that each will be rewritten, then reports what the
+change actually did — all rewritten, or the ones left behind named with
+their reasons. Delete All Data reports the bundles on hand and offers to
+leave them on the shelf (ticked by default), with a note on the completion
+screen when any survive. The export wizard, on reaching its options step for
+a characters export, asks what the vaults add to the trunk and says so —
+advisory only, so a failed read simply says nothing. A replace-mode restore
+can spare the bundles from the wipe that precedes it.
+
 P4.D64 unit 4: archived characters are visible where they still belong. A
 group whose roster includes an archived member now reads "3 members / 2 can
 speak (1 archived)" and badges that member's row; an ordinary group's

@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, output, signal } 
 
 import { apiUrl } from '../../../core/api-url';
 import { CoreClient } from '../../../core/core-client';
-import { CoreDispatchError } from '../../../core/core-contract';
+import { CoreDispatchError, type ExportVaultPreview } from '../../../core/core-contract';
+import { formatBytes } from '../../../ui/format-bytes';
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
 import { triggerBlobDownload } from '../../../core/download-utils';
@@ -134,6 +135,16 @@ type Scope = 'all' | 'selected';
                 }
               </div>
             </label>
+
+            <!-- P4.D64 (v4 ExportOptionsStep.tsx:51-71): characters now travel
+                 with their vaults, which can dwarf everything else in the bundle.
+                 Advisory only — absent when the read fails or there is no vault. -->
+            @if (vaultHint(); as hint) {
+              <div class="p-4 border qt-border-default rounded-lg">
+                <p class="font-medium text-foreground">Every character travels with their vault</p>
+                <p class="qt-text-small qt-text-secondary mt-1">{{ hint }}</p>
+              </div>
+            }
           </div>
         }
         @case ('exporting') {
@@ -233,6 +244,59 @@ export class ExportDialog {
   protected readonly exporting = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly searchQuery = signal('');
+  /**
+   * P4.D64 §6: what the selected characters' vaults add to the bundle. Null until
+   * the options step has asked, and for every type but `characters`.
+   */
+  protected readonly vaultPreview = signal<ExportVaultPreview | null>(null);
+
+  /** Pluralize a count without the bare "1 items" indignity (v4's helper). */
+  private count(n: number, singular: string, plural: string): string {
+    return `${n} ${n === 1 ? singular : plural}`;
+  }
+
+  /**
+   * v4's assembled sentence (`ExportOptionsStep.tsx:56-70`), rendered only when
+   * at least one vault travels along. The papers/photographs clause is omitted
+   * entirely when both are zero, which is why the separator flips between ': '
+   * and '. '.
+   */
+  protected readonly vaultHint = computed(() => {
+    const preview = this.vaultPreview();
+    if (!preview || preview.stores <= 0) {
+      return null;
+    }
+    const parts = [
+      preview.documents > 0 ? this.count(preview.documents, 'paper', 'papers') : null,
+      preview.blobs > 0 ? this.count(preview.blobs, 'photograph', 'photographs') : null,
+    ].filter((part): part is string => part !== null);
+    const head = `${this.count(preview.stores, 'vault', 'vaults')} packed and labelled`;
+    const middle = parts.length > 0 ? `: ${parts.join(' and ')}. ` : '. ';
+    return `${head}${middle}Expect a trunk of roughly ${formatBytes(
+      preview.estimatedBytes,
+    )} — the photographs, as ever, are the heavy luggage.`;
+  });
+
+  /**
+   * Ask the server what the selected characters' vaults add to the bundle.
+   * PURELY ADVISORY: a failure leaves the hint absent rather than blocking the
+   * export, so this never surfaces an error to the wizard (v4 `:1141-1145`).
+   */
+  private async loadVaultPreview(): Promise<void> {
+    this.vaultPreview.set(null);
+    const scope = this.scope();
+    try {
+      const data = await this.core.dispatchData({
+        type: 'systemExportPreview',
+        entityType: 'characters',
+        scope,
+        ...(scope === 'selected' ? { selectedIds: this.selectedIds() } : {}),
+      });
+      this.vaultPreview.set((data['vaults'] as ExportVaultPreview | undefined) ?? null);
+    } catch {
+      // Advisory: the hint simply does not appear.
+    }
+  }
 
   private supportsMemories(t: ExportEntityType | null): boolean {
     return t === 'characters' || t === 'chats';
@@ -303,6 +367,7 @@ export class ExportDialog {
     this.entityType.set(t);
     this.scope.set('all');
     this.selectedIds.set([]);
+    this.vaultPreview.set(null);
     this.error.set(null);
   }
 
@@ -323,6 +388,11 @@ export class ExportDialog {
     } else if (this.step() === 'select') {
       if (this.scope() === 'selected' && this.selectedIds().length === 0) return;
       this.step.set(this.supportsMemories(this.entityType()) ? 'options' : 'exporting');
+      // v4 `:1175-1181`: ask ONCE, on the way INTO the options step, and only for
+      // a type that has vaults — never on the way past, never for anything else.
+      if (this.step() === 'options' && this.entityType() === 'characters') {
+        void this.loadVaultPreview();
+      }
     } else if (this.step() === 'options') {
       this.step.set('exporting');
     }

@@ -27,6 +27,13 @@ interface DeleteSummary {
   projects?: number;
   profiles?: { connection?: number; image?: number; embedding?: number };
   templates?: { prompt?: number; roleplay?: number };
+  /**
+   * P4.D64 §4: archived-character `.qtap` bundles on hand (preview) or spared
+   * (result), and whether they were spared. NOT part of the total — v4 reports
+   * `files` net of the kept bundles, and the row is informational.
+   */
+  archiveBundles?: number;
+  archiveBundlesKept?: boolean;
 }
 
 /**
@@ -75,6 +82,14 @@ interface DeleteSummary {
                         <span class="qt-text-primary">{{ row.value }}</span>
                       </div>
                     }
+                    @if (bundleCount(p) > 0) {
+                      <div class="flex justify-between">
+                        <span class="qt-text-secondary">Archived Character Bundles</span>
+                        <span class="qt-text-primary">
+                          {{ p.archiveBundles }} {{ keepArchives() ? '(kept)' : '' }}
+                        </span>
+                      </div>
+                    }
                     <div class="border-t qt-border-default pt-2 mt-2">
                       <div class="flex justify-between font-semibold">
                         <span class="text-foreground">Total Items</span>
@@ -82,6 +97,27 @@ interface DeleteSummary {
                       </div>
                     </div>
                   </div>
+                  @if (bundleCount(p) > 0) {
+                    <div class="qt-bg-muted/50 border qt-border-default rounded-lg p-3 space-y-2">
+                      <label class="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          class="mt-0.5 w-4 h-4 rounded focus:ring-ring"
+                          [checked]="keepArchives()"
+                          (change)="keepArchives.set($any($event.target).checked)"
+                        />
+                        <span class="text-sm qt-text-primary">
+                          Leave the archived-character bundles on the shelf ({{ bundleCount(p) }}
+                          {{ bundleCount(p) === 1 ? 'file' : 'files' }})
+                        </span>
+                      </label>
+                      <p class="qt-text-xs qt-text-secondary">
+                        Their character records perish with everything else, so what remains is a
+                        loose bundle apiece — each may be imported afresh, but none can simply be
+                        woken. Untick to sweep the shelf bare as well.
+                      </p>
+                    </div>
+                  }
                   <div class="qt-bg-destructive/10 border qt-border-destructive/30 rounded-lg p-3">
                     <p class="text-sm qt-text-destructive font-medium">
                       This action cannot be undone. All your data will be permanently deleted.
@@ -126,6 +162,13 @@ interface DeleteSummary {
                 <p class="text-center qt-text-small">
                   Successfully deleted {{ completeTotal() }} items from your account.
                 </p>
+                @if (keptBundles(); as kept) {
+                  <p class="text-center qt-text-xs">
+                    {{ kept }} archived-character
+                    {{ kept === 1 ? 'bundle remains' : 'bundles remain' }} on the shelf, ready for
+                    import.
+                  </p>
+                }
                 <p class="text-center qt-text-xs">
                   Your account is now clean. You can start fresh or restore from a backup.
                 </p>
@@ -180,6 +223,30 @@ export class DeleteDataCard {
   protected readonly loading = signal(false);
   protected readonly confirmText = signal('');
   protected readonly error = signal<string | null>(null);
+  /**
+   * P4.D64 §4 (v4 `:43`): spare the archived-character bundles. Default TRUE and
+   * reset to TRUE on every open AND close — the server's effective default is
+   * the same (`!== false`), so the safe arm is the one both ends agree on.
+   */
+  protected readonly keepArchives = signal(true);
+
+  /** The bundles on hand, absent-or-zero meaning "no shelf to speak of". */
+  protected bundleCount(s: DeleteSummary): number {
+    return s.archiveBundles ?? 0;
+  }
+
+  /**
+   * The completion note's count — rendered only when the result says bundles were
+   * KEPT and there was at least one (v4 `:394`), so a swept shelf says nothing.
+   */
+  protected readonly keptBundles = computed(() => {
+    const s = this.deleteSummary();
+    if (!s?.archiveBundlesKept) {
+      return null;
+    }
+    const n = s.archiveBundles ?? 0;
+    return n > 0 ? n : null;
+  });
 
   protected readonly dialogTitle = computed(() =>
     this.step() === 'complete' ? 'Deletion Complete' : 'Delete All Data',
@@ -236,6 +303,7 @@ export class DeleteDataCard {
     this.preview.set(null);
     this.deleteSummary.set(null);
     this.confirmText.set('');
+    this.keepArchives.set(true);
     this.error.set(null);
     this.loading.set(true);
     try {
@@ -254,6 +322,7 @@ export class DeleteDataCard {
     this.preview.set(null);
     this.deleteSummary.set(null);
     this.confirmText.set('');
+    this.keepArchives.set(true);
     this.error.set(null);
   }
 
@@ -278,6 +347,7 @@ export class DeleteDataCard {
       const data = await this.core.dispatchData({
         type: 'systemDeleteData',
         confirm: 'DELETE_ALL_MY_DATA',
+        keepArchivedCharacterBundles: this.keepArchives(),
       });
       this.deleteSummary.set((data['summary'] ?? {}) as DeleteSummary);
       this.toasts.showSuccess('All data has been deleted');

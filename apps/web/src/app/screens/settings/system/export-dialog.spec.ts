@@ -183,3 +183,125 @@ describe('ExportDialog — the new types need no new machinery', () => {
     expect(text).toContain('0 of 2 selected');
   });
 });
+
+// ===========================================================================
+// P4.D64 — the advisory vault hint on the options step (v4
+// `ExportOptionsStep.tsx` + `useExportData.ts` at `d553f72a`).
+// ===========================================================================
+
+describe('ExportDialog — the character-vault hint (P4.D64)', () => {
+  /** A stub that records dispatches and answers the preview with `vaults`. */
+  function previewStub(opts: { vaults?: Record<string, number> | null; fail?: boolean }): {
+    client: Partial<CoreClient>;
+    seen: Array<Record<string, unknown>>;
+  } {
+    const seen: Array<Record<string, unknown>> = [];
+    const client = coreStub((async (req: Record<string, unknown>) => {
+      seen.push(req);
+      if (req['type'] === 'systemExportEntities') {
+        return { entities: [{ id: 'c1', name: 'Bertie', memoryCount: 0 }] };
+      }
+      if (req['type'] === 'systemExportPreview') {
+        if (opts.fail) throw new Error('preview unavailable');
+        return opts.vaults ? { vaults: opts.vaults } : {};
+      }
+      return {};
+    }) as CoreClient['dispatchData']);
+    return { client, seen };
+  }
+
+  /** Type → Next (loads entities) → Next (enters the options step). */
+  async function toOptions(
+    fixture: ComponentFixture<ExportDialog>,
+    type = 'characters',
+  ): Promise<void> {
+    chooseType(fixture, type);
+    buttonWith(fixture, 'Next').click();
+    await settle(fixture);
+    buttonWith(fixture, 'Next').click();
+    await settle(fixture);
+  }
+
+  it('asks for the preview ONLY on entering the options step, and only for characters', async () => {
+    const { client, seen } = previewStub({ vaults: { stores: 1, documents: 0, blobs: 0, estimatedBytes: 1024 } });
+    const fixture = await mount(client);
+    chooseType(fixture, 'characters');
+    // Step 1 → 2 must not ask: v4 asks "once we know the selection", never on
+    // the way past.
+    buttonWith(fixture, 'Next').click();
+    await settle(fixture);
+    expect(seen.filter((r) => r['type'] === 'systemExportPreview')).toHaveLength(0);
+    buttonWith(fixture, 'Next').click();
+    await settle(fixture);
+    expect(seen.filter((r) => r['type'] === 'systemExportPreview')).toHaveLength(1);
+    expect(seen.find((r) => r['type'] === 'systemExportPreview')).toEqual({
+      type: 'systemExportPreview',
+      entityType: 'characters',
+      scope: 'all',
+    });
+  });
+
+  it('never asks for a type without vaults (chats has an options step too)', async () => {
+    const { client, seen } = previewStub({ vaults: null });
+    const fixture = await mount(client);
+    await toOptions(fixture, 'chats');
+    expect(fixture.nativeElement.textContent).toContain('Configure export options');
+    expect(seen.filter((r) => r['type'] === 'systemExportPreview')).toHaveLength(0);
+  });
+
+  it('assembles v4 sentence with both papers and photographs', async () => {
+    const { client } = previewStub({
+      vaults: { stores: 3, documents: 12, blobs: 40, estimatedBytes: 5_242_880 },
+    });
+    const fixture = await mount(client);
+    await toOptions(fixture);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Every character travels with their vault');
+    expect(text).toContain(
+      '3 vaults packed and labelled: 12 papers and 40 photographs. Expect a trunk of roughly 5.0 MB — the photographs, as ever, are the heavy luggage.',
+    );
+  });
+
+  it('flips the separator to a full stop when there are no papers or photographs', async () => {
+    const { client } = previewStub({
+      vaults: { stores: 1, documents: 0, blobs: 0, estimatedBytes: 2048 },
+    });
+    const fixture = await mount(client);
+    await toOptions(fixture);
+    expect(fixture.nativeElement.textContent).toContain(
+      '1 vault packed and labelled. Expect a trunk of roughly 2.0 KB — the photographs, as ever, are the heavy luggage.',
+    );
+  });
+
+  it('names only the non-zero half', async () => {
+    const { client } = previewStub({
+      vaults: { stores: 1, documents: 0, blobs: 1, estimatedBytes: 4096 },
+    });
+    const fixture = await mount(client);
+    await toOptions(fixture);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('1 vault packed and labelled: 1 photograph.');
+    expect(text).not.toContain('paper');
+  });
+
+  it('shows nothing when there are no vaults at all', async () => {
+    const { client } = previewStub({
+      vaults: { stores: 0, documents: 0, blobs: 0, estimatedBytes: 0 },
+    });
+    const fixture = await mount(client);
+    await toOptions(fixture);
+    expect(fixture.nativeElement.textContent).not.toContain('Every character travels');
+  });
+
+  it('is ADVISORY: a failed preview leaves the hint absent and never blocks the export', async () => {
+    const { client } = previewStub({ fail: true });
+    const fixture = await mount(client);
+    await toOptions(fixture);
+    const text = fixture.nativeElement.textContent as string;
+    // No hint, no error surface, and the wizard still offers Export.
+    expect(text).toContain('Configure export options');
+    expect(text).not.toContain('Every character travels');
+    expect(text).not.toContain('preview unavailable');
+    expect(buttonWith(fixture, 'Export')).toBeTruthy();
+  });
+});

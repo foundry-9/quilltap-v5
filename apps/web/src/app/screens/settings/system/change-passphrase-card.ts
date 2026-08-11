@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
+import type { ArchiveReencryptSummary } from '../../../core/core-contract';
+import { countArchiveBundles } from '../../characters/characters.api';
 import { SystemSettingsSignals } from './system-settings-signals.service';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
@@ -28,6 +30,23 @@ type Status = 'idle' | 'submitting' | 'success' | 'error';
         database — it only re-wraps the key with a new passphrase. Leave the new passphrase empty to
         remove passphrase protection entirely.
       </p>
+
+      <!-- P4.D64 (v4 ChangePassphraseCard.tsx:98-106): character archive bundles
+           are encrypted UNDER the passphrase, so changing it rewrites each one.
+           Say how many, up front. -->
+      @if (archiveCount(); as count) {
+        <p class="qt-text-small qt-text-muted">
+          {{
+            count === 1
+              ? 'Your 1 archived-character bundle is sealed under this passphrase and will be rewritten to open with the new one.'
+              : 'Your ' +
+                count +
+                ' archived-character bundles are sealed under this passphrase and will each be rewritten to open with the new one.'
+          }}
+          This cannot be interrupted halfway without leaving some archives on the old passphrase; if
+          that happens, the ones left behind are named below.
+        </p>
+      }
 
       <div>
         <label for="cp-current" class="block qt-text-label mb-2">Current Passphrase</label>
@@ -81,6 +100,35 @@ type Status = 'idle' | 'submitting' | 'success' | 'error';
       @if (status() === 'success') {
         <div class="qt-alert-success">
           Passphrase changed successfully. The new passphrase will be required on the next restart.
+          @if (rewroteAll(); as rewritten) {
+            <span>
+              {{
+                rewritten === 1
+                  ? 'Your archived-character bundle was rewritten under the new passphrase.'
+                  : 'All ' +
+                    rewritten +
+                    ' archived-character bundles were rewritten under the new passphrase.'
+              }}
+            </span>
+          }
+        </div>
+      }
+
+      @if (status() === 'success' && archiveFailures().length > 0) {
+        <div class="qt-alert-error">
+          <p>
+            {{
+              archiveFailures().length === 1
+                ? 'One archived-character bundle could not be rewritten and still expects the old passphrase:'
+                : archiveFailures().length +
+                  ' archived-character bundles could not be rewritten and still expect the old passphrase:'
+            }}
+          </p>
+          <ul class="mt-1 list-disc list-inside">
+            @for (f of archiveFailures(); track f.fileId || f.filename) {
+              <li class="qt-text-small">{{ f.filename }} — {{ f.reason }}</li>
+            }
+          </ul>
         </div>
       }
 
@@ -99,6 +147,41 @@ export class ChangePassphraseCard {
   protected readonly confirmPassphrase = signal('');
   protected readonly status = signal<Status>('idle');
   protected readonly errorMessage = signal('');
+
+  // --- The archive re-encryption sweep (P4.D64 §5) ---
+
+  /**
+   * How many bundles are sealed under the CURRENT passphrase. Null until the
+   * courtesy read lands, and null forever if it fails — v4 swallows that failure
+   * because "the change itself reports the real numbers". Zero renders nothing,
+   * which is why the template's `@if … as` truthiness check is right here.
+   */
+  protected readonly archiveCount = signal<number | null>(null);
+  /** The response's `archives` bag (P4.D63 owns the wire). */
+  protected readonly archiveSummary = signal<ArchiveReencryptSummary | null>(null);
+
+  protected readonly archiveFailures = computed(() => this.archiveSummary()?.failures ?? []);
+
+  /**
+   * The count for the all-rewritten sentence, or null when there is nothing to
+   * report — v4 renders it only when `reencrypted > 0` AND there were no
+   * failures, so a partial sweep speaks through the error alert alone.
+   */
+  protected readonly rewroteAll = computed(() => {
+    const summary = this.archiveSummary();
+    if (!summary || summary.reencrypted <= 0 || this.archiveFailures().length > 0) {
+      return null;
+    }
+    return summary.reencrypted;
+  });
+
+  constructor() {
+    void this.loadArchiveCount();
+  }
+
+  private async loadArchiveCount(): Promise<void> {
+    this.archiveCount.set(await countArchiveBundles(this.core));
+  }
 
   /** v4 `:14` — a genuine mismatch only once BOTH fields are non-empty. */
   protected readonly mismatch = computed(
@@ -141,6 +224,7 @@ export class ChangePassphraseCard {
     }
     this.status.set('submitting');
     this.errorMessage.set('');
+    this.archiveSummary.set(null);
 
     try {
       const resp = await this.core.dispatch({
@@ -156,6 +240,18 @@ export class ChangePassphraseCard {
       }
 
       this.status.set('success');
+      // v4 `:74-77`: adopt the reported bag, and let a REAL total (>= 0) correct
+      // the courtesy count — `total: -1` means the sweep itself failed, so the
+      // pre-change count stands.
+      const archives = (resp.data as Record<string, unknown> | undefined)?.['archives'] as
+        | ArchiveReencryptSummary
+        | undefined;
+      if (archives) {
+        this.archiveSummary.set(archives);
+        if (archives.total >= 0) {
+          this.archiveCount.set(archives.total);
+        }
+      }
       this.resetForm();
 
       // v4 `:53` — notify the Auto-Lock card that passphrase state changed.

@@ -63269,3 +63269,64 @@ that only read the subtitle would have "passed" without ever rendering a row.
 
 **Gate:** `ng test` 297 files / 4,113 tests, 0 failed (+7); `ng build` clean.
 SPA 0.5.447 → 0.5.448.
+
+### Lane record — P4.D64 unit 5 (the four settings surfaces)
+
+**Landed** (v4 `ChangePassphraseCard.tsx`, `delete-data-card.tsx`,
+`ExportOptionsStep.tsx` + `useExportData.ts`, `RestoreDialog.tsx` +
+`useRestoreData.ts` at `d553f72a`; every sentence verbatim, all four
+singular/plural pairs pinned).
+
+- **Change passphrase:** the mount-time courtesy count over `filesList
+  {category:'ARCHIVE'}`, the singular/plural warning paragraph + the
+  cannot-be-interrupted clause, and all three response shapes — the appended
+  all-rewritten sentence (singular/plural), the failure alert with `{filename} —
+  {reason}` bullets (singular/plural), and the `total: -1` arm.
+- **Delete data:** `keepArchives` default TRUE and reset TRUE on open AND close,
+  the `Archived Character Bundles … (kept)` preview row, the checkbox with its
+  file/files pluralization and the loose-bundle paragraph, the wire key on the
+  delete dispatch, and the completion note (`bundle remains` / `bundles remain`).
+- **Export wizard:** the advisory vault hint, fired ONCE on entering the options
+  step and only for `characters`, with v4's assembled sentence (the separator
+  flips `': '` ↔ `'. '` depending on whether papers/photographs exist) over the
+  existing `formatBytes`.
+- **Restore:** `keepArchiveBundles` default TRUE, the replace-mode-only checkbox
+  + copy, sent on the execute dispatch in BOTH modes as v4 sends it.
+
+**Two order items already satisfied, checked rather than assumed.** The
+`personas ?? 0` NaN fix was ALREADY made in v5 (the P4.9G-era `DeleteSummary`
+uses the real server shape and sums only present fields — recorded then as a
+deliberate correction), so there was nothing to port. The delete dialog's chrome
+hardening (`max-h-[85vh] flex flex-col`) is likewise moot: v5's shared `qt-modal`
+already caps at `max-h-[90vh]` with a `flex flex-col` body and an
+`overflow-y-auto` region, which is what v4's patch was adding by hand.
+
+**One v4-faithfulness catch during wiring.** The first pass reset
+`keepArchiveBundles` inside `setRestoreMode`. v4's `setRestoreMode` clears
+`confirmReplace` and NOTHING else, so switching mode away and back would have
+silently re-ticked a deliberately unticked sparing option. Moved out, and pinned
+by the `re-ticks nothing when the mode flips` case.
+
+**Mutation proofs (D24 rule — four, all first-run-green specs).**
+(1) Adopting `archives.total` unconditionally reds `keeps the pre-change count
+when the sweep itself failed (total -1)` — otherwise the card would offer to
+rewrite "-1 archived-character bundles".
+(2) Dropping the failures check from `rewroteAll` reds `names the bundles left
+behind, and suppresses the all-rewritten sentence` — claiming "all rewritten"
+beside a list of failures is a lie.
+(3) Resetting `keepArchives` to false on open reds three cases (including the
+pre-existing wire-token case, which now asserts the key).
+(4) Making the vault preview BLOCKING (awaited, error step on failure) reds `is
+ADVISORY: a failed preview leaves the hint absent and never blocks the export`.
+Note for the record: a weaker first attempt at (4) — merely `error.set(…)` in the
+catch — was NOT observable, because v5's wizard renders `error()` only on its
+error step. The advisory rule's teeth in v5 are "never leaves the options step
+and never renders the hint", which is what the spec asserts.
+
+**New spec file.** `restore-dialog.spec.ts` — the restore dialog had NO unit spec
+before this lane. Reaching the mode step means getting past the octet-stream XHR
+upload, so `XMLHttpRequest` is stubbed to the same 200 `{success, uploadId}` the
+real web-edge leg answers with; everything after it is the real component.
+
+**Gate:** `ng test` 298 files / 4,138 tests, 0 failed (+25); `ng build` clean.
+SPA 0.5.448 → 0.5.449.

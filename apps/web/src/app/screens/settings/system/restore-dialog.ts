@@ -151,6 +151,27 @@ interface RestoreSummary {
                   <span class="text-sm qt-text-destructive">I understand this action cannot be undone</span>
                 </label>
               </div>
+              <!-- P4.D64 (v4 RestoreDialog.tsx:323-341): replace-mode ONLY — the
+                   wipe that precedes the restore can spare the .qtap bundles. -->
+              <div class="qt-bg-muted/50 border qt-border-default rounded-lg p-4 space-y-2">
+                <label class="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    class="mt-0.5 w-4 h-4 rounded focus:ring-ring"
+                    [checked]="keepArchiveBundles()"
+                    (change)="keepArchiveBundles.set($any($event.target).checked)"
+                  />
+                  <span class="text-sm qt-text-primary">
+                    Leave any archived-character bundles on the shelf
+                  </span>
+                </label>
+                <p class="qt-text-xs qt-text-secondary">
+                  The wipe that precedes the restore will spare each archived character's .qtap
+                  bundle. Their character records are replaced with the backup's like everything
+                  else, so a spared bundle is a loose one — importable afresh, but not simply woken.
+                  Untick to sweep the shelf bare as well.
+                </p>
+              </div>
             }
             @if (error(); as msg) {
               <div class="p-3 qt-bg-destructive/10 border qt-border-destructive rounded-lg">
@@ -270,6 +291,12 @@ export class RestoreDialog {
   protected readonly loadingPreview = signal(false);
   protected readonly mode = signal<RestoreMode>('import');
   protected readonly confirmReplace = signal(false);
+  /**
+   * P4.D64 §4 (v4 `useRestoreData.ts:21`): spare the archived-character bundles
+   * from the pre-restore wipe. Default TRUE, sent in BOTH modes (v4 does), and
+   * effective in replace mode only — the option rides the wipe.
+   */
+  protected readonly keepArchiveBundles = signal(true);
   protected readonly restoring = signal(false);
   protected readonly summary = signal<RestoreSummary | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -431,6 +458,7 @@ export class RestoreDialog {
         type: 'systemRestoreExecute',
         uploadId: this.uploadId,
         mode: this.mode() === 'replace' ? 'replace' : 'new-account',
+        keepArchivedCharacterBundles: this.keepArchiveBundles(),
       });
       this.summary.set((data['summary'] ?? {}) as RestoreSummary);
       // v4 `useRestoreData.ts:195` — after the summary lands, not before.
