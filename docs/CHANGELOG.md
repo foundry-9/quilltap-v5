@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Unified the P4.D65-finish + sweep-rot round (P4.D65-resumed ∥ P4.45) onto
+main — the oracle baseline moves to `de9f70bf` and the Bug-57 drift debt is
+cleared (v4 converged onto this port's twice-linked-blob rehydrate dedupe;
+the divergence pins retired to plain equalities, with the fixture-driven
+equality arm mutation-proven). P4.D63 and P4.45 are CLOSED; P4.D65 stays
+open on items 5–6 only (the banked round-1 tier-2 arms and the owed corpus
+arms). The unification review fixed two things before merge: the
+re-encryption sweep's upload-failure reason now carries v4's `uploadRaw`
+wrapper sentence (it leaked the bare backend error into a string the
+settings UI surfaces verbatim — pinned by a failing-upload unit test), and
+the archive-holder lookup's error arm now answers v4's fixed
+`Failed to delete file` 500 instead of raw database error text. Gate: 425
+test binaries / 2,013 tests / 0 failed with the round's env block; the 20
+affected differential families regenerated fresh at `de9f70bf` and run by
+name through the repaired sweep driver, zero skips; clippy both feature
+sets; release build; ng test 298 files / 4,138; full Playwright 202/202
+zero skips. Versions: core 0.0.529, harness 0.0.452, host 0.0.66, web
+0.0.70; cli, tauri, SPA unchanged.
+
 Proved all 39 repaired differential families runnable end-to-end through the
 sweep driver — regenerate the oracle from v4, then run the diff, one clean
 invocation each — and committed the per-family results. The run exposed four

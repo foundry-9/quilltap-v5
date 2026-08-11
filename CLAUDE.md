@@ -2293,6 +2293,55 @@ records THERE. Update this summary only when a phase or round completes.
   candidates: finish P4.D65, the owed dogfood pass (now with the live
   archive/CLI surfaces), the two v4-side filings, the sweep-rot pass —
   see phase-4.md.
+- **The P4.D65-finish + sweep-rot round (P4.D65-resumed ∥ P4.45): UNIFIED
+  on main (2026-08-11) — P4.D63 and P4.45 CLOSED; P4.D65 OPEN at items 5–6
+  only; the oracle baseline MOVES to `de9f70bf` and the drift debt is
+  CLEARED.** v4 fixed its Bug 57 at `de9f70bf` (converging onto this
+  port's twice-linked-blob rehydrate dedupe — zero v5 source change
+  needed); the divergence pins retired to plain equalities and the archive
+  fixture grew the twice-linked shape as a mutation-proven equality arm
+  covering BOTH post-dedupe legs. The D63 unit-7 re-encrypt wire is LIVE:
+  a passphrase change now re-encrypts the archive library (the sweep at
+  the ChangePassphrase dispatch arm — made `async` after its differential
+  caught a real `write_blocking` panic; `{success, archives}` on the wire
+  the P4.D64 settings card already reads; 6-case
+  `archive_reencrypt_tier2_equivalence` + a live web wire test that
+  archives → changes → rehydrates). Also live: the `ARCHIVE_BUNDLE_HELD`
+  files-delete guard (three arms incl. the unheld leg) and the export
+  picker's archived filter; the non-null export-carry arm caught a STALE
+  `schema-key-order.json` (the three archive keys were being appended at
+  the END of every exported character record — regenerated with the
+  shipped generator). P4.45 repaired the sweep driver at the root
+  (recipes classified by INDENTATION, not first-word guessing; 32 run
+  lines scoped; unattributable runs refused; the jest-side stale-oracle
+  deletion hole closed; the 39-family `--run-all` proof committed) — the
+  driver is now the sanctioned regen path. **The §3 review fixed two
+  findings before merge:** the sweep's upload-failure `reason` leaked the
+  bare backend error where v4 wraps via `uploadRaw` (a contractual UI
+  string on a surface going live this round — routed through the existing
+  `upload_raw` helper, pinned by a failing-upload unit test), and the
+  holder-lookup error arm leaked raw `DbError` text where v4 answers the
+  fixed `Failed to delete file` 500. Gate: 425 test binaries / 2,013 / 0
+  with the round's env block; the 20 affected families fresh at
+  `de9f70bf` by name through the driver, zero SKIP; clippy both feature
+  sets; release build; ng 298 files / 4,138; full Playwright **202/202
+  zero skips**. Versions: core 0.0.529, harness 0.0.452, host 0.0.66,
+  web 0.0.70. **The owed dogfood pass is the top next candidate** — it
+  gains the live re-encryption sweep + held-bundle guard. Round record:
+  `status-log.md`.
+- **Oracle baseline: `de9f70bf` (2026-08-11, v4 4.8.0-dev), adopted at
+  the P4.D65-finish + sweep-rot unification — NO v4 drift debt remains.**
+  `de9f70bf` is v4's Bug-57 fix (the `carriedBlobIds` first-occurrence
+  dedupe this port shipped first; convergence, not new behavior). v4 HEAD
+  == baseline, tree clean at the gate. Oracles regenerate straight from
+  `~/source/quilltap-server`; pin a detached worktree on any further
+  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  <pin>`). The sweep driver (`harness/tools/recipe_sweep.py --run` /
+  `--run-all --families`) is the sanctioned per-family regen path after
+  P4.45. The distill-transitive TZ pins, the committed-fixture rule, and
+  the venue/staging rules stand unchanged. Drift-check before every
+  round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `ed8934f1` (2026-08-10, v4 4.8.0-dev), adopted at
   the character-archive round-2 unification — NO v4 drift debt
   remains.** v4 HEAD is `0472cf6c`, ONE commit past the baseline:

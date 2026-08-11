@@ -4570,3 +4570,54 @@ drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
 <pin>`). The distill-transitive TZ pins, the committed-fixture rule,
 and the venue/staging rules stand unchanged. Drift-check before every
 round — v4 ships daily.
+
+## The P4.D65-finish + sweep-rot round (P4.D65-resumed ∥ P4.45, 2026-08-11) — UNIFIED
+
+**The oracle baseline MOVES to `de9f70bf` and the Bug-57 drift debt is
+CLEARED** (v4 converged onto this port's dedupe; the pins retired to plain
+equalities, the fixture grew the twice-linked-blob shape as a
+mutation-proven equality arm). **P4.D63 CLOSED** (the re-encrypt wire
+landed: the sweep at the ChangePassphrase dispatch arm, `{success,
+archives}` on the wire the P4.D64 card already reads, a 6-case
+differential + live web wire test — and the differential's first run
+caught a real `write_blocking` panic on the async path). **P4.45 CLOSED**
+(the sweep driver classifies recipes by indentation, refuses
+unattributable run lines, deletes jest-convention oracles too; 32 headers
+scoped; 39 repaired families proven via the committed `--run-all`
+artifact). Also landed: the `ARCHIVE_BUNDLE_HELD` files-delete guard, the
+export picker's archived filter, and the non-null export-carry arm that
+caught the stale `schema-key-order.json` (exported character records had
+the three archive keys in the wrong slot). The §3 review fixed the
+sweep's upload-failure reason (v4's `uploadRaw` wrapper — a contractual
+UI string) and the holder-lookup 500 leak before merge. Full round record
+in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The owed dogfood pass** (standing queue, several rounds deep) — now
+   also gaining this round's live surfaces: a real passphrase change over
+   an archive library (the re-encryption sweep + the settings card's
+   `archives` summary), the held-bundle delete refusal + `force=true`,
+   and the archive → rehydrate walk on the Friday copy, plus the standing
+   💸 queue (OpenRouter pricing, vision, extraction, Almanack, Taboo,
+   impersonation, Brahma salvage, …).
+2. **P4.D65 items 5–6** (the small open remainder; its header enumerates
+   them): the banked round-1 tier-2 arms (preflight error propagation,
+   the four archived-character arms, the `setParticipantStatus` wrapper
+   case) and the §3-owed corpus arms (the positive `background_jobs` leg,
+   `avatarOverrides` keep, `archivedAvatarFileId`, the passphrase-400
+   arms, prune-re-run).
+3. **The two v4-side human filings:** the archived-seat-badge GET gap
+   (round 1's) — the Bug-57 filing+fix is DONE (`de9f70bf`).
+4. **The banked `external_tmp_input` driver extension** (P4.45 unit-4
+   record carries the candidate list and the direction-ambiguity blocker).
+
+**Standing regen note:** the oracle baseline is **`de9f70bf`** (adopted at
+this unification; v4 HEAD == baseline, tree clean at the gate). No drift
+debt remains; oracles regenerate straight from `~/source/quilltap-server`;
+pin a detached worktree on any further drift
+(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`). The
+sweep driver is now the sanctioned path for family regens (`--run` /
+`--run-all --families`); the distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.
+Drift-check before every round — v4 ships daily.

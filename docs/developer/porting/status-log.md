@@ -64704,3 +64704,101 @@ look like true "leans on another family's staging" cases by inspection.
 Files touched outside `crates/`: two oracle CASE headers
 (`embedding-reapply.test.ts`, `ui-search.test.ts`), comment-only, neither
 belonging to the sibling lane's archive/import/qtap/characters set.
+
+---
+
+## Round record — the P4.D65-finish + sweep-rot unification (P4.D65-resumed ∥ P4.45), 2026-08-11
+
+**Unified on main; the oracle baseline MOVES to `de9f70bf` and the Bug-57
+drift debt is CLEARED. P4.D63 CLOSED (unit 7 discharged), P4.45 CLOSED;
+P4.D65 stays OPEN on items 5–6 only** (its status header enumerates them).
+Seven lane commits cherry-picked (archive lane first), zero source
+conflicts — the only merge work was the doc unions and the identical-bump
+recount (both lanes bumped harness 446 → 447 silently merged; recounted to
+**0.0.452** = 446 + 1 + 5).
+
+**What landed** (lane records above): the Bug-57 convergence (markers →
+convergence notes carrying v4's own comment wording; the twice-linked-blob
+fixture extension with BOTH post-dedupe legs — skip-if-present and
+restore-fresh; six import-graph families regenerated); the D63 unit-7
+re-encrypt wire (the sweep at the ChangePassphrase dispatch arm, async
+after the differential caught the `write_blocking` panic; the
+`{success, archives}` response the P4.D64 SPA card had been waiting for;
+the 6-case `archive_reencrypt_tier2_equivalence` + the live web wire
+test); the `ARCHIVE_BUNDLE_HELD` files-delete guard (three arms incl. the
+unheld leg); the export picker's archived filter + the non-null
+export-carry arm, whose first run caught the STALE `schema-key-order.json`
+(the three archive keys were appended at the end of every exported
+character record instead of v4's schema slot — regenerated with the
+shipped generator); and P4.45 whole — the indentation-based recipe
+classifier, the 32-file scope repair, `run_scope_problem`, the jest-side
+stale-oracle deletion, and the 39-family `--run-all` proof (committed
+artifact `harness/tools/sweep-results/2026-08-11-de9f70bf-p4.45-repairs.json`).
+
+**The §3 review — two findings FIXED on the unify branch (`790552be3`),
+the first would have shipped a wrong contractual string on a
+newly-live surface:**
+
+1. **The sweep's upload-failure `reason` leaked the bare backend error.**
+   v4 uploads via `fileStorageManager.uploadRaw`, whose failure arm wraps
+   as `Failed to upload raw content at '<key>': <msg>` (`manager.ts:496`),
+   and that wrapped string reaches `failures[].reason` — which both sides'
+   comments call contractual (surfaced verbatim in the settings UI). v5's
+   `reencrypt_one` called `backend.upload` raw. This is the upload-leg
+   TWIN of the round-1 review's download finding (that one was fixed; the
+   upload leg was missed), and the sweep only gained its production caller
+   on this branch. Fixed by routing through the EXISTING
+   `file_storage::upload_raw` helper (v5 already had the wrapper — DRY);
+   pinned by a new unit test with a failing-upload backend asserting the
+   exact sentence.
+2. **The archive-holder lookup's error arm leaked raw `DbError` text**
+   where v4's whole delete handler masks any throw as the fixed 500
+   `Failed to delete file` (`delete.ts:113`) — the P4.9H2A leaked-500
+   class on a site this round introduced. Fixed with the fixed sentence +
+   `tracing::error!` at the swallow site. (The file-wide raw-`internal(e)`
+   style at PRE-EXISTING files.rs sites is recorded, not churned.)
+
+**Recorded by review, not fixed** (now in P4.D65's header nits): the flat
+`{error, code, characterId}` vs v4's `details`-nested envelope — the
+P4.6ah convention extended to a second code, a documented v5-wide wire
+divergence the differential models via `flatten_details`; the REST alias's
+lenient body parse (P4.9G3 vintage); the v5-only `total:-1` sentences
+(structural host arms, oracle-unpinnable); the `""`-archivedAt falsiness
+boundary; the `find_by_category` user-scoping (already reasoned in its
+doc-comment — v4 is category-only; both agree on real data, and
+`SINGLE_USER_ID` is v4's own synthetic constant so no migrated instance
+can be missed). Driver-review edges (none firing today): indented
+path-initial PROSE would classify as shell (the margin rule makes this the
+writer's responsibility — README carries it); `--test` separator
+strictness refuses loudly, never silently; a `path` variable shadowing in
+`run_family`. The driver review also independently re-derived the
+extraction diff (8 families changed; every lost line prose, every gained
+line a recovered real command) and confirmed `p4_6ay_workbench_wire_
+contract`'s `ok → no_oracle` move is a correction of a phantom recipe.
+
+**The unification wires:** the `{success, archives}` shape diffed
+name-for-name against the SPA's `ArchiveReencryptSummary`
+(`core-contract.ts:6023` — P4.D64 §5; the card reads `archives`
+defensively, so the server pick COMPLETES the wire the SPA shipped in
+round 1); the new families verified sweepable under the new driver rules
+(`--show archive_reencrypt_tier2_equivalence` extracts clean —
+worktree-substituted, scratch-suffixed, scoped) — the cross-lane
+composition neither lane could test.
+
+**Gate:** fmt; clippy both feature sets; release build; **425 test
+binaries / 2,013 tests / 0 failed** (`cargo test --workspace` with the
+round's env block, exit 0); the round's **20 families regenerated FRESH
+at `de9f70bf` and run by name through the repaired driver**
+(`--run-all --families …`, totals `{ok: 20}`, zero SKIP — the driver
+deletes each oracle NDJSON before regen, so a green line cannot be a
+stale pass); ng test 298 files / 4,138 / 0; ng build clean; **full
+Playwright 202 passed / 0 failed / 0 skipped (4.7 m)**. Versions: core
+0.0.529, harness 0.0.452, host 0.0.66, web 0.0.70; cli 0.0.8, tauri and
+SPA unchanged.
+
+**Standing after the round:** the owed dogfood pass is the top next
+candidate (it gains the live change-passphrase re-encryption sweep +
+held-bundle guard on top of the standing queue); P4.D65 items 5–6 are the
+small open remainder; the v4-side archived-seat-badge GET filing is still
+the human's; the `external_tmp_input` driver extension stays banked with
+its candidate list (P4.45 unit-4 record).
