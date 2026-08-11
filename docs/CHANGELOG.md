@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the character-archive round 2 + the `ed8934f1` (Bug 56)
+drift-catch-up round: three work orders committed under
+`docs/developer/porting/work-orders/` — P4.D65 (the archive service,
+verbs, re-encrypt wire, export carry, and the round-1-banked oracle
+arms; closes P4.D63 on completion), P4.D66 (the CLI `db characters`
+family, Tier R), and P4.D67 (the Bug-56 base-path-availability port
+slice, which clears the drift debt and moves the oracle baseline to
+`ed8934f1` at unification). Round record in `status-log.md` ("Round
+planned — character-archive ROUND 2 + the `ed8934f1` Bug-56 drift
+catch-up"). Docs only; no version bumps.
+
 Unified round 1 of the character-archive drift catch-up (P4.D62 ∥ P4.D63
 ∥ P4.D64) onto main — the oracle baseline moves to `d553f72a`. Server:
 the whole `.qtap` preserveIds substrate (vault-carrying character

@@ -63594,3 +63594,53 @@ Tools-tree toast assertion was hardened against toast stacking
 isolation first). **Final: full Playwright 198 passed / 4 skipped (the
 round-2-gated action beats, by design) / 0 failed** — the suite grew
 192 → 202 entries with the archive spec's ten beats.
+
+## Round planned — character-archive ROUND 2 + the `ed8934f1` Bug-56 drift catch-up (P4.D65 ∥ P4.D66 ∥ P4.D67), 2026-08-11
+
+Planned at v4 HEAD **`ed8934f1`** (tree clean, verified at planning) — the
+round's baseline; the drift-check found exactly the one known commit past
+`d553f72a` (Bug 56, classified at round-1 unification), and lane P4.D67
+absorbs it, so the baseline moves to `ed8934f1` at unification and the
+mount-points regen pin retires. Three lanes, disjoint by file:
+
+- **P4.D65** (`work-orders/p4.d65-archive-service-round2-server.md`) — the
+  archive service whole (`lib/characters/archive-service.ts`, 889 ln:
+  archive/rehydrate + crash-safe ordering + prune-in-place + bundle
+  verify), the two verbs un-refused, P4.D63's unit-7 re-encrypt wire +
+  differential (completing it CLOSES P4.D63), the three-key export carry
+  with the vintage semantics pinned, the files-delete
+  `ARCHIVE_BUNDLE_HELD` guard, and the round-1-banked oracle arms (D62's
+  preflight propagation + duplicate+preserveIds arm; D63's unit-8
+  kept/swept arms + the four archived-arm fixture extensions + the
+  repo-wrapper case). New committed `character-archive-{main,mount}.db`
+  family. ⚠ The archive differential diffs STATE + DECRYPTED bundle
+  content — ciphertext is salt/IV-nondeterministic.
+- **P4.D66** (`work-orders/p4.d66-archive-cli-family.md`) — the CLI
+  `db characters` family (status / archives / archive / rehydrate /
+  export incl. the offline bundle decrypt), Tier R vs v4's real
+  `npx quilltap`; the live-proxy arms ACTIVATE-AT-UNIFY behind a named
+  constant (they need D65's verbs answering). `crates/quilltap-cli/**`
+  only; core crypto linked read-only (frozen this round).
+- **P4.D67** (`work-orders/p4.d67-basepath-availability-drift.md`) — the
+  Bug-56 port slice: `base-path-availability.ts` (new module, byte-exact
+  diagnosis sentences incl. the containerized variants), the
+  folder-create assert-before-recursive-mkdir (`verifyBasePath` deleted),
+  the folder-create 409 arm, the store-create warning rewrite; the two
+  mount families extended with planted-fs-condition arms and regenerated
+  at `ed8934f1`. NOT ported, dispositioned: the docker-mounts bind
+  planner + `quilltap docs docker-mounts` (bank with the standing
+  `quilltap docs` CLI deferral), two help docs (`p4.9i2` bank), v4
+  housekeeping.
+
+Shared contract + Ownership blocks are verbatim-identical across the
+three orders (verb shapes restated from round 1's contract; the
+change-passphrase `archives` bag; the frozen `QTAPARC1` crypto; the
+three-key vintage semantics; the Bug-56 sentences; `api/engine.rs` +
+`api/types.rs` = D65-only; fixture ownership; the unifier flips
+`CHARACTER_ARCHIVE_SERVER_LANDED` and runs the four gated action beats —
+no lane touches `apps/web`). Version bumps: D65 = core/harness/web,
+D66 = cli, D67 = core/harness; the unifier recounts core as base + total
+bumps. Deliberately left out of the round: the owed dogfood pass (runs as
+/dogfood after unification — it gains round 2's live archive/rehydrate
+surfaces), and the standing sweep-driver rot maintenance pass (still
+queued).
