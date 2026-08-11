@@ -2,6 +2,35 @@
 
 ## Recent Changes
 
+Unified round 2 of the character-archive catch-up (P4.D65 ∥ P4.D66 ∥
+P4.D67) onto main — the oracle baseline moves to `ed8934f1` and the Bug-56
+drift debt is cleared. The archive service is LIVE end-to-end: archive
+packs a character into an encrypted bundle, verifies it, commits the
+tombstone and prunes the vault in place; rehydrate brings them back at
+their original ids; both dispatch verbs and the SPA's four action beats
+run live (the archive e2e spec is 10/10). The CLI gained the whole
+`db characters` family (status / archives / archive / rehydrate / export
+with offline bundle decrypt), Tier R 136 → 188 cases against v4's real
+launcher. The Bug-56 base-path-availability module landed with byte-exact
+diagnosis sentences, the folder-create 409, and the store-create warning
+rewrite. The unification review caught and fixed, before merge: the
+round's cross-lane blind spot (no lane served the CLI's
+`POST /api/v1/characters/{id}?action=` URL on v5's server — a thin REST
+edge now delegates into the dispatch arms, pinned by a live web-edge
+test); a missing character answering 500 where v4's route answers 404;
+four CLI sites swallowing SQL errors v4 propagates; the archive
+differential's blindness to `background_jobs`; and one deliberate
+divergence with the v4-side fix queued — v4 cannot rehydrate a character
+whose vault links the same bytes twice (per-link blob export duplication ×
+an undeduped preflight list), while v5's preflight now dedupes carried
+blob ids. Gate: 423 test binaries / 2,010 tests / 0 failed; the round's
+differentials fresh at `ed8934f1`; clippy both feature sets; release
+build; ng test 4,138; full Playwright green with the four archive action
+beats active. P4.D66 and P4.D67 close; P4.D65 stays OPEN at its resume
+list (re-encrypt wire, files-delete guard, export filter, banked arms).
+Versions: core 0.0.526, harness 0.0.446, cli 0.0.8, web 0.0.69,
+SPA 0.5.451.
+
 Ported the character-archive service (P4.D65 unit 1): `archiveCharacter`
 and `rehydrateCharacter` now work end to end, and the two dispatch verbs
 `characterArchive` / `characterRehydrate` no longer refuse. Archiving

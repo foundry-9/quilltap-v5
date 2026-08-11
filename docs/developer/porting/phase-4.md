@@ -4530,3 +4530,43 @@ families until it is absorbed (`oracle-regen-pinned-v4-worktree`, or
 `recipe_sweep.py --v4 d553f72a`). The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 Drift-check before every round — v4 ships daily.
+
+## The character-archive round-2 + Bug-56 unification (P4.D65 ∥ P4.D66 ∥ P4.D67, 2026-08-11) — ROUND 2 LANDED
+
+**P4.D66 and P4.D67 CLOSED; P4.D65 OPEN at its resume list** (unit 1 —
+the service + verbs + differential — unified; its status header carries
+the precise OPEN list, which now includes the §3 review's owed corpus
+arms). **The oracle baseline MOVES to `ed8934f1` and the Bug-56 drift
+debt is CLEARED.** The archive lifecycle is LIVE end-to-end (SPA beats
+10/10; the CLI family Tier R 188/0; the CLI's REST edge added at
+unification after the §3 review caught the round's cross-lane blind
+spot). One deliberate divergence shipped pending the human's
+confirmation: the preserveIds preflight dedupes carried blob ids
+(v4 cannot rehydrate a twice-linked-blob vault; v4-side fix queued).
+Full round record in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **Finish P4.D65** (its status header's OPEN list): the re-encrypt
+   wire (which CLOSES P4.D63), the files-delete `ARCHIVE_BUNDLE_HELD`
+   guard, the export archived filter, the non-null export-carry arm,
+   the banked round-1 oracle arms, and the §3-owed corpus arms (the
+   positive `background_jobs` leg, `avatarOverrides` keep,
+   `archivedAvatarFileId`, the passphrase-400 arms, the
+   twice-linked-blob differential pin).
+2. **The owed dogfood pass** (standing queue) — now also gaining round
+   2's live surfaces: archive → rehydrate on the Friday copy, the CLI
+   family against real data (offline export of a real bundle), the
+   Bug-56 409 on a genuinely unreachable store.
+3. **The two v4-side filings** (human): the rehydrate blob-collision
+   fix and round 1's archived-seat-badge GET gap.
+4. **The sweep-driver rot maintenance pass** (standing).
+
+**Standing regen note:** the oracle baseline is **`ed8934f1`** (adopted
+at this unification; v4 HEAD == baseline, tree clean at the gate). No
+drift debt remains; oracles regenerate straight from
+`~/source/quilltap-server`; pin a detached worktree on any further
+drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+<pin>`). The distill-transitive TZ pins, the committed-fixture rule,
+and the venue/staging rules stand unchanged. Drift-check before every
+round — v4 ships daily.

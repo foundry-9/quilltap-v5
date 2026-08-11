@@ -288,8 +288,14 @@ fn ambiguous(kind: &str, rows: &[Map<String, Value>]) -> CmdError {
 }
 
 /// v4 `readVaultAliases(mounts, mountPointId)` — the `aliases` array out of a
-/// vault's `properties.json`; `[]` for missing / empty / unparseable.
-fn read_vault_aliases(mounts: &rusqlite::Connection, mount_point_id: &str) -> Vec<String> {
+/// vault's `properties.json`; `[]` for missing / empty / unparseable content.
+/// A SQL error PROPAGATES: only `openMounts()` itself is caught in v4
+/// (`db-helpers.js:337-341`); an error inside the alias fold reaches
+/// `dbCommand`'s catch and exits 1 (§3 review, the archive-round-2 round).
+fn read_vault_aliases(
+    mounts: &rusqlite::Connection,
+    mount_point_id: &str,
+) -> Result<Vec<String>, CmdError> {
     let rows = query_maps(
         mounts,
         "SELECT d.content AS content
@@ -298,45 +304,44 @@ fn read_vault_aliases(mounts: &rusqlite::Connection, mount_point_id: &str) -> Ve
           WHERE l.mountPointId = ? AND LOWER(l.relativePath) = 'properties.json'
           LIMIT 1",
         &[&mount_point_id],
-    )
-    .unwrap_or_default();
+    )?;
     let Some(content) = rows
         .first()
         .and_then(|r| r.get("content"))
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
     else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let Ok(props) = serde_json::from_str::<Value>(content) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    match props.get("aliases") {
+    Ok(match props.get("aliases") {
         Some(Value::Array(a)) => a
             .iter()
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect(),
         _ => Vec::new(),
-    }
+    })
 }
 
-/// v4 `resolveCharactersByAlias(db, mounts, query)`.
+/// v4 `resolveCharactersByAlias(db, mounts, query)`. SQL errors propagate —
+/// v4's fold is uncaught between `openMounts()` and `dbCommand`'s catch.
 fn resolve_characters_by_alias(
     db: &rusqlite::Connection,
     mounts: &rusqlite::Connection,
     query: &str,
-) -> Vec<Map<String, Value>> {
+) -> Result<Vec<Map<String, Value>>, CmdError> {
     let needle = query.to_lowercase();
     let chars = query_maps(
         db,
         "SELECT id, name, characterDocumentMountPointId AS mp FROM characters WHERE characterDocumentMountPointId IS NOT NULL",
         &[],
-    )
-    .unwrap_or_default();
+    )?;
     let mut matches = Vec::new();
     for c in &chars {
         let mp = c.get("mp").map(js_to_string).unwrap_or_default();
-        let aliases = read_vault_aliases(mounts, &mp);
+        let aliases = read_vault_aliases(mounts, &mp)?;
         if aliases.iter().any(|a| a.to_lowercase().contains(&needle)) {
             let mut m = Map::new();
             m.insert("id".into(), c.get("id").cloned().unwrap_or(Value::Null));
@@ -344,7 +349,7 @@ fn resolve_characters_by_alias(
             matches.push(m);
         }
     }
-    matches
+    Ok(matches)
 }
 
 /// v4 `resolveCharacter(db, query, openMounts)` — UUID, then exact name, then
@@ -390,7 +395,7 @@ fn resolve_character(
             .iter()
             .map(|r| r.get("id").map(js_to_string).unwrap_or_default())
             .collect();
-        for m in resolve_characters_by_alias(db, &mounts, query) {
+        for m in resolve_characters_by_alias(db, &mounts, query)? {
             let id = m.get("id").map(js_to_string).unwrap_or_default();
             if !seen.contains(&id) {
                 seen.push(id);
@@ -414,7 +419,13 @@ fn resolve_character(
 
 pub fn run(args: &[String], ctx: &Ctx) -> Result<(), CmdError> {
     let (flags, positional) = parse_sub_args(args);
-    let sub = positional.first().map(String::as_str).unwrap_or("status");
+    // v4 `db-commands.js:927`: `positional[0] || 'status'` — a FALSY first
+    // token (the empty string) also runs the default sub (§3 review).
+    let sub = positional
+        .first()
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("status");
     match sub {
         "status" => cmd_status(&flags, ctx),
         "archives" => cmd_archives(&flags, ctx),
@@ -557,7 +568,10 @@ fn js_strict_eq(a: &Value, b: &Value) -> bool {
     }
 }
 
-fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connection) -> VaultStatus {
+fn inspect_character_vault(
+    row: &Map<String, Value>,
+    mounts: &rusqlite::Connection,
+) -> Result<VaultStatus, CmdError> {
     // Pre-4.6-cutover instances still carry the content columns; post-cutover
     // the vault is the only source of truth and there is nothing to diverge
     // FROM. `undefined` in v4 is "the column was not selected".
@@ -603,7 +617,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
         Some(v) if js_truthy(v) => js_to_string(v),
         _ => {
             status.issue = Some("no vault".to_string());
-            return status;
+            return Ok(status);
         }
     };
 
@@ -614,8 +628,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
         mounts,
         "SELECT relativePath, fileId FROM doc_mount_file_links WHERE mountPointId = ?",
         &[&mount_point_id],
-    )
-    .unwrap_or_default();
+    )?;
     // A JS `Map` keyed by the lowercased path: insertion-ordered, last write
     // wins on a collision.
     let mut by_path: Vec<(String, String)> = Vec::new();
@@ -661,16 +674,18 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
     }
 
     if pre_cutover {
-        let read_vault = |rel: &str| -> Option<String> {
-            let file_id = get_link(rel)?;
+        let read_vault = |rel: &str| -> Result<Option<String>, CmdError> {
+            let Some(file_id) = get_link(rel) else {
+                return Ok(None);
+            };
             let rows = query_maps(
                 mounts,
                 "SELECT content FROM doc_mount_documents WHERE fileId = ?",
                 &[file_id],
-            )
-            .unwrap_or_default();
-            rows.first()
-                .map(|r| r.get("content").map(js_to_string).unwrap_or_default())
+            )?;
+            Ok(rows
+                .first()
+                .map(|r| r.get("content").map(js_to_string).unwrap_or_default()))
         };
 
         for (vault_path, db_field) in [
@@ -680,7 +695,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
             ("personality.md", "personality"),
             ("example-dialogues.md", "exampleDialogues"),
         ] {
-            let Some(vault) = read_vault(vault_path) else {
+            let Some(vault) = read_vault(vault_path)? else {
                 continue;
             };
             // v4: `row[dbField] ?? ''`.
@@ -693,7 +708,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
             }
         }
 
-        if let Some(props_raw) = read_vault("properties.json") {
+        if let Some(props_raw) = read_vault("properties.json")? {
             match serde_json::from_str::<Value>(&props_raw) {
                 Ok(props) => {
                     for (k, db_val) in [
@@ -744,7 +759,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
 
         let phys_arr = safe_json_array(row.get("physicalDescriptions"));
         let primary = phys_arr.first().filter(|v| js_truthy(v));
-        if let Some(phys_md) = read_vault("physical-description.md") {
+        if let Some(phys_md) = read_vault("physical-description.md")? {
             let db_val = match primary.and_then(|p| p.get("fullDescription")) {
                 Some(v) if !v.is_null() => js_to_string(v),
                 _ => String::new(),
@@ -755,7 +770,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
                     .push("physicalDescription.fullDescription".to_string());
             }
         }
-        if let Some(phys_json_raw) = read_vault("physical-prompts.json") {
+        if let Some(phys_json_raw) = read_vault("physical-prompts.json")? {
             match serde_json::from_str::<Value>(&phys_json_raw) {
                 Ok(phys_json) => {
                     for (k, field) in [
@@ -817,7 +832,7 @@ fn inspect_character_vault(row: &Map<String, Value>, mounts: &rusqlite::Connecti
     } else {
         "ok (db matches vault)".to_string()
     });
-    status
+    Ok(status)
 }
 
 /// JS truthiness for the SQLite/JSON cells these paths see.
@@ -956,7 +971,7 @@ fn cmd_status(flags: &Map<String, Value>, ctx: &Ctx) -> Result<(), CmdError> {
     let all: Vec<VaultStatus> = rows
         .iter()
         .map(|r| inspect_character_vault(r, &mounts))
-        .collect();
+        .collect::<Result<_, _>>()?;
     let filtered: Vec<&VaultStatus> = all
         .iter()
         .filter(|s| {

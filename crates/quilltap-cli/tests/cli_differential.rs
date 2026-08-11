@@ -253,6 +253,33 @@ fn spawn_recall_stub(result_json: &'static str, error_arm: bool) -> u16 {
 /// CLIs, so one stub answers both sides and the request/print path is a real
 /// Tier R arm rather than a unit test — the recall-replay precedent, minus
 /// the dialect split.
+/// Every request the canned stubs receive, in arrival order: the request line
+/// and the body bytes. Each case runs v4 then v5 against the same stub, so the
+/// captures arrive in (v4, v5) pairs — `assert_canned_wire_parity` checks each
+/// pair agrees on URL + body, which turns the "both CLIs POST the same v4
+/// URLs" claim from an inspection into an assertion (§3 review, finding 6).
+static CANNED_WIRE: std::sync::Mutex<Vec<(String, Vec<u8>)>> = std::sync::Mutex::new(Vec::new());
+
+fn assert_canned_wire_parity() {
+    let captures = CANNED_WIRE.lock().unwrap();
+    assert!(
+        !captures.is_empty() && captures.len().is_multiple_of(2),
+        "expected an even, non-empty number of canned-stub requests, got {}",
+        captures.len()
+    );
+    for pair in captures.chunks(2) {
+        assert_eq!(
+            pair[0].0, pair[1].0,
+            "v4 and v5 sent different request lines"
+        );
+        assert_eq!(
+            pair[0].1, pair[1].1,
+            "v4 and v5 sent different bodies for {}",
+            pair[0].0
+        );
+    }
+}
+
 fn spawn_canned_stub(status: u16, body: &str) -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -283,6 +310,17 @@ fn spawn_canned_stub(status: u16, body: &str) -> u16 {
                     }
                     Err(_) => break,
                 }
+            }
+            // Record what was actually sent (request line + body) for the
+            // wire-parity assertion.
+            {
+                let text = String::from_utf8_lossy(&buf);
+                let line = text.lines().next().unwrap_or("").to_string();
+                let body_bytes = text
+                    .find("\r\n\r\n")
+                    .map(|i| buf[i + 4..].to_vec())
+                    .unwrap_or_default();
+                CANNED_WIRE.lock().unwrap().push((line, body_bytes));
             }
             let reason = match status {
                 200 => "OK",
@@ -2751,6 +2789,10 @@ fn cli_differential() {
             CaseOpts::default(),
         );
     }
+
+    // Every stub-backed case above ran v4 then v5 against the same port —
+    // prove the two sides put the same URL + body on the wire.
+    assert_canned_wire_parity();
 
     // ---------------- docs ----------------
     let dd = |rest: &[&str]| -> Vec<String> {

@@ -64087,3 +64087,160 @@ POST, now shared with `recall-replay`, with a raw-bytes twin because a
 encrypted open + `sqlite_msg`, previously duplicated in `docs_cmd`), and
 `nodefmt::{node_resolve, utf16_len, slice_utf16}` (the last lifted out of
 `recall_replay_cmd`).
+
+## Round record — the character-archive ROUND 2 + Bug-56 unification (P4.D65 ∥ P4.D66 ∥ P4.D67), 2026-08-11
+
+**On main via `unify/archive-round2-bug56` (ff-only). The oracle baseline
+MOVES to `ed8934f1` and the Bug-56 drift debt is CLEARED. P4.D66 and
+P4.D67 CLOSE; P4.D65 stays OPEN at its resume list (unit 1 unified;
+deliverables 4/6 + tier 2 not started; P4.D63 therefore stays OPEN at
+unit 7).** Nine lane commits cherry-picked in dependency order (D65 →
+D67 → D66), zero source conflicts; the two doc files union-merged; the
+identical-bump version trap fired EXACTLY as the playbook predicts (a
+clean pick, core at 524 where the recount says 525 — recounted to 526
+with the wire commit's own bump, harness likewise to 446).
+
+### What landed (see the lane records above for detail)
+
+- **P4.D65 unit 1** — `services/character_archive/service.rs` (the whole
+  889-line port), the two dispatch verbs live, the 8-case
+  `character_archive_tier2_equivalence` over the new committed
+  `character-archive-{main,mount}.db` family. The lane's rule-4
+  correction stands verified (v4's `hydrateRow` maps NULL → undefined
+  before Zod, so NULL cells omit like absent columns — checked at
+  `backend.ts:450`).
+- **P4.D66** — the whole CLI `db characters` family + the db verb
+  entrance v5 never had; Tier R 136 → 188 cases / 0 failures against
+  v4's REAL launcher at `ed8934f1` (run twice: lane + unify branch).
+- **P4.D67** — the Bug-56 base-path-availability port: the module with
+  byte-exact sentences, the folder-create assert + 409, the store-create
+  warning rewrite (a store on a real directory now creates with NO
+  warning key); `mount_points_routes_equivalence` 15 → 19,
+  `mount_ops_equivalence` 39 → 42, both regenerated fresh at `ed8934f1`.
+
+### The §3 review — three parallel reviewers + the unifier's own pass; every finding fixed on the unify branch or recorded by name
+
+**The one that would have shipped: the round's cross-lane blind spot.**
+D66's CLI POSTs v4's URL (`POST /api/v1/characters/{id}?action=archive|
+rehydrate`); D65 had (correctly, for the SPA) reasoned "no REST edge to
+add — the JSON actions live on /api/dispatch"; and D66's Tier R proves
+the request/print halves against a canned stub. The union: a ported CLI
+that could not speak to v5's own server — every `archive`/`rehydrate`
+invocation a 405. No single lane could see it (each side's own gate was
+green). FIXED: a thin `characters_action_post` edge in quilltap-web
+delegating into the P4.D65 dispatch arms (success = v4's raw result bag;
+errors keep the arms' status + `{error}`), registered on the existing
+`/api/v1/characters/{id}` route, pinned by the NEW
+`crates/quilltap-web/tests/characters_action_route.rs` — which drives
+the LIVE archive lifecycle (bogus-action 400 / archive 200 with
+`pruneComplete: true` / rehydrate 200 / missing-character 404) over the
+photos fixture.
+
+**The wire test's first runs then caught two more, exactly as a live leg
+should:**
+
+1. **Missing character: 500 where v4 answers 404** (D65 reviewer,
+   CONFIRMED). v4's route resolves the character BEFORE dispatching any
+   action (`handlers/post.ts:153–157`, the OVERLAID read); v5's arms
+   called the service directly and the not-found fell into the
+   catch-all 500. FIXED: `require_character_for_action` at both dispatch
+   arms — 404 `Character not found`, plus v4's corrupt-vault up-front
+   refusal restored on the live path. (The service's own entry reads
+   stay RAW — a recorded internal divergence, unreachable while
+   dispatch is the only caller; on D65's header.)
+2. **v4 cannot rehydrate a vault that links the same bytes twice — and
+   v5 reproduced it faithfully.** The wire test's rehydrate leg failed
+   with `Preserve IDs collision for document store blob … (also seen as
+   document store blob)`: the export's blob listing joins FROM the links
+   (one row per link, both sides — v4 `listByMountPoint`,
+   `doc-mount-blobs.repository.ts:439`), so a twice-linked sha-deduped
+   blob is emitted once per link, and v4's `carriedBlobIds`
+   (`execute.ts:115`) is NOT deduped — unlike `carriedFileIds` one list
+   up, whose comment sanctions exactly this repeat shape. Every
+   rehydrate of an ordinary photo-bearing vault dies. RULED-ENVELOPE
+   DIVERGENCE (the standing fix-v4-don't-match-it family): v5's
+   preflight dedupes carried blob ids first-occurrence (reader-side
+   only; the writer's bytes untouched), live-pinned by the wire test's
+   rehydrate leg over the photos fixture's genuinely twice-linked blob;
+   the differential-level both-directions pin rides P4.D65's resume
+   list; the v4-side one-list fix is QUEUED on the post-5.0 v4-side
+   list (`dogfood-findings.md`). **Flagged for the human to confirm or
+   overrule** — the divergence is reversible in one line.
+
+**Also fixed on the unify branch:**
+
+- The archive differential was blind to `background_jobs` (D65 reviewer:
+  the whole re-embed half of rehydrate unpinned — and the committed
+  fixture did not even HAVE the table, so enqueues had been failing
+  soft on both sides). The fixture gained v4's exact DDL by mutation,
+  the oracle regenerated (8 cases now dumping 8 main tables), the
+  differential green. ⚠ The comparand is a TRIPWIRE, not yet a proof:
+  with no embedding profile in the fixture both sides enqueue zero;
+  the positive leg is on D65's resume list.
+- The no-backend refusal now carries v4's exact sentence
+  (`manager.ts:277`) at both service sites.
+- Four `db_characters.rs` sites swallowed SQL errors
+  (`unwrap_or_default`) that v4 propagates to `Error: <msg>` exit 1
+  (D66 reviewer, CONFIRMED — reachable on legacy vintages, structurally
+  invisible to the healthy-schema fixture). All four now propagate;
+  `characters ""` also runs the default sub per v4's falsy dispatch.
+- The canned-stub Tier R arms now ASSERT wire parity
+  (`assert_canned_wire_parity`: each case's v4/v5 request pair must
+  agree on request line + body) — the "same URL byte for byte" claim
+  had rested on inspection.
+- Two record-accuracy corrections (D66 reviewer): `http.rs` is NOT
+  shared with recall-replay (the near-duplicate client remains;
+  consolidation recorded as post-port cleanup), and the Tier R
+  fixture's `characters` DDL is a behaviorally-inert SUBSET, not
+  "verbatim".
+- D67's cosmetic leftover (the `verifyBasePath` spec title) renamed.
+- The two `CoreRequest` archive-verb docstrings un-staled.
+
+**The activated action beats caught a real spec-mode gap on their first
+run** (the §4 wire): beats 3–4 navigated with `?section=` — which the
+WORKSPACE-hosted settings page ignores exactly as v4 does (the spec runs
+the workspace shell; the legacy-mode `zz-delete-all-destructive` spec is
+where `section=` is honored and stays covered). Re-gestured to expand
+the collapsible cards by their headers, as a user would; the archive
+spec runs 10/10 with all four action beats live.
+
+**D67's reviewer found no defects** (independent re-run of both families
++ one independent mutation proof); one environmental note carried on its
+header (the planted `denied` arms need a non-root uid).
+
+### Gate (all on the unify branch)
+
+- `cargo fmt --check`; clippy plain AND `--features
+  quilltap-core/native-transport`, `-D warnings`; release build.
+- **`cargo test --workspace`: 423 test binaries / 2,010 tests / 0
+  failed** with the round's env block (QT_ORACLE_CHARACTER_ARCHIVE /
+  MOUNT_OPS / MOUNT_ROUTES / SYSTEM_IMPORT / SYSTEM_IMPORT_EXECUTE +
+  QT_V4_CHECKOUT for Tier R).
+- The round's differentials BY NAME over oracles regenerated FRESH at
+  `ed8934f1`, zero SKIP: `character_archive_tier2_equivalence` (8),
+  `mount_ops_equivalence` (42), `mount_points_routes_equivalence` (19),
+  `cli_differential` (188, LIVE v4), plus the dedupe's neutrality
+  re-runs `system_import_equivalence` + `system_import_state` (fresh
+  oracles — the committed corpora carry no duplicate-blob case, so the
+  divergence is invisible to them by construction, as expected).
+- SPA: ng test 4,138 / 0; ng build clean; **full Playwright 202
+  passed / 0 failed / 0 skipped** — the suite grew 202 entries with the
+  four archive action beats ACTIVE (`CHARACTER_ARCHIVE_SERVER_LANDED`
+  flipped at unification).
+
+Versions: core 0.0.526, harness 0.0.446, cli 0.0.8, web 0.0.69,
+SPA 0.5.451; quilltap-tauri/host unchanged.
+
+### Standing after the round
+
+- **P4.D65 resumes** at its header's OPEN list (the re-encrypt wire =
+  P4.D63 unit 7, the files-delete guard, the export archived filter,
+  the non-null carry arm, the banked round-1 arms, and the §3 review's
+  owed corpus arms).
+- **Two v4-side filings for the human**: the rehydrate blob-collision
+  fix (this round's, above) and round 1's archived-seat-badge GET
+  enrichment gap.
+- The owed dogfood pass now gains: a real archive → rehydrate cycle
+  through the SPA, the CLI family against the Friday copy (status /
+  archives / offline export of a real bundle), and the Bug-56 409 on a
+  genuinely unreachable store.

@@ -559,6 +559,25 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **v4-side item (2026-08-11, the archive round-2 §3 unification review) —
+  v4 cannot rehydrate an archived character whose vault links the same
+  bytes twice.** Two v4 facts compose into a rehydrate-killer: the export's
+  blob listing (`doc-mount-blobs.repository.ts:439` `listByMountPoint`)
+  joins FROM the links, one row per link, so a blob whose content is linked
+  twice in one store — an ordinary sha-deduped gallery save — is emitted
+  once PER LINK into the bundle; and the preserveIds preflight's
+  `carriedBlobIds` (`quilltap-import/execute.ts:115`) is NOT deduped (unlike
+  `carriedFileIds` one list up, whose comment sanctions exactly this repeat
+  shape), so the within-bundle duplicate throws `Preserve IDs collision for
+  document store blob … (also seen as document store blob)` on EVERY
+  rehydrate of such a vault. The v4 fix is the same one-list dedupe v5 now
+  carries (first-occurrence, reader-side; the writer's bytes are untouched).
+  v5 DIVERGES deliberately as of the round-2 unification
+  (`quilltap_import/mod.rs`, live-pinned by
+  `crates/quilltap-web/tests/characters_action_route.rs`'s rehydrate leg
+  over a twice-linked-blob vault; the differential-level both-directions pin
+  rides P4.D65's resume list).
+
 - **ROUTED to `p4.9l` (finding #75, 2026-08-08) — the Salon composer layout is
   functionally degraded, not just cosmetically off.** In a wide pane (and worse
   in a narrow split), v5's editor collapses to (or below) its `min-width: 12rem`

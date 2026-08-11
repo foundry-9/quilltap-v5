@@ -2255,6 +2255,54 @@ records THERE. Update this summary only when a phase or round completes.
   **the `ed8934f1` Bug-56 drift catch-up** are the top next candidates —
   see phase-4.md. Versions: core 0.0.522, harness 0.0.443, web 0.0.68,
   host 0.0.65, SPA 0.5.450.
+- **The character-archive ROUND 2 + Bug-56 round (P4.D65 ∥ P4.D66 ∥
+  P4.D67): UNIFIED on main (2026-08-11) — P4.D66/P4.D67 CLOSED, P4.D65
+  OPEN at its resume list (P4.D63 stays OPEN at unit 7 with it); the
+  oracle baseline MOVES to `ed8934f1` and the drift debt is CLEARED.**
+  The archive service LIVE end-to-end (the 889-line port, both verbs,
+  the 8-case differential over the new committed
+  `character-archive-{main,mount}.db` family; the four SPA action beats
+  ACTIVE — archive/rehydrate walk live) ∥ the whole CLI `db characters`
+  family (status/archives/archive/rehydrate/export incl. offline bundle
+  decrypt; Tier R 136 → 188/0 vs v4's REAL launcher; the db verb
+  entrance v5 never had) ∥ the Bug-56 base-path-availability port
+  (byte-exact diagnosis sentences, the folder-create
+  assert-before-recursive-mkdir + 409, the store-create warning rewrite;
+  both mount families regenerated fresh). **The §3 review caught the
+  round's would-have-shipped bug — the cross-lane blind spot:** no lane
+  served the CLI's `POST /api/v1/characters/{id}?action=` URL on v5's
+  server (D65 reasoned from the SPA, D66's Tier R stubbed the wire) —
+  the thin REST edge landed at unification, and its live wire test then
+  caught two more: missing-character 500-vs-404 (fixed at v4's route
+  placement) and **a v4 bug v5 reproduced faithfully — v4 cannot
+  rehydrate a vault linking the same bytes twice** (per-link blob export
+  duplication × the undeduped `carriedBlobIds`); v5's preflight now
+  dedupes first-occurrence (a ruled-envelope divergence, live-pinned;
+  v4-side fix queued; ⚠ flagged for the human to confirm). Also fixed:
+  the archive differential's `background_jobs` blindness (fixture
+  extended by mutation — the table never existed, so enqueues failed
+  soft on BOTH sides; the positive leg stays owed), four CLI
+  swallowed-SQL-error sites, the Tier R wire-parity assertion, v4's
+  no-backend sentence, and the two action beats' `?section=` gesture
+  (the workspace-hosted settings page ignores it exactly as v4 does).
+  Gate: 423 test binaries / 2,010 / 0 with the round's env block; the
+  round's differentials by name fresh at `ed8934f1` zero SKIP; clippy
+  both feature sets; release build; ng 4,138; full Playwright green with
+  the archive spec 10/10 (numbers in the round record). Versions: core
+  0.0.526, harness 0.0.446, cli 0.0.8, web 0.0.69, SPA 0.5.451. Next
+  candidates: finish P4.D65, the owed dogfood pass (now with the live
+  archive/CLI surfaces), the two v4-side filings, the sweep-rot pass —
+  see phase-4.md.
+- **Oracle baseline: `ed8934f1` (2026-08-10, v4 4.8.0-dev), adopted at
+  the character-archive round-2 unification — NO v4 drift debt
+  remains.** v4 HEAD == the baseline, tree clean (verified at the
+  round's gate). Oracles regenerate straight from
+  `~/source/quilltap-server`; pin a detached worktree on any further
+  drift (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  <pin>`). The distill-transitive TZ pins, the committed-fixture rule,
+  and the venue/staging rules stand unchanged. Drift-check before every
+  round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `d553f72a` (2026-08-10, v4 4.8.0-dev), adopted at
   the character-archive round-1 unification.** ⚠ v4 HEAD is `ed8934f1`,
   ONE commit past it — "feat(docker): pass filesystem document stores

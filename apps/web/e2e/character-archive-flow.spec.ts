@@ -310,8 +310,21 @@ test.describe('P4.D64 — the archive ACTIONS (round 2)', () => {
     );
     await page.goto('/salon');
     await maybeUnlock(page);
-    await page.goto('/settings?tab=system&section=delete-all-data');
-    await page.getByRole('button', { name: 'Delete All Data', exact: true }).click();
+    // This spec runs the WORKSPACE shell (base @playwright/test, no legacy
+    // opt-out), where the hosted settings page ignores `?section=` exactly as
+    // v4 does — so expand the collapsible by its header, as a user would,
+    // instead of relying on the deep link (the legacy-mode
+    // zz-delete-all-destructive spec keeps the `section=` path covered).
+    await page.goto('/settings?tab=system');
+    await page
+      .locator('qt-collapsible-card', { hasText: 'Permanently delete all application data' })
+      .getByRole('button')
+      .first()
+      .click();
+    await page
+      .locator('qt-delete-data-card')
+      .getByRole('button', { name: 'Delete All Data', exact: true })
+      .click();
     await expect(page.getByText('Archived Character Bundles')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Leave the archived-character bundles on the shelf \(\d+ files?\)/)).toBeVisible();
     // Read-only: this beat does not press Delete Everything. The destructive
@@ -325,7 +338,16 @@ test.describe('P4.D64 — the archive ACTIONS (round 2)', () => {
     );
     await page.goto('/salon');
     await maybeUnlock(page);
+    // Workspace shell: expand the card by its header (see the note in the
+    // delete-all beat above).
     await page.goto('/settings?tab=system');
+    await page
+      .locator('qt-collapsible-card', {
+        hasText: 'Change or remove the passphrase protecting your encryption key',
+      })
+      .getByRole('button')
+      .first()
+      .click();
     await expect(
       page.getByText(/archived-character bundles? (is|are) sealed under this passphrase/),
     ).toBeVisible({ timeout: 15_000 });
