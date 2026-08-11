@@ -62709,3 +62709,74 @@ each turn the 404s into 500s.
 Also in this unit: `db/files.rs`'s two stale `FileCategoryEnum` doc lists
 gained `ARCHIVE` (tier-2 item 9a; v5 stores the category as plain TEXT, so
 nothing but the comments moved).
+
+## Lane record — P4.D62 unit 3: the `system-data-*` extension (2026-08-10)
+
+The committed fixture family predates carried ids and content-bearing vaults,
+so several of this lane's new arms were structurally INVISIBLE against it (the
+D24 / P4.11 one-mode-corpus lesson). `harness/oracle/fixtures/extend-system-data-archive-substrate.ts`
+widens it **by mutating the committed databases through v4's real repos**,
+never by rebuilding: a fresh `d553f72a` build would create `characters` WITH
+the three archive columns and v4's exporter would then emit those keys on
+every character record, dragging P4.D63's surface into this lane's byte diffs
+(the round's cross-lane fixture rule). Every added row carries a PINNED id —
+v4's create paths accept explicit ids since `d553f72a` — so the committed
+bytes stay reproducible.
+
+What it adds, and what each row makes measurable:
+
+- **`lore/ancients/first-age.md` in Lorian's vault.** Every folder in the old
+  family was a single path segment with a NULL parent, so verbatim and
+  path-resolved parents AGREED and the ordinary-path parent resolution was
+  green-by-luck. Re-running the mutation (verbatim `parentId` on the ordinary
+  path) now produces **3 differences** where it produced none before.
+- **`notes/shared-summary.md` in BOTH vaults** — one content row, two links:
+  the group-conversation-summary shape Bug 54 exists for.
+- **`images/portrait.webp` + the avatar pointers.** Lorian's `defaultImageId`
+  is that blob's LINK id and its `avatarOverrides` carry one remappable entry
+  plus one that resolves to nothing; Riya's `defaultImageId` is a legacy
+  `files.id`. All FOUR Bug-52 arms (remapped / kept-legacy / cleared-with-warning
+  / dropped-with-warning) go live from the fixture alone — the cleared arm on
+  the cross-instance case, where the files row's id is rewritten too. Removing
+  the remap now produces **78 differences**.
+- **Two `files` rows for the exclusion predicate** — one `category: 'ARCHIVE'`,
+  one `folderPath: '/archives'`, so each clause is proven independently.
+  Dropping `ARCHIVE`/`/archives` from the lists produces **2 failures**. Their
+  bytes live in the Uploads mount like the family's other byte-bearing files:
+  `system_backup_equivalence` rightly refuses a fixture full of rows whose
+  storage keys name nothing, and the first attempt (bare keys) tripped it.
+
+**The differential caught an error in the order's own survey.** It said the
+excluded-files predicate replaces FOUR inline filters. It replaces **three** —
+v4's `streamFiles`, `resolveExportIds` and the wizard's entity picker. v4 left
+`previewExport`'s inline two-clause filter alone (`quilltap-export-service.ts:306`),
+so the PREVIEW still lists an archive bundle the export then skips. v5's
+preview site is reverted to the two-clause form with the evidence at the site;
+`system_export_equivalence`'s `preview_files_all` is the case that says so, and
+v4's source agrees.
+
+**Oracles.** ⚠ v4 HEAD moved to `ed8934f1` mid-lane (bug 56 — the mount
+scanner's base-path guard plus docker/CLI packaging; no `lib/export`,
+`lib/import`, `lib/backup`, `lib/database`, `lib/file-storage`, `lib/schemas`
+or `app/api/v1/{system,files}` file is touched, so it is outside every family
+here). Per the order, all eight system-family oracles were regenerated from a
+DETACHED WORKTREE PINNED at `d553f72a` (`/tmp/qt-v4-pin-d553f72a`, node_modules
+symlinked per the standing recipe), and every one re-run by name:
+`system_export` (57), `system_import` (27), `system_import_state` (30),
+`system_backup` (3), `system_jobs_routes` (18), `system_jobs_collection` (8),
+`backup_uuid_remap` (20, corpus re-pinned at sha256
+`6cf3f361…`) — all green.
+
+**⚠ `system_delete_data_equivalence` is RED at the new baseline, and it is
+P4.D63's to close — not a P4.D62 regression.** Regenerated at `d553f72a` its
+summary carries the two keys the round's shared contract §4 assigns to that
+lane (`archiveBundles`, `archiveBundlesKept`), and the file arithmetic is the
+same fact restated: the oracle's `files: 5` + `archiveBundles: 1` is exactly
+v5's `files: 6` — the held bundle simply moved into its own bucket, which is
+what `keepArchivedCharacterBundles` does. Regenerating it at the OLD `f6eac168`
+vintage instead is not an option: that build's `FileCategoryEnum` has no
+`ARCHIVE`, so its `files.findAll()` Zod-drops the row and the counts diverge
+for a second, unrelated reason. It is therefore deliberately NOT in this lane's
+gate env block (where it skips), it is re-run and recorded here, and the round
+planned exactly this handoff ("P4.D62 plants the ARCHIVE rows P4.D63's
+kept/swept arms consume").

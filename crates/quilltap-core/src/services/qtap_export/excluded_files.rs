@@ -20,10 +20,17 @@
 //! >   wipe only by the operator's explicit "keep archived characters" choice;
 //! >   an export is not the place to smuggle copies of it.
 //!
-//! v5 has FOUR call sites rather than v4's three: v4's `streamFiles` and
-//! `resolveExportIds` plus [`super::preview`] and [`super::entities`], which v4
-//! reaches through the same picker. `services::backup::collect`'s own BACKUP
-//! rule is a DIFFERENT rule that v4 did not touch — leave it alone.
+//! v5 has the same THREE call sites v4 does: `streamFiles` and
+//! `resolveExportIds` (both in `mod.rs`/`records.rs`) plus the wizard's entity
+//! picker ([`super::entities`], v4's `handleExportEntities`).
+//!
+//! **[`super::preview`] is deliberately NOT one of them.** v4 left
+//! `previewExport`'s inline two-clause filter alone at `01e481f6`
+//! (`quilltap-export-service.ts:306`), so the preview still lists an ARCHIVE
+//! bundle the export then skips. This lane's survey predicted four sites;
+//! `system_export_equivalence`'s `preview_files_all` case said three, and v4's
+//! source agrees. `services::backup::collect`'s own BACKUP rule is a DIFFERENT
+//! rule that v4 did not touch — leave that one alone too.
 
 use serde_json::Value;
 

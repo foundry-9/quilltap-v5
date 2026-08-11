@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Widened the shared test fixture so the archive substrate's new behavior is
+actually measured rather than merely present: a nested vault folder, a
+document shared by two characters' vaults, a real portrait blob with the
+avatar pointers that exercise the remap, and archive-category files. No
+shipped behavior changed, but one real port bug surfaced with it — the export
+PREVIEW was excluding archive bundles where v4 still lists them.
+
 Serving a file whose bytes have gone missing now answers 404 instead of 500
 (v4 bug 55). A `files` row can outlive its content — a deleted mount point, a
 storage key with nothing at that path — and answering a server error on every

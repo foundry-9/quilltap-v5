@@ -94,6 +94,14 @@ const FILE_IMG = 'f0000001-0000-4000-8000-000000000001';
 // ── The rows this script adds (all pinned) ──────────────────────────────────
 const FILE_ARCHIVE_BUNDLE = 'f0000005-0000-4000-8000-000000000005';
 const FILE_IN_ARCHIVES_FOLDER = 'f0000006-0000-4000-8000-000000000006';
+/** The "Quilltap Uploads" mount the committed family already carries. */
+const UPLOADS_MOUNT = 'be000000-0000-4000-8000-000000000001';
+const ARCHIVE_BLOB_FILE = 'c7000000-0000-4000-8000-000000000031';
+const ARCHIVE_BLOB = 'c7000000-0000-4000-8000-000000000032';
+const ARCHIVE_BLOB_LINK = 'c7000000-0000-4000-8000-000000000033';
+const STRAY_BLOB_FILE = 'c7000000-0000-4000-8000-000000000041';
+const STRAY_BLOB = 'c7000000-0000-4000-8000-000000000042';
+const STRAY_BLOB_LINK = 'c7000000-0000-4000-8000-000000000043';
 
 const NESTED_FILE = 'c7000000-0000-4000-8000-000000000001';
 const NESTED_DOC = 'c7000000-0000-4000-8000-000000000002';
@@ -150,18 +158,52 @@ async function main(): Promise<void> {
 
   // 1. The two exclusion rows. `ARCHIVE` joined `FileCategoryEnum` at
   //    `d553f72a`; v5 stores the category as plain TEXT either way.
+  //
+  //    Their bytes live in the "Quilltap Uploads" mount, exactly like the two
+  //    byte-bearing files the family already carries: a `files` row whose
+  //    storage key names nothing is a row without bytes, and the backup
+  //    family's own health assertion (rightly) refuses a fixture full of them.
+  const archiveBytes = Buffer.from('PK\u0003\u0004 a sealed character archive', 'utf-8');
+  const strayBytes = Buffer.from('a note that wandered into /archives\n', 'utf-8');
+  await repos.docMountBlobs.create({
+    mountPointId: UPLOADS_MOUNT,
+    relativePath: 'uploads/lorian-archive.qtap',
+    originalFileName: 'lorian-archive.qtap',
+    originalMimeType: 'application/octet-stream',
+    storedMimeType: 'application/octet-stream',
+    sha256: sha256Bytes(archiveBytes),
+    description: '',
+    data: archiveBytes,
+    fileId: ARCHIVE_BLOB_FILE,
+    linkId: ARCHIVE_BLOB_LINK,
+    blobId: ARCHIVE_BLOB,
+  } as never);
+  await repos.docMountBlobs.create({
+    mountPointId: UPLOADS_MOUNT,
+    relativePath: 'uploads/stray-note.txt',
+    originalFileName: 'stray-note.txt',
+    originalMimeType: 'text/plain',
+    storedMimeType: 'text/plain',
+    sha256: sha256Bytes(strayBytes),
+    description: '',
+    data: strayBytes,
+    fileId: STRAY_BLOB_FILE,
+    linkId: STRAY_BLOB_LINK,
+    blobId: STRAY_BLOB,
+  } as never);
+
   await repos.files.create(
     {
       userId: spec.userId,
       linkedTo: [],
       tags: [],
-      sha256: '5555555555555555555555555555555555555555555555555555555555555555',
+      sha256: sha256Bytes(archiveBytes),
       originalFilename: 'lorian-archive.qtap',
       mimeType: 'application/octet-stream',
-      size: 2048,
+      size: archiveBytes.length,
       source: 'GENERATED',
       category: 'ARCHIVE',
-      storageKey: `${spec.userId}/archives/lorian-archive.qtap`,
+      storageKey: `mount-blob:${UPLOADS_MOUNT}:${ARCHIVE_BLOB}`,
     } as never,
     { id: FILE_ARCHIVE_BUNDLE, createdAt: TS, updatedAt: TS } as never,
   );
@@ -170,13 +212,13 @@ async function main(): Promise<void> {
       userId: spec.userId,
       linkedTo: [],
       tags: [],
-      sha256: '6666666666666666666666666666666666666666666666666666666666666666',
+      sha256: sha256Bytes(strayBytes),
       originalFilename: 'stray-note.txt',
       mimeType: 'text/plain',
-      size: 12,
+      size: strayBytes.length,
       source: 'UPLOADED',
       category: 'DOCUMENT',
-      storageKey: `${spec.userId}/archives/stray-note.txt`,
+      storageKey: `mount-blob:${UPLOADS_MOUNT}:${STRAY_BLOB}`,
       folderPath: '/archives',
     } as never,
     { id: FILE_IN_ARCHIVES_FOLDER, createdAt: TS, updatedAt: TS } as never,
