@@ -146,7 +146,29 @@ fn reencrypt_one(
         return Err("file row has no storageKey — bytes were never uploaded".to_string());
     };
 
-    let bytes = backend.download(storage_key)?;
+    // Download through the MANAGER, not the raw backend: v4's sweep goes
+    // through `fileStorageManager.downloadFile` (`archive-reencrypt.ts:76`),
+    // whose missing-content arm yields the clean un-wrapped sentence and whose
+    // generic arm wraps with `Failed to download file '<name>': `. A raw
+    // `backend.download` here leaked the Bug-55 SOH sentinel verbatim into the
+    // change-passphrase `failures[].reason` — caught by the round-1
+    // unification review before the sweep gained its caller.
+    let entry = crate::db::files::FileEntry {
+        id: file.id.clone(),
+        sha256: file.sha256.clone(),
+        original_filename: file.original_filename.clone(),
+        mime_type: file.mime_type.clone(),
+        size: file.size,
+        width: file.width,
+        height: file.height,
+        category: file.category.clone(),
+        generation_prompt: None,
+        generation_model: None,
+        generation_revised_prompt: None,
+        description: file.description.clone(),
+        storage_key: file.storage_key.clone(),
+    };
+    let bytes = crate::services::file_storage::download_file(db, backend, &entry)?;
     // Pre-encryption bundles are plaintext NDJSON; they "decrypt" to
     // themselves and simply gain a header on the way back out.
     let plaintext = if is_encrypted_archive(&bytes) {

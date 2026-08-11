@@ -79,7 +79,7 @@ pub async fn maybe_enqueue_cold_chunk_reembed(
         return Ok(0); // chunkless or fully warm
     }
 
-    // Pick the embedding profile (default, else first — v4 `findAll`).
+    // Pick the DEFAULT embedding profile — and only the default.
     let Some(profile_id) = db.read_main(embedding_profiles::pick_reembed_profile_id)? else {
         // Cold chat detected but no DEFAULT embedding profile configured — skip
         // (v4 `d553f72a`: no arbitrary-profile fallback).

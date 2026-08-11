@@ -640,7 +640,11 @@ fn stream_one_store(
             // v4 sorts by path LENGTH (parents before children) with `Array.sort`
             // — stable in V8, so equal-length folders keep DB read order.
             let mut rows = folders.find_by_mount_point_id(id)?;
-            rows.sort_by_key(|f| f.path.chars().count());
+            // v4 sorts by `a.path.length - b.path.length` — UTF-16 units, not
+            // scalar values (a surrogate pair counts as 2). Parent-before-child
+            // holds under either metric, but SIBLING order diverges on astral
+            // characters, and the export byte stream is diffed line-for-line.
+            rows.sort_by_key(|f| f.path.encode_utf16().count());
             for folder in rows {
                 let mut d = Map::new();
                 // `01e481f6`: the source row id rides FIRST, carried so a

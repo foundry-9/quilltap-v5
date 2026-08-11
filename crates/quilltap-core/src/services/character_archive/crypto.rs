@@ -159,12 +159,24 @@ impl std::error::Error for ArchiveCryptoError {}
 /// state, so the cache lives there (`api::engine`) and reaches this module as
 /// a parameter — no process global, and the archive crypto stays a pure
 /// function of its inputs.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct PassphraseSource<'a> {
     /// The effective passphrase this process last proved, if any.
     pub cached: Option<&'a str>,
     /// Whether a USER passphrase protects this instance.
     pub has_user_passphrase: bool,
+}
+
+/// Deliberately NOT `derive(Debug)`: `cached` is the live passphrase, and the
+/// module brief is "nothing ever writes it to disk or logs" — a stray `{:?}`
+/// in a future error path must not be able to print it. This impl redacts.
+impl std::fmt::Debug for PassphraseSource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PassphraseSource")
+            .field("cached", &self.cached.map(|_| "<redacted>"))
+            .field("has_user_passphrase", &self.has_user_passphrase)
+            .finish()
+    }
 }
 
 /// The passphrase archive crypto should use when the caller doesn't supply

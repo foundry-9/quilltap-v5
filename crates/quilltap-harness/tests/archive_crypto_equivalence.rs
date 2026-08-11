@@ -3,9 +3,11 @@
 //! Compares `quilltap_core::services::character_archive::crypto` against v4's
 //! REAL `lib/characters/archive-crypto.ts` at `d553f72a`, with the oracle's
 //! `crypto.randomBytes` mocked so salt and IV are pinned. That makes
-//! `encryptArchive` a pure function and lets this diff the **whole bundle byte
-//! for byte** — magic, big-endian header length, header key ORDER, salt, IV,
-//! keyHash, ciphertext and GCM tag — rather than settling for "it round-trips".
+//! `encryptArchive` a pure function and lets this diff the whole bundle
+//! byte-for-byte (magic, big-endian header length, header key ORDER, salt, IV,
+//! keyHash, ciphertext and GCM tag) rather than settling for "it round-trips".
+//! (Prose here must not start a line with a shell keyword — the recipe-sweep
+//! extractor once mistook a wrapped "for byte**" line for script.)
 //!
 //! It also diffs, in both directions:
 //!   - every refusal arm's error `name` AND `message` (the four typed errors'

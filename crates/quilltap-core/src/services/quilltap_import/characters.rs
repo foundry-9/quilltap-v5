@@ -322,9 +322,20 @@ pub(super) fn import_characters(
             let vault: CharacterVaultWriteInput =
                 serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
 
-            // v4 `01e481f6`: under `preserveIds` the create claims the
-            // bundle's own character id (`create(createData, { id })`).
-            let (new_row_id, now) = super::mint_or_preserve(options, &source_id);
+            // v4 `01e481f6`: under `preserveIds` the PLAIN create claims the
+            // bundle's own character id (`create(createData, { id })`) — but
+            // the name-conflict `duplicate` branch does NOT: v4's
+            // `import-characters.ts:141-153` creates the "(imported)" copy with
+            // no createOptions, so it always mints (the same discipline
+            // `entities.rs` names `DUPLICATE_MINTS`). Caught by the round-1
+            // unification review: passing the bundle id here would claim it
+            // for the renamed copy where v4 leaves it free.
+            let duplicate_mints = ""; // the `entities.rs` `DUPLICATE_MINTS` discipline
+            let (new_row_id, now) = if duplicate_rename {
+                super::mint_or_preserve(options, duplicate_mints)
+            } else {
+                super::mint_or_preserve(options, &source_id)
+            };
             let new_id = create_character_with_options(
                 main,
                 mount,

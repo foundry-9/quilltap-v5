@@ -68,8 +68,11 @@ pub fn enqueue_mount_chunk_embedding(
 }
 
 /// The user's default embedding profile id — v4 `profiles.findAll()` then
-/// `find(p => p.isDefault) || profiles[0]` (NOT user-scoped; the single-user
-/// system reads whichever default exists, falling back to the first row).
+/// `find(p => p.isDefault)` and NOTHING else (v4 `d553f72a` dropped the old
+/// `|| profiles[0]` fallback at its five embedding sites; NOT user-scoped).
+/// ⚠ Help-doc sync is deliberately NOT a consumer: v4's
+/// `lib/help/help-doc-sync.ts:359` KEPT the first-row fallback, so it has its
+/// own resolver, [`default_or_first_profile_id`].
 pub fn default_profile_id(main: &Connection) -> Result<Option<String>, DbError> {
     let mut stmt = main.prepare("SELECT id, isDefault FROM embedding_profiles")?;
     let rows: Vec<(String, bool)> = stmt
@@ -81,15 +84,38 @@ pub fn default_profile_id(main: &Connection) -> Result<Option<String>, DbError> 
         })?
         .collect::<Result<Vec<_>, _>>()?;
     // The **default** embedding profile, and only the default (v4 `d553f72a`):
-    // every vector in the instance — memories, conversation chunks, help docs,
-    // mount chunks — must come from the same profile, or semantic search
-    // silently compares apples to oranges. No fallback to an arbitrary profile:
-    // with none marked, these chunks WAIT (the startup reconcile re-enqueues
-    // them once one is configured), exactly as memories do.
+    // every vector in the instance — memories, conversation chunks, mount
+    // chunks — must come from the same profile, or semantic search silently
+    // compares apples to oranges. No fallback to an arbitrary profile: with
+    // none marked, these chunks WAIT (the startup reconcile re-enqueues them
+    // once one is configured), exactly as memories do.
     Ok(rows
         .iter()
         .find(|(_, is_default)| *is_default)
         .map(|(id, _)| id.clone()))
+}
+
+/// v4 `lib/help/help-doc-sync.ts:359` — `find(p => p.isDefault) || profiles[0]`.
+/// Help-doc sync is the ONE consumer v4's `d553f72a` one-default sweep did NOT
+/// touch: it still falls back to the first profile row when none is marked
+/// default. Caught by the round-1 unification review (the shared helper above
+/// had silently changed this sixth site along with the ordered five); keep the
+/// two resolvers separate until v4 itself converges them.
+pub fn default_or_first_profile_id(main: &Connection) -> Result<Option<String>, DbError> {
+    let mut stmt = main.prepare("SELECT id, isDefault FROM embedding_profiles")?;
+    let rows: Vec<(String, bool)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?.unwrap_or(0) != 0,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .iter()
+        .find(|(_, is_default)| *is_default)
+        .map(|(id, _)| id.clone())
+        .or_else(|| rows.first().map(|(id, _)| id.clone())))
 }
 
 /// v4 `users.findAll()[0]?.id` — the single-user id.
@@ -170,4 +196,59 @@ pub fn enqueue_embedding_jobs_for_mount_point(
         }
     }
     Ok(enqueued)
+}
+
+#[cfg(test)]
+mod resolver_split_tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn db_with_profiles(rows: &[(&str, i64)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE embedding_profiles (id TEXT PRIMARY KEY, isDefault INTEGER);")
+            .unwrap();
+        for (id, is_default) in rows {
+            conn.execute(
+                "INSERT INTO embedding_profiles (id, isDefault) VALUES (?1, ?2)",
+                rusqlite::params![id, is_default],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    /// The round-1 unification review's finding: v4 `d553f72a` dropped the
+    /// first-row fallback at five embedding sites but KEPT it in help-doc sync
+    /// (`help-doc-sync.ts:359`). The two resolvers must stay split — a shared
+    /// helper silently changing the sixth site is exactly what shipped to the
+    /// review and was caught there.
+    #[test]
+    fn no_default_marked_splits_the_two_resolvers() {
+        let conn = db_with_profiles(&[("first", 0), ("second", 0)]);
+        assert_eq!(default_profile_id(&conn).unwrap(), None);
+        assert_eq!(
+            default_or_first_profile_id(&conn).unwrap(),
+            Some("first".to_string())
+        );
+    }
+
+    #[test]
+    fn a_marked_default_wins_in_both_resolvers() {
+        let conn = db_with_profiles(&[("first", 0), ("second", 1)]);
+        assert_eq!(
+            default_profile_id(&conn).unwrap(),
+            Some("second".to_string())
+        );
+        assert_eq!(
+            default_or_first_profile_id(&conn).unwrap(),
+            Some("second".to_string())
+        );
+    }
+
+    #[test]
+    fn an_empty_table_resolves_to_none_in_both() {
+        let conn = db_with_profiles(&[]);
+        assert_eq!(default_profile_id(&conn).unwrap(), None);
+        assert_eq!(default_or_first_profile_id(&conn).unwrap(), None);
+    }
 }

@@ -47,7 +47,9 @@ use crate::db::help_docs::{HdUpsert, HelpDocsRepository};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim};
-use crate::services::mount_index::embedding_scheduler::{default_profile_id, first_user_id};
+use crate::services::mount_index::embedding_scheduler::{
+    default_or_first_profile_id, first_user_id,
+};
 use crate::services::queue_service::enqueue_embedding_generate;
 
 /// One on-disk help file (the host walker's output): `rel_path` is v4's
@@ -432,9 +434,11 @@ async fn enqueue_missing_help_doc_embeddings(db: &Db) {
         }
 
         // v4: `profiles.findAll()` then `find(p => p.isDefault) || profiles[0]`
-        // — unscoped, no ORDER BY. `default_profile_id` is that exact
-        // expression (it already serves the mount-index scheduler).
-        let Some(profile_id) = db.read_main(default_profile_id)? else {
+        // — unscoped, no ORDER BY, and the FALLBACK SURVIVES here: v4's
+        // `d553f72a` one-default sweep did not touch help-doc sync, so this is
+        // the one site that still embeds under the first row when no default
+        // is marked (`default_or_first_profile_id`, not `default_profile_id`).
+        let Some(profile_id) = db.read_main(default_or_first_profile_id)? else {
             // v4 debug-logs "need embedding but no profile is configured" and
             // returns — the sync itself still counts as done.
             return Ok(());

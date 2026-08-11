@@ -89,10 +89,14 @@ const ARCHIVE_COLUMNS: [&str; 3] = ["archivedAt", "archiveFileId", "archivedAvat
 /// columns; this is what keeps old fixtures readable.
 fn select_columns(conn: &Connection) -> String {
     let mut list = String::from(SLIM_COLUMNS);
-    let present = table_has_column(conn, ARCHIVE_COLUMNS[0]);
+    // Probe PER COLUMN, not just the first: v4's migration (and v5's own boot
+    // repair) guard each ALTER individually, so a table interrupted between
+    // ALTERs can carry `archivedAt` without `archiveFileId` — a single-column
+    // probe would then name a missing column and break every read (the round-1
+    // unification review's finding 4).
     for col in ARCHIVE_COLUMNS {
         list.push_str(", ");
-        if present {
+        if table_has_column(conn, col) {
             list.push_str(col);
         } else {
             list.push_str("NULL");
