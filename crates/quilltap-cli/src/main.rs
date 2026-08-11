@@ -12,8 +12,10 @@
 //! native-module-healing machinery does not port).
 //!
 //! Help texts under `src/help/` are byte transcriptions of the v4 launcher's
-//! output (captured from `node bin/quilltap.js … --help` at v4 `2494a84b`) —
-//! the tool-catalog static-data-transcription precedent.
+//! output (captured from `node bin/quilltap.js … --help` at v4 `2494a84b`;
+//! `db_help.txt` and `docs_help.txt` re-captured at v4 `ed8934f1` for the
+//! `characters` archive subcommands and `docs docker-mounts`) — the
+//! tool-catalog static-data-transcription precedent.
 
 mod completion_cmd;
 mod db_cmd;

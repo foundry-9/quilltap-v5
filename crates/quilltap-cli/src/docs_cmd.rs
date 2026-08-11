@@ -156,6 +156,12 @@ fn parse_flags(args: &[String]) -> (Flags, Vec<String>) {
                     };
             }
             "--names-only" => flags.names_only = true,
+            // v4 `ed8934f1` (bug 56) added `--format args|json` for the
+            // `docker-mounts` verb alone. Recognized here — and its value
+            // consumed, exactly as v4's `args[++i]` does — so the flag never
+            // shadows that verb's own loud refusal below with an
+            // "Unknown option" exit. No other verb reads it.
+            "--format" => i += 1,
             "-h" | "--help" => flags.help = true,
             other => {
                 if other.starts_with('-') {
@@ -215,8 +221,14 @@ pub fn run(args: &[String]) {
                 positional.first().map(String::as_str),
                 positional.get(1).map(String::as_str),
             ),
+            // `docker-mounts` is v4 `ed8934f1`'s new verb (bug 56): it plans the
+            // bind mounts an instance's filesystem stores need inside a
+            // container. Its planner (`lib/docker-mounts.js`, the platform
+            // arms + the nesting/collapse rules) is unported — recognized and
+            // loud rather than silently unknown; the port is its own order.
             "files" | "status" | "find" | "grep" | "export" | "scan" | "write" | "delete"
-            | "mkdir" | "move" | "copy" | "link" | "rmdir" | "mvdir" | "reindex" | "embed" => {
+            | "mkdir" | "move" | "copy" | "link" | "rmdir" | "mvdir" | "reindex" | "embed"
+            | "docker-mounts" => {
                 out::elog(&format!(
                     "Error: docs subcommand '{verb}' is recognized but not yet available in this build of the quilltap CLI."
                 ));

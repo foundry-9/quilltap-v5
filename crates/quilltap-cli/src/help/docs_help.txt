@@ -18,6 +18,8 @@ Read subcommands:
   grep [--mount <name|id|all>] [--ignore-case] [-l] [--max N] [--context N] <pattern>
                                          Substring search inside extracted text
   status [--mount <name|id>] [--top N]   Per-mount extraction + embedding rollup
+  docker-mounts [--format args|json]     Bind mounts this instance's filesystem
+                                         stores need to be visible in Docker
 
 Server-required subcommands (background-job queue lives in the running server):
   grep --semantic [--mount <name|id|all>] [--top N] [--threshold 0..1] <query>

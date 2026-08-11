@@ -53,6 +53,15 @@ P4.D67 unit 1 — ported v4 `ed8934f1`'s new
 byte-exact operator-facing sentences including the containerized
 variants (pinned by unit tests — neither test environment is a
 container). No caller yet; the wire lands with the route arms.
+CLI — absorbed v4's `ed8934f1` text drift into `quilltap-cli`. `db --help`
+picked up the fourteen `characters archives|archive|rehydrate|export` lines
+from the round-1 archive commit; `docs --help` and all three shell-completion
+templates picked up `docs docker-mounts` from the Bug-56 commit. All five
+files re-captured byte-for-byte from v4's real launcher and templates. The
+`docs docker-mounts` verb itself is recognized and refuses loudly by name (its
+bind planner is unported); `--format` is parsed so that flag reaches the
+refusal. The Tier R CLI differential goes 136 cases / 7 failures → 0 at the
+new baseline.
 
 Planned the character-archive round 2 + the `ed8934f1` (Bug 56)
 drift-catch-up round: three work orders committed under

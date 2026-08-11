@@ -1,7 +1,7 @@
 //! `quilltap completion <shell>` — the shell-completion emitters (v4
 //! `packages/quilltap/lib/completion-commands.js`). The three scripts are
-//! byte transcriptions of v4's `lib/completion/*.template` files (captured at
-//! v4 `2494a84b`), emitted verbatim.
+//! byte transcriptions of v4's `lib/completion/*.template` files (re-captured
+//! at v4 `ed8934f1` — the `docs docker-mounts` entry), emitted verbatim.
 
 use crate::out;
 

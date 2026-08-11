@@ -63935,3 +63935,39 @@ One cosmetic leftover for the unifier, outside this lane's ownership:
 `apps/web/.../scriptorium.spec.ts:122` still names the deleted
 `verifyBasePath` in a test title. It stubs its own warning string, so
 only the name is stale.
+## Lane record — P4.D66 unit 1: the `ed8934f1` CLI text drift (2026-08-11)
+
+The round's baseline move to `ed8934f1` landed on `crates/quilltap-cli/**`
+before a single line of the `characters` family was written: the Tier R
+differential was **already RED on main** at the new baseline — 136 cases, 7
+failures — and every one of them was a byte transcription that v4 had moved.
+Two separate drifts, both inside this lane's ownership:
+
+- **`db --help`** gained the fourteen lines the round-1 commit `01e481f6`
+  added for the `characters archives|archive|rehydrate|export` subcommands.
+  That is this lane's own subject arriving in the help text ahead of the code.
+- **`docs --help` + all three completion templates** gained the
+  `docs docker-mounts` entries from `ed8934f1` itself (Bug 56's CLI half —
+  `lib/docker-mounts.js` + the `docs-commands.js` verb). Those three failures
+  showed up as `docs help`, `docs unknown verb` and `docs no args` (the help
+  text is printed on all three paths) plus `completion bash|zsh|fish`.
+
+All five files re-captured from v4 at `ed8934f1` — the help texts by running
+the real launcher (`node packages/quilltap/bin/quilltap.js db --help`,
+`… docs --help`) and byte-copying its stdout, the templates by copying
+`packages/quilltap/lib/completion/*.template` — which is the standing
+static-data-transcription discipline (never retyped).
+
+**Deferred loudly: the `docs docker-mounts` verb itself.** v5 now recognizes
+it and answers the named not-yet-available refusal rather than
+`Unknown docs subcommand`, and `--format` is parsed (value consumed, exactly
+as v4's `args[++i]`) so `docs docker-mounts --format args` reaches that
+refusal instead of an `Unknown option` exit. The planner behind it
+(`planStoreMounts`/`toDockerArgs`: the collapse-shared-vault rule, the
+drop-nested-in-a-bind rule, the skip-non-existent-path rule, the macOS
+non-shared-prefix and Linux uid warnings, the Windows refusal) is ~200 LOC of
+platform logic and is **unported** — it wants its own order, and it is the
+CLI-side companion to P4.D67's server-side Bug-56 slice.
+
+Gate for the unit: the Tier R family by name, **136 cases / 0 failures**
+against v4 at `ed8934f1` (was 7 failures before the re-capture).
