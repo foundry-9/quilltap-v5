@@ -90,8 +90,13 @@ test.describe('P4.D64 — the archive tombstone, read-only', () => {
     await expect(badge).toHaveAttribute('title', /^Resting in the archive since /);
 
     // Archived last on the shelf — rule 0 outranks every other ordering key.
+    // Case-insensitively: the aa-foundation walk applies a bundled theme whose
+    // `text-transform: uppercase` reaches innerText (the P4.43 lesson), so a
+    // full-suite run reads "MARCHPANE" where isolation reads "Marchpane".
     const names = await cards.locator('h2').allInnerTexts();
-    expect(names[names.length - 1]).toContain(ARCHIVED_CHARACTER_NAME);
+    expect(names[names.length - 1].toUpperCase()).toContain(
+      ARCHIVED_CHARACTER_NAME.toUpperCase(),
+    );
 
     // The card offers no chat and no export — one inert note instead.
     const actions = tomb.first().locator('.character-card-actions');
