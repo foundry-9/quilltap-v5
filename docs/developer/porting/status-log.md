@@ -63330,3 +63330,64 @@ real web-edge leg answers with; everything after it is the real component.
 
 **Gate:** `ng test` 298 files / 4,138 tests, 0 failed (+25); `ng build` clean.
 SPA 0.5.448 → 0.5.449.
+
+### Lane record — P4.D64 unit 6 (the e2e beats + the tombstone seeder)
+
+**Landed.** `e2e/character-archive-flow.spec.ts` (10 beats, all skipped in-lane)
+and `e2e/support/seed-archived-character.ts`, called from `global-setup.ts`.
+
+- **Six tombstone-READ beats** behind `ARCHIVE_TOMBSTONE_SEEDED = false` —
+  **ACTIVATE-AT-UNIFY (this round's unifier flips it)**: the roster's
+  exclude-by-default → Show Archived → badge + archived-last ordering + the inert
+  card → Hide Archived; the read-only page (banner, Rehydrate PRESENT and
+  unpressed, no Archive, no Edit door, a `fieldset[disabled]` that still renders
+  the details tab); a live character's Archive button last in the column; the
+  group's `2 members / 1 can speak (1 archived)` + the member badge; the seat
+  badged BOTH Absent and Archived in order; and a cheap guard that the badge
+  tooltip dates from the seeded stamp (so seeder drift says so directly).
+- **Four ACTION beats** behind `CHARACTER_ARCHIVE_SERVER_LANDED = false`, with
+  ROUND 2 named in every skip message: the archive dialog → confirm → toast →
+  the page becomes the tombstone; rehydrate → toast → the keep/discard dialog →
+  Keep It → the live cluster returns; the delete-data bundle option; the
+  passphrase card's warning over real bundles. **Do not flip this at this round's
+  unification.**
+
+**The seeding decision, which DIVERGES from the order's note — read this before
+unifying.** The order suggests archiving Dax as "the least-entangled fixture
+character". A survey at lane start says otherwise: **Dax appears seven times in
+`salon-post-office-flow.spec.ts`** (the off-scene recipient, the mail author, the
+not-borrowed-from-the-cast guard) and Aria / Bram / Cleo are that spec's cast —
+those four are the WHOLE salon fixture roster. Archiving any of them removes them
+from every picker, since v4's chokepoint excludes archived characters by default,
+so a sibling spec would go red for a reason that has nothing to do with it.
+
+So the seeder builds a self-contained island instead, all ids keyed `d64…`:
+`Marchpane` (a character no beat has ever mentioned), the group `The Dust Sheets`
+(Marchpane + one live member, which is what makes the can-speak line
+non-trivial), and the chat `The Shuttered Wing` (its own conversation — never an
+existing one, because the post-office beats assert EXACT cast option lists),
+holding Marchpane as an ABSENT participant so the card shows both badges.
+`archiveFileId` stays NULL: a pre-bundle tombstone, v4-legal, and it keeps the
+seeder clear of the ARCHIVE `files` row whose bytes are round 2's.
+
+**Two mechanics worth carrying forward.** (a) The rows are COPIED, not written:
+each is read back with `SELECT *` (`--json`) and re-inserted with a few keys
+overridden, so it picks up P4.D63's new columns for free and cannot rot against a
+moving schema. (b) It PROBES for `characters.archivedAt` (`SELECT archivedAt FROM
+characters LIMIT 1`, allowFail) and writes NOTHING when absent — an unarchived
+Marchpane would appear in the roster and in every picker, which is the sibling
+breakage above. Global setup logs `seeded the archived-character island` when it
+ran: that line is the unifier's cue that the constant can be flipped.
+
+**Also in this unit:** the tier-3 inherited gate is recorded IN THE CODE, at
+`character-header.ts`, not only here — v4 hides optimize / search-replace /
+external-prompt for an archived character by passing `undefined`; v5's three are
+still disabled deferrals, so the gate is moot and deliberately unexpressed, and
+the comment tells whichever lane makes one of them live that it must hide when
+archived.
+
+**Gate for the unit:** `npx playwright test --list` sees all 10 beats; the FULL
+suite ran **192 passed / 10 skipped / 0 failed (19.5m)** over main's debug
+binaries (this lane changed no Rust, so main's `quilltap-web` + `quilltap` are
+the correct server; they were copied into the worktree's `target/debug`, not
+built). `ng test` 298 files / 4,138; `ng build` clean. SPA 0.5.449 → 0.5.450.

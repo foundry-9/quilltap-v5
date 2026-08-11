@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync, openSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { seedArchivedCharacter } from './support/seed-archived-character';
 import { makeDbKeyFile } from './support/dbkey';
 import { seedCourierImagesFixture } from './support/seed-courier-fixture';
 import { seedPascalToolsFixture } from './support/seed-pascal-tools-fixture';
@@ -246,6 +247,15 @@ export default async function globalSetup(): Promise<void> {
   // characters walk deletes gallery tiles on the same shared server).
   // Mount-partition rows only — the userId rewrite below does not touch them.
   seedPhotosFixture(cli);
+  // The P4.D64 wire: a tombstoned character (plus a group and a chat that hold
+  // it) so the archive's READ surfaces have something to walk. INERT until
+  // P4.D63 lands `characters.archivedAt` — the seeder probes for the column and
+  // writes nothing without it, because an unarchived Marchpane would turn up in
+  // every picker and redden sibling specs. It writes SINGLE_USER_ID directly, so
+  // the rewrite loop below has nothing to do for these rows.
+  if (seedArchivedCharacter(cli)) {
+    console.log('[e2e] seeded the archived-character island (P4.D64 tombstone beats are live)');
+  }
   for (const table of [
     'chats',
     'connection_profiles',

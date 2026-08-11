@@ -230,6 +230,14 @@ interface StatItem {
                 : 'Convert to NPC'
           }}
         </button>
+        <!-- ⚠ P4.D64 INHERITED GATE: v4 passes undefined for onOptimize /
+             onSearchReplace / onGenerateExternalPrompt when the character is
+             archived, which hides each button. v5's three are still DISABLED
+             deferrals, so the gate is moot today and is deliberately not
+             expressed — they cannot be pressed either way. The lane that makes
+             any of them live MUST hide it when archived (this whole column is
+             already replaced by Rehydrate, so the simplest correct answer is to
+             leave it inside the live arm below). -->
         <button
           type="button"
           disabled

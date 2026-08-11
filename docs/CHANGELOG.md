@@ -74,6 +74,15 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 6: end-to-end beats for the archive, plus the fixture that feeds
+them. Global setup seeds a tombstoned character (Marchpane) with a group and
+a conversation that hold it, so the read surfaces — the roster toggle,
+badges, the read-only page, the group's can-speak line, the archived seat —
+have something real to walk. The seeder probes for the archive column and
+writes nothing without it, keeping it inert until the schema lands. Six read
+beats activate at this round's unification; four action beats stay gated for
+round 2.
+
 P4.D64 unit 5: the settings surfaces account for archive bundles. The
 Encryption Passphrase card counts the bundles sealed under the current
 passphrase and warns that each will be rewritten, then reports what the
