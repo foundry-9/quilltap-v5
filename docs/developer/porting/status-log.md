@@ -63862,3 +63862,27 @@ headers and unchanged apart from the new planted arms). The fresh
 marker for this round is the new sentence itself: no `d553f72a`-vintage
 oracle can carry `The path '…' does not exist.`, since at that pin the
 warning still read "Base path '…' is not currently accessible."
+
+### Unit record — P4.D67 tier 2 (the Docker bind-mount section)
+
+`docs/developer/running.md` gained "Filesystem document stores have to be
+bound in, and only at creation", after the timezone section it rhymes
+with — both are container properties that fail quietly rather than
+loudly. It states the property, quotes the 409 diagnosis as the symptom
+an operator will actually meet, shows the same-path-both-sides bind (the
+`basePath` in the database is ONE string and has to mean the same thing
+on both sides of the container boundary), and names the three traps v4's
+planner exists to handle: binds are fixed at creation, the container runs
+as a non-root user, and Docker will fabricate an empty root-owned
+directory for a missing bind source — presenting a hollow store as a
+healthy one.
+
+This is v5-side documentation, NOT a port of v4's planner. The planner
+itself (`packages/quilltap/lib/docker-mounts.js`, the `start:docker`
+bind planning, and the `quilltap docs docker-mounts` subcommand) is
+DEFERRED LOUDLY and banks with the standing `quilltap docs` CLI deferral
+(P4.6y); the doc says so in as many words, so an operator meeting the
+409 is not left looking for a tool that does not exist.
+
+Also banked, unchanged: `help/mount-points.md` + `help/cli-docs.md` →
+the `p4.9i2` help-doc bank.

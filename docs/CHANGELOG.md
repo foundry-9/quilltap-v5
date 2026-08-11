@@ -17,6 +17,16 @@ tier-2 differential against v4's real archive service, diffing the
 returned result, the DECRYPTED bundle, and every table in both
 partitions. (Ciphertext is never compared — a fresh salt and IV per
 bundle make it nondeterministic on both sides.)
+P4.D67 tier 2 — documented the Docker bind-mount property in
+`docs/developer/running.md`: filesystem and Obsidian document stores are
+invisible inside a container unless bound in at creation, the failure is
+quiet (the folder listing comes from the cached mount index, so only
+byte-touching operations notice), and the Bug-56 409 diagnosis is the
+runtime symptom. Notes the same-path-both-sides requirement, the
+non-root user, Docker's fabricated bind sources, and that v5 has no
+equivalent of v4's bind planner (it banks with the standing
+`quilltap docs` CLI deferral). Docs only.
+
 P4.D67 unit 2 — wired the base-path-availability check into the three v4
 consumers (`ed8934f1`, Bug 56). Creating a folder in a filesystem store
 whose own root is unreachable now answers 409 with the diagnosis instead

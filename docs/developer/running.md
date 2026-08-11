@@ -86,6 +86,51 @@ is the failure this is here to prevent. Zone lookup reads the tzdb on disk;
 the image's `debian:bookworm-slim` base ships `tzdata`, so nothing extra is
 needed.
 
+#### Filesystem document stores have to be bound in, and only at creation
+
+A container sees the host filesystem only where you handed it a bind mount.
+Database-backed document stores are fine — they live inside the databases,
+which live in the data volume. **Filesystem and Obsidian stores are not**:
+their `basePath` points anywhere on the host, and inside the container that
+path is simply absent.
+
+The failure is a quiet one, which is why it is worth knowing before you meet
+it. The store lists its folders quite happily, because that listing comes
+from the cached mount index in the database rather than from disk. Only
+operations that touch real bytes notice. Creating a folder in such a store is
+the one that will tell you:
+
+```
+409  The path '/Users/you/Notes' is not visible from inside the container.
+     Filesystem document stores must be passed through as bind mounts, which
+     can only be done when the container is created. Re-run the start script
+     with `--recreate` to rebuild the container with this store included.
+```
+
+Bind each store at **the same path inside the container as outside** — the
+`basePath` recorded in the database is one string and must mean the same
+thing on both sides:
+
+```bash
+docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap \
+  -v /Users/you/Notes:/Users/you/Notes \
+  -e QUILLTAP_TIMEZONE=America/Chicago quilltap
+```
+
+Binds are fixed when the container is created, so a store added later needs
+the container recreated with the new bind. Two other things worth knowing:
+the container runs as a non-root user, so a store the host user can read may
+still come back as `exists but cannot be read`; and Docker will happily
+fabricate an empty root-owned directory for a bind source that does not
+exist, presenting a hollow store as a healthy one — so check the path before
+you bind it.
+
+v4 ships a start script that enumerates an instance's filesystem stores and
+plans the binds for you (`npm run start:docker`, `quilltap docs
+docker-mounts`). v5 has no equivalent yet: it is packaging, not port surface,
+and it banks with the standing `quilltap docs` CLI deferral. Until it lands,
+the binds are yours to write.
+
 ### Without Docker
 
 ```bash
