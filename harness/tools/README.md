@@ -33,8 +33,10 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   regenerate mechanically — the header names the deliberate regen script),
   `no_oracle` (integration tests with no oracle at all — the quilltap-web
   envelope arms, the CLI Tier R driver), `exempt` (compile-time wire/seam
-  pins, no oracle by design), and `non_extractable` (a broken header — fix
-  it; the P4.27 lane drove this bucket to zero).
+  pins, no oracle by design), and `non_extractable` (a broken header, or a
+  run line that cannot attribute a SKIP to its own family — fix it; the P4.27
+  lane drove this bucket to zero and P4.45 kept it there while adding the
+  attribution rule).
   `--list` also reports two WARNING classes that do not change a family's
   status but do change whether/where its recipe runs:
   `unstaged_jest_roots` (see "The venue rule") and `external_tmp_input`
@@ -85,6 +87,30 @@ families and made `--run` refuse them from a lane worktree, which is most of
 why the venue rule read as a large standing debt. The check now expands the
 root's leading variable and skips anything resolving under `/tmp`. If you
 change it, keep both self-test false-positive assertions.
+
+## The attribution rule (P4.45)
+
+A recipe's run line must name its own test binary:
+
+```text
+//!   QT_ORACLE_TURN_STATE=/tmp/oracle-turn-state.ndjson \
+//!     cargo test -p quilltap-harness --test turn_state_equivalence
+```
+
+Without `--test`, `cargo test -p quilltap-harness` compiles and runs **every**
+test binary in the crate with only this family's oracle env var set. Every
+sibling family finds its own var missing, prints its SKIP notice and passes,
+so the run exits 0 having proved nothing about the family whose recipe it is —
+and `--run`'s fail-on-SKIP guard fires on a stranger's notice with no way to
+say whose it was. Thirty-two families carried that shape, and three
+consecutive rounds re-ran them by hand around it. `--list` never showed it,
+because an unscoped recipe still extracts perfectly.
+
+So it is now a refusal, not a warning: an unscoped run line is
+`non_extractable` and `--run` exits 2 rather than executing it. A positional
+test-NAME filter (`cargo test -p quilltap-harness turn_state`) does **not**
+count — it matches names across every binary in the crate, so a sibling that
+ever names a test containing the substring silently rejoins the run.
 
 ## The v4 pin (`--v4`)
 
@@ -189,6 +215,8 @@ a byte-for-byte no-op, and `--self-test` asserts both that and the redirect.
 - **The `cargo test` run line carries its own `QT_ORACLE_*` env prefix.**
   A run line without it inherits nothing and the family SKIPs — which
   `--run` reports as `skipped`, not as a pass.
+- **Scope the run line to its own binary: `--test <family>`.** This is the
+  attribution rule below, and the driver refuses a recipe without it.
 - Elided jest stages (`… npx jest -- <case>`) in `.rs` headers are tolerated
   ONLY when the named oracle case's own header carries the complete recipe —
   the driver restores from there. If neither side is complete, the family is

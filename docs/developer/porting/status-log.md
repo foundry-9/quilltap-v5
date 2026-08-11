@@ -64556,3 +64556,47 @@ this unit (`ok` 288 / `ok_restored` 72 / `committed_corpus` 12 / `exempt` 6 /
 `no_oracle` 19) — scoping does not change extractability, which is exactly
 why the masquerade survived four rounds of `--list` runs. Unit 3 makes it
 change the classification.
+
+---
+
+## Lane record — P4.45 unit 3: the masquerade made unrepresentable, 2026-08-11
+
+Unit 2 repaired the 32 headers; this unit makes the shape impossible to
+reintroduce. `run_scope_problem` derives the expected scope from the family's
+file stem — the same derivation cargo uses to name the binary — and refuses
+any run stage whose `cargo test` does not name it. The refusal is a
+`non_extractable` problem, not a warning, so `--list` reports it and `--run`
+exits 2 without executing. The order asked for both halves ("explicit headers
+stay human-runnable verbatim, and the driver enforces attribution") and both
+are here.
+
+Deliberately refused as scopes:
+
+- **The bare crate run** (`cargo test -p quilltap-harness`) — the masquerade.
+- **A positional test-NAME filter** (`… quilltap-harness turn_state`) — it
+  matches across every binary in the crate, so a sibling that ever names a
+  test containing the substring silently rejoins the run. Two families used
+  this form.
+- **Another family's binary** (`--test turn_order_equivalence` under
+  `turn_state_equivalence`) — the worst case, because it can go GREEN while
+  proving something about a different port.
+
+Accepted: the wrapped env-prefix form, a `-- --nocapture` tail, the
+`quilltap-web` crate, and a run stage with no `cargo test` at all (committed
+corpora and the no-oracle integration arms have nothing to attribute).
+
+**Mutation-proven, not just asserted.** `turn_state_equivalence`'s repaired
+run line was reverted to the masquerade shape in place: `--list` flipped it to
+`non_extractable` with the named cause, and `--run` refused with exit 2
+(`refused_non_extractable`). Restored, `--list` returns to zero
+`non_extractable`. The self-test pins all four refused shapes and five
+accepted ones directly against `run_scope_problem`.
+
+`--list` totals after the unit are unchanged from unit 2 — `ok` 288 /
+`ok_restored` 72 / `committed_corpus` 12 / `exempt` 6 / `no_oracle` 19 — which
+is the point: the enforcement costs nothing once the headers are right, and
+bites the moment one is not.
+
+README gained the attribution rule as its own section (with the reason the
+positional filter does not count), a header-convention bullet pointing at it,
+and the `non_extractable` bucket's description now names the new cause.

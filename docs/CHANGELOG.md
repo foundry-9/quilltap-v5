@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Made the sweep driver refuse an unattributable recipe outright: a family whose
+run line does not name its own test binary is now reported as broken and will
+not execute, so the skip-masquerade cannot be reintroduced silently. A
+positional test-name filter does not count as a scope — it matches across
+every binary in the crate. Mutation-proven by reverting a repaired header in
+place and watching the refusal fire.
+
 Scoped every differential family's `cargo test` recipe line to its own test
 binary. Thirty-two families' run lines read `cargo test -p quilltap-harness`
 with no `--test <family>`, so following the recipe compiled and ran EVERY

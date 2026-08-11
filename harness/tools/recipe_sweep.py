@@ -68,6 +68,13 @@ must be INDENTED at least two spaces past its comment marker (`//!   cd …`,
 ` *   cd …`), where prose sits at the marker's own one-space margin. It is the
 only signal a doc sentence cannot forge — see `shell_lines`.
 
+THE ATTRIBUTION RULE (P4.45) decides whether a run stage can prove anything: a
+recipe's `cargo test` must name its own binary (`--test <family>`), or the run
+executes every test binary in the crate with one family's oracle env set and
+every sibling SKIPs — a green line proving nothing, with the SKIP guard unable
+to say whose notice it saw. Unscoped is `non_extractable`; `--run` refuses it.
+See `run_scope_problem`.
+
 TZ pins are load-bearing (the P4.d26 rule): the driver never strips or adds
 environment words — `TZ=UTC` / `TZ=America/Chicago` run exactly as written.
 
@@ -180,6 +187,43 @@ STALE_V4_PIN = re.compile(r"/(?:private/)?tmp/qt-v4-pin[^\s\"';]*")
 # F2 (P4.34): a jest root under the v5 checkout — the venue rule above.
 JEST_ROOTS_ARG = re.compile(r"--(?:roots|rootDir)[= ]\"?([^\s\"]+)\"?")
 V5_REF = re.compile(r"\$\{?(?:V5W|V5|W|WT)\}?/|~/source/quilltap-v5/")
+
+CARGO_TEST = re.compile(r"\bcargo test\b")
+
+
+def run_scope_problem(family: str, run_lines: list[str]) -> str | None:
+    """THE ATTRIBUTION RULE (P4.45). None when every `cargo test` in the run
+    stage is scoped to THIS family's test binary.
+
+    `cargo test -p quilltap-harness` with one family's `QT_ORACLE_*` set
+    compiles and runs EVERY test binary in the crate. Each sibling family then
+    finds its own env var missing, prints its SKIP notice and passes — so the
+    run exits 0 having proved nothing about the family whose recipe it is, and
+    `--run`'s fail-on-SKIP guard (the whole vacuous-proof protection) fires on
+    a stranger's notice and cannot say whose it was. Three consecutive rounds
+    re-ran these families by hand around exactly this; `--list` never saw it,
+    because an unscoped recipe still EXTRACTS perfectly.
+
+    So the shape is refused, not tolerated: a family whose run cannot attribute
+    a SKIP to itself is `non_extractable` and `--run` will not execute it. The
+    driver knows the expected scope from the file stem, which is the family
+    name — the same derivation cargo uses to name the binary. Fixing it is one
+    flag: `--test <family>`. A positional test-NAME filter does not count; it
+    matches across every binary in the crate, so a sibling that ever names a
+    test containing the same substring silently rejoins the run.
+    """
+    text = re.sub(r"\\\n", " ", "\n".join(run_lines))
+    for cmd in text.splitlines():
+        if not CARGO_TEST.search(cmd):
+            continue
+        if not re.search(rf"--test[= ]{re.escape(family)}(?:\s|$)", cmd):
+            return (
+                f"unscoped_run_line (a SKIP in this run cannot be attributed "
+                f"to {family} — the recipe runs every test binary in the "
+                f"crate; add `--test {family}`)"
+            )
+    return None
+
 
 # The harness's own skip notice, anchored (F5): `eprintln!("SKIP: …")` and its
 # `SKIP <family>: …` variants always start the line. The old detector grepped a
@@ -356,6 +400,9 @@ def extract(v5w: Path, family: str, path: Path) -> Recipe:
 
     if not r.run and consumes_oracle:
         r.problems.append("no_cargo_test_run_line")
+    scope_problem = run_scope_problem(family, r.run)
+    if scope_problem:
+        r.problems.append(scope_problem)
 
     joined = "\n".join(r.regen + r.run)
     if ELISION in joined:
@@ -1009,6 +1056,37 @@ def cmd_self_test() -> int:
         == ["cd /x \\", "--flag"],
         f"continuation handling changed: {shell_lines(['   cd /x \\', '     --flag', ' prose after'])}",
     )
+
+    # P4.45's attribution rule: the exact run-line shapes that carried the
+    # SKIP-masquerade must be refused, and the repaired shapes accepted.
+    fam = "turn_state_equivalence"
+    for bad in (
+        # The masquerade itself, verbatim from the six turn families.
+        ["QT_ORACLE_TURN_STATE=/tmp/oracle-turn-state.ndjson cargo test -p quilltap-harness"],
+        # Wrapped, still unscoped.
+        ["QT_ORACLE_TURN_STATE=/tmp/x.ndjson \\", "cargo test -p quilltap-harness"],
+        # A positional test-NAME filter is not a scope.
+        ["cargo test -p quilltap-harness turn_state"],
+        # Someone else's binary — the worst case, since it can go green.
+        ["cargo test -p quilltap-harness --test turn_order_equivalence"],
+    ):
+        check(
+            run_scope_problem(fam, bad) is not None,
+            f"unscoped run line accepted: {bad!r}",
+        )
+    for good in (
+        ["QT_ORACLE_TURN_STATE=/tmp/x.ndjson \\", f"cargo test -p quilltap-harness --test {fam}"],
+        [f"cargo test -p quilltap-harness --test {fam} -- --nocapture"],
+        [f"cargo test -p quilltap-web --test {fam}"],
+        # A recipe with no cargo-test line at all (committed corpora, the
+        # no-oracle integration arms) has nothing to attribute.
+        [],
+        ["npx tsx cases/x.ts > /tmp/oracle-x.ndjson"],
+    ):
+        check(
+            run_scope_problem(fam, good) is None,
+            f"scoped run line refused: {good!r}",
+        )
 
     # F8 end-to-end: the elision marker reaches the extracted script, so the
     # `…` check in extract() can trigger anchored restoration.
