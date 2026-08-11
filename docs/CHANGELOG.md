@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Closed a hole in the sweep driver's own stale-oracle guard: it deleted a
+family's previous oracle only when the recipe wrote it through a shell
+redirect, which is the tsx convention. Every jest-based family writes through
+`QT_ORACLE_OUT=`, so its old oracle survived — and a regen that quietly
+produced nothing would let the run pass against a previous round's file. That
+covers the majority of the database-level and mocked-LLM families.
+
 Made the sweep driver refuse an unattributable recipe outright: a family whose
 run line does not name its own test binary is now reported as broken and will
 not execute, so the skip-masquerade cannot be reintroduced silently. A

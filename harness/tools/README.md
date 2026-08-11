@@ -44,7 +44,10 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   recipe's staging).
 - `--run` executes ONE family end-to-end in its own clean invocation: it
   deletes the family's oracle NDJSON outputs first (a stale oracle can never
-  pass silently), runs the regen stage(s), then the `cargo test` run stage
+  pass silently — P4.45 widened this from `>` redirect targets alone to
+  include the `QT_ORACLE_OUT=` assignment every jest family uses, which had
+  left the majority of tier-2/tier-3 families able to pass on the previous
+  round's file), runs the regen stage(s), then the `cargo test` run stage
   with `CARGO_INCREMENTAL=0`. This is the "recipe executed verbatim" proof
   the work orders ask for.
 - `--run-all` does the same over many families and **writes its results

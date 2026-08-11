@@ -64600,3 +64600,31 @@ bites the moment one is not.
 README gained the attribution rule as its own section (with the reason the
 positional filter does not count), a header-convention bullet pointing at it,
 and the `non_extractable` bucket's description now names the new cause.
+
+---
+
+## Lane record — P4.45 unit 3b: the stale-oracle guard covered only half the families, 2026-08-11
+
+Found while setting up unit 4's proof, and worth its own record because it
+undercut a guarantee the driver has been advertising since P4.27. `--run`
+deletes a family's oracle NDJSON before regenerating, so a regen that quietly
+produces nothing cannot hand the run stage a previous round's file. The
+deletion matched `>\s*(/tmp/\S+\.ndjson)` — the **tsx** convention. Every
+**jest** family writes its oracle through `QT_ORACLE_OUT=/tmp/….ndjson`, which
+that pattern never matched, so the file survived.
+
+Measured: of the four families spot-checked, `turn_state_equivalence` (tsx)
+was covered and `memory_tasks`, `danger_gatekeeper_tier3`, `state_sql_tools`
+(jest) were not — and jest is the convention of the tier-2/tier-3 families,
+i.e. the ones where a silent regen failure is both likeliest and most
+expensive. A jest stage whose `--` pattern matches no test exits 0 having
+written nothing; the run stage then diffs against whatever was there before
+and goes green. That is exactly `oracle-regen-silent-stale-pass`, inside the
+tool built to prevent it.
+
+`scan_writes` already collected both forms (it resolves `QT_*_OUT=` values as
+tmp writes), so the fix is to take the NDJSONs from there in addition to the
+redirect scan. Checked before relying on it: no family derives an NDJSON path
+from `$TMPO`/`$STAGE`, so the per-family scratch suffix cannot make the driver
+delete a path different from the one the script writes. Self-test pins both
+conventions.

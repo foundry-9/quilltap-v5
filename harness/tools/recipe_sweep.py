@@ -834,13 +834,24 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
             exit=4,
         )
         return rec
-    # Clean invocation: remove this family's oracle outputs (redirect targets)
-    # so a stale NDJSON can never pass silently (`oracle-regen-silent-stale-pass`).
+    # Clean invocation: remove this family's oracle outputs so a stale NDJSON
+    # can never pass silently (`oracle-regen-silent-stale-pass`).
+    #
+    # P4.45: this used to match only `>` REDIRECT targets, which is the tsx
+    # convention — every jest-based family writes its oracle through
+    # `QT_ORACLE_OUT=/tmp/….ndjson` instead and so kept the previous round's
+    # file. A jest regen that quietly produces nothing (a `--` pattern matching
+    # no test, a case throwing before it writes) would then hand the run stage
+    # a stale oracle and go green: precisely the vacuous proof this deletion
+    # exists to prevent, on the majority of the tier-2/tier-3 families.
+    # `scan_writes` already collects both forms, so take the NDJSONs from there.
     joined = "\n".join(r.regen + r.run)
-    for m in re.finditer(r">\s*(/tmp/\S+\.ndjson)", joined):
+    doomed = {m.group(1) for m in re.finditer(r">\s*(/tmp/\S+\.ndjson)", joined)}
+    doomed |= {p for p in r.tmp_writes if p.endswith(".ndjson")}
+    for path in sorted(doomed):
         try:
-            os.remove(m.group(1))
-            print(f"removed stale {m.group(1)}")
+            os.remove(path)
+            print(f"removed stale {path}")
         except FileNotFoundError:
             pass
     env = dict(os.environ, CARGO_INCREMENTAL="0")
@@ -1055,6 +1066,22 @@ def cmd_self_test() -> int:
         shell_lines(["   cd /x \\", "     --flag", " prose after"])
         == ["cd /x \\", "--flag"],
         f"continuation handling changed: {shell_lines(['   cd /x \\', '     --flag', ' prose after'])}",
+    )
+
+    # P4.45: the stale-oracle deletion must cover BOTH output conventions —
+    # the tsx `>` redirect and the jest `QT_ORACLE_OUT=` assignment. Only the
+    # first was covered, leaving every jest family able to pass on a previous
+    # round's NDJSON.
+    r_out = Recipe("x", Path("x"))
+    scan_writes(
+        r_out,
+        "QT_ORACLE_OUT=/tmp/oracle-jest.ndjson $N/npx jest -- x\n"
+        "npx tsx cases/x.ts > /tmp/oracle-tsx.ndjson",
+    )
+    check(
+        {p for p in r_out.tmp_writes if p.endswith(".ndjson")}
+        == {"/tmp/oracle-jest.ndjson", "/tmp/oracle-tsx.ndjson"},
+        f"stale-oracle deletion would miss an output: {sorted(r_out.tmp_writes)}",
     )
 
     # P4.45's attribution rule: the exact run-line shapes that carried the
