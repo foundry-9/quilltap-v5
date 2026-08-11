@@ -119,7 +119,7 @@ describe('ScriptoriumStore', () => {
     });
   });
 
-  it('create surfaces the verifyBasePath warning as an error flash', async () => {
+  it('create surfaces the base-path-availability warning as an error flash', async () => {
     const s = make(
       stubClient((r) =>
         r.type === 'mountPointCreate'

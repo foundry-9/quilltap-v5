@@ -501,8 +501,8 @@ fn preflight_preserve_ids(
 
     // Hard-link groups share one content row, so the same fileId legitimately
     // appears on several document/blob records — dedupe rather than treating
-    // the repeat as a duplicate claim. (v4 dedupes ONLY the file ids; link and
-    // blob ids are 1:1 with their records and a repeat there is a real clash.)
+    // the repeat as a duplicate claim. (v4 dedupes ONLY the file ids; link
+    // ids are 1:1 with their records and a repeat there is a real clash.)
     let mut carried_file_ids: Vec<String> = Vec::new();
     for row in documents.iter().chain(blobs.iter()) {
         if let Some(id) = non_empty(row.get("fileId")) {
@@ -516,10 +516,26 @@ fn preflight_preserve_ids(
         .chain(blobs.iter())
         .filter_map(|r| non_empty(r.get("linkId")))
         .collect();
-    let carried_blob_ids: Vec<String> = blobs
-        .iter()
-        .filter_map(|r| non_empty(r.get("blobId")))
-        .collect();
+    // ⚠ DELIBERATE v5 DIVERGENCE (§3 review, the archive-round-2 round): blob
+    // ids are deduped first-occurrence where v4's `carriedBlobIds`
+    // (`execute.ts:115`) is not. The export's blob listing joins FROM the
+    // links (`listByMountPoint`, one row per link), so a blob whose content is
+    // linked twice in one store — an ordinary sha-deduped gallery save — is
+    // emitted once PER LINK, and v4's undeduped list makes its own preflight
+    // throw `(also seen as document store blob)` on every rehydrate of such a
+    // vault: an archived character with a twice-linked photo cannot come back
+    // in v4 at all. The repeats are identical claims (same row, one id), the
+    // same shape the fileId dedupe above already sanctions. Reader-side only —
+    // the export bytes still carry v4's duplicates. v4-side fix queued
+    // post-5.0 (`dogfood-findings.md`, the v4-side list).
+    let mut carried_blob_ids: Vec<String> = Vec::new();
+    for row in blobs.iter() {
+        if let Some(id) = non_empty(row.get("blobId")) {
+            if !carried_blob_ids.contains(&id) {
+                carried_blob_ids.push(id);
+            }
+        }
+    }
     let carried_folder_ids: Vec<String> = arr("folders")
         .iter()
         .filter_map(|r| non_empty(r.get("id")))

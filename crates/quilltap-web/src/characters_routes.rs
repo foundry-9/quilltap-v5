@@ -316,6 +316,52 @@ fn json_tags(body: &Value) -> Vec<String> {
 }
 
 // ===========================================================================
+// POST /api/v1/characters/{id}?action=archive|rehydrate  (the CLI's JSON leg)
+// ===========================================================================
+
+/// v4 `POST /api/v1/characters/[id]` (`handlers/post.ts`). v5's SPA drives the
+/// character JSON actions over `/api/dispatch`, but v4's CLI — ported as
+/// `quilltap db characters archive|rehydrate` (P4.D66) — POSTs this URL with a
+/// bare `fetch`, so the two verbs the CLI uses get a REST edge delegating into
+/// the same P4.D65 dispatch arms. Success is v4's raw result bag
+/// (`NextResponse.json(result)`); errors keep the arms' status + `{error}`
+/// body (v4's `badRequest`/`serverError` envelope). Every other action stays
+/// on `/api/dispatch` (the `characters_get` precedent below).
+pub async fn characters_action_post(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    use quilltap_core::api::Request as CoreRequest;
+
+    let req = match query.get("action").map(String::as_str) {
+        Some("archive") => CoreRequest::CharacterArchive { character_id: id },
+        Some("rehydrate") => CoreRequest::CharacterRehydrate { character_id: id },
+        _ => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "This route serves ?action=archive and ?action=rehydrate only; \
+                 the other JSON actions live on /api/dispatch",
+            )
+        }
+    };
+    match crate::text_replacements_routes::dispatch_core(&state, req).await {
+        Ok(Response::Character(v)) => (
+            StatusCode::OK,
+            [(CONTENT_TYPE, "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
+}
+
+// ===========================================================================
 // GET /api/v1/characters/{id}?action=export  (the PNG binary leg + JSON leg)
 // ===========================================================================
 

@@ -525,10 +525,11 @@ async fn restore_archive_bundle(
             ),
         })?;
 
-    let backend = seams
-        .backend
-        .as_deref()
-        .ok_or_else(|| ArchiveError::Storage("File storage is not configured".to_string()))?;
+    let backend = seams.backend.as_deref().ok_or_else(|| {
+        ArchiveError::Storage(
+            "File storage backend not available. Initialize the manager first.".to_string(),
+        )
+    })?;
     let entry = FileEntry {
         id: file_row.id.clone(),
         sha256: file_row.sha256.clone(),
@@ -986,10 +987,11 @@ async fn create_archive_file_record(
     db.write(move |ws| FilesRepository::new(ws.main().connection()).create(&create, &opts))
         .await?;
 
-    let backend = seams
-        .backend
-        .as_deref()
-        .ok_or_else(|| ArchiveError::Storage("File storage is not configured".to_string()))?;
+    let backend = seams.backend.as_deref().ok_or_else(|| {
+        ArchiveError::Storage(
+            "File storage backend not available. Initialize the manager first.".to_string(),
+        )
+    })?;
     crate::services::file_storage::upload_raw(backend, &storage_key, &bundle.encrypted, mime_type)
         .map_err(ArchiveError::Storage)?;
 

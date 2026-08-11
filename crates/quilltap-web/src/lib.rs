@@ -245,7 +245,7 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/api/v1/characters/{id}",
-            get(characters_routes::characters_get),
+            get(characters_routes::characters_get).post(characters_routes::characters_action_post),
         )
         .route(
             "/api/v1/characters",

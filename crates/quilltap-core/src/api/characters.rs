@@ -2528,6 +2528,23 @@ fn success_or(out: Result<Result<(), Response>, DbError>) -> Response {
 /// the PINNED sentence (v4 ignores `error.message` here and writes its own),
 /// a verification failure is a 500 carrying the failure detail, and anything
 /// else is v4's `serverError(error.message)`.
+/// v4's route resolves the character BEFORE dispatching any action
+/// (`handlers/post.ts:153–157`, the OVERLAID read): a missing id answers 404
+/// (`notFound('Character')`) before the arms ever run, and a corrupt vault
+/// store refuses up front (the P4.23 contextful 503) instead of packing a
+/// bundle off a broken vault. The service's own not-found arm remains only as
+/// a race backstop. (§3 unification review, the archive-round-2 round.)
+fn require_character_for_action(db: &Db, character_id: &str) -> Result<(), Response> {
+    let cid = character_id.to_string();
+    match read_main_mount(db, move |main, mount| {
+        Ok(require_character(main, mount, &cid))
+    }) {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(resp)) => Err(resp),
+        Err(e) => Err(db_error_response(e)),
+    }
+}
+
 pub async fn character_archive(
     db: &Db,
     user_id: &str,
@@ -2537,6 +2554,9 @@ pub async fn character_archive(
     use crate::services::character_archive::crypto::ArchiveCryptoError;
     use crate::services::character_archive::service::{archive_character, ArchiveError};
 
+    if let Err(resp) = require_character_for_action(db, character_id) {
+        return resp;
+    }
     match archive_character(db, user_id, character_id, seams).await {
         Ok(result) => Response::Character(result.to_value()),
         Err(ArchiveError::Crypto(ArchiveCryptoError::KeyUnavailable)) => bad_request(
@@ -2579,6 +2599,9 @@ pub async fn character_rehydrate(
     use crate::services::character_archive::crypto::ArchiveCryptoError;
     use crate::services::character_archive::service::{rehydrate_character, ArchiveError};
 
+    if let Err(resp) = require_character_for_action(db, character_id) {
+        return resp;
+    }
     match rehydrate_character(db, user_id, character_id, seams).await {
         Ok(result) => Response::Character(result.to_value()),
         Err(

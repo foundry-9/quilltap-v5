@@ -37,11 +37,12 @@ import {
 const ARCHIVE_TOMBSTONE_SEEDED = true;
 
 /**
- * ROUND 2 flips this — the archive/rehydrate ACTIONS answer P4.D63's loud
- * not-yet-available refusal until the archive service lands. Do NOT flip it at
- * this round's unification.
+ * Flipped TRUE at the round-2 unification (P4.D65 ∥ P4.D66 ∥ P4.D67): the
+ * archive service and both verbs are LIVE. Beats 3–4 read the bundle beats
+ * 1–2 leave on the shelf, which is safe because the suite runs
+ * `fullyParallel: false, workers: 1` — within-file order is guaranteed.
  */
-const CHARACTER_ARCHIVE_SERVER_LANDED = false;
+const CHARACTER_ARCHIVE_SERVER_LANDED = true;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {

@@ -355,18 +355,16 @@ pub enum Request {
     /// v4 `POST /api/v1/characters/{id}?action=archive` (v4 `d553f72a`) — pack
     /// the character into an encrypted bundle and prune the vault.
     ///
-    /// **DEFINED here, filled in ROUND 2** (the archive service itself is that
-    /// round's whole subject). Until then it answers the loud typed
-    /// not-yet-available refusal by name. Round-2 success shape, pinned by the
-    /// Shared contract so the three lanes agree now:
+    /// LIVE since P4.D65 (round 2). Success shape, pinned by the round-1
+    /// Shared contract:
     /// `{ archived: bool, archiveFileId: string|null, pruneComplete: bool }`.
     #[serde(rename_all = "camelCase")]
     CharacterArchive {
         character_id: String,
     },
     /// v4 `POST /api/v1/characters/{id}?action=rehydrate` (v4 `d553f72a`) —
-    /// bring an archived character back. **DEFINED here, filled in ROUND 2.**
-    /// Round-2 success shape: `{ rehydrated: bool, archived: bool,
+    /// bring an archived character back. LIVE since P4.D65 (round 2).
+    /// Success shape: `{ rehydrated: bool, archived: bool,
     /// archiveBundleFileId: string|null, restored?: { memories, documents,
     /// blobs }, warnings: string[] }`.
     #[serde(rename_all = "camelCase")]

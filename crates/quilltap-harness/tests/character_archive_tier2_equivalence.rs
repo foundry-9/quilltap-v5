@@ -70,7 +70,7 @@ struct Spec {
 
 const MISSING_CHARACTER: &str = "00000000-0000-4000-8000-00000000dead";
 
-const MAIN_TABLES: [&str; 7] = [
+const MAIN_TABLES: [&str; 8] = [
     "characters",
     "chats",
     "memories",
@@ -78,6 +78,10 @@ const MAIN_TABLES: [&str; 7] = [
     "embedding_status",
     "vector_indices",
     "vector_entries",
+    // §3 review (archive-round-2): the re-embed half of rehydrate and the
+    // import's one-EMBEDDING_GENERATE-per-restored-memory both write here —
+    // without this table a port that never enqueued a job would pass.
+    "background_jobs",
 ];
 const MOUNT_TABLES: [&str; 7] = [
     "doc_mount_points",
