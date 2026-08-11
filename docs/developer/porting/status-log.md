@@ -63167,3 +63167,69 @@ green.
 
 **Gate:** `ng test` 297 files / 4,085 tests, 0 failed (+10); `ng build` clean.
 SPA 0.5.445 → 0.5.446.
+
+### Lane record — P4.D64 unit 3 (the detail surface + both dialogs)
+
+**Landed** (v4 `CharacterDetailView.tsx` / `CharacterHeader.tsx` /
+`CharacterDetails.tsx` + the two new dialog components, `d553f72a`; every
+sentence verbatim and pinned by string assertion).
+
+- The archived banner above the header (🗄️ `aria-hidden`, rounded-2xl
+  `qt-bg-muted/60`), the `{name} rests in the archive.` label and the
+  four-clause body.
+- **All nine tabs still render**, wrapped `<fieldset disabled class="opacity-90">`,
+  carrying v4's comment: "every form control inert, the page still readable. The
+  repository write guard is the real lock — this is the courtesy." Verified: the
+  fieldset really is `disabled` AND the tab body is inside it (a blank archived
+  page would be a worse bug than an editable one).
+- The Edit-Character link hides when archived, with v4's reason ("A disabled
+  fieldset can't inert a Link, so the edit door hides itself…").
+- The header fork: name-row `Archived` chip (px-2.5/text-sm variant, same dated
+  title), toggle cluster hidden, and the actions column replaced by ONE
+  **Rehydrate** button; the live column gains **Archive** at the END, after v5's
+  three disabled deferrals, with the **`d69287d9`-fixed classes**
+  (`text-foreground`, matching its siblings — the original `qt-text-secondary` is
+  the token disabled controls use, so the one enabled action that packs a
+  character away read as unavailable). The spec asserts both the class AND that
+  Archive is the column's last child.
+- `ArchiveCharacterDialog` + `RehydrateBundleDialog`, copy byte-exact including
+  the `<em>other</em>` emphasis (asserted as MARKUP, not prose) and the
+  monospace `files/<id>/character-archive.qtap`.
+- All six toasts: both archive arms, both rehydrate arms, the two failure
+  sentences, and `The bundle is off the shelf.`
+
+**Structural note — the tab body became a named template.** v4 wraps
+`renderTabContent` in a fieldset by passing a different render function. Angular's
+`@switch` lives in the tabs' `ng-template`, so the body moved into a sibling
+`<ng-template #tabBody let-active>` that both arms render through
+`ngTemplateOutlet`. Declared INSIDE the `@else if (character(); as character)`
+block so the alias stays in scope — no `character()!` non-null assertions.
+
+**Chrome divergences (deliberate, recorded).** v4 hand-rolls both dialogs as
+fixed overlays with a folder icon in the header and no ✕ / no outside-dismiss.
+v5 uses the shared `qt-modal`: header is title-only, and ✕ / backdrop map to the
+SAFE arm in each dialog (Leave Them Be; Keep It), blocked while work is in
+flight. The archive dialog's `working` flag also lifts to an input, since the
+parent already owns the in-flight state — v4 keeps it local and clears it in a
+`finally`, which is the same observable behavior.
+
+**Mutation proofs (D24 rule).** Removing `disabled` from the fieldset reds `wraps
+the tab content in a disabled fieldset…`; loosening `pruneComplete === false` to
+`!pruneComplete` reds the new `reads a body with NO pruneComplete key as a clean
+sweep` case — which is why that case exists, since every other body in the suite
+carries the key explicitly. A third mutation (dropping the non-empty guard on
+`archiveBundleFileId`) did NOT red, and honestly: the empty-string arm is
+enforced twice over, by the guard AND by the template's truthy `@if … as` alias.
+The guard stays as v4's line; the behavior spec holds either way.
+
+**Spec traps worth remembering.** (a) `expect(text).not.toContain('Archive')` is
+a false-negative trap on this screen — the name badge legitimately reads
+"Archived"; the assertion is structural (button LABELS) instead. (b) With the
+confirm dialog open, the header's own "Archive" is still on the page, so an
+unscoped label lookup finds the OPENER and silently re-opens — dialog buttons are
+located through an `inDialog(fixture, 'qt-…-dialog', label)` helper. (c) A stub
+option defaulted with `??` swallowed an explicit `null` (the live-character arm);
+it reads the key's PRESENCE now.
+
+**Gate:** `ng test` 297 files / 4,106 tests, 0 failed (+21); `ng build` clean.
+SPA 0.5.446 → 0.5.447.

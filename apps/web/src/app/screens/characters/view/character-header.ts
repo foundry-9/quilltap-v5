@@ -56,7 +56,20 @@ interface StatItem {
       <div class="flex min-w-0 flex-col">
         <div class="space-y-1">
           <div class="flex items-start justify-between gap-4">
-            <h1 class="qt-heading-1 min-w-0">{{ character().name }}</h1>
+            <h1 class="qt-heading-1 min-w-0 flex items-center gap-3">
+              {{ character().name }}
+              @if (isArchived()) {
+                <span
+                  class="inline-flex flex-shrink-0 items-center rounded-full border qt-border-default qt-bg-muted px-2.5 py-0.5 text-sm font-medium qt-text-secondary"
+                  [title]="'Resting in the archive since ' + archivedSince()"
+                >
+                  Archived
+                </span>
+              }
+            </h1>
+            <!-- P4.D64 (v4 CharacterHeader.tsx:583): the toggle cluster is
+                 hidden entirely for an archived character. -->
+            @if (!isArchived()) {
             <div class="flex flex-shrink-0 items-center gap-2">
               <button
                 type="button"
@@ -100,6 +113,7 @@ interface StatItem {
                 <qt-icon name="user" class="w-6 h-6" />
               </button>
             </div>
+            }
           </div>
           @if (character().title || character().pronouns) {
             <div class="flex items-baseline justify-between gap-4">
@@ -178,7 +192,22 @@ interface StatItem {
         </div>
       </div>
 
-      <!-- Actions -->
+      <!-- Actions. P4.D64 forks the whole column (v4 CharacterHeader.tsx:599):
+           an archived character gets ONE Rehydrate button in place of the live
+           cluster — no chat, no conversion, no refinement. -->
+      @if (isArchived()) {
+      <div class="flex flex-shrink-0 flex-col gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow hover:qt-bg-primary/90 disabled:opacity-50"
+          [disabled]="rehydrating()"
+          title="Restore this character from their archive bundle and wake them"
+          (click)="rehydrate.emit()"
+        >
+          {{ rehydrating() ? 'Rehydrating…' : 'Rehydrate' }}
+        </button>
+      </div>
+      } @else {
       <div class="flex flex-shrink-0 flex-col gap-2">
         <a
           [routerLink]="['/characters', character().id]"
@@ -228,7 +257,23 @@ interface StatItem {
           <qt-icon name="search" class="w-4 h-4" />
           Search &amp; Replace
         </button>
+        <!-- Archive sits at the END of the live cluster, after v5's three
+             disabled deferrals (v4 CharacterHeader.tsx:620). The classes are
+             the d69287d9-FIXED ones: text-foreground, matching its siblings
+             exactly — the original qt-text-secondary is the muted token
+             disabled controls use, so the one enabled action that packs a
+             character away read as unavailable. -->
+        <button
+          type="button"
+          class="inline-flex items-center justify-center gap-1.5 rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm hover:qt-bg-muted"
+          title="Pack this character's effects into a sealed bundle and set them resting in the archive"
+          (click)="archive.emit()"
+        >
+          <qt-icon name="folder" class="w-4 h-4" />
+          Archive
+        </button>
       </div>
+      }
     </div>
   `,
 })
@@ -241,11 +286,30 @@ export class CharacterHeader {
   readonly togglingCarina = input(false);
   readonly togglingControlledBy = input(false);
   readonly togglingNpc = input(false);
+  /** P4.D64: a rehydration is in flight — the button disables and relabels. */
+  readonly rehydrating = input(false);
 
   readonly toggleFavorite = output<void>();
   readonly toggleCarina = output<void>();
   readonly toggleControlledBy = output<void>();
   readonly toggleNpc = output<void>();
+  /** Opens the archive confirm dialog (live characters only, v4 `onArchive`). */
+  readonly archive = output<void>();
+  /** Attempts rehydration (archived characters only, v4 `onRehydrate`). */
+  readonly rehydrate = output<void>();
+
+  /** v4 `isArchived = Boolean(character?.archivedAt)`. */
+  protected readonly isArchived = computed(() => Boolean(this.character().archivedAt));
+
+  /**
+   * The badge tooltip's date — v4's unguarded
+   * `new Date(archivedAt).toLocaleDateString()`; visibility keys off
+   * {@link isArchived} so a malformed stamp still shows the badge (the roster
+   * card carries the same note).
+   */
+  protected readonly archivedSince = computed(() =>
+    new Date(this.character().archivedAt ?? '').toLocaleDateString(),
+  );
 
   protected readonly avatarSrc = computed(() => {
     const c = this.character();

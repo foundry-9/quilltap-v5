@@ -433,3 +433,449 @@ describe('CharacterDetail (workspace-tab mode)', () => {
     expect(active.textContent).toContain('Conversations');
   });
 });
+
+// ===========================================================================
+// P4.D64 — the archived character's page (v4 `CharacterDetailView.tsx` +
+// `CharacterHeader.tsx` + `CharacterDetails.tsx` at `d553f72a`)
+// ===========================================================================
+
+const ARCHIVED_AT = '2026-08-01T00:00:00.000Z';
+
+/** A stub whose character is archived, with archive/rehydrate replies pluggable. */
+function archiveClient(opts: {
+  archivedAt?: string | null;
+  onArchive?: () => Promise<Record<string, unknown>>;
+  onRehydrate?: () => Promise<Record<string, unknown>>;
+  seen?: Array<Record<string, unknown>>;
+}): Partial<CoreClient> {
+  // `??` would swallow an explicit null (the live-character arm), so read the
+  // key's PRESENCE, not its truthiness.
+  let current = character({
+    archivedAt: 'archivedAt' in opts ? opts.archivedAt : ARCHIVED_AT,
+  });
+  return {
+    dispatchData: (async (req: Record<string, unknown>) => {
+      opts.seen?.push(req);
+      switch (req['type']) {
+        case 'characterGet':
+          return { character: current };
+        case 'characterArchive': {
+          const body = (await opts.onArchive?.()) ?? {
+            archived: true,
+            archiveFileId: 'bundle-1',
+            pruneComplete: true,
+          };
+          current = { ...current, archivedAt: ARCHIVED_AT };
+          return body;
+        }
+        case 'characterRehydrate': {
+          const body = (await opts.onRehydrate?.()) ?? {
+            rehydrated: true,
+            archived: false,
+            archiveBundleFileId: null,
+            warnings: [],
+          };
+          current = { ...current, archivedAt: null };
+          return body;
+        }
+        case 'connectionProfileList':
+          return { profiles: [] };
+        case 'characterList':
+          return { characters: [] };
+        case 'characterDefaultPartner':
+          return { partnerId: null };
+        case 'characterStats':
+          return {
+            stats: {
+              memories: 0,
+              conversations: 0,
+              wardrobeItems: 0,
+              photos: 0,
+              scenarios: 0,
+              knowledge: 0,
+              core: 0,
+              characterFiles: 0,
+              characterFilesTotal: 0,
+            },
+            groups: [],
+          };
+        default:
+          return {};
+      }
+    }) as CoreClient['dispatchData'],
+  };
+}
+
+function findButton(fixture: ComponentFixture<CharacterDetail>, label: string): HTMLButtonElement {
+  const found = (
+    Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+  ).find((b) => b.textContent?.trim() === label);
+  expect(found, `button "${label}"`).toBeTruthy();
+  return found!;
+}
+
+/**
+ * A button INSIDE a named dialog. The header's own "Archive" is still on the
+ * page while the confirm dialog is open, so an unscoped label lookup finds the
+ * opener and silently re-opens instead of confirming.
+ */
+function inDialog(
+  fixture: ComponentFixture<CharacterDetail>,
+  selector: string,
+  label: string,
+): HTMLButtonElement {
+  const host = fixture.nativeElement.querySelector(selector) as HTMLElement | null;
+  expect(host, selector).toBeTruthy();
+  const found = (Array.from(host!.querySelectorAll('button')) as HTMLButtonElement[]).find(
+    (b) => b.textContent?.trim() === label,
+  );
+  expect(found, `${selector} button "${label}"`).toBeTruthy();
+  return found!;
+}
+
+async function settle(fixture: ComponentFixture<CharacterDetail>): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+describe('CharacterDetail — the archived read-only page (P4.D64)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the archived banner above the header, verbatim', async () => {
+    const fixture = await render(archiveClient({}));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Bertie rests in the archive.');
+    expect(text).toContain(
+      'Their effects — memories, correspondence, photographs, summaries — are packed into a sealed bundle on the shelf.',
+    );
+    expect(text).toContain(
+      'rehydrate them to pick up the pen again. Old conversations keep their words and their face throughout.',
+    );
+  });
+
+  it('shows no banner for a live character', async () => {
+    const fixture = await render(stubClient(character({})));
+    expect(fixture.nativeElement.textContent).not.toContain('rests in the archive');
+  });
+
+  it('wraps the tab content in a disabled fieldset — the courtesy over the write guard', async () => {
+    const fixture = await render(archiveClient({}));
+    const fieldset = fixture.nativeElement.querySelector('fieldset') as HTMLFieldSetElement;
+    expect(fieldset).toBeTruthy();
+    expect(fieldset.disabled).toBe(true);
+    expect(fieldset.className).toContain('opacity-90');
+    // The tab body still RENDERS inside it — archived is readable, not blank.
+    expect(fieldset.querySelector('qt-character-details-tab')).toBeTruthy();
+  });
+
+  it('leaves a live character unfieldsetted', async () => {
+    const fixture = await render(stubClient(character({})));
+    expect(fixture.nativeElement.querySelector('fieldset')).toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-character-details-tab')).toBeTruthy();
+  });
+
+  it('hides the Edit Character door (a disabled fieldset cannot inert a link)', async () => {
+    const fixture = await render(archiveClient({}));
+    expect(fixture.nativeElement.textContent).not.toContain('Edit Character');
+  });
+
+  it('keeps the Edit Character door for a live character', async () => {
+    const fixture = await render(stubClient(character({})));
+    expect(fixture.nativeElement.textContent).toContain('Edit Character');
+  });
+
+  it('forks the header: Rehydrate only, no chat / conversion / toggles', async () => {
+    const fixture = await render(archiveClient({}));
+    const text = fixture.nativeElement.textContent as string;
+    const rehydrate = findButton(fixture, 'Rehydrate');
+    expect(rehydrate.getAttribute('title')).toBe(
+      'Restore this character from their archive bundle and wake them',
+    );
+    expect(text).not.toContain('Start Chat');
+    expect(text).not.toContain('Convert to NPC');
+    // No Archive BUTTON — asserted structurally, since the name badge legitimately
+    // reads "Archived" and a substring check would pass for the wrong reason.
+    const labels = (
+      Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+    ).map((b) => b.textContent?.trim());
+    expect(labels).not.toContain('Archive');
+    // The favorite / Carina / control cluster is gone from the header too.
+    expect(text).not.toContain('☆');
+  });
+
+  it('badges the header name with a dated Archived chip', async () => {
+    const fixture = await render(archiveClient({}));
+    const badge = (
+      Array.from(fixture.nativeElement.querySelectorAll('h1 span')) as HTMLElement[]
+    ).find((s) => s.textContent?.trim() === 'Archived');
+    expect(badge).toBeTruthy();
+    expect(badge!.getAttribute('title')).toBe(
+      `Resting in the archive since ${new Date(ARCHIVED_AT).toLocaleDateString()}`,
+    );
+  });
+
+  it('offers Archive LAST in the live cluster with the d69287d9-fixed classes', async () => {
+    const fixture = await render(stubClient(character({})));
+    const archive = findButton(fixture, 'Archive');
+    expect(archive.getAttribute('title')).toBe(
+      "Pack this character's effects into a sealed bundle and set them resting in the archive",
+    );
+    // d69287d9: `text-foreground`, matching its siblings — NOT the muted token
+    // disabled controls use, which made the one live action read as unavailable.
+    expect(archive.className).toContain('text-foreground');
+    expect(archive.className).not.toContain('qt-text-secondary');
+    // Last in the action column, after the three disabled deferrals.
+    const column = archive.parentElement as HTMLElement;
+    expect(column.lastElementChild).toBe(archive);
+    expect(fixture.nativeElement.textContent).not.toContain('Rehydrate');
+  });
+});
+
+describe('CharacterDetail — the archive dialog + its toasts (P4.D64)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function openArchiveDialog(
+    client: Partial<CoreClient>,
+  ): Promise<ComponentFixture<CharacterDetail>> {
+    const fixture = await render(client);
+    findButton(fixture, 'Archive').click();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('spells out what is packed and what is kept, verbatim', async () => {
+    const fixture = await openArchiveDialog(stubClient(character({})));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Set Bertie resting in the archive?');
+    expect(text).toContain(
+      'Archiving packs the whole of Bertie — every last letter and photograph — into a single sealed bundle on the archive shelf, then clears the heavier effects from the working rooms. Nothing is lost; it is merely put away, and rehydrating unpacks it all again.',
+    );
+    expect(text).toContain('Packed into the bundle and cleared away:');
+    for (const item of [
+      'Their memories (the Commonplace Book falls silent)',
+      'Their correspondence — the whole of the mail folder',
+      'Every photograph beyond the portrait itself',
+      'Their conversation summaries',
+    ]) {
+      expect(text).toContain(item);
+    }
+    expect(text).toContain('Kept in place, exactly as it stands:');
+    for (const item of [
+      'Who they are — every character field, still readable on their page',
+      'Their portrait, so old conversations keep their face',
+      'Their wardrobe',
+      'Every chat they took part in, word for word',
+      "archiving silences the character, not everyone's memory of them",
+    ]) {
+      expect(text).toContain(item);
+    }
+    expect(text).toContain(
+      'While archived they take no turns, receive no letters, and answer no queries. The bundle is sealed with your passphrase and rests at',
+    );
+    expect(text).toContain('files/<id>/character-archive.qtap');
+    expect(text).toContain('Leave Them Be');
+  });
+
+  it('emphasizes "other" in the memory-of-them line (v4 markup, not just prose)', async () => {
+    const fixture = await openArchiveDialog(stubClient(character({})));
+    const em = fixture.nativeElement.querySelector('qt-archive-character-dialog em') as HTMLElement;
+    expect(em?.textContent?.trim()).toBe('other');
+  });
+
+  it('archives, closes, and toasts the clean-sweep sentence', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const fixture = await openArchiveDialog(
+      archiveClient({ archivedAt: null, seen, onArchive: async () => ({ archived: true, archiveFileId: 'b1', pruneComplete: true }) }),
+    );
+    inDialog(fixture, 'qt-archive-character-dialog', 'Archive').click();
+    await settle(fixture);
+    expect(seen.some((r) => r['type'] === 'characterArchive' && r['characterId'] === 'c1')).toBe(true);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Bertie rests in the archive, bundle sealed and shelved.' },
+    ]);
+    expect(fixture.nativeElement.querySelector('qt-archive-character-dialog')).toBeNull();
+  });
+
+  it('toasts the resisted-packing sentence when pruneComplete is FALSE', async () => {
+    // Only an explicit `false` takes this arm (v4 `:286` `=== false`), which is
+    // why the default reply above — and a body missing the key — reads as clean.
+    const fixture = await openArchiveDialog(
+      archiveClient({
+        archivedAt: null,
+        onArchive: async () => ({ archived: true, archiveFileId: 'b1', pruneComplete: false }),
+      }),
+    );
+    inDialog(fixture, 'qt-archive-character-dialog', 'Archive').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      {
+        type: 'success',
+        message:
+          'Bertie is archived, but some effects resisted packing — archive them again to finish the sweep.',
+      },
+    ]);
+  });
+
+  it('reads a body with NO pruneComplete key as a clean sweep (v4 === false)', async () => {
+    // The strictness is load-bearing: `!pruneComplete` would turn every body
+    // that omits the key into the alarming "some effects resisted packing"
+    // sentence. v4 compares `=== false`.
+    const fixture = await openArchiveDialog(
+      archiveClient({
+        archivedAt: null,
+        onArchive: async () => ({ archived: true, archiveFileId: 'b1' }),
+      }),
+    );
+    inDialog(fixture, 'qt-archive-character-dialog', 'Archive').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Bertie rests in the archive, bundle sealed and shelved.' },
+    ]);
+  });
+
+  it('keeps the dialog open and toasts the server sentence on failure', async () => {
+    const fixture = await openArchiveDialog(
+      archiveClient({
+        archivedAt: null,
+        onArchive: async () => {
+          throw new Error('the archive cannot be sealed: your passphrase has not been entered');
+        },
+      }),
+    );
+    inDialog(fixture, 'qt-archive-character-dialog', 'Archive').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      {
+        type: 'error',
+        message: 'the archive cannot be sealed: your passphrase has not been entered',
+      },
+    ]);
+    expect(fixture.nativeElement.querySelector('qt-archive-character-dialog')).toBeTruthy();
+  });
+
+  it('Leave Them Be closes without dispatching', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const fixture = await openArchiveDialog(archiveClient({ archivedAt: null, seen }));
+    inDialog(fixture, 'qt-archive-character-dialog', 'Leave Them Be').click();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-archive-character-dialog')).toBeNull();
+    expect(seen.some((r) => r['type'] === 'characterArchive')).toBe(false);
+  });
+});
+
+describe('CharacterDetail — rehydrate + the leftover bundle (P4.D64)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('toasts the unpacked counts and offers the bundle when one is left', async () => {
+    const fixture = await render(
+      archiveClient({
+        onRehydrate: async () => ({
+          rehydrated: true,
+          archived: false,
+          archiveBundleFileId: 'bundle-9',
+          restored: { memories: 42, documents: 3, blobs: 7 },
+          warnings: [],
+        }),
+      }),
+    );
+    findButton(fixture, 'Rehydrate').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      {
+        type: 'success',
+        message: 'Bertie is awake again — 42 memories, 3 papers and 7 photographs unpacked.',
+      },
+    ]);
+    const dialog = fixture.nativeElement.querySelector('qt-rehydrate-bundle-dialog') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    const text = dialog.textContent as string;
+    expect(text).toContain('The empty bundle remains on the shelf');
+    expect(text).toContain(
+      'Bertie is fully unpacked — memories, correspondence and photographs all back where they belong. The sealed bundle they travelled in still sits in the file library, and keeping it costs nothing but shelf space: it is a spare copy of everything the archive held, exactly as it was.',
+    );
+    expect(text).toContain(
+      'Discard it and the spare copy is gone for good — though of course you can always archive Bertie afresh, which packs a new bundle from their current state.',
+    );
+  });
+
+  it('toasts the bare sentence and offers no dialog when nothing is left behind', async () => {
+    const fixture = await render(
+      archiveClient({
+        onRehydrate: async () => ({
+          rehydrated: true,
+          archived: false,
+          // v4 `:314` requires a NON-EMPTY string: '' must not open the dialog.
+          archiveBundleFileId: '',
+          warnings: [],
+        }),
+      }),
+    );
+    findButton(fixture, 'Rehydrate').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Bertie is awake again.' }]);
+    expect(fixture.nativeElement.querySelector('qt-rehydrate-bundle-dialog')).toBeNull();
+  });
+
+  it('keeps the destructive arm SECONDARY and Keep It primary (v4 polarity)', async () => {
+    const fixture = await render(
+      archiveClient({
+        onRehydrate: async () => ({
+          rehydrated: true,
+          archived: false,
+          archiveBundleFileId: 'bundle-9',
+          warnings: [],
+        }),
+      }),
+    );
+    findButton(fixture, 'Rehydrate').click();
+    await settle(fixture);
+    const discard = findButton(fixture, 'Discard the Bundle');
+    const keep = findButton(fixture, 'Keep It');
+    // The polarity is deliberate: discarding is the only irreversible half.
+    expect(discard.className).toContain('qt-button-secondary');
+    expect(keep.className).toContain('qt-button-primary');
+  });
+
+  it('Discard deletes the file and toasts, Keep It just closes', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const client = archiveClient({
+      seen,
+      onRehydrate: async () => ({
+        rehydrated: true,
+        archived: false,
+        archiveBundleFileId: 'bundle-9',
+        warnings: [],
+      }),
+    });
+    const fixture = await render(client);
+    findButton(fixture, 'Rehydrate').click();
+    await settle(fixture);
+    inDialog(fixture, 'qt-rehydrate-bundle-dialog', 'Discard the Bundle').click();
+    await settle(fixture);
+    expect(seen.some((r) => r['type'] === 'fileDelete' && r['fileId'] === 'bundle-9')).toBe(true);
+    expect(toasts().map((t) => t.message)).toContain('The bundle is off the shelf.');
+    expect(fixture.nativeElement.querySelector('qt-rehydrate-bundle-dialog')).toBeNull();
+  });
+
+  it('toasts the server sentence when rehydration fails and stays archived', async () => {
+    const fixture = await render(
+      archiveClient({
+        onRehydrate: async () => {
+          throw new Error('the bundle is missing from the shelf');
+        },
+      }),
+    );
+    findButton(fixture, 'Rehydrate').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'the bundle is missing from the shelf' }]);
+    expect(fixture.nativeElement.textContent).toContain('rests in the archive');
+  });
+});

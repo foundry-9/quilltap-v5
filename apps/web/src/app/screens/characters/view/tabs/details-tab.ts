@@ -107,13 +107,18 @@ interface DetailField {
             <span class="text-xs">({{ literalCounts().userCount }})</span>
           </button>
         }
-        <a
-          [routerLink]="['/characters', characterId(), 'edit']"
-          class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
-        >
-          <qt-icon name="pencil" class="w-4 h-4" />
-          Edit Character
-        </a>
+        <!-- P4.D64 (v4 CharacterDetails.tsx:128-129): "A disabled fieldset
+             can't inert a Link, so the edit door hides itself for an archived
+             character (the write guard is the lock)." -->
+        @if (!character().archivedAt) {
+          <a
+            [routerLink]="['/characters', characterId(), 'edit']"
+            class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
+          >
+            <qt-icon name="pencil" class="w-4 h-4" />
+            Edit Character
+          </a>
+        }
       </div>
 
       <div class="space-y-6">

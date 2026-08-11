@@ -74,6 +74,17 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 3: an archived character's page is readable but inert. A banner
+above the header explains what was packed away and what was kept; every tab
+still renders, inside a disabled fieldset, and the Edit Character door hides
+itself (a disabled fieldset cannot inert a link). The header forks: an
+archived character offers one Rehydrate button in place of the live action
+cluster, and a live one gains Archive at the end of it. Two new dialogs —
+the archive confirmation, which itemizes what goes and what stays, and the
+post-rehydrate bundle disposal, whose destructive arm is deliberately the
+secondary button. All six toasts carry v4's sentences. The archive and
+rehydrate actions answer P4.D63's not-yet-available refusal until round 2.
+
 P4.D64 unit 2: the character roster shows the archive. A "Show Archived"
 toggle leads the toolbar (folder icon, v4 labels and tooltips both ways);
 its two states fetch and cache separately, and every character mutation now

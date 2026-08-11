@@ -10,6 +10,7 @@ import {
   untracked,
   type WritableSignal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
@@ -31,15 +32,19 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
 import { ToastService } from '../../../ui/toast.service';
 import {
+  archiveCharacter,
   characterKeys,
   fetchCharacter,
   fetchCharacterList,
   fetchCharacterStats,
   fetchConnectionProfiles,
   fetchDefaultPartner,
+  rehydrateCharacter,
 } from '../characters.api';
 import { resolveUserToken } from '../templates';
+import { ArchiveCharacterDialog } from './archive-character-dialog';
 import { CharacterHeader } from './character-header';
+import { RehydrateBundleDialog } from './rehydrate-bundle-dialog';
 import { CharacterAppearanceTab } from './tabs/character-appearance-tab';
 import { CharacterConversationsTab } from './tabs/conversations-tab';
 import { CharacterDefaultsTab } from './tabs/defaults-tab';
@@ -78,9 +83,12 @@ const CHARACTER_TABS: Tab[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    NgTemplateOutlet,
     LoadingState,
     ErrorAlert,
     EntityTabs,
+    ArchiveCharacterDialog,
+    RehydrateBundleDialog,
     CharacterHeader,
     CharacterDetailsTab,
     CharacterSystemPromptsTab,
@@ -128,6 +136,27 @@ const CHARACTER_TABS: Tab[] = [
           <qt-hidden-placeholder />
         </div>
       } @else if (character(); as character) {
+        @if (isArchived()) {
+          <!-- P4.D64 (v4 CharacterDetailView.tsx:331-346): the archived banner,
+               above the header card. -->
+          <div
+            class="mb-6 rounded-2xl border qt-border-default qt-bg-muted/60 p-4 flex items-start gap-3"
+          >
+            <span class="text-2xl" aria-hidden="true">🗄️</span>
+            <div class="flex-1">
+              <p class="qt-text-label text-foreground">
+                {{ character.name || 'This character' }} rests in the archive.
+              </p>
+              <p class="qt-text-small qt-text-secondary mt-1">
+                Their effects — memories, correspondence, photographs, summaries — are packed into a
+                sealed bundle on the shelf. What you see below is kept for the record and may be read
+                but not altered; rehydrate them to pick up the pen again. Old conversations keep
+                their words and their face throughout.
+              </p>
+            </div>
+          </div>
+        }
+
         <qt-character-header
           [character]="character"
           [stats]="stats()"
@@ -136,14 +165,38 @@ const CHARACTER_TABS: Tab[] = [
           [togglingCarina]="togglingCarina()"
           [togglingControlledBy]="togglingControlledBy()"
           [togglingNpc]="togglingNpc()"
+          [rehydrating]="rehydrating()"
           (toggleFavorite)="toggleFavorite()"
           (toggleCarina)="toggleCarina()"
           (toggleControlledBy)="toggleControlledBy()"
           (toggleNpc)="toggleNpc()"
+          (archive)="archiveDialogOpen.set(true)"
+          (rehydrate)="handleRehydrate()"
         />
 
+        <!-- Tabbed content. For an archived character the content renders inside
+             a disabled fieldset: every form control inert, the page still
+             readable. The repository write guard is the real lock — this is the
+             courtesy (v4 CharacterDetailView.tsx:371-373). -->
         <qt-entity-tabs [tabs]="tabs" [defaultTab]="tab() ?? 'details'">
           <ng-template let-active>
+            @if (isArchived()) {
+              <fieldset disabled class="opacity-90">
+                <ng-container
+                  [ngTemplateOutlet]="tabBody"
+                  [ngTemplateOutletContext]="{ $implicit: active }"
+                />
+              </fieldset>
+            } @else {
+              <ng-container
+                [ngTemplateOutlet]="tabBody"
+                [ngTemplateOutletContext]="{ $implicit: active }"
+              />
+            }
+          </ng-template>
+        </qt-entity-tabs>
+
+        <ng-template #tabBody let-active>
             @switch (active) {
               @case ('details') {
                 <qt-character-details-tab
@@ -195,8 +248,26 @@ const CHARACTER_TABS: Tab[] = [
                 <qt-character-appearance-tab [characterId]="id()" [character]="character" />
               }
             }
-          </ng-template>
-        </qt-entity-tabs>
+        </ng-template>
+
+        @if (archiveDialogOpen()) {
+          <qt-archive-character-dialog
+            [characterName]="character.name"
+            [working]="archiving()"
+            (confirm)="handleArchiveConfirm()"
+            (cancel)="archiveDialogOpen.set(false)"
+          />
+        }
+
+        <!-- Post-rehydrate bundle disposal (v4's spec §6 step 6). -->
+        @if (leftoverBundleFileId(); as bundleId) {
+          <qt-rehydrate-bundle-dialog
+            [characterName]="character.name"
+            [bundleFileId]="bundleId"
+            (closed)="leftoverBundleFileId.set(null)"
+            (deleted)="onBundleDeleted()"
+          />
+        }
       }
     </div>
   `,
@@ -346,6 +417,84 @@ export class CharacterDetail {
       ? resolveUserToken(character.controlledBy, character.name, partner?.name)
       : null;
   });
+
+  // --- The archive family (P4.D64; v4 `CharacterDetailView.tsx:266-322`) ---
+
+  /** v4 `isArchived = Boolean(character?.archivedAt)`. */
+  protected readonly isArchived = computed(() => Boolean(this.character()?.archivedAt));
+  protected readonly archiveDialogOpen = signal(false);
+  protected readonly archiving = signal(false);
+  protected readonly rehydrating = signal(false);
+  /**
+   * Set after a successful rehydrate: the ARCHIVE bundle left on the shelf,
+   * whose disposal the user gets to decide (v4's spec §6 step 6).
+   */
+  protected readonly leftoverBundleFileId = signal<string | null>(null);
+
+  /**
+   * Archive (v4 `handleArchiveConfirm`, `:274-293`). On success: close the
+   * dialog, refetch the character, nudge the header stats (the memory count just
+   * changed), invalidate the characters PREFIX, and toast. On failure: leave the
+   * dialog OPEN and toast the server's sentence.
+   */
+  protected async handleArchiveConfirm(): Promise<void> {
+    const name = this.character()?.name || 'The character';
+    this.archiving.set(true);
+    try {
+      const result = await archiveCharacter(this.core, this.id());
+      this.archiveDialogOpen.set(false);
+      await this.characterQuery.refetch();
+      await this.statsQuery.refetch();
+      await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      this.toasts.showSuccess(
+        result.pruneComplete === false
+          ? `${name} is archived, but some effects resisted packing — archive them again to finish the sweep.`
+          : `${name} rests in the archive, bundle sealed and shelved.`,
+      );
+    } catch (err) {
+      this.toasts.showError(
+        err instanceof Error && err.message ? err.message : 'Failed to archive character',
+      );
+    } finally {
+      this.archiving.set(false);
+    }
+  }
+
+  /**
+   * Rehydrate (v4 `handleRehydrate`, `:295-322`). The restored-counts toast when
+   * the body carries them, the bare one otherwise; a NON-EMPTY
+   * `archiveBundleFileId` opens the disposal dialog.
+   */
+  protected async handleRehydrate(): Promise<void> {
+    const name = this.character()?.name || 'The character';
+    this.rehydrating.set(true);
+    try {
+      const result = await rehydrateCharacter(this.core, this.id());
+      await this.characterQuery.refetch();
+      await this.statsQuery.refetch();
+      await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      const restored = result.restored;
+      this.toasts.showSuccess(
+        restored
+          ? `${name} is awake again — ${restored.memories} memories, ${restored.documents} papers and ${restored.blobs} photographs unpacked.`
+          : `${name} is awake again.`,
+      );
+      if (typeof result.archiveBundleFileId === 'string' && result.archiveBundleFileId) {
+        this.leftoverBundleFileId.set(result.archiveBundleFileId);
+      }
+    } catch (err) {
+      this.toasts.showError(
+        err instanceof Error && err.message ? err.message : 'Failed to rehydrate character',
+      );
+    } finally {
+      this.rehydrating.set(false);
+    }
+  }
+
+  /** v4 `:401` — the dialog's `onDeleted` toast. */
+  protected onBundleDeleted(): void {
+    this.toasts.showSuccess('The bundle is off the shelf.');
+  }
 
   protected readonly togglingFavorite = signal(false);
   protected readonly togglingCarina = signal(false);
