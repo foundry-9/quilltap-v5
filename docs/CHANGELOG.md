@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Fixed the sweep driver's prose-leak class at its root: a differential
+family's regeneration recipe is now recognized by INDENTATION (a command
+sits two spaces past `//!` or `*`; prose sits at the marker's margin)
+rather than by guessing from the line's first word. Twenty-one doc
+sentences opening with a command word were being extracted as shell, six of
+them into regen scripts that would die on a bash syntax error. The one
+header that used a markdown code fence instead of indentation
+(`memory_weighting_equivalence`) was converted to the tree's convention.
+Developer tooling only — no shipped behavior changed.
+
 Finished P4.D65's resume list. Changing the instance passphrase now
 re-encrypts the archive library with it: the sweep runs as phase two of
 `POST /api/v1/system/unlock?action=change-passphrase`, and the response

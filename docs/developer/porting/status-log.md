@@ -64444,3 +64444,73 @@ correction.
   The recorded-not-fixed nits from that review stand unchanged.
 
 **P4.D63 CLOSES with this lane** (its unit-7 resume list is discharged).
+---
+
+## Lane record — P4.45 unit 1: the prose-leak class fixed at the root (indentation), 2026-08-11
+
+Drift-checked first: v4 HEAD is exactly the order's baseline `de9f70bf`,
+tree clean — no drift, nothing to stop for.
+
+**The order named two rot shapes; the survey found the second one's cause
+is not what the header rewordings implied.** P4.40 had already reworded
+`danger_gatekeeper_tier3`'s `diff`-prose sentence (its header carries the
+explanatory parenthetical), and `state_sql_tools`'s surviving `diff` line
+sits behind a `-` bullet the extractor never reads. Both families classify
+`ok` today. The DEFECT is still live, because keyword blacklisting cannot
+decide the question: `is_prose`'s copula list catches "cargo run fine from
+the worktree.)" but nothing catches "diff the written rows are id-free",
+"for every mutation case, so …", or "export each side gets back …", and a
+sentence may open with any word at all.
+
+**The signal that cannot be forged is the margin.** Every recipe in the
+tree indents its commands two spaces past the comment marker and leaves
+prose at the marker's own one-space margin. Measured across all 391 `.rs`
+family headers and every `harness/oracle/cases/**.ts` header BEFORE
+changing anything: 14 `.rs` lines and 8 `.ts` lines classified as shell at
+the prose margin — 21 of the 22 are prose, and the single genuine
+exception was `memory_weighting_equivalence`, the tree's oldest header,
+whose recipe lives in a ```` ```text ```` fence at the margin. So the rule
+costs exactly one header conversion and kills the whole class.
+
+Landed:
+
+- `shell_lines` requires indentation (`raw.startswith("  ")`) for a line to
+  be shell at all; `is_prose` stays as a second layer for anything that IS
+  indented. The docstring carries the measurement and the reason.
+- `ts_doc_header` now strips only the `*`, not `* ` plus a re-indent. The
+  old form pushed every `.ts` line to two spaces, so under the new rule the
+  `.ts` dialect would have been unprotected — both dialects now normalize
+  to the same baseline.
+- `memory_weighting_equivalence`'s header converted from the fence to the
+  indented convention (and its run line scoped, since the file had to move
+  anyway — see unit 2).
+- `--self-test` grew both directions of the rule over five real leak lines,
+  verbatim, from both dialects: at the prose margin they must be dropped;
+  indented, the very same text must classify as shell (the rule is the
+  margin, not a keyword blacklist). Plus a continuation-handling pin.
+- README: the indentation rule replaces the "never open a sentence with a
+  command word" advice as the primary contract (the advice survives as
+  style), and a new bullet records that markdown fences are not a recipe
+  marker.
+
+**Proof it changed only what it should.** Every family's extracted regen +
+run script was dumped before and after (all 391, both stages) and diffed:
+the ONLY differences are six deleted prose lines, in
+`character_archive_tier2_equivalence`, `documents_routes_equivalence`,
+`embedding_reapply_equivalence`, `p4_6ay_workbench_wire_contract`,
+`restore_vintage_state`, and `ui_search_equivalence`. Each of those six was
+a live break — under `set -euo pipefail` an extracted `diff the …` exits 2
+and an extracted `for the Reapply Target profile …` is a bash syntax error
+— so six families could not have run through `--run` at all. That is rot
+the order did not know about, in the shape it did name.
+
+`--list` totals move only in explained ways: `ok` 289 → 288 and `no_oracle`
+18 → 19, both accounted for by `p4_6ay_workbench_wire_contract`, whose
+entire "recipe" was the prose line `diff (the behavior lives in
+pascal_workbench_route_equivalence).` — it is a wire contract with no
+oracle, and `no_oracle` is the correct bucket. (Its four sibling wire
+contracts short-circuit through `EXEMPT_FAMILIES`; this one is not listed
+there.)
+
+No test body, assertion, fixture or oracle case changed — the `git diff`
+over `crates/quilltap-harness/tests/` is comment-only.

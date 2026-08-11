@@ -63,6 +63,11 @@ Variable conventions the driver understands (and headers should use):
   Legacy single-letter aliases (`V5`, `W`) and the literal
   `~/source/quilltap-v5` are rewritten to the driver's `--v5w` at run time.
 
+THE INDENTATION RULE (P4.45) decides what is a recipe line at all: a command
+must be INDENTED at least two spaces past its comment marker (`//!   cd …`,
+` *   cd …`), where prose sits at the marker's own one-space margin. It is the
+only signal a doc sentence cannot forge — see `shell_lines`.
+
 TZ pins are load-bearing (the P4.d26 rule): the driver never strips or adds
 environment words — `TZ=UTC` / `TZ=America/Chicago` run exactly as written.
 
@@ -196,7 +201,16 @@ def rs_doc_header(path: Path) -> list[str]:
 
 
 def ts_doc_header(path: Path) -> list[str]:
-    """The leading `/** … */` block of an oracle case, ` * ` markers stripped."""
+    """The leading `/** … */` block of an oracle case, ` * ` markers stripped.
+
+    Only the `*` itself is removed, so the text that follows keeps the SAME
+    margin convention as an `//!` header: prose at one space, recipe lines
+    indented past it. THE INDENTATION RULE below reads that margin, and it can
+    only do so if both header dialects normalize to the same baseline (the old
+    ` ` + `s[1:]` re-indent pushed every `.ts` line to two spaces, which made
+    every line of every case header look indented and left this dialect
+    unprotected).
+    """
     out = []
     inside = False
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -208,7 +222,7 @@ def ts_doc_header(path: Path) -> list[str]:
         if s.startswith("*/"):
             break
         if s.startswith("*"):
-            out.append(" " + s[1:])
+            out.append(s[1:])
     return out
 
 
@@ -226,7 +240,24 @@ def is_prose(stripped: str) -> bool:
 
 
 def shell_lines(doc: list[str]) -> list[str]:
-    """Classify doc lines into an ordered shell script (prose dropped)."""
+    """Classify doc lines into an ordered shell script (prose dropped).
+
+    THE INDENTATION RULE (P4.45's root fix for the prose-leak class). A recipe
+    line must be INDENTED — at least two spaces past the comment marker
+    (`//!   cd …`, ` *   cd …`) — where prose sits at the marker's own one-space
+    margin. Every recipe in the tree already writes it that way, and it is the
+    only signal that survives a doc sentence opening with a command word.
+
+    Keyword blacklisting cannot do this job: `is_prose`'s copula list caught
+    "cargo run fine from the worktree.)" but not "diff the written rows are
+    id-free" or "for every mutation case, so …" or "export each side gets back
+    …", and a sentence is free to open with any word at all. Twenty-one such
+    lines were leaking into extracted scripts across the two header dialects
+    when this rule landed (thirteen `.rs`, eight `.ts`) — each one a bash
+    syntax error or a stray command inside an otherwise correct regen, which
+    two rounds counted as recipe rot. `is_prose` stays as a second layer for
+    anything that IS indented.
+    """
     lines: list[str] = []
     in_continuation = False
     for raw in doc:
@@ -234,9 +265,11 @@ def shell_lines(doc: list[str]) -> list[str]:
         if not stripped:
             in_continuation = False
             continue
-        indented = raw.startswith("  ")
+        if not raw.startswith("  "):
+            in_continuation = False
+            continue
         looks_shell = bool(SHELL_START.match(stripped)) and not is_prose(stripped)
-        if (in_continuation and indented) or looks_shell:
+        if in_continuation or looks_shell:
             lines.append(stripped)
             in_continuation = stripped.endswith("\\")
         else:
@@ -915,6 +948,23 @@ SELF_TEST_SHELL = [
     "… QT_ORACLE_OUT=/tmp/oracle-x.ndjson \\",
 ]
 
+# P4.45: real prose lines, verbatim, that open with a command word and defeat
+# every keyword-based guard. At the prose margin THE INDENTATION RULE must drop
+# them; at the recipe margin the same words must still classify as shell (the
+# rule is the margin, not a keyword blacklist).
+SELF_TEST_INDENT_PROSE = [
+    # documents_routes_equivalence.rs / p4_6ar_wire_contract.rs
+    " diff the chat_documents / documentMode state (id-free). Minted fields (the",
+    # character_archive_tier2_equivalence.rs
+    " export each side gets back by decrypting its own artifact. The fixture",
+    # profile_routes_equivalence.rs
+    ' for every mutation case, so "normalized" can never quietly mean "neither',
+    # mount_points_routes_equivalence.rs
+    " cargo runs the two test binaries concurrently.",
+    # pascal-run-custom-handler.test.ts (the `.ts` dialect, same shape)
+    " diff normalizes both positionally.",
+]
+
 
 def cmd_self_test() -> int:
     failures: list[str] = []
@@ -940,6 +990,24 @@ def cmd_self_test() -> int:
         shell_lines(doc)
         == ["N=~/.nvm/versions/node/v24.13.1/bin", "cd ~/source/quilltap-server"],
         f"shell_lines leaked prose: {shell_lines(doc)}",
+    )
+
+    # P4.45's indentation rule, both directions: at the prose margin these
+    # sentences are dropped; indented, the very same text is shell.
+    for line in SELF_TEST_INDENT_PROSE:
+        check(
+            shell_lines([line]) == [],
+            f"prose leaked at the prose margin: {line!r}",
+        )
+        check(
+            shell_lines(["  " + line.lstrip()]) == [line.strip()],
+            f"the same text indented must classify as shell: {line!r}",
+        )
+    # An indented continuation still only continues an indented command.
+    check(
+        shell_lines(["   cd /x \\", "     --flag", " prose after"])
+        == ["cd /x \\", "--flag"],
+        f"continuation handling changed: {shell_lines(['   cd /x \\', '     --flag', ' prose after'])}",
     )
 
     # F8 end-to-end: the elision marker reaches the extracted script, so the

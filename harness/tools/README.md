@@ -54,9 +54,10 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   `family → status (ok / regen_failed / run_failed / skipped /
   refused_*) → cause`.
 - `--self-test` runs the driver's own classifier and detector assertions
-  (the two real F3 prose-leak lines, the F5 `_SKIP` false positive, the F6
-  pin paths, the venue and external-/tmp classes, the policy-2 suffix). Run
-  it after ANY change to the extraction machinery.
+  (the two real F3 prose-leak lines, the five real P4.45 leak lines in BOTH
+  margins, the F5 `_SKIP` false positive, the F6 pin paths, the venue and
+  external-/tmp classes, the policy-2 suffix). Run it after ANY change to the
+  extraction machinery.
 
 ## The venue rule (P4.34's F1)
 
@@ -154,12 +155,28 @@ a byte-for-byte no-op, and `--self-test` asserts both that and the redirect.
   The `mkdir` is load-bearing in its own right: a recipe that assigns
   `TMPO=` and never creates it leans on whatever an earlier recipe left
   behind (`external_tmp_input`).
-- **Never open a header sentence with a command word.** The extractor keeps
-  shell-looking lines, and a sentence starting `diff the written …` is
-  indistinguishable from a `diff` invocation — the recipe then runs the doc
-  sentence and dies on a bash syntax error (the F3 prose-leak class; P4.40
-  found two more, in `danger_gatekeeper_tier3` and `state_sql_tools`).
-  Rewrite as "the written … are compared".
+- **Indent every recipe line; keep prose at the margin.** This is the rule the
+  extractor actually reads (P4.45): a command must be indented at least two
+  spaces past `//!` or `*`, and anything at the marker's own one-space margin
+  is prose, whatever word it opens with.
+
+  ```text
+  //! Covers foo and bar. diff the written rows: they are id-free.   <- prose
+  //! Generate the oracle:
+  //!   cd ~/source/quilltap-server                                  <- recipe
+  ```
+
+  Before that rule the extractor guessed from the first word, so a sentence
+  starting `diff the written …` was indistinguishable from a `diff`
+  invocation and the recipe ran the doc sentence — a bash syntax error two
+  rounds counted as recipe rot (the F3 prose-leak class; P4.40 found two more,
+  in `danger_gatekeeper_tier3` and `state_sql_tools`; P4.45 found twenty-one
+  live leaks across both header dialects and fixed the cause). Opening a
+  sentence with a command word is now harmless, but still worth avoiding —
+  "the written … are compared" reads better anyway.
+- **Markdown code fences are not a recipe marker.** ` ```text ` blocks are
+  invisible to the extractor; indent the block instead (P4.45 converted the
+  one header that used a fence, `memory_weighting_equivalence`).
 - **One assignment per line.** `WT=… STAGE=/tmp/qt-oracle-stage` on a single
   line defeats the per-family scratch suffix (policy 2 anchors on `^VAR=`),
   so the family silently shares a mirror with every other family that used

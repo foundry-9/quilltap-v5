@@ -4,13 +4,12 @@
 //! Workflow — generate the oracle output (once, from the v4 server checkout),
 //! then point this test at it and run:
 //!
-//! ```text
-//! cd ~/source/quilltap-server
-//! npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-weighting.ts \
-//!   > /tmp/oracle-weighting.ndjson
-//! cd ~/source/quilltap-v5
-//! QT_ORACLE_WEIGHTING=/tmp/oracle-weighting.ndjson cargo test -p quilltap-harness
-//! ```
+//!   cd ~/source/quilltap-server
+//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-weighting.ts \
+//!     > /tmp/oracle-weighting.ndjson
+//!   cd ~/source/quilltap-v5
+//!   QT_ORACLE_WEIGHTING=/tmp/oracle-weighting.ndjson \
+//!     cargo test -p quilltap-harness --test memory_weighting_equivalence
 //!
 //! If QT_ORACLE_WEIGHTING is unset, the test is skipped (prints a notice) so
 //! the suite stays green on machines without the server checkout. If the file
