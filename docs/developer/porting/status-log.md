@@ -64244,3 +64244,21 @@ SPA 0.5.451; quilltap-tauri/host unchanged.
   through the SPA, the CLI family against the Friday copy (status /
   archives / offline export of a real bundle), and the Bug-56 409 on a
   genuinely unreachable store.
+
+## Ruling — the carried-blob-id dedupe divergence (2026-08-11, human): CONFIRMED
+
+The human confirmed the round-2 §3 divergence: v5's preserveIds preflight
+KEEPS the first-occurrence dedupe of carried blob ids
+(`quilltap_import/mod.rs`), diverging from v4's undeduped `carriedBlobIds`
+(`execute.ts:115`) whose composition with the per-link blob export makes
+v4's own rehydrate refuse any vault holding a twice-linked sha-deduped
+blob. The v4 half is FILED as **Bug 57**
+(`docs/developer/bugs/bug-57-rehydrate-duplicate-blob-claim.md`, v4 commit
+`0472cf6c`) and will be fixed v4-side; the divergence becomes a plain
+equality at the drift catch-up that absorbs that fix. Until then the live
+pin is `crates/quilltap-web/tests/characters_action_route.rs` (the
+rehydrate leg over the photos fixture's twice-linked blob), and the
+differential-level both-directions arm stays on P4.D65's resume list.
+Rationale: the ruled fix-v4-don't-match-it envelope — reader-side only,
+writer bytes untouched, data-loss-adjacent (an archive that cannot
+reopen).

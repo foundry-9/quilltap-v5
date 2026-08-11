@@ -2277,8 +2277,8 @@ records THERE. Update this summary only when a phase or round completes.
   placement) and **a v4 bug v5 reproduced faithfully — v4 cannot
   rehydrate a vault linking the same bytes twice** (per-link blob export
   duplication × the undeduped `carriedBlobIds`); v5's preflight now
-  dedupes first-occurrence (a ruled-envelope divergence, live-pinned;
-  v4-side fix queued; ⚠ flagged for the human to confirm). Also fixed:
+  dedupes first-occurrence (CONFIRMED by the human 2026-08-11; filed as
+  v4 Bug 57, to be fixed v4-side). Also fixed:
   the archive differential's `background_jobs` blindness (fixture
   extended by mutation — the table never existed, so enqueues failed
   soft on BOTH sides; the positive leg stays owed), four CLI
