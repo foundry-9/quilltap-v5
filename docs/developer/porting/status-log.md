@@ -64262,3 +64262,42 @@ differential-level both-directions arm stays on P4.D65's resume list.
 Rationale: the ruled fix-v4-don't-match-it envelope — reader-side only,
 writer bytes untouched, data-loss-adjacent (an archive that cannot
 reopen).
+
+---
+
+## Round planned — the P4.D65-finish + sweep-rot round (P4.D65-resumed ∥ P4.45), 2026-08-11
+
+Planned at /setupphase. **Drift-check first, per the skill: v4 moved TWO
+commits past `ed8934f1`** — `0472cf6c` (docs-only, the Bug 57 filing,
+NO-PORT) and **`de9f70bf`, v4's Bug-57 FIX**: `carriedBlobIds` deduped
+first-occurrence in `lib/import/quilltap-import/execute.ts:115` — v4
+CONVERGING onto this port's ruled divergence, exactly as the round-2
+record predicted. Survey-verified: v5's existing collection
+(`services/quilltap_import/mod.rs:532–539`) is behavior-identical, so the
+drift needs ZERO v5 source change — the work is pin/comment retirement,
+the fixture-driven plain-equality arm, import-graph regens, and the
+baseline move to `de9f70bf`. Because the drift lands on the very files
+P4.D65's resume list owns (`characters_action_route.rs`'s live pin, the
+`character-archive-*` family), it folds INTO that lane rather than
+getting its own: a **Round-3 resume addendum** now sits in
+`work-orders/p4.d65-archive-service-round2-server.md` superseding its
+baseline/sibling notes. Completing it still CLOSES P4.D63 (unit 7).
+
+The second lane is the standing maintenance debt: **P4.45, the
+sweep-driver rot repair** (`work-orders/p4.45-sweep-driver-rot-repair.md`)
+— the six turn families' SKIP-masquerade (survey confirmed the shape live:
+`--show select_speaker_equivalence` extracts an UNSCOPED run line, so a
+driver run sees every sibling family SKIP and cannot attribute), the
+`diff`-prose classifier trap (`danger_gatekeeper_tier3`,
+`state_sql_tools`), `--self-test` growth so both shapes become
+unrepresentable, and the 30-file unscoped-run-line census (sibling-owned
+files recorded, not edited). Ownership is fully disjoint; the only
+meeting points are the append-only files and the harness version (both
+lanes bump; the unifier recounts).
+
+Deliberately left out: the owed dogfood pass (runs as /dogfood after
+unification — it gains round 2's live archive/rehydrate + CLI surfaces
+and the standing 💸 queue); the full-repo `--run-all` sweep (a
+unification/baseline-move activity); round 1's v4-side archived-seat-badge
+GET filing (human item, still owed). Recommended arrangement: two
+parallel worktree lanes, both drift-checking against `de9f70bf` at start.

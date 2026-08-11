@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned the P4.D65-finish + sweep-rot round (docs only). v4 fixed its Bug
+57 at `de9f70bf` — converging onto this port's twice-linked-blob rehydrate
+dedupe — so the drift folds into P4.D65's resumed lane as a Round-3
+addendum (pin retirement, a plain-equality fixture arm, import-graph
+regens, baseline move to `de9f70bf`; zero v5 source change needed —
+verified at planning). A new parallel maintenance order, P4.45, repairs
+the sweep-driver recipe rot: the six turn families' unscoped run lines
+(the SKIP-masquerade), the `diff`-prose classifier trap, self-test growth,
+and the 30-file census. Round-planned record in the status log.
+
 Unified round 2 of the character-archive catch-up (P4.D65 ∥ P4.D66 ∥
 P4.D67) onto main — the oracle baseline moves to `ed8934f1` and the Bug-56
 drift debt is cleared. The archive service is LIVE end-to-end: archive
