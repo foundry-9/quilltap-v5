@@ -63886,3 +63886,52 @@ DEFERRED LOUDLY and banks with the standing `quilltap docs` CLI deferral
 
 Also banked, unchanged: `help/mount-points.md` + `help/cli-docs.md` →
 the `p4.9i2` help-doc bank.
+
+### Lane record — P4.D67 (the `ed8934f1` Bug-56 base-path-availability drift)
+
+**CLOSED.** Branch `claude/p4-basepath-availability-drift-d1eccb`, three
+commits (module → wire + differentials → the Docker doc section). Drift
+check at lane start: v4 HEAD was exactly `ed8934f1`, tree clean, so
+every oracle in this lane regenerated straight from
+`~/source/quilltap-server` with no pinned worktree. **This lane clears
+the drift debt; the baseline moves to `ed8934f1` at unification and the
+`d553f72a` mount-points regen pin retires.**
+
+Gate: `cargo fmt --all --check` clean; clippy both feature sets clean;
+`cargo test --workspace` with the lane's two oracle env vars — **421 test
+binaries / 2,002 tests / 0 failed, cargo exit 0, zero SKIP lines** (the
++5 over main's 1,997 are this lane's unit tests: four on the message
+builder, one on the folder-create refusal); the two families re-run BY
+NAME with `--nocapture` printing `19 cases` and `42 cases`; release
+build clean. No `apps/web` touch, so no SPA gate owed.
+
+Two things worth carrying out of this lane:
+
+**A fixed literal path is what buys a byte-exact sentence.** These
+diagnoses embed the base path, and the two sides run from different temp
+directories, so the obvious plant (a `mkdtemp` per side) would have
+forced a normalization that blanks the very thing the port has to get
+right. Fixed `/tmp` literals, planted identically on both sides, let the
+whole sentence be a comparand. The cost is that the two mount families
+must not share a root — cargo runs them as concurrent test binaries —
+hence `qt-bug56-mp` and `qt-bug56-ops`.
+
+**The order's `denied` recipe was wrong, and only running it showed
+that.** `chmod 000` on the base path itself leaves `stat` succeeding
+(the mode that matters is the PARENT's search bit), so that plant would
+have produced an `available` verdict and a green, meaningless arm. The
+correction — an unreadable parent — was verified against Node's
+`fs.stat` before either side was written, and the regenerated oracle
+confirms v4 emits the `denied` sentence.
+
+Deferred loudly, both restated in the order's status header: the
+`quilltap docs docker-mounts` subcommand + the `start:docker` bind
+planner (banked by name with the standing `quilltap docs` CLI deferral,
+P4.6y — and `running.md` says so, so an operator meeting the 409 is not
+left hunting for a tool that does not exist), and the two help docs
+(`p4.9i2` bank).
+
+One cosmetic leftover for the unifier, outside this lane's ownership:
+`apps/web/.../scriptorium.spec.ts:122` still names the deleted
+`verifyBasePath` in a test title. It stubs its own warning string, so
+only the name is stale.

@@ -17,6 +17,11 @@ tier-2 differential against v4's real archive service, diffing the
 returned result, the DECRYPTED bundle, and every table in both
 partitions. (Ciphertext is never compared — a fresh salt and IV per
 bundle make it nondeterministic on both sides.)
+P4.D67 closed — the `ed8934f1` (Bug 56) base-path-availability drift
+catch-up is complete and clears the drift debt; the oracle baseline
+moves to `ed8934f1` at unification and the `d553f72a` mount-points
+regen pin retires.
+
 P4.D67 tier 2 — documented the Docker bind-mount property in
 `docs/developer/running.md`: filesystem and Obsidian document stores are
 invisible inside a container unless bound in at creation, the failure is
