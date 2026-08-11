@@ -74,6 +74,19 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 1: mirrored the character-archive client contract (v4
+`d553f72a`) and added the archive data layer. `core-contract.ts` gains the
+`archived` list filter, `archivedAt` on the character list/detail DTOs plus
+`archiveFileId`, `archivedAt` on group members and chat-participant
+characters, `keepArchivedCharacterBundles` on delete-data and
+restore-execute, the files-list `category` filter, the two new
+`characterArchive`/`characterRehydrate` verbs, and the
+`ArchiveReencryptSummary` / `ExportVaultPreview` shapes; the stale "v4 has
+no export-preview route" comment is reconciled. `characters.api.ts` gains
+`archiveCharacter`, `rehydrateCharacter`, `deleteArchiveBundle`,
+`countArchiveBundles`, the archived list filter, and distinct cache keys per
+archived-filter state. The two verbs answer P4.D63's not-yet-available
+refusal this round; round 2 fills them.
 
 Planned the character-archive drift catch-up (v4 `f6eac168` →
 `d553f72a`): round 1 of 2, three work orders committed —

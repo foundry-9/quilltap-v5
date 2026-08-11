@@ -26,10 +26,20 @@ import type {
   TagDto,
 } from '../../core/core-contract';
 
-/** Query keys for the characters vertical (v4 `queryKeys.characters`). */
+/**
+ * Query keys for the characters vertical (v4 `queryKeys.characters`).
+ *
+ * P4.D64: the roster's "Show Archived" toggle keys its two fetches DISTINCTLY —
+ * `list({archived:'include'})` vs `list()` — so the filter states never
+ * cross-contaminate a cache entry (v4 `AuroraView.tsx:47-49`). Mutations
+ * therefore invalidate the `all` PREFIX rather than one list key, "so the other
+ * archived-filter variant refreshes too" (v4 `:72`). v5 keeps its own
+ * omit-the-object-when-absent convention for the unfiltered key (v4 keys `{}`);
+ * only the DISTINCTNESS is contractual.
+ */
 export const characterKeys = {
   all: ['characters'] as const,
-  list: (filter?: { npc?: string; controlledBy?: string }) =>
+  list: (filter?: { npc?: string; controlledBy?: string; archived?: string }) =>
     filter ? (['characters', 'list', filter] as const) : (['characters', 'list'] as const),
   detail: (id: string) => ['characters', 'detail', id] as const,
   stats: (id: string) => ['characters', 'stats', id] as const,
@@ -76,7 +86,11 @@ export function characterAvatarSrc(
 
 export async function fetchCharacterList(
   core: CoreClient,
-  filter?: { npc?: 'true' | 'false'; controlledBy?: 'user' | 'llm' },
+  filter?: {
+    npc?: 'true' | 'false';
+    controlledBy?: 'user' | 'llm';
+    archived?: 'include' | 'only';
+  },
 ): Promise<CharacterListItem[]> {
   const data = await core.dispatchData({ type: 'characterList', ...filter });
   return (data['characters'] as CharacterListItem[]) ?? [];
@@ -205,6 +219,86 @@ export function triggerJsonDownload(filename: string, value: unknown): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// The archive family (P4.D64 §2). The two verbs are DEFINED by P4.D63 answering
+// the loud not-yet-available refusal; ROUND 2 fills them, so in this round both
+// calls surface that refusal as the thrown message and the action e2e beats stay
+// gated. The success shapes below are the §2-pinned bodies.
+// ---------------------------------------------------------------------------
+
+/** v4's archive success body (`?action=archive`). */
+export interface ArchiveCharacterResult {
+  archived: boolean;
+  archiveFileId: string | null;
+  /**
+   * FALSE when the bundle sealed but some effects resisted the prune — v4 says
+   * so in the toast and invites a second archive to finish the sweep.
+   */
+  pruneComplete: boolean;
+}
+
+/** v4's rehydrate success body (`?action=rehydrate`). */
+export interface RehydrateCharacterResult {
+  rehydrated: boolean;
+  archived: boolean;
+  /** The bundle left on the shelf — non-empty ⇒ offer its disposal. */
+  archiveBundleFileId: string | null;
+  restored?: { memories: number; documents: number; blobs: number };
+  warnings: string[];
+}
+
+/**
+ * Pack a character into a sealed bundle and set them resting in the archive
+ * (v4 `POST /api/v1/characters/{id}?action=archive`). Read defensively: only
+ * `pruneComplete === false` takes the "some effects resisted packing" arm, so a
+ * body that omits the key reads as a clean sweep (v4 `:286`).
+ */
+export async function archiveCharacter(
+  core: CoreClient,
+  characterId: string,
+): Promise<ArchiveCharacterResult> {
+  const data = await core.dispatchData({ type: 'characterArchive', characterId });
+  return data as unknown as ArchiveCharacterResult;
+}
+
+/**
+ * Unpack an archived character and wake them (v4 `?action=rehydrate`). v4 only
+ * offers the leftover-bundle dialog when `archiveBundleFileId` is a NON-EMPTY
+ * string (`:314`) — an absent or empty id means there is nothing on the shelf.
+ */
+export async function rehydrateCharacter(
+  core: CoreClient,
+  characterId: string,
+): Promise<RehydrateCharacterResult> {
+  const data = await core.dispatchData({ type: 'characterRehydrate', characterId });
+  return data as unknown as RehydrateCharacterResult;
+}
+
+/**
+ * Discard the archive bundle a rehydration left behind (v4 `DELETE
+ * /api/v1/files/{id}`, `RehydrateBundleDialog.tsx:31`). v4 sends no options, so
+ * neither do we — the bundle has no associations to dissociate.
+ */
+export async function deleteArchiveBundle(core: CoreClient, fileId: string): Promise<void> {
+  await core.dispatchData({ type: 'fileDelete', fileId });
+}
+
+/**
+ * How many archive bundles are sealed under the current passphrase (v4
+ * `ChangePassphraseCard.tsx:24-31` — `GET /api/v1/files?category=ARCHIVE`, whose
+ * `files.length` IS the count). A COURTESY: v4 swallows every failure, because
+ * the passphrase change itself reports the real numbers.
+ */
+export async function countArchiveBundles(core: CoreClient): Promise<number | null> {
+  try {
+    const data = await core.dispatchData({ type: 'filesList', category: 'ARCHIVE' });
+    const files = data['files'];
+    return Array.isArray(files) ? files.length : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchTags(core: CoreClient, search?: string): Promise<TagDto[]> {

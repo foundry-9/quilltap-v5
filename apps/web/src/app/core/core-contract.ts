@@ -906,6 +906,35 @@ export interface CharacterListRequest {
   type: 'characterList';
   npc?: 'true' | 'false';
   controlledBy?: 'user' | 'llm';
+  /**
+   * P4.D64 §1 (v4 `d553f72a`, `characters/handlers/get.ts:28-33`): the archive
+   * chokepoint EVERY picker inherits. `only` returns nothing but tombstones,
+   * `include` returns both, and anything else — including absent — EXCLUDES
+   * them. Applied at the API list handler, never in the repository, so a
+   * caller that forgets the param gets the safe default.
+   */
+  archived?: 'include' | 'only';
+}
+
+/**
+ * P4.D64 §2 — archive a character (v4 `POST /characters/{id}?action=archive`).
+ * DEFINED in P4.D63 answering the loud not-yet-available refusal; ROUND 2 fills
+ * it. Success body (pinned now): `{archived, archiveFileId, pruneComplete}`.
+ */
+export interface CharacterArchiveRequest {
+  type: 'characterArchive';
+  characterId: string;
+}
+
+/**
+ * P4.D64 §2 — rehydrate an archived character (v4 `?action=rehydrate`). Success
+ * body (pinned now): `{rehydrated, archived, archiveBundleFileId, restored?:
+ * {memories, documents, blobs}, warnings}`. A non-empty `archiveBundleFileId`
+ * is the bundle left on the shelf, whose disposal the user decides.
+ */
+export interface CharacterRehydrateRequest {
+  type: 'characterRehydrate';
+  characterId: string;
 }
 
 /** The detail projection (v4 GET `/characters/:id`). */
@@ -1830,6 +1859,12 @@ export interface FilesListRequest {
   projectId?: string;
   folderPath?: string;
   filter?: string;
+  /**
+   * P4.D64 §3 (v4 `files/handlers/get.ts:17-23`): exact-match on the file row's
+   * `category`. The archive-bundle courtesy count on the Encryption Passphrase
+   * card is its first consumer (`category=ARCHIVE`).
+   */
+  category?: string;
 }
 
 /**
@@ -2066,6 +2101,8 @@ export type CoreRequest =
   | ModelFetchRequest
   // --- The Characters surface (P4.6f implements the server side) ---
   | CharacterListRequest
+  | CharacterArchiveRequest
+  | CharacterRehydrateRequest
   | CharacterGetRequest
   | CharacterCreateRequest
   | CharacterQuickCreateRequest
@@ -2561,6 +2598,12 @@ export interface DetailCharacter {
   defaultImage: EnrichedImage | null;
   talkativeness?: number;
   /**
+   * P4.D64 §1 (v4 `ParticipantCard.tsx:40`, projected by
+   * `chats/[id]/helpers.ts:66`): set when the character is archived — the seat
+   * is absent until rehydration, and the card badges it ALONGSIDE Absent.
+   */
+  archivedAt?: string | null;
+  /**
    * The character's NAMED system prompts (v4 `EnrichedCharacterSystemPrompt`,
    * `chat-enrichment.service.ts:296-300`). The server has always projected these
    * (`services/chat_enrichment.rs:246`); the type simply never declared them
@@ -2729,6 +2772,13 @@ export interface CharacterListItem {
    * optional in TS so pre-server-lane responses read defensively (`?? false`).
    */
   canChooseOutfit?: boolean;
+  /**
+   * P4.D64 §1: the archive tombstone's ISO timestamp, ALWAYS present on the
+   * list DTO (`?? null`) once P4.D63 lands the chokepoint. Optional in TS so
+   * pre-server-lane responses read defensively — every consumer treats a
+   * missing key exactly like `null` (not archived).
+   */
+  archivedAt?: string | null;
   createdAt: string;
   tags: string[];
   updatedAt: string;
@@ -2775,6 +2825,15 @@ export interface CharacterDetail {
    * in TS so pre-server-lane responses read defensively (`?? false`).
    */
   canChooseOutfit?: boolean;
+  /**
+   * P4.D64 §1 (v4 `[id]/handlers/get.ts`, `view/types.ts:88-90`): the archive
+   * tombstone. `archivedAt` non-null ⇒ the whole page is read-only and the
+   * header offers Rehydrate in place of the live action cluster;
+   * `archiveFileId` is the sealed `.qtap` bundle's `files` row. Optional in TS
+   * so pre-server-lane responses read defensively.
+   */
+  archivedAt?: string | null;
+  archiveFileId?: string | null;
   defaultTimestampConfig: TimestampConfig | null;
   defaultScenarioId: string | null;
   defaultSystemPromptId: string | null;
@@ -3097,6 +3156,13 @@ export interface GroupSummary {
 export interface GroupMemberSummary {
   id: string;
   name: string;
+  /**
+   * P4.D64 §1 (v4 `aurora/types.ts:31`): set when the member is archived —
+   * shown as a badge; membership survives archiving, but the seat takes no
+   * turns. Add-member REFUSES an archived character (400), so this only ever
+   * appears on a member archived after joining.
+   */
+  archivedAt?: string | null;
 }
 
 /**
@@ -5823,6 +5889,13 @@ export interface SystemRestoreExecuteRequest {
   type: 'systemRestoreExecute';
   uploadId: string;
   mode: 'replace' | 'new-account';
+  /**
+   * P4.D64 §4: spare each archived character's `.qtap` bundle from the wipe
+   * that PRECEDES a replace-mode restore. Effective default TRUE server-side
+   * (`!== false`); accepted in BOTH modes, effective in replace only — v4's
+   * client sends it either way (`useRestoreData.ts:182`).
+   */
+  keepArchivedCharacterBundles?: boolean;
 }
 
 /**
@@ -5837,10 +5910,15 @@ export interface SystemExportEntitiesRequest {
 }
 
 /**
- * A dry-run of what an export would contain. v4 has no `export-preview` route
- * (the entity listing IS the picker); this speculative dispatch verb is mirrored
- * from §1 by NAME and reconciled at unification — the SPA does not call it (the
- * actual bytes stream from the web-edge `?action=export` leg).
+ * A dry-run of what an export would contain.
+ *
+ * ⚠ RECONCILED by P4.D64 (v4 `d553f72a`): this comment used to read "v4 has no
+ * `export-preview` route" — true when the verb was first mirrored speculatively,
+ * and now stale. v4 HAS the route (`GET /system/tools?action=export-preview&
+ * type=characters&scope=…[&selectedIds=…]`, added with the character-vault
+ * export), and the SPA DOES call it — the export wizard's advisory vault hint
+ * (`{vaults: ExportVaultPreview}`) rides it. The actual bytes still stream from
+ * the web-edge `?action=export` leg.
  */
 export interface SystemExportPreviewRequest {
   type: 'systemExportPreview';
@@ -5932,6 +6010,38 @@ export interface SystemDeleteDataPreviewRequest {
 export interface SystemDeleteDataRequest {
   type: 'systemDeleteData';
   confirm: string;
+  /**
+   * P4.D64 §4: leave the archived-character `.qtap` bundles on the shelf.
+   * Effective default TRUE server-side (`!== false`). The character ROWS still
+   * perish, so a spared bundle is a LOOSE one — importable afresh, never simply
+   * woken.
+   */
+  keepArchivedCharacterBundles?: boolean;
+}
+
+/**
+ * P4.D64 §5 — the archive re-encryption summary the change-passphrase response
+ * carries (v4 `ChangePassphraseCard.tsx:6-10`). Every bundle is sealed under the
+ * passphrase, so changing it rewrites each one. `total: -1` means the sweep
+ * ITSELF failed; a failed sweep does NOT fail the passphrase change.
+ */
+export interface ArchiveReencryptSummary {
+  total: number;
+  reencrypted: number;
+  failures: Array<{ fileId: string; filename: string; reason: string }>;
+}
+
+/**
+ * P4.D64 §6 — what the selected characters' vaults add to an export bundle (v4
+ * `import-export/types.ts:82-88`). Present on the `characters` export preview
+ * only when `stores > 0`. Purely ADVISORY: a failed read leaves the hint absent
+ * and never blocks the export.
+ */
+export interface ExportVaultPreview {
+  stores: number;
+  documents: number;
+  blobs: number;
+  estimatedBytes: number;
 }
 
 // ===========================================================================

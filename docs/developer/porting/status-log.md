@@ -63059,3 +63059,59 @@ files-routes / provisioning set), so the oracles committed here stand. Until
 `ed8934f1` is absorbed, pin a detached worktree at `d553f72a` for any regen
 of a MOUNT-POINTS family, and note that this round's baseline move should
 still be to `d553f72a`, not to v4 HEAD.
+### Lane record — P4.D64 unit 1 (contract mirror + the archive data layer)
+
+**Drift check at lane start:** `git log d553f72a..HEAD --oneline` in
+`~/source/quilltap-server` is EMPTY and the tree is CLEAN — v4 HEAD is exactly
+the pinned baseline `d553f72a`. No drift.
+
+**Survey (v4 `d553f72a`).** The client half of the archive feature is
+`01e481f6`'s 20 touched files under `app/aurora/**` + `components/**` (733
+insertions) plus the one-line `d69287d9` class fix. Read whole before writing
+anything; the strings below are quoted from that diff, not paraphrased.
+
+**Landed.**
+
+- `core-contract.ts` (mirror only — the wire is P4.D63's/P4.D62's):
+  `CharacterListRequest.archived?: 'include'|'only'` (absent = exclude, v4's
+  chokepoint default), `archivedAt` on `CharacterListItem`, `archivedAt` +
+  `archiveFileId` on `CharacterDetail`, `GroupMemberSummary.archivedAt`,
+  `DetailCharacter.archivedAt` (the participant enrichment key),
+  `SystemDeleteDataRequest`/`SystemRestoreExecuteRequest.
+  keepArchivedCharacterBundles`, `FilesListRequest.category`, the new
+  `CharacterArchiveRequest`/`CharacterRehydrateRequest` variants folded into
+  `CoreRequest`, and the two response shapes the settings cards cast to
+  (`ArchiveReencryptSummary`, `ExportVaultPreview`).
+- Every new DTO field is `?: string | null` rather than required. Deliberate:
+  P4.D63 lands the projections in a SIBLING lane, so until unification the
+  server omits them, and every consumer must read a missing key exactly like
+  `null`. The §1 name-for-name diff against `api/types.rs` is the round's
+  standing check — the OPTIONALITY is v5-side defensiveness, not a contract
+  divergence.
+- The stale contract comment on `SystemExportPreviewRequest` ("v4 has no
+  `export-preview` route") is RECONCILED: v4 has the route at `d553f72a` and
+  the SPA now calls it for the advisory vault hint (tier-2 item 7, taken here
+  because it sits three lines from a field this unit added).
+- `characters.api.ts`: `archiveCharacter` / `rehydrateCharacter` /
+  `deleteArchiveBundle` / `countArchiveBundles`, the `archived` filter on
+  `fetchCharacterList`, and the archived cache-key variant.
+
+**The two cache-key rules, and why they are specs and not comments.** v4
+`AuroraView.tsx:47-49` keys the two filter states DISTINCTLY and `:72-73`
+widens mutation invalidation from the list key to the `characters` PREFIX "so
+the other archived-filter variant refreshes too". Both are invisible in a
+screenshot and fatal in use (a shared key shows stale rows the moment you
+toggle; a narrow invalidation leaves the other variant stale after a delete).
+`characters.api.spec.ts` pins key distinctness, prefix nesting, and the
+absent-vs-`include` wire shape. The distinctness spec passed first run, so it
+was mutation-proven per the D24 rule: making `list()` drop the filter object
+when `archived` is set turns it red (1 failed / 9 passed), and reverting turns
+it green.
+
+**Deferred loud:** nothing in this unit. `countArchiveBundles` swallows every
+failure BY DESIGN (v4: "count is a courtesy; the change itself reports the real
+numbers") — that is v4 behavior, pinned by spec, not a v5 shortcut.
+
+**Gate:** `ng test` 297 files / 4,075 tests, 0 failed (was 296 / 4,065 — the new
+`characters.api.spec.ts` adds 10); `ng build` clean. SPA 0.5.444 → 0.5.445. No
+file outside `apps/web/**` touched except the append-only CHANGELOG and this log.
