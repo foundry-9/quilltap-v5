@@ -256,3 +256,54 @@ describe('ParticipantCard — the restored cast controls', () => {
     expect(button.disabled).toBe(true);
   });
 });
+
+// ===========================================================================
+// P4.D64 — the archived seat's badge (v4 `ParticipantCard.tsx` at `d553f72a`)
+// ===========================================================================
+
+describe('ParticipantCard — the Archived badge (P4.D64)', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  function badges(fixture: ComponentFixture<ParticipantCard>): string[] {
+    return ([...fixture.nativeElement.querySelectorAll('.qt-badge-absent')] as HTMLElement[]).map(
+      (el) => el.textContent?.trim() ?? '',
+    );
+  }
+
+  function mountWith(over: Partial<ParticipantDetail>): ComponentFixture<ParticipantCard> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [ParticipantCard] });
+    const fixture = TestBed.createComponent(ParticipantCard);
+    fixture.componentRef.setInput('participant', participant(over));
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('badges an archived seat, reusing qt-badge-absent as v4 does', () => {
+    const fixture = mountWith({
+      character: { ...participant().character!, archivedAt: '2026-08-01T00:00:00.000Z' },
+    });
+    expect(badges(fixture)).toEqual(['Archived']);
+    const badge = fixture.nativeElement.querySelector('.qt-badge-absent') as HTMLElement;
+    expect(badge.getAttribute('title')).toBe(
+      'Resting in the archive — rehydrate them from their character page to let them speak again',
+    );
+  });
+
+  it('shows Absent AND Archived together, in that order', () => {
+    // An archived seat is normally flipped absent too, and v4 renders BOTH —
+    // the order matters because Archived comes after Absent (`:383-393`).
+    const fixture = mountWith({
+      status: 'absent',
+      character: { ...participant().character!, archivedAt: '2026-08-01T00:00:00.000Z' },
+    });
+    expect(badges(fixture)).toEqual(['Absent', 'Archived']);
+  });
+
+  it('badges nothing for a live seat', () => {
+    const fixture = mountWith({});
+    expect(badges(fixture)).toEqual([]);
+  });
+});

@@ -408,3 +408,24 @@ describe('AddCharacterDialog (v4 components/chat/AddCharacterDialog.tsx)', () =>
     expect(closed).toBe(1);
   });
 });
+
+// ===========================================================================
+// P4.D64 — pickers inherit the archive chokepoint's exclude default.
+// ===========================================================================
+
+describe('AddCharacterDialog — archived characters are not offered (P4.D64)', () => {
+  it('lists characters WITHOUT an archived param, so the server excludes tombstones', async () => {
+    // v4's chokepoint (`characters/handlers/get.ts:28-33`) excludes archived rows
+    // unless asked, so every picker is clean automatically and NEEDS no change.
+    // This spec is the tripwire for that claim: if a future lane ever teaches a
+    // picker to send `archived`, it fails here rather than quietly offering a
+    // character who cannot speak.
+    const s = stub({ characters: [] });
+    await mount(s);
+    const lists = s.calls.filter((c) => c['type'] === 'characterList');
+    expect(lists.length).toBeGreaterThan(0);
+    for (const call of lists) {
+      expect('archived' in call).toBe(false);
+    }
+  });
+});

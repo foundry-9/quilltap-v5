@@ -156,6 +156,17 @@ export interface ConnectionProfileOption {
             @if (status() === 'absent') {
               <span class="qt-badge-absent text-xs">Absent</span>
             }
+            <!-- P4.D64 (v4 ParticipantCard.tsx:386-393): AFTER Absent, and both
+                 can show at once — an archived seat is normally absent too.
+                 REUSES qt-badge-absent deliberately, which is v4's choice. -->
+            @if (participant().character?.archivedAt) {
+              <span
+                class="qt-badge-absent text-xs"
+                title="Resting in the archive — rehydrate them from their character page to let them speak again"
+              >
+                Archived
+              </span>
+            }
           </div>
 
           @if (title(); as t) {

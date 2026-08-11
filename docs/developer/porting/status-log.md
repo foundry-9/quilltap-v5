@@ -63233,3 +63233,39 @@ it reads the key's PRESENCE now.
 
 **Gate:** `ng test` 297 files / 4,106 tests, 0 failed (+21); `ng build` clean.
 SPA 0.5.446 → 0.5.447.
+
+### Lane record — P4.D64 unit 4 (group members + the participant badge)
+
+**Landed** (v4 `GroupMembersCard.tsx:75-81,:103-116` and
+`ParticipantCard.tsx:383-393` at `d553f72a`).
+
+- The Members subtitle appends ` / ${n - archived} can speak (${archived}
+  archived)` ONLY when at least one member is archived, so `3 members` stays `3
+  members` on an ordinary group and becomes `3 members / 2 can speak (1
+  archived)` with one tombstone. The BASE count is unchanged — membership
+  survives archiving; the seat simply takes no turns.
+- The per-member `Archived` badge, title `Resting in the archive — still a
+  member, but takes no turns until rehydrated`.
+- The participant card's `Archived` badge over the new `character.archivedAt`
+  enrichment key, AFTER the Absent badge and able to show alongside it,
+  **reusing `qt-badge-absent`** — v4's own choice, not a v5 shortcut (an archived
+  seat is an absent seat with a reason).
+
+**The picker claim, now a tripwire.** The order says pickers need NO change,
+because v4's chokepoint excludes archived rows unless asked. Verified rather than
+assumed: `add-character-dialog.spec.ts` asserts every `characterList` the picker
+dispatches carries NO `archived` key, so a future lane that teaches a picker to
+send one fails here instead of quietly offering a character who cannot speak.
+
+**Mutation proofs (D24 rule).** Making the can-speak clause unconditional reds
+`leaves an all-live roster reading plainly (3 members)`; disabling the
+participant badge condition reds both badge cases (including the
+Absent-AND-Archived ordering case).
+
+**Spec trap.** The Members card is COLLAPSED by default (as v4's is), so the
+subtitle is visible while the member ROWS are not rendered at all — the badge
+spec expands the card through its `.qt-collapsible-card-header` first. A spec
+that only read the subtitle would have "passed" without ever rendering a row.
+
+**Gate:** `ng test` 297 files / 4,113 tests, 0 failed (+7); `ng build` clean.
+SPA 0.5.447 → 0.5.448.

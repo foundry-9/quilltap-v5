@@ -29,8 +29,16 @@ import type { GroupMemberSummary } from '../../core/core-contract';
             <div
               class="flex items-center justify-between p-3 rounded-lg hover:qt-bg-muted transition-colors"
             >
-              <div class="flex-1 min-w-0">
+              <div class="flex-1 min-w-0 flex items-center gap-2">
                 <p class="qt-label truncate">{{ member.name }}</p>
+                @if (member.archivedAt) {
+                  <span
+                    class="inline-flex flex-shrink-0 items-center rounded-full border qt-border-default qt-bg-muted px-2 py-0.5 text-xs qt-text-secondary"
+                    title="Resting in the archive — still a member, but takes no turns until rehydrated"
+                  >
+                    Archived
+                  </span>
+                }
               </div>
               <button
                 type="button"
@@ -112,9 +120,19 @@ export class GroupMembersCard {
     return this.allCharacters().filter((c) => !memberIds.has(c.id));
   });
 
+  /**
+   * v4 `GroupMembersCard.tsx:75-81`. The archived clause appears ONLY when at
+   * least one member is archived, so an ordinary group's subtitle is unchanged:
+   * `3 members` stays `3 members`, and one tombstone makes it
+   * `3 members / 2 can speak (1 archived)`. Membership survives archiving — the
+   * seat simply takes no turns.
+   */
   protected readonly subtitle = computed(() => {
-    const n = this.members().length;
-    return `${n} member${n !== 1 ? 's' : ''}`;
+    const members = this.members();
+    const n = members.length;
+    const archived = members.filter((m) => m.archivedAt).length;
+    const base = `${n} member${n !== 1 ? 's' : ''}`;
+    return archived > 0 ? `${base} / ${n - archived} can speak (${archived} archived)` : base;
   });
 
   protected onSelect(event: Event): void {

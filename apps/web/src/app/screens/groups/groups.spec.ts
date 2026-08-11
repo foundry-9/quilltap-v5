@@ -374,3 +374,102 @@ describe('GroupEditor', () => {
     expect(fixture.nativeElement.textContent).not.toContain('narrower tiers win');
   });
 });
+
+// ===========================================================================
+// P4.D64 — archived members (v4 `GroupMembersCard.tsx` at `d553f72a`)
+// ===========================================================================
+
+describe('GroupMembersCard — the archived member line (P4.D64)', () => {
+  const group = {
+    id: 'g1',
+    name: 'Adventuring Party',
+    description: 'The regulars',
+    color: '#123456',
+    icon: '🎭',
+    officialMountPointId: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  };
+
+  async function renderWithMembers(
+    members: Array<{ id: string; name: string; archivedAt?: string | null }>,
+  ): Promise<ComponentFixture<GroupEditor>> {
+    TestBed.configureTestingModule({
+      imports: [GroupEditor],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: stubClient((r) => {
+            switch (r.type) {
+              case 'groupGet':
+                return { group };
+              case 'groupMembers':
+                return { members };
+              case 'groupMountPointList':
+                return { mountPoints: [] };
+              case 'characterList':
+                return { characters: [] };
+              default:
+                return {};
+            }
+          }),
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'g1' })) },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(GroupEditor);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('leaves an all-live roster reading plainly (3 members)', async () => {
+    const fixture = await renderWithMembers([
+      { id: 'c1', name: 'Jeeves' },
+      { id: 'c2', name: 'Wooster' },
+      { id: 'c3', name: 'Aunt Agatha' },
+    ]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('3 members');
+    expect(text).not.toContain('can speak');
+    expect(text).not.toContain('Archived');
+  });
+
+  it('appends the can-speak clause when a member is archived', async () => {
+    const fixture = await renderWithMembers([
+      { id: 'c1', name: 'Jeeves' },
+      { id: 'c2', name: 'Wooster' },
+      { id: 'c3', name: 'Aunt Agatha', archivedAt: '2026-08-01T00:00:00.000Z' },
+    ]);
+    // v4's exact shape — the base count is unchanged; membership survives
+    // archiving, the seat simply takes no turns.
+    expect(fixture.nativeElement.textContent).toContain('3 members / 2 can speak (1 archived)');
+  });
+
+  it('badges the archived member row, and only that row', async () => {
+    const fixture = await renderWithMembers([
+      { id: 'c1', name: 'Jeeves' },
+      { id: 'c3', name: 'Aunt Agatha', archivedAt: '2026-08-01T00:00:00.000Z' },
+    ]);
+    // The Members card is collapsed by default (v4's too), so the SUBTITLE is
+    // visible but the rows are not rendered at all — expand it first.
+    const header = fixture.nativeElement.querySelector(
+      'qt-group-members-card .qt-collapsible-card-header',
+    ) as HTMLButtonElement;
+    expect(header).toBeTruthy();
+    header.click();
+    await settle(fixture);
+    const badges = (
+      Array.from(fixture.nativeElement.querySelectorAll('span')) as HTMLElement[]
+    ).filter((el) => el.textContent?.trim() === 'Archived');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].getAttribute('title')).toBe(
+      'Resting in the archive — still a member, but takes no turns until rehydrated',
+    );
+  });
+});

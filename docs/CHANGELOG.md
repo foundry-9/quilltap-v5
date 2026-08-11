@@ -74,6 +74,14 @@ different vector space than everything else. **Still owed under this order:**
 the passphrase-change re-encryption sweep is ported but not yet wired to the
 change-passphrase response, so a passphrase change does not yet rewrite
 archive bundles — see the work order's resume list.
+P4.D64 unit 4: archived characters are visible where they still belong. A
+group whose roster includes an archived member now reads "3 members / 2 can
+speak (1 archived)" and badges that member's row; an ordinary group's
+subtitle is unchanged. In a conversation's cast, an archived seat carries an
+"Archived" badge alongside "Absent" — both can show, since an archived
+character is normally absent too. Every character picker was verified to
+inherit the server's exclude-by-default, with a spec as the tripwire.
+
 P4.D64 unit 3: an archived character's page is readable but inert. A banner
 above the header explains what was packed away and what was kept; every tab
 still renders, inside a disabled fieldset, and the Edit Character door hides
