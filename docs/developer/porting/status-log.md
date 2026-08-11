@@ -63034,3 +63034,28 @@ It belongs at the dispatch arm, which is also v4's own structure (v4 does phase
 two in the ROUTE, not in `changePassphrase`). Its tier-2 differential over
 planted ARCHIVE files is owed with it. Rather than land a half-wired response
 type at the end of the lane, both are recorded in the order's resume list.
+
+### ⚠ v4 DRIFTED during this lane — `ed8934f1`, one commit past the pin
+
+v4 HEAD was `d553f72a` (clean) at lane start and at EVERY oracle regen in this
+lane, so every family here is consistent and none of it needs redoing. It has
+since moved ONE commit: **`ed8934f1` "feat(docker): pass filesystem document
+stores through to the container (bug 56)"**.
+
+It is NOT lib-free, so it is a real drift-catch-up candidate, not a NO-PORT:
+
+  - `lib/mount-index/base-path-availability.ts` — **NEW**, plus
+    `lib/mount-index/scanner.ts` and the two `app/api/v1/mount-points`
+    routes (collection + folders). v4's bug 56 is an unguarded recursive
+    mkdir; the fix lands on the PORTED Scriptorium / mount-points surface.
+  - The rest is packaging and CLI (`packages/quilltap/**` incl. a new
+    `docker-mounts.js` + `docs-commands.js` and the three completion
+    templates, `scripts/start-quilltap-docker.ts`), plus docs and two
+    `help/*.md` (the `p4.9i2` bank).
+
+**None of this lane's families import the drifted files** (they are the
+characters / groups / projects / select-speaker / crypto / delete-data /
+files-routes / provisioning set), so the oracles committed here stand. Until
+`ed8934f1` is absorbed, pin a detached worktree at `d553f72a` for any regen
+of a MOUNT-POINTS family, and note that this round's baseline move should
+still be to `d553f72a`, not to v4 HEAD.
