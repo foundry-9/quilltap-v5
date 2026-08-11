@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Ported the character-archive service (P4.D65 unit 1): `archiveCharacter`
+and `rehydrateCharacter` now work end to end, and the two dispatch verbs
+`characterArchive` / `characterRehydrate` no longer refuse. Archiving
+packs the character into an encrypted `.qtap` bundle, verifies it by
+decrypting the bytes that will actually be persisted, commits the
+tombstone, and prunes the vault in place — keeping the ten managed
+documents, the wardrobe and the avatar links, so an archived character is
+still a readable page and old messages keep their faces. Rehydrating
+restores the pruned material at its original ids, un-flags the tombstone,
+brings absent chat seats back, and re-chunks the vault. New committed
+`character-archive-{main,mount}.db` fixture family and an eight-case
+tier-2 differential against v4's real archive service, diffing the
+returned result, the DECRYPTED bundle, and every table in both
+partitions. (Ciphertext is never compared — a fresh salt and IV per
+bundle make it nondeterministic on both sides.)
+
 Planned the character-archive round 2 + the `ed8934f1` (Bug 56)
 drift-catch-up round: three work orders committed under
 `docs/developer/porting/work-orders/` — P4.D65 (the archive service,

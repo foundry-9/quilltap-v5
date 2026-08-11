@@ -555,6 +555,21 @@ impl CoreEngine {
     pub fn resolve_archive_passphrase(
         &self,
     ) -> Result<String, crate::services::character_archive::crypto::ArchiveCryptoError> {
+        let (cached, has_user_passphrase) = self.passphrase_source_parts();
+        crate::services::character_archive::crypto::resolve_archive_passphrase(
+            crate::services::character_archive::crypto::PassphraseSource {
+                cached: cached.as_deref(),
+                has_user_passphrase,
+            },
+        )
+    }
+
+    /// The two inputs [`crate::services::character_archive::crypto::PassphraseSource`]
+    /// carries, read under their own locks. The archive SERVICE (P4.D65) takes
+    /// the source rather than the resolved passphrase, because v4 resolves
+    /// *inside* `archiveCharacter` — after the already-archived early return,
+    /// so re-running a prune never needs a passphrase at all.
+    fn passphrase_source_parts(&self) -> (Option<String>, bool) {
         let cached = self.inner.runtime_passphrase.lock().unwrap().clone();
         let has_user_passphrase = match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => r.has_user_passphrase,
@@ -563,12 +578,26 @@ impl CoreEngine {
                 ..
             } => *has_user_passphrase,
         };
-        crate::services::character_archive::crypto::resolve_archive_passphrase(
-            crate::services::character_archive::crypto::PassphraseSource {
-                cached: cached.as_deref(),
+        (cached, has_user_passphrase)
+    }
+
+    /// The host capabilities the archive service reaches for, assembled from
+    /// the same accessors the `.qtap` export/import arms use.
+    fn archive_seams<'a>(
+        &self,
+        cached: Option<&'a str>,
+        has_user_passphrase: bool,
+    ) -> crate::services::character_archive::service::ArchiveSeams<'a> {
+        crate::services::character_archive::service::ArchiveSeams {
+            backend: self.qtap_file_storage(),
+            passphrase: crate::services::character_archive::crypto::PassphraseSource {
+                cached,
                 has_user_passphrase,
             },
-        )
+            app_version: self.app_version(),
+            codec: self.qtap_pixel_codec(),
+            extractor: crate::services::mount_index::converters::default_text_extractor(),
+        }
     }
 
     /// Provision the pepper and boot. An operational pepper opens the
@@ -2104,19 +2133,31 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            // === P4.D63: the two archive verbs, DEFINED and refusing ===
-            // The archive SERVICE (prune / bundle / rehydrate / the participant
-            // flips) is round 2 of the character-archive catch-up. They are
-            // defined now so the wire contract is settled across all three
-            // lanes of round 1 — and they refuse LOUDLY BY NAME rather than
-            // 404ing, so a client that reaches one learns why.
-            Request::CharacterArchive { character_id: _ } => super::characters::not_available(
-                "archive (round 2 of the character-archive catch-up)",
-            ),
-            Request::CharacterRehydrate { character_id: _ } => super::characters::not_available(
-                "rehydrate (round 2 of the character-archive catch-up)",
-            ),
-            // === end P4.D63 ===
+            // === P4.D65: the two archive verbs, LIVE ===
+            Request::CharacterArchive { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    let (cached, has_user_passphrase) = self.passphrase_source_parts();
+                    let seams = self.archive_seams(cached.as_deref(), has_user_passphrase);
+                    super::characters::character_archive(&db, SINGLE_USER_ID, &character_id, &seams)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterRehydrate { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    let (cached, has_user_passphrase) = self.passphrase_source_parts();
+                    let seams = self.archive_seams(cached.as_deref(), has_user_passphrase);
+                    super::characters::character_rehydrate(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &seams,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D65 ===
             Request::CharacterExport {
                 character_id,
                 format,

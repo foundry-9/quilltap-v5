@@ -285,6 +285,30 @@ impl<'c> DocMountDocumentsRepository<'c> {
     /// path lives on the link). Used by `doc_grep` to scan a database-backed
     /// store's text bytes. Row order is the DB's natural order (grep sorts /
     /// caps afterward).
+    /// v4 `findByMountPointId` narrowed to `f.fileType` — the one field the
+    /// character-archive verification's `countLiveVault` reads
+    /// (`archive-service.ts:586`, which filters the rows by
+    /// `TEXT_DOCUMENT_FILE_TYPES`). Same three-table join and same
+    /// one-row-per-LINK cardinality as [`Self::find_all_by_mount_point_id`],
+    /// which is what makes the count comparable to the bundle's
+    /// `doc_mount_document` record count.
+    pub fn find_file_types_by_mount_point_id(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<String>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.fileType \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE l.mountPointId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn find_all_by_mount_point_id(
         &self,
         mount_point_id: &str,

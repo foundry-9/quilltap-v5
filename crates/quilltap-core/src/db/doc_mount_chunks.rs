@@ -342,6 +342,22 @@ impl<'c> DocMountChunksRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `findByLinkId(linkId)` narrowed to the ids — the one field its only
+    /// v5 caller needs. The character-archive prune reads them BEFORE
+    /// `deleteWithGC` cascades the chunks away, so the matching
+    /// `embedding_status` rows can be deleted too (they would otherwise linger
+    /// as permanent orphans; v4 `archive-service.ts:838`). Insertion order
+    /// (rowid), like v4's unordered filter scan.
+    pub fn find_ids_by_link_id(&self, link_id: &str) -> Result<Vec<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM doc_mount_chunks WHERE linkId = ?1")?;
+        let rows = stmt
+            .query_map(params![link_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `clearEmbeddingsByLinkId`: NULL (don't delete) every stored embedding
     /// under a link. Returns the number of cleared rows.
     pub fn clear_embeddings_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {

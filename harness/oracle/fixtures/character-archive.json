@@ -1,0 +1,16 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "sable": "a1000000-0000-4000-8000-0000000000a1",
+  "tor": "a1000000-0000-4000-8000-0000000000a2",
+  "quill": "a1000000-0000-4000-8000-0000000000a3",
+  "chatSeated": "c1000000-0000-4000-8000-0000000000c1",
+  "chatRemoved": "c1000000-0000-4000-8000-0000000000c2",
+  "memories": [
+    { "id": "d1000000-0000-4000-8000-0000000000d1", "owner": "sable", "content": "The lantern-keeper's daughter kept a spare key beneath the third stair." },
+    { "id": "d1000000-0000-4000-8000-0000000000d2", "owner": "sable", "content": "A brass sextant, engraved with the initials E.M., changed hands at the quay." },
+    { "id": "d1000000-0000-4000-8000-0000000000d3", "owner": "sable", "content": "Rain on the glasshouse roof; the orchids were moved before dawn." },
+    { "id": "d1000000-0000-4000-8000-0000000000d4", "owner": "tor", "content": "Sable never did explain the sextant, and Tor never did ask again." }
+  ]
+}

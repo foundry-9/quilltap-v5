@@ -2517,3 +2517,98 @@ fn success_or(out: Result<Result<(), Response>, DbError>) -> Response {
         Err(e) => db_error_response(e),
     }
 }
+
+// ===========================================================================
+// P4.D65 — the two archive verbs
+// ===========================================================================
+
+/// v4 `POST /api/v1/characters/{id}?action=archive` (`handlers/post.ts:372`).
+///
+/// The error arms are contractual: an unavailable passphrase answers 400 with
+/// the PINNED sentence (v4 ignores `error.message` here and writes its own),
+/// a verification failure is a 500 carrying the failure detail, and anything
+/// else is v4's `serverError(error.message)`.
+pub async fn character_archive(
+    db: &Db,
+    user_id: &str,
+    character_id: &str,
+    seams: &crate::services::character_archive::service::ArchiveSeams<'_>,
+) -> Response {
+    use crate::services::character_archive::crypto::ArchiveCryptoError;
+    use crate::services::character_archive::service::{archive_character, ArchiveError};
+
+    match archive_character(db, user_id, character_id, seams).await {
+        Ok(result) => Response::Character(result.to_value()),
+        Err(ArchiveError::Crypto(ArchiveCryptoError::KeyUnavailable)) => bad_request(
+            "The archive cannot be sealed: your passphrase has not been entered since \
+             Quilltap started. Unlock once (or restart and unlock), then archive again.",
+        ),
+        Err(e @ ArchiveError::Verification(_)) => {
+            tracing::error!(
+                target: "quilltap::archive",
+                character_id,
+                error = %e,
+                "Archive bundle failed verification",
+            );
+            Response::error(ErrorKind::Internal, e.to_string())
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::archive",
+                character_id,
+                error = %e,
+                "Error archiving character",
+            );
+            Response::error(ErrorKind::Internal, e.to_string())
+        }
+    }
+}
+
+/// v4 `POST /api/v1/characters/{id}?action=rehydrate` (`handlers/post.ts:396`).
+///
+/// Operator-fixable conditions are 400s with the named diagnosis: the
+/// passphrase this bundle was sealed under (predates a change), a process that
+/// hasn't seen the passphrase yet, or a rehydration that could not run. The
+/// three bundle-integrity classes are 500s.
+pub async fn character_rehydrate(
+    db: &Db,
+    user_id: &str,
+    character_id: &str,
+    seams: &crate::services::character_archive::service::ArchiveSeams<'_>,
+) -> Response {
+    use crate::services::character_archive::crypto::ArchiveCryptoError;
+    use crate::services::character_archive::service::{rehydrate_character, ArchiveError};
+
+    match rehydrate_character(db, user_id, character_id, seams).await {
+        Ok(result) => Response::Character(result.to_value()),
+        Err(
+            e @ ArchiveError::Crypto(
+                ArchiveCryptoError::PassphraseMismatch { .. } | ArchiveCryptoError::KeyUnavailable,
+            ),
+        ) => bad_request(e.to_string()),
+        Err(e @ ArchiveError::Rehydration { .. }) => bad_request(e.to_string()),
+        Err(
+            e @ (ArchiveError::Verification(_)
+            | ArchiveError::Crypto(
+                ArchiveCryptoError::Integrity { .. } | ArchiveCryptoError::Format { .. },
+            )),
+        ) => {
+            tracing::error!(
+                target: "quilltap::archive",
+                character_id,
+                error = %e,
+                "Archive bundle failed rehydration verification",
+            );
+            Response::error(ErrorKind::Internal, e.to_string())
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::archive",
+                character_id,
+                error = %e,
+                "Error rehydrating character",
+            );
+            Response::error(ErrorKind::Internal, e.to_string())
+        }
+    }
+}

@@ -63644,3 +63644,107 @@ bumps. Deliberately left out of the round: the owed dogfood pass (runs as
 /dogfood after unification — it gains round 2's live archive/rehydrate
 surfaces), and the standing sweep-driver rot maintenance pass (still
 queued).
+
+### Lane record — P4.D65 unit 1: the character-archive service + the two verbs
+
+**Branch:** `claude/p4-archive-service-round2-1b7438`. **Baseline:** v4
+`ed8934f1` (drift-checked at lane start: HEAD == baseline, tree clean).
+
+`services/character_archive/service.rs` ports v4's
+`lib/characters/archive-service.ts` (889 ln) whole — `archiveCharacter`,
+`rehydrateCharacter`, `restoreArchiveBundle`, `createArchiveBundle`,
+`verifyArchiveBundle`, `createArchiveFileRecord`, `discardWrittenFiles`, the two
+participant flips, `pruneArchivedCharacterState` / `pruneVault` /
+`pruneEmptyFolders` — over the substrate round 1 landed (crypto, the passphrase
+cache, the preserveIds import, the vault-carrying export). `api/engine.rs`'s two
+not-yet-available arms are gone; `api::characters::{character_archive,
+character_rehydrate}` carry v4's exact route arms, including the pinned
+passphrase-400 sentence.
+
+**Two v5 shape differences, neither a behavior change.** The passphrase reaches
+the service as a `PassphraseSource` (v4 calls a module global) and is resolved at
+v4's exact point — *after* the already-archived early return, so re-running a
+prune on an instance whose passphrase this process never saw still works. The
+host capabilities (storage backend, pixel codec, text extractor, app version)
+ride an `ArchiveSeams` struct rather than module singletons; they are `Arc`, not
+`&dyn`, because the import and the re-chunk both run inside a `Db::write`
+closure, which the runtime requires to be `'static`.
+
+**Two narrow repo reads added** (neither file is claimed by a sibling lane):
+`DocMountChunksRepository::find_ids_by_link_id` (the prune reads chunk ids
+*before* `deleteWithGC` cascades them away, so their `embedding_status` rows can
+go too) and `DocMountDocumentsRepository::find_file_types_by_mount_point_id`
+(verification's `countLiveVault` filter).
+
+**The keep-set is enumerated locally, not derived.** v4's ten `CHARACTER_*_PATH`
+constants have a v5 analog in `vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS`
+(nine) plus `wardrobe.json`, but binding the keep-set to that shared list would
+make a future overlay addition silently change what the prune keeps — the
+round-1 shared-helper lesson, avoided by construction.
+
+**The differential** (`character_archive_tier2_equivalence`, 8 cases over the new
+committed `character-archive-{main,mount}.db`): archive, re-archive (prune only),
+archive→rehydrate, the no-vault character, and four refusal arms. Three
+comparands per case — the result (or the thrown class + message), the DECRYPTED
+bundle, and a whole-table dump of all fourteen tables across both partitions.
+⚠ **Ciphertext is never compared**: `encryptArchive` draws a fresh salt and IV per
+bundle, so the persisted bytes differ every run on both sides. The fixture
+instance has no user passphrase, so both sides resolve `INTERNAL_PASSPHRASE`.
+
+Two things the first runs taught, both folded into the corpus:
+
+- **`appVersion` is part of the bundle's byte length.** v4 bakes
+  `packageJson.version` into every manifest, so an injected `"0.0.0"` made the
+  archive `files` row's `size` differ by exactly the version string's length —
+  which read like a structural difference and was not one. The oracle now emits
+  its own version and the Rust side injects it, so `size` is a REAL comparand.
+  `sha256` cannot be (the plaintext embeds a minted `createdAt`) and is blinded
+  by name, with the reason recorded at the blinding site.
+- **Row order is not set membership.** The oracle sorts each table by
+  `JSON.stringify`; Rust's serialization orders escapes and numbers differently,
+  so two set-equal tables arrived in different orders. Both sides are now
+  re-sorted by the Rust serialization before the compare.
+
+**Mutation-proven (the D24 rule), and it earned its keep.** Dropping the
+`Wardrobe/` prefix from the keep-set → RED. Letting the rehydrate flip touch
+`removed` seats as well as `absent` → RED. **Not nulling `defaultPartnerId` at
+the tombstone commit → GREEN**: Sable's four default-* FKs were already NULL in
+the fixture, so the corpus could not tell a port that nulls them from one that
+forgets to. The fixture now sets all four to non-null values (the partner points
+at a real character) and the same mutation reddens.
+
+One fixture trap worth carrying: **`doc_mount_files` rows are sha256-ADDRESSED
+and therefore SHARED across mounts.** Tearing down the no-vault character's
+scaffolded store with `DELETE FROM doc_mount_files WHERE id IN (SELECT fileId …
+WHERE mountPointId = tor)` deleted the content rows Sable's byte-identical
+scaffold documents also linked, and her vault stopped resolving
+(`properties.json missing`). Drop the links first, then GC only content nothing
+links to any more.
+
+Regen recipes live in the case headers
+(`harness/oracle/fixtures/build-character-archive-fixture.ts`,
+`harness/oracle/cases/character-archive-tier2.test.ts`,
+`crates/quilltap-harness/tests/character_archive_tier2_equivalence.rs`).
+
+#### Correction — the Shared contract's rule 4 (the three-key export carry)
+
+P4.D65's Shared contract rule 4 states "absent column → absent key; **NULL cell →
+present `null`**". The second half is **wrong**, and the archive differential's
+`bundles` comparand is what settled it.
+
+v4's SQLite backend `hydrateRow` (`backends/sqlite/backend.ts:450`) converts EVERY
+`null` cell to `undefined` — "Convert null to undefined for Zod `.optional()`
+compatibility" — before the repository's Zod parse ever runs. `JSON.stringify`
+then drops the key. So on a table that HAS the three archive columns, a
+non-archived character's exported record carries **no** `archivedAt`,
+`archiveFileId` or `archivedAvatarFileId` at all — indistinguishable from the
+pre-migration vintage. Confirmed against v4's real writer: the `archive_sable`
+bundle's character record has zero archive-related keys, and `defaultScenarioId`
+(also NULL) is likewise absent while `defaultPartnerId` (non-NULL) is present.
+
+v5's `characters_read::put_opt_string` already omits on NULL, so **no code change
+is owed** and the two vintage legs are already equivalent. The remaining gap is
+coverage, not behavior: no committed corpus yet exports a character whose archive
+columns are NON-NULL (a bundle is always written *before* the tombstone commit,
+and both export entrances refuse an archived character), so the "present with a
+value" leg is unpinned. That arm stays OPEN under this order.
