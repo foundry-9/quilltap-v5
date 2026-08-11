@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+Unified round 1 of the character-archive drift catch-up (P4.D62 ∥ P4.D63
+∥ P4.D64) onto main — the oracle baseline moves to `d553f72a`. Server:
+the whole `.qtap` preserveIds substrate (vault-carrying character
+exports with carried row ids, the 16-kind refuse-on-collision preflight
+with the rehydrate-only skip-if-present mode, the Bug-52 avatar remap,
+Bug-54 sha256 dedup, Bug-55 typed missing-content 404s), the three
+archive columns (D23 re-dump + boot ensure + read tolerance), the write
+guard + the `archived=` list chokepoint + every turn/tool/mail refusal
+arm, the archive bundle crypto (byte-exact format, 17-arm tier-1
+differential) with the engine-held runtime passphrase cache, the
+wipe/restore spare-bundle options, and the two round-2 verbs defined
+refusal-armed. SPA: the whole client surface — roster toggle/badges/
+sort, the read-only tombstone page with both dialogs, group and seat
+badges, and the four settings surfaces — with six tombstone-read e2e
+beats live over a seeded archived character and four action beats gated
+for round 2. The unification review fixed six findings before merge
+(the headline: the one-default embedding rule had leaked into help-doc
+sync, where v4 keeps the first-profile fallback), and the beats' first
+live runs surfaced a v4-side bug now recorded for filing upstream (the
+archived-seat sidebar badge cannot light on a fresh load in v4 — the
+chat GET's enrichment never got `archivedAt`). The archive service
+itself, the API actions, and the CLI subcommands are round 2; the
+`ed8934f1` (Bug 56) drift catch-up is owed. Gate: 421 test binaries /
+1,997 / 0; 25 oracle families fresh at the `d553f72a` pin by name; clippy
+both feature sets; release build; ng test 4,138 / 0; full Playwright 198
+passed / 4 gated skips / 0 failed. Versions: core 0.0.522, harness
+0.0.443, web 0.0.68, host 0.0.65, SPA 0.5.450.
+
 Widened the shared test fixture so the archive substrate's new behavior is
 actually measured rather than merely present: a nested vault folder, a
 document shared by two characters' vaults, a real portrait blob with the

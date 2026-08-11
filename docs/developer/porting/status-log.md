@@ -63451,3 +63451,146 @@ spare-bundles default on open; the vault preview made blocking. One attempted
 mutation did NOT bite and is recorded honestly in the unit-3 record (the
 non-empty `archiveBundleFileId` guard is belt-and-braces with the template's
 truthy alias), as is a weak first attempt at the advisory-preview proof.
+
+## Round record — the character-archive round-1 unification (P4.D62 ∥ P4.D63 ∥ P4.D64, 2026-08-11)
+
+**All three lanes unified on main; P4.D62 and P4.D64 CLOSED; P4.D63 stays
+OPEN at unit 7 only** (the re-encrypt WIRE + its differential — the resume
+list is in its status header). The oracle baseline MOVES to **`d553f72a`**.
+Versions recounted per the playbook (both Rust lanes bumped off one base,
+host/web bumps auto-merged silently and were recounted): core 0.0.518+4 →
+**0.0.522**, harness 0.0.440+3 → **0.0.443**, web **0.0.68**, host
+**0.0.65**, SPA **0.5.450**; cli/tauri unchanged.
+
+### ⚠ v4 drift during the round — `ed8934f1` (Bug 56), catch-up OWED
+
+One commit past the pin: the Docker store-mount pass-through + Bug 56
+(unguarded recursive mkdir). NOT lib-free — `lib/mount-index/
+base-path-availability.ts` (new) + `scanner.ts` + the two mount-points
+routes land on the PORTED Scriptorium surface; the rest is packaging/CLI
+(`docker-mounts.js`, `docs-commands.js`, completion templates) + two help
+docs (the `p4.9i2` bank). None of this round's families import the drifted
+files (verified by both server lanes independently). **Until it is
+absorbed, pin `d553f72a` for any MOUNT-POINTS-family regen**; everything
+else regenerates straight from the checkout while HEAD stays `ed8934f1`.
+
+### The §3 review — what it caught (three parallel reviewers + the unifier's own pass; every hunk read)
+
+**Fixed on the unify branch (commit `1f125909`):**
+
+1. **The would-have-shipped defect: the one-default embedding rule leaked
+   into a SIXTH site.** P4.D63's shared `default_profile_id` also serves
+   help-doc sync — where v4 KEEPS the `|| profiles[0]` fallback
+   (`help-doc-sync.ts:359`, untouched by `d553f72a`). On an instance with
+   profiles but none marked default, v4 keeps help search working; v5
+   would have silently never embedded help docs, and no differential was
+   positioned to see it. Split into `default_or_first_profile_id`
+   (help-doc sync's own resolver), both lying comments corrected, and a
+   three-arm resolver-split unit test pins the fork.
+2. **P4.D62's `Duplicate` conflict arm claimed the bundle's character id
+   under `preserveIds`** where v4's duplicate branch creates with no
+   options (always mints — the `DUPLICATE_MINTS` discipline the lane
+   itself encoded in `entities.rs`). Doubly differential-blind (no
+   duplicate+preserveIds+name-match arm; the UUID normalizer labels
+   minted and claimed ids alike). Fixed to mint; the missing oracle arm
+   is banked in D62's header.
+3. **The Bug-55 sentinel would have leaked into a byte-contractual
+   surface**: `reencrypt_one` downloaded via the RAW backend, so a
+   missing bundle's `failures[].reason` would carry the SOH sentinel
+   verbatim once unit 7 wires the sweep. Routed through the manager
+   (v4's own structure — `archive-reencrypt.ts:76`).
+4. `PassphraseSource`'s `Debug` derive could print the live passphrase —
+   now a redacting manual impl. Plus three hardening one-liners: the
+   characters-read tolerance probes PER COLUMN (a table interrupted
+   between ALTERs read-breaks otherwise), the export folder sort keys on
+   UTF-16 units (v4 `path.length`), and the archive-crypto recipe prose
+   rewrapped (the sweep extractor mistook a wrapped `for byte**` line
+   for shell — the recipe was unrunnable).
+
+**Recorded, deliberately not fixed** (each named in the owning order's
+header): the preserveIds preflight swallows repo READ errors to "id free"
+(v4 propagates to a refused import; corrupt-store-only; round 2
+propagates), four decrypt error-class divergences on forged headers
+(unreachable by real users), unit 5's repo-wrapper shape having no tier-2
+case until round 2 supplies its caller, and D62's recorded lane-boundary
+workarounds.
+
+### The §4 wires, and what the first live runs found
+
+- The §1 contract diffed name-for-name across `api/types.rs` and
+  `core-contract.ts` — clean (verbs, filters, projections, options,
+  response bags all agree; the SPA's blanket optionality is recorded
+  v5-side defensiveness).
+- `ARCHIVE_TOMBSTONE_SEEDED` flipped; **the seeder's first-ever live
+  executions found four fixture-vintage gaps and two gesture misses**
+  (commit `a3f6…` "the tombstone beats' first live runs"): the archive
+  columns must be ALTERed pre-boot (global setup runs before the server's
+  first boot, so the boot ensure hasn't fired); the salon mount fixture
+  predates `group_character_members`; **a storeless group is REFUSED by
+  the overlay read** (v5 has no group-store boot backfill — the seeder
+  now seeds the minimal official store: mount point + `{}`
+  `properties.json` chain); `doc_mount_file_links.lastModified` is NOT
+  NULL; the sidebar's Participants section must be opened (the sibling
+  beats' shared gesture); and the virtualized salon list cannot scroll to
+  an unrendered card (the seeded chat floats by recency — no sibling
+  beat asserts list position, verified).
+- **The seat beat's first live run found a V4 BUG, reproduced faithfully
+  by v5 — the human should file it upstream:** v4's `01e481f6` added
+  `archivedAt` to `chats/[id]/helpers.ts getEnrichedCharacter` and taught
+  `ParticipantCard` to badge on it, but the chat GET the sidebar renders
+  from enriches through `chat-enrichment.service.ts getCharacterDetail`,
+  which v4 never extended — the helpers enrichment serves only the
+  participants `?action=` replies and the chat PUT, and v4's client
+  refetches. **The archived-seat sidebar badge cannot light on a fresh
+  load in v4 at all.** v5 mirrors both projections faithfully; the beat
+  now pins the v4-faithful one-badge fresh-load state, and the two-badge
+  assertion returns with the drift round that absorbs v4's fix.
+
+### The gate
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets; release build clean.
+- **421 test binaries / 1,997 tests / 0 failed** (`cargo test
+  --workspace`, exit 0).
+- **25 oracle families regenerated FRESH from a detached worktree pinned
+  at `d553f72a` and re-run by name** via `recipe_sweep.py --v4` (results
+  artifact `/tmp/unify-r1-sweep-results.json` + the post-fix re-run of
+  the four fix-touched families): the round's new/extended families
+  (system-export 57 / system-import 27 / system-import-state 30 /
+  qtap-import / characters reads+mutations+actions+subresources /
+  select-speaker 28 rows / groups+projects routes / archive-crypto 17 /
+  provisioning both directions / system-delete-data with the kept/swept
+  keys over P4.D62's widened fixture — the planned cross-lane handoff
+  closed at this gate) plus the neutrality set (salon-reads,
+  chat-cast, mail-carina, participant-resolver, self-inventory,
+  post-office, orchestrator-tier3, backup, uuid-remap byte-identical,
+  jobs routes+collection). Four sweep anomalies all closed manually and
+  their causes fixed or named: the crypto recipe (fixed), the uuid-remap
+  policy refusal (run by name), the provisioning venue failure (run
+  manually, both directions + v4-reads-v5 green), and select-speaker's
+  KNOWN SKIP-masquerade rot (run scoped; the maintenance item stands).
+- SPA: `ng test` 298 files / **4,138 / 0**; `ng build` clean; the
+  archive spec green in isolation ×2 (6 read beats live, 4 action beats
+  skipped naming round 2); 
+  Full Playwright: 198 passed / 4 gated skips / 0 failed (addendum below).
+
+### Round-record addendum — the full-suite shakeout (the same unification)
+
+The full suite surfaced three more run-order couplings, each fixed as a
+spec/seeder gesture with nothing weakened (commits on the unify branch):
+the recency-floated island chat was EMPTY and broke `openChatWith`'s
+every-chat-shows-the-messages-list invariant in the courier beats (the
+chat now carries one template-copied line); **the `foundation` walk's
+must-run-first contract was only ever implicit** — the alphabetically
+earlier characters spec boots a PRIVATE server, so `foundation` happened
+to be the shared server's first contact until the archive spec sorted
+ahead and unlocked it, leaving the gate walk to pass or fail on auto-lock
+idle timing — renamed `aa-foundation` per the suite's own `zz-`/`zzz-`
+ordering convention with the contract documented; and the archived-last
+roster assertion went case-insensitive (the theme walk's
+`text-transform: uppercase` reaches `innerText` — the P4.43 lesson). The
+Tools-tree toast assertion was hardened against toast stacking
+(`.first()` — a documented full-suite intermittent shape, proven in
+isolation first). **Final: full Playwright 198 passed / 4 skipped (the
+round-2-gated action beats, by design) / 0 failed** — the suite grew
+192 → 202 entries with the archive spec's ten beats.

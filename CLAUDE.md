@@ -2227,6 +2227,49 @@ records THERE. Update this summary only when a phase or round completes.
   the top next candidate** — it gains this round's surfaces (the
   two-user-seat rotation pause, the Brahma salvage on a low budget,
   impersonate → reload). Round record: `status-log.md`.
+- **The character-archive drift catch-up, ROUND 1 of 2 (P4.D62 ∥ P4.D63 ∥
+  P4.D64): UNIFIED on main (2026-08-11) — P4.D62/P4.D64 CLOSED, P4.D63
+  OPEN at unit 7 only; the oracle baseline MOVES to `d553f72a`.** v4's
+  character-archive feature (`01e481f6` + Bugs 52/54/55) absorbed as far
+  as the substrate: the whole `.qtap` preserveIds machinery
+  (vault-carrying character exports + carried row ids, the 16-kind
+  preflight with refuse-on-collision + rehydrate-only skip-if-present,
+  the Bug-52 avatar remap, Bug-54 sha256 dedup, Bug-55 typed 404s) ∥ the
+  three archive columns (D23 re-dump + boot ensure + per-column read
+  tolerance), the write guard + the API-layer `archived=` chokepoint +
+  every turn/tool/mail refusal arm, the byte-exact bundle crypto (17-arm
+  tier-1) + the engine-held runtime passphrase cache, the wipe/restore
+  spare-bundle options, and `characterArchive`/`characterRehydrate`
+  DEFINED refusal-armed ∥ the whole SPA surface with six tombstone-read
+  beats LIVE over a seeded archived island and four action beats gated
+  for round 2. **The §3 review fixed six findings pre-merge** (headline:
+  the one-default embedding rule had leaked into help-doc sync, where v4
+  keeps the first-profile fallback), and the beats' first live runs
+  found **a v4-side bug to file upstream** (the archived-seat sidebar
+  badge cannot light on a fresh load in v4 — the chat GET's enrichment
+  never got `archivedAt`; v5 reproduces faithfully, pinned by the beat).
+  Gate: 421 test binaries / 1,997 / 0; 25 families regenerated fresh at
+  the `d553f72a` pin and re-run by name; clippy both feature sets;
+  release build; ng 298 files / 4,138; full Playwright green (numbers in
+  the round record). **Round 2** (service + verbs + CLI + gate flips) and
+  **the `ed8934f1` Bug-56 drift catch-up** are the top next candidates —
+  see phase-4.md. Versions: core 0.0.522, harness 0.0.443, web 0.0.68,
+  host 0.0.65, SPA 0.5.450.
+- **Oracle baseline: `d553f72a` (2026-08-10, v4 4.8.0-dev), adopted at
+  the character-archive round-1 unification.** ⚠ v4 HEAD is `ed8934f1`,
+  ONE commit past it — "feat(docker): pass filesystem document stores
+  through to the container (bug 56)", NOT lib-free: the new
+  `lib/mount-index/base-path-availability.ts` + `scanner.ts` + the two
+  mount-points routes land on the PORTED Scriptorium surface (the rest is
+  Docker/CLI packaging + two help docs → the `p4.9i2` bank). **A drift
+  catch-up is OWED (phase-4.md candidate 1); until it runs, pin a
+  detached worktree at `d553f72a` for any MOUNT-POINTS-family regen**
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4
+  d553f72a`); other families regenerate straight from the checkout while
+  HEAD stays `ed8934f1`. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.
+  Drift-check before every round — v4 ships daily.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `f6eac168` (2026-08-08, v4 4.8.0-dev), adopted at
   the P4.D60∥P4.D61∥P4.44 unification — NO v4 drift debt remains.** The
   two commits past `1bed814f`: `f521fc0c` (Bugs 48/49 filing, docs-only,

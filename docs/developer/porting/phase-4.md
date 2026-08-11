@@ -4484,3 +4484,49 @@ Bug 53 (file-storage reconciliation) is MOOT for v5 — the subsystem is
 unported; banked in P4.D62's record. The owed dogfood pass and the other
 standing candidates (previous section) queue behind the drift per standing
 practice.
+
+## The character-archive round-1 unification (P4.D62 ∥ P4.D63 ∥ P4.D64, 2026-08-11) — ROUND 1 DONE
+
+**P4.D62 and P4.D64 CLOSED; P4.D63 OPEN at unit 7 only** (the re-encrypt
+wire + differential — its status header carries the resume list). The
+oracle baseline MOVES to **`d553f72a`**. Full round record in
+`status-log.md`; the §3 review's six fixed findings and the seeder's
+first-live-run discoveries (including the v4-side archived-seat-badge GET
+bug, to be filed upstream) are recorded there and in the order headers.
+
+**Next candidates, in rough value order:**
+
+1. **The `ed8934f1` (Bug 56) drift catch-up** — v4 moved one commit past
+   the pin during the round: `lib/mount-index/base-path-availability.ts`
+   (new) + `scanner.ts` + the two mount-points routes land on the PORTED
+   Scriptorium surface (the rest is Docker/CLI packaging + two help docs
+   for the `p4.9i2` bank). Until absorbed, pin `d553f72a` for any
+   mount-points-family regen.
+2. **Round 2 of the character-archive campaign** (write its order at that
+   /setupphase, against the then-current v4 HEAD): the archive service
+   whole (prune-in-place, bundle write/verify, tombstone commit ordering,
+   participant flips, rehydrate + re-chunk/re-embed), the two verbs
+   un-refused (shapes pinned in round 1's Shared contract), P4.D63 unit
+   7's re-encrypt wire + differential, the files-delete
+   `ARCHIVE_BUNDLE_HELD` guard, the export-picker archived filter, the
+   three-key export carry (pin v4's key-presence-by-schema-vintage
+   semantics), the CLI `db characters` family, the SPA gate flip
+   (`CHARACTER_ARCHIVE_SERVER_LANDED`) + the four action beats, plus the
+   banked D62/D63 items named in their headers (the preflight
+   error-propagation, the duplicate+preserveIds oracle arm, the
+   repo-wrapper tier-2 case, the four archived-arm fixture extensions).
+3. **The owed dogfood pass** (standing queue unchanged) — now also
+   gaining round 1's live surfaces: the roster toggle over a real
+   archived character (once round 2 can make one), the preserveIds
+   import arms, and the Bug-55 404s on a real dangling row.
+4. **The sweep-driver rot maintenance pass** (standing) — select-speaker
+   re-confirmed the SKIP-masquerade shape this round; the recipe-prose
+   shell-keyword trap is a new entry for it.
+
+**Standing regen note:** the oracle baseline is **`d553f72a`** (adopted at
+this unification). v4 HEAD is `ed8934f1`, ONE commit past it — see
+candidate 1; pin a detached worktree at `d553f72a` for mount-points
+families until it is absorbed (`oracle-regen-pinned-v4-worktree`, or
+`recipe_sweep.py --v4 d553f72a`). The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.
+Drift-check before every round — v4 ships daily.
