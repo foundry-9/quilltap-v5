@@ -158,7 +158,14 @@ fn run_restore(tag: &str, archive: &str, mode: RestoreMode) -> (PathBuf, Vec<Str
         .enable_all()
         .build()
         .unwrap()
-        .block_on(restore(&db, &host, &zip, mode, SINGLE_USER_ID))
+        .block_on(restore(
+            &db,
+            &host,
+            &zip,
+            mode,
+            SINGLE_USER_ID,
+            Default::default(),
+        ))
         .expect("restore returned an error");
     drop(db);
     let links = summary.doc_mount_file_links;
@@ -296,6 +303,7 @@ fn a_column_a_migration_never_added_still_loses_that_collection() {
             &zip,
             RestoreMode::Replace,
             SINGLE_USER_ID,
+            Default::default(),
         ))
         .expect("restore returned an error");
     drop(db);
@@ -469,6 +477,7 @@ fn annotations_restore_onto_a_vintage_instance_without_colliding() {
             &zip,
             RestoreMode::Replace,
             SINGLE_USER_ID,
+            Default::default(),
         ))
         .expect("restore returned an error");
     drop(db);

@@ -744,7 +744,8 @@ where
 
     // Talkativeness lives on the character record — build the weight map
     // (characterId → talkativeness), vault-overlaid like v4's `findById`.
-    let mut characters_map: HashMap<String, f64> = HashMap::new();
+    let mut characters_map: HashMap<String, crate::select_speaker::SpeakerCharacter> =
+        HashMap::new();
     for p in &active_chars {
         let Some(cid) = p
             .get("characterId")
@@ -759,9 +760,15 @@ where
                 crate::db::characters_read::find_by_id(main, mount, &cid_owned)
             })
         })? {
-            if let Some(t) = ch.get("talkativeness").and_then(Value::as_f64) {
-                characters_map.insert(cid.to_string(), t);
-            }
+            // Insert unconditionally: the map now also carries the archived
+            // flag (v4 `d553f72a`), which a talkativeness-gated insert drops.
+            characters_map.insert(
+                cid.to_string(),
+                crate::select_speaker::SpeakerCharacter {
+                    talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
+                    archived: crate::api::characters::is_archived(&ch),
+                },
+            );
         }
     }
 
@@ -1713,9 +1720,14 @@ where
         let raw = db
             .read_main(crate::db::characters_read::find_all_raw)
             .unwrap_or_default();
-        let any_can_be_carina = raw
-            .iter()
-            .any(|c| c.get("canBeCarina").and_then(Value::as_bool) == Some(true));
+        // An ARCHIVED answerer does not count (v4 `d553f72a`,
+        // `orchestrator.service.ts:892`) — it cannot take a Carina turn, so
+        // offering the tool on its strength alone would advertise a line
+        // nothing can answer.
+        let any_can_be_carina = raw.iter().any(|c| {
+            !crate::api::characters::is_archived(c)
+                && c.get("canBeCarina").and_then(Value::as_bool) == Some(true)
+        });
         any_can_be_carina || character_is_transparent
     };
 

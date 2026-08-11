@@ -32,6 +32,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
+/// P4.D63: the ARCHIVED character (fixture extension) the write guard refuses.
+const FENN: &str = "a1000000-0000-4000-8000-000000000006";
 const CONN: &str = "c0000001-0000-4000-8000-000000000001";
 const ADVENTURE: &str = "70000001-0000-4000-8000-000000000001";
 const MYSTERY: &str = "70000002-0000-4000-8000-000000000002";
@@ -904,6 +906,155 @@ fn characters_mutations_match_oracle() {
             extra.push("photo_remove_avatar_tables".to_string());
         } else {
             eprintln!("[photo_remove_avatar tables] OK.");
+        }
+    }
+
+    {
+        // P4.D63 — the archive write guard's truth table, driven at the
+        // REPOSITORY level exactly as the oracle drives v4's: the PUT route's
+        // Zod schema strips `archivedAt`, so neither side can reach the
+        // sanctioned unarchive through HTTP.
+        let db = fresh_db(&spec, "arch_guard");
+        let patches: Vec<Value> = vec![
+            json!({ "name": "Renamed While Archived" }),
+            json!({ "description": "A vault-managed edit." }),
+            json!({ "characterDocumentMountPointId": null }),
+            json!({ "archivedAt": null, "name": "Two keys is not the sanctioned patch" }),
+            json!({ "archivedAt": null }),
+            json!({ "name": "Renamed After Rehydrate" }),
+        ];
+        let mut outcomes: Vec<Value> = Vec::new();
+        for patch in patches {
+            let patch_map = patch.as_object().expect("object").clone();
+            let outcome = db
+                .write_blocking(move |ws| {
+                    let main = ws.main().connection();
+                    let mount = ws.mount_index().expect("mount").connection();
+                    let res =
+                        quilltap_core::db::vault_character_update::update_character(
+                            main, mount, FENN, &patch_map,
+                        );
+                    Ok(match res {
+                        Ok(_) => {
+                            // v4 returns the reloaded character; mirror the two
+                            // fields the oracle records.
+                            let after =
+                                quilltap_core::db::characters_read::find_by_id_raw(main, FENN)?;
+                            json!({
+                                "ok": true,
+                                "name": after.as_ref().and_then(|c| c.get("name")).cloned().unwrap_or(Value::Null),
+                                "archivedAt": after
+                                    .as_ref()
+                                    .and_then(|c| c.get("archivedAt"))
+                                    .cloned()
+                                    .unwrap_or(Value::Null),
+                            })
+                        }
+                        Err(quilltap_core::db::document_store_overlay::OverlayError::Db(
+                            quilltap_core::db::DbError::CharacterArchived { character_id },
+                        )) => json!({
+                            "ok": false,
+                            "name": "CharacterArchivedError",
+                            "message": quilltap_core::db::DbError::character_archived_message(&character_id),
+                        }),
+                        Err(other) => json!({ "ok": false, "name": "unexpected", "message": other.to_string() }),
+                    })
+                })
+                .expect("guard write");
+            outcomes.push(outcome);
+        }
+        // Delete is the escape hatch: unguarded even while archived.
+        let (deleted, gone) = db
+            .write_blocking(|ws| {
+                let main = ws.main().connection();
+                let deleted =
+                    quilltap_core::db::characters::CharactersRepository::new(main).delete(FENN)?;
+                let gone =
+                    quilltap_core::db::characters_read::find_by_id_raw(main, FENN)?.is_none();
+                Ok((deleted, gone))
+            })
+            .expect("delete");
+        let got = norm(&json!({ "outcomes": outcomes, "deleted": deleted, "gone": gone }));
+        let wnt = norm(&oracle["archive_guard_truth_table"]["body"]);
+        if got != wnt {
+            eprintln!(
+                "[archive_guard_truth_table] MISMATCH:\n{}",
+                first_diff(&got, &wnt)
+            );
+            extra.push("archive_guard_truth_table".to_string());
+        } else {
+            eprintln!("[archive_guard_truth_table] OK.");
+        }
+    }
+    {
+        // P4.D63 — the wardrobe write refusal. A `None` mount here would send
+        // the caller down the legacy DB write path and silently mutate the
+        // tombstone's wardrobe, so this must be an ERROR, not an empty result.
+        let db = fresh_db(&spec, "arch_ward");
+        let outcome = db
+            .write_blocking(|ws| {
+                let main = ws.main().connection();
+                let mount = ws.mount_index().expect("mount").connection();
+                let links =
+                    quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+                let docs =
+                    quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                let now = quilltap_core::clock::now_iso();
+                let item = quilltap_core::vault_overlay::WardrobeItem {
+                    id: "d0d0d0d0-0000-4000-8000-00000000d63f".to_string(),
+                    character_id: Some(Some(FENN.to_string())),
+                    title: "Contraband Cloak".to_string(),
+                    description: Some(None),
+                    image_prompt: Some(None),
+                    types: vec!["outerwear".to_string()],
+                    component_item_ids: vec![],
+                    appropriateness: Some(None),
+                    is_default: false,
+                    replace: false,
+                    migrated_from_clothing_record_id: Some(None),
+                    archived_at: None,
+                    created_at: now.clone(),
+                    updated_at: now,
+                };
+                Ok(
+                    match quilltap_core::db::vault_wardrobe_public::create_vault_wardrobe_item(
+                        main, &links, &docs, &item,
+                    ) {
+                        Ok(stored) => json!({ "ok": true, "id": if stored.id.is_empty() { Value::Null } else { json!("<minted>") } }),
+                        Err(quilltap_core::db::vault_wardrobe_public::WardrobePublicError::Db(
+                            quilltap_core::db::DbError::CharacterArchived { character_id },
+                        )) => json!({
+                            "ok": false,
+                            "name": "CharacterArchivedError",
+                            "message": quilltap_core::db::DbError::character_archived_message(&character_id),
+                        }),
+                        Err(other) => json!({ "ok": false, "name": "unexpected", "message": format!("{other:?}") }),
+                    },
+                )
+            })
+            .expect("wardrobe write");
+        let titles = response_data(&characters::character_wardrobe_list(&db, &uid, FENN))
+            .get("wardrobeItems")
+            .and_then(Value::as_array)
+            .map(|a| {
+                let mut t: Vec<Value> = a
+                    .iter()
+                    .map(|i| i.get("title").cloned().unwrap_or(Value::Null))
+                    .collect();
+                t.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
+                Value::Array(t)
+            })
+            .unwrap_or_else(|| Value::Array(vec![]));
+        let got = norm(&json!({ "outcome": outcome, "titles": titles }));
+        let wnt = norm(&oracle["archive_guard_wardrobe_write"]["body"]);
+        if got != wnt {
+            eprintln!(
+                "[archive_guard_wardrobe_write] MISMATCH:\n{}",
+                first_diff(&got, &wnt)
+            );
+            extra.push("archive_guard_wardrobe_write".to_string());
+        } else {
+            eprintln!("[archive_guard_wardrobe_write] OK.");
         }
     }
 

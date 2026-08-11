@@ -523,12 +523,20 @@ pub async fn chat_send_mail(
         Ok(None) => return not_found("Sender character"),
         Err(e) => return internal(e),
     };
+    // v4 `actions/send-mail.ts:48`.
+    if crate::api::characters::is_archived(&sender) {
+        return bad_request("That character is archived; rehydrate it to continue.");
+    }
     let to = to_character_id.to_string();
     let recipient = match db.read_main(move |c| characters_read::find_by_id_raw(c, &to)) {
         Ok(Some(r)) => r,
         Ok(None) => return not_found("Recipient character"),
         Err(e) => return internal(e),
     };
+    // v4 `actions/send-mail.ts:55`.
+    if crate::api::characters::is_archived(&recipient) {
+        return bad_request("That recipient is archived; rehydrate them to continue.");
+    }
 
     let message = body_markdown.to_string();
     let in_reply_to = in_reply_to_path.map(str::to_string);
@@ -599,6 +607,11 @@ pub async fn chat_mailbox_list(db: &Db, chat_id: &str, character_id: &str) -> Re
         Ok(None) => return not_found("Character"),
         Err(e) => return internal(e),
     };
+    // The chat-action twin of the list-email tool's refusal (v4 `d553f72a`,
+    // `actions/mailbox.ts:43`) — a 400, not the tool's soft `fail`.
+    if crate::api::characters::is_archived(&character) {
+        return bad_request("That character is archived; rehydrate it to continue.");
+    }
 
     let letters = db
         .write(move |writers| {

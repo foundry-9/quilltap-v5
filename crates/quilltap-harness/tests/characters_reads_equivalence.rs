@@ -162,23 +162,99 @@ fn characters_reads_match_oracle() {
 
     push(
         "list_all",
-        response_data(&characters::character_list(&db, uid, None, None)),
+        response_data(&characters::character_list(&db, uid, None, None, None)),
     );
     push(
         "list_npc_true",
-        response_data(&characters::character_list(&db, uid, Some("true"), None)),
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            None,
+            Some("true"),
+            None,
+        )),
     );
     push(
         "list_npc_false",
-        response_data(&characters::character_list(&db, uid, Some("false"), None)),
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            None,
+            Some("false"),
+            None,
+        )),
     );
     push(
         "list_user",
-        response_data(&characters::character_list(&db, uid, None, Some("user"))),
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            None,
+            None,
+            Some("user"),
+        )),
     );
     push(
         "list_llm",
-        response_data(&characters::character_list(&db, uid, None, Some("llm"))),
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            None,
+            None,
+            Some("llm"),
+        )),
+    );
+    // The archived chokepoint (P4.D63). `list_all` above is the EXCLUDE
+    // default and is what proves a tombstone stays out of every picker.
+    push(
+        "list_archived_only",
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            Some("only"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "list_archived_include",
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            Some("include"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "list_archived_garbage",
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            Some("nonsense"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "list_archived_include_llm",
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            Some("include"),
+            None,
+            Some("llm"),
+        )),
+    );
+    push(
+        "list_archived_only_npc_false",
+        response_data(&characters::character_list(
+            &db,
+            uid,
+            Some("only"),
+            Some("false"),
+            None,
+        )),
     );
     push(
         "get_aria",

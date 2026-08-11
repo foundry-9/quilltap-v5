@@ -42,6 +42,8 @@ const LAMBDA = 'a3000000-0000-4000-8000-000000000002';
 const KAPPA = 'a3000000-0000-4000-8000-000000000003';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const BRAM = 'a1000000-0000-4000-8000-000000000002';
+/** P4.D63: the archived character (fixture extension). */
+const EDDA = 'a1000000-0000-4000-8000-000000000005';
 const GAMMA_EXTRA_MP = 'b0000000-0000-4000-8000-000000000001';
 const IOTA_DANGLING_MP = 'b0000000-0000-4000-8000-0000000000df';
 const CHAT_A = 'c1000000-0000-4000-8000-000000000001';
@@ -236,6 +238,15 @@ async function main(): Promise<void> {
       name: 'add_character',
       run: async () => {
         const r = await (await loadRoute(idRoute)).POST(mockRequest(`${B}/${KAPPA}?action=add-character`, { characterId: BRAM }), p(KAPPA));
+        const { status, body } = await respond(r);
+        return { status, body };
+      },
+    },
+    {
+      // P4.D63 (v4 `d553f72a`): an archived character cannot join a roster.
+      name: 'add_character_archived',
+      run: async () => {
+        const r = await (await loadRoute(idRoute)).POST(mockRequest(`${B}/${KAPPA}?action=add-character`, { characterId: EDDA }), p(KAPPA));
         const { status, body } = await respond(r);
         return { status, body };
       },

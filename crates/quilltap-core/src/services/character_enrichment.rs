@@ -167,6 +167,16 @@ pub fn build_list_dto(
         "npc".to_string(),
         js_nullish(character.get("npc"), json!(false)),
     );
+    // `archivedAt ?? null` — ALWAYS present on a list item (v4
+    // `characters/handlers/get.ts:87`, v4 `d553f72a`), so every roster and
+    // picker can badge a tombstone without a second read. The DETAIL
+    // projection needs no line: [`build_detail`] spreads the whole character
+    // bag, so the archive columns ride along exactly as v4's `...character`
+    // does — present when set, absent when NULL.
+    out.insert(
+        "archivedAt".to_string(),
+        js_or_null(character.get("archivedAt")),
+    );
 
     // tags (`|| []`) — any array (even empty) is kept; null/absent → [].
     let tags = match character.get("tags") {

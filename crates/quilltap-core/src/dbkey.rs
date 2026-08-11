@@ -36,7 +36,7 @@ use sha2::{Digest, Sha256, Sha512};
 
 /// Internal passphrase used when the user skipped setting one.
 /// Must match `INTERNAL_PASSPHRASE` in dbkey.ts / pepper-vault.ts.
-const INTERNAL_PASSPHRASE: &str = "__quilltap_no_passphrase__";
+pub const INTERNAL_PASSPHRASE: &str = "__quilltap_no_passphrase__";
 
 /// AES-256 key length in bytes.
 const KEY_LEN: usize = 32;

@@ -1537,8 +1537,10 @@ async fn calculate_next_speaker(
     // (v4 reads `getActiveCharacterParticipants` then a `findById` each; the
     // responder reuses the passed character, whose talkativeness is on the overlaid
     // row — read the same way here).
-    let mut talkativeness: std::collections::HashMap<String, f64> =
-        std::collections::HashMap::new();
+    let mut talkativeness: std::collections::HashMap<
+        String,
+        crate::select_speaker::SpeakerCharacter,
+    > = std::collections::HashMap::new();
     let _ = character; // responder read below via the DB, same as others.
     for p in &chat.participants {
         if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
@@ -1557,8 +1559,8 @@ async fn calculate_next_speaker(
         else {
             continue;
         };
-        if let Some(t) = read_character_talkativeness(db, cid)? {
-            talkativeness.insert(cid.to_string(), t);
+        if let Some(sc) = read_speaker_character(db, cid)? {
+            talkativeness.insert(cid.to_string(), sc);
         }
     }
 
@@ -1588,15 +1590,20 @@ async fn calculate_next_speaker(
 }
 
 /// Read a character's `talkativeness` off the vault-overlaid row.
-fn read_character_talkativeness(db: &Db, id: &str) -> Result<Option<f64>, DbError> {
+/// The character facts the selection reads (talkativeness + the archived
+/// tombstone, v4 `d553f72a`). `None` when the character does not resolve.
+fn read_speaker_character(
+    db: &Db,
+    id: &str,
+) -> Result<Option<crate::select_speaker::SpeakerCharacter>, DbError> {
     let id = id.to_string();
     let ch = db.read_main(|main| {
         db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &id))
     })?;
-    Ok(ch
-        .as_ref()
-        .and_then(|c| c.get("talkativeness"))
-        .and_then(Value::as_f64))
+    Ok(ch.map(|c| crate::select_speaker::SpeakerCharacter {
+        talkativeness: c.get("talkativeness").and_then(Value::as_f64),
+        archived: crate::api::characters::is_archived(&c),
+    }))
 }
 
 // ===========================================================================

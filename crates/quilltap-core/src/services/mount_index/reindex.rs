@@ -253,7 +253,7 @@ pub fn reindex_links(
 }
 
 /// The scoped-enqueue error split: `Config` carries v4's thrown message
-/// verbatim (`No embedding profile configured` / `No user found`) so the route
+/// verbatim (`No default embedding profile configured` / `No user found`) so the route
 /// 500 body matches byte-for-byte; `Db` is an infrastructure failure.
 #[derive(Debug)]
 pub enum ScopedEnqueueError {
@@ -314,8 +314,9 @@ pub fn enqueue_embedding_jobs_scoped(
         return Ok((Vec::new(), 0, candidates.len() as i64));
     }
 
-    let profile_id = default_profile_id(main)?
-        .ok_or_else(|| ScopedEnqueueError::Config("No embedding profile configured".to_string()))?;
+    let profile_id = default_profile_id(main)?.ok_or_else(|| {
+        ScopedEnqueueError::Config("No default embedding profile configured".to_string())
+    })?;
     let user_id = first_user_id(main)?
         .ok_or_else(|| ScopedEnqueueError::Config("No user found".to_string()))?;
 

@@ -71,19 +71,44 @@ impl RestoreMode {
 /// [`crate::services::delete_all::delete_user_data`]; `new-account` remaps every
 /// UUID first (P4.9G6's `remap_backup_data` — see the ACTIVATE-AT-UNIFY marker
 /// below).
+/// v4 `RestoreOptions`' archive half (`lib/backup/types.ts`, new in
+/// `d553f72a`). The rest of v4's options bag (mode, targetUserId) is already
+/// this function's positional parameters.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RestoreOptions {
+    /// Replace mode only: when true (**the default**), archived-character
+    /// `.qtap` bundles (`files` rows of category `ARCHIVE` and their on-disk
+    /// bytes) survive the pre-restore wipe as loose bundles — importable, not
+    /// rehydratable, since the tombstone character rows are replaced like any
+    /// others. Pass `Some(false)` to wipe them with everything else.
+    pub keep_archived_character_bundles: Option<bool>,
+}
+
 pub async fn restore(
     db: &Db,
     host: &dyn BackupHost,
     zip_path: &Path,
     mode: RestoreMode,
     target_user_id: &str,
+    options: RestoreOptions,
 ) -> Result<RestoreSummary, String> {
     let mut extracted = parse_backup_zip(zip_path, &host.temp_dir())?;
 
     if mode == RestoreMode::Replace {
-        crate::services::delete_all::delete_user_data(db, target_user_id)
-            .await
-            .map_err(|e| e.to_string())?;
+        // Archived-character bundles survive the pre-restore wipe by default
+        // (spec §4.7, v4 `d553f72a`) — the restore replaces the tombstone rows,
+        // so what's kept is a loose, importable bundle.
+        crate::services::delete_all::delete_user_data(
+            db,
+            target_user_id,
+            crate::services::delete_all::DeleteUserDataOptions {
+                keep_archived_character_bundles: Some(
+                    options.keep_archived_character_bundles != Some(false),
+                ),
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     }
 
     // v4 `:57-61`. P4.9G6's `remap_backup_data` is the whole of it: fresh ids for

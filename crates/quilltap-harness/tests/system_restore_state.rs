@@ -1095,7 +1095,14 @@ fn system_restore_state_equivalence() {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(restore(&db, &host, &zip, mode_for(name), SINGLE_USER_ID))
+            .block_on(restore(
+                &db,
+                &host,
+                &zip,
+                mode_for(name),
+                SINGLE_USER_ID,
+                Default::default(),
+            ))
             .expect("restore succeeded");
 
         // Dump AFTER dropping the Db so every writer transaction has committed.
@@ -1234,6 +1241,7 @@ fn preview_writes_nothing() {
             &archives_dir().join("restore-archive.zip"),
             RestoreMode::Replace,
             SINGLE_USER_ID,
+            Default::default(),
         ))
         .expect("seed restore succeeded");
     drop(db);

@@ -46,6 +46,8 @@ const DELTA = 'a2000000-0000-4000-8000-000000000002';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const BRAM = 'a1000000-0000-4000-8000-000000000002';
 const CLEO = 'a1000000-0000-4000-8000-000000000003';
+/** P4.D63: the archived character (fixture extension). */
+const EDDA = 'a1000000-0000-4000-8000-000000000005';
 const GAMMA_EXTRA_MP = 'b0000000-0000-4000-8000-000000000001';
 
 function mockRequest(url: string, body?: unknown): unknown {
@@ -313,6 +315,19 @@ async function main(): Promise<void> {
       run: async () => {
         const r = await (await loadRoute('@/app/api/v1/groups/[id]/route')).POST(
           mockRequest(`${B}/${GAMMA}?action=addMember`, { characterId: CLEO }),
+          { params: Promise.resolve({ id: GAMMA }) },
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpGroupTables() };
+      },
+    },
+    {
+      // P4.D63 (v4 `d553f72a`): an archived character cannot join a group.
+      // The tables dump proves the membership row was NOT written.
+      name: 'add_member_archived',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/groups/[id]/route')).POST(
+          mockRequest(`${B}/${GAMMA}?action=addMember`, { characterId: EDDA }),
           { params: Promise.resolve({ id: GAMMA }) },
         );
         const { status, body } = await respond(r);

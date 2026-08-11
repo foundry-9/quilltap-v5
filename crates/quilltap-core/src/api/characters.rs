@@ -105,21 +105,48 @@ fn require_character(
 // List (v4 GET /api/v1/characters — characters/handlers/get.ts)
 // ===========================================================================
 
-/// v4 `handleGet`: `findByUserId` → in-memory `npc`/`controlledBy` filter →
-/// createdAt-desc sort → per-character whitelist DTO enrichment. `npc` /
-/// `controlled_by` mirror v4's query-string values (`"true"`/`"false"`,
-/// `"user"`/`"llm"`).
+/// `Boolean(c.archivedAt)` — JS-truthy, so an empty-string tombstone is no
+/// tombstone. The single reading of "is this character archived?" every
+/// guard and filter in the port shares.
+pub fn is_archived(character: &Value) -> bool {
+    character
+        .get("archivedAt")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+}
+
+/// v4 `handleGet`: `findByUserId` → in-memory `archived`/`npc`/`controlledBy`
+/// filter → createdAt-desc sort → per-character whitelist DTO enrichment.
+/// `archived` / `npc` / `controlled_by` mirror v4's query-string values
+/// (`"only"`/`"include"`, `"true"`/`"false"`, `"user"`/`"llm"`).
 pub fn character_list(
     db: &Db,
     user_id: &str,
+    archived: Option<&str>,
     npc: Option<&str>,
     controlled_by: Option<&str>,
 ) -> Response {
     let user_id = user_id.to_string();
+    let archived = archived.map(str::to_string);
     let npc = npc.map(str::to_string);
     let controlled_by = controlled_by.map(str::to_string);
     let result = read_main_mount(db, move |main, mount| {
         let mut characters = characters_read::find_by_user_id(main, mount, &user_id)?;
+
+        // The archived filter — THE single chokepoint for every picker and
+        // roster (character-archive spec §5.1, v4 `d553f72a`). Deliberately
+        // here and not in the repository: repo reads still return archived
+        // rows, because the surfaces that must see a tombstone (detail, the
+        // participant projection, group members) read through them. Default
+        // excludes tombstones so no consumer offers an archived character for
+        // a chat, group, mail, or image dialog; the Aurora roster opts in with
+        // include/only. Anything that is not exactly `only` or `include`
+        // — including a typo — excludes, which is v4's own `else if`.
+        match archived.as_deref() {
+            Some("only") => characters.retain(is_archived),
+            Some("include") => {}
+            _ => characters.retain(|c| !is_archived(c)),
+        }
 
         // Filter by NPC status (v4 `c.npc === true` / `!c.npc`).
         match npc.as_deref() {
@@ -713,6 +740,14 @@ pub fn character_export(
             Ok(c) => c,
             Err(r) => return Ok(Err(r)),
         };
+        // A tombstone export would be a pruned shell, and the full bundle
+        // already sits in the library as an ARCHIVE file (spec §4.1, v4
+        // `d553f72a`).
+        if is_archived(&character) {
+            return Ok(Err(bad_request(
+                "This character is archived; rehydrate them to export, or use their archive bundle.",
+            )));
+        }
         Ok(Ok(crate::services::sillytavern::export_st_character(
             &character,
         )))

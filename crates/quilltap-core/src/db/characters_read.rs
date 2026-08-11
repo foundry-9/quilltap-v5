@@ -65,6 +65,51 @@ const SLIM_COLUMNS: &str = "id, userId, name, defaultImageId, defaultConnectionP
      characterDocumentMountPointId, canDressThemselves, canCreateOutfits, systemTransparency, \
      coreWhisperEnabled, canBeCarina, partnerLinks, tags, avatarOverrides, createdAt, updatedAt";
 
+/// The three archive columns (v4 `d553f72a`, migration
+/// `add-character-archive-fields-v1`), selected AFTER [`SLIM_COLUMNS`].
+const ARCHIVE_COLUMNS: [&str; 3] = ["archivedAt", "archiveFileId", "archivedAvatarFileId"];
+
+/// The full `SELECT` list: [`SLIM_COLUMNS`] plus the three archive columns —
+/// or three literal `NULL`s when the table predates them.
+///
+/// v4 reads every collection with `SELECT *`, so a `characters` table that
+/// predates `add-character-archive-fields-v1` simply returns no archive
+/// columns and their `.nullable().optional()` schema keys parse as absent. v5
+/// names its columns, so it has to ask the table first — otherwise every
+/// pre-migration instance (and every differential fixture built before the
+/// drift) would fail the read outright with `no such column`. Selecting
+/// `NULL` rather than dropping the columns keeps the marshaling arity fixed,
+/// and a NULL cell marshals to the same absent key v4's Zod produces. This is
+/// the P4.D49 llm-logs tolerance, one shape tighter.
+///
+/// The WRITE side stays strict, exactly as v4's is: its `insertOne`/`update`
+/// name the document's keys, so v4 cannot write an archive field into a
+/// pre-migration table either. The boot ensure
+/// ([`crate::db::character_archive_repair`]) is what gets a real instance the
+/// columns; this is what keeps old fixtures readable.
+fn select_columns(conn: &Connection) -> String {
+    let mut list = String::from(SLIM_COLUMNS);
+    let present = table_has_column(conn, ARCHIVE_COLUMNS[0]);
+    for col in ARCHIVE_COLUMNS {
+        list.push_str(", ");
+        if present {
+            list.push_str(col);
+        } else {
+            list.push_str("NULL");
+        }
+    }
+    list
+}
+
+/// `PRAGMA table_info(characters)` membership. Fail-soft: an unreadable pragma
+/// (missing table) reports "absent", which lands the caller on the same
+/// no-archive-columns path v4 takes.
+fn table_has_column(conn: &Connection, column: &str) -> bool {
+    conn.prepare("SELECT 1 FROM pragma_table_info('characters') WHERE name = ?1")
+        .and_then(|mut stmt| stmt.exists([column]))
+        .unwrap_or(false)
+}
+
 /// Insert a nullable-optional TEXT/UUID value: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
     if let Some(s) = v {
@@ -149,6 +194,13 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     obj.insert("avatarOverrides".into(), array_or_empty(row.get(25)?));
     obj.insert("createdAt".into(), Value::String(row.get::<_, String>(26)?));
     obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(27)?));
+    // The three archive columns (v4 `d553f72a`). All
+    // `.nullable().optional()`: a NULL cell — whether the row's or the literal
+    // `NULL` [`select_columns`] substitutes on a pre-migration table — omits
+    // the key, exactly as v4's Zod parse does.
+    put_opt_string(&mut obj, "archivedAt", row.get(28)?);
+    put_opt_string(&mut obj, "archiveFileId", row.get(29)?);
+    put_opt_string(&mut obj, "archivedAvatarFileId", row.get(30)?);
 
     // Managed columns sit at their DDL = Zod defaults (writes strip them); reproduce
     // the materialized ones. The nullable managed fields (title/identity/…/pronouns/
@@ -172,10 +224,11 @@ fn query_raw(
     where_clause: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
+    let columns = select_columns(conn);
     let sql = if where_clause.is_empty() {
-        format!("SELECT {SLIM_COLUMNS} FROM characters")
+        format!("SELECT {columns} FROM characters")
     } else {
-        format!("SELECT {SLIM_COLUMNS} FROM characters WHERE {where_clause}")
+        format!("SELECT {columns} FROM characters WHERE {where_clause}")
     };
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params, marshal_row)?;

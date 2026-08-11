@@ -80,10 +80,15 @@ pub fn default_profile_id(main: &Connection) -> Result<Option<String>, DbError> 
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    // The **default** embedding profile, and only the default (v4 `d553f72a`):
+    // every vector in the instance — memories, conversation chunks, help docs,
+    // mount chunks — must come from the same profile, or semantic search
+    // silently compares apples to oranges. No fallback to an arbitrary profile:
+    // with none marked, these chunks WAIT (the startup reconcile re-enqueues
+    // them once one is configured), exactly as memories do.
     Ok(rows
         .iter()
         .find(|(_, is_default)| *is_default)
-        .or_else(|| rows.first())
         .map(|(id, _)| id.clone()))
 }
 

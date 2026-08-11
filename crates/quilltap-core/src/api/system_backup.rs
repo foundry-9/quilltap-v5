@@ -146,6 +146,7 @@ pub async fn restore_execute(
     host: &dyn BackupHost,
     upload_id: &str,
     mode: &str,
+    keep_archived_character_bundles: Option<bool>,
 ) -> Response {
     let Some(mode) = RestoreMode::parse(mode) else {
         return Response::error(
@@ -160,7 +161,17 @@ pub async fn restore_execute(
         return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
     };
 
-    let result = restore(db, host, &zip_path, mode, super::engine::SINGLE_USER_ID).await;
+    let result = restore(
+        db,
+        host,
+        &zip_path,
+        mode,
+        super::engine::SINGLE_USER_ID,
+        crate::services::backup::restore::orchestrator::RestoreOptions {
+            keep_archived_character_bundles,
+        },
+    )
+    .await;
     host.remove_upload(upload_id); // v4's `finally removePendingUpload` (`:238`).
 
     match result {

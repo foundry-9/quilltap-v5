@@ -48,6 +48,8 @@ interface Spec {
 }
 
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
+/** P4.D63: the ARCHIVED character (fixture extension) the write guard refuses. */
+const FENN = 'a1000000-0000-4000-8000-000000000006';
 const CONN = 'c0000001-0000-4000-8000-000000000001';
 const ADVENTURE = '70000001-0000-4000-8000-000000000001';
 const MYSTERY = '70000002-0000-4000-8000-000000000002';
@@ -76,7 +78,9 @@ interface CaseSpec {
     | 'st-import'
     | 'photo-remove'
     | 'photo-save'
-    | 'character-delete';
+    | 'character-delete'
+    | 'archive-guard-repo'
+    | 'archive-guard-wardrobe';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -242,6 +246,74 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind === 'archive-guard-repo') {
+      // P4.D63 — the archive write guard at the REPOSITORY, which is where v4
+      // puts it (`validateCharacterArchivePatch` at the top of `update()`).
+      // The PUT route cannot reach it with an `archivedAt` key (its Zod schema
+      // strips unknown keys), so both the refusal and the one sanctioned patch
+      // are driven through the repo directly — the same level v5's port sits at.
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      const repos = getRepositories();
+      const outcomes: unknown[] = [];
+      for (const patch of (c.bodies ?? []) as Array<Record<string, unknown>>) {
+        try {
+          const updated = await repos.characters.update(FENN, patch as never);
+          outcomes.push({ ok: true, name: updated?.name ?? null, archivedAt: updated?.archivedAt ?? null });
+        } catch (err) {
+          outcomes.push({
+            ok: false,
+            name: err instanceof Error ? err.name : 'unknown',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      // Delete is v4's deliberate escape hatch: a tombstone can always be
+      // destroyed, so this must succeed where every edit above was refused.
+      const deleted = await repos.characters.delete(FENN);
+      const afterDelete = await repos.characters.findByIdRaw(FENN);
+      return {
+        name: c.name,
+        status: 200,
+        body: { outcomes, deleted, gone: afterDelete === null },
+      };
+    }
+
+    if (c.kind === 'archive-guard-wardrobe') {
+      // P4.D63 — `resolveWardrobeMount` THROWS for an archived character; a
+      // null return would fall through to the legacy DB write and silently
+      // mutate the tombstone's wardrobe.
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      const repos = getRepositories();
+      let outcome: unknown;
+      try {
+        const created = await repos.wardrobe.create({
+          characterId: FENN,
+          title: 'Contraband Cloak',
+          description: null,
+          imagePrompt: null,
+          types: ['outerwear'],
+          componentItemIds: [],
+          appropriateness: null,
+          isDefault: false,
+          replace: false,
+          migratedFromClothingRecordId: null,
+        } as never);
+        outcome = { ok: true, id: created?.id ? '<minted>' : null };
+      } catch (err) {
+        outcome = {
+          ok: false,
+          name: err instanceof Error ? err.name : 'unknown',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const items = await repos.wardrobe.findByCharacterId(FENN);
+      return {
+        name: c.name,
+        status: 200,
+        body: { outcome, titles: (items ?? []).map((i: { title: string }) => i.title).sort() },
+      };
+    }
+
     if (c.kind === 'character-delete') {
       // DELETE /api/v1/characters/[id]?cascadeChats=true&cascadeImages=true.
       const url = `http://localhost/api/v1/characters/${ARIA}?cascadeChats=true&cascadeImages=true`;
@@ -600,6 +672,28 @@ async function main(): Promise<void> {
           updatedAt: '2020-01-01T00:00:00.000Z',
         },
       },
+    },
+    {
+      // The guard's whole truth table, in one fresh DB: three refused patches
+      // (a plain edit, a MANAGED-field edit that would route to the vault, and
+      // the old archive-finalization patch that nulls the vault pointer), then
+      // the ONE sanctioned single-key unarchive, then a second plain edit that
+      // now succeeds because the tombstone is gone — and finally delete, the
+      // escape hatch that is unguarded even while archived.
+      name: 'archive_guard_truth_table',
+      kind: 'archive-guard-repo',
+      bodies: [
+        { name: 'Renamed While Archived' },
+        { description: 'A vault-managed edit.' },
+        { characterDocumentMountPointId: null },
+        { archivedAt: null, name: 'Two keys is not the sanctioned patch' },
+        { archivedAt: null },
+        { name: 'Renamed After Rehydrate' },
+      ],
+    },
+    {
+      name: 'archive_guard_wardrobe_write',
+      kind: 'archive-guard-wardrobe',
     },
     { name: 'create_minimal', kind: 'create', body: { name: 'Mimsy' } },
     { name: 'quick_create', kind: 'quick-create', body: { name: 'Quill' } },

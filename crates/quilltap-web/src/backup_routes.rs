@@ -155,7 +155,15 @@ pub async fn system_restore_post(
             }
             match dispatch_core(
                 &state,
-                CoreRequest::SystemRestoreExecute { upload_id, mode },
+                CoreRequest::SystemRestoreExecute {
+                    upload_id,
+                    mode,
+                    // v4 `d553f72a`: absent keeps the archive bundles; only an
+                    // explicit `false` wipes them with the rest.
+                    keep_archived_character_bundles: parsed
+                        .get("keepArchivedCharacterBundles")
+                        .and_then(Value::as_bool),
+                },
             )
             .await
             {

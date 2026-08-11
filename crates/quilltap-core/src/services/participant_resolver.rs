@@ -72,7 +72,7 @@ use crate::db::{
 use crate::participant_filters::{
     find_active_user_participant, is_multi_character_chat, ParticipantView as FilterParticipant,
 };
-use crate::select_speaker::{select_next_speaker, SpeakerParticipant};
+use crate::select_speaker::{select_next_speaker, SpeakerCharacter, SpeakerParticipant};
 use crate::turn_state::{calculate_turn_state_from_history, MessageView};
 
 use std::collections::HashMap;
@@ -88,6 +88,10 @@ pub enum ResolveError {
     NoActiveCharacter,
     /// v4 `throw new Error("Character not found")`.
     CharacterNotFound,
+    /// v4 `throw new CharacterArchivedError(character.id)` (`d553f72a`) — the
+    /// responding character is a tombstone. Carries the id so the message is
+    /// the shared byte-exact sentence.
+    CharacterArchived(String),
     /// v4 `throw new Error("No connection profile configured for character")`.
     NoConnectionProfileConfigured,
     /// v4 `throw new Error("Connection profile not found")`.
@@ -101,6 +105,9 @@ impl std::fmt::Display for ResolveError {
             ResolveError::RequestedNotFound(m) => write!(f, "{m}"),
             ResolveError::NoActiveCharacter => write!(f, "No active character in chat"),
             ResolveError::CharacterNotFound => write!(f, "Character not found"),
+            ResolveError::CharacterArchived(id) => {
+                write!(f, "{}", DbError::character_archived_message(id))
+            }
             ResolveError::NoConnectionProfileConfigured => {
                 write!(f, "No connection profile configured for character")
             }
@@ -372,13 +379,20 @@ pub async fn resolve_responding_participant(
             character_participant = Some(llm_candidates[0].clone());
         } else {
             // Build the talkativeness map (one findById per candidate).
-            let mut talkativeness: HashMap<String, f64> = HashMap::new();
+            let mut talkativeness: HashMap<String, SpeakerCharacter> = HashMap::new();
             for p in &llm_candidates {
                 if let Some(cid) = nonempty_character_id(p) {
                     if let Some(ch) = read_character(db, &cid)? {
-                        if let Some(t) = ch.get("talkativeness").and_then(Value::as_f64) {
-                            talkativeness.insert(cid, t);
-                        }
+                        // Insert unconditionally — see `load_talkativeness_map`:
+                        // the map now also carries the archived flag, which a
+                        // talkativeness-gated insert would drop.
+                        talkativeness.insert(
+                            cid,
+                            SpeakerCharacter {
+                                talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
+                                archived: crate::api::characters::is_archived(&ch),
+                            },
+                        );
                     }
                 }
             }
@@ -433,6 +447,13 @@ pub async fn resolve_responding_participant(
 
     // Load the character.
     let character = read_character(db, &character_id)?.ok_or(ResolveError::CharacterNotFound)?;
+    // An archived character cannot answer a turn (v4 `d553f72a`,
+    // `participant-resolver.service.ts:198`). The `select_next_speaker` filter
+    // normally keeps a tombstone from being picked at all; this is the throw
+    // for the paths that name a participant directly.
+    if crate::api::characters::is_archived(&character) {
+        return Err(ResolveError::CharacterArchived(character_id.clone()));
+    }
 
     // Resolve the connection profile via the fallback chain.
     let resolved_profile_id =

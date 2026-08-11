@@ -190,6 +190,14 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
 /// its file the next time its character is ensured, and `create_character`
 /// seeds fresh vaults via the scaffold. The v4 STARTUP sweep itself remains a
 /// named absence (no v5 backfill subsystem — see the P4.6az Tier-3 record).
+///
+/// **P4.D63 note.** v4 `d553f72a` taught that startup sweep to SKIP archived
+/// characters (`backfill-character-vaults.ts:63`, progress still ticking).
+/// There is nothing to port: v5 has no such sweep. v5's lazy equivalent runs
+/// from `ensure_character_vault`, which the archived write guard already
+/// fronts everywhere a tombstone could reach it — and seeding a fact sheet
+/// into a pruned vault is harmless in any case (the archive keeps the vault).
+/// Recorded as a documented exclusion rather than an invented subsystem.
 pub fn ensure_character_metadata_file(
     conn: &Connection,
     mount_point_id: &str,

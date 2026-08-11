@@ -261,13 +261,13 @@ async fn enqueue_embeddings(
     payload: &ConversationRenderPayload,
     interchanges: &[super::conversation_markdown::InterchangeInfo],
 ) -> Result<(), DbError> {
-    // v4: `embeddingProfiles.findAll()`, then `find(p => p.isDefault) || [0]` —
-    // insertion order, no sort. No profile at all → enqueue nothing.
+    // Default profile ONLY (v4 `d553f72a`) — every vector in the instance must
+    // come from the same profile. With none marked, chunks wait for the startup
+    // reconcile rather than embedding under an arbitrary one.
     let profiles = db.read_main(crate::db::embedding_profiles::find_all_full_json)?;
     let default_profile = profiles
         .iter()
-        .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true))
-        .or_else(|| profiles.first());
+        .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true));
     let Some(profile_id) = default_profile
         .and_then(|p| p.get("id"))
         .and_then(Value::as_str)

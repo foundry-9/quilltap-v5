@@ -142,6 +142,20 @@ fn resolve_character_mount(
     let Some(row) = characters_read::find_by_id_raw(main, character_id)? else {
         return Ok(None);
     };
+    // Archived characters keep a live vault (§4.2a prunes in place), so the old
+    // null-mount skip no longer fires for them. Refuse rather than return
+    // `None`: a `None` here sends the caller down the DB-fallback write path,
+    // which would silently mutate an archived character's wardrobe instead of
+    // refusing (v4 `wardrobe-writes.ts:81`, v4 `d553f72a`).
+    if row
+        .get("archivedAt")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return Err(DbError::CharacterArchived {
+            character_id: character_id.to_string(),
+        });
+    }
     Ok(row
         .get("characterDocumentMountPointId")
         .and_then(Value::as_str)

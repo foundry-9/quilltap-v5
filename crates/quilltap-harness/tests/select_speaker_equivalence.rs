@@ -18,7 +18,8 @@ use std::collections::HashMap;
 
 use quilltap_core::chat_predicates::ParticipantStatus;
 use quilltap_core::select_speaker::{
-    select_next_speaker, select_next_speaker_after_user_message, SpeakerParticipant,
+    select_next_speaker, select_next_speaker_after_user_message, SpeakerCharacter,
+    SpeakerParticipant,
 };
 use serde::Deserialize;
 
@@ -38,7 +39,7 @@ struct WirePart {
 #[derive(Deserialize)]
 struct Scenario {
     participants: Vec<WirePart>,
-    characters: HashMap<String, Option<f64>>,
+    characters: HashMap<String, WireChar>,
     queue: Vec<String>,
     spoken: Vec<String>,
     #[serde(rename = "lastSpeakerId")]
@@ -78,7 +79,7 @@ struct WireResult {
 #[derive(Deserialize)]
 struct AfterScenario {
     participants: Vec<WirePart>,
-    characters: HashMap<String, Option<f64>>,
+    characters: HashMap<String, WireChar>,
     poster: String,
     #[serde(rename = "persistedSpokenJson")]
     persisted_spoken_json: Option<String>,
@@ -130,12 +131,42 @@ fn to_speakers(parts: &[WirePart]) -> Vec<SpeakerParticipant> {
         .collect()
 }
 
-/// Only characters with a talkativeness value enter the lookup map (a null value
-/// behaves like "no character value" → 0.5 fallback).
-fn to_characters(chars: &HashMap<String, Option<f64>>) -> HashMap<String, f64> {
+/// A wire character entry: the pre-P4.D63 bare talkativeness (or `null`), or
+/// the object form that also carries `archivedAt` (v4 `d553f72a`).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WireChar {
+    Talkativeness(Option<f64>),
+    Full {
+        #[serde(default)]
+        talkativeness: Option<f64>,
+        #[serde(default, rename = "archivedAt")]
+        archived_at: Option<String>,
+    },
+}
+
+/// Build the lookup map. A `null`/absent talkativeness behaves like "no
+/// character value" → the 0.5 fallback; `archivedAt` is JS-truthy, so an
+/// empty string is NOT a tombstone.
+fn to_characters(chars: &HashMap<String, WireChar>) -> HashMap<String, SpeakerCharacter> {
     chars
         .iter()
-        .filter_map(|(k, v)| v.map(|t| (k.clone(), t)))
+        .map(|(k, v)| {
+            let sc = match v {
+                WireChar::Talkativeness(t) => SpeakerCharacter {
+                    talkativeness: *t,
+                    archived: false,
+                },
+                WireChar::Full {
+                    talkativeness,
+                    archived_at,
+                } => SpeakerCharacter {
+                    talkativeness: *talkativeness,
+                    archived: archived_at.as_deref().is_some_and(|s| !s.is_empty()),
+                },
+            };
+            (k.clone(), sc)
+        })
         .collect()
 }
 

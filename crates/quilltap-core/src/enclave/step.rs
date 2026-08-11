@@ -1588,7 +1588,8 @@ mod tests {
         defaultTimestampConfig TEXT, defaultScenarioId TEXT, defaultSystemPromptId TEXT, \
         characterDocumentMountPointId TEXT, canDressThemselves INTEGER, canCreateOutfits INTEGER, \
         systemTransparency INTEGER, coreWhisperEnabled INTEGER, canBeCarina INTEGER, \
-        partnerLinks TEXT, tags TEXT, avatarOverrides TEXT, createdAt TEXT, updatedAt TEXT);";
+        partnerLinks TEXT, tags TEXT, avatarOverrides TEXT, createdAt TEXT, updatedAt TEXT, \
+        archivedAt TEXT, archiveFileId TEXT, archivedAvatarFileId TEXT);";
 
     const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
         id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, chatId TEXT, \

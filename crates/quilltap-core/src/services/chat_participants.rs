@@ -331,6 +331,11 @@ pub struct EnrichedParticipantCharacter {
     /// Presence-sensitive for the same reason as `default_image_id`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_connection_profile_id: Option<String>,
+    /// `charData.archivedAt ?? null` — ALWAYS present, so the participant
+    /// chips can badge archived seats (character-archive spec §5.2, v4
+    /// `d553f72a`). Unlike the two fields above this is explicitly
+    /// null-coalesced by v4, so the key survives `JSON.stringify`.
+    pub archived_at: Option<String>,
 }
 
 /// v4 `getEnrichedConnectionProfile` (`helpers.ts:72`).
@@ -436,6 +441,7 @@ pub fn get_enriched_character(
         default_image_id,
         default_image,
         default_connection_profile_id: s(&c, "defaultConnectionProfileId"),
+        archived_at: s(&c, "archivedAt"),
     }))
 }
 

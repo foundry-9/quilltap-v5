@@ -245,6 +245,17 @@ pub struct CharacterUpdate {
     pub partner_links: Option<Vec<PartnerLink>>,
     pub tags: Option<Vec<String>>,
     pub avatar_overrides: Option<Vec<AvatarOverride>>,
+    /// Tombstone marker (v4 `d553f72a`). Set by round 2's archive service; the
+    /// CLEAR half (unarchive) travels as an explicit JSON `null` through
+    /// [`super::vault_character_update`]'s `clear_null_slim_columns`, which is
+    /// why this stays a plain `Option`.
+    pub archived_at: Option<String>,
+    /// Archive bundle `files` row (v4 `d553f72a`). Round 2's writer.
+    pub archive_file_id: Option<String>,
+    /// Archived-avatar thumbnail `files` row (v4 `d553f72a`). **Vestigial** —
+    /// v4's shipped archive service never writes it and rehydrate only clears
+    /// it; carried because v4's `_update` `$set`s every slim column.
+    pub archived_avatar_file_id: Option<String>,
     pub updated_at: String,
 }
 
@@ -401,6 +412,13 @@ impl<'c> CharactersRepository<'c> {
         set_json!(patch.partner_links, "partnerLinks", "partnerLinks");
         set_json!(patch.tags, "tags", "tags");
         set_json!(patch.avatar_overrides, "avatarOverrides", "avatarOverrides");
+        // The three archive columns (v4 `d553f72a`). Set only when the patch
+        // names them, exactly as every other slim column here — so a write
+        // against a table that predates the migration is unaffected unless the
+        // caller is actually trying to archive, which v4 cannot do there either.
+        set_text!(patch.archived_at, "archivedAt");
+        set_text!(patch.archive_file_id, "archiveFileId");
+        set_text!(patch.archived_avatar_file_id, "archivedAvatarFileId");
 
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));

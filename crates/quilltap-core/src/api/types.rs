@@ -339,14 +339,39 @@ pub enum Request {
     // sibling P4.6g SPA order): a name change here changes both orders.
     // ========================================================================
     /// v4 `GET /api/v1/characters` (`handleGet`): the enriched whitelist DTO
-    /// list. `npc`/`controlledBy` mirror v4's query-string filters verbatim
-    /// (`"true"`/`"false"`, `"user"`/`"llm"`).
+    /// list. `archived`/`npc`/`controlledBy` mirror v4's query-string filters
+    /// verbatim (`"only"`/`"include"`, `"true"`/`"false"`, `"user"`/`"llm"`).
+    /// `archived` absent — or anything other than those two words — EXCLUDES
+    /// tombstones, which is v4's default (P4.D63 Shared contract rule 1).
     #[serde(rename_all = "camelCase")]
     CharacterList {
+        #[serde(default)]
+        archived: Option<String>,
         #[serde(default)]
         npc: Option<String>,
         #[serde(default)]
         controlled_by: Option<String>,
+    },
+    /// v4 `POST /api/v1/characters/{id}?action=archive` (v4 `d553f72a`) — pack
+    /// the character into an encrypted bundle and prune the vault.
+    ///
+    /// **DEFINED here, filled in ROUND 2** (the archive service itself is that
+    /// round's whole subject). Until then it answers the loud typed
+    /// not-yet-available refusal by name. Round-2 success shape, pinned by the
+    /// Shared contract so the three lanes agree now:
+    /// `{ archived: bool, archiveFileId: string|null, pruneComplete: bool }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterArchive {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/{id}?action=rehydrate` (v4 `d553f72a`) —
+    /// bring an archived character back. **DEFINED here, filled in ROUND 2.**
+    /// Round-2 success shape: `{ rehydrated: bool, archived: bool,
+    /// archiveBundleFileId: string|null, restored?: { memories, documents,
+    /// blobs }, warnings: string[] }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterRehydrate {
+        character_id: String,
     },
     /// v4 `GET /api/v1/characters/[id]` default branch: the detail projection.
     #[serde(rename_all = "camelCase")]
@@ -1853,6 +1878,11 @@ pub enum Request {
         folder_path: Option<String>,
         #[serde(default)]
         filter: Option<String>,
+        /// v4 `d553f72a` — an EXACT-match `files.category` filter (the
+        /// ChangePassphraseCard's courtesy archive count). Applied FIRST, ahead
+        /// of the general/project split, exactly as v4 orders it.
+        #[serde(default)]
+        category: Option<String>,
     },
     /// v4 `POST /api/v1/files/[id]?action=move` — `{data: ManagedFile}`. `projectId`
     /// is a TRI-STATE (absent keeps / null clears / value sets), decoded via
@@ -2430,6 +2460,11 @@ pub enum Request {
     SystemRestoreExecute {
         upload_id: String,
         mode: String,
+        /// v4 `RestoreOptions.keepArchivedCharacterBundles` (`d553f72a`) —
+        /// REPLACE-mode only (it feeds the pre-restore wipe), but ACCEPTED in
+        /// both modes exactly as v4's options bag is. Effective default TRUE.
+        #[serde(default)]
+        keep_archived_character_bundles: Option<bool>,
     },
     // === P4.37: The Almanack (system report) ===
     // The web-edge action strings keep v4's frozen `capabilities-report-*`
@@ -2525,6 +2560,12 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     SystemDeleteData {
         confirm: String,
+        /// v4 `d553f72a` — spare the archived-character bundles. The effective
+        /// default is TRUE (v4's `!== false`), so ABSENT keeps them and only
+        /// an explicit `false` wipes them: the destructive choice has to be
+        /// the explicit one.
+        #[serde(default)]
+        keep_archived_character_bundles: Option<bool>,
     },
     // === end P4.9G1 ===
     // === P4.9E2A: the in-chat Post Office / Announcer surface (§1, frozen) ===

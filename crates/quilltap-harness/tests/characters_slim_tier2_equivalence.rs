@@ -311,6 +311,11 @@ fn characters_slim_tier2_matches_oracle() {
                                 partner_links: data.partner_links.clone(),
                                 tags: data.tags.clone(),
                                 avatar_overrides: data.avatar_overrides.clone(),
+                                // P4.D63: the three archive columns; the slim corpus never sets
+                                // them (v4's archive service is round 2), so all three stay None.
+                                archived_at: None,
+                                archive_file_id: None,
+                                archived_avatar_file_id: None,
                                 updated_at: data.updated_at.clone(),
                             },
                         )

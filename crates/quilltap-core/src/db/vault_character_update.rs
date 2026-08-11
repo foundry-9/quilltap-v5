@@ -302,6 +302,56 @@ pub fn apply_document_store_write_overlay(
     Ok(db_patch)
 }
 
+/// Guard every write to an archived character — v4
+/// `validateCharacterArchivePatch` (`characters.repository.ts:42`, v4
+/// `d553f72a`).
+///
+/// Archiving prunes the vault in place (§4.2a): an archived character keeps a
+/// live, writable vault, and this guard — running before the write overlay —
+/// is what stands between that vault and an edit arriving through the
+/// repository.
+///
+/// A tombstone is read-only with exactly one exception: **unarchive**, the
+/// single-key patch that clears `archivedAt`. Nothing else is sanctioned — in
+/// particular, nulling `characterDocumentMountPointId` (the old
+/// archive-finalization patch) is refused, because nothing legitimately nulls
+/// the pointer any more: the vault survives the archive.
+///
+/// `existing` is the RAW read (no overlay), matching v4's `findByIdRaw`: an
+/// unparseable vault must not be able to hide a tombstone.
+pub fn validate_character_archive_patch(
+    existing: Option<&Value>,
+    patch: &Map<String, Value>,
+) -> Result<(), DbError> {
+    let Some(archived_at) = existing
+        .and_then(|e| e.get("archivedAt"))
+        .filter(|v| !v.is_null())
+    else {
+        return Ok(());
+    };
+    // v4's `!existing?.archivedAt` is JS-falsy, so an empty-string tombstone
+    // is no tombstone at all. Reproduce that rather than "key present".
+    if archived_at.as_str() == Some("") {
+        return Ok(());
+    }
+
+    let is_sanctioned_unarchive =
+        patch.len() == 1 && matches!(patch.get("archivedAt"), Some(Value::Null));
+    if is_sanctioned_unarchive {
+        return Ok(());
+    }
+
+    Err(DbError::CharacterArchived {
+        // v4 falls back to the literal `'unknown'` when the raw row somehow
+        // carries no id.
+        character_id: existing
+            .and_then(|e| e.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+    })
+}
+
 /// Update a character — v4 `CharactersRepository.update`. Routes managed fields to
 /// the vault (the write overlay), then runs the slim `_update` for the unmanaged
 /// remainder (skipped when empty, so a managed-only update does NOT bump the slim
@@ -318,6 +368,14 @@ pub fn update_character(
     character_id: &str,
     patch: &Map<String, Value>,
 ) -> Result<bool, OverlayError> {
+    // The archive write guard (v4 `d553f72a`), at v4's own placement: the raw
+    // read comes FIRST, before the write overlay, so this one check covers
+    // every sub-array mutator and every managed-field route as well as the
+    // slim columns. `delete` stays unguarded (v4's escape hatch).
+    let existing =
+        crate::db::characters_read::find_by_id_raw(main, character_id).map_err(OverlayError::Db)?;
+    validate_character_archive_patch(existing.as_ref(), patch).map_err(OverlayError::Db)?;
+
     let db_patch = apply_document_store_write_overlay(main, mount, character_id, patch)?;
     if db_patch.is_empty() {
         return Ok(false);
@@ -354,6 +412,12 @@ const NULLABLE_SLIM_COLUMNS: &[&str] = &[
     "systemTransparency",
     "coreWhisperEnabled",
     "canBeCarina",
+    // The three archive columns (v4 `d553f72a`). `archivedAt: null` is the
+    // sanctioned unarchive patch (round 2's rehydrate) and reaches the column
+    // through here; the other two are cleared on the same path.
+    "archivedAt",
+    "archiveFileId",
+    "archivedAvatarFileId",
 ];
 
 /// `SET <col> = NULL, …, updatedAt = now WHERE id = ?` for every nullable slim
@@ -608,6 +672,13 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
         tags: Option<Vec<String>>,
         #[serde(default)]
         avatar_overrides: Option<Vec<super::characters::AvatarOverride>>,
+        // The three archive columns (v4 `d553f72a`).
+        #[serde(default)]
+        archived_at: Option<String>,
+        #[serde(default)]
+        archive_file_id: Option<String>,
+        #[serde(default)]
+        archived_avatar_file_id: Option<String>,
     }
 
     let p: SlimPatch = serde_json::from_value(Value::Object(db_patch.clone()))
@@ -639,6 +710,9 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
         partner_links: p.partner_links,
         tags: p.tags,
         avatar_overrides: p.avatar_overrides,
+        archived_at: p.archived_at,
+        archive_file_id: p.archive_file_id,
+        archived_avatar_file_id: p.archived_avatar_file_id,
         updated_at: crate::clock::now_iso(),
     })
 }

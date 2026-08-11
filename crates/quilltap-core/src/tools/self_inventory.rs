@@ -1675,13 +1675,19 @@ fn last_turn_unavailable(message: &str) -> LastTurnSection {
 fn build_carina_section(db: &Db, character_id: &str) -> Result<CarinaSection, DbError> {
     let raw = db.read_main(crate::db::characters_read::find_all_raw)?;
 
-    let self_enabled = raw
-        .iter()
-        .any(|c| json_str(c, "id").as_deref() == Some(character_id) && json_bool(c, "canBeCarina"));
+    // Archived characters are out of the Carina graph on BOTH sides of a line
+    // (v4 `d553f72a`, `self-inventory/builders.ts:678,:683`): an archived self
+    // is not an answerer, and an archived other is not reachable.
+    let self_enabled = raw.iter().any(|c| {
+        json_str(c, "id").as_deref() == Some(character_id)
+            && !crate::api::characters::is_archived(c)
+            && json_bool(c, "canBeCarina")
+    });
 
     let mut reachable: Vec<CarinaReachable> = raw
         .iter()
         .filter(|c| json_str(c, "id").as_deref() != Some(character_id))
+        .filter(|c| !crate::api::characters::is_archived(c))
         .filter(|c| self_enabled || json_bool(c, "canBeCarina"))
         .map(|c| CarinaReachable {
             name: json_str(c, "name").unwrap_or_default(),

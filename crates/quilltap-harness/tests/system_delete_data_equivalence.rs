@@ -246,22 +246,22 @@ fn system_delete_data_matches_oracle() {
     // 3. The wrong-sentinel refusal — 400, and nothing written.
     {
         let db = fresh_db("badconfirm");
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, "nope")));
+        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, "nope", None)));
         check("delete_data_wrong_confirm", s, b, count_all(&db));
     }
 
     // 4. The full delete.
     {
         let db = fresh_db("delete");
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM)));
+        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
         check("delete_data", s, b, count_all(&db));
     }
 
     // 5. Idempotence — the second run summarizes zeros and changes nothing.
     {
         let db = fresh_db("twice");
-        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM));
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM)));
+        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
+        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
         check("delete_data_twice", s, b, count_all(&db));
     }
 
@@ -269,14 +269,14 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("instset");
         let _ = rt.block_on(system_data::job_concurrency_set(&db, 7));
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM)));
+        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
         check("delete_data_keeps_instance_settings", s, b, count_all(&db));
     }
 
     // 7. Preview on an already-wiped instance: all zeros, still no writes.
     {
         let db = fresh_db("previewafter");
-        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM));
+        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
         let (s, b) = outcome(&system_data::delete_data_preview(&db, USER));
         check("delete_data_preview_after_wipe", s, b, count_all(&db));
     }

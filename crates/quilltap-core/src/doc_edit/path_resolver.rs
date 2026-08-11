@@ -127,6 +127,16 @@ pub fn resolve_self_vault_mount_point_id(
     let acting = crate::db::characters_read::find_by_id_raw(main, cid)
         .ok()
         .flatten()?;
+    // Archived characters keep a live vault (§4.2a prunes in place rather than
+    // deleting), so the old "tombstone has no pointer → tools degrade" safety
+    // no longer happens on its own. Refuse explicitly (v4 `d553f72a`,
+    // `path-resolver.ts:65`): an archived character is read-only and must not
+    // reach its own vault through doc_edit or the list/grep/blob handlers.
+    // Returning `None` degrades with the same no-vault sentence those tools
+    // have always produced.
+    if crate::api::characters::is_archived(&acting) {
+        return None;
+    }
     acting
         .get("characterDocumentMountPointId")
         .and_then(|v| v.as_str())

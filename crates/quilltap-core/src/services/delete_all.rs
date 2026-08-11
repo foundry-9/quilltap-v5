@@ -93,9 +93,46 @@ pub struct DeleteSummary {
     pub memories: i64,
     pub api_keys: i64,
     pub backups: i64,
+    /// Archived-character bundles (`files` rows of category `ARCHIVE`) present
+    /// at the time of the operation. In a PREVIEW this is the count on hand;
+    /// after a deletion it is the count kept (when
+    /// `keep_archived_character_bundles`) or wiped (when not) — read alongside
+    /// `archive_bundles_kept` (v4 `d553f72a`).
+    pub archive_bundles: i64,
+    /// True when the operation spared the archive bundles (the `files` count
+    /// then EXCLUDES them).
+    pub archive_bundles_kept: bool,
     pub projects: i64,
     pub profiles: SummaryProfiles,
     pub templates: SummaryTemplates,
+}
+
+/// v4 `DeleteUserDataOptions` (`delete-service.ts`, new in `d553f72a`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeleteUserDataOptions {
+    /// When true (**the effective default** — v4's `!== false`), `files` rows
+    /// of category `ARCHIVE` and their on-disk bytes are spared from the wipe.
+    ///
+    /// The character ROWS are not spared (they are ordinary rows), so what
+    /// survives is a LOOSE bundle: importable, not rehydratable. The bundle is
+    /// encrypted under the user passphrase (or the internal constant), never
+    /// under anything stored in a database, so it stays openable after the
+    /// wipe. The destructive choice must be the explicit one — pass `false` to
+    /// wipe archives too.
+    pub keep_archived_character_bundles: Option<bool>,
+}
+
+impl DeleteUserDataOptions {
+    /// v4's `options?.keepArchivedCharacterBundles !== false` — absent means
+    /// KEEP, and only an explicit `false` wipes.
+    fn keep_archives(&self) -> bool {
+        self.keep_archived_character_bundles != Some(false)
+    }
+}
+
+/// Is this `files` row an archived-character bundle? (v4 `isArchiveBundle`.)
+fn is_archive_bundle(file: &crate::db::files::FileFull) -> bool {
+    file.category == crate::services::character_archive::reencrypt::ARCHIVE_CATEGORY
 }
 
 // ── Slim id collection (see divergence 1 in the module docs) ─────────────────
@@ -248,15 +285,24 @@ pub fn clear_format3_entities(main: &Connection, mount: Option<&Connection>) {
 
 /// v4 `lib/backup/restore/delete-service.ts:90` `deleteUserData(userId)` —
 /// the full per-user wipe, ALSO used by restore's `replace` mode.
-pub async fn delete_user_data(db: &Db, user_id: &str) -> Result<(), DbError> {
+pub async fn delete_user_data(
+    db: &Db,
+    user_id: &str,
+    options: DeleteUserDataOptions,
+) -> Result<(), DbError> {
     let user_id = user_id.to_string();
-    db.write(move |ws| delete_user_data_on_writer(ws, &user_id))
+    db.write(move |ws| delete_user_data_on_writer(ws, &user_id, options))
         .await
 }
 
 /// The wipe body, on the writer thread. Reads run over the writer's own
 /// connections so the collect → delete sequence sees one consistent view.
-fn delete_user_data_on_writer(ws: &mut WriterSet, user_id: &str) -> Result<(), DbError> {
+fn delete_user_data_on_writer(
+    ws: &mut WriterSet,
+    user_id: &str,
+    options: DeleteUserDataOptions,
+) -> Result<(), DbError> {
+    let keep_archives = options.keep_archives();
     let main = ws.main().connection();
     let mount = ws.mount_index().map(|w| w.connection());
     let llm = ws.llm_logs().map(|w| w.connection());
@@ -397,10 +443,26 @@ fn delete_user_data_on_writer(ws: &mut WriterSet, user_id: &str) -> Result<(), D
 
     // 4. Files last, sequentially. v4 deletes the storage bytes first inside a
     //    warn-only try/catch; v5 removes the metadata row only (divergence 2).
+    //    Archived-character bundles are spared when
+    //    `keep_archived_character_bundles` (the default) — row and bytes both
+    //    survive as loose, importable bundles (spec §4.7, v4 `d553f72a`).
     {
         let repo = FilesRepository::new(main);
+        let mut archive_bundles_kept = 0i64;
         for file in &files {
+            if keep_archives && is_archive_bundle(file) {
+                archive_bundles_kept += 1;
+                continue;
+            }
             repo.delete(&file.id)?;
+        }
+        if archive_bundles_kept > 0 {
+            tracing::info!(
+                target: "quilltap::delete",
+                user_id,
+                archive_bundles_kept,
+                "Spared archived character bundles from wipe",
+            );
         }
     }
 
@@ -451,6 +513,12 @@ fn collect_summary(main: &Connection, user_id: &str) -> Result<DeleteSummary, Db
         memories,
         api_keys: api_keys.len() as i64,
         backups,
+        archive_bundles: files.iter().filter(|f| is_archive_bundle(f)).count() as i64,
+        // The PREVIEW reports what's on hand; whether they survive is the
+        // caller's checkbox, so `kept` here just states the default.
+        // `delete_all_user_data` overwrites both this and `files` from the
+        // options it was actually given (v4 `d553f72a`).
+        archive_bundles_kept: true,
         projects: projects.len() as i64,
         profiles: SummaryProfiles {
             connection: connection_profiles.len() as i64,
@@ -475,11 +543,23 @@ pub fn preview_delete_all_user_data(db: &Db, user_id: &str) -> Result<DeleteSumm
 /// v4 `deleteAllUserData(userId)` (:215) — count everything, run the wipe, then
 /// delete the API keys (a warn-only loop), and return the summary. The `/backups`
 /// folder itself rides the file sweep (v4's :265 only logs).
-pub async fn delete_all_user_data(db: &Db, user_id: &str) -> Result<DeleteSummary, DbError> {
+pub async fn delete_all_user_data(
+    db: &Db,
+    user_id: &str,
+    options: DeleteUserDataOptions,
+) -> Result<DeleteSummary, DbError> {
+    let keep_archives = options.keep_archives();
     let uid = user_id.to_string();
-    let summary = db.read_main(move |main| collect_summary(main, &uid))?;
+    let mut summary = db.read_main(move |main| collect_summary(main, &uid))?;
+    // v4 counts the bundles BEFORE deleting so the summary can report how many
+    // were kept (or wiped), and subtracts them from `files` only when they
+    // survive — the count then means "rows actually removed".
+    summary.archive_bundles_kept = keep_archives;
+    if keep_archives {
+        summary.files -= summary.archive_bundles;
+    }
 
-    delete_user_data(db, user_id).await?;
+    delete_user_data(db, user_id, options).await?;
 
     let uid = user_id.to_string();
     db.write(move |ws| {

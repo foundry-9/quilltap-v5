@@ -216,6 +216,10 @@ pub fn group_members(db: &Db, group_id: &str) -> Response {
                 members.push(json!({
                     "id": c.get("id").cloned().unwrap_or(Value::Null),
                     "name": c.get("name").cloned().unwrap_or(Value::Null),
+                    // Archiving never removes membership edges; the badge lets
+                    // the list reconcile "6 members / 4 can speak" (spec §5.2,
+                    // v4 `d553f72a`).
+                    "archivedAt": c.get("archivedAt").cloned().unwrap_or(Value::Null),
                 }));
             }
         }
@@ -292,8 +296,15 @@ pub async fn group_member_add(db: &Db, group_id: &str, character_id: &str) -> Re
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Group")));
         }
-        if characters_read::find_by_id(main, mount, &cid)?.is_none() {
+        let Some(character) = characters_read::find_by_id(main, mount, &cid)? else {
             return Ok(Err(bad_request("Character not found")));
+        };
+        // Archived characters can't join a group; existing memberships are
+        // never removed by archiving (spec §5.1, v4 `d553f72a`).
+        if crate::api::characters::is_archived(&character) {
+            return Ok(Err(bad_request(
+                "That character is archived; rehydrate them before adding them to a group.",
+            )));
         }
         GroupCharacterMembersRepository::new(mount).add_member(&gid, &cid)?;
         Ok(Ok(()))

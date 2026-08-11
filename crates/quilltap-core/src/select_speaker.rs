@@ -33,6 +33,23 @@ impl SpeakerParticipant {
     }
 }
 
+/// The character facts the selection reads — v4's `Map<string, Character>`
+/// narrowed to the two fields `selectNextSpeaker` actually touches.
+///
+/// It was a bare `f64` (talkativeness) until v4 `d553f72a` taught the
+/// active-participant filter to drop a seat whose character is archived. That
+/// second fact has to travel with the first: a parallel "archived ids" argument
+/// could disagree with the map, and a caller that forgot it would silently let
+/// a tombstone take turns.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpeakerCharacter {
+    /// `character.talkativeness` — `None` when the character carries none, in
+    /// which case the participant override, then 0.5, decide (v4's `??` chain).
+    pub talkativeness: Option<f64>,
+    /// `Boolean(character.archivedAt)` — an archived seat never speaks.
+    pub archived: bool,
+}
+
 /// Debug detail attached to a weighted selection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SelectionDebug {
@@ -63,7 +80,7 @@ struct WeightedPick {
 /// reset to 1 (equal). `random01` is the injected `Math.random()` value.
 fn pick_weighted(
     candidates: &[&SpeakerParticipant],
-    characters: &HashMap<String, f64>,
+    characters: &HashMap<String, SpeakerCharacter>,
     random01: f64,
 ) -> WeightedPick {
     let mut weights: BTreeMap<String, f64> = BTreeMap::new();
@@ -72,7 +89,7 @@ fn pick_weighted(
         let character_talk = p
             .character_id
             .as_deref()
-            .and_then(|cid| characters.get(cid).copied());
+            .and_then(|cid| characters.get(cid).and_then(|c| c.talkativeness));
         let talkativeness = p.talkativeness.or(character_talk).unwrap_or(0.5);
         weights.insert(p.id.clone(), talkativeness);
         total_weight += talkativeness;
@@ -175,7 +192,7 @@ pub fn get_selection_explanation(result: &SelectionResult) -> &'static str {
 #[allow(clippy::too_many_arguments)]
 pub fn select_next_speaker(
     participants: &[SpeakerParticipant],
-    characters: &HashMap<String, f64>,
+    characters: &HashMap<String, SpeakerCharacter>,
     queue: &[String],
     spoken_since_user_turn: &[String],
     last_speaker_id: Option<&str>,
@@ -192,9 +209,25 @@ pub fn select_next_speaker(
         };
     }
 
+    // All present CHARACTER participants are in the rotation — including
+    // user-controlled ones. Their talkativeness biases ordering; when picked,
+    // the orchestrator pauses the chain so the human can type or skip.
+    //
+    // An ARCHIVED character is dropped even if its seat somehow stayed
+    // `active` (v4 `d553f72a`, `selection.ts:50`): archiving flips the seats
+    // it knows about to `absent`, and this is the backstop for the ones it
+    // missed. With no live seat left the result is the ordinary
+    // `null`/`user_turn` pair, not an error.
     let active: Vec<&SpeakerParticipant> = participants
         .iter()
-        .filter(|p| p.is_active_character())
+        .filter(|p| {
+            p.is_active_character()
+                && !p
+                    .character_id
+                    .as_deref()
+                    .and_then(|cid| characters.get(cid))
+                    .is_some_and(|c| c.archived)
+        })
         .collect();
 
     if active.is_empty() {
@@ -322,7 +355,7 @@ fn parse_ids(json: Option<&str>) -> Vec<String> {
 #[allow(clippy::too_many_arguments)]
 pub fn select_next_speaker_after_user_message(
     participants: &[SpeakerParticipant],
-    characters: &HashMap<String, f64>,
+    characters: &HashMap<String, SpeakerCharacter>,
     poster_participant_id: &str,
     persisted_spoken_this_cycle_json: Option<&str>,
     turn_queue_json: Option<&str>,

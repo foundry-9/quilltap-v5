@@ -14,6 +14,11 @@ use crate::collation::locale_compare;
 
 /// v4 `findCharactersByName`: every character whose name matches `name`
 /// case-insensitively, oldest first (by `createdAt`). Empty for a blank query.
+///
+/// Archived characters never match by name (v4 `d553f72a`): they can't answer
+/// Carina queries or receive mail, and skipping them here lets a live
+/// character sharing the name (archive → recreate is a legitimate path to
+/// that) win the resolution.
 pub fn find_characters_by_name(
     main: &Connection,
     mount: &Connection,
@@ -26,7 +31,9 @@ pub fn find_characters_by_name(
     }
     let mut matches: Vec<Value> = characters_read::find_by_user_id(main, mount, user_id)?
         .into_iter()
-        .filter(|c| name_of(c).trim().to_lowercase() == wanted)
+        .filter(|c| {
+            !crate::api::characters::is_archived(c) && name_of(c).trim().to_lowercase() == wanted
+        })
         .collect();
     sort_by_created_at(&mut matches);
     Ok(matches)
@@ -34,6 +41,11 @@ pub fn find_characters_by_name(
 
 /// v4 `resolveCharacterByNameOrId`: an exact id match wins; else the
 /// case-insensitive name match (oldest wins). `None` when nothing matches.
+///
+/// Name matches skip archived characters (a live namesake wins); an exact id
+/// match STILL returns an archived character (v4 `d553f72a`) so the caller can
+/// refuse with the named "archived; rehydrate" message instead of a generic
+/// not-found. That asymmetry is deliberate on both sides.
 pub fn resolve_character_by_name_or_id(
     main: &Connection,
     mount: &Connection,
@@ -56,7 +68,9 @@ pub fn resolve_character_by_name_or_id(
     let wanted = trimmed.to_lowercase();
     let mut name_matches: Vec<Value> = candidates
         .into_iter()
-        .filter(|c| name_of(c).trim().to_lowercase() == wanted)
+        .filter(|c| {
+            !crate::api::characters::is_archived(c) && name_of(c).trim().to_lowercase() == wanted
+        })
         .collect();
     sort_by_created_at(&mut name_matches);
     Ok(name_matches.into_iter().next())

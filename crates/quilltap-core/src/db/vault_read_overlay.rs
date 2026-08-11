@@ -213,6 +213,12 @@ fn normalize_prompt_defaults(prompts: &mut [CharacterSystemPrompt]) {
 /// character without a linked vault is returned unchanged; one whose
 /// `properties.json` keystone is absent yields [`VaultUnavailable`].
 pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, VaultUnavailable> {
+    // No archivedAt short-circuit here, deliberately (§4.2a, v4 `d553f72a`):
+    // archiving prunes the vault but keeps every managed-field document, so an
+    // archived character hydrates exactly like a live one. Skipping would hand
+    // back a hollow row — the very outcome the prune-in-place revision exists
+    // to avoid. A *broken* archived vault is a real fault and surfaces as one,
+    // like any other.
     let obj = match character.as_object() {
         Some(o) => o,
         None => return Ok(character.clone()),
@@ -394,6 +400,10 @@ pub fn apply_document_store_overlay_one(
         Some(c) => c,
         None => return Ok(None),
     };
+    // Archived characters are NOT short-circuited (§4.2a, v4 `d553f72a`):
+    // their vault survives the prune and must be overlaid like any other.
+    // Pre-revision tombstones (vault deleted, pointer nulled) fall through the
+    // linked-vault check unhollowed.
     let mount_id = match character.as_object().and_then(linked_mount_id) {
         Some(m) => m.to_string(),
         None => return Ok(Some(character)),

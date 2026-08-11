@@ -661,6 +661,27 @@ impl<'c> FilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByCategory(category)` (`files.repository.ts`) — every file row of
+    /// that category, rowid order. The archive re-encryption sweep and the
+    /// `?category=` list filter are its callers.
+    ///
+    /// v4's own `findByCategory` is NOT user-scoped (the sweep runs for the
+    /// instance); this takes the user id anyway because every v5 read on this
+    /// table is single-user-scoped and the instance has exactly one user, so
+    /// the two agree.
+    pub fn find_by_category(
+        &self,
+        user_id: &str,
+        category: &str,
+    ) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!("{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND category = ?2");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![user_id, category], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `findGeneralFiles(userId)` — `{userId, $or:[{projectId:null},
     /// {projectId:{$exists:false}}]}`. In this single-table store a missing column
     /// is impossible, so `projectId IS NULL` is the exact set. Rowid order.

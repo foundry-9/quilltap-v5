@@ -62780,3 +62780,257 @@ for a second, unrelated reason. It is therefore deliberately NOT in this lane's
 gate env block (where it skips), it is re-run and recorded here, and the round
 planned exactly this handoff ("P4.D62 plants the ARCHIVE rows P4.D63's
 kept/swept arms consume").
+## Lane record — P4.D63 units 1-6 (the archive schema, guards, chokepoint, crypto)
+
+Branch `claude/p4-archive-schema-guards-crypto-02d37f`. v4 pinned at
+`d553f72a`, HEAD verified equal to the pin and the tree clean at lane start
+and at every regen.
+
+### Unit 1 — the D23 re-dump, the boot ensure, and the reader enumeration
+
+`fresh_schema.json` re-dumped from v4's live `generateDDL` at the pin (never
+by hand): exactly three columns added to `characters`
+(`archivedAt`/`archiveFileId`/`archivedAvatarFileId`, all `TEXT`), **no index
+change** — confirmed by diffing the dump field-set rather than eyeballing it.
+`provisioning_equivalence` green over the fresh dump in BOTH directions (v5
+replays v4's schema; v4's real repositories open the v5-provisioned instance).
+
+**The DDL-mirror sweep** (the `d23-redump-is-not-only-fresh-schema` rule)
+found ONE live mirror: `enclave/step.rs`'s `CHARACTERS_DDL`, which
+column-for-column mirrors `characters_read`'s `SLIM_COLUMNS` and would have
+broken the moment the read path widened. `almanack/phase3_ledgers.rs`'s
+`CREATE TABLE characters` is a narrow projection over its own query and needs
+nothing. No harness or web test venue carries a `characters` DDL twin.
+
+**Existing instances + old fixtures — the two halves, and why both.** The
+write half is a boot repair (`db/character_archive_repair.rs`, the P4.d7 /
+P4.D41 precedent), wired into the host's main-partition repair block: any
+instance v5 boots gains the columns. That is NOT enough on its own, because a
+differential fixture is opened directly and never boots — so the read half is
+pragma-guarded tolerance in `characters_read` (the P4.D49 llm-logs
+precedent, one shape tighter: it selects literal `NULL`s rather than dropping
+the columns, keeping the marshaling arity fixed, and a NULL cell marshals to
+the same ABSENT key v4's Zod produces). The write side stays strict exactly as
+v4's is.
+
+**The reader enumeration** (the P4.D53 lesson — a column is not adopted when
+the spine has it): the list DTO gained `archivedAt ?? null` explicitly; the
+DETAIL projection needed no line and is recorded as such, because
+`build_detail` spreads the whole character bag exactly as v4's `...character`
+does. The remaining projections are unit 3's.
+
+### Unit 2 — the write guard
+
+`DbError::CharacterArchived` carries the tombstone structurally (so the
+wardrobe path, the participant resolver and the api layer recognise it by
+type, not by message), with `character_archived_message` as the one home of
+v4's byte-exact sentence. `validate_character_archive_patch` sits at the top
+of `update_character` at **v4's own placement — the raw read BEFORE the write
+overlay** — which is what makes one check cover every sub-array mutator and
+every managed-field route as well as the slim columns. Delete stays unguarded
+(v4's escape hatch). Two v4 subtleties carried deliberately: the tombstone
+test is JS-truthy (an empty-string `archivedAt` is no tombstone), and the
+sanctioned patch is single-key `{archivedAt: null}` — `{archivedAt: null,
+name: …}` is refused, which the corpus pins as its own arm.
+
+`resolve_character_mount` throws instead of returning `None`; the three
+callers were checked and are all WRITES (create/update/delete), so the
+refusal is scoped exactly as v4's `wardrobe-writes.ts` is. The read overlay's
+two no-short-circuit comments are carried verbatim — they are the record of a
+reversal, and a future reader who "optimizes" the archived case would
+reintroduce the hollow-row bug they exist to prevent.
+
+### Unit 3 — the chokepoint
+
+`archived=` is applied at the API list handler and NOWHERE else, matching v4:
+repo reads still return archived rows, because the surfaces that must SEE a
+tombstone (detail, participants, group members) read through them. Anything
+that is not exactly `only`/`include` excludes, which is v4's `else if` — the
+corpus pins that with an `archived=nonsense` arm.
+
+### Unit 4 — the turn/spine guards
+
+`select_next_speaker`'s character map changed from `HashMap<String, f64>` to
+`HashMap<String, SpeakerCharacter>` (talkativeness + archived), which is v4's
+own `Map<string, Character>` narrowed. **The alternative — a parallel
+"archived ids" argument — was rejected deliberately**: two maps can disagree,
+and a caller that forgot the second would silently let a tombstone take turns.
+The type change made all five call sites a compile error, which is the point.
+Two of the four map builders had an `if let Some(talkativeness)` insert, which
+would have DROPPED exactly the archived-character-with-no-talkativeness rows
+the filter needs; both now insert unconditionally.
+
+The remaining guards are the same `is_archived` predicate at v4's sites:
+participant resolver (a new typed `ResolveError::CharacterArchived`), the
+Carina probe, the character resolver (name matches skip archived, **an exact
+id match still resolves one** — the deliberate asymmetry that makes the named
+mail refusal reachable instead of a bare not-found), self-inventory's two
+Carina filters, the two mail tools, the two mail chat actions (400s, not the
+tools' soft fails), the doc-edit self-vault resolver, and the
+conversation-summary write skip (removal stays unguarded).
+
+**One documented exclusion:** v4's startup vault backfill learned to skip
+archived characters; v5 has no startup-backfill subsystem at all (a standing
+named absence), so there is nothing to port. Recorded at
+`db/character_vault.rs` rather than inventing a sweep to hold the skip.
+
+### Unit 5 — setParticipantStatus
+
+v5 ALREADY had the ops-level method, differential-covered by
+`chats_participants_tier2`. What `d553f72a` adds is the repository entry point
+and its `{chat, oldStatus}` return shape, which is what round 2's participant
+flips call — landed on `ChatsRepository`. **v4's user-scoped override has no
+v5 analog and is recorded as an exclusion, not an omission:** v5 has no
+user-scoped repository layer, being single-user with `SINGLE_USER_ID` applied
+at the api boundary, so the `'Chat not found or access denied'` throw has
+nothing to guard.
+
+### Unit 6 — the crypto + the runtime passphrase cache
+
+The bundle format is byte-exact against v4's REAL `archive-crypto.ts`: magic,
+big-endian header length, header key ORDER (a typed struct in v4's literal
+order), salt/IV/keyHash, ciphertext and tag. Two mechanical differences are
+documented as such and then PROVEN not to matter: Rust's AEAD is one-shot
+where v4 feeds 8 MiB chunks (GCM's output is chunking-independent, and the
+200 KB corpus arm asserts it), and the crate verifies the tag inside one call
+where Node throws at `final()` — the ordering that matters, keyHash BEFORE any
+ciphertext is touched, is preserved exactly.
+
+**The differential corrected a wrong guess on its first run.** This port had
+assumed v4's corrupt-tag message was Node's `Unsupported state or unable to
+authenticate data`; the recorded v4 behaviour is its catch's fallback,
+`authentication failed`. That is precisely the class of error inspection does
+not catch, and it is now pinned.
+
+The runtime passphrase cache is new to v5 — the engine had never held one. It
+lives on `EngineInner`, not a process global: **v5's engine is the
+process-boundary analog of v4's `global.__quilltapRuntimePassphrase`**, whose
+`global` placement exists only to survive Next.js HMR. All four v4 deposit
+chokepoints are wired (setup / unlock / change-passphrase / store-pepper, with
+the empty-passphrase legs mapping to the internal sentinel at the deposit) and
+lock clears it. `resolve_archive_passphrase` is public because round 2's
+archive verb and the re-encrypt sweep are its callers; its whole state machine
+— sentinel before setup, cache after each deposit, the LOUD `KeyUnavailable`
+refusal after lock on a passphrase-protected instance, and the sentinel again
+on a no-passphrase instance — is proven by
+`runtime_passphrase_cache_follows_the_dbkey_lifecycle`.
+
+### Fixtures
+
+Both fixture extensions **mutate in place rather than rebuild**, and that was a
+deliberate call: the builders MINT each character's vault mount-point / link /
+blob ids, so a rebuild would move ids that this drift never touches and
+invalidate every transcribed literal in the sibling lanes' e2e seeds (the
+known salon-fixture failure mode). The `ALTER TABLE` is not a liberty — it is
+verbatim what v4's own `add-character-archive-fields-v1` migration runs, so the
+resulting schema is one v4 itself produces.
+
+  - `extend-characters-fixture-archive.ts` → **Fenn**, archived, with a real
+    pruned-in-place vault, a wardrobe item and a system prompt; her ARCHIVE
+    `files` row; and a chat where she sits `absent` beside a live seat.
+    Deliberately NOT the existing Solo Voyage chat, which is Aria-exclusive
+    and carries the cascade-delete branch. `canBeCarina: true` is deliberate:
+    it makes the Carina probe's `!archivedAt &&` clause load-bearing instead of
+    passing for the wrong reason.
+  - `extend-groups-projects-fixture-archive.ts` → **Edda**, archived, member of
+    no group and no roster, so every pre-existing case is unperturbed and she
+    exists purely to be refused (the DIANA precedent in that builder).
+
+### Differentials — what ran, and what each proves
+
+Regenerated fresh at `d553f72a` and green:
+
+  - `provisioning_equivalence` (schema, both directions).
+  - `characters_reads` — the chokepoint, five new arms. `list_all` proves the
+    EXCLUDE default; `archived-one-of-three` proves the weights come from the
+    smaller pool, so a wrong filter shifts the PICK, not just the count.
+    **Mutation-proven both ways** (`only` → red on 2 arms, `include` → red on
+    2 arms, restored byte-identical).
+  - `characters_mutations` — the guard's whole truth table in one fresh DB:
+    three refused patches (plain / managed-field / the old
+    archive-finalization patch), the two-key near-miss, the sanctioned
+    unarchive, a post-rehydrate edit that now succeeds, and delete. Plus the
+    wardrobe write refusal. **Both mutation-proven** (disabling each guard
+    reddens exactly its own arm).
+  - `select_speaker` — five arms: the archived-but-active seat (v4's own new
+    jest case, mirrored), one-of-three, two-of-three, the empty-string
+    non-tombstone, and queue-wins-before-the-filter. **Mutation-proven.**
+  - `groups_routes` / `projects_routes` — both add-member refusals, 400 +
+    byte-exact sentence, with the tables dump proving nothing was written.
+    Both were RED before the fix.
+  - `archive_crypto` (NEW family, tier-1 EXACT) — 17 arms: six encrypt vectors
+    byte-compared as whole bundles (empty / ASCII / multibyte UTF-8 / 200 KB /
+    the internal sentinel / a non-ASCII passphrase), all six refusal arms
+    compared on error CLASS and MESSAGE, and the magic probe. The oracle mocks
+    `crypto.randomBytes` so salt and IV are pinned; PBKDF2 stays at the real
+    600k because a reduced-iteration corpus would prove nothing about the
+    bundles a real instance writes.
+  - Neutrality (regenerated, unchanged): `characters_actions`,
+    `characters_subresources`, `salon_reads`, `chat_cast_routes`,
+    `mail_carina_tools`, `participant_resolver_tier2`, `self_inventory`,
+    `post_office_routes`, `orchestrator_tier3`.
+
+The corpus-shape assertions are shape-based, not hand counts (the standing
+`harness-corpus-shape-constants-rot` rule): the crypto family asserts it still
+has its encrypt arms AND its refusal arms, so a truncated regen fails loudly
+instead of passing with flying colours.
+
+### Open under this order at this record
+
+Units 7-11 (the re-encrypt sweep's wire + differential, the wipe/restore
+options, the two refusal-armed verbs + the files `category=` filter, the
+one-default embedding rule, the docs mirror) — see the lane's final report.
+Also open: archived-character ARMS for `mail_carina_tools`,
+`self_inventory`, `post_office_routes` and `participant_resolver_tier2` —
+those four families are regenerated and NEUTRALITY-green, and the guards they
+cover are the same `is_archived` predicate proven elsewhere, but each would
+need its own fixture extended to exercise its refusal directly.
+
+### Addendum — units 8-11 (same lane, after the units 1-6 record above)
+
+**Unit 8 (the wipe/restore options).** `DeleteUserDataOptions` with v4's
+`!== false` default expressed as `keep_archived_character_bundles != Some(false)`
+— absent KEEPS, and only an explicit `false` wipes, because the destructive
+choice has to be the explicit one. `DeleteSummary` gained `archiveBundles` +
+`archiveBundlesKept` in v4's literal order (it is the wire body under
+`preserve_order`); `collect_summary` emits the count with `kept: true`, which is
+the PREVIEW's shape, and `delete_all_user_data` overwrites both that flag and the
+`files` count from the options it was actually given. Threaded through
+`SystemDeleteData` / `SystemRestoreExecute` (both `#[serde(default)]` Options, so
+absent means keep) and both web edges; the replace-mode restore passes it into
+the wipe. `system_delete_data_equivalence` regenerated and green with the two new
+keys agreeing on both sides.
+
+**Unit 9.** `CharacterArchive` / `CharacterRehydrate` are DEFINED with round 2's
+success shapes pinned in their doc comments (so all three lanes of round 1 agree
+on the wire now) and answer the loud typed refusal NAMING round 2 — a client that
+reaches one learns why, instead of getting a 404. No REST edge was added, and
+that is a verified fact rather than an omission: v5 has no characters-POST action
+table in `quilltap-web` at all (the SPA reaches these through core dispatch), so
+the dispatch verbs ARE the whole surface. The files `category=` filter is
+applied FIRST, ahead of the general/project split, as v4 orders it, with an empty
+string falsy exactly as v4's `if (category)` treats it.
+
+**Unit 10.** The `|| profiles[0]` fallback is gone from all five v5 sites, and
+v4's new wording ("No **default** embedding profile configured") is carried at
+both the warn and the throw. The shared `pick_reembed_profile_id`'s `rowid ASC`
+survives but now means only "pick deterministically among (malformed) multiple
+defaults" — its doc comment says so, since the ordering's original purpose (being
+the fallback's tie-break) is what this drift removed.
+
+**Unit 11.** Both feature docs mirrored under `docs/v4/developer/features/`. The
+migration pretty-label is **NO-PORT** (v5 surfaces no migration labels anywhere —
+the `231be14c` precedent), recorded in `character_archive_repair`'s module doc.
+The five `help/*.md` edits join the `p4.9i2` bank.
+
+### The one item this lane did NOT finish, and why
+
+**Unit 7's WIRE.** `reencrypt_archive_bundles` is ported and shape-tested, but
+nothing calls it yet: the engine's `ChangePassphrase` arm still answers `Ack`, so
+the web edge returns `{"success":true}` without `archives`. The finish is
+deliberately NOT inside `change_passphrase` — that method holds the engine's
+non-reentrant state mutex, and the sweep needs the db plus the storage backend.
+It belongs at the dispatch arm, which is also v4's own structure (v4 does phase
+two in the ROUTE, not in `changePassphrase`). Its tier-2 differential over
+planted ARCHIVE files is owed with it. Rather than land a half-wired response
+type at the end of the lane, both are recorded in the order's resume list.

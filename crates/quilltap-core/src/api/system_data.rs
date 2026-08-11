@@ -747,13 +747,21 @@ pub fn delete_data_preview(db: &Db, user_id: &str) -> Response {
 /// mismatch is v4's `badRequest` with the verbatim message. Body
 /// `{success:true, summary}`; a thrown error is `serverError('Failed to delete
 /// data')`.
-pub async fn delete_data(db: &Db, user_id: &str, confirm: &str) -> Response {
+pub async fn delete_data(
+    db: &Db,
+    user_id: &str,
+    confirm: &str,
+    keep_archived_character_bundles: Option<bool>,
+) -> Response {
     if confirm != DELETE_ALL_CONFIRM {
         return bad_request(
             "Confirmation required. Send { \"confirm\": \"DELETE_ALL_MY_DATA\" }".to_string(),
         );
     }
-    match crate::services::delete_all::delete_all_user_data(db, user_id).await {
+    let options = crate::services::delete_all::DeleteUserDataOptions {
+        keep_archived_character_bundles,
+    };
+    match crate::services::delete_all::delete_all_user_data(db, user_id, options).await {
         Ok(summary) => delete_summary_body(&summary),
         Err(e) => {
             tracing::error!(target: "quilltap::system_data", error = %e, "Delete all data failed");

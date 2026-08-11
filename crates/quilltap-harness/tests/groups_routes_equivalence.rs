@@ -25,6 +25,8 @@ const GAMMA: &str = "a2000000-0000-4000-8000-000000000001";
 const DELTA: &str = "a2000000-0000-4000-8000-000000000002";
 const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
 const CLEO: &str = "a1000000-0000-4000-8000-000000000003";
+/// P4.D63: the archived character (fixture extension) — add-member must refuse.
+const EDDA: &str = "a1000000-0000-4000-8000-000000000005";
 const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 
 #[derive(Deserialize)]
@@ -122,6 +124,21 @@ fn first_diff(got: &str, want: &str) -> String {
     }
     "(identical line-by-line)".to_string()
 }
+fn http_for(kind: ErrorKind) -> i64 {
+    match kind {
+        ErrorKind::BadRequest => 400,
+        ErrorKind::Unauthorized => 401,
+        ErrorKind::Forbidden => 403,
+        ErrorKind::NotFound => 404,
+        ErrorKind::Conflict => 409,
+        ErrorKind::Unprocessable => 422,
+        ErrorKind::Locked => 503,
+        // The store-unavailable refusal (P4.23) — also 503 (context.ts:176-205).
+        ErrorKind::Unavailable => 503,
+        ErrorKind::Internal => 500,
+    }
+}
+
 fn response_data(r: &Response) -> Value {
     let v = serde_json::to_value(r).unwrap();
     v.get("data").cloned().unwrap_or(Value::Null)
@@ -254,6 +271,32 @@ fn groups_routes_match_oracle() {
         }
     };
 
+    // The error-shape comparand (the projects family's helper, mirrored):
+    // HTTP status + the byte-exact `error` sentence, since an error Response
+    // carries no `data` for `response_data` to lift.
+    let check_err = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        let want = &oracle[name];
+        let want_status = want["status"].as_i64().unwrap();
+        let want_msg = want["body"]["error"].as_str().unwrap_or("");
+        match resp {
+            Response::Error(e) if http_for(e.kind) == want_status && e.message == want_msg => {
+                eprintln!("[{name}] OK (err {want_status}).");
+            }
+            Response::Error(e) => {
+                eprintln!(
+                    "[{name}] ERR MISMATCH: got {}:'{}' want {want_status}:'{want_msg}'",
+                    http_for(e.kind),
+                    e.message
+                );
+                failed.push(name.to_string());
+            }
+            other => {
+                eprintln!("[{name}] ERR MISMATCH: expected an error, got {other:?}");
+                failed.push(name.to_string());
+            }
+        }
+    };
+
     // --- Reads ---
     {
         let db = fresh_db(&spec, "list");
@@ -372,6 +415,15 @@ fn groups_routes_match_oracle() {
         let resp = rt.block_on(groups::group_member_add(&db, GAMMA, CLEO));
         check("add_member", &response_data(&resp), &mut failed);
         check_tables("add_member", &dump_group_tables(&db), &mut failed);
+    }
+    {
+        // P4.D63: the archived add-member refusal (Shared contract rule 7).
+        // The tables dump is what proves nothing was written; the error arm
+        // pins the 400 + the byte-exact sentence.
+        let db = fresh_db(&spec, "addm_arch");
+        let resp = rt.block_on(groups::group_member_add(&db, GAMMA, EDDA));
+        check_err("add_member_archived", &resp, &mut failed);
+        check_tables("add_member_archived", &dump_group_tables(&db), &mut failed);
     }
     {
         let db = fresh_db(&spec, "remm");

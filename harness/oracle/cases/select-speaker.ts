@@ -25,14 +25,24 @@ type WirePart = {
   controlledBy: string;
   talkativeness: number | null;
 };
-// characters: map characterId -> talkativeness (null = character has none).
-type WireChars = Record<string, number | null>;
+// characters: map characterId -> the two fields the selection reads. A bare
+// number (or null) is the pre-P4.D63 talkativeness-only shorthand; the object
+// form adds `archivedAt`, which v4 `d553f72a` made load-bearing.
+type WireChar = number | null | { talkativeness?: number | null; archivedAt?: string | null };
+type WireChars = Record<string, WireChar>;
 
 const asParts = (ps: WirePart[]) => ps as unknown as ChatParticipantBase[];
 const asChars = (c: WireChars): Map<string, Character> => {
   const m = new Map<string, Character>();
-  for (const [cid, talk] of Object.entries(c)) {
-    m.set(cid, (talk === null ? {} : { talkativeness: talk }) as unknown as Character);
+  for (const [cid, spec] of Object.entries(c)) {
+    if (spec !== null && typeof spec === 'object') {
+      const built: Record<string, unknown> = {};
+      if (spec.talkativeness !== undefined && spec.talkativeness !== null) built.talkativeness = spec.talkativeness;
+      if (spec.archivedAt !== undefined) built.archivedAt = spec.archivedAt;
+      m.set(cid, built as unknown as Character);
+      continue;
+    }
+    m.set(cid, (spec === null ? {} : { talkativeness: spec }) as unknown as Character);
   }
   return m;
 };
@@ -81,6 +91,28 @@ const scenarios: Scenario[] = [
   { id: 'weighted-C', participants: trio, characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.95 }, // rv 1.9 → C
   // last speaker + spoken excluded.
   { id: 'eligible-excludes', participants: trio, characters: {}, queue: [], spoken: ['B'], lastSpeakerId: 'A', random01: 0.1 }, // only C eligible → C
+  // P4.D63 (v4 `d553f72a`) — the archived filter. Mirrors v4's own new jest
+  // case: an archived character whose seat somehow stayed `active` still
+  // yields the user's turn.
+  { id: 'archived-only-character', participants: [p('A', 'CHARACTER', 'active', 'ca', 'llm', 0.9)],
+    characters: { ca: { archivedAt: '2026-08-10T00:00:00.000Z' } }, queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 },
+  // One of three archived: the rotation continues over the survivors, and the
+  // weights are drawn from the SMALLER pool (so a wrong filter shifts the pick,
+  // not just the count).
+  { id: 'archived-one-of-three', participants: trio,
+    characters: { cb: { talkativeness: 0.3, archivedAt: '2026-08-10T00:00:00.000Z' } },
+    queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 },
+  // Two of three archived → the survivor takes the `only_character` branch.
+  { id: 'archived-two-of-three', participants: trio,
+    characters: { ca: { archivedAt: '2026-08-10T00:00:00.000Z' }, cb: { archivedAt: '2026-08-10T00:00:00.000Z' } },
+    queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 },
+  // An EMPTY-STRING archivedAt is JS-falsy — no tombstone, so A still speaks.
+  { id: 'archived-empty-string-is-not-archived', participants: [p('A', 'CHARACTER', 'active', 'ca', 'llm', 0.9)],
+    characters: { ca: { archivedAt: '' } }, queue: [], spoken: [], lastSpeakerId: null, random01: 0.5 },
+  // The queue wins BEFORE the archived filter (v4's step 1 is unconditional).
+  { id: 'archived-but-queued', participants: trio,
+    characters: { ca: { archivedAt: '2026-08-10T00:00:00.000Z' } },
+    queue: ['A'], spoken: [], lastSpeakerId: null, random01: 0.5 },
   // user-controlled pick → reason user_turn, id kept.
   {
     id: 'user-pick',

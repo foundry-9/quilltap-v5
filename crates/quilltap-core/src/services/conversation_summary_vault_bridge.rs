@@ -299,6 +299,22 @@ pub async fn write_conversation_summary_to_vaults(db: &Db, input: &WriteConversa
     let desired_name = summary_file_name(&input.chat_id, &input.chat_title);
 
     for character_id in &input.participant_character_ids {
+        // Archived characters keep a live (pruned) vault, but `Conversation
+        // Summaries/` is part of what the archive packed away — writing here
+        // would silently resurrect the folder outside the bundle. Skip them
+        // (v4 `d553f72a`, `conversation-summary-vault-bridge.ts:212`);
+        // rehydration restores the folder and future summaries resume. The
+        // REMOVAL path below stays unguarded, as v4's does.
+        let cid = character_id.clone();
+        let archived = db
+            .read_main(move |c| crate::db::characters_read::find_by_id_raw(c, &cid))
+            .ok()
+            .flatten()
+            .as_ref()
+            .is_some_and(crate::api::characters::is_archived);
+        if archived {
+            continue;
+        }
         let Some(mount_id) = resolve_vault_mount_id(db, character_id).await else {
             continue;
         };

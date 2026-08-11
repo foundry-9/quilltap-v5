@@ -399,8 +399,16 @@ pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(Err(not_found("Project")));
         };
-        if characters_read::find_by_id(main, mount, &cid)?.is_none() {
+        let Some(character) = characters_read::find_by_id(main, mount, &cid)? else {
             return Ok(Err(not_found("Character")));
+        };
+        // Archived characters can't join a roster — but existing roster edges
+        // are never removed by archiving, so removal stays unguarded
+        // (spec §5.1, v4 `d553f72a`).
+        if crate::api::characters::is_archived(&character) {
+            return Ok(Err(bad_request(
+                "That character is archived; rehydrate them before adding them to a roster.",
+            )));
         }
         let mut roster = roster_of(&project);
         if !roster.iter().any(|c| c == &cid) {

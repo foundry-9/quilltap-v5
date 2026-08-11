@@ -26,6 +26,8 @@ const LAMBDA: &str = "a3000000-0000-4000-8000-000000000002";
 const KAPPA: &str = "a3000000-0000-4000-8000-000000000003";
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
+/// P4.D63: the archived character (fixture extension) — add-character must refuse.
+const EDDA: &str = "a1000000-0000-4000-8000-000000000005";
 const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 const IOTA_DANGLING_MP: &str = "b0000000-0000-4000-8000-0000000000df";
 const CHAT_A: &str = "c1000000-0000-4000-8000-000000000001";
@@ -652,6 +654,14 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "add_file_miss");
         let resp = rt.block_on(projects::project_file_add(&db, KAPPA, MISSING_FILE));
         check_err("add_file_missing", &resp, &mut failed);
+    }
+    {
+        // P4.D63: the archived add-to-roster refusal (Shared contract rule 7).
+        // Placed here because `check_err` — the error-shape comparand — comes
+        // into scope with the files section.
+        let db = fresh_db(&spec, "addc_arch");
+        let resp = rt.block_on(projects::project_character_add(&db, KAPPA, EDDA));
+        check_err("add_character_archived", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "rm_file");

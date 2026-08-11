@@ -36,6 +36,44 @@ Imported memories are now embedded under the default profile whatever its
 provider, instead of being left unembedded under the built-in one. Folder
 parents on an ordinary import resolve by path rather than keeping a source
 id that never existed here.
+Landed P4.D63 units 1-6 (the character-archive schema, guards, chokepoint and
+crypto) against v4 `d553f72a`. Adopted the three new `characters` columns via a
+D23 re-dump of v4's live generateDDL — `archivedAt`, `archiveFileId`,
+`archivedAvatarFileId` — with a boot repair pass that adds them to any existing
+instance and pragma-guarded read tolerance so a pre-drift database still opens.
+An archived character is now a tombstone: the repository refuses every write to
+one except the single-key unarchive, the wardrobe write path refuses rather than
+silently falling back to the legacy table, and the read overlay deliberately does
+NOT short-circuit (an archived character hydrates exactly like a live one, since
+archiving prunes the vault in place). Added the `archived=` list filter as the
+single chokepoint — every picker and roster excludes tombstones by default, with
+`include`/`only` to opt in — plus `archivedAt` on list items, chat participants
+and group members, refusals for adding an archived character to a group or
+roster, and a refusal for exporting one. The turn selection drops an archived
+seat even if its status somehow stayed active, and the participant resolver,
+Carina probe, character resolver, self-inventory, both mail tools, both mail chat
+actions and the doc-edit self-vault resolver all refuse or skip archived
+characters. Conversation summaries are no longer written into an archived
+character's vault. Ported the archive bundle crypto byte-for-byte (PBKDF2-SHA256
+at 600k iterations into AES-256-GCM, under the instance passphrase and never the
+database pepper, so a bundle stays readable after a restore onto a new instance)
+with its four typed errors, and added the runtime passphrase cache the engine had
+never had, deposited at all four `.dbkey` chokepoints and cleared on lock.
+
+Also landed the rest of P4.D63's server surface. Deleting all data and
+restoring in replace mode now spare archived-character bundles by default —
+the character rows go, so what survives is a loose importable bundle, and only
+an explicit `keepArchivedCharacterBundles: false` wipes them too; the delete
+summary reports how many were on hand and whether they were kept. Defined the
+`characterArchive` and `characterRehydrate` verbs, which refuse loudly by name
+until the archive service lands in round 2, and added an exact-match
+`category` filter to the files list. Tightened the embedding rule at all five
+sites that pick a profile: only a profile actually marked default counts, with
+no fallback to an arbitrary one, so chunks wait rather than embedding into a
+different vector space than everything else. **Still owed under this order:**
+the passphrase-change re-encryption sweep is ported but not yet wired to the
+change-passphrase response, so a passphrase change does not yet rewrite
+archive bundles — see the work order's resume list.
 
 Planned the character-archive drift catch-up (v4 `f6eac168` →
 `d553f72a`): round 1 of 2, three work orders committed —

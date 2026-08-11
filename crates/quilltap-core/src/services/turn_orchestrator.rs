@@ -60,7 +60,9 @@ use crate::participant_filters::{
     find_user_participant, get_active_character_participants, is_all_llm_chat,
     ParticipantView as FilterParticipant,
 };
-use crate::select_speaker::{select_next_speaker, SelectionResult, SpeakerParticipant};
+use crate::select_speaker::{
+    select_next_speaker, SelectionResult, SpeakerCharacter, SpeakerParticipant,
+};
 use crate::turn_state::{
     add_to_queue, calculate_turn_state_from_history, compute_spoken_this_cycle_after_skip,
     get_queue_position, nudge_participant, remove_from_queue, MessageView, ParticipantView,
@@ -322,14 +324,23 @@ fn json_ids(ids: &[String]) -> String {
 pub(crate) fn load_talkativeness_map(
     db: &Db,
     participants: &[&FilterParticipant],
-) -> Result<HashMap<String, f64>, DbError> {
+) -> Result<HashMap<String, SpeakerCharacter>, DbError> {
     let mut map = HashMap::new();
     for p in participants {
         if let Some(cid) = &p.character_id {
             if let Some(ch) = read_character(db, cid)? {
-                if let Some(t) = ch.get("talkativeness").and_then(Value::as_f64) {
-                    map.insert(cid.clone(), t);
-                }
+                // v4 stores the whole character; the selection reads
+                // talkativeness AND (since `d553f72a`) `archivedAt`. Insert
+                // unconditionally so an archived character carrying no
+                // talkativeness still reaches the filter — the old
+                // `if let Some(t)` skipped exactly those rows.
+                map.insert(
+                    cid.clone(),
+                    SpeakerCharacter {
+                        talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
+                        archived: crate::api::characters::is_archived(&ch),
+                    },
+                );
             }
         }
     }

@@ -348,6 +348,17 @@ pub async fn characters_get(
         Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     };
 
+    // A tombstone export would be a pruned shell, and the full bundle already
+    // sits in the library as an ARCHIVE file (spec §4.1, v4 `d553f72a`). v4
+    // checks this inside the export action, so BOTH format legs refuse — this
+    // route's PNG leg included.
+    if quilltap_core::api::characters::is_archived(&character) {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "This character is archived; rehydrate them to export, or use their archive bundle.",
+        );
+    }
+
     // v4: `format = searchParams.get('format') || 'json'`.
     let format = query
         .get("format")

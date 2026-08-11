@@ -914,6 +914,41 @@ impl<'c> ChatsRepository<'c> {
         Ok(())
     }
 
+    /// `setParticipantStatus` at the REPOSITORY surface — v4
+    /// `chats.repository.ts:421` (new in `d553f72a`), which delegates to the
+    /// participants ops and returns `{chat, oldStatus}`.
+    ///
+    /// v5 already had the ops method ([`super::chats_participants::ChatParticipantsRepository::set_participant_status`], differential-covered by
+    /// `chats_participants_tier2`); what `d553f72a` adds is this named
+    /// entry point and its RETURN SHAPE — the reloaded chat alongside the old
+    /// status. Archiving's participant flips (round 2) are its caller on both
+    /// sides.
+    ///
+    /// `None` chat + `"active"` old status when the chat or the participant is
+    /// absent, exactly as v4's ops default.
+    ///
+    /// **v4's user-scoped override has no v5 analog** (`user-scoped.ts:205`,
+    /// which ownership-checks via `findById` and throws `'Chat not found or
+    /// access denied'`). v5 has no user-scoped repository layer at all: the
+    /// instance is single-user and `SINGLE_USER_ID` is applied at the api
+    /// boundary. A documented exclusion, not an omission.
+    pub fn set_participant_status(
+        &self,
+        chat_id: &str,
+        participant_id: &str,
+        new_status: &str,
+    ) -> Result<(Option<Value>, String), DbError> {
+        let (applied, old_status) =
+            super::chats_participants::ChatParticipantsRepository::new(self.conn)
+                .set_participant_status(chat_id, participant_id, new_status)?;
+        let chat = if applied {
+            super::chats_read::find_by_id(self.conn, chat_id)?
+        } else {
+            None
+        };
+        Ok((chat, old_status))
+    }
+
     /// `update` — apply the patch to chat `id`. Returns `Ok(false)` when no row
     /// matched. `updatedAt` is **never minted**: `Some(updated_at)` sets it,
     /// `None` preserves the existing value (v4's override). Each other `Some`

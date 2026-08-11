@@ -324,7 +324,14 @@ pub async fn system_tools_post(
                 .to_string();
             dispatch_system(
                 &state,
-                CoreRequest::SystemDeleteData { confirm },
+                CoreRequest::SystemDeleteData {
+                    confirm,
+                    // v4 `d553f72a`: absent keeps the archive bundles; only an
+                    // explicit `false` wipes them with the rest.
+                    keep_archived_character_bundles: parsed
+                        .get("keepArchivedCharacterBundles")
+                        .and_then(Value::as_bool),
+                },
                 StatusCode::OK,
             )
             .await

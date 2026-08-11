@@ -81,6 +81,11 @@ pub fn execute_list_email(
             ))
         }
     };
+    // An archived character has no reachable postbox (v4 `d553f72a`,
+    // `list-email-handler.ts:53`).
+    if crate::api::characters::is_archived(&me) {
+        return fail("That character is archived; rehydrate it to continue.");
+    }
 
     // ensureCharacterVault(me).mountPointId — a provisioned character returns its
     // existing FK.

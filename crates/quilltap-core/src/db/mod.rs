@@ -26,6 +26,7 @@ use crate::dbkey;
 pub mod api_keys;
 pub mod archetype_wardrobe;
 pub mod background_jobs;
+pub mod character_archive_repair;
 pub mod character_plugin_data;
 pub mod character_resolver;
 pub mod character_vault;
@@ -129,6 +130,25 @@ pub enum DbError {
         /// The full formatted message (the `OverlayError::Unavailable` Display).
         message: String,
     },
+    /// A write reached an archived (tombstoned) character — v4's
+    /// `CharacterArchivedError` (`characters.repository.ts:21`, v4
+    /// `d553f72a`), carried structurally so the surfaces that must recognise
+    /// it (the wardrobe write path, the participant resolver, the api layer)
+    /// can, instead of matching on a message.
+    CharacterArchived {
+        /// The character the write targeted.
+        character_id: String,
+    },
+}
+
+impl DbError {
+    /// v4 `CharacterArchivedError`'s constructed `.message` — the byte-exact
+    /// sentence every surface that reports this error carries.
+    pub fn character_archived_message(character_id: &str) -> String {
+        format!(
+            "Character {character_id} is archived: this character is archived; rehydrate it to continue"
+        )
+    }
 }
 
 impl std::fmt::Display for DbError {
@@ -142,6 +162,9 @@ impl std::fmt::Display for DbError {
                 write!(f, "partition not available: {}", p.as_str())
             }
             DbError::StoreUnavailable { message, .. } => write!(f, "{message}"),
+            DbError::CharacterArchived { character_id } => {
+                write!(f, "{}", DbError::character_archived_message(character_id))
+            }
         }
     }
 }

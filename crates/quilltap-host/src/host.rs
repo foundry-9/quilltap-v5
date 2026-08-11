@@ -839,6 +839,16 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
                 quilltap_core::clock::now_unix_ms(),
             )?;
+            // === P4.D63 (v4 `d553f72a`, migration
+            // `add-character-archive-fields-v1`) ===
+            // The three `characters` archive columns, re-homed from v4's
+            // migration runner to a boot repair for the same reason as the
+            // clock anchor above. Fresh instances already carry them (the D23
+            // re-dump); an existing instance gains them here, so every
+            // instance v5 boots can hold a tombstone. Idempotent; a no-op
+            // after the first boot.
+            quilltap_core::db::character_archive_repair::ensure_character_archive_columns(main)?;
+            // === end P4.D63 ===
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
             // chats the Scriptorium pipeline left half-finished — arm (A) real

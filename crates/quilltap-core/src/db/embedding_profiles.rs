@@ -139,21 +139,28 @@ pub fn find_default(
     .map_err(Into::into)
 }
 
-/// The profile id the cold-chunk re-embed picks (v4 `cold-chunk-reembed.ts`:
-/// `embeddingProfiles.findAll().find(p => p.isDefault) || embeddingProfiles[0]`).
-/// `findAll` is UNSCOPED (all users) and carries NO `ORDER BY`, so the "first"
-/// fallback is the earliest-inserted profile — we mirror that with `rowid ASC`.
-/// Returns `None` when no profiles exist at all.
+/// The profile id the cold-chunk re-embed and the conversation-render
+/// reconcile pick: the **marked default, and only that** (v4 `d553f72a`
+/// dropped the `|| embeddingProfiles[0]` fallback at all five of its sites).
+///
+/// One embedding standard per instance: a fallback to an arbitrary profile
+/// mixes vector spaces, and in the reconcile's case it would exclude FAILED
+/// rows under a profile nothing embeds with any more. With no default marked,
+/// the caller waits — that is the intended state, not an error.
+///
+/// `findAll` is UNSCOPED (all users) and carries no `ORDER BY`; the `rowid ASC`
+/// here is now only about picking deterministically among (malformed)
+/// multiple defaults. Returns `None` when no profile is marked default.
 pub fn pick_reembed_profile_id(conn: &Connection) -> Result<Option<String>, DbError> {
     let mut stmt =
         conn.prepare("SELECT id, isDefault FROM embedding_profiles ORDER BY rowid ASC")?;
     let rows: Vec<(String, i64)> = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
         .collect::<Result<_, _>>()?;
-    if let Some((id, _)) = rows.iter().find(|(_, is_default)| *is_default != 0) {
-        return Ok(Some(id.clone()));
-    }
-    Ok(rows.first().map(|(id, _)| id.clone()))
+    Ok(rows
+        .iter()
+        .find(|(_, is_default)| *is_default != 0)
+        .map(|(id, _)| id.clone()))
 }
 
 /// The default profile's `(id, name)` — the memories embedding-status route reads

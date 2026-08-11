@@ -45,6 +45,9 @@ fn p4_9g1_sixteen_wire_shapes() {
         Request::SystemRestoreExecute {
             upload_id: "u1".into(),
             mode: "replace".into(),
+            // P4.D63: absent on the wire → `None` → KEEP (v4's `!== false`
+            // default). The destructive choice has to be explicit.
+            keep_archived_character_bundles: None,
         },
     );
 
@@ -146,6 +149,8 @@ fn p4_9g1_sixteen_wire_shapes() {
         json!({ "type": "systemDeleteData", "confirm": "DELETE_ALL_MY_DATA" }),
         Request::SystemDeleteData {
             confirm: "DELETE_ALL_MY_DATA".into(),
+            // P4.D63: absent → `None` → KEEP.
+            keep_archived_character_bundles: None,
         },
     );
 }

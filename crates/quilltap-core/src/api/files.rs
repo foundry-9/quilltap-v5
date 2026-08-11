@@ -241,6 +241,7 @@ pub fn files_list(
     project_id: Option<&str>,
     folder_path: Option<&str>,
     filter: Option<&str>,
+    category: Option<&str>,
 ) -> Response {
     let uid = user_id.to_string();
     let result = db.read_main(move |c| FilesRepository::new(c).find_by_user_id(&uid));
@@ -248,6 +249,14 @@ pub fn files_list(
         Ok(f) => f,
         Err(e) => return internal(e),
     };
+
+    // The `category` exact-match filter (v4 `d553f72a`, `files/handlers/get.ts`
+    // — the ChangePassphraseCard's courtesy "N archives" count). v4 applies it
+    // FIRST, before the general/project split, and an EMPTY string is falsy
+    // there, so it does not filter.
+    if let Some(cat) = category.filter(|c| !c.is_empty()) {
+        files.retain(|f| f.category == cat);
+    }
 
     if filter == Some("general") {
         files.retain(|f| f.project_id.is_none());

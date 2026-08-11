@@ -507,9 +507,70 @@ struct EngineInner {
     /// The Green-Room replay buffer (D6) — one per engine, shared by the
     /// chat-create driver's emitter (publish) and the transport (replay).
     creation_progress_bus: Arc<CreationProgressBus>,
+    /// The runtime passphrase cache — v4 `lib/startup/passphrase-cache.ts`
+    /// (new in `d553f72a`), whose `global.__quilltapRuntimePassphrase` exists
+    /// to survive Next.js HMR. **v5's process-boundary analog is the engine**,
+    /// so it lives here rather than in a process global.
+    ///
+    /// Why it exists at all: `.dbkey` only ever SEES the passphrase at the
+    /// moments it passes through (setup / unlock / change / store) — it
+    /// derives the pepper and discards it. Archive encryption needs the
+    /// passphrase LATER, at archive time, because a bundle must be decryptable
+    /// from the passphrase alone: bundles outlive the instance, so the key
+    /// material has to be knowledge the operator carries.
+    ///
+    /// Exposure calculus (v4's, unchanged): the pepper — the actual database
+    /// key — is already in memory for the life of the unlocked process, so
+    /// within this process the cached passphrase adds nothing an attacker with
+    /// memory access didn't already have. The marginal risk is passphrase
+    /// REUSE across services, which is why [`CoreEngine::lock`] clears it and
+    /// nothing ever writes it to disk or logs.
+    runtime_passphrase: Mutex<Option<String>>,
 }
 
 impl CoreEngine {
+    /// Remember the effective passphrase (the internal sentinel counts too) —
+    /// v4 `cacheRuntimePassphrase`. Called from the four `.dbkey` chokepoints
+    /// that see it: setup, unlock, change-passphrase, store-pepper.
+    fn cache_runtime_passphrase(&self, passphrase: &str) {
+        // v4's `hasUserPassphrase ? passphrase : INTERNAL_PASSPHRASE` resolution
+        // happens at each deposit site; mirror it here so every caller agrees.
+        let effective = if passphrase.is_empty() {
+            crate::dbkey::INTERNAL_PASSPHRASE.to_string()
+        } else {
+            passphrase.to_string()
+        };
+        *self.inner.runtime_passphrase.lock().unwrap() = Some(effective);
+    }
+
+    /// The passphrase archive crypto should use when no explicit one is given —
+    /// v4 `resolveArchivePassphrase`: the cache, else the internal sentinel on
+    /// a no-passphrase instance, else the loud
+    /// [`ArchiveCryptoError::KeyUnavailable`](crate::services::character_archive::crypto::ArchiveCryptoError::KeyUnavailable)
+    /// refusal.
+    /// (Public because it is the engine capability round 2's `characterArchive`
+    /// verb and the passphrase-change re-encrypt sweep both reach for; the
+    /// state-machine wiring it depends on is proven by
+    /// `runtime_passphrase_cache_follows_the_dbkey_lifecycle` below.)
+    pub fn resolve_archive_passphrase(
+        &self,
+    ) -> Result<String, crate::services::character_archive::crypto::ArchiveCryptoError> {
+        let cached = self.inner.runtime_passphrase.lock().unwrap().clone();
+        let has_user_passphrase = match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.has_user_passphrase,
+            EngineState::Locked {
+                has_user_passphrase,
+                ..
+            } => *has_user_passphrase,
+        };
+        crate::services::character_archive::crypto::resolve_archive_passphrase(
+            crate::services::character_archive::crypto::PassphraseSource {
+                cached: cached.as_deref(),
+                has_user_passphrase,
+            },
+        )
+    }
+
     /// Provision the pepper and boot. An operational pepper opens the
     /// databases and assembles the drivers; a locked vault boots into the
     /// locked state (serving the unlock family). Hard failures — pepper/hash
@@ -533,6 +594,7 @@ impl CoreEngine {
             }),
             events,
             creation_progress_bus: Arc::new(CreationProgressBus::new()),
+            runtime_passphrase: Mutex::new(None),
         };
 
         if provisioned.state.is_operational() {
@@ -909,12 +971,21 @@ impl CoreEngine {
                 Ok(db) => super::system_data::delete_data_preview(&db, SINGLE_USER_ID),
                 Err(r) => r,
             },
-            Request::SystemDeleteData { confirm } => match self.ready_db() {
+            Request::SystemDeleteData {
+                confirm,
+                keep_archived_character_bundles,
+            } => match self.ready_db() {
                 Ok(db) => {
                     // dogfood #60 — no job may claim while the tables are being
                     // emptied. See `system_data::PumpPause`.
                     let _pump = super::system_data::PumpPause::new(self.job_pump_control());
-                    super::system_data::delete_data(&db, SINGLE_USER_ID, &confirm).await
+                    super::system_data::delete_data(
+                        &db,
+                        SINGLE_USER_ID,
+                        &confirm,
+                        keep_archived_character_bundles,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -1413,14 +1484,24 @@ impl CoreEngine {
                 Ok((_db, host)) => super::system_backup::restore_preview(host.as_ref(), &upload_id),
                 Err(r) => r,
             },
-            Request::SystemRestoreExecute { upload_id, mode } => match self.ready_backup_host() {
+            Request::SystemRestoreExecute {
+                upload_id,
+                mode,
+                keep_archived_character_bundles,
+            } => match self.ready_backup_host() {
                 Ok((db, host)) => {
                     // dogfood #60 — a restore truncates and repopulates 43 tables
                     // across three partitions; nothing may write into the middle
                     // of that. See `system_data::PumpPause`.
                     let _pump = super::system_data::PumpPause::new(self.job_pump_control());
-                    super::system_backup::restore_execute(&db, host.as_ref(), &upload_id, &mode)
-                        .await
+                    super::system_backup::restore_execute(
+                        &db,
+                        host.as_ref(),
+                        &upload_id,
+                        &mode,
+                        keep_archived_character_bundles,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -1574,10 +1655,15 @@ impl CoreEngine {
                 .await
             }
             // --- Characters family (P4.6f) ---------------------------------
-            Request::CharacterList { npc, controlled_by } => match self.ready_db() {
+            Request::CharacterList {
+                archived,
+                npc,
+                controlled_by,
+            } => match self.ready_db() {
                 Ok(db) => super::characters::character_list(
                     &db,
                     SINGLE_USER_ID,
+                    archived.as_deref(),
                     npc.as_deref(),
                     controlled_by.as_deref(),
                 ),
@@ -2018,6 +2104,19 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D63: the two archive verbs, DEFINED and refusing ===
+            // The archive SERVICE (prune / bundle / rehydrate / the participant
+            // flips) is round 2 of the character-archive catch-up. They are
+            // defined now so the wire contract is settled across all three
+            // lanes of round 1 — and they refuse LOUDLY BY NAME rather than
+            // 404ing, so a client that reaches one learns why.
+            Request::CharacterArchive { character_id: _ } => super::characters::not_available(
+                "archive (round 2 of the character-archive catch-up)",
+            ),
+            Request::CharacterRehydrate { character_id: _ } => super::characters::not_available(
+                "rehydrate (round 2 of the character-archive catch-up)",
+            ),
+            // === end P4.D63 ===
             Request::CharacterExport {
                 character_id,
                 format,
@@ -3777,6 +3876,7 @@ impl CoreEngine {
                 project_id,
                 folder_path,
                 filter,
+                category,
             } => match self.ready_db() {
                 Ok(db) => super::files::files_list(
                     &db,
@@ -3784,6 +3884,7 @@ impl CoreEngine {
                     project_id.as_deref(),
                     folder_path.as_deref(),
                     filter.as_deref(),
+                    category.as_deref(),
                 ),
                 Err(resp) => resp,
             },
@@ -4946,6 +5047,13 @@ impl CoreEngine {
                                 auto_lock_minutes: read_auto_lock_minutes(&ready.db),
                             };
                             *state = EngineState::Ready(ready);
+                            // Deposit chokepoint 4 of 4 (v4 `unlockDbKey`,
+                            // which caches the passphrase VERBATIM — reaching
+                            // this branch means it decrypted the pepper, so it
+                            // is by definition the real one). Inline: the state
+                            // mutex is held and is not reentrant.
+                            *self.inner.runtime_passphrase.lock().unwrap() =
+                                Some(passphrase.to_string());
                             Response::UnlockState(dto)
                         }
                         Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
@@ -4994,6 +5102,8 @@ impl CoreEngine {
                     return Response::error(ErrorKind::Internal, e.to_string());
                 }
                 let has_user_passphrase = !passphrase.is_empty();
+                // Deposit chokepoint 1 of 4 (v4 `setupDbKey`).
+                self.cache_runtime_passphrase(passphrase);
                 match open_ready(
                     &self.inner,
                     &pepper,
@@ -5040,6 +5150,13 @@ impl CoreEngine {
                 }
                 r.pepper_state = PepperState::Resolved;
                 r.has_user_passphrase = !passphrase.is_empty();
+                // Deposit chokepoint 2 of 4 (v4 `storeEnvPepperInDbKey`, which
+                // also sets the has-user-passphrase flag above).
+                *self.inner.runtime_passphrase.lock().unwrap() = Some(if passphrase.is_empty() {
+                    crate::dbkey::INTERNAL_PASSPHRASE.to_string()
+                } else {
+                    passphrase.to_string()
+                });
                 Response::Ack(AckDto::default())
             }
             EngineState::Ready(_) => Response::error(
@@ -5065,6 +5182,15 @@ impl CoreEngine {
                 ) {
                     Ok(_) => {
                         r.has_user_passphrase = !new_passphrase.is_empty();
+                        // Deposit chokepoint 3 of 4 (v4 `changePassphrase`).
+                        // Inline rather than via the helper: the state mutex is
+                        // already held here and it is not reentrant.
+                        *self.inner.runtime_passphrase.lock().unwrap() =
+                            Some(if new_passphrase.is_empty() {
+                                crate::dbkey::INTERNAL_PASSPHRASE.to_string()
+                            } else {
+                                new_passphrase.to_string()
+                            });
                         Response::Ack(AckDto::default())
                     }
                     Err(DbKeyError::DecryptFailed) => {
@@ -5109,6 +5235,10 @@ impl CoreEngine {
                     // r.db drops here; once the drivers' clones are gone too,
                     // the writer thread exits.
                 }
+                // v4 `lockDbKey` clears the runtime passphrase alongside the
+                // pepper: locking is exactly the moment the marginal
+                // passphrase-reuse exposure stops being justified.
+                *self.inner.runtime_passphrase.lock().unwrap() = None;
             }
         }
         self.unlock_state()
@@ -5530,6 +5660,105 @@ mod tests {
         }
     }
 
+    /// P4.D63 — the runtime passphrase cache's whole state machine, which is
+    /// what `resolve_archive_passphrase` (and therefore every archive bundle)
+    /// depends on. Proves all four of v4's deposit chokepoints reachable here
+    /// plus the lock-clears, and the internal-sentinel leg.
+    #[tokio::test]
+    async fn runtime_passphrase_cache_follows_the_dbkey_lifecycle() {
+        let base = tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("data")).unwrap();
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(CountingAssembler {
+                assembled: Arc::new(AtomicUsize::new(0)),
+                shutdowns: Arc::new(AtomicUsize::new(0)),
+            }),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        // Before setup nothing has passed through, and no USER passphrase
+        // protects the instance yet → the internal sentinel, not a refusal.
+        assert_eq!(
+            engine.resolve_archive_passphrase().unwrap(),
+            crate::dbkey::INTERNAL_PASSPHRASE
+        );
+
+        // Deposit 1: setup.
+        match engine
+            .dispatch(Request::Setup {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::Setup(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(engine.resolve_archive_passphrase().unwrap(), "open sesame");
+
+        // Deposit 3: change-passphrase moves the cache with the .dbkey.
+        match engine
+            .dispatch(Request::ChangePassphrase {
+                old_passphrase: "open sesame".into(),
+                new_passphrase: "friend and enter".into(),
+            })
+            .await
+        {
+            Response::Ack(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            engine.resolve_archive_passphrase().unwrap(),
+            "friend and enter"
+        );
+
+        // Lock clears it. A USER passphrase protects the instance, so the
+        // sentinel is NOT a valid substitute — this is the loud refusal, and
+        // the reason the archive verb can 400 with a named sentence.
+        match engine.dispatch(Request::Lock).await {
+            Response::UnlockState(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        let err = engine.resolve_archive_passphrase().unwrap_err();
+        assert_eq!(
+            err,
+            crate::services::character_archive::crypto::ArchiveCryptoError::KeyUnavailable
+        );
+
+        // Deposit 4: unlock restores it verbatim.
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "friend and enter".into(),
+            })
+            .await
+        {
+            Response::UnlockState(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            engine.resolve_archive_passphrase().unwrap(),
+            "friend and enter"
+        );
+
+        // The empty-passphrase leg maps to the sentinel at the deposit, so a
+        // no-passphrase instance never reaches the refusal.
+        match engine
+            .dispatch(Request::ChangePassphrase {
+                old_passphrase: "friend and enter".into(),
+                new_passphrase: String::new(),
+            })
+            .await
+        {
+            Response::Ack(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            engine.resolve_archive_passphrase().unwrap(),
+            crate::dbkey::INTERNAL_PASSPHRASE
+        );
+    }
+
     #[tokio::test]
     async fn setup_provisions_a_bootable_instance() {
         // A truly empty data dir → needs-setup.
@@ -5811,6 +6040,7 @@ mod tests {
         match engine
             .dispatch(Request::SystemDeleteData {
                 confirm: "not the sentinel".into(),
+                keep_archived_character_bundles: None,
             })
             .await
         {
@@ -5829,6 +6059,7 @@ mod tests {
         match engine
             .dispatch(Request::SystemRestoreExecute {
                 upload_id: "00000000-0000-4000-8000-000000000000".into(),
+                keep_archived_character_bundles: None,
                 mode: "replace".into(),
             })
             .await

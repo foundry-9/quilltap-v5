@@ -175,6 +175,15 @@ async function main(): Promise<void> {
     { name: 'list_npc_false', module: '@/app/api/v1/characters/route', url: `${B}?npc=false` },
     { name: 'list_user', module: '@/app/api/v1/characters/route', url: `${B}?controlledBy=user` },
     { name: 'list_llm', module: '@/app/api/v1/characters/route', url: `${B}?controlledBy=llm` },
+    // The archived chokepoint (v4 `d553f72a`). `list_all` above is the
+    // EXCLUDE default — it must not carry Fenn. `archived=nonsense` pins the
+    // else-branch: anything that is not `only`/`include` excludes.
+    { name: 'list_archived_only', module: '@/app/api/v1/characters/route', url: `${B}?archived=only` },
+    { name: 'list_archived_include', module: '@/app/api/v1/characters/route', url: `${B}?archived=include` },
+    { name: 'list_archived_garbage', module: '@/app/api/v1/characters/route', url: `${B}?archived=nonsense` },
+    // Stacking with the pre-existing filters (v4 applies archived FIRST).
+    { name: 'list_archived_include_llm', module: '@/app/api/v1/characters/route', url: `${B}?archived=include&controlledBy=llm` },
+    { name: 'list_archived_only_npc_false', module: '@/app/api/v1/characters/route', url: `${B}?archived=only&npc=false` },
     { name: 'get_aria', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}`, params: { id: aria } },
     { name: 'default_partner', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=default-partner`, params: { id: aria } },
     { name: 'get_tags', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=get-tags`, params: { id: aria } },

@@ -113,6 +113,11 @@ pub fn execute_send_mail(
         }
         Err(e) => return fail(&format!("The Post Office stumbled and the letter went unsent — {e}")),
     };
+    // An archived sender may not post (v4 `d553f72a`,
+    // `send-mail-handler.ts:56`).
+    if crate::api::characters::is_archived(&sender) {
+        return fail("That character is archived; rehydrate it to continue.");
+    }
 
     let recipient = match resolve_character_by_name_or_id(main, mount, user_id, recipient_token) {
         Ok(Some(r)) => r,
@@ -123,6 +128,13 @@ pub fn execute_send_mail(
             ))
         }
     };
+    // …nor may an archived recipient receive. An exact-id lookup still
+    // RESOLVES a tombstone (the resolver's deliberate asymmetry), which is
+    // what makes this named refusal reachable instead of a bare "no soul by
+    // that name" (v4 `send-mail-handler.ts:64`).
+    if crate::api::characters::is_archived(&recipient) {
+        return fail("That recipient is archived; rehydrate them to continue.");
+    }
 
     let path = match compose_and_deliver_letter(
         main,
