@@ -63391,3 +63391,63 @@ suite ran **192 passed / 10 skipped / 0 failed (19.5m)** over main's debug
 binaries (this lane changed no Rust, so main's `quilltap-web` + `quilltap` are
 the correct server; they were copied into the worktree's `target/debug`, not
 built). `ng test` 298 files / 4,138; `ng build` clean. SPA 0.5.449 → 0.5.450.
+
+### Lane record — P4.D64 CLOSED (the character-archive SPA surface)
+
+**Branch:** `claude/p4-d64-archive-spa-porting-7103d2`, six commits (one per
+unit). Touched `apps/web/**` ONLY — verified by `git diff --name-only main...HEAD`
+(the sole non-`apps/web` paths are the append-only CHANGELOG and this log).
+
+**Every tier-1 and tier-2 deliverable landed.** Tier 1: the contract mirror + data
+layer (unit 1), the roster (2), the detail surface + both dialogs (3), the group
+members line + participant badge (4), the four settings surfaces (5), the e2e
+beats (6). Tier 2: the stale export-preview comment reconciled (unit 1), the
+picker default-exclude tripwire (unit 4), and the delete-dialog chrome hardening
+found ALREADY satisfied by v5's shared `qt-modal` (unit 5) — as was the
+`personas ?? 0` NaN fix, corrected back in the P4.9G era.
+
+**Tier-3 deferrals, both as ordered.** (a) The archived gating of optimize /
+search-replace / external-prompt is moot while those remain v5 disabled
+deferrals; recorded IN THE CODE at `character-header.ts` (a `⚠ P4.D64 INHERITED
+GATE` comment) as well as here, so the lane that makes any of them live inherits
+the obligation. (b) `CHARACTER_ARCHIVE_SERVER_LANDED` stays false — round 2's.
+
+**What the unifier must do.**
+1. Flip `ARCHIVE_TOMBSTONE_SEEDED` to `true` in `e2e/character-archive-flow.
+   spec.ts` once P4.D63's `characters.archivedAt` is on the branch. Confirm by
+   looking for `[e2e] seeded the archived-character island` in the global-setup
+   output; the seeder writes nothing (and the six read beats stay skipped) if the
+   column is missing, so a premature flip fails loudly rather than silently.
+2. Leave `CHARACTER_ARCHIVE_SERVER_LANDED` false.
+3. Diff `core-contract.ts` name-for-name against P4.D63's `api/types.rs` — the
+   round's standing §1 check. Expect ONE shape difference by design: every new
+   DTO field is optional on this side so a pre-P4.D63 server (which omits them
+   all) reads as "not archived".
+
+**⚠ v4 DRIFTED during the lane, and it is NOT this lane's surface.** HEAD moved
+`d553f72a` → `ed8934f1` ("feat(docker): pass filesystem document stores through
+to the container", bug 56): `lib/mount-index/scanner.ts` + a new
+`lib/mount-index/base-path-availability.ts`, the Docker launcher, the CLI
+docs/completions, and `packages/quilltap/lib/docker-mounts.js`. **Zero `app/` or
+`components/` files**, so nothing this lane ported moved; it is real new drift for
+the ROUND (a mount-index lib change plus packaging) and wants dispositioning by
+the unifier or the next drift round. This lane authored no oracles, so no regen
+is affected.
+
+**Gate at lane close:** `ng test` 298 files / 4,138 tests / 0 failed; `ng build`
+clean; `npx playwright test --list` sees all 10 new beats; the FULL Playwright
+suite **192 passed / 10 skipped / 0 failed (19.5m)**. No Rust changed, so no
+cargo gate is owed (the mirror of the "no SPA run owed" precedent from the
+P4.9G5/G6 round); the e2e run used main's debug `quilltap-web` + `quilltap`,
+copied in rather than built, and the copies were deleted with the worktree's
+`target/` at close. SPA 0.5.444 → 0.5.450.
+
+**Mutation proofs, per the D24 rule (eleven, across five units).** Unit 1: the
+distinct cache key. Unit 2: sort rule 0; the roster's per-filter query key. Unit
+3: the fieldset's `disabled`; `pruneComplete === false` strictness. Unit 4: the
+can-speak clause's conditionality; the participant badge. Unit 5: adopting
+`archives.total` unconditionally; `rewroteAll` ignoring failures; the
+spare-bundles default on open; the vault preview made blocking. One attempted
+mutation did NOT bite and is recorded honestly in the unit-3 record (the
+non-empty `archiveBundleFileId` guard is belt-and-braces with the template's
+truthy alias), as is a weak first attempt at the advisory-preview proof.
