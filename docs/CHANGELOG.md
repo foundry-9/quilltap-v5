@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Planned the `03154b72` 4.8.1-release drift catch-up round and committed
+its three work orders (docs-only; no code moved). v4 released 4.8.0 and
+4.8.1 and its main moved eight commits past `de9f70bf`; the effective
+lib/app drift is v4's bugs 58–60 (instance lock, fail-closed seeding, the
+phantom `quilltap-llm-logs.dbkey` — which v5's `change_passphrase`
+reproduces faithfully and must now shed), the `db characters` shell
+completions, and two client fixes (the standalone streaming indicator
+above a tool block; About release-freshness). Orders:
+`work-orders/p4.d68-dbkey-onefile-seed-lock-drift.md` (server; owns the
+baseline move to `03154b72`), `p4.d69-cli-completions-archive-drift.md`,
+`p4.d70-streaming-indicator-about-spa-drift.md`. Operational hazard
+recorded in all three: the v4 checkout now sits on the `bugfix` branch
+(4.8.2-bugfix.0), so every oracle regen this round pins a detached
+worktree at `03154b72`, and future drift-checks must watch both v4
+branches.
+
 Unified the P4.D65-finish + sweep-rot round (P4.D65-resumed ∥ P4.45) onto
 main — the oracle baseline moves to `de9f70bf` and the Bug-57 drift debt is
 cleared (v4 converged onto this port's twice-linked-blob rehydrate dedupe;
