@@ -65242,3 +65242,79 @@ tool rows at all, where v4 shows the bubble with the tool block and (since
 handles that case correctly the moment the gate is widened — it is the
 `content.length === 0`, one-batch shape — so closing the gate needs no
 change to this port. Recorded for whoever ports v4's offset interleaving.
+
+## Follow-up — the `wardrobe-flow` `set_all` beat deflaked (2026-08-12)
+
+The longest-standing documented intermittent in the suite is closed. It is
+the only beat the round records had been dispositioning by name for months
+("the DOCUMENTED wardrobe `set_all` full-suite flake, re-proven green in
+isolation") — a disposition that stopped working when P4.D70 measured it
+failing **2-in-7 runs in FILE isolation**, at which point a green isolation
+run became evidence of nothing and every lane touching `apps/web` inherited
+an unexplained red. Diagnosed, reproduced deterministically, and hardened.
+**No assertion was weakened; zero product code changed** — the fix is
+gesture-level, in the spec.
+
+**The mechanism, measured rather than reasoned.** A request/response probe
+over the beat printed the whole dispatch timeline. The dialog's Live tab
+seeds its staged slots AND its flush BASELINE from the worn snapshot, which
+arrives three round trips after the dialog opens — `chatOutfitGet`, then the
+store's `characterWardrobeList` + `wardrobeList` inside `refreshOutfit`
+(`outfit-store.ts`, both awaited before `outfitState.set`). The item list the
+walk clicks "Wear" in comes from the DIALOG's own separate `reloadItems`
+fetch, so the button is live long before the snapshot lands. On an idle
+machine the margin was **3 ms** (chatOutfitGet response +312 ms, click
++319 ms).
+
+Lose that race and the edit is discarded **silently, twice over**: the late
+seeding effect overwrites `liveStagedByChar` for the character, and — the
+part that makes it invisible — no baseline was captured, so
+`flushStagedLiveOutfits` finds nothing dirty, dispatches NOTHING, and returns
+`true`, and Done closes the dialog as if the change had been saved. The
+reopened dialog then reads the untouched server state: **`"Accessories +
+Empty"`**, the exact string P4.D70 recorded. The probe confirmed it: on a
+failing run there is no `chatEquip` in the trace at all.
+
+**Reproduced on demand** (the 2026-07-31 deflake's technique): a 3 s
+`page.route` delay on `chatOutfitGet` makes the ORIGINAL beat fail every
+time, at exactly the recorded assertion and with exactly the recorded
+string. The fixed beat passes under that same forced delay — red before,
+green after, same injected condition.
+
+**Why no waiter could fix it.** The usual trap-10 repair — await the
+page-initiated fetch before the next gesture — is not available here: an
+EMPTY worn snapshot is indistinguishable in the DOM from one that has not
+arrived, so there is no state to assert on, and matching the store's two
+wardrobe reads is ambiguous (the dialog's own loader fires the same two verb
+types). Even a perfect response waiter leaves the seeding effect's flush,
+which in a zoneless app can be a frame away.
+
+**The fix: give Aria something to be wearing first.** The beat now creates an
+accessory and equips it over raw dispatch (`page.request`, invisible to
+`page.waitForResponse`) BEFORE opening the dialog, then waits for that item
+to paint in the Accessories slot. A seeded item, unlike an empty snapshot, IS
+observable — the wait became a state proof instead of a timing guess. Two
+riders, both strengthening the beat rather than loosening it: Done now awaits
+the `chatEquip`/`set_all` response itself (the beat's own title claim, and
+the silent-no-dispatch failure mode now fails HERE and by name instead of ten
+seconds later as an empty slot), and the reopen asserts the flush carried the
+whole staged slate — the pre-worn accessory AND the goggles — which pins that
+staging starts from the worn snapshot rather than from nothing.
+
+Verification: the spec file green **6/6** consecutive runs (5 clean + the
+forced-delay run), and the **full Playwright suite 202 passed / 0 failed / 0
+skipped (19.7 m)** over a fresh dist + this worktree's debug binaries — the
+wardrobe beats at 163/164/165, the in-chat one at `:260` in 566 ms. Zero
+product code changed, so no Rust or `ng test` gate is owed.
+
+**A v4 bug came out of it, and v5 stays faithful.** The lost-edit race is not
+a port defect: v4's seeding effects are ref-gated identically
+(`components/wardrobe/wardrobe-control-dialog.tsx:298-335` ↔ the v5 mirror),
+so v4 discards a fast first edit the same way — silently, with the dialog
+closing as though it saved. Diverging unilaterally to fix it would move a
+surface the wardrobe differentials pin, so it is **filed as v4 Bug 61**
+(`quilltap-server` → `docs/developer/bugs/bug-61-staged-outfit-edit-dropped.md`,
+OPEN — the first open bug in that catalogue since Bug 57) and recorded as
+finding #78. It is a bug, not a papercut, which is why it belongs in v4's
+catalogue rather than the v5 repo's v4-first product list. The e2e beat is
+deterministic without the fix, so nothing is blocked on it.

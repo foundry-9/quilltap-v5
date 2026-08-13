@@ -39,6 +39,13 @@ import {
  * spec-private port. No LLM send happens here, so no mock LLM is needed.
  */
 
+/**
+ * The accessory the in-chat beat puts on Aria BEFORE opening the dialog, so the
+ * Live tab's seeded state is observable in the DOM. See the beat for why an
+ * empty worn snapshot cannot be waited on.
+ */
+const SEEDED_ACCESSORY = 'Aether Scarf';
+
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
 const INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'wardrobe-instance');
@@ -291,6 +298,60 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.getByRole('link', { name: /Solo Voyage/ }).click();
     await expect(page).toHaveURL(/\/salon\//);
 
+    // ---- Give Aria something to be wearing FIRST (the deflake) -------------
+    //
+    // The Live tab stages onto — and captures its flush BASELINE from — the
+    // worn snapshot, which lands three round trips after the dialog opens
+    // (`chatOutfitGet`, then the store's two wardrobe reads). A "Wear" click
+    // that arrives before it is discarded SILENTLY: the late seed overwrites
+    // the staged slots, and with no baseline captured `flushStagedLiveOutfits`
+    // skips the character entirely — no `set_all` goes out, Done closes as if
+    // all were well, and the reopened dialog reads "Accessories · Empty". That
+    // is the documented full-suite flake. Measured margin on an idle machine:
+    // 3 ms (chatOutfitGet response +312 ms, click +319 ms), so any load loses
+    // the race; delaying `chatOutfitGet` by 3 s reproduces it every time.
+    //
+    // No assertion could gate that click, because an EMPTY worn snapshot is
+    // indistinguishable in the DOM from one that has not arrived yet. So seed
+    // a worn accessory instead and let the walk wait for it to paint — a state
+    // proof rather than a timing guess. The lost-edit race is v4's too (same
+    // effect, same ref-gated seed), so v5 stays faithful and it is filed
+    // v4-side rather than diverged from here.
+    const chatId = /\/salon\/([^/?#]+)/.exec(page.url())?.[1];
+    expect(chatId, 'the Solo Voyage chat id, read from the URL').toBeTruthy();
+
+    const characters = ((await dispatch(page, { type: 'characterList' }))['characters'] ??
+      []) as Array<{ id: string; name: string }>;
+    const ariaId = characters.find((c) => c.name === 'Aria')?.id;
+    expect(ariaId, "Aria's character id").toBeTruthy();
+
+    const seeded = (
+      await dispatch(page, {
+        type: 'characterWardrobeCreate',
+        characterId: ariaId,
+        item: {
+          title: SEEDED_ACCESSORY,
+          description: null,
+          imagePrompt: null,
+          types: ['accessories'],
+          appropriateness: null,
+          isDefault: false,
+          componentItemIds: [],
+          replace: false,
+        },
+      })
+    )['wardrobeItem'] as { id: string } | undefined;
+    const seededId = seeded?.id;
+    expect(seededId, 'the seeded accessory id').toBeTruthy();
+
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [], accessories: [seededId] },
+    });
+
     // The shell footer Wardrobe button carries the chat scope (and resolves
     // Aria as the default character). getByTitle: the footer button is the
     // only "Wardrobe"-titled control (the detail tab has no title attr).
@@ -301,19 +362,43 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // microcopy.
     await expect(dialog.getByText('Edits stage here and apply when you click Done.')).toBeVisible();
 
-    // Stage: Wear the goggles (a pure client-side staging gesture).
+    // THE GATE (the deflake). The seeded accessory painting in the Accessories
+    // slot is the proof that the worn snapshot arrived AND the Live tab seeded
+    // from it — staged slots and flush baseline are captured in the same pass.
+    // Only now is a staging gesture safe.
+    const liveAccessories = dialog.locator('.qt-card').filter({ hasText: 'Accessories' }).first();
+    await expect(liveAccessories).toContainText(SEEDED_ACCESSORY, { timeout: 15_000 });
+
+    // Stage: Wear the goggles (a pure client-side staging gesture). A leaf item
+    // layers rather than replacing (`wearItemIntoSlots`, `replace: false`), so
+    // the staged slate becomes the seeded accessory PLUS the goggles.
     const gogglesRow = dialog
       .locator('.qt-card-interactive')
       .filter({ hasText: 'Brass Goggles' })
       .first();
     await gogglesRow.getByRole('button', { name: 'Wear', exact: true }).click();
+    await expect(liveAccessories).toContainText('Brass Goggles');
 
     // Done → ONE set_all flush per dirty character, then the dialog closes.
+    // Await the flush itself rather than only the close: when the staging is
+    // dropped, `flushStagedLiveOutfits` finds nothing dirty and closes happily
+    // WITHOUT dispatching, so the close proves nothing. This waiter names that
+    // failure here instead of leaving it to surface as an empty slot below.
+    const flushed = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"chatEquip"') &&
+        (r.request().postData() ?? '').includes('"set_all"'),
+      { timeout: 15_000 },
+    );
     await page.getByRole('button', { name: 'Done' }).click();
+    await flushed;
     await expect(dialog).toBeHidden({ timeout: 10_000 });
 
     // Reopen: the remounted dialog seeds the Live tab from the server's worn
-    // snapshot — the flush persisted.
+    // snapshot — the flush persisted, and it carried the whole staged slate
+    // (what the character was already wearing, plus the goggles) rather than
+    // just the new item.
     await page.getByTitle('Wardrobe', { exact: true }).click();
     const accessoriesRow = page
       .getByRole('dialog')
@@ -321,9 +406,22 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .filter({ hasText: 'Accessories' })
       .first();
     await expect(accessoriesRow).toContainText('Brass Goggles', { timeout: 10_000 });
+    await expect(accessoriesRow).toContainText(SEEDED_ACCESSORY);
     await page.getByRole('button', { name: 'Done' }).click();
   });
 });
+
+/**
+ * Raw dispatch against this spec's own server, issued through the page's
+ * context so it inherits the unlocked session. `page.request.*` traffic is
+ * invisible to `page.waitForResponse`, so these never satisfy a waiter the
+ * walk registered for a page-initiated call.
+ */
+async function dispatch(page: Page, req: unknown): Promise<Record<string, unknown>> {
+  const res = await page.request.post(`${BASE_URL}/api/dispatch`, { data: req });
+  const body = (await res.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
+  return body?.data ?? {};
+}
 
 function runCliWrite(cli: string, sql: string): void {
   const res = spawnSync(cli, ['db', '--data-dir', INSTANCE_DIR, '--write', sql], {
