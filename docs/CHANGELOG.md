@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.D68 unit 5 — the baseline-move neutrality proof + the docs mirror.
+The two seed-transitive oracle families (`reset_builtins_equivalence`,
+`seed_avatars_equivalence` — the only cases importing v4's
+`seed-initial-data`) regenerated and re-ran green at the `03154b72` pin
+through the sweep driver, proving the bug-59 drift happy-path-neutral;
+the oracle baseline moves to `03154b72` at unification. Mirrored into
+`docs/v4/`: the three 4.8.1 bug write-ups (a new `bugs/fixed` mirror
+subtree), the bug-60 corrections to DATABASE_ENCRYPTION / DDL /
+BACKUP-RESTORE / DEPLOYMENT, and `help/database-protection.md` (a new
+`help/` mirror subtree), with that help doc joining the `p4.9i2` bank
+by name.
+
 P4.D68 unit 4 — mechanical spelling enforcement. The v5 analog of v4
 4.8.1's repo-wide checker: `harness/tools/check_spelling.py` fails on
 any case-insensitive quilt-based misspelling of "Quilltap" in tracked

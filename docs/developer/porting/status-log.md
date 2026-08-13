@@ -64990,3 +64990,53 @@ was mutation-checked: a planted untracked `.md` with the misspelling
 turned it red; removal restored green.
 
 Versions: harness 0.0.454.
+
+## Lane record — P4.D68 unit 5: the baseline-move neutrality proof + the docs mirror, 2026-08-12
+
+**Seed-transitive neutrality at the pin (deliverable 5):** the import
+graph re-confirmed in lane — `harness/oracle/cases/reset-builtins.test.ts`
+and `seed-avatars.ts` are the only oracle cases importing v4's
+`lib/startup/seed-initial-data` (grep over `harness/oracle/**`), and
+`base.repository.ts`'s change is additive (`countOrThrow` — no existing
+method moved). Both families regenerated + re-run FRESH at the
+`03154b72` pin through the sanctioned driver
+(`recipe_sweep.py --run-all --families reset_builtins_equivalence,
+seed_avatars_equivalence --v4 /tmp/qt-v4-pin-p4d68-03154b72`), totals
+`{ok: 2}` — the expected green: the drift is happy-path-neutral.
+Freshness evidence: the driver deletes each oracle NDJSON before regen
+(a green line cannot be a stale pass), and the regen transcript shows
+the pin-substituted `cd /tmp/qt-v4-pin-p4d68-03154b72`. One staging
+step the recipes assume: the shared `/tmp/qt-qtapimport-{main,mount}.db`
+fixture pair had to be BUILT first
+(`harness/oracle/fixtures/build-qtap-import-fixture.ts`, run from the
+pin) — the two seed-family recipes read a sibling family's staging, the
+known recipe-rot shape; recorded here rather than repaired (the
+families classify `ok_restored` and the builder's own header carries
+its invocation).
+
+**The oracle baseline MOVES to `03154b72` at unification** (this lane
+owns the move; the CLAUDE.md paragraph moves there, not here). ⚠ The
+standing operational change from this round's planning holds: v4 now
+develops on TWO branches (main = 4.9-dev, `bugfix` = 4.8.x) and the
+checkout sits on `bugfix` — drift-checks must watch both, and every
+regen pins a detached worktree until the checkout returns to main.
+
+**The docs mirror (deliverable 7):** mirrored from the pin into
+`docs/v4/` — the three bug write-ups (`developer/bugs/fixed/bug-58/59/
+60-*.md`, a NEW `bugs/` subtree in the mirror), the bug-60 doc
+corrections to `developer/DATABASE_ENCRYPTION.md`, `developer/DDL.md`
+(the phantom per-database key files removed from the data-directory
+listing), `BACKUP-RESTORE.md` (the `data/` path component restored),
+plus `DEPLOYMENT.md` (also a bug-60 fix site — leaving the mirror's
+wrong backup path stale would preserve the exact hazard the bug
+documents), and `help/database-protection.md` as a NEW `docs/v4/help/`
+subtree (v5 ships no help tree; the help surface is `p4.9i2`).
+**`help/database-protection.md` joins the `p4.9i2` help-doc bank by
+name** (with `data-directory.md` and `system-backup-restore.md` already
+in that bank's sync-at-runtime set — v5 syncs help docs from disk at
+runtime, so only the bank membership is recorded).
+
+**Tier-3 restatement:** version-guard / `minServerVersion` patching
+remains unported surface (pre-existing, not this drift's debt) — the
+bug-60 halves touching it have no v5 surface, dispositioned NO-PORT in
+the unit-1 record.

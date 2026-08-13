@@ -15,11 +15,9 @@ All three databases live in `<data-dir>/data/`. Alongside them:
 ```
 <data-dir>/data/
 ├── quilltap.db
-├── quilltap.dbkey            # Encryption key file (main DB)
+├── quilltap.dbkey            # Encryption key file — one per instance, all three DBs
 ├── quilltap-llm-logs.db
-├── quilltap-llm-logs.dbkey   # Encryption key file (LLM logs DB)
 ├── quilltap-mount-index.db
-├── quilltap-mount-index.dbkey # Encryption key file (mount index DB)
 ├── quilltap.lock             # Instance lock (prevents dual-instance corruption)
 └── backups/                  # Physical backups
 ```
@@ -43,7 +41,7 @@ All three databases are encrypted with **SQLCipher** (AES-256-CBC with HMAC-SHA5
 ### How the key works
 
 1. A 32-byte random **pepper** (base64-encoded) is the actual SQLCipher key
-2. The pepper is wrapped with AES-256-GCM + PBKDF2 (600,000 iterations, SHA-256) and stored in `.dbkey` files
+2. The pepper is wrapped with AES-256-GCM + PBKDF2 (600,000 iterations, SHA-256) and stored in the instance's single `data/quilltap.dbkey` file
 3. An optional user passphrase protects the `.dbkey` wrapper; without one, a sentinel value is used
 4. At runtime, the pepper lands in `process.env.ENCRYPTION_MASTER_PEPPER`
 5. SQLCipher receives it as a raw hex key: `PRAGMA key = "x'<hex>'"`
@@ -271,6 +269,9 @@ CREATE TABLE "characters" (
   "canDressThemselves" INTEGER DEFAULT NULL,
   "canCreateOutfits" INTEGER DEFAULT NULL,
   "characterDocumentMountPointId" TEXT DEFAULT NULL,
+  "archivedAt" TEXT DEFAULT NULL,            -- ISO timestamp when the character was archived into a tombstone.
+  "archiveFileId" TEXT DEFAULT NULL,         -- File row holding the archived character bundle export.
+  "archivedAvatarFileId" TEXT DEFAULT NULL,  -- File row holding the archived avatar thumbnail copy.
   "systemTransparency" INTEGER DEFAULT NULL,  -- when 1 (true), this character may inspect "the Staff" — the chat-level toggles for self_inventory, Staff messages (Lantern/Aurora/Librarian/Prospero/Host), and character vaults still apply. When NULL or 0 (false), the character cannot see Staff messages, the self_inventory tool is withheld, and all character vaults (own + peers) are hidden from doc_* tools — a hard override on top of chat/project settings. Default NULL (opaque).
   "coreWhisperEnabled" INTEGER DEFAULT NULL,  -- per-character override of the global coreWhisper.enabled setting (Aurora's Core whisper). NULL = inherit from global. Resolution: chat → character → global.
   "canBeCarina" INTEGER DEFAULT NULL          -- Carina (inline LLM queries): when 1 (true), this character can answer @Name queries / ask_carina calls as an isolated reference answer (identity only, no history, no memory). NULL/0 = not an answerer. Added by add-carina-flag-v1.
@@ -1333,6 +1334,7 @@ Known keys (others may be present from migrations / startup hooks):
 - `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}`. Per-instance memory extraction rate limits. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
 - `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`renderedMarkdown`, the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`), and cold-tiered `conversation_chunks.embedding`. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `taboo` (4.8+) — JSON: `{phrases: string[]}` (each 1–200 chars after trim, at most 500 entries, default `[]`). Per-instance list of phrases characters must never say. Normalized on write (trim, drop empties, case-insensitive dedupe, **user order preserved** — the rendering sits in the cacheable system-prompt prefix, so order is deliberately not sorted). Read once per turn by `buildContext()` (`lib/chat/context-manager.ts`) via `getTabooSettings` and rendered by `renderTabooSection` (`lib/chat/context/system-prompt-builder.ts`) between the universal math-formatting note and the per-turn tool instructions; an empty list renders no section at all. Updated by `PUT /api/v1/settings/taboo` (Settings → Chat → Taboo). Accessors in `lib/instance-settings`. Schema: `TabooSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `lastMaintenanceSweepAt` (4.7+) — ISO 8601 timestamp of the last completed scheduled-maintenance pass. Written/read by `lib/background-jobs/scheduled-maintenance.ts` to skip the startup tick when a sweep ran within the last 20 h (dev-restart friendliness). Internal; not exported.
 - `lanternBackgroundsMountPointId` (4.3+) — UUID of the global "Lantern Backgrounds" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/lantern-store-bridge.ts`; written by `provision-lantern-backgrounds-mount-v1`. Used to land story-background job output and generic `generate_image` tool output when no project context is available.
 - `userUploadsMountPointId` (4.4+) — UUID of the global "Quilltap Uploads" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/user-uploads-bridge.ts`; written by `provision-user-uploads-mount-v1`. Used for every project-less file write: chat attachments, paste/drag-drop images, the Files-tab uploader, capabilities-report exports, and backup-restore replay of project-less files. Replaces the legacy `<filesDir>/_general/` namespace as the catch-all destination.
@@ -1393,7 +1395,7 @@ CREATE TABLE sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample);
 
 ## LLM Logs Database Schema (`quilltap-llm-logs.db`)
 
-This database uses the same encryption mechanism as the main database (same pepper, separate `.dbkey` file).
+This database uses the same encryption mechanism as the main database — the same pepper, unwrapped from the same `quilltap.dbkey`.
 
 ### llm_logs
 
@@ -1415,6 +1417,8 @@ CREATE TABLE "llm_logs" (
   "requestHashes" TEXT,
   "durationMs" INTEGER,
   "autonomousRunId" TEXT,
+  "connectionProfileId" TEXT,
+  "imageProfileId" TEXT,
   "createdAt" TEXT NOT NULL,
   "updatedAt" TEXT NOT NULL
 );
@@ -1424,7 +1428,13 @@ CREATE INDEX "idx_llm_logs_createdAt" ON "llm_logs" ("createdAt" DESC);
 CREATE INDEX "idx_llm_logs_type" ON "llm_logs" ("type");
 CREATE INDEX "idx_llm_logs_userId" ON "llm_logs" ("userId");
 CREATE INDEX "idx_llm_logs_autonomousRunId" ON "llm_logs" ("autonomousRunId");
+CREATE INDEX "idx_llm_logs_connectionProfileId" ON "llm_logs" ("connectionProfileId");
+CREATE INDEX "idx_llm_logs_imageProfileId" ON "llm_logs" ("imageProfileId");
 ```
+
+`connectionProfileId` / `imageProfileId` are the profile-attribution columns added by `add-llm-logs-profile-columns-v1` (4.9). `provider` and `modelName` are flattened copies taken from the serving profile at call time — they *look* like profile attribution but cannot distinguish two profiles that share a provider/model pair, which is exactly what The Almanack's per-profile statistics need. Both are nullable: rows written before the columns landed carry NULL and are attributed by joining on `(provider, modelName)`, which the report labels "approximate". `connectionProfileId` is populated by the streaming path, the shared cheap-LLM path, auto-configure, the gatekeeper's LLM classifier, and the character optimizer; `imageProfileId` by the three image-generation call sites (tool handler, story background, character avatar), including the Concierge reroute's fallback profile.
+
+`durationMs` is the wall-clock of the provider call. The shared cheap-LLM path (`lib/memory/cheap-llm-tasks/core-execution.ts`) and several service call sites did not populate it before 4.9; the character optimizer hardcoded `0`, which poisoned any average taken over the column. All of those now measure.
 
 `autonomousRunId` is stamped on every LLM call made within an autonomous-room turn (the turn plus its agent-mode tool sub-calls), via an `AsyncLocalStorage` context the turn handler establishes. It is `NULL` for all non-autonomous calls. The autonomous-room turn handler sums `usage.totalTokens` for a run by this column to enforce the per-run token budget — superseding the older timestamp-window sum, which double-counted overlapping chat activity and background housekeeping. Added by migration `add-llm-logs-autonomous-run-id-column-v1`.
 
@@ -1439,7 +1449,7 @@ CREATE TABLE sqlite_stat4(tbl, idx, neq, nlt, ndlt, sample);
 
 ## Mount Index Database Schema (`quilltap-mount-index.db`)
 
-This database uses the same encryption mechanism as the main database (same pepper, separate `.dbkey` file). Foreign keys are **enabled** (unlike the LLM logs DB).
+This database uses the same encryption mechanism as the main database — the same pepper, unwrapped from the same `quilltap.dbkey`. Foreign keys are **enabled** (unlike the LLM logs DB).
 
 Tables are auto-created on first access by their respective repositories via `CREATE TABLE IF NOT EXISTS`.
 
