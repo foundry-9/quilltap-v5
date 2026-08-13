@@ -65196,3 +65196,49 @@ which move — so nothing needed updating, only guarding.
 **Not mirrored, deliberately (the P4.9c convention, re-verified):** v4's
 version string. v5's About reports v5's own identity via the §3 health
 `version`, and the badge spec is unchanged.
+
+---
+
+## Lane record — P4.D70: the gate, and two things the unifier should know
+
+**Drift-check (lane start, 2026-08-12).** v4 main HEAD == the pinned
+baseline `03154b72` (`git log 03154b72..main` empty); `git diff main..bugfix
+-- app/` empty, so the checkout's `bugfix` position could not have tainted
+the two client files this lane read. v4 source was still read at the pin
+(`git show 03154b72:<path>`) per the order.
+
+**Gate.** No crate touched (`git diff main..HEAD --name-only` has zero
+`crates/` entries), so no cargo gate is owed beyond that confirmation and
+no oracle regen exists to run. `ng test` **298 files / 4,142 tests / 0
+failed** (the 4,138 baseline plus this lane's four new specs); `ng build`
+clean; **full Playwright 201 passed / 1 failed / 0 skipped (5.4 m)** — the
+one red is the documented `wardrobe-flow.spec.ts:253` `set_all`
+intermittent, disposed below. The e2e binaries were built in-worktree
+(`cargo build --release -p quilltap-web -p quilltap-cli`, exit 0) because
+neither the main checkout nor any sibling worktree had any; the dist was
+rebuilt after the last source touch, per the stale-dist trap.
+
+**The wardrobe red, MEASURED pre-existing rather than assumed.** It failed
+1-of-3 in file-isolation with this lane's code, which contradicts the
+standing note that it is a full-suite-only flake green 3/3 alone — so the
+lane bisected instead of citing the note: `git checkout main --` on the two
+source files this lane changed, `ng build`, four more isolation runs →
+**1 failed / 3 passed, the identical assertion**
+(`Accessories + Empty`, the reopened dialog reading no worn item). Same
+shape, same rate, both file sets; the beat drives wardrobe dispatch verbs
+and never mounts a streaming bubble, so this lane cannot reach it. **The
+standing note's "green 3/3 in isolation" is stale — the flake now
+reproduces alone at roughly 1-in-3, which makes it cheap to deflake and
+worth its own small lane** (trap 10's shape: the Done flush's persistence
+vs. the reopened dialog's own seeding fetch). Not taken here: deflaking it
+is outside this order's scope.
+
+**A pre-existing divergence noticed in passing, NOT fixed (out of scope).**
+v5 gates the whole streaming bubble on `state().content || state().reasoning`,
+where v4 renders it whenever the turn is streaming. So a turn that fires a
+tool call before emitting ANY prose shows v5's large waiting quill and no
+tool rows at all, where v4 shows the bubble with the tool block and (since
+`fed5b5da`) the standalone indicator beneath it. The predicate ported here
+handles that case correctly the moment the gate is widened — it is the
+`content.length === 0`, one-batch shape — so closing the gate needs no
+change to this port. Recorded for whoever ports v4's offset interleaving.
