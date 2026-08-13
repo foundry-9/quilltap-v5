@@ -65158,3 +65158,41 @@ rule.** The standalone arm needs a streamed tool batch, and
 zero occurrences of "tool"). Reaching it would mean teaching the mock to
 emit tool calls and the walk to settle a tool result — new LLM-driving
 infrastructure, which the order forbids. The unit specs are the proof.
+
+---
+
+## Lane record — P4.D70 unit 2: the About release-freshness mirror (v4 `5fdd7bed`)
+
+**What v4 changed.** `app/about/AboutView.tsx` (+8/−4), part of v4's
+release-checklist item 13 sweep: the Key Features list had missed the whole
+4.8 cycle. Five edits — the Docker bullet gains "with filesystem document
+stores bound through to the container"; a NEW **The Workspace** bullet is
+inserted BEFORE Aurora; Aurora gains "and archiving into an encrypted
+bundle you can rehydrate later"; Pascal is rewritten ("persistent state
+across four registers … user-authored custom tools with honest server-side
+rolls, outcome tables, side effects, and a visual workbench to build
+them"); the Foundry gains "and the Almanack: a full system report on what
+this instance can actually do".
+
+**The port.** v5's About screen carries v4's list as a data array rendered
+by one `@for` (`about-page.ts` `features`), so the mirror is five entries,
+v4's sentences verbatim (v4's `&ndash;` separator is the template's, and
+the titles keep v5's existing literal en-dash convention). **Every named
+feature is genuinely ported in v5** — the workspace tabs (`p4.9j`),
+character archiving (P4.D62–D67), Pascal's four state registers +
+custom tools + the Workbench (P4.6ay/P4.6bb/P4.D10), the Almanack
+(P4.37) — so the freshened text is as true of v5 as of v4. The
+docstring's v4 line reference moved with the sweep (`:122-218` →
+`:131-230`).
+
+**Proof.** A new `about.spec.ts` case pins all five edits plus the
+Workspace-before-Aurora placement (ordered against the titled bullet
+`Aurora – Characters`, because the intro paragraph's "Aurora
+(characters)" appears earlier in the page text). No existing spec or e2e
+beat pinned the old sentences — the P4.9c About beat asserts the version
+badge, the offline-badge divergence and two section headings, none of
+which move — so nothing needed updating, only guarding.
+
+**Not mirrored, deliberately (the P4.9c convention, re-verified):** v4's
+version string. v5's About reports v5's own identity via the §3 health
+`version`, and the badge spec is unchanged.

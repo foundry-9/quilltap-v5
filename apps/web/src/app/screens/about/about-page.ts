@@ -307,7 +307,7 @@ export class AboutPage {
     return currentYear > 2025 ? `2025-${currentYear}` : '2025';
   }
 
-  /** v4 `:122-218`, verbatim. */
+  /** v4 `:131-230`, verbatim (the `5fdd7bed` release-freshness sweep). */
   protected readonly features = [
     {
       title: 'Native desktop app',
@@ -315,11 +315,15 @@ export class AboutPage {
     },
     {
       title: 'Docker runtime',
-      body: 'toggle between VM and Docker from the splash screen, or run standalone via Docker Hub',
+      body: 'toggle between VM and Docker from the splash screen, or run standalone via Docker Hub, with filesystem document stores bound through to the container',
+    },
+    {
+      title: 'The Workspace',
+      body: 'a two-pane shell of kept-alive tabs where a chat, a document, a terminal, and a settings panel all stay mounted at once; a streaming conversation keeps streaming while you work beside it, and any tab can be dragged into the other pane',
     },
     {
       title: 'Aurora – Characters',
-      body: 'detailed profiles with pronouns, aliases, clothing records, personalities, and multi-character turn management',
+      body: 'detailed profiles with pronouns, aliases, clothing records, personalities, multi-character turn management, and archiving into an encrypted bundle you can rehydrate later',
     },
     {
       title: 'The Salon – Chat',
@@ -343,7 +347,7 @@ export class AboutPage {
     },
     {
       title: 'Pascal the Croupier – Gaming',
-      body: 'persistent chat state, dice rolls, coin flips, inventories, stats, and game tracking',
+      body: 'persistent state across four registers, dice rolls, coin flips, inventories and stats, plus user-authored custom tools with honest server-side rolls, outcome tables, side effects, and a visual workbench to build them',
     },
     {
       title: 'Calliope – Themes',
@@ -387,7 +391,7 @@ export class AboutPage {
     },
     {
       title: 'The Foundry – Architecture',
-      body: 'unified settings hub, plugin system for themes, providers, templates, tools, search, and storage',
+      body: 'unified settings hub, plugin system for themes, providers, templates, tools, search, and storage, and the Almanack: a full system report on what this instance can actually do',
     },
     {
       title: 'Multi-provider support',

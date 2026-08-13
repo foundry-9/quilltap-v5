@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.D70 unit 2: mirrored v4 `5fdd7bed`'s About release-freshness sweep into
+the SPA's Key Features list — the Docker bullet notes the filesystem
+document stores bound through to the container, a new "The Workspace"
+bullet lands before Aurora, Aurora gains encrypted-bundle archiving,
+Pascal is rewritten around four state registers plus user-authored custom
+tools and the Workbench, and the Foundry gains the Almanack. Every named
+feature is ported in v5, so the new text is truthful here. Pinned by spec
+(static template prose has no other guard against rot); v5 keeps reporting
+its own version, not v4's.
+
 P4.D70 unit 1: re-ported v4 `fed5b5da` — the streaming "still working" quill
 now takes a line of its own (with the tool block's own top spacing) when the
 trailing prose segment is empty and a tool batch precedes it, instead of

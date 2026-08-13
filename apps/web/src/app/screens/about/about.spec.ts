@@ -45,6 +45,30 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
     expect(text).toContain('Foundry-9 LLC. All rights reserved.');
   });
 
+  /**
+   * v4 `5fdd7bed` freshened the Key Features list for the 4.8.0 release. Every
+   * named feature is ported in v5, so the sentences are true here too — pinned
+   * because static template prose has no other guard against silent rot.
+   */
+  it('carries the 4.8.0 release-freshness sweep of the feature list', async () => {
+    const fixture = await render({ kind: 'healthy', version: '0.0.28' });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('with filesystem document stores bound through to the container');
+    expect(text).toContain('The Workspace');
+    expect(text).toContain('a two-pane shell of kept-alive tabs');
+    expect(text).toContain('and archiving into an encrypted bundle you can rehydrate later');
+    expect(text).toContain('persistent state across four registers');
+    expect(text).toContain('a visual workbench to build them');
+    expect(text).toContain(
+      'the Almanack: a full system report on what this instance can actually do',
+    );
+    // The Workspace bullet is inserted BEFORE Aurora, as v4 places it. (The
+    // intro paragraph's "Aurora (characters)" is a different string, so the
+    // titled bullet is the one being ordered here.)
+    expect(text.indexOf('The Workspace')).toBeLessThan(text.indexOf('Aurora – Characters'));
+  });
+
   it('renders the version LOCALLY from the §3 health field', async () => {
     const fixture = await render({ kind: 'healthy', version: '0.0.28' });
     const badge = (fixture.nativeElement as HTMLElement).querySelector(
