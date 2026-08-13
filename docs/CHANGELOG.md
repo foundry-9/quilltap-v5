@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.D68 unit 1 — the bug-60 port: `change_passphrase` writes one `.dbkey`
+file. v4 4.8.1 removed the vestigial `quilltap-llm-logs.dbkey` write (the
+remnant of a per-database-key design that was never built; nothing ever
+read it, and it could hold a stale wrapping), and v5 follows: the second
+write in `quilltap-core::dbkey::change_passphrase` is gone, a pre-existing
+stale file on disk is left untouched (v4 parity — no deletion), and the
+doc comment now carries v4's one-pepper-one-file reasoning. Proven at the
+new `03154b72` pin by the extended dbkey cross-compat differential, now
+BOTH directions: v4's REAL `changePassphrase` (driven fresh in the pinned
+worktree via the new `QT_DBKEY_V4_OUT` leg of
+`verify-dbkey-crosscompat.ts`) writes one file that v5's reader unlocks
+(new `reads_v4_changed_passphrase_dbkey`), and v5's rewrap writes one
+file that v4's real code unlocks — with the one-file outcome asserted on
+both sides of the fence and mutation-proven (re-adding the second write
+turns four Rust arms and the oracle assertion red). The
+`archive_reencrypt_tier2_equivalence` family regenerated fresh at the pin
+(its comparands never observe the data-dir file set — recorded; the
+one-file arm lives in the dbkey vehicle) and the
+`change_passphrase_archive_sweep` wire test re-ran green.
+
 Planned the `03154b72` 4.8.1-release drift catch-up round and committed
 its three work orders (docs-only; no code moved). v4 released 4.8.0 and
 4.8.1 and its main moved eight commits past `de9f70bf`; the effective

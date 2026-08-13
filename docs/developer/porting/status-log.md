@@ -64802,3 +64802,76 @@ held-bundle guard on top of the standing queue); P4.D65 items 5–6 are the
 small open remainder; the v4-side archived-seat-badge GET filing is still
 the human's; the `external_tmp_input` driver extension stays banked with
 its candidate list (P4.45 unit-4 record).
+
+## Lane record — P4.D68 unit 1: the bug-60 one-file dbkey port, 2026-08-12
+
+**The port** (v4 `03154b72`, the 4.8.1 fix for its bug 60 — "phantom
+per-database key files"): `quilltap-core::dbkey::change_passphrase` no
+longer writes `quilltap-llm-logs.dbkey`. The second file was the remnant
+of a per-database-key design that was never built — nothing ever read it,
+and it could hold a stale wrapping; v4 removed the write in 4.8.1 and v5
+follows. The doc comment now carries v4's `DBKEY_FILENAME` reasoning
+(one pepper per instance, wrapped once; every database opens with it; a
+pre-4.8.1 stale file is inert and deliberately left alone — deleting key
+material on the user's behalf is the wrong instinct even when it is known
+redundant). v5 write-site census confirmed the order's survey: exactly
+one site wrote the second file (`dbkey.rs` `change_passphrase`);
+`save_dbkey` never did, matching v4 where only `changePassphrase` minted
+it.
+
+**Tests moved with the port:** `change_passphrase_round_trip` asserts the
+second file is NOT created; new
+`change_passphrase_leaves_stale_llm_logs_file_untouched` plants a stale
+file, changes the passphrase, and asserts byte-identical survival; the
+`engine.rs` ChangePassphrase dispatch test asserts the one-file outcome
+at the wire.
+
+**The differential, both directions at the pin** (detached worktree
+`/tmp/qt-v4-pin-p4d68-03154b72`, the checkout being on the `bugfix`
+branch): `verify-dbkey-crosscompat.ts` gained a second mode —
+`QT_DBKEY_V4_OUT` drives v4's REAL `storeEnvPepperInDbKey` +
+`changePassphrase` (known TEST_PEPPER, "alpha" → "beta") in a scratch
+data dir, asserts v4 itself wrote exactly one `.dbkey`, and leaves the
+dir for the new Rust test `reads_v4_changed_passphrase_dbkey`
+(`QT_DBKEY_V4_FIXTURE`) to unlock with v5's ported reader. The existing
+v5→v4 direction gained the mirror assertion: the oracle now checks the
+v5-written data dir holds exactly `quilltap.dbkey` before unlocking it
+with v4's real `unlockDbKey` — a cross-side tripwire.
+`writes_v5_changed_passphrase_dbkey_for_v4` asserts the same file set
+Rust-side. Each oracle direction is its own process invocation (v4's
+dbkey module caches state on `global` and resolves paths at import).
+
+**Mutation proof:** re-adding the second write turned RED: both dbkey
+module tests, the engine dispatch test, the harness
+`writes_v5_changed_passphrase_dbkey_for_v4` arm, AND the oracle's
+direction-1 file-set assertion (`got [quilltap-llm-logs.dbkey,
+quilltap.dbkey]`). Reverted; all green again.
+
+**The establish step the order demanded:**
+`archive_reencrypt_tier2_equivalence`'s comparands (result / opens /
+`files` rows) do NOT observe the data-dir `.dbkey` file set — its oracle
+drives `reencryptArchiveBundles` (the sweep phase), never
+`changePassphrase`'s dbkey write, and its temp dirs carry no `.dbkey` at
+all. (The order's premise that this oracle "drives v4's real
+changePassphrase in a temp data dir" was WRONG — surveyed in lane.) So no
+designed tripwire flip existed there; per the order's else-branch the
+one-file comparand went into the dbkey cross-compat vehicle above, which
+is where `change_passphrase` actually lives. The family itself
+regenerated fresh at the pin (6 cases, jest /tmp mirror
+`/tmp/qt-d68-archive-reencrypt-oracle`) and ran green;
+`change_passphrase_archive_sweep` (the quilltap-web wire test) re-ran
+green.
+
+**Regen recipe (all from the pin worktree, Node 24):**
+`build-provision-oracle.ts` (`QT_ORACLE_PROVISION` + `QT_V4_FRESH_OUT`),
+`verify-dbkey-crosscompat.ts` with `QT_DBKEY_V4_OUT`, then the Rust
+differential with `QT_ORACLE_PROVISION` + `QT_FIXTURE_V4_FRESH` +
+`QT_V5_PROVISION_OUT` + `QT_DBKEY_V4_FIXTURE` + `QT_DBKEY_V5_OUT`, then
+`verify-v5-provisioned.ts` (`QT_FIXTURE_V5_PROVISIONED`) and
+`verify-dbkey-crosscompat.ts` with `QT_DBKEY_V5_FIXTURE` — the
+provisioning family header carries the exact lines. All green, zero
+SKIP: `provisioning_equivalence` 3/3 (incl. both new dbkey legs),
+`archive_reencrypt_tier2_equivalence` 1/1 (6 cases),
+`change_passphrase_archive_sweep` 1/1.
+
+Versions: core 0.0.530, harness 0.0.453.

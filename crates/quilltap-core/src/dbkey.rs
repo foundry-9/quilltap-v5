@@ -344,10 +344,17 @@ fn write_dbkey_file(path: &Path, content: &str) -> Result<(), DbKeyError> {
 /// v4 `changePassphrase` (`lib/startup/dbkey.ts`): re-wrap the pepper under a new
 /// passphrase without touching the databases. Decrypts `quilltap.dbkey` with the
 /// old passphrase (empty string = the internal no-passphrase sentinel, exactly as
-/// v4), re-encrypts, and writes the new wrapping to BOTH `quilltap.dbkey` and
-/// `quilltap-llm-logs.dbkey` (v4 keeps them in sync — same pepper, new
-/// passphrase — so a v5-rewrapped instance unlocks under v4's real code and vice
-/// versa). Returns the recovered pepper.
+/// v4), re-encrypts, and writes the new wrapping to `quilltap.dbkey` — the
+/// instance's one and only `.dbkey` file. Returns the recovered pepper.
+///
+/// There is a single pepper per instance, wrapped once here. Every database —
+/// main, LLM logs, and mount index — opens with it. Quilltap once wrote a second
+/// copy at `quilltap-llm-logs.dbkey`, the remnant of a per-database-key design
+/// that was never built; nothing ever read it, and it could hold a stale
+/// wrapping, so v4 removed the write in 4.8.1 (bug 60) and v5 follows. Instances
+/// that changed a passphrase before then may still have that file on disk; it is
+/// inert, deliberately left alone (deleting key material on the user's behalf is
+/// the wrong instinct even when it is known redundant), and safe to delete.
 ///
 /// Fails `DecryptFailed` when the old passphrase is wrong (v4's `unauthorized`
 /// "Current passphrase is incorrect"). Unlike [`load_pepper`], this does NOT try
@@ -386,7 +393,6 @@ pub fn change_passphrase(
     };
     let content = encrypt_dbkey_json(&pepper, actual_new)?;
     write_dbkey_file(&path, &content)?;
-    write_dbkey_file(&data_dir.join("quilltap-llm-logs.dbkey"), &content)?;
     Ok(pepper)
 }
 
@@ -439,11 +445,12 @@ mod tests {
     }
 
     /// `change_passphrase` re-wraps the pepper: the new passphrase unlocks, the
-    /// old no longer does, the pepper is preserved, and BOTH `.dbkey` files are
-    /// written (v4 parity / cross-compat). The output is byte-format-identical to
-    /// `save_dbkey` (same `encrypt_dbkey_json`), which is Friday-verified against
-    /// v4, so a v5-rewrapped file is v4-readable (and the reverse — v5 reads any
-    /// v4 `.dbkey` — is the ported read path).
+    /// old no longer does, the pepper is preserved, and ONLY `quilltap.dbkey` is
+    /// written — the phantom `quilltap-llm-logs.dbkey` copy is gone (v4 4.8.1,
+    /// bug 60). The output is byte-format-identical to `save_dbkey` (same
+    /// `encrypt_dbkey_json`), which is Friday-verified against v4, so a
+    /// v5-rewrapped file is v4-readable (and the reverse — v5 reads any v4
+    /// `.dbkey` — is the ported read path).
     #[test]
     fn change_passphrase_round_trip() {
         let dir = tempdir().unwrap();
@@ -461,8 +468,30 @@ mod tests {
         assert_eq!(recovered, pepper);
         assert!(load_pepper(dir.path(), Some("first")).is_err());
         assert_eq!(load_pepper(dir.path(), Some("second")).unwrap(), pepper);
-        // The llm-logs .dbkey was written with the same wrapping.
-        assert!(dir.path().join("quilltap-llm-logs.dbkey").exists());
+        // One pepper, one file: the per-database key file is NOT created.
+        assert!(!dir.path().join("quilltap-llm-logs.dbkey").exists());
+    }
+
+    /// A stale `quilltap-llm-logs.dbkey` left by a pre-4.8.1 passphrase change
+    /// is inert and deliberately left alone: `change_passphrase` neither
+    /// rewrites nor deletes it (v4 parity — the docs tell users it is safe to
+    /// remove; the code never reaps key material on their behalf).
+    #[test]
+    fn change_passphrase_leaves_stale_llm_logs_file_untouched() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "first").unwrap();
+
+        // Plant a stale second file (arbitrary bytes — nothing ever parses it).
+        let stale_path = dir.path().join("quilltap-llm-logs.dbkey");
+        let stale_bytes = b"{\"stale\":\"pre-4.8.1 wrapping, never read\"}".to_vec();
+        std::fs::write(&stale_path, &stale_bytes).unwrap();
+
+        change_passphrase(dir.path(), "first", "second").unwrap();
+
+        // The stale file survives byte-identical; the real file was re-wrapped.
+        assert_eq!(std::fs::read(&stale_path).unwrap(), stale_bytes);
+        assert_eq!(load_pepper(dir.path(), Some("second")).unwrap(), pepper);
     }
 
     /// The empty-string old/new passphrases are the internal no-passphrase

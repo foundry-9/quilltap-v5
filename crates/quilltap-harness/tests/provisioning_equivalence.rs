@@ -22,16 +22,22 @@
 //!   QT_ORACLE_PROVISION=/tmp/oracle-provision.json \
 //!   QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/build-provision-oracle.ts
+//!   QT_DBKEY_V4_OUT=/tmp/qt-v4-dbkey \
+//!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-dbkey-crosscompat.ts
 //!
 //! Run the differential:
 //!   QT_ORACLE_PROVISION=/tmp/oracle-provision.json \
 //!   QT_FIXTURE_V4_FRESH=/tmp/qt-v4-fresh \
 //!   QT_V5_PROVISION_OUT=/tmp/qt-v5-provisioned \
+//!   QT_DBKEY_V4_FIXTURE=/tmp/qt-v4-dbkey \
+//!   QT_DBKEY_V5_OUT=/tmp/qt-v5-dbkey \
 //!     cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
 //!
-//! Then prove v4 reads the v5 instance:
+//! Then prove v4 reads the v5 outputs:
 //!   QT_FIXTURE_V5_PROVISIONED=/tmp/qt-v5-provisioned \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-v5-provisioned.ts
+//!   QT_DBKEY_V5_FIXTURE=/tmp/qt-v5-dbkey \
+//!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-dbkey-crosscompat.ts
 //!
 //! Skips (does not fail) when `QT_ORACLE_PROVISION` is unset — the standing
 //! gated-differential discipline.
@@ -353,12 +359,27 @@ fn provisioning_matches_v4_fresh_instance() {
     }
 }
 
+/// List the `.dbkey` files in a data dir, sorted — the bug-60 one-file
+/// comparand (v4 4.8.1): a passphrase change must leave exactly
+/// `quilltap.dbkey`, never the phantom `quilltap-llm-logs.dbkey`.
+fn dbkey_files(data: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(data)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.unwrap().file_name().into_string().unwrap();
+            name.ends_with(".dbkey").then_some(name)
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 /// changePassphrase cross-compat (v5 → v4): write a `.dbkey` that v5 minted and
 /// re-wrapped via `change_passphrase`, for `verify-dbkey-crosscompat.ts` to
 /// unlock with v4's REAL dbkey code. The known TEST_PEPPER lets the oracle assert
-/// the exact recovered value. The reverse direction (v5 reads a v4-written
-/// `.dbkey`) is the Friday-verified read path — `change_passphrase` emits the
-/// byte-identical format `save_dbkey` does.
+/// the exact recovered value. (The reverse direction is
+/// [`reads_v4_changed_passphrase_dbkey`] over the oracle's `QT_DBKEY_V4_OUT`
+/// leg.) `change_passphrase` emits the byte-identical format `save_dbkey` does.
 #[test]
 fn writes_v5_changed_passphrase_dbkey_for_v4() {
     use quilltap_core::dbkey;
@@ -379,10 +400,40 @@ fn writes_v5_changed_passphrase_dbkey_for_v4() {
         dbkey::load_pepper(&data, Some("beta")).unwrap(),
         TEST_PEPPER
     );
+    // One pepper, one file (bug 60): the rewrap wrote exactly quilltap.dbkey.
+    // The oracle re-asserts this on its side of the fence.
+    assert_eq!(dbkey_files(&data), ["quilltap.dbkey"]);
     eprintln!(
         "wrote v5 change-passphrase .dbkey → {} (verify-dbkey-crosscompat.ts unlocks it under v4)",
         out.display()
     );
+}
+
+/// changePassphrase cross-compat (v4 → v5): unlock a `.dbkey` that v4's REAL
+/// `changePassphrase` re-wrapped at the pinned baseline
+/// (`verify-dbkey-crosscompat.ts`, the `QT_DBKEY_V4_OUT` direction — run it
+/// FIRST). Asserts the recovered pepper, the wrong-passphrase refusal, and the
+/// bug-60 one-file outcome on v4's own output.
+#[test]
+fn reads_v4_changed_passphrase_dbkey() {
+    use quilltap_core::dbkey;
+    let Some(dir) = opt_env("QT_DBKEY_V4_FIXTURE") else {
+        eprintln!(
+            "SKIP: set QT_DBKEY_V4_FIXTURE to the dir verify-dbkey-crosscompat.ts \
+             (QT_DBKEY_V4_OUT) wrote."
+        );
+        return;
+    };
+    let data = dir.join("data");
+    // v4 at 4.8.1 wrote exactly one .dbkey file (bug 60).
+    assert_eq!(dbkey_files(&data), ["quilltap.dbkey"]);
+    // The wrong passphrase refuses; "beta" (v4's re-wrap) recovers TEST_PEPPER.
+    assert!(dbkey::load_pepper(&data, Some("wrong")).is_err());
+    assert_eq!(
+        dbkey::load_pepper(&data, Some("beta")).unwrap(),
+        TEST_PEPPER
+    );
+    eprintln!("v5 unlocked the v4 change-passphrase .dbkey (pepper matches, one file)");
 }
 
 /// Open the committed v4-fresh instance with v5's ported reads: the schema is

@@ -5136,8 +5136,9 @@ impl CoreEngine {
                     Ok(p) => p,
                     Err(e) => return Response::error(ErrorKind::Internal, e.to_string()),
                 };
-                // Write quilltap.dbkey (main only — v4 setup writes just the main
-                // .dbkey; the llm-logs .dbkey lands on the first passphrase change).
+                // Write quilltap.dbkey — the instance's one and only key file
+                // (one pepper wrapped once; since v4 4.8.1 / bug 60 no path
+                // writes the phantom per-database `quilltap-llm-logs.dbkey`).
                 if let Err(e) = dbkey::save_dbkey(&data_dir, &pepper, passphrase) {
                     return Response::error(ErrorKind::Internal, e.to_string());
                 }
@@ -6060,9 +6061,10 @@ mod tests {
         let data = base.path().join("data");
         assert!(dbkey::load_pepper(&data, Some("first")).is_err());
         assert!(dbkey::load_pepper(&data, Some("second")).is_ok());
-        // Both .dbkey files were written (v4 parity / cross-compat).
+        // One pepper, one file (v4 4.8.1, bug 60): only `quilltap.dbkey` is
+        // written; the phantom per-database key file is NOT created.
         assert!(data.join("quilltap.dbkey").exists());
-        assert!(data.join("quilltap-llm-logs.dbkey").exists());
+        assert!(!data.join("quilltap-llm-logs.dbkey").exists());
     }
 
     // ── The dogfood-#60 guard WIRING (the unification-review pin) ────────────
