@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.D68 unit 4 — mechanical spelling enforcement. The v5 analog of v4
+4.8.1's repo-wide checker: `harness/tools/check_spelling.py` fails on
+any case-insensitive quilt-based misspelling of "Quilltap" in tracked
+text files outside a reasoned allowlist (rule-stating docs, the `docs/v4`
+mirror, a correctly-spelled line-exception marker), and a new
+`quilltap-harness` test (`spelling_guard`) runs it under
+`cargo test --workspace`. The first sweep found five closed work orders
+quoting the misspelling to state the rule — allowlisted, text untouched.
+
 P4.D68 units 2–3 — the bug-59 and bug-58 dispositions, measured. Bug 59
 (v4 4.8.1: a failed read must not trigger first-startup seeding) is a
 structural convergence: v5's sample-content gate already fails closed

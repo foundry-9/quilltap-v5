@@ -64965,3 +64965,28 @@ lock.rs:429 ✓; same-host dead-PID reap as stale — :445 ✓
 (< 5 min live) ✓; not-released-by-migration-close — N/A (no runner).
 No divergence found; v4's fix changed only the migration runner, and
 `instance-lock.ts` itself did not move.
+
+## Lane record — P4.D68 unit 4: the spelling-enforcement analog, 2026-08-12
+
+v4 4.8.1 (`85fd8744`) extended the "Quilltap, never the quilt-based
+misspelling" rule past ESLint's reach with a standalone tracked-file
+sweep. v5 had the same standing rule and NO mechanical enforcement.
+Landed: `harness/tools/check_spelling.py` — v4's design mirrored (the
+`git ls-files --cached --others --exclude-standard` universe, the binary
+extension + 5 MB + NUL guards, the exact `quilttap(?!ap)` pattern, — quilltap-spelling-exception
+the `quilltap-spelling-exception` line marker spelled correctly so it
+cannot self-trip, and an ALLOWED_PATHS map where every entry carries its
+reason) — plus `crates/quilltap-harness/tests/spelling_guard.rs`, which
+runs it under `cargo test --workspace` (the analog of v4 wiring it into
+`npm run lint`). NOTE the pattern line above is itself marked with the
+exception so this record can name it.
+
+First run over the repo found FIVE hits — all closed work orders that
+state the spelling rule and so must quote the wrong spelling (v4's
+"states the spelling rule" allowlist class; allowlisted with that
+reason, text untouched). `docs/v4/**` is prefix-allowlisted (mirrored v4
+reference content — v4's own checker governs the originals). The sweep
+was mutation-checked: a planted untracked `.md` with the misspelling
+turned it red; removal restored green.
+
+Versions: harness 0.0.454.
