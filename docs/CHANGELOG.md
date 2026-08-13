@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.D68 units 2–3 — the bug-59 and bug-58 dispositions, measured. Bug 59
+(v4 4.8.1: a failed read must not trigger first-startup seeding) is a
+structural convergence: v5's sample-content gate already fails closed
+(`character_count` returns `Result`; the `Err` arm warns and returns
+without seeding) and the embedding-profile seed runs only inside fresh
+provisioning — no code change; a new regression pin
+(`failed_gate_probe_seeds_nothing`) ports the intent of v4's
+probe-throws test (a populated-but-unreadable database seeds nothing).
+Bug 58 (migrations bypass the instance lock) is NO-PORT — v5 has no
+migration runner; the lock-coverage enumeration confirmed every v5
+writable entrance sits behind the instance lock (host/web/tauri boot,
+the spine's in-process writers, the CLI's no-override write lock, the
+CLI archive verbs through the running server), and v5's lock semantics
+match v4's contract (re-entrant same-PID, same-host dead-PID reap, VM
+heartbeat freshness). ONE escalation recorded in the order header: the
+boot path opens the databases writable (journal-mode header writes)
+BEFORE the lock is acquired, where v4 locks before opening — needs its
+own small order.
+
 P4.D68 unit 1 — the bug-60 port: `change_passphrase` writes one `.dbkey`
 file. v4 4.8.1 removed the vestigial `quilltap-llm-logs.dbkey` write (the
 remnant of a per-database-key design that was never built; nothing ever

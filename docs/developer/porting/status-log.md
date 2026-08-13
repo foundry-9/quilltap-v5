@@ -64875,3 +64875,93 @@ SKIP: `provisioning_equivalence` 3/3 (incl. both new dbkey legs),
 `change_passphrase_archive_sweep` 1/1.
 
 Versions: core 0.0.530, harness 0.0.453.
+
+## Lane record — P4.D68 unit 2: the bug-59 disposition, MEASURED — structural convergence, one new pin, 2026-08-12
+
+**v4's bug 59** (a failed read reads as an empty database and triggers
+first-startup seeding): v4's `find*` family collapses infrastructure
+failure into `[]`, so `seedInitialData`'s emptiness probe answered "empty"
+on a locked/unreadable instance and seeded. The 4.8.1 fix adds
+`countOrThrow` and both seed gates fail closed.
+
+**The v5 measurement (re-verified in lane, not trusted from the order):**
+
+- `services/quilltap_import/seed.rs::seed_sample_content` — the character
+  gate probes via `character_count` → `Result<i64, DbError>`, and the
+  `Err` arm pushes `"seed gate check failed: …"` and RETURNS without
+  seeding (seed.rs:59–62). v5 never had v4's `[]` collapse — the typed
+  `Result` is the `countOrThrow` shape already. It also counts rather
+  than materializes rows, so v4's third hazard (overlay-dropped
+  characters subtracting from a `find`-shaped probe) is structurally
+  absent too. **Convergent; no code change.**
+- The embedding-profile analog: v5 seeds the default TF-IDF profile ONLY
+  inside `services/provisioning/mod.rs::provision_fresh_instance`
+  (callers: the engine `Setup` dispatch arm, a fixture builder, its own
+  test — grep-verified in lane), never on a boot re-check, so the
+  failed-read-reseed hazard has no v5 surface. **Structurally absent; no
+  code change.**
+- `countOrThrow` itself: additive in v4; v5 needs no twin.
+
+**The new pin** (neither `host_sample_content_seed.rs` nor any module
+test covered the failed-probe arm):
+`seed::tests::failed_gate_probe_seeds_nothing` — schema-less connections
+(the `characters` read errors exactly as an unreachable database does),
+assert not-short-circuited, zero imports, exactly one warning
+(`seed gate check failed:`), and both databases still contain zero
+tables. This ports the INTENT of v4's new `seed-initial-data.test.ts`
+probe-throws case (a populated-but-unreadable DB must not seed); a
+regression to the fail-open shape trips the warnings/tables assertions.
+
+Rider: the now-stale Setup-arm comment in `api/engine.rs` ("the llm-logs
+.dbkey lands on the first passphrase change") rewritten to the
+one-pepper-one-file reality.
+
+## Lane record — P4.D68 unit 3: the bug-58 disposition — NO-PORT, the lock-coverage enumeration, ONE escalation, 2026-08-12
+
+**v4's bug 58** (migrations bypass the instance lock): the migration
+runner opened its own unlocked connection; the 4.8.1 fix acquires the
+lock before opening (re-entrant per PID; a dead holder reaped as stale;
+deliberately NOT released by `closeSQLite()`). **v5 has no migration
+runner** (deferred by design — the CLAUDE.md standing rule), so the fix
+itself is NO-PORT.
+
+**The writable-open enumeration (every v5 entrance, verified in lane):**
+
+1. `quilltap-host` boot (and via it `quilltap-web` + `quilltap-tauri`,
+   which boot through `Host`/`HostConfig` — grep-verified):
+   `HostAssembler::assemble` acquires the instance lock (host.rs:413)
+   before ANY row write — `seed_built_ins` / `seed_sample_content` run
+   after acquisition. ⚠ BUT the databases are OPENED writable before
+   assemble runs — see the escalation below.
+2. The spine's ad-hoc writers (`ProductionSpineFactory`'s per-request
+   `Writer::open_writable`, e.g. chat-create at spine.rs:1763): run
+   inside the already-locked host process. Covered (the lock is
+   per-process, as in v4).
+3. CLI `quilltap db --write` (db_cmd.rs:180): `acquire_write_lock`
+   BEFORE the open, no-override rule carried; released on every exit
+   arm. Covered — and in the correct order.
+4. CLI `db characters archive|rehydrate`: through the running server's
+   REST edge by design → behind the server's lock. Covered.
+5. CLI reads + `docs_cmd` reads: `open_readonly`, lock-free — exactly
+   as v4's CLI reads are. In contract.
+6. `quilltap-fixture-sanitizer`: reads a source read-only and writes a
+   FRESH output fixture (`open_write_fresh` — a new file, not an
+   instance database). Out of scope by design.
+
+**The escalation (recorded in the order header):** the boot path's
+open-before-lock ordering — `boot_ready` runs `Db::open` (writable:
+`journal_mode = TRUNCATE`, a header/journal write, on all three
+partitions) BEFORE `assemble` acquires the lock, where v4 locks before
+`new Database` (`backend.ts` `connect()`). In the bug-58 contention
+scenario v5 performs three unlocked journal-mode writes before refusing.
+The fresh-`Setup` provisioning corner shares the shape. Not fixable in
+this lane (an engine boot-path reshape outside the lane's `engine.rs`
+ownership); needs its own small order.
+
+**The lock-semantics diff vs v4's `instance-lock.ts` contract** (the
+bug-58 doc's statements): re-entrant same-PID acquisition — v5
+lock.rs:429 ✓; same-host dead-PID reap as stale — :445 ✓
+(`is_pid_alive`, EPERM = alive); different-host VM heartbeat freshness
+(< 5 min live) ✓; not-released-by-migration-close — N/A (no runner).
+No divergence found; v4's fix changed only the migration runner, and
+`instance-lock.ts` itself did not move.

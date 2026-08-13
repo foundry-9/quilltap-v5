@@ -241,3 +241,45 @@ fn character_count(main: &Connection, user_id: &str) -> Result<i64, DbError> {
         |r| r.get::<_, i64>(0),
     )?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::file_storage::NotConfiguredPixelCodec;
+
+    /// The bug-59 fail-closed pin (v4 4.8.1): a database whose emptiness probe
+    /// CANNOT be answered must not seed — an unanswerable question is not a
+    /// yes. v4's `seedInitialData` probes with `countOrThrow` and skips (with
+    /// an explicit log line) when the probe throws; v5's gate was already this
+    /// shape — `character_count` returns `Result`, and the `Err` arm records a
+    /// warning and returns without seeding. This test is the regression pin
+    /// porting the INTENT of v4's `seed-initial-data.test.ts` probe-throws
+    /// case: the probe here fails because the `characters` table is missing
+    /// (a half-materialized or unreachable database reads the same way), and
+    /// nothing may be written.
+    #[test]
+    fn failed_gate_probe_seeds_nothing() {
+        // Schema-less connections: the characters read errors (`no such table`).
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+
+        let report = seed_sample_content(&main, &mount, &NotConfiguredPixelCodec);
+
+        // Fail closed: not the short-circuit arm, nothing imported, and the
+        // skip is SAID (v4 logs "Skipping initial-data seeding"; v5 reports).
+        assert!(!report.gate_short_circuited);
+        assert_eq!(report.imported_characters, 0);
+        assert_eq!(report.imported_memories, 0);
+        assert_eq!(report.avatars_written, 0);
+        assert_eq!(report.warnings.len(), 1);
+        assert!(report.warnings[0].starts_with("seed gate check failed:"));
+
+        // And the seeding path truly never ran: neither database gained a table.
+        for conn in [&main, &mount] {
+            let n: i64 = conn
+                .query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0);
+        }
+    }
+}
