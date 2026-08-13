@@ -98,6 +98,70 @@ describe('StreamingMessage', () => {
       });
     }
 
+    /**
+     * v4 `fed5b5da` — the trailing indicator takes a line of its own when the
+     * trailing prose segment is empty and the part before it is a tool batch.
+     * v4 shipped no test with the fix, so these pin both arms of its
+     * `standaloneIndicator` conditional against v5's flattened render.
+     */
+    describe('the standalone indicator above a tool block', () => {
+      /**
+       * The TRAILING quill's own wrapper span (the element carrying the classes
+       * the call site passes) — the one indicator that is neither a tool row's
+       * nor the status strip's.
+       */
+      function wrapper(fixture: ComponentFixture<StreamingMessage>): HTMLElement {
+        const hosts: HTMLElement[] = Array.from(
+          fixture.nativeElement.querySelectorAll('qt-quill-animation'),
+        );
+        const trailing = hosts.filter(
+          (h) => !h.closest('.qt-chat-tool-embedded') && !h.closest('.qt-chat-response-status-icon'),
+        );
+        expect(trailing).toHaveLength(1);
+        return trailing[0].querySelector('span') as HTMLElement;
+      }
+
+      it('keeps the inline form while prose is still arriving after a tool batch', () => {
+        const fixture = render(
+          foldChatFrames([
+            { content: 'Let me look ' },
+            { toolsDetected: 1, toolNames: ['search_memories'] },
+            { content: 'and here it is.' },
+          ]),
+        );
+        expect(fixture.nativeElement.querySelector('div.mt-3')).toBeNull();
+        expect(wrapper(fixture).classList.contains('inline-block')).toBe(true);
+      });
+
+      it('gives the indicator its own line when the trailing segment is empty', () => {
+        const fixture = render(
+          foldChatFrames([
+            { content: 'Let me look ' },
+            { toolsDetected: 1, toolNames: ['search_memories'] },
+          ]),
+        );
+        const standalone = fixture.nativeElement.querySelector('div.mt-3') as HTMLElement;
+        expect(standalone).not.toBeNull();
+        expect(standalone.querySelector('.qt-thinking-indicator')).not.toBeNull();
+        // v4 drops `inline-block` on this arm and keeps `ml-2`.
+        const classes = wrapper(fixture).classList;
+        expect(classes.contains('inline-block')).toBe(false);
+        expect(classes.contains('ml-2')).toBe(true);
+        // …and it sits BELOW the tool block, which is the whole point.
+        const rows = fixture.nativeElement.querySelectorAll('.qt-chat-tool-embedded');
+        expect(rows).toHaveLength(1);
+        expect(
+          rows[0].compareDocumentPosition(standalone) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+
+      it('stays inline when no tool batch precedes it', () => {
+        const fixture = render(foldChatFrames([{ content: 'Cats are wonderful.' }]));
+        expect(fixture.nativeElement.querySelector('div.mt-3')).toBeNull();
+        expect(wrapper(fixture).classList.contains('inline-block')).toBe(true);
+      });
+    });
+
     it('marks a pending tool row with an unlabelled quill, settled rows with ✓/✗', () => {
       const fixture = render(
         foldChatFrames([

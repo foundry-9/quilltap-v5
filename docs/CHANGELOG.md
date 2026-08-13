@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.D70 unit 1: re-ported v4 `fed5b5da` — the streaming "still working" quill
+now takes a line of its own (with the tool block's own top spacing) when the
+trailing prose segment is empty and a tool batch precedes it, instead of
+rendering inline where the quill's feather crowds the block above it. Inline
+placement mid-prose is unchanged. v4 splits the live prose into an
+interleaved parts array to ask that question; v5 renders one prose blob
+followed by the batches, so the predicate reads the same batch offsets
+directly. Both arms pinned by spec, mutation-checked.
+
 P4.D69 (the 4.8.1 CLI shell-completions drift): mirrored v4 `db195fba`'s
 `db characters` completion arms into all three shell templates
 (bash/fish/zsh) in `quilltap-cli` — the five sub-subverbs

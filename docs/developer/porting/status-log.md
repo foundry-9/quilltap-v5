@@ -65094,3 +65094,67 @@ release drift. One commit; `crates/quilltap-cli/**` only.
   `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d69-03154b72
   QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test -p
   quilltap-cli --test cli_differential -- --nocapture`.
+
+---
+
+## Lane record — P4.D70 unit 1: the standalone streaming indicator (v4 `fed5b5da`)
+
+**What v4 changed.** `app/salon/[id]/components/StreamingMessage.tsx`
+(+14/−1). v4 splits the live prose into an interleaved `parts` array at
+each tool batch's offset (`buildStreamingParts`) and hangs the trailing
+"still working" quill on the LAST text part. When a turn paused on a tool
+call with no prose after it, that trailing part is EMPTY, so the quill
+rendered inline immediately below the tool block — and the quill glyph
+paints slightly above its own layout box, so the two appeared to touch.
+v4 now computes `standaloneIndicator = part.text.length === 0 &&
+parts[idx - 1]?.kind === 'tools'` and, on that arm, wraps the quill in
+`<div className="mt-3">` with `inline-block` dropped and `ml-2` kept.
+
+**The v5 translation, and why it is not a transliteration.** v5 does not
+model v4's parts array at all: `streaming-message.ts` renders ONE prose
+blob and then all tool batches (the pre-existing structural divergence
+already documented at the call site — v4's offset interleaving is
+unported). So "the trailing text part is empty and its predecessor is a
+tools part" cannot be asked of a rendered index here. It CAN be asked of
+the data: the reducer records `StreamingToolBatch.offset` as
+`content.length` at the moment the batch fired (`chat-stream.reducer.ts:199`)
+— the very offsets v4 splits on — so the question becomes "are there
+batches, and has no prose arrived after the last one?":
+
+```ts
+const cursor = Math.min(Math.max(...batches.map((b) => b.offset)), content.length);
+return content.length - cursor === 0;
+```
+
+`Math.max` + the clamp mirror v4's sort-then-`Math.min` even though v5's
+offsets are already non-decreasing and never past the tail. On that arm
+the quill moves BELOW the tool rows in v5's flattened order, which is what
+"the preceding rendered part is a tools block" means here and what
+produces v4's visual outcome; the inline arm is untouched, so v5's
+existing (divergent) placement of the trailing quill above the batches
+survives exactly as before.
+
+**Proof.** Spec-level DOM pins (v4's client is the oracle for render-side
+drift; no server family is touched and no NDJSON regen is owed), in
+`streaming-message.spec.ts` → "the standalone indicator above a tool
+block": (a) prose still arriving after a batch → no `div.mt-3`, wrapper
+keeps `inline-block`; (b) empty trailing segment after a batch → the
+`div.mt-3` wrapper exists, holds the indicator, drops `inline-block`,
+keeps `ml-2`, and follows the tool row in document order; (c) no batch at
+all → inline. The helper picks the TRAILING quill by excluding the tool
+rows' and the status strip's, which matters precisely because arm (b)
+moves it past them. **Mutation-checked both directions:** flipping the
+empty-batches early return reds (c); inverting the trailing-empty
+predicate reds (a) and (b).
+
+**Gotcha worth carrying.** The component template is a TS template
+literal, so a backtick inside an HTML comment there is a parse error
+(`TS1005`, `Cannot find name 'ml'`). v4's why-comment is carried verbatim
+in prose; the class names in it are unquoted.
+
+**Tier 2 (the conditional e2e gesture): NOT taken, by the order's own
+rule.** The standalone arm needs a streamed tool batch, and
+`e2e/support/mock-llm.ts` has no tool-call support whatsoever (grep:
+zero occurrences of "tool"). Reaching it would mean teaching the mock to
+emit tool calls and the walk to settle a tool result — new LLM-driving
+infrastructure, which the order forbids. The unit specs are the proof.

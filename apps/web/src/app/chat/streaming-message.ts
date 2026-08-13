@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import type { ChatStreamState } from '../core/chat-stream.reducer';
 import { Icon } from '../ui/icon';
@@ -80,9 +80,12 @@ import { ThinkingBlock } from './thinking-block';
               v4 StreamingMessage:122 — the small quill trails the live prose
               while it streams. v4 attaches it to the LAST text segment of its
               interleaved parts array; v5 renders one prose blob followed by the
-              tool batches, so the tail's v5 home is directly after the content.
+              tool batches, so the tail's v5 home is directly after the content —
+              EXCEPT when that trailing segment is empty (see below).
             -->
-            <qt-quill-animation size="sm" class="inline-block ml-2 qt-text-secondary" />
+            @if (!standaloneIndicator()) {
+              <qt-quill-animation size="sm" class="inline-block ml-2 qt-text-secondary" />
+            }
             @for (batch of state().toolBatches; track $index) {
               <div class="qt-chat-message-tools">
                 @for (call of batch.calls; track call.id) {
@@ -105,6 +108,20 @@ import { ThinkingBlock } from './thinking-block';
                     }
                   </div>
                 }
+              </div>
+            }
+            <!--
+              v4 StreamingMessage:118-127 (fed5b5da) — with no prose to sit
+              beside, the indicator lands directly under the tool block; and the
+              quill's feather paints a little above its own layout box, so
+              inline placement crowds the two together. Give it a line of its
+              own with the same breathing room the tool block takes above
+              itself. (v4's standaloneIndicator arm: inline-block dropped, ml-2
+              kept.)
+            -->
+            @if (standaloneIndicator()) {
+              <div class="mt-3">
+                <qt-quill-animation size="sm" class="ml-2 qt-text-secondary" />
               </div>
             }
           </div>
@@ -130,4 +147,23 @@ export class StreamingMessage {
    */
   readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
   readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
+
+  /**
+   * v4's `standaloneIndicator` (`StreamingMessage.tsx:122`), in v5's render
+   * terms. v4 splits the live prose into an interleaved `parts` array at each
+   * batch's offset and asks whether the TRAILING text part is empty and its
+   * predecessor is a `tools` part; v5 renders one prose blob followed by the
+   * batches, so the same question is "are there batches, and has no prose
+   * arrived after the last one?" — answered from the very offsets v4 splits on
+   * (`StreamingToolBatch.offset`, recorded as `content.length` when the batch
+   * fired, hence non-decreasing and never past the tail; `Math.max` mirrors
+   * v4's sort-then-clamp all the same).
+   */
+  protected readonly standaloneIndicator = computed(() => {
+    const batches = this.state().toolBatches;
+    if (batches.length === 0) return false;
+    const content = this.state().content;
+    const cursor = Math.min(Math.max(...batches.map((b) => b.offset)), content.length);
+    return content.length - cursor === 0;
+  });
 }
