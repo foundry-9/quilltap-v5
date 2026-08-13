@@ -4621,3 +4621,57 @@ sweep driver is now the sanctioned path for family regens (`--run` /
 `--run-all --families`); the distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 Drift-check before every round — v4 ships daily.
+
+## The `03154b72` 4.8.1-release drift catch-up round — UNIFIED (2026-08-12)
+
+**P4.D68 ∥ P4.D69 ∥ P4.D70, plus the parallel wardrobe-flow deflake — ALL
+CLOSED; the oracle baseline MOVES to `03154b72` and the drift debt is
+CLEARED.** v4 released 4.8.0 + 4.8.1 (main is now `4.9.0-dev.0`, and v4
+develops on TWO branches — main + `bugfix`). Landed: the bug-60 one-file
+dbkey port (the phantom `quilltap-llm-logs.dbkey` write shed, the
+cross-compat oracle grown to both directions with cross-side
+mutation-proven tripwires), the bug-59 measured convergence + the
+`failed_gate_probe_seeds_nothing` pin, the bug-58 NO-PORT with the full
+writable-open lock enumeration, the repo-wide spelling sweep wired into
+the workspace gate, the `db characters` completion templates (Tier R
+red-first → 188/0), the standalone streaming indicator + the About
+release-freshness mirror, and the `wardrobe-flow` `set_all` deflake
+(finding #78 → **v4 Bug 61**, filed). Round record: `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The boot open-before-lock reshape (the P4.D68 escalation — a real
+   data-safety finding, its own small order):** v5's `boot_ready` runs
+   `Db::open` (writable — `journal_mode = TRUNCATE` header writes on all
+   three partitions) BEFORE `HostAssembler::assemble` acquires the
+   instance lock; v4 locks before `new Database`. In the contended case
+   (bug 58's Ignite scenario) v5 performs three unlocked journal-mode
+   writes against a database another process holds, then refuses. All ROW
+   writes are behind the lock; the exposure is the open sequence itself +
+   the fresh-`Setup` provisioning corner. The fix is moving lock
+   acquisition ahead of `Db::open` in the engine boot path (a host-seam
+   reshape). Full record: the P4.D68 order header + status-log unit 3.
+2. **The owed dogfood pass** (standing queue, several rounds deep) — now
+   also gaining the bug-60 live proof (a passphrase change on the Friday
+   copy leaves exactly ONE `.dbkey` file, and a pre-existing stale
+   `quilltap-llm-logs.dbkey` survives untouched) on top of the
+   re-encryption sweep, held-bundle guard, and the standing 💸 queue.
+3. **P4.D65 items 5–6** (the small open remainder; its header enumerates
+   them).
+4. **The two v4-side human filings** (archived-seat-badge GET gap; and
+   now v4 Bug 61 — the wardrobe staged-edit race — awaits v4's fix, which
+   will be a small drift round on the ported dialog when it lands).
+5. **The banked `external_tmp_input` driver extension** (P4.45 unit-4
+   record).
+
+**Standing regen note:** the oracle baseline is **`03154b72`** (v4 main
+HEAD, adopted at this unification; the checkout was back on main at the
+gate, dirty ONLY with the v4 Bug-61 filing — docs, outside every oracle
+import graph). **v4 now develops on two branches: drift-check BOTH**
+(`git log <baseline>..main` AND `git log main..bugfix -- lib/ app/
+packages/`) **and verify the checkout's branch before any regen**; pin a
+detached worktree on any mismatch/drift/dirty
+(`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`). The
+sweep driver remains the sanctioned per-family regen path; the
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged. Drift-check before every round.

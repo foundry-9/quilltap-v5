@@ -2329,6 +2329,58 @@ records THERE. Update this summary only when a phase or round completes.
   web 0.0.70. **The owed dogfood pass is the top next candidate** — it
   gains the live re-encryption sweep + held-bundle guard. Round record:
   `status-log.md`.
+- **The `03154b72` 4.8.1-release drift catch-up round (P4.D68 ∥ P4.D69 ∥
+  P4.D70 + the wardrobe deflake): UNIFIED on main (2026-08-12) — ALL THREE
+  CLOSED; the oracle baseline MOVES to `03154b72` and the drift debt is
+  CLEARED.** v4 released 4.8.0 + 4.8.1 (main now `4.9.0-dev.0`; the
+  effective lib/app drift was its bugs 58–60 + CLI completions + two
+  client fixes). The bug-60 port: `change_passphrase` sheds the phantom
+  `quilltap-llm-logs.dbkey` (v5 reproduced the write faithfully until
+  now), proven by the dbkey cross-compat oracle grown to BOTH directions
+  (v4's REAL `changePassphrase` drives the v4→v5 leg; one-file assertions
+  on both sides, mutation-proven cross-side tripwires) ∥ bug 59 MEASURED
+  as structural convergence (v5's seed gate already fails closed; a new
+  `failed_gate_probe_seeds_nothing` pin) ∥ bug 58 NO-PORT (no migration
+  runner) with the full writable-open lock enumeration — **which found
+  the round's one standing item: v5's boot opens all three partitions
+  writable BEFORE the instance lock is acquired** (unlocked
+  `journal_mode = TRUNCATE` header writes in the contended case; the
+  exact class bug 58 closes; needs its own small order — see phase-4.md
+  candidates and the P4.D68 order header) ∥ the repo-wide spelling sweep
+  (`harness/tools/check_spelling.py` + the harness `spelling_guard`
+  test — the standing rule finally has mechanical enforcement) ∥ the
+  `db characters` completion templates byte-copied (Tier R red-first
+  3-by-name → 188/0) ∥ the standalone streaming indicator above a tool
+  block + the About release-freshness mirror (spec-pinned, v4-client
+  oracle). Riding the round: the `wardrobe-flow` `set_all` beat — the
+  suite's longest-standing intermittent — deflaked spec-only (seed a
+  worn accessory; an EMPTY snapshot cannot be waited on), with the
+  underlying lost-edit race measured (3 ms margin), kept v4-faithful,
+  and **filed upstream as v4 Bug 61** (dogfood finding #78). ⚠ v4 now
+  develops on TWO branches (main = 4.9-dev, `bugfix` = 4.8.x) and the
+  checkout sat on `bugfix` at planning — drift-check BOTH and verify the
+  checkout's branch before any regen. Gate: numbers in the round record
+  (`status-log.md`). Versions: core 0.0.531, harness 0.0.454, cli 0.0.9,
+  SPA 0.5.454; host/web/tauri unchanged.
+- **Oracle baseline: `03154b72` (2026-08-12, v4 main HEAD — "merge: 4.8.1
+  back into main", version `4.9.0-dev.0`), adopted at the 4.8.1-release
+  drift-round unification — NO v4 drift debt remains.** v4 released 4.8.0
+  and 4.8.1 and now develops on TWO branches: `main` (4.9-dev) and
+  `bugfix` (4.8.x maintenance; release content reaches main squashed via
+  the `release:`/`merge:` pair, so measure drift with `git diff
+  <baseline> main`, not the bugfix commit list). **Drift-check BOTH
+  branches every round** (`git log <baseline>..main` AND `git log
+  main..bugfix -- lib/ app/ packages/`) and verify the checkout's branch
+  (`git branch --show-current`) before any regen — pin a detached
+  worktree on any mismatch, drift, or dirty tree
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+  At this round's gate the checkout was back on main at the baseline with
+  two dirty files — the v4 Bug-61 filing (`docs/developer/bugs/*`), this
+  round's own upstream filing, docs-only and outside every oracle import
+  graph. The sweep driver remains the sanctioned per-family regen path;
+  the distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `de9f70bf` (2026-08-11, v4 4.8.0-dev), adopted at
   the P4.D65-finish + sweep-rot unification — NO v4 drift debt remains.**
   `de9f70bf` is v4's Bug-57 fix (the `carriedBlobIds` first-occurrence

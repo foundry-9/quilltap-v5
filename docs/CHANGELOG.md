@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Unified the `03154b72` 4.8.1-release drift catch-up round (P4.D68 ∥
+P4.D69 ∥ P4.D70, plus the parallel wardrobe-flow deflake that was sitting
+uncommitted in its worktree) onto main — the oracle baseline moves to
+`03154b72` and the drift debt is cleared. v4 released 4.8.0 and 4.8.1 and
+now develops on two branches (main + bugfix); drift-checks widen to both.
+Landed: the bug-60 one-file dbkey port (the phantom
+`quilltap-llm-logs.dbkey` write shed; the cross-compat oracle grown to
+both directions with mutation-proven cross-side tripwires), the bug-59
+measured convergence + fail-closed seed pin, the bug-58 NO-PORT with the
+writable-open lock enumeration — whose one escalation (v5 boots the
+databases writable BEFORE taking the instance lock) is now the top named
+next-round candidate — the repo-wide spelling sweep wired into the
+workspace gate, the `db characters` shell completions (Tier R red-first →
+188/0), the standalone streaming indicator + About release-freshness
+mirror, and the wardrobe `set_all` beat deflaked (the lost-edit race
+measured at 3 ms, kept v4-faithful, filed upstream as v4 Bug 61). The §3
+review found no blocking defects. Gate: 426 test binaries / 2,017 tests /
+0 failed with the round's env block (families by name, zero SKIP, fresh
+at the pin); clippy both feature sets; release build; ng test 298 files /
+4,142 / 0; ng build clean; full Playwright 202/202 zero skips (5.1 m).
+Versions: core 0.0.531, harness 0.0.454, cli 0.0.9, SPA 0.5.454.
+
 P4.D70 unit 2: mirrored v4 `5fdd7bed`'s About release-freshness sweep into
 the SPA's Key Features list — the Docker bullet notes the filesystem
 document stores bound through to the container, a new "The Workspace"

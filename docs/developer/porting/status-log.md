@@ -65318,3 +65318,84 @@ OPEN — the first open bug in that catalogue since Bug 57) and recorded as
 finding #78. It is a bug, not a papercut, which is why it belongs in v4's
 catalogue rather than the v5 repo's v4-first product list. The e2e beat is
 deterministic without the fix, so nothing is blocked on it.
+
+## Round record — the `03154b72` 4.8.1-release drift catch-up unification (2026-08-12)
+
+**P4.D68 ∥ P4.D69 ∥ P4.D70 ALL CLOSED + the parallel `wardrobe-flow`
+deflake committed; the oracle baseline MOVES `de9f70bf` → `03154b72` and
+the drift debt is CLEARED.** v4 released 4.8.0 and 4.8.1 (main
+`4.9.0-dev.0`) and now develops on TWO branches (main = 4.9-dev,
+`bugfix` = 4.8.x) — the standing drift-check widens to both, and the
+checkout's branch must be verified before any regen (it sat on `bugfix`
+at planning; it was back on main at this gate, dirty only with the v4
+Bug-61 filing — docs, outside every oracle import graph).
+
+**Reconciliation.** Eight lane commits cherry-picked in dependency order
+(D68's four, D69's one, D70's three); the only conflicts were the
+expected CHANGELOG/status-log unions. One reconciliation trap worth the
+record: a multi-commit cherry-pick that fails on a dirty tree still
+writes `.git/sequencer/todo`, and a later `--continue` for a different
+single pick silently resumes that queued sequence — caught when a D70
+commit went missing from the log; aborted and re-picked one commit at a
+time. **The wardrobe deflake was sitting UNCOMMITTED in its worktree**
+(branch at main's tip, no commits — only `git status` revealed it);
+applied 3-way and committed at unification with its SPA version bump
+(0.5.454), exactly as the human suspected when asking for the round.
+
+**The §3 review: NO blocking findings — a clean round.** The whole
+combined diff was read hunk-by-hunk against the orders and against v4 at
+the pin: the bug-60 port carries v4's why-comment and adds the
+stale-file-untouched arm; the cross-compat oracle's two modes each run in
+their own process (v4's dbkey module caches on `global`) and the
+one-file assertions sit on BOTH sides of the fence, mutation-proven; the
+completion templates are `cmp`-clean byte-copies; the About mirror and
+the three docs/v4 spot-checks are byte-identical to the pin; the
+standalone-indicator predicate re-expresses v4's parts-array question
+over the reducer's recorded batch offsets (the correct v5 vehicle, not a
+transliteration) with three DOM-position spec arms mutation-checked both
+directions. The near-findings that made it clean are themselves the
+lesson: D68's establish-step caught the order's wrong premise about the
+re-encrypt family (it drives the SWEEP, never changePassphrase — the
+one-file arm moved to the crosscompat oracle where the unit actually
+lives), and D70 bisected the wardrobe flake against main's own files
+rather than citing the stale "green in isolation" disposition.
+
+**The unification wires.** No shared contracts this round (three disjoint
+surfaces); the wires were the docs: the baseline-move paragraph +
+two-branch drift-check rule in CLAUDE.md, the round section + the
+candidate list in `phase-4.md` (the P4.D68 open-before-lock escalation is
+candidate 1, a real data-safety finding needing its own small engine
+boot-path order), all three order status headers CLOSED, and the
+wardrobe follow-up's dogfood row #78 (v4 Bug 61, filed upstream in the v4
+checkout by the deflake work).
+
+**The gate (all on the unify branch, oracles FRESH from the pinned
+`03154b72` worktree `/tmp/qt-v4-pin-unify-03154b72`):** `cargo fmt`
+clean; clippy both feature sets clean; release build clean; `cargo test
+--workspace` with the round's twelve-variable env block **426 test
+binaries / 2,017 tests / 0 failed** (exit 0; the only greppable "FAILED"
+strings are two benign `FAILED-status exclusion` tracing WARNs from
+P4.D25's feature name). The round's families re-run by name, zero SKIP:
+`provisioning_equivalence` **3/3** (including BOTH new dbkey cross-compat
+legs — v4's real `changePassphrase` wrote the v4→v5 fixture, and v4
+verified the v5 rewrap: "pepper matches, one file" in both directions),
+`archive_reencrypt_tier2_equivalence` **6/6 cases**,
+`reset_builtins_equivalence` + `seed_avatars_equivalence` regenerated +
+re-run through the sanctioned sweep driver (`--v4 <pin>`, totals
+`{ok: 3}` with the reencrypt family; the qtap-import sibling staging
+built first from the pin), Tier R `cli_differential` **188 cases / 0
+failures** against v4's real launcher at the pin. SPA: `ng test` **298
+files / 4,142 tests / 0 failed**; `ng build` clean; full Playwright
+**202 passed / 0 failed / 0 skipped (5.1 m)** over the fresh dist + release binaries — the
+deflaked wardrobe beat running as an ordinary green member of the suite.
+
+**Versions after the round:** core 0.0.531, harness 0.0.454, cli 0.0.9,
+SPA 0.5.454; host 0.0.66, web 0.0.70, tauri 0.0.6 unchanged.
+
+**Standing after the round:** the boot open-before-lock reshape (the
+P4.D68 escalation) is the top ordered candidate; the owed dogfood pass
+gains the bug-60 live proof (one `.dbkey` after a passphrase change on
+the Friday copy, stale second file untouched); P4.D65 items 5–6 remain
+the small open remainder; v4 Bug 61 (the wardrobe staged-edit race,
+finding #78) awaits v4's fix — a small drift round on the ported dialog
+when it lands.
