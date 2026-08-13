@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.D69 (the 4.8.1 CLI shell-completions drift): mirrored v4 `db195fba`'s
+`db characters` completion arms into all three shell templates
+(bash/fish/zsh) in `quilltap-cli` — the five sub-subverbs
+(status/archives/archive/rehydrate/export) and their flags, including
+zsh's early `return` after the subverb `_describe`. Byte-copied from a
+worktree pinned at v4 `03154b72`; Tier R flipped exactly the three
+`completion <shell>` cases red before the fix (188 cases / 3 failures)
+and runs green after (188 / 0). quilltap-cli 0.0.8 → 0.0.9.
+
 P4.D68 unit 5 — the baseline-move neutrality proof + the docs mirror.
 The two seed-transitive oracle families (`reset_builtins_equivalence`,
 `seed_avatars_equivalence` — the only cases importing v4's

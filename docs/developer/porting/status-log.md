@@ -65040,3 +65040,57 @@ runtime, so only the bank membership is recorded).
 remains unported surface (pre-existing, not this drift's debt) — the
 bug-60 halves touching it have no v5 surface, dispositioned NO-PORT in
 the unit-1 record.
+
+## Lane record — P4.D69: the 4.8.1 CLI shell-completions drift (v4 `03154b72`)
+
+**Branch:** `claude/p4-cli-completions-drift-6b5b75` (2026-08-12).
+**Scope:** absorb v4 `db195fba` ("fix(cli): teach shell completions the
+character-archive subcommands") — the one CLI-surface commit in the 4.8.1
+release drift. One commit; `crates/quilltap-cli/**` only.
+
+- **Drift-check at lane start:** `git log 03154b72..main` EMPTY (v4 main
+  IS the baseline) and bugfix HEAD `eafb5e2e` exactly as the order
+  recorded — nothing moved since planning. The v4 checkout sits on the
+  `bugfix` branch, so every launcher run in this lane used a detached
+  worktree pinned at `03154b72` (`/tmp/qt-v4-pin-p4d69-03154b72`, root
+  `node_modules` + `packages/quilltap/node_modules` symlinked per the
+  `oracle-regen-pinned-v4-worktree` recipe; removed at lane end).
+- **Pre-flight identity:** v5's three templates verified byte-identical
+  (`diff`) to v4's at `db195fba^`, so the faithful port is a wholesale
+  byte-copy of v4's templates at the pin. Both emitters emit verbatim —
+  v5's `completion_cmd.rs` substitutes NO placeholders (the order's
+  placeholder caution was checked and is moot; v4's
+  `completion-commands.js` is a bare `readFileSync` + `stdout.write`
+  too). No template change exists between `db195fba` and `03154b72`.
+- **The red, observed first (deliverable 1):** Tier R against the pinned
+  launcher BEFORE any edit: **188 cases, 3 failures — `[completion
+  bash]`, `[completion fish]`, `[completion zsh]`** and nothing else. No
+  version-string leakage from the `4.9.0-dev.0` launcher (completion
+  templates carry no version), and the emission surface was already
+  pinned by the P4.D33-era cases, so deliverable 1's contingency coverage
+  was not owed.
+- **The mirror (deliverable 2):** byte-copy of all three templates from
+  the pin — +9 bash / +8 fish / +32 zsh lines, exactly v4's diff stat.
+  The bash `elif [[ "$subverb" == "characters" ]]` branch
+  (`char_verbs`/`char_flags`), the six fish `__quilltap_using_subverb db
+  characters` lines, and the zsh `characters` branch with
+  `_quilltap_instance_names`/`_files` actions — including the zsh
+  early-`return` after the `(( CURRENT == 2 ))` `_describe`, which
+  changes flag completion for ALL db subverbs at that position, carried
+  faithfully. `cmp` clean against the pin on all three. The
+  `completion_cmd.rs` re-capture note moved `ed8934f1` → `03154b72`.
+- **The green (deliverable 3):** Tier R by name with `--nocapture`
+  against the pin: **188 cases / 0 failures** (no case-count movement —
+  the three emission cases flipped red→green; nothing added or removed).
+- **Fixtures:** none consumed or changed; no oracle NDJSON exists for
+  this family (Tier R runs both CLIs live — the `p4.d66` memory's
+  "no committed corpus" shape).
+- **Deferrals:** none. (`help/*` docs in the drift belong to P4.D68's
+  docs-mirror rider per the order.)
+- **Regen/run recipe (Tier R, this lane):**
+  `git -C ~/source/quilltap-server worktree add --detach
+  /tmp/qt-v4-pin-p4d69-03154b72 03154b72` + the two node_modules
+  symlinks, then from the v5 tree:
+  `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d69-03154b72
+  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test -p
+  quilltap-cli --test cli_differential -- --nocapture`.
