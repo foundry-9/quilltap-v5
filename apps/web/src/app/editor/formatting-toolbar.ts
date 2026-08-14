@@ -12,7 +12,9 @@ import { EMOJI_PROFILE } from './char-insert/profiles/emoji';
 import { UNICODE_PROFILE } from './char-insert/profiles/unicode';
 import type { CharProfile } from './char-insert/types';
 import { UnicodePickerPopover } from './char-insert/unicode-picker-popover';
+import { getDelimiterTooltip, visibleDelimiters } from './delimiter-transforms';
 import { Icon } from '../ui/icon';
+import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
 
 /**
  * A formatting action emitted by {@link FormattingToolbar}, consumed by
@@ -72,10 +74,21 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
  * plays that gate — hence its default of `false` here (the host decides; the
  * field defaults it ON, as v4's `showSourceToggle` prop does).
  *
- * DEFERRED (loud): the roleplay-template delimiter buttons — the template
- * plumbing is not client-side yet, and v4's template-aware toolbar is
- * chat-only in practice (no form-field caller passes a `roleplayTemplateId`).
- * That is a future Salon slice, not a toolbar rider.
+ * The roleplay-template DELIMITER buttons (`FormattingToolbar.tsx:459-480`)
+ * landed in P4.9L, when the Salon composer got this toolbar. They are their own
+ * section after a divider, exactly as in v4, and render only when the resolved
+ * list is non-empty — v4's `hasDelimiters` gate, which is also why a template
+ * still being fetched shows nothing rather than an empty rail. The list itself
+ * (the synthesized narration button, then the template's own minus any whose
+ * marks match narration) is {@link visibleDelimiters}; the toolbar stays
+ * presentation-only and emits the chosen delimiter for the host to apply.
+ *
+ * Form-field hosts pass neither input, so they render no delimiter section —
+ * which matches v4, where no form-field caller passes a `roleplayTemplateId`.
+ * v4 FETCHES the template inside the toolbar; v5 takes the resolved delimiters
+ * as inputs instead, because the Salon already fetches that template for its
+ * rendering patterns (`salon-conversation.ts`) and a second fetch of the same
+ * row would be a second source of truth.
  */
 @Component({
   selector: 'qt-formatting-toolbar',
@@ -130,6 +143,27 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
           {{ inCodeBlock() ? '/CODE' : 'CODE' }}
         </button>
       </div>
+
+      <!-- Roleplay-template delimiters — their own section, shown only when the
+           active template resolves at least one button (v4 \`hasDelimiters\`).
+           The narration button leads; see \`visibleDelimiters\`. -->
+      @if (shownDelimiters().length > 0) {
+        <div class="qt-formatting-toolbar-divider"></div>
+        <div class="qt-formatting-toolbar-section">
+          @for (delimiter of shownDelimiters(); track $index) {
+            <button
+              type="button"
+              class="qt-rp-annotation-button"
+              [title]="tooltipFor(delimiter)"
+              [disabled]="disabled()"
+              (mousedown)="$event.preventDefault()"
+              (click)="applyDelimiter.emit(delimiter)"
+            >
+              {{ delimiter.buttonName }}
+            </button>
+          }
+        </div>
+      }
 
       <!-- Emoji and symbol pickers — their own sections, after the markdown
            buttons. NEITHER is gated by its composer setting: those flags govern
@@ -214,9 +248,20 @@ export class FormattingToolbar {
   readonly showSource = input(false);
   /** Render the source toggle at all (v4: "only when `onToggleSource` is passed"). */
   readonly showSourceToggle = input(false);
+  /**
+   * The active roleplay template's own delimiter entries (v4 fetches these
+   * inside the toolbar; v5's Salon already has them — see the class doc). Empty
+   * while a template is still being fetched, which is v4's `loadingTemplate`
+   * gate arriving by a different road.
+   */
+  readonly delimiters = input<readonly TemplateDelimiter[]>([]);
+  /** The template's narration characters — the synthesized "Nar" button (v4). */
+  readonly narrationDelimiters = input<NarrationDelimiters | null>(null);
 
   readonly action = output<FormatAction>();
   readonly toggleSource = output<void>();
+  /** A delimiter button was pressed; the host applies it to whichever view it shows. */
+  readonly applyDelimiter = output<TemplateDelimiter>();
   /**
    * A character picked from one of the two pickers. The toolbar stays
    * presentation-only, so the host does the inserting — and it is the host that
@@ -242,6 +287,15 @@ export class FormattingToolbar {
   }
 
   protected readonly buttons = MARKDOWN_BUTTONS;
+
+  /** v4's `allDelimiters` (`FormattingToolbar.tsx:415-417`). */
+  protected readonly shownDelimiters = computed(() =>
+    visibleDelimiters(this.delimiters(), this.narrationDelimiters()),
+  );
+
+  protected tooltipFor(delimiter: TemplateDelimiter): string {
+    return getDelimiterTooltip(delimiter);
+  }
 
   /** v4's title/aria-label strings, verbatim (`FormattingToolbar.tsx:437-438`). */
   protected readonly sourceTitle = computed(() =>

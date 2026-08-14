@@ -69056,3 +69056,32 @@ different close. Two such delimiters were added, the oracle re-recorded, and
 the mutation now reds.
 
 Gate: `ng build` clean; the family GREEN by name. SPA 0.5.482; no crate touched.
+
+
+## P4.9L unit 2 — the toolbar's delimiter section
+
+`qt-formatting-toolbar` grew v4's delimiter section: its own group after a
+divider, between the markdown buttons and the pickers, rendered only when the
+resolved list is non-empty (v4's `hasDelimiters`). Buttons carry
+`qt-rp-annotation-button`, `getDelimiterTooltip` as their `title`, the
+`buttonName` as their label, and v4's `preventFocusLoss` mousedown guard — the
+selection every delimiter transform reads is exactly what a focus steal would
+destroy.
+
+**One deliberate mechanism divergence, recorded:** v4 FETCHES the template
+inside the toolbar (`/api/v1/roleplay-templates/{id}` on a `roleplayTemplateId`
+prop). v5 takes the resolved `delimiters` + `narrationDelimiters` as inputs,
+because the Salon already fetches that same row for its rendering patterns
+(`salon-conversation.ts`, the P4.30 port of v4 `SalonView.tsx:745-776`). A
+second fetch of one row would be a second source of truth for it. v4's
+`loadingTemplate` gate arrives by the same road: while the Salon's fetch is in
+flight the inputs are empty, so no section renders.
+
+`formatting-toolbar.delimiters.spec.ts` diffs the rendered DOM against the
+buttons v4's REAL toolbar produced in jsdom — label, `title`, `className`, and
+the toolbar's DIVIDER COUNT, which is what pins the section's presence and
+position (three dividers with delimiters, two without). Mutation-proven:
+dropping the `hasDelimiters` gate (1 red), `title` from `name` instead of
+`getDelimiterTooltip` (7), and removing the mousedown guard (1).
+
+SPA 0.5.483.

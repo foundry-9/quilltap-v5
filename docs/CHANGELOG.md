@@ -80,6 +80,10 @@ report v4 returns, listing every offending key at once. Dangerous Content also
 now checks that the two uncensored-profile ids are real UUIDs, and the cheap-LLM
 bag is checked at the point v4 checks it, so a request with more than one bad
 field reports the same one v4 reports.
+The formatting toolbar now shows a roleplay template's delimiter buttons — the
+narration button first, then the template's own, minus any that mark text the
+same way narration does. Form fields, which have no template, are unchanged.
+
 Ported v4's roleplay-delimiter toolbar transforms — the half of the composer
 formatting toolbar the shared form-field toolbar never had. The narration button
 a template synthesizes from its narration characters, the tooltip strings, the
