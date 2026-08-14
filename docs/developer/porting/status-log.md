@@ -67111,3 +67111,54 @@ the revert's safety checks, since typing moves the caret and the position
 check refuses anyway. A bare `Shift` keydown moves nothing, so only the
 policy stands between the writer and a surprise reversion — and that is
 now the pinned case.
+
+### Unit record — P4.D74 unit 6 (the Smart Typography settings card)
+
+v4's card, ported with its copy verbatim and its structure intact,
+because the structure IS the argument: Part A is one toggle at the top
+(a display opinion, nothing written down), Part B is a bordered group
+below it (content, real characters, as you type), and the two are not
+presented as three equal switches. Mounted in `chat-tab.ts` between Text
+Replacement and Token Display — v4's slot, where it reads as the Text
+Replacement card's sibling — with v4's title, description and
+`sectionId="smart-typography"`. `chat-settings.types.ts` gained the bag
+type and `DEFAULT_SMART_TYPOGRAPHY_SETTINGS`, matching v4's `types.ts`.
+
+**The try-it box calls the SHARED engine**, which is the deliverable's
+point: a preview with its own arithmetic would eventually disagree with
+the composer about what a keystroke does. Its bail list is deliberately
+NOT the plugin's — a plain `<textarea>` has no code context to be inside
+— and it keeps only what applies: both-rules-off, IME composition,
+modifiers, and a collapsed caret. The caret is restored by hand after
+the substitution, as v4 restores it in a `useEffect`, because a plain
+value re-bind drops it to the end of the box.
+
+Saves are v4's merge-then-PUT: `{...DEFAULTS, ...stored, ...updates}`
+sent as the WHOLE bag, so flipping `dashes` cannot drop `displayQuotes`.
+**One deliberate omission, recorded:** v4 also invalidates its entire
+chats query on save, because its persisted messages carry
+server-PRE-RENDERED HTML that would keep the old quotes. v5 has no
+server pre-render — the save seeds the settings row, the renderer's
+signal follows it, and the memo is keyed on it (unit 3) — so the second
+invalidation would be a wasted refetch of every chat.
+
+**Specs** (11): the three defaults, independent reads, the whole-bag PUT
+on each half, the failed-save alert (dogfood-#6), and six try-it cases
+including the ladder, the ellipsis, an ordinary keystroke, and the
+paused-note sentence appearing only when both rules are off.
+`chat-tab.spec.ts`'s card-order pin goes 20 → 21 with an explicit count
+assertion.
+
+**Mutation-proven, three inversions — and the third found a real gap in
+the ORDER pin:** PUTting only the changed key reds both whole-bag cases;
+making the try-it box ignore the toggles reds two; and deleting
+`<qt-smart-typography-settings />` from inside its collapsible card
+**passed every existing assertion**, because the order spec reads only
+the wrapper's `title`/`sectionId` attributes. A card body could have gone
+missing in any of the twenty-one and the suite would have said nothing.
+The spec now deep-links the section (a collapsible renders its body only
+while open) and asserts the component is inside it; re-running the
+mutation reds it. That spec also gained the `scrollIntoView` shim the
+Brahma console dialog spec uses — jsdom has none, and a force-opened card
+calls it from a rAF, which surfaced as a suite-level unhandled error
+rather than a failing test.

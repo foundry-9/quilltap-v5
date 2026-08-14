@@ -27,13 +27,14 @@ import { TabooSettings } from './taboo-settings';
 import { GeneralStateSettings } from './general-state-settings';
 import { ImageDescriptionSettings } from './image-description-settings';
 import { MemoryCascadeSettings } from './memory-cascade-settings';
+import { SmartTypographySettings } from './smart-typography-settings';
 import { TextReplacementSettings } from './text-replacement-settings';
 import { ThinkingDisplaySettings } from './thinking-display-settings';
 import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`) — now FULLY fitted out: all twenty v4 cards, in v4's
+ * subsystem `salon`) — now FULLY fitted out: all twenty-one v4 cards, in v4's
  * exact order, with v4's titles/descriptions + `sectionId`s (the `?section=`
  * deep link) ported verbatim.
  *
@@ -73,6 +74,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     GeneralStateSettings,
     ImageDescriptionSettings,
     MemoryCascadeSettings,
+    SmartTypographySettings,
     TabooSettings,
     TextReplacementSettings,
     ThinkingDisplaySettings,
@@ -121,6 +123,15 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'text-replacements'"
         >
           <qt-text-replacement-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Smart Typography"
+          description="Curly quotes when displaying messages; real dashes and ellipsis as you type"
+          sectionId="smart-typography"
+          [forceOpen]="section() === 'smart-typography'"
+        >
+          <qt-smart-typography-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

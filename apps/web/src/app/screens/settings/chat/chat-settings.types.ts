@@ -281,3 +281,24 @@ export interface CheapLLMSettings {
   /** Optional override for image prompt expansion LLM — when set, uses this instead of global cheap LLM */
   imagePromptProfileId?: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Smart typography (v4 types.ts L150-169, `2d31810f`) — Layer 1.6's one bag:
+// Part A's render-time quote curling and Part B's type-time substitutions,
+// stored together because they are one feature to the person using them.
+// ---------------------------------------------------------------------------
+
+export interface SmartTypographySettings {
+  /** Curl quotes when displaying messages. Stored text is never modified. */
+  displayQuotes?: boolean;
+  /** `--` → en dash and `---` → em dash, as you type. */
+  dashes?: boolean;
+  /** `...` → ellipsis, as you type. */
+  ellipsis?: boolean;
+}
+
+export const DEFAULT_SMART_TYPOGRAPHY_SETTINGS: SmartTypographySettings = {
+  displayQuotes: false,
+  dashes: true,
+  ellipsis: true,
+};

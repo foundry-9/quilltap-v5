@@ -230,6 +230,13 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Added the Smart Typography settings card (P4.D74 unit 6), between Text
+Replacement and Token Display in Settings → Chat: the curly-quote
+display toggle, the two type-time rules, and a try-it box that runs the
+same engine the composer does, so the preview cannot disagree with the
+real thing. Each save sends the whole bag, so flipping one rule cannot
+drop another.
+
 Ported smart typography Part B into the composer and the Document Mode
 editor (P4.D74 unit 5): typing `--` gives an en dash, `---` an em dash
 and `...` an ellipsis, over the same engine v4 uses, with v4's revert

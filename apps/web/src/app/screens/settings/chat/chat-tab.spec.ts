@@ -18,12 +18,15 @@ import { ChatTab } from './chat-tab';
  */
 
 /** v4 `ChatTabContent.tsx` L70-210, top to bottom (Taboo added at `7df7de8e`,
- *  Brahma Console at `6452e2c3` — between Data Retention and Autonomous Rooms). */
+ *  Brahma Console at `6452e2c3` — between Data Retention and Autonomous Rooms;
+ *  Smart Typography at `2d31810f` — between Text Replacement and Token
+ *  Display, where the feature reads as the Text Replacement card's sibling). */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
   ['Auto-Scroll', 'auto-scroll'],
   ['Text Replacement', 'text-replacements'],
+  ['Smart Typography', 'smart-typography'],
   ['Token Display', 'token-display'],
   ['Context Compression', 'context-compression'],
   ['Memory Cascade', 'memory-cascade'],
@@ -42,7 +45,18 @@ const V4_CARD_ORDER = [
   ['Scheduled Autonomous Rooms', 'autonomous-room-schedules'],
 ];
 
+/**
+ * jsdom has no `scrollIntoView`, and a deep-linked (`?section=`) card calls it
+ * from a rAF once it force-opens — the same shim the Brahma console dialog spec
+ * installs, for the same reason.
+ */
+function shimScrollIntoView(): void {
+  const proto = globalThis.HTMLElement?.prototype as unknown as { scrollIntoView?: () => void };
+  if (proto && !proto.scrollIntoView) proto.scrollIntoView = () => undefined;
+}
+
 function mount(section: string | null = null) {
+  shimScrollIntoView();
   const dispatchExpect = vi.fn(async () => ({ type: 'chatSettings', data: {} }));
   const dispatchData = vi.fn(async () => ({}));
   TestBed.resetTestingModule();
@@ -74,12 +88,15 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all twenty v4 cards in v4\'s exact order', () => {
+  it('mounts all twenty-one v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
     ).map((el) => el.getAttribute('title'));
     expect(titles).toEqual(V4_CARD_ORDER.map(([title]) => title));
+    // The count itself is a pin: a card silently dropped from the template
+    // would otherwise only shift the array and read as an order change.
+    expect(titles.length).toBe(21);
   });
 
   it('carries v4\'s sectionId on every card (the ?section= deep link)', () => {
@@ -88,6 +105,19 @@ describe('ChatTab', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
     ).map((el) => el.getAttribute('sectionId'));
     expect(ids).toEqual(V4_CARD_ORDER.map(([, id]) => id));
+  });
+
+  it('hosts the Smart Typography card body, not just a titled shell', () => {
+    // The two assertions above read only the wrapper's attributes, so a card
+    // whose CONTENT went missing would still pass them — which is exactly what
+    // a mutation check found. A collapsible renders its body only while open,
+    // so this deep-links the section (v4's `?section=` arm) and then looks for
+    // the component itself.
+    const fixture = mount('smart-typography');
+    const card = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
+    ).find((c) => c.getAttribute('sectionId') === 'smart-typography');
+    expect(card?.querySelector('qt-smart-typography-settings')).toBeTruthy();
   });
 
   it('no longer advertises the retired "not yet fitted out" placeholder', () => {
