@@ -302,6 +302,11 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Added four end-to-end beats for the character-insertion feature (`:smile:` in
+the live composer, the menu's Enter/Escape, `\to ` keeping its space, and a
+toolbar picker inserting into a markdown field), and mirrored v4's two feature
+specs into `docs/v4/`.
+
 Added the two Composer settings toggles for the emoji and symbol shortcuts
 (`composerEmoji` / `composerUnicode`, both on by default). They govern the
 automatic `:` / `\` triggers only; the toolbar buttons are never gated.

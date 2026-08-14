@@ -228,7 +228,11 @@ export function charTypeaheadPlugin(options: CharTypeaheadOptions): Plugin {
     const runtime = runtimes.get(view);
     if (!runtime || runtime.destroyed) return;
 
-    if (!enabled() || view.composing) {
+    // `editable` closes over the host's `disabled` input: a composer that goes
+    // read-only mid-stream must not leave a live menu hanging over it. (The key
+    // handlers need no such guard — ProseMirror runs edit handlers only on an
+    // editable view.)
+    if (!enabled() || view.composing || !view.editable) {
       closeMenu(runtime);
       return;
     }

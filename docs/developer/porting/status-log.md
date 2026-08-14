@@ -67623,3 +67623,45 @@ round. The unifier adds `<qt-composer-emoji-settings />` and
 directly after `<qt-composer-spellcheck-settings />`, plus the two imports —
 which is v4's own order at `ChatTabContent.tsx:89-105` (Composer card:
 spellcheck → emoji → unicode).
+
+## Lane record — P4.D75 unit 6: the e2e beats and the docs mirror
+
+**Beats** — `apps/web/e2e/composer-char-insert-flow.spec.ts`, four, all ACTIVE
+(nothing in them is gated on P4.D73's columns: the toggles default ON when the
+key is absent, which is v4's `?? true`, so the feature walks on today's
+fixture):
+
+1. `:smile:` in the live Salon composer lands 😄 as plain text (no `img`, no
+   trailing space, the literal gone) — and, in the same beat, `meet at 10:30`
+   opens NO menu, the canonical never-fire case.
+2. The menu commits on Enter and dismisses on Escape — including the point that
+   an OPEN menu owns Enter, so the draft is not sent.
+3. `\to ` inserts → and KEEPS the space; `\Phi ` inserts Φ and not φ (the
+   case-significance the whole Unicode spec is organized around).
+4. The toolbar's ☺ picker inserts into a live markdown field (the
+   Insert-announcement dialog's body — opened and CANCELLED, so nothing is
+   posted and the announcement-sender contention trap is sidestepped), then
+   reopening shows the pick in a Recently used row.
+
+The composer beats use **Group Expedition** (the chat no spec asserts totals or
+counts on) and blank the draft afterwards.
+
+**All four ran LIVE and green** (1.4 m, against the real axum server + the real
+built SPA). The FIRST live run failed one of them, and the failure was worth
+having: `\to ` typed at machine speed left the literal text, because the
+Unicode dataset is fetched lazily on the first live `\` query and the space bar
+deliberately never fetches it (`mayTriggerLoad: false` — the most-pressed key on
+the keyboard must not pull down 300 KB). That is v4's behavior too, which is why
+v4's own plugin suite warms the index before every commit assertion. The beat
+now waits for the menu — proof the dataset landed — before pressing the commit
+key, and so covers the lazy-load path as well. **No product code changed.**
+
+**Docs mirrored** into `docs/v4/developer/features/`: `complete/composer-emoji.md`
+(659 lines), `complete/composer-unicode.md` (319), and the refreshed
+`composer-typeahead.md` (+43 lines at the pin).
+
+**Tier-3 deferral, loud and named:** v4's `help/chat-settings.md` gains +34 and
++36 lines across the two commits (the two toggles' user-facing copy). v5 has no
+help surface for them, so this joins the **`p4.9i2` bank** — the same
+disposition the Taboo round recorded for `help/taboo.md`. Nothing refuses at
+runtime because nothing reaches for them.
