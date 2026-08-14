@@ -1,5 +1,5 @@
 {
-  "comment": "P4.d6 ensureHelpDocsSynced differential spec (v4 6c59b1ca bug 1 + 551f090b's trigger/prune/enqueue). ONE committed help tree (fixtures/help-ensure/help/: aurora.md + brahma-console.md) with the seed varying per scenario, so each scenario isolates exactly one trigger path. The contentHash values are the sha256 of each file's TRIMMED bytes, so a seeded row with that hash is 'unchanged' and the sync must leave it alone — which is what makes 'in-sync' a genuine no-sync and 'deleted' a genuine deleted-direction-only trigger. Each scenario builds its OWN database at $QT_FIXTURE_ENSURE_DIR/qt-ensure-<name>-main.db.",
+  "comment": "P4.d6 ensureHelpDocsSynced differential spec (v4 6c59b1ca bug 1 + 551f090b's trigger/prune/enqueue). ONE committed help tree (fixtures/help-ensure/help/: aurora.md + brahma-console.md) with the seed varying per scenario, so each scenario isolates exactly one trigger path. The contentHash values are the sha256 of each file's TRIMMED bytes, so a seeded row with that hash is 'unchanged' and the sync must leave it alone \u2014 which is what makes 'in-sync' a genuine no-sync and 'deleted' a genuine deleted-direction-only trigger. Each scenario builds its OWN database at $QT_FIXTURE_ENSURE_DIR/qt-ensure-<name>-main.db. P4.D77 (v4 24633026) adds the chunk backfill: 'in-sync' now takes the early-return branch with an EMPTY help_doc_chunks table, so the backfill must slice every existing doc and enqueue a HELP_DOC job for it even though both docs already carry embeddings; 'in-sync-chunked' is the same shape with chunk rows already present, where the one count() query must short-circuit and write nothing.",
   "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
   "seedSentinel": "2020-01-01T00:00:00.000Z",
   "auroraHash": "b5584ea13a209f4786eafe39ae034268c8a1a6a5eafce1d2bdbe0344ae84f847",
@@ -25,24 +25,70 @@
       "name": "empty-table",
       "note": "The lazy gate that ALWAYS worked: no rows -> sync. The control.",
       "seedProfile": true,
-      "helpDocs": []
+      "helpDocs": [],
+      "seedChunks": []
     },
     {
       "name": "in-sync",
-      "note": "Every file has a row and every row has a file -> NO divergence -> no sync, no prune, no enqueue. The row's embedding is non-null so nothing is owed.",
+      "note": "Every file has a row and every row has a file -> NO divergence -> no sync, no prune. The rows' embeddings are non-null so nothing is owed for the DOCS \u2014 but P4.D77's chunk backfill fires here: the chunk table is empty, so both docs are sliced and a HELP_DOC job is enqueued for each (the job is what fills the chunk vectors).",
       "seedProfile": true,
       "helpDocs": [
         {
           "id": "aaaaaaaa-0000-4000-8000-000000000001",
           "path": "help/aurora.md",
           "hash": "aurora",
-          "embedding": [0.5, -0.25]
+          "embedding": [
+            0.5,
+            -0.25
+          ]
         },
         {
           "id": "aaaaaaaa-0000-4000-8000-000000000002",
           "path": "help/brahma-console.md",
           "hash": "brahma",
-          "embedding": [0.25, -0.5]
+          "embedding": [
+            0.25,
+            -0.5
+          ]
+        }
+      ],
+      "seedChunks": []
+    },
+    {
+      "name": "in-sync-chunked",
+      "note": "P4.D77: identical to in-sync, except help_doc_chunks ALREADY has rows. The backfill's one count() query must short-circuit before slicing anything \u2014 no chunk is rewritten (the seeded chunk keeps its sentinel content and its embedding) and NO job is enqueued. This is the 'costs one count query per boot once it has run' arm.",
+      "seedProfile": true,
+      "helpDocs": [
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "path": "help/aurora.md",
+          "hash": "aurora",
+          "embedding": [
+            0.5,
+            -0.25
+          ]
+        },
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000002",
+          "path": "help/brahma-console.md",
+          "hash": "brahma",
+          "embedding": [
+            0.25,
+            -0.5
+          ]
+        }
+      ],
+      "seedChunks": [
+        {
+          "id": "bbbbbbbb-0000-4000-8000-000000000001",
+          "docId": "aaaaaaaa-0000-4000-8000-000000000001",
+          "chunkIndex": 0,
+          "heading": "Seeded Heading",
+          "content": "seeded chunk content",
+          "embedding": [
+            0.5,
+            -0.25
+          ]
         }
       ]
     },
@@ -55,34 +101,48 @@
           "id": "aaaaaaaa-0000-4000-8000-000000000001",
           "path": "help/aurora.md",
           "hash": "aurora",
-          "embedding": [0.5, -0.25]
+          "embedding": [
+            0.5,
+            -0.25
+          ]
         }
-      ]
+      ],
+      "seedChunks": []
     },
     {
       "name": "deleted-doc",
-      "note": "The DELETED direction is load-bearing: EVERY file on disk already has a row with a matching hash, so the unsynced direction cannot fire. Only the retired row (no file) can trigger this sync — and without the trigger the prune would be dead code.",
+      "note": "The DELETED direction is load-bearing: EVERY file on disk already has a row with a matching hash, so the unsynced direction cannot fire. Only the retired row (no file) can trigger this sync \u2014 and without the trigger the prune would be dead code.",
       "seedProfile": true,
       "helpDocs": [
         {
           "id": "aaaaaaaa-0000-4000-8000-000000000001",
           "path": "help/aurora.md",
           "hash": "aurora",
-          "embedding": [0.5, -0.25]
+          "embedding": [
+            0.5,
+            -0.25
+          ]
         },
         {
           "id": "aaaaaaaa-0000-4000-8000-000000000002",
           "path": "help/brahma-console.md",
           "hash": "brahma",
-          "embedding": [0.25, -0.5]
+          "embedding": [
+            0.25,
+            -0.5
+          ]
         },
         {
           "id": "aaaaaaaa-0000-4000-8000-000000000003",
           "path": "help/retired.md",
           "hash": "aurora",
-          "embedding": [1, 2]
+          "embedding": [
+            1,
+            2
+          ]
         }
-      ]
+      ],
+      "seedChunks": []
     },
     {
       "name": "no-profile",
@@ -93,9 +153,13 @@
           "id": "aaaaaaaa-0000-4000-8000-000000000001",
           "path": "help/aurora.md",
           "hash": "aurora",
-          "embedding": [0.5, -0.25]
+          "embedding": [
+            0.5,
+            -0.25
+          ]
         }
-      ]
+      ],
+      "seedChunks": []
     }
   ]
 }

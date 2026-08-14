@@ -92,6 +92,7 @@ pub mod file_storage;
 pub mod first_message_context;
 pub mod fold_episode_pass;
 pub mod frozen_archive;
+pub mod help_doc_chunking;
 pub mod help_doc_sync;
 pub mod home;
 pub mod host_notifications;

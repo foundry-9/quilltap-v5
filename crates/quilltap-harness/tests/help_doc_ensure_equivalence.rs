@@ -68,6 +68,9 @@ struct SpecScenario {
     name: String,
     #[serde(rename = "helpDocs")]
     help_docs: Vec<SpecSeedDoc>,
+    /// P4.D77 — pre-existing section chunks (the backfill's short-circuit arm).
+    #[serde(rename = "seedChunks", default)]
+    seed_chunks: Vec<SpecSeedDoc>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +84,9 @@ struct OracleLine {
     #[serde(rename = "helpDocs")]
     help_docs: Vec<Value>,
     jobs: Vec<Value>,
+    /// P4.D77 — the section chunks after the run: the BACKFILL's output on the
+    /// early-return path, the sync's on the diverged one.
+    chunks: Vec<Value>,
 }
 
 fn fixtures_dir() -> std::path::PathBuf {
@@ -151,6 +157,7 @@ fn help_doc_ensure_matches_oracle() {
             .find(|s| s.name == expected.scenario)
             .unwrap_or_else(|| panic!("oracle names an unknown scenario {}", expected.scenario));
         let seeded_ids: Vec<&str> = def.help_docs.iter().map(|d| d.id.as_str()).collect();
+        let seeded_chunk_ids: Vec<&str> = def.seed_chunks.iter().map(|c| c.id.as_str()).collect();
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let work_main = tmp.path().join("ensure-main.db");
@@ -267,6 +274,65 @@ fn help_doc_ensure_matches_oracle() {
                 .cmp(b["entityPath"].as_str().unwrap_or_default())
         });
 
+        // ---- dump help_doc_chunks (P4.D77; same normalization as the oracle) ----
+        #[allow(clippy::type_complexity)]
+        let chunk_rows: Vec<(String, String, f64, Option<String>, String, String, String)> = db
+            .read_main(|c| {
+                let mut stmt = c
+                    .prepare(
+                        "SELECT id, docId, chunkIndex, heading, content, \
+                         hex(embedding) AS embeddingHex, updatedAt FROM help_doc_chunks",
+                    )
+                    .map_err(quilltap_core::db::DbError::from)?;
+                let mapped = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, f64>(2)?,
+                            r.get::<_, Option<String>>(3)?,
+                            r.get::<_, String>(4)?,
+                            r.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                            r.get::<_, String>(6)?,
+                        ))
+                    })
+                    .map_err(quilltap_core::db::DbError::from)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(quilltap_core::db::DbError::from)?;
+                Ok(mapped)
+            })
+            .expect("dump help_doc_chunks");
+
+        let mut chunks: Vec<Value> = chunk_rows
+            .iter()
+            .map(|(id, doc_id, idx, heading, content, emb_hex, updated_at)| {
+                json!({
+                    "id": if seeded_chunk_ids.contains(&id.as_str()) { id.as_str() } else { "<minted>" },
+                    "docPath": path_by_id
+                        .get(doc_id.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("<unknown:{doc_id}>")),
+                    "chunkIndex": js_number(*idx),
+                    "heading": heading,
+                    "content": content,
+                    "hasEmbedding": !emb_hex.is_empty(),
+                    "updatedAt": if updated_at == &spec.seed_sentinel { "<sentinel>" } else { "<ts>" },
+                })
+            })
+            .collect();
+        chunks.sort_by(|a, b| {
+            a["docPath"]
+                .as_str()
+                .unwrap_or_default()
+                .cmp(b["docPath"].as_str().unwrap_or_default())
+                .then(
+                    a["chunkIndex"]
+                        .as_i64()
+                        .unwrap_or_default()
+                        .cmp(&b["chunkIndex"].as_i64().unwrap_or_default()),
+                )
+        });
+
         assert_eq!(
             Value::Array(help_docs.clone()),
             Value::Array(expected.help_docs.clone()),
@@ -284,11 +350,21 @@ fn help_doc_ensure_matches_oracle() {
             expected.jobs
         );
 
+        assert_eq!(
+            Value::Array(chunks.clone()),
+            Value::Array(expected.chunks.clone()),
+            "[{}] help_doc_chunks diverged\nrust:   {:?}\noracle: {:?}",
+            def.name,
+            chunks,
+            expected.chunks
+        );
+
         eprintln!(
-            "ensure {}: {} help_docs, {} job(s)",
+            "ensure {}: {} help_docs, {} job(s), {} chunk(s)",
             def.name,
             help_docs.len(),
-            jobs.len()
+            jobs.len(),
+            chunks.len()
         );
     }
 
@@ -328,14 +404,62 @@ fn help_doc_ensure_matches_oracle() {
          divergence check looks in the deleted direction too"
     );
 
-    // in-sync must be a genuine no-op: the seeded titles/timestamps survive.
+    // in-sync must not SYNC anything: the seeded titles/timestamps survive.
     let in_sync = by_name("in-sync");
     assert!(
-        in_sync.jobs.is_empty()
-            && in_sync
-                .help_docs
-                .iter()
-                .all(|d| d["updatedAt"] == "<sentinel>"),
-        "in-sync must not sync, prune, or enqueue anything"
+        in_sync
+            .help_docs
+            .iter()
+            .all(|d| d["updatedAt"] == "<sentinel>"),
+        "in-sync must not sync or prune anything"
+    );
+
+    // ==== P4.D77 — the chunk backfill (v4 `24633026`) ====
+    //
+    // The upgrade path is the ONLY reason the backfill exists: an existing
+    // instance matches every content hash, so nothing above would ever slice it
+    // and section search would silently never engage. These pin that against
+    // v4's own behavior, since a v5 that quietly skipped the backfill would
+    // otherwise look exactly like a correct no-op.
+    assert_eq!(
+        in_sync.chunks.len(),
+        2,
+        "in-sync must BACKFILL both already-synced docs — the whole point of the \
+         backfill is that the sync above it never runs here"
+    );
+    assert!(
+        in_sync.chunks.iter().all(|c| c["hasEmbedding"] == false),
+        "backfilled chunks are written with a NULL vector; the HELP_DOC job fills them"
+    );
+    assert_eq!(
+        in_sync.jobs.len(),
+        2,
+        "the backfill must enqueue a HELP_DOC job per doc EVEN THOUGH both docs \
+         already carry their own embedding — the job is what fills the CHUNK vectors"
+    );
+    assert!(
+        in_sync.help_docs.iter().all(|d| d["hasEmbedding"] == true),
+        "the in-sync fixture must keep its doc embeddings, or the enqueue-anyway \
+         assertion above proves nothing"
+    );
+
+    // The short-circuit: a table that already has rows costs one count query.
+    let chunked = by_name("in-sync-chunked");
+    assert_eq!(
+        chunked.chunks.len(),
+        1,
+        "in-sync-chunked must leave the pre-existing chunk table alone — one seeded \
+         row in, one row out"
+    );
+    assert!(
+        chunked.chunks.iter().all(|c| c["id"] != "<minted>"
+            && c["updatedAt"] == "<sentinel>"
+            && c["hasEmbedding"] == true),
+        "the seeded chunk must survive untouched (id, timestamp AND vector) — a port \
+         that re-sliced regardless would mint a fresh row here"
+    );
+    assert!(
+        chunked.jobs.is_empty(),
+        "the short-circuited backfill must not enqueue anything"
     );
 }

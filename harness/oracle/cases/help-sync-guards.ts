@@ -99,6 +99,9 @@ async function main(): Promise<void> {
       totalOnDisk: result.totalOnDisk,
       deleted: result.deleted,
       failed: result.failed,
+      // P4.D77: a refused prune must also leave the section chunks alone. Zero
+      // on every guard scenario — nothing is sliced when nothing changed.
+      chunksWritten: result.chunksWritten,
       helpDocIds: rows.map((r) => String(r.id)),
     }) + '\n',
   );

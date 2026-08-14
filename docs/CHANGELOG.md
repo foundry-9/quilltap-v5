@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Help documents are now sliced into sections for search. Each slice keeps the
+nearest heading above it, and the slices are deliberately smaller than the
+Scriptorium's — a settings page covers a dozen unrelated subsystems, and one
+chunk that swallows four of them defeats the purpose. Nothing embeds or
+searches them yet.
+
 Added the `help_doc_chunks` table — the storage for section-level help search.
 Fresh instances get it from the re-dumped schema; existing instances get it on
 the next boot. Nothing reads or writes it yet; the slicing, embedding, and

@@ -43,10 +43,12 @@
 use rusqlite::{params, Connection};
 
 use crate::db::embedding_status::EmbeddingStatusRepository;
+use crate::db::help_doc_chunks::HelpDocChunksRepository;
 use crate::db::help_docs::{HdUpsert, HelpDocsRepository};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim};
+use crate::services::help_doc_chunking::build_help_doc_chunks;
 use crate::services::mount_index::embedding_scheduler::{
     default_or_first_profile_id, first_user_id,
 };
@@ -72,6 +74,9 @@ pub struct HelpDocSyncResult {
     /// `551f090b`'s prune counter.
     pub deleted: usize,
     pub failed: usize,
+    /// Section chunk rows written across every created/updated doc (v4
+    /// `24633026`'s `chunksWritten`).
+    pub chunks_written: usize,
     /// Ids of docs created or updated (need re-embedding), in walk order.
     pub changed_ids: Vec<String>,
 }
@@ -278,9 +283,18 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
                 title,
                 path: file.rel_path.clone(),
                 url,
-                content: body,
+                content: body.clone(),
                 content_hash,
             })?;
+
+            // Re-slice the doc into section chunks (v4 `24633026`). v4's *why*,
+            // carried forward: boundaries move whenever the prose above them
+            // changes, so the old rows are discarded wholesale rather than
+            // diffed; their embeddings are filled by the HELP_DOC embedding job
+            // that the caller enqueues for this doc.
+            let chunks = build_help_doc_chunks(&body);
+            HelpDocChunksRepository::new(main).replace_for_doc(&doc_id, &chunks)?;
+            result.chunks_written += chunks.len();
 
             if existing.is_some() {
                 clear_embedding(main, &doc_id)?;
@@ -326,6 +340,11 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             // v4 wraps the pair in its own try/catch that counts `failed`, so a
             // prune failure is NOT the per-file counter above.
             let pruned = (|| -> Result<(), DbError> {
+                // v4 `24633026` — the chunks go first, so the rows never
+                // outlive their parent even where the FK cascade is not
+                // enforced (a fresh-provisioned instance's table carries no
+                // foreign key at all; see `db::help_doc_chunks_repair`).
+                HelpDocChunksRepository::new(main).delete_by_doc_id(&doc.id)?;
                 repo.delete(&doc.id)?;
                 EmbeddingStatusRepository::new(main).delete_by_entity("HELP_DOC", &doc.id)?;
                 Ok(())
@@ -397,6 +416,10 @@ pub async fn ensure_help_docs_synced(
     let existing_paths: Vec<&str> = existing.iter().map(|d| d.path.as_str()).collect();
     let paths_on_disk: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
     if !existing.is_empty() && !help_docs_diverge_from_disk(&existing_paths, &paths_on_disk) {
+        // Docs are current, but their section chunks may not exist at all — an
+        // instance that upgraded into `help_doc_chunks` has every content hash
+        // matching, so nothing above would ever slice them (v4 `24633026`).
+        backfill_help_doc_chunks(db, &existing).await;
         return Ok(None);
     }
 
@@ -407,6 +430,71 @@ pub async fn ensure_help_docs_synced(
 
     enqueue_missing_help_doc_embeddings(db).await;
     Ok(Some(result))
+}
+
+/// v4 `backfillHelpDocChunks` (`help-doc-sync.ts:327`, new at `24633026`) —
+/// slice any already-synced document that has no section chunks, and enqueue an
+/// embedding job for it.
+///
+/// **The path that matters is the upgrade** (v4's *why*, carried forward): an
+/// existing instance has a full, unchanged `help_docs` table, so the
+/// content-hash check skips every file and the chunks would stay empty forever
+/// — section search would silently never engage. Docs whose chunks already
+/// exist are left alone, so this costs one count query per boot once it has run.
+///
+/// The embedding job is enqueued **even though the document's own embedding is
+/// present**, because the job is what fills the chunk vectors.
+///
+/// Whole thing best-effort: a failure warns and never blocks help from loading,
+/// since whole-document search still works. That is why this returns `()`.
+async fn backfill_help_doc_chunks(db: &Db, existing: &[crate::db::help_docs::HelpDocRow]) {
+    let outcome: Result<(), DbError> = async {
+        // One count, not a scan (v4's *why*): chunk rows carry embedding BLOBs,
+        // and reading them all on every boot to answer "has this run yet?" would
+        // be absurd. A non-empty table means the backfill has already happened;
+        // docs added afterwards are sliced by `sync_help_docs` on their content
+        // hash, and a half-finished backfill is healed by the next full reindex.
+        if db.read_main(|c| HelpDocChunksRepository::new(c).count())? > 0 {
+            return Ok(());
+        }
+
+        // v4 names the whole list `missing` and takes it wholesale — the count
+        // above is the only gate, so this is every existing doc.
+        let missing = existing;
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        let docs: Vec<(String, String)> = missing
+            .iter()
+            .map(|d| (d.id.clone(), d.content.clone()))
+            .collect();
+        db.write(move |ws| {
+            let repo = HelpDocChunksRepository::new(ws.main().connection());
+            for (doc_id, content) in &docs {
+                let chunks = build_help_doc_chunks(content);
+                // v4 skips a doc that slices to nothing rather than calling
+                // replaceForDoc with an empty list (which would still delete).
+                if chunks.is_empty() {
+                    continue;
+                }
+                repo.replace_for_doc(doc_id, &chunks)?;
+            }
+            Ok(())
+        })
+        .await?;
+
+        let doc_ids: Vec<String> = missing.iter().map(|d| d.id.clone()).collect();
+        enqueue_help_doc_embeddings(db, &doc_ids).await;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = outcome {
+        // v4 `logger.warn`; log output is non-contractual (P4.18) and
+        // `eprintln!` is this module's convention.
+        eprintln!("[HelpDocSync] Help doc section backfill failed: {e}");
+    }
 }
 
 /// v4 `enqueueMissingHelpDocEmbeddings` (`help-doc-sync.ts:327`) — enqueue
@@ -429,7 +517,34 @@ async fn enqueue_missing_help_doc_embeddings(db: &Db) {
     let outcome: Result<(), DbError> = async {
         let need_embedding =
             db.read_main(|c| HelpDocsRepository::new(c).find_all_needing_embedding())?;
-        if need_embedding.is_empty() {
+        let doc_ids: Vec<String> = need_embedding.iter().map(|d| d.id.clone()).collect();
+        enqueue_help_doc_embeddings(db, &doc_ids).await;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = outcome {
+        // v4 logs and moves on (`logger.error` in the catch). The core has no
+        // logging crate; `eprintln!` is the module convention here (as in
+        // `mount_index::embedding_scheduler`).
+        eprintln!("[HelpDocSync] Failed to look up help docs needing embedding: {e}");
+    }
+}
+
+/// v4 `enqueueHelpDocEmbeddings` (`help-doc-sync.ts:437`, extracted at
+/// `24633026` so the chunk backfill can share it) — enqueue a HELP_DOC
+/// embedding job for each of `doc_ids`, resolving the default embedding profile
+/// and the single user.
+///
+/// Silent when either is unavailable: an instance with no embedding profile
+/// configured simply has no semantic help search yet, which is not an error
+/// worth shouting about on every boot.
+///
+/// Per-entity dedup in `enqueue_embedding_generate` keeps this from duplicating
+/// jobs an `EMBEDDING_REINDEX_ALL` has already queued.
+async fn enqueue_help_doc_embeddings(db: &Db, doc_ids: &[String]) {
+    let outcome: Result<(), DbError> = async {
+        if doc_ids.is_empty() {
             return Ok(());
         }
 
@@ -448,13 +563,13 @@ async fn enqueue_missing_help_doc_embeddings(db: &Db) {
             return Ok(());
         };
 
-        for doc in &need_embedding {
+        for doc_id in doc_ids {
             enqueue_embedding_generate(
                 db,
                 &user_id,
                 serde_json::json!({
                     "entityType": "HELP_DOC",
-                    "entityId": doc.id,
+                    "entityId": doc_id,
                     "profileId": profile_id,
                 }),
             )

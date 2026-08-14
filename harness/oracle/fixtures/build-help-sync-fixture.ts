@@ -47,10 +47,21 @@ interface EmbeddingStatusSeedRow {
   createdAt: string;
 }
 
+interface HelpDocChunkSeedRow {
+  id: string;
+  docId: string;
+  chunkIndex: number;
+  heading: string | null;
+  content: string;
+  embedding: number[] | null;
+}
+
 interface Spec {
   testPepperBase64: string;
+  seedSentinel: string;
   seed: SeedRow[];
   embeddingStatusSeed: EmbeddingStatusSeedRow[];
+  helpDocChunkSeed: HelpDocChunkSeedRow[];
 }
 
 async function main(): Promise<void> {
@@ -83,10 +94,15 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/embedding-status.repository'
   );
   const { HelpDocSchema } = await import('@/lib/schemas/help-doc.types');
+  const { HelpDocChunkSchema } = await import('@/lib/schemas/help-doc-chunk.types');
   const { EmbeddingStatusSchema } = await import('@/lib/schemas/embedding-job.types');
 
   await initializeDatabase();
   await ensureCollection('help_docs', HelpDocSchema);
+  // P4.D77 (v4 `24633026`): the sync now re-slices each changed doc into
+  // `help_doc_chunks` and deletes a pruned doc's chunks. Materialize the table
+  // so the write lands rather than rethrowing identically on both sides.
+  await ensureCollection('help_doc_chunks', HelpDocChunkSchema);
   // The P4.d6 prune cascades into embedding_status (deleteByEntity). That repo
   // call rethrows if the table is absent, so without this the prune would fail
   // on BOTH sides identically and the differential would prove nothing.
@@ -123,10 +139,31 @@ async function main(): Promise<void> {
     );
   }
 
+  // P4.D77 — pre-existing section chunks: one on the doc the sync UPDATES (must
+  // be replaced), one on the doc it leaves UNCHANGED (must survive byte-exact),
+  // one on the doc it PRUNES (must be deleted explicitly — this table has no FK).
+  const { HelpDocChunksRepository } = await import(
+    '@/lib/database/repositories/help-doc-chunks.repository'
+  );
+  const chunkRepo = new HelpDocChunksRepository();
+  for (const row of spec.helpDocChunkSeed) {
+    await chunkRepo.create(
+      {
+        docId: row.docId,
+        chunkIndex: row.chunkIndex,
+        heading: row.heading,
+        content: row.content,
+        embedding: row.embedding,
+      } as never,
+      { id: row.id, createdAt: spec.seedSentinel, updatedAt: spec.seedSentinel }
+    );
+  }
+
   await closeDatabase();
   process.stderr.write(
     `built help-sync fixture: ${out} (${spec.seed.length} help_docs rows, ` +
-      `${spec.embeddingStatusSeed.length} embedding_status rows)\n`
+      `${spec.embeddingStatusSeed.length} embedding_status rows, ` +
+      `${spec.helpDocChunkSeed.length} help_doc_chunks rows)\n`
   );
   process.exit(0);
 }

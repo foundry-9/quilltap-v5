@@ -68029,3 +68029,101 @@ and the FK cascade genuinely fires on the migration shape. The repair module's
 own two: the created table carries the constraints the `generateDDL` shape does
 NOT (so a port that used the wrong DDL fails), and an existing fresh-shaped
 table is left untouched.
+
+---
+
+## P4.D77 unit 2 — help-doc chunking (v4 `lib/help/help-doc-chunking.ts`)
+
+`services/help_doc_chunking.rs`: `HELP_CHUNK_OPTIONS` (400/700/100),
+`build_help_doc_chunks`, `help_chunk_embedding_text`. The chunker itself is the
+Scriptorium's ported `mount_index::chunker::chunk_document` — **v4 reuses it, so
+this does too**; only the size targets differ.
+
+### The differential (`help_doc_chunking_equivalence`, tier 1, NEW)
+
+Oracle `harness/oracle/cases/help-doc-chunking.ts` drives v4's REAL module,
+which pulls v4's REAL chunker in beneath it — so the diff covers the reuse as
+well as the wrapper. 16 chunk cases + 10 embedding-text cases.
+
+The two arms that carry the corpus, both **mutation-proven**:
+
+1. **`over-help-under-scriptorium`** is sized to split under the 700-token help
+   ceiling while staying whole under the chunker's own 1,200-token default. A
+   port that forgot to pass `HELP_CHUNK_OPTIONS` passes every other case and
+   fails only here. Mutating `target_max_tokens` 700 → 1200 fails exactly that
+   arm (`rust 1 chunks vs oracle 2`). The test also asserts the arm still
+   splits, so a corpus regeneration cannot quietly render it vacuous.
+2. **`empty-heading`** pins v4's `heading ? … : docTitle` as a JS **truthiness**
+   test — an empty-string heading takes the title-only branch. Replacing the
+   guard with a plain `Some(h)` match produces `"Chat Settings › \n\nBody"`,
+   caught.
+
+Also pinned: the overlap prefix, heading tracking across sections and *before*
+the first heading (the leading chunk inherits the first heading — a real quirk
+of the accumulator), the hard-split path for one oversized paragraph, CRLF (whose
+sections carry a NULL heading — the line-anchored regex never matches a line
+ending in `\r`), non-BMP content, and the empty/whitespace arms yielding NOTHING
+rather than one empty chunk.
+
+---
+
+## P4.D77 unit 3 — the sync: re-slice, prune, and the upgrade backfill
+
+`services/help_doc_sync.rs` gains, exactly where v4 puts them:
+`HelpDocSyncResult.chunks_written`; the wholesale re-slice after each changed
+doc's upsert; `delete_by_doc_id` at the head of the prune; and
+`backfill_help_doc_chunks` on `ensure_help_docs_synced`'s early-return branch,
+with `enqueue_help_doc_embeddings` extracted from
+`enqueue_missing_help_doc_embeddings` so the backfill can share it (v4's own
+refactor).
+
+**Why the backfill exists, and why it is the interesting part:**
+`ensure_help_docs_synced` only re-syncs when the path set diverges, so an
+upgraded instance matches every content hash and nothing above would ever slice
+it — section search would silently never engage. The backfill enqueues a
+HELP_DOC job for every doc **even though those docs already carry their own
+embedding**, because the job is what fills the CHUNK vectors.
+
+### One real defect the differential caught on its first run
+
+`HelpDocChunkRow.chunk_index` was `i64`. The fresh-instance column is
+`generateDDL`'s `REAL`, and **SQLite's REAL affinity forces an integer into
+floating-point representation on write** — so the stored cell is a Real and the
+read failed outright with `InvalidColumnType(2, "chunkIndex", Real)`. On a real
+fresh-provisioned instance every chunk read would have thrown. It is now `f64`,
+the one type that serves both DDL shapes (an `f64` read of the boot-ensure
+shape's `INTEGER` converts cleanly), which is also the convention
+`conversation_chunks.interchangeIndex` already uses.
+
+### The differentials
+
+**`help_doc_sync_equivalence`** — the fixture gained `helpDocChunkSeed`, three
+rows chosen so all three chunk paths are measurable in ONE run:
+
+| seeded on | must | proves |
+|---|---|---|
+| the UPDATED doc | be REPLACED (`<minted>` id, cleared vector) | `replaceForDoc` is delete-then-insert, not a diff |
+| the UNCHANGED doc | SURVIVE byte-exact (seeded id, vector, sentinel `updatedAt`) | the hash check returns before the slice — the gap the backfill closes |
+| the PRUNED doc | be DELETED | the prune's explicit `deleteByDocId`; this table has no FK to do it |
+
+Plus `chunksWritten` in the summary, and the committed tree's
+`help/close-no-newline.md` turning out to be a free zero-chunk arm (its
+frontmatter fence eats the whole file, so the body is empty and it slices to
+nothing while still counting as `created`).
+
+**`help_doc_ensure_equivalence`** — a SIXTH scenario, `in-sync-chunked`, and
+the chunk table added to every scenario's dump. `in-sync` now backfills both
+docs and enqueues two jobs; `in-sync-chunked` seeds one chunk row and must
+short-circuit on the single `count()` query, leaving that row's id, timestamp
+AND vector untouched and enqueuing nothing. The oracle's swallowed-error
+tripwire was widened to watch `logger.warn` too, since the backfill swallows
+there — otherwise a backfill that silently did nothing would have pinned as
+legitimate v4 behavior.
+
+**`help_doc_sync_guards_equivalence`** — `chunksWritten` added to the guard
+line: a refused prune must leave the sections alone as well as the rows.
+
+**Mutation-proven, all three:** dropping the prune's `delete_by_doc_id` leaves
+the retired doc's chunk behind as an `<unknown:…>` orphan; dropping the backfill
+call reddens `in-sync`; removing the `count()` short-circuit reddens
+`in-sync-chunked`.

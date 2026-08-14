@@ -29,6 +29,8 @@ import { tmpdir } from 'node:os';
 
 interface Spec {
   testPepperBase64: string;
+  seedSentinel: string;
+  helpDocChunkSeed: Array<{ id: string }>;
 }
 
 async function main(): Promise<void> {
@@ -85,10 +87,39 @@ async function main(): Promise<void> {
       unchanged: result.unchanged,
       deleted: result.deleted,
       failed: result.failed,
+      chunksWritten: result.chunksWritten,
       changedPaths,
     }) + '\n',
   );
   process.stdout.write(JSON.stringify({ kind: 'help_docs', rows }) + '\n');
+
+  // P4.D77 (v4 `24633026`): the section chunks the sync wrote. Chunk ids and
+  // timestamps are minted on BOTH sides, so the row identity here is
+  // (doc PATH, chunkIndex) — the pair the UNIQUE constraint uses. `embedding`
+  // must be NULL on every row: `replaceForDoc` writes them empty and the
+  // HELP_DOC job is what fills them.
+  const chunkRows =
+    (await rawQuery<Array<Record<string, unknown>>>(
+      'SELECT c.id AS id, c.docId AS docId, c.chunkIndex AS chunkIndex, c.heading AS heading, ' +
+        'c.content AS content, hex(c.embedding) AS embeddingHex, c.updatedAt AS updatedAt ' +
+        'FROM help_doc_chunks c',
+      [],
+    )) ?? [];
+  const seededChunkIds = new Set(spec.helpDocChunkSeed.map((c) => c.id));
+  const chunks = chunkRows
+    .map((r) => ({
+      id: seededChunkIds.has(String(r.id)) ? String(r.id) : '<minted>',
+      docPath: pathById.get(String(r.docId)) ?? `<unknown:${String(r.docId)}>`,
+      chunkIndex: Number(r.chunkIndex),
+      heading: r.heading == null ? null : String(r.heading),
+      content: String(r.content),
+      hasEmbedding: String(r.embeddingHex ?? '') !== '',
+      updatedAt: String(r.updatedAt) === spec.seedSentinel ? '<sentinel>' : '<ts>',
+    }))
+    .sort((a, b) =>
+      a.docPath < b.docPath ? -1 : a.docPath > b.docPath ? 1 : a.chunkIndex - b.chunkIndex,
+    );
+  process.stdout.write(JSON.stringify({ kind: 'help_doc_chunks', rows: chunks }) + '\n');
 
   // The prune's cascade: the retired doc's status rows must be gone, the
   // surviving doc's must remain (deleteByEntity is scoped AND a deleteMany).

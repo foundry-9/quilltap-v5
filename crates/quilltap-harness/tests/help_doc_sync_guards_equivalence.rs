@@ -50,6 +50,9 @@ struct GuardCase {
     total_on_disk: usize,
     deleted: usize,
     failed: usize,
+    /// P4.D77 — a refused prune must leave the section chunks alone too.
+    #[serde(rename = "chunksWritten")]
+    chunks_written: usize,
     #[serde(rename = "helpDocIds")]
     help_doc_ids: Vec<String>,
 }
@@ -124,6 +127,7 @@ fn help_doc_sync_guards_match_oracle() {
             "totalOnDisk": result.total_on_disk,
             "deleted": result.deleted,
             "failed": result.failed,
+            "chunksWritten": result.chunks_written,
             "helpDocIds": ids,
         });
         let oracle = json!({
@@ -131,6 +135,7 @@ fn help_doc_sync_guards_match_oracle() {
             "totalOnDisk": case.total_on_disk,
             "deleted": case.deleted,
             "failed": case.failed,
+            "chunksWritten": case.chunks_written,
             "helpDocIds": case.help_doc_ids,
         });
         assert_eq!(

@@ -29,10 +29,21 @@ interface SeedDoc {
   embedding: number[] | null;
 }
 
+interface SeedChunk {
+  id: string;
+  docId: string;
+  chunkIndex: number;
+  heading: string | null;
+  content: string;
+  embedding: number[] | null;
+}
+
 interface Scenario {
   name: string;
   seedProfile: boolean;
   helpDocs: SeedDoc[];
+  /** P4.D77 — pre-existing section chunks (the backfill's short-circuit arm). */
+  seedChunks?: SeedChunk[];
 }
 
 interface Spec {
@@ -68,6 +79,7 @@ async function buildScenario(spec: Spec, scenario: Scenario, outDir: string): Pr
     '@/lib/database/repositories/help-docs.repository'
   );
   const { HelpDocSchema } = await import('@/lib/schemas/help-doc.types');
+  const { HelpDocChunkSchema } = await import('@/lib/schemas/help-doc-chunk.types');
   const { EmbeddingStatusSchema } = await import('@/lib/schemas/embedding-job.types');
   const { BackgroundJobSchema } = await import('@/lib/schemas/job.types');
   const { UserSchema } = await import('@/lib/schemas/auth.types');
@@ -79,6 +91,9 @@ async function buildScenario(spec: Spec, scenario: Scenario, outDir: string): Pr
   // background_jobs. A missing table would make the repo call RETHROW and the
   // differential would compare two identical failures.
   await ensureCollection('help_docs', HelpDocSchema);
+  // P4.D77 (v4 `24633026`): the chunk backfill counts this table on the
+  // early-return path, and the sync slices into it on the diverged path.
+  await ensureCollection('help_doc_chunks', HelpDocChunkSchema);
   await ensureCollection('embedding_status', EmbeddingStatusSchema);
   await ensureCollection('background_jobs', BackgroundJobSchema);
   await ensureCollection('users', UserSchema);
@@ -112,9 +127,29 @@ async function buildScenario(spec: Spec, scenario: Scenario, outDir: string): Pr
     );
   }
 
+  // P4.D77 — pre-existing section chunks, seeded through v4's REAL repo with
+  // pinned ids/timestamps so both sides start byte-identical.
+  const { HelpDocChunksRepository } = await import(
+    '@/lib/database/repositories/help-doc-chunks.repository'
+  );
+  const chunkRepo = new HelpDocChunksRepository();
+  for (const chunk of scenario.seedChunks ?? []) {
+    await chunkRepo.create(
+      {
+        docId: chunk.docId,
+        chunkIndex: chunk.chunkIndex,
+        heading: chunk.heading,
+        content: chunk.content,
+        embedding: chunk.embedding,
+      } as never,
+      { id: chunk.id, createdAt: spec.seedSentinel, updatedAt: spec.seedSentinel }
+    );
+  }
+
   await closeDatabase();
   process.stderr.write(
     `built ensure fixture: ${out} (${scenario.helpDocs.length} help_docs, ` +
+      `${(scenario.seedChunks ?? []).length} help_doc_chunks, ` +
       `profile=${scenario.seedProfile})\n`
   );
 }

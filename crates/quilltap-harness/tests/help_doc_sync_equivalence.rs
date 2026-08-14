@@ -39,6 +39,9 @@ struct Spec {
     #[serde(rename = "seedSentinel")]
     seed_sentinel: String,
     seed: Vec<SeedRow>,
+    /// P4.D77 — the pre-existing chunk rows (replaced / survived / pruned).
+    #[serde(rename = "helpDocChunkSeed")]
+    help_doc_chunk_seed: Vec<SeedRow>,
 }
 
 #[derive(Deserialize)]
@@ -95,6 +98,11 @@ fn help_doc_sync_matches_oracle() {
     )
     .expect("parse spec");
     let seeded_ids: Vec<String> = spec.seed.iter().map(|s| s.id.clone()).collect();
+    let seeded_chunk_ids: Vec<String> = spec
+        .help_doc_chunk_seed
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
 
     // Copy the fixture DB.
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -174,7 +182,71 @@ fn help_doc_sync_matches_oracle() {
         "unchanged": result.unchanged,
         "deleted": result.deleted,
         "failed": result.failed,
+        "chunksWritten": result.chunks_written,
         "changedPaths": changed_paths,
+    });
+
+    // P4.D77 — the section chunks the sync wrote. Chunk ids and timestamps are
+    // minted on BOTH sides, so the row identity is (doc PATH, chunkIndex).
+    // `chunkIndex` reads as `f64`: on this `generateDDL`-shaped fixture the
+    // column is REAL, and SQLite's REAL affinity forces the bound integer into
+    // floating point (see `db::help_doc_chunks::HelpDocChunkRow`).
+    #[allow(clippy::type_complexity)]
+    let chunk_rows: Vec<(String, String, f64, Option<String>, String, String, String)> = db
+        .read_main(|c| {
+            let mut stmt = c
+                .prepare(
+                    "SELECT id, docId, chunkIndex, heading, content, \
+                     hex(embedding) AS embeddingHex, updatedAt FROM help_doc_chunks",
+                )
+                .map_err(quilltap_core::db::DbError::from)?;
+            let mapped = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, f64>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                        r.get::<_, String>(6)?,
+                    ))
+                })
+                .map_err(quilltap_core::db::DbError::from)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(quilltap_core::db::DbError::from)?;
+            Ok(mapped)
+        })
+        .expect("dump help_doc_chunks");
+
+    let mut chunks: Vec<Value> = chunk_rows
+        .iter()
+        .map(|(id, doc_id, idx, heading, content, emb_hex, updated_at)| {
+            json!({
+                "id": if seeded_chunk_ids.contains(id) { id.as_str() } else { "<minted>" },
+                "docPath": path_by_id
+                    .get(doc_id.as_str())
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| format!("<unknown:{doc_id}>")),
+                "chunkIndex": if idx.fract() == 0.0 { Value::from(*idx as i64) } else { Value::from(*idx) },
+                "heading": heading,
+                "content": content,
+                "hasEmbedding": !emb_hex.is_empty(),
+                "updatedAt": if updated_at == &spec.seed_sentinel { "<sentinel>" } else { "<ts>" },
+            })
+        })
+        .collect();
+    chunks.sort_by(|a, b| {
+        a["docPath"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["docPath"].as_str().unwrap_or_default())
+            .then(
+                a["chunkIndex"]
+                    .as_i64()
+                    .unwrap_or_default()
+                    .cmp(&b["chunkIndex"].as_i64().unwrap_or_default()),
+            )
     });
 
     // The prune's cascade into embedding_status (same SELECT/order as the oracle).
@@ -208,6 +280,7 @@ fn help_doc_sync_matches_oracle() {
     let mut oracle_summary = None;
     let mut oracle_rows: Vec<Value> = Vec::new();
     let mut oracle_status_rows: Option<Vec<Value>> = None;
+    let mut oracle_chunks: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -227,15 +300,30 @@ fn help_doc_sync_matches_oracle() {
                         .unwrap_or_default(),
                 )
             }
+            Some("help_doc_chunks") => {
+                oracle_chunks = Some(
+                    v.get("rows")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            }
             other => panic!("unexpected oracle line kind: {other:?}"),
         }
     }
     let oracle_summary = oracle_summary.expect("oracle summary line");
     let oracle_status_rows = oracle_status_rows.expect("oracle embedding_status line");
+    let oracle_chunks = oracle_chunks.expect("oracle help_doc_chunks line — regenerate the oracle");
 
     assert_eq!(
         rust_summary, oracle_summary,
         "help-sync summary diverged\nrust:   {rust_summary}\noracle: {oracle_summary}"
+    );
+
+    assert_eq!(
+        Value::Array(chunks.clone()),
+        Value::Array(oracle_chunks.clone()),
+        "help_doc_chunks diverged\nrust:   {chunks:?}\noracle: {oracle_chunks:?}"
     );
 
     let rust_norm = normalize_rows(&rows, &seeded_ids, &spec.seed_sentinel);
@@ -316,5 +404,62 @@ fn help_doc_sync_matches_oracle() {
             .iter()
             .any(|r| r.get("entityId").and_then(Value::as_str) == Some(survivor_id)),
         "the surviving doc's embedding_status row must NOT be collateral damage"
+    );
+
+    // ---- P4.D77 — the section slicing (v4 24633026) ----
+    //
+    // Pinned against the ORACLE, so two identically-broken sides cannot pass as
+    // agreement.
+    let oracle_chunk_paths: Vec<&str> = oracle_chunks
+        .iter()
+        .filter_map(|c| c["docPath"].as_str())
+        .collect();
+    let oracle_chunk = |path: &str| oracle_chunks.iter().find(|c| c["docPath"] == path);
+    // The UPDATED doc: its seeded chunk is REPLACED, not diffed — a fresh id and
+    // a cleared vector, because boundaries move when the prose above them does.
+    let replaced =
+        oracle_chunk("help/getting-started.md").expect("the UPDATED doc must be re-sliced");
+    assert_eq!(
+        replaced["id"], "<minted>",
+        "replaceForDoc is delete-then-insert: the seeded chunk row must be GONE, not \
+         updated in place (its embedding no longer describes its content)"
+    );
+    assert_eq!(replaced["hasEmbedding"], false);
+    // The UNCHANGED doc: byte-untouched, seeded id, seeded vector, sentinel
+    // timestamp. This is the gap the upgrade backfill exists to close — the
+    // content-hash check returns before the slice.
+    let survivor =
+        oracle_chunk("help/no-frontmatter.md").expect("the UNCHANGED doc's chunk must SURVIVE");
+    assert_ne!(
+        survivor["id"], "<minted>",
+        "the unchanged doc's chunk must keep its seeded id"
+    );
+    assert_eq!(survivor["hasEmbedding"], true);
+    assert_eq!(survivor["updatedAt"], "<sentinel>");
+    assert!(
+        !oracle_chunk_paths.contains(&"help/close-no-newline.md"),
+        "help/close-no-newline.md has an EMPTY body (its frontmatter fence eats the \
+         whole file), so it slices to nothing — the zero-chunk arm"
+    );
+    assert!(
+        !oracle_chunk_paths.contains(&"help/retired.md")
+            && !oracle_chunks.iter().any(|c| c["docPath"]
+                .as_str()
+                .is_some_and(|p| p.starts_with("<unknown:"))),
+        "the pruned doc's SEEDED chunk must go with it — the prune deletes chunks \
+         explicitly, because this fixture's table is the generateDDL shape and carries \
+         no FK cascade to do it (an orphan would surface as <unknown:…> here)"
+    );
+    assert!(
+        oracle_chunks
+            .iter()
+            .filter(|c| c["id"] == "<minted>")
+            .all(|c| c["hasEmbedding"] == false),
+        "replaceForDoc writes every chunk with a NULL vector; the HELP_DOC job fills them"
+    );
+    // A doc that changed and DID slice, so `chunksWritten` is measuring something.
+    assert!(
+        rust_summary["chunksWritten"].as_u64().unwrap_or(0) > 0,
+        "the sync wrote no chunks at all — the whole arm is vacuous"
     );
 }

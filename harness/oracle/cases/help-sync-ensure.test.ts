@@ -56,10 +56,15 @@ interface SeedDoc {
   path: string;
 }
 
+interface SeedChunk {
+  id: string;
+}
+
 interface Scenario {
   name: string;
   seedProfile: boolean;
   helpDocs: SeedDoc[];
+  seedChunks?: SeedChunk[];
 }
 
 interface Spec {
@@ -140,6 +145,17 @@ describe('help-doc-sync: ensureHelpDocsSynced', () => {
         if (msg.includes('[HelpDocSync]')) swallowed.push(JSON.stringify(args));
         return (realError as (...a: unknown[]) => void)(...args);
       };
+      // P4.D77 — the chunk backfill swallows into logger.WARN, not error, and
+      // for the same reason (never block help from loading). Watch it too, or a
+      // backfill that silently did nothing would pin as legitimate behavior.
+      const realWarn = logger.warn.bind(logger);
+      (logger as unknown as { warn: (...a: unknown[]) => void }).warn = (...args: unknown[]) => {
+        const msg = String(args[0] ?? '');
+        if (msg.includes('[HelpDocSync]') && msg.includes('failed')) {
+          swallowed.push(JSON.stringify(args));
+        }
+        return (realWarn as (...a: unknown[]) => void)(...args);
+      };
 
       await initializeDatabase();
       await ensureHelpDocsSynced();
@@ -195,9 +211,38 @@ describe('help-doc-sync: ensureHelpDocsSynced', () => {
         })
         .sort((a, b) => (a.entityPath < b.entityPath ? -1 : a.entityPath > b.entityPath ? 1 : 0));
 
-      lines.push(JSON.stringify({ kind: 'ensure', scenario: scenario.name, helpDocs, jobs }));
+      // P4.D77 (v4 `24633026`) — the section chunks. On the early-return path
+      // this is the BACKFILL's output; on the diverged path it is the sync's.
+      // Chunk ids are minted on both sides, so the identity is
+      // (doc PATH, chunkIndex); a SEEDED id is reported literally, which is how
+      // "the backfill left the existing rows alone" is visible at all.
+      const seededChunkIds = new Set((scenario.seedChunks ?? []).map((c) => c.id));
+      const chunkRows =
+        (await rawQuery<Array<Record<string, unknown>>>(
+          'SELECT id, docId, chunkIndex, heading, content, hex(embedding) AS embeddingHex, ' +
+            'updatedAt FROM help_doc_chunks',
+          [],
+        )) ?? [];
+      const chunks = chunkRows
+        .map((r) => ({
+          id: seededChunkIds.has(String(r.id)) ? String(r.id) : '<minted>',
+          docPath: pathById.get(String(r.docId)) ?? `<unknown:${String(r.docId)}>`,
+          chunkIndex: Number(r.chunkIndex),
+          heading: r.heading == null ? null : String(r.heading),
+          content: String(r.content),
+          hasEmbedding: String(r.embeddingHex ?? '') !== '',
+          updatedAt: String(r.updatedAt) === spec.seedSentinel ? '<sentinel>' : '<ts>',
+        }))
+        .sort((a, b) =>
+          a.docPath < b.docPath ? -1 : a.docPath > b.docPath ? 1 : a.chunkIndex - b.chunkIndex,
+        );
+
+      lines.push(
+        JSON.stringify({ kind: 'ensure', scenario: scenario.name, helpDocs, jobs, chunks }),
+      );
 
       (logger as unknown as { error: unknown }).error = realError;
+      (logger as unknown as { warn: unknown }).warn = realWarn;
       await closeDatabase();
       process.chdir(V4_ROOT);
     }

@@ -1,5 +1,5 @@
 {
-  "comment": "P4.1b help-doc-sync differential spec (extended by P4.d6 for the 551f090b prune). The seed rows bake the pre-sync help_docs state: row 1 (getting-started) carries a STALE contentHash + an embedding, so the sync updates it and clears the embedding; row 2 (no-frontmatter) carries the MATCHING contentHash (sha256 of the trimmed fixture file bytes) plus a deliberately-different title, so the sync must leave the whole row (title, embedding, timestamps) untouched; row 3 (retired) has NO FILE on disk, so the P4.d6 prune must delete it and cascade to its embedding_status rows. The embeddingStatus seed proves the cascade is scoped and is a deleteMany: TWO rows for the retired doc (one per profile — both must go) and one for the SURVIVING getting-started doc (must remain). The fixture help tree lives at fixtures/help-sync/help/ (a .gitattributes pins *.md -text so crlf.md keeps its CRLF bytes).",
+  "comment": "P4.1b help-doc-sync differential spec (extended by P4.d6 for the 551f090b prune). The seed rows bake the pre-sync help_docs state: row 1 (getting-started) carries a STALE contentHash + an embedding, so the sync updates it and clears the embedding; row 2 (no-frontmatter) carries the MATCHING contentHash (sha256 of the trimmed fixture file bytes) plus a deliberately-different title, so the sync must leave the whole row (title, embedding, timestamps) untouched; row 3 (retired) has NO FILE on disk, so the P4.d6 prune must delete it and cascade to its embedding_status rows. The embeddingStatus seed proves the cascade is scoped and is a deleteMany: TWO rows for the retired doc (one per profile \u2014 both must go) and one for the SURVIVING getting-started doc (must remain). The fixture help tree lives at fixtures/help-sync/help/ (a .gitattributes pins *.md -text so crlf.md keeps its CRLF bytes). P4.D77 (v4 24633026) adds helpDocChunkSeed, which makes all three chunk paths measurable in one run: the UPDATED doc's chunk must be REPLACED (its seeded id and embedding gone, since replaceForDoc is delete-then-insert), the UNCHANGED doc's chunk must SURVIVE byte-untouched (the content-hash check returns before the slice \u2014 the very gap the upgrade backfill exists to close), and the PRUNED doc's chunk must be DELETED by the sync's explicit deleteByDocId (the fixture table is the generateDDL shape, which carries no foreign key, so nothing else would remove it).",
   "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
   "seedSentinel": "2020-01-01T00:00:00.000Z",
   "seed": [
@@ -10,7 +10,11 @@
       "url": "/old-url",
       "content": "old content that has since changed on disk",
       "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
-      "embedding": [0.25, -0.5, 1],
+      "embedding": [
+        0.25,
+        -0.5,
+        1
+      ],
       "createdAt": "2020-01-01T00:00:00.000Z",
       "updatedAt": "2020-01-01T00:00:00.000Z"
     },
@@ -21,7 +25,11 @@
       "url": "/stale-url-untouched",
       "content": "stale content untouched (hash matches so nothing is rewritten)",
       "contentHash": "8b8c4225046a78d7b956cbc8c9cbb0ab04373b827135795badefd6ff6f08709f",
-      "embedding": [1, 2, 3],
+      "embedding": [
+        1,
+        2,
+        3
+      ],
       "createdAt": "2020-01-01T00:00:00.000Z",
       "updatedAt": "2020-01-01T00:00:00.000Z"
     },
@@ -32,7 +40,10 @@
       "url": "/retired",
       "content": "this doc's Markdown file has been deleted from disk",
       "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
-      "embedding": [0.5, -0.25],
+      "embedding": [
+        0.5,
+        -0.25
+      ],
       "createdAt": "2020-01-01T00:00:00.000Z",
       "updatedAt": "2020-01-01T00:00:00.000Z"
     }
@@ -70,6 +81,41 @@
       "embeddedAt": "2020-01-01T00:00:00.000Z",
       "error": null,
       "createdAt": "2020-01-01T00:00:00.000Z"
+    }
+  ],
+  "helpDocChunkSeed": [
+    {
+      "id": "eeeeeeee-0000-4000-8000-000000000001",
+      "docId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "chunkIndex": 0,
+      "heading": "Stale Section",
+      "content": "stale chunk for the doc whose content changed",
+      "embedding": [
+        0.5,
+        -0.25
+      ]
+    },
+    {
+      "id": "eeeeeeee-0000-4000-8000-000000000002",
+      "docId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "chunkIndex": 0,
+      "heading": "Untouched Section",
+      "content": "chunk for the unchanged doc",
+      "embedding": [
+        0.25,
+        -0.5
+      ]
+    },
+    {
+      "id": "eeeeeeee-0000-4000-8000-000000000003",
+      "docId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "chunkIndex": 0,
+      "heading": "Retired Section",
+      "content": "chunk for the doc whose file is gone",
+      "embedding": [
+        1.0,
+        2.0
+      ]
     }
   ]
 }
