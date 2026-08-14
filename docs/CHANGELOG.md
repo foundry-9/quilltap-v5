@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Planned the 4.8.2/4.8.3 drift catch-up round and wrote seven work orders
+(docs only, no code): v4 main moved `03154b72` → `48396682` with releases
+4.8.2 + 4.8.3 — the group/shared wardrobe tiers + bundle dissolution +
+v4's fix for Bug 61 (the staged-edit race this port filed), the three
+composer features (smart typography, emoji, Unicode) with their three new
+`chat_settings` columns, the bug-64/65 lifecycle fixes, and an SDK
+refresh. Orders: P4.D71 (wardrobe server) ∥ P4.D72 (wardrobe SPA, closes
+dogfood finding #78) ∥ P4.D73 (settings columns + D23 re-dump) ∥ P4.D74
+(smart-typography/renderer SPA + bugs 62/63 + katex) ∥ P4.D75
+(char-insert SPA) ∥ P4.46 (lock-before-open reshape + setup hardening —
+the standing P4.D68 escalation, widened by survey to unlock and Setup) ∥
+P4.D76 (provider SDK wire re-check). Round record in the status log; the
+oracle baseline moves to `48396682` when the round unifies.
+
 Unified the `03154b72` 4.8.1-release drift catch-up round (P4.D68 ∥
 P4.D69 ∥ P4.D70, plus the parallel wardrobe-flow deflake that was sitting
 uncommitted in its worktree) onto main — the oracle baseline moves to

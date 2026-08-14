@@ -65399,3 +65399,93 @@ the Friday copy, stale second file untouched); P4.D65 items 5–6 remain
 the small open remainder; v4 Bug 61 (the wardrobe staged-edit race,
 finding #78) awaits v4's fix — a small drift round on the ported dialog
 when it lands.
+
+## Round planned — the 4.8.2/4.8.3 drift catch-up + the lock-order reshape (P4.D71 ∥ P4.D72 ∥ P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76), 2026-08-13
+
+**The drift-check found v4 moved:** main went `03154b72` → `48396682`
+("merge: 4.8.3 back into main") — releases **4.8.2 + 4.8.3**, thirteen
+substantive bugfix-branch commits squashed in via the release/merge
+pairs. Nothing is pending on `bugfix` past the 4.8.3 branch-start
+(`0649eddb`); the checkout sat on `main`, clean, at the new HEAD at
+planning. Per the setupphase rule, planning stopped, the drift was
+classified (four fresh surveys, all dated 2026-08-13, recorded in the
+orders), and this round IS the catch-up. The oracle baseline moves to
+`48396682` at unification.
+
+**The drift, classified:**
+
+- **Wardrobe (ported surfaces P4.9f1/f2, P4.D39, the tool handlers):**
+  `8600c83f` — the group/shared wardrobe tiers (`SharedWardrobeTiers`,
+  group items were invisible everywhere; precedence character > group >
+  project > general; transfers gain a group source; `?scope=group`);
+  `61574563` — wearing a bundled outfit dissolves it into leaf garments
+  at write time on every wear path (null = store-whole fail-safe);
+  `07d4ccce` — **v4's fix for Bug 61, the staged-edit race THIS PORT
+  found, measured (3 ms), deflaked, and filed upstream (finding #78)** —
+  the predicted "small drift round on the ported dialog" is here.
+  Also `fe63547a` (Core whisper card stack). → **P4.D71** (server) ∥
+  **P4.D72** (SPA; closes finding #78).
+- **Composer/typography (three features + ported settings/renderer
+  surfaces):** `2d31810f` smart typography (render-time curly quotes +
+  type-time dashes; the stdlib-only engine is fixture-pinned BY v4
+  explicitly for this port), `22de75f9` composer emoji + `6cd21833`
+  composer Unicode (one `char-insert` engine, two profiles, four
+  verbatim-copy corpora + two public datasets), `c7892132` bug 62 (the
+  curly-quote fallback patterns — v5 carries the pre-fix bytes
+  deliberately at `roleplay-rendering.ts:69/:80-81`), bug 63 (text
+  replacements fire inside code — **v5 reproduces it**:
+  `text-replacement.ts:96-136` has no code guard), and three new
+  `chat_settings` columns (`composerEmoji`, `composerUnicode`,
+  `smartTypographySettings` — a D23 re-dump). → **P4.D73** (columns +
+  settings routes, server) ∥ **P4.D74** (typography/renderer SPA + bugs
+  62/63 + katex) ∥ **P4.D75** (char-insert SPA — the round's
+  highest-effort item; the caret-anchored typeahead has no v5
+  precedent).
+- **Connection lifecycle (4.8.3):** `a54a2c79` bug 64 — **NO-PORT with
+  evidence** (v5 caches no handle above `Db`; no plaintext window at
+  setup), but the survey found two real adjacent v5 defects (a late
+  Setup failure eats the display-once pepper; a failed Setup retry is
+  DESTRUCTIVE — new pepper over existing `.dbkey`, DDL with zero
+  `IF NOT EXISTS`), and the standing P4.D68 open-before-lock escalation
+  is WIDER than written (unlock repeats the unlocked open sequence;
+  Setup does unlocked DDL + row writes). `c5be43f5` bug 65 — NO-PORT
+  stands, with one interop rider: v5's `change_passphrase` full-replace
+  write would strip a v4-written `minServerVersion` from `.dbkey`.
+  → **P4.46** (lock-before-open on all three entrances + setup
+  hardening + the dbkey unknown-field preservation + both
+  dispositions) — phase-4's candidate 1, folded into this round where
+  it belongs.
+- **Dependency refresh:** `d339bad8` — openai 7.2→7.4, `@openrouter/sdk`
+  →1.2.32, katex →`^0.18.4` (P4.D74's), plugin manifests synced. The
+  provider corpora are now SELF-DATING (P4.44's recorded headers pin
+  openai 7.2.0 / openrouter 1.2.2), so the D33/D48 "byte-identical
+  regen" deliverable is restated as byte-identical OUTSIDE the
+  version-marker fields. → **P4.D76** (small wire re-check lane).
+
+**Shared contracts pinned across the orders (binding, verbatim-identical
+in each pair/triple):** the group-scope wardrobe read (REST +
+dispatch-field, P4.D71↔P4.D72); the dissolution authority split
+(server-authoritative leaf-id persistence, client mirrors v4's client
+math); the three settings keys with v4's exact Zod shapes/defaults and
+the toolbar-never-gated toggle semantics (P4.D73↔P4.D74↔P4.D75); and the
+editor meeting points (a byte-pinned shared `code-context.ts` both SPA
+lanes create identically, the pinned `buildPlugins()` order, chat-tab.ts
+owned by P4.D74 with P4.D75's toggles mounted AT-UNIFY).
+
+**Deliberately left out of the round:** the owed dogfood pass (still the
+standing queue; this round ADDS live proofs to it — the dissolve/group
+tiers on the Friday copy, the typography/typeahead feel, the bug-64-class
+setup walk); P4.D65 items 5–6 (open, small, disjoint — rides a future
+round); the `p4.35` streaming-import order (still gated on its
+re-measure); the v4-side archived-seat-badge filing (human's). The two
+composer feature specs (~1,050 lines) mirror into `docs/v4/` via their
+lanes.
+
+Orders committed under `docs/developer/porting/work-orders/`:
+`p4.d71-wardrobe-group-tiers-dissolve-server.md`,
+`p4.d72-wardrobe-staged-replay-spa.md`,
+`p4.d73-composer-settings-columns-server.md`,
+`p4.d74-smart-typography-renderer-spa.md`,
+`p4.d75-char-insert-composer-spa.md`,
+`p4.46-boot-lock-order-setup-hardening.md`,
+`p4.d76-provider-sdk-wire-recheck.md`.
