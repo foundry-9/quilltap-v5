@@ -230,6 +230,14 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Walked smart typography live (P4.D74 unit 7): four Playwright beats —
+the dash ladder and the ellipsis typed into the real composer, the
+one-Backspace revert and its one-keystroke window, the code-fence bail,
+and the settings card's try-it box. The display-quotes beat waits on the
+settings column and is gated by a named constant. v4's feature spec is
+mirrored under `docs/v4/`; its help-doc section is banked for `p4.9i2`,
+which is where v5's help surface still lives.
+
 Added the Smart Typography settings card (P4.D74 unit 6), between Text
 Replacement and Token Display in Settings → Chat: the curly-quote
 display toggle, the two type-time rules, and a try-it box that runs the

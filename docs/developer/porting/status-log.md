@@ -67162,3 +67162,52 @@ mutation reds it. That spec also gained the `scrollIntoView` shim the
 Brahma console dialog spec uses — jsdom has none, and a force-opened card
 calls it from a rAF, which surfaced as a suite-level unhandled error
 rather than a failing test.
+
+### Unit record — P4.D74 unit 7 (the live walk + the docs mirror)
+
+Four beats in a new `apps/web/e2e/smart-typography-flow.spec.ts`, three of
+them **LIVE in-lane** and one ACTIVATE-AT-UNIFY.
+
+The split is not arbitrary. Part B needs no server change at all: with
+the settings bag absent, both rules default ON (v4's `?? true`), so the
+composer beats exercise the shipped path exactly as a writer would —
+which also means the feature's first real run is HERE, not at
+unification. Part A's toggle is a SAVED setting, so its beat is gated
+behind `SMART_TYPOGRAPHY_COLUMN_LANDED = false` (trap 7: a named
+constant, never a capability probe) until P4.D73's column lands; the
+gated beat is written to RUN when flipped — it starts the mock LLM in
+`beforeAll`, because posting a message starts a turn.
+
+- **The ladder and the ellipsis**, typed into the real contenteditable
+  with key events (`.fill()` targets input/textarea only): `--` → en
+  dash, a third hyphen → em dash, a fourth left alone as the escape
+  hatch, and `..` + `.` → ellipsis.
+- **One Backspace puts the literal back**, and the window is exactly one
+  keystroke wide — the second Backspace is ordinary deletion.
+- **Nothing fires inside a fenced code block** (bug 63, live): the
+  dialect input rule turns ``` ``` ``` into a fence and
+  `npm run build --verbose...` survives it verbatim.
+- **The settings card's try-it box** substitutes through the shared
+  engine (gated only by being reachable: the workspace-hosted settings
+  page ignores `?section=`, as v4's does, so the beat opens the card by
+  its header).
+- **(gated) displayQuotes** curls an already-rendered message after the
+  PUT — which is also the memo-key proof — and reads the message back
+  over the API to show the STORED bytes still carry straight quotes.
+
+`docs/v4/developer/features/composer-smart-typography.md` mirrors v4's
+562-line spec (`git show`, unmodified). Two notes worth carrying out of
+it:
+
+1. Its Tier-A row proposes the engine at
+   `apps/web/src/app/editor/smart-typography/engine.ts`; this port put it
+   at `apps/web/src/app/smart-typography/` instead, because the settings
+   card and the renderer's settings read import it too and it is not an
+   editor-only file. A deliberate, recorded deviation from v4's
+   suggestion — not from v4's code.
+2. **Help-doc delta → the `p4.9i2` bank**: v4 adds a Smart Typography
+   section to `help/chat-settings.md`, beside Composer and Text
+   Replacement, and its own note warns that a section deep link means a
+   SEPARATE help file rather than a frontmatter edit (the frontmatter's
+   `url:` and `help_navigate` must agree). v5 ships no help surface yet,
+   so there is nothing to edit — banked with the rest of `p4.9i2`.
