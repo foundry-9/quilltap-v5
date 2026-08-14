@@ -17,7 +17,9 @@ import { AnswerConfirmationSettings } from './answer-confirmation-settings';
 import { BrahmaConsoleSettings } from './brahma-console-settings';
 import { AutoScrollSettings } from './auto-scroll-settings';
 import { AutomationSettings } from './automation-settings';
+import { ComposerEmojiSettings } from './composer-emoji-settings';
 import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
+import { ComposerUnicodeSettings } from './composer-unicode-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { ContextCompressionSettings } from './context-compression-settings';
 import { CustomToolsSettings } from './custom-tools-settings';
@@ -65,6 +67,8 @@ import { TokenDisplaySettings } from './token-display-settings';
     BrahmaConsoleSettings,
     AutoScrollSettings,
     AutomationSettings,
+    ComposerEmojiSettings,
+    ComposerUnicodeSettings,
     ComposerSpellcheckSettings,
     CompositionModeSettings,
     ContextCompressionSettings,
@@ -105,6 +109,11 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'composer-spellcheck'"
         >
           <qt-composer-spellcheck-settings />
+          <!-- v4 ChatTabContent's Composer card order: spellcheck → emoji →
+               unicode (P4.D75's toggles, mounted at unification per the
+               round's §Editor meeting points). -->
+          <qt-composer-emoji-settings />
+          <qt-composer-unicode-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

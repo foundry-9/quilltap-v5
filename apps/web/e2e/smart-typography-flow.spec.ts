@@ -9,7 +9,7 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * Part B is type-time and needs no server change at all: with the settings bag
  * absent both rules default ON (v4's `?? true`), so the composer beats run LIVE
  * in-lane. Part A's display toggle is a SAVED setting, so its beat is
- * ACTIVATE-AT-UNIFY behind {@link SMART_TYPOGRAPHY_COLUMN_LANDED} — P4.D73 owns
+ * ACTIVATED at the 4.8.2-round unification (was gated behind) {@link SMART_TYPOGRAPHY_COLUMN_LANDED} — P4.D73 owns
  * the `smartTypographySettings` column, and until it lands a PUT carrying that
  * key is refused by the server rather than stored.
  *
@@ -19,7 +19,7 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  */
 
 /** ACTIVATE-AT-UNIFY: flip to `true` once P4.D73's settings column is in. */
-const SMART_TYPOGRAPHY_COLUMN_LANDED = false;
+const SMART_TYPOGRAPHY_COLUMN_LANDED = true;
 
 const EN_DASH = '–';
 const EM_DASH = '—';

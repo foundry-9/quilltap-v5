@@ -120,6 +120,23 @@ describe('ChatTab', () => {
     expect(card?.querySelector('qt-smart-typography-settings')).toBeTruthy();
   });
 
+  it('the Composer card hosts spellcheck, then emoji, then unicode (v4 ChatTabContent order; the P4.D75 at-unify mounts)', () => {
+    const fixture = mount('composer-spellcheck');
+    const card = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
+    ).find((c) => c.getAttribute('sectionId') === 'composer-spellcheck');
+    const rows = Array.from(
+      card?.querySelectorAll(
+        'qt-composer-spellcheck-settings, qt-composer-emoji-settings, qt-composer-unicode-settings',
+      ) ?? [],
+    ).map((el) => el.tagName.toLowerCase());
+    expect(rows).toEqual([
+      'qt-composer-spellcheck-settings',
+      'qt-composer-emoji-settings',
+      'qt-composer-unicode-settings',
+    ]);
+  });
+
   it('no longer advertises the retired "not yet fitted out" placeholder', () => {
     const fixture = mount();
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
