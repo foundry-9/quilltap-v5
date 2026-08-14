@@ -57,14 +57,10 @@
 //! Regenerate the corpus (Node 24, only after a v4 provider drift) with
 //! `harness/oracle/providers/regenerate-request-envelopes.sh`.
 
-use quilltap_core::model::completion::{CompletionMessage, CompletionParams};
-use quilltap_core::model::completion_provider::execute_completion;
+mod provider_header_common;
+
 use quilltap_core::model::request_builder::{
     build_request, RequestInput, StreamMessage, ToolCallFunction, ToolCallPayload,
-};
-use quilltap_core::model::transport::{
-    BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
-    TransportResponse,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -227,110 +223,18 @@ const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
 
 // ── P4.44 item 3: the outbound-header pin ───────────────────────────────────
 //
-// Records the `TransportRequest` v5 hands the transport — the POST-`apply_auth`
-// header set (`transport_headers` + `apply_auth`, completion_provider.rs:140-141),
-// which is where User-Agent / HTTP-Referer / X-Title / the api key actually land
-// (not on `built.headers` alone). The differential compares only the headers v5
-// MODELS against v4's recorded set (a SUBSET: v4's SDKs add `x-stainless-*`
-// plumbing a single reqwest transport neither sends nor should), normalizing the
-// version-bearing User-Agent and the auth secret.
-struct HeaderCapture {
-    seen: std::sync::Mutex<Option<TransportRequest>>,
-}
-impl ProviderTransport for HeaderCapture {
-    fn execute<'a>(
-        &'a self,
-        request: &'a TransportRequest,
-        _policy: &'a TransportPolicy,
-    ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        *self.seen.lock().unwrap() = Some(request.clone());
-        Box::pin(async move {
-            Ok(TransportResponse {
-                status: 200,
-                body: b"{}".to_vec(),
-            })
-        })
-    }
-    fn execute_stream<'a>(
-        &'a self,
-        _request: &'a TransportRequest,
-        _policy: &'a TransportPolicy,
-    ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
-        Box::pin(async move {
-            Err(TransportError {
-                message: "unused".to_string(),
-                status: None,
-            })
-        })
-    }
-}
-
-/// v5's REAL outbound headers for `provider`, driven through the production line
-/// (`execute_completion` → `build_request` → `transport_headers` → `apply_auth`).
-/// Headers never depend on the body or the stream flag, so one plain call per
-/// provider serves every recorded row. The parse result is ignored — the request
-/// (with its headers) is captured before any parse. Names lowercased.
-fn v5_headers(rt: &tokio::runtime::Runtime, provider: &str) -> HashMap<String, String> {
-    let params = CompletionParams {
-        messages: vec![CompletionMessage::user("hi")],
-        model: "model".to_string(),
-        temperature: Some(0.5),
-        max_tokens: 1000,
-        strict_max_tokens: false,
-        cache_key: None,
-        profile_parameters: None,
-        attachments: Vec::new(),
-        request_timeout_ms: None,
-    };
-    let cap = HeaderCapture {
-        seen: std::sync::Mutex::new(None),
-    };
-    let policy = TransportPolicy::default();
-    let _ = rt.block_on(execute_completion(
-        &cap,
-        provider,
-        None,
-        "test-api-key",
-        &params,
-        &policy,
-        "Quilltap/TEST",
-        None,
-    ));
-    let req = cap
-        .seen
-        .lock()
-        .unwrap()
-        .clone()
-        .unwrap_or_else(|| panic!("{provider}: execute_completion made no transport call"));
-    req.headers
-        .into_iter()
-        .map(|(k, v)| (k.to_lowercase(), v))
-        .collect()
-}
-
-/// Fold the version-bearing User-Agent and the auth secret to placeholders, so
-/// the pin is on the header NAME + scheme, not v4's build version or the key.
-/// `name` is already lowercased.
-fn normalize_header(name: &str, value: &str) -> String {
-    match name {
-        "user-agent" => {
-            assert!(
-                value.starts_with("Quilltap/"),
-                "unexpected User-Agent {value:?}"
-            );
-            "Quilltap/<v>".to_string()
-        }
-        "authorization" => {
-            assert!(
-                value.starts_with("Bearer "),
-                "unexpected Authorization {value:?}"
-            );
-            "Bearer <key>".to_string()
-        }
-        "x-api-key" => "<key>".to_string(),
-        _ => value.to_string(),
-    }
-}
+// The capture machinery lives in `provider_header_common` — it drives the
+// production line (`execute_completion` → `build_request` → `transport_headers`
+// → `apply_auth`, completion_provider.rs:140-141), which is where User-Agent /
+// HTTP-Referer / X-Title / the api key actually land, not `built.headers` alone.
+// P4.47 (B) hoisted it there when the google-wire family gained the same pin;
+// the two must not drift, so there is one implementation.
+//
+// The differential compares only the headers v5 MODELS against v4's recorded
+// set (a SUBSET: v4's SDKs add `x-stainless-*` plumbing a single reqwest
+// transport neither sends nor should), normalizing the version-bearing
+// User-Agent and the auth secret.
+use provider_header_common::{normalize_header, v5_headers};
 
 #[test]
 fn request_builder_matches_v4() {

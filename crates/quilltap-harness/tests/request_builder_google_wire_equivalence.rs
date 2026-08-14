@@ -14,10 +14,30 @@
 //! lives in the URL (`:streamGenerateContent?alt=sse` vs `:generateContent`), so
 //! this differential asserts the URL too.
 //!
+//! **Headers (P4.47 (B), the D76 bank).** The corpus has recorded each request's
+//! outgoing headers since P4.44 and this family asserted NONE of them — google
+//! being the one provider absent from `request-envelopes.recorded.ndjson`, and
+//! so the one provider with no header pin anywhere. The pin is the P4.44 shape:
+//! v5's REAL header set driven through `execute_completion`
+//! (`build_request` → `transport_headers` → `apply_auth`, via
+//! `provider_header_common`), compared as a SUBSET — v4's genai SDK adds
+//! `x-goog-api-client`, and on the non-streaming path `x-server-timeout`, which
+//! is the SDK's expression of the request timeout v5 keeps as a client-side
+//! `TransportPolicy` (the P4.44 abort/timeout-arming deferral, unchanged).
+//!
+//! It found a real divergence on its first run: v5 carried google's api key as
+//! a `?key=` QUERY PARAM where v4's SDK sends `X-Goog-Api-Key` and leaves the
+//! url alone. Note the subset check alone did NOT catch it — a header v5 fails
+//! to model is invisible to a subset — so the auth transport is pinned
+//! explicitly in BOTH directions below (header present, query param absent).
+//! Fixed in the google manifest; see `model::provider_auth`'s module header.
+//!
 //! Regenerate the fixture (Node 24):
 //!   V4=~/source/quilltap-server V5=<repo-root> \
 //!     bash <V5>/harness/oracle/providers/regenerate-google-wire.sh
 //! (The fixture is committed; no env var needed to run.)
+
+mod provider_header_common;
 
 use quilltap_core::model::request_builder::{
     build_request, RequestInput, StreamMessage, ToolCallFunction, ToolCallPayload,
@@ -154,6 +174,16 @@ fn google_wire_body_matches_recorded() {
     let text = std::fs::read_to_string(corpus_path())
         .unwrap_or_else(|e| panic!("cannot read google wire fixture: {e}"));
 
+    // P4.47 (B) — the D76-banked header pin. The corpus has recorded the
+    // outgoing headers all along and asserted none of them, which is how a
+    // whole auth-transport divergence sat unmeasured (see the module header).
+    // v5's headers never depend on the body or the stream flag, so ONE capture
+    // serves every row.
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let v5_request = provider_header_common::v5_transport_request(&rt, "GOOGLE", "test-api-key");
+    let v5_headers = provider_header_common::v5_headers(&rt, "GOOGLE");
+    let mut header_rows = 0usize;
+
     let mut count = 0usize;
     let mut attachment_rows = 0usize;
     let mut modes = std::collections::HashSet::new();
@@ -201,6 +231,33 @@ fn google_wire_body_matches_recorded() {
                 "google/{case}[{mode}] reported attachment results v4 did not"
             ),
         }
+        // Headers (P4.47 (B)): a SUBSET check, exactly as the P4.44 pin does it
+        // — every header v5 MODELS must appear in v4's recorded set with a
+        // matching value. v4's genai SDK adds plumbing a single reqwest
+        // transport neither sends nor should (`x-goog-api-client`, and on the
+        // non-streaming path `x-server-timeout`, which is the SDK's expression
+        // of the request timeout v5 keeps as a client-side `TransportPolicy` —
+        // the P4.44 abort/timeout-arming deferral, unchanged).
+        if let Some(recorded) = row.get("headers").and_then(Value::as_object) {
+            let recorded: std::collections::HashMap<String, String> = recorded
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.to_lowercase(), s.to_string())))
+                .collect();
+            for (name, value) in &v5_headers {
+                let want = provider_header_common::normalize_header(name, value);
+                match recorded.get(name) {
+                    Some(got_raw) => {
+                        let got = provider_header_common::normalize_header(name, got_raw);
+                        assert_eq!(got, want, "google/{case}[{mode}] header `{name}` diverged");
+                    }
+                    None => panic!(
+                        "google/{case}[{mode}]: v5 sends header `{name}`={want:?} but v4 does not"
+                    ),
+                }
+            }
+            header_rows += 1;
+        }
+
         if row["input"]
             .get("messages")
             .and_then(Value::as_array)
@@ -228,5 +285,33 @@ fn google_wire_body_matches_recorded() {
             "google wire fixture missing mode {mode}"
         );
     }
-    eprintln!("OK: google wire framing matched recorded ({count} cases, both modes).");
+    // Header coverage floor (P4.47 (B)): a corpus that lost its `headers` key
+    // would otherwise pass by pinning nothing at all — the exact silence this
+    // lane was written to end.
+    assert_eq!(
+        header_rows,
+        count,
+        "{} of {count} google rows carry no recorded headers — regenerate the corpus",
+        count - header_rows
+    );
+    // The auth transport, pinned where it actually lands. v4's genai SDK carries
+    // the key in `x-goog-api-key` and leaves the url alone; the header loop
+    // above proves v5 sends the same header, and this proves it did NOT ALSO
+    // reach for the `?key=` query param — the divergence the recorded-but-never-
+    // asserted headers had been hiding. `built.url` is compared per row above;
+    // this is the POST-`apply_auth` url, which is the one that goes on the wire.
+    assert!(
+        !v5_request.url.contains("key=test-api-key"),
+        "v5 puts the google api key in the url ({}) where v4 sends it as a header",
+        v5_request.url
+    );
+    assert!(
+        v5_headers.contains_key("x-goog-api-key"),
+        "v5 no longer sends google's `x-goog-api-key`; headers were {:?}",
+        v5_headers.keys().collect::<Vec<_>>()
+    );
+    eprintln!(
+        "OK: google wire framing matched recorded ({count} cases, both modes); \
+         headers pinned on {header_rows} rows."
+    );
 }

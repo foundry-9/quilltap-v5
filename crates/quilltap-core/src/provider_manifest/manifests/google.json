@@ -13,8 +13,8 @@
     "GOOGLE_IMAGEN"
   ],
   "auth": {
-    "kind": "query",
-    "param": "key"
+    "kind": "header",
+    "header": "x-goog-api-key"
   },
   "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
   "endpoints": {

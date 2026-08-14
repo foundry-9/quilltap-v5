@@ -310,33 +310,41 @@ where
 ///    dangerous-content error. The caller defers this call to the end of the
 ///    assignment walk for exactly that reason.
 ///
-/// The enum arms stay unreachable from the route (the manual guards catch every
-/// non-member first, of any type, since a truthy non-member fails `.includes`),
-/// so they are not modelled here — the corpus proves the guard wins.
+/// The two enum arms ARE modelled, and the reason is a trap: v4's manual guards
+/// are written `if (settings.strategy && !valid.includes(...))`, so they only
+/// catch a TRUTHY non-member. A FALSY one — `null`, `""`, `0`, `false` — slips
+/// past the guard, rides into `updateData`, and reaches the repo's Zod as an
+/// `invalid_value` issue like any other miss.
 fn zod_cheap_llm_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
     const PREFIX: &[&str] = &["cheapLLMSettings"];
+    const STRATEGIES: &[&str] = &["USER_DEFINED", "PROVIDER_CHEAPEST", "LOCAL_FIRST"];
+    const EMBEDDING_PROVIDERS: &[&str] = &["SAME_PROVIDER", "OPENAI", "LOCAL"];
     let o = zod_object_or_issue(v, PREFIX)?;
     let mut out = Map::new();
     let mut issues: Vec<ZodIssue> = Vec::new();
 
     // Schema declaration order (which is also the issue order).
-    let strategy = match o.get("strategy") {
-        None => "PROVIDER_CHEAPEST",
-        Some(Value::String(s)) => s.as_str(),
-        // Unreachable from the route: the manual guard rejects a non-member of
-        // any type first. Keep the previous shape rather than invent bytes.
-        Some(_) => return Err("Invalid cheap LLM settings".to_string()),
-    };
+    let strategy = zod_enum(
+        o,
+        "strategy",
+        "PROVIDER_CHEAPEST",
+        STRATEGIES,
+        PREFIX,
+        &mut issues,
+    );
     out.insert("strategy".into(), json!(strategy));
     zod_opt_uuid(o, "userDefinedProfileId", PREFIX, &mut out, &mut issues);
     zod_opt_uuid(o, "defaultCheapProfileId", PREFIX, &mut out, &mut issues);
     let fallback = zod_bool(o, "fallbackToLocal", true, PREFIX, &mut issues);
     out.insert("fallbackToLocal".into(), json!(fallback));
-    let embedding = match o.get("embeddingProvider") {
-        None => "OPENAI",
-        Some(Value::String(s)) => s.as_str(),
-        Some(_) => return Err("Invalid cheap LLM settings".to_string()),
-    };
+    let embedding = zod_enum(
+        o,
+        "embeddingProvider",
+        "OPENAI",
+        EMBEDDING_PROVIDERS,
+        PREFIX,
+        &mut issues,
+    );
     out.insert("embeddingProvider".into(), json!(embedding));
     zod_opt_uuid(o, "imagePromptProfileId", PREFIX, &mut out, &mut issues);
 

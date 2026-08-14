@@ -678,6 +678,38 @@ describe('settings-routes oracle', () => {
       body: { cheapLLMSettings: { strategy: 5 } },
     },
     {
+      // A FALSY non-member. v4's guard is `if (settings.strategy && !valid…)`,
+      // so `null` slips past it entirely and the repo's Zod reports the enum
+      // miss — a different answer from the truthy case two rows up, and the
+      // whole reason the enum arms have to be modelled rather than declared
+      // unreachable.
+      name: 's_put_cheap_strategy_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: null } },
+    },
+    {
+      name: 's_put_cheap_strategy_empty',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: '' } },
+    },
+    {
+      name: 's_put_cheap_embedding_empty',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { embeddingProvider: '' } },
+    },
+    {
       name: 's_put_cheap_bad_embedding',
       family: 'settings_zod',
       user: 'A',

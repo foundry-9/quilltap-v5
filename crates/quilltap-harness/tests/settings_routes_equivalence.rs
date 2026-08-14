@@ -382,8 +382,8 @@ fn settings_routes_match_v4() {
     // above — before this lane NOTHING exercised a present-but-invalid value on
     // any of them, which is exactly how the collapse survived.
     assert!(
-        settings_zod_cases >= 24,
-        "expected >= 24 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
+        settings_zod_cases >= 27,
+        "expected >= 27 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }

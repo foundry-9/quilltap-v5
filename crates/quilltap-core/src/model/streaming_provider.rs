@@ -728,7 +728,10 @@ mod tests {
             .iter()
             .any(|(k, v)| k == "x-api-key" && v == "synthetic-anthropic"));
 
-        // Query param (google).
+        // Header (google `x-goog-api-key`). This arm asserted the `?key=` query
+        // param until P4.47 (B) proved v4's genai SDK sends a header and leaves
+        // the url alone (module header of `provider_auth`); the url assertion
+        // below is now the WHOLE url v4 records, key-free.
         let t = FakeStreamTransport::new(vec![]);
         let p = WireStreamingProvider::new(
             t,
@@ -742,12 +745,16 @@ mod tests {
         )
         .await;
         let seen = p.transport.seen.lock().unwrap().clone().unwrap();
+        assert!(seen
+            .headers
+            .iter()
+            .any(|(k, v)| k == "x-goog-api-key" && v == "synthetic-google"));
         assert!(
-            seen.url.contains("key=synthetic-google"),
-            "url was {}",
+            !seen.url.contains("key=synthetic-google"),
+            "the key must not ALSO ride in the url; it was {}",
             seen.url
         );
-        assert!(seen.url.contains(":streamGenerateContent?alt=sse"));
+        assert!(seen.url.ends_with(":streamGenerateContent?alt=sse"));
 
         // None (ollama): no auth header even without a registered key.
         let t = FakeStreamTransport::new(vec![]);

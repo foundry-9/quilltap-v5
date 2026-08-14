@@ -59,6 +59,13 @@ test harness had been stubbing out the default embedding profile, so the
 reference implementation had been queueing no embedding work for restored
 memories at all; with that removed, both implementations queue the same nine
 jobs. Tests only; no shipped behavior changed.
+Fixed Google Gemini requests sending the API key in the URL instead of the
+`X-Goog-Api-Key` header. Google accepts both, so nothing was visibly broken, but
+keys in URLs are the shape that ends up in proxy and server logs — and Quilltap's
+own image-generation requests were already using the header, so the two paths
+disagreed. Found by newly asserting the request headers the Google wire test had
+been recording and ignoring.
+
 Developer tooling: the harness recipe sweep now detects a test family whose
 oracle-regeneration recipe reads a scratch file no stage of that recipe builds —
 the failure mode that leaves a family working on one machine and dead on another.

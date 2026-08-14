@@ -68888,3 +68888,96 @@ line) plus the ordering arm and the jest-own-output arm. `--list` totals are
 unchanged (ok 293 / ok_restored 70 / committed_corpus 12 / exempt 6 /
 no_oracle 22) — this class warns, it never reclassifies, so no previously-green
 family regressed.
+
+---
+
+## Lane record — P4.47 (B): the google-wire header asserts, and the auth transport they caught, 2026-08-14
+
+The D76 bank: the google-wire corpus has recorded each request's outgoing
+headers since P4.44 and this family asserted NONE of them. Google is the one
+provider absent from `request-envelopes.recorded.ndjson` (it has its own
+genai-SDK corpus), so it was the one provider with no header pin anywhere.
+
+**The pin found a real divergence on its first run.** v5 carried google's api
+key as a `?key=` QUERY PARAM; v4 builds `new GoogleGenAI({apiKey, httpOptions})`
+and the SDK sets `X-Goog-Api-Key` on every request, leaving the url untouched.
+Three independent confirmations:
+
+1. v4's SDK source (`plugins/dist/qtap-plugin-google/index.js:12965`,
+   `{ headers: new Headers({ "X-Goog-Api-Key": this.apiKey }) }`). The only
+   `?key=` anywhere in that plugin is the unused Live/WebSocket path.
+2. The recorded corpus itself: `x-goog-api-key` on all 18 rows, and not one
+   recorded url carries a key.
+3. **v5 already disagreed with itself** — `model::image_dialects.rs:668` sends
+   `x-goog-api-key` for the IMAGE path while the completion path appended
+   `?key=`. Two v5 paths, two answers.
+
+The `provider_auth` module header had asserted "the `?key=` query param on
+Google's raw fetch" since P4.1a, and the only thing pinning it was a v5 unit
+test asserting v5's own belief. Fixed in `manifests/google.json`
+(`kind: "header"`, `header: "x-goog-api-key"`); the unit test now asserts the
+header AND that the url is key-free. Google works either way, so nothing was
+visibly broken — which is precisely why only a recorded-bytes pin could find it.
+
+**The subset check alone would NOT have caught it, and that shaped the pin.**
+The P4.44 shape compares "every header v5 models must appear in v4's set" — a
+header v5 fails to model is invisible to a subset, and v5's other google headers
+(`content-type`, `user-agent`) matched fine. So the auth transport is pinned
+explicitly in BOTH directions beside the subset loop: `x-goog-api-key` must be
+present, and `key=` must NOT appear in the post-`apply_auth` url. Red-first
+verified: the query-param assertion is what failed on the pre-fix build.
+
+**Coverage floor.** `header_rows == count` — every row must carry recorded
+headers, so a corpus that lost the key cannot pass by pinning nothing. That is
+the failure mode this lane existed to end.
+
+**Recorded, not modelled** (the P4.44 deferral, unchanged): v4's non-streaming
+rows carry `x-server-timeout: 300`, the genai SDK's expression of the request
+timeout v5 keeps client-side as `TransportPolicy` — it is wall-clock arming, not
+a value the sans-IO build path produces. `x-goog-api-client` is SDK plumbing a
+single reqwest transport neither sends nor should. Both are absent from v5's
+modelled set and so pass the subset check by design.
+
+**The corpus was NOT touched, and that is evidence-backed rather than assumed**
+(the D76 trap: corpora SELF-DATE, and a green diff proves nothing about
+freshness). Its recorded `x-goog-api-client: google-genai-sdk/1.52.0
+gl-node/v24.13.1` matches v4's INSTALLED SDK (`plugins/dist/qtap-plugin-google/
+node_modules/@google/genai` = 1.52.0) and the pinned Node (v24.13.1) exactly, so
+the recorded bytes are current at this baseline. No regeneration was needed and
+none was performed.
+
+**DRY.** The capture machinery moved out of `request_builder_equivalence.rs`
+into `tests/provider_header_common/mod.rs`; both families now share ONE
+implementation, so the two header pins cannot drift. It drives the production
+line (`execute_completion`) rather than reimplementing `apply_auth`, which is
+`pub(crate)` — reimplementing would pin the test's copy, not production.
+
+Regen recipe: unchanged and untouched —
+`V4=~/source/quilltap-server V5=<repo-root> bash <V5>/harness/oracle/providers/regenerate-google-wire.sh`.
+No fixture changed, so no other family is invalidated.
+
+---
+
+## Lane record — P4.47, two corrections found after the fact, 2026-08-14
+
+**1. (A): the cheap-LLM enum arms are NOT unreachable.** The first cut declared
+them so, in a doc comment: "the manual guards catch every non-member first, of
+any type, since a truthy non-member fails `.includes`". Re-reading that sentence
+is what broke it — v4's guards are `if (settings.strategy && !valid.includes(…))`,
+so a FALSY non-member (`null`, `""`, `0`, `false`) slips past the guard entirely,
+rides into `updateData`, and reaches the repo's Zod as an ordinary
+`invalid_value`. v5 answered its invented `Invalid cheap LLM settings` for all of
+them. Measured against v4, ported through the same `zod_enum` helper as every
+other enum, and pinned by three new cases (`s_put_cheap_strategy_null` /
+`_empty`, `s_put_cheap_embedding_empty`) — `settings_zod` 24 → 27, count guard
+moved with it, mutation-proven. The truthy case one row up answers the FIXED
+sentence and the falsy one answers a Zod issue array: the same key, two different
+answers, which is why "unreachable" had to be a measurement rather than a claim.
+
+**2. (B): a second unit test pinned the old google auth**, and the full-workspace
+gate is what found it — `model::completion_provider::tests::
+google_injects_key_as_query_param`, the non-streaming twin of the streaming one
+already fixed. Both now assert the header AND that the url stays key-free. Worth
+naming as a class: when a divergence has been believed long enough to get unit
+tests, the tests come in pairs (one per composition), and fixing the one the
+grep found is not fixing the belief.

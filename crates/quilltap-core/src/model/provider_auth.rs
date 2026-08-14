@@ -5,17 +5,30 @@
 //! drift).
 //!
 //! v4 injects the key per plugin construction (`Authorization: Bearer` on the
-//! OpenAI-family SDKs, `x-api-key` on Anthropic's, the `?key=` query param on
-//! Google's raw fetch, nothing on Ollama); the manifest `auth` block declares the
-//! same scheme, so one injector serves every provider.
+//! OpenAI-family SDKs, `x-api-key` on Anthropic's, `x-goog-api-key` on Google's
+//! genai SDK, nothing on Ollama); the manifest `auth` block declares the same
+//! scheme, so one injector serves every provider.
+//!
+//! **Google was `query` here until P4.47 (B), and it was wrong.** The comment
+//! this replaces said "the `?key=` query param on Google's raw fetch" — but v4
+//! builds `new GoogleGenAI({apiKey, httpOptions})` and the SDK sets
+//! `X-Goog-Api-Key` on every request, leaving the url untouched (the only
+//! `?key=` in the whole plugin is the unused Live/WebSocket path). v5's own
+//! image dialect already used the header, so the two v5 paths disagreed with
+//! each other as well as with v4. Nothing measured it because the google-wire
+//! corpus recorded the outgoing headers and asserted none of them — the D76
+//! bank. Now pinned by `request_builder_google_wire_equivalence`, in both
+//! directions: v5 must send the header AND must not append the query param.
 
 use crate::provider_manifest::Registry;
 
 /// Inject the api key per the manifest `auth` scheme onto (headers, url).
 ///
 /// - `bearer` → `Authorization: Bearer <key>` header
-/// - `header` → the manifest-named header (e.g. anthropic `x-api-key`)
-/// - `query` → the manifest-named query param appended to the url (google)
+/// - `header` → the manifest-named header (anthropic `x-api-key`, google
+///   `x-goog-api-key`)
+/// - `query` → the manifest-named query param appended to the url (no shipped
+///   manifest uses it; kept because the schema declares it)
 /// - `none` (ollama) and unknown schemes inject nothing
 pub(crate) fn apply_auth(
     registry: &Registry,

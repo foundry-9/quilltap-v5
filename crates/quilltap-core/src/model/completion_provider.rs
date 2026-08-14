@@ -430,8 +430,12 @@ mod tests {
         );
     }
 
+    /// v4's genai SDK sets `X-Goog-Api-Key` and leaves the url alone. This test
+    /// asserted the opposite (`?key=`) until P4.47 (B) pinned the recorded
+    /// google-wire headers and measured it — see `model::provider_auth`'s module
+    /// header for the three confirmations.
     #[tokio::test]
-    async fn google_injects_key_as_query_param() {
+    async fn google_injects_key_as_header() {
         // A minimal google generateContent body.
         let body = br#"{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"totalTokenCount":6}}"#.to_vec();
         let transport = FakeTransport {
@@ -453,11 +457,15 @@ mod tests {
         .expect("completion");
         assert_eq!(resp.content, "ok");
         let seen = transport.seen.lock().unwrap().clone().unwrap();
+        assert!(seen
+            .headers
+            .iter()
+            .any(|(k, v)| k == "x-goog-api-key" && v == "synthetic-key"));
         assert!(
-            seen.url.contains("key=synthetic-key"),
-            "url was {}",
+            !seen.url.contains("key=synthetic-key"),
+            "the key must not ALSO ride in the url; it was {}",
             seen.url
         );
-        assert!(seen.url.contains(":generateContent"));
+        assert!(seen.url.ends_with(":generateContent"));
     }
 }
