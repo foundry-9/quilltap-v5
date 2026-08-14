@@ -66387,3 +66387,23 @@ against a v5 string). Correcting this belongs with a real version-guard port, or
 with a human ruling on what the two version lines mean to each other — **flag it
 for that ruling if v4-interop instances become common.** No stub, no partial
 write.
+
+
+### P4.46 — the lane's closing gate (2026-08-13)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo test --workspace` (with `QT_DBKEY_V4_FIXTURE` / `QT_DBKEY_V5_OUT` set):
+  **exit 0, 427 `test result: ok` binaries, 2,027 tests, 0 failed.** Both dbkey
+  arms RAN (`writes_v5_changed_passphrase_dbkey_for_v4`,
+  `reads_v4_changed_passphrase_dbkey`), as did the new
+  `host_lock_ordering` binary's four.
+- The dbkey cross-compat family BY NAME with `--nocapture` over oracles fresh
+  from the `48396682` pin: both arms ok, zero SKIP, in both directions (the v4
+  legs re-run from the pinned worktree). `provisioning_matches_v4_fresh_instance`
+  RED for the P4.D73 schema reason recorded in unit 2 — not this lane's, and not
+  fixable here without re-dumping `fresh_schema.json`, which this order forbids.
+- `cargo build --workspace --release` exit 0.
+- `ng test` 298 files / 4,143 tests, 0 failed; `ng build` clean.
+- Lane branch `claude/boot-lock-order-hardening-8873d7`, three commits.
