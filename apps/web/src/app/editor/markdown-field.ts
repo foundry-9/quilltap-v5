@@ -249,7 +249,8 @@ export class MarkdownField {
       const textarea = this.sourceArea()?.nativeElement;
       if (!textarea) return;
       const start = textarea.selectionStart;
-      const value = textarea.value.slice(0, start) + char + textarea.value.slice(textarea.selectionEnd);
+      const value =
+        textarea.value.slice(0, start) + char + textarea.value.slice(textarea.selectionEnd);
       this.sourceText.set(value);
       this.contentChange.emit(value);
       recordRecent(profile, char);

@@ -302,6 +302,10 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+P4.D75 gate: SPA unit suite 310 files / 4,420 tests green, `ng build` clean with
+the two character datasets served as static assets and absent from every JS
+bundle, and the lane's four e2e beats green against the real server.
+
 Added four end-to-end beats for the character-insertion feature (`:smile:` in
 the live composer, the menu's Enter/Escape, `\to ` keeping its space, and a
 toolbar picker inserting into a markdown field), and mirrored v4's two feature

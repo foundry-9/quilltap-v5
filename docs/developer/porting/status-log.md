@@ -67665,3 +67665,42 @@ key, and so covers the lazy-load path as well. **No product code changed.**
 help surface for them, so this joins the **`p4.9i2` bank** — the same
 disposition the Taboo round recorded for `help/taboo.md`. Nothing refuses at
 runtime because nothing reaches for them.
+
+## Lane record — P4.D75: the gate, and the one thing the unifier should know
+
+**SPA unit gate at HEAD: `ng test` 310 files / 4,420 tests, 0 failed** (main's
+baseline was 302 / 4,316 — the lane adds 8 spec files and 104 cases). `ng build`
+clean, and the two datasets ship as static assets under
+`dist/quilltap/browser/{emoji,unicode}/` and appear in NO JS bundle (grepped
+after the build). `cargo fmt --all --check` clean; the repo spelling guard
+(`harness/tools/check_spelling.py`, which is what the harness `spelling_guard`
+test runs) passes. **No crate source was touched**, so no cargo test/clippy
+result is claimed for this lane.
+
+**The lane's four e2e beats ran LIVE and green** (`npx playwright test
+e2e/composer-char-insert-flow.spec.ts`, 4 passed in 1.4 m) against the real
+axum server and the real built SPA, in a clean window on a private port.
+
+**⚠ The FULL Playwright suite could NOT be run in-lane, and the reason is
+mechanical, not a red.** A sibling lane of this round (P4.D74,
+`smart-typography-renderer-spa-cc4556`) held the shared e2e port 4319 for the
+whole window — twice its server appeared on the port between a "port is free"
+check and this lane's own global setup, so the run was talking to THEIR binary
+(trap 6's second symptom: `Address already in use` in this lane's server.log
+while the specs ran on). Both attempts were killed rather than allowed to
+proceed, precisely because a concurrent full suite corrupts the SIBLING's gate
+as well (its spec-spawned servers use fixed ports 4321/4322/4326/4327). What
+was done instead:
+
+- the lane's own beats, green, in a clean window (above);
+- the full unit suite at HEAD, green, which is where component-level
+  affordance collisions surface;
+- a locator-collision grep over the whole e2e tree for the new accessible names
+  (`Insert emoji`, `Insert a symbol`, the picker's search fields): **no sibling
+  locator can newly match** — every `getByRole('button', {name: …})` in the
+  tree is either an unrelated exact string or a regex on an unrelated word, and
+  `Insert announcement` (the one near-neighbour, in the same dialog the picker
+  beat drives) is not a substring of either new name.
+
+The unifier runs the full suite on main anyway; this is flagged so a red there
+is read as new information rather than as something this lane silently skipped.
