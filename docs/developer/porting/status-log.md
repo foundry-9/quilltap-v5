@@ -66829,3 +66829,40 @@ claims them (P4.D74 owns `chat-tab.ts` and `chat/render/**`, not
 
 Full SPA suite: **301 files / 4,191 tests**, green. `ng build` clean.
 SPA 0.5.458 → 0.5.459.
+### Unit record — P4.D74 unit 1 (the smart-typography engine twin + the corpus)
+
+Tier A/B of Layer 1.6, and the one file the two apps genuinely share. v4
+wrote `lib/smart-typography/engine.ts` to be copied — an ESLint
+`no-restricted-imports` override keeps it stdlib-only "so the v5 copy
+stays viable" — so it was copied, and the copy is **byte-identical from
+`export const EN_DASH` to the closing brace** (verified with `diff`
+against `git show 48396682:lib/smart-typography/engine.ts`; only the
+module docblock is rewritten, to name its provenance and to say
+ProseMirror where v4 says Lexical). It lives at
+`apps/web/src/app/smart-typography/engine.ts`, mirroring v4's directory
+rather than being folded into `editor/`, because both the plugin (unit 5)
+and the settings card's try-it preview (unit 6) import it and neither may
+grow an `if` about dashes.
+
+`fixtures/typography-vectors.json` is copied byte-for-byte —
+`shasum 41aed67090cfbf4392fc5e7da0fae2ca4117e77f` on both sides — with
+its `$comment` block intact, including the line that says a port
+disagreeing with a row must fix the port.
+
+`engine.spec.ts` is v4's `__tests__/engine.test.ts` ported case-for-case
+(jest → vitest): the 15-row corpus replayed table-wise behind the same
+`cases.length > 10` guard against a mangled JSON import silently passing
+zero cases, plus v4's seven hand-written invariants — the `deleteBefore`
+bound the adapter slices without re-checking, both-flags-off, "ignores
+everything beyond the last two characters" (the adapter is allowed to
+over-supply), the full ladder and its stop, the real code points rather
+than lookalikes, purity + non-mutation of the input, and the reserved
+character suppressing ONE rule and not the other. 23 tests.
+
+**Mutation-proven, since the first run was green:** flipping the
+ellipsis arm's `deleteBefore: 2` to `1` reds four cases (three corpus
+rows + the adapter-bound invariant); the engine was then restored and
+re-diffed byte-identical against the pin.
+
+No renderer, plugin, card or settings wiring in this unit — the engine
+has no callers yet, by design.

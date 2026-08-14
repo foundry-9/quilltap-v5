@@ -230,6 +230,12 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Ported the smart-typography rule engine into the SPA (P4.D74 unit 1):
+v4's stdlib-only `lib/smart-typography/engine.ts` copied byte-identical
+below its docblock, its 15-vector fixture corpus copied byte-for-byte,
+and v4's engine test suite ported case-for-case to vitest (23 tests).
+The engine has no callers yet — the renderer, the composer plugin and
+the settings card follow in later units of the same order.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`
