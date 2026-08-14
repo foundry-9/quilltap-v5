@@ -3,5 +3,8 @@
   "portraitLinkId": "bb722569-1c88-4747-a78b-7f54c4e1d3c1",
   "landscapeLinkId": "c19a7105-f6b5-4335-bd2a-41824e06ffad",
   "portraitCopyLinkId": "e5000000-0000-4000-8000-0000000000e1",
-  "landscapeAgainLinkId": "e5000000-0000-4000-8000-0000000000e2"
+  "landscapeAgainLinkId": "e5000000-0000-4000-8000-0000000000e2",
+  "overrideFaceLinkId": "e5000000-0000-4000-8000-0000000000e3",
+  "embeddingProfileId": "b7000000-0000-4000-8000-0000000000b7",
+  "avatarThumbnailFileId": "f5000000-0000-4000-8000-0000000000f1"
 }

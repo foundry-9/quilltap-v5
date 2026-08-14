@@ -34,6 +34,17 @@ Added the `help_doc_chunks` table — the storage for section-level help search.
 Fresh instances get it from the re-dumped schema; existing instances get it on
 the next boot. Nothing reads or writes it yet; the slicing, embedding, and
 search follow.
+Closed the four corpus-undriven arms the character-archive review had recorded
+as owed. The archive test fixture gained a default embedding profile, a
+per-chat avatar-override face, and a standalone avatar thumbnail, and the
+differential gained four cases: an archive refused because the instance
+passphrase has not been entered, a rehydrate of a bundle sealed under an
+earlier passphrase, an incomplete prune, and a rehydrate of a tombstone left by
+the older archive revision. Regenerating the comparison also found that the
+test harness had been stubbing out the default embedding profile, so the
+reference implementation had been queueing no embedding work for restored
+memories at all; with that removed, both implementations queue the same nine
+jobs. Tests only; no shipped behavior changed.
 
 Planned the next porting round against the new v4 baseline `24633026`
 (section-level help embeddings and Guide content search). Wrote three new

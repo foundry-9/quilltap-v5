@@ -68455,3 +68455,93 @@ only a real instance can show:
    preamble, with real embeddings from a real profile.
 3. **The reindex/reapply riders over a real corpus** (the chunk clear and the
    fifth reapply table at real scale).
+## P4.D65-remainder — item 6: the §3 review's owed corpus arms (`character_archive_tier2_equivalence` 13 → 17)
+
+Lane: `claude/p4-archive-service-round2-b015ec`. Baseline **`24633026`**
+(v4 main, tree clean at lane start; `bugfix` measured BEHIND main by
+`git diff` — it lacks the help-doc-chunks work — so no drift to absorb).
+Harness only: no `quilltap-core`/`quilltap-web` source moved.
+
+**The fixture grew three shapes** (`extend-character-archive-profile-and-
+avatars.ts`, run after the builder and the twice-linked-blob extender;
+committed DBs mutated in place, never rebuilt):
+
+1. **A DEFAULT embedding profile** (pinned id, provider `OPENAI` — NOT
+   `BUILTIN`, which would send the import down `scheduleRefit`, a
+   host-cadence seam v5 banks by name). Without one, both sides took the
+   no-default-profile guard and enqueued ZERO jobs, so the
+   `background_jobs` comparand the review added was a tripwire, not a
+   proof.
+2. **An `avatarOverrides[].imageId` link** (`photos/override-face.webp`,
+   in the same folder as the doomed `landscape`). `pruneVault`'s keep-set
+   is `defaultImageId` PLUS every override id; the fixture seeded only the
+   former, so the override half of that union was dead weight.
+3. **A standalone avatar-thumbnail `files` row** — what rehydrate's
+   cosmetic thumbnail delete actually removes. A missing row deletes as a
+   silent no-op on both sides.
+
+**Four new cases:**
+
+- `archive_key_unavailable` — a USER passphrase protects the instance and
+  this process has never seen it. The resolve is up front, so the state
+  dump doubles as the proof that a refused archive leaves no bundle, no
+  tombstone and no flipped seat.
+- `archive_rehydrate_passphrase_mismatch` — sealed under one passphrase,
+  rehydrated under another. The bundle is read back under the SEALING
+  passphrase (a new `seal` parameter on both sides' bundle read-back), so
+  the `bundles` comparand stays meaningful beside the refusal.
+- `archive_prune_incomplete` — the `pruneComplete: false` arm. Reaching it
+  needs a link delete that fails without throwing out of the repository,
+  which is exactly `deleteWithGC`'s swallow, so the case plants a
+  `BEFORE DELETE` trigger that aborts every link delete in the vault.
+  Nothing is deleted on either side; v4 falls through to its undead-links
+  honesty check and v5 to its propagated error, and both report `false`
+  over an untouched vault.
+- `rehydrate_pre_revision_avatar` — plants `archivedAvatarFileId` by raw
+  UPDATE after archiving (the §4.4 guard would refuse the same patch
+  through the repository) and proves the follow-up patch AND the thumbnail
+  delete.
+
+**⚠ A STALE ORACLE MOCK, found by consequence (the P4.20 / P4.36 class).**
+`jest.setup.ts:421` stubs `getDefaultEmbeddingProfile` to resolve `null`,
+so the import's `enqueueImportedMemoryEmbeddings` took its
+no-default-profile branch NO MATTER WHAT the database held: v4 was warning
+in the rehydrate result about a profile that existed and enqueueing zero
+memory jobs, while the mount-chunk scheduler — which reads the repository
+directly and was never mocked — enqueued six. The un-mock lives in the
+oracle case beside the seam it neutralizes. With it, both sides enqueue
+the same NINE jobs (3 `MEMORY` + 6 `MOUNT_CHUNK`) and the warning is gone.
+Also neutralized: `ensureProcessorRunning()`, which v4's `enqueueJob`
+calls and which forks `child-entry.ts` — a process that cannot resolve its
+imports under jest. The job PUMP is a named v5 non-port; the QUEUED ROWS
+are the comparand.
+
+**The normalizer's token assignment is now CANONICAL.** `<minted-N>`
+labels are assigned in visit order, so the visit order had to stop being a
+function of the minted bytes: rows are now visited in the order of their
+PROBE (the row normalized against what is already known, unseen ids
+collapsed), and the MOUNT partition is walked FIRST. That second rule is
+load-bearing — two `MOUNT_CHUNK` embedding jobs differ ONLY in the chunk
+id they point at, so the chunks must be tokenized before the jobs are read
+or the two rows swap labels between the sides and a set-identical table
+reports as a divergence. (This is what the first run of the new arms
+actually showed: every `result` and `bundles` section already matched,
+and three tables "differed" purely by label.) State is normalized before
+`result`/`bundles` so the archive `files` row's id and the result's
+`archiveFileId` land on the same token.
+
+**Mutation-proven (the D24 rule), each arm reverted after:**
+
+| mutation | red |
+|---|---|
+| drop `prune_vault`'s `avatarOverrides` keep-loop | every archiving case: the override link/file/blob vanish |
+| `archivedAvatarFileId` thumbnail delete disabled | `rehydrate_pre_revision_avatar`, `files` 2 rows vs 1 |
+| drop `rechunk_and_embed_vault`'s enqueue | the three rehydrate cases, `background_jobs` 3 vs 9 |
+| `prune_vault`'s Err arm reports success | `archive_prune_incomplete` result |
+| drop the import's per-memory enqueue | the three rehydrate cases, `background_jobs` 6 vs 9 |
+| `resolve_archive_passphrase` returns the sentinel instead of refusing | `archive_key_unavailable`, twelve tables |
+| `decrypt_archive` skips the `keyHash` check | `archive_rehydrate_passphrase_mismatch` result |
+
+Regen recipe: the case header (unchanged except for the second extender).
+`character_archive_tier2_equivalence` 17/17, all three comparands. Versions:
+harness 0.0.461.

@@ -1,7 +1,7 @@
 //! P4.D65 — the character-archive tier-2 differential.
 //!
 //! Drives `quilltap_core::services::character_archive::service::{archive_character,
-//! rehydrate_character}` through the SAME eight case sequences the oracle drives
+//! rehydrate_character}` through the SAME seventeen case sequences the oracle drives
 //! v4's real `lib/characters/archive-service.ts` through, over a FRESH copy of
 //! the committed `character-archive-{main,mount}.db` pair per case, and diffs
 //! three comparands: the returned result (or the refusal's class + message), the
@@ -23,9 +23,17 @@
 //!
 //! The committed fixture is built by
 //! `harness/oracle/fixtures/build-character-archive-fixture.ts` and then EXTENDED
-//! in place by `extend-character-archive-twice-linked-blob.ts` (v4 Bug 57 /
-//! `de9f70bf` — the sha-deduped blob under two links). Both carry their own
-//! recipes; extend by mutation, never rebuild.
+//! in place, twice: by `extend-character-archive-twice-linked-blob.ts` (v4 Bug
+//! 57 / `de9f70bf` — the sha-deduped blob under two links) and by
+//! `extend-character-archive-profile-and-avatars.ts` (the default embedding
+//! profile, the avatar-override face, the standalone avatar thumbnail — the §3
+//! review's corpus-undriven shapes, order item 6). Each carries its own recipe;
+//! extend by mutation, never rebuild, and run them in that order.
+//!
+//! ⚠ Regenerating this family's oracle at the P4.D65-remainder round ALSO
+//! un-mocked a stale jest.setup stub (`getDefaultEmbeddingProfile` → `null`),
+//! which had been starving v4's import of a profile the database really held.
+//! The un-mock lives in the oracle case beside the seam it neutralizes.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — jest ignores `.claude/`
 //! venues, so the case + spec are copied to a /tmp mirror):
@@ -76,7 +84,7 @@ struct Spec {
 
 const MISSING_CHARACTER: &str = "00000000-0000-4000-8000-00000000dead";
 
-const MAIN_TABLES: [&str; 8] = [
+const MAIN_TABLES: [&str; 9] = [
     "characters",
     "chats",
     "memories",
@@ -88,6 +96,11 @@ const MAIN_TABLES: [&str; 8] = [
     // import's one-EMBEDDING_GENERATE-per-restored-memory both write here —
     // without this table a port that never enqueued a job would pass.
     "background_jobs",
+    // P4.D65-remainder: the fixture now carries a DEFAULT embedding profile (it
+    // is what makes `background_jobs` a positive comparand rather than a
+    // tripwire), and a bundle import is one of the few paths that can mint
+    // profiles — so the table is dumped to pin that this one never does.
+    "embedding_profiles",
 ];
 const MOUNT_TABLES: [&str; 7] = [
     "doc_mount_points",
@@ -238,6 +251,10 @@ struct Normalizer {
     minted: HashMap<String, String>,
 }
 
+/// A UUID neither baked into the fixture nor tokenized YET, as it appears in a
+/// probe (see [`normalize_state`]).
+const UNKNOWN_UUID: &str = "<unknown>";
+
 impl Normalizer {
     fn token(&mut self, uuid: &str) -> String {
         let next = self.minted.len();
@@ -245,6 +262,55 @@ impl Normalizer {
             .entry(uuid.to_string())
             .or_insert_with(|| format!("<minted-{next}>"))
             .clone()
+    }
+
+    /// Normalize WITHOUT minting: a UUID already tokenized resolves to its
+    /// token, one that is not collapses to [`UNKNOWN_UUID`]. Used only as a
+    /// sort key, never as a comparand.
+    fn probe(&self, v: &Value) -> Value {
+        match v {
+            Value::String(s) => {
+                let mut out = String::with_capacity(s.len());
+                let mut i = 0usize;
+                while i < s.len() {
+                    if let Some(cand) = s.get(i..i + 36.min(s.len() - i)) {
+                        if cand.len() == 36 && is_uuid(cand) {
+                            if self.baked.contains(cand) {
+                                out.push_str(cand);
+                            } else {
+                                out.push_str(self.minted.get(cand).map_or(UNKNOWN_UUID, |t| t));
+                            }
+                            i += 36;
+                            continue;
+                        }
+                    }
+                    if let Some(cand) = s.get(i..i + 24.min(s.len() - i)) {
+                        if cand.len() == 24 && (looks_iso(cand) || looks_scrubbed_iso(cand)) {
+                            if cand == self.seed_ts {
+                                out.push_str(cand);
+                            } else {
+                                out.push_str("<ts>");
+                            }
+                            i += 24;
+                            continue;
+                        }
+                    }
+                    let ch = s[i..].chars().next().expect("char boundary");
+                    out.push(ch);
+                    i += ch.len_utf8();
+                }
+                Value::String(out)
+            }
+            Value::Array(a) => Value::Array(a.iter().map(|x| self.probe(x)).collect()),
+            Value::Object(m) => {
+                let mut out = Map::new();
+                for (k, val) in m {
+                    out.insert(k.clone(), self.probe(val));
+                }
+                Value::Object(out)
+            }
+            other => other.clone(),
+        }
     }
 
     /// Replace minted UUIDs (substring-wise, so `"<uuid>/character-archive.qtap"`
@@ -318,6 +384,70 @@ impl Normalizer {
     }
 }
 
+/// Normalize a whole state dump under ONE canonical traversal.
+///
+/// The `<minted-N>` labels are assigned in visit order, so the visit order has
+/// to be a function of the CONTENT rather than of the minted bytes — otherwise
+/// two rows that differ only by a minted id can swap labels between the sides
+/// and a set-identical table reports as a divergence. Two rules make it one:
+///
+///  1. **Rows are visited in the order of their PROBE** — the row normalized
+///     against what is already known, with still-unseen ids collapsed. A row is
+///     therefore ordered by what it says, not by the id it happens to carry.
+///  2. **The mount partition is walked FIRST.** Its rows are
+///     content-distinguishable (a chunk carries its text), while the main
+///     partition's `background_jobs` rows are not: two `MOUNT_CHUNK` embedding
+///     jobs differ ONLY in the chunk id they point at. Walking the chunks first
+///     means those ids are already tokenized when the jobs are read, which is
+///     exactly what tells the two job rows apart.
+///
+/// Ties that survive both rules would be rows indistinguishable in every
+/// comparand, where the label assignment cannot change the verdict.
+fn normalize_state(norm: &mut Normalizer, state: &Value) -> Value {
+    let mut out = Map::new();
+    for table in MOUNT_TABLES.iter().chain(MAIN_TABLES.iter()) {
+        let rows = state
+            .get(*table)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut ordered: Vec<(String, Value)> = rows
+            .into_iter()
+            .map(|r| (norm.probe(&r).to_string(), r))
+            .collect();
+        ordered.sort_by(|a, b| a.0.cmp(&b.0));
+        let normalized: Vec<Value> = ordered.into_iter().map(|(_, r)| norm.value(&r)).collect();
+        out.insert((*table).to_string(), Value::Array(normalized));
+    }
+    Value::Object(out)
+}
+
+/// One side's three comparands under one shared token map.
+///
+/// STATE comes first, deliberately: it is the only section with a canonical
+/// visit order (see [`normalize_state`]), so letting it seed the map means the
+/// `result`'s and the bundle's minted ids resolve to the labels the rows they
+/// refer to already carry — the archive `files` row's id and the
+/// `archiveFileId` in the result become the same token, which is itself part of
+/// what the case proves.
+fn normalize_sides(
+    baked: &BTreeSet<String>,
+    seed_ts: &str,
+    state: &Value,
+    result: &Value,
+    bundles: &Value,
+) -> Value {
+    let mut norm = Normalizer {
+        baked: baked.clone(),
+        seed_ts: seed_ts.to_string(),
+        minted: HashMap::new(),
+    };
+    let state = normalize_state(&mut norm, state);
+    let result = norm.value(result);
+    let bundles = norm.value(bundles);
+    json!({ "result": result, "bundles": bundles, "state": state })
+}
+
 fn looks_iso(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 24
@@ -379,16 +509,27 @@ fn open_work(spec: &Spec) -> Work {
     }
 }
 
-fn seams<'a>(work: &Work, app_version: &str) -> ArchiveSeams<'a> {
+/// The fixture instance's real passphrase state: no user passphrase, nothing
+/// cached, so `resolve_archive_passphrase` lands on `INTERNAL_PASSPHRASE` — the
+/// same value v4's own resolver reaches there. Every case but the two
+/// passphrase arms runs on it.
+fn ambient_passphrase<'a>() -> PassphraseSource<'a> {
+    PassphraseSource {
+        cached: None,
+        has_user_passphrase: false,
+    }
+}
+
+/// The two passphrases the mismatch arm archives and rehydrates under —
+/// byte-identical to the oracle case's constants, because the bundle sealed by
+/// one side is only ever read back by the same side.
+const OLD_PASSPHRASE: &str = "the-passphrase-that-was-in-effect";
+const NEW_PASSPHRASE: &str = "the-passphrase-in-effect-now";
+
+fn seams<'a>(work: &Work, app_version: &str, passphrase: PassphraseSource<'a>) -> ArchiveSeams<'a> {
     ArchiveSeams {
         backend: Some(Arc::clone(&work.backend)),
-        // The fixture instance has no user passphrase, so this resolves to the
-        // internal sentinel — the same value v4's `resolveArchivePassphrase`
-        // lands on there.
-        passphrase: PassphraseSource {
-            cached: None,
-            has_user_passphrase: false,
-        },
+        passphrase,
         // v4 bakes `packageJson.version` into the manifest, so it is part of the
         // bundle's BYTE LENGTH. Inject the oracle's own value and `files.size`
         // becomes a real comparand instead of a version artifact.
@@ -416,7 +557,17 @@ fn error_value(e: &ArchiveError) -> Value {
 
 /// Read back every ARCHIVE bundle, DECRYPT it, and parse — the oracle's
 /// `bundles` comparand.
-fn main_bundles(db: &Db, backend: &dyn StorageBackend, user_id: &str) -> Vec<Value> {
+///
+/// `seal` is `Some` only where the sealing passphrase differs from the current
+/// one (the mismatch arm) — the comparand is what the bundle SAYS, and reading
+/// it back under a passphrase that cannot open it would only re-prove the
+/// refusal the `result` comparand already carries.
+fn main_bundles(
+    db: &Db,
+    backend: &dyn StorageBackend,
+    user_id: &str,
+    seal: Option<&str>,
+) -> Vec<Value> {
     use quilltap_core::db::files::FilesRepository;
     let uid = user_id.to_string();
     let rows = db
@@ -446,11 +597,12 @@ fn main_bundles(db: &Db, backend: &dyn StorageBackend, user_id: &str) -> Vec<Val
             continue;
         };
         let plaintext = if is_encrypted_archive(&raw) {
-            let pass = resolve_archive_passphrase(PassphraseSource {
-                cached: None,
-                has_user_passphrase: false,
-            })
-            .expect("resolve passphrase");
+            let pass = match seal {
+                Some(p) => p.to_string(),
+                None => {
+                    resolve_archive_passphrase(ambient_passphrase()).expect("resolve passphrase")
+                }
+            };
             decrypt_archive(&raw, &pass).expect("decrypt bundle")
         } else {
             raw
@@ -585,7 +737,21 @@ async fn character_archive_tier2_equivalence() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("oracle line"))
         .collect();
-    assert_eq!(oracle.len(), 13, "the corpus is thirteen cases");
+    assert_eq!(oracle.len(), 17, "the corpus is seventeen cases");
+
+    // The extender-minted ids, read from the committed sidecar rather than
+    // transcribed — the oracle case reads the same file, so a re-pin in
+    // `extend-character-archive-profile-and-avatars.ts` cannot leave the two
+    // sides driving different rows.
+    let meta: Value = serde_json::from_str(
+        &std::fs::read_to_string(fixtures_dir().join("character-archive-main.db.meta.json"))
+            .expect("fixture sidecar"),
+    )
+    .expect("fixture sidecar json");
+    let avatar_thumbnail_file_id = meta["avatarThumbnailFileId"]
+        .as_str()
+        .expect("sidecar carries avatarThumbnailFileId — re-run the profile/avatars extender")
+        .to_string();
 
     // The baked id set: every UUID present in the untouched fixture. Anything
     // outside it in a post-op dump was MINTED by the operation.
@@ -594,6 +760,7 @@ async fn character_archive_tier2_equivalence() {
         let mut set = BTreeSet::new();
         collect_uuids(&dump_state(&work.db), &mut set);
         assert_fixture_carries_twice_linked_blobs(&work.db);
+        assert_fixture_carries_profile_and_avatars(&work.db, &spec, &avatar_thumbnail_file_id);
         set
     };
 
@@ -601,8 +768,11 @@ async fn character_archive_tier2_equivalence() {
 
     for case in &oracle {
         let work = open_work(&spec);
-        let s = seams(&work, &case.app_version);
+        let s = seams(&work, &case.app_version, ambient_passphrase());
         let db = &work.db;
+        // Non-null only where the sealing passphrase differs from the current
+        // one; see `main_bundles`.
+        let mut seal: Option<&str> = None;
 
         let result: Value = match case.name.as_str() {
             "archive_sable" => match archive_character(db, &spec.user_id, &spec.sable, &s).await {
@@ -735,35 +905,135 @@ async fn character_archive_tier2_equivalence() {
                     Err(e) => error_value(&e),
                 }
             }
+            // ── The passphrase-unavailable refusal (§4.2c) ──
+            // A USER passphrase protects the instance and this process has
+            // never seen it. The resolve happens BEFORE anything is written, so
+            // the state dump doubles as the proof that a refused archive leaves
+            // no bundle, no tombstone and no flipped seat behind.
+            "archive_key_unavailable" => {
+                let s = seams(
+                    &work,
+                    &case.app_version,
+                    PassphraseSource {
+                        cached: None,
+                        has_user_passphrase: true,
+                    },
+                );
+                match archive_character(db, &spec.user_id, &spec.sable, &s).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
+            // ── The passphrase-CHANGE diagnosis ──
+            // Seal under the old passphrase, then rehydrate with the new one
+            // cached — precisely what a passphrase change leaves behind for a
+            // bundle written before it. The header's `keyHash` is what turns
+            // this into a named refusal rather than a bare GCM authentication
+            // failure, and the character must stay archived.
+            "archive_rehydrate_passphrase_mismatch" => {
+                seal = Some(OLD_PASSPHRASE);
+                let sealing = seams(
+                    &work,
+                    &case.app_version,
+                    PassphraseSource {
+                        cached: Some(OLD_PASSPHRASE),
+                        has_user_passphrase: true,
+                    },
+                );
+                archive_character(db, &spec.user_id, &spec.sable, &sealing)
+                    .await
+                    .expect("archive under the old passphrase");
+                let current = seams(
+                    &work,
+                    &case.app_version,
+                    PassphraseSource {
+                        cached: Some(NEW_PASSPHRASE),
+                        has_user_passphrase: true,
+                    },
+                );
+                match rehydrate_character(db, &spec.user_id, &spec.sable, &current).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
+            // ── `pruneComplete: false` ──
+            // The prune is the one phase that may fail without failing the
+            // archive. Reaching it needs a link delete that fails, so the case
+            // plants a BEFORE DELETE trigger that aborts every link delete in
+            // the vault: nothing is deleted on either side, v4 falls through to
+            // its undead-links honesty check and v5 to its propagated error, and
+            // BOTH report `pruneComplete: false` over an untouched vault.
+            "archive_prune_incomplete" => {
+                db.write(|ws| {
+                    ws.mount_index()
+                        .expect("mount index")
+                        .connection()
+                        .execute_batch(
+                            "CREATE TRIGGER qt_block_link_delete \
+                             BEFORE DELETE ON doc_mount_file_links \
+                             BEGIN SELECT RAISE(ABORT, 'planted: vault link deletes are blocked'); END;",
+                        )
+                        .map_err(Into::into)
+                })
+                .await
+                .expect("plant the delete-blocking trigger");
+                match archive_character(db, &spec.user_id, &spec.sable, &s).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
+            // ── The pre-revision tombstone's avatar thumbnail (§6 step 4) ──
+            // `archivedAvatarFileId` is vestigial: the shipped service never
+            // writes it, so only a tombstone left by the pre-§4.2a revision
+            // carries one. The raw UPDATE is deliberate — the §4.4 guard
+            // sanctions exactly one patch on an archived row. Rehydrate must
+            // clear the key in its FOLLOW-UP patch and delete the standalone
+            // thumbnail row the fixture's extender planted.
+            "rehydrate_pre_revision_avatar" => {
+                archive_character(db, &spec.user_id, &spec.sable, &s)
+                    .await
+                    .expect("archive");
+                let sable = spec.sable.clone();
+                let thumb = avatar_thumbnail_file_id.clone();
+                db.write(move |ws| {
+                    ws.main().connection().execute(
+                        "UPDATE characters SET archivedAvatarFileId = ?1 WHERE id = ?2",
+                        rusqlite::params![thumb, sable],
+                    )?;
+                    Ok(())
+                })
+                .await
+                .expect("plant the pre-revision avatar pointer");
+                match rehydrate_character(db, &spec.user_id, &spec.sable, &s).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
             other => panic!("unknown oracle case: {other}"),
         };
 
-        let bundles = Value::Array(main_bundles(db, work.backend.as_ref(), &spec.user_id));
+        let bundles = Value::Array(main_bundles(db, work.backend.as_ref(), &spec.user_id, seal));
         let state = dump_state(db);
 
-        let mut norm = Normalizer {
-            baked: baked.clone(),
-            seed_ts: spec.seed_timestamp.clone(),
-            minted: HashMap::new(),
-        };
-        let got = norm.value(&json!({"result": result, "bundles": bundles, "state": state}));
+        // The ARCHIVE row's sha256 digests a plaintext carrying a bundle-time
+        // stamp, so it can never agree; blind it BEFORE normalizing, or it
+        // would perturb the canonical row order that decides the token labels.
+        let mut got_state = state;
+        let mut want_state = case.state.clone();
+        blind_archive_sha(&mut got_state);
+        blind_archive_sha(&mut want_state);
 
-        let mut norm_want = Normalizer {
-            baked: baked.clone(),
-            seed_ts: spec.seed_timestamp.clone(),
-            minted: HashMap::new(),
-        };
-        let mut want = norm_want.value(&json!({
-            // v4 nests an error's rider keys under `details`; v5 carries them
-            // flat (the P4.6ah precedent), so the two shapes are reconciled on
-            // v4's side before the comparison.
-            "result": flatten_details(&case.result),
-            "bundles": case.bundles,
-            "state": case.state,
-        }));
-        let mut got = got;
+        // v4 nests an error's rider keys under `details`; v5 carries them flat
+        // (the P4.6ah precedent), so the two shapes are reconciled on v4's side.
+        let mut got = normalize_sides(&baked, &spec.seed_timestamp, &got_state, &result, &bundles);
+        let mut want = normalize_sides(
+            &baked,
+            &spec.seed_timestamp,
+            &want_state,
+            &flatten_details(&case.result),
+            &case.bundles,
+        );
         for side in [&mut got, &mut want] {
-            blind_archive_sha(&mut side["state"]);
             resort_state(&mut side["state"]);
         }
 
@@ -859,6 +1129,94 @@ fn assert_fixture_carries_twice_linked_blobs(db: &Db) {
     assert!(
         multi.iter().all(|&n| n == 2),
         "each twice-linked blob carries exactly two links; found {multi:?}"
+    );
+}
+
+/// The three shapes `extend-character-archive-profile-and-avatars.ts` adds are
+/// each load-bearing for exactly one arm, and each is the kind of coverage a
+/// later fixture edit can vacate in silence — the cases would keep passing
+/// while proving nothing (`harness-corpus-shape-constants-rot`).
+///
+///  - the DEFAULT embedding profile is what makes `background_jobs` a positive
+///    comparand: without one, both sides enqueue zero and a port that never
+///    enqueued anything passes;
+///  - the `avatarOverrides[].imageId` link is the override half of
+///    `pruneVault`'s keep-set union, which the seeded `defaultImageId` alone
+///    left dead;
+///  - the standalone thumbnail `files` row is what rehydrate's cosmetic
+///    thumbnail delete actually removes — a missing row deletes as a silent
+///    no-op on both sides.
+fn assert_fixture_carries_profile_and_avatars(db: &Db, spec: &Spec, thumbnail_file_id: &str) {
+    let defaults: i64 = db
+        .read_main(|c| {
+            Ok(c.query_row(
+                "SELECT COUNT(*) FROM embedding_profiles WHERE isDefault = 1",
+                [],
+                |r| r.get::<_, i64>(0),
+            )?)
+        })
+        .expect("read embedding_profiles");
+    assert_eq!(
+        defaults, 1,
+        "the fixture must carry exactly one DEFAULT embedding profile — re-run \
+         harness/oracle/fixtures/extend-character-archive-profile-and-avatars.ts"
+    );
+
+    let sable = spec.sable.clone();
+    let overrides: String = db
+        .read_main(move |c| {
+            Ok(c.query_row(
+                "SELECT avatarOverrides FROM characters WHERE id = ?1",
+                [&sable],
+                |r| r.get::<_, String>(0),
+            )?)
+        })
+        .expect("read Sable's avatarOverrides");
+    let overrides: Value = serde_json::from_str(&overrides).expect("avatarOverrides json");
+    let override_ids: Vec<&str> = overrides
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|o| o.get("imageId").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        override_ids.len(),
+        1,
+        "Sable must carry exactly one avatarOverride (the keep-by-id arm the \
+         ten managed paths cannot reach); found {overrides}"
+    );
+    let override_link = override_ids[0].to_string();
+    let linked: i64 = db
+        .read_mount_index(move |c| {
+            Ok(c.query_row(
+                "SELECT COUNT(*) FROM doc_mount_file_links WHERE id = ?1",
+                [&override_link],
+                |r| r.get::<_, i64>(0),
+            )?)
+        })
+        .expect("read the override link");
+    assert_eq!(
+        linked, 1,
+        "the avatarOverride must point at a REAL vault link, or the keep-set \
+         union proves nothing"
+    );
+
+    let thumb = thumbnail_file_id.to_string();
+    let thumbs: i64 = db
+        .read_main(move |c| {
+            Ok(
+                c.query_row("SELECT COUNT(*) FROM files WHERE id = ?1", [&thumb], |r| {
+                    r.get::<_, i64>(0)
+                })?,
+            )
+        })
+        .expect("read the thumbnail row");
+    assert_eq!(
+        thumbs, 1,
+        "the standalone avatar-thumbnail `files` row must exist, or rehydrate's \
+         thumbnail delete is a no-op on both sides"
     );
 }
 

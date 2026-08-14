@@ -18,6 +18,12 @@
  *     decrypts with the passphrase it resolves for itself. The fixture instance
  *     has no user passphrase, so both resolve `INTERNAL_PASSPHRASE`.
  *
+ * The committed fixture is built by `build-character-archive-fixture.ts` and
+ * then EXTENDED in place, twice: `extend-character-archive-twice-linked-blob.ts`
+ * (v4 Bug 57) and `extend-character-archive-profile-and-avatars.ts` (the default
+ * embedding profile, the avatar-override face, the standalone avatar
+ * thumbnail). Each carries its own recipe; extend by mutation, never rebuild.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-character-archive-oracle
@@ -62,6 +68,11 @@ const MAIN_TABLES = [
   // import's one-EMBEDDING_GENERATE-per-restored-memory both write here —
   // without this table a port that never enqueued a job would pass.
   'background_jobs',
+  // P4.D65-remainder: the fixture now carries a DEFAULT embedding profile (it
+  // is what makes `background_jobs` a positive comparand rather than a
+  // tripwire), and a bundle import is one of the few paths that can mint
+  // profiles — so the table is dumped to pin that this one never does.
+  'embedding_profiles',
 ];
 const MOUNT_TABLES = [
   'doc_mount_points',
@@ -110,7 +121,36 @@ type CaseName =
   | 'files_delete_bundle_force'
   | 'files_delete_bundle_unheld'
   | 'export_entities_after_archive'
-  | 'export_all_after_archive';
+  | 'export_all_after_archive'
+  // ── P4.D65-remainder (order item 6): the §3 review's corpus-undriven arms ──
+  | 'archive_key_unavailable'
+  | 'archive_rehydrate_passphrase_mismatch'
+  | 'archive_prune_incomplete'
+  | 'rehydrate_pre_revision_avatar';
+
+/**
+ * The instance-passphrase seam, as a mutable box.
+ *
+ * v4 reads it through two module-level functions — `getRuntimePassphrase()`
+ * (the passphrase this process last proved) and `getHasUserPassphrase()` (does
+ * a USER passphrase protect this instance at all) — and `archive-crypto.ts`
+ * binds both at import. The box lets a single case move the seam BETWEEN two
+ * operations, which is the only way to reach the mismatch arm: archive under
+ * one passphrase, rehydrate under another, exactly as a passphrase change
+ * leaves an older bundle. v5 takes the same pair as an explicit
+ * `PassphraseSource` argument, so the two sides stay driven by the same values.
+ *
+ * The default — `{cached: null, hasUser: false}` — is the fixture instance's
+ * real state and what every pre-existing case runs on: `INTERNAL_PASSPHRASE`.
+ */
+const passphraseSeam: { cached: string | null; hasUser: boolean } = {
+  cached: null,
+  hasUser: false,
+};
+
+/** The two passphrases the mismatch arm archives and rehydrates under. */
+const OLD_PASSPHRASE = 'the-passphrase-that-was-in-effect';
+const NEW_PASSPHRASE = 'the-passphrase-in-effect-now';
 
 /** A minimal NextRequest stand-in — the same shape the files/system oracles use. */
 function mockRequest(url: string, method = 'GET', body?: unknown): unknown {
@@ -135,6 +175,10 @@ async function runCase(
   fixtures: { main: string; mount: string },
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
+  // Every case starts on the fixture instance's REAL passphrase state; only the
+  // two passphrase arms move it, and only after this reset.
+  passphraseSeam.cached = null;
+  passphraseSeam.hasUser = false;
 
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
@@ -155,6 +199,39 @@ async function runCase(
     jest.requireActual('@/lib/file-storage/manager'),
   );
   jest.doMock('@/lib/memory/memory-gate', () => jest.requireActual('@/lib/memory/memory-gate'));
+  // ⚠ A STALE ORACLE MOCK, found by consequence (P4.20 / P4.36 class).
+  // jest.setup stubs `getDefaultEmbeddingProfile` to resolve `null`, so the
+  // import's `enqueueImportedMemoryEmbeddings` took its no-default-profile
+  // branch NO MATTER WHAT the database held — v4 was being starved of a profile
+  // that exists, warning about it in the rehydrate result, and enqueueing zero
+  // memory jobs. The real function is four lines over the same repository the
+  // mount-chunk scheduler already reads unmocked.
+  jest.doMock('@/lib/embedding/embedding-service', () =>
+    jest.requireActual('@/lib/embedding/embedding-service'),
+  );
+  // The job PUMP is a host-cadence seam v5 does not port into the core
+  // (`job-runner-fork-ipc-non-port`), and v4's `enqueueJob` kicks it via
+  // `ensureProcessorRunning()`, which forks `child-entry.ts` — a process that
+  // cannot even resolve its imports under jest. Neutralize the kick; the QUEUED
+  // ROWS are the comparand, and letting them be picked up would race the dump.
+  jest.doMock('@/lib/background-jobs/processor', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/background-jobs/processor'),
+    ensureProcessorRunning: () => {},
+  }));
+  // The instance-passphrase seam (see `passphraseSeam`). Both modules keep all
+  // their real exports — `INTERNAL_PASSPHRASE` in particular, which the
+  // no-passphrase resolution returns — and swap only the two readers.
+  jest.doMock('@/lib/startup/passphrase-cache', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/startup/passphrase-cache'),
+    getRuntimePassphrase: () => passphraseSeam.cached,
+  }));
+  jest.doMock('@/lib/startup/dbkey', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/startup/dbkey'),
+    getHasUserPassphrase: () => passphraseSeam.hasUser,
+  }));
   // The route-driven arms go through `buildRequestContext`, which resolves the
   // operator from the session; jest.setup resolves it to `null` (→ a bare 500).
   // Same seam the files/system oracles neutralize.
@@ -183,6 +260,13 @@ async function runCase(
       },
     };
   });
+
+  // The extender-minted ids, read from the committed sidecar rather than
+  // transcribed: a re-pin in `extend-character-archive-profile-and-avatars.ts`
+  // must not be able to leave the two differential sides driving different rows.
+  const meta = JSON.parse(fs.readFileSync(fixtures.main + '.meta.json', 'utf8')) as {
+    avatarThumbnailFileId: string;
+  };
 
   const work = mkdtempSync(join(scratch, 'arch-'));
   const mainWork = join(work, 'main.db');
@@ -218,6 +302,9 @@ async function runCase(
     }
   ).version;
   const payload: Record<string, unknown> = { name, appVersion };
+  /** Non-null only where the sealing passphrase differs from the current one. */
+  const sealPassphrase: string | null =
+    name === 'archive_rehydrate_passphrase_mismatch' ? OLD_PASSPHRASE : null;
   try {
     const capture = async (fn: () => Promise<unknown>): Promise<unknown> => {
       try {
@@ -353,6 +440,70 @@ async function runCase(
         };
         break;
       }
+
+      // ── The passphrase-unavailable refusal (§4.2c) ──
+      // A USER passphrase protects the instance and this process has never seen
+      // it. `archiveCharacter` resolves the passphrase BEFORE anything is
+      // written, so the state dump doubles as the proof that a refused archive
+      // leaves no bundle, no tombstone and no flipped seat behind.
+      case 'archive_key_unavailable':
+        passphraseSeam.hasUser = true;
+        passphraseSeam.cached = null;
+        payload.result = await capture(() => archiveCharacter(spec.userId, spec.sable));
+        break;
+
+      // ── The passphrase-CHANGE diagnosis ──
+      // Seal under the old passphrase, then rehydrate with the new one in the
+      // cache — precisely what a passphrase change leaves behind for a bundle
+      // written before it. The header's `keyHash` is what turns this into a
+      // named "this archive predates your passphrase change" refusal instead of
+      // a bare GCM authentication failure, and the character must stay archived.
+      case 'archive_rehydrate_passphrase_mismatch':
+        passphraseSeam.hasUser = true;
+        passphraseSeam.cached = OLD_PASSPHRASE;
+        await archiveCharacter(spec.userId, spec.sable);
+        passphraseSeam.cached = NEW_PASSPHRASE;
+        payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
+        break;
+
+      // ── `pruneComplete: false` ──
+      // The prune is the one phase that may fail without failing the archive:
+      // the tombstone is already committed and the bundle already holds
+      // everything, so an incomplete prune is reported, logged, and left for a
+      // re-run. Reaching it needs a link delete that fails without throwing out
+      // of the repository — which is exactly what `deleteWithGC`'s swallow does
+      // — so the case plants a BEFORE DELETE trigger that aborts every link
+      // delete in the vault. Nothing is deleted on either side; v4 falls through
+      // to its undead-links honesty check and v5 to its propagated error, and
+      // BOTH report `pruneComplete: false` over an untouched vault.
+      case 'archive_prune_incomplete': {
+        const midbTrigger = getRawMountIndexDatabase();
+        if (!midbTrigger) throw new Error('mount index database unavailable');
+        midbTrigger.exec(
+          "CREATE TRIGGER qt_block_link_delete BEFORE DELETE ON doc_mount_file_links " +
+            "BEGIN SELECT RAISE(ABORT, 'planted: vault link deletes are blocked'); END;",
+        );
+        payload.result = await capture(() => archiveCharacter(spec.userId, spec.sable));
+        break;
+      }
+
+      // ── The pre-revision tombstone's avatar thumbnail (§6 step 4) ──
+      // `archivedAvatarFileId` is vestigial: the shipped service never writes
+      // it, so only a tombstone left by the pre-§4.2a revision carries one. The
+      // raw UPDATE is deliberate — the §4.4 guard sanctions exactly one patch on
+      // an archived row, so the repository would refuse this. Rehydrate must
+      // clear the key in its FOLLOW-UP patch (never in the sanctioned
+      // `{archivedAt: null}` one) and delete the standalone thumbnail row the
+      // fixture's extender planted.
+      case 'rehydrate_pre_revision_avatar': {
+        await archiveCharacter(spec.userId, spec.sable);
+        await rawQuery('UPDATE characters SET archivedAvatarFileId = ? WHERE id = ?', [
+          meta.avatarThumbnailFileId,
+          spec.sable,
+        ]);
+        payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
+        break;
+      }
     }
 
     // The bundle, DECRYPTED (never the ciphertext — see the header).
@@ -365,7 +516,14 @@ async function runCase(
       const entry = await getRepositories().files.findById(row.id as string);
       if (!entry) continue;
       const raw = await fileStorageManager.downloadFile(entry);
-      const plaintext = isEncryptedArchive(raw) ? decryptArchive(raw) : raw;
+      // The comparand is what the bundle SAYS, so it is read back under the
+      // passphrase that sealed it. That is the ambient resolution for every case
+      // but the mismatch arm, whose whole point is that the current passphrase
+      // is no longer the sealing one — reading it back with the ambient one
+      // would only re-prove the refusal the `result` comparand already carries.
+      const plaintext = isEncryptedArchive(raw)
+        ? decryptArchive(raw, sealPassphrase ?? undefined)
+        : raw;
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(plaintext);
@@ -436,6 +594,10 @@ async function main(): Promise<void> {
     'files_delete_bundle_unheld',
     'export_entities_after_archive',
     'export_all_after_archive',
+    'archive_key_unavailable',
+    'archive_rehydrate_passphrase_mismatch',
+    'archive_prune_incomplete',
+    'rehydrate_pre_revision_avatar',
   ];
 
   const outLines: string[] = [];
