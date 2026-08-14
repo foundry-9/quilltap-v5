@@ -66106,3 +66106,33 @@ regenerated fresh at `48396682`:
 - `chat_settings_composer_web_routes` (quilltap-web) — **1/1**
 
 No `apps/web/**` file was touched, so no SPA gate applies to this lane.
+
+### ⚠ P4.D73 lane-end note — v4 main moved to `11553944` (4.8.4) AFTER this lane's regens
+
+Recorded for the unifier and the sibling lanes. At lane start the drift check
+was clean (`main` = `48396682`, `bugfix` = `0649eddb`, tree clean). v4 then
+released **4.8.4** mid-lane: `git reflog` puts the first commit off the pin
+(`3a76b17d` "bugfix: started 4.8.4 bug branch") at **21:22:28**, and `main` at
+`11553944` ("merge: 4.8.4 back into main") seconds later.
+
+**Every oracle and fixture this lane depends on was generated BEFORE that**, at
+21:09–21:19 (`/tmp/oracle-settings-routes.ndjson` 21:09:27,
+`/tmp/oracle-chat-settings.ndjson` 21:16:43, `/tmp/oracle-provision.json`
+21:19:46, both fixtures 21:09 / 21:16; the D23 schema+seed dump earlier still).
+So all of it is against `48396682`, as ordered.
+
+**And the drift is inert for every oracle import graph:**
+`git diff --stat 48396682 main` is **five files — `__tests__/helpers/
+lexicalPluginHarness.tsx`, two `CharTypeaheadPlugin` test files,
+`docs/CHANGELOG.md`, `docs/releases/4.8.4.md` — with ZERO change under `lib/`,
+`app/` or `packages/`** (`git diff --stat 48396682 main -- lib/ app/ packages/`
+is empty). The new `bugfix` tip `3a76b17d` is README + the release doc +
+`package.json`/`package-lock.json` version bumps only. Nothing this lane, or any
+sibling lane, ported is affected; a regen at `11553944` would produce identical
+bytes.
+
+**What the unifier should decide, not assume:** whether the round's adopted
+oracle baseline becomes `48396682` (as the orders say) or `11553944`. The two
+are lib-identical, so it is a bookkeeping choice — but if any lane still needs
+to regen after this point, pin a detached worktree at `48396682` rather than
+using the checkout, per the standing rule.
