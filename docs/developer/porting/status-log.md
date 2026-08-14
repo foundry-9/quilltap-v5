@@ -67327,3 +67327,24 @@ cd ~/source/quilltap-server && git branch --show-current   # must be main @ 4839
 PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH QT_V4_ROOT=$PWD \
   ./node_modules/.bin/tsx <v5>/apps/web/tooling/capture-markdown-fixtures.mts
 ```
+
+### P4.D74 addendum — v4 drifted DURING the lane (recorded for the unifier)
+
+At lane start `main` was exactly the order's pin `48396682` and the tree
+was clean (both branches checked; `bugfix` carried no content difference).
+At lane close `main` has moved to **`11553944`** — v4 released **4.8.4**
+mid-lane (`8736d704` release + `11553944` merge).
+
+**It touches nothing this lane ported.** The whole delta is 5 files:
+`__tests__/helpers/lexicalPluginHarness.tsx` and the two
+`CharTypeaheadPlugin.{emoji,unicode}.test.tsx` suites (P4.D75's surface,
+tests only), plus `docs/CHANGELOG.md` and a new `docs/releases/4.8.4.md`.
+`git diff 48396682..main` over `lib/smart-typography`,
+`lib/markdown/typography.ts`, `lib/chat/roleplay-rendering.ts`,
+`components/chat/lexical/`, `components/settings/chat-settings/` and
+`package.json` is **EMPTY** — so every capture, every byte-copy and every
+port in this lane is still against current v4, and no recapture is owed.
+
+The round's baseline move should still be to `48396682` (what the round
+was planned against); **`11553944` is the next round's drift check**, and
+P4.D75's lane should know its two test suites moved under it.
