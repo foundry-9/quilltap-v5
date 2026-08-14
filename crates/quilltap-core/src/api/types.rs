@@ -568,6 +568,13 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     CharacterWardrobeList {
         character_id: String,
+        /// `Some("group")` serves the GROUP tier instead of the character's own
+        /// vault: the shared items in the `Wardrobe/` folder of every store
+        /// belonging to a group this character is a member of (v4 `8600c83f`'s
+        /// `GET /api/v1/characters/[id]/wardrobe?scope=group`, which feeds the
+        /// client-side tier merge). Absent = today's behaviour.
+        #[serde(default)]
+        scope: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     CharacterWardrobeCreate {

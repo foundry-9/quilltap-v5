@@ -799,13 +799,47 @@ fn sub_array_read(db: &Db, character_id: &str, field: &str, out_key: &str) -> Re
 
 /// v4 `GET /characters/[id]/wardrobe` — ownership → `{ wardrobeItems }`
 /// (`repos.wardrobe.findByCharacterId(id)`, the overlaid vault read).
-pub fn character_wardrobe_list(db: &Db, _user_id: &str, character_id: &str) -> Response {
+///
+/// `scope = Some("group")` serves the GROUP tier instead (v4 `8600c83f`): the
+/// shared items in the `Wardrobe/` folder of every store belonging to a group
+/// this character is a member of, resolved per character and read weakest-mount
+/// first. It is a standalone read for the client-side tier merge, so it does
+/// NOT fold in the character's own vault. Any other `scope` value falls through
+/// to the vault read, as v4's `scope === 'group'` check does.
+pub fn character_wardrobe_list(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    scope: Option<&str>,
+) -> Response {
     let character_id = character_id.to_string();
+    let group_scope = scope == Some("group");
     let result = read_main_mount(db, move |main, mount| {
         if let Err(r) = require_character(main, mount, &character_id) {
             return Ok(Err(r));
         }
         let docs = DocMountDocumentsRepository::new(mount);
+        if group_scope {
+            let group_mount_point_ids =
+                crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
+                    main,
+                    mount,
+                    &character_id,
+                );
+            let items = crate::db::archetype_wardrobe::find_archetypes_in_mounts(
+                &docs,
+                &group_mount_point_ids,
+                false,
+            )?;
+            tracing::debug!(
+                character_id = character_id.as_str(),
+                group_mount_count = group_mount_point_ids.len(),
+                item_count = items.len(),
+                context = "wardrobe",
+                "[Wardrobe v1] Group-tier wardrobe read"
+            );
+            return Ok(Ok(items));
+        }
         let items = wardrobe_read::find_by_character_id(main, &docs, &character_id, false)?;
         Ok(Ok(items))
     });

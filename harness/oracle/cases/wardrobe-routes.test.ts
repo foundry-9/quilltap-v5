@@ -25,7 +25,10 @@
  * models, so everything below it (sha256, the vault write, the files row, the
  * response) runs real on both sides.
  *
- * Chained rows: a case with `thenOutfit` emits a second `${name}__outfit` row
+ * Chained rows: a case with `thenOutfit` emits a second `${name}__outfit` row,
+ * and one with `thenGroupWardrobe` emits a `${name}__group` row (the group-tier
+ * read-back that proves an item copied INTO a group store is now reachable —
+ * the whole point of v4 `8600c83f`)
  * (the same DB copy) — that is what pins PERSISTENCE, not just the response.
  *
  * Run (Node 24 — baseline v4 `7e6d13e5`; regenerated directly from
@@ -57,7 +60,11 @@ interface CaseEntry {
   body?: unknown;
   itemId?: string;
   chatId?: string;
+  characterId?: string;
+  scope?: string;
   thenOutfit?: string;
+  thenGroupWardrobe?: string;
+  groupNormalize?: string[];
   emitBytes?: boolean;
 }
 
@@ -255,6 +262,19 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
       };
       return respond(await mod.POST(mockRequest(`${B}/wardrobe/preview-avatar`, 'POST', c.body)));
     }
+    case 'characterWardrobeList': {
+      // v4 `8600c83f`'s new arm: `?scope=group` serves the group tier of the
+      // wearable pool as a standalone read for the client-side merge.
+      const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const qs = c.scope ? `?scope=${c.scope}` : '';
+      return respond(
+        await mod.GET(mockRequest(`${B}/characters/${c.characterId}/wardrobe${qs}`), {
+          params: Promise.resolve({ id: c.characterId }),
+        }),
+      );
+    }
     default:
       throw new Error(`unknown case kind: ${c.kind}`);
   }
@@ -298,6 +318,19 @@ async function runCase(
       };
       const follow = await respond(await mod.handleGetOutfit(c.thenOutfit, await authedCtx()));
       rows.push({ name: `${c.name}__outfit`, status: follow.status, body: follow.body });
+    }
+
+    if (c.thenGroupWardrobe) {
+      const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const follow = await respond(
+        await mod.GET(
+          mockRequest(`${B}/characters/${c.thenGroupWardrobe}/wardrobe?scope=group`),
+          { params: Promise.resolve({ id: c.thenGroupWardrobe }) },
+        ),
+      );
+      rows.push({ name: `${c.name}__group`, status: follow.status, body: follow.body });
     }
 
     if (c.emitBytes) {

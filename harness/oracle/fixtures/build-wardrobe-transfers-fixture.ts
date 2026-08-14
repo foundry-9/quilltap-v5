@@ -54,6 +54,8 @@ interface Spec {
   destCharacterId: string;
   projectId: string;
   groupId: string;
+  groupMemberId: string;
+  groupItem: ItemSpec;
   generalMountPointId: string;
   generalStore: { id: string; name: string };
   character: Record<string, unknown>;
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
   const {
     ProjectDocMountLinkSchema,
     GroupDocMountLinkSchema,
+    GroupCharacterMemberSchema,
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
@@ -134,6 +137,7 @@ async function main(): Promise<void> {
     ['doc_mount_chunks', DocMountChunkSchema],
     ['project_doc_mount_links', ProjectDocMountLinkSchema],
     ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) {
@@ -257,6 +261,40 @@ async function main(): Promise<void> {
   await seedItem(spec.destCharacterItem, spec.destCharacterId);
   // Archetype item -> Quilltap General.
   await seedItem(spec.generalItem, null);
+
+  // [P4.D71 / v4 8600c83f] The GROUP tier as a transfer SOURCE. The source
+  // character must be a MEMBER — the tier resolves per character — and the
+  // group's official store needs one item in its `Wardrobe/` folder to move
+  // back out of. Without the membership the group tier is empty and the
+  // group-source scenarios 404 exactly as they did before the fix.
+  await repos.groupCharacterMembers.create(
+    { groupId: spec.groupId, characterId: spec.characterId } as never,
+    { id: spec.groupMemberId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+  );
+  const groupRow = await repos.groups.findByIdRaw(spec.groupId);
+  const groupMp = groupRow?.officialMountPointId as string;
+  if (!groupMp) throw new Error('group official store not minted');
+  const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
+  const { createProjectWardrobeItem } = await import(
+    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
+  );
+  await ensureGroupWardrobeFolder(groupMp);
+  await createProjectWardrobeItem(groupMp, {
+    id: spec.groupItem.id,
+    characterId: null,
+    title: spec.groupItem.title,
+    description: spec.groupItem.description ?? null,
+    imagePrompt: spec.groupItem.imagePrompt ?? null,
+    types: spec.groupItem.types,
+    componentItemIds: spec.groupItem.componentItemIds ?? [],
+    appropriateness: spec.groupItem.appropriateness ?? null,
+    isDefault: spec.groupItem.isDefault ?? false,
+    replace: spec.groupItem.replace ?? false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

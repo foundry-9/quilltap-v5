@@ -25,7 +25,8 @@ use serde_json::{json, Value};
 
 use crate::collation::locale_compare;
 use crate::db::archetype_wardrobe::{
-    ensure_project_wardrobe_folder, read_general_wardrobe, read_project_wardrobe,
+    ensure_group_wardrobe_folder, ensure_project_wardrobe_folder, read_general_wardrobe,
+    read_group_wardrobe, read_project_wardrobe, read_shared_wardrobe,
 };
 use crate::db::characters_read;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
@@ -33,6 +34,7 @@ use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::ensure_official_store::ensure_official_store;
 use crate::db::groups::{GroupEntity, GroupsRepository};
 use crate::db::projects::{ProjectEntity, ProjectsRepository};
+use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::db::vault_wardrobe_public::{
     create_project_wardrobe_item, create_vault_wardrobe_item, delete_project_wardrobe_item,
     delete_vault_wardrobe_item, WardrobePublicError,
@@ -40,9 +42,6 @@ use crate::db::vault_wardrobe_public::{
 use crate::db::wardrobe_read::find_by_character_id;
 use crate::db::DbError;
 use crate::vault_overlay::WardrobeItem;
-
-/// The `Wardrobe/` folder (v4 `CHARACTER_WARDROBE_FOLDER`).
-const WARDROBE_FOLDER: &str = "Wardrobe";
 
 /// Move or copy (v4 `TransferAction`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +177,7 @@ struct ResolvedSource {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SourceScope {
     Character,
+    Group,
     Project,
     General,
 }
@@ -186,6 +186,7 @@ impl SourceScope {
     fn as_str(self) -> &'static str {
         match self {
             SourceScope::Character => "character",
+            SourceScope::Group => "group",
             SourceScope::Project => "project",
             SourceScope::General => "general",
         }
@@ -225,8 +226,12 @@ fn item_id_of(item: &Value) -> Option<&str> {
 }
 
 /// v4 `resolveSourceItem` — find the item in the character's personal wardrobe,
-/// then the named project, then Quilltap General. Ownership: the source character
-/// must belong to `user_id`.
+/// then the named project, then the character's GROUP stores, then Quilltap
+/// General. Ownership: the source character must belong to `user_id`.
+///
+/// The group tier scans BETWEEN project and General (`8600c83f`) — without it
+/// an item moved into a group could not be moved back out, which is half of
+/// what made a group garment vanish.
 fn resolve_source_item(
     main: &Connection,
     mount: &Connection,
@@ -292,7 +297,28 @@ fn resolve_source_item(
         }
     }
 
-    // TRY 3 — Quilltap General.
+    // TRY 3 — the group tier: every store of every group this character belongs
+    // to. The source character is the one wearing the item, so their
+    // memberships are the right scope — matching how the wearable pool resolves
+    // the tier.
+    let group_mount_point_ids =
+        resolve_group_mount_point_ids_for_character(main, mount, source_character_id);
+    for mount_point_id in &group_mount_point_ids {
+        let group_items = read_group_wardrobe(&docs, mount_point_id, true)?;
+        if let Some(item) = group_items
+            .into_iter()
+            .find(|it| item_id_of(it) == Some(item_id))
+        {
+            return Ok(Some(ResolvedSource {
+                scope: SourceScope::Group,
+                item,
+                character_id: None,
+                mount_point_id: Some(mount_point_id.clone()),
+            }));
+        }
+    }
+
+    // TRY 4 — Quilltap General.
     let general = read_general_wardrobe(main, &docs, true)?;
     if let Some(item) = general
         .into_iter()
@@ -382,7 +408,7 @@ fn resolve_destination(
                 return Ok(None);
             };
             let links = DocMountFileLinksRepository::new(mount);
-            links.ensure_folder_path(&ensured.mount_point_id, WARDROBE_FOLDER)?;
+            ensure_group_wardrobe_folder(&links, &ensured.mount_point_id)?;
             Ok(Some(ResolvedDestination {
                 scope,
                 character_id: None,
@@ -406,9 +432,10 @@ fn read_destination_items(
             let cid = dest.character_id.as_deref().unwrap_or_default();
             Ok(find_by_character_id(main, &docs, cid, true)?)
         }
+        // Project and group items both live in a mount's `Wardrobe/` folder.
         DestinationScope::Project | DestinationScope::Group => {
             let mp = dest.mount_point_id.as_deref().unwrap_or_default();
-            Ok(read_project_wardrobe(&docs, mp, true)?)
+            Ok(read_shared_wardrobe(&docs, mp, true)?)
         }
     }
 }
@@ -447,7 +474,9 @@ fn delete_from_source(
     let docs = DocMountDocumentsRepository::new(mount);
     let id = item_id_of(&source.item).unwrap_or_default();
     match source.scope {
-        SourceScope::Project => {
+        // Project and group items both live in a mount's `Wardrobe/` folder
+        // rather than a character vault, so both delete by mount point.
+        SourceScope::Project | SourceScope::Group => {
             let mp = source.mount_point_id.as_deref().unwrap_or_default();
             Ok(delete_project_wardrobe_item(main, &links, &docs, mp, id)?)
         }

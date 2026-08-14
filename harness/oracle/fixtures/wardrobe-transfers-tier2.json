@@ -43,7 +43,16 @@
     "timestamps are minted, so the remap placeholders them either way.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
-    "characters/wardrobe use). NOT the real Friday pepper; safe to commit."
+    "characters/wardrobe use). NOT the real Friday pepper; safe to commit.",
+    "",
+    "P4.D71 (v4 8600c83f) added the GROUP tier as a SOURCE scope, scanned between",
+    "project and General. The fixture therefore also carries a group MEMBERSHIP",
+    "for the source character and one item seeded into the group official store's",
+    "Wardrobe/ folder, plus three scenarios: move the group item OUT to the",
+    "character (the round trip that was impossible before -- an item moved into a",
+    "group could not be moved back), copy it out to General, and copy a vault item",
+    "INTO the group. Without the membership the group tier resolves to no mounts,",
+    "so the first two would 404 exactly as they did pre-fix."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "a0000000-0000-4000-8000-000000000001",
@@ -57,7 +66,10 @@
   "projectId": "b1000000-0000-4000-8000-000000000001",
   "groupId": "b2000000-0000-4000-8000-000000000001",
   "generalMountPointId": "d9000000-0000-4000-8000-000000000001",
-  "generalStore": { "id": "d9000000-0000-4000-8000-000000000001", "name": "Quilltap General" },
+  "generalStore": {
+    "id": "d9000000-0000-4000-8000-000000000001",
+    "name": "Quilltap General"
+  },
   "character": {
     "id": "c7000000-0000-4000-8000-000000000001",
     "userId": "a0000000-0000-4000-8000-000000000001",
@@ -70,7 +82,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -110,7 +126,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -141,7 +161,9 @@
   "sourceItem": {
     "id": "e5000000-0000-4000-8000-0000000000a1",
     "title": "Brass Waistcoat",
-    "types": ["top"],
+    "types": [
+      "top"
+    ],
     "description": "A snug brass-buttoned waistcoat.",
     "imagePrompt": "brass-buttoned waistcoat, fitted",
     "appropriateness": "formal",
@@ -152,7 +174,9 @@
   "generalItem": {
     "id": "e5000000-0000-4000-8000-0000000000b1",
     "title": "Aviator Goggles",
-    "types": ["accessories"],
+    "types": [
+      "accessories"
+    ],
     "description": "Shared brass aviator goggles.",
     "appropriateness": "adventuring",
     "isDefault": false,
@@ -162,7 +186,9 @@
   "destCharacterItem": {
     "id": "e5000000-0000-4000-8000-0000000000a1",
     "title": "Collision Twin",
-    "types": ["top"],
+    "types": [
+      "top"
+    ],
     "description": "A pre-existing item on the destination sharing the source id (collision seed).",
     "isDefault": false,
     "replace": false,
@@ -174,7 +200,9 @@
       "action": "copy",
       "itemId": "e5000000-0000-4000-8000-0000000000a1",
       "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
-      "destination": { "scope": "general" },
+      "destination": {
+        "scope": "general"
+      },
       "expect": "ok"
     },
     {
@@ -182,7 +210,10 @@
       "action": "move",
       "itemId": "e5000000-0000-4000-8000-0000000000a1",
       "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
-      "destination": { "scope": "project", "id": "b1000000-0000-4000-8000-000000000001" },
+      "destination": {
+        "scope": "project",
+        "id": "b1000000-0000-4000-8000-000000000001"
+      },
       "expect": "ok"
     },
     {
@@ -190,7 +221,10 @@
       "action": "copy",
       "itemId": "e5000000-0000-4000-8000-0000000000b1",
       "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
-      "destination": { "scope": "character", "id": "c7000000-0000-4000-8000-000000000002" },
+      "destination": {
+        "scope": "character",
+        "id": "c7000000-0000-4000-8000-000000000002"
+      },
       "expect": "ok"
     },
     {
@@ -198,7 +232,10 @@
       "action": "copy",
       "itemId": "e5000000-0000-4000-8000-0000000000a1",
       "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
-      "destination": { "scope": "character", "id": "c7000000-0000-4000-8000-000000000001" },
+      "destination": {
+        "scope": "character",
+        "id": "c7000000-0000-4000-8000-000000000001"
+      },
       "expect": "error",
       "expectMessage": "Source and destination are the same"
     },
@@ -207,9 +244,57 @@
       "action": "move",
       "itemId": "e5000000-0000-4000-8000-0000000000a1",
       "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
-      "destination": { "scope": "character", "id": "c7000000-0000-4000-8000-000000000002" },
+      "destination": {
+        "scope": "character",
+        "id": "c7000000-0000-4000-8000-000000000002"
+      },
       "expect": "error",
       "expectMessage": "An item with that ID already exists at the destination"
+    },
+    {
+      "name": "move_group_to_character",
+      "action": "move",
+      "itemId": "e5000000-0000-4000-8000-0000000000c1",
+      "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+      "destination": {
+        "scope": "character",
+        "id": "c7000000-0000-4000-8000-000000000001"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "copy_group_to_general",
+      "action": "copy",
+      "itemId": "e5000000-0000-4000-8000-0000000000c1",
+      "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+      "destination": {
+        "scope": "general"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "copy_character_to_group",
+      "action": "copy",
+      "itemId": "e5000000-0000-4000-8000-0000000000a1",
+      "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+      "destination": {
+        "scope": "group",
+        "id": "b2000000-0000-4000-8000-000000000001"
+      },
+      "expect": "ok"
     }
-  ]
+  ],
+  "groupMemberId": "b2000000-0000-4000-8000-000000000002",
+  "groupItem": {
+    "id": "e5000000-0000-4000-8000-0000000000c1",
+    "title": "Household Livery",
+    "types": [
+      "top"
+    ],
+    "description": "The coat that hangs by the door of the group store.",
+    "appropriateness": "formal",
+    "isDefault": false,
+    "replace": false,
+    "componentItemIds": []
+  }
 }

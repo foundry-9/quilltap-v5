@@ -1727,10 +1727,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterWardrobeList { character_id } => match self.ready_db() {
-                Ok(db) => {
-                    super::characters::character_wardrobe_list(&db, SINGLE_USER_ID, &character_id)
-                }
+            Request::CharacterWardrobeList {
+                character_id,
+                scope,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_wardrobe_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    scope.as_deref(),
+                ),
                 Err(r) => r,
             },
             Request::CharacterPluginDataMap { character_id } => match self.ready_db() {

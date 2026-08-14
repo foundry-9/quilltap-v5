@@ -104,6 +104,7 @@ async function main(): Promise<void> {
     DocMountChunkSchema,
     ProjectDocMountLinkSchema,
     GroupDocMountLinkSchema,
+    GroupCharacterMemberSchema,
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
@@ -125,6 +126,7 @@ async function main(): Promise<void> {
     ['doc_mount_chunks', DocMountChunkSchema],
     ['project_doc_mount_links', ProjectDocMountLinkSchema],
     ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
@@ -212,6 +214,13 @@ async function main(): Promise<void> {
     { name: 'The Aeronauts' } as never,
     { id: I.group, createdAt: TS, updatedAt: TS } as never,
   );
+  // [P4.D71 / v4 8600c83f] Aria belongs to the group; Bram does NOT. The group
+  // tier is keyed on the CHARACTER's own memberships, so `?scope=group` must
+  // serve Aria the group store's `Wardrobe/` and serve Bram nothing.
+  await repos.groupCharacterMembers.create(
+    { groupId: I.group, characterId: I.aria } as never,
+    { id: I.groupMember, createdAt: TS, updatedAt: TS } as never,
+  );
 
   // 5. Wardrobe items via the REAL public create (full vault projection).
   const seedItem = async (
@@ -271,6 +280,32 @@ async function main(): Promise<void> {
     description: null,
     imagePrompt: null,
     types: ['accessories'],
+    componentItemIds: [],
+    appropriateness: null,
+    isDefault: false,
+    replace: false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    createdAt: TS,
+    updatedAt: TS,
+  } as never);
+
+  // The GROUP store's Wardrobe/ + its livery (P4.D71 / v4 `8600c83f`). Aria is
+  // a member and must see it through `?scope=group`; Bramwell is not and must
+  // see nothing — which is what makes the per-character keying measurable
+  // rather than a pair of empty arrays that agree by accident.
+  const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
+  const groupRow = await repos.groups.findByIdRaw(I.group);
+  const groupMp = groupRow?.officialMountPointId as string;
+  if (!groupMp) throw new Error('group official store not minted');
+  await ensureGroupWardrobeFolder(groupMp);
+  await createProjectWardrobeItem(groupMp, {
+    id: I.gLivery,
+    characterId: null,
+    title: 'Aeronaut livery',
+    description: null,
+    imagePrompt: null,
+    types: ['top'],
     componentItemIds: [],
     appropriateness: null,
     isDefault: false,

@@ -32,6 +32,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use quilltap_core::api::characters::character_wardrobe_list;
 use quilltap_core::api::chat_outfits::{chat_equip, chat_outfit_get, chat_regenerate_avatar};
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::api::wardrobe::{
@@ -59,7 +60,19 @@ struct CaseEntry {
     #[serde(default)]
     chat_id: Option<String>,
     #[serde(default)]
+    character_id: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
     then_outfit: Option<String>,
+    /// The chained group-tier read (v4 `8600c83f`): after this case, re-read
+    /// `characters/{id}/wardrobe?scope=group` for the named character. It is
+    /// what proves an item copied INTO a group store is actually reachable —
+    /// the bug that commit fixed.
+    #[serde(default)]
+    then_group_wardrobe: Option<String>,
+    #[serde(default)]
+    group_normalize: Vec<String>,
     #[serde(default)]
     emit_bytes: bool,
     #[serde(default)]
@@ -182,7 +195,9 @@ fn status_of(kind: ErrorKind) -> u16 {
 
 fn success_body(r: &Response) -> Option<Value> {
     match r {
-        Response::Wardrobe(v) | Response::ChatOutfit(v) => Some(v.clone()),
+        // `Character` is the character-wardrobe route's envelope (P4.D71's
+        // `?scope=group` arm rides the characters surface, not the archetype one).
+        Response::Wardrobe(v) | Response::ChatOutfit(v) | Response::Character(v) => Some(v.clone()),
         _ => None,
     }
 }
@@ -193,6 +208,18 @@ fn blank_paths(v: &Value, paths: &[String]) -> Value {
         let Some((first, rest)) = segments.split_first() else {
             return;
         };
+        // A numeric segment indexes an array (`wardrobeItems.1.id`); anything
+        // else is an object key.
+        if let Ok(idx) = first.parse::<usize>() {
+            let Some(arr) = v.as_array_mut() else { return };
+            let Some(next) = arr.get_mut(idx) else { return };
+            if rest.is_empty() {
+                *next = Value::String("<minted>".into());
+            } else {
+                blank_one(next, rest);
+            }
+            return;
+        }
         let Some(obj) = v.as_object_mut() else { return };
         if rest.is_empty() {
             if obj.contains_key(*first) {
@@ -327,6 +354,11 @@ async fn wardrobe_routes_equivalence() {
             .iter()
             .filter(|c| c.then_outfit.is_some())
             .count()
+        + spec
+            .cases
+            .iter()
+            .filter(|c| c.then_group_wardrobe.is_some())
+            .count()
         + spec.cases.iter().filter(|c| c.emit_bytes).count();
     assert_eq!(
         oracle.len(),
@@ -376,6 +408,12 @@ async fn wardrobe_routes_equivalence() {
                 chat_regenerate_avatar(&db, user, case.chat_id.as_deref().unwrap(), body).await
             }
             "previewAvatar" => wardrobe_preview_avatar(&db, &renderer, user, body, NOW).await,
+            "characterWardrobeList" => character_wardrobe_list(
+                &db,
+                user,
+                case.character_id.as_deref().unwrap(),
+                case.scope.as_deref(),
+            ),
             other => panic!("unknown case kind: {other}"),
         };
         check(&oracle, &case.name, &resp, &case.normalize, &mut failed);
@@ -384,6 +422,18 @@ async fn wardrobe_routes_equivalence() {
         // The two raw key-order claims (the richest read + the equip echo).
         if case.name == "outfit_preset" || case.name == "eq_set_all" {
             check_key_order(&oracle, &case.name, &resp, &mut failed);
+            checks += 1;
+        }
+
+        if let Some(character_id) = &case.then_group_wardrobe {
+            let follow = character_wardrobe_list(&db, user, character_id, Some("group"));
+            check(
+                &oracle,
+                &format!("{}__group", case.name),
+                &follow,
+                &case.group_normalize,
+                &mut failed,
+            );
             checks += 1;
         }
 

@@ -278,7 +278,7 @@ fn characters_reads_match_oracle() {
     );
     push(
         "wardrobe",
-        response_data(&characters::character_wardrobe_list(&db, uid, ARIA)),
+        response_data(&characters::character_wardrobe_list(&db, uid, ARIA, None)),
     );
     push(
         "plugin_data_map",

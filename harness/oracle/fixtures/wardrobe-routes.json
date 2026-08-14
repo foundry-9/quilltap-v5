@@ -27,7 +27,9 @@
     "profileBadKey": "f2000000-0000-4000-8000-000000000003",
     "apiKey": "f3000000-0000-4000-8000-000000000001",
     "apiKeyMissing": "f3000000-0000-4000-8000-0000000000ff",
-    "unknownItem": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    "unknownItem": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    "groupMember": "d2000000-0000-4000-8000-000000000002",
+    "gLivery": "e4000000-0000-4000-8000-000000000001"
   },
   "preview": {
     "providerImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGIAAQAABQABDQottAAAAABJRU5ErkJggg==",
@@ -35,12 +37,24 @@
     "revisedPrompt": "A solemn brass-lit portrait, revised."
   },
   "cases": [
-    { "name": "list_default", "kind": "wardrobeList" },
+    {
+      "name": "list_default",
+      "kind": "wardrobeList"
+    },
     {
       "name": "create_ok",
       "kind": "wardrobeCreate",
-      "body": { "title": "Minted topper", "types": ["accessories"] },
-      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+      "body": {
+        "title": "Minted topper",
+        "types": [
+          "accessories"
+        ]
+      },
+      "normalize": [
+        "wardrobeItem.id",
+        "wardrobeItem.createdAt",
+        "wardrobeItem.updatedAt"
+      ]
     },
     {
       "name": "create_full",
@@ -49,56 +63,123 @@
         "title": "Full ensemble",
         "description": "A complete look",
         "imagePrompt": "a brass-buttoned ensemble",
-        "types": ["top", "bottom"],
+        "types": [
+          "top",
+          "bottom"
+        ],
         "appropriateness": "formal",
         "isDefault": true,
-        "componentItemIds": ["e2000000-0000-4000-8000-000000000002"],
+        "componentItemIds": [
+          "e2000000-0000-4000-8000-000000000002"
+        ],
         "replace": true
       },
-      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+      "normalize": [
+        "wardrobeItem.id",
+        "wardrobeItem.createdAt",
+        "wardrobeItem.updatedAt"
+      ]
     },
-    { "name": "create_missing_title", "kind": "wardrobeCreate", "body": { "types": ["top"] } },
-    { "name": "create_empty_types", "kind": "wardrobeCreate", "body": { "title": "x", "types": [] } },
-    { "name": "create_bad_type", "kind": "wardrobeCreate", "body": { "title": "x", "types": ["hat"] } },
+    {
+      "name": "create_missing_title",
+      "kind": "wardrobeCreate",
+      "body": {
+        "types": [
+          "top"
+        ]
+      }
+    },
+    {
+      "name": "create_empty_types",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "x",
+        "types": []
+      }
+    },
+    {
+      "name": "create_bad_type",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "x",
+        "types": [
+          "hat"
+        ]
+      }
+    },
     {
       "name": "create_null_flag",
       "kind": "wardrobeCreate",
-      "body": { "title": "x", "types": ["top"], "isDefault": null }
+      "body": {
+        "title": "x",
+        "types": [
+          "top"
+        ],
+        "isDefault": null
+      }
     },
-    { "name": "item_get_ok", "kind": "wardrobeItemGet", "itemId": "e2000000-0000-4000-8000-000000000002" },
-    { "name": "item_get_missing", "kind": "wardrobeItemGet", "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
-    { "name": "item_get_archived", "kind": "wardrobeItemGet", "itemId": "e2000000-0000-4000-8000-000000000004" },
+    {
+      "name": "item_get_ok",
+      "kind": "wardrobeItemGet",
+      "itemId": "e2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "item_get_missing",
+      "kind": "wardrobeItemGet",
+      "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    },
+    {
+      "name": "item_get_archived",
+      "kind": "wardrobeItemGet",
+      "itemId": "e2000000-0000-4000-8000-000000000004"
+    },
     {
       "name": "update_ok",
       "kind": "wardrobeUpdate",
       "itemId": "e2000000-0000-4000-8000-000000000002",
-      "body": { "title": "Regreat coat" },
-      "normalize": ["wardrobeItem.updatedAt"]
+      "body": {
+        "title": "Regreat coat"
+      },
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
     },
     {
       "name": "update_clear_desc",
       "kind": "wardrobeUpdate",
       "itemId": "e2000000-0000-4000-8000-000000000002",
-      "body": { "description": null },
-      "normalize": ["wardrobeItem.updatedAt"]
+      "body": {
+        "description": null
+      },
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
     },
     {
       "name": "update_missing",
       "kind": "wardrobeUpdate",
       "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-      "body": { "title": "x" }
+      "body": {
+        "title": "x"
+      }
     },
     {
       "name": "update_invalid",
       "kind": "wardrobeUpdate",
       "itemId": "e2000000-0000-4000-8000-000000000002",
-      "body": { "types": [] }
+      "body": {
+        "types": []
+      }
     },
     {
       "name": "update_cycle",
       "kind": "wardrobeUpdate",
       "itemId": "e2000000-0000-4000-8000-000000000003",
-      "body": { "componentItemIds": ["e2000000-0000-4000-8000-000000000003"] }
+      "body": {
+        "componentItemIds": [
+          "e2000000-0000-4000-8000-000000000003"
+        ]
+      }
     },
     {
       "name": "delete_ok",
@@ -106,8 +187,15 @@
       "itemId": "e2000000-0000-4000-8000-000000000001",
       "thenOutfit": "c1000000-0000-4000-8000-000000000001"
     },
-    { "name": "delete_missing", "kind": "wardrobeDelete", "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
-    { "name": "dest_list", "kind": "transferDestinations" },
+    {
+      "name": "delete_missing",
+      "kind": "wardrobeDelete",
+      "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    },
+    {
+      "name": "dest_list",
+      "kind": "transferDestinations"
+    },
     {
       "name": "tr_copy_char_to_general",
       "kind": "transferApply",
@@ -115,9 +203,15 @@
         "action": "copy",
         "itemId": "e1000000-0000-4000-8000-000000000001",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "general" }
+        "destination": {
+          "scope": "general"
+        }
       },
-      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+      "normalize": [
+        "wardrobeItem.id",
+        "wardrobeItem.createdAt",
+        "wardrobeItem.updatedAt"
+      ]
     },
     {
       "name": "tr_move_char_to_char",
@@ -126,7 +220,10 @@
         "action": "move",
         "itemId": "e1000000-0000-4000-8000-000000000003",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000002" }
+        "destination": {
+          "scope": "character",
+          "id": "a1000000-0000-4000-8000-000000000002"
+        }
       }
     },
     {
@@ -136,7 +233,10 @@
         "action": "move",
         "itemId": "e2000000-0000-4000-8000-000000000002",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "project", "id": "d1000000-0000-4000-8000-000000000001" }
+        "destination": {
+          "scope": "project",
+          "id": "d1000000-0000-4000-8000-000000000001"
+        }
       }
     },
     {
@@ -146,9 +246,22 @@
         "action": "copy",
         "itemId": "e1000000-0000-4000-8000-000000000002",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "group", "id": "d2000000-0000-4000-8000-000000000001" }
+        "destination": {
+          "scope": "group",
+          "id": "d2000000-0000-4000-8000-000000000001"
+        }
       },
-      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+      "normalize": [
+        "wardrobeItem.id",
+        "wardrobeItem.createdAt",
+        "wardrobeItem.updatedAt"
+      ],
+      "thenGroupWardrobe": "a1000000-0000-4000-8000-000000000001",
+      "groupNormalize": [
+        "wardrobeItems.1.id",
+        "wardrobeItems.1.createdAt",
+        "wardrobeItems.1.updatedAt"
+      ]
     },
     {
       "name": "tr_source_missing",
@@ -157,7 +270,9 @@
         "action": "move",
         "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "general" }
+        "destination": {
+          "scope": "general"
+        }
       }
     },
     {
@@ -167,7 +282,10 @@
         "action": "move",
         "itemId": "e1000000-0000-4000-8000-000000000001",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "project", "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }
+        "destination": {
+          "scope": "project",
+          "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        }
       }
     },
     {
@@ -177,7 +295,10 @@
         "action": "move",
         "itemId": "e1000000-0000-4000-8000-000000000001",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000001" }
+        "destination": {
+          "scope": "character",
+          "id": "a1000000-0000-4000-8000-000000000001"
+        }
       }
     },
     {
@@ -187,7 +308,10 @@
         "action": "move",
         "itemId": "e1000000-0000-4000-8000-000000000004",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000002" }
+        "destination": {
+          "scope": "character",
+          "id": "a1000000-0000-4000-8000-000000000002"
+        }
       }
     },
     {
@@ -197,13 +321,31 @@
         "action": "donate",
         "itemId": "e1000000-0000-4000-8000-000000000001",
         "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
-        "destination": { "scope": "general" }
+        "destination": {
+          "scope": "general"
+        }
       }
     },
-    { "name": "tr_zod_empty", "kind": "transferApply", "body": {} },
-    { "name": "outfit_preset", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-000000000001" },
-    { "name": "outfit_empty", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-000000000002" },
-    { "name": "outfit_missing_chat", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-0000000000ff" },
+    {
+      "name": "tr_zod_empty",
+      "kind": "transferApply",
+      "body": {}
+    },
+    {
+      "name": "outfit_preset",
+      "kind": "outfitGet",
+      "chatId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "outfit_empty",
+      "kind": "outfitGet",
+      "chatId": "c1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "outfit_missing_chat",
+      "kind": "outfitGet",
+      "chatId": "c1000000-0000-4000-8000-0000000000ff"
+    },
     {
       "name": "eq_wear",
       "kind": "equip",
@@ -308,9 +450,15 @@
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "mode": "set_all",
         "slots": {
-          "top": ["e1000000-0000-4000-8000-000000000002"],
-          "bottom": ["e1000000-0000-4000-8000-000000000002"],
-          "footwear": ["e1000000-0000-4000-8000-000000000003"],
+          "top": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "bottom": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "footwear": [
+            "e1000000-0000-4000-8000-000000000003"
+          ],
           "accessories": []
         }
       },
@@ -323,7 +471,11 @@
       "body": {
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "mode": "set_all",
-        "slots": { "top": ["e1000000-0000-4000-8000-000000000001"] }
+        "slots": {
+          "top": [
+            "e1000000-0000-4000-8000-000000000001"
+          ]
+        }
       },
       "thenOutfit": "c1000000-0000-4000-8000-000000000002"
     },
@@ -334,7 +486,11 @@
       "body": {
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "mode": "set_all",
-        "slots": { "top": ["eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"] }
+        "slots": {
+          "top": [
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+          ]
+        }
       }
     },
     {
@@ -362,25 +518,37 @@
       "name": "eq_zod_bad_mode",
       "kind": "equip",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "wearing" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wearing"
+      }
     },
     {
       "name": "eq_zod_missing_itemid",
       "kind": "equip",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "wear" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear"
+      }
     },
     {
       "name": "eq_zod_missing_slot",
       "kind": "equip",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "clear_slot" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "clear_slot"
+      }
     },
     {
       "name": "eq_zod_missing_slots",
       "kind": "equip",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "set_all" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all"
+      }
     },
     {
       "name": "eq_zod_bad_uuid",
@@ -389,10 +557,19 @@
       "body": {
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "mode": "set_all",
-        "slots": { "top": ["nope"] }
+        "slots": {
+          "top": [
+            "nope"
+          ]
+        }
       }
     },
-    { "name": "eq_zod_empty", "kind": "equip", "chatId": "c1000000-0000-4000-8000-000000000001", "body": {} },
+    {
+      "name": "eq_zod_empty",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {}
+    },
     {
       "name": "eq_project_tier",
       "kind": "equip",
@@ -426,7 +603,9 @@
       "name": "regen_default",
       "kind": "regenerateAvatar",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001"
+      }
     },
     {
       "name": "regen_slots_override",
@@ -434,41 +613,59 @@
       "chatId": "c1000000-0000-4000-8000-000000000001",
       "body": {
         "characterId": "a1000000-0000-4000-8000-000000000001",
-        "equippedSlots": { "top": ["e1000000-0000-4000-8000-000000000001"] }
+        "equippedSlots": {
+          "top": [
+            "e1000000-0000-4000-8000-000000000001"
+          ]
+        }
       }
     },
     {
       "name": "regen_chat_missing",
       "kind": "regenerateAvatar",
       "chatId": "c1000000-0000-4000-8000-0000000000ff",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001"
+      }
     },
     {
       "name": "regen_not_participant",
       "kind": "regenerateAvatar",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000002" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000002"
+      }
     },
     {
       "name": "regen_zod",
       "kind": "regenerateAvatar",
       "chatId": "c1000000-0000-4000-8000-000000000001",
-      "body": { "characterId": "" }
+      "body": {
+        "characterId": ""
+      }
     },
     {
       "name": "pv_zod_missing_slots",
       "kind": "previewAvatar",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001"
+      }
     },
     {
       "name": "pv_char_missing",
       "kind": "previewAvatar",
-      "body": { "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "equippedSlots": {} }
+      "body": {
+        "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "equippedSlots": {}
+      }
     },
     {
       "name": "pv_not_owned",
       "kind": "previewAvatar",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000003", "equippedSlots": {} }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000003",
+        "equippedSlots": {}
+      }
     },
     {
       "name": "pv_no_key",
@@ -491,7 +688,10 @@
     {
       "name": "pv_no_appearance",
       "kind": "previewAvatar",
-      "body": { "characterId": "a1000000-0000-4000-8000-000000000002", "equippedSlots": {} }
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000002",
+        "equippedSlots": {}
+      }
     },
     {
       "name": "pv_ok",
@@ -499,15 +699,51 @@
       "body": {
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "equippedSlots": {
-          "top": ["e1000000-0000-4000-8000-000000000001"],
+          "top": [
+            "e1000000-0000-4000-8000-000000000001"
+          ],
           "bottom": [],
-          "footwear": ["e1000000-0000-4000-8000-000000000003"],
+          "footwear": [
+            "e1000000-0000-4000-8000-000000000003"
+          ],
           "accessories": []
         },
         "imageProfileId": "f2000000-0000-4000-8000-000000000001"
       },
       "emitBytes": true,
-      "normalize": ["fileId", "url"]
+      "normalize": [
+        "fileId",
+        "url"
+      ]
+    },
+    {
+      "name": "cw_group_scope",
+      "kind": "characterWardrobeList",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "scope": "group"
+    },
+    {
+      "name": "cw_group_scope_non_member",
+      "kind": "characterWardrobeList",
+      "characterId": "a1000000-0000-4000-8000-000000000002",
+      "scope": "group"
+    },
+    {
+      "name": "cw_no_scope",
+      "kind": "characterWardrobeList",
+      "characterId": "a1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "cw_unknown_scope",
+      "kind": "characterWardrobeList",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "scope": "project"
+    },
+    {
+      "name": "cw_missing_character",
+      "kind": "characterWardrobeList",
+      "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "scope": "group"
     }
   ]
 }

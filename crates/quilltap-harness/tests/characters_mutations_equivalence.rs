@@ -1033,7 +1033,7 @@ fn characters_mutations_match_oracle() {
                 )
             })
             .expect("wardrobe write");
-        let titles = response_data(&characters::character_wardrobe_list(&db, &uid, FENN))
+        let titles = response_data(&characters::character_wardrobe_list(&db, &uid, FENN, None))
             .get("wardrobeItems")
             .and_then(Value::as_array)
             .map(|a| {

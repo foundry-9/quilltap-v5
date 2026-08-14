@@ -65619,3 +65619,70 @@ one case — `create_gift_group_component`, op 30 — which is the arm built for
 SCENE_STATE_TRACKING handler (it sits in `KNOWN_JOB_TYPES` on the runner's loud
 fallback), so there is nothing to thread; recorded here rather than silently
 skipped.
+
+### Units 3–4 — the `?scope=group` surface + transfers out of a group
+
+**Unit 3, the group-scope read (the §Shared contract with P4.D72).** The
+dispatch verb `characterWardrobeList` gains an optional `scope` field
+(`#[serde(default)]`, so the existing client keeps working untouched);
+`character_wardrobe_list` grows a `scope` parameter and, on `Some("group")`,
+resolves the character's group mounts and serves
+`find_archetypes_in_mounts(…, false)` instead of the vault read. It is a
+STANDALONE read — it does not fold in the vault, because the client assembles
+the tiers itself. Any other `scope` value falls through to the default read,
+matching v4's `scope === 'group'` check rather than "a scope was given".
+
+**The REST edge landed too**, and this is the P4.D65 cross-lane lesson applied
+before it could bite: v5's SPA reads this resource over `/api/dispatch`, so no
+lane had ever shipped `GET /api/v1/characters/{id}/wardrobe` on quilltap-web —
+yet v4 documents that path and `8600c83f` added the arm to it specifically. A
+client following `docs/developer/API.md` would have got a 404. The thin edge is
+in `characters_routes.rs`, and `characters_wardrobe_route.rs` drives the real
+URL against a real server over reqwest: vault read, group read, non-member,
+unknown scope, missing character.
+
+**Unit 4, transfers.** `SourceScope` gains `Group`, scanned BETWEEN project and
+General (v4's order); the group destination read routes through the shared
+reader; delete-from-source treats group like project (both live in a mount's
+`Wardrobe/` folder, so both delete by mount point); the group destination's
+folder ensure goes through the new `ensure_group_wardrobe_folder` façade. Without
+this an item moved into a group could not be moved back out — half of what made
+a group garment vanish.
+
+**Differentials.**
+
+- `wardrobe_routes_equivalence`: 66 → 71 corpus cases, 80 checks. New
+  `characterWardrobeList` case kind driving v4's REAL
+  `app/api/v1/characters/[id]/wardrobe/route.ts`, and a new `thenGroupWardrobe`
+  chaining field that re-reads the group tier after a mutating case. The
+  committed `wardrobe-routes-{main,mount}.db` family (used by this family alone)
+  gained `group_character_members`, a membership for Aria — but NOT for
+  Bramwell — and an "Aeronaut livery" item in the group store's `Wardrobe/`.
+  **The first cut of those cases was WORTHLESS and was fixed before landing:**
+  with an empty group store the member and non-member arms both answered `[]`
+  and agreed by accident. Seeding the livery is what makes membership
+  measurable. The chained read-back on `tr_copy_char_to_group` is the arm the
+  order asked for: it proves an item copied INTO a group store is now
+  reachable, which is the entire bug. Two harness fixes rode along — the
+  `Character` envelope had to join `success_body`, and `blank_paths` gained
+  array-index segments so a minted item can be blanked by position.
+- `wardrobe_transfers_tier2_equivalence`: 5 → 8 scenarios. The fixture gained a
+  membership + a group `Wardrobe/` item; the new scenarios move the group item
+  OUT to the character, copy it out to General, and copy a vault item IN.
+
+**Mutation-proven, four ways.** Ignoring `?scope=group` reds the three group
+arms; treating any scope as the group scope reds `cw_unknown_scope` (the
+`scope=project` case built for exactly that); removing the transfers group scan
+reds `move_group_to_character` with "rust errored (NotFound) but oracle
+succeeded" — the pre-fix behaviour, stated precisely; routing a group source's
+delete through the character-vault path reds it with "Failed to remove item from
+source after move".
+
+**Docs.** v4's `8600c83f` delta to `docs/developer/API.md` (the transfers
+source-order wording + the `?scope=group` query-parameter block) applied to the
+`docs/v4/` mirror verbatim. Note for whoever next touches that mirror: it is
+**broadly stale** — 253 diff lines against v4 at this pin, carrying other
+rounds' content (Taboo, embedding profiles, archived characters). Only this
+commit's delta was applied; a wholesale sync is its own job. The three help-doc
+deltas (`groups.md`, `project-wardrobe.md`, `wardrobe.md`) are runtime-synced
+content with no v5 action — noted to the `p4.9i2` bank, not ported here.

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Finished the group wardrobe tier's two remaining surfaces (P4.D71 units 3–4).
+`GET /api/v1/characters/{id}/wardrobe?scope=group` now serves the group tier —
+the shared items in the `Wardrobe/` folder of every store belonging to a group
+the character is a member of — as a standalone read for the client-side tier
+merge; the dispatch verb `characterWardrobeList` takes the same optional
+`scope`. The REST path itself is new to v5: the SPA reads this resource over
+the dispatch channel, so the documented URL had never been served and would
+have answered 404 to any client following the API reference. Wardrobe transfers
+can also take an item back OUT of a group now: the source lookup scans the
+source character's group stores between the project store and Quilltap General,
+and a group source deletes by mount point like a project source does. Without
+that, an item moved into a group was stuck there.
+
 Ported the group wardrobe tier and bundle dissolution into the Rust core
 (P4.D71 units 1–2; v4 `8600c83f` + `61574563`). Wardrobe items living in a
 group store's `Wardrobe/` folder are now visible and resolvable everywhere

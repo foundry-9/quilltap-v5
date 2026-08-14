@@ -362,6 +362,45 @@ pub async fn characters_action_post(
 }
 
 // ===========================================================================
+// GET /api/v1/characters/{id}/wardrobe  (the group-tier read)
+// ===========================================================================
+
+/// v4 `GET /api/v1/characters/[id]/wardrobe` (`8600c83f`). `?scope=group`
+/// serves the shared items in the `Wardrobe/` folder of every store belonging
+/// to a group this character is a member of — the group tier of the wearable
+/// pool, as a standalone read for the client-side merge; no scope serves the
+/// character's own vault items, as v4 does.
+///
+/// The same read is on `/api/dispatch` as `characterWardrobeList` (which is how
+/// the SPA reaches it). This edge exists so the documented REST contract is
+/// actually served: a client following `docs/developer/API.md` must get v4's
+/// envelope from v4's path, not a 404.
+pub async fn characters_wardrobe_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let req = quilltap_core::api::Request::CharacterWardrobeList {
+        character_id: id,
+        scope: query.get("scope").cloned(),
+    };
+    match crate::text_replacements_routes::dispatch_core(&state, req).await {
+        Ok(Response::Character(v)) => (
+            StatusCode::OK,
+            [(CONTENT_TYPE, "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
+}
+
+// ===========================================================================
 // GET /api/v1/characters/{id}?action=export  (the PNG binary leg + JSON leg)
 // ===========================================================================
 
