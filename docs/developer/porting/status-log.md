@@ -67496,3 +67496,51 @@ rather than transcribing a guess.
 v4's own position. Verified after `ng build`: both datasets ship as static
 assets under `dist/quilltap/browser/{emoji,unicode}/` and appear in NO JS
 bundle.
+
+## Lane record — P4.D75 unit 3: the wiring — two hosts, two toggles, one shared GET
+
+**Where the typeaheads mount.** v4 mounts `CharTypeaheadPlugin` in exactly two
+places: `LexicalComposerWrapper` (the Salon composer) and `DocumentPane`. v5
+mounts them inside `rich-editor.ts`'s `buildPlugins()` — the editor is shared
+with every form field, so the plugins are gated by two new inputs
+(`composerEmoji` / `composerUnicode`) that **default OFF**. The default is about
+MOUNTING, not about the setting: a character-name field must not grow a
+typeahead. The two hosts pass the setting; everything else passes nothing, and
+the wiring spec pins that inventory (composer on, pane on, bare editor off).
+
+**Plugin order** is the §Editor meeting point's pinned one:
+`dialectInputRules` → char-typeahead(emoji) → char-typeahead(unicode) →
+[smart-typography, P4.D74's slot] → `textReplacementPlugin` → `history` → the
+keymaps. Earlier in the array is v5's equivalent of v4's
+`COMMAND_PRIORITY_NORMAL` over Layer 1.5's `LOW`, and the two plugin suites
+assert the interaction in both directions (a `:`/space that does not commit
+still reaches the replacement).
+
+**Where the toggles come from.** `injectCharInsertSettings()` reads the shared
+`chatSettingsKeys.all` query, exactly as v4's plugin runs its own
+`useQuery(queryKeys.settings.chat)`. Read at the two hosts rather than threaded
+in as inputs, for a concrete reason: the Document-Mode pane's hosts
+(`salon-conversation`, `standalone-document-view`) pass it no settings at all
+and belong to no lane this round, and v4's own answer to the same problem is
+that the feature reads its own flag. Sharing the query key means the two mounts
+and the sixteen settings cards still dedupe into ONE GET. `?? true` on both keys
+is v4's default. The helper degrades to "both on" when no `QueryClient` is
+provided — not a runtime path (the app root always provides one), but it keeps
+host components testable without standing up a query stack, and "both on" is
+what an unset settings row means anyway.
+
+**The picker's insert path** landed as `RichEditor.insertChar(profile, char)`
+over the shared `insertCharAtSelection`, so all four surfaces still commit
+through one chokepoint with one history contract and one recents ledger. Never
+gated by a toggle — an explicit button press cannot surprise anyone.
+
+**Spec:** `char-insert-wiring.spec.ts` — 7 cases (both-on default, per-key
+false, the pane mount, the bare-editor default OFF, the picker insert with no
+trailing space + recents, the two profiles' lists kept apart, and the picker
+working with the toggles off). Two first-run reds were the SPEC's fault, not
+the port's, and both are recorded because they are easy to re-make: a fresh
+ProseMirror view's caret sits at position 0 (so the insert landed before the
+seeded text until the spec put the caret where a writer's is), and a seeded
+`'hi '` loses its trailing space to the markdown round-trip.
+
+**Gate at this unit:** full `ng test` 306 files / 4,390 tests, zero failures.

@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 
+import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
 import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
@@ -162,6 +163,8 @@ export interface PendingToolResultChip extends RngPendingResult {
           [textReplacementRules]="effectiveTextReplacementRules()"
           [smartTypography]="smartTypography()"
           [spellcheck]="composerSpellcheck()"
+          [composerEmoji]="charInsert.emoji()"
+          [composerUnicode]="charInsert.unicode()"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
@@ -364,6 +367,13 @@ export class ChatComposer implements OnInit {
    */
   protected readonly smartTypography = inject(SmartTypographySettings).typing;
   private readonly toasts = inject(ToastService);
+  /**
+   * The `:` / `\` typeahead toggles. Read HERE rather than taken as inputs,
+   * because v4's plugin reads `chat_settings` itself and the feature's other
+   * host (the Document-Mode pane) has no settings-passing parent at all. The
+   * shared query key means this costs no extra GET.
+   */
+  protected readonly charInsert = injectCharInsertSettings();
 
   /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */
   readonly busy = input(false);

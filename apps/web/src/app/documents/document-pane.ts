@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 
+import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
 import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import { Icon } from '../ui/icon';
@@ -169,6 +170,8 @@ import { ToastService } from '../ui/toast.service';
             [ariaLabel]="'Document editor'"
             [smartTypography]="smartTypography()"
             [disabled]="entry().isLLMEditing"
+            [composerEmoji]="charInsert.emoji()"
+            [composerUnicode]="charInsert.unicode()"
             (contentChange)="onEditorInput($event)"
             style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
           />
@@ -211,6 +214,12 @@ export class DocumentPane {
    * not the ProseMirror component at all.
    */
   protected readonly smartTypography = inject(SmartTypographySettings).typing;
+  /**
+   * The `:` / `\` typeahead toggles (v4 mounts `CharTypeaheadPlugin` in the
+   * Document pane as well as the composer). Read here for the same reason v4's
+   * plugin reads them itself — this pane's hosts pass no settings.
+   */
+  protected readonly charInsert = injectCharInsertSettings();
   readonly entry = input.required<OpenDocEntry>();
   readonly mode = input.required<DocumentMode>();
 

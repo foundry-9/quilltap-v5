@@ -302,6 +302,12 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Mounted the composer emoji/Unicode typeaheads in the two hosts v4 mounts them
+in — the Salon composer and the Document-Mode editor — gated by the
+`composerEmoji` / `composerUnicode` chat settings (default on, read from the
+shared settings query). Form-field editors do not get them. The pickers' insert
+path landed on the editor handle.
+
 Ported the composer's `:` emoji and `\` Unicode typeahead into the SPA's
 ProseMirror editor (v4's `CharTypeaheadPlugin`): the menu-free commit
 keystrokes (`:smile:`, `\to `), the caret-anchored menu with its flip/align

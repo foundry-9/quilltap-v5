@@ -20,6 +20,11 @@ import { EditorState, Plugin, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 
 import type { SmartTypographyOptions } from '../smart-typography/engine';
+import { charTypeaheadPlugin } from './char-insert/char-typeahead-plugin';
+import { insertCharAtSelection } from './char-insert/insert-char';
+import { EMOJI_PROFILE } from './char-insert/profiles/emoji';
+import { UNICODE_PROFILE } from './char-insert/profiles/unicode';
+import type { CharProfile } from './char-insert/types';
 import { dialectFormattingKeymap, dialectInputRules, dialectListNavigationKeymap } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 import { smartTypographyPlugin } from './smart-typography-plugin';
@@ -86,6 +91,19 @@ export class RichEditor {
    * gated independently: `{dashes: false, ellipsis: true}` is a legal state.
    */
   readonly smartTypography = input<SmartTypographyOptions | null>(null);
+  /**
+   * The `:` emoji typeahead (v4 `CharTypeaheadPlugin` + `chat_settings.
+   * composerEmoji`). Read live on every keystroke, so a settings change takes
+   * effect without rebuilding the editor.
+   *
+   * Defaults OFF because this input decides whether the feature is MOUNTED at
+   * all, not what the setting says: v4 mounts the plugin in exactly two hosts
+   * (the composer and the Document-Mode pane), and a form field must not grow a
+   * typeahead. Those two hosts pass the setting; everything else passes nothing.
+   */
+  readonly composerEmoji = input(false);
+  /** The `\` Unicode typeahead — same contract (v4 `chat_settings.composerUnicode`). */
+  readonly composerUnicode = input(false);
 
   /** Fired with the serialized markdown whenever the document changes. */
   readonly contentChange = output<string>();
@@ -157,6 +175,19 @@ export class RichEditor {
     const current = serializeMarkdown(this.view.state.doc, this);
     const combined = current ? `${text}\n\n${current}` : text;
     this.replaceContent(combined, true);
+  }
+
+  /**
+   * Insert a literal character at the caret — the char-insert PICKERS' commit
+   * path (v4 `insertCharAtSelection`). The typeaheads use their own
+   * trigger-replacing path; both share one history contract and one recents
+   * ledger. Unlike the typeaheads, this is never gated by a setting: an
+   * explicit button press cannot surprise anyone.
+   */
+  insertChar(profile: CharProfile, char: string): void {
+    if (!this.view) return;
+    insertCharAtSelection(this.view, profile, char);
+    this.view.focus();
   }
 
   /**
@@ -258,6 +289,16 @@ export class RichEditor {
 
     return [
       dialectInputRules(dialectSchema),
+      // The two character typeaheads, ABOVE smart typography and text
+      // replacement — v5's equivalent of v4 registering them at
+      // COMMAND_PRIORITY_NORMAL over Layer 1.5's LOW (the round's pinned
+      // §Editor meeting-point order). `:` and ` ` are also replacement
+      // triggers, and a typeahead swallows the keystroke only when it commits
+      // a character. Inert unless its host turns it on (see `composerEmoji` /
+      // `composerUnicode`), and each consumes keys only on its own trigger or
+      // while its menu is open.
+      charTypeaheadPlugin({ profile: EMOJI_PROFILE, enabled: () => this.composerEmoji() }),
+      charTypeaheadPlugin({ profile: UNICODE_PROFILE, enabled: () => this.composerUnicode() }),
       // Smart typography sits ABOVE text replacement so `.` resolves as
       // typography before it resolves as a word boundary (v4 gets the same
       // ordering from COMMAND_PRIORITY_NORMAL over LOW), and above the keymaps
