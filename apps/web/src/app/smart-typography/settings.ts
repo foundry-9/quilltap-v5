@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, Injector, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, Injector, inject, signal, untracked } from '@angular/core';
 import { QueryClient } from '@tanstack/query-core';
 
 import { CoreClient } from '../core/core-client';
@@ -41,29 +41,46 @@ export class SmartTypographySettings {
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
 
+  /** Whatever is already cached, or v4's defaults. See the note on writes below. */
+  private readonly seed = this.queryClient?.getQueryData<ChatSettingsDto>(chatSettingsKeys.all);
+
   /** Part A: render messages with curled quotes. v4's default: `false`. */
-  readonly displayQuotes = signal(false);
+  readonly displayQuotes = signal(readDisplayQuotes(this.seed));
 
   /** Part B: the type-time rules. v4's default for each: `true`. */
-  readonly typing = signal<SmartTypographyOptions>({ dashes: true, ellipsis: true });
+  readonly typing = signal<SmartTypographyOptions>(readTypingOptions(this.seed));
 
   constructor() {
     const client = this.queryClient;
     if (!client) return;
 
+    /**
+     * ⚠ Every write here is `untracked`, and the INITIAL values are seeded in
+     * the field initializers above rather than written in this constructor.
+     *
+     * A root service is constructed lazily, at its first `inject()` — which
+     * for this one happens inside `qt-message-content`'s constructor, i.e.
+     * WHILE the parent template is executing. A template is a reactive
+     * consumer, so a signal write in that window is `NG0600` ("writing to
+     * signals is not allowed in a computed or an effect"), the whole render
+     * unwinds, and the surrounding screen comes up EMPTY. The cache callback
+     * has the same exposure: `setQueryData` may be called from anywhere,
+     * including inside a reactive context.
+     */
     const read = (): void => {
       const row = client.getQueryData<ChatSettingsDto>(chatSettingsKeys.all);
-      this.displayQuotes.set(readDisplayQuotes(row));
-      const next = readTypingOptions(row);
-      const current = this.typing();
-      // Keep the reference stable while the values are unchanged: the plugin
-      // reads this through a closure on every keystroke.
-      if (next.dashes !== current.dashes || next.ellipsis !== current.ellipsis) {
-        this.typing.set(next);
-      }
+      untracked(() => {
+        this.displayQuotes.set(readDisplayQuotes(row));
+        const next = readTypingOptions(row);
+        const current = this.typing();
+        // Keep the reference stable while the values are unchanged: the plugin
+        // reads this through a closure on every keystroke.
+        if (next.dashes !== current.dashes || next.ellipsis !== current.ellipsis) {
+          this.typing.set(next);
+        }
+      });
     };
 
-    read();
     const unsubscribe = client.getQueryCache().subscribe((event) => {
       if (event.query.queryKey[0] === chatSettingsKeys.all[0]) read();
     });

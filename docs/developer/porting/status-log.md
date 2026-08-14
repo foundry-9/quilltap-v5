@@ -67211,3 +67211,55 @@ it:
    SEPARATE help file rather than a frontmatter edit (the frontmatter's
    `url:` and `help_navigate` must agree). v5 ships no help surface yet,
    so there is nothing to edit — banked with the rest of `p4.9i2`.
+
+### Unit record — P4.D74 unit 8 (the NG0600 regression the live walk caught)
+
+**The full Playwright suite went 204/2, and both failures were this lane's.**
+`m4-salon` and `salon-composer-modes` each failed the same way: after
+`page.goBack()` out of a chat, the Salon list rendered its heading and its
+buttons and **not one chat card**. Both reproduced in isolation (spec
+FILE, per trap 3), so this was not port contention — it was a real
+regression.
+
+A probe spec that captured the browser console named it in one line:
+`ERROR b: NG0600` — *writing to signals is not allowed in a `computed` or
+an `effect`* — thrown from a `.set`.
+
+**The mechanism.** `SmartTypographySettings` is a root singleton, so it is
+constructed lazily at its FIRST `inject()` — which happens inside
+`qt-message-content`'s (and `qt-chat-composer`'s) field initializers,
+i.e. while the parent template is executing. An Angular template is a
+reactive consumer, so the constructor's initial `read()` — three signal
+writes — landed inside that window, threw, unwound the render, and left
+the surrounding screen empty. Visiting a chat was enough to poison the
+back-navigation.
+
+**The fix, both halves:** the initial values are now SEEDED in the field
+initializers (`signal(readDisplayQuotes(this.seed))`) rather than written
+in the constructor, and every later write — the cache subscription's —
+runs inside `untracked()`, because `setQueryData` may itself be called
+from a reactive context. The reasoning is recorded at the writes.
+
+**Verification:** the two failing beats now pass (m4's 30.6 s timeout
+became a 1.4 s pass), the probe reports 5 cards where it reported 0, and
+NG0600 is gone from the console. `ng test` 4,283 / 0.
+
+**Honest limits, recorded rather than papered over:**
+
+1. The new host-mounted spec (`qt-message-content` created from a PARENT
+   template instead of as a TestBed root) does **not** reproduce the bug:
+   re-introducing the constructor write leaves it GREEN. TestBed's
+   creation pass evidently does not enter the browser's reactive-consumer
+   window. The guard for this class is the Playwright walk; the spec's
+   docblock says so instead of claiming otherwise.
+2. The probe also surfaced four `500 GET /api/v1/files/<id>` responses on
+   every chat open. They are **pre-existing fixture noise** — seeded
+   avatar/background file ROWS whose bytes are not in the fixture — and
+   nothing to do with this lane. Noted because a reader of the console
+   deserves to know which noise is expected.
+
+**The lesson worth carrying:** a root service that writes signals in its
+constructor is a trap in zoneless Angular, because *where it is first
+injected* decides whether the write is legal — and unit specs, which
+inject it directly or create the component as a root, cannot see the
+difference.

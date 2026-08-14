@@ -230,6 +230,15 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Fixed a render-breaking regression in the smart-typography settings
+service (P4.D74 unit 8): it wrote its signals while being constructed,
+which in a zoneless app happens inside the parent template's reactive
+context — Angular threw NG0600, the render unwound, and the Salon chat
+list came up empty after navigating back out of a chat. The initial
+values are seeded at field level now and every later write is untracked.
+Caught by the full Playwright suite, which is the only place it was
+visible.
+
 Walked smart typography live (P4.D74 unit 7): four Playwright beats —
 the dash ladder and the ellipsis typed into the real composer, the
 one-Backspace revert and its one-keystroke window, the code-fence bail,

@@ -1,3 +1,4 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
@@ -243,5 +244,54 @@ describe('SmartTypographySettings — the typing half', () => {
       settingsRow({ smartTypographySettings: { dashes: false } }),
     );
     expect(service.typing()).toEqual({ dashes: false, ellipsis: true });
+  });
+});
+
+/**
+ * Mounted through a PARENT template rather than as a TestBed root — the shape
+ * every real surface uses, and the one under which the service is first
+ * `inject()`ed mid-render.
+ *
+ * ⚠ Read the honest limit of this case: it did NOT catch the NG0600 regression
+ * that shipped in unit 5 and was found by the live walk (a signal written while
+ * the service was constructed, unwinding the render and leaving the chat list
+ * empty). Re-introducing that write leaves this case GREEN — TestBed's creation
+ * pass evidently does not reproduce the browser's reactive-consumer window. The
+ * guard for that bug is the Playwright walk, not this spec; what this one adds
+ * is that the renderer still paints when its settings dependency is constructed
+ * from inside a host template at all.
+ */
+@Component({
+  selector: 'qt-host-for-message-content',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MessageContent],
+  template: `<qt-message-content [content]="text" />`,
+})
+class MessageContentHost {
+  readonly text = '"Hello there," she said warmly.';
+}
+
+describe('qt-message-content — constructed from a parent template', () => {
+  it('renders when the settings service is first injected mid-render', async () => {
+    clearRenderCache();
+    TestBed.resetTestingModule();
+    const client = new QueryClient();
+    client.setQueryData(
+      chatSettingsKeys.all,
+      settingsRow({ smartTypographySettings: { displayQuotes: true } }),
+    );
+    TestBed.configureTestingModule({
+      imports: [MessageContentHost],
+      providers: [
+        provideTanStackQuery(client),
+        { provide: CoreClient, useValue: coreStub(settingsRow()) },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageContentHost);
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).innerHTML).toContain('\u201cHello there,\u201d');
   });
 });
