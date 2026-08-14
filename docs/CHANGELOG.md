@@ -80,6 +80,9 @@ report v4 returns, listing every offending key at once. Dangerous Content also
 now checks that the two uncensored-profile ids are real UUIDs, and the cheap-LLM
 bag is checked at the point v4 checks it, so a request with more than one bad
 field reports the same one v4 reports.
+Documented a known gap: the Document Mode pane still has no formatting toolbar,
+where v4 gives it the same one the composer has.
+
 Fixed the Salon composer's layout (dogfood finding #75). The message-level tools
 are back in the compact two-column block beside the message box rather than
 strung out in one long row, so the box keeps the width it needs and the

@@ -44,6 +44,26 @@ import { ToastService } from '../ui/toast.service';
  *
  * A stretch host class keeps the pane bounded inside the split's flex height
  * cascade (the standing P4.6u #4 lesson).
+ *
+ * GAP (named, P4.9L 2026-08-14) — **this pane has no formatting toolbar.** v4's
+ * `DocumentPane` mounts the very same `FormattingToolbar` the composer does,
+ * inside a `.qt-doc-toolbar` row above the editor (`DocumentPane.tsx:44,
+ * :343-355`): the markdown buttons, the indent controls, the code-block toggle,
+ * both character pickers, the source toggle, and — since it is passed a
+ * `roleplayTemplateId` — the template's delimiter buttons. It passes NO
+ * `narrationDelimiters`, so unlike the composer it shows no synthesized "Nar"
+ * button.
+ *
+ * P4.9L surveyed this mount and did NOT port it: the components all exist now
+ * (`qt-formatting-toolbar`, `formatCommand`, `applyDelimiterCommand`,
+ * `applySourceDelimiter`), so what remains is this pane's own wiring — the
+ * source branch has to act on THIS textarea, the toolbar's source toggle has to
+ * share the header button's `showSource` signal rather than open a second one,
+ * and `roleplayTemplateId` has to reach the pane from the Salon, which today
+ * hands it nothing of the sort. That is a slice with its own live beats
+ * (`salon-documents-flow`, `workspace-document-standalone-flow`), not a rider
+ * on the composer lane. Recorded in the P4.9L lane record and in
+ * `m6-screen-parity.md`.
  */
 @Component({
   selector: 'qt-document-pane',

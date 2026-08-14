@@ -69245,3 +69245,38 @@ clicks Unlock without awaiting completion, so a 5 s default-timeout assertion
 right after it can lose. Green in the full suite.
 
 SPA 0.5.485 (with unit 4).
+
+
+## P4.9L — the Tier-2 verdicts
+
+**Item 6, the composer's source toggle: v4 MOUNTS IT — ported** (unit 3). v4's
+`ChatComposer` passes `onToggleSource` into the toolbar and renders the raw
+`<textarea>` as a sibling of its (hidden, not unmounted) Lexical editor. No
+NO-PORT here.
+
+**Item 7, the DocumentPane mount: NOT covered — a named GAP, recorded rather
+than ported.** v5's `qt-document-pane` builds a bare `qt-rich-editor`, so it is
+NOT reached by the shared `qt-markdown-field` toolbar and has no toolbar of any
+kind. v4's `DocumentPane` mounts the SAME `FormattingToolbar` the composer does,
+inside `.qt-doc-toolbar` (`DocumentPane.tsx:44, :343-355`) — passed a
+`roleplayTemplateId` but NO `narrationDelimiters`, so unlike the composer it
+shows the template's own delimiters and no synthesized "Nar" button.
+
+Left for its own slice, deliberately. Every component it needs now exists
+(`qt-formatting-toolbar`, `formatCommand`, `applyDelimiterCommand`,
+`applySourceDelimiter`); what does not is the pane's own wiring — the source
+branch has to act on THAT pane's textarea, the toolbar's source toggle has to
+share the header button's existing `showSource` signal rather than open a
+second one, and `roleplayTemplateId` has to reach the pane at all, which the
+Salon does not pass it today. With its own live beats
+(`salon-documents-flow`, `workspace-document-standalone-flow`) that is a slice,
+not a rider on this lane, and half-wiring it would be worse than naming it.
+
+Recorded in three places so it cannot be lost: a `GAP (named, P4.9L)` paragraph
+in `document-pane.ts`'s class doc, a new row **14b `p4.9l2-document-pane-
+toolbar`** in `m6-screen-parity.md` §4, and this record.
+
+**Tier-3 (dead controls):** none. Every button the toolbar renders in the
+composer does something in both views. The one control v4 has that v5's toolbar
+does not is its template FETCH, which is a mechanism divergence (the Salon
+fetches instead), not a hidden control.
