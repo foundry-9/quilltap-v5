@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
+only, no code): the round bullets from 2026-07-10 through the `5cc76688`
+round (2026-07-30) and the whole superseded oracle-baseline history chain
+moved verbatim (diff-verified) to
+`docs/developer/porting/claude-md-status-history.md`, replaced in
+CLAUDE.md by a compressed digest bullet and a pointer. Rounds from P4.D29
+(2026-07-30) onward and the current `03154b72` baseline paragraph stay in
+place. Second application of the 2026-07-10 precedent (the unit journal's
+move to `status-log.md`); going forward, displaced baseline paragraphs
+and aged-out round bullets migrate to the archive instead of chaining.
+
 Planned the 4.8.2/4.8.3 drift catch-up round and wrote seven work orders
 (docs only, no code): v4 main moved `03154b72` → `48396682` with releases
 4.8.2 + 4.8.3 — the group/shared wardrobe tiers + bundle dissolution +
