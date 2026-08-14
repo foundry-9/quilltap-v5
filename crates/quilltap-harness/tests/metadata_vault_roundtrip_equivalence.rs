@@ -12,17 +12,25 @@
 //! unmanaged-only patch leaves the file untouched; and a replace overwrites an
 //! unparseable file WITHOUT reading it first (the `presetMetadataFile` op).
 //!
-//! Reuses the charupd fixtures (build-characters-update-fixture.ts). Build the
-//! oracle (Node 24, from the v4 checkout / pinned worktree):
+//! Uses the charupd fixture SHAPE, but stages its OWN copy (P4.47 (C)): the
+//! recipe used to point at `characters_update_tier2_equivalence`'s /tmp build
+//! and was dead the first time /tmp was cleaned. Its own paths also keep the
+//! two families off each other's /tmp (sweep policy 2).
+//!
+//! Build the fixture + oracle (Node 24, from the v4 checkout / pinned worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db \
-//!   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-metadata-roundtrip-main.db \
+//!   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-metadata-roundtrip-mount.db \
+//!     $N/npx tsx <V5>/harness/oracle/fixtures/build-characters-update-fixture.ts
+//!   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-metadata-roundtrip-main.db \
+//!   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-metadata-roundtrip-mount.db \
 //!     $N/node --import tsx <V5>/harness/oracle/cases/metadata-vault-roundtrip.ts \
 //!     > /tmp/oracle-metadata-roundtrip.ndjson
 //! Run:
 //!   QT_ORACLE_METADATA_ROUNDTRIP=/tmp/oracle-metadata-roundtrip.ndjson \
-//!   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db \
-//!   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
+//!   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-metadata-roundtrip-main.db \
+//!   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-metadata-roundtrip-mount.db \
 //!     cargo test -p quilltap-harness --test metadata_vault_roundtrip_equivalence
 
 use std::path::{Path, PathBuf};

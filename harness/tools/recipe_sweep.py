@@ -542,6 +542,87 @@ def scan_writes(r: Recipe, joined: str) -> None:
             r.problems.append("repo_write (policy 1)")
 
 
+# P4.47 (C): an env value's DIRECTION is a property of the command it prefixes,
+# not of the variable name — see `scan_venue`'s docstring for why that is the
+# only honest reading. `OUTPUT_ENV` is the one name-level exception, and it is
+# name-level because it is direction-carrying by convention on BOTH sides: a
+# jest oracle WRITES its `QT_ORACLE_*` NDJSON, and the run stage's cargo test
+# reads it (P4.45 measured `provisioning` writing through `QT_ORACLE_PROVISION=`,
+# which no `*_OUT` pattern catches).
+OUTPUT_ENV = re.compile(r"^QT_ORACLE|OUT(?:PUT)?[A-Z0-9_]*$")
+
+
+# A fixture BUILDER: the repo keeps them under `harness/oracle/fixtures/` and
+# names them `build-*`. An oracle CASE lives under `harness/oracle/cases/` — the
+# same convention the driver already leans on for anchored restoration. This is
+# the discriminator the direction question turns on, and it is structural rather
+# than guessed: measured against all three shapes, a case script handed
+# `QT_FIXTURE_X` READS it (`metadata-vault-roundtrip.ts` etc. all `existsSync`
+# it and refuse when it is absent, pointing the reader at the builder by name).
+BUILDER_SCRIPT = re.compile(r"(?:^|/)build-[^/]*\.[tj]sx?$|/harness/oracle/fixtures/")
+CASE_SCRIPT = re.compile(r"/harness/oracle/cases/")
+
+
+def command_kind(line: str) -> str:
+    """What a recipe line RUNS: `jest` / `cargo` / `builder` / `case` /
+    `script` / `assign` / unknown.
+
+    Order matters — a jest invocation is reached through `npx`, which would
+    otherwise read as a script, and `cargo test` lines carry `--test` flags that
+    look like nothing else. A script the driver cannot place in the repo's
+    builder/case layout stays a bare `script`, which is direction-UNKNOWN.
+    """
+    if re.search(r"\bjest\b", line):
+        return "jest"
+    if CARGO_TEST.search(line):
+        return "cargo"
+    m = re.search(r"\b(?:tsx|node|bash|sh|python3?)\s+(\S+)", line)
+    if m:
+        # `node --import tsx <script>` — skip the flags to reach the script.
+        tokens = re.findall(r"\b(?:tsx|node|bash|sh|python3?)\s+(.+)$", line)
+        script = ""
+        if tokens:
+            for tok in tokens[0].split():
+                if tok.startswith("-") or tok in ("tsx", "node"):
+                    continue
+                script = tok
+                break
+        if BUILDER_SCRIPT.search(script):
+            return "builder"
+        if CASE_SCRIPT.search(script):
+            return "case"
+        return "script"
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=\S*\s*;?\s*$", line.strip()):
+        return "assign"
+    return "unknown"
+
+
+def env_path_direction(var: str, kind: str) -> str:
+    """`read` / `write` / `unknown` for a /tmp path carried by env var `var` on a
+    line whose command is `kind`.
+
+    - An output-named variable is a write wherever it appears — that IS the
+      oracle-writing convention (and it is why a jest line's own NDJSON is not
+      mistaken for an input).
+    - A BUILDER line produces what it is handed:
+      `QT_FIXTURE_X=/tmp/x.db node build-x-fixture.ts` writes the file. This is
+      P4.45's "builder-aware" step, made structural.
+    - A JEST or CASE line consumes its fixtures.
+    - `script` (an interpreter invocation the driver cannot place),
+      `assign`, `cargo` and unknown commands yield `unknown`: a bare assignment
+      is not a creation, the run stage is scanned separately, and guessing at an
+      unrecognized command is exactly the half-wrong warning P4.45 refused. An
+      `unknown` can hide a real external input; it can never invent one.
+    """
+    if OUTPUT_ENV.search(var):
+        return "write"
+    if kind == "builder":
+        return "write"
+    if kind in ("jest", "case"):
+        return "read"
+    return "unknown"
+
+
 def scan_venue(r: Recipe, joined: str) -> None:
     """F2 + the tier-2 external-/tmp class, both venue/ordering hazards.
 
@@ -549,10 +630,28 @@ def scan_venue(r: Recipe, joined: str) -> None:
     the main checkout, ZERO tests found from a `.claude/worktrees/…` one (see
     THE VENUE RULE). The repair is the staged-mirror convention.
 
-    `external_tmp_input`: a /tmp path the recipe READS but no line of it
-    WRITES — i.e. it leans on another recipe's staging (or on a pin worktree
+    `external_tmp_input`: a /tmp path the recipe READS but no EARLIER line of
+    it WRITES — i.e. it leans on another recipe's staging (or on a pin worktree
     from a round that is over). Warning, not a problem: the paths a recipe
     produces are only mechanically knowable up to the driver's write scan.
+
+    P4.47 (C) extends the read side to `QT_*` ENV VALUES, which is how every
+    fixture actually reaches an oracle and therefore the only place the
+    `ui_search` defect (a /tmp fixture no stage builds, dead the first time
+    /tmp was cleaned) could have been caught mechanically. P4.45 measured that
+    extension and BANKED it, because direction is genuinely ambiguous from a
+    variable name:
+
+        QT_FIXTURE_X=/tmp/x.db $N/node build-x-fixture.ts   # WRITES it
+        QT_FIXTURE_X=/tmp/x.db $N/npx jest -- x             # READS it
+
+    and "a warning class that is half wrong trains the next author to ignore
+    it". So direction is resolved from the COMMAND the env prefixes, not the
+    variable — see `env_path_direction` — and any line whose command the driver
+    does not recognize yields `unknown`, which counts as NEITHER a read nor a
+    write. An unrecognized command can therefore hide a real external input; it
+    can never manufacture a false one. That is the honest trade, and it is
+    named here rather than papered over.
     """
     text = PLACEHOLDER_WORKTREE.sub("$V5W", joined)
 
@@ -586,35 +685,77 @@ def scan_venue(r: Recipe, joined: str) -> None:
                 if warning not in r.warnings:
                     r.warnings.append(warning)
 
-    produced = set(r.tmp_writes)
-    for m in re.finditer(r"\bmkdir\s+(?:-[a-zA-Z]+\s+)*(.+)$", text, re.M):
-        for tok in m.group(1).split():
-            produced.add(expand_tmp(tok, assigns))
-    produced = {p for p in produced if p.startswith(("/tmp", "/private/tmp"))}
+    # ── reads and writes, both carrying the line index they happened on ──
+    #
+    # ORDER MATTERS (the P4.47 rule): a path is self-staged only if a write of
+    # it happens at or before the read. A recipe that consumes a fixture and
+    # THEN builds it is as broken as one that never builds it — and the flat
+    # set the class used to keep could not tell the two apart.
+    logical = re.sub(r"\\\n", " ", text).splitlines()
 
-    # Only genuine READ inputs count — a jest root, a `cp` source, a script path
-    # handed to tsx/node. Every other /tmp literal is an output the recipe is
-    # declaring, and scanning those made the class 73-families noisy.
-    consumed: set[str] = set()
-    for line in re.sub(r"\\\n", " ", text).splitlines():
-        for m in JEST_ROOTS_ARG.finditer(line):
-            consumed.add(expand_tmp(m.group(1), assigns))
-        m = re.match(r"^(?:cp|mv)\s+(?:-[a-zA-Z]+\s+)*(.+)$", line.strip())
+    writes: list[tuple[int, str]] = []
+    reads: list[tuple[int, str]] = []
+    # `scan_writes` already found the redirect / `cp` dest / `QT_*OUT*` writes,
+    # but not WHERE. Re-attribute them to their line; anything it found that no
+    # line here claims keeps index -1 (i.e. "before everything").
+    claimed: set[str] = set()
+
+    for i, line in enumerate(logical):
+        stripped = line.strip()
+        # Explicit creations.
+        for m in re.finditer(r"\bmkdir\s+(?:-[a-zA-Z]+\s+)*(.+)$", stripped):
+            for tok in m.group(1).split():
+                if tok.startswith("-"):
+                    continue
+                writes.append((i, expand_tmp(tok, assigns)))
+        for m in re.finditer(r"(?:^|\s)>>?\s*(\S+)", stripped):
+            writes.append((i, expand_tmp(m.group(1), assigns)))
+        m = re.match(r"^(?:cp|mv)\s+(?:-[a-zA-Z]+\s+)*(.+)$", stripped)
         if m:
-            args = m.group(1).split()
-            consumed.update(expand_tmp(a, assigns) for a in args[:-1])
-        for m2 in re.finditer(r"\b(?:tsx|node|bash|sh|python3?)\s+(\S+)", line):
-            consumed.add(expand_tmp(m2.group(1), assigns))
-    consumed = {c for c in consumed if c.startswith(("/tmp", "/private/tmp"))}
-    made = {p.replace("/private/tmp/", "/tmp/", 1) for p in produced}
-    for tok in sorted(consumed):
-        norm = tok.replace("/private/tmp/", "/tmp/", 1)
-        # Either direction counts: the recipe writes AT the path, or it writes
-        # BELOW it (a `mkdir -p "$TMPO/cases"` creates `$TMPO` on the way).
-        if any(
-            norm == p or norm.startswith(p + "/") or p.startswith(norm + "/")
-            for p in made
-        ):
+            args = [a for a in m.group(1).split() if not a.startswith("-")]
+            if len(args) >= 2:
+                writes.append((i, expand_tmp(args[-1], assigns)))
+                reads.extend((i, expand_tmp(a, assigns)) for a in args[:-1])
+        # A script path handed to an interpreter is read, wherever it lives.
+        for m2 in re.finditer(r"\b(?:tsx|node|bash|sh|python3?)\s+(\S+)", stripped):
+            reads.append((i, expand_tmp(m2.group(1), assigns)))
+        for m3 in JEST_ROOTS_ARG.finditer(stripped):
+            reads.append((i, expand_tmp(m3.group(1), assigns)))
+        # P4.47 (C): the env-carried paths, direction resolved from the command.
+        kind = command_kind(stripped)
+        for m4 in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)=(\S+)", stripped):
+            var, raw = m4.group(1), m4.group(2)
+            path = expand_tmp(raw, assigns)
+            if not path.startswith(("/tmp", "/private/tmp")):
+                continue
+            direction = env_path_direction(var, kind)
+            if direction == "write":
+                writes.append((i, path))
+                claimed.add(path)
+            elif direction == "read":
+                reads.append((i, path))
+
+    for p in r.tmp_writes:
+        if p not in claimed:
+            writes.append((-1, p))
+
+    def satisfied(idx: int, tok: str) -> bool:
+        norm = tok.replace("/private/tmp/", "/tmp/", 1).rstrip("/")
+        for widx, wpath in writes:
+            if widx > idx:
+                continue
+            p = wpath.replace("/private/tmp/", "/tmp/", 1).rstrip("/")
+            # Either direction counts: the recipe writes AT the path, or it
+            # writes BELOW it (a `mkdir -p "$TMPO/cases"` creates `$TMPO` on
+            # the way) — and a file under a directory the recipe made is staged.
+            if norm == p or norm.startswith(p + "/") or p.startswith(norm + "/"):
+                return True
+        return False
+
+    for idx, tok in sorted(set(reads)):
+        if not tok.startswith(("/tmp", "/private/tmp")):
+            continue
+        if satisfied(idx, tok):
             continue
         warning = f"external_tmp_input {tok}"
         if warning not in r.warnings:
@@ -1247,6 +1388,77 @@ def cmd_self_test() -> int:
     check(
         not any(w.startswith("external_tmp_input") for w in r5.warnings),
         f"mkdir producer missed: {r5.warnings}",
+    )
+
+    # ── P4.47 (C): the env-value direction rules, BOTH ways ──────────────────
+    #
+    # P4.45 banked this class precisely because one variable name carries both
+    # directions, so every arm below is paired: the same env assignment must
+    # read as a WRITE on a builder line and a READ on a consumer line. A
+    # regression that collapses the pair is what makes the class half-wrong,
+    # and half-wrong is what trains authors to ignore a warning.
+    BUILDER = "$N/npx tsx $V5W/harness/oracle/fixtures/build-x-fixture.ts"
+    CASE = "$N/node --import tsx $V5W/harness/oracle/cases/x.ts"
+    check(
+        command_kind(f"QT_FIXTURE_X=/tmp/x.db {BUILDER}") == "builder",
+        "a build-*-fixture.ts invocation must classify as a builder",
+    )
+    check(
+        command_kind(f"QT_FIXTURE_X=/tmp/x.db {CASE}") == "case",
+        "an oracle-case invocation must classify as a case",
+    )
+    check(
+        command_kind('QT_ORACLE_OUT=/tmp/o.ndjson $N/npx jest --roots "$PWD" -- x') == "jest",
+        "a jest line reached through npx must not read as a script",
+    )
+    check(
+        env_path_direction("QT_FIXTURE_X", "builder") == "write"
+        and env_path_direction("QT_FIXTURE_X", "case") == "read"
+        and env_path_direction("QT_FIXTURE_X", "jest") == "read",
+        "the same fixture variable must flip direction with the command",
+    )
+    check(
+        env_path_direction("QT_ORACLE_PROVISION", "jest") == "write"
+        and env_path_direction("QT_FIXTURE_OUT", "jest") == "write",
+        "an output-named variable is a write wherever it appears "
+        "(P4.45 measured `provisioning` writing through QT_ORACLE_PROVISION=)",
+    )
+    check(
+        env_path_direction("QT_FIXTURE_X", "script") == "unknown"
+        and env_path_direction("QT_FIXTURE_X", "assign") == "unknown"
+        and env_path_direction("QT_FIXTURE_X", "unknown") == "unknown",
+        "an unplaceable command must yield NEITHER direction",
+    )
+
+    # End to end. A recipe that builds its own fixture and then consumes it is
+    # clean; the same recipe minus the build stage is the `ui_search` defect.
+    r6 = Recipe("x", Path("x"))
+    scan_venue(r6, f"QT_FIXTURE_X=/tmp/qt-x-fixture.db {BUILDER}\nQT_FIXTURE_X=/tmp/qt-x-fixture.db {CASE} > /tmp/oracle-x.ndjson")
+    check(
+        not any(w.startswith("external_tmp_input") for w in r6.warnings),
+        f"a self-staged fixture must not warn: {r6.warnings}",
+    )
+    r7 = Recipe("x", Path("x"))
+    scan_venue(r7, f"QT_FIXTURE_X=/tmp/qt-x-fixture.db {CASE} > /tmp/oracle-x.ndjson")
+    check(
+        any("external_tmp_input /tmp/qt-x-fixture.db" in w for w in r7.warnings),
+        f"a fixture no stage builds must warn: {r7.warnings}",
+    )
+    # ORDER, not mere presence: building the fixture AFTER consuming it is as
+    # broken as never building it, and the flat set this class used to keep
+    # could not tell the two apart.
+    r8 = Recipe("x", Path("x"))
+    scan_venue(r8, f"QT_FIXTURE_X=/tmp/qt-x-fixture.db {CASE} > /tmp/oracle-x.ndjson\nQT_FIXTURE_X=/tmp/qt-x-fixture.db {BUILDER}")
+    check(
+        any("external_tmp_input /tmp/qt-x-fixture.db" in w for w in r8.warnings),
+        f"a build AFTER the read must still warn: {r8.warnings}",
+    )
+    # A jest oracle's OWN output must never read as an unstaged input.
+    r9 = Recipe("x", Path("x"))
+    scan_venue(r9, 'QT_ORACLE_OUT=/tmp/oracle-x.ndjson $N/npx jest --roots "$PWD" -- x')
+    check(
+        not any(w.startswith("external_tmp_input") for w in r9.warnings),
+        f"a jest line's own NDJSON output warned as an input: {r9.warnings}",
     )
 
     for f in failures:

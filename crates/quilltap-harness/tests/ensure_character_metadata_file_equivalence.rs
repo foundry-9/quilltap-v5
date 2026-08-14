@@ -9,15 +9,23 @@
 //! a present file — VALID OR INVALID — is left byte-for-byte untouched (false).
 //! A fat-fingered sheet is never "healed" into an empty one.
 //!
-//! Build the oracle (Node 24, from the v4 checkout / pinned worktree), AFTER
-//! building the vault-read-overlay fixture:
+//! Uses the vault-read-overlay fixture SHAPE, but stages its OWN copy
+//! (P4.47 (C)): the recipe used to say "AFTER building the vault-read-overlay
+//! fixture" and leave that stage to `vault_read_overlay_equivalence`, so it was
+//! dead the first time /tmp was cleaned. Note the builder's OUTPUT variable is
+//! `QT_FIXTURE_OUT`, not the consumer's `QT_FIXTURE_VAULT_READ_OVERLAY`.
+//!
+//! Build the fixture + oracle (Node 24, from the v4 checkout / pinned worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-fixture.db \
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_OUT=/tmp/qt-vault-read-overlay-ensure-metadata.db \
+//!     $N/npx tsx <V5>/harness/oracle/fixtures/build-vault-read-overlay-fixture.ts
+//!   QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-ensure-metadata.db \
 //!     $N/node --import tsx <V5>/harness/oracle/cases/ensure-metadata-file.ts \
 //!     > /tmp/oracle-ensure-metadata-file.ndjson
 //! Run:
 //!   QT_ORACLE_ENSURE_METADATA_FILE=/tmp/oracle-ensure-metadata-file.ndjson \
-//!   QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-fixture.db \
+//!   QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-ensure-metadata.db \
 //!     cargo test -p quilltap-harness --test ensure_character_metadata_file_equivalence
 
 use std::path::{Path, PathBuf};

@@ -68781,3 +68781,110 @@ recipe's own first stage). The oracle case file
 `harness/oracle/cases/settings-routes.test.ts` gained 24 rows under the new
 `family: 'settings_zod'` tag; the family's `>= 24` count guard is the
 stale-oracle tripwire. No other family reads that case file.
+
+---
+
+## Lane record — P4.47 (C): the sweep driver's staging-dependency class, made honest, 2026-08-14
+
+P4.45 unit 4 found the shape and BANKED the class rather than ship it
+half-wrong: a recipe can READ a /tmp fixture that no stage of it writes (the
+`ui_search` defect — a family dead the first time /tmp was cleaned), but the
+driver's `external_tmp_input` warning only inspected jest roots, `cp` sources
+and script paths, never `QT_*` env values — which is how every fixture actually
+reaches an oracle. Extending it there was measured three ways and refused,
+because **direction is genuinely ambiguous from a variable name**:
+
+```
+QT_FIXTURE_X=/tmp/x.db $N/node build-x-fixture.ts   # WRITES it
+QT_FIXTURE_X=/tmp/x.db $N/npx jest -- x             # READS it
+```
+
+and "a warning class that is half wrong trains the next author to ignore it".
+
+**The resolution: direction is a property of the COMMAND, not the variable.**
+`command_kind` places each line as `jest` / `cargo` / `builder` / `case` /
+`script` / `assign` / unknown, using the repo's OWN layout as the discriminator —
+`harness/oracle/fixtures/build-*` is a builder, `harness/oracle/cases/` is a
+consumer — which is the same convention the driver already leans on for anchored
+restoration. `env_path_direction` then reads:
+
+| line | `QT_FIXTURE_*` | `QT_ORACLE*` / `*OUT*` |
+| --- | --- | --- |
+| builder | **write** | write |
+| jest / case | **read** | write |
+| script (unplaceable) / assign / cargo / unknown | **unknown** | write |
+
+The output-named variables are the one name-level rule, and they are name-level
+because they are direction-carrying on BOTH sides: a jest oracle writes its own
+NDJSON, and the run stage's cargo test reads it. (P4.45 measured `provisioning`
+writing through `QT_ORACLE_PROVISION=`, which no `*_OUT` pattern catches.)
+
+**`unknown` means NEITHER, and that asymmetry is the honesty.** An unrecognized
+command can hide a real external input; it can never invent a false one. Named in
+the `scan_venue` docstring rather than papered over — tier 3 of the order asks
+for exactly that.
+
+**Order now matters too.** Reads and writes carry their line index, and a read is
+satisfied only by a write at or before it. A recipe that consumes a fixture and
+THEN builds it is as broken as one that never builds it; the flat set the class
+used to keep could not tell them apart. (Same-line counts, deliberately: a
+`cp a b && use b` on one logical line is staged, and the conservative direction
+is the one that cannot manufacture a warning.)
+
+**A false lead corrected on the way.** The first cut classified any
+interpreter invocation as a builder — the "builder-aware" step P4.45 described.
+That is wrong for oracle CASE scripts, which are also `node --import tsx <file>`
+and which READ their fixtures: `metadata-vault-roundtrip.ts`, `seed-avatars.ts`
+and `ensure-metadata-file.ts` all `existsSync` the path and refuse when it is
+absent, naming the builder in the error. It cleared all three — a false NEGATIVE
+that would have hidden three of the four repairs. Caught by checking the case
+files rather than trusting the rule, which is why the builder/case split is
+structural.
+
+**The full-sweep classification run** (`--list` over all 403 families):
+
+| verdict | families |
+| --- | --- |
+| flagged, repaired | `ensure_character_metadata_file_equivalence`, `metadata_vault_roundtrip_equivalence`, `reset_builtins_equivalence`, `seed_avatars_equivalence` |
+| flagged, HANDED OFF | `help_doc_sync_guards_equivalence` |
+| candidate, cleared as a false positive | `builtin_mounts_equivalence`, `builtin_templates_equivalence`, `embedding_profiles_routes_equivalence` |
+| every other family | clean |
+
+That resolves P4.45's eight-name candidate list exactly: five true, three false.
+Its guess that "the last four look like true cases" was right about those four
+and missed `reset_builtins`. The three cleared ones consume no external /tmp
+fixture at all — their only /tmp paths are their own outputs (`builtin_mounts`
+accumulates its NDJSON with `>>`; `embedding_profiles_routes` writes both its
+NDJSONs through `QT_ORACLE*`).
+
+**`help_doc_sync_guards_equivalence` is RECORDED, NOT REPAIRED** — Shared
+contract rule 3: P4.D77 owns the help recipes this round. It reads
+`/tmp/qt-help-docs-fixture.db` with no stage of its own that builds it. The
+repair is the same one applied four times here: add the builder invocation as
+the recipe's first stage, with a family-specific /tmp path.
+
+**The four repairs, and why each got its OWN /tmp path.** Each family now stages
+its own inputs (the P4.45 "given its own staged mirror" precedent), and the paths
+are family-suffixed so two families' regens no longer write the same /tmp path
+(sweep policy 2):
+
+| family | now builds | into |
+| --- | --- | --- |
+| `reset_builtins_equivalence` | `build-qtap-import-fixture.ts` | `/tmp/qt-qtapimport-reset-builtins-{main,mount}.db` |
+| `seed_avatars_equivalence` | `build-qtap-import-fixture.ts` | `/tmp/qt-qtapimport-seed-avatars-{main,mount}.db` |
+| `metadata_vault_roundtrip_equivalence` | `build-characters-update-fixture.ts` | `/tmp/qt-charupd-metadata-roundtrip-{main,mount}.db` |
+| `ensure_character_metadata_file_equivalence` | `build-vault-read-overlay-fixture.ts` | `/tmp/qt-vault-read-overlay-ensure-metadata.db` |
+
+One trap worth naming: the vault-read-overlay builder's OUTPUT variable is
+`QT_FIXTURE_OUT`, not the consumer's `QT_FIXTURE_VAULT_READ_OVERLAY`. A recipe
+that reuses the consumer's name for the build stage silently builds nothing.
+
+**Proof.** The four /tmp fixtures were DELETED, then
+`recipe_sweep.py --run-all` ran all four from nothing: 4 ok, 0 failed. Committed
+artifact: `harness/tools/sweep-results/2026-08-14-24633026-p4.47-staging-repairs.json`.
+`--self-test` is green with nine new arms, every direction arm PAIRED (the same
+env assignment must read as a write on a builder line and a read on a consumer
+line) plus the ordering arm and the jest-own-output arm. `--list` totals are
+unchanged (ok 293 / ok_restored 70 / committed_corpus 12 / exempt 6 /
+no_oracle 22) — this class warns, it never reclassifies, so no previously-green
+family regressed.

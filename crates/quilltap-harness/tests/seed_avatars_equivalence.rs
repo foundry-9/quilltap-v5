@@ -13,8 +13,8 @@
 //!
 //! Generate the oracle (see the .ts header) then run:
 //!   QT_ORACLE_SEED_AVATARS=/tmp/oracle-seed-avatars.ndjson \
-//!   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
-//!   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+//!   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-seed-avatars-main.db \
+//!   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-seed-avatars-mount.db \
 //!     cargo test -p quilltap-harness --test seed_avatars_equivalence
 
 use std::path::{Path, PathBuf};

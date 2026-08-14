@@ -59,6 +59,12 @@ test harness had been stubbing out the default embedding profile, so the
 reference implementation had been queueing no embedding work for restored
 memories at all; with that removed, both implementations queue the same nine
 jobs. Tests only; no shipped behavior changed.
+Developer tooling: the harness recipe sweep now detects a test family whose
+oracle-regeneration recipe reads a scratch file no stage of that recipe builds —
+the failure mode that leaves a family working on one machine and dead on another.
+Four families that leaned on a sibling's scratch build now stage their own inputs
+and were re-proven to run from nothing.
+
 Fixed three chat-settings fields answering an invented error message instead of
 the one the server actually produces. Saving an out-of-range or wrong-typed
 value under Answer Confirmation, Cheap LLM or Dangerous Content used to come

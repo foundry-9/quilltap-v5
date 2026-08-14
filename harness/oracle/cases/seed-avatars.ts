@@ -15,12 +15,17 @@
  * character's `defaultImageId` now points at that link, and the idempotency of a
  * SECOND reseed (defaultImageId stable, still one link).
  *
- * Reuses the empty qtap-import fixtures (same schema). Run (Node 24, from the v4
+ * Uses the empty qtap-import fixture SHAPE (same schema) but stages its OWN copy
+ * (P4.47 (C)): this recipe used to lean on `qtap_import_equivalence`'s /tmp build
+ * and was dead the first time /tmp was cleaned. Run (Node 24, from the v4
  * checkout — cwd must be the v4 root so `first-startup/avatars/` resolves):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
- *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+ *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-seed-avatars-main.db \
+ *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-seed-avatars-mount.db \
+ *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-qtap-import-fixture.ts
+ *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-seed-avatars-main.db \
+ *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-seed-avatars-mount.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/seed-avatars.ts \
  *     > /tmp/oracle-seed-avatars.ndjson
  */

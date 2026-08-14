@@ -20,8 +20,8 @@
 //!
 //! Generate the oracle (jest, see the .test.ts header) then run:
 //!   QT_ORACLE_RESET_BUILTINS=/tmp/oracle-reset-builtins.ndjson \
-//!   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
-//!   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+//!   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-reset-builtins-main.db \
+//!   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-reset-builtins-mount.db \
 //!     cargo test -p quilltap-harness --test reset_builtins_equivalence
 
 use std::collections::HashMap;

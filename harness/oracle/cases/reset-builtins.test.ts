@@ -23,11 +23,19 @@
  *   cp "$V5W/harness/oracle/fixtures/qtap-import-tier2.json" "$TMPO/fixtures/"
  *   cp "$V5W/harness/oracle/lib/tier2.ts" "$TMPO/lib/"
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
- *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+ *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-reset-builtins-main.db \
+ *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-reset-builtins-mount.db \
+ *     $N/npx tsx "$V5W/harness/oracle/fixtures/build-qtap-import-fixture.ts"
+ *   QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-reset-builtins-main.db \
+ *   QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-reset-builtins-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-reset-builtins.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- reset-builtins
+ *
+ * (P4.47 (C): the fixture build is part of THIS recipe. It used to lean on
+ * `qtap_import_equivalence`'s /tmp build, so the family was dead the first time
+ * /tmp was cleaned, and the two families shared a /tmp path against sweep
+ * policy 2.)
  */
 
 import * as fs from 'fs';

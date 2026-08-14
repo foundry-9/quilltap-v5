@@ -1,0 +1,45 @@
+{
+  "label": null,
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-47-maintenance-smalls-9f83c8",
+  "venue_is_worktree": true,
+  "requested": [
+    "reset_builtins_equivalence",
+    "seed_avatars_equivalence",
+    "metadata_vault_roundtrip_equivalence",
+    "ensure_character_metadata_file_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "reset_builtins_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "seed_avatars_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "metadata_vault_roundtrip_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "ensure_character_metadata_file_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 4
+  }
+}
