@@ -68416,6 +68416,30 @@ into floating-point representation**, so the stored cell is a Real and every
 chunk read on a real fresh instance would have thrown `InvalidColumnType`. Now
 `f64` — the one type that serves both DDL shapes.
 
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean on BOTH feature sets (default and
+  `--features quilltap-core/native-transport`); `cargo build --release` exit 0.
+- `cargo test --workspace` at HEAD with the round env block: **431 test binaries
+  / 2,082 tests / 0 failed**, exit 0.
+- The lane's families re-run BY NAME over oracles regenerated fresh at
+  `24633026`, **zero SKIP, each positively confirmed to have run**:
+  `help_doc_chunking_equivalence` (new), `help_doc_sync_equivalence`,
+  `help_doc_sync_guards_equivalence`, `help_doc_ensure_equivalence`,
+  `help_docs_tier2_equivalence`, `help_tools_equivalence`,
+  `embedding_generate_jobs_equivalence`, `embedding_remainder_equivalence`,
+  `embedding_reapply_equivalence`, `search_tools_equivalence`,
+  `provisioning_equivalence`, plus the three other `fresh_schema.json`
+  consumers (`builtin_templates_equivalence`, `builtin_mounts_equivalence`,
+  `restore_vintage_state`).
+- `harness/tools/check_spelling.py` exit 0.
+- **`apps/web` untouched** — `git diff --stat main...HEAD -- apps/web` is empty,
+  so no ng/Playwright run is owed (and P4.9L's ground is unentered).
+
+Versions: core 0.0.546, harness 0.0.464, host 0.0.70. web/cli/tauri/sys
+unchanged.
+
 ### 💸 Live proofs owed to the next dogfood pass
 
 Everything here is proven against v4's real code over synthetic fixtures. What
