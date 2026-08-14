@@ -1,0 +1,1113 @@
+{
+  "tooltips": [
+    {
+      "name": "wrap with a single-char string delimiter",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "tooltip": "Thoughts (~...~)"
+    },
+    {
+      "name": "wrap with an [open, close] tuple",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Aside",
+        "buttonName": "As",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-rp-aside"
+      },
+      "tooltip": "Aside (((...)))"
+    },
+    {
+      "name": "linePrefix names its marker and EOL",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "tooltip": "Out of character (// …EOL)"
+    },
+    {
+      "name": "tagPrefix spells the bracketed TOKEN form",
+      "delimiter": {
+        "kind": "tagPrefix",
+        "name": "Rank",
+        "buttonName": "Rank",
+        "open": "[",
+        "close": "]",
+        "style": "qt-rp-rank"
+      },
+      "tooltip": "Rank ([TOKEN] at line start)"
+    },
+    {
+      "name": "the synthesized narration button (string)",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": "*",
+        "style": "qt-chat-narration"
+      },
+      "tooltip": "Narration (*...*)"
+    },
+    {
+      "name": "the synthesized narration button (tuple)",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": [
+          "[",
+          "]"
+        ],
+        "style": "qt-chat-narration"
+      },
+      "tooltip": "Narration ([...])"
+    },
+    {
+      "name": "a wrap tuple with an empty close falls back to EOL",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Shout",
+        "buttonName": "Sh",
+        "delimiters": [
+          ">>",
+          ""
+        ],
+        "style": "qt-rp-shout"
+      },
+      "tooltip": "Shout (>>...EOL)"
+    }
+  ],
+  "source": [
+    {
+      "name": "wrap: a selected word gets the string delimiter on both sides",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "narration": null,
+      "in": {
+        "value": "hello world",
+        "start": 0,
+        "end": 5
+      },
+      "out": {
+        "value": "~hello~ world",
+        "cursor": 7
+      }
+    },
+    {
+      "name": "wrap: an already-wrapped selection unwraps",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "narration": null,
+      "in": {
+        "value": "~hello~ world",
+        "start": 0,
+        "end": 7
+      },
+      "out": {
+        "value": "hello world",
+        "cursor": 5
+      }
+    },
+    {
+      "name": "wrap: an empty selection inserts the pair and centers the caret",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "narration": null,
+      "in": {
+        "value": "ab",
+        "start": 1,
+        "end": 1
+      },
+      "out": {
+        "value": "a~~b",
+        "cursor": 2
+      }
+    },
+    {
+      "name": "wrap: a tuple delimiter uses open and close",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Aside",
+        "buttonName": "As",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-rp-aside"
+      },
+      "narration": null,
+      "in": {
+        "value": "hello world",
+        "start": 6,
+        "end": 11
+      },
+      "out": {
+        "value": "hello ((world))",
+        "cursor": 15
+      }
+    },
+    {
+      "name": "wrap: a multi-line selection is wrapped as one span",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Aside",
+        "buttonName": "As",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-rp-aside"
+      },
+      "narration": null,
+      "in": {
+        "value": "one\ntwo",
+        "start": 0,
+        "end": 7
+      },
+      "out": {
+        "value": "((one\ntwo))",
+        "cursor": 11
+      }
+    },
+    {
+      "name": "linePrefix: a caret on an unprefixed line adds the marker",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "narration": null,
+      "in": {
+        "value": "a note",
+        "start": 3,
+        "end": 3
+      },
+      "out": {
+        "value": "// a note",
+        "cursor": 9
+      }
+    },
+    {
+      "name": "linePrefix: a caret on an already-prefixed line removes it",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "narration": null,
+      "in": {
+        "value": "// a note",
+        "start": 5,
+        "end": 5
+      },
+      "out": {
+        "value": "a note",
+        "cursor": 6
+      }
+    },
+    {
+      "name": "linePrefix: a mixed multi-line selection ADDS to every line",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "narration": null,
+      "in": {
+        "value": "// one\ntwo\nthree",
+        "start": 0,
+        "end": 16
+      },
+      "out": {
+        "value": "// // one\n// two\n// three",
+        "cursor": 25
+      }
+    },
+    {
+      "name": "linePrefix: an all-prefixed multi-line selection removes from every line",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "narration": null,
+      "in": {
+        "value": "// one\n// two",
+        "start": 0,
+        "end": 13
+      },
+      "out": {
+        "value": "one\ntwo",
+        "cursor": 7
+      }
+    },
+    {
+      "name": "linePrefix: a partial-line selection expands to whole lines first",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "narration": null,
+      "in": {
+        "value": "alpha\nbeta\ngamma",
+        "start": 7,
+        "end": 8
+      },
+      "out": {
+        "value": "alpha\n// beta\ngamma",
+        "cursor": 13
+      }
+    },
+    {
+      "name": "tagPrefix: inserts the bracket pair at the line start, caret between",
+      "delimiter": {
+        "kind": "tagPrefix",
+        "name": "Rank",
+        "buttonName": "Rank",
+        "open": "[",
+        "close": "]",
+        "style": "qt-rp-rank"
+      },
+      "narration": null,
+      "in": {
+        "value": "reporting for duty",
+        "start": 9,
+        "end": 9
+      },
+      "out": {
+        "value": "[]reporting for duty",
+        "cursor": 1
+      }
+    },
+    {
+      "name": "tagPrefix: the SECOND line gets its own pair",
+      "delimiter": {
+        "kind": "tagPrefix",
+        "name": "Rank",
+        "buttonName": "Rank",
+        "open": "[",
+        "close": "]",
+        "style": "qt-rp-rank"
+      },
+      "narration": null,
+      "in": {
+        "value": "one\ntwo",
+        "start": 5,
+        "end": 5
+      },
+      "out": {
+        "value": "one\n[]two",
+        "cursor": 5
+      }
+    },
+    {
+      "name": "tagPrefix: an existing pair is NOT toggled off — a second click stacks",
+      "delimiter": {
+        "kind": "tagPrefix",
+        "name": "Rank",
+        "buttonName": "Rank",
+        "open": "[",
+        "close": "]",
+        "style": "qt-rp-rank"
+      },
+      "narration": null,
+      "in": {
+        "value": "[]hello",
+        "start": 1,
+        "end": 1
+      },
+      "out": {
+        "value": "[][]hello",
+        "cursor": 1
+      }
+    },
+    {
+      "name": "narration: the synthesized button wraps with the template narration char",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": "*",
+        "style": "qt-chat-narration"
+      },
+      "narration": "*",
+      "in": {
+        "value": "she smiled",
+        "start": 0,
+        "end": 10
+      },
+      "out": {
+        "value": "*she smiled*",
+        "cursor": 12
+      }
+    },
+    {
+      "name": "narration: a tuple narration wraps with open and close",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": [
+          "[",
+          "]"
+        ],
+        "style": "qt-chat-narration"
+      },
+      "narration": [
+        "[",
+        "]"
+      ],
+      "in": {
+        "value": "she smiled",
+        "start": 4,
+        "end": 10
+      },
+      "out": {
+        "value": "she [smiled]",
+        "cursor": 12
+      }
+    }
+  ],
+  "buttonLists": [
+    {
+      "name": "no narration: only the template delimiters, in template order",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Thoughts",
+          "buttonName": "Th",
+          "delimiters": "~",
+          "style": "qt-rp-thoughts"
+        },
+        {
+          "kind": "wrap",
+          "name": "Aside",
+          "buttonName": "As",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-rp-aside"
+        },
+        {
+          "kind": "linePrefix",
+          "name": "Out of character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-rp-ooc"
+        },
+        {
+          "kind": "tagPrefix",
+          "name": "Rank",
+          "buttonName": "Rank",
+          "open": "[",
+          "close": "]",
+          "style": "qt-rp-rank"
+        }
+      ],
+      "narration": null,
+      "buttons": [
+        {
+          "label": "Th",
+          "title": "Thoughts (~...~)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "As",
+          "title": "Aside (((...)))",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "OOC",
+          "title": "Out of character (// …EOL)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Rank",
+          "title": "Rank ([TOKEN] at line start)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "string narration leads the section, template delimiters follow",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Thoughts",
+          "buttonName": "Th",
+          "delimiters": "~",
+          "style": "qt-rp-thoughts"
+        },
+        {
+          "kind": "wrap",
+          "name": "Aside",
+          "buttonName": "As",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-rp-aside"
+        },
+        {
+          "kind": "linePrefix",
+          "name": "Out of character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-rp-ooc"
+        },
+        {
+          "kind": "tagPrefix",
+          "name": "Rank",
+          "buttonName": "Rank",
+          "open": "[",
+          "close": "]",
+          "style": "qt-rp-rank"
+        }
+      ],
+      "narration": "*",
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration (*...*)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Th",
+          "title": "Thoughts (~...~)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "As",
+          "title": "Aside (((...)))",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "OOC",
+          "title": "Out of character (// …EOL)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Rank",
+          "title": "Rank ([TOKEN] at line start)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "a template delimiter matching the narration is dropped",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Action",
+          "buttonName": "Act",
+          "delimiters": "*",
+          "style": "qt-chat-narration"
+        },
+        {
+          "kind": "wrap",
+          "name": "Thoughts",
+          "buttonName": "Th",
+          "delimiters": "~",
+          "style": "qt-rp-thoughts"
+        },
+        {
+          "kind": "wrap",
+          "name": "Aside",
+          "buttonName": "As",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-rp-aside"
+        },
+        {
+          "kind": "linePrefix",
+          "name": "Out of character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-rp-ooc"
+        },
+        {
+          "kind": "tagPrefix",
+          "name": "Rank",
+          "buttonName": "Rank",
+          "open": "[",
+          "close": "]",
+          "style": "qt-rp-rank"
+        }
+      ],
+      "narration": "*",
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration (*...*)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Th",
+          "title": "Thoughts (~...~)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "As",
+          "title": "Aside (((...)))",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "OOC",
+          "title": "Out of character (// …EOL)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Rank",
+          "title": "Rank ([TOKEN] at line start)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "the dedupe compares prefix AND suffix, so a tuple narration drops its tuple twin",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Bracketed",
+          "buttonName": "Br",
+          "delimiters": [
+            "[",
+            "]"
+          ],
+          "style": "qt-rp-bracket"
+        },
+        {
+          "kind": "wrap",
+          "name": "Thoughts",
+          "buttonName": "Th",
+          "delimiters": "~",
+          "style": "qt-rp-thoughts"
+        },
+        {
+          "kind": "wrap",
+          "name": "Aside",
+          "buttonName": "As",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-rp-aside"
+        },
+        {
+          "kind": "linePrefix",
+          "name": "Out of character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-rp-ooc"
+        },
+        {
+          "kind": "tagPrefix",
+          "name": "Rank",
+          "buttonName": "Rank",
+          "open": "[",
+          "close": "]",
+          "style": "qt-rp-rank"
+        }
+      ],
+      "narration": [
+        "[",
+        "]"
+      ],
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration ([...])",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Th",
+          "title": "Thoughts (~...~)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "As",
+          "title": "Aside (((...)))",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "OOC",
+          "title": "Out of character (// …EOL)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "a tuple narration does NOT drop a same-prefix string delimiter",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Action",
+          "buttonName": "Act",
+          "delimiters": "*",
+          "style": "qt-chat-narration"
+        },
+        {
+          "kind": "wrap",
+          "name": "Thoughts",
+          "buttonName": "Th",
+          "delimiters": "~",
+          "style": "qt-rp-thoughts"
+        },
+        {
+          "kind": "wrap",
+          "name": "Aside",
+          "buttonName": "As",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-rp-aside"
+        },
+        {
+          "kind": "linePrefix",
+          "name": "Out of character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-rp-ooc"
+        },
+        {
+          "kind": "tagPrefix",
+          "name": "Rank",
+          "buttonName": "Rank",
+          "open": "[",
+          "close": "]",
+          "style": "qt-rp-rank"
+        }
+      ],
+      "narration": [
+        "[",
+        "]"
+      ],
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration ([...])",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Act",
+          "title": "Action (*...*)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Th",
+          "title": "Thoughts (~...~)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "As",
+          "title": "Aside (((...)))",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "OOC",
+          "title": "Out of character (// …EOL)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "the dedupe needs BOTH ends: a shared open with a different close survives",
+      "template": [
+        {
+          "kind": "wrap",
+          "name": "Half match",
+          "buttonName": "Half",
+          "delimiters": [
+            "[",
+            ">"
+          ],
+          "style": "qt-rp-half"
+        },
+        {
+          "kind": "wrap",
+          "name": "Other half",
+          "buttonName": "Oth",
+          "delimiters": [
+            "<",
+            "]"
+          ],
+          "style": "qt-rp-half2"
+        },
+        {
+          "kind": "wrap",
+          "name": "Bracketed",
+          "buttonName": "Br",
+          "delimiters": [
+            "[",
+            "]"
+          ],
+          "style": "qt-rp-bracket"
+        }
+      ],
+      "narration": [
+        "[",
+        "]"
+      ],
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration ([...])",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Half",
+          "title": "Half match ([...>)",
+          "className": "qt-rp-annotation-button"
+        },
+        {
+          "label": "Oth",
+          "title": "Other half (<...])",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "an empty template with narration still shows the narration button",
+      "template": [],
+      "narration": "*",
+      "buttons": [
+        {
+          "label": "Nar",
+          "title": "Narration (*...*)",
+          "className": "qt-rp-annotation-button"
+        }
+      ],
+      "dividers": 3
+    },
+    {
+      "name": "an empty template and no narration shows no delimiter section at all",
+      "template": [],
+      "narration": null,
+      "buttons": [],
+      "dividers": 2
+    }
+  ],
+  "rich": [
+    {
+      "name": "wrap: a selected word, exported",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "hello world",
+        "second": null,
+        "start": 0,
+        "end": 5
+      },
+      "out": {
+        "markdown": "~hello~ world",
+        "anchorOffset": 7,
+        "applied": true
+      }
+    },
+    {
+      "name": "wrap: unwrapping an already-wrapped selection",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "~hello~ world",
+        "second": null,
+        "start": 0,
+        "end": 7
+      },
+      "out": {
+        "markdown": "hello world",
+        "anchorOffset": 5,
+        "applied": true
+      }
+    },
+    {
+      "name": "wrap: an empty selection inserts the pair",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "ab",
+        "second": null,
+        "start": 1,
+        "end": 1
+      },
+      "out": {
+        "markdown": "a~~b",
+        "anchorOffset": 2,
+        "applied": true
+      }
+    },
+    {
+      "name": "wrap: a tuple delimiter",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Aside",
+        "buttonName": "As",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-rp-aside"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "hello world",
+        "second": null,
+        "start": 6,
+        "end": 11
+      },
+      "out": {
+        "markdown": "hello ((world))",
+        "anchorOffset": 15,
+        "applied": true
+      }
+    },
+    {
+      "name": "narration: the asterisk pair reaches the wire UNESCAPED",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": "*",
+        "style": "qt-chat-narration"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "she smiled",
+        "second": null,
+        "start": 0,
+        "end": 10
+      },
+      "out": {
+        "markdown": "*she smiled*",
+        "anchorOffset": 12,
+        "applied": true
+      }
+    },
+    {
+      "name": "narration: a tuple narration",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": [
+          "[",
+          "]"
+        ],
+        "style": "qt-chat-narration"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "she smiled",
+        "second": null,
+        "start": 4,
+        "end": 10
+      },
+      "out": {
+        "markdown": "she [smiled]",
+        "anchorOffset": 12,
+        "applied": true
+      }
+    },
+    {
+      "name": "linePrefix: the whole block takes the marker",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "a note",
+        "second": null,
+        "start": 3,
+        "end": 3
+      },
+      "out": {
+        "markdown": "// a note",
+        "anchorOffset": 9,
+        "applied": true
+      }
+    },
+    {
+      "name": "linePrefix: an already-prefixed block loses it",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "// a note",
+        "second": null,
+        "start": 5,
+        "end": 5
+      },
+      "out": {
+        "markdown": "a note",
+        "anchorOffset": 6,
+        "applied": true
+      }
+    },
+    {
+      "name": "tagPrefix: the pair lands at the block start",
+      "delimiter": {
+        "kind": "tagPrefix",
+        "name": "Rank",
+        "buttonName": "Rank",
+        "open": "[",
+        "close": "]",
+        "style": "qt-rp-rank"
+      },
+      "in": {
+        "shape": "paragraph",
+        "text": "reporting for duty",
+        "second": null,
+        "start": 9,
+        "end": 9
+      },
+      "out": {
+        "markdown": "[]reporting for duty",
+        "anchorOffset": 1,
+        "applied": true
+      }
+    },
+    {
+      "name": "wrap: a selection spanning TWO paragraphs",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Aside",
+        "buttonName": "As",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-rp-aside"
+      },
+      "in": {
+        "shape": "twoParagraphs",
+        "text": "one",
+        "second": "two",
+        "start": 0,
+        "end": 3
+      },
+      "out": {
+        "markdown": "((one\ntwo))",
+        "anchorOffset": 5,
+        "applied": true
+      }
+    },
+    {
+      "name": "linePrefix: a caret inside a CODE BLOCK is refused",
+      "delimiter": {
+        "kind": "linePrefix",
+        "name": "Out of character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-rp-ooc"
+      },
+      "in": {
+        "shape": "codeBlock",
+        "text": "x = 1",
+        "second": null,
+        "start": 3,
+        "end": 3
+      },
+      "out": {
+        "markdown": "```\nx = 1\n```",
+        "anchorOffset": 3,
+        "applied": false
+      }
+    },
+    {
+      "name": "wrap: a selected BOLD run — the raw-text insert drops the mark",
+      "delimiter": {
+        "kind": "wrap",
+        "name": "Thoughts",
+        "buttonName": "Th",
+        "delimiters": "~",
+        "style": "qt-rp-thoughts"
+      },
+      "in": {
+        "shape": "boldRun",
+        "text": "hello",
+        "second": " world",
+        "start": 0,
+        "end": 5
+      },
+      "out": {
+        "markdown": "~hello~ world",
+        "anchorOffset": 7,
+        "applied": true
+      }
+    }
+  ]
+}

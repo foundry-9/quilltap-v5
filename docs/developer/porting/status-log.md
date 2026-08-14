@@ -68981,3 +68981,78 @@ already fixed. Both now assert the header AND that the url stays key-free. Worth
 naming as a class: when a divergence has been believed long enough to get unit
 tests, the tests come in pairs (one per composition), and fixing the one the
 grep found is not fixing the belief.
+
+---
+
+## P4.9L unit 1 — the roleplay-delimiter transforms (v4 pin `24633026`)
+
+**Lane** `claude/composer-toolbar-spa-porting-5b9810` (P4.9L, the round's only
+SPA lane). Drift-checked at start: v4 `main` HEAD **is** the pin `24633026`,
+tree clean; `git diff 24633026 bugfix -- lib/ app/ packages/` differs only in
+the help-doc-chunk files (P4.D77's territory, and `main` is the branch that is
+*ahead*), so nothing in this lane's surface has moved.
+
+**What landed.** `apps/web/src/app/editor/delimiter-transforms.ts` — the four
+v4 sites the delimiter buttons need, ported into one module so the two editing
+surfaces cannot disagree (v4's own stated invariant):
+
+- `delimiterToPrefixSuffix` + `getDelimiterTooltip` (`lib/chat/annotations.ts`),
+- `toggleLinePrefix` + `insertTagPrefix` (`lib/chat/text-transforms.ts`; its
+  third function `toggleWrap` was already ported for the markdown buttons and is
+  re-used from `source-transforms.ts`),
+- `applySourceDelimiter` — `handleDelimiterClick`'s source branch,
+- `visibleDelimiters` — the narration-button synthesis + the dedupe `useMemo`,
+- `applyDelimiterCommand` — `APPLY_DELIMITER_COMMAND`'s handler as a ProseMirror
+  `Command`.
+
+**The differential.** A NEW v4-side recorder, `apps/web/oracle/
+delimiter-transforms.test.ts`, drives v4's REAL code in four sections and writes
+`apps/web/src/app/editor/__fixtures__/delimiter-oracle.json`:
+`getDelimiterTooltip` called directly; the source branch recorded by clicking
+the REAL `FormattingToolbar` rendered in jsdom over a real `<textarea>`; the
+button list read off the rendered DOM; and the rich-text branch dispatched into
+a headless Lexical editor with v4's REAL `FormattingCommandPlugin` registered,
+exporting composer markdown. `delimiter-transforms.spec.ts` byte-diffs all four
+(56 vectors + 5 coverage assertions).
+
+Recorder lives under `apps/web/oracle/` rather than `harness/oracle/cases/`
+because the order fences this lane out of `harness/**`; the directory is
+invisible to `tsconfig.app` (`src/**/*.ts`), to `tsconfig.spec`
+(`src/**/*.spec.ts`) and to Playwright (`testDir: ./e2e`), so it compiles
+nowhere in v5 and runs only in the v4 checkout. Regen recipe in its header.
+
+**Three things the oracle settled that reading would have guessed wrong:**
+
+1. **`dispatchCommand` reads stale.** v4's handler runs in a NON-discrete
+   update, so an export taken right after the dispatch returns the PRE-command
+   document. The first recording run produced nine "nothing happened" vectors
+   that looked like a v4 no-op; a discrete no-op update forces the commit. Had
+   this gone unnoticed the port would have been diffed against a corpus that
+   said the feature did nothing.
+2. **The wire bytes are unescaped.** `*she smiled*` reaches the wire as
+   `*she smiled*`, not `\*she smiled\*` — the bridge's
+   `DEFAULT_PRESERVED_MARKDOWN_CHARS` post-pass strips exactly the escapes
+   Lexical's export adds. Measured, not inferred (the dogfood-#84 lesson).
+3. **Three structural edges, recorded rather than reasoned about:** a wrap
+   spanning two paragraphs comes back as `((one\ntwo))` — ONE newline, i.e. a
+   line break, which is why the port inserts `hard_break` nodes; a caret inside
+   a fenced code block is REFUSED (`applied: false`, document untouched); and a
+   selected **bold** run loses its bold, because v4 replaces the block's
+   children with a single raw text node.
+
+**Two v4 behaviors worth naming, both now pinned:** the dedupe filter is
+KIND-AGNOSTIC — a `['[', ']']` narration also swallows a `tagPrefix` whose
+open/close are `[`/`]` — and `insertTagPrefix` never toggles off, so a second
+click stacks a second bracket pair.
+
+**Mutation-proven** (each reverted after): `every`→`some` in `toggleLinePrefix`
+(1 red), caret at the end of the inserted run instead of `from + cursor` (1),
+code blocks no longer refused (1), the tooltip's `|| 'EOL'` fallback dropped
+(1), the `hard_break` dropped from `rawTextNodes` (1), and the narration button
+moved off the front (5). A SIXTH mutation — collapsing the dedupe to
+`prefix !== narPrefix` — went GREEN and exposed a real corpus blind spot: no
+vector carried a delimiter sharing the narration's OPEN bracket with a
+different close. Two such delimiters were added, the oracle re-recorded, and
+the mutation now reds.
+
+Gate: `ng build` clean; the family GREEN by name. SPA 0.5.482; no crate touched.
