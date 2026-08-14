@@ -111,4 +111,34 @@ describe('OrganizeSection', () => {
     // The entry must not fire a Salon output (v4 keeps it entirely local).
     expect(fixture.componentInstance.fired).toEqual([]);
   });
+  /**
+   * v4 4.8.2's export fix: the JSONL entry used to set `window.location.href`,
+   * which downloads in a browser but NAVIGATES the app window onto the API
+   * route in a native shell (v4's Electron, v5's Tauri `qtap://` webview). It
+   * now anchor-clicks through the same helper the Markdown entry uses.
+   */
+  it('downloads the .qtap export by anchor-click, never by navigating (v4 4.8.2)', async () => {
+    const fixture = await render();
+    const clicked: Array<{ href: string; download: string }> = [];
+    const spy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push({ href: this.href, download: this.download });
+      });
+    const hrefBefore = window.location.href;
+
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent!.trim() === 'Export',
+    ) as HTMLButtonElement;
+    button.click();
+
+    expect(spy).toHaveBeenCalledOnce();
+    expect(clicked[0].href).toContain('/api/v1/chats/chat-1?action=export');
+    expect(clicked[0].href).not.toContain('export-markdown');
+    // Only the anchor's fallback name — Content-Disposition names the real file.
+    expect(clicked[0].download).toBe('chat_export.qtap');
+    // Nothing navigated.
+    expect(window.location.href).toBe(hrefBefore);
+    expect(fixture.componentInstance.fired).toEqual([]);
+  });
 });

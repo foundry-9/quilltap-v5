@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
-import { apiUrl } from '../../core/api-url';
 import { triggerUrlDownload } from '../../core/download-utils';
 import { CopyChatIdButton } from '../../ui/copy-chat-id-button';
 import { Icon } from '../../ui/icon';
@@ -25,10 +24,13 @@ import { Icon } from '../../ui/icon';
  * **Merge In… is LIVE** (v4 :1566, P4.9E3C) — and, like v4, it is hidden in an
  * autonomous room.
  *
- * **Export is LIVE** (v4 :1509-1511,1578-1586, P4.9E3C): the entry navigates the
- * window straight at the byte route, exactly as v4 does — there is no dialog and
- * no fetch, the browser's own download machinery takes it from there. The route
- * itself is P4.9E3B's (`GET /chats/{id}?action=export`).
+ * **Export is LIVE** (v4 :1511-1515,1578-1586, P4.9E3C; the download-helper
+ * fix absorbed from v4 4.8.2 by P4.D72): the entry anchor-clicks the byte
+ * route, exactly as v4 does — there is no dialog and no fetch, the browser's
+ * own download machinery takes it from there. It navigated the window until
+ * 4.8.2, which downloads in a browser but walks the app window onto the API
+ * endpoint in a native shell. The route itself is P4.9E3B's
+ * (`GET /chats/{id}?action=export`).
  *
  * **Export Markdown is LIVE** (v4 :1515-1519,1595-1604, P4.d28 over v4
  * `b3ee00f1`): the readable transcript, sitting between Export and Gallery in
@@ -144,22 +146,27 @@ export class OrganizeSection {
   readonly openGallery = output<void>();
 
   /**
-   * v4 `handleExport` (`ChatSidebar.tsx:1509-1511`): a bare
-   * `window.location.href = …`. No dialog, no fetch — the route answers with
-   * `Content-Disposition: attachment`, so the navigation never actually leaves
-   * the page. `apiUrl()` is what makes the same line work on the Tauri
-   * `qtap://` origin as on an HTTP one.
+   * v4 `handleExport` (`ChatSidebar.tsx:1511-1515`) — an anchor-click through
+   * `triggerUrlDownload`, the same helper the Markdown entry beside it uses.
+   *
+   * It was a bare `window.location.href = …` in both apps until v4 4.8.2: in a
+   * browser that starts a download, but in a native shell it NAVIGATES the app
+   * window to the API endpoint instead. v5 has the same exposure in the Tauri
+   * webview on the `qtap://` origin, so the fix ports. The server still names
+   * the file after the chat title via `Content-Disposition`; the filename here
+   * is only the anchor's fallback.
    */
   protected onExport(): void {
-    window.location.href = apiUrl(`/api/v1/chats/${encodeURIComponent(this.chatId())}?action=export`);
+    triggerUrlDownload(
+      `/api/v1/chats/${encodeURIComponent(this.chatId())}?action=export`,
+      'chat_export.qtap',
+    );
   }
 
   /**
-   * v4 `handleExportMarkdown` (`ChatSidebar.tsx:1515-1519`). Unlike the JSONL
-   * entry above, v4 routes this one through `triggerUrlDownload` — an
-   * anchor-click, not a navigation. The filename passed here is only that
-   * anchor's fallback: the server names the real file after the chat via
-   * `Content-Disposition`.
+   * v4 `handleExportMarkdown` (`ChatSidebar.tsx:1517-1521`) — the same
+   * anchor-click. The filename passed here is only that anchor's fallback: the
+   * server names the real file after the chat via `Content-Disposition`.
    */
   protected onExportMarkdown(): void {
     triggerUrlDownload(

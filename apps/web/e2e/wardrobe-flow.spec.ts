@@ -314,9 +314,16 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // No assertion could gate that click, because an EMPTY worn snapshot is
     // indistinguishable in the DOM from one that has not arrived yet. So seed
     // a worn accessory instead and let the walk wait for it to paint — a state
-    // proof rather than a timing guess. The lost-edit race is v4's too (same
-    // effect, same ref-gated seed), so v5 stays faithful and it is filed
-    // v4-side rather than diverged from here.
+    // proof rather than a timing guess. THE SEED STAYS for that reason, and
+    // only that reason.
+    //
+    // The lost-edit race itself is FIXED as of v4 4.8.2 (`07d4ccce`, v4 Bug 61
+    // — filed from this port's own measurement, dogfood finding #78) and
+    // ported here by lane P4.D72: a pre-seed click is now recorded as a
+    // mutator and replayed onto the worn snapshot, and a character staged with
+    // no baseline is put to the operator instead of closed as if saved. The
+    // beat below ("a Wear clicked before the worn snapshot arrives survives
+    // the seed") drives that fix directly by holding `chatOutfitGet` open.
     const chatId = /\/salon\/([^/?#]+)/.exec(page.url())?.[1];
     expect(chatId, 'the Solo Voyage chat id, read from the URL').toBeTruthy();
 
@@ -407,6 +414,141 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .first();
     await expect(accessoriesRow).toContainText('Brass Goggles', { timeout: 10_000 });
     await expect(accessoriesRow).toContainText(SEEDED_ACCESSORY);
+    await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * v4 Bug 61 / dogfood finding #78, end to end (v4 4.8.2 `07d4ccce`, ported by
+   * lane P4.D72). The window this drives is the one the deflake above had to
+   * step around: the item list is clickable well before the worn snapshot
+   * lands, and a Wear clicked in between used to be discarded by the first seed
+   * — silently, with Done closing as if it had saved.
+   *
+   * Deterministic by construction rather than by luck: `chatOutfitGet` is held
+   * open with `page.route` across the click, exactly the technique that made
+   * the original flake reproduce 4/4 (see the deflake note above). The
+   * assertions bracket the release, so the pre-seed paint and the post-seed
+   * replay are both named.
+   */
+  test('in chat: a Wear clicked before the worn snapshot arrives survives the seed (v4 bug 61)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    await openAriaDetail(page);
+    await page.getByRole('button', { name: 'Conversations' }).click();
+    await page.getByRole('link', { name: /Solo Voyage/ }).click();
+    await expect(page).toHaveURL(/\/salon\//);
+
+    const chatId = /\/salon\/([^/?#]+)/.exec(page.url())?.[1];
+    expect(chatId, 'the Solo Voyage chat id, read from the URL').toBeTruthy();
+    const characters = ((await dispatch(page, { type: 'characterList' }))['characters'] ??
+      []) as Array<{ id: string; name: string }>;
+    const ariaId = characters.find((c) => c.name === 'Aria')?.id;
+    expect(ariaId, "Aria's character id").toBeTruthy();
+
+    // Two fresh accessories: one Aria is already WEARING (the thing the lost
+    // edit used to wipe out or fail to preserve) and one she is not (the click
+    // that must survive). Fresh titles so this beat never depends on which
+    // earlier beats ran.
+    const create = async (title: string): Promise<string> => {
+      const made = (
+        await dispatch(page, {
+          type: 'characterWardrobeCreate',
+          characterId: ariaId,
+          item: {
+            title,
+            description: null,
+            imagePrompt: null,
+            types: ['accessories'],
+            appropriateness: null,
+            isDefault: false,
+            componentItemIds: [],
+            replace: false,
+          },
+        })
+      )['wardrobeItem'] as { id: string } | undefined;
+      expect(made?.id, `the ${title} id`).toBeTruthy();
+      return made!.id;
+    };
+    const cravatId = await create('Tessellated Cravat');
+    const pinId = await create('Clockwork Pin');
+
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [], accessories: [cravatId] },
+    });
+
+    // Hold the FIRST chatOutfitGet open. Everything else — the item list, the
+    // chat read, the tier reads — answers normally, which is precisely the
+    // asymmetry that creates the window in production.
+    let releaseOutfit: (() => void) | null = null;
+    const outfitHeld = new Promise<void>((resolve) => {
+      releaseOutfit = resolve;
+    });
+    let stillHolding = true;
+    await page.route('**/api/dispatch', async (route) => {
+      const body = route.request().postData() ?? '';
+      if (stillHolding && body.includes('"chatOutfitGet"')) {
+        stillHolding = false;
+        await outfitHeld;
+      }
+      await route.continue();
+    });
+
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe');
+
+    // The item list has painted; the worn snapshot has NOT. Click into that gap.
+    const pinRow = dialog
+      .locator('.qt-card-interactive')
+      .filter({ hasText: 'Clockwork Pin' })
+      .first();
+    await expect(pinRow).toBeVisible({ timeout: 15_000 });
+    await pinRow.getByRole('button', { name: 'Wear', exact: true }).click();
+
+    // Painted against the empty fallback — there is nothing else to paint yet.
+    const liveAccessories = dialog.locator('.qt-card').filter({ hasText: 'Accessories' }).first();
+    await expect(liveAccessories).toContainText('Clockwork Pin');
+    await expect(liveAccessories).not.toContainText('Tessellated Cravat');
+
+    // Now let the snapshot land. Pre-fix, this seed discarded the click.
+    releaseOutfit?.();
+    await expect(liveAccessories).toContainText('Tessellated Cravat', { timeout: 15_000 });
+    await expect(liveAccessories).toContainText('Clockwork Pin');
+
+    // Done → ONE set_all carrying BOTH: the cravat she already had on and the
+    // pin clicked mid-flight.
+    const flushed = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"chatEquip"') &&
+        (r.request().postData() ?? '').includes('"set_all"'),
+      { timeout: 15_000 },
+    );
+    await page.getByRole('button', { name: 'Done' }).click();
+    const flushBody = (await flushed).request().postData() ?? '';
+    expect(flushBody).toContain(cravatId);
+    expect(flushBody).toContain(pinId);
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    await page.unroute('**/api/dispatch');
+
+    // And it stuck: the remounted dialog seeds from the server's snapshot.
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const reopened = page
+      .getByRole('dialog')
+      .locator('.qt-card')
+      .filter({ hasText: 'Accessories' })
+      .first();
+    await expect(reopened).toContainText('Clockwork Pin', { timeout: 10_000 });
+    await expect(reopened).toContainText('Tessellated Cravat');
     await page.getByRole('button', { name: 'Done' }).click();
   });
 });

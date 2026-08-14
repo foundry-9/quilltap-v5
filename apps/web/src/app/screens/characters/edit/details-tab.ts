@@ -85,31 +85,31 @@ import { TagChipEditor } from './tag-chip-editor';
         </div>
       </div>
 
-      <!-- Aurora's Core Whisper — per-character override -->
+      <!-- Aurora's Core Whisper — per-character override.
+           STACKED, not side-by-side (v4 4.8.2 fe63547a): qt-select is
+           full-width, so in the two-column layout it claimed nearly the whole
+           card and wrapped the label into a column a few characters wide.
+           Label and description span the card; the dropdown sits beneath them.
+           The two checkbox cards above keep the side-by-side layout — a
+           checkbox is narrow enough for it. -->
       <div class="qt-card">
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex-1">
-            <label for="coreWhisperEnabled" class="block qt-label"
-              >Aurora&apos;s Core whisper</label
-            >
-            <p class="text-xs qt-text-secondary mt-1">
-              Whether Aurora periodically re-offers this character their own
-              <code>Core/</code> vault folder before they next take the floor.
-              <em>Inherit</em> defers to the per-chat and global settings; explicit values override
-              both.
-            </p>
-          </div>
-          <select
-            id="coreWhisperEnabled"
-            class="qt-select"
-            [value]="coreWhisperSelectValue()"
-            (change)="onCoreWhisperChange($any($event.target).value)"
-          >
-            <option value="inherit">Inherit (default)</option>
-            <option value="on">Always offered</option>
-            <option value="off">Never offered</option>
-          </select>
-        </div>
+        <label for="coreWhisperEnabled" class="block qt-label">Aurora&apos;s Core whisper</label>
+        <p class="text-xs qt-text-secondary mt-1 mb-3">
+          Whether Aurora periodically re-offers this character their own
+          <code>Core/</code> vault folder before they next take the floor.
+          <em>Inherit</em> defers to the per-chat and global settings; explicit values override
+          both.
+        </p>
+        <select
+          id="coreWhisperEnabled"
+          class="qt-select"
+          [value]="coreWhisperSelectValue()"
+          (change)="onCoreWhisperChange($any($event.target).value)"
+        >
+          <option value="inherit">Inherit (default)</option>
+          <option value="on">Always offered</option>
+          <option value="off">Never offered</option>
+        </select>
       </div>
 
       <!-- Name -->

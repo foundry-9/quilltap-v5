@@ -66758,3 +66758,74 @@ assertion, and the fail-soft leg. 12 tests green.
 fails **3** cases.
 
 SPA 0.5.457 → 0.5.458.
+
+## Lane record — P4.D72 unit 5: the Core whisper card, the export rider, finding #78, and the bug-61 walk
+
+**Landed — the lane's tier-1 remainder plus both tier-2 riders.**
+
+**1. The Core whisper card stacks (v4 `fe63547a`).** v5's
+`app/screens/characters/edit/details-tab.ts` carried v4's pre-fix markup
+byte-for-byte: a `flex items-start justify-between gap-4` row with the label +
+description in one column and the full-width `qt-select` in the other, which
+took nearly the whole card and wrapped the label into a column a few characters
+wide. Now: label, description (`mb-3`), select — all direct children of the
+card. The two checkbox cards above keep the side-by-side layout, as v4 says.
+**Spec-pinned** in `character-edit.spec.ts` (no two-column wrapper inside the
+card, the select a direct child, `mb-3` on the description, document order
+label → description → select); **mutation-proven** by restoring the wrapper.
+
+**2. Dogfood finding #78 CLOSED.** The row now records that v4 fixed Bug 61 at
+4.8.2 and that this lane ported it. Worth keeping: **neither candidate fix the
+filing proposed is the shape v4 chose.** Seeding `prev[characterId] ?? worn`
+would have preserved the staged slots — which, staged inside that window,
+describe a character wearing ONLY the item just clicked, so committing them
+turns a silent drop into a silent undressing. Recording the *gesture* and
+replaying it is strictly better, and it is why the fix needed a queue rather
+than a one-line seed change.
+
+**3. The e2e comment block rewritten + a new beat.** The stale paragraph said
+the race "is filed v4-side rather than diverged from here"; it now says v4 fixed
+it, points at the port, and states plainly that the deflake seed STAYS for its
+own reason (an empty snapshot is still indistinguishable from an unarrived one
+— the `wardrobe-set-all-flake-deflaked` rule is about observability, not about
+the bug). New beat: *"in chat: a Wear clicked before the worn snapshot arrives
+survives the seed (v4 bug 61)"* — two fresh accessories (one worn, one not),
+`page.route` holding the FIRST `chatOutfitGet` open, the Wear click landing in
+the gap, assertions bracketing the release (pin only → pin AND cravat), then
+Done asserting ONE `set_all` whose body carries both ids, then a reopen. Fully
+deterministic: it forces the race rather than waiting to catch it.
+
+**The e2e beat is red-before / green-after, measured.** Against the three
+restored pre-fix parts (rebuilt dist — trap 1) the new beat FAILS and the other
+three pass, including the deflaked `set_all` beat; restored and rebuilt, 4/4.
+Then **3× green in isolation** (the historical standard for this file): 1.1m /
+1.5m / 55s, 4 passed each.
+
+**4. Tier-2 rider 6 — the transfer dialog's group source: NO CLIENT CHANGE
+NEEDED, verified.** v4's `8600c83f` put the source-side group lookup entirely in
+`app/api/v1/wardrobe/transfers/route.ts` (a `'group'` `SourceScope` arm scanning
+`resolveGroupMountPointIdsForCharacter` between project and General, plus
+delete-by-mount-point). v5's `wardrobe-transfer-dialog.ts` sends only
+`{itemId, sourceCharacterId, destination…}` and never names a source scope, so
+taking an item back out of a group is **entirely lane P4.D71's server arm**. The
+client's whole contribution is unit 4 — which is what makes a group item
+*appear* in the list and therefore transferable at all. **No gated beat was
+added**, because there is no client behavior to gate.
+
+**5. Tier-2 rider 7 — the chat-export download: A REAL FIX, not a NO-CHANGE.**
+v4 4.8.2 fixed the Salon sidebar's `.qtap` export (it set
+`window.location.href`, which downloads in a browser but navigates the app
+window onto the API endpoint in Electron). v5 reproduced the pre-fix line
+exactly in `app/chat/sidebar/organize-section.ts`, with the same exposure in the
+Tauri `qtap://` webview; it now goes through `triggerUrlDownload` with
+`'chat_export.qtap'` as the anchor's fallback name (the server's
+`Content-Disposition` still names the real file), matching v4's fixed body and
+the Markdown entry beside it. Spec-pinned: the anchor is clicked with the right
+href and download name, and `window.location.href` does not move.
+**Ownership note for the unifier:** `organize-section.ts` + its spec are outside
+this lane's named Ownership list but inside tier-2 rider 7's mandate; no sibling
+claims them (P4.D74 owns `chat-tab.ts` and `chat/render/**`, not
+`chat/sidebar/**`).
+
+Full SPA suite: **301 files / 4,191 tests**, green. `ng build` clean.
+SPA 0.5.458 → 0.5.459.

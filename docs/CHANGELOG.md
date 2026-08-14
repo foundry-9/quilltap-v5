@@ -162,6 +162,20 @@ provider manifests regenerate byte-identical against the 14 rebuilt plugins.
 The google-wire corpus also gained the request headers it should have gotten
 in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
 and nothing asserts those headers yet. No engine code changed.
+P4.D72 unit 5 — the round's smaller wardrobe riders. The character editor's
+"Aurora's Core whisper" card now stacks: label and description span the card
+with the full-width dropdown beneath, instead of a two-column row where the
+select took nearly the whole card and wrapped the label into a sliver (v4 4.8.2
+`fe63547a`). The Salon sidebar's `.qtap` chat export anchor-clicks through the
+download helper instead of setting `window.location.href` — the same fix v4
+4.8.2 made for Electron, and v5 had the same exposure in the Tauri `qtap://`
+webview, where the old line navigated the app window onto the API route rather
+than downloading. Dogfood finding #78 is CLOSED (v4 fixed Bug 61; v5 ported the
+fix), the wardrobe e2e's now-stale comment block is rewritten, and the walk
+gains a beat that holds `chatOutfitGet` open across a Wear click and asserts
+the edit survives the seed and reaches one `set_all` with both items — red
+against the pre-fix code, green after.
+
 P4.D72 unit 4 — the SPA wardrobe loader reads a fourth tier: the shared
 wardrobe of every group the character belongs to (v4 4.8.2 `8600c83f`, where
 items moved into a group were invisible to everyone because nothing read them

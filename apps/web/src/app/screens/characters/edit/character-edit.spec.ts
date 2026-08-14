@@ -327,6 +327,39 @@ describe('CharacterEdit', () => {
     expect(toasts()).toEqual([{ type: 'error', message: 'the registry rejected the new name' }]);
     expect(fixture.nativeElement.textContent).toContain('the registry rejected the new name');
   });
+  /**
+   * v4 4.8.2 `fe63547a` — the Core whisper card STACKS. `qt-select` is
+   * full-width, so the old two-column flex row gave the dropdown nearly the
+   * whole card and wrapped the label into a column a few characters wide.
+   * Label and description now span the card with the dropdown beneath. The two
+   * checkbox cards above it keep the side-by-side layout.
+   */
+  it('stacks the Core whisper card — label and description span it, select beneath (v4 fe63547a)', async () => {
+    const fixture = await render(stubClient(character()));
+    const select = fixture.nativeElement.querySelector('#coreWhisperEnabled') as HTMLElement;
+    expect(select).toBeTruthy();
+
+    const card = select.closest('.qt-card') as HTMLElement;
+    expect(card).toBeTruthy();
+    // No two-column wrapper anywhere between the card and its controls.
+    expect(card.querySelector('.flex.items-start.justify-between')).toBeNull();
+    // The select is a direct child of the card, beneath the description.
+    expect(select.parentElement).toBe(card);
+
+    const label = card.querySelector('label[for="coreWhisperEnabled"]') as HTMLElement;
+    const description = card.querySelector('p') as HTMLElement;
+    expect(label.parentElement).toBe(card);
+    expect(description.parentElement).toBe(card);
+    // v4 puts the gap on the description rather than the select.
+    expect(description.classList.contains('mb-3')).toBe(true);
+    // Document order: label, description, select.
+    expect(Array.from(card.children).indexOf(label)).toBeLessThan(
+      Array.from(card.children).indexOf(description),
+    );
+    expect(Array.from(card.children).indexOf(description)).toBeLessThan(
+      Array.from(card.children).indexOf(select),
+    );
+  });
 });
 
 /**
