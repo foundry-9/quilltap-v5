@@ -11,7 +11,11 @@
 //! Five scenarios share ONE tree and vary only the seed, so each isolates a
 //! single trigger path:
 //!   - `empty-table`  — the lazy gate that always worked (the control);
-//!   - `in-sync`      — disk and DB agree → NO sync, no prune, no enqueue;
+//!   - `in-sync`      — disk and DB agree → NO sync and no prune. ⚠ Since v4
+//!     `24633026` it is NOT a total no-op: the chunk table is empty, so the
+//!     BACKFILL slices both docs and enqueues a HELP_DOC job for each — even
+//!     though both docs already carry their own embedding, because the job is
+//!     what fills the CHUNK vectors;
 //!   - `added-doc`    — ⚠ **v4 BUG 1**: the table is POPULATED and the existing
 //!     doc is unchanged, but a shipped doc has no row. The old gate
 //!     (`existing.length > 0 → return`) left it invisible forever;
@@ -20,7 +24,11 @@
 //!     fire. Only the row whose file is gone can trigger this sync — without it
 //!     the prune would be dead code;
 //!   - `no-profile`   — the sync completes with no embedding profile; only the
-//!     enqueue backs off.
+//!     enqueue backs off;
+//!   - `in-sync-chunked` (P4.D77) — as `in-sync`, but `help_doc_chunks` already
+//!     has rows, so the chunk backfill must short-circuit on its one `count()`
+//!     query: the seeded chunk keeps its id, timestamp AND vector, and nothing
+//!     is enqueued.
 //!
 //! Minted ids never enter the comparison: doc rows compare by `path` (a
 //! non-seeded id collapses to `<minted>`), and jobs resolve their payload
@@ -32,7 +40,7 @@
 //! paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this tree>
 //!   cd ~/source/quilltap-server
-//!   for s in empty-table in-sync added-doc deleted-doc no-profile; do
+//!   for s in empty-table in-sync in-sync-chunked added-doc deleted-doc no-profile; do
 //!     QT_FIXTURE_ENSURE_DIR=/tmp/qt-ensure QT_ENSURE_SCENARIO=$s \
 //!       $N/node --import tsx $V5/harness/oracle/fixtures/build-help-ensure-fixture.ts
 //!   done

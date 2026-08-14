@@ -68284,3 +68284,52 @@ tripwire.
 first chunk instead of the best; drop the dimension guard; 1500 → 1000; 600 →
 1000; the labelled/unlabelled heading branch inverted; `matchedSection` moved out
 of last position; and the whole section pass removed.
+
+---
+
+## P4.D77 tier 2 — the invariant checks and the `p4.9i2` bank
+
+**Item 10 — the reconcile and the status bookkeeping still count `help_docs`
+rows, and ONLY those.** v4 shipped no reconcile change at `24633026`; the
+question is whether that is right, and it is — the stated reason for putting
+section vectors in the HELP_DOC job rather than giving them an entity type is
+that the reindex enqueue, the `embedding_status` rows and the dimension
+reconcile all keep counting documents, and a chunk can never carry a dimension
+its parent doesn't. Rather than porting a change that doesn't exist, the
+invariant is now asserted where it would break:
+
+- `embedding_dimension_reconcile::tests::help_doc_chunks_are_invisible_to_the_reconcile`
+  — a NON-conforming section beside a CONFORMING document moves neither the
+  `help_docs` mismatch count, nor any other counter, nor the enqueue, and the
+  chunk row is untouched. If the reconcile ever grows a chunk leg, this goes red
+  and the omission gets re-argued on purpose.
+- `embedding_generate_jobs_equivalence` — asserted against the ORACLE: no
+  `embedding_status` row v4 wrote carries a `HELP_DOC_*` entity type, and none
+  names a chunk id. The table dumps already compare byte-for-byte, so an
+  invented row would diverge — but only if someone reads the diff. Now it has a
+  name and a sentence.
+
+**Item 11 — the `p4.9i2` bank** (`m6-screen-parity.md` row 11) carries the
+verbatim survey of the three halves this lane deliberately left: the
+`?action=search&q=` route (substring, not semantic; the `< 2` early-out; the
+lopsided `SNIPPET_LEAD 30` / `SNIPPET_TRAIL 160` and v4's reason for it; the
+Markdown-furniture strip and its exact order; the title-hits-first sort), the
+Guide client (200 ms debounce, the instant title filter kept so the list narrows
+on the first keystroke, query-tagged results so a stale response cannot leak,
+and `HelpCategorySection`'s optional `snippets` map), and the two `help/*.md`
+copy deltas under the P4.D73 precedent.
+
+### Fixtures changed by this lane, and what each invalidates
+
+| fixture | how | invalidates |
+|---|---|---|
+| `crates/quilltap-web/tests/fixtures/embedding-generate-main.db` | `extend-help-doc-chunks.ts` | `embedding_generate_jobs_equivalence` (regenerated) |
+| `crates/quilltap-web/tests/fixtures/embedding-remainder-main.db` | `extend-help-doc-chunks.ts` | `embedding_remainder_equivalence` (regenerated) |
+| `crates/quilltap-web/tests/fixtures/embedding-profiles-main.db` | `extend-help-doc-chunks.ts` | `embedding_reapply_equivalence` (regenerated); the other `embedding-profiles` families read no chunk table and were re-run green |
+| `harness/oracle/fixtures/help-sync.json` (+ its builder) | new `helpDocChunkSeed` | `help_doc_sync_equivalence`, `help_doc_sync_guards_equivalence` (both regenerated) |
+| `harness/oracle/fixtures/help-ensure.json` (+ its builder) | new `in-sync-chunked` scenario + `seedChunks` | `help_doc_ensure_equivalence` (regenerated) |
+| `harness/oracle/fixtures/search-tools.json` (+ its builder) | help-doc vectors re-spread, 3 docs added, `helpDocChunks` added | `search_tools_equivalence` (both oracles regenerated) |
+| `crates/quilltap-core/src/services/provisioning/fresh_schema.json` | D23 re-dump | `provisioning_equivalence`, `builtin_*_equivalence`, `restore_vintage_state` (all re-run) |
+
+`schema-key-order.json` was regenerated and came back byte-identical — not
+committed.

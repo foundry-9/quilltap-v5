@@ -48,6 +48,12 @@
 //!   TZ=UTC QT_ORACLE_EG=/tmp/oracle-embedding-generate.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_generate_jobs_equivalence
 //!
+//! ⚠ P4.D77: the committed main fixture's `help_doc_chunks` table was added by
+//! `harness/oracle/fixtures/extend-help-doc-chunks.ts` (EXTENDER, not rebuild —
+//! see its header). To re-derive it: copy the committed main DB to /tmp, run
+//! `QT_CHUNK_SPEC=embedding-generate-jobs.json QT_CHUNK_DB=<copy>` through that
+//! script from the v4 checkout, copy back, then regenerate this oracle.
+//!
 //! Rebuilding the COMMITTED fixture family is a separate, DELIBERATE act — a
 //! rebuild mints fresh UUIDs and invalidates every family reading these DBs,
 //! so it re-runs every consumer. When (and only when) the fixture itself must
@@ -367,6 +373,45 @@ async fn embedding_generate_jobs_match_oracle() {
         TABLES.len(),
         "oracle dumped a different table set"
     );
+
+    // P4.D77 (v4 `24633026`) — **section embeddings keep NO bookkeeping of their
+    // own.** That is the stated reason v4 put them in the HELP_DOC job instead of
+    // giving them an entity type: the reindex enqueue, the `embedding_status`
+    // rows and the dimension reconcile all keep counting `help_docs`. The table
+    // dumps below already compare `embedding_status` byte-for-byte against v4, so
+    // an invented chunk row would diverge — but only if someone reads the diff.
+    // Say it out loud instead, against the ORACLE, so the invariant has a name.
+    {
+        let rows_of = |table: &str| -> Vec<Value> {
+            oracle_tables
+                .get(table)
+                .and_then(|v| v["rows"].as_array())
+                .cloned()
+                .unwrap_or_default()
+        };
+        let chunk_rows = rows_of("help_doc_chunks");
+        let chunk_ids: BTreeSet<&str> = chunk_rows
+            .iter()
+            .filter_map(|r| r.get("id").and_then(Value::as_str))
+            .collect();
+        assert!(
+            !chunk_ids.is_empty(),
+            "the corpus lost its help_doc_chunks rows — the chunk arms are vacuous"
+        );
+        for row in rows_of("embedding_status").iter() {
+            let entity_type = row.get("entityType").and_then(Value::as_str).unwrap_or("");
+            let entity_id = row.get("entityId").and_then(Value::as_str).unwrap_or("");
+            assert!(
+                !entity_type.starts_with("HELP_DOC_"),
+                "v4 minted a help-section embedding_status entityType: {entity_type}"
+            );
+            assert!(
+                !chunk_ids.contains(entity_id),
+                "v4 minted an embedding_status row for a help SECTION ({entity_id}) — the \
+                 one-unit-of-work-per-document invariant has moved and the port must follow"
+            );
+        }
+    }
     assert_eq!(
         oracle_routes
             .iter()

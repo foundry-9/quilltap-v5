@@ -116,6 +116,12 @@
 //!   TZ=UTC QT_ORACLE_EMBEDDING_REMAINDER=/tmp/oracle-embedding-remainder.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_remainder_equivalence
 //!
+//! ⚠ P4.D77: the committed main fixture's `help_doc_chunks` table was added by
+//! `harness/oracle/fixtures/extend-help-doc-chunks.ts` (EXTENDER, not rebuild).
+//! To re-derive: copy the committed main DB to /tmp, run
+//! `QT_CHUNK_SPEC=embedding-remainder.json QT_CHUNK_DB=<copy>` through that
+//! script from the v4 checkout, copy back, then regenerate this oracle.
+//!
 //! Rebuilding the COMMITTED fixture pair is a separate, DELIBERATE act — a
 //! rebuild mints fresh UUIDs and invalidates every family reading these DBs,
 //! so it re-runs every consumer. When (and only when) the fixture itself must

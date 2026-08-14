@@ -1043,4 +1043,60 @@ mod tests {
         assert_eq!(r.target_dimensions, Some(256));
         assert_eq!(r.vector_entries_deleted, 1, "the 1024-d entry goes");
     }
+
+    /// P4.D77 (v4 `24633026`) — **the reconcile keeps counting `help_docs`
+    /// rows, and ONLY `help_docs` rows.**
+    ///
+    /// v4's stated invariant for putting section embeddings in the same
+    /// HELP_DOC job rather than giving them an entity type of their own: the
+    /// reindex enqueue, the `embedding_status` bookkeeping and this reconcile
+    /// all continue to count documents, and a chunk can never carry a dimension
+    /// its parent doesn't, because they are always written together. v4 shipped
+    /// no reconcile change at `24633026`, so neither does this port — and this
+    /// pins that as a measured fact rather than an omission nobody checked.
+    ///
+    /// A non-conforming chunk sitting beside a CONFORMING doc must move neither
+    /// the mismatch count nor the enqueue: if the reconcile ever grew a chunk
+    /// leg, this goes red and the omission gets re-argued on purpose.
+    #[test]
+    fn help_doc_chunks_are_invisible_to_the_reconcile() {
+        let conn = main_conn();
+        default_profile(&conn, "OPENAI");
+        crate::db::help_doc_chunks_repair::ensure_help_doc_chunks_table(&conn).unwrap();
+
+        // One conforming help doc…
+        conn.execute(
+            "INSERT INTO help_docs (id, embedding) VALUES ('hd-ok', ?1)",
+            params![good_blob(TARGET_DIM)],
+        )
+        .unwrap();
+        // …and one of its sections at the WRONG dimension.
+        conn.execute(
+            "INSERT INTO help_doc_chunks                (id, docId, chunkIndex, heading, content, embedding, createdAt, updatedAt)              VALUES ('hc-bad', 'hd-ok', 0, NULL, 'stale section', ?1, '', '')",
+            params![good_blob(256)],
+        )
+        .unwrap();
+
+        let r = reconcile_embedding_dimensions(&conn, None, NOW_MS);
+
+        assert_eq!(
+            r.mismatched.help_docs, 0,
+            "the DOC conforms; a non-conforming section must not be counted against it"
+        );
+        assert_eq!(
+            r.mismatched.total(),
+            0,
+            "no other counter may pick the chunk up either"
+        );
+        assert!(
+            enqueued_jobs(&conn).is_empty(),
+            "nothing is owed: the reconcile counts documents, and this document is fine"
+        );
+        // And the chunk row is untouched — the reconcile deletes vector_entries,
+        // never help-doc rows of either kind.
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM help_doc_chunks", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1);
+    }
 }

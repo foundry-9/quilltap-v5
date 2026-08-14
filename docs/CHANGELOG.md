@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Pinned the rule that section embeddings keep no bookkeeping of their own: the
+dimension reconcile and the embedding-status rows count help documents, never
+sections. Tests only.
+
 `help_search` now ranks a help page by its best matching section as well as by
 the page as a whole, and leads the result with that section rather than with the
 first thousand characters of the file — which, on a long settings page, is a

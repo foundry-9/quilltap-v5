@@ -20,6 +20,13 @@
 //! crypto/mount flag) — the differential locks the two ports to identical
 //! observable behavior meanwhile.
 //!
+//! ⚠ P4.D77: the committed `embedding-profiles-main.db` gained a
+//! `help_doc_chunks` table + one 8-dimension section vector via
+//! `harness/oracle/fixtures/extend-help-doc-chunks.ts` (EXTENDER, not rebuild).
+//! To re-derive: copy the committed main DB to /tmp, run
+//! `QT_CHUNK_SPEC=embedding-profiles-tier2.json QT_CHUNK_DB=<copy>` through that
+//! script from the v4 checkout, copy back, then regenerate this oracle.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-ep-reapply.ndjson npx jest -- embedding-reapply
 //! Run:
