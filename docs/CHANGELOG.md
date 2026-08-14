@@ -80,6 +80,12 @@ report v4 returns, listing every offending key at once. Dangerous Content also
 now checks that the two uncensored-profile ids are real UUIDs, and the cheap-LLM
 bag is checked at the point v4 checks it, so a request with more than one bad
 field reports the same one v4 reports.
+The Salon composer has its formatting toolbar. Switch a chat to composition mode
+and the bold/italic/heading/list/quote/code buttons, the indent controls, the
+emoji and symbol pickers, the roleplay template's delimiter buttons, and the
+"Edit markdown source" toggle all appear above the message box — the same
+toolbar the form fields have had, with the delimiters v4 shows only in a chat.
+
 The formatting toolbar now shows a roleplay template's delimiter buttons — the
 narration button first, then the template's own, minus any that mark text the
 same way narration does. Form fields, which have no template, are unchanged.

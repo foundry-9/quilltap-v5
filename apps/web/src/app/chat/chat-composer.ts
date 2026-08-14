@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  type ElementRef,
   OnInit,
   computed,
   inject,
@@ -12,9 +13,22 @@ import {
 } from '@angular/core';
 
 import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
+import { recordRecent } from '../editor/char-insert/recents-storage';
+import {
+  applyDelimiterCommand,
+  applySourceDelimiter,
+} from '../editor/delimiter-transforms';
+import { formatCommand } from '../editor/format-commands';
+import {
+  FormattingToolbar,
+  type CharInsert,
+  type FormatAction,
+} from '../editor/formatting-toolbar';
+import { applySourceFormat } from '../editor/source-transforms';
 import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
+import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import {
   uploadChatFile,
@@ -96,9 +110,18 @@ export interface PendingToolResultChip extends RngPendingResult {
 @Component({
   selector: 'qt-chat-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup, RngDropdown, SpeakingAsAvatar],
+  imports: [
+    Icon,
+    FileConflictDialog,
+    FormattingToolbar,
+    RichEditor,
+    CustomToolsPopup,
+    RngDropdown,
+    SpeakingAsAvatar,
+  ],
   template: `
     <div class="qt-chat-composer">
+     <div class="qt-chat-composer-content">
       @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
         <div class="qt-chat-attachment-list mb-2">
           @for (file of attachedFiles(); track file.id) {
@@ -151,10 +174,43 @@ export interface PendingToolResultChip extends RngPendingResult {
       }
 
 
+      <!-- The formatting toolbar — its own row above the form, shown only in
+           composition mode (v4 ChatComposer :320-345, gated on its
+           documentEditingMode prop). The Salon hands down the active roleplay
+           template's delimiters; a chat with no template shows the markdown
+           buttons and the pickers alone. -->
+      @if (compositionMode()) {
+        <qt-formatting-toolbar
+          [disabled]="disabled() || !hasActiveCharacters()"
+          [inCodeBlock]="inCodeBlock()"
+          [showSource]="showSource()"
+          [showSourceToggle]="true"
+          [delimiters]="templateDelimiters()"
+          [narrationDelimiters]="narrationDelimiters()"
+          (action)="onFormatAction($event)"
+          (applyDelimiter)="onApplyDelimiter($event)"
+          (insertChar)="onInsertChar($event)"
+          (toggleSource)="onToggleSource()"
+        />
+      }
+
       <form class="qt-chat-composer-inner" (submit)="onSubmit($event)">
+        @if (showSource()) {
+          <textarea
+            #sourceArea
+            class="qt-chat-composer-input qt-source-mode-textarea"
+            [value]="sourceText()"
+            [disabled]="disabled() || !hasActiveCharacters()"
+            aria-label="Message (markdown source)"
+            spellcheck="false"
+            style="line-height: 1.5"
+            (input)="onSourceInput($any($event.target).value)"
+          ></textarea>
+        }
         <qt-rich-editor
           #editor
           class="qt-chat-composer-input qt-lexical-contenteditable"
+          [style.display]="showSource() ? 'none' : null"
           [value]="restoredDraft()"
           [placeholder]="placeholder()"
           [disabled]="disabled()"
@@ -344,6 +400,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           }
         </div>
       </form>
+     </div>
     </div>
 
     @if (conflict(); as c) {
@@ -418,6 +475,16 @@ export class ChatComposer implements OnInit {
    * computes it via `findActiveUserParticipant` so it matches server attribution.
    */
   readonly speakingAs = input<SpeakingAsSeat | null>(null);
+  /**
+   * The active roleplay template's delimiter entries and narration characters,
+   * for the formatting toolbar's delimiter section (v4 passes
+   * `roleplayTemplateId` + `narrationDelimiters` and the toolbar fetches the
+   * rest; the Salon already holds the fetched row here — see the toolbar's
+   * class doc). Empty while the template fetch is in flight, which is v4's
+   * `loadingTemplate` gate.
+   */
+  readonly templateDelimiters = input<readonly TemplateDelimiter[]>([]);
+  readonly narrationDelimiters = input<NarrationDelimiters | null>(null);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -440,7 +507,26 @@ export class ChatComposer implements OnInit {
   /** The chip's ✕ (v4 `onRemovePendingToolResult`). */
   readonly removePendingToolResult = output<string>();
 
-  private readonly editor = viewChild.required(RichEditor);
+  /**
+   * Optional rather than required because the toolbar binds `inCodeBlock` in
+   * the TEMPLATE, and a required query read during the first change-detection
+   * pass throws before the view exists.
+   */
+  private readonly editorView = viewChild(RichEditor);
+  private readonly sourceArea = viewChild<ElementRef<HTMLTextAreaElement>>('sourceArea');
+
+  /** Flips the toolbar's code-block button (v4 tracks Lexical's selection). */
+  protected readonly inCodeBlock = computed(() => this.editorView()?.inCodeBlock() ?? false);
+
+  /**
+   * Raw-markdown source view (v4 `showSource`, held in `SalonView`'s modal
+   * state as `showPreview`). v5 keeps it HERE: the only reader in v4 is
+   * `ChatComposer` itself, so lifting it to the Salon would be state with no
+   * second consumer.
+   */
+  protected readonly showSource = signal(false);
+  /** The bytes the source textarea shows — seeded from the editor on entry. */
+  protected readonly sourceText = signal('');
 
   /** The saved draft restored once on mount — seeds the editor's initial value. */
   protected readonly restoredDraft = signal('');
@@ -559,6 +645,99 @@ export class ChatComposer implements OnInit {
     }
   }
 
+  // --- the formatting toolbar (v4 FormattingToolbar, composition mode) -------
+
+  /**
+   * Enter/leave raw-source mode (v4 `ChatComposer.tsx:330-341`): entering seeds
+   * the textarea from the editor's OWN serialization — the page's `input` lags
+   * while typing, which is the whole point of the decoupled sync — and leaving
+   * hands the edited bytes back to the editor.
+   *
+   * v4 keeps Lexical mounted-but-hidden across the swap "to preserve undo
+   * history"; v5 does the same with `display: none` rather than unmounting, so
+   * the ProseMirror history plugin survives a round trip too. (The shared
+   * markdown-field DOES unmount, because a form field has no such note and its
+   * source textarea is the taller of the two views.)
+   */
+  protected onToggleSource(): void {
+    if (this.showSource()) {
+      this.editorView()?.setMarkdown(this.sourceText());
+      this.showSource.set(false);
+      return;
+    }
+    this.sourceText.set(this.editorView()?.getMarkdown() ?? '');
+    this.showSource.set(true);
+  }
+
+  /** A textarea keystroke: keep the send gate and the draft in step. */
+  protected onSourceInput(value: string): void {
+    this.sourceText.set(value);
+    this.onContentChange(value);
+  }
+
+  /** A markdown/indent/code-block button (v4 `handleMarkdownClick` & friends). */
+  protected onFormatAction(action: FormatAction): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => applySourceFormat(state, action));
+      return;
+    }
+    this.editorView()?.runCommand(formatCommand(action, this.inCodeBlock()));
+  }
+
+  /** A roleplay-delimiter button (v4 `handleDelimiterClick`, both branches). */
+  protected onApplyDelimiter(delimiter: TemplateDelimiter): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => applySourceDelimiter(state, delimiter));
+      return;
+    }
+    this.editorView()?.runCommand(applyDelimiterCommand(delimiter));
+  }
+
+  /**
+   * A character picked from a toolbar picker. In source mode it lands at the
+   * textarea's caret rather than in the hidden editor — the markdown-field's
+   * ruled divergence (P4.D75), for the same reason: v4 hands the picker its
+   * Lexical instance unconditionally, so the pick is silently lost.
+   */
+  protected onInsertChar({ profile, char }: CharInsert): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => ({
+        value: state.value.slice(0, state.start) + char + state.value.slice(state.end),
+        cursor: state.start + char.length,
+      }));
+      recordRecent(profile, char);
+      return;
+    }
+    this.editorView()?.insertChar(profile, char);
+  }
+
+  /**
+   * Run a source-mode transform over the textarea and restore the caret after
+   * the re-render — v4 does the same inside a `requestAnimationFrame`
+   * (`sourceApply`, `FormattingToolbar.tsx:123-134`).
+   */
+  private applyToSource(
+    transform: (state: { value: string; start: number; end: number }) => {
+      value: string;
+      cursor: number;
+    },
+  ): void {
+    const textarea = this.sourceArea()?.nativeElement;
+    if (!textarea) return;
+
+    const result = transform({
+      value: textarea.value,
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    });
+    this.sourceText.set(result.value);
+    this.onContentChange(result.value);
+    requestAnimationFrame(() => {
+      textarea.selectionStart = textarea.selectionEnd = result.cursor;
+      textarea.focus();
+    });
+  }
+
   protected onSubmit(event: Event): void {
     event.preventDefault();
     this.submit();
@@ -572,11 +751,22 @@ export class ChatComposer implements OnInit {
     // Send reads the markdown from the editor handle at submit time (v4's
     // decoupled ComposerSyncPlugin posture) — authoritative over the debounced
     // `text` signal, and byte-faithful to the v4 composer dialect.
+    //
+    // DELIBERATE DIVERGENCE in source mode: v4 reads the LEXICAL handle here
+    // too (`SalonView.tsx:1581`) while its bridge is `suspendSync`ed, so a send
+    // made with the raw-source textarea open silently discards every source
+    // edit — and since `hasContent` also comes from the editor, the Send button
+    // does not even light for text typed there. v5 sends the bytes the writer
+    // can see. Same shape as the markdown-field picker divergence (P4.D75): a
+    // control that visibly does nothing is not worth reproducing. Queued as a
+    // v4-side finding.
+    const content = this.showSource() ? this.sourceText() : (this.editorView()?.getMarkdown() ?? '');
     this.send.emit({
-      content: this.editor().getMarkdown().trim(),
+      content: content.trim(),
       fileIds: this.attachedFiles().map((f) => f.id),
     });
-    this.editor().setMarkdown('');
+    this.editorView()?.setMarkdown('');
+    this.sourceText.set('');
     this.text.set('');
     this.attachedFiles.set([]);
     this.clearDraft();

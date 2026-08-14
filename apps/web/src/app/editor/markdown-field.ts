@@ -9,12 +9,8 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { setBlockType, toggleMark, wrapIn } from 'prosemirror-commands';
-import type { Command } from 'prosemirror-state';
-import { liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list';
-
-import { dialectSchema } from './markdown-dialect';
 import { recordRecent } from './char-insert/recents-storage';
+import { formatCommand } from './format-commands';
 import { FormattingToolbar, type CharInsert, type FormatAction } from './formatting-toolbar';
 import { RichEditor } from './rich-editor';
 import { applySourceFormat } from './source-transforms';
@@ -268,7 +264,7 @@ export class MarkdownField {
       this.applyToSource(action);
       return;
     }
-    this.editor()?.runCommand(this.commandFor(action));
+    this.editor()?.runCommand(formatCommand(action, this.inCodeBlock()));
   }
 
   /**
@@ -291,32 +287,5 @@ export class MarkdownField {
       textarea.selectionStart = textarea.selectionEnd = result.cursor;
       textarea.focus();
     });
-  }
-
-  private commandFor(action: FormatAction): Command {
-    const schema = dialectSchema;
-    switch (action.kind) {
-      case 'bold':
-        return toggleMark(schema.marks['strong']);
-      case 'italic':
-        return toggleMark(schema.marks['em']);
-      case 'heading':
-        return setBlockType(schema.nodes['heading'], { level: action.level });
-      case 'ul':
-        return wrapInList(schema.nodes['bullet_list']);
-      case 'ol':
-        return wrapInList(schema.nodes['ordered_list']);
-      case 'blockquote':
-        return wrapIn(schema.nodes['blockquote']);
-      case 'codeBlock':
-        // Toggle: leave a code block back to a paragraph, else enter one (v4).
-        return this.inCodeBlock()
-          ? setBlockType(schema.nodes['paragraph'])
-          : setBlockType(schema.nodes['code_block']);
-      case 'outdent':
-        return liftListItem(schema.nodes['list_item']);
-      case 'indent':
-        return sinkListItem(schema.nodes['list_item']);
-    }
   }
 }

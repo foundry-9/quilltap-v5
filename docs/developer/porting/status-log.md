@@ -69085,3 +69085,51 @@ dropping the `hasDelimiters` gate (1 red), `title` from `name` instead of
 `getDelimiterTooltip` (7), and removing the mousedown guard (1).
 
 SPA 0.5.483.
+
+
+## P4.9L unit 3 — the toolbar mounted in the Salon composer
+
+`qt-chat-composer` renders `qt-formatting-toolbar` on its own row above the
+form, gated on composition mode — v4's `documentEditingMode && lexicalEditor`
+(`ChatComposer.tsx:320-345`). The composer also gained v4's raw-source view:
+the toggle seeds the textarea from the editor's OWN serialization (the page's
+`input` lags while typing, which is the point of the decoupled sync) and hands
+the edited bytes back on the way out, with the editor kept MOUNTED-but-hidden
+across the swap for v4's stated reason ("to preserve undo history" — here it
+preserves the ProseMirror history plugin's stack).
+
+Wiring: format buttons → `formatCommand` (extracted from `markdown-field.ts`
+into `editor/format-commands.ts`, so the two hosts of one toolbar cannot
+dispatch different commands for the same button); delimiter buttons →
+`applyDelimiterCommand`; both fall to their source-mode transforms when the
+textarea is showing; pickers → `insertChar`, or the textarea caret in source
+mode (the P4.D75 divergence, same reasoning).
+
+`salon-conversation.ts` now keeps the template's `delimiters` and
+`narrationDelimiters` from the fetch it was already making. Its class doc's
+`narrationDelimiters` deferral paragraph — "v5 has no composer formatting
+toolbar at all" — is retired; `roleplayTemplateName` stays unkept (still read
+nowhere in v4).
+
+**DELIBERATE DIVERGENCE (new, loud).** v4's send reads the LEXICAL handle
+(`SalonView.tsx:1581`) even while the raw-source textarea is open and its bridge
+is `suspendSync`ed — so a send made from source mode silently discards every
+source edit, and since `hasContent` also comes from the editor, the Send button
+does not even light for text typed there. v5 sends the bytes the writer can see.
+Same shape and same reasoning as the P4.D75 markdown-field picker divergence: a
+control that visibly does nothing is not worth reproducing. **Queued as a
+v4-side finding.**
+
+Also recorded: v5 holds `showSource` in the composer, where v4 holds it in
+`SalonView`'s modal state as `showPreview` — measured, that state has exactly
+one reader in the whole v4 checkout, `ChatComposer` itself.
+
+`chat-composer.toolbar.spec.ts` (7 cases) pins the wiring the transform-level
+differential cannot see: the composition-mode gate, the delimiter list, a
+delimiter and a markdown button each reaching the SENT BYTES, the source
+round-trip, and a source-mode delimiter transforming the textarea. Four
+mutations red (toolbar ungated; the source send reading the hidden editor —
+i.e. v4's own bug; the source delimiter routed to the editor; the editor no
+longer hidden).
+
+Gate: `ng test` 322 files / 4,710 / 0; `ng build` clean. SPA 0.5.484.

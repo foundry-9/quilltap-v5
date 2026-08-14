@@ -87,6 +87,7 @@ import {
   type RenderingPattern,
 } from '../../chat/render/roleplay-rendering';
 import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
+import type { NarrationDelimiters, TemplateDelimiter } from '../../core/core-contract';
 import {
   addToQueue,
   createInitialTurnState,
@@ -409,6 +410,8 @@ interface CascadePrompt {
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
         [compositionMode]="compositionMode()"
+        [templateDelimiters]="templateDelimiters()"
+        [narrationDelimiters]="narrationDelimiters()"
         [textReplacementRules]="textReplacementRules()"
         [textReplacementsEnabled]="textReplacementsEnabled()"
         [composerSpellcheck]="composerSpellcheck()"
@@ -852,6 +855,8 @@ export class SalonConversation {
         if (seq !== this.templateFetchSeq) return;
         this.roleplayRenderingPatterns.set(undefined);
         this.roleplayDialogueDetection.set(undefined);
+        this.roleplayDelimiters.set([]);
+        this.roleplayNarrationDelimiters.set(null);
       };
       if (!templateId) {
         reset();
@@ -868,6 +873,8 @@ export class SalonConversation {
                 : undefined,
             );
             this.roleplayDialogueDetection.set(template.dialogueDetection);
+            this.roleplayDelimiters.set(template.delimiters ?? []);
+            this.roleplayNarrationDelimiters.set(template.narrationDelimiters ?? null);
           } catch {
             reset();
           }
@@ -1011,23 +1018,28 @@ export class SalonConversation {
    * is what makes a chat pointing at a DELETED template fall back to the
    * defaults instead of failing.
    *
-   * Two of v4's four fetched values are DELIBERATELY not kept here:
+   * `narrationDelimiters` JOINED this fetch in P4.9L, when the composer got its
+   * formatting toolbar (v4 `ChatComposer.tsx:327` → `FormattingToolbar.tsx
+   * :382-407`). The template's own `delimiters` ride with it — v4's toolbar
+   * fetches THAT array itself, from the very same route this effect is already
+   * calling, so v5 reads it here instead of opening a second source of truth
+   * for one row (the toolbar's class doc records the divergence).
    *
-   * - `narrationDelimiters` feeds v4's `FormattingToolbar` (`ChatComposer.tsx
-   *   :327` → `FormattingToolbar.tsx:382-407`). v5 has no composer formatting
-   *   toolbar at all — the standing `p4.9l` deferral — so the value has no
-   *   consumer to reach. It joins this fetch the day that lane lands; keeping
-   *   it now would be state nothing reads.
-   * - `roleplayTemplateName` is set by v4 (`SalonView.tsx:140`) and READ
-   *   NOWHERE — its declaration and its four setters are its only occurrences
-   *   in the whole v4 checkout. Mirroring dead state would be a stub.
+   * One of v4's fetched values is still DELIBERATELY not kept:
+   * `roleplayTemplateName` is set by v4 (`SalonView.tsx:140`) and READ NOWHERE
+   * — its declaration and its four setters are its only occurrences in the
+   * whole v4 checkout. Mirroring dead state would be a stub.
    */
   private readonly roleplayRenderingPatterns = signal<RenderingPattern[] | undefined>(undefined);
   private readonly roleplayDialogueDetection = signal<DialogueDetection | null | undefined>(
     undefined,
   );
+  private readonly roleplayDelimiters = signal<TemplateDelimiter[]>([]);
+  private readonly roleplayNarrationDelimiters = signal<NarrationDelimiters | null>(null);
   protected readonly renderingPatterns = this.roleplayRenderingPatterns.asReadonly();
   protected readonly dialogueDetection = this.roleplayDialogueDetection.asReadonly();
+  protected readonly templateDelimiters = this.roleplayDelimiters.asReadonly();
+  protected readonly narrationDelimiters = this.roleplayNarrationDelimiters.asReadonly();
 
   /**
    * v4's effect keys on `chat?.roleplayTemplateId` — a PRIMITIVE, so it re-runs
