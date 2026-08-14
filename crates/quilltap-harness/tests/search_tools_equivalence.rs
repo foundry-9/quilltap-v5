@@ -386,7 +386,30 @@ async fn run_search(
             label: "hs_invalid_empty",
             args: serde_json::json!({ "query": "" }),
         },
+        // P4.D77 — the whole ranking in one case, so every section arm is
+        // visible: the doc that beats its own section, the tie that still
+        // attaches, the doc whose section LIFTS it from last place to joint
+        // first, the dimension-mismatched section that is skipped, and the docs
+        // with no sections at all. The default limit of 3 hides the last three.
+        HsCase {
+            label: "hs_semantic_sections_all",
+            args: serde_json::json!({ "query": "how do I get started", "limit": 10 }),
+        },
     ];
+    // This list is HAND-MAINTAINED against the oracle case file, and a label
+    // present there but missing here is silently unrun — which is exactly how
+    // P4.D77's first dimension-guard mutation came back green. Fail instead.
+    {
+        let declared: std::collections::BTreeSet<&str> = hs_cases.iter().map(|c| c.label).collect();
+        let from_oracle: Vec<&String> = oracle.keys().filter(|k| k.starts_with("hs_")).collect();
+        for label in &from_oracle {
+            assert!(
+                declared.contains(label.as_str()),
+                "the oracle carries help_search case {label} that this test never runs — \
+                 add it to `hs_cases`"
+            );
+        }
+    }
     for c in &hs_cases {
         let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, c.label);
         let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);

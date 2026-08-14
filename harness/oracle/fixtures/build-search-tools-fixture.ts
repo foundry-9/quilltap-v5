@@ -112,6 +112,17 @@ interface Spec {
   memories: SeedMemory[];
   conversationChunks: ConvChunk[];
   helpDocs: HelpDoc[];
+  helpDocChunks: HelpDocChunk[];
+}
+
+/** P4.D77 — one section row of a help document (v4 `24633026`). */
+interface HelpDocChunk {
+  id: string;
+  docId: string;
+  chunkIndex: number;
+  heading: string | null;
+  content: string;
+  vector: number[];
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -162,6 +173,7 @@ async function main(): Promise<void> {
     FileEntrySchema,
   } = await import('@/lib/schemas/types');
   const { HelpDocSchema } = await import('@/lib/schemas/help-doc.types');
+  const { HelpDocChunkSchema } = await import('@/lib/schemas/help-doc-chunk.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -187,6 +199,8 @@ async function main(): Promise<void> {
   await ensureCollection('memories', MemorySchema);
   await ensureCollection('conversation_chunks', ConversationChunkSchema);
   await ensureCollection('help_docs', HelpDocSchema);
+  // P4.D77 — the section table help_search now scores.
+  await ensureCollection('help_doc_chunks', HelpDocChunkSchema);
   // The `files` table is empty here, but the port's project_info counts it via a
   // scoped SQL COUNT (v4 uses findAll().filter, which tolerates a missing table);
   // materialize it so both sides count 0 instead of the port erroring.
@@ -460,6 +474,23 @@ async function main(): Promise<void> {
         embedding: h.vector,
       } as never,
       { id: h.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+    );
+  }
+
+  // 11. help_doc_chunks (P4.D77, v4 `24633026`) — the section rows help_search
+  // now scores alongside the whole-document vectors. Each row's arm is
+  // documented in the spec's own `_note`.
+  const helpChunkRepo = repos.helpDocChunks;
+  for (const c of spec.helpDocChunks) {
+    await helpChunkRepo.create(
+      {
+        docId: c.docId,
+        chunkIndex: c.chunkIndex,
+        heading: c.heading,
+        content: c.content,
+        embedding: c.vector,
+      } as never,
+      { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
     );
   }
 

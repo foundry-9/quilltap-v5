@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+`help_search` now ranks a help page by its best matching section as well as by
+the page as a whole, and leads the result with that section rather than with the
+first thousand characters of the file — which, on a long settings page, is a
+table of contents and a preamble and never the answer. A page whose sections
+have not been embedded yet still ranks exactly as it did.
+
 Help sections are now embedded. The same job that embeds a help document fills
 in its section vectors, skipping any that already have one, and a section whose
 embedding call fails is logged and passed over rather than failing the whole

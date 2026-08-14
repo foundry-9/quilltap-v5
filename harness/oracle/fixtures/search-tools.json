@@ -1,6 +1,6 @@
 {
-  "$comment": "Fixture + corpus spec for the W4.1d4 search/introspection tool differential (request_full_context, project_info, help_search, search). ONE two-DB fixture (main + mount-index) is baked once; each oracle/harness case runs on a fresh copy. Canned embeddings are dim-8 (query dim must equal stored dim). cosineSimilarity here is a raw dot product (vectors NOT re-normalized), so a unit basis-vector query e_k dotted with a stored vector whose k-th component is s yields exactly s — giving exact control over which items clear minScore (0.3) and their ordering. Every store/character/project/chat/memory id is pinned so request_full_context + project_info compare with ZERO normalization; the char-vault mount id is minted and read back on both sides.",
-  "$safety": "testPepperBase64 is the SAME throwaway key the tiered-mount-pool + other fixtures use — never a real pepper.",
+  "$comment": "Fixture + corpus spec for the W4.1d4 search/introspection tool differential (request_full_context, project_info, help_search, search). ONE two-DB fixture (main + mount-index) is baked once; each oracle/harness case runs on a fresh copy. Canned embeddings are dim-8 (query dim must equal stored dim). cosineSimilarity here is a raw dot product (vectors NOT re-normalized), so a unit basis-vector query e_k dotted with a stored vector whose k-th component is s yields exactly s \u2014 giving exact control over which items clear minScore (0.3) and their ordering. Every store/character/project/chat/memory id is pinned so request_full_context + project_info compare with ZERO normalization; the char-vault mount id is minted and read back on both sides. P4.D77 (v4 24633026): help_search now scores SECTIONS as well as documents. The helpDocs vectors were re-spread so the five docs have distinct cosines (they were all parallel to e3, hence all 1.0, so the ranking was decided by insertion order alone), and helpDocChunks carries the five section rows whose arms are documented row by row.",
+  "$safety": "testPepperBase64 is the SAME throwaway key the tiered-mount-pool + other fixtures use \u2014 never a real pepper.",
   "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
   "userId": "a0000000-0000-4000-8000-000000000001",
   "wrongUserId": "a0000000-0000-4000-8000-0000000000ff",
@@ -111,7 +111,7 @@
     "avatarOverrides": []
   },
   "$nowMs": 1767225600000,
-  "$nowMsComment": "2026-01-01T00:00:00.000Z — the Date.now() seam the memory branch's effectiveWeight/decay reads. Pinned identically on both differential sides.",
+  "$nowMsComment": "2026-01-01T00:00:00.000Z \u2014 the Date.now() seam the memory branch's effectiveWeight/decay reads. Pinned identically on both differential sides.",
   "seedTimestamp": "2025-06-01T00:00:00.000Z",
   "projectStoreFiles": [
     {
@@ -382,12 +382,13 @@
         0,
         0,
         0,
-        0.85,
-        0,
+        1.0,
+        0.0,
         0,
         0,
         0
-      ]
+      ],
+      "_note": "P4.D77 \u2014 cosine 1.0 against the 'how do I get started' query vector (e3). Its ONE chunk scores lower, so the DOCUMENT wins: no matchedSection, and the old first-1000-chars excerpt shape. The vectors were re-spread this round (they were all parallel to e3 before, so every doc tied at 1.0 and the limit-3 slice was decided purely by insertion order \u2014 which would have hidden the new section-lifted doc below the cut)."
     },
     {
       "id": "dd000000-0000-4000-8000-000000000002",
@@ -399,12 +400,13 @@
         0,
         0,
         0,
-        0.55,
-        0,
+        0.9,
+        0.4358898943540673,
         0,
         0,
         0
-      ]
+      ],
+      "_note": "P4.D77 \u2014 cosine 0.9. Its best chunk carries the SAME vector, so the two quantize to identical bytes and the scores are bit-equal: the `best.score >= docScore` tie edge, where v4 DOES attach the section. That chunk also has a NULL heading, which is the formatter's unlabelled 'Matching section:' branch. Its second chunk is dimension-mismatched and must be skipped outright."
     },
     {
       "id": "dd000000-0000-4000-8000-000000000003",
@@ -416,12 +418,67 @@
         0,
         0,
         0,
-        0.2,
-        0,
+        0.5,
+        0.8660254037844386,
         0,
         0,
         0
-      ]
+      ],
+      "_note": "P4.D77 \u2014 cosine 0.5, and deliberately NO chunks at all: the arm proving a doc with no sections still ranks, unchanged."
+    },
+    {
+      "id": "dd000000-0000-4000-8000-000000000004",
+      "title": "Describing an Image for a Model That Cannot See",
+      "path": "image-descriptions",
+      "url": "https://help.quilltap.app/image-descriptions",
+      "content": "Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. Preamble that answers nothing. ",
+      "vector": [
+        0,
+        0,
+        0,
+        0.3,
+        0.9539392014169457,
+        0,
+        0,
+        0
+      ],
+      "_note": "P4.D77 \u2014 THE HEADLINE ARM. The document itself scores only 0.3, but its best section scores 1.0, so max() lifts the whole result to 1.0 and it climbs from last place to joint first. Its content is >600 UTF-16 units so the 600-char 'Document begins:' excerpt truncates, and its winning section is >1500 so the 1500-char section body truncates too. Its second, weaker section proves best-per-doc selection."
+    },
+    {
+      "id": "dd000000-0000-4000-8000-000000000005",
+      "title": "A Long Page With No Sections Yet",
+      "path": "long-unsectioned",
+      "url": "https://help.quilltap.app/long-unsectioned",
+      "content": "This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. This page has never been sliced. ",
+      "vector": [
+        0,
+        0,
+        0,
+        0.7,
+        0.714142842854285,
+        0,
+        0,
+        0
+      ],
+      "_note": "P4.D77 \u2014 cosine 0.7, no chunks, and a body over 1000 UTF-16 units: the no-section branch's DOC_EXCERPT_CHARS truncation, which nothing else in the corpus was long enough to exercise."
+    },
+    {
+      "id": "dd000000-0000-4000-8000-000000000006",
+      "title": "An Orthogonal Page",
+      "path": "orthogonal",
+      "url": "https://help.quilltap.app/orthogonal",
+      "content": "A page about nothing the query asks after.",
+      "vector": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "_note": "P4.D77 \u2014 cosine EXACTLY 0.0 against the query, and its only section is dimension-mismatched. This is what makes scoreSections' dimension guard observable at all: v5's cosine returns an error on a length mismatch and the caller floors it to 0.0, so a mismatched chunk can never win a max() \u2014 but it CAN pass `best.score >= docScore` when the document itself scores 0.0, attaching a matchedSection v4 never attaches. Drop the guard and this row grows one."
     }
   ],
   "cannedEmbeddings": {
@@ -489,5 +546,107 @@
   "cannedFailures": [
     "wardrobe outfits clothing help",
     "xyzzy plugh frobnitz quux"
+  ],
+  "helpDocChunks": [
+    {
+      "id": "dc000000-0000-4000-8000-00000000f001",
+      "docId": "dd000000-0000-4000-8000-000000000001",
+      "chunkIndex": 0,
+      "heading": "A section that loses to its own document",
+      "content": "Some prose about starting out that matches the query less well than the page as a whole does.",
+      "vector": [
+        0,
+        0,
+        0,
+        0.7071067811865476,
+        0.7071067811865475,
+        0,
+        0,
+        0
+      ],
+      "_note": "Scores 0.707 against the document's 1.0 \u2192 best.score < docScore \u2192 NO matchedSection, and rawScore stays the document's."
+    },
+    {
+      "id": "dc000000-0000-4000-8000-00000000f002",
+      "docId": "dd000000-0000-4000-8000-000000000002",
+      "chunkIndex": 0,
+      "heading": null,
+      "content": "A section with no heading above it, carrying the same vector as its parent document.",
+      "vector": [
+        0,
+        0,
+        0,
+        0.9,
+        0.4358898943540673,
+        0,
+        0,
+        0
+      ],
+      "_note": "Byte-identical vector to its parent, so the cosines are bit-equal: the >= tie edge attaches. Null heading exercises the unlabelled formatter branch."
+    },
+    {
+      "id": "dc000000-0000-4000-8000-00000000f003",
+      "docId": "dd000000-0000-4000-8000-000000000002",
+      "chunkIndex": 1,
+      "heading": "Embedded under an older profile",
+      "content": "A section whose vector has the wrong number of dimensions entirely.",
+      "vector": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "_note": "FOUR dimensions against an eight-dimension query: skipped outright, exactly as a dimension-mismatched DOCUMENT is. It must not become the doc's best section, and it must not throw."
+    },
+    {
+      "id": "dc000000-0000-4000-8000-00000000f004",
+      "docId": "dd000000-0000-4000-8000-000000000004",
+      "chunkIndex": 0,
+      "heading": "Fallbacks when the primary profile refuses",
+      "content": "A weaker section of the same page, kept so best-per-doc selection has something to lose to.",
+      "vector": [
+        0,
+        0,
+        0,
+        0.5,
+        0.8660254037844386,
+        0,
+        0,
+        0
+      ],
+      "_note": "Deliberately FIRST in row order and weaker, so a port that kept the first chunk rather than the best one would surface here."
+    },
+    {
+      "id": "dc000000-0000-4000-8000-00000000f005",
+      "docId": "dd000000-0000-4000-8000-000000000004",
+      "chunkIndex": 1,
+      "heading": "Choosing a vision profile",
+      "content": "Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. Point the description at a vision profile and the model reads the picture for itself. ",
+      "vector": [
+        0,
+        0,
+        0,
+        1.0,
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "_note": "The winning section: 1.0 against its document's 0.3, so max() lifts the result and the section leads the context block. Over 1500 UTF-16 units, so the section body truncates."
+    },
+    {
+      "id": "dc000000-0000-4000-8000-00000000f006",
+      "docId": "dd000000-0000-4000-8000-000000000006",
+      "chunkIndex": 0,
+      "heading": "Left behind by an older profile",
+      "content": "The only section of a document that scores zero.",
+      "vector": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "_note": "The guard's tripwire \u2014 see its document's note. It is this doc's ONLY section, so with the guard removed it becomes `best` with score 0.0 and ties the document's own 0.0."
+    }
   ]
 }

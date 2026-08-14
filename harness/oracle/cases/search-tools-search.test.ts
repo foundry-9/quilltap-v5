@@ -81,6 +81,12 @@ async function main(): Promise<void> {
     // ---- help_search ----
     { label: 'hs_semantic_hit', tool: 'help_search', args: { query: 'how do I get started' } },
     { label: 'hs_semantic_limit', tool: 'help_search', args: { query: 'how do I get started', limit: 1 } },
+    // P4.D77 — the whole ranking, so every section arm is visible at once: the
+    // doc that beats its own section, the tie that still attaches, the doc
+    // whose section LIFTS it from last place to joint first, the
+    // dimension-mismatched section that is skipped, and the two docs with no
+    // sections at all. The default limit of 3 cuts the last two off.
+    { label: 'hs_semantic_sections_all', tool: 'help_search', args: { query: 'how do I get started', limit: 10 } },
     { label: 'hs_keyword_fallback', tool: 'help_search', args: { query: 'wardrobe outfits clothing help' } },
     { label: 'hs_keyword_miss', tool: 'help_search', args: { query: 'xyzzy plugh frobnitz quux' } },
     { label: 'hs_invalid_empty', tool: 'help_search', args: { query: '' } },

@@ -68231,3 +68231,56 @@ later "closed".
 which was regenerated): `embedding-generate-main.db`,
 `embedding-remainder-main.db`, `embedding-profiles-main.db` — all three by
 `extend-help-doc-chunks.ts` against a /tmp copy, never in place.
+
+---
+
+## P4.D77 unit 6 — search + the tool block
+
+`db/help_search.rs` gains `score_sections` + the `max(docScore, bestSectionScore)`
+blend + `HelpMatchedSection`, attached **only when `best.score >= docScore`** (an
+exact tie DOES attach). `tools/help_search.rs` gains `matchedSection` in the
+result object — LAST, after `content`, since v4 spreads it conditionally, and
+with the key ABSENT rather than null when there is no section (which is why the
+hand-rolled `Serialize` inserts it rather than declaring it) — plus the three
+budgets (1500 / 600 / 1000) and the section-leading context block.
+
+The keyword fallback never carries a section: v4 maps its results without the key
+at all.
+
+### The differential (`search_tools_equivalence`), and the case that never ran
+
+The `search-tools` fixture is BUILT, not committed, so it was extended directly:
+five help-doc vectors **re-spread** (they were all parallel to the query vector,
+so every doc tied at 1.0 and the ranking was decided purely by insertion order —
+which would have hidden the new section-lifted doc below the limit-3 cut), two
+new docs, and six `helpDocChunks` rows. Each row's `_note` in the spec states the
+arm it exists for:
+
+| doc | cosine | its sections | what it proves |
+|---|---|---|---|
+| getting-started | 1.0 | one, at 0.707 | the DOC beats its section — no `matchedSection`, old excerpt shape |
+| memories | 0.9 | one at 0.9 (byte-identical vector) + one dimension-mismatched | the `>=` TIE still attaches; a null heading takes the unlabelled `Matching section:` branch |
+| image-descriptions | 0.3 | 0.5 then 1.0 | **the headline**: `max()` lifts the result to 1.0 and it climbs from last to joint first; best-per-doc picks the second, not the first; >1500 section and >600 doc both truncate |
+| long-unsectioned | 0.7 | none | a doc with no sections ranks unchanged; >1000 body proves the no-section budget |
+| wardrobe | 0.5 | none | the same, short |
+| orthogonal | **0.0** | one dimension-mismatched | the dimension guard — see below |
+
+**A second gated-beat-style rot caught by mutation testing.** The Rust family's
+help_search case list is HAND-MAINTAINED; the new limit-10 case was added to the
+oracle and silently never run on the Rust side, so the dimension-guard mutation
+came back green. The case is now declared, **and the test asserts every `hs_*`
+label in the oracle has a declared counterpart** — a label added to the oracle
+alone now fails loudly instead of going unrun.
+
+**The dimension guard needed a doc scoring exactly 0.0 to be observable at all.**
+v5's `cosine_similarity` returns an error on a length mismatch and the caller
+floors it to `0.0`, so a mismatched chunk can never win a `max()` — the guard
+looks redundant. It is not: at `docScore == 0.0` the floored score passes
+`best.score >= docScore` and attaches a `matchedSection` v4 never attaches. The
+new `orthogonal` doc (cosine exactly 0, one 4-dimension section) is that
+tripwire.
+
+**Nine mutations, all caught:** `>=` → `>`; drop the `max()` blend; keep the
+first chunk instead of the best; drop the dimension guard; 1500 → 1000; 600 →
+1000; the labelled/unlabelled heading branch inverted; `matchedSection` moved out
+of last position; and the whole section pass removed.
