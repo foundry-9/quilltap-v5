@@ -374,6 +374,27 @@ fn dbkey_files(data: &Path) -> Vec<String> {
     names
 }
 
+/// The version floor v4's guard writes into `.dbkey` — the same value the
+/// oracle plants (`verify-dbkey-crosscompat.ts`).
+const MIN_SERVER_VERSION: &str = "4.9.0-dev.0";
+
+/// Plant `minServerVersion` the way v4's version guard does: parse, assign,
+/// 2-space-pretty back (`lib/startup/version-guard.ts:243-252`).
+fn plant_min_server_version(dbkey_path: &Path) {
+    let mut data: Map<String, Value> =
+        serde_json::from_str(&std::fs::read_to_string(dbkey_path).unwrap()).unwrap();
+    data.insert("minServerVersion".into(), json!(MIN_SERVER_VERSION));
+    std::fs::write(dbkey_path, serde_json::to_string_pretty(&data).unwrap()).unwrap();
+}
+
+fn min_server_version(dbkey_path: &Path) -> Option<String> {
+    let data: Map<String, Value> =
+        serde_json::from_str(&std::fs::read_to_string(dbkey_path).unwrap()).unwrap();
+    data.get("minServerVersion")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
 /// changePassphrase cross-compat (v5 → v4): write a `.dbkey` that v5 minted and
 /// re-wrapped via `change_passphrase`, for `verify-dbkey-crosscompat.ts` to
 /// unlock with v4's REAL dbkey code. The known TEST_PEPPER lets the oracle assert
@@ -394,7 +415,17 @@ fn writes_v5_changed_passphrase_dbkey_for_v4() {
     // Mint the .dbkey under "alpha", then re-wrap to "beta" — the file now wraps
     // TEST_PEPPER under the passphrase "beta".
     dbkey::save_dbkey(&data, TEST_PEPPER, "alpha").unwrap();
+    // P4.46: plant the field v4's version guard writes, so the re-wrap below is
+    // exercised over a file carrying a key v5 does not model. The oracle's
+    // `QT_DBKEY_V5_FIXTURE` leg asserts BOTH that it survived and that v4's real
+    // loader still opens the result.
+    plant_min_server_version(&data.join("quilltap.dbkey"));
     dbkey::change_passphrase(&data, "alpha", "beta").unwrap();
+    assert_eq!(
+        min_server_version(&data.join("quilltap.dbkey")),
+        Some(MIN_SERVER_VERSION.to_string()),
+        "v5's re-wrap dropped the v4 version floor"
+    );
     // Sanity: v5 reads its own output back.
     assert_eq!(
         dbkey::load_pepper(&data, Some("beta")).unwrap(),
@@ -433,7 +464,42 @@ fn reads_v4_changed_passphrase_dbkey() {
         dbkey::load_pepper(&data, Some("beta")).unwrap(),
         TEST_PEPPER
     );
-    eprintln!("v5 unlocked the v4 change-passphrase .dbkey (pepper matches, one file)");
+
+    // ── P4.46: unknown-field preservation over a REAL v4-authored file ───────
+    // The oracle re-planted `minServerVersion` after v4's own re-wrap dropped
+    // it (that drop is measured and pinned oracle-side — the deliberate
+    // divergence). v5's `change_passphrase` must carry the field through, since
+    // v5 has no version guard to rewrite it and the floor would otherwise be
+    // gone for good. Work on a COPY so the fixture stays as the oracle left it.
+    assert_eq!(
+        min_server_version(&data.join("quilltap.dbkey")),
+        Some(MIN_SERVER_VERSION.to_string()),
+        "the oracle fixture should carry a v4-written version floor"
+    );
+    let scratch = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        data.join("quilltap.dbkey"),
+        scratch.path().join("quilltap.dbkey"),
+    )
+    .unwrap();
+    assert_eq!(
+        dbkey::change_passphrase(scratch.path(), "beta", "gamma").unwrap(),
+        TEST_PEPPER
+    );
+    assert_eq!(
+        min_server_version(&scratch.path().join("quilltap.dbkey")),
+        Some(MIN_SERVER_VERSION.to_string()),
+        "v5's re-wrap dropped a v4-written version floor"
+    );
+    assert_eq!(
+        dbkey::load_pepper(scratch.path(), Some("gamma")).unwrap(),
+        TEST_PEPPER
+    );
+
+    eprintln!(
+        "v5 unlocked the v4 change-passphrase .dbkey (pepper matches, one file) and preserved \
+         minServerVersion through its own re-wrap"
+    );
 }
 
 /// Open the committed v4-fresh instance with v5's ported reads: the schema is

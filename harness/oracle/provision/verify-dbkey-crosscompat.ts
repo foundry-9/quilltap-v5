@@ -37,10 +37,30 @@
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-dbkey-crosscompat.ts
  */
 
-import { existsSync, readdirSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
+
+/** The version floor v4's guard writes into `.dbkey` (any semver will do). */
+const MIN_SERVER_VERSION = '4.9.0-dev.0';
+
+/**
+ * Plant `minServerVersion` exactly as v4's version guard does
+ * (`lib/startup/version-guard.ts:243-252` — read, JSON.parse, assign, write back
+ * 2-space pretty with mode 0600). Transcribed rather than called because
+ * `patchDbKeyFileVersion` is module-private and its public entrance
+ * (`storeCurrentVersion`) wants a live SQLite backend.
+ */
+function plantMinServerVersion(dbkeyPath: string): void {
+  const data = JSON.parse(readFileSync(dbkeyPath, 'utf-8'));
+  data.minServerVersion = MIN_SERVER_VERSION;
+  writeFileSync(dbkeyPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+function readMinServerVersion(dbkeyPath: string): unknown {
+  return JSON.parse(readFileSync(dbkeyPath, 'utf-8')).minServerVersion;
+}
 
 /** The one-file contract (bug 60): the data dir holds exactly `quilltap.dbkey`. */
 function assertOneDbKeyFile(dataDir: string, side: string): void {
@@ -94,7 +114,19 @@ async function v4ReadsV5(dir: string): Promise<void> {
     throw new Error(`recovered pepper mismatch: got ${recovered}`);
   }
 
-  process.stderr.write('OK: v4 unlocked the v5 change-passphrase .dbkey (pepper matches, one file)\n');
+  // P4.46: the Rust side planted `minServerVersion` before its re-wrap. v5's
+  // read-modify-write must have preserved it AND the result must still be a
+  // file v4's real loader opens (asserted above, since we got here).
+  const preserved = readMinServerVersion(join(dir, 'data', 'quilltap.dbkey'));
+  if (preserved !== MIN_SERVER_VERSION) {
+    throw new Error(
+      `v5's re-wrap dropped minServerVersion: expected ${MIN_SERVER_VERSION}, got ${String(preserved)}`
+    );
+  }
+
+  process.stderr.write(
+    'OK: v4 unlocked the v5 change-passphrase .dbkey (pepper matches, one file, minServerVersion preserved)\n'
+  );
 }
 
 /** Direction 2 — v4's REAL changePassphrase writes the fixture v5 reads. */
@@ -119,6 +151,11 @@ async function v4WritesForV5(dir: string): Promise<void> {
   }
   storeEnvPepperInDbKey('alpha');
 
+  // P4.46: plant the version floor v4's own guard writes, so this run MEASURES
+  // what v4's changePassphrase does to a field it does not model.
+  const dbkeyPath = join(dir, 'data', 'quilltap.dbkey');
+  plantMinServerVersion(dbkeyPath);
+
   // The real changePassphrase — the unit under test at the 4.8.1 baseline.
   const wrongOld = changePassphrase('wrong', 'beta');
   if (wrongOld.success) {
@@ -133,8 +170,30 @@ async function v4WritesForV5(dir: string): Promise<void> {
   // Re-adding the quilltap-llm-logs.dbkey write turns this red.
   assertOneDbKeyFile(join(dir, 'data'), 'v4 rewrap');
 
+  // ── The measured, DELIBERATE divergence (P4.46) ────────────────────────────
+  // v4's changePassphrase hands writeDbKeyFile a freshly built encryptPepper
+  // object (`lib/startup/dbkey.ts:542-548`), so it DROPS minServerVersion. That
+  // is survivable in v4 — storeCurrentVersion() rewrites the field on the next
+  // startup — and unsurvivable in v5, which has no version guard and would
+  // never write it again. v5 therefore preserves unknown fields on purpose.
+  // If v4 ever adopts the read-modify-write, this assertion goes red and the
+  // divergence retires to a plain equality.
+  const afterV4 = readMinServerVersion(dbkeyPath);
+  if (afterV4 !== undefined) {
+    throw new Error(
+      `v4's changePassphrase now PRESERVES minServerVersion (got ${String(afterV4)}) — ` +
+        `the P4.46 divergence has converged; retire it and assert equality on both sides`
+    );
+  }
+
+  // Re-plant so the fixture the Rust side reads carries a v4-authored floor:
+  // `reads_v4_changed_passphrase_dbkey` drives v5's change_passphrase over it
+  // and asserts the field survives.
+  plantMinServerVersion(dbkeyPath);
+
   process.stderr.write(
-    `OK: v4 changePassphrase wrote one .dbkey → ${dir} (reads_v4_changed_passphrase_dbkey unlocks it under v5)\n`
+    `OK: v4 changePassphrase wrote one .dbkey and DROPPED minServerVersion (measured) → ${dir} ` +
+      `(reads_v4_changed_passphrase_dbkey unlocks it under v5 and preserves the re-planted floor)\n`
   );
 }
 

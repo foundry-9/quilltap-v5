@@ -91,6 +91,17 @@ a pre-4.8.2 archive still restores. The tier-2 corpus grew the three cells on
 both write paths plus a surviving create op -- the create arm's cell values
 were previously unobservable, because the only created row was deleted by a
 later op in the same sequence.
+A passphrase change no longer strips fields Quilltap v5 does not model from
+`quilltap.dbkey`. v4's version guard writes `minServerVersion` into the key file
+by read-modify-write so an older binary is refused before the database is opened
+at all; v5's re-wrap was a full replace, so the first passphrase change on a
+v4-authored instance removed the floor. The re-wrap is now read-modify-write at
+the JSON level — the ten modelled fields are replaced in place, everything else
+survives, and the file keeps its key order. This is a deliberate divergence from
+v4, measured from v4's own code in the cross-compat oracle: v4's
+`changePassphrase` drops the field too, but v4 rewrites it every startup and v5
+never would.
+
 The instance lock now covers every partition open — boot, unlock, AND
 first-run setup (P4.46, the standing P4.D68 escalation). v4 acquires its
 single-instance lock inside `connect()`, ahead of `new Database`; v5 acquired

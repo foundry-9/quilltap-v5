@@ -66222,3 +66222,94 @@ failures in this worktree, green on main with the same lockfile and jsdom
 `cargo test --workspace` all binaries ok, zero failures; `ng test` 298 files /
 4,143 (was 4,142 + this lane's 1); `ng build` clean. Versions: core 0.0.532,
 host 0.0.67, SPA 0.5.455.
+
+
+---
+
+## P4.46 unit 2 — `.dbkey` unknown-field preservation through `change_passphrase` (Tier 2, deliverable 5) (2026-08-13)
+
+**The gap.** `change_passphrase` built a fresh 10-field `DbKeyFileOut` and wrote
+it whole, so any field v5 does not model was dropped. The one that exists today
+is `minServerVersion`, which v4's version guard writes into `quilltap.dbkey`
+(`lib/startup/version-guard.ts:235-258`, read-modify-write, 2-space pretty, mode
+0600) so the shell can refuse a too-old binary before opening anything. v5's
+parser already tolerated it (`dbkey.rs` has no `deny_unknown_fields`); the WRITE
+was the leak.
+
+**The port.** New `rewrap_dbkey_json`: build the fresh crypto object, then merge
+it over the existing parsed object. `serde_json` is built with `preserve_order`
+here, so an existing key updates in place and an unknown key keeps its own
+position — the file's shape survives byte-meaningfully. `save_dbkey` and
+`store_pepper` stay full-replace by design (a fresh instance has nothing to
+preserve, and `needs-vault-storage` means there is no `.dbkey` yet).
+
+**The divergence, MEASURED from v4's own code — not assumed.** v4's
+`changePassphrase` hands `writeDbKeyFile` a freshly built `encryptPepper` object
+(`lib/startup/dbkey.ts:542-548`), so **v4 drops `minServerVersion` too**. The
+difference is consequence, not intent: v4's `storeCurrentVersion()` rewrites the
+field on the very next startup, while v5 has no version guard (bug 65 = NO-PORT)
+and would never write it again — so in v5 alone the loss is permanent.
+Preserving is the only behavior correct on both sides of the fence. The oracle
+asserts v4's drop directly and **fails loudly if v4 ever adopts the RMW**
+("the P4.46 divergence has converged; retire it and assert equality").
+
+**The differential** (extends the P4.D68 dbkey cross-compat family, both
+directions, driving v4's REAL `changePassphrase` / `unlockDbKey`):
+
+- Direction 2 (`QT_DBKEY_V4_OUT`, oracle-side): plant `minServerVersion` v4's
+  way → run v4's real `changePassphrase` → assert one `.dbkey` (bug 60) →
+  **assert v4 dropped the field** → re-plant, so the fixture the Rust side reads
+  carries a v4-authored floor.
+- `reads_v4_changed_passphrase_dbkey` (Rust): the fixture carries the floor;
+  v5's `change_passphrase` over a COPY (beta → gamma) preserves it and the
+  pepper still recovers.
+- `writes_v5_changed_passphrase_dbkey_for_v4` (Rust): plant the floor, re-wrap,
+  assert it survived.
+- Direction 1 (`QT_DBKEY_V5_FIXTURE`, oracle-side): v4's real loader opens the
+  v5-rewrapped file AND the field is still there.
+- Plus a fast always-on unit test (`change_passphrase_preserves_unknown_fields`)
+  pinning preservation, key ORDER, a second unmodelled key, and that the crypto
+  fields really were replaced.
+
+**Regen recipe** (v4 pinned — see the drift note below):
+
+```bash
+PIN=/tmp/qt-v4-pin-p446-48396682
+git -C ~/source/quilltap-server worktree add --detach $PIN 48396682
+ln -sfn ~/source/quilltap-server/node_modules $PIN/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules $PIN/packages/quilltap/node_modules
+N=~/.nvm/versions/node/v24.13.1/bin
+cd $PIN
+QT_ORACLE_PROVISION=/tmp/oracle-provision-p446.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh-p446 \
+  $N/npx tsx <v5>/harness/oracle/provision/build-provision-oracle.ts
+QT_DBKEY_V4_OUT=/tmp/qt-v4-dbkey-p446 \
+  $N/npx tsx <v5>/harness/oracle/provision/verify-dbkey-crosscompat.ts
+# then, from the v5 worktree:
+QT_ORACLE_PROVISION=/tmp/oracle-provision-p446.json QT_FIXTURE_V4_FRESH=/tmp/qt-v4-fresh-p446 \
+QT_V5_PROVISION_OUT=/tmp/qt-v5-provisioned-p446 QT_DBKEY_V4_FIXTURE=/tmp/qt-v4-dbkey-p446 \
+QT_DBKEY_V5_OUT=/tmp/qt-v5-dbkey-p446 \
+  cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
+# then back at $PIN, the v4-reads-v5 legs:
+QT_DBKEY_V5_FIXTURE=/tmp/qt-v5-dbkey-p446 $N/npx tsx <v5>/.../verify-dbkey-crosscompat.ts
+QT_FIXTURE_V5_PROVISIONED=/tmp/qt-v5-provisioned-p446 $N/npx tsx <v5>/.../verify-v5-provisioned.ts
+```
+
+**Measured status of the family at `48396682`.** Both dbkey arms GREEN, zero
+SKIP, in both directions. `provisioning_matches_v4_fresh_instance` is **RED for
+exactly one reason that is not this lane's**: v4's live `generateDDL` at the new
+baseline carries P4.D73's three `chat_settings` columns (`composerEmoji`,
+`composerUnicode`, `smartTypographySettings` — diffed name-for-name; the mount
+and llm-logs partitions are identical and no other statement differs), and this
+lane is forbidden to re-dump `fresh_schema.json`. That is the D23 tripwire firing
+as designed. **Unifier: re-run this family (and its `verify-v5-provisioned` leg,
+which cannot run at all while the Rust side fails before writing
+`QT_V5_PROVISION_OUT`) after P4.D73's re-dump merges.**
+
+**⚠ v4 drifted MID-LANE:** `48396682` → `11553944` (`8736d704` release: 4.8.4 +
+its merge). The diff is `docs/` and two `__tests__/` helper/spec files only —
+**zero `lib/`, `app/` or `packages/`**, so no ported surface moved. Every regen
+above ran from a worktree pinned at `48396682` regardless.
+
+**Gate:** fmt; clippy both feature sets; `cargo test --workspace` exit 0, 427
+`test result: ok` lines, zero failures, with `QT_DBKEY_V4_FIXTURE` /
+`QT_DBKEY_V5_OUT` set so both arms RAN. Versions: core 0.0.533, harness 0.0.455.

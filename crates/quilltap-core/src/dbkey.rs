@@ -274,6 +274,46 @@ pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(),
     write_dbkey_file(&data_dir.join("quilltap.dbkey"), &content)
 }
 
+/// Re-wrap `pepper` under `actual_passphrase` INTO an existing `.dbkey` object:
+/// the ten fields v5 models are replaced in place (so they keep their
+/// positions), and every field v5 does not model is preserved (P4.46).
+///
+/// The field that matters today is `minServerVersion` — v4's version guard
+/// writes it into `quilltap.dbkey` by read-modify-write so the shell can refuse
+/// a too-old binary before opening the database at all
+/// (`lib/startup/version-guard.ts:235-258`). v5 has no version guard and never
+/// writes it, so a passphrase change that dropped it would remove the floor
+/// permanently from a v4-authored instance.
+///
+/// **A deliberate divergence from v4, measured** (`verify-dbkey-crosscompat.ts`
+/// pins it from v4's own code): v4's `changePassphrase` hands `writeDbKeyFile`
+/// a freshly built `encryptPepper` object, so it DROPS `minServerVersion` too.
+/// In v4 the loss self-heals — `storeCurrentVersion()` rewrites the field on
+/// the next startup — and in v5 nothing ever would. Preserving is the only
+/// behavior that is correct on both sides of the fence.
+fn rewrap_dbkey_json(
+    existing: &str,
+    pepper: &str,
+    actual_passphrase: &str,
+) -> Result<String, DbKeyError> {
+    let fresh = encrypt_dbkey_json(pepper, actual_passphrase)?;
+    let fresh: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&fresh).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+    let mut out: serde_json::Map<String, serde_json::Value> = match serde_json::from_str(existing) {
+        // A `.dbkey` that is not a JSON object cannot have reached here
+        // (it parsed as `DbKeyFile` upstream), but fall back to the fresh
+        // object rather than inventing a failure mode.
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    // serde_json is built with `preserve_order`, so inserting an existing key
+    // updates it in place and a new key appends — the file keeps its shape.
+    for (key, value) in fresh {
+        out.insert(key, value);
+    }
+    serde_json::to_string_pretty(&out).map_err(|e| DbKeyError::Parse(e.to_string()))
+}
+
 /// Encrypt `pepper` under `actual_passphrase` (already resolved — empty→internal
 /// is the caller's decision) into the 2-space-pretty `.dbkey` JSON string in v4's
 /// exact field order. Fresh random salt+IV per call.
@@ -391,7 +431,9 @@ pub fn change_passphrase(
     } else {
         new_passphrase
     };
-    let content = encrypt_dbkey_json(&pepper, actual_new)?;
+    // Read-modify-write, not replace: fields v5 does not model (v4's
+    // `minServerVersion`) survive the re-wrap. See [`rewrap_dbkey_json`].
+    let content = rewrap_dbkey_json(&raw, &pepper, actual_new)?;
     write_dbkey_file(&path, &content)?;
     Ok(pepper)
 }
@@ -492,6 +534,56 @@ mod tests {
         // The stale file survives byte-identical; the real file was re-wrapped.
         assert_eq!(std::fs::read(&stale_path).unwrap(), stale_bytes);
         assert_eq!(load_pepper(dir.path(), Some("second")).unwrap(), pepper);
+    }
+
+    /// P4.46: a passphrase change PRESERVES fields v5 does not model. v4's
+    /// version guard writes `minServerVersion` into `quilltap.dbkey` by
+    /// read-modify-write (`version-guard.ts:235-258`) so an older binary is
+    /// refused before the database is even opened; v5 has no guard and never
+    /// rewrites it, so a full-replace re-wrap would strip the floor from a
+    /// v4-authored instance for good. The ten modelled fields keep their
+    /// positions and the unknown key keeps its own — the file's shape survives.
+    #[test]
+    fn change_passphrase_preserves_unknown_fields() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "first").unwrap();
+        let path = dir.path().join("quilltap.dbkey");
+
+        // Plant the field the way v4's guard does: parse, set, 2-space pretty.
+        let mut planted: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        planted.insert("minServerVersion".into(), serde_json::json!("4.9.0-dev.0"));
+        planted.insert("aFieldV5HasNeverHeardOf".into(), serde_json::json!(7));
+        std::fs::write(&path, serde_json::to_string_pretty(&planted).unwrap()).unwrap();
+        let keys_before: Vec<String> = planted.keys().cloned().collect();
+
+        assert_eq!(
+            change_passphrase(dir.path(), "first", "second").unwrap(),
+            pepper
+        );
+
+        let after: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            after.get("minServerVersion"),
+            Some(&serde_json::json!("4.9.0-dev.0")),
+            "the version floor did not survive the re-wrap"
+        );
+        assert_eq!(
+            after.get("aFieldV5HasNeverHeardOf"),
+            Some(&serde_json::json!(7))
+        );
+        assert_eq!(
+            after.keys().cloned().collect::<Vec<String>>(),
+            keys_before,
+            "the re-wrap reordered the file"
+        );
+        // And it is still a working .dbkey under the new passphrase.
+        assert_eq!(load_pepper(dir.path(), Some("second")).unwrap(), pepper);
+        // The crypto fields really were replaced (a re-wrap, not a no-op).
+        assert_ne!(after.get("salt"), planted.get("salt"));
+        assert_ne!(after.get("ciphertext"), planted.get("ciphertext"));
     }
 
     /// The empty-string old/new passphrases are the internal no-passphrase
