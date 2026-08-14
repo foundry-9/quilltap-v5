@@ -243,6 +243,8 @@
         "customTools": true,
         "compositionModeDefault": true,
         "composerSpellcheck": false,
+        "composerEmoji": false,
+        "composerUnicode": true,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "agentModeSettings": {
@@ -280,6 +282,11 @@
         "timezone": "America/New_York",
         "answerConfirmationSettings": {
           "enabled": true
+        },
+        "smartTypographySettings": {
+          "displayQuotes": true,
+          "dashes": false,
+          "ellipsis": false
         }
       },
       "options": {
@@ -319,6 +326,8 @@
         "autoDetectRng": false,
         "customTools": false,
         "composerSpellcheck": false,
+        "composerEmoji": true,
+        "composerUnicode": false,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "timezone": "Europe/London",
@@ -353,6 +362,11 @@
         "updatedAt": "2026-03-01T00:00:00.000Z",
         "answerConfirmationSettings": {
           "enabled": true
+        },
+        "smartTypographySettings": {
+          "displayQuotes": false,
+          "dashes": true,
+          "ellipsis": false
         }
       }
     },
@@ -360,6 +374,135 @@
       "kind": "delete",
       "comment": "Delete the created fully-populated settings (row B).",
       "id": "b2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "create",
+      "comment": "New fully-populated settings: nullable *ProfileId columns SET to UUIDs, timezone set, sidebarWidth widened to 400, many booleans flipped, nested objects given non-default values to exercise the typed-struct serialization. cheapLLMSettings *ProfileId fields carry concrete UUIDs (present, non-null). (This row is deleted below; the MULTI-KEY tagStyles insertion-order proof lands on the SURVIVING update of seed row A.)",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000bb",
+        "avatarDisplayMode": "GROUP_ONLY",
+        "avatarDisplayStyle": "SQUARE",
+        "tagStyles": {},
+        "cheapLLMSettings": {
+          "strategy": "USER_DEFINED",
+          "userDefinedProfileId": "11111111-0000-4000-8000-000000000001",
+          "defaultCheapProfileId": "11111111-0000-4000-8000-000000000002",
+          "fallbackToLocal": false,
+          "embeddingProvider": "LOCAL",
+          "imagePromptProfileId": "11111111-0000-4000-8000-000000000003"
+        },
+        "imageDescriptionProfileId": "22222222-0000-4000-8000-000000000001",
+        "uncensoredImageDescriptionProfileId": "22222222-0000-4000-8000-000000000002",
+        "defaultRoleplayTemplateId": "33333333-0000-4000-8000-000000000001",
+        "themePreference": {
+          "activeThemeId": "midnight-brass",
+          "colorMode": "dark",
+          "showNavThemeSelector": true
+        },
+        "sidebarWidth": 400,
+        "defaultTimestampConfig": {
+          "mode": "EVERY_N_MINUTES",
+          "format": "ISO8601",
+          "useFictionalTime": true,
+          "autoPrepend": false,
+          "intervalMinutes": 30
+        },
+        "memoryCascadePreferences": {
+          "onMessageDelete": "KEEP_MEMORIES",
+          "onSwipeRegenerate": "REGENERATE_MEMORIES"
+        },
+        "autoHousekeepingSettings": {
+          "enabled": true,
+          "perCharacterCap": 5000,
+          "perCharacterCapOverrides": {},
+          "autoMergeSimilarThreshold": 0.85,
+          "mergeSimilar": true
+        },
+        "memoryExtractionLimits": {
+          "enabled": true,
+          "maxPerHour": 50,
+          "softStartFraction": 0.5,
+          "softFloor": 0.6
+        },
+        "autonomousRoomSettings": {
+          "dailyTokenBudget": 100000,
+          "defaultFreshnessWindowMs": 21600000,
+          "visibilityDefault": "household",
+          "destructiveToolPolicy": "always_refuse"
+        },
+        "tokenDisplaySettings": {
+          "showPerMessageTokens": true,
+          "showPerMessageCost": true,
+          "showChatTotals": true,
+          "showSystemEvents": false
+        },
+        "contextCompressionSettings": {
+          "enabled": false,
+          "windowSize": 8,
+          "compressionTargetTokens": 1000,
+          "systemPromptTargetTokens": 2000,
+          "projectContextReinjectInterval": 0
+        },
+        "llmLoggingSettings": {
+          "enabled": false,
+          "verboseMode": true,
+          "retentionDays": 90
+        },
+        "autoDetectRng": false,
+        "customTools": true,
+        "compositionModeDefault": true,
+        "composerSpellcheck": false,
+        "composerEmoji": false,
+        "composerUnicode": false,
+        "textReplacementsEnabled": false,
+        "autoScrollOnResponseComplete": true,
+        "agentModeSettings": {
+          "maxTurns": 20,
+          "defaultEnabled": true
+        },
+        "coreWhisper": {
+          "enabled": false,
+          "interval": 24,
+          "silenceThreshold": 5,
+          "packetTokenBudget": 8192,
+          "fireOnContextTransition": false
+        },
+        "thinkingDisplay": {
+          "defaultVisible": false,
+          "defaultCollapsed": false
+        },
+        "storyBackgroundsSettings": {
+          "enabled": true,
+          "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
+        },
+        "dangerousContentSettings": {
+          "mode": "AUTO_ROUTE",
+          "threshold": 0.55,
+          "scanTextChat": false,
+          "scanImagePrompts": false,
+          "scanImageGeneration": true,
+          "displayMode": "BLUR",
+          "showWarningBadges": false
+        },
+        "autoLockSettings": {
+          "enabled": true,
+          "idleMinutes": 5
+        },
+        "timezone": "America/New_York",
+        "answerConfirmationSettings": {
+          "enabled": true
+        },
+        "smartTypographySettings": {
+          "displayQuotes": true,
+          "dashes": false,
+          "ellipsis": true
+        }
+      },
+      "options": {
+        "id": "c3000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
     }
   ]
 }

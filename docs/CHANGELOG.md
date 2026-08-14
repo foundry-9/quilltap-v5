@@ -47,6 +47,21 @@ pick), so equipped state holds garments rather than one opaque card over
 empty slot rows. Dissolution is recursive and fail-safe: a bundle whose
 components cannot be resolved is stored whole exactly as before. No schema
 or export-shape change; no migration.
+P4.D73 unit 1 — adopted v4 4.8.2's three new `chat_settings` columns
+through the data layer and the D23 fresh-schema re-dump. `fresh_schema.json`
+and `chat_settings_seed.json` re-dumped from v4's live `generateDDL` at
+`48396682` (31 -> 34 seed columns; the diff is exactly `composerEmoji INTEGER
+DEFAULT 1`, `composerUnicode INTEGER DEFAULT 1`, `smartTypographySettings TEXT
+DEFAULT '{"displayQuotes":false,"dashes":true,"ellipsis":true}'`).
+`schema-key-order.json` regenerated and proven byte-identical (no exported
+entity moved). All six `chat_settings.rs` sites carry the three columns, with
+the new `SmartTypographySettings` struct in v4 Zod declaration order; the read
+defaults each absent column to its Zod default rather than erroring or emitting
+null, and the restore-facing `ChatSettingsCreate` deserialize defaults them so
+a pre-4.8.2 archive still restores. The tier-2 corpus grew the three cells on
+both write paths plus a surviving create op -- the create arm's cell values
+were previously unobservable, because the only created row was deleted by a
+later op in the same sequence.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`

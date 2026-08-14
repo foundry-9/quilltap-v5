@@ -65818,3 +65818,108 @@ wants the pin to name v4's actual HEAD.
 concurrently** — two sweeps share the same `/tmp` oracle paths and the same
 committed fixture DBs, and race into three spurious reds that vanish when the
 families are re-run serially.
+## P4.D73 unit 1 — the D23 re-dump + the three `chat_settings` columns through the data layer (v4 `48396682`)
+
+**Lane:** `claude/composer-settings-columns-server-823096`. **Drift check at
+lane start (both branches):** `~/source/quilltap-server` on `main`, tree clean,
+`git log 48396682..main` EMPTY, `git log main..bugfix -- lib/ app/ packages/`
+tops out at `0649eddb` ("bugfix: started 4.8.3 bug branch") with nothing past
+it. No drift; every oracle in this lane was regenerated against that checkout.
+
+**The re-dump.** `harness/oracle/provision/dump-fresh-schema.ts` run at the pin
+(`QT_SCHEMA_OUT` + `QT_SEED_OUT`, Node 24) — `main=79 mount-index=30 llm-logs=3`
+statements, `captured chat_settings seed (34 cols)`. The installed diff is
+**exactly** the three columns and nothing else: the `chat_settings` CREATE gains
+`composerEmoji INTEGER DEFAULT 1` + `composerUnicode INTEGER DEFAULT 1` after
+`composerSpellcheck`, and `smartTypographySettings TEXT DEFAULT
+'{"displayQuotes":false,"dashes":true,"ellipsis":true}'` after
+`answerConfirmationSettings`; the seed gains the same three (31 → 34 columns,
+values `1` / `1` / the serialized default bag). No other table, index or
+partition moved. **The repository default seed needed no code change** — v5's
+`default_settings_columns()` reads the captured seed, so v4's
+`chat-settings.repository.ts` positions come across with the dump.
+
+**`schema-key-order.json`** (the `d23-redump-is-not-only-fresh-schema` follow-on):
+regenerated with the shipped `dump-export-key-order.ts` and **byte-identical** —
+`chat_settings` is not an exported `.qtap` entity, so a chat-settings re-dump
+cannot move it. Recorded rather than assumed.
+
+**Hand-written DDL mirrors** (the same memory's rule): grepped
+`CREATE TABLE .chat_settings` across `crates`/`harness`/`apps/web/e2e`. Five
+hits — the two `db/chat_settings.rs` tolerance tests (widened), and the two
+`quilltap-host` test DDLs (`host_cadence.rs`, `host_llm_log_cleanup.rs`), which
+are deliberately three-column slices no write of ours names. Nothing else.
+
+**The data layer.** All six sites × three columns: the SELECT list, the create
+INSERT (+3 binds), the UPDATE assignment builder, the tolerant column-name
+array, the positional read, and the module's two test-fixture DDLs. The new
+`SmartTypographySettings` struct sits in **v4 Zod declaration order**
+(`displayQuotes`, `dashes`, `ellipsis`) with per-field serde defaults matching
+each key's `z.boolean().default(...)`, plus a whole-bag `Default` impl for v4's
+`SmartTypographySettingsSchema.default({...})`.
+
+Two decisions worth the ink:
+
+- **The read defaults, it does not null.** The two booleans use the
+  `customTools` shape (`Option<i64>` → absent means `true`), and the JSON column
+  gained a `parse_json_or_default` twin: absent/NULL/unparseable → the schema's
+  own default bag, never JSON `null`. v4 reads `SELECT *` and lets Zod fill the
+  `undefined`; a pre-4.8.2 instance (or a differential fixture, which never
+  boots) genuinely hits this.
+- **`ChatSettingsCreate`'s three new fields are `#[serde(default …)]`, unlike
+  its pre-4.8.2 booleans.** That deserialize is also **restore's** input, and
+  every committed restore archive predates 4.8.2. Required fields would have
+  turned each one into the restore phase's warn-and-continue. v4's restore parses
+  through `ChatSettingsSchema`, where the Zod defaults fire — so defaulting here
+  is the faithful shape, not a leniency. (The P4.9G5 note about this deserialize
+  being "stricter than v4" now has three exceptions, by design.)
+
+**Differential — `chat_settings_tier2_equivalence`, extended and regenerated
+fresh at the pin.** The corpus grew the three cells on the create op AND the
+update op, plus a **fourth op**: a second create (`c3000000-…`) that survives to
+the dump. That closes a pre-existing blind spot — the only created row was
+deleted by op 2, so the create arm's cell VALUES had never been compared at all;
+only the column list was. Both surviving rows now carry non-default values in
+all three cells, and the stored `smartTypographySettings` text is compared as
+bytes, so the key order is pinned.
+
+Mutation-proven (three, each restored):
+
+| mutation | caught as |
+| --- | --- |
+| drop the `composerEmoji` bind from the create INSERT | FAILED (row `c3…`) |
+| swap `displayQuotes`/`dashes` in the struct declaration order | FAILED (stored JSON key order) |
+| drop the `composerUnicode` arm from the update builder | FAILED (row `a1…`) |
+
+**`provisioning_equivalence`** — the D23 tripwire — regenerated and re-run at
+the pin through the sweep driver: **3/3**, zero SKIP (it never went red in
+between, because the seed and the schema were re-dumped in the same step).
+
+**Regen recipes** (both unchanged from their committed headers; run through
+`python3 harness/tools/recipe_sweep.py --run <family>`):
+
+    # the D23 re-dump itself (not a sweep family)
+    N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+    cd ~/source/quilltap-server
+    QT_SCHEMA_OUT=/tmp/qt-fresh-schema.json QT_SEED_OUT=/tmp/qt-chat-settings-seed.json \
+      $N/npx tsx $V5W/harness/oracle/provision/dump-fresh-schema.ts
+    # then copy both over crates/quilltap-core/src/services/provisioning/
+
+**Tier-2 deliverable 6 (the `prettify` labels) — NO-PORT, recorded.** v4's
+`lib/startup/prettify.ts` names the three migrations ("Cataloguing the little
+faces", "Teaching the machine its Greek", "Teaching the quotation marks to
+curtsey"); v5 surfaces no migration labels anywhere. The P4.D63 / `231be14c`
+precedent, noted in the repair module's header.
+
+**Tier-2 deliverable 7 (help docs) — banked, not landed.** v4's
+`help/chat-settings.md` gained **+118 lines** across the three commits (the
+order predicted +82; measured at the pin). Nothing in v5 consumes it yet —
+it belongs to the `p4.9i2` HelpChat bank.
+
+**Checked non-change:** v4's Almanack settings ledger
+(`lib/tools/almanack/{phase3-ledgers,types,render}.ts`) reports
+`composerSpellcheck` but **does not** report any of the three new keys at the
+pin, so `almanack/phase3_ledgers.rs` needs no widening and
+`almanack_tier2_equivalence` stays green untouched.
+
+**Versions:** core 0.0.532, harness 0.0.455.

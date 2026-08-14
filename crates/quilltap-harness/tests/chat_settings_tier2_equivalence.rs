@@ -38,8 +38,9 @@ use quilltap_core::db::chat_settings::{
     AgentModeSettings, AnswerConfirmationSettings, AutoHousekeepingSettings, AutoLockSettings,
     AutonomousRoomSettings, ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings,
     ContextCompressionSettings, CoreWhisperSettings, CreateOptions, DangerousContentSettings,
-    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, StoryBackgroundsSettings,
-    ThemePreference, ThinkingDisplaySettings, TimestampConfig, TokenDisplaySettings,
+    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
+    StoryBackgroundsSettings, ThemePreference, ThinkingDisplaySettings, TimestampConfig,
+    TokenDisplaySettings,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -104,12 +105,15 @@ struct CreateData {
     custom_tools: bool,
     composition_mode_default: bool,
     composer_spellcheck: bool,
+    composer_emoji: bool,
+    composer_unicode: bool,
     text_replacements_enabled: bool,
     auto_scroll_on_response_complete: bool,
     agent_mode_settings: AgentModeSettings,
     core_whisper: CoreWhisperSettings,
     thinking_display: ThinkingDisplaySettings,
     answer_confirmation_settings: AnswerConfirmationSettings,
+    smart_typography_settings: SmartTypographySettings,
     story_backgrounds_settings: StoryBackgroundsSettings,
     dangerous_content_settings: DangerousContentSettings,
     auto_lock_settings: AutoLockSettings,
@@ -158,11 +162,17 @@ struct UpdateData {
     #[serde(default)]
     composer_spellcheck: Option<bool>,
     #[serde(default)]
+    composer_emoji: Option<bool>,
+    #[serde(default)]
+    composer_unicode: Option<bool>,
+    #[serde(default)]
     text_replacements_enabled: Option<bool>,
     #[serde(default)]
     auto_scroll_on_response_complete: Option<bool>,
     #[serde(default)]
     answer_confirmation_settings: Option<AnswerConfirmationSettings>,
+    #[serde(default)]
+    smart_typography_settings: Option<SmartTypographySettings>,
     #[serde(default)]
     timezone: Option<String>,
     #[serde(rename = "updatedAt")]
@@ -242,12 +252,15 @@ fn chat_settings_tier2_matches_oracle() {
                             custom_tools: data.custom_tools,
                             composition_mode_default: data.composition_mode_default,
                             composer_spellcheck: data.composer_spellcheck,
+                            composer_emoji: data.composer_emoji,
+                            composer_unicode: data.composer_unicode,
                             text_replacements_enabled: data.text_replacements_enabled,
                             auto_scroll_on_response_complete: data.auto_scroll_on_response_complete,
                             agent_mode_settings: data.agent_mode_settings,
                             core_whisper: data.core_whisper,
                             thinking_display: data.thinking_display,
                             answer_confirmation_settings: data.answer_confirmation_settings,
+                            smart_typography_settings: data.smart_typography_settings,
                             story_backgrounds_settings: data.story_backgrounds_settings,
                             dangerous_content_settings: data.dangerous_content_settings,
                             auto_lock_settings: data.auto_lock_settings,
@@ -280,10 +293,13 @@ fn chat_settings_tier2_matches_oracle() {
                                 custom_tools: data.custom_tools,
                                 composition_mode_default: data.composition_mode_default,
                                 composer_spellcheck: data.composer_spellcheck,
+                                composer_emoji: data.composer_emoji,
+                                composer_unicode: data.composer_unicode,
                                 text_replacements_enabled: data.text_replacements_enabled,
                                 auto_scroll_on_response_complete: data
                                     .auto_scroll_on_response_complete,
                                 answer_confirmation_settings: data.answer_confirmation_settings,
+                                smart_typography_settings: data.smart_typography_settings,
                                 timezone: data.timezone,
                                 updated_at: data.updated_at,
                             },

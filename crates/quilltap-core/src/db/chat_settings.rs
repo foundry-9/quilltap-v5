@@ -36,7 +36,8 @@
 //!     `autonomousRoomSettings`, `tokenDisplaySettings`,
 //!     `contextCompressionSettings`, `llmLoggingSettings`, `agentModeSettings`,
 //!     `coreWhisper`, `thinkingDisplay`, `answerConfirmationSettings`,
-//!     `storyBackgroundsSettings`, `dangerousContentSettings`, `autoLockSettings`).
+//!     `smartTypographySettings`, `storyBackgroundsSettings`,
+//!     `dangerousContentSettings`, `autoLockSettings`).
 //!     Each is reproduced
 //!     byte-for-byte with a serde struct in **schema field order**, which is what
 //!     v4's `JSON.stringify(zodParsed)` emits (its key order is the Zod schema's
@@ -57,10 +58,10 @@
 //!     default; v4 applies the Zod default during `validate`, so a row created
 //!     without it stores `256`. The corpus supplies it explicitly. Bound as
 //!     `i64`.
-//!   - **six boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
+//!   - **eight boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
 //!     `autoDetectRng`, `customTools`, `compositionModeDefault`,
-//!     `composerSpellcheck`, `textReplacementsEnabled`,
-//!     `autoScrollOnResponseComplete`.
+//!     `composerSpellcheck`, `composerEmoji`, `composerUnicode`,
+//!     `textReplacementsEnabled`, `autoScrollOnResponseComplete`.
 //!
 //! ### Nested JSON key-order discipline (the load-bearing detail)
 //!
@@ -274,6 +275,40 @@ pub struct ThinkingDisplaySettings {
     pub default_collapsed: bool,
 }
 
+/// `z.boolean().default(true)` for the two on-by-default smart-typography keys.
+fn smart_typography_default_true() -> bool {
+    true
+}
+
+/// `SmartTypographySettingsSchema` (settings.types.ts, v4 4.8.2 `2d31810f`).
+/// Three plain booleans, all with Zod defaults — `displayQuotes` false (a
+/// render-time curl of quotes; stored bytes never change), `dashes` and
+/// `ellipsis` true (type-time content edits). Field order is the Zod
+/// declaration order, which is what `JSON.stringify(zodParsed)` emits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartTypographySettings {
+    #[serde(default)]
+    pub display_quotes: bool,
+    #[serde(default = "smart_typography_default_true")]
+    pub dashes: bool,
+    #[serde(default = "smart_typography_default_true")]
+    pub ellipsis: bool,
+}
+
+/// v4's `SmartTypographySettingsSchema.default({displayQuotes:false, dashes:true,
+/// ellipsis:true})` — the whole-bag default, distinct from the per-key defaults
+/// above (which fire on a partial object).
+impl Default for SmartTypographySettings {
+    fn default() -> Self {
+        Self {
+            display_quotes: false,
+            dashes: true,
+            ellipsis: true,
+        }
+    }
+}
+
 /// `AnswerConfirmationSettingsSchema` (settings.types.ts). Global default for the
 /// Salon answer-confirmation check. Single-key object; `enabled` carries a Zod
 /// `.default(false)` but is always materialized on parse, so it is a plain bool.
@@ -380,6 +415,20 @@ pub struct ChatSettingsCreate {
     pub custom_tools: bool,
     pub composition_mode_default: bool,
     pub composer_spellcheck: bool,
+    /// v4 4.8.2 `22de75f9` — the `:` emoji typeahead gate (schema-ordered
+    /// between `composerSpellcheck` and `textReplacementsEnabled`).
+    ///
+    /// `#[serde(default …)]` with v4's Zod default, unlike the pre-4.8.2
+    /// booleans above: this deserialize is also restore's input, and an archive
+    /// taken before 4.8.2 simply has no such key. v4's restore parses through
+    /// `ChatSettingsSchema`, where `z.boolean().default(true)` fills it — so
+    /// defaulting here is the faithful shape, not a leniency.
+    #[serde(default = "smart_typography_default_true")]
+    pub composer_emoji: bool,
+    /// v4 4.8.2 `6cd21833` — the `\` Unicode typeahead gate. Defaulted for the
+    /// same reason as `composer_emoji`.
+    #[serde(default = "smart_typography_default_true")]
+    pub composer_unicode: bool,
     pub text_replacements_enabled: bool,
     pub auto_scroll_on_response_complete: bool,
     pub agent_mode_settings: AgentModeSettings,
@@ -388,6 +437,12 @@ pub struct ChatSettingsCreate {
     /// Answer-confirmation global default JSON object (schema-order: between
     /// `thinkingDisplay` and `storyBackgroundsSettings`).
     pub answer_confirmation_settings: AnswerConfirmationSettings,
+    /// v4 4.8.2 `2d31810f` — the smart-typography bag (schema-ordered between
+    /// `answerConfirmationSettings` and `storyBackgroundsSettings`). Defaulted
+    /// for the same restore reason as the two booleans above
+    /// (`SmartTypographySettingsSchema.default({…})`).
+    #[serde(default)]
+    pub smart_typography_settings: SmartTypographySettings,
     pub story_backgrounds_settings: StoryBackgroundsSettings,
     pub dangerous_content_settings: DangerousContentSettings,
     pub auto_lock_settings: AutoLockSettings,
@@ -427,9 +482,12 @@ pub struct ChatSettingsUpdate {
     pub custom_tools: Option<bool>,
     pub composition_mode_default: Option<bool>,
     pub composer_spellcheck: Option<bool>,
+    pub composer_emoji: Option<bool>,
+    pub composer_unicode: Option<bool>,
     pub text_replacements_enabled: Option<bool>,
     pub auto_scroll_on_response_complete: Option<bool>,
     pub answer_confirmation_settings: Option<AnswerConfirmationSettings>,
+    pub smart_typography_settings: Option<SmartTypographySettings>,
     pub timezone: Option<String>,
     pub updated_at: String,
 }
@@ -492,6 +550,8 @@ impl<'c> ChatSettingsRepository<'c> {
             "answerConfirmationSettings",
             &data.answer_confirmation_settings,
         )?;
+        let smart_typography_settings =
+            to_json("smartTypographySettings", &data.smart_typography_settings)?;
         let story_backgrounds_settings =
             to_json("storyBackgroundsSettings", &data.story_backgrounds_settings)?;
         let dangerous_content_settings =
@@ -504,6 +564,8 @@ impl<'c> ChatSettingsRepository<'c> {
         let custom_tools = i64::from(data.custom_tools);
         let composition_mode_default = i64::from(data.composition_mode_default);
         let composer_spellcheck = i64::from(data.composer_spellcheck);
+        let composer_emoji = i64::from(data.composer_emoji);
+        let composer_unicode = i64::from(data.composer_unicode);
         let text_replacements_enabled = i64::from(data.text_replacements_enabled);
         let auto_scroll_on_response_complete = i64::from(data.auto_scroll_on_response_complete);
 
@@ -543,6 +605,8 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("customTools", &custom_tools),
                 ("compositionModeDefault", &composition_mode_default),
                 ("composerSpellcheck", &composer_spellcheck),
+                ("composerEmoji", &composer_emoji),
+                ("composerUnicode", &composer_unicode),
                 ("textReplacementsEnabled", &text_replacements_enabled),
                 (
                     "autoScrollOnResponseComplete",
@@ -558,6 +622,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("createdAt", &opts.created_at),
                 ("updatedAt", &opts.updated_at),
                 ("answerConfirmationSettings", &answer_confirmation_settings),
+                ("smartTypographySettings", &smart_typography_settings),
             ],
         )?;
         Ok(())
@@ -628,6 +693,13 @@ impl<'c> ChatSettingsRepository<'c> {
                 answer_confirmation_settings,
             )?));
         }
+        if let Some(smart_typography_settings) = &patch.smart_typography_settings {
+            assignments.push(format!("smartTypographySettings = ?{}", values.len() + 1));
+            values.push(Box::new(to_json(
+                "smartTypographySettings",
+                smart_typography_settings,
+            )?));
+        }
         if let Some(auto_detect_rng) = patch.auto_detect_rng {
             assignments.push(format!("autoDetectRng = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(auto_detect_rng)));
@@ -643,6 +715,14 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(composer_spellcheck) = patch.composer_spellcheck {
             assignments.push(format!("composerSpellcheck = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(composer_spellcheck)));
+        }
+        if let Some(composer_emoji) = patch.composer_emoji {
+            assignments.push(format!("composerEmoji = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(composer_emoji)));
+        }
+        if let Some(composer_unicode) = patch.composer_unicode {
+            assignments.push(format!("composerUnicode = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(composer_unicode)));
         }
         if let Some(text_replacements_enabled) = patch.text_replacements_enabled {
             assignments.push(format!("textReplacementsEnabled = ?{}", values.len() + 1));
@@ -750,6 +830,21 @@ pub fn find_by_user_id(
             _ => Value::Null,
         }
     }
+    // A JSON-object column whose absence is REACHABLE (a column v4 added by
+    // migration, which v5's boot ensure may not have reached yet): a NULL /
+    // empty / unparseable cell falls back to the Zod schema's own default bag,
+    // reproducing v4's `undefined` → `.default({...})`.
+    fn parse_json_or_default(cell: Option<String>, default_json: &str) -> Value {
+        match cell {
+            Some(text) if !text.is_empty() => {
+                serde_json::from_str(&text).unwrap_or_else(|_| default_of(default_json))
+            }
+            _ => default_of(default_json),
+        }
+    }
+    fn default_of(default_json: &str) -> Value {
+        serde_json::from_str(default_json).unwrap_or(Value::Null)
+    }
     // A `.nullable().optional()` string/UUID column: `Some` → present string,
     // `None` (SQL NULL) → the key is OMITTED (v4 drops the `undefined`).
     fn put_opt(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -788,12 +883,15 @@ pub fn find_by_user_id(
             "customTools",
             "compositionModeDefault",
             "composerSpellcheck",
+            "composerEmoji",
+            "composerUnicode",
             "textReplacementsEnabled",
             "autoScrollOnResponseComplete",
             "agentModeSettings",
             "coreWhisper",
             "thinkingDisplay",
             "answerConfirmationSettings",
+            "smartTypographySettings",
             "storyBackgroundsSettings",
             "dangerousContentSettings",
             "autoLockSettings",
@@ -913,45 +1011,71 @@ pub fn find_by_user_id(
                     "composerSpellcheck".into(),
                     Value::Bool(r.get::<_, i64>(22)? == 1),
                 );
+                // P4.D73, same shape as `customTools` above: v5 adopts the
+                // three 4.8.2 columns without porting v4's migration runner,
+                // so a pre-4.8.2 instance genuinely lacks them until the boot
+                // ensure runs (and a differential fixture opened directly
+                // never boots at all). v4 reads `SELECT *` and lets
+                // `z.boolean().default(true)` fill the `undefined`, so absent
+                // must surface as `true` and the row must still READ.
+                obj.insert(
+                    "composerEmoji".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
+                );
+                obj.insert(
+                    "composerUnicode".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
+                );
                 obj.insert(
                     "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(23)? == 1),
+                    Value::Bool(r.get::<_, i64>(25)? == 1),
                 );
                 obj.insert(
                     "autoScrollOnResponseComplete".into(),
-                    Value::Bool(r.get::<_, i64>(24)? == 1),
+                    Value::Bool(r.get::<_, i64>(26)? == 1),
                 );
                 obj.insert(
                     "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(25)?),
-                );
-                obj.insert(
-                    "coreWhisper".into(),
-                    parse_json(r.get::<_, Option<String>>(26)?),
-                );
-                obj.insert(
-                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(27)?),
                 );
                 obj.insert(
-                    "answerConfirmationSettings".into(),
+                    "coreWhisper".into(),
                     parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 obj.insert(
-                    "storyBackgroundsSettings".into(),
+                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(29)?),
                 );
                 obj.insert(
-                    "dangerousContentSettings".into(),
+                    "answerConfirmationSettings".into(),
                     parse_json(r.get::<_, Option<String>>(30)?),
+                );
+                // The JSON-column twin of the two booleans above: an absent
+                // column (or a NULL cell) is `undefined` to v4, and
+                // `SmartTypographySettingsSchema.default({...})` materializes
+                // the whole bag — so it must not surface as JSON `null`.
+                obj.insert(
+                    "smartTypographySettings".into(),
+                    parse_json_or_default(
+                        r.get::<_, Option<String>>(31)?,
+                        super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
+                    ),
+                );
+                obj.insert(
+                    "storyBackgroundsSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(32)?),
+                );
+                obj.insert(
+                    "dangerousContentSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(33)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(31)?),
+                    parse_json(r.get::<_, Option<String>>(34)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(32)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(33)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(34)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(35)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(36)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(37)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1247,9 +1371,11 @@ mod tests {
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
-                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                composerSpellcheck INTEGER, composerEmoji INTEGER, \
+                composerUnicode INTEGER, textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                smartTypographySettings TEXT, \
                 storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, createdAt TEXT, updatedAt TEXT);",
         )
@@ -1349,9 +1475,11 @@ mod tests {
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, compositionModeDefault INTEGER, \
-                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                composerSpellcheck INTEGER, composerEmoji INTEGER, \
+                composerUnicode INTEGER, textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                smartTypographySettings TEXT, \
                 storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, timezone TEXT, createdAt TEXT, updatedAt TEXT);",
         )
@@ -1377,5 +1505,64 @@ mod tests {
             row["compositionModeDefault"],
             serde_json::Value::Bool(false)
         );
+    }
+
+    /// P4.D73's accepted consequence, the same shape as `customTools` above:
+    /// v5 adopts the three 4.8.2 composer/typography columns without a
+    /// migration runner, so a pre-4.8.2 instance lacks them until the boot
+    /// ensure runs — and a differential fixture opened directly never boots at
+    /// all. v4 would read `SELECT *` and let each Zod default fill the
+    /// `undefined`; reproduce that, and keep the row READABLE (a NULL-into-i64
+    /// extraction would error, and a NULL JSON cell must not surface as
+    /// `null`).
+    #[test]
+    fn find_by_user_id_defaults_the_composer_columns_when_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A pre-4.8.2 table: every column the read names EXCEPT the three.
+        conn.execute_batch(
+            "CREATE TABLE chat_settings (\
+                id TEXT PRIMARY KEY, userId TEXT, avatarDisplayMode TEXT, \
+                avatarDisplayStyle TEXT, tagStyles TEXT, cheapLLMSettings TEXT, \
+                imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
+                defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
+                defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
+                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
+                autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
+                contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
+                autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
+                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
+                coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                autoLockSettings TEXT, timezone TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, \
+             tagStyles, cheapLLMSettings, autoDetectRng, customTools, compositionModeDefault, \
+             composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete, \
+             createdAt, updatedAt) VALUES ('s1', 'u1', 'ALWAYS', 'CIRCULAR', '{}', \
+             '{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\
+             \"embeddingProvider\":\"OPENAI\"}', 1, 1, 0, 0, 1, 0, \
+             '2026-08-13T00:00:00.000Z', '2026-08-13T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert_eq!(row["composerEmoji"], serde_json::Value::Bool(true));
+        assert_eq!(row["composerUnicode"], serde_json::Value::Bool(true));
+        assert_eq!(
+            row["smartTypographySettings"],
+            serde_json::json!({"displayQuotes": false, "dashes": true, "ellipsis": true})
+        );
+        // The columns either side still land on their own stored values — the
+        // positional extraction did not slip.
+        assert_eq!(row["composerSpellcheck"], serde_json::Value::Bool(false));
+        assert_eq!(
+            row["textReplacementsEnabled"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(row["answerConfirmationSettings"], serde_json::Value::Null);
     }
 }
