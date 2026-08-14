@@ -66559,3 +66559,42 @@ its 13 SDK-path rows. Two consequences worth carrying:
 No file under `crates/*/src`. No Rust test text, hence **no crate version
 bump** (per the order's ownership section: fixtures alone do not bump). The
 committed delta is two NDJSON corpora, the CHANGELOG entry, and this record.
+## Lane record — P4.D72 unit 1: the staged-live-outfits pure module (v4 `07d4ccce`)
+
+**Landed.** v4 4.8.2's new `lib/wardrobe/staged-live-outfits.ts` (93 lines,
+`07d4ccce` "fix: a wardrobe edit staged before the worn snapshot arrives
+(bug 61)") ported into the SPA as
+`apps/web/src/app/wardrobe/staged-live-outfits.ts`, name-for-name:
+
+- `SlotsMutator` — the staging-gesture type (pure, replay-safe).
+- `equippedSlotsEqual` — **moved** out of `equipped-slots.ts` into the new
+  module, mirroring v4's own move out of the dialog in the same commit. Its
+  three consumers were rewired (`wardrobe-control-dialog.ts` imports it from
+  the new module; `equipped-slots.spec.ts`'s describe block travelled to the
+  new spec with a pointer comment left behind).
+- `rebaseStagedSlots(wornSlots, pending)` — `pending.reduce(…, cloneSlots(worn))`,
+  byte-for-byte v4's body.
+- `classifyStagedOutfits(staged, baselines)` → `{ dirty, unresolved }` — the
+  split that makes Bug 61 expressible at all: v4's pre-fix flush let
+  "no baseline captured" and "nothing changed" fall out of one loop
+  identically, so Done reported success for an outfit it never sent.
+
+**Differential (client-only drift — v4's client is the oracle, the
+`impersonation-overlay-spa-gaps` convention).** v4 shipped
+`__tests__/unit/lib/wardrobe/staged-live-outfits.test.ts` (132 lines); all ten
+of its cases are ported case-for-case into
+`apps/web/src/app/wardrobe/staged-live-outfits.spec.ts`, plus the one carried
+case from `equipped-slots.spec.ts` — 11 tests, green. The v4 suite's
+`item()` helper collapses to v5's structural `WearableItem`, so
+`wearItemIntoSlots` drives the rebase cases exactly as it does in v4.
+
+**Mutation-proven both halves.** Reverting `classifyStagedOutfits` to the
+pre-fix shape (drop the `unresolved.push`, keep the bare `continue`) AND
+`rebaseStagedSlots` to a plain `cloneSlots(wornSlots)` fails **4 of 11**
+cases — the two rebase-replay cases and the two classification cases that
+name Bug 61. Restored, re-green.
+
+No dialog behavior changed in this unit: `flushStagedLiveOutfits` still
+carries the pre-fix `if (!baseline) continue` arm until unit 2 wires the
+queue, the seed replay, and the confirm. SPA 0.5.454 → 0.5.455. No crate
+file touched (this lane owns none).

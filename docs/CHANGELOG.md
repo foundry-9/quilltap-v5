@@ -162,6 +162,15 @@ provider manifests regenerate byte-identical against the 14 rebuilt plugins.
 The google-wire corpus also gained the request headers it should have gotten
 in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
 and nothing asserts those headers yet. No engine code changed.
+P4.D72 unit 1 — ported v4 4.8.2's new `lib/wardrobe/staged-live-outfits.ts`
+into the SPA as `app/wardrobe/staged-live-outfits.ts`: `rebaseStagedSlots`
+(replays gestures staged before the worn snapshot arrived onto the real
+slots) and `classifyStagedOutfits` (separates "nothing changed" from "we
+never learned what clean was" — the Bug 61 silent loss). `equippedSlotsEqual`
+moved from `equipped-slots.ts` to the new module, matching v4's own move out
+of the dialog. v4's unit suite ported case-for-case (11 tests) and
+mutation-proven: reverting either helper to its pre-fix shape fails four
+cases. No behavior change yet — the dialog wiring is unit 2.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`

@@ -10,8 +10,6 @@
  *  - `lib/wardrobe/group-equipped.ts` (`groupEquippedSlots`)
  *  - `lib/wardrobe/next-copy-title.ts` (`nextCopyTitle`)
  *  - `lib/wardrobe/composite-types.ts` (`unionTypes`)
- *  - `components/wardrobe/wardrobe-control-dialog.tsx:71-81`
- *    (`equippedSlotsEqual`)
  *
  * The slot vocabulary is the one already landed in
  * `screens/prospero/wardrobe.api.ts` (`WARDROBE_SLOT_TYPES`) — re-exported
@@ -62,19 +60,9 @@ export function cloneSlots(slots: EquippedSlots): EquippedSlots {
   };
 }
 
-/** Deep array equality on the four EquippedSlots arrays, in order
- *  (v4 `wardrobe-control-dialog.tsx:71-81`). */
-export function equippedSlotsEqual(a: EquippedSlots, b: EquippedSlots): boolean {
-  for (const slot of WARDROBE_SLOT_TYPES) {
-    const av = a[slot];
-    const bv = b[slot];
-    if (av.length !== bv.length) return false;
-    for (let i = 0; i < av.length; i++) {
-      if (av[i] !== bv[i]) return false;
-    }
-  }
-  return true;
-}
+// `equippedSlotsEqual` MOVED to `staged-live-outfits.ts` at 4.8.2 (v4
+// `07d4ccce` lifted it out of the dialog into that module alongside the rebase
+// and classification helpers it serves). Import it from there.
 
 /** The minimal item shape the wear rule needs (v4 `outfit-displacement.ts:76`). */
 export interface WearableItem {

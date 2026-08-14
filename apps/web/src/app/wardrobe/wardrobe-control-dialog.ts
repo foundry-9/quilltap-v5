@@ -20,7 +20,6 @@ import {
   buildDefaultOutfit,
   cloneSlots,
   EMPTY_EQUIPPED_SLOTS,
-  equippedSlotsEqual,
   freshSlots,
   nextCopyTitle,
   takeOffBundleFromSlots,
@@ -30,6 +29,7 @@ import {
   type EquippedSlots,
 } from './equipped-slots';
 import { createOutfitStore, type OutfitStore } from './outfit-store';
+import { equippedSlotsEqual } from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemEditor } from './wardrobe-item-editor';

@@ -6,7 +6,6 @@ import {
   buildDefaultOutfit,
   cloneSlots,
   EMPTY_EQUIPPED_SLOTS,
-  equippedSlotsEqual,
   freshSlots,
   groupEquippedSlots,
   nextCopyTitle,
@@ -30,20 +29,8 @@ function item(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemD
   } as WardrobeItemDto;
 }
 
-describe('equippedSlotsEqual (v4 wardrobe-control-dialog.tsx:71-81)', () => {
-  it('compares the four slot arrays element-wise, in order', () => {
-    const a: EquippedSlots = { top: ['x'], bottom: [], footwear: ['y'], accessories: [] };
-    expect(equippedSlotsEqual(a, cloneSlots(a))).toBe(true);
-    expect(equippedSlotsEqual(a, { ...cloneSlots(a), top: ['z'] })).toBe(false);
-    // Order matters — v4 walks index-by-index, no set semantics.
-    expect(
-      equippedSlotsEqual(
-        { top: ['a', 'b'], bottom: [], footwear: [], accessories: [] },
-        { top: ['b', 'a'], bottom: [], footwear: [], accessories: [] },
-      ),
-    ).toBe(false);
-  });
-});
+// `equippedSlotsEqual` moved to `staged-live-outfits.ts` at 4.8.2 (v4
+// `07d4ccce`); its cases moved with it to `staged-live-outfits.spec.ts`.
 
 describe('wearItemIntoSlots (v4 outfit-displacement.ts:74-87)', () => {
   it('layers into each covered slot when replace is falsy (append, no-op if present)', () => {
