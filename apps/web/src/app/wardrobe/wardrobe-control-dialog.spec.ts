@@ -404,3 +404,80 @@ describe('WardrobeControlDialog host — the remount key (v4 :92-93)', () => {
     expect(inner(second).titleFilter()).toBe('');
   });
 });
+
+/**
+ * The dissolution threading (v4 4.8.2 `61574563`): the dialog's wear/add sites
+ * hand `itemsById` to the pure math, so a bundle stages as its PARTS and its own
+ * id never reaches the staged slots. The pure rule itself is pinned in
+ * `dissolve-bundles.spec.ts`; these cases pin that the call sites pass the
+ * lookup at all — without it the math silently falls back to storing the bundle
+ * whole and every pure test still passes.
+ */
+describe('WardrobeControlDialogInner — bundles dissolve as they go on', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const LEAF_TOP = dto({ id: 'leaf-top', title: 'Leaf Top', types: ['top'] });
+  const LEAF_SHOE = dto({ id: 'leaf-shoe', title: 'Leaf Shoe', types: ['footwear'] });
+  const BUNDLE = dto({
+    id: 'bundle',
+    title: 'Man in Black',
+    types: ['top', 'footwear'],
+    componentItemIds: ['leaf-top', 'leaf-shoe'],
+  });
+
+  const bundleRoute = (req: AnyRequest): Record<string, unknown> | Error => {
+    if ((req.type as string) === 'characterWardrobeList') {
+      return {
+        wardrobeItems:
+          (req as { characterId?: string }).characterId === 'c1'
+            ? [LEAF_TOP, LEAF_SHOE, BUNDLE]
+            : [],
+      };
+    }
+    if ((req.type as string) === 'chatOutfitGet') {
+      return { equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [] } } };
+    }
+    return defaultRoute(req);
+  };
+
+  it('Wear stages the parts, never the bundle id (v4 handleEquipItem :492-497)', async () => {
+    const { component } = await renderInner('chat-1', bundleRoute);
+    const c = inner(component);
+    c.handleEquipItem(BUNDLE);
+
+    const staged = c.liveStagedByChar()['c1'];
+    expect(staged.top).toEqual(['leaf-top']);
+    expect(staged.footwear).toEqual(['leaf-shoe']);
+    expect(JSON.stringify(staged)).not.toContain('bundle');
+  });
+
+  it('adding to a slot contributes only the part covering it (v4 handleAddToSlot :499-508)', async () => {
+    const { component } = await renderInner('chat-1', bundleRoute);
+    const c = inner(component);
+    c.handleAddToSlot(BUNDLE, 'footwear');
+
+    const staged = c.liveStagedByChar()['c1'];
+    expect(staged.footwear).toEqual(['leaf-shoe']);
+    expect(staged.top).toEqual([]);
+  });
+
+  it('picking a bundle from a slot row wears its parts (v4 handleSlotAdd :513-522)', async () => {
+    const { component } = await renderInner('chat-1', bundleRoute);
+    const c = inner(component);
+    c.handleSlotAdd('top', 'bundle');
+
+    const staged = c.liveStagedByChar()['c1'];
+    expect(staged.top).toEqual(['leaf-top']);
+    expect(staged.footwear).toEqual(['leaf-shoe']);
+  });
+
+  it('the fitting room dissolves too (v4 fitting wear sites :551 / :761)', async () => {
+    const { component } = await renderInner(null, bundleRoute);
+    const c = inner(component);
+    c.fittingClear('top');
+    c.fittingAdd('top', 'bundle');
+
+    expect(c.fittingSlots().top).toEqual(['leaf-top']);
+    expect(c.fittingSlots().footwear).toEqual(['leaf-shoe']);
+  });
+});

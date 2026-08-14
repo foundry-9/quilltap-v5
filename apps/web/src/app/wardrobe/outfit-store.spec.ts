@@ -250,4 +250,59 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
     expect(await store.removeFromSlot('c1', 'top', 'x')).toBeNull();
     expect(store.outfitState()['c1'].slots.top).toEqual(['x']);
   });
+  /**
+   * v4 4.8.2 `61574563`: `use-outfit.ts`'s three optimistic `computeDisplacedSlots`
+   * calls each hand the cached wardrobe in as `itemsById`, so the optimistic
+   * paint dissolves a bundle exactly as the server's persisted result will.
+   * Drop the lookup at any one of the three and this goes red.
+   */
+  it('the optimistic equip paths dissolve a bundle into its parts (v4 use-outfit.ts:321,:361,:404)', async () => {
+    const { core } = stubCore((req) => {
+      switch (req.type as string) {
+        case 'chatOutfitGet':
+          return {
+            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [] } },
+          };
+        case 'characterWardrobeList':
+          return {
+            wardrobeItems: [
+              dto({ id: 'leaf-top', title: 'Leaf Top', types: ['top'] }),
+              dto({ id: 'leaf-shoe', title: 'Leaf Shoe', types: ['footwear'] }),
+              dto({
+                id: 'bundle',
+                title: 'Man in Black',
+                types: ['top', 'footwear'],
+                componentItemIds: ['leaf-top', 'leaf-shoe'],
+              }),
+            ],
+          };
+        case 'wardrobeList':
+          return { wardrobeItems: [] };
+        case 'chatEquip':
+          return { equippedSlots: {} };
+        default:
+          return new Error(`unexpected ${req.type}`);
+      }
+    });
+    const store = createOutfitStore(core, 'chat-1', () => ['c1']);
+    await store.refreshOutfit();
+
+    await store.equipItem('c1', 'bundle');
+    expect(store.outfitState()['c1'].slots).toEqual({
+      top: ['leaf-top'],
+      bottom: [],
+      footwear: ['leaf-shoe'],
+      accessories: [],
+    });
+
+    await store.removeFromSlot('c1', 'top', null);
+    await store.removeFromSlot('c1', 'footwear', null);
+    await store.replaceItem('c1', 'bundle');
+    expect(store.outfitState()['c1'].slots.top).toEqual(['leaf-top']);
+    expect(store.outfitState()['c1'].slots.footwear).toEqual(['leaf-shoe']);
+
+    await store.removeFromSlot('c1', 'top', null);
+    await store.addToSlot('c1', 'top', 'bundle');
+    expect(store.outfitState()['c1'].slots.top).toEqual(['leaf-top']);
+  });
 });

@@ -22,6 +22,12 @@ import type {
   WardrobeItemDto,
   WardrobeSlotType,
 } from '../core/core-contract';
+import {
+  dissolveBundlesInSlots,
+  dissolveBundleToLeaves,
+  layLeavesIntoSlots,
+  type WearableLookup,
+} from './dissolve-bundles';
 
 export { WARDROBE_SLOT_TYPES };
 export type { EquippedSlots, WardrobeItemDto, WardrobeSlotType };
@@ -64,20 +70,41 @@ export function cloneSlots(slots: EquippedSlots): EquippedSlots {
 // `07d4ccce` lifted it out of the dialog into that module alongside the rebase
 // and classification helpers it serves). Import it from there.
 
-/** The minimal item shape the wear rule needs (v4 `outfit-displacement.ts:76`). */
+/** The minimal item shape the wear rule needs (v4 `outfit-displacement.ts:117`,
+ *  widened with `componentItemIds` at 4.8.2). */
 export interface WearableItem {
   id: string;
   types: WardrobeSlotType[];
   replace?: boolean;
+  componentItemIds?: readonly string[];
 }
 
 /**
- * Pure flag-driven wear (v4 `outfit-displacement.ts:74-87`): for each slot in
+ * Pure flag-driven wear (v4 `outfit-displacement.ts:114-142`): for each slot in
  * `item.types`, replace the slot with `[item.id]` when `item.replace` is true,
  * otherwise append `item.id` (layering, no-op if already present). The single
  * rule behind every "put it on" gesture.
+ *
+ * Since 4.8.2 a bundle goes on as its PARTS, not as itself: given an
+ * `itemsById` lookup that resolves its components, the leaves are laid into
+ * the slots their own `types` declare and the bundle's id is never stored.
+ * `replace` still governs — it clears the union of the slots the bundle
+ * designates and the slots its pieces land in. Without a lookup (or when the
+ * parts can't be resolved) the bundle is stored whole, the pre-4.8.2 behavior,
+ * and read-time expansion still covers it.
  */
-export function wearItemIntoSlots(currentSlots: EquippedSlots, item: WearableItem): EquippedSlots {
+export function wearItemIntoSlots(
+  currentSlots: EquippedSlots,
+  item: WearableItem,
+  itemsById?: WearableLookup,
+): EquippedSlots {
+  const leaves = dissolveBundleToLeaves(item, itemsById);
+  if (leaves) {
+    return layLeavesIntoSlots(currentSlots, item, leaves, {
+      clearCoveredSlots: item.replace === true,
+    });
+  }
+
   const slots = cloneSlots(currentSlots);
   for (const slotType of item.types) {
     if (item.replace) {
@@ -85,6 +112,59 @@ export function wearItemIntoSlots(currentSlots: EquippedSlots, item: WearableIte
     } else if (!slots[slotType].includes(item.id)) {
       slots[slotType] = [...slots[slotType], item.id];
     }
+  }
+  return slots;
+}
+
+/**
+ * Pure full-slot replacement regardless of the `replace` flag
+ * (v4 `outfit-displacement.ts:144-160` `replaceItemIntoSlots`). Was inlined in
+ * `computeDisplacedSlots`'s `replace` arm before 4.8.2; lifted out here because
+ * the bundle path needs it in both places.
+ */
+export function replaceItemIntoSlots(
+  currentSlots: EquippedSlots,
+  item: { id: string; types: WardrobeSlotType[]; componentItemIds?: readonly string[] },
+  itemsById?: WearableLookup,
+): EquippedSlots {
+  const leaves = dissolveBundleToLeaves(item, itemsById);
+  if (leaves) {
+    return layLeavesIntoSlots(currentSlots, item, leaves, { clearCoveredSlots: true });
+  }
+
+  const slots = cloneSlots(currentSlots);
+  for (const slotType of item.types) {
+    slots[slotType] = [item.id];
+  }
+  return slots;
+}
+
+/**
+ * Pure single-slot layering (v4 `outfit-displacement.ts:196-222`
+ * `addItemToSlot`, new at 4.8.2). A bundle contributes the parts that cover
+ * this slot rather than its own id; if none of them do (the caller asked for a
+ * slot the bundle claims but no part fills), the bundle's id goes in as before
+ * so the gesture is never silently a no-op.
+ */
+export function addItemToSlot(
+  currentSlots: EquippedSlots,
+  slot: WardrobeSlotType,
+  item: { id: string; types: WardrobeSlotType[]; componentItemIds?: readonly string[] },
+  itemsById?: WearableLookup,
+): EquippedSlots {
+  const slots = cloneSlots(currentSlots);
+  const leaves = dissolveBundleToLeaves(item, itemsById);
+  const forSlot = leaves?.filter((leaf) => leaf.slots.includes(slot)) ?? [];
+
+  if (forSlot.length > 0) {
+    for (const leaf of forSlot) {
+      if (!slots[slot].includes(leaf.id)) slots[slot] = [...slots[slot], leaf.id];
+    }
+    return slots;
+  }
+
+  if (!slots[slot].includes(item.id)) {
+    slots[slot] = [...slots[slot], item.id];
   }
   return slots;
 }
@@ -108,7 +188,7 @@ export function sortForDefaultOutfit(items: WardrobeItemDto[]): WardrobeItemDto[
 
 /**
  * Build a per-slot snapshot from the items marked `isDefault: true`, skipping
- * archived ones (v4 `default-outfit.ts:13-20`).
+ * archived ones (v4 `default-outfit.ts:13-39`).
  */
 export function buildDefaultOutfit(items: WardrobeItemDto[]): EquippedSlots {
   const next = freshSlots();
@@ -116,7 +196,10 @@ export function buildDefaultOutfit(items: WardrobeItemDto[]): EquippedSlots {
     if (!item.isDefault || item.archivedAt) continue;
     for (const slot of item.types) next[slot].push(item.id);
   }
-  return next;
+  // A bundle marked default goes on as its parts, like every other put-on
+  // gesture — the wardrobe should never open onto a card over empty slots
+  // (v4 `:36-38`, added at 4.8.2).
+  return dissolveBundlesInSlots(next, new Map(items.map((i) => [i.id, i])));
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +340,12 @@ export interface ComputeDisplacedOptions {
   slot?: WardrobeSlotType;
   /** Filter target for `remove_from_slot`; omit to clear the slot. */
   itemId?: string;
+  /**
+   * Item lookup used to dissolve a bundle as it goes on (v4 `:297-305`, new at
+   * 4.8.2). Omit and bundles are stored whole — correct, just less legible in
+   * the slot rows.
+   */
+  itemsById?: WearableLookup;
 }
 
 /**
@@ -272,29 +361,43 @@ export function computeDisplacedSlots(
 
   if (options.mode === 'wear') {
     if (!options.item) return slots;
-    return wearItemIntoSlots(slots, {
-      id: options.item.id,
-      types: options.item.types as WardrobeSlotType[],
-      replace: options.item.replace,
-    });
+    return wearItemIntoSlots(
+      slots,
+      {
+        id: options.item.id,
+        types: options.item.types as WardrobeSlotType[],
+        componentItemIds: options.item.componentItemIds,
+        replace: options.item.replace,
+      },
+      options.itemsById,
+    );
   }
 
   if (options.mode === 'replace') {
     if (!options.item) return slots;
-    // v4 `replaceItemIntoSlots` (:94-103): clear each covered slot and set it
-    // to just [item.id], regardless of the `replace` flag.
-    for (const slotType of options.item.types as WardrobeSlotType[]) {
-      slots[slotType] = [options.item.id];
-    }
-    return slots;
+    return replaceItemIntoSlots(
+      slots,
+      {
+        id: options.item.id,
+        types: options.item.types as WardrobeSlotType[],
+        componentItemIds: options.item.componentItemIds,
+      },
+      options.itemsById,
+    );
   }
 
   if (options.mode === 'add_to_slot') {
     if (!options.item || !options.slot) return slots;
-    if (!slots[options.slot].includes(options.item.id)) {
-      slots[options.slot] = [...slots[options.slot], options.item.id];
-    }
-    return slots;
+    return addItemToSlot(
+      slots,
+      options.slot,
+      {
+        id: options.item.id,
+        types: options.item.types as WardrobeSlotType[],
+        componentItemIds: options.item.componentItemIds,
+      },
+      options.itemsById,
+    );
   }
 
   if (options.mode === 'remove_from_slot') {

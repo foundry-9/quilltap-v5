@@ -17,6 +17,7 @@ import type { CharacterListItem, WardrobeItemDto, WardrobeSlotType } from '../co
 import { characterAvatarSrc } from '../screens/characters/characters.api';
 import { AvatarGenerationPane, type ImageProfileSummary } from './avatar-generation-pane';
 import {
+  addItemToSlot,
   buildDefaultOutfit,
   cloneSlots,
   EMPTY_EQUIPPED_SLOTS,
@@ -828,27 +829,29 @@ export class WardrobeControlDialogInner {
    *  it covers. Pure state; fires no route. */
   protected handleEquipItem(item: WardrobeItemDto): void {
     if (!this.isInChat) return;
-    this.updateLiveStaged((prev) => wearItemIntoSlots(prev, item));
+    const itemsById = this.itemsById();
+    this.updateLiveStaged((prev) => wearItemIntoSlots(prev, item, itemsById));
   }
 
-  /** v4 `:484-494` — pure state; fires no route. */
+  /** v4 `:490-499` — pure state; fires no route. Since 4.8.2 the slot-add
+   *  goes through `addItemToSlot`, so a bundle contributes the parts that
+   *  cover this slot rather than its own id. */
   protected handleAddToSlot(item: WardrobeItemDto, slot: WardrobeSlotType): void {
     if (!this.isInChat) return;
     if (!item.types.includes(slot)) return;
-    this.updateLiveStaged((prev) => {
-      if (prev[slot].includes(item.id)) return prev;
-      return { ...prev, [slot]: [...prev[slot], item.id] };
-    });
+    const itemsById = this.itemsById();
+    this.updateLiveStaged((prev) => addItemToSlot(prev, slot, item, itemsById));
   }
 
   /** v4 `:499-512` — picking from a slot row wears the item (fills every slot
    *  it covers) rather than dropping it into the one row. Pure state. */
   protected handleSlotAdd(slot: WardrobeSlotType, itemId: string): void {
     if (!this.isInChat) return;
-    const item = this.itemsById().get(itemId);
+    const itemsById = this.itemsById();
+    const item = itemsById.get(itemId);
     this.updateLiveStaged((prev) =>
       item
-        ? wearItemIntoSlots(prev, item)
+        ? wearItemIntoSlots(prev, item, itemsById)
         : prev[slot].includes(itemId)
           ? prev
           : { ...prev, [slot]: [...prev[slot], itemId] },
@@ -871,9 +874,10 @@ export class WardrobeControlDialogInner {
   // Fitting-room mutations — transient; never hit the equip API (v4 :531-587).
   // ---------------------------------------------------------------------------
   protected fittingAdd(slot: WardrobeSlotType, itemId: string): void {
-    const item = this.itemsById().get(itemId);
+    const itemsById = this.itemsById();
+    const item = itemsById.get(itemId);
     if (!item) return;
-    this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item));
+    this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
   }
 
   protected fittingRemove(slot: WardrobeSlotType, itemId: string): void {
@@ -1069,7 +1073,8 @@ export class WardrobeControlDialogInner {
   /** v4 `:732-743`. */
   protected rowEquip(item: WardrobeItemDto): void {
     if (this.useFittingActions()) {
-      this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item));
+      const itemsById = this.itemsById();
+      this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
       return;
     }
     this.handleEquipItem(item);

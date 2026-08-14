@@ -66647,3 +66647,73 @@ must: that arm's behavior is unchanged. Matches v4's own note that "both
 new-behaviour arms fail" against pre-fix code.
 
 Full wardrobe spec set green: 13 files / 109 tests. SPA 0.5.455 → 0.5.456.
+
+## Lane record — P4.D72 unit 3: client bundle dissolution (v4 `61574563`)
+
+**Landed.** v4's "wearing a bundled outfit breaks it apart automatically"
+absorbed on the client side, mirroring v4's client exactly (the server's
+persisted result is authoritative per the round's §Shared contract item 2, and
+overwrites the optimistic paint on reconcile).
+
+**New modules (both new files in `apps/web/src/app/wardrobe/`):**
+
+- `expand-composites.ts` — v4 `lib/wardrobe/expand-composites.ts`'s
+  `expandComposites` + `CompositeNode` + `COMPOSITE_MAX_DEPTH`, cycle-tolerant
+  with the `{leafIds, cycles, truncated}` result. **Not** the same function as
+  `outfit-store.ts`'s `expandSummaryComposites` (the port of v4's *client-local*
+  expander in `use-outfit.ts`, which reports no cycles) — both exist in v4 too
+  and the header says so, because merging them would be the obvious wrong move.
+  `logger.warn` → `console.warn` with v4's message and context bag (the SPA has
+  no logger module).
+- `dissolve-bundles.ts` — v4's whole `lib/wardrobe/dissolve-bundles.ts`:
+  `WearableNode` / `WearableLookup` / `DissolvedLeaf`, `slotsCoveredBy`,
+  `isBundle`, `dissolveBundleToLeaves`, `layLeavesIntoSlots`,
+  `dissolveBundlesInSlots`. It imports only `WARDROBE_SLOT_TYPES` and the wire
+  types, **deliberately not `equipped-slots.ts`** — that keeps the dependency
+  one-way (`equipped-slots` → `dissolve-bundles`) and avoids a module cycle
+  around `SLOT_SET`'s top-level initializer.
+
+**Widened in `equipped-slots.ts`:** `WearableItem` gains `componentItemIds`;
+`wearItemIntoSlots(slots, item, itemsById?)` dissolves first and falls through
+to the old flag rule; `replaceItemIntoSlots` is **lifted out** of
+`computeDisplacedSlots`'s inlined `replace` arm into its own exported function
+(v4 has always had it; v5 had inlined it, and the bundle path needs it in both
+places); the new `addItemToSlot` carries v4's own-id fallback when no leaf
+covers the requested slot; `computeDisplacedSlots` gains `itemsById` and routes
+all three item modes through the primitives; `buildDefaultOutfit` ends with
+`dissolveBundlesInSlots`, so a default bundle opens as garments.
+
+**Call sites threaded:** the dialog's five (`handleEquipItem`,
+`handleAddToSlot` — which stops hand-rolling the append and calls
+`addItemToSlot`, `handleSlotAdd`, `fittingAdd`, `rowEquip`) and the outfit
+store's three (`equipItem` / `replaceItem` / `addToSlot`, each passing
+`new Map(items.map(i => [i.id, i]))` exactly as v4's `use-outfit.ts` does).
+
+**NO-PORT, recorded loudly: v4's fifth client call site has no v5 analog.**
+v4 `components/wardrobe/outfit-selector.tsx:290` threads `itemsById` into a
+`wearItemIntoSlots` inside `CharacterOutfitSection`'s manual-compose handler.
+v5's `app/screens/new-chat/outfit-selector.ts` **loads no wardrobes and renders
+`manual` (Compose) loudly disabled** — that whole surface rides the DEFERRED
+new-chat wardrobe-composer family (P4.D39's client half). There is no call to
+widen. When that family lands it must thread the lookup; the deferral's header
+comment in `outfit-selector.ts` already names it.
+
+**Differential.** v4's `__tests__/unit/lib/wardrobe/dissolve-bundles.test.ts`
+(347 lines) ported case-for-case as `dissolve-bundles.spec.ts` — every pure
+describe (`isBundle`, `dissolveBundleToLeaves` incl. nesting/self-reference/
+unknown-slot/fail-safe, `layLeavesIntoSlots`, `wearItemIntoSlots` with a
+bundle, `replaceItemIntoSlots`, `addItemToSlot`, `dissolveBundlesInSlots`) plus
+v4's new `buildDefaultOutfit` case from `default-outfit.test.ts`. v4's
+`equipItem (persisted)` describe is deliberately **not** ported: it drives the
+repo-backed primitive, which is lane P4.D71's, and the client never calls it.
+
+**Mutation-proven at BOTH levels — this is the class the pure tests cannot
+catch on their own.** (a) inverting `dissolveBundleToLeaves`'s bundle guard
+fails **16** cases; (b) dropping `itemsById` at the dialog's five call sites
+fails the **4** new integration cases in `wardrobe-control-dialog.spec.ts`
+("bundles dissolve as they go on"), and dropping it at the store's three fails
+the new `outfit-store.spec.ts` case. Without (b) the threading would be
+untested — the pure math passes whether or not anyone hands it the lookup.
+
+Wardrobe spec set: 14 files / 139 tests green; `ng build` clean.
+SPA 0.5.456 → 0.5.457.

@@ -162,6 +162,24 @@ provider manifests regenerate byte-identical against the 14 rebuilt plugins.
 The google-wire corpus also gained the request headers it should have gotten
 in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
 and nothing asserts those headers yet. No engine code changed.
+P4.D72 unit 3 — ported v4 4.8.2's client-side bundle dissolution into the SPA:
+putting a bundled outfit on now stores its PARTS, never the bundle's own id, so
+the wardrobe no longer shows one "Man in Black" card above four slot rows that
+all read Empty. New `dissolve-bundles.ts` (dissolveBundleToLeaves /
+layLeavesIntoSlots / dissolveBundlesInSlots) over a new `expand-composites.ts`,
+with `wearItemIntoSlots` / `replaceItemIntoSlots` / the new `addItemToSlot` /
+`computeDisplacedSlots` / `buildDefaultOutfit` widened to take the item lookup.
+Threaded through the dialog's five wear sites and the outfit store's three
+optimistic paths. Fail-safe throughout: no lookup, or a bundle whose parts do
+not resolve, stores it whole exactly as before, and read-time expansion still
+covers outfits equipped before the change. `replace` clears the union of the
+slots the bundle designates and the slots its pieces land in. v4's 347-line
+dissolve suite ported case-for-case (minus its persisted-repo describe, which
+is P4.D71's) plus the default-outfit case; mutation-proven at both levels —
+inverting the dissolve guard fails 16, dropping the lookup at the call sites
+fails 4 (dialog) and 1 (store). The server stays authoritative for persisted
+slots; this is the optimistic mirror.
+
 P4.D72 unit 2 — wired v4 4.8.2's Bug 61 fix into the SPA wardrobe dialog: a
 Wear clicked before the worn snapshot arrives is no longer lost. The gesture
 (not its result) is recorded in a per-character pending-mutator queue, the
