@@ -67037,3 +67037,77 @@ check that ordinary prose still fires.
 **Mutation-proven**: deleting the one guard line — i.e. restoring the
 behavior v5 shipped until this commit — reds exactly the two code cases
 and leaves the prose case green. That is the bug, reproduced on demand.
+
+### Unit record — P4.D74 unit 5 (Part B: the type-time dash/ellipsis plugin)
+
+The ProseMirror twin of v4's `SmartTypographyPlugin.tsx`, over the SAME
+engine. v4's file is 327 lines of Lexical keystroke plumbing around a
+decision it does not make; v5's is the same plumbing spelled in
+ProseMirror, and the engine import is the only thing they share — which
+is the design v4 wrote the engine for.
+
+**The settings read generalized.** Unit 3 landed
+`chat/render/display-quotes.ts` for Part A; Part B needs the SAME row, so
+the service moved to `smart-typography/settings.ts` and grew a `typing`
+signal beside `displayQuotes`. That is not tidying: v4 reads this bag
+from inside BOTH features (`MessageContent.tsx:352` and
+`SmartTypographyPlugin.tsx:109`, each with its own `useQuery`), and two
+Angular services subscribing to one cache row would have been the
+duplication. The defaults differ per key, as v4's do — `displayQuotes`
+false, `dashes`/`ellipsis` true — and `typing` keeps its object
+REFERENCE stable while the values are unchanged, because the plugin
+reads it through a closure on every keystroke.
+
+**What the adapter does, and where it differs from v4 by necessity:**
+
+- `handleKeyDown`, installed ABOVE `textReplacementPlugin` in
+  `buildPlugins()` — the pinned order from the §Editor meeting points,
+  and v4's COMMAND_PRIORITY_NORMAL-over-LOW spelled in PM terms. v4's
+  `Aris...` table is ported as a driven test through the real pair of
+  plugins.
+- The revert memo is a closure variable in absolute doc positions, and
+  is invalidated **on the keystroke**, not in an `appendTransaction` —
+  v4's reasoning carries over unchanged (editors fire updates for
+  selection reconciliation, so a transaction-based memo is gone before
+  the writer's finger reaches Backspace).
+- `closeHistory()` on the substitution transaction. v4 gets "one
+  Cmd/Ctrl+Z" from a tagged Lexical update; PM would otherwise merge the
+  substitution into the adjacent run of typing.
+- Blur clears the memo (v4 registers `BLUR_COMMAND` for exactly this).
+- Code bails through the unit-4 helper; IME through `view.composing`;
+  paste is untouched because paste is not a keystroke; **source-mode
+  editors need no flag at all** — v5's raw-source pane is a plain
+  `<textarea>`, not this component, so v4's explicit bail becomes
+  structural.
+- `console.debug` once per SUBSTITUTION, v4's line and v4's test.
+
+**One divergence worth stating plainly, and it is v4's too:** Backspace
+and Cmd-Z are NOT the same operation. Backspace restores the full
+literal (`--`); the undo returns to the state before the substitution,
+which is `-`, because the typed keystroke was consumed rather than
+inserted. v4's module comment claims the undo "restores the literal",
+but v4's own test (`reverts in ONE undo`) expects `Well..`, not
+`Well...`. The port matches v4's CODE and its test; the spec says so at
+the assertion.
+
+**Mounted in both hosts.** `qt-rich-editor` gained a `smartTypography`
+input (null = inert, which is every form field), and the composer and
+the Document Mode pane bind it from the shared settings singleton — not
+from a Salon input, because v4's plugin likewise runs its own settings
+read and the rules must follow the toggle without an editor rebuild.
+
+**Specs: v4's suite ported case-for-case** (35 cases) plus five arms v4's
+harness cannot easily reach: the modified trigger key, the non-collapsed
+selection, `null` options, a LIVE options change with no rebuild, and the
+caret having moved off the substitution. **Mutation-proven, six
+inversions:** dropping `closeHistory` reds the own-undo-step case;
+dropping the code bail reds both code cases; allowing a
+modifier-Backspace revert reds its case; dropping the caret check reds
+the moved-caret case; and dropping the keystroke invalidation reds the
+"changes nothing at all" case. **That last case exists because the
+mutation initially passed:** v4's own "forgets the substitution" shape
+(type on, then Backspace) cannot distinguish the invalidation POLICY from
+the revert's safety checks, since typing moves the caret and the position
+check refuses anyway. A bare `Shift` keydown moves nothing, so only the
+policy stands between the writer and a surprise reversion — and that is
+now the pinned case.

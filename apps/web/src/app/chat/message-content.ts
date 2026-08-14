@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
-import { DisplayQuotesSetting } from './render/display-quotes';
+import { SmartTypographySettings } from '../smart-typography/settings';
 import { renderMarkdownCached } from './render/render-cache';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 
@@ -56,7 +56,7 @@ export class MessageContent {
    * verbatim reasoning). A template that curling would break overrides it inside
    * the renderer; see `render/typography.ts`.
    */
-  private readonly displayQuotes = inject(DisplayQuotesSetting).displayQuotes;
+  private readonly displayQuotes = inject(SmartTypographySettings).displayQuotes;
 
   protected readonly html = computed<SafeHtml>(() =>
     this.sanitizer.bypassSecurityTrustHtml(

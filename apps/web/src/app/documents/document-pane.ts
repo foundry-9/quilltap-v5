@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 
 import { RichEditor } from '../editor/rich-editor';
+import { SmartTypographySettings } from '../smart-typography/settings';
 import { Icon } from '../ui/icon';
 import { USES_RICH_MARKDOWN_EDITOR, type DocumentMode, type OpenDocEntry } from './document-mode';
 import {
@@ -166,6 +167,7 @@ import { ToastService } from '../ui/toast.service';
             class="qt-doc-editor-area h-full p-4"
             [value]="editorValue()"
             [ariaLabel]="'Document editor'"
+            [smartTypography]="smartTypography()"
             [disabled]="entry().isLLMEditing"
             (contentChange)="onEditorInput($event)"
             style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
@@ -201,6 +203,14 @@ import { ToastService } from '../ui/toast.service';
 })
 export class DocumentPane {
   private readonly toasts = inject(ToastService);
+  /**
+   * Type-time dash/ellipsis substitution, the Document Mode half (v4 mounts
+   * `SmartTypographyPlugin` in both the composer and this editor). The
+   * raw-source `<textarea>` path below is deliberately untouched: v4 bails in
+   * source-mode editors, and v5 gets that structurally because the textarea is
+   * not the ProseMirror component at all.
+   */
+  protected readonly smartTypography = inject(SmartTypographySettings).typing;
   readonly entry = input.required<OpenDocEntry>();
   readonly mode = input.required<DocumentMode>();
 

@@ -19,8 +19,10 @@ import { splitListItem } from 'prosemirror-schema-list';
 import { EditorState, Plugin, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 
+import type { SmartTypographyOptions } from '../smart-typography/engine';
 import { dialectFormattingKeymap, dialectInputRules, dialectListNavigationKeymap } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
+import { smartTypographyPlugin } from './smart-typography-plugin';
 import { textReplacementPlugin, type CompiledRules } from './text-replacement';
 
 /**
@@ -76,6 +78,14 @@ export class RichEditor {
    * (gated by `textReplacementsEnabled`); form fields never do.
    */
   readonly textReplacementRules = input<CompiledRules | null>(null);
+  /**
+   * Type-time dash/ellipsis substitution (v4 `SmartTypographyPlugin`,
+   * `chat_settings.smartTypographySettings`). Read live on each keystroke;
+   * `null` — the default — makes the plugin inert, which is what every host
+   * that is not a composer or the Document Mode pane wants. The two rules are
+   * gated independently: `{dashes: false, ellipsis: true}` is a legal state.
+   */
+  readonly smartTypography = input<SmartTypographyOptions | null>(null);
 
   /** Fired with the serialized markdown whenever the document changes. */
   readonly contentChange = output<string>();
@@ -248,6 +258,11 @@ export class RichEditor {
 
     return [
       dialectInputRules(dialectSchema),
+      // Smart typography sits ABOVE text replacement so `.` resolves as
+      // typography before it resolves as a word boundary (v4 gets the same
+      // ordering from COMMAND_PRIORITY_NORMAL over LOW), and above the keymaps
+      // so its Backspace revert wins over `undoInputRule`.
+      smartTypographyPlugin(() => this.smartTypography()),
       // Composer-only text replacement (inert unless rules are set). Above the
       // keymaps so it consumes the trigger keystroke before Enter/etc.
       textReplacementPlugin(() => this.textReplacementRules()),

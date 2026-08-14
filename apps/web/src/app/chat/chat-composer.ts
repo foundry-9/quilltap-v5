@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 
 import { RichEditor } from '../editor/rich-editor';
+import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
 import { Icon } from '../ui/icon';
 import {
@@ -159,6 +160,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           [submitOnEnter]="!compositionMode()"
           [submitOnModEnter]="compositionMode()"
           [textReplacementRules]="effectiveTextReplacementRules()"
+          [smartTypography]="smartTypography()"
           [spellcheck]="composerSpellcheck()"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
@@ -353,6 +355,14 @@ export interface PendingToolResultChip extends RngPendingResult {
 })
 export class ChatComposer implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
+  /**
+   * Type-time dash/ellipsis substitution (v4 `SmartTypographyPlugin`). Read
+   * from the shared settings singleton rather than passed down from the Salon,
+   * because v4's plugin runs its OWN settings query for the same reason: the
+   * composer is where the feature lives, and the rules must follow the toggle
+   * without a rebuild. The two rules are gated independently.
+   */
+  protected readonly smartTypography = inject(SmartTypographySettings).typing;
   private readonly toasts = inject(ToastService);
 
   /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */

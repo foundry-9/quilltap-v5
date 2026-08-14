@@ -230,6 +230,15 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Ported smart typography Part B into the composer and the Document Mode
+editor (P4.D74 unit 5): typing `--` gives an en dash, `---` an em dash
+and `...` an ellipsis, over the same engine v4 uses, with v4's revert
+semantics — one Backspace puts the literal characters back, one
+Cmd/Ctrl+Z undoes the substitution and nothing else, and any other key
+closes the window. Nothing fires in code blocks, inline code, source-mode
+editors or during IME composition, and pasted text is left alone. Each
+rule follows its own toggle, live.
+
 Fixed bug 63 in the composer (P4.D74 unit 4): text replacements fired
 inside fenced code blocks and inline code runs, because a code block is
 a textblock like any other and the inline code mark was never consulted.

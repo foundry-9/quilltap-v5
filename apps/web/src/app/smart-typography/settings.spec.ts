@@ -2,12 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CoreClient } from '../../core/core-client';
-import type { ChatSettingsDto } from '../../core/core-contract';
-import { chatSettingsKeys } from '../../screens/settings/chat/chat-settings.api';
-import { MessageContent } from '../message-content';
-import { DisplayQuotesSetting, readDisplayQuotes } from './display-quotes';
-import { clearRenderCache } from './render-cache';
+import { CoreClient } from '../core/core-client';
+import type { ChatSettingsDto } from '../core/core-contract';
+import { MessageContent } from '../chat/message-content';
+import { clearRenderCache } from '../chat/render/render-cache';
+import { chatSettingsKeys } from '../screens/settings/chat/chat-settings.api';
+import { SmartTypographySettings, readDisplayQuotes, readTypingOptions } from './settings';
 
 /**
  * The one seam: `qt-message-content` reads `smartTypographySettings.displayQuotes`
@@ -52,14 +52,14 @@ describe('readDisplayQuotes', () => {
   });
 });
 
-describe('DisplayQuotesSetting', () => {
+describe('SmartTypographySettings', () => {
   it('is inert without a QueryClient — the signal stays false', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ providers: [] });
     // No provideTanStackQuery, no CoreClient: a bare component spec. The
     // service must not reach for either, which is what keeps
     // `qt-message-content` mountable with no query layer at all.
-    expect(TestBed.inject(DisplayQuotesSetting).displayQuotes()).toBe(false);
+    expect(TestBed.inject(SmartTypographySettings).displayQuotes()).toBe(false);
   });
 
   it('fetches the row itself when nobody else has (the Brahma/help-chat case)', async () => {
@@ -69,7 +69,7 @@ describe('DisplayQuotesSetting', () => {
     TestBed.configureTestingModule({
       providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: core }],
     });
-    const service = TestBed.inject(DisplayQuotesSetting);
+    const service = TestBed.inject(SmartTypographySettings);
     expect(service.displayQuotes()).toBe(false); // nothing cached yet
     await settle();
     expect(service.displayQuotes()).toBe(true);
@@ -87,7 +87,7 @@ describe('DisplayQuotesSetting', () => {
     TestBed.configureTestingModule({
       providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: core }],
     });
-    expect(TestBed.inject(DisplayQuotesSetting).displayQuotes()).toBe(true);
+    expect(TestBed.inject(SmartTypographySettings).displayQuotes()).toBe(true);
   });
 
   it('follows the setting when the card saves a new value', async () => {
@@ -97,7 +97,7 @@ describe('DisplayQuotesSetting', () => {
     TestBed.configureTestingModule({
       providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: coreStub(settingsRow()) }],
     });
-    const service = TestBed.inject(DisplayQuotesSetting);
+    const service = TestBed.inject(SmartTypographySettings);
     await settle();
     expect(service.displayQuotes()).toBe(false);
 
@@ -125,7 +125,7 @@ describe('DisplayQuotesSetting', () => {
     TestBed.configureTestingModule({
       providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: failing }],
     });
-    const service = TestBed.inject(DisplayQuotesSetting);
+    const service = TestBed.inject(SmartTypographySettings);
     await settle();
     // A renderer must never surface a settings error; it just renders plainly.
     expect(service.displayQuotes()).toBe(false);
@@ -177,5 +177,71 @@ describe('qt-message-content — the rendered bytes follow the setting', () => {
     // The memo must not go on serving the straight-quoted render — this is the
     // cache-key half of the feature, seen from the component.
     expect((fixture.nativeElement as HTMLElement).innerHTML).toContain('“Hello there,”');
+  });
+});
+
+describe('readTypingOptions', () => {
+  it('defaults BOTH rules to ON through every missing level (v4 `?? true`)', () => {
+    expect(readTypingOptions(undefined)).toEqual({ dashes: true, ellipsis: true });
+    expect(readTypingOptions(settingsRow())).toEqual({ dashes: true, ellipsis: true });
+    expect(readTypingOptions(settingsRow({ smartTypographySettings: {} }))).toEqual({
+      dashes: true,
+      ellipsis: true,
+    });
+  });
+
+  it('reads each rule independently — one off is a legal state', () => {
+    expect(
+      readTypingOptions(settingsRow({ smartTypographySettings: { dashes: false } })),
+    ).toEqual({ dashes: false, ellipsis: true });
+    expect(
+      readTypingOptions(settingsRow({ smartTypographySettings: { ellipsis: false } })),
+    ).toEqual({ dashes: true, ellipsis: false });
+    expect(
+      readTypingOptions(
+        settingsRow({ smartTypographySettings: { dashes: false, ellipsis: false } }),
+      ),
+    ).toEqual({ dashes: false, ellipsis: false });
+  });
+
+  it('is independent of displayQuotes — Part A and Part B share a bag, not a switch', () => {
+    const row = settingsRow({ smartTypographySettings: { displayQuotes: true, dashes: false } });
+    expect(readDisplayQuotes(row)).toBe(true);
+    expect(readTypingOptions(row)).toEqual({ dashes: false, ellipsis: true });
+  });
+});
+
+describe('SmartTypographySettings — the typing half', () => {
+  it("holds v4's defaults with no query layer at all", () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [] });
+    expect(TestBed.inject(SmartTypographySettings).typing()).toEqual({
+      dashes: true,
+      ellipsis: true,
+    });
+  });
+
+  it('follows the saved bag, and keeps the reference stable when nothing moved', async () => {
+    TestBed.resetTestingModule();
+    const client = new QueryClient();
+    client.setQueryData(chatSettingsKeys.all, settingsRow());
+    TestBed.configureTestingModule({
+      providers: [
+        provideTanStackQuery(client),
+        { provide: CoreClient, useValue: coreStub(settingsRow()) },
+      ],
+    });
+    const service = TestBed.inject(SmartTypographySettings);
+    const before = service.typing();
+
+    // An unrelated settings save must not hand the plugin a new closure value.
+    client.setQueryData(chatSettingsKeys.all, settingsRow({ composerSpellcheck: false }));
+    expect(service.typing()).toBe(before);
+
+    client.setQueryData(
+      chatSettingsKeys.all,
+      settingsRow({ smartTypographySettings: { dashes: false } }),
+    );
+    expect(service.typing()).toEqual({ dashes: false, ellipsis: true });
   });
 });
