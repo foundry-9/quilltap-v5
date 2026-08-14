@@ -49,6 +49,8 @@ interface CharacterSpec {
   identity: string | null;
   personality?: string;
   canBeCarina: boolean;
+  /** P4.D65: set only on the archived member of the cast (see `makeChar`). */
+  archivedAt?: string;
 }
 
 interface Spec {
@@ -59,6 +61,7 @@ interface Spec {
   beck: CharacterSpec;
   cass: CharacterSpec;
   dara: CharacterSpec;
+  edda: CharacterSpec;
   connectionProfile: { id: string; name: string; provider: string; modelName: string };
   roleplayTemplate: { id: string; name: string; systemPrompt: string };
   project: { id: string; name: string };
@@ -209,11 +212,20 @@ async function main(): Promise<void> {
       } as never,
       { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
+    // P4.D65 (the banked P4.D63 unit-4 arm): the tombstone goes on by raw
+    // UPDATE, because `validateCharacterArchivePatch` sanctions exactly one
+    // patch on an archived row and the repository would refuse this one. The
+    // character keeps her scaffolded vault, exactly as a real archived one
+    // does — `buildCarinaSection` must exclude her on the FLAG.
+    if (c.archivedAt) {
+      await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [c.archivedAt, c.id]);
+    }
   };
   await makeChar(spec.aria);
   await makeChar(spec.beck);
   await makeChar(spec.cass);
   await makeChar(spec.dara);
+  await makeChar(spec.edda);
 
   // 3. Connection profile + roleplay template.
   await repos.connections.create(
@@ -340,7 +352,6 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   closeLLMLogsSQLiteClient();
   await closeDatabase();
-  void rawQuery;
 
   process.stderr.write(
     `built self-inventory fixtures: main=${outMain} mount=${outMount} llmlogs=${outLlm}\n`

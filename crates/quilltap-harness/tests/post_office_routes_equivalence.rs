@@ -165,6 +165,50 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// Plant a tombstone on this case's FRESH COPY (P4.D65).
+///
+/// Two things happen here, and both are deliberate.
+///
+/// **The three archive columns are ADDED first.** This family's committed
+/// fixture predates the D23 re-dump that introduced them, and it stays that
+/// way: only three cases want an archived seat, while widening the committed
+/// bytes would move every other case's dump AND the sibling `announcer_tier3`
+/// family that shares the file. Adding them per case, on the throwaway copy, is
+/// the same shape the boot ensure performs on a real instance carried forward
+/// from 4.7 — and it leaves the fixture's vintage (and the read tolerance it
+/// covers) exactly as it was.
+///
+/// **The flag goes on raw, not through the repository:**
+/// `validate_character_archive_patch` sanctions exactly one patch on an
+/// archived row, and would refuse the one that puts the row into that state to
+/// begin with. The stamp is a fixed literal so nothing minted reaches a dump.
+fn archive_character(db: &Db, rt: &tokio::runtime::Runtime, character_id: &str) {
+    let id = character_id.to_string();
+    rt.block_on(db.write(move |ws| {
+        let conn = ws.main().connection();
+        let existing: Vec<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(characters)")?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>("name"))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        for column in ["archivedAt", "archiveFileId", "archivedAvatarFileId"] {
+            if !existing.iter().any(|c| c == column) {
+                conn.execute_batch(&format!(
+                    "ALTER TABLE \"characters\" ADD COLUMN \"{column}\" TEXT"
+                ))?;
+            }
+        }
+        conn.execute(
+            "UPDATE characters SET archivedAt = ?1 WHERE id = ?2",
+            rusqlite::params!["2026-05-02T00:00:00.000Z", id],
+        )?;
+        Ok(())
+    }))
+    .expect("plant the tombstone");
+}
+
 // ---------------------------------------------------------------------------
 // Normalization (the courier-images mold)
 // ---------------------------------------------------------------------------
@@ -825,6 +869,40 @@ fn post_office_routes_match_oracle() {
         BEA,
         "Into the void.",
     );
+    // ── P4.D65: the archived-character 400s (the banked P4.D63 unit-4 arms) ──
+    // The tombstone is planted per case on the FRESH COPY rather than baked
+    // into the committed fixture: nothing else in this family wants an archived
+    // seat, and a baked one would drag every other case's dumps with it. Both
+    // send-mail arms read the sender and the recipient by RAW ID, so no name
+    // resolution stands between the flag and the refusal.
+    {
+        let db = fresh_db(&spec, "sm11");
+        archive_character(&db, &rt, ARIA);
+        let r = rt.block_on(chat_post_office::chat_send_mail(
+            &db,
+            CHAT,
+            ARIA,
+            BEA,
+            "One last letter.",
+            None,
+            &now_iso,
+        ));
+        check("send_mail_from_archived_sender", &r, None);
+    }
+    {
+        let db = fresh_db(&spec, "sm12");
+        archive_character(&db, &rt, BEA);
+        let r = rt.block_on(chat_post_office::chat_send_mail(
+            &db,
+            CHAT,
+            ARIA,
+            BEA,
+            "Are you still there?",
+            None,
+            &now_iso,
+        ));
+        check("send_mail_to_archived_recipient", &r, None);
+    }
 
     // ── GET ?action=mailbox ────────────────────────────────────────────────
     {
@@ -860,6 +938,15 @@ fn post_office_routes_match_oracle() {
     mailbox_err("mb6", "mailbox_forbidden_stranger", CHAT, DORIAN);
     mailbox_err("mb7", "mailbox_missing_character_id", CHAT, "");
     mailbox_err("mb8", "mailbox_chat_missing", MISSING_ID, ARIA);
+    {
+        // Authorized (Aria is a seat the operator plays), then refused on the
+        // FLAG — before the vault ensure, so an archived character's mailbox
+        // read never touches her vault.
+        let db = fresh_db(&spec, "mb9");
+        archive_character(&db, &rt, ARIA);
+        let r = rt.block_on(chat_post_office::chat_mailbox_list(&db, CHAT, ARIA));
+        check("mailbox_archived_character", &r, None);
+    }
 
     // Shape assertion: the driven set and the oracle's set must be identical.
     let recorded: BTreeSet<String> = oracle.keys().cloned().collect();

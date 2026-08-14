@@ -49,6 +49,8 @@ interface CharSeed {
   name: string;
   controlledBy: 'llm' | 'user';
   defaultConnectionProfileId: string | null;
+  /** P4.D65: set only on the archived member of the cast. */
+  archivedAt?: string;
 }
 interface ChatSeed {
   id: string;
@@ -96,7 +98,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+  const { initializeDatabase, ensureCollection, closeDatabase, rawQuery } = await import(
     '@/lib/database/manager'
   );
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
@@ -214,6 +216,12 @@ async function main(): Promise<void> {
       },
       { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
+    // P4.D65 (the banked P4.D63 unit-4 arm): the tombstone goes on by raw
+    // UPDATE — `validateCharacterArchivePatch` sanctions exactly one patch on
+    // an archived row, so the repository would refuse this one.
+    if (c.archivedAt) {
+      await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [c.archivedAt, c.id]);
+    }
   }
 
   // A real project (provisions a store) carrying `defaultRoleplayTemplateId`.

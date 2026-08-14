@@ -37,9 +37,12 @@ interface Spec {
   senderId: string;
   recipientId: string;
   emptyId: string;
+  archivedId: string;
   sender: Record<string, unknown>;
   recipient: Record<string, unknown>;
   empty: Record<string, unknown>;
+  archived: Record<string, unknown>;
+  archivedAt: string;
   seedLetterInSenderMailbox: SeedLetter;
   seedLetterInRecipientMailbox: SeedLetter;
 }
@@ -72,7 +75,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+  const { initializeDatabase, ensureCollection, closeDatabase, rawQuery } = await import(
     '@/lib/database/manager'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -148,6 +151,20 @@ async function main(): Promise<void> {
   const senderVault = await create(spec.senderId, spec.sender);
   const recipientVault = await create(spec.recipientId, spec.recipient);
   await create(spec.emptyId, spec.empty);
+
+  // P4.D65 (the banked P4.D63 unit-4 arm): a FOURTH character, archived. The
+  // three mail refusals — sender archived, recipient archived, postbox owner
+  // archived — are the only ones the mail tools carry, and none of them was
+  // reachable while every character in the corpus was live. The tombstone is
+  // written by raw UPDATE on purpose: `validateCharacterArchivePatch` sanctions
+  // exactly one patch on an archived row, and the repository would refuse this
+  // one. He keeps his scaffolded vault, exactly as a real archived character
+  // does — the refusals must fire on the FLAG, not on a missing mailbox.
+  await create(spec.archivedId, spec.archived);
+  await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [
+    spec.archivedAt,
+    spec.archivedId,
+  ]);
 
   // Seed one letter into the SENDER's mailbox (for the in_reply_to test), and one
   // older letter into the RECIPIENT's mailbox (so a send-then-list shows two).

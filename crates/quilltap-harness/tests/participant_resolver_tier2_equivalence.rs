@@ -19,6 +19,13 @@
 //! reusing the primary; and `getRoleplayTemplate`'s chat-set / project-inherited
 //! (WRITE) / settings-inherited / none chain.
 //!
+//! P4.D65 adds the ARCHIVED pair (the banked P4.D63 unit-4 arm) over a chat
+//! seating one archived character beside a live one: REQUESTED by participant
+//! id, the archived seat throws `CharacterArchivedError` — the requested path is
+//! the only way in, because `selectNextSpeaker` drops archived seats before they
+//! can ever be picked; with nothing requested, that same chat resolves to the
+//! live seat, which is what proves the selection filter rather than assuming it.
+//!
 //! NORMALIZATION: none. The seed pins every id + timestamp; `getRoleplayTemplate`'s
 //! persist writes only `roleplayTemplateId` (updatedAt preserved — v4 re-passes
 //! existing), so the final `chats` dump and every result projection are compared

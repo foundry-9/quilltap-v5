@@ -3,12 +3,29 @@
   "seedTimestamp": "2026-03-01T00:00:00.000Z",
   "userId": "10000000-0000-4000-8000-000000000001",
   "connectionProfiles": [
-    { "id": "50000000-0000-4000-8000-000000000001", "name": "Valid Profile", "provider": "openai", "modelName": "gpt-4o" }
+    {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "Valid Profile",
+      "provider": "openai",
+      "modelName": "gpt-4o"
+    }
   ],
   "roleplayTemplates": [
-    { "id": "60000000-0000-4000-8000-00000000c001", "name": "Chat RT", "systemPrompt": "chat-set system prompt" },
-    { "id": "60000000-0000-4000-8000-00000000d001", "name": "Project RT", "systemPrompt": "project default system prompt" },
-    { "id": "60000000-0000-4000-8000-00000000e001", "name": "User RT", "systemPrompt": "user global system prompt" }
+    {
+      "id": "60000000-0000-4000-8000-00000000c001",
+      "name": "Chat RT",
+      "systemPrompt": "chat-set system prompt"
+    },
+    {
+      "id": "60000000-0000-4000-8000-00000000d001",
+      "name": "Project RT",
+      "systemPrompt": "project default system prompt"
+    },
+    {
+      "id": "60000000-0000-4000-8000-00000000e001",
+      "name": "User RT",
+      "systemPrompt": "user global system prompt"
+    }
   ],
   "project": {
     "id": "70000000-0000-4000-8000-000000000001",
@@ -16,11 +33,43 @@
     "defaultRoleplayTemplateId": "60000000-0000-4000-8000-00000000d001"
   },
   "characters": [
-    { "id": "20000000-0000-4000-8000-0000000000c1", "name": "Cy", "controlledBy": "llm", "defaultConnectionProfileId": "50000000-0000-4000-8000-000000000001" },
-    { "id": "20000000-0000-4000-8000-0000000000d1", "name": "Di", "controlledBy": "llm", "defaultConnectionProfileId": "50000000-0000-4000-8000-000000000001" },
-    { "id": "20000000-0000-4000-8000-0000000000e1", "name": "Ez", "controlledBy": "llm", "defaultConnectionProfileId": null },
-    { "id": "20000000-0000-4000-8000-0000000000f1", "name": "Fen", "controlledBy": "llm", "defaultConnectionProfileId": "50000000-0000-4000-8000-0000009999ff" },
-    { "id": "20000000-0000-4000-8000-0000000000a1", "name": "Ada", "controlledBy": "user", "defaultConnectionProfileId": null }
+    {
+      "id": "20000000-0000-4000-8000-0000000000c1",
+      "name": "Cy",
+      "controlledBy": "llm",
+      "defaultConnectionProfileId": "50000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "20000000-0000-4000-8000-0000000000d1",
+      "name": "Di",
+      "controlledBy": "llm",
+      "defaultConnectionProfileId": "50000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "20000000-0000-4000-8000-0000000000e1",
+      "name": "Ez",
+      "controlledBy": "llm",
+      "defaultConnectionProfileId": null
+    },
+    {
+      "id": "20000000-0000-4000-8000-0000000000f1",
+      "name": "Fen",
+      "controlledBy": "llm",
+      "defaultConnectionProfileId": "50000000-0000-4000-8000-0000009999ff"
+    },
+    {
+      "id": "20000000-0000-4000-8000-0000000000a1",
+      "name": "Ada",
+      "controlledBy": "user",
+      "defaultConnectionProfileId": null
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000091",
+      "name": "Gil",
+      "controlledBy": "llm",
+      "defaultConnectionProfileId": "50000000-0000-4000-8000-000000000001",
+      "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
   ],
   "chats": [
     {
@@ -28,8 +77,26 @@
       "title": "Requested found",
       "roleplayTemplateId": "60000000-0000-4000-8000-00000000c001",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000001", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
-        { "id": "40000000-0000-4000-8000-000000000002", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000d1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "40000000-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000d1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
@@ -37,51 +104,132 @@
       "title": "Multi with user (isMultiCharacter, weighted)",
       "imageProfileId": "80000000-0000-4000-8000-000000000001",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000010", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "talkativeness": 0.9, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
-        { "id": "40000000-0000-4000-8000-000000000011", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000d1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
-        { "id": "40000000-0000-4000-8000-000000000012", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000a1", "controlledBy": "user", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000010",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.9,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "40000000-0000-4000-8000-000000000011",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000d1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "40000000-0000-4000-8000-000000000012",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000003",
       "title": "Single LLM candidate",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000020", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000020",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000004",
       "title": "Zero LLM candidates (only user)",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000030", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000a1", "controlledBy": "user", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000030",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000005",
       "title": "No connection profile configured (Ez)",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000040", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000e1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000040",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000e1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000006",
       "title": "Connection profile not found (Fen -> missing id)",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000050", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000f1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000050",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000f1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000007",
       "title": "No active character at all",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000060", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "removed", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000060",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "removed",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "id": "30000000-0000-4000-8000-000000000008",
       "title": "RT: none set, no project, no settings",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000070", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000070",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     },
     {
@@ -89,24 +237,174 @@
       "title": "RT: project-inherited (persist write)",
       "projectId": "70000000-0000-4000-8000-000000000001",
       "participants": [
-        { "id": "40000000-0000-4000-8000-000000000080", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "talkativeness": 0.5, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+        {
+          "id": "40000000-0000-4000-8000-000000000080",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000010",
+      "title": "An archived seat beside a live one",
+      "participants": [
+        {
+          "id": "40000000-0000-4000-8000-000000000090",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-000000000091",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "40000000-0000-4000-8000-000000000091",
+          "type": "CHARACTER",
+          "characterId": "20000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
       ]
     }
   ],
   "ops": [
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000001", "requestedRespondingParticipantId": "40000000-0000-4000-8000-000000000002", "isContinueMode": true, "activeUserParticipantId": null, "random01": 0.5, "note": "requested found: Di" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000001", "requestedRespondingParticipantId": "40000000-0000-4000-8000-00000000dead", "isContinueMode": true, "activeUserParticipantId": null, "random01": 0.5, "note": "continue-mode not-found THROW" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000001", "requestedRespondingParticipantId": "40000000-0000-4000-8000-00000000dead", "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "normal-mode fallback: first active (Cy)" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000002", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.1, "note": "multiple weighted (Cy 0.9 vs Di 0.5, rand 0.1)" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000003", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "single candidate: Cy" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000004", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "zero candidates -> first active (user Ada, no conn profile -> throw)" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000005", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "no connection profile configured THROW" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000006", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "connection profile not found THROW" },
-    { "kind": "resolveResponding", "chatId": "30000000-0000-4000-8000-000000000007", "requestedRespondingParticipantId": null, "isContinueMode": false, "activeUserParticipantId": null, "random01": 0.5, "note": "no active character THROW" },
-    { "kind": "loadAllParticipantData", "chatId": "30000000-0000-4000-8000-000000000002", "primaryCharacterId": "20000000-0000-4000-8000-0000000000c1", "note": "load all, reusing primary Cy" },
-    { "kind": "getRoleplayTemplate", "chatId": "30000000-0000-4000-8000-000000000001", "settingsDefaultRoleplayTemplateId": null, "note": "chat-set RT" },
-    { "kind": "getRoleplayTemplate", "chatId": "30000000-0000-4000-8000-000000000009", "settingsDefaultRoleplayTemplateId": "60000000-0000-4000-8000-00000000e001", "note": "project-inherited (project wins over settings) + persist" },
-    { "kind": "getRoleplayTemplate", "chatId": "30000000-0000-4000-8000-000000000008", "settingsDefaultRoleplayTemplateId": "60000000-0000-4000-8000-00000000e001", "note": "settings-inherited (no project) + persist" },
-    { "kind": "getRoleplayTemplate", "chatId": "30000000-0000-4000-8000-000000000003", "settingsDefaultRoleplayTemplateId": null, "note": "none: no chat RT, no project, no settings -> null" }
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000001",
+      "requestedRespondingParticipantId": "40000000-0000-4000-8000-000000000002",
+      "isContinueMode": true,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "requested found: Di"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000001",
+      "requestedRespondingParticipantId": "40000000-0000-4000-8000-00000000dead",
+      "isContinueMode": true,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "continue-mode not-found THROW"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000001",
+      "requestedRespondingParticipantId": "40000000-0000-4000-8000-00000000dead",
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "normal-mode fallback: first active (Cy)"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000002",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.1,
+      "note": "multiple weighted (Cy 0.9 vs Di 0.5, rand 0.1)"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000003",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "single candidate: Cy"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000004",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "zero candidates -> first active (user Ada, no conn profile -> throw)"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000005",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "no connection profile configured THROW"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000006",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "connection profile not found THROW"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000007",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "no active character THROW"
+    },
+    {
+      "kind": "loadAllParticipantData",
+      "chatId": "30000000-0000-4000-8000-000000000002",
+      "primaryCharacterId": "20000000-0000-4000-8000-0000000000c1",
+      "note": "load all, reusing primary Cy"
+    },
+    {
+      "kind": "getRoleplayTemplate",
+      "chatId": "30000000-0000-4000-8000-000000000001",
+      "settingsDefaultRoleplayTemplateId": null,
+      "note": "chat-set RT"
+    },
+    {
+      "kind": "getRoleplayTemplate",
+      "chatId": "30000000-0000-4000-8000-000000000009",
+      "settingsDefaultRoleplayTemplateId": "60000000-0000-4000-8000-00000000e001",
+      "note": "project-inherited (project wins over settings) + persist"
+    },
+    {
+      "kind": "getRoleplayTemplate",
+      "chatId": "30000000-0000-4000-8000-000000000008",
+      "settingsDefaultRoleplayTemplateId": "60000000-0000-4000-8000-00000000e001",
+      "note": "settings-inherited (no project) + persist"
+    },
+    {
+      "kind": "getRoleplayTemplate",
+      "chatId": "30000000-0000-4000-8000-000000000003",
+      "settingsDefaultRoleplayTemplateId": null,
+      "note": "none: no chat RT, no project, no settings -> null"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000010",
+      "requestedRespondingParticipantId": "40000000-0000-4000-8000-000000000090",
+      "isContinueMode": true,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "archived character REQUESTED by participant id -> CharacterArchivedError (the requested path bypasses selection, which drops archived seats before they can be picked)"
+    },
+    {
+      "kind": "resolveResponding",
+      "chatId": "30000000-0000-4000-8000-000000000010",
+      "requestedRespondingParticipantId": null,
+      "isContinueMode": false,
+      "activeUserParticipantId": null,
+      "random01": 0.5,
+      "note": "the same chat with nothing requested: selection drops the archived seat and the live one answers"
+    }
   ]
 }

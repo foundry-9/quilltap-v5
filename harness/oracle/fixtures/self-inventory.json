@@ -98,11 +98,26 @@
     "createdAt": "2026-01-02T05:00:00.000Z"
   },
   "memories": [
-    { "id": "e0e0e0e0-0000-4000-8000-000000000010", "importance": 0.9 },
-    { "id": "e0e0e0e0-0000-4000-8000-000000000011", "importance": 0.8 },
-    { "id": "e0e0e0e0-0000-4000-8000-000000000012", "importance": 0.7 },
-    { "id": "e0e0e0e0-0000-4000-8000-000000000013", "importance": 0.5 },
-    { "id": "e0e0e0e0-0000-4000-8000-000000000014", "importance": 0.3 }
+    {
+      "id": "e0e0e0e0-0000-4000-8000-000000000010",
+      "importance": 0.9
+    },
+    {
+      "id": "e0e0e0e0-0000-4000-8000-000000000011",
+      "importance": 0.8
+    },
+    {
+      "id": "e0e0e0e0-0000-4000-8000-000000000012",
+      "importance": 0.7
+    },
+    {
+      "id": "e0e0e0e0-0000-4000-8000-000000000013",
+      "importance": 0.5
+    },
+    {
+      "id": "e0e0e0e0-0000-4000-8000-000000000014",
+      "importance": 0.3
+    }
   ],
   "chatDocuments": [
     {
@@ -122,13 +137,35 @@
   ],
   "loadedMemories": {
     "semantic": [
-      { "summary": "The reader mentioned a red door.", "importance": 0.8, "score": 0.91, "effectiveWeight": 0.73 },
-      { "summary": "A ledger went missing last winter.", "importance": 0.6, "score": 0.55, "effectiveWeight": 0.42 }
+      {
+        "summary": "The reader mentioned a red door.",
+        "importance": 0.8,
+        "score": 0.91,
+        "effectiveWeight": 0.73
+      },
+      {
+        "summary": "A ledger went missing last winter.",
+        "importance": 0.6,
+        "score": 0.55,
+        "effectiveWeight": 0.42
+      }
     ],
     "interCharacter": [
-      { "aboutCharacterName": "Beck", "summary": "Beck distrusts the western maps.", "importance": 0.7 }
+      {
+        "aboutCharacterName": "Beck",
+        "summary": "Beck distrusts the western maps.",
+        "importance": 0.7
+      }
     ],
     "recap": "You were mid-way through cataloguing the winter ledgers."
+  },
+  "edda": {
+    "id": "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
+    "name": "Edda",
+    "description": "A colleague who has been shelved.",
+    "identity": "the shelved cataloguer",
+    "canBeCarina": true,
+    "archivedAt": "2026-03-01T00:00:00.000Z"
   },
   "cases": [
     {
@@ -151,23 +188,32 @@
     {
       "name": "targeted_quilltap_and_context_files",
       "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
-      "sections": ["quilltap.version", "context.files"]
+      "sections": [
+        "quilltap.version",
+        "context.files"
+      ]
     },
     {
       "name": "targeted_carina_only",
       "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
-      "sections": ["carina"]
+      "sections": [
+        "carina"
+      ]
     },
     {
       "name": "vault_with_automatic_images",
       "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
-      "sections": ["vault.character"],
+      "sections": [
+        "vault.character"
+      ],
       "includeAutomaticImages": true
     },
     {
       "name": "loaded_memories_absent",
       "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
-      "sections": ["loadedMemories"]
+      "sections": [
+        "loadedMemories"
+      ]
     },
     {
       "name": "no_character_error",
@@ -176,6 +222,20 @@
     {
       "name": "character_not_found_error",
       "characterId": "deadbeef-0000-4000-8000-000000000099"
+    },
+    {
+      "name": "carina_archived_self",
+      "characterId": "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
+      "sections": [
+        "carina"
+      ]
+    },
+    {
+      "name": "carina_non_answerer_self",
+      "characterId": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+      "sections": [
+        "carina"
+      ]
     }
   ]
 }

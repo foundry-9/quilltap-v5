@@ -34,6 +34,13 @@ Added the `help_doc_chunks` table — the storage for section-level help search.
 Fresh instances get it from the re-dumped schema; existing instances get it on
 the next boot. Nothing reads or writes it yet; the slicing, embedding, and
 search follow.
+Closed the last untested character-archive guards. Sending or listing mail as an
+archived character, sending mail to one, asking an archived character what it
+can reach, and picking one to answer a turn all refuse — and every one of those
+refusals now has a test that fails if it is removed. Previously the guards were
+in place but no test fixture contained an archived character, so nothing checked
+them. Tests only; no shipped behavior changed.
+
 Closed the four corpus-undriven arms the character-archive review had recorded
 as owed. The archive test fixture gained a default embedding profile, a
 per-chat avatar-override face, and a standalone avatar thumbnail, and the

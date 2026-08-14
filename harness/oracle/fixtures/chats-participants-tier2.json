@@ -148,7 +148,33 @@
       "kind": "updateParticipant",
       "chatId": "c0000020-0000-4000-8000-000000000001",
       "participantId": "f0000099-0000-4000-8000-000000000099",
-      "data": { "displayOrder": 9 }
+      "data": {
+        "displayOrder": 9
+      }
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "status": "absent"
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "status": "active"
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "status": "absent"
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "participantId": "f0000099-0000-4000-8000-000000000099",
+      "status": "absent"
     }
   ]
 }

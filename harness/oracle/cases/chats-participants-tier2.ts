@@ -8,9 +8,10 @@
  * canonically. Each op is a read-modify-write of the `participants` JSON column;
  * the CHAT's own `updatedAt` is never bumped (v4 `_update` preserves it).
  *
- * `setParticipantStatus` is not exposed on the repository (only on the ops), so
- * it's reached via the private `participantsOps` field — the harness "protected
- * internals" pattern. `removeParticipant` of the last present participant throws
+ * `setParticipantStatus` is driven through the NAMED repository method v4 added
+ * in `d553f72a` (it used to exist only on the ops), and its `{chat, oldStatus}`
+ * return — the half no table dump can show — is emitted per op as `returns`.
+ * `removeParticipant` of the last present participant throws
  * (v4 `safeQuery` rethrow); ops flagged `expectThrow` are caught so the run
  * continues and that chat stays unmutated.
  *
@@ -86,12 +87,15 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repo = new ChatsRepository();
-  // setParticipantStatus lives only on the ops, not the repository surface.
-  const participantsOps = (repo as unknown as { participantsOps: {
-    setParticipantStatus(chatId: string, participantId: string, status: string): Promise<unknown>;
-  } }).participantsOps;
 
-  for (const op of spec.ops) {
+  // P4.D65 (the banked P4.D63 unit-5 arm): `setParticipantStatus` is now a
+  // NAMED repository method (`d553f72a`), not just an ops internal, and its
+  // return shape `{chat, oldStatus}` is the half no dump can show. The archive
+  // service's participant flips are its production caller, so the shape is
+  // recorded per op alongside the state.
+  const returns: Array<Record<string, unknown>> = [];
+
+  for (const [index, op] of spec.ops.entries()) {
     try {
       if (op.kind === 'addParticipant') {
         await repo.addParticipant(op.chatId, op.participant as never);
@@ -100,7 +104,23 @@ async function main(): Promise<void> {
       } else if (op.kind === 'removeParticipant') {
         await repo.removeParticipant(op.chatId, op.participantId as string);
       } else {
-        await participantsOps.setParticipantStatus(op.chatId, op.participantId as string, op.status as string);
+        const outcome = await repo.setParticipantStatus(
+          op.chatId,
+          op.participantId as string,
+          op.status as never,
+        );
+        // The returned chat is RELOADED after the write, so the participant's
+        // status inside it is already the new one — recording it is what tells
+        // a reload apart from an echo of the pre-write row. Nothing else about
+        // the chat is emitted: the `chats` dump already diffs it whole.
+        const chat = outcome.chat as { id: string; participants?: Array<{ id: string; status?: string }> } | null;
+        returns.push({
+          op: index,
+          oldStatus: outcome.oldStatus,
+          chatId: chat?.id ?? null,
+          statusInReturnedChat:
+            chat?.participants?.find((p) => p.id === op.participantId)?.status ?? null,
+        });
       }
       if (op.expectThrow) {
         throw new Error(`op ${op.kind} on ${op.chatId} was expected to throw but did not`);
@@ -114,7 +134,7 @@ async function main(): Promise<void> {
 
   await closeDatabase();
 
-  process.stdout.write(JSON.stringify({ case: 'chats-participants-tier2', chats }) + '\n');
+  process.stdout.write(JSON.stringify({ case: 'chats-participants-tier2', chats, returns }) + '\n');
   process.exit(0);
 }
 

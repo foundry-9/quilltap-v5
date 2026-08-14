@@ -60,6 +60,10 @@ struct Spec {
     recipient_id: String,
     #[serde(rename = "emptyId")]
     empty_id: String,
+    #[serde(rename = "archivedId")]
+    archived_id: String,
+    #[serde(rename = "archivedName")]
+    archived_name: String,
     #[serde(rename = "seedLetterInSenderMailbox")]
     seed_letter_in_sender_mailbox: SeedLetterRef,
 }
@@ -252,6 +256,49 @@ async fn run_mail(
             send: None,
             read_content: false,
             list_character: Some(spec.recipient_id.clone()),
+        },
+        // ── P4.D65: the three archived-character refusals (the banked P4.D63
+        // unit-4 arms). All three fire on the tombstone FLAG, over a character
+        // whose vault is perfectly intact.
+        MailScenario {
+            label: "send_from_archived_sender",
+            send: Some((
+                json!({ "character": "Aurora", "message": "One last letter." }),
+                Some(spec.archived_id.clone()),
+            )),
+            read_content: false,
+            list_character: None,
+        },
+        // BY ID. The character resolver deliberately keeps resolving an
+        // archived character by exact id while skipping it on a NAME match, so
+        // this is the only way to reach the RECIPIENT refusal at all.
+        MailScenario {
+            label: "send_to_archived_recipient_by_id",
+            send: Some((
+                json!({ "character": spec.archived_id, "message": "Are you still there?" }),
+                sender.clone(),
+            )),
+            read_content: false,
+            list_character: None,
+        },
+        // BY NAME — the other side of that same resolver rule: not found, and
+        // the refusal is the ordinary no-such-soul one. Without this arm the id
+        // case above could pass on a resolver that had stopped skipping
+        // archived name matches.
+        MailScenario {
+            label: "send_to_archived_recipient_by_name",
+            send: Some((
+                json!({ "character": spec.archived_name, "message": "Are you still there?" }),
+                sender.clone(),
+            )),
+            read_content: false,
+            list_character: None,
+        },
+        MailScenario {
+            label: "list_archived",
+            send: None,
+            read_content: false,
+            list_character: Some(spec.archived_id.clone()),
         },
     ];
 

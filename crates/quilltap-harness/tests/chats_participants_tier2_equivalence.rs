@@ -18,6 +18,16 @@
 //! `setParticipantStatus` (to `silent` — `removedAt` cleared to explicit `null`;
 //! then to `removed` — `removedAt` minted), and two not-found no-ops.
 //!
+//! P4.D65 (the banked P4.D63 unit-5 arm): `setParticipantStatus` is driven
+//! through the NAMED repository wrapper v4 added in `d553f72a`, and its
+//! `{chat, oldStatus}` return — the half no table dump can show — is compared
+//! per op as `returns`, alongside the status that participant carries INSIDE
+//! the returned chat (which is what tells a post-write reload apart from an
+//! echo of the pre-write row). The corpus gained the archive lifecycle's two
+//! directions (`active` → `absent` → `active`) and both absent legs (a missing
+//! chat and a missing participant, which answer `{chat: null, oldStatus:
+//! 'active'}`); coverage of both is asserted, not assumed.
+//!
 //! NORMALIZATION (applied identically to both dumps): participant `id`s (pinned
 //! seed AND minted) are remapped to first-appearance tokens `p0`, `p1`, … in
 //! dump order, with the same map rewriting `impersonatingParticipantIds` +
@@ -223,9 +233,10 @@ fn chats_participants_tier2_matches_oracle() {
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let mut returns: Vec<Value> = Vec::new();
     {
         let repo = writer.chat_participants();
-        for op in &spec.ops {
+        for (index, op) in spec.ops.iter().enumerate() {
             match op {
                 Op::AddParticipant {
                     chat_id,
@@ -254,13 +265,45 @@ fn chats_participants_tier2_matches_oracle() {
                         r.expect("remove_participant");
                     }
                 }
+                // Driven through the NAMED wrapper on the chats repository (v4
+                // `d553f72a`), not the ops method underneath it: the wrapper's
+                // `{chat, oldStatus}` is the half no dump can show, and the
+                // archive service's participant flips are its production caller.
                 Op::SetParticipantStatus {
                     chat_id,
                     participant_id,
                     status,
                 } => {
-                    repo.set_participant_status(chat_id, participant_id, status)
+                    let (chat, old_status) = writer
+                        .chats()
+                        .set_participant_status(chat_id, participant_id, status)
                         .expect("set_participant_status");
+                    // The returned chat is RELOADED after the write, so the
+                    // participant's status inside it is already the new one —
+                    // recording it is what tells a reload apart from an echo of
+                    // the pre-write row.
+                    let status_in_returned = chat
+                        .as_ref()
+                        .and_then(|c| c.get("participants"))
+                        .and_then(Value::as_array)
+                        .and_then(|parts| {
+                            parts
+                                .iter()
+                                .find(|p| {
+                                    p.get("id").and_then(Value::as_str) == Some(participant_id)
+                                })
+                                .and_then(|p| p.get("status").cloned())
+                        })
+                        .unwrap_or(Value::Null);
+                    returns.push(json!({
+                        "op": index,
+                        "oldStatus": old_status,
+                        "chatId": chat
+                            .as_ref()
+                            .and_then(|c| c.get("id").cloned())
+                            .unwrap_or(Value::Null),
+                        "statusInReturnedChat": status_in_returned,
+                    }));
                 }
             }
         }
@@ -285,6 +328,36 @@ fn chats_participants_tier2_matches_oracle() {
 
     // Guard against an empty-vs-empty false pass.
     assert_ne!(got["rows"], json!([]), "expected non-empty chats dump");
+
+    // The `{chat, oldStatus}` wrapper shape, per op.
+    assert_eq!(
+        Value::Array(returns.clone()),
+        oracle["returns"],
+        "setParticipantStatus return shape diverged\n  rust:   {}\n  oracle: {}",
+        Value::Array(returns.clone()),
+        oracle["returns"],
+    );
+    // Coverage, asserted rather than assumed: the corpus must drive BOTH
+    // absent legs (a missing chat and a missing participant, which answer
+    // `{chat: null, oldStatus: 'active'}`) and at least one real flip in each
+    // direction — the two the archive lifecycle performs. Without them the
+    // comparand above would pass on a wrapper that never reloaded and never
+    // reported an old status but `active`.
+    let flipped_from: BTreeMap<String, usize> =
+        returns.iter().fold(BTreeMap::new(), |mut acc, r| {
+            let key = r["oldStatus"].as_str().unwrap_or_default().to_string();
+            *acc.entry(key).or_insert(0) += 1;
+            acc
+        });
+    assert!(
+        returns.iter().filter(|r| r["chatId"].is_null()).count() >= 2,
+        "the corpus must drive both absent legs of setParticipantStatus; got {returns:?}"
+    );
+    assert!(
+        flipped_from.len() >= 2,
+        "the corpus must observe more than one OLD status, or `oldStatus` is \
+         indistinguishable from its default; got {flipped_from:?}"
+    );
 
     eprintln!("OK: chats participants tier-2 matched oracle.");
 }

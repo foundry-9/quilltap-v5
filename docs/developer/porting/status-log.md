@@ -68545,3 +68545,65 @@ and three tables "differed" purely by label.) State is normalized before
 Regen recipe: the case header (unchanged except for the second extender).
 `character_archive_tier2_equivalence` 17/17, all three comparands. Versions:
 harness 0.0.461.
+
+---
+
+## P4.D65-remainder — item 5d + 5e: the banked archived-character arms and the `setParticipantStatus` wrapper
+
+Lane: `claude/p4-archive-service-round2-b015ec`, baseline `24633026`. Harness
+only; every arm is mutation-proven and no product source moved.
+
+**P4.D63's unit-4 refusals, all four families.** They had been "regenerated and
+NEUTRALITY-green" since round 1 — which is to say the guards were carried but
+nothing in any corpus was archived, so deleting the guard reddened nothing.
+
+- **`mail_carina_tools`** — the /tmp builder gained a FOURTH character,
+  Prospero, archived by raw UPDATE (the §4.4 guard would refuse the same patch
+  through the repository) and keeping his scaffolded vault, so the refusals fire
+  on the FLAG rather than on a missing mailbox. Four scenarios: an archived
+  SENDER, an archived RECIPIENT **by id**, the same recipient **by name**, and an
+  archived postbox owner. The two recipient arms are a pair on purpose — the
+  character resolver deliberately keeps resolving an archived character by exact
+  id while skipping it on a name match, so the id arm is the only way to reach
+  `That recipient is archived…` at all, and the name arm (answered by the
+  ordinary no-such-soul sentence) is what would catch a resolver that stopped
+  skipping.
+- **`self_inventory`** — a fifth character, Edda, `canBeCarina: true` AND
+  archived. She vanishes from Aria's reachable pool (the `others` filter) and,
+  driven as the SUBJECT, reports `selfEnabled: false` despite the column
+  (the `!archivedAt` conjunct). A live non-answerer (Beck) rides beside her as
+  the control, so the two halves of that union cannot be confused.
+- **`participant_resolver_tier2`** — a chat seating archived Gil beside live Cy.
+  REQUESTED by participant id, Gil throws `CharacterArchivedError`; the requested
+  path is the only way in, because `selectNextSpeaker` drops archived seats
+  before they can be picked. The same chat with nothing requested resolves to Cy
+  — which PROVES that selection filter instead of assuming it.
+- **`post_office_routes`** — the two chat-action 400s. ⚠ This family's committed
+  fixture **predates the D23 archive columns**, and it STAYS that way: the three
+  cases add the columns to their own throwaway copy (the shape v5's boot ensure
+  performs on an instance carried forward from 4.7) rather than widening bytes
+  that `announcer_tier3` shares and that every other case dumps. 44 cases (41 →
+  44), the driven/recorded set assertion unchanged.
+
+**P4.D63 unit 5's `{chat, oldStatus}`** now has its own comparand.
+`chats_participants_tier2` drove the OPS method and dumped state, which cannot
+see a return value at all; it now drives the NAMED repository wrapper v4 added
+in `d553f72a` and compares, per op, `oldStatus`, the returned chat's id, and
+**the status that participant carries inside the returned chat** — the last one
+is what tells a post-write reload apart from an echo of the pre-write row. Four
+ops added: the archive lifecycle's two directions (`active` → `absent` →
+`active`) and both absent legs. Coverage of both absent legs and of more than
+one distinct `oldStatus` is asserted, not assumed.
+
+**Mutation proofs (all reverted).** Neutering the five v5 refusal sites in one
+pass — `list_email`, both `send_mail` arms, both `chat_post_office` arms, the two
+`self_inventory` filters, and the `participant_resolver` throw — reds
+`send_from_archived_sender`, `full_sections`, op 14, and all three post-office
+arms respectively. For the wrapper: returning the chat unconditionally reds the
+missing-participant leg's `chatId`; hard-coding `oldStatus` to `"active"` reds
+the `absent` → `active` op.
+
+Fixtures rebuilt (all /tmp, none committed): `mail-carina-tools`,
+`self-inventory`, `participant-resolver`, `chats-participants`. The committed
+`post-office-*` and `announcer_tier3` bytes are UNTOUCHED. Regen recipes are the
+existing case headers. Versions: harness 0.0.462.

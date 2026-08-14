@@ -149,6 +149,43 @@ async function readMessages(chatId: string): Promise<unknown> {
   return (await getRepositories().chats.getMessages(chatId)) as unknown;
 }
 
+/**
+ * Plant a tombstone on this case's FRESH COPY (P4.D65).
+ *
+ * Two things happen here, and both are deliberate.
+ *
+ * **The three archive columns are ADDED first.** This family's committed
+ * fixture predates the D23 re-dump that introduced them, and it stays that way:
+ * only three cases want an archived seat, while widening the committed bytes
+ * would move every other case's dump AND the sibling `announcer-tier3` family
+ * that shares the file. Adding them per case, on the throwaway copy, is the
+ * same shape v5's boot ensure performs on a real instance carried forward from
+ * 4.7 — and it leaves the fixture's vintage (and its read-tolerance coverage)
+ * exactly as it was.
+ *
+ * **The flag goes on raw, not through the repository:**
+ * `validateCharacterArchivePatch` sanctions exactly one patch on an archived
+ * row, and would refuse the one that puts the row into that state to begin
+ * with. The stamp is a fixed literal so nothing minted reaches a dump.
+ */
+async function archiveCharacter(characterId: string): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const existing = new Set(
+    ((await rawQuery('PRAGMA table_info(characters)')) as Array<{ name: string }>).map(
+      (c) => c.name,
+    ),
+  );
+  for (const column of ['archivedAt', 'archiveFileId', 'archivedAvatarFileId']) {
+    if (!existing.has(column)) {
+      await rawQuery(`ALTER TABLE "characters" ADD COLUMN "${column}" TEXT`);
+    }
+  }
+  await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [
+    '2026-05-02T00:00:00.000Z',
+    characterId,
+  ]);
+}
+
 /** The character row's vault FK (the mailbox GET's adopt-write evidence). */
 async function readCharacterVaultFk(characterId: string): Promise<unknown> {
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -775,6 +812,38 @@ async function main(): Promise<void> {
           }),
         ),
     },
+    // ── P4.D65: the archived-character 400s (the banked P4.D63 unit-4 arms) ──
+    // The tombstone is planted per case on the FRESH COPY rather than baked
+    // into the committed fixture: nothing else in this family wants an archived
+    // seat, and a baked one would drag every other case's dumps with it. Both
+    // send-mail arms read the sender and the recipient by RAW ID, so no name
+    // resolution stands between the flag and the refusal.
+    {
+      name: 'send_mail_from_archived_sender',
+      run: async () => {
+        await archiveCharacter(ARIA);
+        return respond(
+          await post(CHAT, 'send-mail', {
+            fromCharacterId: ARIA,
+            toCharacterId: BEA,
+            bodyMarkdown: 'One last letter.',
+          }),
+        );
+      },
+    },
+    {
+      name: 'send_mail_to_archived_recipient',
+      run: async () => {
+        await archiveCharacter(BEA);
+        return respond(
+          await post(CHAT, 'send-mail', {
+            fromCharacterId: ARIA,
+            toCharacterId: BEA,
+            bodyMarkdown: 'Are you still there?',
+          }),
+        );
+      },
+    },
 
     // ── GET ?action=mailbox ────────────────────────────────────────────────
     {
@@ -836,6 +905,16 @@ async function main(): Promise<void> {
     {
       name: 'mailbox_chat_missing',
       run: async () => respond(await get(MISSING_ID, `action=mailbox&characterId=${ARIA}`)),
+    },
+    {
+      // Authorized (Aria is a seat the operator plays), then refused on the
+      // FLAG — before `ensureCharacterVault`, so an archived character's
+      // mailbox read never touches her vault.
+      name: 'mailbox_archived_character',
+      run: async () => {
+        await archiveCharacter(ARIA);
+        return respond(await get(CHAT, `action=mailbox&characterId=${ARIA}`));
+      },
     },
   ];
 

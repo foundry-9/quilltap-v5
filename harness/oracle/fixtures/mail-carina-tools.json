@@ -5,9 +5,11 @@
   "senderId": "5e11de00-0000-4000-8000-000000000001",
   "recipientId": "4ec191e0-0000-4000-8000-000000000002",
   "emptyId": "e0917000-0000-4000-8000-000000000003",
+  "archivedId": "a2c41ed0-0000-4000-8000-000000000004",
   "senderName": "Friday",
   "recipientName": "Aurora",
   "emptyName": "Jeeves",
+  "archivedName": "Prospero",
   "seedTimestamp": "2026-02-01T00:00:00.000Z",
   "sender": {
     "name": "Friday",
@@ -36,18 +38,28 @@
     "title": "The Gentleman's Gentleman",
     "controlledBy": "llm"
   },
+  "archived": {
+    "name": "Prospero",
+    "userId": "44444444-4444-4444-8444-444444444444",
+    "identity": "A retired prompter, lately shelved.",
+    "description": "Grey at the temples, ink on the cuff.",
+    "personality": "Courteous, and a little far away.",
+    "title": "The Prompter",
+    "controlledBy": "llm"
+  },
+  "archivedAt": "2026-03-01T00:00:00.000Z",
   "seedLetterInSenderMailbox": {
     "path": "Mail/1700000000000-from-aurora.md",
     "fromName": "Aurora",
     "fromCharacterId": "4ec191e0-0000-4000-8000-000000000002",
     "sentAt": "2023-11-14T22:13:20.000Z",
-    "body": "Dear Friday,\n\nMeet me at the observatory.\n\n— Aurora"
+    "body": "Dear Friday,\n\nMeet me at the observatory.\n\n\u2014 Aurora"
   },
   "seedLetterInRecipientMailbox": {
     "path": "Mail/1600000000000-from-jeeves.md",
     "fromName": "Jeeves",
     "fromCharacterId": "e0917000-0000-4000-8000-000000000003",
     "sentAt": "2020-09-13T12:26:40.000Z",
-    "body": "Madam,\n\nThe tea is served.\n\n— Jeeves"
+    "body": "Madam,\n\nThe tea is served.\n\n\u2014 Jeeves"
   }
 }

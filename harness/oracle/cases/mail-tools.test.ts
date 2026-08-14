@@ -36,6 +36,8 @@ interface Spec {
   senderId: string;
   recipientId: string;
   emptyId: string;
+  archivedId: string;
+  archivedName: string;
   seedLetterInSenderMailbox: { path: string };
 }
 
@@ -99,6 +101,29 @@ async function main(): Promise<void> {
     },
     { label: 'list_empty', listOnly: spec.emptyId },
     { label: 'list_single', listOnly: spec.recipientId },
+    // ── P4.D65: the three archived-character refusals (the banked P4.D63
+    // unit-4 arms). All three fire on the tombstone FLAG, over a character
+    // whose vault is perfectly intact.
+    {
+      label: 'send_from_archived_sender',
+      send: { args: { character: 'Aurora', message: 'One last letter.' } as SendArgs, characterId: spec.archivedId },
+    },
+    {
+      // BY ID. `resolveCharacterByNameOrId` deliberately keeps resolving an
+      // archived character by exact id while skipping it on a NAME match, so
+      // this is the only way to reach the RECIPIENT refusal at all.
+      label: 'send_to_archived_recipient_by_id',
+      send: { args: { character: spec.archivedId, message: 'Are you still there?' } as SendArgs, characterId: spec.senderId },
+    },
+    {
+      // BY NAME — the other side of that same resolver rule: the archived
+      // character is simply not found, and the refusal is the ordinary
+      // no-such-soul one. Without this arm the id case above could pass on a
+      // resolver that had stopped skipping archived name matches.
+      label: 'send_to_archived_recipient_by_name',
+      send: { args: { character: spec.archivedName, message: 'Are you still there?' } as SendArgs, characterId: spec.senderId },
+    },
+    { label: 'list_archived', listOnly: spec.archivedId },
   ];
 
   const lines: string[] = [];
