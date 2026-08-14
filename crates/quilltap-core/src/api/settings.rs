@@ -385,6 +385,112 @@ fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, Stri
         .map_err(|_| err())
 }
 
+// ---------------------------------------------------------------------------
+// P4.D73 — `SmartTypographySettingsSchema.parse` at the route (v4 4.8.2
+// `2d31810f`, `settings/chat/route.ts` L273).
+// ---------------------------------------------------------------------------
+
+/// One Zod `invalid_type` issue, serialized in Zod's own key order — this is
+/// what `JSON.stringify(err.issues, null, 2)` emits, and `ZodError.message`
+/// IS that string. v4's route lets the throw escape to `getErrorMessage`, and
+/// the `.includes('Invalid')` status test then turns it into a 400 whose body
+/// carries the whole issue array verbatim. So the bytes here are contractual,
+/// not an implementation detail.
+#[derive(serde::Serialize)]
+struct ZodInvalidTypeIssue {
+    expected: &'static str,
+    code: &'static str,
+    path: Vec<String>,
+    message: String,
+}
+
+impl ZodInvalidTypeIssue {
+    fn new(expected: &'static str, path: Vec<String>, got: Option<&Value>) -> Self {
+        Self {
+            expected,
+            code: "invalid_type",
+            path,
+            message: format!(
+                "Invalid input: expected {expected}, received {}",
+                zod_parsed_type(got)
+            ),
+        }
+    }
+}
+
+/// v4 `util.parsedType` (the same table the Pascal Zod port pins). `None` is
+/// JS `undefined` — a missing key.
+fn zod_parsed_type(v: Option<&Value>) -> &'static str {
+    match v {
+        None => "undefined",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
+
+/// `ZodError.message` for a set of issues: `JSON.stringify(issues, null, 2)`.
+/// `serde_json::to_string_pretty` uses the same two-space indent and the same
+/// empty-array / nested-array shapes, so this is byte-identical.
+fn zod_error_message(issues: &[ZodInvalidTypeIssue]) -> String {
+    serde_json::to_string_pretty(issues).unwrap_or_else(|_| "Invalid input".to_string())
+}
+
+/// v4 `SmartTypographySettingsSchema.parse` over a PUT bag. Three
+/// `z.boolean()` keys with defaults (`displayQuotes` false, `dashes` true,
+/// `ellipsis` true), so a PARTIAL bag materializes the absent keys; unknown
+/// keys are stripped; the output is in schema declaration order.
+///
+/// A non-object input yields the single top-level `invalid_type` issue and the
+/// key checks never run (Zod's own short-circuit); a non-boolean value yields
+/// one issue per offending key, in declaration order. The `Err` string is the
+/// whole `ZodError.message`, which is what v4's 400 body carries.
+fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
+    let Some(o) = v.as_object() else {
+        return Err(zod_error_message(&[ZodInvalidTypeIssue::new(
+            "object",
+            Vec::new(),
+            Some(v),
+        )]));
+    };
+
+    let mut issues: Vec<ZodInvalidTypeIssue> = Vec::new();
+    let mut read = |key: &str, default: bool| -> bool {
+        match o.get(key) {
+            None => default,
+            Some(Value::Bool(b)) => *b,
+            other => {
+                issues.push(ZodInvalidTypeIssue::new(
+                    "boolean",
+                    vec![key.to_string()],
+                    other,
+                ));
+                default
+            }
+        }
+    };
+    // Declaration order — both for the issue order and the stored key order.
+    let display_quotes = read("displayQuotes", false);
+    let dashes = read("dashes", true);
+    let ellipsis = read("ellipsis", true);
+
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+
+    let parsed = chat_settings::SmartTypographySettings {
+        display_quotes,
+        dashes,
+        ellipsis,
+    };
+    let text = serde_json::to_string(&parsed)
+        .map_err(|_| "Invalid smart typography settings".to_string())?;
+    Ok(chat_settings::SettingsColVal::Text(text))
+}
+
 /// v4 `DangerousContentSettingsSchema.parse` over a PUT sub-bag (a route-level
 /// parse, `settings/chat/route.ts` L165 — NOT the repo's merge-then-validate, so
 /// the input bag stands alone and the Zod defaults materialize over whatever is
@@ -696,6 +802,21 @@ fn build_settings_assignments(
             bool_field(v, "Invalid composerSpellcheck value (must be boolean)")?,
         ));
     }
+    // P4.D73 (v4 4.8.2) — the two composer typeahead gates, at v4's own
+    // schema-ordered positions right after `composerSpellcheck`. Same
+    // `typeof x !== 'boolean'` guard, same sentence bytes.
+    if let Some(v) = obj.get("composerEmoji") {
+        out.push((
+            "composerEmoji",
+            bool_field(v, "Invalid composerEmoji value (must be boolean)")?,
+        ));
+    }
+    if let Some(v) = obj.get("composerUnicode") {
+        out.push((
+            "composerUnicode",
+            bool_field(v, "Invalid composerUnicode value (must be boolean)")?,
+        ));
+    }
     if let Some(v) = obj.get("textReplacementsEnabled") {
         out.push((
             "textReplacementsEnabled",
@@ -731,6 +852,18 @@ fn build_settings_assignments(
                 v,
             )?,
         ));
+    }
+    // P4.D73 (v4 4.8.2 `2d31810f`) — `SmartTypographySettingsSchema.parse` at
+    // the route (NOT the repo's merge-then-validate), so a PARTIAL bag takes
+    // each absent key's Zod default. A non-object, an explicit `null`, or a
+    // non-boolean value throws, and the 400 body carries the whole
+    // `ZodError.message` — reproduced byte-for-byte by
+    // [`zod_smart_typography_settings`]. Because the dispatch carries the RAW
+    // settings bag (`Request::ChatSettingsUpdate`), an explicit `null` arrives
+    // as `Some(Value::Null)` here rather than vanishing into an absent key
+    // (the Taboo §3 lesson; pinned end-to-end by the web-edge wire test).
+    if let Some(v) = obj.get("smartTypographySettings") {
+        out.push(("smartTypographySettings", zod_smart_typography_settings(v)?));
     }
     Ok(out)
 }

@@ -47,6 +47,22 @@ pick), so equipped state holds garments rather than one opaque card over
 empty slot rows. Dissolution is recursive and fail-safe: a bundle whose
 components cannot be resolved is stored whole exactly as before. No schema
 or export-shape change; no migration.
+P4.D73 unit 3 — the chat-settings PUT arms for the three 4.8.2 keys. Two
+boolean arms at v4's schema-ordered positions after `composerSpellcheck`, with
+its exact `Invalid composerEmoji value (must be boolean)` sentences, and a
+route-level `SmartTypographySettingsSchema.parse` that defaults each absent key
+on a partial bag. The reject bodies are v4's whole `ZodError.message` —
+`JSON.stringify(issues, null, 2)`, which v4's route lets escape to
+`getErrorMessage` and its `.includes('Invalid')` test turns into a 400 — so the
+Zod issue shape is ported byte-for-byte rather than collapsed to a summary
+sentence. `settings_routes_equivalence` gained a ten-case `composer_settings`
+family (GET defaults, full/partial/empty bags, both wrong-typed booleans, a
+null bag, a nested wrong type, a non-object, and the create branch) with its own
+stale-oracle count guard; 72 cases match. A new `quilltap-web` wire test drives
+the three keys through `POST /api/dispatch` over an instance whose columns were
+dropped before boot, pinning the boot ensure and the raw-bag wire — an explicit
+`null` must reach the handler as present-and-invalid, not read as an absent key.
+
 P4.D73 unit 2 — the `chat_settings` composer/typography boot ensure. v4
 adds the three 4.8.2 columns through its migration runner; v5's runner is a
 locked deferral, so they are re-homed as a boot repair over the main partition

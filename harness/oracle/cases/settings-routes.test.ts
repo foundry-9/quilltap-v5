@@ -371,6 +371,119 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
       body: { dangerousContentSettings: { mode: 'DETECT_ONLY' } },
     },
+    // ---- P4.D73 (v4 4.8.2): the three composer/typography settings keys ----
+    {
+      // Both composer typeahead gates flipped off in one payload — the
+      // `typeof x !== 'undefined'` + boolean-guard arms.
+      name: 's_put_composer_toggles',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false, composerUnicode: false },
+    },
+    {
+      // A FULLY-specified smartTypographySettings bag (the SPA's spread-merge
+      // save shape).
+      name: 's_put_smart_typo_full',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        smartTypographySettings: { displayQuotes: true, dashes: false, ellipsis: false },
+      },
+    },
+    {
+      // A PARTIAL bag — a route-level `SmartTypographySettingsSchema.parse`, so
+      // every absent key takes its own Zod default (dashes/ellipsis true).
+      name: 's_put_smart_typo_partial',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: { displayQuotes: true } },
+    },
+    {
+      // An EMPTY bag — every key defaults; the stored bytes are the schema
+      // default verbatim.
+      name: 's_put_smart_typo_empty',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: {} },
+    },
+    {
+      // Wrong type on a composer boolean — v4's manual guard throws its own
+      // fixed sentence, which `.includes('Invalid')` turns into a 400.
+      name: 's_put_composer_emoji_wrong_type',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: 'yes' },
+    },
+    {
+      name: 's_put_composer_unicode_wrong_type',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerUnicode: 1 },
+    },
+    {
+      // An EXPLICIT null bag — `typeof null !== 'undefined'`, so the arm RUNS
+      // and the Zod parse rejects it. The v5 dispatch carries the raw settings
+      // bag, so the null must reach the handler rather than reading as absent.
+      name: 's_put_smart_typo_null',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: null },
+    },
+    {
+      // A non-boolean INSIDE the bag — the nested Zod type check.
+      name: 's_put_smart_typo_wrong_type',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: { dashes: 'yes' } },
+    },
+    {
+      // A non-object bag.
+      name: 's_put_smart_typo_not_object',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: 'on' },
+    },
+    {
+      // The three keys on the CREATE branch (user B has no settings row) —
+      // proves the seeded defaults and the assignment override compose.
+      name: 's_put_composer_fresh',
+      family: 'composer_settings',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        composerEmoji: false,
+        smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false },
+      },
+    },
     {
       name: 's_put_reject',
       family: 'settings_chat',

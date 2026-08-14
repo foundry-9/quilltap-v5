@@ -65978,3 +65978,131 @@ half-migrated + idempotent arm; the table-less no-op) plus the const pin.
 Mutation-proven at the wire in unit 3.
 
 **Versions:** core 0.0.533, host 0.0.67.
+
+---
+
+## P4.D73 unit 3 — the chat-settings PUT arms + the `composer_settings` differential family (v4 `48396682`)
+
+**The arms**, at v4's own schema-ordered positions in
+`build_settings_assignments`: `composerEmoji` + `composerUnicode` as
+`bool_field`s straight after `composerSpellcheck` (v4's exact sentences,
+`Invalid composerEmoji value (must be boolean)`), and `smartTypographySettings`
+after `answerConfirmationSettings` through a new Zod-faithful
+`zod_smart_typography_settings`.
+
+**The finding this unit turned up: v4's 400 body is the whole
+`ZodError.message`.** The first oracle run went red on one case and told us
+what v4 actually answers:
+
+    oracle: {"error":"[\n  {\n    \"expected\": \"object\",\n    \"code\":
+             \"invalid_type\",\n    \"path\": [],\n    \"message\":
+             \"Invalid input: expected object, received null\"\n  }\n]"}
+    got:    {"error":"Invalid smart typography settings"}
+
+`settings/chat/route.ts` lets `SmartTypographySettingsSchema.parse` throw;
+`getErrorMessage` returns `error.message`, which for a ZodError IS
+`JSON.stringify(issues, null, 2)`; the route's `errorMessage.includes('Invalid')`
+test then sees the issue's own `"Invalid input: …"` and answers **400** with
+that whole string as the body. So those bytes are contractual — a user-visible
+string on a settings surface the P4.D74/P4.D75 SPA lanes will render. Ported:
+a `ZodInvalidTypeIssue` struct in Zod's key order (`expected`, `code`, `path`,
+`message`), the `util.parsedType` table (reused, name-for-name, from the proven
+Pascal Zod port), and `serde_json::to_string_pretty` — whose two-space indent,
+empty-array `[]` and nested-array shapes match `JSON.stringify(x, null, 2)`
+exactly. All four reject arms now match byte-for-byte.
+
+Two behaviors carried deliberately: Zod short-circuits on a non-object input
+(one top-level issue, no per-key checks), and collects **all** offending keys in
+declaration order otherwise.
+
+> **Banked, not fixed (pre-existing, out of scope):** the sibling
+> `answerConfirmationSettings` arm has the same divergence — it collapses a Zod
+> throw to `Invalid answer confirmation settings`, and `zod_cheap_llm_settings`
+> / `zod_dangerous_content_settings` carry the seam explicitly in their headers.
+> No corpus case exercises them, so no family is red. If a later lane wants
+> them, `ZodInvalidTypeIssue` + `zod_error_message` are now sitting in the same
+> file.
+
+**Differential — `settings_routes_equivalence`, family `composer_settings`,
+ten cases, regenerated fresh at the pin:** the two toggles in one payload; a
+full bag; a **partial** bag (per-key Zod defaults); an **empty** bag; both
+wrong-typed booleans; an explicit **null** bag; a nested wrong type; a
+non-object; and the two keys on the **create** branch (user B, no settings row).
+72 cases total, zero SKIP. A `composer_settings_cases >= 10` guard joins the
+taboo/brahma guards so a stale oracle cannot pass by simply not carrying the
+rows.
+
+Mutation-proven (three, each restored):
+
+| mutation | caught as |
+| --- | --- |
+| `dashes` default true → false | FAILED `[s_put_smart_typo_partial]` |
+| perturb the `composerEmoji` sentence | FAILED `[s_put_composer_emoji_wrong_type]` |
+| `parsedType` null → "nil" | FAILED `[s_put_smart_typo_null]` |
+
+**The wire test — `crates/quilltap-web/tests/chat_settings_composer_web_routes.rs`.**
+The Taboo §3 lesson says a dispatch-leg-only test is blind to an
+explicit-`null` collapse, so this drives `POST /api/dispatch` on a live server.
+It first **drops** the three columns from the fixture (whatever the committed
+vintage — the `p4.9h2a` lesson: a fixture that already has them makes the test
+vacuous), boots, and asserts they exist; then GETs the defaults, PUTs
+single-key payloads exactly as the SPA saves `composerSpellcheck`, **re-reads to
+prove the writes stuck**, and pins both 400 arms at the wire (v4's Zod bytes for
+the null bag, v4's fixed sentence for the wrong-typed boolean) plus that a
+rejected PUT left the stored values untouched. Mutation-proven: disabling the
+boot ensure fails it at "composerEmoji must exist after the boot ensure".
+
+`Request::ChatSettingsUpdate` carries the settings bag as a raw
+`serde_json::Value`, so no `Option<Option<…>>` reshaping was needed — an
+explicit `null` already arrives as `Some(Value::Null)`. That is now asserted at
+the wire rather than reasoned about.
+
+**`api/types.rs` — no change needed** (deliverable 4). The chat-settings
+response is `Response::ChatSettings(serde_json::Value)`, the raw settings object,
+and the request is `ChatSettingsUpdate { settings: Value }`; neither enumerates
+columns. Recorded so the unifier does not go looking for a merge in that file
+from this lane.
+
+**Regen recipe** (`settings_routes_equivalence`, unchanged; run through the
+sanctioned driver):
+
+    python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence
+
+which is, expanded:
+
+    N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+    TMPO=/tmp/qt-settings-oracle-settings_routes_equivalence
+    rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+    cp "$V5W/harness/oracle/cases/settings-routes.test.ts" "$TMPO/cases/"
+    cp "$V5W/harness/oracle/fixtures/settings.json"        "$TMPO/fixtures/"
+    cd ~/source/quilltap-server
+    QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+      $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
+    QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+    QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson \
+      $N/npx jest --silent --watchman=false --testTimeout=120000 \
+        --roots "$PWD" --roots "$TMPO/cases" -- "settings-routes\.test\.ts$"
+
+**Versions:** core 0.0.534, harness 0.0.456, web 0.0.71.
+
+### The P4.D73 lane gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean, and again with `--features
+quilltap-core/native-transport`; `cargo build --release --workspace` clean.
+`cargo test --workspace` with the lane's nine-variable env block
+(`QT_ORACLE_SETTINGS_ROUTES`, `QT_FIXTURE_SETTINGS`, `QT_ORACLE_CHAT_SETTINGS`,
+`QT_FIXTURE_CHAT_SETTINGS`, `QT_ORACLE_PROVISION`, `QT_FIXTURE_V4_FRESH`,
+`QT_V5_PROVISION_OUT`, `QT_DBKEY_V4_FIXTURE`, `QT_DBKEY_V5_OUT`):
+**427 test binaries / 2,024 tests / 0 failed**, exit 0 (main's baseline before
+the lane was 426 / 2,017 — the new binary is the web wire test).
+
+The lane's families re-run BY NAME with `--nocapture`, zero SKIP, over oracles
+regenerated fresh at `48396682`:
+
+- `settings_routes_equivalence` — **72 cases matched**
+- `chat_settings_tier2_equivalence` — **OK, 2 rows**
+- `provisioning_equivalence` — **3/3** (the D23 tripwire)
+- `chat_settings_composer_web_routes` (quilltap-web) — **1/1**
+
+No `apps/web/**` file was touched, so no SPA gate applies to this lane.

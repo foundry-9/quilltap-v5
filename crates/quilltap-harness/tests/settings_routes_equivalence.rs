@@ -3,9 +3,12 @@
 //! work order's four DB-family differentials (`settings_chat`,
 //! `connection_profiles_routes`, `api_keys_routes`, `provider_models_routes`) —
 //! each case is tagged with its `family`. Extended by P4.6an
-//! (`dangerousContentSettings`), P4.d3 (`data_retention`), P4.D50 (`taboo`), and
+//! (`dangerousContentSettings`), P4.d3 (`data_retention`), P4.D50 (`taboo`),
 //! P4.D57 (`brahma_console` — the Brahma Console turn-budget GET/PUT, seeded via
-//! `seedBrahmaConsole`; a stale oracle predating a family is caught by the
+//! `seedBrahmaConsole`), and P4.D73 (`composer_settings` — the three 4.8.2
+//! `chat_settings` columns `composerEmoji` / `composerUnicode` /
+//! `smartTypographySettings`, incl. the four reject arms whose 400 body is the
+//! whole `ZodError.message`; a stale oracle predating a family is caught by the
 //! per-family `>=` count guards below).
 //!
 //! Both sides run each case over a FRESH copy of the committed fixture; the
@@ -242,6 +245,7 @@ fn settings_routes_match_v4() {
     let mut n = 0;
     let mut taboo_cases = 0;
     let mut brahma_console_cases = 0;
+    let mut composer_settings_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -339,6 +343,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("brahma_console") {
             brahma_console_cases += 1;
         }
+        if row["family"].as_str() == Some("composer_settings") {
+            composer_settings_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
@@ -353,6 +360,12 @@ fn settings_routes_match_v4() {
     assert!(
         brahma_console_cases >= 12,
         "expected >= 12 brahma_console cases, got {brahma_console_cases} — regenerate the oracle"
+    );
+    // P4.D73: the three 4.8.2 composer/typography keys. A stale oracle that
+    // predates them would otherwise pass by not carrying the rows at all.
+    assert!(
+        composer_settings_cases >= 10,
+        "expected >= 10 composer_settings cases, got {composer_settings_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }
