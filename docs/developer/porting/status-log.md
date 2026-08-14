@@ -66598,3 +66598,52 @@ No dialog behavior changed in this unit: `flushStagedLiveOutfits` still
 carries the pre-fix `if (!baseline) continue` arm until unit 2 wires the
 queue, the seed replay, and the confirm. SPA 0.5.454 → 0.5.455. No crate
 file touched (this lane owns none).
+
+## Lane record — P4.D72 unit 2: the staged replay wired into the dialog (v4 `07d4ccce`)
+
+**Landed — dogfood finding #78 is closed on the SPA side.** v4's three moving
+parts, ported into `apps/web/src/app/wardrobe/wardrobe-control-dialog.ts`:
+
+1. **Record the gesture, not its result.** `pendingLiveMutators:
+   Record<string, SlotsMutator[]>` (v4's `pendingLiveMutatorsRef`). In
+   `updateLiveStaged`, when in-chat and the character's seed key is not yet in
+   `liveSeededByChar`, the mutator is appended to that character's queue
+   *before* the optimistic paint against the empty fallback.
+2. **Replay on seed.** The Live seeding effect drains the character's queue
+   (`delete` after read, as v4 does) and seeds with
+   `rebaseStagedSlots(wornSlots, pending)` instead of `cloneSlots(wornSlots)`.
+   Mutators are pure, so the double application (paint + replay) is safe.
+3. **The Done confirm arm.** `flushStagedLiveOutfits` now classifies via
+   `classifyStagedOutfits`; **the pre-fix `if (!baseline) continue` is GONE.**
+   `unresolved.length > 0` raises v4's sentence verbatim — *"Word of what
+   {names} is presently wearing never reached us, so your alterations cannot be
+   saved. Close the wardrobe and let them go?"* — declining returns false so
+   the dialog stays open (a late snapshot can still seed and save), confirming
+   falls through to the normal dirty flush.
+
+**One recorded divergence, the file's existing one:** v4 awaits its async
+`showConfirmation`; v5's dialog uses the synchronous native `window.confirm`
+throughout (documented at the top of the file since P4.9f2, alongside the
+delete/discard confirms). The copy, the trigger condition, and both outcomes
+are v4's.
+
+**Differential.** v4's `wardrobe-control-dialog.race.test.tsx` (214 lines)
+ported case-for-case as `wardrobe-control-dialog.race.spec.ts` — the same
+harness idea in Angular: a `chatOutfitGet` held open behind an unresolved
+promise, the Wear button located through its row exactly as v4's
+`findWearButton` does, the click landing while the snapshot is in flight, then
+the release. Three mechanical adaptations, all recorded in the spec header:
+staged slots read off the `liveStagedByChar` signal rather than a stubbed
+composer's serialized DOM; "the dialog closed" is the `closed` output emitting;
+`window.confirm` is spied rather than a module mock. A fourth case pins the
+sentence byte-for-byte (v4 asserts only that it contains the name).
+
+**Mutation-proven.** Restoring all three pre-fix parts (no queue recording,
+`cloneSlots` seed, `if (false)` on the unresolved arm) fails **3 of 4** cases —
+the replay-and-commit case at the post-release `accessories` assertion (the
+lost edit, the exact 3 ms race v5 measured), and both confirm cases. The fourth
+case (snapshot first, nothing staged, nothing sent) passes on both sides, as it
+must: that arm's behavior is unchanged. Matches v4's own note that "both
+new-behaviour arms fail" against pre-fix code.
+
+Full wardrobe spec set green: 13 files / 109 tests. SPA 0.5.455 → 0.5.456.

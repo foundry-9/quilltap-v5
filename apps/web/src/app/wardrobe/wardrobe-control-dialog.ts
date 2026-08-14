@@ -29,7 +29,12 @@ import {
   type EquippedSlots,
 } from './equipped-slots';
 import { createOutfitStore, type OutfitStore } from './outfit-store';
-import { equippedSlotsEqual } from './staged-live-outfits';
+import {
+  classifyStagedOutfits,
+  equippedSlotsEqual,
+  rebaseStagedSlots,
+  type SlotsMutator,
+} from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemEditor } from './wardrobe-item-editor';
@@ -542,6 +547,16 @@ export class WardrobeControlDialogInner {
   protected readonly liveStagedByChar = signal<Record<string, EquippedSlots>>({});
   private readonly liveBaselineByChar: Record<string, EquippedSlots> = {};
   private readonly liveSeededByChar = new Set<string>();
+  /**
+   * Gestures made before the worn snapshot arrived, keyed by character (v4
+   * `:232-239`, `pendingLiveMutatorsRef`). In that window there is nothing to
+   * stage onto, so the gesture paints against an empty fallback and is recorded
+   * here; the seeding effect replays it onto the real slots. Without this the
+   * fast click is either overwritten by the first seed (Bug 61's silent loss)
+   * or committed against an empty base, undressing everything the user never
+   * touched.
+   */
+  private readonly pendingLiveMutators: Record<string, SlotsMutator[]> = {};
 
   protected outfit!: OutfitStore;
   private booted = false;
@@ -596,9 +611,12 @@ export class WardrobeControlDialogInner {
     });
 
     // Seed staged Live slots once a worn snapshot exists for this character
-    // (v4 :322-335). The baseline is captured separately so the Done flush can
+    // (v4 :322-341). The baseline is captured separately so the Done flush can
     // skip no-op commits; the seeded-set gates re-seeding so refreshOutfit
-    // round-trips don't blow away in-progress edits.
+    // round-trips don't blow away in-progress edits — and anything staged
+    // *before* this first seed is replayed onto the snapshot rather than
+    // discarded by it, since the item list is clickable well before the outfit
+    // chain's three round trips finish (Bug 61).
     effect(() => {
       const characterId = this.selectedCharacterId();
       const outfitState = this.booted ? this.outfit.outfitState() : {};
@@ -609,10 +627,13 @@ export class WardrobeControlDialogInner {
       if (this.liveSeededByChar.has(seedKey)) return;
       this.liveSeededByChar.add(seedKey);
       this.liveBaselineByChar[characterId] = cloneSlots(wornSlots);
+      const pending = this.pendingLiveMutators[characterId] ?? [];
+      delete this.pendingLiveMutators[characterId];
+      const seed = rebaseStagedSlots(wornSlots, pending);
       untracked(() =>
         this.liveStagedByChar.update((prev) => ({
           ...prev,
-          [characterId]: cloneSlots(wornSlots),
+          [characterId]: seed,
         })),
       );
     });
@@ -783,9 +804,17 @@ export class WardrobeControlDialogInner {
   //
   // Every Live-tab gesture goes through `updateLiveStaged`, which mutates the
   // staged slots for the current character. None of these touch the server.
-  private updateLiveStaged(mutator: (prev: EquippedSlots) => EquippedSlots): void {
+  private updateLiveStaged(mutator: SlotsMutator): void {
     const characterId = this.selectedCharacterId();
     if (!characterId) return;
+    // Until the worn snapshot has seeded there is no honest base to stage
+    // onto: the gesture paints against an empty fallback, and is recorded so
+    // the seed can replay it onto the real slots (v4 `:467-476`).
+    const seedKey = `${characterId}|${this.chatId() ?? 'no-chat'}`;
+    if (this.isInChat && !this.liveSeededByChar.has(seedKey)) {
+      const queued = this.pendingLiveMutators[characterId] ?? [];
+      this.pendingLiveMutators[characterId] = [...queued, mutator];
+    }
     this.liveStagedByChar.update((prev) => {
       const wornFallback = this.outfit.outfitState()[characterId]?.slots;
       const current =
@@ -935,23 +964,41 @@ export class WardrobeControlDialogInner {
   }
 
   /**
-   * Flush staged Live-tab edits on close (v4 `:648-685`): for each character
+   * Flush staged Live-tab edits on close (v4 `:654-712`): for each character
    * whose staged slots differ from their baseline, fire ONE `set_all` (which
    * triggers a single avatar regen + Aurora announcement server-side). If
-   * nothing is dirty, no requests go out. Returns true when every commit
-   * succeeded (or there was nothing to commit).
+   * nothing is dirty, no requests go out.
+   *
+   * A character staged against no baseline at all is *not* clean — their worn
+   * snapshot never arrived, so the staging was built on an empty fallback and
+   * committing it would undress them. That case is put to the operator rather
+   * than passed off as a successful save (Bug 61). Declining keeps the dialog
+   * open, so a late snapshot can still seed and save; confirming falls through
+   * to the normal dirty flush, having said plainly that the change is going.
+   *
+   * Returns true when every commit succeeded (or there was nothing to commit).
    */
   async flushStagedLiveOutfits(): Promise<boolean> {
     const chatId = this.chatId();
     if (!chatId) return true;
-    const dirty: Array<{ characterId: string; slots: EquippedSlots }> = [];
-    for (const [characterId, slots] of Object.entries(this.liveStagedByChar())) {
-      const baseline = this.liveBaselineByChar[characterId];
-      if (!baseline) continue;
-      if (!equippedSlotsEqual(slots, baseline)) {
-        dirty.push({ characterId, slots });
-      }
+    const { dirty, unresolved } = classifyStagedOutfits(
+      this.liveStagedByChar(),
+      this.liveBaselineByChar,
+    );
+
+    if (unresolved.length > 0) {
+      const names = unresolved
+        .map((id) => this.characters().find((c) => c.id === id)?.name ?? 'this character')
+        .join(', ');
+      // v4 awaits its `showConfirmation`; v5's dialog uses the synchronous
+      // native `window.confirm` throughout (the recorded divergence at the top
+      // of this file). Copy is v4's verbatim.
+      const discard = window.confirm(
+        `Word of what ${names} is presently wearing never reached us, so your alterations cannot be saved. Close the wardrobe and let them go?`,
+      );
+      if (!discard) return false;
     }
+
     if (dirty.length === 0) return true;
 
     let allOk = true;

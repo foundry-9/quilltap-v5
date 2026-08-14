@@ -162,6 +162,20 @@ provider manifests regenerate byte-identical against the 14 rebuilt plugins.
 The google-wire corpus also gained the request headers it should have gotten
 in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
 and nothing asserts those headers yet. No engine code changed.
+P4.D72 unit 2 — wired v4 4.8.2's Bug 61 fix into the SPA wardrobe dialog: a
+Wear clicked before the worn snapshot arrives is no longer lost. The gesture
+(not its result) is recorded in a per-character pending-mutator queue, the
+seeding effect drains that queue and rebases it onto the true worn slots
+instead of cloning them, and the Done flush classifies through
+`classifyStagedOutfits` — a character staged against no baseline is now put to
+the operator ("Word of what {names} is presently wearing never reached us…")
+instead of being silently counted as clean and closed as if saved. Declining
+keeps the dialog open so a late snapshot can still seed and save. v4's race
+suite is ported case-for-case (4 tests, held-open `chatOutfitGet`, asserting
+ONE `set_all` carrying both the already-worn shirt and the just-clicked hat)
+and mutation-proven: restoring the three pre-fix parts fails three of four.
+Closes dogfood finding #78 in the SPA.
+
 P4.D72 unit 1 — ported v4 4.8.2's new `lib/wardrobe/staged-live-outfits.ts`
 into the SPA as `app/wardrobe/staged-live-outfits.ts`: `rebaseStagedSlots`
 (replays gestures staged before the worn snapshot arrived onto the real
