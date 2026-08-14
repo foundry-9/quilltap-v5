@@ -1,6 +1,7 @@
 import { Plugin } from 'prosemirror-state';
 
 import type { TextReplacementRule } from '../core/core-contract';
+import { isInCodeContext } from './code-context';
 
 /**
  * The composer text-replacement plugin — the ProseMirror analogue of v4's
@@ -9,6 +10,10 @@ import type { TextReplacementRule } from '../core/core-contract';
  * and replaced in place (with the trigger char) in a single transaction (one
  * undo). Composer-only: form fields never install it, and it no-ops unless the
  * host passes non-empty compiled rules.
+ *
+ * Code is never rewritten: fenced blocks and inline `code` runs both bail
+ * through the shared {@link isInCodeContext} guard (v4 bug 63 — what happens
+ * when two typing aids keep their own bail lists).
  *
  * @module editor/text-replacement
  */
@@ -101,6 +106,12 @@ export function textReplacementPlugin(getRules: () => CompiledRules | null): Plu
 
         const { selection } = view.state;
         if (!selection.empty) return false;
+        // Never rewrite code as it is typed — v4 bug 63. `code_block` IS a
+        // textblock, so the `parent.isTextblock` check below passes happily
+        // inside a fence, and the inline `code` mark was never consulted at
+        // all; both are the shared guard's job now, so the two typing aids
+        // cannot drift apart again.
+        if (isInCodeContext(view.state)) return false;
         const $from = selection.$from;
         const parent = $from.parent;
         if (!parent.isTextblock) return false;

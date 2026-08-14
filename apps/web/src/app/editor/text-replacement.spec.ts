@@ -129,3 +129,38 @@ describe('textReplacementPlugin', () => {
     view.destroy();
   });
 });
+
+/**
+ * Bug 63 — code is never rewritten. Ported case-for-case from v4's
+ * `TextReplacementPlugin.test.tsx` (`48396682`), which was written with the fix
+ * because the plugin had no tests at all — which is why the missing guards went
+ * unnoticed on both sides for so long. v5 reproduced the bug faithfully:
+ * `code_block` is a textblock, so the `parent.isTextblock` check passed inside a
+ * fence, and the inline `code` mark was never consulted.
+ */
+describe('textReplacementPlugin — bug 63, code is never rewritten', () => {
+  const RULES = compileRules([rule({ fromText: 'fn', toText: 'function' })]);
+
+  it('does not fire inside a fenced code block', () => {
+    const { view, plugin } = makeView('```\nconst fn\n```', RULES);
+    // "const fn" sits inside the fence; the caret goes to the end of "fn".
+    const pos = view.state.doc.resolve(1).start() + 'const fn'.length;
+    expect(trigger(view, plugin, pos, ' ')).toBe(false);
+    expect(view.state.doc.textContent).toBe('const fn');
+    view.destroy();
+  });
+
+  it('does not fire inside an inline code run', () => {
+    const { view, plugin } = makeView('`fn`', RULES);
+    expect(trigger(view, plugin, 3, ' ')).toBe(false);
+    expect(view.state.doc.textContent).toBe('fn');
+    view.destroy();
+  });
+
+  it('STILL fires in ordinary prose (the regression check)', () => {
+    const { view, plugin } = makeView('fn', RULES);
+    expect(trigger(view, plugin, 3, ' ')).toBe(true);
+    expect(view.state.doc.textContent).toBe('function ');
+    view.destroy();
+  });
+});

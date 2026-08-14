@@ -67003,3 +67003,37 @@ either way. The plugin is still placed exactly where v4 places it (and
 the vector stays), but the position is NOT pinned by measurement today —
 it would begin to matter the moment a plugin between the two rewrote
 text.
+
+### Unit record — P4.D74 unit 4 (bug 63 — the shared code-context guard)
+
+v5 reproduced v4's bug 63 exactly: `text-replacement.ts` had no code
+guard of ANY kind. `code_block` is a textblock in `dialectSchema`, so the
+`parent.isTextblock` check waved the caret straight through inside a
+fence, and the inline `code` mark was never consulted at all — a text
+replacement fired happily in the middle of a code sample.
+
+`apps/web/src/app/editor/code-context.ts` is landed **verbatim from the
+order's §Editor meeting points** (diffed against the order's fenced
+block; only the fence lines differ). P4.D75 creates the identical file in
+its own worktree, so the add/add merges clean at unification — and a
+defect found in it is escalated, never diverged. It checks both
+representations of code, plus `storedMarks`, which is the arm neither
+app's prose spells out: a writer who hits the code button before typing
+has the mark armed on the selection and no code text yet, so
+`$from.marks()` cannot see it.
+
+`text-replacement.ts` routes through the helper at the top of its keydown
+path — before the textblock check that let the fence through — with the
+reason recorded where the missing guard used to be.
+
+**Specs**: `code-context.spec.ts` covers the helper directly — prose,
+fence (asserting `parent.isTextblock` is TRUE, so the trap is stated in
+the test and not only in a comment), an inline code run, the prose that
+FOLLOWS one, and the storedMarks arm. `text-replacement.spec.ts` gains
+v4's three bug-63 cases ported case-for-case from
+`TextReplacementPlugin.test.tsx`, the third being v4's own regression
+check that ordinary prose still fires.
+
+**Mutation-proven**: deleting the one guard line — i.e. restoring the
+behavior v5 shipped until this commit — reds exactly the two code cases
+and leaves the prose case green. That is the bug, reproduced on demand.

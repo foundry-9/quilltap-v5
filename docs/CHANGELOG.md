@@ -230,6 +230,13 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Fixed bug 63 in the composer (P4.D74 unit 4): text replacements fired
+inside fenced code blocks and inline code runs, because a code block is
+a textblock like any other and the inline code mark was never consulted.
+Both typing aids now bail through one shared `code-context` helper —
+which also covers the case where the code mark is armed but nothing has
+been typed yet — so their bail lists cannot drift apart again.
+
 Ported smart typography Part A into the SPA renderer (P4.D74 unit 3):
 `remark-smartypants` curls straight quotes at render time when
 `smartTypographySettings.displayQuotes` is on, at v4's exact position in
