@@ -80,6 +80,12 @@ report v4 returns, listing every offending key at once. Dangerous Content also
 now checks that the two uncensored-profile ids are real UUIDs, and the cheap-LLM
 bag is checked at the point v4 checks it, so a request with more than one bad
 field reports the same one v4 reports.
+Fixed the Salon composer's layout (dogfood finding #75). The message-level tools
+are back in the compact two-column block beside the message box rather than
+strung out in one long row, so the box keeps the width it needs and the
+"Type a message…" placeholder no longer clips. The interim fix that wrapped the
+whole tool row below the box is gone with it.
+
 The Salon composer has its formatting toolbar. Switch a chat to composition mode
 and the bold/italic/heading/list/quote/code buttons, the indent controls, the
 emoji and symbol pickers, the roleplay template's delimiter buttons, and the

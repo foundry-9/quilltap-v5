@@ -153,11 +153,11 @@ test.describe('P4.6ac — courier + in-chat images', () => {
     await page.goto(`/salon/${generalChatId}`);
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
 
-    const attachButton = page.getByRole('button', { name: 'Attach a file', exact: true });
+    const attachButton = page.getByRole('button', { name: 'Attach file', exact: true });
     test.skip(!(await attachButton.isVisible().catch(() => false)), 'composer attach not available in this chat');
 
     await page
-      .locator('input[type=file][aria-label="Attach a file"]')
+      .locator('input[type=file][aria-label="Choose a file to attach"]')
       .setInputFiles({
         name: 'unify-attach-note.txt',
         mimeType: 'text/plain',

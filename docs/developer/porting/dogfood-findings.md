@@ -627,7 +627,7 @@ catch, since every fixture is built fresh.
   (`character_archive_tier2_equivalence`'s twice-linked-blob case), which
   stays mutation-sensitive: removing v5's dedupe reds it.
 
-- **ROUTED to `p4.9l` (finding #75, 2026-08-08) — the Salon composer layout is
+- **CLOSED (P4.9L, 2026-08-14) — finding #75, the Salon composer layout is
   functionally degraded, not just cosmetically off.** In a wide pane (and worse
   in a narrow split), v5's editor collapses to (or below) its `min-width: 12rem`
   floor and the "Type a message…" placeholder ellipsizes to "Type a". The cause
@@ -649,6 +649,19 @@ catch, since every fixture is built fresh.
   clips; re-check the narrow Document/Terminal split too (the `min-width: 12rem`
   + `flex-wrap` mitigation that `_chat.css:928` documents must survive the
   relayout). `p4.9l`'s m6-screen-parity scope (row 14) is widened to name this.
+  **FIXED:** the composer now carries v4's real layout — the six message-level
+  tools back in their 2-column grid, the three composer toggles in v4's vertical
+  stack beside them, both LEFT of the editor, and the formatting toolbar on its
+  own row above the form. The band-aid (`.qt-chat-composer-actions
+  { flex-basis: 100% }`) is gone with the flattened row it propped up. The e2e
+  guard was rewritten from "the actions cluster wraps below" to v4's actual
+  geometry — gutter and toggles left of the box on the SAME row, the grid
+  measured at two columns, the editor wider than both together, and the
+  placeholder asserted un-clipped (the user-visible symptom). Continue had no
+  v4 home in the composer at all, so it took the grid's one free cell rather
+  than lengthening either column. **Still owed: the human's own wide-pane and
+  narrow-split look on real data** — the acceptance check above is written for
+  the next dogfood pass.
 
 - **v4-side item (finding #73, 2026-08-08, P4.D57 Brahma budget walk) — the
   Brahma Console gives up SILENTLY when the turn budget is exhausted.** Human

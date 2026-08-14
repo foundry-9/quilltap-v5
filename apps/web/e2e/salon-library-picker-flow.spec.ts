@@ -143,7 +143,7 @@ test.describe('P4.9E4B — the Library file picker', () => {
     await maybeUnlock(page);
     await openChat(page, 'Solo Voyage');
 
-    const actions = page.locator('.qt-chat-composer-actions');
+    const actions = page.locator('.qt-composer-gutter-tools');
     const entry = actions.getByRole('button', { name: 'Attach file from library' });
     await expect(entry).toBeVisible();
     await entry.click();

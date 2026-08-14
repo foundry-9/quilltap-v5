@@ -1248,19 +1248,24 @@
   }
 
   /**
-   * Composer actions container
+   * Continue, in the composer gutter's last free cell. v4 has no continue
+   * button in its composer at all (its home there is the ParticipantCard), so
+   * the placement is v5's; the accent is the one the button carried while it
+   * sat in the flat action row, restated for the smaller gutter box.
+   *
+   * (`.qt-chat-composer-actions`, the dogfood-#75 interim band-aid that gave
+   * the flattened action row `flex-basis: 100%` so it wrapped below the editor,
+   * was RETIRED by p4.9l along with the flattened row itself — the composer now
+   * carries v4's real 2-column gutter grid, so the editor keeps the dominant
+   * share without a wrap to hide behind.)
    */
-  .qt-chat-composer-actions {
-    @apply flex items-center gap-2 flex-wrap justify-end;
-    /* Interim band-aid (dogfood #75) pending the p4.9l composer-toolbar port:
-       v5 flattens v4's compact 2-column gutter grid into one long row, which —
-       inside the composer's `max-w-4xl` cap — out-competes the `flex-1` editor
-       and squeezes it past its width floor, clipping the "Type a message…"
-       placeholder. Take a full-width row so this cluster wraps BELOW the
-       editor+avatar line, handing the editor the dominant share (the avatar
-       stays full-height beside the input). p4.9l replaces this with v4's real
-       2-column layout. */
-    flex-basis: 100%;
+  .qt-composer-gutter-continue {
+    color: var(--qt-status-info-fg);
+  }
+
+  .qt-composer-gutter-continue:hover:not(:disabled) {
+    color: var(--qt-status-info-fg);
+    background: var(--qt-status-info-bg);
   }
 
   /**

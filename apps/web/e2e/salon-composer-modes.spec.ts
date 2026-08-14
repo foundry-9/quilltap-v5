@@ -154,7 +154,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
   });
 
-  test('the toolbar cluster wraps below the editor so the input keeps the dominant width (dogfood #75, interim p4.9l band-aid)', async ({
+  test('the composer lays out v4’s way: a 2-column gutter left of a dominant editor (dogfood #75)', async ({
     page,
   }) => {
     await page.goto('/salon');
@@ -162,23 +162,140 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await openChat(page, 'Solo Voyage');
 
     const input = page.locator('.qt-chat-composer-input').first();
-    const actions = page.locator('.qt-chat-composer-actions').first();
+    const gutter = page.locator('.qt-composer-gutter-tools').first();
+    const toggles = page.locator('.qt-chat-toolbar').first();
     await expect(input).toBeVisible();
-    await expect(actions).toBeVisible();
+    await expect(gutter).toBeVisible();
+    await expect(toggles).toBeVisible();
 
-    const inputBox = await input.boundingBox();
-    const actionsBox = await actions.boundingBox();
+    const inputBox = (await input.boundingBox())!;
+    const gutterBox = (await gutter.boundingBox())!;
+    const togglesBox = (await toggles.boundingBox())!;
     expect(inputBox).not.toBeNull();
-    expect(actionsBox).not.toBeNull();
+    expect(gutterBox).not.toBeNull();
 
-    // The gutter/action cluster sits on its OWN row below the editor (its top is
-    // at or past the editor's bottom) rather than crammed onto the same line,
-    // where — inside the composer's max-w-4xl cap — it squeezed the editor past
-    // its width floor and clipped the "Type a message…" placeholder (#75). The
-    // pre-band-aid layout put actions on the same row (actions.y ≈ input.y).
-    expect(actionsBox!.y).toBeGreaterThanOrEqual(inputBox!.y + inputBox!.height - 4);
-    // The editor keeps a dominant share of the composer width.
-    expect(inputBox!.width).toBeGreaterThan(300);
+    // v4's geometry (ChatComposer :368-441): the tools sit to the LEFT of the
+    // editor on the SAME row — not wrapped below it, which is what v5's interim
+    // #75 band-aid did — with the composer-level toggles between them and the
+    // box.
+    expect(gutterBox.x + gutterBox.width).toBeLessThanOrEqual(inputBox.x + 1);
+    expect(togglesBox.x).toBeGreaterThanOrEqual(gutterBox.x + gutterBox.width - 1);
+    expect(togglesBox.x + togglesBox.width).toBeLessThanOrEqual(inputBox.x + 1);
+
+    // The gutter really is TWO columns: six-plus tools in a grid no wider than
+    // three buttons. Re-flattening it into one row is what reddens this.
+    const gutterCols = await gutter.evaluate(
+      (el) => getComputedStyle(el).gridTemplateColumns.split(' ').length,
+    );
+    expect(gutterCols).toBe(2);
+
+    // And the editor is the dominant share of the row — the user-visible
+    // symptom in #75 was the "Type a message…" placeholder clipping to
+    // "Type a" once the box fell to its 12rem floor.
+    expect(inputBox.width).toBeGreaterThan(300);
+    expect(inputBox.width).toBeGreaterThan(gutterBox.width + togglesBox.width);
+    const placeholder = page.locator('.qt-rich-editor-placeholder').first();
+    if (await placeholder.count()) {
+      const clipped = await placeholder.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+      expect(clipped).toBe(false);
+    }
+  });
+
+  test('the formatting toolbar rides above the composer in composition mode (p4.9l)', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Solo Voyage');
+
+    // Chat mode: no toolbar (v4 gates it on documentEditingMode).
+    await expect(page.locator('.qt-chat-composer .qt-formatting-toolbar')).toHaveCount(0);
+
+    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
+    await expect(toolbar).toBeVisible();
+
+    // It is its OWN row, above the form — v4's placement, and the half of the
+    // #75 fix that is not about the gutter.
+    const toolbarBox = (await toolbar.boundingBox())!;
+    const inputBox = (await page.locator('.qt-chat-composer-input').first().boundingBox())!;
+    expect(toolbarBox.y + toolbarBox.height).toBeLessThanOrEqual(inputBox.y + 1);
+
+    // A representative button from each of its three groups.
+    await expect(toolbar.locator('.qt-formatting-button-bold')).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Insert emoji' })).toBeVisible();
+    await expect(toolbar.locator('.qt-formatting-button-source')).toBeVisible();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.qt-chat-composer .qt-formatting-toolbar')).toHaveCount(0);
+  });
+
+  test('a format button and the code-block toggle reach the serialized markdown (p4.9l)', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Solo Voyage');
+
+    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
+    await expect(toolbar).toBeVisible();
+
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('shout');
+    await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+    await toolbar.locator('.qt-formatting-button-bold').click();
+
+    // The wire bytes, read through the source toggle rather than by sending —
+    // a send from Solo Voyage moves the token totals `salon-token-cost-flow`
+    // asserts verbatim (trap 5b).
+    const source = page.locator('.qt-chat-composer .qt-source-mode-textarea');
+    await toolbar.locator('.qt-formatting-button-source').click();
+    await expect(source).toHaveValue('**shout**');
+    await toolbar.locator('.qt-formatting-button-source').click();
+
+    // The code-block button is a TOGGLE, and its label + title flip with the
+    // caret's block (v4 `inCodeBlock`).
+    const codeButton = toolbar.locator('.qt-formatting-button-code-block');
+    await expect(codeButton).toHaveAttribute('title', 'Insert code block');
+    await editor.click();
+    await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type('x = 1');
+    await codeButton.click();
+    await expect(editor.locator('pre')).toBeVisible();
+    await expect(codeButton).toHaveAttribute('title', 'End code block');
+    await expect(codeButton).toHaveText('/CODE');
+
+    // Enter still escapes a fence from inside it — the dogfood #82 fix, which
+    // the toolbar must not have displaced.
+    await editor.click();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('After the fence.');
+    await expect(editor.locator('pre')).not.toContainText('After the fence.');
+    await expect(editor.locator('p').last()).toContainText('After the fence.');
+
+    // And the button toggles back out of a code block.
+    await editor.locator('pre').click();
+    await expect(codeButton).toHaveAttribute('title', 'End code block');
+    await codeButton.click();
+    await expect(editor.locator('pre')).toHaveCount(0);
+
+    // Leave the chat as the sibling specs expect it: draft cleared, chat mode.
+    await editor.click();
+    await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(1200);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('an unsent draft survives leaving and reopening the chat', async ({ page }) => {

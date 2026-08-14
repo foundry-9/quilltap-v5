@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   input,
@@ -79,7 +80,7 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
     <div class="relative">
       <button
         type="button"
-        class="qt-chat-toolbar-button"
+        [class]="buttonClass()"
         title="Random number generator"
         aria-label="Random number generator"
         [attr.aria-expanded]="open()"
@@ -217,6 +218,14 @@ export class RngDropdown {
 
   readonly chatId = input.required<string>();
   readonly disabled = input(false);
+  /**
+   * Which host is rendering the button (v4 `RngDropdown` `variant`,
+   * `:53-54`): `gutter` is the composer's compact 2-column grid, `toolbar` any
+   * flat toolbar row. v4's other value is `palette` — its desktop tool-palette
+   * popover, which v5 has no analogue for; `toolbar` is v5's name for the
+   * button box it does have.
+   */
+  readonly variant = input<'gutter' | 'toolbar'>('toolbar');
 
   /**
    * The rolled-but-unsent result (v4 `onPendingResult`). Its PRESENCE is what
@@ -227,6 +236,10 @@ export class RngDropdown {
 
   protected readonly diceTypes = DICE_TYPES;
   protected readonly otherOptions = OTHER_OPTIONS;
+
+  protected readonly buttonClass = computed(() =>
+    this.variant() === 'gutter' ? 'qt-composer-gutter-button' : 'qt-chat-toolbar-button',
+  );
 
   protected readonly open = signal(false);
   protected readonly customOpen = signal(false);

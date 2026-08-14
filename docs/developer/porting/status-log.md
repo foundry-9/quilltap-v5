@@ -69133,3 +69133,115 @@ i.e. v4's own bug; the source delimiter routed to the editor; the editor no
 longer hidden).
 
 Gate: `ng test` 322 files / 4,710 / 0; `ng build` clean. SPA 0.5.484.
+
+
+## P4.9L unit 4 — v4's composer layout, and the retirement of the #75 band-aid
+
+**Dogfood finding #75 CLOSED.** v5 had flattened v4's compact 2-column gutter
+GRID into one long action row placed AFTER the editor; inside the composer's
+`max-w-4xl` cap, with the always-present speaking-as avatar, that row
+out-competed the `flex-1` editor and squeezed it past its width floor until the
+"Type a message…" placeholder ellipsized to "Type a". The August band-aid
+(`937ea82f`) gave the row `flex-basis: 100%` so it wrapped BELOW the editor.
+Both the band-aid and the flattened row are gone.
+
+The composer form is now v4's (`ChatComposer.tsx:368-441`): the hidden file
+input, the speaking-as portrait, then a `.qt-chat-toolbar-row` holding the six
+message-level tools in `.qt-composer-gutter-tools` (v4's `grid-template-columns:
+auto auto`, filled announcement, mail / library, generate, attach / RNG, custom
+tools) beside `.qt-chat-toolbar`'s vertical stack of the three composer toggles
+— and both of them LEFT of the editor, which is what hands the editor the
+dominant share without a wrap to hide behind. `.qt-chat-composer-content` wraps
+attachments + toolbar + form, as in v4.
+
+`RngDropdown` and `CustomToolsPopup` gained a `variant` input — v4 has the same
+prop on both (`RngDropdown.tsx:53-54`, `CustomToolsButton.tsx:44`), which is how
+its own gutter renders them as `qt-composer-gutter-button`.
+
+**Two divergences, both named:**
+
+- **Continue** takes the grid's one free cell (row 4, col 2). v4 has NO continue
+  button in its composer at all — its home there is the ParticipantCard — so
+  every placement is v5's, and this is the one that keeps v4's composer geometry
+  exactly rather than lengthening either column by a row.
+- **`.qt-chat-composer-inner` keeps `flex-wrap`**, which v4 does not have. It is
+  the P4.9E2B mitigation the #75 note explicitly asked to survive the relayout:
+  with v4's compact grid it should never fire at normal widths, but it is still
+  what saves the box in the narrow Document/Terminal split.
+
+**A pre-existing divergence fixed on the way:** v5's attach button was titled
+"Attach a file"; v4's is "Attach file" (`ComposerGutterTools.tsx:120-121`). The
+hidden `<input>` keeps a label of its own ("Choose a file to attach"), so the
+two no longer collide in an accessible-name lookup.
+
+**The e2e guard was rewritten, not merely re-pointed.** The old one asserted the
+band-aid's own shape ("the actions cluster sits below the editor"), which the
+correct layout must FAIL. The new one asserts v4's geometry: gutter and toggles
+left of the box on the SAME row, the gutter's `grid-template-columns` measured
+at two, the editor wider than both clusters together and over 300px, and the
+placeholder element asserted un-clipped (`scrollWidth <= clientWidth`) — the
+user-visible symptom #75 was reported as. Re-flattening the grid reds it.
+
+Three sibling specs were re-pointed off the retired class
+(`salon-post-office-flow`, `salon-library-picker-flow`,
+`salon-courier-images-flow`) and onto `.qt-composer-gutter-tools` + v4's label.
+
+`m6-screen-parity.md` row 14 and the `roleplayTemplateId` deferral row are
+marked DONE; `dogfood-findings.md` #75 moves from ROUTED to CLOSED, keeping its
+acceptance check for the next dogfood pass (the wide-pane and narrow-split look
+on real data is the human's to confirm).
+
+SPA 0.5.485.
+
+
+## P4.9L unit 5 — the live beats
+
+Five Playwright beats, all run LIVE against the real server (the gated-beat
+first-run rot class from the 4.8.2 round):
+
+1. **`salon-composer-modes` — the layout guard, rewritten.** v4's geometry, not
+   the band-aid's: see the unit-4 record.
+2. **`salon-composer-modes` — the toolbar rides above the composer.** Absent in
+   chat mode, present in composition mode, measured ABOVE the message box, one
+   representative button from each of its three groups, and gone again when the
+   mode is flipped back.
+3. **`salon-composer-modes` — a format button and the code-block toggle reach
+   the SERIALIZED markdown.** Bold over a selected word comes back as
+   `**shout**` — read through the SOURCE TOGGLE rather than by sending, because
+   a send from Solo Voyage moves the token totals `salon-token-cost-flow`
+   asserts verbatim (trap 5b). The code-block button's title and label flip with
+   the caret's block (`Insert code block`/`CODE` → `End code block`/`/CODE`), it
+   toggles back out, and **Enter still escapes a fence from inside it** — the
+   dogfood-#82 fix, which the new toolbar must not displace.
+4. **`composer-char-insert-flow` — the pickers' composer entrance.** The
+   deferral named at the 4.8.2 round ("the pickers' composer entrance"): both
+   ☺ and Ω open from the composer's own toolbar and land plain Unicode in the
+   message box.
+5. **`salon-roleplay-template-flow` — the delimiter buttons, end to end.** A
+   template with a `%` narration delimiter is created over the real server, hung
+   on the chat from the sidebar, and the toolbar grows its `Nar` button with
+   v4's byte-exact `Narration (%...%)` tooltip WITHOUT a reload; pressing it
+   over a selected line yields `%she smiled%` in the source view — the bytes a
+   send would carry. The chat is put back on "No Template" and the template
+   deleted, as its sibling beat already did.
+
+The beat lives in `salon-roleplay-template-flow` rather than a new file because
+that spec already owns the create/attach/cleanup machinery; the machinery was
+extracted into `createPercentTemplate`/`deletePercentTemplate`/`templatePicker`
+helpers and the original beat re-pointed at them.
+
+**A trap worth recording.** The helper extraction was done by text substitution,
+and the substitution matched the body INSIDE the new helper as well as at the
+call site — so `createPercentTemplate` called itself. Both beats in the file
+died with `RangeError: Maximum call stack size exceeded`, which reads nothing
+like a locator problem. Fixed, and the file re-run.
+
+Also observed in the same run, NOT a regression: running these three files
+alone reverses their normal alphabetical order, and `composer-char-insert-flow`
+then arrives at a LOCKED instance (its screenshot shows the passphrase form
+mid-`Unlocking…`) because `aa-foundation.spec.ts` — which walks the unlock gate
+first in a full run — was not in the subset. The shared `maybeUnlock` helper
+clicks Unlock without awaiting completion, so a 5 s default-timeout assertion
+right after it can lose. Green in the full suite.
+
+SPA 0.5.485 (with unit 4).

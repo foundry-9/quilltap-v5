@@ -94,13 +94,14 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
-    const actions = page.locator('.qt-chat-composer-actions');
+    const actions = page.locator('.qt-composer-gutter-tools');
     await expect(actions.getByRole('button', { name: 'Insert announcement' })).toBeVisible();
     await expect(actions.getByRole('button', { name: 'Post a letter' })).toBeVisible();
 
-    // v4's grid fill order, flattened: announcement, mail, library file, camera,
-    // paperclip. (Library file filled its slot in P4.9E4B; RNG mounts its own
-    // component and carries no aria-label of this shape.)
+    // v4's grid fill order, now read off the restored 2-column grid itself
+    // (P4.9L): announcement, mail, library file, camera, paperclip. (Library
+    // file filled its slot in P4.9E4B; RNG mounts its own component and carries
+    // no aria-label of this shape.)
     const labels = await actions.locator('button').evaluateAll((nodes) =>
       nodes
         .map((n) => n.getAttribute('aria-label'))
@@ -110,7 +111,7 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
             l === 'Post a letter' ||
             l === 'Attach file from library' ||
             l === 'Generate image' ||
-            l === 'Attach a file',
+            l === 'Attach file',
         ),
     );
     expect(labels).toEqual([
@@ -118,7 +119,7 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
       'Post a letter',
       'Attach file from library',
       'Generate image',
-      'Attach a file',
+      'Attach file',
     ]);
   });
 

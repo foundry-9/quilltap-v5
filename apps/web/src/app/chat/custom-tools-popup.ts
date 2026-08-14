@@ -97,7 +97,7 @@ interface ReferenceRow {
       <div>
         <button
           type="button"
-          class="qt-chat-toolbar-button"
+          [class]="buttonClass()"
           title="Custom tools"
           aria-label="Custom tools"
           aria-haspopup="dialog"
@@ -444,12 +444,18 @@ export class CustomToolsPopup {
 
   readonly chatId = input.required<string>();
   readonly disabled = input(false);
+  /** v4 `CustomToolsButton` `variant` — see {@link RngDropdown.variant}. */
+  readonly variant = input<'gutter' | 'toolbar'>('toolbar');
   /** A run landed — the salon refetches the chat (v4 `onRan`). */
   readonly ran = output<void>();
 
   protected readonly SEARCH_THRESHOLD = SEARCH_THRESHOLD;
   /** The string lives here because its apostrophe cannot survive a template expression. */
   protected readonly workbenchTitle = "Open on Pascal's Workbench";
+
+  protected readonly buttonClass = computed(() =>
+    this.variant() === 'gutter' ? 'qt-composer-gutter-button' : 'qt-chat-toolbar-button',
+  );
 
   protected readonly isOpen = signal(false);
   protected readonly running = signal(false);

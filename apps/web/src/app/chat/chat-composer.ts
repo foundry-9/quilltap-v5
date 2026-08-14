@@ -195,6 +195,175 @@ export interface PendingToolResultChip extends RngPendingResult {
       }
 
       <form class="qt-chat-composer-inner" (submit)="onSubmit($event)">
+        <input
+          #fileInput
+          type="file"
+          class="hidden"
+          aria-label="Choose a file to attach"
+          (change)="onPick($any($event.target))"
+        />
+
+        <!-- "Speaking as" portrait — full-height, directly left of the toolbar
+             cluster; hidden on the narrowest viewports where there's no room.
+             The outer wrapper owns the responsive show/hide so it doesn't
+             collide with the avatar's own layout (v4 ChatComposer :351-366). -->
+        @if (speakingAs(); as seat) {
+          <div class="hidden sm:flex self-stretch flex-shrink-0">
+            <qt-speaking-as-avatar
+              [name]="seat.name"
+              [avatarUrl]="seat.avatarUrl"
+              [canType]="canType()"
+            />
+          </div>
+        }
+
+        <!-- v4's composer gutter (ChatComposer :368-441): the message-level
+             tools in a compact TWO-COLUMN grid, the composer-level toggles in a
+             vertical stack beside it, and both of them LEFT of the editor, so
+             the editor takes the dominant share of the row. -->
+        <div class="qt-chat-toolbar-row">
+          <div class="qt-composer-gutter-column">
+            <div class="qt-composer-gutter-tools">
+              <!-- Row 1, col 1: Insert Announcement (ComposerGutterTools :66-75),
+                   down to its title, aria-label and megaphone glyph. -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Insert announcement"
+                aria-label="Insert announcement"
+                [disabled]="disabled()"
+                (click)="openAnnouncement.emit()"
+              >
+                <qt-icon name="megaphone" class="w-5 h-5" />
+              </button>
+
+              <!-- Row 1, col 2: Compose Mail — pairs with the megaphone as
+                   another "insert a special message" action (The Post Office). -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Post a letter"
+                aria-label="Post a letter"
+                [disabled]="disabled()"
+                (click)="openMail.emit()"
+              >
+                <qt-icon name="mail" class="w-5 h-5" />
+              </button>
+
+              <!-- Row 2, col 1: Library file (:90-100). -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Attach file from library"
+                aria-label="Attach file from library"
+                [disabled]="disabled()"
+                (click)="openLibrary.emit()"
+              >
+                <qt-icon name="file-plus" class="w-5 h-5" />
+              </button>
+
+              <!-- Row 2, col 2: Generate Image (:102-112). It is v4's ONLY
+                   opener for the standalone generate dialog. -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Generate image"
+                aria-label="Generate image"
+                (click)="openGenerate.emit()"
+              >
+                <qt-icon name="camera" class="w-5 h-5" />
+              </button>
+
+              <!-- Row 3, col 1: Attach File (:114-130), with v4's own title. -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Attach file"
+                aria-label="Attach file"
+                [disabled]="disabled() || uploading()"
+                (click)="fileInput.click()"
+              >
+                <qt-icon name="paperclip" class="w-5 h-5" />
+              </button>
+
+              <!-- Row 3, col 2: RNG (:132-139). Its rolls land as pending chips
+                   above the box, not as messages. -->
+              <div class="qt-composer-gutter-rng">
+                <qt-rng-dropdown
+                  [chatId]="chatId()"
+                  [disabled]="disabled()"
+                  variant="gutter"
+                  (pendingResult)="pendingToolResult.emit($event)"
+                />
+              </div>
+
+              <!-- Row 4, col 1: Pascal's custom tools — opens a dialog (bespoke
+                   here: the button gates its own visibility on the roster rather
+                   than on a chat-payload flag). -->
+              <qt-custom-tools-popup
+                [chatId]="chatId()"
+                [disabled]="disabled()"
+                variant="gutter"
+                (ran)="customToolRan.emit()"
+              />
+
+              <!-- Row 4, col 2: Continue. v4 has NO continue button in the
+                   composer at all (its home there is the ParticipantCard), so
+                   every placement is v5's; the grid's free cell is the one that
+                   keeps v4's composer geometry exactly. -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button qt-composer-gutter-continue"
+                title="Continue — let the next character respond"
+                aria-label="Continue"
+                [disabled]="disabled() || busy() || !hasActiveCharacters()"
+                (click)="continue.emit()"
+              >
+                <qt-icon name="arrow-right" class="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- The composer-level toggles, in v4's vertical stack. -->
+          <div class="qt-chat-toolbar">
+            <button
+              type="button"
+              class="qt-chat-toolbar-button"
+              [class.qt-chat-toolbar-button-active]="compositionMode()"
+              [title]="compositionToggleTitle()"
+              [attr.aria-pressed]="compositionMode()"
+              aria-label="Toggle composition mode"
+              (click)="toggleCompositionMode()"
+            >
+              <qt-icon name="file" class="w-5 h-5" />
+            </button>
+
+            @if (!documentActive()) {
+              <button
+                type="button"
+                class="qt-chat-toolbar-button"
+                title="Open document"
+                aria-label="Open document"
+                (click)="openDocument.emit()"
+              >
+                <qt-icon name="book" class="w-5 h-5" />
+              </button>
+            }
+
+            @if (!terminalActive()) {
+              <button
+                type="button"
+                class="qt-chat-toolbar-button"
+                title="Open terminal"
+                aria-label="Open terminal"
+                (click)="openTerminal.emit()"
+              >
+                <qt-icon name="code" class="w-5 h-5" />
+              </button>
+            }
+          </div>
+        </div>
+
         @if (showSource()) {
           <textarea
             #sourceArea
@@ -227,178 +396,27 @@ export interface PendingToolResultChip extends RngPendingResult {
           (imagePaste)="onEditorImagePaste($event)"
         />
 
-        <input
-          #fileInput
-          type="file"
-          class="hidden"
-          aria-label="Attach a file"
-          (change)="onPick($any($event.target))"
-        />
-
-        <!-- "Speaking as" portrait — full-height, directly left of the toolbar
-             cluster; hidden on the narrowest viewports where there's no room.
-             The outer wrapper owns the responsive show/hide so it doesn't
-             collide with the avatar's own layout (v4 ChatComposer :351-366). -->
-        @if (speakingAs(); as seat) {
-          <div class="hidden sm:flex self-stretch flex-shrink-0">
-            <qt-speaking-as-avatar
-              [name]="seat.name"
-              [avatarUrl]="seat.avatarUrl"
-              [canType]="canType()"
-            />
-          </div>
+        @if (busy()) {
+          <button
+            type="button"
+            class="qt-chat-composer-send qt-chat-stop-button"
+            title="Stop generating"
+            aria-label="Stop generating"
+            (click)="stop.emit()"
+          >
+            <qt-icon name="stop" class="w-5 h-5" />
+          </button>
+        } @else {
+          <button
+            type="submit"
+            class="qt-chat-composer-send"
+            [title]="sendTitle()"
+            aria-label="Send message"
+            [disabled]="!canSend()"
+          >
+            <qt-icon name="send" class="w-5 h-5" />
+          </button>
         }
-
-        <div class="qt-chat-composer-actions">
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            [class.qt-chat-toolbar-button-active]="compositionMode()"
-            [title]="compositionToggleTitle()"
-            [attr.aria-pressed]="compositionMode()"
-            aria-label="Toggle composition mode"
-            (click)="toggleCompositionMode()"
-          >
-            <qt-icon name="file" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 1, col 1: Insert Announcement (ComposerGutterTools
-               :66-75), down to its title, aria-label and megaphone glyph. -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Insert announcement"
-            aria-label="Insert announcement"
-            [disabled]="disabled()"
-            (click)="openAnnouncement.emit()"
-          >
-            <qt-icon name="megaphone" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 1, col 2: Compose Mail — pairs with the megaphone as
-               another "insert a special message" action (The Post Office). -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Post a letter"
-            aria-label="Post a letter"
-            [disabled]="disabled()"
-            (click)="openMail.emit()"
-          >
-            <qt-icon name="mail" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 2, col 1: Library file (ComposerGutterTools :90-100),
-               down to its title, aria-label and file-plus glyph. -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Attach file from library"
-            aria-label="Attach file from library"
-            [disabled]="disabled()"
-            (click)="openLibrary.emit()"
-          >
-            <qt-icon name="file-plus" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 2, col 2: Generate Image (:102-112). It is v4's ONLY
-               opener for the standalone generate dialog. -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Generate image"
-            aria-label="Generate image"
-            (click)="openGenerate.emit()"
-          >
-            <qt-icon name="camera" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 3, col 1: Attach File (:114-130). -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Attach a file"
-            aria-label="Attach a file"
-            [disabled]="disabled() || uploading()"
-            (click)="fileInput.click()"
-          >
-            <qt-icon name="paperclip" class="w-5 h-5" />
-          </button>
-
-          <!-- v4 gutter row 3, col 2: RNG (ComposerGutterTools :132-139). Its
-               rolls land as pending chips above the box, not as messages. -->
-          <qt-rng-dropdown
-            [chatId]="chatId()"
-            [disabled]="disabled()"
-            (pendingResult)="pendingToolResult.emit($event)"
-          />
-
-          <!-- v4 gutter row 4, col 1: Pascal's custom tools — opens a dialog
-               (bespoke here: the button gates its own visibility on the roster
-               rather than on a chat-payload flag). -->
-          <qt-custom-tools-popup
-            [chatId]="chatId()"
-            [disabled]="disabled()"
-            (ran)="customToolRan.emit()"
-          />
-
-          @if (!documentActive()) {
-            <button
-              type="button"
-              class="qt-chat-toolbar-button"
-              title="Open document"
-              aria-label="Open document"
-              (click)="openDocument.emit()"
-            >
-              <qt-icon name="book" class="w-5 h-5" />
-            </button>
-          }
-
-          @if (!terminalActive()) {
-            <button
-              type="button"
-              class="qt-chat-toolbar-button"
-              title="Open terminal"
-              aria-label="Open terminal"
-              (click)="openTerminal.emit()"
-            >
-              <qt-icon name="code" class="w-5 h-5" />
-            </button>
-          }
-
-          <button
-            type="button"
-            class="qt-chat-toolbar-button qt-chat-continue-button"
-            title="Continue — let the next character respond"
-            aria-label="Continue"
-            [disabled]="disabled() || busy() || !hasActiveCharacters()"
-            (click)="continue.emit()"
-          >
-            <qt-icon name="arrow-right" class="w-5 h-5" />
-          </button>
-
-          @if (busy()) {
-            <button
-              type="button"
-              class="qt-chat-composer-send qt-chat-stop-button"
-              title="Stop generating"
-              aria-label="Stop generating"
-              (click)="stop.emit()"
-            >
-              <qt-icon name="stop" class="w-5 h-5" />
-            </button>
-          } @else {
-            <button
-              type="submit"
-              class="qt-chat-composer-send"
-              [title]="sendTitle()"
-              aria-label="Send message"
-              [disabled]="!canSend()"
-            >
-              <qt-icon name="send" class="w-5 h-5" />
-            </button>
-          }
-        </div>
       </form>
      </div>
     </div>

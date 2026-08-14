@@ -293,11 +293,14 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
 
   it('orders the gutter group by v4’s grid fill order', () => {
     // v4 `ComposerGutterTools.tsx:36-46` fills a two-column grid left to right:
-    // announcement, mail / library-file, camera / paperclip, RNG / wand — six
-    // tools, all six now present (library file landed in P4.9E4B, the last empty
-    // slot), flattened into v5's single row in v4's relative order.
+    // announcement, mail / library-file, camera / paperclip, RNG / wand. P4.9L
+    // restored that grid (v5 had flattened it into one long row, which is what
+    // squeezed the editor in dogfood #75), so the order is now read off the
+    // grid itself.
     const fixture = render();
-    const labels = [...fixture.nativeElement.querySelectorAll('.qt-chat-composer-actions button')]
+    const labels = [
+      ...fixture.nativeElement.querySelectorAll('.qt-composer-gutter-tools button'),
+    ]
       .map((b) => (b as HTMLElement).getAttribute('aria-label'))
       .filter((l): l is string =>
         [
@@ -305,7 +308,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
           'Post a letter',
           'Attach file from library',
           'Generate image',
-          'Attach a file',
+          'Attach file',
         ].includes(l ?? ''),
       );
     expect(labels).toEqual([
@@ -313,7 +316,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
       'Post a letter',
       'Attach file from library',
       'Generate image',
-      'Attach a file',
+      'Attach file',
     ]);
   });
 

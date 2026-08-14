@@ -188,6 +188,49 @@ test.describe('Composer character insertion (P4.D75)', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
+  test('the composer toolbar’s pickers insert into the message box (p4.9l)', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    // The pickers' composer entrance — deferred by name since the P4.D75 round,
+    // because until p4.9l the composer had no toolbar to hang them on.
+    const modeToggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    await modeToggle.click();
+    await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
+
+    const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
+    await expect(toolbar).toBeVisible();
+
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('Well ');
+
+    await toolbar.getByRole('button', { name: 'Insert emoji' }).click();
+    const emojiSearch = page.getByRole('textbox', { name: 'Search emoji by name' });
+    await expect(emojiSearch).toBeVisible({ timeout: 15_000 });
+    await emojiSearch.fill('tada');
+    const emojiCell = page.locator('.qt-emoji-picker-cell').first();
+    await expect(emojiCell).toHaveAttribute('aria-label', 'party popper');
+    await emojiCell.click();
+    await expect(editor).toContainText('Well 🎉');
+
+    await toolbar.getByRole('button', { name: 'Insert a symbol' }).click();
+    const symbolSearch = page.getByRole('textbox', {
+      name: 'Search Unicode characters by name',
+    });
+    await expect(symbolSearch).toBeVisible({ timeout: 15_000 });
+    await symbolSearch.fill('rightarrow');
+    const symbolCell = page.locator('.qt-emoji-picker-cell').first();
+    await expect(symbolCell).toBeVisible();
+    await symbolCell.click();
+    await expect(editor).toContainText('→');
+
+    await modeToggle.click();
+    await expect(modeToggle).toHaveAttribute('aria-pressed', 'false');
+    await blankComposer(page);
+  });
+
   test('the arrows move the highlight with the pointer resting on the menu (dogfood #85)', async ({
     page,
   }) => {
