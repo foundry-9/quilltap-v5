@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Added the `help_doc_chunks` table — the storage for section-level help search.
+Fresh instances get it from the re-dumped schema; existing instances get it on
+the next boot. Nothing reads or writes it yet; the slicing, embedding, and
+search follow.
+
 Planned the next porting round against the new v4 baseline `24633026`
 (section-level help embeddings and Guide content search). Wrote three new
 work orders — the P4.D77 help-doc-chunks drift catch-up (server), the

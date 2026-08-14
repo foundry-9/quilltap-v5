@@ -66,6 +66,8 @@ pub mod folders;
 pub mod group_character_members;
 pub mod group_doc_mount_links;
 pub mod groups;
+pub mod help_doc_chunks;
+pub mod help_doc_chunks_repair;
 pub mod help_docs;
 pub mod help_search;
 pub mod image_profiles;

@@ -67927,3 +67927,105 @@ the P4.D49 budget/attribution proofs, and the orphan-reaper's boot heal.
 build` clean; **full Playwright 215 passed / 0 failed / 0 skipped** (213 →
 215 with the two new beats), each new beat proven RED against the pre-fix
 build before it was accepted. No crate source touched — SPA 0.5.481.
+
+---
+
+## P4.D77 unit 1 — the D23 re-dump + the `help_doc_chunks` substrate (v4 `24633026`)
+
+**The lane's first commit: the table, the repository, and the boot ensure.**
+Nothing reads or writes chunks yet — the slicing, the sync, the embedding job,
+the riders and the search follow in units 2–6.
+
+### The D23 re-dump, and a premise of the order REFUTED
+
+Re-dumped `provisioning/fresh_schema.json` from v4's LIVE `generateDDL` at the
+pin (`harness/oracle/provision/dump-fresh-schema.ts`). The delta is exactly two
+statements, both new:
+
+```
++ CREATE TABLE "help_doc_chunks" ( "id" TEXT PRIMARY KEY NOT NULL, "docId" TEXT
+    NOT NULL, "chunkIndex" REAL NOT NULL, "heading" TEXT, "content" TEXT NOT
+    NULL, "embedding" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL )
++ CREATE INDEX "idx_help_doc_chunks_createdAt" ON "help_doc_chunks" ("createdAt" DESC)
+```
+
+**The order predicted these would "agree" with the migration script's DDL. They
+do not, and that is correct.** v4's migration
+(`migrations/scripts/create-help-doc-chunks-table.ts`) writes `chunkIndex
+INTEGER`, `embedding BLOB`, `UNIQUE("docId","chunkIndex")`, a `FOREIGN KEY …  ON
+DELETE CASCADE`, and `idx_help_doc_chunks_docId`. `generateDDL` derives its
+types from the Zod schema (`z.number()` → REAL, the embedding union → TEXT) and
+mints only a `createdAt` index — which is precisely what it already does for
+`help_docs` and `conversation_chunks`, the two tables this one mirrors. The
+dump script's own header states the asymmetry ("a long-lived v4 instance's
+schema is the hand-written base + ~170 ALTER migrations, which has the SAME
+column set but a different column ORDER and DDL text"), and SQLite's affinity
+rules make both shapes hold the same values: an integer stored in a REAL-affinity
+column and a BLOB stored in a TEXT-affinity column both round-trip unchanged.
+
+So v5 carries **both shapes, deliberately**, exactly as v4 does — which one an
+instance has depends only on how it was born:
+
+| born as | shape | how |
+|---|---|---|
+| fresh instance | `generateDDL` | `fresh_schema.json` (D23) |
+| existing instance | migration | the boot ensure below |
+
+`schema-key-order.json` was regenerated with its shipped generator
+(`dump-export-key-order.ts`) and came back **byte-identical** — help docs are
+not among the fifteen export types, as the order predicted. Not committed.
+
+**Proof:** `provisioning_equivalence` regenerated fresh at `24633026` and run —
+3/3 green, including leg 1 (v5's `sqlite_master` vs v4's LIVE generateDDL
+schema, the tripwire that exists to catch exactly this drift) and both
+cross-compat legs.
+
+### `db/help_doc_chunks.rs` — the repository (v4 `help-doc-chunks.repository.ts`, 197 l)
+
+All ten methods: `create` / `update` / `delete`, `find_by_doc_id` (chunkIndex
+order), `delete_by_doc_id`, `replace_for_doc`, `update_embedding`,
+`find_all_with_embeddings`, `clear_all_embeddings`, `delete_orphaned`, `count`.
+v4's why-comments carried. Blob handling is `help_docs`' exactly (`None`/empty →
+SQL NULL, else the quantized codec); `clear_all_embeddings` is unconditional for
+the reason `help_docs::clear_all_embeddings` documents (v4's `updateMany({}, …)`
+touches every row, so an `IS NOT NULL` guard would both under-count and skip the
+`updatedAt` bump).
+
+**Three v4 lines with NO v5 analog — recorded, not deferred:**
+`manager.ts`'s `registerBlobColumns('help_doc_chunks', ['embedding'])`,
+`repositories/index.ts` (+4), and `child/child-repositories-proxy.ts` (+5). All
+three are Node document-mapper / forked-child-writer machinery. This is the same
+finding `db/help_docs.rs`'s header already records at length — v5 has no runtime
+blob registry to forget to populate (every write calls `float32_to_blob` at the
+binding site), no repository container, and no forked child writer. **Adding a
+registration mechanism in order to have something to register would import v4's
+bug and then patch it.** `prettify.ts`'s migration label ("Slipping bookmarks
+between the chapters of the help library") is likewise NO-PORT — v5 surfaces no
+migration labels anywhere (the `231be14c` precedent).
+
+### `db/help_doc_chunks_repair.rs` — the boot ensure
+
+v4's migration DDL **byte for byte**, as `CREATE TABLE IF NOT EXISTS` + the
+index, wired at the established boot-repair site
+(`quilltap-host::host::seed_built_ins`, beside the P4.D63 archive columns and
+the P4.D73 composer columns). An existing instance therefore ends up with
+exactly the table v4's own migration would have given it.
+
+⚠ **The cascade is not available everywhere, and nothing may depend on it.** A
+fresh-provisioned instance's table carries no foreign key at all, and a
+read-only open never enables `foreign_keys`. v4 ships `deleteByDocId` at every
+prune site *and* `deleteOrphaned` as the sweep for exactly this reason — both
+ported, neither relied on alone (the P4.D41 cascade lesson, applied before it
+could bite).
+
+### Unit tests (7, all mutation-checked against the migration shape)
+
+`replace_for_doc` discards old rows *and their embeddings* (the delete-then-
+insert contract — a diff-by-index port would fail this); `delete_by_doc_id` is
+doc-scoped while `clear_all_embeddings` is not; `delete_orphaned` removes only
+parentless chunks and treats an empty live set as "everything is orphaned";
+`update` patches text only and leaves the vector; missing rows report `false`;
+and the FK cascade genuinely fires on the migration shape. The repair module's
+own two: the created table carries the constraints the `generateDDL` shape does
+NOT (so a port that used the wrong DDL fails), and an existing fresh-shaped
+table is left untouched.

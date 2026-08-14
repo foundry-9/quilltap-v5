@@ -890,6 +890,18 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
             )?;
             // === end P4.D73 ===
+            // === P4.D77 (v4 `24633026`, migration
+            // `create-help-doc-chunks-table-v1`) ===
+            // The `help_doc_chunks` table itself, re-homed from v4's migration
+            // runner for the same reason as the repairs above. An upgraded
+            // instance matches every help-doc content hash, so the sync would
+            // never slice it and section search would silently never engage —
+            // the backfill in `ensure_help_docs_synced` handles that, but it
+            // needs a table to count. Fresh instances already carry the
+            // `generateDDL` shape (the D23 re-dump); this gives an existing one
+            // the MIGRATION shape, exactly as v4's own migration would.
+            quilltap_core::db::help_doc_chunks_repair::ensure_help_doc_chunks_table(main)?;
+            // === end P4.D77 ===
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
             // chats the Scriptorium pipeline left half-finished — arm (A) real
