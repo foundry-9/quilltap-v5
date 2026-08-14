@@ -68333,3 +68333,101 @@ copy deltas under the P4.D73 precedent.
 
 `schema-key-order.json` was regenerated and came back byte-identical — not
 committed.
+
+---
+
+## P4.D77 — LANE CLOSED (v4 `24633026`, the help-embeddings drift)
+
+**All Tier-1 and Tier-2 deliverables landed. Nothing deferred, nothing stubbed.**
+Six commits; the server half of v4's section-level help search is live end to
+end, and the Guide-client half is banked verbatim for `p4.9i2` (its own,
+unported vertical) exactly as the order scopes it.
+
+### Drift check at lane start
+
+v4 clean, on `main`, HEAD = `24633026` = the baseline; `git log 24633026..main`
+EMPTY. The bugfix branch measured by `git diff main bugfix -- lib/ app/
+packages/`: every `+` line is the PRE-drift form of a line this commit changed,
+plus one `packages/quilltap/package.json` version marker — bugfix carries
+nothing unreleased beyond main, as the order predicted. Every oracle was
+regenerated from that verified-clean checkout; no pinned worktree was needed.
+
+### ⚠ v4's working tree went DIRTY mid-lane — for the unifier
+
+At lane start the checkout was clean, on `main`, at the baseline. By the lane's
+end `git status` shows twelve modified/untracked files: a new **Ollama
+"Enable Thinking" plugin feature** (`plugins/dist/qtap-plugin-ollama/**` incl. a
+new `think-parser.ts`, its unit suite, the provider-options snapshot,
+`help/connection-profiles.md`, and a `docs/CHANGELOG.md` entry) that the human
+is evidently building in place.
+
+**HEAD has NOT moved** (still `24633026`, still `main`), and
+`git status --porcelain -- lib/ app/ packages/` is **EMPTY** — the dirt does not
+touch the ported surface at all, and no oracle in this lane reads a plugin file.
+So this lane's regenerations are unaffected and its baseline claim stands.
+
+**But the unifier must not regenerate against that tree without checking.** If
+the dirt has spread into `lib/`/`app/` by then, pin a detached worktree at
+`24633026` (`oracle-regen-pinned-v4-worktree`). Note also that the Ollama
+feature is a v4 drift ALREADY IN FLIGHT — expect it as the next round's catch-up
+the moment it is committed.
+
+### The two order premises that measurement refuted
+
+1. **"The re-dump should agree with the migration DDL."** It does not, and
+   should not — `generateDDL` derives its types from the Zod schema while the
+   migration writes hand-tuned SQL, exactly as they already differ for
+   `help_docs` and `conversation_chunks`. v5 now carries BOTH shapes, as v4
+   does, and which one an instance has depends only on how it was born.
+2. **"Locate v5's `repair-text-embeddings` counterpart via
+   `cold_chunk_reembed_tier2_equivalence`."** That family is the Scriptorium's
+   cold-chunk re-embed enqueue (P4.d3), unrelated. There is no counterpart at
+   all: P4.d6 refused `repair-text-embeddings.ts` as **INAPPLICABLE, not
+   deferred**, because v5 cannot mint the TEXT embedding shape it repairs. The
+   chunk leg of that repair is therefore a NO-PORT riding an existing refusal.
+
+### What the mutation pass found that a green diff would not have
+
+Three separate cases where a differential was green and **measuring nothing**.
+All three are the same failure at heart — the arm existed, but nothing about
+the fixture or the harness made a wrong port *observable*:
+
+- **A canned-provider tier-3 cannot see extra work whose input it never
+  recorded.** The already-embedded-chunk skip looked proven; a port that
+  ignored the skip merely got a canned MISS, which that handler swallows, so
+  the dump agreed. Fixed by giving the skipped chunk a composed text the corpus
+  DOES record.
+- **A fail-fast arm placed last proves nothing.** The failing chunk had nothing
+  after it to skip. Moved first.
+- **A hand-maintained case list silently drops a case added to the oracle
+  alone.** The new limit-10 help-search case was never run on the Rust side, so
+  the dimension-guard mutation came back green. The list now asserts coverage
+  against the oracle's own labels.
+
+A fourth, smaller one: `search-tools`' help-doc vectors were all parallel to the
+query vector, so every document scored 1.0 and the ranking was insertion order —
+which would have hidden the section-lifted document below the limit-3 cut.
+
+### The one real defect the differentials caught in the port
+
+`HelpDocChunkRow.chunk_index` was `i64`. A fresh-provisioned instance's column
+is `generateDDL`'s `REAL`, and **SQLite's REAL affinity forces a bound integer
+into floating-point representation**, so the stored cell is a Real and every
+chunk read on a real fresh instance would have thrown `InvalidColumnType`. Now
+`f64` — the one type that serves both DDL shapes.
+
+### 💸 Live proofs owed to the next dogfood pass
+
+Everything here is proven against v4's real code over synthetic fixtures. What
+only a real instance can show:
+
+1. **The upgrade backfill on the Friday copy** — v4 measured 588 chunks across
+   120 documents; v5's backfill runs on the first boot after the table appears.
+   ⚠ It is reachable only once `ensure_help_docs_synced` is WIRED, which remains
+   the standing `p4.9i2` host seam — the sync still has no production caller.
+   The boot ensure DOES run today, so a real instance gains the (empty) table
+   now and fills it when that wiring lands.
+2. **A real `help_search` turn** answering from a section rather than a
+   preamble, with real embeddings from a real profile.
+3. **The reindex/reapply riders over a real corpus** (the chunk clear and the
+   fifth reapply table at real scale).

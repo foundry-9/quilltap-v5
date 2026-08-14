@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Recorded, in the code, why the section backfill's slicing loop is a single
+transaction where v4's is not: a failure part-way through rolls the whole pass
+back here and the next boot retries it, where v4 keeps what it wrote and waits
+for a reindex. Comments only.
+
 Pinned the rule that section embeddings keep no bookkeeping of their own: the
 dimension reconcile and the embedding-status rows count help documents, never
 sections. Tests only.

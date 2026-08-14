@@ -29,6 +29,15 @@
 //! The `ensureHelpDocsSynced` module-promise concurrency guard does not port
 //! (the single-writer runtime already serializes callers).
 //!
+//! ## Section chunks (P4.D77, v4 `24633026`)
+//!
+//! Each created/updated doc is re-sliced wholesale into `help_doc_chunks`
+//! ([`crate::services::help_doc_chunking`]), a pruned doc's chunks are deleted
+//! explicitly, and [`ensure_help_docs_synced`]'s early-return branch runs
+//! [`backfill_help_doc_chunks`] — the upgrade path, and the only way an existing
+//! instance ever gets sections, since it matches every content hash and so is
+//! never re-sliced above.
+//!
 //! ## Not wired at startup (a standing deferral, named)
 //!
 //! [`ensure_help_docs_synced`] has **no production caller** — v4 reaches it from
@@ -447,6 +456,23 @@ pub async fn ensure_help_docs_synced(
 ///
 /// Whole thing best-effort: a failure warns and never blocks help from loading,
 /// since whole-document search still works. That is why this returns `()`.
+///
+/// ## One recorded divergence: the slicing loop is ONE transaction
+///
+/// v4 awaits `replaceForDoc` per document with no transaction around the loop,
+/// so a failure part-way through **keeps the documents already written** and
+/// stops; the count gate then short-circuits every later boot, and v4's own
+/// comment names the consequence — "a half-finished backfill is healed by the
+/// next full reindex". v5's writer wraps the closure in a transaction, so the
+/// same failure rolls the whole pass back, leaves the table empty, and the NEXT
+/// boot simply retries the backfill.
+///
+/// Deliberate, and noted rather than engineered around: matching v4 would mean
+/// one writer transaction per document (≈120 on a real instance) to reproduce a
+/// state that is strictly worse and that v4 itself only tolerates. No corpus arm
+/// can reach it — a `replace_for_doc` failure means the table is broken, and
+/// then the `count()` above has already failed. If a ruling ever wants v4's
+/// exact partial-write shape, the change is per-doc `db.write` calls here.
 async fn backfill_help_doc_chunks(db: &Db, existing: &[crate::db::help_docs::HelpDocRow]) {
     let outcome: Result<(), DbError> = async {
         // One count, not a scan (v4's *why*): chunk rows carry embedding BLOBs,
