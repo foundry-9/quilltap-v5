@@ -65752,3 +65752,69 @@ shadowing item keeping the earlier mount's POSITION (v4's insertion-ordered
 precedence claim is deliberately NOT re-asserted here — it is proven live by
 the `wardrobe_tools` and `outfit_llm_choose` families against v4's real code,
 which is stronger than a mock.
+
+### P4.D71 lane close — the gate, and a drift that landed mid-lane
+
+**⚠ v4 MOVED during this lane, and the move is PROVABLY INERT for every oracle
+here.** At lane start `main` was `48396682` (the order's baseline, verified
+clean, with `bugfix` HEAD at the 4.8.3 branch-start). At lane close `main` is
+**`11553944`** ("merge: 4.8.4 back into main", + `8736d704` "release: 4.8.4"),
+and `bugfix` HEAD is `3a76b17d` ("bugfix: started 4.8.4 bug branch" — nothing
+past it).
+
+The release changed FIVE files, none of them imported by any oracle case:
+two composer-typeahead unit tests, a Lexical test helper, `docs/CHANGELOG.md`,
+and `docs/releases/4.8.4.md`. Measured mechanically, not by eye:
+
+```
+git diff --quiet 48396682 main -- lib/ app/ packages/ components/ help/   # → identical
+```
+
+So every oracle in this lane imports byte-identical v4 code at both commits and
+none needed re-pinning. **The two changed test files belong to P4.D75's surface**
+(the `\` / `:` composer typeahead) — that lane should re-check, and the round's
+baseline move should be to `11553944` rather than `48396682` if the unifier
+wants the pin to name v4's actual HEAD.
+
+**Gate at lane close:**
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -D warnings` clean, BOTH feature sets
+  (plain, and `--features quilltap-core/native-transport`).
+- `cargo test --workspace` with the lane's env block: **428 test binaries /
+  2,049 passed / 0 failed, zero SKIP**.
+- `cargo build --release --workspace` clean.
+- The lane's differentials re-run BY NAME with `--nocapture`, zero SKIP, over
+  oracles marker-grepped for this lane's own group-tier content:
+  `dissolve_bundles` (39 shape / 14 dissolve / 7 lay / 19 wear / 13 snapshot),
+  `wardrobe_tools` (31 ops + read-back), `wardrobe_tier2`,
+  `wardrobe_public_read` (5 cases), `chats_outfits_tier2`,
+  `outfit_llm_choose_tier3`, `wardrobe_transfers_tier2` (8 scenarios × 7
+  tables), `wardrobe_routes` (80 checks / 71 cases / 79 rows), and the
+  `characters_wardrobe_route` live wire test.
+
+**Versions:** core 0.0.534, harness 0.0.457, web 0.0.71.
+
+**Deferred loudly (nothing stubbed, nothing silently skipped):**
+
+1. **`to_outfit_preview_slots` is threaded but not differential-covered.** v4's
+   `apply-outfit-selections.tiers.test.ts` asserts the tiers reach "the pool
+   fetch AND the preview resolve"; the pool half is proven live (unit 5), the
+   preview half is not, because the preview goes to the creation-progress
+   emitter rather than to any persisted state the tier-2 dump can see. The code
+   is threaded identically to its sibling; what is missing is a witness.
+2. **`apps/web/**` is untouched by design** — the SPA half of the shared
+   contract is P4.D72's. The server accepts `scope` with `#[serde(default)]`,
+   so the current client is unaffected until that lane lands.
+3. **The `docs/v4/developer/API.md` mirror is broadly stale** (253 diff lines of
+   other rounds' content). Only `8600c83f`'s delta was applied.
+4. **Three v4 help docs** (`groups.md`, `project-wardrobe.md`, `wardrobe.md`)
+   changed in `8600c83f`: runtime-synced content, no v5 action — noted to the
+   `p4.9i2` bank rather than ported.
+5. **`scene-state-tracking`** — v4 threaded it; v5 has no such job handler (it
+   sits on the runner's loud fallback), so there was nothing to thread.
+
+**Gotcha worth a memory note:** the sweep driver is **not safe to run twice
+concurrently** — two sweeps share the same `/tmp` oracle paths and the same
+committed fixture DBs, and race into three spurious reds that vanish when the
+families are re-run serially.
