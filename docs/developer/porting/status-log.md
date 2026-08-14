@@ -67263,3 +67263,67 @@ constructor is a trap in zoneless Angular, because *where it is first
 injected* decides whether the write is legal — and unit specs, which
 inject it directly or create the component as a root, cannot see the
 difference.
+
+### Lane record — P4.D74 (the 4.8.2 smart-typography + renderer drift, SPA)
+
+**CLOSED.** Every Tier-1 and Tier-2 deliverable landed; no Tier-3
+deferrals were needed and none were taken.
+
+Eight commits on `claude/smart-typography-renderer-spa-cc4556`, in order:
+the engine twin + corpus (1), bug 62 + the katex pin + the recapture (2),
+Part A (3), bug 63's shared guard (4), Part B (5), the settings card (6),
+the live walk + the docs mirror (7), and the NG0600 fix the walk caught
+(8). Each has its own record above.
+
+**Gate (all after the unit-8 fix):**
+
+- `ng test` — **304 files / 4,283 tests / 0 failed** (up from 298 / 4,138
+  at `main`: the lane adds the engine corpus replay, the typography
+  suppression table, the settings-service seam, the plugin suite, the
+  code-context guard, the card, and the widened tab pin).
+- `ng build` — clean.
+- `npm install` real, then `npm ls katex remark-smartypants` — `katex@0.18.4`
+  top-level with `katex@0.16.47` nested under BOTH `rehype-katex@7.0.1` and
+  `micromark-extension-math@3.1.0`, matching v4's tree at the pin, plus
+  `remark-smartypants@3.0.3` (v4's resolved version).
+- **Full Playwright — 206 passed / 0 failed / 1 skipped (4.8 m)**, the one
+  skip being this lane's ACTIVATE-AT-UNIFY beat. The suite grew 202 → 207
+  with the four live smart-typography beats.
+- `cargo fmt --all --check` clean. **No cargo test/clippy run, and none is
+  owed: the lane changes ZERO Rust** (`git diff main..HEAD -- crates/
+  Cargo.toml Cargo.lock` is empty), and the order's own verification gate
+  lists the SPA gate only. The release binaries were built solely to run
+  Playwright, and `target/` is removed.
+
+**For the unifier:**
+
+- `SMART_TYPOGRAPHY_COLUMN_LANDED` in
+  `apps/web/e2e/smart-typography-flow.spec.ts` → flip to `true` once
+  P4.D73's `smartTypographySettings` column is in. That beat is the only
+  gated thing in the lane.
+- The §Editor meeting points were honoured: `code-context.ts` is
+  byte-identical to the order's pinned block (P4.D75 creates the same
+  file), and `buildPlugins()` grew exactly one entry —
+  `smartTypographyPlugin` between `dialectInputRules` and
+  `textReplacementPlugin`, leaving room for P4.D75's two char-typeahead
+  plugins ahead of it in the pinned order.
+- `chat-tab.ts` is this lane's, and now mounts 21 cards; P4.D75's two
+  Composer toggles still mount AT-UNIFY inside the existing Composer card.
+  The order pin asserts 21 by count AND asserts the Smart Typography card
+  has a BODY, which no card previously did (see unit 6).
+- `chat-settings.types.ts` gained `SmartTypographySettings` +
+  `DEFAULT_SMART_TYPOGRAPHY_SETTINGS` (additive, v4's `types.ts` shapes).
+
+**Fixtures touched:** `markdown-fixtures.json` (recaptured twice: 51 → 51
+for bug 62, then 51 → 67 for Part A) and the new byte-copied
+`smart-typography/fixtures/typography-vectors.json`. No other family's
+oracle reads either file, so nothing else is invalidated.
+
+**Regen recipe** (unchanged from the file's own header, restated for the
+round record) — from a CLEAN v4 checkout at the pin:
+
+```
+cd ~/source/quilltap-server && git branch --show-current   # must be main @ 48396682
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH QT_V4_ROOT=$PWD \
+  ./node_modules/.bin/tsx <v5>/apps/web/tooling/capture-markdown-fixtures.mts
+```

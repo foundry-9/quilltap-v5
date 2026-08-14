@@ -230,6 +230,12 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Closed P4.D74 (the 4.8.2 smart-typography + renderer drift, SPA): the
+rule engine, render-time quote curling, type-time dashes and ellipsis,
+bugs 62 and 63, the katex pin, the settings card, and a live Playwright
+walk. Gate: ng test 304 files / 4,283 tests, ng build clean, full
+Playwright 206 passed / 1 gated skip.
+
 Fixed a render-breaking regression in the smart-typography settings
 service (P4.D74 unit 8): it wrote its signals while being constructed,
 which in a zoneless app happens inside the parent template's reactive
