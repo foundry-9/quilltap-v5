@@ -327,9 +327,14 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
   describe('copy feedback (inline status; v5 has no toast — chat-section §2)', () => {
     it('surfaces v4\'s "Request copied to clipboard" copy on the status line', async () => {
       const writes: string[] = [];
-      // jsdom has no clipboard; install a stub.
+      // jsdom has no clipboard; install a stub. `writable` matters: specs share
+      // a worker environment, and a defineProperty default of writable:false
+      // left the next spec to touch `navigator.clipboard` throwing
+      // "Cannot assign to read only property" — an ordering-dependent break
+      // that surfaces only when vitest happens to shard the two files together.
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
+        writable: true,
         value: { writeText: (t: string) => (writes.push(t), Promise.resolve()) },
       });
       const fixture = render({ message: msg({ content: toolContent({ prompt: 'roll' }) }) });

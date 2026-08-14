@@ -3121,6 +3121,13 @@ export interface TurnActionDto {
 /** The one-time setup response — `data.pepper` is shown once, then never again. */
 export interface SetupDto {
   pepper: string;
+  /**
+   * The key and the instance were written, but the databases would not open —
+   * a restart is needed before Quilltap can serve (v4 bug 64). The pepper is
+   * still here: it is displayed exactly once, so it is never withheld behind an
+   * error.
+   */
+  requiresRestart: boolean;
   message: string;
 }
 

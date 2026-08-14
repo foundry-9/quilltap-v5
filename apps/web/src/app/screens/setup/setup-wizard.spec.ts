@@ -49,7 +49,7 @@ describe('SetupWizard', () => {
   it('dispatches setup and reveals the pepper once with the one-time warning', async () => {
     const dispatch = vi.fn(async (): Promise<CoreResponse> => ({
       type: 'setup',
-      data: { pepper: 'PEPPER-SHOWN-ONCE', message: 'Encryption key generated and stored. Save this value — it will not be displayed again.' },
+      data: { pepper: 'PEPPER-SHOWN-ONCE', requiresRestart: false, message: 'Encryption key generated and stored. Save this value — it will not be displayed again.' },
     }));
     const fixture = await render(stubClient(dispatch));
 
@@ -64,6 +64,32 @@ describe('SetupWizard', () => {
     expect(text).toContain('PEPPER-SHOWN-ONCE');
     expect(text).toContain('ENCRYPTION_MASTER_PEPPER');
     expect(text).toContain('Continue to Quilltap');
+    // The happy path says nothing about restarting.
+    expect(text).not.toContain('One last formality');
+  });
+
+  // P4.46 / v4 bug 64: setup wrote the key and the instance, but the databases
+  // would not reopen. The pepper reveal STILL happens (it is displayed exactly
+  // once, so it is never withheld behind an error) — with the restart notice
+  // beside it and v4's "Continue Anyway" label on the button.
+  it('reveals the pepper WITH the restart notice when requiresRestart is set', async () => {
+    const fixture = await render(
+      stubClient(async () => ({
+        type: 'setup',
+        data: { pepper: 'PEPPER-SHOWN-ONCE', requiresRestart: true, message: 'm' },
+      })),
+    );
+
+    clickButton(fixture, 'Set Up without Passphrase');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('PEPPER-SHOWN-ONCE');
+    expect(text).toContain('One last formality: please restart Quilltap.');
+    expect(text).toContain('the strongroom door');
+    expect(text).toContain('Continue Anyway');
+    expect(text).not.toContain('Continue to Quilltap');
   });
 
   it('validates a passphrase mismatch before dispatching', async () => {
@@ -100,7 +126,7 @@ describe('SetupWizard', () => {
 
   it('emits complete when the user continues from the pepper reveal', async () => {
     const fixture = await render(
-      stubClient(async () => ({ type: 'setup', data: { pepper: 'P', message: 'm' } })),
+      stubClient(async () => ({ type: 'setup', data: { pepper: 'P', requiresRestart: false, message: 'm' } })),
     );
     const completed = vi.fn();
     fixture.componentInstance.complete.subscribe(completed);

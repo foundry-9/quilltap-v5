@@ -66136,3 +66136,89 @@ oracle baseline becomes `48396682` (as the orders say) or `11553944`. The two
 are lib-identical, so it is a bookkeeping choice — but if any lane still needs
 to regen after this point, pin a detached worktree at `48396682` rather than
 using the checkout, per the standing rule.
+
+---
+
+## P4.46 unit 1 — lock before any partition open (boot / unlock / setup) + the setup hardening (2026-08-13)
+
+**Lane:** `claude/boot-lock-order-hardening-8873d7`. Baseline `48396682`
+(drift-checked at lane start: v4 `main` HEAD **is** the baseline, tree clean,
+`bugfix` content fully merged into main — `git diff main bugfix -- lib/ app/
+packages/` empty).
+
+**The defect, as shipped.** Acquisition sat at the head of
+`HostAssembler::assemble` — i.e. AFTER `Db::open` had opened all three
+partitions writable, and on first-run setup after `save_dbkey` +
+`provision_fresh_instance`'s three writable opens, whole DDL replay and
+baseline seed. v4 locks inside `connect()` ahead of `new Database`.
+
+**The reshape.** A new `EngineAssembler::pre_open(data_dir)` seam (default
+no-op, so `NoopAssembler` and the test assemblers are unaffected) is called by
+`open_ready` before the main-DB existence probe and before any open, and by the
+`Setup` arm before it mints anything. `HostAssembler::pre_open` holds the
+acquisition; `assemble` just recomputes the lock path for `HostShutdown`.
+Re-entrant per PID is what makes setup's double claim (guard → provisioning →
+`open_ready`) legal. A conflict still surfaces as `BootError::Assemble` /
+`ErrorKind::Internal` — the same refusal class as before, so the P4.2
+startup-status surface is untouched. Release stays exactly at shutdown;
+heartbeat and `on_lock_lost` unchanged.
+
+**The contended proof** (`crates/quilltap-host/tests/host_lock_ordering.rs`, 4
+tests, the REAL lock): plant a lock held by PID 1 (alive on every Unix, never
+us; `kill(1,0)` → EPERM → alive, exactly as v4 judges it) under our own
+hostname, then boot / unlock / setup.
+
+- **A measurement that changed the test design.** Byte comparison over an
+  already-TRUNCATE partition proves NOTHING: `journal_mode` is a runtime
+  property for every mode except WAL, so `Writer::open_writable`'s
+  `journal_mode = TRUNCATE` rewrites no bytes and no mtime. Two candidate
+  discriminators were measured and REJECTED (byte+mtime over the provisioned
+  files; the same with the partitions chmod-0444 — SQLite opens read-only and
+  the pragma does not complain). The one that works is parking the partitions
+  in **WAL** first: WAL is the mode SQLite persists in the header, so leaving it
+  forces a checkpoint + header rewrite. That is the honest miniature of bug 58's
+  Ignite scenario.
+- **Mutation check (run):** with acquisition put back at the head of `assemble`
+  and the `Setup` arm's `pre_open` dropped, all three contended tests go red —
+  boot and unlock on "a refused boot/unlock wrote bytes", setup on a `Setup`
+  response (minted pepper, `.dbkey` and three partitions on disk) where a
+  refusal belongs. The four core-side tests go red too (`RefusingPreOpen`
+  panics if `assemble` is reached at all).
+- The happy control pins that an uncontended boot claims the lock naming THIS
+  pid and that `Lock` releases it.
+
+**Setup hardening (deliverables 3+4).**
+
+- `SetupResultDto` gains `requiresRestart: bool` in v4's key order
+  (`{pepper, requiresRestart, message}`). A late `open_ready` failure now
+  returns the pepper WITH the flag instead of a bare `Internal` — v4 bug 64's
+  explicit contract (displayed exactly once, never withheld behind an error).
+  The engine deliberately stays `needs-setup` on that path: a restart re-reads
+  the `.dbkey` and boots properly, and a second `Setup` meanwhile hits the
+  guard rather than minting over the key. (`EngineState::Locked{Resolved}` was
+  considered and rejected — boot never produces it and `unlock`'s
+  `debug_assert_eq!` pins `NeedsPassphrase`.)
+- The destructive-retry guard: `provisioning::existing_instance_files` +
+  `ProvisionError::AlreadyProvisioned`. The `Setup` arm refuses with
+  `ErrorKind::Conflict`, naming the file(s) and the directory, BEFORE minting;
+  `provision_fresh_instance` enforces the same precondition for the three
+  partitions (excluding `quilltap.dbkey`, which its caller wrote moments
+  before). **Deliberate v5 hardening — no v4 analog** (v4's setup converts an
+  existing plaintext instance rather than creating one).
+- SPA rider: `setup-wizard.ts` renders v4's restart alert verbatim
+  (`app/setup/page.tsx:188-201`) and flips the button to "Continue Anyway";
+  spec extended with the requiresRestart arm and a negative on the happy path.
+
+**Ordering-dependent SPA suite break, fixed at the root (test-only, outside
+this lane's Ownership — flagged for the unifier).** Adding one spec shifted
+vitest's file sharding and turned up a latent break: `tool-message.spec.ts`
+installed `navigator.clipboard` via `defineProperty` without `writable: true`,
+so `courier-bubble.spec.ts`'s `Object.assign(navigator, {clipboard})` threw
+"Cannot assign to read only property" whenever the two landed in one worker (8
+failures in this worktree, green on main with the same lockfile and jsdom
+27.4.0 — pure sharding luck). One-line fix in `tool-message.spec.ts`.
+
+**Gate:** `cargo fmt --all --check`; clippy both feature sets;
+`cargo test --workspace` all binaries ok, zero failures; `ng test` 298 files /
+4,143 (was 4,142 + this lane's 1); `ng build` clean. Versions: core 0.0.532,
+host 0.0.67, SPA 0.5.455.

@@ -3463,10 +3463,17 @@ pub struct HealthDto {
 
 /// v4 `?action=setup` success body: the pepper is returned ONCE (the user must
 /// save it — it is never displayed again).
+///
+/// Key order is v4's `{pepper, requiresRestart, message}` (`unlock/route.ts`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupResultDto {
     pub pepper: String,
+    /// v4 bug-64's contract: setup finished writing the key and the instance,
+    /// but the databases would not (re)open, so the running process needs a
+    /// restart before it can serve. The pepper above is still returned — it is
+    /// displayed exactly once and is never withheld behind an error.
+    pub requires_restart: bool,
     pub message: String,
 }
 

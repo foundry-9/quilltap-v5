@@ -52,12 +52,24 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
               {{ copied() ? 'Copied!' : 'Copy' }}
             </button>
           </div>
+          @if (requiresRestart()) {
+            <div class="qt-alert qt-alert-warning space-y-2">
+              <p class="qt-text-small font-semibold">
+                One last formality: please restart Quilltap.
+              </p>
+              <p class="qt-text-xs qt-text-muted">
+                Your key is safely stored and your data is entirely intact — the strongroom door
+                simply refused to swing back open on the first ask. Stop Quilltap and start it
+                again, and the establishment will be in perfect working order.
+              </p>
+            </div>
+          }
           <button
             class="qt-button qt-button-primary w-full py-2"
             type="button"
             (click)="continueToApp()"
           >
-            Continue to Quilltap
+            {{ requiresRestart() ? 'Continue Anyway' : 'Continue to Quilltap' }}
           </button>
         </div>
       } @else if (mode() === 'needs-vault-storage') {
@@ -160,6 +172,12 @@ export class SetupWizard {
   protected readonly error = signal<string | null>(null);
   protected readonly loading = signal(false);
   protected readonly generatedPepper = signal<string | null>(null);
+  /**
+   * v4 bug 64 (`app/setup/page.tsx`): setup succeeded but the databases would
+   * not reopen. The pepper reveal still happens — it is the user's one chance
+   * to write the key down — with the restart notice beside it.
+   */
+  protected readonly requiresRestart = signal(false);
   protected readonly copied = signal(false);
 
   protected readonly submitLabel = computed(() => {
@@ -198,6 +216,7 @@ export class SetupWizard {
       const resp = await this.core.dispatch({ type: 'setup', passphrase: this.passphrase() });
       if (resp.type === 'setup') {
         this.generatedPepper.set(resp.data.pepper);
+        this.requiresRestart.set(Boolean(resp.data.requiresRestart));
         // A fresh instance has no connection profiles — route into the provider
         // wizard once the shell mounts (v4 `navigateAfterSetup`).
         this.firstRun.markSetupComplete();

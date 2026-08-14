@@ -397,6 +397,22 @@ impl EngineShutdown for HostShutdown {
 }
 
 impl EngineAssembler for HostAssembler {
+    /// The single-instance lock, taken BEFORE the engine opens (or creates) a
+    /// single partition — v4's ordering (`backend.ts` `connect()` locks ahead of
+    /// `new Database`), which v5 did not have until P4.46: acquisition used to
+    /// sit at the head of [`Self::assemble`], i.e. after three writable opens
+    /// and their `journal_mode = TRUNCATE` header writes, and after first-run
+    /// provisioning's whole DDL replay. A live conflict is a typed boot error
+    /// the engine surfaces as `BootError::Assemble` (the P4.2 startup-status
+    /// route carries it to the UI) — the same class as before the move.
+    ///
+    /// Re-entrant per PID (`lock::acquire_instance_lock`), which is what lets
+    /// `Setup` claim before provisioning and claim again through `open_ready`.
+    fn pre_open(&self, _data_dir: &std::path::Path) -> Result<(), String> {
+        let lock_path = lock::instance_lock_path(&self.base_dir);
+        lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())
+    }
+
     fn assemble(
         &self,
         db: &Db,
@@ -405,12 +421,9 @@ impl EngineAssembler for HostAssembler {
         data_dir: &std::path::Path,
         bus: &Arc<CreationProgressBus>,
     ) -> Result<EngineAssembly, String> {
-        // The single-instance lock (v4 acquires at backend init — here, when
-        // the databases open). A live conflict is a typed boot error the
-        // engine surfaces as `BootError::Assemble` (the P4.2 startup-status
-        // route carries it to the UI).
+        // The instance lock is already held — `pre_open` above took it before
+        // the engine opened anything (P4.46). `HostShutdown` releases it.
         let lock_path = lock::instance_lock_path(&self.base_dir);
-        lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())?;
 
         // Seed the built-in roleplay templates + provision-or-adopt the three
         // built-in mount stores (P4.4u3), on EVERY assemble/unlock — matching v4's

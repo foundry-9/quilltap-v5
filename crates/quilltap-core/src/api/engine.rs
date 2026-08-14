@@ -324,6 +324,31 @@ impl EngineAssembly {
 /// [`CreationProgressBus`] the driver's emitter publishes to and the transport
 /// replays from.
 pub trait EngineAssembler: Send + Sync {
+    /// Claim the instance BEFORE any partition file is opened (P4.46).
+    ///
+    /// v4 acquires its single-instance lock inside `connect()`, *ahead* of
+    /// `new Database(...)` — so a contended start never touches the files. v5's
+    /// lock lives host-side (the engine is transport-agnostic and knows nothing
+    /// about lock files), so the engine calls this hook at every entrance that
+    /// is about to open or create a partition: boot, unlock, and first-run
+    /// setup. Without it, a contended start performed three writable opens —
+    /// each issuing `PRAGMA journal_mode = TRUNCATE`, a header write — against
+    /// databases another process believes it holds exclusively, and only then
+    /// refused at assembly. That is the class v4's bug-58 fix closes.
+    ///
+    /// Implementations MUST be idempotent for the calling process: `Setup`
+    /// calls this once before provisioning and then reaches `open_ready`, which
+    /// calls it again. The host's lock is re-entrant per PID, so the second
+    /// call refreshes the claim rather than deadlocking on it.
+    ///
+    /// A refusal is surfaced as [`BootError::Assemble`] — the same class a
+    /// lock conflict raised when acquisition lived inside [`Self::assemble`].
+    /// The default is a no-op (test and read-only embedders claim nothing).
+    fn pre_open(&self, data_dir: &std::path::Path) -> Result<(), String> {
+        let _ = data_dir;
+        Ok(())
+    }
+
     fn assemble(
         &self,
         db: &Db,
@@ -5138,6 +5163,37 @@ impl CoreEngine {
                 ..
             } => {
                 let data_dir = self.inner.config.data_dir();
+                // P4.46, the destructive-retry guard. A `Setup` that failed late
+                // (say the open below) leaves the state `needs-setup` with the
+                // key file and the partitions ALREADY on disk. Minting again
+                // would overwrite `quilltap.dbkey` with a pepper that cannot
+                // open those partitions — the original is display-once and gone,
+                // so the instance would be bricked by a button press. Refuse
+                // instead, naming what is in the way. Deliberate v5 hardening:
+                // v4's setup converts an existing plaintext instance, so it has
+                // no analog arm.
+                let present = provisioning::existing_instance_files(&data_dir);
+                if !present.is_empty() {
+                    return Response::error(
+                        ErrorKind::Conflict,
+                        format!(
+                            "This instance is already set up — {} already exists in {}. \
+                             Refusing to mint a new encryption key over it (the existing key \
+                             would be lost and its databases unreadable). Restart Quilltap to \
+                             open the instance; if the first-run setup did not finish, move the \
+                             data directory aside and start again.",
+                            present.join(", "),
+                            data_dir.display()
+                        ),
+                    );
+                }
+                // Claim the instance BEFORE creating anything (P4.46). Setup's
+                // provisioning is three writable opens plus a whole DDL replay
+                // and the baseline seed — every byte of it used to land before
+                // any lock was taken.
+                if let Err(e) = self.inner.assembler.pre_open(&data_dir) {
+                    return Response::error(ErrorKind::Internal, e);
+                }
                 let pepper = match dbkey::generate_pepper() {
                     Ok(p) => p,
                     Err(e) => return Response::error(ErrorKind::Internal, e.to_string()),
@@ -5165,10 +5221,31 @@ impl CoreEngine {
                         *state = EngineState::Ready(ready);
                         Response::Setup(SetupResultDto {
                             pepper,
+                            requires_restart: false,
                             message: SETUP_MESSAGE.to_string(),
                         })
                     }
-                    Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                    // The key is written and the instance exists; only the
+                    // re-open failed. v4's bug-64 fix is explicit that the
+                    // response still carries the pepper — it is displayed
+                    // exactly once, so it is never withheld behind an error —
+                    // with `requiresRestart` telling the user the connection
+                    // needs a restart to come up. The engine deliberately stays
+                    // `needs-setup`: a restart re-reads the `.dbkey` and boots
+                    // properly, and a second `Setup` meanwhile hits the guard
+                    // above rather than minting over the key.
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            "setup wrote the key and provisioned, but the instance would not open \
+                             — returning the pepper with a restart notice"
+                        );
+                        Response::Setup(SetupResultDto {
+                            pepper,
+                            requires_restart: true,
+                            message: SETUP_MESSAGE.to_string(),
+                        })
+                    }
                 }
             }
             EngineState::Locked { .. } => Response::error(
@@ -5419,6 +5496,10 @@ impl QuilltapCore for CoreEngine {
 
 /// Open the instance's databases and run the host assembler. Main is
 /// required; the sibling partitions are opened when their files exist.
+///
+/// P4.46: the host's claim on the instance ([`EngineAssembler::pre_open`]) is
+/// taken FIRST — before the main-DB existence probe and before any open — so a
+/// contended boot/unlock refuses without a single byte written.
 fn open_ready(
     inner: &EngineInner,
     pepper: &str,
@@ -5426,6 +5507,10 @@ fn open_ready(
     has_user_passphrase: bool,
 ) -> Result<ReadyEngine, BootError> {
     let data = inner.config.data_dir();
+    inner
+        .assembler
+        .pre_open(&data)
+        .map_err(BootError::Assemble)?;
     let main = data.join("quilltap.db");
     if !main.exists() {
         return Err(BootError::MissingMainDb(main));
@@ -5546,6 +5631,58 @@ mod tests {
                 self.shutdowns.clone(),
             ))))
         }
+    }
+
+    /// P4.46: an assembler whose host claim REFUSES — the shape a live lock
+    /// conflict has at this seam. `assemble` panics: reaching it would mean the
+    /// engine opened (or created) partitions past a refused claim, which is
+    /// exactly the defect this lane closes.
+    struct RefusingPreOpen;
+    impl EngineAssembler for RefusingPreOpen {
+        fn pre_open(&self, _data_dir: &std::path::Path) -> Result<(), String> {
+            Err(
+                "Another Quilltap instance (local server, PID 4242) is already using this \
+                 database."
+                    .to_string(),
+            )
+        }
+        fn assemble(
+            &self,
+            _db: &Db,
+            _events: &broadcast::Sender<Event>,
+            _pepper: &str,
+            _data_dir: &std::path::Path,
+            _bus: &Arc<CreationProgressBus>,
+        ) -> Result<EngineAssembly, String> {
+            panic!("assemble reached past a refused pre_open");
+        }
+    }
+
+    /// P4.46: the claim succeeds but assembly fails — the "setup wrote
+    /// everything and then the instance would not open" shape (v4 bug 64's
+    /// resume failure).
+    struct FailingAssembler;
+    impl EngineAssembler for FailingAssembler {
+        fn assemble(
+            &self,
+            _db: &Db,
+            _events: &broadcast::Sender<Event>,
+            _pepper: &str,
+            _data_dir: &std::path::Path,
+            _bus: &Arc<CreationProgressBus>,
+        ) -> Result<EngineAssembly, String> {
+            Err("the drivers refused to come up".to_string())
+        }
+    }
+
+    /// Every file in a data dir, sorted — the "nothing was created" comparand.
+    fn dir_listing(data: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(data)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
     }
 
     /// An instance dir with a main DB (no tables needed for the state tests).
@@ -5966,6 +6103,198 @@ mod tests {
         {
             Response::Error(e) => assert_eq!(e.kind, ErrorKind::BadRequest),
             other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// P4.46 deliverable 1+2, the setup entrance: a refused host claim stops
+    /// `Setup` before it writes ANYTHING. Before this lane the claim was taken
+    /// inside `assemble` — i.e. after `save_dbkey`, after three writable opens,
+    /// after the whole DDL replay and the baseline seed. Mutation check: move
+    /// the `pre_open` call below `provision_fresh_instance` and the listing
+    /// assertion goes red (four files instead of none).
+    #[tokio::test]
+    async fn setup_creates_nothing_when_the_instance_claim_is_refused() {
+        let base = tempdir().unwrap();
+        let data = base.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(RefusingPreOpen),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        match engine
+            .dispatch(Request::Setup {
+                passphrase: String::new(),
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Internal);
+                assert!(e.message.contains("already using this database"), "{e:?}");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Not one byte: no key file, no partitions.
+        assert!(
+            dir_listing(&data).is_empty(),
+            "setup left files behind: {:?}",
+            dir_listing(&data)
+        );
+    }
+
+    /// P4.46 deliverable 1+2, the boot entrance: a refused claim refuses the
+    /// boot with the partitions byte-for-byte untouched (`RefusingPreOpen`
+    /// panics if `assemble` is ever reached, so this also pins that no open
+    /// happened at all).
+    #[tokio::test]
+    async fn boot_refuses_before_opening_when_the_claim_is_refused() {
+        let base = make_instance();
+        let data = base.path().join("data");
+        let before = std::fs::read(data.join("quilltap.db")).unwrap();
+
+        match CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(RefusingPreOpen),
+            Arc::new(EmptyInstances),
+        ) {
+            Err(BootError::Assemble(m)) => {
+                assert!(m.contains("already using this database"), "{m}")
+            }
+            Err(other) => panic!("unexpected: {other:?}"),
+            Ok(_) => panic!("a refused claim must refuse the boot"),
+        }
+        assert_eq!(
+            std::fs::read(data.join("quilltap.db")).unwrap(),
+            before,
+            "the main partition changed on a refused boot"
+        );
+    }
+
+    /// P4.46 deliverable 1+2, the unlock entrance: same shape, from the locked
+    /// state (every unlock repeats the open sequence, so it needed the same
+    /// reordering).
+    #[tokio::test]
+    async fn unlock_refuses_before_opening_when_the_claim_is_refused() {
+        let base = make_instance();
+        let data = base.path().join("data");
+        dbkey::save_dbkey(&data, PEPPER, "open sesame").unwrap();
+        let before = std::fs::read(data.join("quilltap.db")).unwrap();
+
+        // A locked boot opens nothing, so it reaches Ready-less state cleanly.
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(RefusingPreOpen),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Internal);
+                assert!(e.message.contains("already using this database"), "{e:?}");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            std::fs::read(data.join("quilltap.db")).unwrap(),
+            before,
+            "the main partition changed on a refused unlock"
+        );
+    }
+
+    /// P4.46 deliverables 3+4: setup finishes writing the key and the instance
+    /// but the open fails — the pepper is STILL returned (displayed exactly
+    /// once, never withheld behind an error) with `requiresRestart`, and the
+    /// retry that would otherwise brick the instance refuses by name.
+    #[tokio::test]
+    async fn late_setup_failure_returns_the_pepper_and_guards_the_retry() {
+        let base = tempdir().unwrap();
+        let data = base.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(FailingAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        let pepper = match engine
+            .dispatch(Request::Setup {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::Setup(s) => {
+                assert!(s.requires_restart, "a failed open must ask for a restart");
+                assert!(!s.pepper.is_empty());
+                assert!(s.message.contains("will not be displayed again"));
+                s.pepper
+            }
+            other => panic!("unexpected: {other:?}"),
+        };
+        // The returned pepper is the real one: it unlocks the key file that was
+        // written, which is the whole point of returning it anyway.
+        assert_eq!(
+            dbkey::load_pepper(&data, Some("open sesame")).unwrap(),
+            pepper
+        );
+
+        // The retry guard: a second Setup must NOT mint a new pepper over the
+        // key file (the old one is display-once and gone, and its partitions
+        // would become unreadable). It refuses, naming what is in the way.
+        let dbkey_before = std::fs::read(data.join("quilltap.dbkey")).unwrap();
+        match engine
+            .dispatch(Request::Setup {
+                passphrase: "second try".into(),
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Conflict);
+                assert!(e.message.contains("quilltap.dbkey"), "{e:?}");
+                assert!(e.message.contains("already set up"), "{e:?}");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            std::fs::read(data.join("quilltap.dbkey")).unwrap(),
+            dbkey_before,
+            "the retry overwrote the key file"
+        );
+        // And the pepper still unlocks it (the retry changed nothing).
+        assert_eq!(
+            dbkey::load_pepper(&data, Some("open sesame")).unwrap(),
+            pepper
+        );
+    }
+
+    /// P4.46 deliverable 4, at the provisioning layer: the doc's "MUST NOT
+    /// already exist" is enforced, not merely stated — the DDL has no
+    /// `IF NOT EXISTS` anywhere, so a replay over a live instance would die
+    /// halfway through its own transaction.
+    #[test]
+    fn provisioning_refuses_an_already_provisioned_data_dir() {
+        let base = tempdir().unwrap();
+        let data = base.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let _ = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+
+        match provisioning::provision_fresh_instance(&data, PEPPER) {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("already provisioned"), "{msg}");
+                assert!(msg.contains("quilltap.db"), "{msg}");
+            }
+            Ok(()) => panic!("provisioned over an existing instance"),
         }
     }
 

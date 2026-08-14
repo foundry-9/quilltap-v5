@@ -91,6 +91,35 @@ a pre-4.8.2 archive still restores. The tier-2 corpus grew the three cells on
 both write paths plus a surviving create op -- the create arm's cell values
 were previously unobservable, because the only created row was deleted by a
 later op in the same sequence.
+The instance lock now covers every partition open — boot, unlock, AND
+first-run setup (P4.46, the standing P4.D68 escalation). v4 acquires its
+single-instance lock inside `connect()`, ahead of `new Database`; v5 acquired
+it at the head of the host assembler instead, which is after `Db::open` has
+opened all three partitions writable and, on first-run setup, after the whole
+DDL replay and the baseline seed have been written. Against a contended
+instance that meant writing to databases another live process believes it holds
+exclusively — the class v4's bug-58 fix closes. Acquisition moves to a new
+`EngineAssembler::pre_open` seam the engine calls at all three entrances
+(re-entrant per PID, so setup's own claim does not block its later open);
+release stays exactly at shutdown and the heartbeat / lock-lost semantics are
+unchanged. Proven by a new contended-start test that plants a live foreign lock
+and asserts the refusal arrives with the partitions byte-for-byte untouched and
+nothing created; mutation-checked by reverting the ordering (all three go red).
+
+First-run setup no longer eats the display-once encryption key, and a failed
+setup can no longer brick the instance on retry. A late failure — the key
+written, the instance provisioned, but the databases would not open — now
+returns the pepper anyway with `requiresRestart` (v4 bug 64's contract: the key
+is displayed exactly once, so it is never withheld behind an error), and the
+setup wizard renders the key plus a restart notice instead of a bare error. A
+second setup against a data directory that already carries `quilltap.dbkey` or
+any partition refuses by name instead of minting a new pepper over the old one
+(v5 hardening — v4's conversion-shaped setup has no analog); provisioning
+enforces the same precondition its doc comment already claimed.
+
+Fixed an ordering-dependent break in the SPA test suite: a clipboard stub was
+installed as a non-writable property, so whichever spec next touched
+`navigator.clipboard` in the same worker threw. Test-only.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`

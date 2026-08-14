@@ -95,6 +95,9 @@ pub enum ProvisionError {
     Db(DbError),
     /// The embedded schema/seed artifact failed to parse (a build/regen bug).
     Artifact(String),
+    /// P4.46: the data dir already carries instance files, so this is not a
+    /// first run. Carries the offending file names, in [`INSTANCE_FILES`] order.
+    AlreadyProvisioned(Vec<&'static str>),
 }
 
 impl std::fmt::Display for ProvisionError {
@@ -102,6 +105,12 @@ impl std::fmt::Display for ProvisionError {
         match self {
             ProvisionError::Db(e) => write!(f, "provisioning database error: {e}"),
             ProvisionError::Artifact(m) => write!(f, "provisioning artifact error: {m}"),
+            ProvisionError::AlreadyProvisioned(names) => write!(
+                f,
+                "this instance is already provisioned ({} present) — \
+                 refusing to provision over it",
+                names.join(", ")
+            ),
         }
     }
 }
@@ -118,14 +127,56 @@ impl From<rusqlite::Error> for ProvisionError {
     }
 }
 
+/// Every file first-run setup brings into being, in the order a refusal names
+/// them: the key file the engine writes, then the three partitions this module
+/// creates.
+pub const INSTANCE_FILES: [&str; 4] = [
+    "quilltap.dbkey",
+    "quilltap.db",
+    "quilltap-mount-index.db",
+    "quilltap-llm-logs.db",
+];
+
+/// Which of [`INSTANCE_FILES`] already exist under `data_dir` — empty means a
+/// genuine first run (P4.46).
+///
+/// The engine's `Setup` arm consults this BEFORE minting a pepper: a retry
+/// after a partly-completed setup would otherwise mint a NEW pepper and
+/// overwrite `quilltap.dbkey` with it, and the new pepper cannot open the
+/// partitions the first attempt already created — the original pepper is gone
+/// and the instance is bricked. There is no v4 analog (v4's setup converts an
+/// existing plaintext instance rather than creating one), so this is deliberate
+/// v5 hardening.
+pub fn existing_instance_files(data_dir: &Path) -> Vec<&'static str> {
+    INSTANCE_FILES
+        .into_iter()
+        .filter(|name| data_dir.join(name).exists())
+        .collect()
+}
+
 /// Create and seed a fresh instance under `data_dir`, keyed by `pepper_b64` —
 /// all three partitions encrypted from creation. The caller (the engine's
-/// `Setup`) has already minted the pepper and written `quilltap.dbkey`.
+/// `Setup`) has already minted the pepper and written `quilltap.dbkey`, and has
+/// already claimed the instance lock (P4.46: no partition is created before the
+/// host holds the lock).
 ///
-/// The three partition files MUST NOT already exist (this is first-run setup);
-/// each is created by `Writer::open_writable` and its schema replayed in one
-/// transaction. Only the main partition carries seed rows.
+/// The three partition files MUST NOT already exist (this is first-run setup) —
+/// enforced here, not merely documented, because the DDL uses no
+/// `IF NOT EXISTS` and a replay over a live instance would fail halfway through
+/// its own transaction. Each partition is created by `Writer::open_writable`
+/// and its schema replayed in one transaction. Only the main partition carries
+/// seed rows.
 pub fn provision_fresh_instance(data_dir: &Path, pepper_b64: &str) -> Result<(), ProvisionError> {
+    // `quilltap.dbkey` is EXCLUDED from this check on purpose: the caller wrote
+    // it moments ago. The partitions are the ones that must not exist.
+    let present: Vec<&'static str> = existing_instance_files(data_dir)
+        .into_iter()
+        .filter(|name| *name != "quilltap.dbkey")
+        .collect();
+    if !present.is_empty() {
+        return Err(ProvisionError::AlreadyProvisioned(present));
+    }
+
     let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
 
