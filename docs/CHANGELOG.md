@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Planned the next porting round against the new v4 baseline `24633026`
+(section-level help embeddings and Guide content search). Wrote three new
+work orders — the P4.D77 help-doc-chunks drift catch-up (server), the
+P4.47 maintenance smalls (settings Zod-collapse arms, google-wire header
+asserts, the sweep driver's staging-dependency class), and the P4.9L
+composer formatting toolbar (SPA) — and assigned the open P4.D65
+remainder (items 5–6) to the round. Docs only; no code changes.
+
 Dogfooded the 4.8.2/4.8.3 round against a copy of a real instance: 38 steps
 across Setup, the instance lock, smart typography, both composer typeaheads,
 the group wardrobe tiers, and the passphrase chain. Two defects found and
