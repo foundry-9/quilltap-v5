@@ -25,7 +25,12 @@ import { insertCharAtSelection } from './char-insert/insert-char';
 import { EMOJI_PROFILE } from './char-insert/profiles/emoji';
 import { UNICODE_PROFILE } from './char-insert/profiles/unicode';
 import type { CharProfile } from './char-insert/types';
-import { dialectFormattingKeymap, dialectInputRules, dialectListNavigationKeymap } from './editing-commands';
+import {
+  dialectFormattingKeymap,
+  dialectInputRules,
+  dialectListNavigationKeymap,
+  exitCodeBlockOnBlankLine,
+} from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 import { smartTypographyPlugin } from './smart-typography-plugin';
 import { textReplacementPlugin, type CompiledRules } from './text-replacement';
@@ -269,6 +274,19 @@ export class RichEditor {
       return true;
     };
 
+    // The code-block escape, scoped to the hosts v4 scopes it to. v4 mounts
+    // `KeyboardPlugin` from `LexicalComposerWrapper` — i.e. the chat composer
+    // alone, in BOTH its modes; its Document Mode editor
+    // (`app/salon/[id]/components/DocumentPane.tsx`) builds its own Lexical
+    // stack without it, and v5's form fields have no v4 analog at all. Since
+    // this component is shared by all three, the composer is identified the
+    // same way its two Enter behaviors already are.
+    const escapeCodeBlock = exitCodeBlockOnBlankLine(dialectSchema);
+    const escapeCodeBlockCmd: Command = (state, dispatch, view) => {
+      if (!this.submitOnEnter() && !this.submitOnModEnter()) return false;
+      return escapeCodeBlock(state, dispatch, view);
+    };
+
     // Composition mode: Cmd/Ctrl+Enter submits; otherwise fall through so the
     // combo does nothing special (v4 chat mode lets Lexical handle it).
     const modSubmitCmd: Command = () => {
@@ -316,6 +334,10 @@ export class RichEditor {
         // In chat mode Enter submits; else split a list item, break a code
         // block, or fall through to the base paragraph split.
         Enter: chainCommands(
+          // AHEAD of the submit: v4 runs its code-block escape before the
+          // chat/composition branch, so Enter on a blank trailing line leaves
+          // the fence instead of sending (`KeyboardPlugin.tsx:48-110`).
+          escapeCodeBlockCmd,
           submitCmd,
           splitListItem(dialectSchema.nodes['list_item']),
           newlineInCode,

@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Fixed a fenced code block being a one-way door in the chat composer (dogfood
+finding #82). Typing ``` opens a code block and nothing in the markdown dialect
+closes one, so every subsequent Enter only added another line to it — a writer
+who fenced a snippet mid-message could never get back out to prose. v4 has an
+escape v5 never got: Enter on a blank trailing line trims that line away and
+opens a paragraph after the block. Ported with v4's conditions one for one, and
+scoped to the composer, the only host v4 gives it to.
+
 Unified the 4.8.2/4.8.3 drift catch-up + lock-order round (P4.D71 ∥ P4.D72 ∥
 P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76 — all seven closed) onto main; the
 oracle baseline moves to `48396682` and the drift debt is cleared (v4 HEAD

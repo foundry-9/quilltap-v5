@@ -227,3 +227,89 @@ describe('RichEditor — the spellcheck attribute', () => {
     expect(content(fixture).getAttribute('spellcheck')).toBe('true');
   });
 });
+
+/**
+ * The code-block escape (dogfood finding #82) — v4
+ * `components/chat/lexical/plugins/KeyboardPlugin.tsx:48-110`. Without it the
+ * ``` input rule is a one-way door: nothing in the dialect closes a fence, so
+ * Enter only ever adds another line to it.
+ */
+describe('RichEditor — Enter escapes a fenced code block', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function caretAtEnd(fixture: ComponentFixture<Host>): void {
+    fixture.componentInstance.editor().runCommand((state, dispatch) => {
+      if (dispatch) dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+      return true;
+    });
+  }
+
+  it('leaves the block from a blank trailing line, trimming it away', async () => {
+    const fixture = await render();
+    fixture.componentInstance.submitOnEnter.set(true);
+    fixture.detectChanges();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('```\ncode\n\n```');
+    caretAtEnd(fixture);
+
+    pressEnter(fixture);
+
+    // The fence keeps its real line and loses the blank one; a paragraph now
+    // follows it, and the Enter did NOT submit (the escape outranks it, as v4's
+    // pre-branch check does).
+    expect(editor.getMarkdown()).toBe('```\ncode\n```');
+    expect(editor.inCodeBlock()).toBe(false);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+
+  it('types on into the block while the last line has content', async () => {
+    // Composition mode, where plain Enter is a newline. In CHAT mode Enter
+    // submits even inside a fence — v4's chat branch does the same, its escape
+    // being the one exception (`KeyboardPlugin.tsx:110-143`).
+    const fixture = await render();
+    fixture.componentInstance.submitOnModEnter.set(true);
+    fixture.detectChanges();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('```\ncode\n```');
+    caretAtEnd(fixture);
+
+    pressEnter(fixture);
+
+    // A newline inside the fence — not an escape, and not a submitted message.
+    // (`getMarkdown()` cannot witness it: the serializer trims a code block's
+    // trailing newline. The proof is that the NEXT Enter now escapes, which
+    // only a blank trailing line permits.)
+    expect(editor.inCodeBlock()).toBe(true);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+
+    pressEnter(fixture);
+    expect(editor.inCodeBlock()).toBe(false);
+    expect(editor.getMarkdown()).toBe('```\ncode\n```');
+  });
+
+  it('needs two lines: a blank one-line fence is not an escape', async () => {
+    const fixture = await render();
+    fixture.componentInstance.submitOnModEnter.set(true);
+    fixture.detectChanges();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('```\n\n```');
+    caretAtEnd(fixture);
+
+    pressEnter(fixture);
+
+    expect(editor.inCodeBlock()).toBe(true);
+  });
+
+  it('stays out of the hosts v4 never gave the escape to (form fields)', async () => {
+    // Neither submit mode set — v4 mounts KeyboardPlugin only in the composer,
+    // so a markdown form field must keep ProseMirror's plain behavior.
+    const fixture = await render();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('```\ncode\n\n```');
+    caretAtEnd(fixture);
+
+    pressEnter(fixture);
+
+    expect(editor.inCodeBlock()).toBe(true);
+  });
+});

@@ -104,6 +104,56 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
   });
 
+  test('Enter on a blank trailing line leaves a fenced code block (dogfood #82)', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Solo Voyage');
+
+    // Composition mode, because that is where the trap was found: with Enter
+    // sending, a writer never accumulates lines inside the fence to be stuck
+    // in. The escape itself is bound in both composer modes (v4 checks it
+    // ahead of its chat/composition branch).
+    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('Testing. This is a paragraph.');
+    await page.keyboard.press('Enter');
+    // ``` opens a fence — the dialect input rule. Nothing closes one.
+    await page.keyboard.type('```');
+    await expect(editor.locator('pre')).toBeVisible();
+    await page.keyboard.type('{ "everything": "works" }');
+
+    // The gesture that was broken: Enter for a blank line, Enter again to
+    // leave. Before the fix every Enter only ever lengthened the fence, so a
+    // fenced snippet mid-message was a one-way door.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Prose after the fence.');
+
+    // The prose landed OUTSIDE the fence, and the blank line was trimmed away
+    // rather than left dangling inside it.
+    await expect(editor.locator('pre')).toContainText('"everything": "works"');
+    await expect(editor.locator('pre')).not.toContainText('Prose after the fence.');
+    await expect(editor.locator('p').last()).toContainText('Prose after the fence.');
+
+    // Leave the chat as the sibling specs expect it — the draft CLEARED, never
+    // sent. Solo Voyage's stored token aggregates are asserted verbatim by
+    // `salon-token-cost-flow`, so a message sent from here moves numbers two
+    // specs away (measured: it did).
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+    await page.keyboard.press('Backspace');
+    await expect(editor.locator('pre')).toHaveCount(0);
+    await page.waitForTimeout(1200); // the 800ms draft debounce
+    const toggleAfter = page.getByRole('button', { name: 'Toggle composition mode' });
+    await toggleAfter.click();
+    await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test('the toolbar cluster wraps below the editor so the input keeps the dominant width (dogfood #75, interim p4.9l band-aid)', async ({
     page,
   }) => {

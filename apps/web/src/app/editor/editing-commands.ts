@@ -7,7 +7,7 @@ import {
 } from 'prosemirror-inputrules';
 import type { MarkType, ResolvedPos, Schema } from 'prosemirror-model';
 import { liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list';
-import { type Command, type EditorState, type Plugin } from 'prosemirror-state';
+import { type Command, type EditorState, type Plugin, TextSelection } from 'prosemirror-state';
 
 /**
  * Markdown input shortcuts + the formatting command set for the dialect editor
@@ -187,5 +187,63 @@ export function dialectListNavigationKeymap(schema: Schema): Record<string, Comm
       liftListItem(listItem)(state, dispatch, view);
       return true;
     },
+  };
+}
+
+/**
+ * Enter on a blank trailing line inside a fenced code block leaves the block:
+ * the blank line is trimmed away and a fresh paragraph opens after it, caret at
+ * its start.
+ *
+ * The port of v4's code-block escape (`components/chat/lexical/plugins/
+ * KeyboardPlugin.tsx:48-110`), which without this has no counterpart here —
+ * ``` opens a code block, and every subsequent Enter only ever adds another
+ * line to it, so a writer who fences a snippet mid-message can never get back
+ * out to prose (dogfood finding #82). Nothing else in the dialect ends a block:
+ * the ``` input rule opens one and has no closing form.
+ *
+ * v4 checks this BEFORE its chat/composition-mode branch, so the escape
+ * outranks Enter-submits — which is why this binds ahead of the submit command
+ * rather than after it.
+ *
+ * The conditions are v4's, one for one: a collapsed caret, inside a code block,
+ * at the very end of its text, with at least two lines and a blank last one
+ * (`trim() === ''`, so a line of spaces counts as blank). The trailing blank is
+ * removed with v4's own `/\n\s*$/` — which strips one newline plus any trailing
+ * whitespace, not every trailing blank line.
+ */
+export function exitCodeBlockOnBlankLine(schema: Schema): Command {
+  const codeBlock = schema.nodes['code_block'];
+  const paragraph = schema.nodes['paragraph'];
+
+  return (state, dispatch) => {
+    const { selection } = state;
+    if (!selection.empty) return false;
+
+    const $from = selection.$from;
+    if ($from.parent.type !== codeBlock) return false;
+    // The caret must sit at the very end of the block's text (v4 requires the
+    // anchor to be the last child, at its full length).
+    if ($from.parentOffset !== $from.parent.content.size) return false;
+
+    const text = $from.parent.textContent;
+    const lines = text.split('\n');
+    if (lines.length < 2) return false;
+    if (lines[lines.length - 1].trim() !== '') return false;
+
+    if (dispatch) {
+      const trimmed = text.replace(/\n\s*$/, '');
+      const end = $from.end();
+      const tr = state.tr;
+      // A code block holds text only, so text offsets and document positions
+      // run 1:1 and the trailing blank can be deleted as a range rather than
+      // by rewriting the block the way v4's node API forces it to.
+      if (trimmed.length < text.length) tr.delete(end - (text.length - trimmed.length), end);
+      const after = tr.mapping.map($from.after());
+      tr.insert(after, paragraph.createAndFill()!);
+      tr.setSelection(TextSelection.create(tr.doc, after + 1));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
   };
 }
