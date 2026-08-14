@@ -302,6 +302,13 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Added the emoji (☺) and symbol (Ω) pickers to the editor's formatting toolbar:
+a shared browsable panel with search, a recently-used row, and a grid grouped by
+emoji category or Unicode block, over the same match engine the typeaheads use.
+Neither button is gated by the composer settings — those govern the automatic
+`:` / `\` triggers only. In raw-source mode the pick lands at the textarea
+caret, where v4 loses it.
+
 Mounted the composer emoji/Unicode typeaheads in the two hosts v4 mounts them
 in — the Salon composer and the Document-Mode editor — gated by the
 `composerEmoji` / `composerUnicode` chat settings (default on, read from the

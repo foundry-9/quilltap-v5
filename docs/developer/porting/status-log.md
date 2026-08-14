@@ -67544,3 +67544,60 @@ seeded text until the spec put the caret where a writer's is), and a seeded
 `'hi '` loses its trailing space to the markdown round-trip.
 
 **Gate at this unit:** full `ng test` 306 files / 4,390 tests, zero failures.
+
+## Lane record — P4.D75 unit 4: the pickers — the shared panel, both popovers, the two toolbar buttons
+
+**What landed:** `char-picker-panel.ts` (v4 `CharPickerPanel.tsx`, 293 lines,
+profile-agnostic), the two thin wrappers `emoji-picker-popover.ts` /
+`unicode-picker-popover.ts` (v4 has exactly these, and they earn their keep here
+as the selectors a beat can target), the ☺ and Ω buttons in
+`formatting-toolbar.ts`, and v4's `qt-emoji-picker-*` +
+`qt-formatting-button-emoji` CSS carried into `_chat.css` at v4's own positions.
+
+Everything v4's panel does is here: the search field over the same Tier B
+engine (`SEARCH_LIMIT` 64), the code-point search arm on the Unicode profile,
+the Recently-used row from this profile's list, the grid grouped by the
+dataset's own categories with v4's `groupLabels`, the three lazy-load states
+(loading / failed / empty, each with the profile's own sentence), the roving
+tabindex with `COLUMNS = 8` arrow navigation, ArrowUp off the top row returning
+to the search field, Enter in the search field committing the first result, and
+`mousedown` prevented on every cell so the host editor keeps its caret.
+
+**Two shape differences from v4, both deliberate:**
+
+- **The panel emits, the host inserts.** v4 hands the panel a Lexical editor.
+  v5's toolbar is presentation-only by design (it emits `FormatAction`s today),
+  so the panel emits `pick(char)` and `MarkdownField` routes it. All four
+  surfaces still commit through the one `insert-char.ts` chokepoint.
+- **Source mode.** v4's picker holds the Lexical editor unconditionally, so in
+  raw-source mode a pick lands in a document the textarea is about to replace —
+  silently lost. v5 inserts at the textarea's caret instead, exactly as the
+  formatting buttons already take a source branch (`applyToSource`). A button
+  that visibly does nothing is not worth reproducing; recorded in
+  `markdown-field.ts` and pinned by a spec.
+
+**Where the buttons live.** v4 puts them in `FormattingToolbar`, which it
+renders in the chat composer's composition mode and in the document editor. v5's
+toolbar today has ONE host, `qt-markdown-field` (the form-field editor) — **v5
+has no composer formatting toolbar at all**, a pre-existing gap noted in
+`salon-conversation.ts:1016` and not this lane's to close. So the buttons appear
+wherever the toolbar appears, and the INLINE triggers (which v4 itself calls the
+primary surface — "the toolbar buttons are a convenience, not the feature") are
+what reach the composer and Document Mode.
+
+**Specs:** `char-picker-panel.spec.ts` 12 cases (fetch-on-open, grouped grid +
+v4's labels, per-cell accessible name, search, the code-point arm, empty,
+failure, the recents row scoped to one profile, click-commit with the prevented
+mousedown, Enter-commits-first, the arrow walk incl. the step back to search,
+the single tab stop, outside-mousedown close); `formatting-toolbar.spec.ts` 6
+(v4's glyphs and titles byte-exact, open/close with `aria-expanded`, one picker
+at a time, the emitted profile+char, prevented mousedown, disabled with the
+toolbar); `markdown-field.picker.spec.ts` 2 (the editor path with recents, and
+the source-mode divergence). **20 green.**
+
+**The one thing worth remembering:** the panel numbers its cells while building
+the sections (v4's inline `cellIndex += 1`). The obvious Angular shape — a
+`positionOf(entry)` helper doing `indexOf` in the template — is a linear scan
+per cell over ~1,900 cells, i.e. ~3.6M comparisons per render of the emoji grid.
+
+**Gate at this unit:** full `ng test` 309 files / 4,410 tests, zero failures.

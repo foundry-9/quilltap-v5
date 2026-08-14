@@ -1,5 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
+import { EmojiPickerPopover } from './char-insert/emoji-picker-popover';
+import { EMOJI_PROFILE } from './char-insert/profiles/emoji';
+import { UNICODE_PROFILE } from './char-insert/profiles/unicode';
+import type { CharProfile } from './char-insert/types';
+import { UnicodePickerPopover } from './char-insert/unicode-picker-popover';
 import { Icon } from '../ui/icon';
 
 /**
@@ -16,6 +28,12 @@ export type FormatAction =
   | { kind: 'codeBlock' }
   | { kind: 'outdent' }
   | { kind: 'indent' };
+
+/** A picker's chosen character, with the profile whose recents it belongs to. */
+export interface CharInsert {
+  profile: CharProfile;
+  char: string;
+}
 
 interface ButtonConfig {
   label: string;
@@ -62,7 +80,7 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
 @Component({
   selector: 'qt-formatting-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, EmojiPickerPopover, UnicodePickerPopover],
   template: `
     <div class="qt-formatting-toolbar">
       <div class="qt-formatting-toolbar-section">
@@ -113,6 +131,60 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
         </button>
       </div>
 
+      <!-- Emoji and symbol pickers — their own sections, after the markdown
+           buttons. NEITHER is gated by its composer setting: those flags govern
+           the automatic \`:\` / \`\\\` triggers, which are the part that can
+           surprise. An explicit button press never can. -->
+      <div class="qt-formatting-toolbar-divider"></div>
+      <div class="qt-formatting-toolbar-section relative">
+        <button
+          type="button"
+          class="qt-formatting-button qt-formatting-button-emoji"
+          [class.qt-formatting-button-active]="emojiPickerOpen()"
+          title="Insert emoji (or type \`:\` and a name)"
+          aria-label="Insert emoji"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="emojiPickerOpen()"
+          [disabled]="disabled()"
+          (mousedown)="$event.preventDefault()"
+          (click)="toggleEmojiPicker()"
+        >
+          ☺
+        </button>
+        @if (emojiPickerOpen()) {
+          <qt-emoji-picker-popover
+            (pick)="insertChar.emit({ profile: emojiProfile, char: $event })"
+            (close)="emojiPickerOpen.set(false)"
+          />
+        }
+      </div>
+      <!-- Its own section so the popover anchors under Ω rather than under ☺.
+           Shares \`qt-formatting-button-emoji\`: that class does nothing
+           emoji-specific — it sizes a GLYPH label the way the arrow-glyph
+           buttons are sized, which is exactly what Ω needs (v4's note). -->
+      <div class="qt-formatting-toolbar-section relative">
+        <button
+          type="button"
+          class="qt-formatting-button qt-formatting-button-emoji"
+          [class.qt-formatting-button-active]="unicodePickerOpen()"
+          title="Insert a symbol (or type \`\\\` and a name)"
+          aria-label="Insert a symbol"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="unicodePickerOpen()"
+          [disabled]="disabled()"
+          (mousedown)="$event.preventDefault()"
+          (click)="toggleUnicodePicker()"
+        >
+          Ω
+        </button>
+        @if (unicodePickerOpen()) {
+          <qt-unicode-picker-popover
+            (pick)="insertChar.emit({ profile: unicodeProfile, char: $event })"
+            (close)="unicodePickerOpen.set(false)"
+          />
+        }
+      </div>
+
       @if (showSourceToggle()) {
         <div class="qt-formatting-toolbar-divider"></div>
         <div class="qt-formatting-toolbar-section">
@@ -145,6 +217,29 @@ export class FormattingToolbar {
 
   readonly action = output<FormatAction>();
   readonly toggleSource = output<void>();
+  /**
+   * A character picked from one of the two pickers. The toolbar stays
+   * presentation-only, so the host does the inserting — and it is the host that
+   * knows whether it is showing the editor or the raw-source textarea.
+   */
+  readonly insertChar = output<CharInsert>();
+
+  protected readonly emojiPickerOpen = signal(false);
+  protected readonly unicodePickerOpen = signal(false);
+  protected readonly emojiProfile = EMOJI_PROFILE;
+  protected readonly unicodeProfile = UNICODE_PROFILE;
+
+  /** One picker at a time — v4's two popovers are independent, but showing both
+   *  at once would stack two panels over the same corner of the toolbar. */
+  protected toggleEmojiPicker(): void {
+    this.unicodePickerOpen.set(false);
+    this.emojiPickerOpen.update((open) => !open);
+  }
+
+  protected toggleUnicodePicker(): void {
+    this.emojiPickerOpen.set(false);
+    this.unicodePickerOpen.update((open) => !open);
+  }
 
   protected readonly buttons = MARKDOWN_BUTTONS;
 

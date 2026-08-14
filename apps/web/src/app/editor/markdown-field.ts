@@ -14,7 +14,8 @@ import type { Command } from 'prosemirror-state';
 import { liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list';
 
 import { dialectSchema } from './markdown-dialect';
-import { FormattingToolbar, type FormatAction } from './formatting-toolbar';
+import { recordRecent } from './char-insert/recents-storage';
+import { FormattingToolbar, type CharInsert, type FormatAction } from './formatting-toolbar';
 import { RichEditor } from './rich-editor';
 import { applySourceFormat } from './source-transforms';
 
@@ -85,6 +86,7 @@ import { applySourceFormat } from './source-transforms';
       [showSource]="showSource()"
       [showSourceToggle]="showSourceToggle()"
       (action)="onAction($event)"
+      (insertChar)="onInsertChar($event)"
       (toggleSource)="onToggleSource()"
     />
     @if (showSource()) {
@@ -228,6 +230,36 @@ export class MarkdownField {
   protected onSourceInput(value: string): void {
     this.sourceText.set(value);
     this.contentChange.emit(value);
+  }
+
+  /**
+   * A character picked from a toolbar picker (v4 `insertCharAtSelection`, whose
+   * `editor` prop is the Lexical instance the toolbar was given).
+   *
+   * DELIBERATE DIVERGENCE in source mode: v4 hands the picker its Lexical editor
+   * unconditionally, and in raw-source mode that editor is not the view the
+   * writer is looking at — the pick lands in a document the source textarea is
+   * about to replace, i.e. it is silently lost. v5 inserts at the textarea's
+   * caret instead, the same way the formatting buttons already take a source
+   * branch here (`applyToSource`). A button that visibly does nothing is not
+   * worth reproducing.
+   */
+  protected onInsertChar({ profile, char }: CharInsert): void {
+    if (this.showSource()) {
+      const textarea = this.sourceArea()?.nativeElement;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const value = textarea.value.slice(0, start) + char + textarea.value.slice(textarea.selectionEnd);
+      this.sourceText.set(value);
+      this.contentChange.emit(value);
+      recordRecent(profile, char);
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + char.length;
+        textarea.focus();
+      });
+      return;
+    }
+    this.editor()?.insertChar(profile, char);
   }
 
   protected onAction(action: FormatAction): void {
