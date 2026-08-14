@@ -65686,3 +65686,69 @@ rounds' content (Taboo, embedding profiles, archived characters). Only this
 commit's delta was applied; a wholesale sync is its own job. The three help-doc
 deltas (`groups.md`, `project-wardrobe.md`, `wardrobe.md`) are runtime-synced
 content with no v5 action — noted to the `p4.9i2` bank, not ported here.
+
+### Unit 5 — the chat-start group tier, proven where it actually runs
+
+The `PoolCache` group tier and `resolve_default_outfit`'s per-character tier
+landed with unit 2, but **no differential could see them**, and finding that out
+took a mutation pass that at first looked like good news.
+
+The chat-dialogs fixture gained a second group ("The Lamplighters") holding PIP
+and WREN, with three items in its official store's `Wardrobe/`, and the
+llm-choose corpus gained a WREN fallback case
+(`add_llm_choose_group_default_falls_back`). Then the mutations were run — and
+**two of the three PASSED**: deleting `PoolCache::group_tier` outright, and
+reversing the group/batch layering, both left the family green. The corpus was
+measuring the tier through a different path (`run_llm_choose_via_db` builds its
+own candidate list through `find_archetypes`), and the fallback outfit — the
+only thing `PoolCache` decides — could not tell the tiers apart, because the
+group's shadow of the house apron shared BOTH its id and its slot with the
+General item it shadows.
+
+Two fixture edits fixed that, and they are the reason the arms are worth
+anything:
+
+- the group's apron shadow is catalogued under `accessories`, not `bottom`.
+  Same id, different slot — so precedence becomes visible in the STORED outfit
+  bytes rather than only in the prompt text. A member files it under
+  accessories and leaves `bottom` empty; a non-member under bottom.
+- a third group item (the lamplighters' boots, `isDefault`, footwear) that
+  nobody holds a personal copy of, so it lands in EVERY member's chat-start
+  outfit. The other two are either opted out of or slot-shared, which is
+  precisely why neither could carry the claim alone.
+
+With those, all three mutations red: dropping `PoolCache::group_tier` reds
+`merge_llm_choose_provider_fails`; reversing the layering reds it too; dropping
+the per-character tier from `resolve_default_outfit` reds four add-participant
+cases.
+
+What the corpus now pins, on both sides, from v4's real code:
+
+- **a group default equips** — WREN (a Lamplighter with an empty vault) falls
+  back to `top: [the lamplighters' coat]`, `footwear: [their boots]`;
+- **the personal opt-out works** — PIP, a Lamplighter too, does NOT wear the
+  coat, because PIP holds an `isDefault: false` copy of its id. That only works
+  because the pool merges the FULL lists and filters `isDefault` LAST; a
+  mutation that filters first reds the case;
+- **group shadows general** — `bottom` is empty in both members' outfits and
+  the apron sits in `accessories`, and PIP's `llm_choose` prompt lists "The
+  lamplighters' apron" rather than "The house apron";
+- **character shadows group** — PIP's own cast-off lantern coat wins the id.
+
+The four sibling families sharing that committed fixture
+(`tools_inventory`, `chat_export`, `search_replace`, `message_reattribute`)
+were regenerated and re-run: all green. (One sweep run showed three of them red;
+that was two sweeps racing on the same `/tmp` oracle paths, not a regression —
+serially they pass. Worth knowing: **the sweep driver is not safe to run twice
+concurrently.**)
+
+Also ported here: v4's `wardrobe.repository.pool.test.ts` merge-rule assertions,
+as Rust unit tests over a new injected-reader seam (`merge_mounts` — v5's
+equivalent of v4 mocking `readSharedWardrobe`). Four arms: last-mount-wins on a
+same-tier collision, a failing store skipped while the others survive, no
+scoped mounts short-circuiting before the reader is touched at all, and a
+shadowing item keeping the earlier mount's POSITION (v4's insertion-ordered
+`Map` replaces in place rather than appending). The suite's end-to-end
+precedence claim is deliberately NOT re-asserted here — it is proven live by
+the `wardrobe_tools` and `outfit_llm_choose` families against v4's real code,
+which is stronger than a mock.

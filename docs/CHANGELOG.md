@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Closed a coverage hole in the group wardrobe tier (P4.D71 unit 5, tests and
+fixtures only — no behavior change). The chat-start pool's own group read and
+the per-character tier in default-outfit resolution had shipped with no
+differential able to see them: deleting either left every family green. The
+chat-dialogs fixture gained a group holding two characters, with a default the
+group supplies outright, a copy that shadows a Quilltap General item under a
+different slot, and a personal opt-out of a group default — which together make
+the whole precedence chain (character > group > project > general) visible in
+the stored outfit rather than only in prompt text. Four v4 merge-rule unit
+tests ported alongside.
+
 Finished the group wardrobe tier's two remaining surfaces (P4.D71 units 3–4).
 `GET /api/v1/characters/{id}/wardrobe?scope=group` now serves the group tier —
 the shared items in the `Wardrobe/` folder of every store belonging to a group

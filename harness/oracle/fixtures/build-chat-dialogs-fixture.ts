@@ -108,6 +108,15 @@ const P_SET = '00000000-0000-4000-8000-0000000000b4'; // composite [P_DEF, P_BOO
 const GENERAL_MP = '00000000-0000-4000-8000-0000000000f1';
 const G_CAPE = '00000000-0000-4000-8000-0000000000c1'; // top, shared, NOT default
 const G_APRON = '00000000-0000-4000-8000-0000000000c2'; // bottom, shared, isDefault
+// P4.D71 (v4 8600c83f): the GROUP tier. LAMPLIGHTERS holds PIP + WREN.
+const LAMPLIGHTERS = 'dd000000-0000-4000-8000-000000000002';
+const GRP_LANTERN = '00000000-0000-4000-8000-0000000000d1'; // top, group, isDefault
+// The SHADOW: same id as G_APRON, in the group store, catalogued under a
+// different name AND a different slot. The slot is what makes the precedence
+// observable in STORED bytes rather than only in the prompt: a member's default
+// outfit files it under accessories, a non-member's under bottom.
+const GRP_APRON_SHADOW = G_APRON;
+const GRP_BOOTS = '00000000-0000-4000-8000-0000000000d2'; // footwear, group, isDefault
 
 const EXPORT_CHAT = 'c2000000-0000-4000-8000-000000000001';
 const NOCHAR_CHAT = 'c2000000-0000-4000-8000-000000000002';
@@ -416,6 +425,12 @@ async function main(): Promise<void> {
   // for a character who owns nothing).
   await seedItem(null, G_CAPE, 'The house oilskin cape', ['top'], false);
   await seedItem(null, G_APRON, 'The house apron', ['bottom'], true);
+  // P4.D71: PIP's personal OPT-OUT of the group default. Same id as the group's
+  // lantern coat, `isDefault: false` — which only shadows the shared default
+  // because the pool merges on the FULL lists and filters `isDefault` LAST. Pip
+  // therefore does not put the coat on at chat start; Wren (a member with no
+  // personal copy) does. Filtering first would hide this entirely.
+  await seedItem(PIP, GRP_LANTERN, 'Pip’s cast-off lantern coat', ['top'], false);
 
   // 4. Projects. PROJECT_1 keeps its official store (linked doc stores present);
   //    PROJECT_2 has every link REMOVED (the has-project-but-no-stores arm).
@@ -825,6 +840,72 @@ async function main(): Promise<void> {
     throw new Error(`Watch group id drift: ${watch.id}`);
   }
   await repos.groupCharacterMembers.addMember('dd000000-0000-4000-8000-000000000001', VERA);
+
+  // 8b. [P4.D71 / v4 8600c83f] THE GROUP WARDROBE TIER. A second group holding
+  //     PIP and WREN, with two items in its official store's `Wardrobe/`:
+  //       - the lantern coat, a group DEFAULT. Wren (a member whose vault is
+  //         empty) puts it on at chat start; Pip does NOT, because Pip holds a
+  //         personal `isDefault: false` copy of the same id — the opt-out that
+  //         only works because the pool filters `isDefault` after the merge.
+  //       - a copy of the house apron under the group's own name, SHADOWING the
+  //         Quilltap General archetype of the same id. A member's pool must
+  //         carry the group's wording (character > group > project > general).
+  //     Before `8600c83f` neither item was readable by anyone at all.
+  const lamplighters = await repos.groups.create(
+    {
+      name: 'The Lamplighters',
+      description: 'The dock lamp round.',
+      color: '#443322',
+      icon: 'lantern',
+      state: {},
+    } as never,
+    { id: LAMPLIGHTERS, createdAt: TS, updatedAt: TS } as never,
+  );
+  if (lamplighters.id !== LAMPLIGHTERS) {
+    throw new Error(`Lamplighters group id drift: ${lamplighters.id}`);
+  }
+  await repos.groupCharacterMembers.addMember(LAMPLIGHTERS, PIP);
+  await repos.groupCharacterMembers.addMember(LAMPLIGHTERS, WREN);
+  {
+    const lampRow = await repos.groups.findByIdRaw(LAMPLIGHTERS);
+    const lampMp = lampRow?.officialMountPointId as string;
+    if (!lampMp) throw new Error('Lamplighters official store not minted');
+    const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
+    const { createProjectWardrobeItem } = await import(
+      '@/lib/database/repositories/vault-overlay/wardrobe-writes'
+    );
+    await ensureGroupWardrobeFolder(lampMp);
+    const seedGroupItem = async (
+      id: string,
+      title: string,
+      types: string[],
+      isDefault: boolean,
+    ): Promise<void> => {
+      await createProjectWardrobeItem(lampMp, {
+        id,
+        characterId: null,
+        title,
+        description: null,
+        imagePrompt: null,
+        types,
+        componentItemIds: [],
+        appropriateness: null,
+        isDefault,
+        replace: false,
+        migratedFromClothingRecordId: null,
+        archivedAt: null,
+        createdAt: TS,
+        updatedAt: TS,
+      } as never);
+    };
+    await seedGroupItem(GRP_LANTERN, 'The lamplighters’ coat', ['top'], true);
+    await seedGroupItem(GRP_APRON_SHADOW, 'The lamplighters’ apron', ['accessories'], true);
+    // A group default nobody holds a personal copy of: it lands in EVERY
+    // member's chat-start outfit, which is what makes the chat-creation pool's
+    // own group read (v4 `getGroupTier`) measurable — the other two items are
+    // either opted out of or share a slot with a General item.
+    await seedGroupItem(GRP_BOOTS, 'The lamplighters’ boots', ['footwear'], true);
+  }
 
   // 9. Chat settings (the llm_choose cheap-LLM config source; P4.d28 adds the
   // Salon-level timezone + defaultTimestampConfig the transcript falls back to,

@@ -312,6 +312,22 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: WREN,
         },
+        // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
+        // THE GROUP TIER AT CHAT START. Wren is a Lamplighter with an empty
+        // vault: a failed consult falls back to the group's own defaults (the
+        // lamplighters' coat, plus their copy of the house apron shadowing
+        // Quilltap General's by id). Pip is a Lamplighter too and does NOT wear
+        // the coat in `add_llm_choose_provider_fails` — a personal
+        // `isDefault: false` copy is how a character opts out of a shared
+        // default, and it only works because the pool filters `isDefault` after
+        // the merge, never before.
+        Case {
+            name: "add_llm_choose_group_default_falls_back",
+            add: true,
+            reply: None,
+            throws: true,
+            character: WREN,
+        },
         // The validator used to drop any id outside the character's own vault,
         // so a pick from the shared tier evaporated.
         Case {

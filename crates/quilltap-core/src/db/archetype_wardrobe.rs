@@ -212,12 +212,26 @@ pub fn find_archetypes_in_mounts(
     mount_point_ids: &[String],
     include_archived: bool,
 ) -> Result<Vec<Value>, DbError> {
+    Ok(merge_mounts(mount_point_ids, |mount_point_id| {
+        read_shared_wardrobe(docs, mount_point_id, include_archived)
+    }))
+}
+
+/// The merge rule [`find_archetypes_in_mounts`] applies, over an injected
+/// reader — the seam v4's own unit suite gets by mocking `readSharedWardrobe`.
+/// Later mounts shadow earlier ones; a mount whose read fails is logged and
+/// skipped, so one unreadable group store cannot cost a character the rest of
+/// their wardrobe.
+fn merge_mounts<F>(mount_point_ids: &[String], mut read: F) -> Vec<Value>
+where
+    F: FnMut(&str) -> Result<Vec<Value>, DbError>,
+{
     if mount_point_ids.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
     let mut acc = OrderedById::new();
     for mount_point_id in mount_point_ids {
-        match read_shared_wardrobe(docs, mount_point_id, include_archived) {
+        match read(mount_point_id) {
             Ok(items) => {
                 for item in items {
                     acc.upsert(item);
@@ -231,7 +245,7 @@ pub fn find_archetypes_in_mounts(
             }
         }
     }
-    Ok(acc.order)
+    acc.order
 }
 
 /// v4 `WardrobeRepository.findArchetypes` — the General tier merged under the
@@ -282,4 +296,78 @@ pub fn find_archetype_by_id(
     Ok(archetypes
         .into_iter()
         .find(|a| a.get("id").and_then(Value::as_str) == Some(id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// v4 `__tests__/unit/lib/database/repositories/wardrobe.repository.pool.test.ts`
+    /// mocks `readSharedWardrobe` and asserts the merge rule alone. v5's
+    /// equivalent seam is [`merge_mounts`]'s injected reader; the arms below are
+    /// that suite's, case for case, for the two claims the DB differentials
+    /// cannot reach — a failing store, and a same-tier collision. (The
+    /// end-to-end precedence claim — character > group > project > general — is
+    /// proven live instead, by the `wardrobe_tools` and `outfit_llm_choose`
+    /// families against v4's real code.)
+    fn item(id: &str, tier: &str) -> Value {
+        json!({ "id": id, "characterId": null, "title": format!("{id} ({tier})") })
+    }
+
+    fn titles(items: &[Value]) -> Vec<String> {
+        items
+            .iter()
+            .map(|i| i["title"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_last_mount_wins_a_collision_between_stores_of_the_same_tier() {
+        let out = merge_mounts(&ids(&["mp-1", "mp-2"]), |mp| {
+            Ok(vec![item("livery", &format!("project-{mp}"))])
+        });
+        assert_eq!(titles(&out), vec!["livery (project-mp-2)"]);
+    }
+
+    #[test]
+    fn a_failing_store_is_skipped_and_the_others_survive() {
+        let out = merge_mounts(&ids(&["grp-broken", "mp-ok"]), |mp| {
+            if mp == "grp-broken" {
+                return Err(DbError::Key("store offline".into()));
+            }
+            Ok(vec![item("p-only", "project")])
+        });
+        assert_eq!(titles(&out), vec!["p-only (project)"]);
+    }
+
+    #[test]
+    fn no_scoped_mounts_short_circuits_before_touching_the_reader() {
+        let mut calls = 0usize;
+        let out = merge_mounts(&[], |_| {
+            calls += 1;
+            Ok(Vec::new())
+        });
+        assert!(out.is_empty());
+        assert_eq!(calls, 0, "the reader must not be touched at all");
+    }
+
+    #[test]
+    fn a_shadowing_item_keeps_the_earlier_mounts_position() {
+        // v4's insertion-ordered `Map`: `set(id, item)` on an existing id
+        // REPLACES in place rather than appending, so a shadowed item does not
+        // jump to the end of the pool.
+        let out = merge_mounts(&ids(&["mp-1", "mp-2"]), |mp| {
+            if mp == "mp-1" {
+                Ok(vec![item("shared", "project"), item("p-only", "project")])
+            } else {
+                Ok(vec![item("shared", "group")])
+            }
+        });
+        assert_eq!(titles(&out), vec!["shared (group)", "p-only (project)"]);
+    }
 }

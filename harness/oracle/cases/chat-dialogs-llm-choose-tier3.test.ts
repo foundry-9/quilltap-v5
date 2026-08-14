@@ -367,6 +367,25 @@ async function main(): Promise<void> {
       },
       reply: 'wrenPicksShared',
     },
+    // [P4.D71 / v4 `8600c83f`] The GROUP tier at chat start. Wren is a
+    // Lamplighter with an empty vault, so a failed consult falls back to the
+    // group's own defaults: the lamplighters' coat (a group default nobody else
+    // supplies) and the lamplighters' apron (the group's copy of the house
+    // apron, shadowing Quilltap General's by id). Compare Pip, a Lamplighter
+    // too, whose `add_llm_choose_provider_fails` row does NOT wear the coat —
+    // Pip holds a personal `isDefault: false` copy of it, the opt-out that only
+    // works because the pool filters `isDefault` after the merge.
+    {
+      name: 'add_llm_choose_group_default_falls_back',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: WREN,
+        outfitSelection: { characterId: WREN, mode: 'llm_choose' },
+      },
+      throws: true,
+    },
     // A character WITH a vault picks a SHARED id. Before the fix the validator
     // dropped anything outside `findByCharacterId`, so this pick evaporated.
     {
