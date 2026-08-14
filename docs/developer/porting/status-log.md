@@ -66313,3 +66313,77 @@ above ran from a worktree pinned at `48396682` regardless.
 **Gate:** fmt; clippy both feature sets; `cargo test --workspace` exit 0, 427
 `test result: ok` lines, zero failures, with `QT_DBKEY_V4_FIXTURE` /
 `QT_DBKEY_V5_OUT` set so both arms RAN. Versions: core 0.0.533, harness 0.0.455.
+
+
+---
+
+## P4.46 unit 3 — the bug-64 / bug-65 dispositions, recorded with evidence (2026-08-13)
+
+Both 4.8.3 fixes are NO-PORTs. Recorded here so the next drift check does not
+re-litigate them, each verified against current v5 source rather than asserted.
+
+### Bug 64 (`a54a2c79`, "first-run encryption setup wedged every DB connection") — NO-PORT
+
+v4's defect: `handleSetup` closed the SQLite client directly before converting
+the files, which respected only the client singleton's invariant — `SQLiteBackend`
+went on caching the closed handle and the manager went on handing out that
+backend, so nothing above the client layer learned the connection was gone. The
+fix introduces `suspendDatabase()` / `resumeDatabase()` that close and reopen
+every handle while KEEPING the cached backend instance (rebuilding it would hand
+live repositories empty column maps — quiet corruption in place of a loud wedge).
+
+**Why the mechanism cannot exist in v5, verified:**
+
+- Nothing caches a handle above `Db`. `Db` is a `Arc<DbInner>` holding the read
+  pool and the writer channel (`db/runtime.rs:116-123`); the writer thread ends
+  when the last clone drops. `EngineState::Ready` owns the only long-lived
+  clone, and `Lock` → `shutdown()` → `EngineState::Locked` drops the world.
+  Unlock builds a fresh one. There is no backend singleton and no manager cache
+  to go stale, so there is no "closed handle behind its back" to self-heal from.
+- There is no post-setup conversion to sequence in the first place. v4 creates
+  the databases plaintext during pre-setup migrations and must encrypt them in
+  place afterwards; v5 has the pepper in hand before any partition exists and
+  provisions all three **encrypted from byte zero** — the named non-port already
+  recorded at the `setup` arm's doc comment in `api/engine.rs`.
+- v4's four related defects have no analog either: the llm-logs client staying
+  open through its own conversion, the mount index not being converted at all,
+  `disconnect()` closing two of three databases, and auto-lock wedging the same
+  way — all are properties of the conversion step and the backend cache, neither
+  of which exists here. v5's lock/unlock cycle is already proven to rebuild the
+  drivers (`host_boot.rs::dbkey_lock_unlock_cycle_restarts_drivers`).
+
+**But the survey found two REAL adjacent v5 defects, both fixed this lane**
+(unit 1): a late `Setup` failure returned a bare error and ate the display-once
+pepper — v4's fix is explicit that the key is never withheld behind an error —
+and a retry after such a failure was DESTRUCTIVE (a fresh pepper written over
+the existing `quilltap.dbkey`, whose partitions it cannot open; the DDL has 0 of
+79 statements using `IF NOT EXISTS`). v5 now returns the pepper with
+`requiresRestart` and refuses the retry by name.
+
+### Bug 65 (`c5be43f5`, "version guard was silently inert") — NO-PORT
+
+v4's defect is bundler-shaped: both guard functions reached
+`migrations/lib/database-utils` through a synchronous `require()` of what had
+become an async module, so every call threw into a catch that allowed startup
+anyway. v5 has **no version guard and no migration runner** (both standing
+deferrals), so there is no call to fix, no sync-require to convert, and no ESLint
+rule to mirror. Verified: nothing in `crates/` implements `checkVersionGuard` /
+`storeCurrentVersion`.
+
+**One interop rider DID come out of it and is fixed** (unit 2): the guard's
+other effect is writing `minServerVersion` into `quilltap.dbkey`, and v5's
+full-replace re-wrap would have stripped it. See that unit's record.
+
+**Tier-3 loud deferral — `instance_settings.highest_app_version` is READ but
+never WRITTEN.** v5 reads the row for the Almanack's premises
+(`almanack/phase1_premises.rs:129-141`) and blocklists it from export
+(`db/instance_settings.rs:638-645`), but no v5 path writes it. Consequences,
+stated plainly: a v5-provisioned instance renders that premise `null`, and it
+carries no downgrade tripwire for a later v4 binary. **Deliberately not
+invented here.** The row is v4's semver guard over v4's own app version; writing
+v5's version string into it would be meaningless at best (v5 versions are not
+v4 versions) and lock-out-inducing at worst (a v4 binary comparing its semver
+against a v5 string). Correcting this belongs with a real version-guard port, or
+with a human ruling on what the two version lines mean to each other — **flag it
+for that ruling if v4-interop instances become common.** No stub, no partial
+write.

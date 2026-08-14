@@ -91,6 +91,19 @@ a pre-4.8.2 archive still restores. The tier-2 corpus grew the three cells on
 both write paths plus a surviving create op -- the create arm's cell values
 were previously unobservable, because the only created row was deleted by a
 later op in the same sequence.
+Recorded the dispositions for v4's two 4.8.3 lifecycle fixes (docs only, no
+code): bug 64 (first-run setup wedging every DB connection) is a NO-PORT — v5
+caches no database handle above `Db`, lock/unlock rebuilds the world, and there
+is no post-setup plaintext-to-cipher conversion to sequence because v5
+provisions encrypted from byte zero — and bug 65 (the inert version guard) is a
+NO-PORT because v5 has neither a version guard nor a migration runner. Both
+records carry the evidence, and both real defects the survey turned up on the
+way are fixed above. Left deliberately unfixed and flagged for a ruling:
+`instance_settings.highest_app_version` is read by the Almanack but never
+written by v5, so a v5-provisioned instance renders that premise null and
+carries no downgrade tripwire — writing v5's own version into v4's semver guard
+would be meaningless at best and lock-out-inducing at worst.
+
 A passphrase change no longer strips fields Quilltap v5 does not model from
 `quilltap.dbkey`. v4's version guard writes `minServerVersion` into the key file
 by read-modify-write so an older binary is refused before the database is opened
