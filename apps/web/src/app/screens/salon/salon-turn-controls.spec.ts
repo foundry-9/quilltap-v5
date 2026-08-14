@@ -418,8 +418,15 @@ describe('Salon turn controls', () => {
       query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
     });
     const fixture = await render(client);
-    const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Auto-responses are paused');
+    const text = (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
+    // The CLAIM is pinned, not just the opening words (dogfood #83): the notice
+    // promised that no character would speak until you resumed, which is not
+    // what pause does in either app — a message you send is still answered
+    // once, by whoever's turn it is. Only the chain stops.
+    expect(text).toContain(
+      "Auto-responses are paused — characters won't carry on by themselves, " +
+        'but whoever\'s turn it is will still answer a message you send.',
+    );
     const resumeBtn = fixture.nativeElement.querySelector(
       'qt-chat-sidebar .qt-chat-pause-button',
     ) as HTMLButtonElement;

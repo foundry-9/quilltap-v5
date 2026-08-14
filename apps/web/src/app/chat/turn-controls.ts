@@ -14,6 +14,17 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
  * two homes for it) and only the paused NOTICE stays — that notice is v5's own
  * affordance, not something v4 puts in the sidebar.
  *
+ * Its wording is load-bearing, and was wrong until dogfood finding #83: it used
+ * to promise that "the next character won't speak until you resume", which is
+ * not what pause does in EITHER app. Pause stops the auto-CHAIN — v4 consults
+ * `isPaused` only in `shouldChainNext`
+ * (`lib/services/chat-message/turn-orchestrator.service.ts:77`), never on the
+ * send path: its composer stays enabled while paused, `sendMessage` has no
+ * pause check, and neither does `POST /api/v1/messages`. So a message you send
+ * is still answered, once, by whoever's turn it is; what stops is the
+ * characters carrying on among themselves afterwards. A reader who trusted the
+ * old sentence read one ordinary reply as a broken pause.
+ *
  *   - The **Speaking-As** selector (v4 `SpeakerSelector`), shown when the user
  *     controls two or more characters.
  *   - The **user-turn banner** (v4 SalonView ~1394–1455): when it is a
@@ -31,7 +42,8 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
     <div class="qt-chat-turn-controls border-t qt-border-default">
       @if (isPaused()) {
         <div class="qt-chat-paused-banner px-4 py-2 text-sm qt-text-secondary">
-          Auto-responses are paused — the next character won't speak until you resume.
+          Auto-responses are paused — characters won't carry on by themselves, but whoever's
+          turn it is will still answer a message you send.
         </div>
       }
 

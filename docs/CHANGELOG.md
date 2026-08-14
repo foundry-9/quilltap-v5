@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Corrected the paused-chat notice in the Salon (dogfood finding #83). It claimed
+"the next character won't speak until you resume", which is not what pause does
+in either app: pause stops the auto-chain between characters, and a message you
+send is still answered once by whoever's turn it is. The notice is a v5-only
+affordance (v4 shows none), so the wording was v5's alone — and it read one
+ordinary reply as a broken pause. The engine behavior was already v4-faithful
+and is unchanged.
+
 Fixed a fenced code block being a one-way door in the chat composer (dogfood
 finding #82). Typing ``` opens a code block and nothing in the markdown dialect
 closes one, so every subsequent Enter only added another line to it — a writer
