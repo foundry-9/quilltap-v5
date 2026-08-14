@@ -302,6 +302,10 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Added the two Composer settings toggles for the emoji and symbol shortcuts
+(`composerEmoji` / `composerUnicode`, both on by default). They govern the
+automatic `:` / `\` triggers only; the toolbar buttons are never gated.
+
 Added the emoji (☺) and symbol (Ω) pickers to the editor's formatting toolbar:
 a shared browsable panel with search, a recently-used row, and a grid grouped by
 emoji category or Unicode block, over the same match engine the typeaheads use.

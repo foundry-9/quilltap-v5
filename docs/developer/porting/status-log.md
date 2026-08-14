@@ -67601,3 +67601,25 @@ the sections (v4's inline `cellIndex += 1`). The obvious Angular shape — a
 per cell over ~1,900 cells, i.e. ~3.6M comparisons per render of the emoji grid.
 
 **Gate at this unit:** full `ng test` 309 files / 4,410 tests, zero failures.
+
+## Lane record — P4.D75 unit 5: the two Composer settings toggles
+
+`qt-composer-emoji-settings` and `qt-composer-unicode-settings`, over the
+existing `ChatSettingsCard` base (v4
+`ComposerEmojiSettings.tsx` / `ComposerUnicodeSettings.tsx`, whose whole bodies
+are a checkbox plus copy). v4's copy carries over verbatim, including the two
+sentences that tell a reader the toolbar button is NOT gated, and the Unicode
+card's math-bail line (`$$\phi$$` stays as you typed it). Both write the bare
+scalar; both default checked when the key is unset, which is v4's `?? true`.
+
+Spec: `composer-char-insert-cards.spec.ts`, 10 cases in the established
+scalar-toggle shape — default-when-unset, persisted false, the exact PUT payload
+per interaction, the copy assertions, and the dogfood-#6 visible-failure arm for
+each card.
+
+**The mount is AT-UNIFY, per the order:** `chat-tab.ts` belongs to P4.D74 this
+round. The unifier adds `<qt-composer-emoji-settings />` and
+`<qt-composer-unicode-settings />` inside the existing **Composer** card,
+directly after `<qt-composer-spellcheck-settings />`, plus the two imports —
+which is v4's own order at `ChatTabContent.tsx:89-105` (Composer card:
+spellcheck → emoji → unicode).
