@@ -849,6 +849,18 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // after the first boot.
             quilltap_core::db::character_archive_repair::ensure_character_archive_columns(main)?;
             // === end P4.D63 ===
+            // === P4.D73 (v4 4.8.2, migrations `add-composer-emoji-field-v1`,
+            // `add-composer-unicode-field-v1`,
+            // `add-smart-typography-settings-field-v1`) ===
+            // The three `chat_settings` composer/typography columns, re-homed
+            // from v4's migration runner for the same reason. Load-bearing
+            // rather than cosmetic here: the read tolerates absence with the
+            // Zod default and the write drops the column, so without this the
+            // toggles would silently never persist on an existing instance.
+            quilltap_core::db::chat_settings_composer_repair::ensure_chat_settings_composer_columns(
+                main,
+            )?;
+            // === end P4.D73 ===
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
             // chats the Scriptorium pipeline left half-finished — arm (A) real

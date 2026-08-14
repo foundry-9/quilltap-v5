@@ -47,6 +47,19 @@ pick), so equipped state holds garments rather than one opaque card over
 empty slot rows. Dissolution is recursive and fail-safe: a bundle whose
 components cannot be resolved is stored whole exactly as before. No schema
 or export-shape change; no migration.
+P4.D73 unit 2 — the `chat_settings` composer/typography boot ensure. v4
+adds the three 4.8.2 columns through its migration runner; v5's runner is a
+locked deferral, so they are re-homed as a boot repair over the main partition
+(the P4.d7 / P4.D41 / P4.D63 precedents), each `ALTER TABLE ... ADD COLUMN`
+carrying v4's exact type and DEFAULT clause and guarded by its own
+column-presence check. Load-bearing rather than cosmetic: measured on an
+un-ensured instance, the read tolerates (the settings screen renders with the
+Zod defaults) but the PUT answers `500 sqlite error: no such column:
+composerEmoji`, since `update_for_user`'s update branch is a plain `SET` —
+the same class as the third Friday dogfood sighting. A fresh instance already
+has the columns from the re-dump. v4's three migration pretty labels have no
+v5 analog: recorded NO-PORT.
+
 P4.D73 unit 1 — adopted v4 4.8.2's three new `chat_settings` columns
 through the data layer and the D23 fresh-schema re-dump. `fresh_schema.json`
 and `chat_settings_seed.json` re-dumped from v4's live `generateDDL` at

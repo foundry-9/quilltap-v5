@@ -34,6 +34,7 @@ pub mod characters;
 pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
+pub mod chat_settings_composer_repair;
 pub mod chats;
 pub mod chats_impersonation;
 pub mod chats_messages;

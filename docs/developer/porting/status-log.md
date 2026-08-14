@@ -65923,3 +65923,58 @@ pin, so `almanack/phase3_ledgers.rs` needs no widening and
 `almanack_tier2_equivalence` stays green untouched.
 
 **Versions:** core 0.0.532, harness 0.0.455.
+
+---
+
+## P4.D73 unit 2 — the `chat_settings` composer/typography boot ensure (v4 4.8.2 migrations)
+
+`crates/quilltap-core/src/db/chat_settings_composer_repair.rs` +
+`ensure_chat_settings_composer_columns` wired into `quilltap-host`'s
+`seed_built_ins` boot-repair block, immediately after the P4.D63 character
+archive ensure. That block runs on EVERY assemble/unlock, so every instance v5
+opens — including the committed e2e/web fixtures — gains the columns.
+
+**v4's three migrations reproduced statement-for-statement**
+(`migrations/scripts/add-composer-{emoji,unicode}-field.ts` +
+`add-smart-typography-settings-field.ts`, all `introducedInVersion: 4.8.2`):
+three independent `ALTER TABLE "chat_settings" ADD COLUMN`s, each behind its own
+column-presence check, with **v4's exact type + DEFAULT clause** —
+`INTEGER DEFAULT 1`, `INTEGER DEFAULT 1`, and `TEXT DEFAULT
+'{"displayQuotes":false,"dashes":true,"ellipsis":true}'`. The DEFAULT clauses
+are not decoration: a v4 instance later reopened by v4 must see the same values
+for rows that predate the add, and a unit test reads them back off a
+pre-existing row to pin it. A `the_ddl_default_matches_the_json_const` test
+holds the DDL literal and `SMART_TYPOGRAPHY_DEFAULT_JSON` to one source.
+
+**Why the ensure is load-bearing, MEASURED not assumed.** The order's premise
+was "the read tolerates and the write silently drops". Half right. With the
+ensure disabled and the fixture's columns dropped, the probe recorded:
+
+    PROBE after-boot composerEmoji present=false
+    PROBE composerEmoji PUT status=500
+      body={"type":"error","data":{"kind":"internal",
+            "message":"sqlite error: no such column: composerEmoji"}}
+
+`update_for_user`'s **update** branch is a plain `UPDATE … SET`, with no
+tolerance, so an existing instance 500s outright — the same class as the third
+Friday dogfood sighting that bricked every page load. Only the
+create-a-default-row branch (`tolerant_insert`) would drop the value silently.
+Both module headers now state the measured behavior; the wrong half of the
+original comment was corrected before commit.
+
+**NO-PORT recorded:** v4's `lib/startup/prettify.ts` migration labels
+("Cataloguing the little faces", "Teaching the machine its Greek", "Teaching
+the quotation marks to curtsey"). v5 surfaces no migration labels anywhere —
+the P4.D63 / `231be14c` precedent.
+
+**Ownership note for the unifier:** this lane's only `quilltap-host/src/host.rs`
+edit is the one additive call (+ its comment block) inside `seed_built_ins`,
+fenced `=== P4.D73 ===` / `=== end P4.D73 ===` immediately after P4.D63's fence.
+P4.46 owns that file's boot/lock reshape; the two touch different regions, but
+the meeting point is named here so the merge is deliberate rather than lucky.
+
+Four unit tests (all three added to an old table; the DEFAULT read-back; the
+half-migrated + idempotent arm; the table-less no-op) plus the const pin.
+Mutation-proven at the wire in unit 3.
+
+**Versions:** core 0.0.533, host 0.0.67.
