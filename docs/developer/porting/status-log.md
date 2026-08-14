@@ -67348,3 +67348,65 @@ port in this lane is still against current v4, and no recapture is owed.
 The round's baseline move should still be to `48396682` (what the round
 was planned against); **`11553944` is the next round's drift check**, and
 P4.D75's lane should know its two test suites moved under it.
+## Lane record — P4.D75 unit 1: the char-insert engine twin, the four corpora, the two datasets (v4 `48396682`)
+
+**The Tier B engine is in v5, code-identical to v4's.** v4's
+`lib/char-insert/` (its own ESLint-enforced import-free directory, written to
+be copied here) landed at
+`apps/web/src/app/editor/char-insert/`: `types.ts`, `trigger.ts`, `search.ts`,
+`math-span.ts`, `load.ts`, `recents.ts`, `profiles/emoji.ts`,
+`profiles/unicode.ts`. A mechanical diff against
+`git show 48396682:lib/char-insert/<file>` shows **doc-comment deltas only** —
+five lines, all of them cross-repo wording (`@module` tags, the
+`fixtures/`→`__fixtures__/` path, "quilltap-v5 copies this" → "v5 serves a
+byte-identical copy"), plus the two `indexUrl` notes recording why the asset
+path stays a plain absolute path here (see below). **Zero executable lines
+differ.**
+
+**The four corpora and the two datasets are byte-identical copies**, sha256-
+verified against the pin at copy time:
+
+| file | v5 path | bytes |
+|---|---|---|
+| `emoji-search-vectors.json` | `editor/char-insert/__fixtures__/` | 2,218 |
+| `emoji-trigger-vectors.json` | `editor/char-insert/__fixtures__/` | 3,254 |
+| `unicode-search-vectors.json` | `editor/char-insert/__fixtures__/` | 3,386 |
+| `unicode-trigger-vectors.json` | `editor/char-insert/__fixtures__/` | 5,861 |
+| `emoji-index.v1.json` | `apps/web/public/emoji/` | 231,421 |
+| `unicode-index.v1.json` | `apps/web/public/unicode/` | 316,415 |
+
+The datasets keep v4's served paths (`/emoji/emoji-index.v1.json`,
+`/unicode/unicode-index.v1.json`) — the filename IS the version contract, and
+v5's `public/` is copied to the dist root by the Angular build, so the same
+path resolves on the dev server, the axum static handler, and the one-origin
+`qtap://` window. Deliberately NOT routed through `apiUrl()`: these are page-
+origin static assets, exactly like the theme-token fetch
+(`screens/settings/appearance/theme-preview-modal.ts:244`), and `apiUrl()`
+would send them at the qtap origin in the Tauri `devUrl` loop where the page
+origin is the Angular dev server. Neither dataset is imported by app code —
+`load.ts` fetches them lazily — so nothing enters the bundle.
+
+**The differential: v4's four unit suites ported case-for-case**
+(`search.spec.ts`, `trigger.spec.ts`, `recents.spec.ts`, `unicode.spec.ts` —
+from v4's `lib/char-insert/__tests__/{search,trigger,recents,unicode}.test.ts`),
+replaying the byte-copied corpora over the byte-copied datasets. Jest's
+`it.each` became plain `for` loops over the same case arrays; every assertion,
+every invariant string and every v4 why-comment carries over. **174 cases, all
+green on the first run.**
+
+**Mutation-checked, because a first-run-green replay proves nothing on its
+own.** Four mutations, each reverted after measuring:
+
+1. `Bucket.AliasExact`/`AliasPrefix` swapped → **17 red**, including the
+   emoji corpus's `smile` vector and the unicode corpus's `to`/`leq` vectors.
+2. the opener-context guard deleted from `findTrigger` → the `10:30`, `a:bc`,
+   `x\to` and `\to\phi` vectors go red plus the six word-opening rows.
+3. `isInsideMathSpan`'s currency rule forced to "every `$` opens math" → the
+   two currency `mathCases` go red.
+4. `byAliasExactCase.get(query)` → `.get(query.toLowerCase())` (the classic
+   port slip v4's module doc warns about) → **8 red**, the whole Greek
+   case-sensitivity block including "would be wrong without the exact-case
+   map".
+
+So the corpora do bite, and they bite on exactly the invariants v4 says
+matter.

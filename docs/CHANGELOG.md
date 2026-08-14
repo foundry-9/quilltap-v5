@@ -302,6 +302,13 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Ported v4's character-insertion engine (`lib/char-insert/`) into the SPA at
+`apps/web/src/app/editor/char-insert/` — the shared logic behind the composer's
+`:emoji` and `\unicode` typeaheads and both toolbar pickers. Code-identical to
+v4's (doc comments aside); the four behavior corpora and both dataset assets
+are byte-identical copies, and v4's four unit suites are replayed case-for-case
+(174 cases). The datasets are served from `public/` at v4's paths and fetched
+lazily, so they never enter the bundle.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`
