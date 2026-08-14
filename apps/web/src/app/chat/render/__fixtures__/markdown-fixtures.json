@@ -42,7 +42,7 @@
   {
     "name": "dialogue-curly",
     "input": "“Well met, traveller.”",
-    "html": "<p>“Well met, traveller.”</p>"
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">“Well met, traveller.”</span></p>"
   },
   {
     "name": "mixed-line",

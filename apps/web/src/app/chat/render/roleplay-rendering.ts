@@ -6,8 +6,11 @@
  * fixtures in `markdown-renderer.spec.ts`).
  *
  * NOTE: the dialogue pattern / detection chars below are copied byte-for-byte
- * from v4 (straight quotes only, despite the "straight and curly" comment) — do
- * not "fix" them; the captured fixtures enforce parity.
+ * from v4 — including the `\u` escape form of the curly pair, which is the
+ * whole lesson of v4's bug 62 (`c7892132`): the entry claimed curly support for
+ * its whole life while holding four copies of ASCII 0x22, because a literal
+ * U+201C in source is indistinguishable from a straight quote at a glance. Do
+ * not "tidy" them in either direction; the captured fixtures enforce parity.
  */
 
 /** A stored rendering pattern (v4 `RenderingPattern`). */
@@ -64,9 +67,14 @@ export const DEFAULT_RENDERING_PATTERNS: RenderingPattern[] = [
   { pattern: '\\(\\([^)]+\\)\\)', className: 'qt-chat-ooc' },
   // OOC: // comment - line prefix style
   { pattern: '^// .+$', className: 'qt-chat-ooc', flags: 'm' },
-  // Dialogue: "speech" - straight and curly quotes
-  // (v4's stored pattern is straight-quote-only — copied byte-for-byte.)
-  { pattern: '[""][^""]+[""]', className: 'qt-chat-dialogue' },
+  // Dialogue: "speech" - straight AND curly double quotes. The curly ones are
+  // written as \u escapes on purpose (as the seeded Standard Roleplay template
+  // does): this entry spent its whole life claiming curly support while holding
+  // four copies of ASCII 0x22, because a literal U+201C in source is
+  // indistinguishable from a straight quote at a glance (bug 62). Single quotes
+  // are deliberately excluded - an apostrophe is a single quote far more often
+  // than a quotation mark is (don't, writers', '80s).
+  { pattern: '["\u201c][^"\u201d]+["\u201d]', className: 'qt-chat-dialogue' },
   // Narration: *actions* - single asterisks (not bold **)
   { pattern: '(?<!\\*)\\*[^*]+\\*(?!\\*)', className: 'qt-chat-narration' },
   // Narration: [actions] - square brackets (not links)
@@ -75,10 +83,17 @@ export const DEFAULT_RENDERING_PATTERNS: RenderingPattern[] = [
   { pattern: '(?<!\\{)\\{[^{}]+\\}(?!\\})', className: 'qt-chat-inner-monologue' },
 ];
 
-/** Default dialogue detection for paragraph-level styling. */
+/**
+ * Default dialogue detection for paragraph-level styling.
+ *
+ * Straight and curly DOUBLE quotes only, the curly pair written as \u escapes
+ * for the reason given on the dialogue pattern above (bug 62). Keep these in
+ * step with that pattern — a paragraph the inline rule styles but this one
+ * doesn't (or vice versa) is a visible split.
+ */
 export const DEFAULT_DIALOGUE_DETECTION: DialogueDetection = {
-  openingChars: ['"', '"'],
-  closingChars: ['"', '"'],
+  openingChars: ['"', '\u201c'],
+  closingChars: ['"', '\u201d'],
   className: 'qt-chat-dialogue',
 };
 

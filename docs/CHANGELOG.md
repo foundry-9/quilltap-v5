@@ -230,6 +230,14 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Fixed bug 62 in the SPA renderer and recaptured the v4 parity corpus
+(P4.D74 unit 2): the default dialogue pattern and the paragraph-level
+detection chars now carry the curly double quotes as v4 does since
+`c7892132` (in `\\u` escape form, deliberately), the `katex` pin moved to
+v4's resolved 0.18.4, and `markdown-fixtures.json` was recaptured from
+v4's real renderer at `48396682`. Exactly one vector's bytes moved —
+curly-quoted dialogue is highlighted now, where before it was not.
+
 Ported the smart-typography rule engine into the SPA (P4.D74 unit 1):
 v4's stdlib-only `lib/smart-typography/engine.ts` copied byte-identical
 below its docblock, its 15-vector fixture corpus copied byte-for-byte,

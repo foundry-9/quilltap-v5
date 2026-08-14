@@ -66866,3 +66866,62 @@ re-diffed byte-identical against the pin.
 
 No renderer, plugin, card or settings wiring in this unit — the engine
 has no callers yet, by design.
+
+### Unit record — P4.D74 unit 2 (bug 62, the katex pin, and the recapture)
+
+v5 carried v4's bug 62 deliberately and said so in the file header:
+`roleplay-rendering.ts` held the straight-quote-only dialogue pattern and
+the straight-only detection chars because the captured fixtures enforced
+parity with v4's own pre-fix bytes. v4 fixed it at `c7892132`, so the
+carry is retired.
+
+**The two flips are byte-identical to v4 at `48396682`** — diffed line
+for line against `git show 48396682:lib/chat/roleplay-rendering.ts`
+(:39 and :57-58): `'["“][^"”]+["”]'` and
+`openingChars: ['"', '“'] / closingChars: ['"', '”']`. The
+`\u` ESCAPE form is load-bearing and is copied as such, not as literal
+glyphs: that is the whole lesson of the bug — the entry claimed curly
+support for its whole life while holding four copies of ASCII 0x22,
+because a literal U+201C in source is indistinguishable from a straight
+quote at a glance. v4's two explanatory comments (including "single
+quotes are deliberately excluded — an apostrophe is a single quote far
+more often than a quotation mark is") come across with them, and the
+module header's stale "straight quotes only, despite the comment" note
+is rewritten to say what is now true.
+
+**The katex pin moved 0.18.1 → 0.18.4** (v4's `d339bad8` refresh). The
+order asked for v4's RESOLVED version rather than its `^`-ranged
+declaration, and v4's `package-lock.json` at the pin resolves the
+top-level `katex` to exactly 0.18.4. A real `npm install` followed;
+`npm ls katex` now reports the same three-node shape v4 has —
+`katex@0.18.4` at the top, `katex@0.16.47` nested under BOTH
+`rehype-katex@7.0.1` and `micromark-extension-math@3.1.0`. That nesting
+is why the math bytes did not move: the rendered markup comes from
+rehype-katex's own nested copy, identical in both trees. The capture
+tool's stale "v5 pins katex at v4's exact resolved 0.18.1" note is
+rewritten to record this, including the instruction to read v4's LOCK
+rather than its package.json when the pin next moves.
+
+**The recapture** ran against the v4 checkout at the pin (clean tree,
+`main` = `48396682`, verified before the run) with the committed recipe:
+
+```
+cd ~/source/quilltap-server && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH \
+  QT_V4_ROOT=$PWD ./node_modules/.bin/tsx \
+  <v5>/apps/web/tooling/capture-markdown-fixtures.mts
+```
+
+51 vectors, unchanged in count, and **exactly one vector's bytes moved**:
+`dialogue-curly` went from a bare `<p>“Well met, traveller.”</p>` to the
+highlighted `<p class="qt-chat-dialogue"><span
+class="qt-chat-dialogue">…</span></p>`. That single-line diff is the
+whole of bug 62 as the corpus sees it — and it is the proof the flip is
+v4's, not this lane's invention. The truncation guard still holds (the
+`options`-bearing subset is untouched at 11).
+
+**Mutation-proven in both halves**, since the first run after the flip
+was green: reverting the PATTERN to the four-0x22 form reds
+`dialogue-curly`; independently reverting the DETECTION chars to
+straight-only reds it too (one from `applyRoleplayPatterns`, one from
+`applyDialogueDetection`, and v4's comment is right that a template
+where the two disagree is a visible split). Render suite: 107 tests.

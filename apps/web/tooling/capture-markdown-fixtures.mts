@@ -24,12 +24,16 @@
  * couple the fixtures to a highlighter version. Unlabeled fences (detect:false)
  * are plain <pre><code> and safe to pin.
  *
- * The `math-*` fixtures couple to the KaTeX version the same way — KaTeX 0.18's
- * markup is what these bytes pin — which is why v5 pins `katex` at v4's exact
- * resolved 0.18.1 (see apps/web/package.json). remark-math/rehype-katex were
- * added at v4 b8b12695; the single-dollar promotion (`math-single-*`,
- * `math-bare-token-*`) landed at v4 5915b04e — regenerate this file from a v4
- * worktree at 7e6d13e5 or later.
+ * The `math-*` fixtures couple to the KaTeX version the same way, which is why
+ * v5 pins `katex` at v4's exact resolved version — **0.18.4** since v4's
+ * `d339bad8` dependency refresh (see apps/web/package.json; re-read v4's
+ * `package-lock.json`, not its `^`-ranged `package.json`, whenever this moves).
+ * The math bytes themselves come from `rehype-katex`'s own nested `katex`
+ * (0.16.47 in both trees at `48396682`) — the top-level pin is what keeps the
+ * two trees resolving alike, so bump it in step and recapture. remark-math/
+ * rehype-katex were added at v4 b8b12695; the single-dollar promotion
+ * (`math-single-*`, `math-bare-token-*`) landed at v4 5915b04e — regenerate
+ * this file from a v4 worktree at 7e6d13e5 or later.
  */
 
 import { writeFileSync, mkdirSync } from 'node:fs';
