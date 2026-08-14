@@ -67410,3 +67410,89 @@ own.** Four mutations, each reverted after measuring:
 
 So the corpora do bite, and they bite on exactly the invariants v4 says
 matter.
+
+## Lane record — P4.D75 unit 2: the typeahead adapter — a caret-anchored menu ProseMirror had no precedent for
+
+**What landed:** `editor/code-context.ts` (the §Editor meeting-point file,
+created byte-for-byte as the order pins it — P4.D74 creates the identical file,
+so the add/add merges clean), and four adapter modules beside the engine:
+`recents-storage.ts` (v4's, `localStorage`-guarded), `insert-char.ts` (the ONE
+place a character enters a document), `typeahead-menu.ts` (the surface) and
+`char-typeahead-plugin.ts` (the adapter proper).
+
+**Three places the adapter necessarily differs from v4's, each measured rather
+than assumed:**
+
+1. **Text extraction.** v4 reads the anchor Lexical TEXT NODE's text and then
+   asks a second question — is this node glued to a preceding inline run
+   (`**bold**:smi`)? ProseMirror has no node boundary at the caret, so the port
+   reads the whole textblock up to the caret. That answers the glued question
+   BY CONSTRUCTION (`bold:smi` fails `findTrigger`'s opener-context rule with no
+   second check) and gives the math bail the prefix a reader would see. Inline
+   leaves collapse to one U+FFFC placeholder so the string stays 1:1 with
+   document positions (the `text-replacement.ts` precedent). The bold-run case
+   from v4's suite is ported and green.
+2. **The undo contract.** v4 tags one `editor.update` and Lexical's history
+   makes it one entry. ProseMirror groups adjacent typing into one history
+   event by time, which would let a single undo swallow the typed trigger too —
+   so every commit is one transaction AND carries `closeHistory`, plus the
+   `char-insert` meta as the readable marker matching v4's tag. v4's
+   "reverts to the literal typed text in ONE undo" case is ported for both
+   profiles and green.
+3. **Menu placement.** v4 gets a caret anchor free from
+   `LexicalTypeaheadMenuPlugin`. There is NO v5 precedent (the Pascal
+   `custom-tools-popup` is composer-anchored), so `typeahead-menu.ts` builds
+   the anchor itself from `view.coordsAtPos` — a fixed, zero-width box at the
+   caret's line — and renders v4's exact DOM, classes, ARIA and
+   `data-placement`/`data-align` flip rules into it. **The flip/clamp geometry
+   is spec-provable**, not deferred: it is extracted as the pure
+   `resolvePlacement`, because jsdom reports every box as zero and an in-DOM
+   assertion would pass no matter what the rule said. Tier 3's escape hatch was
+   therefore not needed.
+
+**One behavior v4 gets structurally and v5 must ask for:** the menu closes on
+editor blur (`handleDOMEvents.blur`, never consuming the event, so Document
+Mode's flush-on-blur save still rides it). v4's menu unmounts with its Lexical
+host; a caret-anchored div has no host to hide it.
+
+**One real bug the specs caught before the wiring existed.** The first run had
+every dataset-dependent case red with ZERO fetches. Cause: view-scoped state
+was living in the plugin factory's closure. `EditorState.create` builds a fresh
+`plugins` array each time, so ProseMirror tears down and rebuilds the plugin
+views on every `updateState` with a new state — while the plugin object lives
+on — and the `destroyed` flag set by the first teardown disabled the plugin
+forever. Fixed by scoping the runtime (menu, rows, highlight, open trigger) to
+a `WeakMap<EditorView, Runtime>`, which is also what makes one plugin instance
+safe across two views.
+
+**The differential:** v4's two plugin suites ported case-for-case
+(`char-typeahead.emoji.spec.ts` 26 cases from v4's 411-line emoji suite,
+`char-typeahead.unicode.spec.ts` 30 from its 470-line unicode suite) over a
+REAL ProseMirror editor, the REAL committed dataset served through a stubbed
+`fetch`, and the real `textReplacementPlugin` beneath the typeahead in v4's
+priority order. Both profiles cover: the menu-free commit, no-trailing-space +
+caret, unknown alias left literal, recents, one-undo, the five never-fire
+triggers, the bold-run glue, code block / inline code / IME / toggle-off /
+dataset-failure bails, the lazy-load counts (including "NEVER fetched from the
+space bar"), and the Layer 1.5 interaction in both directions. The unicode
+suite adds alias CASE (`\phi` vs `\Phi`), the code-point commit, and the four
+math-bail arms. Plus v5-only menu coverage (v4's menu is Lexical's, so it has
+none): open/Enter/Arrow/Escape, "Enter is untouched while shut" (the composer
+must still submit), the closed-trigger no-reopen, the code-point row first, and
+11 `typeahead-menu.spec.ts` cases for geometry, ARIA and the click path.
+**56 + 11 green.**
+
+**Mutation-checked.** Removing the math bail from the commit path reddens the
+`\(`/`\[` arms (`$$\to`/`$\to` are already refused by the opener-context rule,
+which is v4's structure too — the corpus `mathCases` pin the rest); making the
+menu path append the profile's `insertSuffix` reddens three menu commits across
+both suites. Two spec expectations were WRONG on first run and were corrected
+against the engine, not the port: `:smi` is an alias PREFIX, so the menu's
+first row is 😃 (presentation order), not `:smile:`'s 😄 — the menu assertions
+now derive their expectation from `searchChars` (whose order the corpora pin)
+rather than transcribing a guess.
+
+**Also landed:** v4's `qt-typeahead-*` block, carried into `_surfaces.css` at
+v4's own position. Verified after `ng build`: both datasets ship as static
+assets under `dist/quilltap/browser/{emoji,unicode}/` and appear in NO JS
+bundle.

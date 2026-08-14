@@ -302,6 +302,14 @@ below its docblock, its 15-vector fixture corpus copied byte-for-byte,
 and v4's engine test suite ported case-for-case to vitest (23 tests).
 The engine has no callers yet — the renderer, the composer plugin and
 the settings card follow in later units of the same order.
+Ported the composer's `:` emoji and `\` Unicode typeahead into the SPA's
+ProseMirror editor (v4's `CharTypeaheadPlugin`): the menu-free commit
+keystrokes (`:smile:`, `\to `), the caret-anchored menu with its flip/align
+geometry, the code-block / inline-code / math-span / IME bails, the lazy
+dataset fetch, and v4's one-undo contract. v4's two plugin suites are ported
+case-for-case (56 cases) over a real editor and the real dataset, plus 11 cases
+for the menu surface. Not yet mounted in a host — that is the next unit.
+
 Ported v4's character-insertion engine (`lib/char-insert/`) into the SPA at
 `apps/web/src/app/editor/char-insert/` — the shared logic behind the composer's
 `:emoji` and `\unicode` typeaheads and both toolbar pickers. Code-identical to
