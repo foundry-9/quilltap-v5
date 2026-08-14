@@ -990,8 +990,12 @@ fn system_import_execute_state_equivalence() {
 
     // 13 from P4.9G4/P4.31 + P4.33's four `store_identity_*` arms + P4.D46's
     // four `execute_files_*` arms and two `execute_prepped` embedding-enqueue
-    // bail-out arms + P4.D62's seven `execute_preserve_ids_*` arms.
-    assert_eq!(ran, 30, "expected 30 cases, ran {ran}");
+    // bail-out arms + P4.D62's seven `execute_preserve_ids_*` arms + P4.D65's
+    // three (the `duplicate` × `preserveIds` corner: the plain fork claiming
+    // the carried ids, the same payload under `duplicate` behaving identically
+    // because names alone do not conflict, and the id collision that refuses at
+    // the preflight — which is WHY the duplicate fork is unreachable there).
+    assert_eq!(ran, 33, "expected 33 cases, ran {ran}");
     // …and the preserveIds family asserted by SHAPE, not just by the total, so a
     // truncated oracle cannot pass by arithmetic (the corpus-shape lesson). Each
     // arm is the only one covering its behaviour: the two refusal SENTENCES, the
@@ -1005,6 +1009,9 @@ fn system_import_execute_state_equivalence() {
         "execute_preserve_ids_skip_foreign_refuses",
         "execute_preserve_ids_dedup_by_sha",
         "execute_preserve_ids_sha_mismatch_refuses",
+        "execute_preserve_ids_plain_claims_ids",
+        "execute_preserve_ids_duplicate_free_ids",
+        "execute_preserve_ids_duplicate_existing_id_refuses",
     ] {
         assert!(
             cases.iter().any(|c| c["name"] == arm),

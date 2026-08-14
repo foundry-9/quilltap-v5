@@ -34,6 +34,13 @@ Added the `help_doc_chunks` table — the storage for section-level help search.
 Fresh instances get it from the re-dumped schema; existing instances get it on
 the next boot. Nothing reads or writes it yet; the slicing, embedding, and
 search follow.
+Added tests for wiping archived-character bundles. Deleting all data spares
+archived bundles by default; the explicit request to destroy them too was
+untested, so nothing checked that the option was read at all. Also pinned how
+imports behave when told to preserve incoming ids — an id that already exists
+refuses the whole import before any duplicate-handling runs, which is what makes
+the outcome predictable. Tests only; no shipped behavior changed.
+
 Closed the last untested character-archive guards. Sending or listing mail as an
 archived character, sending mail to one, asking an archived character what it
 can reach, and picking one to answer a turn all refuse — and every one of those

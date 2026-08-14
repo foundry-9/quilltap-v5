@@ -68607,3 +68607,84 @@ Fixtures rebuilt (all /tmp, none committed): `mail-carina-tools`,
 `self-inventory`, `participant-resolver`, `chats-participants`. The committed
 `post-office-*` and `announcer_tier3` bytes are UNTOUCHED. Regen recipes are the
 existing case headers. Versions: harness 0.0.462.
+
+---
+
+## P4.D65-remainder — item 5a/5b/5c: the P4.D62 banked import arms and the archive-bundle sweep
+
+Lane: `claude/p4-archive-service-round2-b015ec`, baseline `24633026`. Harness
+only; mutation-proven; no product source moved.
+
+### 5c — the archive-bundle SWEEP (`system_delete_data`, 7 → 9 cases)
+
+The order predicted a fixture mutation ("extend `system-data-*` with
+ARCHIVE-category `files` rows"). **It needs none — P4.D62 already widened the
+family**, and the fixture has carried `f0000005` (`lorian-archive.qtap`,
+category `ARCHIVE`) since. Measured, not assumed: `main.files` lands on 1
+rather than 0 in EVERY existing wipe case, because the default spares it.
+
+So the KEPT leg was already covered and the **SWEPT leg was the real gap**: no
+case ever passed `keepArchivedCharacterBundles: false`, so a port that kept
+ARCHIVE rows unconditionally — ignoring the option entirely — passed. Two arms
+now: the sweep (`main.files` → 0, `archiveBundlesKept: false`) and the explicit
+TRUE beside it, which is what would catch a port that read the flag but
+inverted it. Mutation: dropping the option on the way into
+`DeleteUserDataOptions` reds the sweep arm's body.
+
+### 5b — `duplicate` × `preserveIds` (`system_import_state`, 30 → 33 cases)
+
+**The banked premise is DISPROVED, and the arms pin why.** P4.D62 banked "no
+oracle arm covers duplicate+preserveIds+name-match". There cannot be one:
+every importer's conflict block is entered on an **id** match — the
+`"(imported)"` rename happens *inside* it, so a name alone never conflicts —
+and under `preserveIds` the preflight checks all SIXTEEN kinds and refuses the
+whole import on the first id already present. A conflict strategy is therefore
+never consulted while `preserveIds` is on. That is precisely what v4's own
+profiles importer calls "unreachable in practice", and it means the
+`DUPLICATE_MINTS` discipline is faithful-port cruft rather than live behaviour
+— correct to carry, impossible to exercise.
+
+Three arms over one hand-built payload (a roleplay template + two tags carrying
+names the fixture already uses, so a name-driven conflict would have somewhere
+to fire if one existed):
+
+- `execute_preserve_ids_plain_claims_ids` — free ids, `skip`: the plain create
+  forks on `preserveIds` and CLAIMS the carried ids.
+- `execute_preserve_ids_duplicate_free_ids` — the same payload under
+  `duplicate`, byte-identical, because no id collides.
+- `execute_preserve_ids_duplicate_existing_id_refuses` — one id that exists:
+  refused at the preflight, before the strategy. **This is the arm that pins the
+  unreachability** — if v4 ever narrows the preflight, it flips.
+
+Hand-built rather than a rewrite of the fixture's own characters export: that
+bundle's five managed-field links share one content row, so the same id is
+claimed under two kinds and the in-bundle repeat refuses first (already pinned
+by `execute_preserve_ids_skip_if_present`) — measured on the first attempt.
+
+Mutations: making the plain fork stop claiming reds the two claim arms
+(`roleplay_templates` + `tags` on both); dropping the template kind from the
+preflight reds the refusal arm (body AND state).
+
+### 5a — ESCALATED, not landed: the preflight's swallowed read errors
+
+P4.D62 banked: the preflight's exists-checks swallow repo READ ERRORS to "id
+free" (`.ok().flatten()`), where v4 propagates a thrown find into a refused
+import — so a CORRUPT store can be partially applied. **Still true at
+`24633026`**, at ten sites: `quilltap_import/mod.rs:805,826,835,845` (the
+folder / content-row / link / blob preflight arms) and the sibling
+`.ok().flatten()` reads at `entities.rs:445,532` and `preview.rs:124,130,148,
+172`. v4's `preflightPreserveIds` awaits each find bare, so a throw leaves
+`executeImport` at its `{success: false, …}` catch with nothing written.
+
+**Not fixed here, deliberately.** The round assignment scopes this lane to the
+harness families and the archive/system fixtures, bumping `quilltap-harness`
+only; the fix is `quilltap-core` product source and would put this lane into
+the round's core-version accounting. It is also not testable without landing
+it — the arm would be red on arrival, and pinning a known v5 defect as a
+divergence would be wrong. **Ordered next**: propagate the read error at the
+ten sites (v4's shape), and add one arm that plants an unreadable table on the
+working copy and asserts the import refuses with nothing applied. Round 2's
+production caller (the archive service) now exists, so the fix has a live
+consumer.
+
+Versions: harness 0.0.463.

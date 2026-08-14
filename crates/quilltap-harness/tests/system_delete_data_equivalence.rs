@@ -273,7 +273,34 @@ fn system_delete_data_matches_oracle() {
         check("delete_data_keeps_instance_settings", s, b, count_all(&db));
     }
 
-    // 7. Preview on an already-wiped instance: all zeros, still no writes.
+    // 7. P4.D65 (the banked P4.D63 unit-8 arm): the archive-bundle SWEEP.
+    //
+    // The KEPT leg was already covered by every wipe case above — the committed
+    // fixture carries one ARCHIVE-category `files` row, which is why
+    // `main.files` lands on 1 rather than 0. What no case reached is the
+    // explicit opt-in to destroy it, so a port that kept ARCHIVE rows
+    // unconditionally (ignoring the option entirely) passed. Here `main.files`
+    // must reach ZERO. The explicit-TRUE case beside it is what would catch a
+    // port that read the flag but inverted it.
+    {
+        let db = fresh_db("sweeparch");
+        let (s, b) =
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(false))));
+        check("delete_data_sweeps_archive_bundles", s, b, count_all(&db));
+    }
+    {
+        let db = fresh_db("keeparch");
+        let (s, b) =
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(true))));
+        check(
+            "delete_data_keeps_archive_bundles_explicitly",
+            s,
+            b,
+            count_all(&db),
+        );
+    }
+
+    // 8. Preview on an already-wiped instance: all zeros, still no writes.
     {
         let db = fresh_db("previewafter");
         let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
@@ -287,5 +314,5 @@ fn system_delete_data_matches_oracle() {
         failed.len(),
         failed.join("\n")
     );
-    assert_eq!(ran, 7, "expected 7 cases to run, ran {ran}");
+    assert_eq!(ran, 9, "expected 9 cases to run, ran {ran}");
 }

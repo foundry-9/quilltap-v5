@@ -205,6 +205,32 @@ function buildCases(): CaseSpec[] {
         return toolsPost('delete-data', { confirm: 'DELETE_ALL_MY_DATA' });
       },
     },
+    // ── P4.D65: the SWEPT leg (the banked P4.D63 unit-8 arm) ──────────────
+    // The KEPT leg was already covered by every other wipe case: the committed
+    // fixture carries one ARCHIVE-category `files` row, and `main.files` lands
+    // on 1 rather than 0 because the default spares it. What no case reached is
+    // the explicit opt-in to destroy it — so a port that kept ARCHIVE rows
+    // unconditionally, ignoring the option entirely, passed. Here `main.files`
+    // must reach ZERO and the summary must report `archiveBundlesKept: false`.
+    {
+      name: 'delete_data_sweeps_archive_bundles',
+      run: () =>
+        toolsPost('delete-data', {
+          confirm: 'DELETE_ALL_MY_DATA',
+          keepArchivedCharacterBundles: false,
+        }),
+    },
+    {
+      // …and the explicit TRUE, which must behave exactly as the default does.
+      // Without it, the pair above could be satisfied by a port that read the
+      // flag but inverted it.
+      name: 'delete_data_keeps_archive_bundles_explicitly',
+      run: () =>
+        toolsPost('delete-data', {
+          confirm: 'DELETE_ALL_MY_DATA',
+          keepArchivedCharacterBundles: true,
+        }),
+    },
     {
       // The preview after a full wipe: every count zero, and it still writes
       // nothing.

@@ -236,6 +236,8 @@ const RIYA_ONLY_CONTENT_SHA =
 const UPLOADS_BLOB = 'b585b1ed-f355-4c48-b597-9ef47812ef8e';
 const UPLOADS_BLOB_SHA =
   '1065ee92208d16fbd02af1041248cb76ee38cdb68c7c2d89e4facac052b41d05';
+/** [P4.D65] The fixture's only roleplay template — `House Style`. */
+const FIXTURE_TEMPLATE_ID = 'a4000000-0000-4000-8000-000000000001';
 
 /**
  * [Bug 54] A bundle claiming a content row and a blob row that BOTH already
@@ -767,6 +769,72 @@ function folderOverwritePayload(
  */
 const IDENTITY_ID_1 = 'af1d0000-0000-4000-8000-000000000001';
 const IDENTITY_ID_2 = 'af1d0000-0000-4000-8000-000000000002';
+
+/**
+ * [P4.D65] The `duplicate` × `preserveIds` corner P4.D62 banked — measured
+ * rather than assumed, and the measurement DISPROVED the premise.
+ *
+ * The bank read "no oracle arm covers duplicate+preserveIds+name-match". It
+ * cannot: every importer's conflict block is entered on an **id** match (the
+ * "(imported)" rename happens *inside* it), and under `preserveIds` the
+ * preflight checks all sixteen kinds and refuses the whole import on the first
+ * id it finds already present. So a conflict strategy is never consulted at all
+ * while `preserveIds` is on — which is exactly what v4's own profiles importer
+ * calls "unreachable in practice", and why the `DUPLICATE_MINTS` discipline is
+ * faithful-port cruft rather than live behaviour.
+ *
+ * Three arms make that claim measurable instead of asserted, all over this one
+ * payload — a roleplay template and two tags carrying names the fixture already
+ * uses (`House Style`, `Companion`, `Rival`), so a name-driven conflict would
+ * have somewhere to fire if one existed:
+ *
+ *   - FREE ids + `skip` — the plain create forks on `preserveIds` and CLAIMS
+ *     the carried ids;
+ *   - FREE ids + `duplicate` — byte-identical to the above, because no id
+ *     collides and the strategy never runs. Names alone do not conflict;
+ *   - an EXISTING id + `duplicate` — refused at the preflight, before the
+ *     strategy. This is the arm that pins the unreachability: if v4 ever
+ *     narrows the preflight, it flips.
+ *
+ * The normalizer is what makes "claimed" visible: a payload id is an ORIGIN and
+ * is compared literally, while a genuinely minted one collapses to
+ * `<minted-N>`.
+ *
+ * Hand-built rather than a rewrite of the fixture's own characters export
+ * because that bundle's five managed-field links share one content row, so the
+ * same id is claimed under two kinds and the in-bundle repeat refuses long
+ * before anything else is reached (already pinned by
+ * `execute_preserve_ids_skip_if_present`).
+ */
+function duplicateNameMatchPayload(
+  templateId = 'ad000000-0000-4000-8000-000000000001',
+): { manifest: unknown; data: Record<string, unknown> } {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      roleplayTemplates: [
+        {
+          id: templateId,
+          name: 'House Style',
+          systemPrompt: 'Carried under a name this instance already uses.',
+          annotationButtons: [],
+        },
+      ],
+      tags: [
+        { id: 'ad000000-0000-4000-8000-000000000011', name: 'Companion', nameLower: 'companion' },
+        { id: 'ad000000-0000-4000-8000-000000000012', name: 'Rival', nameLower: 'rival' },
+      ],
+    },
+  };
+}
 
 function identityStorePayload(
   id: string,
@@ -1594,6 +1662,31 @@ async function main(): Promise<void> {
       preserveIds: true,
       preserveIdsMode: SKIP_IF_PRESENT_LORIAN,
     }),
+    // [P4.D65] The `duplicate` × `preserveIds` corner P4.D62 banked — see
+    // `duplicateNameMatchPayload` for the premise it disproves and what each of
+    // these three arms pins.
+    executeCase('execute_preserve_ids_plain_claims_ids', () => duplicateNameMatchPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
+    executeCase('execute_preserve_ids_duplicate_free_ids', () => duplicateNameMatchPayload(), {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
+    executeCase(
+      'execute_preserve_ids_duplicate_existing_id_refuses',
+      () => duplicateNameMatchPayload(FIXTURE_TEMPLATE_ID),
+      {
+        conflictStrategy: 'duplicate',
+        includeMemories: false,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+    ),
     executeCase('execute_files_skip', () => filesPayload, {
       conflictStrategy: 'skip',
       includeMemories: false,
