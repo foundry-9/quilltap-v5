@@ -59,6 +59,14 @@ test harness had been stubbing out the default embedding profile, so the
 reference implementation had been queueing no embedding work for restored
 memories at all; with that removed, both implementations queue the same nine
 jobs. Tests only; no shipped behavior changed.
+Fixed three chat-settings fields answering an invented error message instead of
+the one the server actually produces. Saving an out-of-range or wrong-typed
+value under Answer Confirmation, Cheap LLM or Dangerous Content used to come
+back as a single flat sentence; it now returns the same detailed, per-field
+report v4 returns, listing every offending key at once. Dangerous Content also
+now checks that the two uncensored-profile ids are real UUIDs, and the cheap-LLM
+bag is checked at the point v4 checks it, so a request with more than one bad
+field reports the same one v4 reports.
 
 Planned the next porting round against the new v4 baseline `24633026`
 (section-level help embeddings and Guide content search). Wrote three new

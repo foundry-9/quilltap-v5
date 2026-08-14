@@ -484,6 +484,284 @@ describe('settings-routes oracle', () => {
         smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false },
       },
     },
+    // ---- P4.47 (A): the three sibling Zod-collapse arms ----
+    // The D73 bank. `smartTypographySettings` above proved the machinery: a
+    // route-level `Schema.parse` throw escapes to `getErrorMessage`, whose
+    // `.includes('Invalid')` test turns the whole `ZodError.message` (=
+    // `JSON.stringify(err.issues, null, 2)`) into the 400 body. These three
+    // arms are the same class and had no corpus case at all, so v5 was free to
+    // collapse them to fixed sentences. Each schema reaches a DIFFERENT set of
+    // Zod issue codes, and the codes serialize with different key orders —
+    // which is exactly what a corpus, not inspection, has to pin.
+    //
+    // `answerConfirmationSettings` — `{ enabled: z.boolean().default(false) }`,
+    // parsed at the route (L270). Positive arms first so the parse itself (not
+    // only its throws) is pinned.
+    {
+      name: 's_put_answer_conf_full',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { answerConfirmationSettings: { enabled: true } },
+    },
+    {
+      // An EMPTY bag — the Zod default materializes.
+      name: 's_put_answer_conf_empty',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { answerConfirmationSettings: {} },
+    },
+    {
+      name: 's_put_answer_conf_wrong_type',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { answerConfirmationSettings: { enabled: 'yes' } },
+    },
+    {
+      name: 's_put_answer_conf_not_object',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { answerConfirmationSettings: 'on' },
+    },
+    {
+      // `typeof null !== 'undefined'`, so the arm RUNS and the parse rejects.
+      name: 's_put_answer_conf_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { answerConfirmationSettings: null },
+    },
+    // `dangerousContentSettings` — parsed at the route (L175). The richest of
+    // the three: enums (`invalid_value`), a `.min(0).max(1)` number
+    // (`too_small`/`too_big`), `.uuid()` (`invalid_format`) and plain
+    // `invalid_type`, each with its own issue key order.
+    {
+      name: 's_put_danger_not_object',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: 'on' },
+    },
+    {
+      name: 's_put_danger_null',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: null },
+    },
+    {
+      name: 's_put_danger_bad_enum',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { mode: 'BOGUS' } },
+    },
+    {
+      name: 's_put_danger_threshold_too_big',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { threshold: 2 } },
+    },
+    {
+      name: 's_put_danger_threshold_too_small',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { threshold: -0.5 } },
+    },
+    {
+      name: 's_put_danger_threshold_wrong_type',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { threshold: 'high' } },
+    },
+    {
+      name: 's_put_danger_bad_uuid',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { uncensoredTextProfileId: 'not-a-uuid' } },
+    },
+    {
+      // A `.nullable().optional()` uuid handed a NON-string: the type check
+      // fires before the format check, so this is `invalid_type`, not
+      // `invalid_format`.
+      name: 's_put_danger_uuid_wrong_type',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { uncensoredImageProfileId: 5 } },
+    },
+    {
+      name: 's_put_danger_bad_string',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { customClassificationPrompt: 5 } },
+    },
+    {
+      // FOUR issues at once — Zod collects every key's failure and emits them
+      // in schema DECLARATION order (not the order the bag lists them), which
+      // is the half a single-issue case cannot pin.
+      name: 's_put_danger_multi',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        dangerousContentSettings: {
+          displayMode: 'X',
+          scanTextChat: 1,
+          threshold: 3,
+          mode: 'BOGUS',
+        },
+      },
+    },
+    // `cheapLLMSettings` — the odd one out. Its ROUTE arm (L76) is two manual
+    // enum guards with their own fixed sentences; the bag then rides RAW into
+    // `updateData`, and the Zod check that governs it is the base repo's
+    // merge-then-`validate` over the WHOLE ChatSettings object. So its issue
+    // paths are PREFIXED with `cheapLLMSettings`, and — the part only an
+    // ordering case can show — its throw happens AFTER every route-level arm.
+    {
+      name: 's_put_cheap_bad_strategy',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: 'BOGUS' } },
+    },
+    {
+      // A non-string strategy is truthy and not in the list, so the MANUAL
+      // guard catches it before Zod ever sees the bag.
+      name: 's_put_cheap_strategy_number',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: 5 } },
+    },
+    {
+      name: 's_put_cheap_bad_embedding',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { embeddingProvider: 'BOGUS' } },
+    },
+    {
+      // No manual guard covers `fallbackToLocal`, so this reaches the repo's
+      // whole-object validate — path `["cheapLLMSettings","fallbackToLocal"]`.
+      name: 's_put_cheap_bad_bool',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { fallbackToLocal: 'yes' } },
+    },
+    {
+      // `typeof 'on' !== 'object'`, so the route's guard block is SKIPPED
+      // entirely and the string rides into `updateData` — the repo validate
+      // then reports one issue at path `["cheapLLMSettings"]`.
+      name: 's_put_cheap_not_object',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: 'on' },
+    },
+    {
+      name: 's_put_cheap_bad_uuid',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { userDefinedProfileId: 'nope' } },
+    },
+    {
+      // The CREATE branch (user B has no settings row): `updateForUser` spreads
+      // `data` over the defaults and `_create` validates that — same issue
+      // bytes, a different validate call site.
+      name: 's_put_cheap_bad_bool_fresh',
+      family: 'settings_zod',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { fallbackToLocal: 'yes' } },
+    },
+    {
+      // THE ORDERING CASE. `cheapLLMSettings` is handled FIRST in the route's
+      // arm sequence and `dangerousContentSettings` ~100 lines later — but the
+      // cheap-LLM Zod check does not run at the route at all, so the
+      // dangerous-content throw wins. A port that validates cheap-LLM in place
+      // answers the wrong error here.
+      name: 's_put_cheap_after_route_arms',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        cheapLLMSettings: { fallbackToLocal: 'yes' },
+        dangerousContentSettings: { mode: 'BOGUS' },
+      },
+    },
+    {
+      // The mirror: a MANUAL cheap-LLM guard DOES run at the route, and it
+      // sits before the dangerous-content arm — so this one answers the fixed
+      // cheap-LLM sentence.
+      name: 's_put_cheap_guard_before_route_arms',
+      family: 'settings_zod',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        cheapLLMSettings: { strategy: 'BOGUS' },
+        dangerousContentSettings: { mode: 'BOGUS' },
+      },
+    },
     {
       name: 's_put_reject',
       family: 'settings_chat',

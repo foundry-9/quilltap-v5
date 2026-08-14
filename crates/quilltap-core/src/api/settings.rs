@@ -292,56 +292,60 @@ where
     Ok(chat_settings::SettingsColVal::Text(text))
 }
 
-/// v4 `CheapLLMSettingsSchema.parse` over a PUT sub-bag (the base repo's
-/// merge-then-`validate` runs the FULL nested schema, so Zod defaults
-/// materialize on a partial input): `strategy` defaults `PROVIDER_CHEAPEST`,
-/// `fallbackToLocal` `true`, `embeddingProvider` `'OPENAI'`; the three
-/// `.nullable().optional()` ids keep a present `null` and are OMITTED when
-/// absent; unknown keys are stripped; output in schema field order. The UUID
-/// format check on the ids is a documented seam (the corpus sends valid ids);
-/// a type mismatch is `Invalid cheap LLM settings` (the Zod-throw-message seam).
+/// v4 `CheapLLMSettingsSchema` over a PUT sub-bag: `strategy` defaults
+/// `PROVIDER_CHEAPEST`, `fallbackToLocal` `true`, `embeddingProvider` `'OPENAI'`;
+/// the three `.nullable().optional()` ids keep a present `null` and are OMITTED
+/// when absent; unknown keys are stripped; output in schema field order.
+///
+/// **The odd one out, and P4.47 (A) is where that stopped being invisible.**
+/// v4's ROUTE does not parse this bag at all — it runs two manual enum guards
+/// (`Invalid cheap LLM strategy` / `Invalid embedding provider`, reproduced at
+/// the call site) and then stores the bag RAW. The Zod check that actually
+/// governs it is the base repo's merge-then-`validate` over the WHOLE
+/// ChatSettings object, which has two consequences the corpus now pins:
+///
+/// 1. Every issue `path` is PREFIXED with `cheapLLMSettings` (hence `PREFIX`).
+/// 2. It throws AFTER every route-level arm, so a request carrying both a bad
+///    cheap-LLM value and a bad `dangerousContentSettings` answers the
+///    dangerous-content error. The caller defers this call to the end of the
+///    assignment walk for exactly that reason.
+///
+/// The enum arms stay unreachable from the route (the manual guards catch every
+/// non-member first, of any type, since a truthy non-member fails `.includes`),
+/// so they are not modelled here — the corpus proves the guard wins.
 fn zod_cheap_llm_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
-    let err = || "Invalid cheap LLM settings".to_string();
-    let o = v.as_object().ok_or_else(err)?;
+    const PREFIX: &[&str] = &["cheapLLMSettings"];
+    let o = zod_object_or_issue(v, PREFIX)?;
     let mut out = Map::new();
+    let mut issues: Vec<ZodIssue> = Vec::new();
+
+    // Schema declaration order (which is also the issue order).
     let strategy = match o.get("strategy") {
         None => "PROVIDER_CHEAPEST",
         Some(Value::String(s)) => s.as_str(),
-        Some(_) => return Err(err()),
+        // Unreachable from the route: the manual guard rejects a non-member of
+        // any type first. Keep the previous shape rather than invent bytes.
+        Some(_) => return Err("Invalid cheap LLM settings".to_string()),
     };
     out.insert("strategy".into(), json!(strategy));
-    let opt_id = |key: &str, out: &mut Map<String, Value>| -> Result<(), String> {
-        match o.get(key) {
-            None => Ok(()),
-            Some(Value::Null) => {
-                out.insert(key.to_string(), Value::Null);
-                Ok(())
-            }
-            Some(Value::String(s)) => {
-                out.insert(key.to_string(), json!(s));
-                Ok(())
-            }
-            Some(_) => Err(err()),
-        }
-    };
-    opt_id("userDefinedProfileId", &mut out)?;
-    opt_id("defaultCheapProfileId", &mut out)?;
-    let fallback = match o.get("fallbackToLocal") {
-        None => true,
-        Some(Value::Bool(b)) => *b,
-        Some(_) => return Err(err()),
-    };
+    zod_opt_uuid(o, "userDefinedProfileId", PREFIX, &mut out, &mut issues);
+    zod_opt_uuid(o, "defaultCheapProfileId", PREFIX, &mut out, &mut issues);
+    let fallback = zod_bool(o, "fallbackToLocal", true, PREFIX, &mut issues);
     out.insert("fallbackToLocal".into(), json!(fallback));
     let embedding = match o.get("embeddingProvider") {
         None => "OPENAI",
         Some(Value::String(s)) => s.as_str(),
-        Some(_) => return Err(err()),
+        Some(_) => return Err("Invalid cheap LLM settings".to_string()),
     };
     out.insert("embeddingProvider".into(), json!(embedding));
-    opt_id("imagePromptProfileId", &mut out)?;
+    zod_opt_uuid(o, "imagePromptProfileId", PREFIX, &mut out, &mut issues);
+
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
     serde_json::to_string(&Value::Object(out))
         .map(chat_settings::SettingsColVal::Text)
-        .map_err(|_| err())
+        .map_err(|_| "Invalid cheap LLM settings".to_string())
 }
 
 /// v4 `ThemePreferenceSchema.parse` over a PUT sub-bag (route-level parse):
@@ -390,23 +394,101 @@ fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, Stri
 // `2d31810f`, `settings/chat/route.ts` L273).
 // ---------------------------------------------------------------------------
 
-/// One Zod `invalid_type` issue, serialized in Zod's own key order — this is
-/// what `JSON.stringify(err.issues, null, 2)` emits, and `ZodError.message`
-/// IS that string. v4's route lets the throw escape to `getErrorMessage`, and
-/// the `.includes('Invalid')` status test then turns it into a 400 whose body
+/// One Zod issue, serialized in Zod's own key order — this is what
+/// `JSON.stringify(err.issues, null, 2)` emits, and `ZodError.message` IS that
+/// string. v4's route lets the throw escape to `getErrorMessage`, and the
+/// `.includes('Invalid')` status test then turns it into a 400 whose body
 /// carries the whole issue array verbatim. So the bytes here are contractual,
 /// not an implementation detail.
+///
+/// Each code carries a DIFFERENT key set in a DIFFERENT order (measured against
+/// v4's zod 4.4.3 and pinned by the `settings_zod` corpus family), so the
+/// variants are untagged structs rather than one struct with optional keys —
+/// `Option` skipping cannot reorder, and `invalid_value` puts `code` first
+/// while `invalid_type` puts `expected` first.
 #[derive(serde::Serialize)]
-struct ZodInvalidTypeIssue {
-    expected: &'static str,
-    code: &'static str,
-    path: Vec<String>,
-    message: String,
+#[serde(untagged)]
+enum ZodIssue {
+    InvalidType {
+        expected: &'static str,
+        code: &'static str,
+        path: Vec<String>,
+        message: String,
+    },
+    InvalidValue {
+        code: &'static str,
+        values: &'static [&'static str],
+        path: Vec<String>,
+        message: String,
+    },
+    TooBig {
+        origin: &'static str,
+        code: &'static str,
+        maximum: Value,
+        inclusive: bool,
+        path: Vec<String>,
+        message: String,
+    },
+    TooSmall {
+        origin: &'static str,
+        code: &'static str,
+        minimum: Value,
+        inclusive: bool,
+        path: Vec<String>,
+        message: String,
+    },
+    InvalidFormat {
+        origin: &'static str,
+        code: &'static str,
+        format: &'static str,
+        pattern: &'static str,
+        path: Vec<String>,
+        message: String,
+    },
 }
 
-impl ZodInvalidTypeIssue {
-    fn new(expected: &'static str, path: Vec<String>, got: Option<&Value>) -> Self {
-        Self {
+/// v4 zod's own `uuid()` source pattern, verbatim — it is a VALUE in the issue
+/// body (stringified with the surrounding slashes), so it is transcribed, not
+/// re-derived. Note the RFC nibbles: version `1-8`, variant `89abAB`, with the
+/// nil and max UUIDs allowed as literal alternatives.
+const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
+
+/// `true` when `s` satisfies [`ZOD_UUID_PATTERN`]. Hand-matched rather than
+/// regex-compiled: the shape is fixed and the crate has no regex dependency.
+fn zod_uuid_ok(s: &str) -> bool {
+    if s.eq_ignore_ascii_case("00000000-0000-0000-0000-000000000000")
+        || s.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    {
+        // The literal alternatives are case-SENSITIVE in the pattern; the nil
+        // form has no letters, and the max form is spelled lowercase.
+        return s == "00000000-0000-0000-0000-000000000000"
+            || s == "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    }
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    let hex = |i: usize| b[i].is_ascii_hexdigit();
+    for (i, &c) in b.iter().enumerate() {
+        match i {
+            8 | 13 | 18 | 23 => {
+                if c != b'-' {
+                    return false;
+                }
+            }
+            _ => {
+                if !hex(i) {
+                    return false;
+                }
+            }
+        }
+    }
+    matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
+}
+
+impl ZodIssue {
+    fn invalid_type(expected: &'static str, path: Vec<String>, got: Option<&Value>) -> Self {
+        Self::InvalidType {
             expected,
             code: "invalid_type",
             path,
@@ -414,6 +496,61 @@ impl ZodInvalidTypeIssue {
                 "Invalid input: expected {expected}, received {}",
                 zod_parsed_type(got)
             ),
+        }
+    }
+
+    /// A `z.enum([...])` miss. Zod 4 reports it as `invalid_value` and prints
+    /// the options double-quoted and pipe-joined.
+    fn invalid_value(values: &'static [&'static str], path: Vec<String>) -> Self {
+        let rendered = values
+            .iter()
+            .map(|v| format!("\"{v}\""))
+            .collect::<Vec<_>>()
+            .join("|");
+        Self::InvalidValue {
+            code: "invalid_value",
+            values,
+            path,
+            message: format!("Invalid option: expected one of {rendered}"),
+        }
+    }
+
+    /// `.max(n)` on a number. `maximum` rides as the JSON number v4 declares
+    /// (an integral bound prints as `1`, never `1.0`).
+    fn too_big(maximum: Value, path: Vec<String>) -> Self {
+        let message = format!("Too big: expected number to be <={maximum}");
+        Self::TooBig {
+            origin: "number",
+            code: "too_big",
+            maximum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// `.min(n)` on a number.
+    fn too_small(minimum: Value, path: Vec<String>) -> Self {
+        let message = format!("Too small: expected number to be >={minimum}");
+        Self::TooSmall {
+            origin: "number",
+            code: "too_small",
+            minimum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// A `z.string().uuid()` miss (the string type check has already passed).
+    fn invalid_uuid(path: Vec<String>) -> Self {
+        Self::InvalidFormat {
+            origin: "string",
+            code: "invalid_format",
+            format: "uuid",
+            pattern: ZOD_UUID_PATTERN,
+            path,
+            message: "Invalid UUID".to_string(),
         }
     }
 }
@@ -435,8 +572,114 @@ fn zod_parsed_type(v: Option<&Value>) -> &'static str {
 /// `ZodError.message` for a set of issues: `JSON.stringify(issues, null, 2)`.
 /// `serde_json::to_string_pretty` uses the same two-space indent and the same
 /// empty-array / nested-array shapes, so this is byte-identical.
-fn zod_error_message(issues: &[ZodInvalidTypeIssue]) -> String {
+fn zod_error_message(issues: &[ZodIssue]) -> String {
     serde_json::to_string_pretty(issues).unwrap_or_else(|_| "Invalid input".to_string())
+}
+
+/// The path for a key inside a bag reached under `prefix` — `[]` for a
+/// route-level `Schema.parse` (the bag IS the parse root), `["cheapLLMSettings"]`
+/// for the one bag whose Zod check happens inside the repo's whole-ChatSettings
+/// validate.
+fn zod_path(prefix: &[&str], key: &str) -> Vec<String> {
+    let mut p: Vec<String> = prefix.iter().map(|s| (*s).to_string()).collect();
+    p.push(key.to_string());
+    p
+}
+
+/// Zod's object gate: a non-object input yields exactly one top-level
+/// `invalid_type` and the per-key checks never run (Zod's own short-circuit).
+fn zod_object_or_issue<'a>(
+    v: &'a Value,
+    prefix: &[&str],
+) -> Result<&'a Map<String, Value>, String> {
+    v.as_object().ok_or_else(|| {
+        zod_error_message(&[ZodIssue::invalid_type(
+            "object",
+            prefix.iter().map(|s| (*s).to_string()).collect(),
+            Some(v),
+        )])
+    })
+}
+
+/// A `z.boolean().default(d)` key: absent → `d`, a bool → itself, anything else
+/// → one `invalid_type` issue (and the default, so the walk continues and every
+/// offending key is reported, as Zod does).
+fn zod_bool(
+    o: &Map<String, Value>,
+    key: &'static str,
+    default: bool,
+    prefix: &[&str],
+    issues: &mut Vec<ZodIssue>,
+) -> bool {
+    match o.get(key) {
+        None => default,
+        Some(Value::Bool(b)) => *b,
+        other => {
+            issues.push(ZodIssue::invalid_type(
+                "boolean",
+                zod_path(prefix, key),
+                other,
+            ));
+            default
+        }
+    }
+}
+
+/// A `z.enum([...]).default(d)` key. A miss — of ANY input type, since Zod's
+/// enum compares values, not types — is `invalid_value`.
+fn zod_enum(
+    o: &Map<String, Value>,
+    key: &'static str,
+    default: &'static str,
+    values: &'static [&'static str],
+    prefix: &[&str],
+    issues: &mut Vec<ZodIssue>,
+) -> &'static str {
+    match o.get(key) {
+        None => default,
+        Some(Value::String(s)) => match values.iter().find(|v| *v == &s.as_str()) {
+            Some(v) => v,
+            None => {
+                issues.push(ZodIssue::invalid_value(values, zod_path(prefix, key)));
+                default
+            }
+        },
+        Some(_) => {
+            issues.push(ZodIssue::invalid_value(values, zod_path(prefix, key)));
+            default
+        }
+    }
+}
+
+/// A `UUIDSchema.nullable().optional()` key: absent → omitted; a present `null`
+/// → kept; a string → format-checked; anything else → `invalid_type`. The type
+/// check runs BEFORE the format check, so a number is `invalid_type`, never
+/// `invalid_format`.
+fn zod_opt_uuid(
+    o: &Map<String, Value>,
+    key: &'static str,
+    prefix: &[&str],
+    out: &mut Map<String, Value>,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match o.get(key) {
+        None => {}
+        Some(Value::Null) => {
+            out.insert(key.to_string(), Value::Null);
+        }
+        Some(Value::String(s)) => {
+            if zod_uuid_ok(s) {
+                out.insert(key.to_string(), json!(s));
+            } else {
+                issues.push(ZodIssue::invalid_uuid(zod_path(prefix, key)));
+            }
+        }
+        other => issues.push(ZodIssue::invalid_type(
+            "string",
+            zod_path(prefix, key),
+            other,
+        )),
+    }
 }
 
 /// v4 `SmartTypographySettingsSchema.parse` over a PUT bag. Three
@@ -449,33 +692,13 @@ fn zod_error_message(issues: &[ZodInvalidTypeIssue]) -> String {
 /// one issue per offending key, in declaration order. The `Err` string is the
 /// whole `ZodError.message`, which is what v4's 400 body carries.
 fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
-    let Some(o) = v.as_object() else {
-        return Err(zod_error_message(&[ZodInvalidTypeIssue::new(
-            "object",
-            Vec::new(),
-            Some(v),
-        )]));
-    };
+    let o = zod_object_or_issue(v, &[])?;
 
-    let mut issues: Vec<ZodInvalidTypeIssue> = Vec::new();
-    let mut read = |key: &str, default: bool| -> bool {
-        match o.get(key) {
-            None => default,
-            Some(Value::Bool(b)) => *b,
-            other => {
-                issues.push(ZodInvalidTypeIssue::new(
-                    "boolean",
-                    vec![key.to_string()],
-                    other,
-                ));
-                default
-            }
-        }
-    };
+    let mut issues: Vec<ZodIssue> = Vec::new();
     // Declaration order — both for the issue order and the stored key order.
-    let display_quotes = read("displayQuotes", false);
-    let dashes = read("dashes", true);
-    let ellipsis = read("ellipsis", true);
+    let display_quotes = zod_bool(o, "displayQuotes", false, &[], &mut issues);
+    let dashes = zod_bool(o, "dashes", true, &[], &mut issues);
+    let ellipsis = zod_bool(o, "ellipsis", true, &[], &mut issues);
 
     if !issues.is_empty() {
         return Err(zod_error_message(&issues));
@@ -503,86 +726,112 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
 ///
 /// `threshold` is stored as the INCOMING `Value` rather than round-tripped
 /// through `f64`: v4 stringifies the parsed JS number, so an integral `1`
-/// re-emits as `1` — a `f64` round-trip would write `1.0`. The `.min(0).max(1)`
-/// bound is enforced here; the UUID format check on the two ids is the same
-/// documented seam as {@link zod_cheap_llm_settings} (the corpus sends valid
-/// ids), and a type mismatch collapses to `Invalid dangerous content settings`
-/// (the Zod-throw-message seam — v4 surfaces the raw `ZodError` text).
+/// re-emits as `1` — a `f64` round-trip would write `1.0`.
+///
+/// P4.47 (A) closes the D73-banked Zod-collapse seam here: the failure legs no
+/// longer answer the invented `Invalid dangerous content settings` but v4's
+/// whole `ZodError.message`. This schema reaches four issue codes — enum misses
+/// (`invalid_value`), the `.min(0).max(1)` bound (`too_small` / `too_big`), the
+/// `.uuid()` format (`invalid_format`) and plain `invalid_type` — and Zod
+/// collects EVERY offending key before throwing, in declaration order, so the
+/// walk below never returns early.
 fn zod_dangerous_content_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
-    let err = || "Invalid dangerous content settings".to_string();
-    let o = v.as_object().ok_or_else(err)?;
+    const MODES: &[&str] = &["OFF", "DETECT_ONLY", "AUTO_ROUTE"];
+    const DISPLAY_MODES: &[&str] = &["SHOW", "BLUR", "COLLAPSE"];
+    let o = zod_object_or_issue(v, &[])?;
     let mut out = Map::new();
-
-    let enum_field =
-        |key: &str, default: &'static str, allowed: &[&str]| -> Result<Value, String> {
-            match o.get(key) {
-                None => Ok(json!(default)),
-                Some(Value::String(s)) if allowed.contains(&s.as_str()) => Ok(json!(s)),
-                Some(_) => Err(err()),
-            }
-        };
-    let bool_default = |key: &str, default: bool| -> Result<Value, String> {
-        match o.get(key) {
-            None => Ok(json!(default)),
-            Some(Value::Bool(b)) => Ok(json!(b)),
-            Some(_) => Err(err()),
-        }
-    };
-    let opt_nullable = |key: &str, out: &mut Map<String, Value>| -> Result<(), String> {
-        match o.get(key) {
-            None => Ok(()),
-            Some(Value::Null) => {
-                out.insert(key.to_string(), Value::Null);
-                Ok(())
-            }
-            Some(Value::String(s)) => {
-                out.insert(key.to_string(), json!(s));
-                Ok(())
-            }
-            Some(_) => Err(err()),
-        }
-    };
+    let mut issues: Vec<ZodIssue> = Vec::new();
 
     out.insert(
         "mode".into(),
-        enum_field("mode", "OFF", &["OFF", "DETECT_ONLY", "AUTO_ROUTE"])?,
+        json!(zod_enum(o, "mode", "OFF", MODES, &[], &mut issues)),
     );
     let threshold = match o.get("threshold") {
         None => json!(0.7),
         Some(n @ Value::Number(num)) => {
-            let f = num.as_f64().ok_or_else(err)?;
-            if !(0.0..=1.0).contains(&f) {
-                return Err(err());
+            // `as_f64` is infallible for any JSON number serde parsed.
+            let f = num.as_f64().unwrap_or_default();
+            if f < 0.0 {
+                issues.push(ZodIssue::too_small(json!(0), vec!["threshold".into()]));
+            } else if f > 1.0 {
+                issues.push(ZodIssue::too_big(json!(1), vec!["threshold".into()]));
             }
             n.clone()
         }
-        Some(_) => return Err(err()),
+        other => {
+            issues.push(ZodIssue::invalid_type(
+                "number",
+                vec!["threshold".into()],
+                other,
+            ));
+            json!(0.7)
+        }
     };
     out.insert("threshold".into(), threshold);
-    out.insert("scanTextChat".into(), bool_default("scanTextChat", true)?);
-    out.insert(
-        "scanImagePrompts".into(),
-        bool_default("scanImagePrompts", true)?,
-    );
-    out.insert(
-        "scanImageGeneration".into(),
-        bool_default("scanImageGeneration", false)?,
-    );
-    opt_nullable("uncensoredTextProfileId", &mut out)?;
-    opt_nullable("uncensoredImageProfileId", &mut out)?;
+    for (key, default) in [
+        ("scanTextChat", true),
+        ("scanImagePrompts", true),
+        ("scanImageGeneration", false),
+    ] {
+        let got = zod_bool(o, key, default, &[], &mut issues);
+        out.insert(key.into(), json!(got));
+    }
+    zod_opt_uuid(o, "uncensoredTextProfileId", &[], &mut out, &mut issues);
+    zod_opt_uuid(o, "uncensoredImageProfileId", &[], &mut out, &mut issues);
     out.insert(
         "displayMode".into(),
-        enum_field("displayMode", "SHOW", &["SHOW", "BLUR", "COLLAPSE"])?,
+        json!(zod_enum(
+            o,
+            "displayMode",
+            "SHOW",
+            DISPLAY_MODES,
+            &[],
+            &mut issues
+        )),
     );
-    out.insert(
-        "showWarningBadges".into(),
-        bool_default("showWarningBadges", true)?,
-    );
-    opt_nullable("customClassificationPrompt", &mut out)?;
+    let badges = zod_bool(o, "showWarningBadges", true, &[], &mut issues);
+    out.insert("showWarningBadges".into(), json!(badges));
+    // `.nullable().optional()` plain string — no format check.
+    match o.get("customClassificationPrompt") {
+        None => {}
+        Some(Value::Null) => {
+            out.insert("customClassificationPrompt".into(), Value::Null);
+        }
+        Some(Value::String(s)) => {
+            out.insert("customClassificationPrompt".into(), json!(s));
+        }
+        other => issues.push(ZodIssue::invalid_type(
+            "string",
+            vec!["customClassificationPrompt".into()],
+            other,
+        )),
+    }
 
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
     serde_json::to_string(&Value::Object(out))
         .map(chat_settings::SettingsColVal::Text)
-        .map_err(|_| err())
+        .map_err(|_| "Invalid dangerous content settings".to_string())
+}
+
+/// v4 `AnswerConfirmationSettingsSchema.parse` over a PUT sub-bag (a route-level
+/// parse, `settings/chat/route.ts` L270) — one `z.boolean().default(false)` key,
+/// so a partial or empty bag materializes `enabled: false`, unknown keys are
+/// stripped, and any failure is the whole `ZodError.message` (P4.47 (A): this
+/// used to route through `json_field`, which collapsed every throw to
+/// `Invalid answer confirmation settings`).
+fn zod_answer_confirmation_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
+    let o = zod_object_or_issue(v, &[])?;
+    let mut issues: Vec<ZodIssue> = Vec::new();
+    let enabled = zod_bool(o, "enabled", false, &[], &mut issues);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    let parsed = chat_settings::AnswerConfirmationSettings { enabled };
+    serde_json::to_string(&parsed)
+        .map(chat_settings::SettingsColVal::Text)
+        .map_err(|_| "Invalid answer confirmation settings".to_string())
 }
 
 /// Nullable-string column: `null` → SQL NULL, a string → TEXT, anything else →
@@ -640,21 +889,33 @@ fn build_settings_assignments(
         let text = serde_json::to_string(v).map_err(|_| "Invalid tag styles".to_string())?;
         out.push(("tagStyles", chat_settings::SettingsColVal::Text(text)));
     }
+    // P4.47 (A): v4's route runs ONLY the two manual enum guards here — the bag
+    // then rides raw into `updateData` and its Zod check happens later, inside
+    // the repo's whole-object validate. So the guards fire in place (they must:
+    // they precede every arm below) and the parse is DEFERRED to the end of the
+    // walk, where v4's really happens. `cheap_llm_slot` remembers where the
+    // assignment belongs so the stored key order is untouched.
+    let mut cheap_llm_slot: Option<usize> = None;
     if let Some(v) = obj.get("cheapLLMSettings") {
-        // v4 manual enum guards, then schema-ordered store.
         if let Some(o) = v.as_object() {
-            if let Some(st) = o.get("strategy").and_then(Value::as_str) {
-                if !matches!(st, "USER_DEFINED" | "PROVIDER_CHEAPEST" | "LOCAL_FIRST") {
+            // v4 guards a TRUTHY non-member of any type (`!includes` on the raw
+            // value), so a non-string strategy lands here too.
+            if let Some(st) = o.get("strategy").filter(|s| is_truthy(s)) {
+                if !matches!(
+                    st.as_str(),
+                    Some("USER_DEFINED" | "PROVIDER_CHEAPEST" | "LOCAL_FIRST")
+                ) {
                     return Err("Invalid cheap LLM strategy".to_string());
                 }
             }
-            if let Some(ep) = o.get("embeddingProvider").and_then(Value::as_str) {
-                if !matches!(ep, "SAME_PROVIDER" | "OPENAI" | "LOCAL") {
+            if let Some(ep) = o.get("embeddingProvider").filter(|s| is_truthy(s)) {
+                if !matches!(ep.as_str(), Some("SAME_PROVIDER" | "OPENAI" | "LOCAL")) {
                     return Err("Invalid embedding provider".to_string());
                 }
             }
         }
-        out.push(("cheapLLMSettings", zod_cheap_llm_settings(v)?));
+        cheap_llm_slot = Some(out.len());
+        out.push(("cheapLLMSettings", Col::Null));
     }
     if let Some(v) = obj.get("imageDescriptionProfileId") {
         out.push((
@@ -847,10 +1108,7 @@ fn build_settings_assignments(
     if let Some(v) = obj.get("answerConfirmationSettings") {
         out.push((
             "answerConfirmationSettings",
-            json_field::<chat_settings::AnswerConfirmationSettings>(
-                "answer confirmation settings",
-                v,
-            )?,
+            zod_answer_confirmation_settings(v)?,
         ));
     }
     // P4.D73 (v4 4.8.2 `2d31810f`) — `SmartTypographySettingsSchema.parse` at
@@ -865,7 +1123,40 @@ fn build_settings_assignments(
     if let Some(v) = obj.get("smartTypographySettings") {
         out.push(("smartTypographySettings", zod_smart_typography_settings(v)?));
     }
+
+    // P4.47 (A) — the deferred cheap-LLM parse. v4 reaches
+    // `CheapLLMSettingsSchema` only inside the repo's whole-object validate,
+    // which runs after EVERY arm above; validating it in place would answer the
+    // cheap-LLM error for a request whose dangerous-content bag is also bad,
+    // where v4 answers the dangerous-content one.
+    //
+    // NOTE (still open, and named rather than hidden): the same repo-level
+    // validate also governs the fields v4's route stores raw with no check of
+    // its own — `imageDescriptionProfileId`,
+    // `uncensoredImageDescriptionProfileId` and the two manually-guarded bags
+    // (`contextCompressionSettings`, `thinkingDisplay`) past their guards. Those
+    // arms still answer v5's own sentences; no corpus case exercises them, and
+    // closing them is a separate order (this one's mandate is the three D73
+    // siblings).
+    if let Some(slot) = cheap_llm_slot {
+        let v = obj
+            .get("cheapLLMSettings")
+            .expect("slot is only set when the key is present");
+        out[slot].1 = zod_cheap_llm_settings(v)?;
+    }
     Ok(out)
+}
+
+/// JS truthiness for a JSON value — v4's guards are written `if (x)`, so `0`,
+/// `""`, `false` and `null` fall through them.
+fn is_truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
 }
 
 // ===========================================================================

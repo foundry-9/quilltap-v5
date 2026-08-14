@@ -9,7 +9,12 @@
 //! `chat_settings` columns `composerEmoji` / `composerUnicode` /
 //! `smartTypographySettings`, incl. the four reject arms whose 400 body is the
 //! whole `ZodError.message`; a stale oracle predating a family is caught by the
-//! per-family `>=` count guards below).
+//! per-family `>=` count guards below), and P4.47 (`settings_zod` — the three
+//! D73-banked sibling arms `answerConfirmationSettings` / `cheapLLMSettings` /
+//! `dangerousContentSettings`, whose present-but-invalid legs had NO corpus
+//! case and so collapsed to invented sentences; the family reaches five Zod
+//! issue codes and pins the cheap-LLM ordering, whose parse happens in the
+//! repo's whole-object validate rather than at the route).
 //!
 //! Both sides run each case over a FRESH copy of the committed fixture; the
 //! response body (+ a post-mutation family-list refetch, observing the persisted
@@ -246,6 +251,7 @@ fn settings_routes_match_v4() {
     let mut taboo_cases = 0;
     let mut brahma_console_cases = 0;
     let mut composer_settings_cases = 0;
+    let mut settings_zod_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -346,6 +352,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("composer_settings") {
             composer_settings_cases += 1;
         }
+        if row["family"].as_str() == Some("settings_zod") {
+            settings_zod_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
@@ -366,6 +375,15 @@ fn settings_routes_match_v4() {
     assert!(
         composer_settings_cases >= 10,
         "expected >= 10 composer_settings cases, got {composer_settings_cases} — regenerate the oracle"
+    );
+    // P4.47 (A): the three sibling Zod arms
+    // (`answerConfirmationSettings` / `cheapLLMSettings` /
+    // `dangerousContentSettings`). Same stale-oracle guard as the families
+    // above — before this lane NOTHING exercised a present-but-invalid value on
+    // any of them, which is exactly how the collapse survived.
+    assert!(
+        settings_zod_cases >= 24,
+        "expected >= 24 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }

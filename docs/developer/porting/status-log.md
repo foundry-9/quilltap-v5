@@ -68688,3 +68688,96 @@ production caller (the archive service) now exists, so the fix has a live
 consumer.
 
 Versions: harness 0.0.463.
+## Lane record — P4.47 (A): the three sibling settings Zod-collapse arms, 2026-08-14
+
+The D73 bank, closed. `answerConfirmationSettings`, `cheapLLMSettings` and
+`dangerousContentSettings` still collapsed every present-but-invalid value to an
+invented fixed sentence, because **no corpus case had ever sent one**. D73 landed
+the machinery beside them (`ZodInvalidTypeIssue` + `zod_error_message`, built for
+`smartTypographySettings`) and named the three siblings as the remainder.
+
+**What the corpus had to decide, because inspection could not.** v4's zod 4.4.3
+emits a different key SET in a different ORDER per issue code, and these three
+schemas between them reach five codes. Measured from v4's real schemas and then
+pinned by the new `settings_zod` family (24 cases):
+
+| code | keys, in order |
+| --- | --- |
+| `invalid_type` | `expected, code, path, message` |
+| `invalid_value` (enum) | `code, values, path, message` |
+| `too_big` | `origin, code, maximum, inclusive, path, message` |
+| `too_small` | `origin, code, minimum, inclusive, path, message` |
+| `invalid_format` (uuid) | `origin, code, format, pattern, path, message` |
+
+So `ZodInvalidTypeIssue` became an untagged `ZodIssue` enum — one variant per
+code, field order = wire order. An `Option`-skipping single struct cannot express
+this: `invalid_value` puts `code` first where `invalid_type` puts `expected`
+first.
+
+Three more facts the corpus settled:
+
+1. **Zod does not stop at the first bad key.** It collects every failure in
+   schema DECLARATION order (not the order the request lists them) and throws
+   once. `s_put_danger_multi` sends four bad keys spelled in reverse declaration
+   order and gets them back in declaration order. All three ports now walk every
+   key before returning.
+2. **`.uuid()` is a real check, and it is the RFC-strict one** — version nibble
+   `1-8`, variant `89abAB`, plus the nil and max UUIDs as literal alternatives.
+   The pattern is a VALUE inside the issue body, so it is transcribed verbatim
+   into `ZOD_UUID_PATTERN` (byte-exact-static-data rule) and matched by hand
+   rather than re-derived. The type check precedes the format check, so a number
+   in a uuid slot is `invalid_type`, never `invalid_format`
+   (`s_put_danger_uuid_wrong_type`).
+3. **`cheapLLMSettings` is not a route-level parse at all — and that is an
+   ORDERING fact, not a cosmetic one.** v4's route runs two manual enum guards
+   (`Invalid cheap LLM strategy` / `Invalid embedding provider`) and then stores
+   the bag RAW; the Zod check that governs it is the base repo's
+   merge-then-`validate` over the WHOLE ChatSettings object. Two consequences:
+   every issue `path` is prefixed with `cheapLLMSettings`, and the throw happens
+   AFTER every other route arm. `s_put_cheap_after_route_arms` sends a bad
+   cheap-LLM bool AND a bad dangerous-content enum: v4 answers the
+   dangerous-content issue even though cheap-LLM is handled ~100 lines earlier.
+   `build_settings_assignments` therefore reserves the cheap-LLM slot in place
+   (stored key order unchanged) and runs the parse at the END of the walk. Its
+   mirror `s_put_cheap_guard_before_route_arms` pins the other half: the MANUAL
+   guard does run in place, so that pairing answers the cheap-LLM sentence.
+   A related v4 shape carried over: the guards test `if (settings.strategy)` on
+   the raw value, so a truthy NON-STRING is guarded too (`s_put_cheap_strategy_
+   number` → `Invalid cheap LLM strategy`, not a Zod issue) — hence the new
+   `is_truthy` helper rather than `as_str()`.
+
+**Mutation-proven, four ways** (each reverted alone, then restored):
+
+| mutation | reddens |
+| --- | --- |
+| answer-confirmation back to `json_field` | `s_put_answer_conf_empty` |
+| cheap-LLM parsed in place | `s_put_cheap_after_route_arms` |
+| uuid format check removed | `s_put_danger_bad_uuid` |
+| `too_big` key order swapped (`code` before `origin`) | `s_put_danger_threshold_too_big` |
+
+**The web edge needed no change, and that is checked, not assumed.**
+`Request::ChatSettingsUpdate { settings: Value }` carries the bag verbatim —
+there is no hand-built per-field variant to make the differential blind (the
+Taboo §3 lesson), and `chat_settings_composer_web_routes` already pins that wire
+with an explicit `null`. The three siblings ride the same single field. No
+`quilltap-web` source touched.
+
+**Still open, named rather than hidden** (in a code comment at the deferral
+site): the same repo-level validate also governs the fields v4's route stores
+raw with no check of its own — `imageDescriptionProfileId`,
+`uncensoredImageDescriptionProfileId`, and `contextCompressionSettings` /
+`thinkingDisplay` past their manual guards. Those still answer v5's own
+sentences. No corpus case exercises them; closing them is a separate order.
+
+**Regen recipe** (unchanged from the family's header — the case file grew, the
+invocation did not):
+
+```
+python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence
+```
+
+Fixtures: none changed (`/tmp/qt-settings-fixture.db` is /tmp-built by the
+recipe's own first stage). The oracle case file
+`harness/oracle/cases/settings-routes.test.ts` gained 24 rows under the new
+`family: 'settings_zod'` tag; the family's `>= 24` count guard is the
+stale-oracle tripwire. No other family reads that case file.
