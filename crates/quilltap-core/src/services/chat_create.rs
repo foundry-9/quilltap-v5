@@ -1317,7 +1317,15 @@ async fn post_opening_outfit_and_avatar(
             docs,
             character_id,
             &item_ids,
-            equipped_project_mount_point_ids,
+            // v4 `sharedWardrobeTiersForCharacter(characterId, equippedProjectMountPointIds)`
+            // — the project tier is resolved once for the whole cast, the group
+            // tier per character.
+            &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                main,
+                mount,
+                character_id,
+                equipped_project_mount_point_ids,
+            ),
         )?
     };
     let mut title_by_id: std::collections::HashMap<String, String> =

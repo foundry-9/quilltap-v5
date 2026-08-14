@@ -1245,9 +1245,15 @@ fn resolve_live_clothing(
                 db.read_mount_index(|mount| {
                     let docs =
                         crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                    // Group stores follow each character's own memberships, so
+                    // they can't come from the turn pool (which is keyed on the
+                    // responding character).
+                    let tiers = crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                        main, mount, &cid2, &pmp,
+                    );
                     let values =
                         crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values(
-                            main, &docs, &cid2, &slots, &pmp,
+                            main, &docs, &cid2, &slots, &tiers,
                         )?;
                     Ok(crate::wardrobe::describe_outfit(
                         &crate::wardrobe::OutfitSlotValues {

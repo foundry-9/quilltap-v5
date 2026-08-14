@@ -18,10 +18,8 @@ use crate::db::vault_wardrobe_public::{update_vault_wardrobe_item, WardrobePatch
 use crate::wardrobe::{normalize_no_item_sentinel, WARDROBE_SLOT_TYPES};
 
 use super::wardrobe_read::{not_found_message, validate_locate};
-use super::wardrobe_shared::{
-    is_own_wardrobe_item, resolve_project_mount_point_ids_for_chat,
-    resolve_wardrobe_item_across_tiers,
-};
+use super::wardrobe_shared::{is_own_wardrobe_item, resolve_wardrobe_item_across_tiers};
+use crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat;
 
 /// v4 `WardrobeArchiveToolOutput`.
 #[derive(Debug, Serialize)]
@@ -78,7 +76,7 @@ fn run(
 ) -> Result<(WardrobeArchiveToolOutput, Vec<String>), crate::db::DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
     let links = DocMountFileLinksRepository::new(mount);
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
 
     let item = resolve_wardrobe_item_across_tiers(
         main,
@@ -86,7 +84,7 @@ fn run(
         character_id,
         normalize_no_item_sentinel(input.item_id.as_deref()).as_deref(),
         normalize_no_item_sentinel(input.item_title.as_deref()).as_deref(),
-        &project_mount_point_ids,
+        &tiers,
     )?;
     let Some(item) = item else {
         return Ok((

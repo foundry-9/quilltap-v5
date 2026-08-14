@@ -33,6 +33,7 @@ use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::DbError;
 use crate::vault_overlay::SeedArchetype;
+use crate::wardrobe_tiers::SharedWardrobeTiers;
 use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
 
 /// v4's `hasLinkedVault(character)` — the character row carries a non-empty
@@ -66,7 +67,7 @@ pub fn find_by_character_id(
     // household item it doesn't hold — v4 `readCharacterVaultWardrobe(mp, charId)`
     // with the default `seedArchetypes = true` → `findArchetypes(true)`.
     let fetch = || -> Result<Vec<SeedArchetype>, DbError> {
-        let archetypes = find_archetypes(main, docs, true, &[])?;
+        let archetypes = find_archetypes(main, docs, true, &SharedWardrobeTiers::none())?;
         Ok(archetypes.iter().map(SeedArchetype::from_value).collect())
     };
     let Some(vault) =
@@ -97,9 +98,11 @@ pub fn find_by_character_id(
 }
 
 /// v4 `findWearablePoolForCharacter` — everything a character can actually wear:
-/// the shared tiers (Quilltap General + any project stores in
-/// `project_mount_point_ids`) merged under the character's own vault. Character
-/// items shadow shared ones on id collision; archived items are dropped.
+/// the shared tiers (Quilltap General + the character's group stores in
+/// `tiers.group_mount_point_ids` + any project stores in
+/// `tiers.project_mount_point_ids`) merged under the character's own vault.
+/// Character items shadow shared ones on id collision; archived items are
+/// dropped.
 ///
 /// This is the pool every "what can this character wear?" question should ask —
 /// `wardrobe_list`, chat-start default resolution, the `llm_choose` candidate
@@ -113,15 +116,18 @@ pub fn find_by_character_id(
 /// the recursion guard in [`super::archetype_wardrobe`] (v4
 /// `lib/mount-index/general-wardrobe.ts`) intact.
 ///
-/// The `project_mount_point_ids` parameter is deliberately the only tier knob:
-/// the group tier lands later alongside it with no call-site churn.
+/// Resolve `tiers` through
+/// [`resolve_shared_wardrobe_tiers_for_chat`](crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat)
+/// (or one of its siblings) rather than by hand — threading one tier and
+/// dropping the other is exactly how the group wardrobe went unreadable for as
+/// long as it did.
 pub fn find_wearable_pool_for_character(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<Value>, DbError> {
-    let shared = find_archetypes(main, docs, false, project_mount_point_ids)?;
+    let shared = find_archetypes(main, docs, false, tiers)?;
     let own = find_by_character_id(main, docs, character_id, false)?;
     Ok(merge_wearable_pool(&shared, &own))
 }
@@ -137,7 +143,7 @@ pub fn find_by_ids_for_character(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     ids: &[String],
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<Value>, DbError> {
     if ids.is_empty() {
         return Ok(Vec::new());
@@ -159,7 +165,7 @@ pub fn find_by_ids_for_character(
     // Any ids not owned by the character: fill from the merged archetype tiers.
     let has_missing = ids.iter().any(|id| !seen.contains(id));
     if has_missing {
-        let archetypes = find_archetypes(main, docs, true, project_mount_point_ids)?;
+        let archetypes = find_archetypes(main, docs, true, tiers)?;
         for a in archetypes {
             let Some(id) = a.get("id").and_then(Value::as_str) else {
                 continue;
@@ -175,13 +181,14 @@ pub fn find_by_ids_for_character(
 
 /// v4 `findByIdForCharacter` — a single wardrobe item by id, preferring the
 /// character's own (including archived), then falling back to the shared
-/// archetype tiers. `project_mount_point_ids` scopes the archetype fallback.
+/// archetype tiers (Quilltap General + the character's group stores + any
+/// project stores). `tiers` scopes the archetype fallback.
 pub fn find_by_id_for_character(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     id: &str,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Option<Value>, DbError> {
     let items = find_by_character_id(main, docs, character_id, true)?;
     if let Some(owned) = items
@@ -190,5 +197,5 @@ pub fn find_by_id_for_character(
     {
         return Ok(Some(owned));
     }
-    find_archetype_by_id(main, docs, id, project_mount_point_ids)
+    find_archetype_by_id(main, docs, id, tiers)
 }

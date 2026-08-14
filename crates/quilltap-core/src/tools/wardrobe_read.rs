@@ -18,9 +18,9 @@ use crate::db::DbError;
 use crate::wardrobe::normalize_no_item_sentinel;
 
 use super::wardrobe_shared::{
-    find_equipped_slots, is_own_wardrobe_item, resolve_project_mount_point_ids_for_chat,
-    resolve_wardrobe_item_across_tiers,
+    find_equipped_slots, is_own_wardrobe_item, resolve_wardrobe_item_across_tiers,
 };
+use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeReadToolOutput` — also the `wardrobe_update` output (a read-shaped
 /// echo). `error` is omitted on success.
@@ -103,19 +103,14 @@ pub fn build_read_output(
     character_id: &str,
     chat_id: &str,
     item: &Value,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<WardrobeReadToolOutput, DbError> {
     let component_item_ids = component_ids_of(item);
     let is_composite = !component_item_ids.is_empty();
 
     let component_titles: Vec<String> = if is_composite {
-        let components = find_by_ids_for_character(
-            main,
-            docs,
-            character_id,
-            &component_item_ids,
-            project_mount_point_ids,
-        )?;
+        let components =
+            find_by_ids_for_character(main, docs, character_id, &component_item_ids, tiers)?;
         let title_by_id: std::collections::HashMap<String, String> = components
             .iter()
             .filter_map(|c| {
@@ -235,14 +230,14 @@ fn run(
     input: &LocateInput,
 ) -> Result<WardrobeReadToolOutput, DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
     let item = resolve_wardrobe_item_across_tiers(
         main,
         &docs,
         character_id,
         normalize_no_item_sentinel(input.item_id.as_deref()).as_deref(),
         normalize_no_item_sentinel(input.item_title.as_deref()).as_deref(),
-        &project_mount_point_ids,
+        &tiers,
     )?;
     let Some(item) = item else {
         return Ok(build_read_failure(not_found_message(
@@ -250,14 +245,7 @@ fn run(
             &input.item_title,
         )));
     };
-    build_read_output(
-        main,
-        &docs,
-        character_id,
-        chat_id,
-        &item,
-        &project_mount_point_ids,
-    )
+    build_read_output(main, &docs, character_id, chat_id, &item, &tiers)
 }
 
 /// v4 `formatWardrobeReadResults`.

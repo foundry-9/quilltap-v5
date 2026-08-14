@@ -18,9 +18,9 @@ use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, Ward
 
 use super::wardrobe_shared::{
     add_to_slot, build_wardrobe_coverage_summary_from_state, empty_equipped_state, equip_item,
-    load_current_wardrobe_state, replace_item, resolve_project_mount_point_ids_for_chat,
-    resolve_wardrobe_item_across_tiers,
+    load_current_wardrobe_state, replace_item, resolve_wardrobe_item_across_tiers,
 };
+use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// The item acted on in an op result (`{ item_id, title } | null`).
 #[derive(Debug, Serialize)]
@@ -160,7 +160,7 @@ fn run(
     ops: &[WearOp],
 ) -> Result<(WardrobeWearToolOutput, Vec<String>), DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
 
     let mut results: Vec<WardrobeWearOpResult> = Vec::new();
     let mut applied_count = 0usize;
@@ -180,7 +180,7 @@ fn run(
             op.slot.as_deref(),
             item_id.as_deref(),
             item_title.as_deref(),
-            &project_mount_point_ids,
+            &tiers,
         )? {
             Ok(res) => {
                 results.push(res);
@@ -215,7 +215,7 @@ fn run(
         &docs,
         character_id,
         &current_state,
-        &project_mount_point_ids,
+        &tiers,
     )?;
 
     Ok((
@@ -242,16 +242,10 @@ fn apply_op(
     slot: Option<&str>,
     item_id: Option<&str>,
     item_title: Option<&str>,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Result<WardrobeWearOpResult, WearError>, DbError> {
-    let item = resolve_wardrobe_item_across_tiers(
-        main,
-        docs,
-        character_id,
-        item_id,
-        item_title,
-        project_mount_point_ids,
-    )?;
+    let item =
+        resolve_wardrobe_item_across_tiers(main, docs, character_id, item_id, item_title, tiers)?;
     let Some(item) = item else {
         return Ok(Err(WearError(not_found_message(item_id, item_title))));
     };
@@ -276,6 +270,7 @@ fn apply_op(
         .unwrap_or_default()
         .to_string();
     let types = types_of(&item);
+    let component_item_ids = string_array(&item, "componentItemIds");
     let replace = item
         .get("replace")
         .and_then(Value::as_bool)
@@ -290,16 +285,45 @@ fn apply_op(
                     types.join(", ")
                 ))));
             }
-            add_to_slot(main, chat_id, character_id, slot, &id, &types)?;
+            add_to_slot(
+                main,
+                docs,
+                chat_id,
+                character_id,
+                slot,
+                &id,
+                &types,
+                &component_item_ids,
+                tiers,
+            )?;
             (WardrobeEffect::Layered, vec![slot.to_string()])
         }
         "replace" => {
-            replace_item(main, chat_id, character_id, &id, &types)?;
+            replace_item(
+                main,
+                docs,
+                chat_id,
+                character_id,
+                &id,
+                &types,
+                &component_item_ids,
+                tiers,
+            )?;
             (WardrobeEffect::Replaced, types.clone())
         }
         _ => {
             // mode === 'wear'
-            equip_item(main, chat_id, character_id, &id, &types, replace)?;
+            equip_item(
+                main,
+                docs,
+                chat_id,
+                character_id,
+                &id,
+                &types,
+                &component_item_ids,
+                replace,
+                tiers,
+            )?;
             let effect = if replace {
                 WardrobeEffect::Replaced
             } else {
@@ -317,6 +341,18 @@ fn apply_op(
         slots_affected,
         error: None,
     }))
+}
+
+/// The item's `componentItemIds` (absent reads as empty — v4's `?? []`).
+fn string_array(item: &Value, key: &str) -> Vec<String> {
+    item.get(key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn types_of(item: &Value) -> Vec<String> {

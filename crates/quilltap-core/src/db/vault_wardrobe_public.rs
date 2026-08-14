@@ -46,6 +46,7 @@ use serde_json::Value;
 
 use crate::clock;
 use crate::vault_overlay::{detect_component_cycles, SeedArchetype, WardrobeItem};
+use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::archetype_wardrobe::{find_archetypes, read_general_wardrobe};
 use super::doc_mount_documents::DocMountDocumentsRepository;
@@ -240,7 +241,7 @@ fn read_mount_items(
 ) -> Result<Vec<WardrobeItem>, DbError> {
     let seed_archetypes = loc.scope == WardrobeScope::Character;
     let fetch = || -> Result<Vec<SeedArchetype>, DbError> {
-        let archetypes = find_archetypes(main, docs, true, &[])?;
+        let archetypes = find_archetypes(main, docs, true, &SharedWardrobeTiers::none())?;
         Ok(archetypes.iter().map(SeedArchetype::from_value).collect())
     };
     let Some(vault) = read_character_vault_wardrobe(

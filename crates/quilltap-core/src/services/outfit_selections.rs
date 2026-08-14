@@ -43,11 +43,13 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 
 use crate::cheap_llm::CheapLlmSelection;
-use crate::db::archetype_wardrobe::find_archetypes;
+use crate::db::archetype_wardrobe::{find_archetypes, find_archetypes_in_mounts};
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::db::wardrobe_read::{find_by_character_id, find_wearable_pool_for_character};
 use crate::db::{characters_read, connection_profiles, DbError};
+use crate::dissolve_bundles::{dissolve_bundles_in_slots, WearableLookup};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -57,6 +59,7 @@ use crate::services::creation_progress::{
 use crate::services::image_job_common::build_cheap_llm_selection;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{sort_for_default_outfit, Slots, WARDROBE_SLOT_TYPES};
+use crate::wardrobe_tiers::{shared_wardrobe_tiers_for_character, SharedWardrobeTiers};
 use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
 
 /// v4 `OUTFIT_SELECTION_PROMPT` (byte-exact).
@@ -144,6 +147,11 @@ fn slots_to_value(slots: &Slots) -> Value {
 /// Order is deterministic by `createdAt` ascending (slot arrays read
 /// inner-to-outer); [`sort_for_default_outfit`] is mirrored by the client
 /// composer so the preview and the chat that opens agree.
+///
+/// A bundle marked default dissolves into its parts before it is stored, same as
+/// every other put-on gesture (`61574563`). The whole pool is the lookup — a
+/// shared bundle's components are in it even when the character doesn't own
+/// them.
 pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
     let defaults: Vec<Value> = pool
         .iter()
@@ -172,7 +180,18 @@ pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
             }
         }
     }
-    slots
+    dissolve_bundles_in_slots(&slots, &lookup_from(pool))
+}
+
+/// An `id → item` lookup over a wardrobe pool, for [`dissolve_bundles_in_slots`].
+fn lookup_from(items: &[Value]) -> WearableLookup {
+    let mut map = WearableLookup::new();
+    for item in items {
+        if let Some(id) = item.get("id").and_then(Value::as_str) {
+            map.insert(id.to_string(), item.clone());
+        }
+    }
+    map
 }
 
 /// v4 `resolveDefaultOutfit(characterId, repos, { projectMountPointIds })` —
@@ -189,8 +208,9 @@ pub fn resolve_default_outfit(
     project_mount_point_ids: &[String],
 ) -> Result<Slots, DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let pool =
-        find_wearable_pool_for_character(main, &docs, character_id, project_mount_point_ids)?;
+    let tiers =
+        shared_wardrobe_tiers_for_character(main, mount, character_id, project_mount_point_ids);
+    let pool = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
     Ok(default_outfit_from_pool(&pool))
 }
 
@@ -374,7 +394,8 @@ fn to_outfit_preview_slots(
         &docs,
         character_id,
         slots,
-        project_mount_point_ids,
+        // v4 `sharedWardrobeTiersForCharacter` — the group tier is per character.
+        &shared_wardrobe_tiers_for_character(main, mount, character_id, project_mount_point_ids),
     )
     .unwrap_or_default();
     let map = |items: &[Value]| -> Vec<OutfitPreviewEntry> {
@@ -420,6 +441,7 @@ pub const OUTFIT_LLM_TIMEOUT_MS: u64 = 60_000;
 /// read the way two JS callers would without the promise memo.
 struct PoolCache<'a> {
     main: &'a Connection,
+    mount: &'a Connection,
     docs: DocMountDocumentsRepository<'a>,
     project_mount_point_ids: &'a [String],
     chat_id: &'a str,
@@ -436,6 +458,7 @@ impl<'a> PoolCache<'a> {
     ) -> Self {
         Self {
             main,
+            mount,
             docs: DocMountDocumentsRepository::new(mount),
             project_mount_point_ids,
             chat_id,
@@ -452,7 +475,11 @@ impl<'a> PoolCache<'a> {
         if let Some(cached) = self.shared.borrow().clone() {
             return cached;
         }
-        let items = find_archetypes(self.main, &self.docs, false, self.project_mount_point_ids)
+        // The PROJECT + general tiers only: they are the same for every
+        // character in this batch. The group tier is per-character and is read
+        // separately in `group_tier` below.
+        let tiers = SharedWardrobeTiers::project_only(self.project_mount_point_ids);
+        let items = find_archetypes(self.main, &self.docs, false, &tiers)
             .unwrap_or_else(|e| {
                 tracing::warn!(
                     chat_id = self.chat_id,
@@ -467,6 +494,27 @@ impl<'a> PoolCache<'a> {
         rc
     }
 
+    /// v4 `getGroupTier` — one character's GROUP tier. It can't join the batched
+    /// read: it's keyed on the character's own memberships, so each character
+    /// gets their own. Read separately and layered over the batch tiers in
+    /// [`Self::get`] (group beats project beats general). Fails soft to `[]`
+    /// with a warning — an unreadable group store must not cost the character
+    /// the rest of their wardrobe.
+    fn group_tier(&self, character_id: &str) -> Vec<Value> {
+        let group_mount_point_ids =
+            resolve_group_mount_point_ids_for_character(self.main, self.mount, character_id);
+        if group_mount_point_ids.is_empty() {
+            return Vec::new();
+        }
+        find_archetypes_in_mounts(&self.docs, &group_mount_point_ids, false).unwrap_or_else(|e| {
+            tracing::warn!(
+                chat_id = self.chat_id, character_id, error = %e,
+                "[applyOutfitSelections] Failed to read group wardrobe tier; skipping it"
+            );
+            Vec::new()
+        })
+    }
+
     /// One character's merged pool (the shared tiers under their own vault),
     /// memoized so a character whose `llm_choose` falls back to defaults doesn't
     /// re-read their vault. Each side fails soft on its own.
@@ -474,7 +522,14 @@ impl<'a> PoolCache<'a> {
         if let Some(cached) = self.by_character.borrow().get(character_id).cloned() {
             return cached;
         }
-        let shared = self.shared();
+        let batch_shared = self.shared();
+        let group = self.group_tier(character_id);
+        // Group last: a group's livery shadows the project's copy of the same id.
+        let shared: Vec<Value> = batch_shared
+            .iter()
+            .cloned()
+            .chain(group.iter().cloned())
+            .collect();
         let own = find_by_character_id(self.main, &self.docs, character_id, false)
             .unwrap_or_else(|e| {
                 tracing::warn!(
@@ -489,6 +544,7 @@ impl<'a> PoolCache<'a> {
             character_id,
             pool_size = pool.len(),
             shared_count = shared.len(),
+            group_count = group.len(),
             own_count = own.len(),
             project_mount_count = self.project_mount_point_ids.len(),
             "[applyOutfitSelections] Resolved wearable pool"
@@ -844,7 +900,8 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
             // Candidates come from all three tiers: a character whose entire
             // wardrobe is shared used to fail the non-empty guard below and fall
             // through to (empty) defaults without the LLM ever being consulted.
-            let items = find_wearable_pool_for_character(main, &docs, &cid, &mounts)?;
+            let tiers = shared_wardrobe_tiers_for_character(main, mount, &cid, &mounts);
+            let items = find_wearable_pool_for_character(main, &docs, &cid, &tiers)?;
             let profiles = connection_profiles::find_all(main)?;
             Ok((character, items, profiles))
         })
@@ -870,9 +927,9 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     )
     .await
     {
-        LlmChooseOutcome::Attempted { choice, .. } => {
-            accept_llm_choice(choice.as_ref()).map(|(slots, _)| slots)
-        }
+        LlmChooseOutcome::Attempted { choice, .. } => accept_llm_choice(choice.as_ref())
+            // The same dissolution the batch arm applies (v4 `applyOutfitSelections`).
+            .map(|(slots, _)| dissolve_bundles_in_slots(&slots, &lookup_from(&items))),
         LlmChooseOutcome::NotAttempted => None,
     }
 }
@@ -926,7 +983,13 @@ async fn resolve_llm_choose<C: CompletionProvider>(
         consulted_name = character_name;
         match accept_llm_choice(choice.as_ref()) {
             Some((slots, bare)) => {
-                chosen = Some(slots);
+                // The prompt lets the model pick a bundle outright; break it
+                // into its parts before it's stored, so the wardrobe reads as
+                // garments rather than an opaque card (`61574563`).
+                chosen = Some(dissolve_bundles_in_slots(
+                    &slots,
+                    &lookup_from(&wardrobe_items),
+                ));
                 deliberately_unclothed = bare;
             }
             None => {

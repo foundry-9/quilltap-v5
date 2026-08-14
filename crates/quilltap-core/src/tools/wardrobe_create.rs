@@ -26,7 +26,8 @@ use crate::wardrobe::{
     describe_wardrobe_effect, union_types, Slots, WardrobeEffect, WARDROBE_SLOT_TYPES,
 };
 
-use super::wardrobe_shared::{public_error_message, resolve_project_mount_point_ids_for_chat};
+use super::wardrobe_shared::public_error_message;
+use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeCreateToolOutput` (fields conditionally present per v4's object
 /// spread; `error` only on failure).
@@ -253,7 +254,10 @@ fn run(
         }
     }
 
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    // Keyed on the *target* character, not the caller: a gift is assembled from
+    // what the recipient can reach, and the group tier is per-character
+    // (`8600c83f` — one of the two real fixes riding that commit).
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, &target_character_id);
 
     // Resolve components against the target character's wardrobe + shared archetypes.
     let components = resolve_component_items(
@@ -262,7 +266,7 @@ fn run(
         &target_character_id,
         input.component_item_ids.as_deref(),
         input.component_titles.as_deref(),
-        &project_mount_point_ids,
+        &tiers,
     )?;
 
     let is_composite = !components.is_empty();
@@ -331,13 +335,18 @@ fn run(
     let mut current_state: Option<Value> = None;
 
     if input.equip_now {
+        // v4 `8600c83f` fix #2: the equip-now path passed NO tiers at all, so a
+        // new bundle's shared components did not resolve.
         super::wardrobe_shared::equip_item(
             main,
+            &docs,
             chat_id,
             &target_character_id,
             &created.id,
             &created.types,
+            &created.component_item_ids,
             created.replace,
+            &tiers,
         )?;
         equipped = true;
         effect = Some(if created.replace {
@@ -438,7 +447,7 @@ fn resolve_component_items(
     character_id: &str,
     component_ids: Option<&[String]>,
     component_titles: Option<&[String]>,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<Value>, CreateError> {
     let ids = component_ids.unwrap_or(&[]);
     let titles = component_titles.unwrap_or(&[]);
@@ -447,7 +456,7 @@ fn resolve_component_items(
     }
 
     let own_items = find_by_character_id(main, docs, character_id, true)?;
-    let archetypes = find_archetypes(main, docs, false, project_mount_point_ids)?;
+    let archetypes = find_archetypes(main, docs, false, tiers)?;
 
     // Own items win: insert archetypes first, then own (overrides).
     let mut items_by_id: std::collections::HashMap<String, Value> =

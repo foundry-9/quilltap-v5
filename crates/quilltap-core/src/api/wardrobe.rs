@@ -45,6 +45,7 @@ use crate::services::wardrobe_transfers::{
     self, DestinationScope, TransferAction, TransferError, TransferRequest,
 };
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::types::{ErrorKind, Response};
 
@@ -201,7 +202,7 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
 pub fn wardrobe_list(db: &Db) -> Response {
     let out = read_main_mount(db, |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
-        archetype_wardrobe::find_archetypes(main, &docs, false, &[])
+        archetype_wardrobe::find_archetypes(main, &docs, false, &SharedWardrobeTiers::none())
     });
     match out {
         Ok(items) => Response::Wardrobe(json!({ "wardrobeItems": items })),
@@ -271,7 +272,7 @@ pub fn wardrobe_item_get(db: &Db, item_id: &str) -> Response {
     let iid = item_id.to_string();
     let out = read_main_mount(db, move |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
-        archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &[])
+        archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &SharedWardrobeTiers::none())
     });
     match out {
         Ok(Some(item)) if item.get("characterId").map(Value::is_null) == Some(true) => {
@@ -314,7 +315,12 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         let docs = DocMountDocumentsRepository::new(mount);
         // Pre-check (v4 does it before the body parse, but the parse is pure —
         // the observable order is identical for a valid id).
-        let existing = archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &[])?;
+        let existing = archetype_wardrobe::find_archetype_by_id(
+            main,
+            &docs,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?;
         let exists = matches!(
             &existing,
             Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
@@ -328,8 +334,13 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
             // null-inclusive shape v4's merged JS object emits (the projects
             // precedent — the struct serialize skips `None` fields).
             Ok(Some(_)) => {
-                let item = archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &[])?
-                    .unwrap_or(Value::Null);
+                let item = archetype_wardrobe::find_archetype_by_id(
+                    main,
+                    &docs,
+                    &iid,
+                    &SharedWardrobeTiers::none(),
+                )?
+                .unwrap_or(Value::Null);
                 Ok(Ok(item))
             }
             Ok(None) => Ok(Err(not_found("Archetype wardrobe item"))),
@@ -358,7 +369,12 @@ pub async fn wardrobe_delete(db: &Db, item_id: &str) -> Response {
     let iid = item_id.to_string();
     let out = with_both_conns(db, move |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
-        let existing = archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &[])?;
+        let existing = archetype_wardrobe::find_archetype_by_id(
+            main,
+            &docs,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?;
         let exists = matches!(
             &existing,
             Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
@@ -836,6 +852,7 @@ pub async fn wardrobe_preview_avatar(
         let docs = DocMountDocumentsRepository::new(mount);
         crate::services::avatar_prompt::build_character_avatar_prompt(
             main,
+            mount,
             &docs,
             &character_for_prompt,
             &crate::services::avatar_prompt::AvatarPromptOptions {

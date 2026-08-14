@@ -43,6 +43,7 @@ use quilltap_core::tools::{
     wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
     wardrobe_update, wardrobe_wear,
 };
+use quilltap_core::wardrobe_tiers::SharedWardrobeTiers;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -272,7 +273,8 @@ fn wardrobe_tools_match_oracle() {
         find_by_character_id(main_c, &docs, &spec.caller_character_id, true).expect("caller items");
     let recipient_items = find_by_character_id(main_c, &docs, &spec.recipient_character_id, true)
         .expect("recipient items");
-    let general_items = find_archetypes(main_c, &docs, true, &[]).expect("general items");
+    let general_items =
+        find_archetypes(main_c, &docs, true, &SharedWardrobeTiers::none()).expect("general items");
     let equipped = ChatOutfitsRepository::new(main_c)
         .get_equipped_outfit(&spec.chat_id)
         .expect("equipped");

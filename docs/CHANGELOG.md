@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Ported the group wardrobe tier and bundle dissolution into the Rust core
+(P4.D71 units 1–2; v4 `8600c83f` + `61574563`). Wardrobe items living in a
+group store's `Wardrobe/` folder are now visible and resolvable everywhere
+the other shared tiers are, with precedence character > group > project >
+general — `wardrobe_list`, `wardrobe_read`/`_wear`/`_update`/`_archive`,
+the chat outfit route's six item-resolving modes, chat-start default
+resolution and the cheap LLM's pick, the outfit summary's cast-wide union,
+the equipped reads in chat creation, the Aurora outfit whisper, story
+backgrounds, image generation, buildContext's outfit cache, and the avatar
+prompt. Group stores follow the character, never a co-participant; the
+chat outfit summary is the one documented exception and reads the union of
+the participants' memberships. Two v4 fixes ride along: `wardrobe_create`
+now keys component resolution on the RECIPIENT of a gift, and its
+equip-now path passes tiers at all (a new bundle's shared components did
+not resolve before). Separately, wearing a resolvable bundled outfit now
+dissolves it into its leaf garments at write time on every wear path
+(wear / replace / add_to_slot, default outfits, the cheap LLM's chat-start
+pick), so equipped state holds garments rather than one opaque card over
+empty slot rows. Dissolution is recursive and fail-safe: a bundle whose
+components cannot be resolved is stored whole exactly as before. No schema
+or export-shape change; no migration.
+
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`
 round (2026-07-30) and the whole superseded oracle-baseline history chain

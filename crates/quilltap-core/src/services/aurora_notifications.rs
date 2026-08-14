@@ -342,9 +342,16 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
             // loaded carries `projectId`, so the chat-keyed resolver yields the
             // identical link set.
             let project_mounts = resolve_project_mount_point_ids_for_chat(main, mount, &cid);
+            // v4 `sharedWardrobeTiersForCharacter(characterId, projectMountPointIds)`
+            // — the group tier is keyed on THIS character's own memberships.
+            let tiers = crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                main,
+                mount,
+                &char_id,
+                &project_mounts,
+            );
             let docs = DocMountDocumentsRepository::new(mount);
-            let outfit =
-                resolve_equipped_outfit_values(main, &docs, &char_id, &slots, &project_mounts)?;
+            let outfit = resolve_equipped_outfit_values(main, &docs, &char_id, &slots, &tiers)?;
 
             // v4 `const character = await repos.characters.findById(characterId);
             // const charName = character?.name ?? 'A character';`

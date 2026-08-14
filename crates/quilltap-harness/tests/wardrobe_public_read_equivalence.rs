@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::wardrobe_read::{find_by_character_id, find_by_id_for_character};
 use quilltap_core::db::Writer;
+use quilltap_core::wardrobe_tiers::SharedWardrobeTiers;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -126,17 +127,35 @@ fn wardrobe_public_read_matches_oracle() {
     // Case 1: include archived.
     let got1 = Value::Array(find_by_character_id(conn, &docs, char_id, true).expect("case1"));
     // Case 2: owned composite by id (component refs resolved to archetype ids).
-    let got2 = find_by_id_for_character(conn, &docs, char_id, &spec.composite_id, &[])
-        .expect("case2")
-        .unwrap_or(Value::Null);
+    let got2 = find_by_id_for_character(
+        conn,
+        &docs,
+        char_id,
+        &spec.composite_id,
+        &SharedWardrobeTiers::none(),
+    )
+    .expect("case2")
+    .unwrap_or(Value::Null);
     // Case 3: archetype fallback.
-    let got3 = find_by_id_for_character(conn, &docs, char_id, &spec.archetype_a_id, &[])
-        .expect("case3")
-        .unwrap_or(Value::Null);
+    let got3 = find_by_id_for_character(
+        conn,
+        &docs,
+        char_id,
+        &spec.archetype_a_id,
+        &SharedWardrobeTiers::none(),
+    )
+    .expect("case3")
+    .unwrap_or(Value::Null);
     // Case 4: unknown id -> null.
-    let got4 = find_by_id_for_character(conn, &docs, char_id, &spec.no_such_id, &[])
-        .expect("case4")
-        .unwrap_or(Value::Null);
+    let got4 = find_by_id_for_character(
+        conn,
+        &docs,
+        char_id,
+        &spec.no_such_id,
+        &SharedWardrobeTiers::none(),
+    )
+    .expect("case4")
+    .unwrap_or(Value::Null);
 
     let got = [got0, got1, got2, got3, got4];
 

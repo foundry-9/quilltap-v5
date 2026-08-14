@@ -1007,7 +1007,14 @@ fn build_appearance_inputs(
                 &docs,
                 &char_id,
                 &slots,
-                &project_mount_point_ids,
+                // Group stores follow each character's own memberships, so they
+                // can't come from the shared project list.
+                &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                    main,
+                    mount,
+                    &char_id,
+                    &project_mount_point_ids,
+                ),
             ) {
                 equipped = leaves
                     .into_iter()

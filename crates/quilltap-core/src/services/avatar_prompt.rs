@@ -29,7 +29,10 @@ pub struct AvatarPromptOptions {
     /// Equipped slots to describe; `None` → no outfit is appended (physical
     /// descriptions alone).
     pub equipped_slots: Option<Slots>,
-    /// Project document stores in scope (so project-store items resolve).
+    /// Project document stores in scope (so project-store items resolve). The
+    /// character's group stores are resolved from their own memberships inside
+    /// the builder; Quilltap General and the character's vault are always in
+    /// scope. Empty when there is no project context.
     pub project_mount_point_ids: Vec<String>,
     /// Resolved Aurora character aesthetic — prepended as a capped art-direction
     /// preamble (avatars have no LLM rewrite step). The Ariel Clause does NOT
@@ -58,6 +61,7 @@ pub struct LeafCounts {
 /// JSON (needs `id`, `name`, `pronouns`, `physicalDescription`).
 pub fn build_character_avatar_prompt(
     main: &Connection,
+    mount: &Connection,
     docs: &DocMountDocumentsRepository,
     character: &Value,
     options: &AvatarPromptOptions,
@@ -113,7 +117,12 @@ pub fn build_character_avatar_prompt(
             docs,
             character_id,
             slots,
-            &options.project_mount_point_ids,
+            &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                main,
+                mount,
+                character_id,
+                &options.project_mount_point_ids,
+            ),
         )?;
 
         top_is_bare = resolved.top.is_empty();

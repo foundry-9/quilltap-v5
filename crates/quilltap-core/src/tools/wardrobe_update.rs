@@ -19,9 +19,9 @@ use super::wardrobe_read::{
     build_read_failure, build_read_output, not_found_message, WardrobeReadToolOutput,
 };
 use super::wardrobe_shared::{
-    is_own_wardrobe_item, public_error_message, resolve_project_mount_point_ids_for_chat,
-    resolve_wardrobe_item_across_tiers,
+    is_own_wardrobe_item, public_error_message, resolve_wardrobe_item_across_tiers,
 };
+use crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat;
 
 /// The `wardrobe_update` mutation fields (v4 `WardrobeUpdateToolInput`). `Some` =
 /// present. The locate fields (`item_id`/`item_title`) are kept alongside.
@@ -152,7 +152,7 @@ fn run(
 ) -> Result<WardrobeReadToolOutput, crate::db::DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
     let links = DocMountFileLinksRepository::new(mount);
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
 
     let item = resolve_wardrobe_item_across_tiers(
         main,
@@ -160,7 +160,7 @@ fn run(
         character_id,
         normalize_no_item_sentinel(input.item_id.as_deref()).as_deref(),
         normalize_no_item_sentinel(input.item_title.as_deref()).as_deref(),
-        &project_mount_point_ids,
+        &tiers,
     )?;
     let Some(item) = item else {
         return Ok(build_read_failure(not_found_message(
@@ -205,13 +205,7 @@ Only items in your own wardrobe can be changed."
     // union from the new components (across tiers).
     if let Some(comp_ids) = &input.component_item_ids {
         if input.types.is_none() && !comp_ids.is_empty() {
-            let comps = find_by_ids_for_character(
-                main,
-                &docs,
-                character_id,
-                comp_ids,
-                &project_mount_point_ids,
-            )?;
+            let comps = find_by_ids_for_character(main, &docs, character_id, comp_ids, &tiers)?;
             let comp_types: Vec<Vec<String>> = comps
                 .iter()
                 .map(|c| {
@@ -244,14 +238,7 @@ Only items in your own wardrobe can be changed."
     };
 
     let updated_value = serde_json::to_value(&updated).unwrap_or(Value::Null);
-    build_read_output(
-        main,
-        &docs,
-        character_id,
-        chat_id,
-        &updated_value,
-        &project_mount_point_ids,
-    )
+    build_read_output(main, &docs, character_id, chat_id, &updated_value, &tiers)
 }
 
 /// v4 `formatWardrobeUpdateResults`.

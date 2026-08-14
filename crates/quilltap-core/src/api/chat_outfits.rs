@@ -41,10 +41,8 @@ use crate::services::avatar_generation::{
 };
 use crate::services::image_job_common::with_both_conns;
 use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
-use crate::tools::wardrobe_shared::{
-    add_to_slot, equip_item, remove_from_slot, replace_item,
-    resolve_project_mount_point_ids_for_chat,
-};
+use crate::tools::wardrobe_shared::{add_to_slot, equip_item, remove_from_slot, replace_item};
+use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 use super::types::{ErrorKind, Response};
 
@@ -157,11 +155,34 @@ pub fn chat_outfit_summary(db: &Db, chat_id: &str) -> Response {
                     }
                     None => Vec::new(),
                 };
+                // This summary spans the whole cast, so the group tier is the
+                // *union* of the participants' memberships — unlike the
+                // per-character equip paths below, where each character sees
+                // only their own groups (v4 `8600c83f`, the one documented
+                // cast-spanning exception).
+                let mut group_mount_point_ids: Vec<String> = Vec::new();
+                for character_id in equipped_obj.keys() {
+                    for id in
+                        crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
+                            main,
+                            mount,
+                            character_id,
+                        )
+                    {
+                        if !group_mount_point_ids.contains(&id) {
+                            group_mount_point_ids.push(id);
+                        }
+                    }
+                }
+                let summary_tiers = SharedWardrobeTiers {
+                    group_mount_point_ids,
+                    project_mount_point_ids,
+                };
                 for arche in crate::db::archetype_wardrobe::find_archetypes(
                     main,
                     &docs,
                     true,
-                    &project_mount_point_ids,
+                    &summary_tiers,
                 )? {
                     if let Some(id) = arche.get("id").and_then(Value::as_str) {
                         items_by_id.insert(id.to_string(), arche.clone());
@@ -505,11 +526,13 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
 
     let cid = chat_id.to_string();
     let character_id = parsed.character_id.clone();
+    let character_id_for_tiers = character_id.clone();
 
     let out = with_both_conns(db, move |main, mount| {
-        // Project tier for tri-tier wardrobe resolution (v4
-        // `resolveProjectMountPointIdsForChat` — `[]` on any failure).
-        let project_mounts = resolve_project_mount_point_ids_for_chat(main, mount, &cid);
+        // Every shared tier in scope for THIS character (v4
+        // `resolveSharedWardrobeTiersForChat` — each half `[]` on any failure).
+        let tiers =
+            resolve_shared_wardrobe_tiers_for_chat(main, mount, &cid, &character_id_for_tiers);
         let docs = DocMountDocumentsRepository::new(mount);
 
         let updated: Value = match parsed.mode.as_str() {
@@ -539,7 +562,7 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                         &docs,
                         &parsed.character_id,
                         &all_ids,
-                        &project_mounts,
+                        &tiers,
                     )?;
                     let found_ids: Vec<&str> = found
                         .iter()
@@ -575,7 +598,7 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     &docs,
                     &parsed.character_id,
                     item_id,
-                    &project_mounts,
+                    &tiers,
                 )?
                 else {
                     return Ok(EquipOutcome::Refused(not_found("Wardrobe item")));
@@ -586,12 +609,32 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     .unwrap_or_default()
                     .to_string();
                 let types = types_of(&item);
+                let component_item_ids = component_ids_of(&item);
                 let next = if m == "replace" {
-                    replace_item(main, &cid, &parsed.character_id, &id, &types)
+                    replace_item(
+                        main,
+                        &docs,
+                        &cid,
+                        &parsed.character_id,
+                        &id,
+                        &types,
+                        &component_item_ids,
+                        &tiers,
+                    )
                 } else {
                     // `wear` (and its deprecated alias `equip`) honor the flag.
                     let replace_flag = item.get("replace").and_then(Value::as_bool) == Some(true);
-                    equip_item(main, &cid, &parsed.character_id, &id, &types, replace_flag)
+                    equip_item(
+                        main,
+                        &docs,
+                        &cid,
+                        &parsed.character_id,
+                        &id,
+                        &types,
+                        &component_item_ids,
+                        replace_flag,
+                        &tiers,
+                    )
                 };
                 match next {
                     Ok(slots) => slots.to_value(),
@@ -610,7 +653,7 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     &docs,
                     &parsed.character_id,
                     item_id,
-                    &project_mounts,
+                    &tiers,
                 )?
                 else {
                     return Ok(EquipOutcome::Refused(not_found("Wardrobe item")));
@@ -630,7 +673,17 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string();
-                match add_to_slot(main, &cid, &parsed.character_id, slot, &id, &types) {
+                match add_to_slot(
+                    main,
+                    &docs,
+                    &cid,
+                    &parsed.character_id,
+                    slot,
+                    &id,
+                    &types,
+                    &component_ids_of(&item),
+                    &tiers,
+                ) {
                     Ok(slots) => slots.to_value(),
                     Err(_) => {
                         return Ok(EquipOutcome::Refused(internal(
@@ -841,6 +894,20 @@ pub async fn chat_regenerate_avatar(
             message, ..
         } => bad_request(message),
     }
+}
+
+/// The item's `componentItemIds` (a missing/absent key reads as empty — v4's
+/// `?? []`). A non-empty list makes the item a BUNDLE, which dissolves into its
+/// leaves as it goes on.
+fn component_ids_of(item: &Value) -> Vec<String> {
+    item.get("componentItemIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The item's `types` array (the read shape always carries it).

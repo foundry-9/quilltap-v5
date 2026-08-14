@@ -28,10 +28,12 @@ use crate::db::wardrobe_read::{
     find_by_character_id, find_by_id_for_character, find_by_ids_for_character,
 };
 use crate::db::DbError;
+use crate::dissolve_bundles::{WearableLookup, WearableNode};
 use crate::wardrobe::{
     describe_outfit, expand_composites, OutfitSlotValues, Slots, COMPOSITE_MAX_DEPTH,
     WARDROBE_SLOT_TYPES,
 };
+use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 /// v4 `resolveProjectMountPointIds(projectId)` — the project tier for a project
 /// id the caller already holds: its linked document stores. `[]` for a
@@ -70,22 +72,25 @@ pub fn resolve_project_mount_point_ids_for_chat(
     resolve_project_mount_point_ids(mount, chat.get("projectId").and_then(Value::as_str))
 }
 
-/// v4 `resolveWardrobeItemAcrossTiers` — resolve one wardrobe item by id
-/// (preferred, via [`find_by_id_for_character`] which spans character → project →
-/// general) then by title (case-insensitive; the character's own items first, then
-/// the merged archetype set — non-archived). `None` when nothing matches.
+/// v4 `resolveWardrobeItemAcrossTiers` — resolve one wardrobe item across EVERY
+/// tier by id (preferred, via [`find_by_id_for_character`], which spans
+/// character → group → project → general) then by title (case-insensitive; the
+/// character's own items first, then the merged archetype set — non-archived).
+/// `None` when nothing matches.
+///
+/// `tiers` comes from
+/// [`resolve_shared_wardrobe_tiers_for_chat`](crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat)
+/// — pass the whole object rather than picking a tier out of it.
 pub fn resolve_wardrobe_item_across_tiers(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     item_id: Option<&str>,
     item_title: Option<&str>,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Option<Value>, DbError> {
     if let Some(id) = item_id {
-        if let Some(found) =
-            find_by_id_for_character(main, docs, character_id, id, project_mount_point_ids)?
-        {
+        if let Some(found) = find_by_id_for_character(main, docs, character_id, id, tiers)? {
             return Ok(Some(found));
         }
     }
@@ -97,7 +102,7 @@ pub fn resolve_wardrobe_item_across_tiers(
             return Ok(Some(m));
         }
         // v4 uses includeArchived = false for the archetype title fallback.
-        let archetypes = find_archetypes(main, docs, false, project_mount_point_ids)?;
+        let archetypes = find_archetypes(main, docs, false, tiers)?;
         if let Some(m) = archetypes.into_iter().find(|i| title_lower(i) == lower) {
             return Ok(Some(m));
         }
@@ -179,55 +184,200 @@ pub fn load_current_wardrobe_state(
 // preserves the chat's `updatedAt`). The returned `Slots` are the computed next
 // state (v4's `result ?? next`; the stored value equals `next`).
 
+/// v4 `hydrateComponentGraph` (`lib/wardrobe/hydrate-components.ts`) — fill in
+/// every component reachable from the items already in `items_by_id`, mutating
+/// the map in place.
+///
+/// A composite may bundle components the character doesn't own and that aren't
+/// equipped in their own right — the canonical case is a shared "House Livery"
+/// whose coat, waistcoat and boots all live in Quilltap General, a group store
+/// or a project store. Without those components in hand, `expand_composites`
+/// emits each one as an unknown leaf and the whole outfit resolves to nothing.
+///
+/// Walks the graph a level at a time, one bulk query per level, bounded by the
+/// same depth [`expand_composites`] will walk. Bulk matters: both callers sit on
+/// hot paths (avatar generation, story backgrounds, scene state) and the read
+/// side runs on every turn. Failures are logged and swallowed — a component we
+/// can't fetch degrades to an unresolvable leaf, never to a thrown turn.
+fn hydrate_component_graph(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    items_by_id: &mut WearableLookup,
+    tiers: &SharedWardrobeTiers,
+) {
+    let mut requested_component_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for _depth in 0..COMPOSITE_MAX_DEPTH {
+        let mut wanted: Vec<String> = Vec::new();
+        for item in items_by_id.values() {
+            let components = item
+                .get("componentItemIds")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            for component in components {
+                let Some(component_id) = component.as_str() else {
+                    continue;
+                };
+                if items_by_id.contains_key(component_id) {
+                    continue;
+                }
+                if !requested_component_ids.insert(component_id.to_string()) {
+                    continue;
+                }
+                wanted.push(component_id.to_string());
+            }
+        }
+        if wanted.is_empty() {
+            return;
+        }
+        // v4 warns and returns on a failed level; v5's read returns `Err` where
+        // v4 throws, so the same shape falls out of the match.
+        let components = match find_by_ids_for_character(main, docs, character_id, &wanted, tiers) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    character_id, depth = _depth, wanted_count = wanted.len(), error = %e,
+                    "[hydrateComponentGraph] Component hydration failed"
+                );
+                return;
+            }
+        };
+        if components.is_empty() {
+            return;
+        }
+        for it in components {
+            if let Some(id) = it.get("id").and_then(Value::as_str) {
+                items_by_id.insert(id.to_string(), it);
+            }
+        }
+    }
+}
+
+/// v4 `lookupForBundle` (`outfit-displacement.ts`) + `loadBundleLookup`
+/// (`hydrate-components.ts`) — build the lookup a bundle needs to dissolve as it
+/// goes on.
+///
+/// `None` — "wear this item as its own id, the way we always did" — when the
+/// item isn't a bundle (no query fired), when the direct component read fails or
+/// comes back empty, or when nothing resolves. The whole component graph is then
+/// hydrated a level at a time so a nested bundle comes fully apart.
+fn lookup_for_bundle(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    component_item_ids: &[String],
+    tiers: &SharedWardrobeTiers,
+) -> Option<WearableLookup> {
+    if component_item_ids.is_empty() {
+        return None;
+    }
+    let direct =
+        match find_by_ids_for_character(main, docs, character_id, component_item_ids, tiers) {
+            Ok(items) => items,
+            Err(e) => {
+                tracing::warn!(
+                    character_id, component_count = component_item_ids.len(), error = %e,
+                    "[loadBundleLookup] Failed to load bundle components"
+                );
+                return None;
+            }
+        };
+    let mut items_by_id: WearableLookup = WearableLookup::new();
+    for item in direct {
+        if let Some(id) = item.get("id").and_then(Value::as_str) {
+            items_by_id.insert(id.to_string(), item);
+        }
+    }
+    if items_by_id.is_empty() {
+        return None;
+    }
+    hydrate_component_graph(main, docs, character_id, &mut items_by_id, tiers);
+    Some(items_by_id)
+}
+
 /// v4 `equipItem` — wear an item into the slots its `types` designate, honoring
-/// the `replace` flag.
+/// the `replace` flag. A resolvable bundle dissolves into its leaves as it goes
+/// on (`61574563`); an unresolvable one is stored whole, as before.
+#[allow(clippy::too_many_arguments)]
 pub fn equip_item(
     main: &Connection,
+    docs: &DocMountDocumentsRepository,
     chat_id: &str,
     character_id: &str,
     id: &str,
     types: &[String],
+    component_item_ids: &[String],
     replace: bool,
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Slots, DbError> {
     let current = load_current_wardrobe_state(main, chat_id, character_id)?;
-    let next = crate::wardrobe::wear_item_into_slots(&current, id, types, replace);
+    let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
+    let next = crate::wardrobe::wear_item_into_slots(
+        &current,
+        &WearableNode::new(id, types, component_item_ids),
+        replace,
+        items_by_id.as_ref(),
+    );
     persist(main, chat_id, character_id, &next)?;
     Ok(next)
 }
 
-/// v4 `replaceItem` — force-swap: clear each designated slot and set it to `[id]`.
+/// v4 `replaceItem` — force-swap: clear each designated slot and set it to
+/// `[id]`. A resolvable bundle dissolves into its leaves, clearing the union of
+/// the slots it designates and the slots its parts land in.
+#[allow(clippy::too_many_arguments)]
 pub fn replace_item(
     main: &Connection,
+    docs: &DocMountDocumentsRepository,
     chat_id: &str,
     character_id: &str,
     id: &str,
     types: &[String],
+    component_item_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Slots, DbError> {
     let current = load_current_wardrobe_state(main, chat_id, character_id)?;
-    let next = crate::wardrobe::replace_item_into_slots(&current, id, types);
+    let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
+    let next = crate::wardrobe::replace_item_into_slots(
+        &current,
+        &WearableNode::new(id, types, component_item_ids),
+        items_by_id.as_ref(),
+    );
     persist(main, chat_id, character_id, &next)?;
     Ok(next)
 }
 
 /// v4 `addToSlot` — append `id` to one named slot (validates `slot ∈ types`, a
 /// guard the wear handler already enforces upstream; no-op if already present).
+/// A bundle contributes the parts covering this slot; if none do, its own id
+/// goes in so the gesture is never silently a no-op.
+#[allow(clippy::too_many_arguments)]
 pub fn add_to_slot(
     main: &Connection,
+    docs: &DocMountDocumentsRepository,
     chat_id: &str,
     character_id: &str,
     slot: &str,
     id: &str,
     types: &[String],
+    component_item_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Slots, DbError> {
     // v4 throws if the item can't occupy the slot; the wear handler checks first,
     // so this is unreachable there, but ported for fidelity.
     debug_assert!(types.iter().any(|t| t == slot));
-    let mut current = load_current_wardrobe_state(main, chat_id, character_id)?;
-    if !current_slot(&current, slot).iter().any(|x| x == id) {
-        current_slot_mut(&mut current, slot).push(id.to_string());
-    }
-    persist(main, chat_id, character_id, &current)?;
-    Ok(current)
+    let current = load_current_wardrobe_state(main, chat_id, character_id)?;
+    let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
+    let next = crate::wardrobe::add_item_to_slot(
+        &current,
+        slot,
+        &WearableNode::new(id, types, component_item_ids),
+        items_by_id.as_ref(),
+    );
+    persist(main, chat_id, character_id, &next)?;
+    Ok(next)
 }
 
 /// v4 `removeFromSlot` — filter `item_id` out of a slot (or clear it entirely when
@@ -262,15 +412,6 @@ fn persist(
     Ok(())
 }
 
-fn current_slot<'a>(slots: &'a Slots, name: &str) -> &'a Vec<String> {
-    match name {
-        "top" => &slots.top,
-        "bottom" => &slots.bottom,
-        "footwear" => &slots.footwear,
-        _ => &slots.accessories,
-    }
-}
-
 fn current_slot_mut<'a>(slots: &'a mut Slots, name: &str) -> &'a mut Vec<String> {
     match name {
         "top" => &mut slots.top,
@@ -292,17 +433,11 @@ pub fn resolve_equipped_outfit_values(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<OutfitSlotValues, DbError> {
     // Second pass over the raw leaf items: route each leaf's title into every
     // output slot its `types` declare.
-    let leaves = resolve_equipped_outfit_leaf_values(
-        main,
-        docs,
-        character_id,
-        slots,
-        project_mount_point_ids,
-    )?;
+    let leaves = resolve_equipped_outfit_leaf_values(main, docs, character_id, slots, tiers)?;
     let title_of = |item: &Value| {
         item.get("title")
             .and_then(Value::as_str)
@@ -345,7 +480,7 @@ fn resolve_equipped_leaves(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Vec<Value> {
     // Unique equipped ids across all four input slots.
     let mut equipped_ids: Vec<String> = Vec::new();
@@ -368,8 +503,7 @@ fn resolve_equipped_leaves(
 
     // Pull the character's own wardrobe (v4 try/catch → []) for composite resolution.
     let char_items = find_by_character_id(main, docs, character_id, true).unwrap_or_default();
-    let mut items_by_id: std::collections::HashMap<String, Value> =
-        std::collections::HashMap::new();
+    let mut items_by_id: WearableLookup = WearableLookup::new();
     for it in char_items {
         if let Some(id) = it.get("id").and_then(Value::as_str) {
             items_by_id.insert(id.to_string(), it);
@@ -383,9 +517,8 @@ fn resolve_equipped_leaves(
         .cloned()
         .collect();
     if !missing.is_empty() {
-        let fallback =
-            find_by_ids_for_character(main, docs, character_id, &missing, project_mount_point_ids)
-                .unwrap_or_default();
+        let fallback = find_by_ids_for_character(main, docs, character_id, &missing, tiers)
+            .unwrap_or_default();
         for it in fallback {
             if let Some(id) = it.get("id").and_then(Value::as_str) {
                 items_by_id.insert(id.to_string(), it);
@@ -394,68 +527,11 @@ fn resolve_equipped_leaves(
     }
 
     // A composite may bundle components the character doesn't own and that aren't
-    // equipped in their own right — the canonical case is a shared "House Livery"
-    // whose coat, waistcoat and boots all live in Quilltap General or a project
-    // store. Without those components in `items_by_id`, `expand_composites` emits
-    // each one as an unknown leaf and the routing pass below drops it, resolving
-    // the whole outfit to nothing.
-    //
-    // Walk the component graph a level at a time, one bulk query per level,
-    // bounded by the same depth `expand_composites` will walk. Bulk matters: this
-    // path is on hot paths (avatar generation, story backgrounds, scene state).
-    let mut requested_component_ids: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    for _depth in 0..COMPOSITE_MAX_DEPTH {
-        let mut wanted: Vec<String> = Vec::new();
-        for item in items_by_id.values() {
-            let components = item
-                .get("componentItemIds")
-                .and_then(Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            for component in components {
-                let Some(component_id) = component.as_str() else {
-                    continue;
-                };
-                if items_by_id.contains_key(component_id) {
-                    continue;
-                }
-                if !requested_component_ids.insert(component_id.to_string()) {
-                    continue;
-                }
-                wanted.push(component_id.to_string());
-            }
-        }
-        if wanted.is_empty() {
-            break;
-        }
-        // v4 warns and breaks on a failed level; v5's read returns `Err` where
-        // v4 throws, so the same shape falls out of the match.
-        let components = match find_by_ids_for_character(
-            main,
-            docs,
-            character_id,
-            &wanted,
-            project_mount_point_ids,
-        ) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    character_id, depth = _depth, wanted_count = wanted.len(), error = %e,
-                    "[resolveEquippedOutfitForCharacter] composite component hydration failed"
-                );
-                break;
-            }
-        };
-        if components.is_empty() {
-            break;
-        }
-        for it in components {
-            if let Some(id) = it.get("id").and_then(Value::as_str) {
-                items_by_id.insert(id.to_string(), it);
-            }
-        }
-    }
+    // equipped in their own right. Hydrating them is shared with the write side
+    // (`lookup_for_bundle`) so both ends see the same component graph — v4
+    // extracted the same loop into `lib/wardrobe/hydrate-components.ts` at
+    // `61574563` for exactly that reason.
+    hydrate_component_graph(main, docs, character_id, &mut items_by_id, tiers);
 
     // Expand each slot's composites, dedup leaves in first-seen order.
     let mut seen_leaf: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -491,10 +567,9 @@ pub fn resolve_equipped_outfit_leaf_values(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<LeafItemsBySlot, DbError> {
-    let ordered_leaves =
-        resolve_equipped_leaves(main, docs, character_id, slots, project_mount_point_ids);
+    let ordered_leaves = resolve_equipped_leaves(main, docs, character_id, slots, tiers);
 
     // Second pass: route each leaf ITEM into every output slot its `types` declare.
     let mut out = LeafItemsBySlot::default();
@@ -545,10 +620,9 @@ pub fn resolve_equipped_leaf_items_by_slot(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<EquippedLeafItem>, DbError> {
-    let ordered_leaves =
-        resolve_equipped_leaves(main, docs, character_id, slots, project_mount_point_ids);
+    let ordered_leaves = resolve_equipped_leaves(main, docs, character_id, slots, tiers);
 
     // Second pass: route each leaf into every output slot its `types` declare.
     let mut out: Vec<EquippedLeafItem> = Vec::new();
@@ -595,10 +669,9 @@ pub fn build_wardrobe_coverage_summary_from_state(
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<String, DbError> {
-    let values =
-        resolve_equipped_outfit_values(main, docs, character_id, slots, project_mount_point_ids)?;
+    let values = resolve_equipped_outfit_values(main, docs, character_id, slots, tiers)?;
     Ok(describe_outfit(&values))
 }
 

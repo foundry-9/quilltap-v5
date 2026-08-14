@@ -14,7 +14,8 @@ use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::wardrobe_read::find_wearable_pool_for_character;
 use crate::db::DbError;
 
-use super::wardrobe_shared::{find_equipped_slots, resolve_project_mount_point_ids_for_chat};
+use super::wardrobe_shared::find_equipped_slots;
+use crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat;
 
 /// One item in the list result (v4 `WardrobeListItemResult`). The composite fields
 /// are omitted for leaf items (v4's conditional spread).
@@ -161,9 +162,8 @@ fn run(
     // Quilltap General). Character items win on id collision so a personal
     // override masks the shared item. (The group tier is a tracked follow-up —
     // the repo doesn't accept group mounts yet.)
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
-    let all_items =
-        find_wearable_pool_for_character(main, &docs, character_id, &project_mount_point_ids)?;
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
+    let all_items = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
 
     let equipped = ChatOutfitsRepository::new(main)
         .get_equipped_outfit_for_character(chat_id, character_id)?;

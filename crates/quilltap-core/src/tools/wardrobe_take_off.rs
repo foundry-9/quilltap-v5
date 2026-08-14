@@ -19,9 +19,10 @@ use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, Ward
 
 use super::wardrobe_shared::{
     build_wardrobe_coverage_summary_from_state, empty_equipped_state, load_current_wardrobe_state,
-    remove_from_slot, resolve_project_mount_point_ids_for_chat, resolve_wardrobe_item_across_tiers,
+    remove_from_slot, resolve_wardrobe_item_across_tiers,
 };
 use super::wardrobe_wear::OpItem;
+use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeTakeOffOpResult`.
 #[derive(Debug, Serialize)]
@@ -149,7 +150,7 @@ fn run(
     ops: &[TakeOffOp],
 ) -> Result<(WardrobeTakeOffToolOutput, Vec<String>), DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
 
     let mut results: Vec<WardrobeTakeOffOpResult> = Vec::new();
     let mut applied_count = 0usize;
@@ -186,7 +187,7 @@ fn run(
                 op.slot.as_deref(),
                 item_id.as_deref(),
                 item_title.as_deref(),
-                &project_mount_point_ids,
+                &tiers,
             )?
         };
 
@@ -223,7 +224,7 @@ fn run(
         &docs,
         character_id,
         &current_state,
-        &project_mount_point_ids,
+        &tiers,
     )?;
 
     Ok((
@@ -248,16 +249,10 @@ fn apply_remove(
     slot: Option<&str>,
     item_id: Option<&str>,
     item_title: Option<&str>,
-    project_mount_point_ids: &[String],
+    tiers: &SharedWardrobeTiers,
 ) -> Result<Result<WardrobeTakeOffOpResult, TakeOffError>, DbError> {
-    let item = resolve_wardrobe_item_across_tiers(
-        main,
-        docs,
-        character_id,
-        item_id,
-        item_title,
-        project_mount_point_ids,
-    )?;
+    let item =
+        resolve_wardrobe_item_across_tiers(main, docs, character_id, item_id, item_title, tiers)?;
     let Some(item) = item else {
         return Ok(Err(TakeOffError(not_found_message(item_id, item_title))));
     };

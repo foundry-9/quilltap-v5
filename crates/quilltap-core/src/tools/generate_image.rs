@@ -1416,7 +1416,14 @@ fn gather_db_context(
                         &docs,
                         &entity_id,
                         &slots,
-                        &project_mount_point_ids,
+                        // Group stores follow each character's own memberships,
+                        // so they can't come from the shared project list.
+                        &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+                            main,
+                            mount,
+                            &entity_id,
+                            &project_mount_point_ids,
+                        ),
                     )
                 {
                     equipped = leaves

@@ -40,6 +40,7 @@ use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
 use crate::services::character_enrichment;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::types::{db_error_response, ErrorKind, Response};
 
@@ -2164,7 +2165,13 @@ pub fn character_wardrobe_get(
             return Ok(Err(r));
         }
         let docs = DocMountDocumentsRepository::new(mount);
-        match wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])? {
+        match wardrobe_read::find_by_id_for_character(
+            main,
+            &docs,
+            &cid,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )? {
             Some(item) => Ok(Ok(item)),
             None => Ok(Err(not_found("Wardrobe item"))),
         }
@@ -2193,7 +2200,15 @@ pub async fn character_wardrobe_update(
         }
         let docs = DocMountDocumentsRepository::new(mount);
         // v4 pre-checks existence before update (findByIdForCharacter).
-        if wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])?.is_none() {
+        if wardrobe_read::find_by_id_for_character(
+            main,
+            &docs,
+            &cid,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?
+        .is_none()
+        {
             return Ok(Err(not_found("Wardrobe item")));
         }
         let mut patch = WardrobePatch::default();
@@ -2229,7 +2244,13 @@ pub async fn character_wardrobe_update(
             // incl. `archivedAt: null`), not the write-struct — re-read for the
             // v4-exact Value shape (the reads differential's proven bytes).
             Ok(Some(_)) => {
-                match wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])? {
+                match wardrobe_read::find_by_id_for_character(
+                    main,
+                    &docs,
+                    &cid,
+                    &iid,
+                    &SharedWardrobeTiers::none(),
+                )? {
                     Some(item) => Ok(Ok(item)),
                     None => Ok(Err(not_found("Wardrobe item"))),
                 }
@@ -2258,7 +2279,15 @@ pub async fn character_wardrobe_delete(
             return Ok(Err(r));
         }
         let docs = DocMountDocumentsRepository::new(mount);
-        if wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])?.is_none() {
+        if wardrobe_read::find_by_id_for_character(
+            main,
+            &docs,
+            &cid,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?
+        .is_none()
+        {
             return Ok(Err(not_found("Wardrobe item")));
         }
         // Clean up equipped references before deleting (v4 logs + proceeds on

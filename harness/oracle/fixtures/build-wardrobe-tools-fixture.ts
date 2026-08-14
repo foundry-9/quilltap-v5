@@ -50,11 +50,19 @@ interface Spec {
   recipient: { name: string };
   generalMountPointId: string;
   generalStore: { name: string };
+  callerGroupId: string;
+  callerGroupName: string;
+  callerGroupMemberId: string;
+  recipientGroupId: string;
+  recipientGroupName: string;
+  recipientGroupMemberId: string;
   chatId: string;
   callerParticipantId: string;
   recipientParticipantId: string;
   callerItems: ItemSpec[];
   generalItems: ItemSpec[];
+  callerGroupItems: ItemSpec[];
+  recipientGroupItems: ItemSpec[];
   seedEquipped: Record<string, string[]>;
 }
 
@@ -102,6 +110,8 @@ async function main(): Promise<void> {
     DocMountFolderSchema,
     DocMountFileLinkSchema,
     DocMountChunkSchema,
+    GroupDocMountLinkSchema,
+    GroupCharacterMemberSchema,
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
@@ -117,6 +127,8 @@ async function main(): Promise<void> {
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
     ['doc_mount_chunks', DocMountChunkSchema],
+    ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
@@ -216,6 +228,83 @@ async function main(): Promise<void> {
   };
   for (const item of spec.callerItems) await seedItem(item, spec.callerCharacterId);
   for (const item of spec.generalItems) await seedItem(item, null);
+
+  // 4b. [P4.D71 / v4 8600c83f] The GROUP tier. Two groups, each with its own
+  // official store and exactly one member:
+  //   - "The Household" holds the caller. Its `Wardrobe/` carries a group-only
+  //     garment plus a copy that SHADOWS a General archetype by id.
+  //   - "The Regiment" holds the recipient. The caller is NOT a member, which
+  //     is what proves group stores follow the CHARACTER (never a
+  //     co-participant) and that `wardrobe_create` keys component resolution on
+  //     the recipient.
+  // The official store is provisioned by hand rather than via
+  // `ensureGroupOfficialStore` so its mount-point id can be pinned.
+  const { createProjectWardrobeItem } = await import(
+    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
+  );
+  const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+  const { ensureGroupOfficialStore } = await import('@/lib/mount-index/ensure-group-store');
+
+  const seedGroup = async (
+    groupId: string,
+    groupName: string,
+    memberId: string,
+    memberCharacterId: string,
+    items: ItemSpec[],
+  ): Promise<string> => {
+    await repos.groups.create({ name: groupName } as never, {
+      id: groupId,
+      createdAt: TS,
+      updatedAt: TS,
+    } as never);
+    // Groups are store-backed entities: their content lives in the official
+    // store's `properties.json`, so the store must be provisioned through v4's
+    // own `ensureGroupOfficialStore` (a hand-inserted mount point leaves the
+    // group unhydratable). Its mount-point id is therefore MINTED, not pinned —
+    // harmless here, since both sides read this same built fixture and the
+    // wardrobe item ids inside it stay pinned.
+    const ensured = await ensureGroupOfficialStore(groupId, groupName);
+    if (!ensured) throw new Error(`failed to provision the official store for ${groupName}`);
+    await repos.groupCharacterMembers.create(
+      { groupId, characterId: memberCharacterId } as never,
+      { id: memberId, createdAt: TS, updatedAt: TS } as never,
+    );
+    await ensureFolderPath(ensured.mountPointId, 'Wardrobe');
+    for (const item of items) {
+      await createProjectWardrobeItem(ensured.mountPointId, {
+        id: item.id,
+        characterId: null,
+        title: item.title,
+        description: item.description ?? null,
+        imagePrompt: item.imagePrompt ?? null,
+        types: item.types,
+        componentItemIds: item.componentItemIds ?? [],
+        appropriateness: item.appropriateness ?? null,
+        isDefault: item.isDefault ?? false,
+        replace: item.replace ?? false,
+        migratedFromClothingRecordId: null,
+        archivedAt: item.archived ? TS : null,
+        createdAt: TS,
+        updatedAt: TS,
+      } as never);
+    }
+    return ensured.mountPointId;
+  };
+
+  await seedGroup(
+    spec.callerGroupId,
+    spec.callerGroupName,
+    spec.callerGroupMemberId,
+    spec.callerCharacterId,
+    spec.callerGroupItems,
+  );
+  await seedGroup(
+    spec.recipientGroupId,
+    spec.recipientGroupName,
+    spec.recipientGroupMemberId,
+    spec.recipientCharacterId,
+    spec.recipientGroupItems,
+  );
 
   // 5. Chat with two CHARACTER participants + a seeded equipped outfit for the caller.
   const participants = [

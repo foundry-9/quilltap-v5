@@ -2,57 +2,390 @@
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "seedTimestamp": "2026-02-01T00:00:00.000Z",
   "userId": "11111111-1111-4111-8111-111111111111",
-  "user": { "username": "wardrobe-tester", "name": "Wardrobe Tester" },
+  "user": {
+    "username": "wardrobe-tester",
+    "name": "Wardrobe Tester"
+  },
   "callerCharacterId": "22222222-2222-4222-8222-222222222222",
   "recipientCharacterId": "33333333-3333-4333-8333-333333333333",
-  "caller": { "name": "Rosalind" },
-  "recipient": { "name": "Basil" },
+  "caller": {
+    "name": "Rosalind"
+  },
+  "recipient": {
+    "name": "Basil"
+  },
   "generalMountPointId": "44444444-4444-4444-8444-444444444444",
-  "generalStore": { "name": "Quilltap General" },
+  "generalStore": {
+    "name": "Quilltap General"
+  },
+  "callerGroupId": "88888888-8888-4888-8888-000000000001",
+  "callerGroupName": "The Household",
+  "callerGroupMemberId": "88888888-8888-4888-8888-000000000004",
+  "recipientGroupId": "99999999-9999-4999-8999-000000000001",
+  "recipientGroupName": "The Regiment",
+  "recipientGroupMemberId": "99999999-9999-4999-8999-000000000004",
   "chatId": "55555555-5555-4555-8555-555555555555",
   "callerParticipantId": "66666666-6666-4666-8666-666666666666",
   "recipientParticipantId": "77777777-7777-4777-8777-777777777777",
   "callerItems": [
-    { "id": "a0000000-0000-4000-8000-000000000001", "title": "Blue Blouse", "types": ["top"], "description": "A crisp blue blouse.", "appropriateness": "formal" },
-    { "id": "a0000000-0000-4000-8000-000000000002", "title": "Grey Slacks", "types": ["bottom"] },
-    { "id": "a0000000-0000-4000-8000-000000000003", "title": "Loafers", "types": ["footwear"], "imagePrompt": "brown leather loafers" },
-    { "id": "a0000000-0000-4000-8000-000000000004", "title": "Casual Outfit", "types": ["top", "bottom"], "componentItemIds": ["a0000000-0000-4000-8000-000000000001", "a0000000-0000-4000-8000-000000000002"] },
-    { "id": "a0000000-0000-4000-8000-000000000005", "title": "Old Coat", "types": ["top"], "archived": true }
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "title": "Blue Blouse",
+      "types": [
+        "top"
+      ],
+      "description": "A crisp blue blouse.",
+      "appropriateness": "formal"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "title": "Grey Slacks",
+      "types": [
+        "bottom"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "title": "Loafers",
+      "types": [
+        "footwear"
+      ],
+      "imagePrompt": "brown leather loafers"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "title": "Casual Outfit",
+      "types": [
+        "top",
+        "bottom"
+      ],
+      "componentItemIds": [
+        "a0000000-0000-4000-8000-000000000001",
+        "a0000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "title": "Old Coat",
+      "types": [
+        "top"
+      ],
+      "archived": true
+    }
   ],
   "generalItems": [
-    { "id": "b0000000-0000-4000-8000-000000000001", "title": "Silk Scarf", "types": ["accessories"], "description": "A shared household scarf." }
+    {
+      "id": "b0000000-0000-4000-8000-000000000001",
+      "title": "Silk Scarf",
+      "types": [
+        "accessories"
+      ],
+      "description": "A shared household scarf."
+    }
   ],
   "seedEquipped": {
-    "top": ["a0000000-0000-4000-8000-000000000001"],
+    "top": [
+      "a0000000-0000-4000-8000-000000000001"
+    ],
     "bottom": [],
     "footwear": [],
     "accessories": []
   },
   "ops": [
-    { "name": "list_all", "tool": "wardrobe_list", "args": {} },
-    { "name": "list_invalid_type", "tool": "wardrobe_list", "args": { "type_filter": 5 } },
-    { "name": "list_type_top", "tool": "wardrobe_list", "args": { "type_filter": ["top"] } },
-    { "name": "read_composite", "tool": "wardrobe_read", "args": { "item_id": "a0000000-0000-4000-8000-000000000004" } },
-    { "name": "read_invalid", "tool": "wardrobe_read", "args": {} },
-    { "name": "read_notfound", "tool": "wardrobe_read", "args": { "item_title": "Ghost Cloak" } },
-    { "name": "create_leaf", "tool": "wardrobe_create", "args": { "title": "Red Hat", "types": ["accessories"], "image_prompt": "wide-brimmed red hat" } },
-    { "name": "create_invalid_title", "tool": "wardrobe_create", "args": { "title": "   ", "types": ["top"] } },
-    { "name": "create_composite_equip", "tool": "wardrobe_create", "args": { "title": "Full Look", "component_titles": ["Blue Blouse", "Grey Slacks"], "equip_now": true } },
-    { "name": "create_gift", "tool": "wardrobe_create", "args": { "title": "Gift Tee", "types": ["top"], "recipient": "Basil" } },
-    { "name": "create_gift_unknown", "tool": "wardrobe_create", "args": { "title": "Mystery", "types": ["top"], "recipient": "Ghost" } },
-    { "name": "create_unknown_component", "tool": "wardrobe_create", "args": { "title": "Broken", "component_titles": ["No Such Item"] } },
-    { "name": "update_own", "tool": "wardrobe_update", "args": { "item_title": "Blue Blouse", "appropriateness": "casual" } },
-    { "name": "update_shared", "tool": "wardrobe_update", "args": { "item_title": "Silk Scarf", "title": "New Scarf" } },
-    { "name": "update_invalid", "tool": "wardrobe_update", "args": {} },
-    { "name": "wear_slacks", "tool": "wardrobe_wear", "args": { "operations": [ { "item_title": "Grey Slacks" } ] } },
-    { "name": "wear_invalid", "tool": "wardrobe_wear", "args": { "operations": [] } },
-    { "name": "wear_addslot_mismatch", "tool": "wardrobe_wear", "args": { "operations": [ { "item_title": "Loafers", "mode": "add_to_slot", "slot": "top" } ] } },
-    { "name": "takeoff_blouse", "tool": "wardrobe_take_off", "args": { "operations": [ { "item_title": "Blue Blouse" } ] } },
-    { "name": "takeoff_clear_footwear", "tool": "wardrobe_take_off", "args": { "operations": [ { "mode": "clear_slot", "slot": "footwear" } ] } },
-    { "name": "takeoff_invalid", "tool": "wardrobe_take_off", "args": { "operations": [ { "mode": "clear_slot" } ] } },
-    { "name": "archive_own", "tool": "wardrobe_archive", "args": { "item_title": "Red Hat" } },
-    { "name": "archive_shared", "tool": "wardrobe_archive", "args": { "item_title": "Silk Scarf" } },
-    { "name": "list_after", "tool": "wardrobe_list", "args": {} },
-    { "name": "read_gift_as_recipient", "tool": "wardrobe_read", "characterId": "recipient", "args": { "item_title": "Gift Tee" } }
+    {
+      "name": "list_all",
+      "tool": "wardrobe_list",
+      "args": {}
+    },
+    {
+      "name": "list_invalid_type",
+      "tool": "wardrobe_list",
+      "args": {
+        "type_filter": 5
+      }
+    },
+    {
+      "name": "list_type_top",
+      "tool": "wardrobe_list",
+      "args": {
+        "type_filter": [
+          "top"
+        ]
+      }
+    },
+    {
+      "name": "read_composite",
+      "tool": "wardrobe_read",
+      "args": {
+        "item_id": "a0000000-0000-4000-8000-000000000004"
+      }
+    },
+    {
+      "name": "read_invalid",
+      "tool": "wardrobe_read",
+      "args": {}
+    },
+    {
+      "name": "read_notfound",
+      "tool": "wardrobe_read",
+      "args": {
+        "item_title": "Ghost Cloak"
+      }
+    },
+    {
+      "name": "create_leaf",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Red Hat",
+        "types": [
+          "accessories"
+        ],
+        "image_prompt": "wide-brimmed red hat"
+      }
+    },
+    {
+      "name": "create_invalid_title",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "   ",
+        "types": [
+          "top"
+        ]
+      }
+    },
+    {
+      "name": "create_composite_equip",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Full Look",
+        "component_titles": [
+          "Blue Blouse",
+          "Grey Slacks"
+        ],
+        "equip_now": true
+      }
+    },
+    {
+      "name": "create_gift",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Gift Tee",
+        "types": [
+          "top"
+        ],
+        "recipient": "Basil"
+      }
+    },
+    {
+      "name": "create_gift_unknown",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Mystery",
+        "types": [
+          "top"
+        ],
+        "recipient": "Ghost"
+      }
+    },
+    {
+      "name": "create_unknown_component",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Broken",
+        "component_titles": [
+          "No Such Item"
+        ]
+      }
+    },
+    {
+      "name": "update_own",
+      "tool": "wardrobe_update",
+      "args": {
+        "item_title": "Blue Blouse",
+        "appropriateness": "casual"
+      }
+    },
+    {
+      "name": "update_shared",
+      "tool": "wardrobe_update",
+      "args": {
+        "item_title": "Silk Scarf",
+        "title": "New Scarf"
+      }
+    },
+    {
+      "name": "update_invalid",
+      "tool": "wardrobe_update",
+      "args": {}
+    },
+    {
+      "name": "wear_slacks",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Grey Slacks"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wear_invalid",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": []
+      }
+    },
+    {
+      "name": "wear_addslot_mismatch",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Loafers",
+            "mode": "add_to_slot",
+            "slot": "top"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_blouse",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Blue Blouse"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_clear_footwear",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "mode": "clear_slot",
+            "slot": "footwear"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_invalid",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "mode": "clear_slot"
+          }
+        ]
+      }
+    },
+    {
+      "name": "archive_own",
+      "tool": "wardrobe_archive",
+      "args": {
+        "item_title": "Red Hat"
+      }
+    },
+    {
+      "name": "archive_shared",
+      "tool": "wardrobe_archive",
+      "args": {
+        "item_title": "Silk Scarf"
+      }
+    },
+    {
+      "name": "list_after",
+      "tool": "wardrobe_list",
+      "args": {}
+    },
+    {
+      "name": "read_gift_as_recipient",
+      "tool": "wardrobe_read",
+      "characterId": "recipient",
+      "args": {
+        "item_title": "Gift Tee"
+      }
+    },
+    {
+      "name": "read_group_item",
+      "tool": "wardrobe_read",
+      "args": {
+        "item_title": "House Livery"
+      }
+    },
+    {
+      "name": "read_shadowed_scarf",
+      "tool": "wardrobe_read",
+      "args": {
+        "item_id": "b0000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "list_as_recipient",
+      "tool": "wardrobe_list",
+      "characterId": "recipient",
+      "args": {}
+    },
+    {
+      "name": "read_group_item_as_recipient",
+      "tool": "wardrobe_read",
+      "characterId": "recipient",
+      "args": {
+        "item_title": "House Livery"
+      }
+    },
+    {
+      "name": "wear_group_item",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "House Livery"
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_gift_group_component",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Regimental Kit",
+        "component_titles": [
+          "Regimental Sash"
+        ],
+        "recipient": "Basil"
+      }
+    }
+  ],
+  "callerGroupItems": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "title": "House Livery",
+      "types": [
+        "top"
+      ],
+      "description": "The coat that hangs by the door."
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000001",
+      "title": "Household Livery Scarf",
+      "types": [
+        "accessories"
+      ],
+      "description": "The group's own copy of the household scarf."
+    }
+  ],
+  "recipientGroupItems": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000001",
+      "title": "Regimental Sash",
+      "types": [
+        "accessories"
+      ]
+    }
   ]
 }

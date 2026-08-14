@@ -65489,3 +65489,133 @@ Orders committed under `docs/developer/porting/work-orders/`:
 `p4.d75-char-insert-composer-spa.md`,
 `p4.46-boot-lock-order-setup-hardening.md`,
 `p4.d76-provider-sdk-wire-recheck.md`.
+
+---
+
+## P4.D71 unit 1+2 — the pure dissolution layer + the group wardrobe tier (v4 `48396682`)
+
+**Lane:** `claude/wardrobe-group-tiers-dissolve-c7b9a2`. Drift-checked at lane
+start on BOTH v4 branches: `main` at `48396682` (clean tree), `bugfix` HEAD ==
+`0649eddb` (the 4.8.3 branch-start — nothing past it).
+
+### Unit 1 — bundle dissolution, the pure half (v4 `61574563`)
+
+New `crates/quilltap-core/src/dissolve_bundles.rs`, a file-for-file port of v4's
+`lib/wardrobe/dissolve-bundles.ts`: `WearableNode` / `WearableLookup` (v5 reuses
+the `id → item JSON` map `expand_composites` already walks, so no call site
+converts), `slots_covered_by`, `is_bundle`, `dissolve_bundle_to_leaves`,
+`lay_leaves_into_slots`, `dissolve_bundles_in_slots`. The pure primitives in
+`wardrobe.rs` widened to take a `WearableNode` + an optional lookup
+(`wear_item_into_slots`, `replace_item_into_slots`) and gained v4's new
+`add_item_to_slot` with its own-id fallback.
+
+Semantics pinned: `None` = unresolvable components → store the bundle WHOLE (the
+fail-safe; read-time expansion still renders it, so no migration); the
+leaf-equals-bundle echo from a truncated cycle is dropped; `clear_covered_slots`
+clears the UNION of the bundle's own `types` and every slot its leaves land in;
+`dissolve_bundles_in_slots` substitutes in place (preserving layer order) then a
+second pass appends leaves whose slot the bundle never claimed; nested bundles
+come fully apart.
+
+**Differential: `dissolve_bundles_equivalence` (tier 1, NEW).** Oracle case
+`harness/oracle/cases/dissolve-bundles.ts` drives v4's REAL
+`lib/wardrobe/dissolve-bundles.ts` + the REAL pure primitives in
+`lib/wardrobe/outfit-displacement.ts`. Corpus = v4's own
+`__tests__/unit/lib/wardrobe/dissolve-bundles.test.ts` case-for-case (also
+ported as 24 Rust unit tests) PLUS the shapes it leaves implicit. 92 rows: 39
+shape / 14 dissolve / 7 lay / 19 wear / 13 snapshot.
+
+**Mutation-proven, and the first pass found a REAL corpus blind spot.** Four
+mutations were tried; three went red immediately (drop the union clearing → the
+replace-union case; drop the second append pass → the unclaimed-slot case; drop
+`add_item_to_slot`'s own-id fallback → its own case). The FOURTH — removing the
+`leafId === item.id` echo guard — **passed silently**: v4's own `selfish` case
+cannot reach that guard (its self-reference is caught one level in as a cycle
+and emits nothing). The only shape that makes a bundle emit ITSELF as a leaf is
+a chain long enough that the loop back lands at `COMPOSITE_MAX_DEPTH`, where
+expansion truncates and emits the id. Two such cases were added (`loop-1`, and
+`echo-1` with a resolvable garment alongside so the echo is dropped while the
+real leaf survives); v4 answers `null` and `[boots]` respectively, and the
+mutation now goes red. Corpus-shape floors asserted, plus a both-outcomes floor
+(dissolve→leaves AND dissolve→store-whole arms must both be present).
+
+### Unit 2 — the group tier + the dissolution write side (v4 `8600c83f`)
+
+New `crates/quilltap-core/src/wardrobe_tiers.rs` — v4's
+`lib/wardrobe/shared-tiers.ts`: a `SharedWardrobeTiers` carrier with the three
+resolvers (`resolve_shared_wardrobe_tiers_for_chat` / `_for_project` /
+`shared_wardrobe_tiers_for_character`) over the group resolver that already
+existed (`db::tiered_mount_pool::resolve_group_mount_point_ids_for_character`,
+until now consumed only by Knowledge). `scoped_mounts()` is the weakest-first
+`[project…, group…]` order so group shadows project shadows general.
+v4 states both fields optional; v5 states them as plain lists on one struct —
+the same "you can't thread one tier and drop the other" guarantee with the hole
+welded shut, since there is no way to name one tier without saying so.
+
+`db/archetype_wardrobe.rs`: `read_shared_wardrobe` promoted to the shared reader
+with `read_general_/project_/group_wardrobe` as façades (v4's own collapse),
+NEW `find_archetypes_in_mounts` (per-mount try/catch skip, later shadows
+earlier), `find_archetypes`/`find_archetype_by_id` take the tiers carrier, and
+`ensure_shared_wardrobe_folder` + the group façade. `db/wardrobe_read.rs`'s
+three reads take the carrier.
+
+Every consumer threaded: the seven wardrobe tool handlers, the outfit route's
+item-resolving modes, the outfit summary's **cast-wide union** (the one
+documented exception — group stores otherwise follow the character), chat-create
+equipped reads, the Aurora outfit-announcement job, story backgrounds, image
+generation, buildContext's outfit-cache refresh, the avatar prompt (which gained
+a `mount` parameter — it resolves its own character's group tier, as v4 does),
+the outfit preview, `resolve_default_outfit`, and `PoolCache`'s new per-character
+`group_tier` (read separately from the batched shared read, appended AFTER it so
+group wins, fail-soft with a warn — v4's `getGroupTier`).
+
+**Both of v4's riding fixes ported:** `wardrobe_create` keys tiers on the TARGET
+character (a gift assembles from what the recipient can reach), and its
+equip-now path passes tiers at all.
+
+Write-side dissolution: `lookup_for_bundle` (v4 `lookupForBundle` +
+`loadBundleLookup`) over an extracted `hydrate_component_graph` — v4's
+`lib/wardrobe/hydrate-components.ts`, the same loop the read side already had
+inline, now shared by both ends exactly as v4 shares it (byte-neutral: the
+existing equipped-resolution families stayed green across the extraction).
+`equip_item` / `replace_item` / `add_to_slot` carry the component ids + tiers
+and dissolve; `default_outfit_from_pool` and the accepted `llm_choose` answer
+dissolve against their pools.
+
+**Fixtures.** `wardrobe-tools` extended by mutation with a group tier: TWO
+groups, each with its own official store and exactly one member — "The
+Household" (the caller) whose `Wardrobe/` carries a group-only garment plus a
+copy that SHADOWS a General archetype by id, and "The Regiment" (the recipient,
+whom the caller is NOT a member alongside). That second group is what makes the
+per-character keying and the recipient-keyed create fix measurable at all. The
+group official store is provisioned through v4's own `ensureGroupOfficialStore`
+rather than by hand — groups are store-backed entities and a hand-inserted mount
+point leaves them unhydratable (`properties.json missing`), so their mount ids
+are minted rather than pinned; harmless, since both sides read the same built
+fixture and every wardrobe item id inside it stays pinned. Six new ops.
+
+**Differentials, all regenerated FRESH at `48396682` and green:**
+`wardrobe_tools_equivalence` (31 ops + read-back), `wardrobe_tier2`,
+`wardrobe_public_read`, `chats_outfits_tier2`, `outfit_llm_choose_tier3`,
+`chat_cast_routes`, plus the blast-radius set re-run by name:
+`build_context_tier3`, `chat_create_capstone`, `chat_create_end_to_end`,
+`avatar_job_tier3`, `story_background_job_tier3`, `post_office_aurora`,
+`image_generation_tier3`.
+
+**Two reds were MEASURED, not guessed, and each named its missing port:**
+`wardrobe_tools`' `create_composite_equip` (v4 stored the two leaf ids where v5
+stored the composite's own id — the equip-now dissolution) and
+`outfit_llm_choose_tier3`'s two pick cases (v4 stored leaf `…b1` where v5 stored
+bundle `…b4` — the accepted-answer dissolution). Both went green once the
+corresponding write-side dissolution landed.
+
+**Mutation-proven on the group tier too:** dropping the group half of
+`scoped_mounts()` (the pre-fix behaviour) reds `list_all` at op 0; re-keying
+`wardrobe_create`'s tiers on the caller instead of the recipient reds exactly
+one case — `create_gift_group_component`, op 30 — which is the arm built for it.
+
+**Not in v5's blast radius:** v4 also threaded
+`lib/background-jobs/handlers/scene-state-tracking.ts`. v5 has no
+SCENE_STATE_TRACKING handler (it sits in `KNOWN_JOB_TYPES` on the runner's loud
+fallback), so there is nothing to thread; recorded here rather than silently
+skipped.

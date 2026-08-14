@@ -195,6 +195,7 @@ where
         let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         build_character_avatar_prompt(
             main,
+            mount,
             &docs,
             &character_for_prompt,
             &AvatarPromptOptions {

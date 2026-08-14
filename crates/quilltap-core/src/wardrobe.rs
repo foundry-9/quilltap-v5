@@ -414,24 +414,84 @@ fn to_str_array(v: &[String]) -> Value {
 
 /// v4 `wearItemIntoSlots` — for each slot in `types`, replace with `[id]` when
 /// `replace`, else append `id` (no-op if already present).
-pub fn wear_item_into_slots(current: &Slots, id: &str, types: &[String], replace: bool) -> Slots {
+///
+/// A **bundle** (`61574563`) goes on as its parts, not as itself: given an
+/// `items_by_id` lookup that resolves its components, the leaves are laid into
+/// the slots their own `types` declare and the bundle's id is never stored.
+/// `replace` still governs — an assembled outfit set to replace clears the slots
+/// it lands in first. Without a lookup (or when a bundle's parts can't be
+/// resolved) the bundle is stored whole, the pre-4.8.2 behaviour, and read-time
+/// [`expand_composites`] still covers it.
+pub fn wear_item_into_slots(
+    current: &Slots,
+    item: &crate::dissolve_bundles::WearableNode,
+    replace: bool,
+    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+) -> Slots {
+    if let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) {
+        return crate::dissolve_bundles::lay_leaves_into_slots(current, item, &leaves, replace);
+    }
+
     let mut slots = current.clone();
-    for slot in types {
+    for slot in &item.types {
         if replace {
-            *slots.slot_mut(slot) = vec![id.to_string()];
-        } else if !slots.slot(slot).iter().any(|x| x == id) {
-            slots.slot_mut(slot).push(id.to_string());
+            *slots.slot_mut(slot) = vec![item.id.clone()];
+        } else if !slots.slot(slot).contains(&item.id) {
+            slots.slot_mut(slot).push(item.id.clone());
         }
     }
     slots
 }
 
 /// v4 `replaceItemIntoSlots` — clear each slot in `types` and set it to `[id]`,
-/// ignoring the `replace` flag.
-pub fn replace_item_into_slots(current: &Slots, id: &str, types: &[String]) -> Slots {
+/// ignoring the `replace` flag. A resolvable bundle dissolves into its leaves
+/// with the covered slots cleared first (see [`wear_item_into_slots`]).
+pub fn replace_item_into_slots(
+    current: &Slots,
+    item: &crate::dissolve_bundles::WearableNode,
+    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+) -> Slots {
+    if let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) {
+        return crate::dissolve_bundles::lay_leaves_into_slots(current, item, &leaves, true);
+    }
+
     let mut slots = current.clone();
-    for slot in types {
-        *slots.slot_mut(slot) = vec![id.to_string()];
+    for slot in &item.types {
+        *slots.slot_mut(slot) = vec![item.id.clone()];
+    }
+    slots
+}
+
+/// v4 `addItemToSlot` (`61574563`) — pure single-slot layering. A bundle
+/// contributes the parts that cover this slot rather than its own id; if none of
+/// them do (the caller asked for a slot the bundle claims but no part fills), the
+/// bundle's id goes in as before so the gesture is never silently a no-op.
+pub fn add_item_to_slot(
+    current: &Slots,
+    slot: &str,
+    item: &crate::dissolve_bundles::WearableNode,
+    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+) -> Slots {
+    let mut slots = current.clone();
+    let leaves = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id);
+    let for_slot: Vec<&crate::dissolve_bundles::DissolvedLeaf> = leaves
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .filter(|leaf| leaf.slots.iter().any(|s| s == slot))
+        .collect();
+
+    if !for_slot.is_empty() {
+        for leaf in for_slot {
+            if !slots.slot(slot).contains(&leaf.id) {
+                slots.slot_mut(slot).push(leaf.id.clone());
+            }
+        }
+        return slots;
+    }
+
+    if !slots.slot(slot).contains(&item.id) {
+        slots.slot_mut(slot).push(item.id.clone());
     }
     slots
 }
@@ -701,11 +761,12 @@ mod tests {
             top: vec!["shirt".into()],
             ..Default::default()
         };
+        let node = |id: &str| crate::dissolve_bundles::WearableNode::new(id, &types(&["top"]), &[]);
         // Layer: append.
-        let layered = wear_item_into_slots(&base, "vest", &types(&["top"]), false);
+        let layered = wear_item_into_slots(&base, &node("vest"), false, None);
         assert_eq!(layered.top, types(&["shirt", "vest"]));
         // Replace: overwrite.
-        let replaced = wear_item_into_slots(&base, "coat", &types(&["top"]), true);
+        let replaced = wear_item_into_slots(&base, &node("coat"), true, None);
         assert_eq!(replaced.top, types(&["coat"]));
     }
 
