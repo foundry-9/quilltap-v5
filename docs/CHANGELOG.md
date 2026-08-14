@@ -144,6 +144,24 @@ enforces the same precondition its doc comment already claimed.
 Fixed an ordering-dependent break in the SPA test suite: a clipboard stub was
 installed as a non-writable property, so whichever spec next touched
 `navigator.clipboard` in the same worker threw. Test-only.
+Re-checked the provider wire against v4's 4.8.2 dependency refresh (P4.D76):
+openai 7.2.0 → 7.4.0 and `@openrouter/sdk` 1.2.2 → 1.2.32 moved v4's outgoing
+requests not at all. All four recorded corpora were regenerated against the
+new SDKs (proven installed: the plugin and root lock files match their
+node_modules exactly, 188 + 1,023 packages, zero mismatches): every request
+body, url, method, input, and the one recorded refusal are byte-identical,
+and the only differences are the self-dating version markers the corpora
+started recording in P4.44 — `x-stainless-package-version` on the 80
+openai-family rows and the speakeasy user-agent on OpenRouter's 13 SDK-path
+rows. Anthropic's rows are byte-identical whole (its SDK did not move), as
+are the google-request and response-body corpora. The six consuming
+differentials pass by name against the fresh corpora, including the
+OpenRouter pricing family with the real 1.2.32 SDK in the oracle loop — the
+SDK's key remap and its 500-row page loop both survived the bump. The
+provider manifests regenerate byte-identical against the 14 rebuilt plugins.
+The google-wire corpus also gained the request headers it should have gotten
+in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
+and nothing asserts those headers yet. No engine code changed.
 
 Trimmed CLAUDE.md back under its per-turn size limit (202KB → 73KB, docs
 only, no code): the round bullets from 2026-07-10 through the `5cc76688`

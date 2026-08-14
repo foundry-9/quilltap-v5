@@ -66407,3 +66407,155 @@ write.
 - `cargo build --workspace --release` exit 0.
 - `ng test` 298 files / 4,143 tests, 0 failed; `ng build` clean.
 - Lane branch `claude/boot-lock-order-hardening-8873d7`, three commits.
+## Lane record — P4.D76 (the 4.8.2 dependency-refresh wire re-check)
+
+Branch `claude/provider-sdk-wire-recheck-991b39`. Order:
+`work-orders/p4.d76-provider-sdk-wire-recheck.md`. Round baseline
+**`48396682`**. **Verdict: the SDK refresh moved v4's provider wire NOT AT
+ALL.** No escalation; no crate source touched (none was permitted).
+
+### Drift check — clean, both branches
+
+`~/source/quilltap-server` on `main`, tree clean, HEAD = **`48396682`** =
+the round baseline (`git log 48396682..main` empty). `bugfix` HEAD is
+`0649eddb` with nothing past the 4.8.3 branch-start
+(`git log main..bugfix -- lib/ app/ packages/` tops out at `c5be43f5`, all
+of it already squashed into main via the release/merge pair). Oracles were
+therefore regenerated from the checkout itself, not a pin.
+
+### Tier-1 item 1 — the environment proof (the installed SDKs ARE the new ones)
+
+`npm ci` was **not** run; instead node_modules was proven to match the
+committed locks exactly, which is the same claim:
+
+- **Per-plugin** (all 14 `plugins/dist/*/package-lock.json` against their own
+  `node_modules`): **188 packages checked, 0 mismatches, 0 missing.**
+- **Root** (`package-lock.json` vs `node_modules`): **1,023 checked, 0
+  mismatches**; the 120 "missing" entries are all optional platform binaries
+  (`@esbuild/<other-platform>`, `@emnapi/*`) that never install on macOS
+  arm64.
+
+Resolved versions via the `createRequire`-from-the-plugin-dir probe (the
+P4.D48 idiom — `require('<pkg>/package.json')` still dies on strict exports
+maps):
+
+| tree | package | version |
+| --- | --- | --- |
+| `plugins/dist/qtap-plugin-{openai,grok,deepseek,z-ai,openai-compatible}` | `openai` | **7.4.0** |
+| `plugins/dist/qtap-plugin-openrouter` | `@openrouter/sdk` | **1.2.32** |
+| `plugins/dist/qtap-plugin-anthropic` | `@anthropic-ai/sdk` | 0.115.0 (unmoved) |
+| `plugins/dist/qtap-plugin-google` | `@google/genai` | 1.52.0 (unmoved) |
+| root (what the ollama plugin resolves) | `openai` | **7.4.0** |
+
+Dating, independent of the version numbers: the plugin `node_modules` trees
+were installed **2026-08-13 11:32**, sixteen minutes before `d339bad8`
+(11:48) — the human's refresh-then-commit; the committed corpora were last
+written **2026-08-08** (`d3a73428f`, P4.44's header pin). The anthropic SDK
+directory still carries its **Aug 4** mtime, matching "its version did not
+move". So the committed bytes really are the openai-7.2 / sdk-1.2.2 bytes,
+and the regen really ran against 7.4.0 / 1.2.32.
+
+### Tier-1 item 2 — the four corpora regenerated: neutral outside the version markers
+
+Field-level diff of every row, old vs new (bodies, urls, methods, inputs and
+the `refused` flag asserted equal on all 163 request-envelope rows before any
+header comparison):
+
+| corpus | rows | verdict |
+| --- | --- | --- |
+| `request-envelopes.recorded.ndjson` | 163 | **93 rows differ in ONE header field each; every body/url/method/input/refusal byte-identical** |
+| `google-wire.recorded.ndjson` | 18 | bodies + urls byte-identical; the rows GAINED headers (see below) |
+| `google-request.recorded.ndjson` | 9 | byte-identical whole |
+| `response-bodies.recorded.ndjson` | 30 | byte-identical whole |
+
+The request-envelope deltas, by provider — exactly the two self-dating
+fields the order predicted, and nothing else:
+
+| provider | rows | changed | field |
+| --- | --- | --- | --- |
+| openai | 26 | 26 | `x-stainless-package-version` 7.2.0 → 7.4.0 |
+| grok | 18 | 18 | same |
+| deepseek | 14 | 14 | same |
+| z-ai | 14 | 14 | same |
+| openai-compatible | 8 | 8 | same |
+| openrouter | 39 | 13 | `user-agent` `speakeasy-sdk/typescript 1.2.2 …` → `… 1.2.32 …` (the SDK-path rows; the 26 raw-fetch rows are untouched) |
+| anthropic | 38 | 0 | — (`x-stainless-package-version` stays 0.115.0) |
+| ollama | 6 | 0 | — (raw fetch; it records only `content-type` + `user-agent`) |
+
+No other `x-stainless-*` field moved (7.4.0 did not change the runtime/arch/
+retry-count header set), no body key order changed, no url changed, and the
+one recorded OpenRouter refusal still refuses with the same recorded bytes.
+
+**The google-wire rows gained headers — a stale-corpus repair, not drift.**
+The five newly present fields (`content-type`, `x-goog-api-client:
+google-genai-sdk/1.52.0 gl-node/v24.13.1`, `user-agent: Quilltap/unknown`,
+`x-goog-api-key`, and `x-server-timeout: 300` on the nine `send` rows) were
+absent because that corpus was last regenerated at `c3cd262e4` (P4.21) —
+BEFORE `d3a73428f` (P4.44) taught the recorder to capture headers. P4.44
+regenerated `request-envelopes` and not its google sibling. The bodies are
+unchanged, and `request_builder_google_wire_equivalence` reads no headers, so
+this is pure corpus enrichment. **Banked, loudly, for a future lane:** the
+google wire headers are now recorded but NOT asserted — pinning them (the
+`x-server-timeout: 300` on the non-streaming path is the interesting one, it
+is the genai SDK's own deadline) would be a real, small differential
+addition, out of scope here because this lane may not touch harness test
+source beyond fixtures.
+
+### Tier-1 items 3+4 — the six consuming differentials, fresh corpora, zero SKIP
+
+Run by name with `--nocapture`:
+
+- `request_builder_equivalence` — *OK: 163 request envelopes (1 recorded
+  refusal(s)) matched v4; headers pinned for 8 providers.*
+- `request_builder_google_wire_equivalence` — *OK: google wire framing
+  matched recorded (18 cases, both modes).*
+- `request_builder_google_equivalence` — ok
+- `response_parse_equivalence` — ok
+- `tool_wire_call_site` — 7 tests ok
+- `openrouter_sdk_pricing_equivalence` — *OK: 5 openrouter SDK pricing
+  scenario(s) matched v4* (oracle regenerated per its header recipe, the REAL
+  1.2.32 SDK in the loop).
+
+The pricing family is the one that could have gone silently wrong (1.2.2 →
+1.2.32 is exactly the class of bump that broke the key remap unnoticed in
+P4.D33), so its oracle was positively inspected rather than trusted: the five
+scenarios emit non-empty outputs (3 / 499 / 503 / 1003 / 0 models), the
+`Model$inboundSchema` remap still fires (`contextLength: 262144`,
+`supportsTools: true` on camelCase keys), and the page walk still issues
+`?limit=500&offset=500` and `&offset=1000` on the three-page scenario — so
+both pinned SDK behaviors survived the bump.
+
+### Tier-2 item 5 — the manifests are byte-identical
+
+`gen-provider-manifests.mjs` re-run from the v4 checkout against the 14
+rebuilt plugins, straight into
+`crates/quilltap-core/src/provider_manifest/manifests`: **`git status` clean,
+all nine files byte-identical.** The plugin bumps really are version-only
+(the `manifest.json`-version sync `d339bad8` performed is invisible to the
+generator, which reads the built plugin metadata object, not the manifest
+file). The P4.39 repair still holds — no `imageGenerationModels` loss.
+
+### Tier-2 item 6 — the restated precedent for future SDK-bump lanes
+
+**"Byte-identical regen" is dead as a deliverable; the claim is now
+"byte-identical outside the self-dating version markers."** Since P4.44 the
+corpora record outbound headers, so an openai/anthropic-family bump
+necessarily rewrites `x-stainless-package-version` on every row of that
+family, and an `@openrouter/sdk` bump rewrites the speakeasy `user-agent` on
+its 13 SDK-path rows. Two consequences worth carrying:
+
+1. **The corpora now date themselves.** No `node_modules`-mtime archaeology
+   is needed to prove a regen was not a tautology — grep the committed NDJSON
+   for the version markers and compare against the installed SDK. (The mtime
+   evidence is still recorded above because it is free.)
+2. **The header check in `request_builder_equivalence` is a SUBSET check over
+   the headers v5 MODELS**, so these markers are invisible to it: a green
+   differential is NOT evidence that the recorded headers were refreshed. The
+   corpus diff is the measurement; the differential is the wire proof. Run
+   both.
+
+### What did NOT change
+
+No file under `crates/*/src`. No Rust test text, hence **no crate version
+bump** (per the order's ownership section: fixtures alone do not bump). The
+committed delta is two NDJSON corpora, the CHANGELOG entry, and this record.
