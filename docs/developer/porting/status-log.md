@@ -67865,3 +67865,65 @@ the banked smalls (the google-wire recorded-not-asserted headers, the
 sibling settings arms' Zod-collapse seam, the `p4.9l` composer toolbar
 — the pickers' composer entrance, the stale `docs/v4` API.md mirror).
 The full candidate list lives in `phase-4.md`.
+
+## Dogfood pass — the 4.8.2/4.8.3 round on the Friday copy (2026-08-14)
+
+The pass the round record named as the top standing candidate, walked by
+the human against a COPY of Friday at `~/qt-dogfood-friday` (38 steps in
+six parts). **Two real defects found and fixed on main; five reports
+diagnosed as v4-faithful or as named deferrals; one standing note filed.**
+Both defects were composer bugs reached by gestures no test in either
+suite makes — the pass earned its keep twice over.
+
+**The findings** (full rows in `dogfood-findings.md`):
+
+- **#82 FIXED `4ace3b2a`** — a fenced code block was a one-way door in the
+  composer. v4's `KeyboardPlugin` escape (Enter on a blank trailing line)
+  had no v5 counterpart, and nothing else closes a fence.
+- **#84 FIXED `0477623e`** — typed backslashes doubled on the wire.
+  `shouldPreserveNewLines = true` selects Lexical's `[*_`~]` escape set,
+  so v4 never emits `\\` and its `stripMarkdownEscapes` filters `\` out on
+  purpose; v5 ported that filter onto a serializer whose `esc()` escapes
+  the backslash too. `$\alpha$` reached the message as `$\\alpha$`.
+  **Measured, not reasoned:** twelve vectors through v4's REAL
+  `$exportComposerMarkdown` in a jsdom editor, typed AND round-tripped —
+  the technique is worth reusing for any editor byte question (see the
+  memory note).
+- **#85 FIXED `0477623e`** — the typeahead arrows "did nothing", but only
+  with the pointer resting on the menu, which is the normal case since it
+  opens at the caret. `render()` rebuilt every row, and Chromium re-fires
+  `mouseenter` under a stationary pointer; v4's React keeps the nodes. A
+  faithful port of DOM + classes + ARIA + handlers that lost the
+  reconciliation underneath them.
+- **#79 / #80 / #81 / #83 / #86** — not defects: the passphrase-recovery
+  path (proven live), the lock claimed at unlock rather than at launch
+  (v4-faithful, measured), the settings Try-it box having no revert/undo
+  in EITHER app, the paused-chat banner (behavior correct, v5-invented
+  COPY was wrong — reworded), and the absent composer toolbar (`p4.9l`,
+  deferred by name; the markdown-field toolbar it was mistaken for does
+  exist).
+
+**Live proofs discharged.** Part E walked the whole group-wardrobe tier
+surface clean (group-held garments, precedence, dissolution, transfers out
+of a group, the bug-61 race dialog — dogfood #78's fix confirmed by hand).
+Part F walked the passphrase chain end to end: the archive count read live
+into the card, a wrong current passphrase refused with the key file
+untouched, the change succeeding with its re-encryption sweep, **exactly
+one `.dbkey` afterwards (the P4.D68 bug-60 proof)**, an unlock under the
+new passphrase, and — the step that cannot be faked — **both archived
+characters rehydrated from bundles sealed under the OLD passphrase**,
+which proves the P4.D63 unit-7 sweep re-encrypted rather than merely
+reporting that it had. Parts A–D covered Setup, the lock ordering, smart
+typography, both typeaheads and their pickers, and the composer modes.
+
+**Not walked this pass** (the next pass starts here): Part C step 12
+(a roleplay template whose delimiter is a quote character keeping its
+quotes straight), and the whole standing 💸 queue inherited from earlier
+rounds — the Almanack's first real-data report, the live Taboo section on
+a real turn, the OpenRouter pricing fix with a real key, the vision send,
+the P4.D49 budget/attribution proofs, and the orphan-reaper's boot heal.
+
+**Gate for the two fix commits:** `ng test` 319 files / 4,646 / 0; `ng
+build` clean; **full Playwright 215 passed / 0 failed / 0 skipped** (213 →
+215 with the two new beats), each new beat proven RED against the pre-fix
+build before it was accepted. No crate source touched — SPA 0.5.481.

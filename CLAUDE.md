@@ -1105,6 +1105,23 @@ records THERE. Update this summary only when a phase or round completes.
   outfit-preview witness; the new-chat manual-compose client family; the
   google-wire recorded-not-asserted headers; the `p4.9l` composer
   toolbar (the pickers' composer entrance).
+  **The owed dogfood pass RAN on the Friday copy (2026-08-14) — 38 steps,
+  six parts, findings #79–#86.** Two real composer defects found and fixed
+  on main, both by gestures neither suite makes: **#82** a fenced code
+  block was a one-way door (v4's Enter-escape had no v5 counterpart), and
+  **#84 ∥ #85** typed backslashes doubled on the wire (v4's Lexical export
+  never escapes `\`; v5's serializer does) and the typeahead arrows died
+  under a resting mouse pointer (v5 rebuilt every row where v4's React
+  reconciles, so Chromium re-fired `mouseenter`). Five more reports
+  diagnosed v4-faithful or as named deferrals (#79/#80/#81/#83/#86 — one
+  of them a v5-invented banner string reworded). **Live proofs
+  discharged:** the whole group-wardrobe tier surface incl. dissolution and
+  the bug-61 race dialog, and the passphrase chain end to end — the bug-60
+  one-`.dbkey` proof plus a rehydrate from a bundle sealed under the OLD
+  passphrase, which proves the P4.D63 unit-7 re-encryption sweep. Still
+  owed: Part C step 12 and the whole standing 💸 queue (Almanack, Taboo,
+  OpenRouter pricing, the vision send, P4.D49). Record: `status-log.md` →
+  "Dogfood pass — the 4.8.2/4.8.3 round"; rows in `dogfood-findings.md`.
 - **Oracle baseline: `48396682` (2026-08-13, v4 main — "merge: 4.8.3 back
   into main"), adopted at the 4.8.2/4.8.3 drift-round unification — NO v4
   drift debt remains.** v4 HEAD is `11553944` ("merge: 4.8.4 back into

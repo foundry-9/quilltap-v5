@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Dogfooded the 4.8.2/4.8.3 round against a copy of a real instance: 38 steps
+across Setup, the instance lock, smart typography, both composer typeaheads,
+the group wardrobe tiers, and the passphrase chain. Two defects found and
+fixed (see the entries below); everything else behaved as v4 does. The
+passphrase walk confirmed that changing it rewrites every archived-character
+bundle — both archives rehydrated afterwards from bundles sealed under the old
+passphrase.
+
 Fixed the arrow keys appearing to do nothing in the composer's emoji and symbol
 menus (dogfood finding #85). They always worked with the mouse away from the
 menu; with the pointer resting on it — where it usually is, since the menu opens

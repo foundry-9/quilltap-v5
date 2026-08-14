@@ -568,6 +568,28 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The 2026-08-14 walk (the 4.8.2/4.8.3 round) — coverage summary.** 38
+  steps in six parts on the Friday copy; findings #79–#86 came out of it, two
+  of them real defects (#84 the doubled backslash, #85 the arrows dead under
+  the mouse) plus #82 earlier in the same pass. WALKED CLEAN: **Part A**
+  Setup + the lock ordering (#79/#80 recorded as v4-faithful), **Part B**
+  smart typography in real writing, **Part C/D** the composer modes and both
+  typeaheads with their pickers, **Part E** the whole group-wardrobe tier
+  surface — group-held garments, precedence, dissolution, transfers out of a
+  group, and the bug-61 race dialog, confirming finding #78's fix by hand —
+  and **Part F** the passphrase chain end to end: the live archive count in
+  the card, a wrong current passphrase refused with the key file untouched,
+  the change plus its re-encryption sweep, **exactly one `.dbkey` afterwards
+  (the P4.D68 bug-60 proof)**, unlock under the new passphrase, and both
+  archived characters rehydrated from bundles sealed under the OLD one — the
+  P4.D63 unit-7 sweep proven to have re-encrypted rather than merely reported.
+  **NOT walked (the next pass starts here):** Part C step 12 (a roleplay
+  template whose delimiter is a quote character keeping its quotes straight),
+  and the whole standing 💸 queue inherited from earlier rounds — the
+  Almanack's first real-data report, the live Taboo section on a real turn,
+  the OpenRouter pricing fix with a real key, the vision send, the P4.D49
+  budget/attribution proofs, the orphan-reaper's boot heal.
+
 - **The `quilltap db` verb family is one-of-fourteen ported, and `--help`
   doesn't say so (surfaced 2026-08-14, mid-walk).** `DB_VERBS`
   (`crates/quilltap-cli/src/db_cmd.rs:23`) advertises `schema find chats
