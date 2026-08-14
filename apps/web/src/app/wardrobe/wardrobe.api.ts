@@ -1,6 +1,6 @@
 /**
  * The wardrobe-dialog data layer: the §1 verb types this lane consumes and the
- * three-tier item loader (v4 `lib/hooks/use-character-wardrobe-items.ts`).
+ * four-tier item loader (v4 `lib/hooks/use-character-wardrobe-items.ts`).
  *
  * §1 (the P4.9f1/P4.9f2 Shared contract): the request types for lane P4.9f1's
  * NEW verbs — `chatOutfitGet`, `chatEquip` (all seven modes, v4's enum order,
@@ -92,7 +92,7 @@ export interface TransferDestinationsPayload {
 }
 
 // ---------------------------------------------------------------------------
-// The three-tier item loader (v4 `lib/hooks/use-character-wardrobe-items.ts`)
+// The four-tier item loader (v4 `lib/hooks/use-character-wardrobe-items.ts`)
 // ---------------------------------------------------------------------------
 
 export interface CharacterWardrobeLoadResult {
@@ -107,16 +107,25 @@ export interface CharacterWardrobeLoadResult {
 }
 
 /**
- * Load a character's wearable garments across the tri-tier wardrobe model and
- * merge them, de-duped by id with the nearer tier winning on collision:
- * personal vault → project store → Quilltap General
- * (v4 `use-character-wardrobe-items.ts:57-114`).
+ * Load a character's wearable garments across EVERY wardrobe tier and merge
+ * them, de-duped by id with the nearer tier winning on collision:
+ * personal vault → the character's groups → project store → Quilltap General
+ * (v4 `use-character-wardrobe-items.ts:57-118`).
+ *
+ * The group tier arrived at 4.8.2 (`8600c83f` — items moved into a group were
+ * invisible to everyone, because nothing ever read them back). Precedence
+ * mirrors the server's `findArchetypes`: **character > group > project >
+ * general**, so a group's livery shadows a project's copy of the same item and
+ * a character's personal copy shadows both — including the `isDefault: false`
+ * personal copy that is how a character opts out of a shared default. Group
+ * stores follow the CHARACTER, not the chat.
  *
  * An explicit `projectId` wins; otherwise the project tier is derived from
  * `chatId` (v4 `:66-77` fetches the chat solely to read `projectId` — here one
  * `chatGet` serves the same purpose). Each tier read fails soft, exactly as
- * v4's per-response `.ok` checks do — a missing tier (including the global
- * tier before lane P4.9f1 lands) simply isn't folded in.
+ * v4's per-response `.ok` checks do — a missing tier simply isn't folded in,
+ * which is also what keeps this working against a server that predates the
+ * `scope=group` arm (lane P4.D71's).
  */
 export async function loadCharacterWardrobeItems(
   core: CoreClient,
@@ -138,10 +147,13 @@ export async function loadCharacterWardrobeItems(
     }
   }
 
-  // The three tier reads, in parallel (v4 :80-86); each fails soft.
-  const [personal, project, archetype] = await Promise.all([
+  // The four tier reads, in parallel (v4 :93-100); each fails soft.
+  const [personal, group, project, archetype] = await Promise.all([
     core
       .dispatchData({ type: 'characterWardrobeList', characterId })
+      .catch(() => null),
+    core
+      .dispatchData({ type: 'characterWardrobeList', characterId, scope: 'group' })
       .catch(() => null),
     projectTierId
       ? core
@@ -151,7 +163,7 @@ export async function loadCharacterWardrobeItems(
     dispatchWardrobe(core, { type: 'wardrobeList' }).catch(() => null),
   ]);
 
-  // Merge with precedence: personal > project > general (v4 :88-106).
+  // Merge with precedence: personal > group > project > general (v4 :102-124).
   const collected: WardrobeItemDto[] = [];
   const push = (data: Record<string, unknown> | null): void => {
     const list = (data?.['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? [];
@@ -160,6 +172,7 @@ export async function loadCharacterWardrobeItems(
     }
   };
   push(personal);
+  push(group);
   push(project);
   push(archetype);
 

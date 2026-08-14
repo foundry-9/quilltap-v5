@@ -36,14 +36,16 @@ function dto(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDt
   } as WardrobeItemDto;
 }
 
-describe('loadCharacterWardrobeItems (v4 use-character-wardrobe-items.ts:57-114)', () => {
-  it('reads the three tiers and merges de-duped, personal tier winning (v4 :80-106)', async () => {
+describe('loadCharacterWardrobeItems (v4 use-character-wardrobe-items.ts:57-118)', () => {
+  it('reads the four tiers and merges de-duped, personal tier winning (v4 :93-124)', async () => {
     const { core, seen } = stubCore((req) => {
       switch (req.type as string) {
         case 'chatGet':
           return { chat: { projectId: 'p1' } };
         case 'characterWardrobeList':
-          return { wardrobeItems: [dto({ id: 'a', title: 'personal-a' })] };
+          return (req as { scope?: string }).scope === 'group'
+            ? { wardrobeItems: [dto({ id: 'g', characterId: null })] }
+            : { wardrobeItems: [dto({ id: 'a', title: 'personal-a' })] };
         case 'projectWardrobeList':
           return { wardrobeItems: [dto({ id: 'a', title: 'project-a' }), dto({ id: 'b' })] };
         case 'wardrobeList':
@@ -54,17 +56,103 @@ describe('loadCharacterWardrobeItems (v4 use-character-wardrobe-items.ts:57-114)
     });
 
     const result = await loadCharacterWardrobeItems(core, 'char-1', { chatId: 'chat-1' });
-    // The chat is fetched SOLELY to resolve the project tier (v4 :66-77).
+    // The chat is fetched SOLELY to resolve the project tier (v4 :66-77), then
+    // the four tier reads fire in parallel — personal, group, project, general.
     expect(seen.map((r) => r.type)).toEqual([
       'chatGet',
+      'characterWardrobeList',
       'characterWardrobeList',
       'projectWardrobeList',
       'wardrobeList',
     ]);
+    expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').map((r) => r['scope']))
+      .toEqual([undefined, 'group']);
     expect(result.projectId).toBe('p1');
-    expect(result.items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(result.items.map((i) => i.id)).toEqual(['a', 'g', 'b', 'c']);
     // De-dup keeps the nearer tier's copy (v4 push() skips existing ids).
     expect(result.items[0].title).toBe('personal-a');
+  });
+
+  /**
+   * v4 4.8.2 `8600c83f`: the group tier sits BETWEEN personal and project, so
+   * a group's livery shadows a project's copy of the same item while a
+   * character's personal copy shadows both — including the `isDefault: false`
+   * personal copy that is how a character opts out of a shared default.
+   */
+  it('merges with precedence personal > group > project > general (v4 :102)', async () => {
+    const { core } = stubCore((req) => {
+      switch (req.type as string) {
+        case 'characterWardrobeList':
+          return (req as { scope?: string }).scope === 'group'
+            ? {
+                wardrobeItems: [
+                  dto({ id: 'shared', title: 'group', characterId: null }),
+                  dto({ id: 'livery', title: 'group-livery', characterId: null }),
+                ],
+              }
+            : { wardrobeItems: [dto({ id: 'shared', title: 'personal' })] };
+        case 'projectWardrobeList':
+          return {
+            wardrobeItems: [
+              dto({ id: 'shared', title: 'project' }),
+              dto({ id: 'livery', title: 'project-livery' }),
+            ],
+          };
+        case 'wardrobeList':
+          return { wardrobeItems: [dto({ id: 'shared', title: 'general' })] };
+        default:
+          return new Error(`unexpected ${req.type}`);
+      }
+    });
+
+    const result = await loadCharacterWardrobeItems(core, 'char-1', { projectId: 'p1' });
+    const byId = new Map(result.items.map((i) => [i.id, i.title]));
+    expect(byId.get('shared')).toBe('personal');
+    expect(byId.get('livery')).toBe('group-livery');
+  });
+
+  /**
+   * Group items come back from `findArchetypesInMounts` with a null
+   * `characterId`, exactly as project and General items do — so the row's
+   * `isShared` computed lights on its own and they are wear-only without any
+   * extra labeling here (v4 `wardrobe-item-row.tsx:84`).
+   */
+  it('group items arrive shared-shaped (characterId null), so they are wear-only', async () => {
+    const { core } = stubCore((req) => {
+      switch (req.type as string) {
+        case 'characterWardrobeList':
+          return (req as { scope?: string }).scope === 'group'
+            ? { wardrobeItems: [dto({ id: 'g', characterId: null })] }
+            : { wardrobeItems: [] };
+        case 'wardrobeList':
+          return { wardrobeItems: [] };
+        default:
+          return new Error(`unexpected ${req.type}`);
+      }
+    });
+    const result = await loadCharacterWardrobeItems(core, 'char-1');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].characterId ?? null).toBeNull();
+  });
+
+  it('the group tier fails soft — a server without the scope arm still yields the rest', async () => {
+    const { core } = stubCore((req) => {
+      switch (req.type as string) {
+        case 'characterWardrobeList':
+          if ((req as { scope?: string }).scope === 'group') {
+            // A pre-4.8.2 server (or one whose group arm has not landed) —
+            // the loader folds in nothing for it, as v4 skips a non-ok tier.
+            return new Error('unknown field: scope');
+          }
+          return { wardrobeItems: [dto({ id: 'a' })] };
+        case 'wardrobeList':
+          return { wardrobeItems: [] };
+        default:
+          return new Error(`unexpected ${req.type}`);
+      }
+    });
+    const result = await loadCharacterWardrobeItems(core, 'char-1');
+    expect(result.items.map((i) => i.id)).toEqual(['a']);
   });
 
   it('skips the project read when no project tier resolves (v4 :82-84)', async () => {
@@ -100,7 +188,7 @@ describe('loadCharacterWardrobeItems (v4 use-character-wardrobe-items.ts:57-114)
     expect(seen.find((r) => (r.type as string) === 'projectWardrobeList')?.['projectId']).toBe('p9');
   });
 
-  it('each tier read fails soft — a rejected global tier still yields the others (v4 :95-106 .ok checks)', async () => {
+  it('each tier read fails soft — a rejected global tier still yields the others (v4 :109-124 .ok checks)', async () => {
     const { core } = stubCore((req) => {
       switch (req.type as string) {
         case 'characterWardrobeList':

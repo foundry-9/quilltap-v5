@@ -1136,6 +1136,13 @@ export interface CharacterPluginDataDeleteRequest {
 export interface CharacterWardrobeListRequest {
   type: 'characterWardrobeList';
   characterId: string;
+  /**
+   * Which tier to read (v4 4.8.2 `8600c83f`:
+   * `GET /api/v1/characters/{id}/wardrobe?scope=group`). Absent = the
+   * character's personal vault, the pre-4.8.2 behavior. `"group"` serves the
+   * shared wardrobe of every group the character belongs to.
+   */
+  scope?: 'group';
 }
 export interface CharacterWardrobeCreateRequest {
   type: 'characterWardrobeCreate';

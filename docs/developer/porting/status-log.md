@@ -66717,3 +66717,44 @@ untested — the pure math passes whether or not anyone hands it the lookup.
 
 Wardrobe spec set: 14 files / 139 tests green; `ng build` clean.
 SPA 0.5.456 → 0.5.457.
+
+## Lane record — P4.D72 unit 4: the group wardrobe tier, client side (v4 `8600c83f`)
+
+**Landed.** v4's `use-character-wardrobe-items.ts` gained a **fourth** parallel
+fetch at 4.8.2; ported into `loadCharacterWardrobeItems`:
+
+- **The wire, per the round's §Shared contract item 1.**
+  `CharacterWardrobeListRequest` gains an optional `scope?: 'group'` (JSON key
+  `scope`, accepted value `"group"`; absent = today's behavior) — the
+  SPA-side mirror of v4's `GET /api/v1/characters/{id}/wardrobe?scope=group`.
+  **Meeting point:** that one additive field lives in
+  `apps/web/src/app/core/core-contract.ts`, which this lane's Ownership section
+  does not name; no sibling claims it either, and the change is a two-line
+  additive optional. Flagged for the unifier.
+- **Four reads, one merge.** personal / group / project / general in one
+  `Promise.all`, merged with precedence **personal > group > project >
+  general** — the mount-pool order, so a group's livery shadows a project's
+  copy of the same item and the personal copy shadows both (including the
+  `isDefault: false` personal copy that is a character's opt-out from a shared
+  default).
+- **Wear-only falls out, nothing to add.** v4 serves the group tier from
+  `findArchetypesInMounts`, so those rows carry `characterId: null` exactly as
+  project and General rows do; `wardrobe-item-row.ts`'s
+  `isShared = !item.characterId` already lights, the `· shared` badge shows and
+  the edit affordances stay hidden. Pinned by its own case rather than
+  reasoned about.
+- **Fails soft.** The group leg has its own `.catch(() => null)`, so a server
+  without the arm (P4.D71 lands it) folds in nothing rather than emptying the
+  dialog — v4's per-response `.ok` check, same effect. Pinned by a case that
+  rejects the group dispatch.
+
+**Differential.** `wardrobe.api.spec.ts`'s loader describe rewritten to four
+tiers (the existing dispatch-order case now asserts the two
+`characterWardrobeList` calls and their `scope` values, `[undefined, 'group']`),
+plus three new cases: the full four-tier precedence ladder, the shared-shape
+assertion, and the fail-soft leg. 12 tests green.
+
+**Mutation-proven:** replacing the group read with `Promise.resolve(null)`
+fails **3** cases.
+
+SPA 0.5.457 → 0.5.458.

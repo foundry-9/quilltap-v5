@@ -162,6 +162,19 @@ provider manifests regenerate byte-identical against the 14 rebuilt plugins.
 The google-wire corpus also gained the request headers it should have gotten
 in P4.44 (that lane regenerated only its sibling); the bodies are unchanged
 and nothing asserts those headers yet. No engine code changed.
+P4.D72 unit 4 — the SPA wardrobe loader reads a fourth tier: the shared
+wardrobe of every group the character belongs to (v4 4.8.2 `8600c83f`, where
+items moved into a group were invisible to everyone because nothing read them
+back). `characterWardrobeList` gains an optional `scope: "group"` field per the
+round's shared contract, the loader fires four parallel tier reads instead of
+three, and the merge precedence becomes personal > group > project > general —
+so a group's livery shadows a project's copy while a personal copy shadows
+both, including the isDefault-false personal copy a character uses to opt out
+of a shared default. Group items arrive with a null characterId like every
+other shared tier, so they are wear-only with no extra labeling. The group read
+fails soft, so the SPA still works against a server whose group arm has not
+landed.
+
 P4.D72 unit 3 — ported v4 4.8.2's client-side bundle dissolution into the SPA:
 putting a bundled outfit on now stores its PARTS, never the bundle's own id, so
 the wardrobe no longer shows one "Man in Black" card above four slot rows that
