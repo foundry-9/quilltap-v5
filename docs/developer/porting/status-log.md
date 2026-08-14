@@ -69280,3 +69280,42 @@ toolbar`** in `m6-screen-parity.md` §4, and this record.
 composer does something in both views. The one control v4 has that v5's toolbar
 does not is its template FETCH, which is a mechanism divergence (the Salon
 fetches instead), not a hidden control.
+
+
+## P4.9L — the lane gate
+
+Run from `claude/composer-toolbar-spa-porting-5b9810`, v4 pin `24633026`
+(drift-checked at lane start: `main` HEAD IS the pin, tree clean; `git diff
+24633026 bugfix -- lib/ app/ packages/` differs only in the help-doc-chunk files
+that belong to P4.D77, with `main` the branch that is ahead — nothing on this
+lane's surface moved).
+
+- `ng test` (full, no filter): **322 files / 4,710 tests / 0 failed.**
+- `ng build`: clean.
+- **Full Playwright: 219 passed / 0 failed / 0 skipped (21.0 m).** The suite
+  grew 215 → 219 with four new beats; the fifth change was the #75 layout guard
+  rewritten in place. All five P4.9L beats confirmed by name in the run log.
+- `cargo fmt --all --check`: clean. **No `crates/**`, `harness/**` or `Cargo*`
+  file appears in the lane diff** — `git diff 88adbbee..HEAD --name-only`
+  returns none, so the Rust gate has nothing of this lane's to prove. The e2e
+  run used debug binaries built in-worktree from UNMODIFIED crate source
+  (`quilltap-web`, `quilltap-cli`); no release build was made, and no sibling
+  lane's `target/` was touched.
+
+Ownership held: every changed file is under `apps/web/**` or is one of the
+three append-only/shared docs (`CHANGELOG.md`, `status-log.md`,
+`dogfood-findings.md`) plus `m6-screen-parity.md`. **One file sits outside the
+`apps/web/src` tree by design: `apps/web/oracle/delimiter-transforms.test.ts`,
+the v4-side recorder** — placed there rather than in `harness/oracle/cases/`
+because the order fences this lane out of `harness/**`. It is invisible to
+`tsconfig.app` (`src/**/*.ts`), `tsconfig.spec` (`src/**/*.spec.ts`) and
+Playwright (`testDir: ./e2e`), so it compiles nowhere in v5 and runs only in the
+v4 checkout.
+
+**A prettier note for the unifier.** `apps/web` is NOT prettier-clean at main
+(`salon-conversation.ts`, `custom-tools-popup.ts` and others fail
+`prettier --check` on unmodified code), and prettier is not in the gate. A
+`prettier --write` pass over the touched files was run and then REVERTED
+wholesale, because it rewrote 78 lines of `salon-conversation.ts` and 27 of
+`custom-tools-popup.ts` that this lane never touched. The committed diff carries
+only this lane's own edits.
