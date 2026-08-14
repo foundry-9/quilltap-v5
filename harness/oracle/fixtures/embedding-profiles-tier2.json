@@ -34,7 +34,9 @@
       "truncateToDimensions": 512,
       "normalizeL2": true,
       "isDefault": true,
-      "tags": ["7a000000-0000-4000-8000-0000000000d1"],
+      "tags": [
+        "7a000000-0000-4000-8000-0000000000d1"
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
@@ -70,7 +72,10 @@
         "truncateToDimensions": 256,
         "normalizeL2": true,
         "isDefault": false,
-        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7b000000-0000-4000-8000-0000000000d2"]
+        "tags": [
+          "7a000000-0000-4000-8000-0000000000d1",
+          "7b000000-0000-4000-8000-0000000000d2"
+        ]
       },
       "options": {
         "id": "3c000000-0000-4000-8000-000000000003",
@@ -116,7 +121,10 @@
       "comment": "Update seed row 2: replace the tags array (empty -> two ids). updatedAt pinned.",
       "id": "2b000000-0000-4000-8000-000000000002",
       "data": {
-        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7c000000-0000-4000-8000-0000000000d3"],
+        "tags": [
+          "7a000000-0000-4000-8000-0000000000d1",
+          "7c000000-0000-4000-8000-0000000000d3"
+        ],
         "updatedAt": "2026-03-02T00:00:00.000Z"
       }
     },
@@ -171,6 +179,27 @@
       "comment": "A different user, an existing name -> null (user-scoped).",
       "userId": "bb000000-0000-4000-8000-0000000000bb",
       "name": "New OpenRouter Embed"
+    }
+  ],
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "helpDocChunks": [
+    {
+      "id": "5c000000-0000-4000-8000-000000000001",
+      "docId": "5d000000-0000-4000-8000-000000000001",
+      "chunkIndex": 0,
+      "heading": "Truncatable Section",
+      "content": "An 8-dimension section vector for the reapply's trunc=4 target.",
+      "embedding": [
+        0.5,
+        -0.25,
+        0.75,
+        0.125,
+        0.0625,
+        -0.5,
+        0.25,
+        -0.125
+      ],
+      "_note": "P4.D77 \u2014 MAIN_DB_TABLES grew 4 -> 5 at v4 24633026. This row is what makes the fifth entry appear in the reapply result's perTable with a real `truncated` count; without it the rider would be green and unmeasured, because both ports skip a table that is not there. The vector's components are all exactly float32-representable, so the requantized bytes compare byte-for-byte. Its docId is deliberately synthetic: this fixture's help_docs dump is an existing comparand and must not move, and the generateDDL-shaped chunk table carries no foreign key."
     }
   ]
 }

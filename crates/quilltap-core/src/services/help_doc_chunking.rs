@@ -123,6 +123,25 @@ mod tests {
         }
     }
 
+    /// The reachability claim behind the embed job's `text.trim().is_empty()`
+    /// skip: the composed text can only be blank when EVERY part is blank, and
+    /// a real doc's title never is (`extract_title` falls back to the
+    /// title-cased filename). Pinned here so the guard's "unreachable in
+    /// production" comment is a measured statement rather than an assumption.
+    #[test]
+    fn composed_text_is_blank_only_when_every_part_is() {
+        use crate::jsstr::js_trim;
+        assert!(js_trim(&help_chunk_embedding_text("", None, "")).is_empty());
+        assert!(js_trim(&help_chunk_embedding_text("  ", None, " \n ")).is_empty());
+        // A WHITESPACE heading is truthy in JS, so it inserts the U+203A and the
+        // text is no longer blank even when title and content are.
+        assert!(!js_trim(&help_chunk_embedding_text("  ", Some("  "), " \n ")).is_empty());
+        // Any one non-blank part, and the guard cannot fire.
+        assert!(!js_trim(&help_chunk_embedding_text("Aurora", None, "")).is_empty());
+        assert!(!js_trim(&help_chunk_embedding_text("", Some("Recall"), "")).is_empty());
+        assert!(!js_trim(&help_chunk_embedding_text("", None, "body")).is_empty());
+    }
+
     #[test]
     fn embedding_text_prefixes_title_and_heading() {
         assert_eq!(

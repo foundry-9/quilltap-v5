@@ -117,6 +117,11 @@ fn embedding_reapply_matches_oracle() {
         "vector_entries",
         "conversation_chunks",
         "help_docs",
+        // P4.D77 — the fifth main table (v4 `24633026`). Its one seeded chunk
+        // carries an 8-dimension vector against this profile's trunc=4, so the
+        // table shows a real `truncated` count in `perTable` below rather than
+        // being silently skipped as absent on both sides.
+        "help_doc_chunks",
         "doc_mount_chunks",
     ] {
         let is_mount = t == "doc_mount_chunks";

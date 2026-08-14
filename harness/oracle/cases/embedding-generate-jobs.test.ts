@@ -296,6 +296,8 @@ async function main(): Promise<void> {
     JSON.stringify({ kind: 'table', ...(await dumpTable('conversation_chunks', 'id')) })
   );
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('help_docs', 'id')) }));
+  // P4.D77 (v4 `24633026`) — the HELP_DOC job's section-chunk pass.
+  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('help_doc_chunks', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...dumpMountTable('doc_mount_chunks', 'id') }));
 
   closeMountIndexSQLiteClient();

@@ -613,6 +613,15 @@ async fn help_doc_try<E: EmbeddingProvider>(
         ));
     }
 
+    // Section-level vectors, in the SAME job as the whole-document one (v4
+    // `24633026`). v4's *why*, carried forward: doing it here rather than
+    // through a HELP_DOC_CHUNK entity type of its own keeps one unit of work
+    // per document — the reindex enqueue, the `embedding_status` bookkeeping
+    // and the dimension reconcile all continue to count `help_docs` rows, and
+    // chunks can never carry a dimension the parent doc doesn't, because they
+    // are always written together.
+    let chunks_embedded = embed_help_doc_chunks(db, embedding, user_id, payload, doc).await;
+
     mark_embedded(db, "HELP_DOC", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
@@ -621,9 +630,120 @@ async fn help_doc_try<E: EmbeddingProvider>(
         doc_id = %doc.id,
         title = %doc.title,
         dimensions = result.dimensions,
+        chunks_embedded,
         "[EmbeddingGenerate] Help doc embedding generated",
     );
     Ok(())
+}
+
+/// v4 `embedHelpDocChunks` (`embedding-generate.ts:323`, new at `24633026`) —
+/// embed every section chunk of a help document that still lacks a vector.
+/// Returns the number embedded on this pass.
+///
+/// **Chunks that already carry an embedding are skipped**, which makes a retry
+/// of a partially-completed job cheap: the rows are recreated with null
+/// embeddings whenever the doc's content changes, and a full reindex clears
+/// them, so a populated embedding is always current for its text.
+///
+/// **A single chunk's failure is logged and skipped, never thrown.** The
+/// document's own embedding has already been stored by the caller, so the doc
+/// stays findable at whole-document granularity; throwing here would fail a job
+/// whose main work succeeded, and the next sync or reindex retries the
+/// stragglers. The outer read is wrapped for the same reason — hence `()` in
+/// place of a `Result`, matching v4's swallow.
+async fn embed_help_doc_chunks<E: EmbeddingProvider>(
+    db: &Db,
+    embedding: &E,
+    user_id: &str,
+    payload: &EmbeddingGeneratePayload,
+    doc: &crate::db::help_docs::HelpDocRow,
+) -> usize {
+    let mut embedded = 0usize;
+
+    let doc_id = doc.id.clone();
+    let chunks = match db.read_main(move |conn| {
+        crate::db::help_doc_chunks::HelpDocChunksRepository::new(conn).find_by_doc_id(&doc_id)
+    }) {
+        Ok(chunks) => chunks,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::jobs",
+                doc_id = %doc.id,
+                error = %e,
+                "[EmbeddingGenerate] Could not embed help doc chunks",
+            );
+            return embedded;
+        }
+    };
+
+    for chunk in &chunks {
+        // v4: `if (chunk.embedding && chunk.embedding.length > 0) continue`.
+        if !chunk.embedding.is_empty() {
+            continue;
+        }
+
+        let text = crate::services::help_doc_chunking::help_chunk_embedding_text(
+            &doc.title,
+            chunk.heading.as_deref(),
+            &chunk.content,
+        );
+        // v4's `text.trim().length === 0` guard. It is effectively unreachable
+        // in production — the composed text always leads with the document
+        // title, and `extractTitle` falls back to the title-cased filename, so
+        // a real doc's title is never empty. Carried anyway because v4 carries
+        // it. No corpus row can exercise it (which is why none tries);
+        // `help_doc_chunking::tests::composed_text_is_blank_only_when_every_part_is`
+        // pins the reachability claim itself.
+        if crate::jsstr::js_trim(&text).is_empty() {
+            continue;
+        }
+
+        match embedding
+            .generate_embedding_for_user(
+                &text,
+                user_id,
+                payload.profile_id.as_deref(),
+                EmbeddingPriority::Background,
+            )
+            .await
+        {
+            Ok(result) => {
+                let (vec, cid) = (result.embedding.clone(), chunk.id.clone());
+                let written = db
+                    .write(move |ws| {
+                        let now = crate::clock::now_iso();
+                        crate::db::help_doc_chunks::HelpDocChunksRepository::new(
+                            ws.main().connection(),
+                        )
+                        .update_embedding(&cid, &vec, &now)
+                    })
+                    .await;
+                match written {
+                    // v4's `updateEmbedding` swallows its own failure inside
+                    // `safeQuery` and the caller counts the chunk regardless, so
+                    // a row that vanished mid-job still increments `embedded`.
+                    Ok(_) => embedded += 1,
+                    Err(e) => tracing::warn!(
+                        target: "quilltap::jobs",
+                        doc_id = %doc.id,
+                        chunk_id = %chunk.id,
+                        error = %e,
+                        "[EmbeddingGenerate] Help doc chunk embedding write failed",
+                    ),
+                }
+            }
+            Err(e) => tracing::warn!(
+                target: "quilltap::jobs",
+                doc_id = %doc.id,
+                chunk_id = %chunk.id,
+                chunk_index = chunk.chunk_index,
+                error = %e.message,
+                "[EmbeddingGenerate] Help doc chunk embedding failed — skipping chunk",
+            ),
+        }
+    }
+
+    embedded
 }
 
 // ============================================================================

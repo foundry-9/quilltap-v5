@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Help sections are now embedded. The same job that embeds a help document fills
+in its section vectors, skipping any that already have one, and a section whose
+embedding call fails is logged and passed over rather than failing the whole
+document. A full reindex clears section vectors alongside the document ones,
+and re-fitting an embedding profile re-fits the sections too. Search does not
+use them yet.
+
 Help documents are now sliced into sections for search. Each slice keeps the
 nearest heading above it, and the slices are deliberately smaller than the
 Scriptorium's — a settings page covers a dozen unrelated subsystems, and one

@@ -262,6 +262,11 @@ const TABLES: &[(&str, bool, &[&str], bool)] = &[
     ),
     ("memories", true, &["characterId", "summary"], false),
     ("help_docs", true, &["path"], false),
+    // P4.D77 — the full-scope reindex clears section vectors beside the doc
+    // ones. Sorted by (docId, chunkIndex): a synced doc's id is minted, but the
+    // minted-label pass below rewrites it to `<helpdoc:path>` BEFORE the sort,
+    // so the order is stable on both sides.
+    ("help_doc_chunks", true, &["docId", "chunkIndex"], false),
     ("vector_entries", true, &["characterId", "id"], false),
     ("vector_indices", true, &["characterId"], false),
 ];

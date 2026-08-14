@@ -163,6 +163,9 @@ const TABLES: &[TableSpec] = &[
     ),
     ("conversation_chunks", "id", true, &["updatedAt"], &[]),
     ("help_docs", "id", true, &["updatedAt"], &[]),
+    // P4.D77 — the section chunks the HELP_DOC job now embeds. `updatedAt` is
+    // stamped on every chunk the pass writes; every id is corpus-pinned.
+    ("help_doc_chunks", "id", true, &["updatedAt"], &[]),
     ("doc_mount_chunks", "id", false, &["updatedAt"], &[]),
 ];
 

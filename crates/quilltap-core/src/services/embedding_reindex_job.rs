@@ -440,6 +440,13 @@ async fn phase_help_docs(
         let now = now_iso.to_string();
         db.write(move |ws| {
             crate::db::help_docs::HelpDocsRepository::new(ws.main().connection())
+                .clear_all_embeddings(&now)?;
+            // v4 `24633026`. Its *why*, carried forward: section vectors are
+            // written by the SAME HELP_DOC job as the whole-document one, so
+            // they clear together — otherwise the re-embed pass would skip
+            // every chunk that still had a (stale-profile) vector, since its
+            // only skip test is "does this chunk already have one".
+            crate::db::help_doc_chunks::HelpDocChunksRepository::new(ws.main().connection())
                 .clear_all_embeddings(&now)
                 .map(|_| ())
         })

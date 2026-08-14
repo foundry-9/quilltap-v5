@@ -68127,3 +68127,107 @@ line: a refused prune must leave the sections alone as well as the rows.
 the retired doc's chunk behind as an `<unknown:…>` orphan; dropping the backfill
 call reddens `in-sync`; removing the `count()` short-circuit reddens
 `in-sync-chunked`.
+
+---
+
+## P4.D77 unit 4 — the HELP_DOC job's chunk pass
+
+`embed_help_doc_chunks` in `services/embedding_generate_job.rs`, called between
+the doc-embedding write and `mark_embedded`, exactly where v4 puts it. Skips
+chunks that already carry a vector (a cheap retry of a partially-completed
+job); logs and skips a per-chunk failure rather than throwing (the document's
+own embedding is already stored, so the doc stays findable at whole-document
+granularity — throwing would fail a job whose main work succeeded); wraps the
+read too. Returns `chunksEmbedded`, which joins the completion log line.
+
+**Deliberately the same job, no `HELP_DOC_CHUNK` entity type** (v4's *why*):
+one unit of work per document keeps the reindex enqueue, the `embedding_status`
+bookkeeping and the dimension reconcile all counting `help_docs` rows, and
+chunks can never carry a dimension their parent doesn't.
+
+### The differential, and the blind spot its first mutation run exposed
+
+`embedding_generate_jobs_equivalence` grew a `help_doc_chunks` dump and the
+committed `embedding-generate-main.db` grew the table + three rows, added by
+the new `extend-help-doc-chunks.ts` (the extender idiom — a rebuild would
+rewrite both DBs and oblige every sibling to re-run, and nothing else needs to
+move).
+
+**The first arrangement of those three rows was measuring almost nothing**, and
+only mutation testing said so. Two independent masks:
+
+1. **The failing chunk was LAST.** A port that returned on the first failure
+   instead of skipping produced a byte-identical dump, because there was
+   nothing after it to skip. Fixed by putting the failing chunk FIRST.
+2. **The already-embedded chunk's text was not in the recorded canned map.** A
+   port that ignored the skip re-embedded it, the canned provider MISSED, the
+   miss surfaced as a transient failure, and this handler swallows those — so
+   the chunk kept its old vector and the dump agreed. Fixed by giving that
+   chunk a null heading and the document's own body as content, which makes its
+   composed text byte-identical to the DOCUMENT's embedding input — a text the
+   corpus already records. A re-embed now gets a canned HIT and overwrites e1
+   with e0, visibly.
+
+**⚠ The general lesson, worth carrying:** in a canned-provider tier-3, "the
+port did extra work" is invisible whenever the extra work's input is absent
+from the recorded map AND the handler swallows failures. A skip arm is only
+measurable if the skipped input is one the oracle DID embed.
+
+Four mutations now caught: ignore the skip (row 1 diverges); fail fast on a
+chunk failure (row 2 diverges); drop the pass entirely; drop the heading from
+the composed embedding text (which pins `helpChunkEmbeddingText`'s prefix at
+the job's call site, not just in its own unit).
+
+v4's `text.trim().length === 0` guard is ported but **unreachable in
+production** — the composed text always leads with the document title and
+`extract_title` falls back to the title-cased filename. No corpus row tries to
+exercise it; `help_doc_chunking::tests::composed_text_is_blank_only_when_every_part_is`
+pins the reachability claim instead (and caught a wrong assumption of its own on
+first run: a WHITESPACE heading is truthy in JS, so it inserts the U+203A and the
+text is no longer blank).
+
+---
+
+## P4.D77 unit 5 — the riders
+
+**Reindex** (`embedding_reindex_job::phase_help_docs`): `clear_all_embeddings`
+on the chunk repo beside the doc one, inside the same `scope === 'all'` gate and
+the same write. v4's *why*: they clear together or the re-embed pass would skip
+every chunk that still had a stale-profile vector, since its only skip test is
+"does this chunk already have one".
+
+**Reapply** (`embedding_reapply_profile::MAIN_DB_TABLES`): 4 → 5. A reapply that
+re-fit every help doc but left its sections at the old dimension would make the
+chunks permanently unscoreable — `score_sections` skips a dimension mismatch
+outright.
+
+**The startup embedding repair (v4 `repair-text-embeddings.ts` +3, the
+`helpDocChunksRepaired` key): NO-PORT, and the refusal already stands.** The
+order pointed at `cold_chunk_reembed_tier2_equivalence` to locate v5's
+counterpart; **that pointer is wrong** — that family is the Scriptorium's
+cold-chunk re-embed ENQUEUE (P4.d3), unrelated. There is no v5 counterpart at
+all, by an explicit earlier ruling: P4.d6 refused `repair-text-embeddings.ts` as
+**INAPPLICABLE, not deferred**, because v5 cannot mint the TEXT embedding shape
+the repair exists to fix (no runtime blob registry, no `documentToRow`, no
+`JSON.stringify` fallback — see `db/help_docs.rs`'s header and the P4.d6
+record). Adding the chunk table to a repair that does not and must not exist
+would be importing v4's bug in order to patch it. Recorded here so it is not
+later "closed".
+
+### The differentials (both fixtures extended by mutation, both mutation-proven)
+
+- `embedding_remainder_equivalence` gains a `help_doc_chunks` dump sorted by
+  `(docId, chunkIndex)` — safe because the family's existing minted-label pass
+  rewrites a synced doc's minted id to `<helpdoc:path>` BEFORE the sort. Two
+  seeded chunks (one embedded, one not) hang off `help/no-frontmatter.md`, the
+  ONE doc whose content hash matches the committed tree, so the sync inside the
+  reindex never re-slices them and their final state is the WIPE's doing.
+  Dropping the chunk clear diverges the dump.
+- `embedding_reapply_equivalence` gains the fifth table on both sides plus one
+  seeded 8-dimension chunk vector against the profile's trunc=4. Reverting
+  `MAIN_DB_TABLES` to four diverges both the table dump AND `perTable`.
+
+**Fixtures changed this unit** (each invalidates only its own family's oracle,
+which was regenerated): `embedding-generate-main.db`,
+`embedding-remainder-main.db`, `embedding-profiles-main.db` — all three by
+`extend-help-doc-chunks.ts` against a /tmp copy, never in place.

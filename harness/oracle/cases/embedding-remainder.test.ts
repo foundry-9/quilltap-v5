@@ -129,6 +129,8 @@ const SORT_KEYS: Record<string, string[]> = {
   embedding_status: ['entityType', 'entityId', 'profileId'],
   memories: ['characterId', 'summary'],
   help_docs: ['path'],
+  // P4.D77 — the full-scope reindex now clears section vectors too.
+  help_doc_chunks: ['docId', 'chunkIndex'],
   vector_entries: ['characterId', 'id'],
   vector_indices: ['characterId'],
 };
@@ -378,6 +380,7 @@ async function main(): Promise<void> {
     'embedding_status',
     'memories',
     'help_docs',
+    'help_doc_chunks',
     'vector_entries',
     'vector_indices',
   ]) {

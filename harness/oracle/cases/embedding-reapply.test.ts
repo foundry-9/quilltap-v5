@@ -68,7 +68,8 @@ function applyMocks(): void {
   });
 }
 
-const MAIN_TABLES = ['memories', 'vector_entries', 'conversation_chunks', 'help_docs'];
+// P4.D77 (v4 `24633026`) — `help_doc_chunks` joined MAIN_DB_TABLES (4 -> 5).
+const MAIN_TABLES = ['memories', 'vector_entries', 'conversation_chunks', 'help_docs', 'help_doc_chunks'];
 
 async function dumpTables(): Promise<unknown> {
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');

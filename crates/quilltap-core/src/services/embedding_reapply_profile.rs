@@ -45,12 +45,16 @@ const FLUSH_BATCH: usize = 500;
 /// v4 `ZERO_MAG` — post-slice magnitudes below this are degenerate.
 const ZERO_MAG: f64 = 1e-10;
 
-/// v4 `MAIN_DB_TABLES`.
-const MAIN_DB_TABLES: [&str; 4] = [
+/// v4 `MAIN_DB_TABLES` (grown 4 → 5 at v4 `24633026`: a reapply that re-fit
+/// every help doc but left its section vectors at the old dimension would make
+/// the chunks permanently unscoreable — `scoreSections` skips a dimension
+/// mismatch outright).
+const MAIN_DB_TABLES: [&str; 5] = [
     "memories",
     "vector_entries",
     "conversation_chunks",
     "help_docs",
+    "help_doc_chunks",
 ];
 
 /// Per-table outcome (v4 `TableReapplyResult`).
