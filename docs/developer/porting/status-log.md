@@ -67704,3 +67704,164 @@ was done instead:
 
 The unifier runs the full suite on main anyway; this is flagged so a red there
 is read as new information rather than as something this lane silently skipped.
+
+
+## Round record — the 4.8.2/4.8.3 drift catch-up + lock-order unification (2026-08-14)
+
+**P4.D71 ∥ P4.D72 ∥ P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76 — ALL SEVEN
+CLOSED; the oracle baseline MOVES to `48396682` and the drift debt is
+CLEARED.** Seven lanes, 35 lane commits reconciled onto
+`unify/4.8.2-drift-round` in dependency order (D71 → D73 → P4.46 → D76 →
+D72 → D74 → D75), plus three unifier commits (the wires, the §3 review
+findings, the docs). v4 released **4.8.4 mid-round** (`11553944`) —
+measured NO-PORT: two composer-typeahead test files, a jest helper, and
+release docs; `git diff 48396682 main -- lib/ app/ packages/` is EMPTY,
+so every oracle regenerated from the checkout imports byte-identical v4
+code. Nothing is pending on `bugfix` past the 4.8.4 branch-start.
+
+### The reconciliation
+
+- **Version recount caught THREE silent-merge losses** (the playbook's
+  standing trap, fired again): host 0.0.67→0.0.68 (D73 + P4.46 both
+  bumped 66→67), web 0.0.71→0.0.72 (D71 + D73), SPA 0.5.476→0.5.477
+  (P4.46's bump collided with D72's first). Core (0.0.539 = 531+8) and
+  harness (0.0.460 = 454+6) accumulated correctly through conflicts.
+- **The predicted meeting-point conflicts materialized exactly where the
+  orders pinned them** (`rich-editor.ts`, `document-pane.ts`) and were
+  hand-merged to the pinned combined shape: `dialectInputRules` →
+  charTypeahead(emoji) → charTypeahead(unicode) → smartTypography →
+  textReplacement → history → keymaps. `code-context.ts` add/add merged
+  clean — verified byte-identical across both lane branches, as the
+  §Editor meeting points pinned. `chat-composer.ts`'s conflict-free
+  merge was verified by hand (both features' bindings present), not
+  trusted.
+- **The §1/§2 contracts diffed name-for-name, clean:** the `scope` field
+  (`Option<String>` + `#[serde(default)]` server-side, `scope?: 'group'`
+  SPA-side, same JSON key), and the three settings keys + the
+  `smartTypographySettings` bag key order (displayQuotes, dashes,
+  ellipsis) on both sides.
+
+### The unification wires
+
+1. P4.D75's two Composer toggles mounted in `chat-tab.ts` (after
+   spellcheck, v4's order) + a NEW order-pinning spec case (the D74
+   unit-6 lesson applied: card-BODY assertions, not wrapper attributes).
+2. `SMART_TYPOGRAPHY_COLUMN_LANDED` flipped — the displayQuotes beat's
+   FIRST live run was at this gate, and it caught real spec-gesture rot
+   (below).
+3. P4.46's flagged `provisioning_equivalence` red resolved exactly as
+   predicted once P4.D73's re-dump merged: the full family green,
+   including both v4-side legs run from the v4 checkout — v4 opens the
+   v5-provisioned instance (with the three new columns) and v4's real
+   loader unlocks v5's re-wrapped `.dbkey` with `minServerVersion`
+   preserved.
+4. The provisioning recipe's run-phase venue bug repaired (its two
+   v4-side tsx legs lacked the `cd ~/source/quilltap-server` its regen
+   phase has — v4's `@/lib` alias resolves only under v4's tsconfig;
+   the sweep hit ERR_MODULE_NOT_FOUND).
+
+### The §3 review — four parallel reviewers + unifier verification; TWO would-have-shipped bugs found and fixed
+
+1. **The empty typeahead menu swallowed Enter/Tab/arrows** (P4.D75's
+   surface; BLOCKING). v4's Lexical typeahead returns false from
+   Enter/Tab with no selectable option and skips preventDefault on the
+   arrows — so `:smiel` (a typo, the empty-label menu showing) + Enter
+   still SENDS the message in v4; v5's `handleMenuKey` consumed all
+   four as no-ops, trapping the writer. Neither v4's suites nor v5's
+   specs pinned the arm. Fixed (`rows.length === 0` → fall through;
+   Escape still consumed) with spec pins in BOTH profile suites.
+2. **First-run Setup died on a missing `data/` dir** (P4.46's surface;
+   BLOCKING, reproduced live against the unify-tip binary). The lock
+   reorder put the claim ahead of `save_dbkey`'s `create_dir_all` — the
+   only thing that created the directory — so a brand-new install's
+   Setup answered `instance lock IO error: No such file or directory`.
+   **Every test in the estate masked it by pre-creating `data/`.** Fixed
+   in `HostAssembler::pre_open` (create the lock's parent, v4-parity)
+   plus `setup_creates_the_data_dir_itself` — a test that deliberately
+   does NOT pre-create the dir, mutation-proven red against the pre-fix
+   code. The bounded stranded-lock arm (claim + failed open leaves a
+   heartbeat-less lock until reap/re-entry) documented at the code.
+3. Minors fixed at the wire: a stale in-code deferral comment in
+   `wardrobe_list.rs` claiming the group tier was still unported (the
+   next drift agent's trap); the smart-typography beat comment
+   overclaiming the repaint proof (the no-reload repaint is unit-pinned,
+   not e2e-pinned).
+4. Verified clean, adversarially: the D71 dissolve/tiers port
+   (fail-safe, union clearing, echo guard, recipient keying, cast-union
+   exception — byte-faithful with v4's why-comments), the D72 staged
+   replay (no queue leak — same lifecycle mechanism as v4; merge
+   precedence direction proven first-wins), the D73 Zod-error bytes
+   (independently re-derived from v4's zod), the D76 neutrality claim
+   (mechanically re-derived: 93 rows × one self-dating header field
+   each, zero body bytes), the engine twins (code-identical outside doc
+   comments), and the three-file union (each lane's delta = exactly the
+   other lane's contribution).
+5. Review notes riding as recorded debt: the `lay_leaves_into_slots`
+   unknown-slot arm is unreachable-but-latent; four private copies of
+   the JSON-array helper (DRY debt); v4's "no component query for a
+   plain garment" query-count claim unwitnessed; the read-side
+   bag-level (not key-level) tolerance divergence on hand-edited cells
+   (unreachable via any writer, recorded in the order header).
+
+### The gated beat's first live run — spec-gesture rot, fixed (no product code)
+
+The displayQuotes beat failed its first-ever live run THREE ways, all
+spec gestures written blind against v4's surface (the lane could never
+run it — it was gated on D73's column): (a) it PUT
+`/api/v1/settings/chat`, a REST alias **v5 does not ship** (chat
+settings ride the `chatSettingsUpdate` dispatch; only
+text-replacements/taboo/brahma-console have aliases) → converted to the
+dispatch wire the SPA uses; (b) its post-reload `maybeUnlock` waited for
+the salon-LIST heading while reloading INSIDE a chat → the helper gained
+a landmark parameter; (c) its stored-bytes read used a bare
+`GET /api/v1/chats/{id}`, which v5 routes to the background handler →
+re-pointed at the Markdown-export edge (a byte render of stored
+content), which made the assertion STRONGER (plain-text containment).
+The curled-render assertion itself passed the moment the PUT landed —
+the feature works; the beat's gestures were the rot. Spec 5/5, then the
+full suite re-run green.
+
+### The gate (at the unify tip, after every fix)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, both plain and with
+  `--features quilltap-core/native-transport`; `cargo build --release
+  --workspace` clean.
+- **The round's 25 families regenerated FRESH through the sweep driver**
+  (serial — two sweeps race on shared /tmp paths, measured by P4.D71's
+  lane and honoured here) from the v4 checkout at `11553944`
+  (lib-identical to the `48396682` pin, proven by empty diff): 24 ok in
+  the driver + `provisioning_equivalence` green with its two v4-side
+  legs run from the correct venue. Families: dissolve_bundles,
+  wardrobe_tools/tier2/public_read/transfers_tier2/routes,
+  chats_outfits_tier2, outfit_llm_choose_tier3, chat_cast_routes,
+  characters_wardrobe_route, settings_routes (72 cases),
+  chat_settings_tier2, chat_settings_composer_web_routes, provisioning
+  (3/3 + dbkey legs), and the blast-radius set (build_context_tier3,
+  chat_create_capstone, chat_create_end_to_end, avatar/story/image-gen
+  tier3, post_office_aurora, tools_inventory, chat_export,
+  search_replace, message_reattribute).
+- `cargo test --workspace` with the round's 36-variable env block:
+  **430 test binaries / 2,067 tests / 0 failed** (exit 0), re-run whole at the final tip AFTER the review fixes.
+- SPA: `ng test` **319 files / 4,614 tests / 0 failed**; `ng build`
+  clean; **full Playwright **212 passed / 0 failed / 0 skipped (5.1 m)**, re-run whole at the final tip** — the suite grew 202 →
+  212 (the four char-insert beats, the four smart-typography beats incl.
+  the newly-live displayQuotes walk, the bug-61 race beat, and the
+  chat-tab pin's growth), with the D75-owed full run (port contention
+  had blocked it in-lane) discharged here.
+- Spelling guard clean; real `npm install` verified (`npm ls katex` →
+  0.18.4 top-level, the nested 0.16.47 pair matching v4's tree).
+
+**Versions after the round:** core 0.0.540, harness 0.0.460, host
+0.0.69, web 0.0.72, SPA 0.5.478; cli 0.0.9, quilltap-tauri 0.0.6,
+fixture-sanitizer 0.0.3 unchanged.
+
+**Standing after the round:** the owed dogfood pass (top candidate —
+now also gaining this round's live surfaces: group-held garments +
+dissolution on the Friday copy, the race-free wardrobe dialog, smart
+typography + both typeaheads + pickers in real writing, a fresh-install
+Setup walk, the bug-60 proof, the standing 💸 queue); P4.D65 items 5–6;
+the banked smalls (the google-wire recorded-not-asserted headers, the
+sibling settings arms' Zod-collapse seam, the `p4.9l` composer toolbar
+— the pickers' composer entrance, the stale `docs/v4` API.md mirror).
+The full candidate list lives in `phase-4.md`.

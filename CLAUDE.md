@@ -1076,24 +1076,55 @@ records THERE. Update this summary only when a phase or round completes.
   checkout's branch before any regen. Gate: numbers in the round record
   (`status-log.md`). Versions: core 0.0.531, harness 0.0.454, cli 0.0.9,
   SPA 0.5.454; host/web/tauri unchanged.
-- **Oracle baseline: `03154b72` (2026-08-12, v4 main HEAD — "merge: 4.8.1
-  back into main", version `4.9.0-dev.0`), adopted at the 4.8.1-release
-  drift-round unification — NO v4 drift debt remains.** v4 released 4.8.0
-  and 4.8.1 and now develops on TWO branches: `main` (4.9-dev) and
-  `bugfix` (4.8.x maintenance; release content reaches main squashed via
-  the `release:`/`merge:` pair, so measure drift with `git diff
-  <baseline> main`, not the bugfix commit list). **Drift-check BOTH
-  branches every round** (`git log <baseline>..main` AND `git log
-  main..bugfix -- lib/ app/ packages/`) and verify the checkout's branch
-  (`git branch --show-current`) before any regen — pin a detached
+- **The 4.8.2/4.8.3 drift catch-up + lock-order round (P4.D71 ∥ P4.D72 ∥
+  P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76): UNIFIED on main
+  (2026-08-14) — ALL SEVEN CLOSED; the oracle baseline MOVES to
+  `48396682` and the drift debt is CLEARED** (v4 HEAD `11553944` = the
+  4.8.4 release, tests+docs only, NO-PORT). The group wardrobe tiers +
+  bundle dissolution end-to-end (precedence character > group > project >
+  general; leaf-id persistence on every wear path; `?scope=group` +
+  transfers out of a group; **dogfood finding #78 CLOSED** — v4's Bug-61
+  fix ported into the dialog with a deterministic race beat) ∥ the three
+  composer features whole (smart typography with render-time quotes +
+  type-time dashes; the `:`/`\` typeaheads + pickers over v4's
+  code-identical engines and byte-copied corpora/datasets; bugs 62 + 63
+  fixed — v5 had reproduced both) ∥ the three `chat_settings` columns
+  (D23 re-dump + boot ensure + Zod-exact PUT arms incl. v4's whole
+  `ZodError.message` 400 bodies) ∥ **the P4.D68 escalation DISCHARGED**
+  (lock before ANY partition open on boot/unlock/setup, WAL-parked
+  contended proofs; setup hardening — pepper never withheld, destructive
+  retry refused; `.dbkey` unknown-field preservation with a v4-drop
+  divergence pin) ∥ the SDK wire re-check (openai 7.4 / openrouter 1.2.32
+  neutral outside self-dating markers). **The §3 review caught two
+  would-have-shipped bugs, both fixed + pinned at unification:** the
+  empty typeahead menu swallowed Enter/Tab/arrows (v4 falls through — a
+  typo'd `:smiel` + Enter would not send), and first-run Setup died on a
+  missing `data/` dir (the lock reorder outran the dir creation; every
+  test had masked it by pre-creating `data/`). Gate + versions: the round
+  record in `status-log.md`. Deferred loud: help docs → `p4.9i2`; the
+  outfit-preview witness; the new-chat manual-compose client family; the
+  google-wire recorded-not-asserted headers; the `p4.9l` composer
+  toolbar (the pickers' composer entrance).
+- **Oracle baseline: `48396682` (2026-08-13, v4 main — "merge: 4.8.3 back
+  into main"), adopted at the 4.8.2/4.8.3 drift-round unification — NO v4
+  drift debt remains.** v4 HEAD is `11553944` ("merge: 4.8.4 back into
+  main"), ONE release past the baseline and **NO-PORT, verified**: the
+  delta is two composer-typeahead test files, a jest test helper, and
+  release docs — `git diff 48396682 main -- lib/ app/ packages/` is
+  EMPTY, so oracles regenerate straight from the checkout while HEAD
+  stays there. **Drift-check BOTH branches every round** (`git log
+  <baseline>..main` AND `git log main..bugfix -- lib/ app/ packages/`;
+  release content reaches main squashed via the `release:`/`merge:`
+  pair, so measure drift with `git diff`, not the bugfix commit list)
+  and verify the checkout's branch before any regen — pin a detached
   worktree on any mismatch, drift, or dirty tree
   (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
-  At this round's gate the checkout was back on main at the baseline with
-  two dirty files — the v4 Bug-61 filing (`docs/developer/bugs/*`), this
-  round's own upstream filing, docs-only and outside every oracle import
-  graph. The sweep driver remains the sanctioned per-family regen path;
-  the distill-transitive TZ pins, the committed-fixture rule, and the
-  venue/staging rules stand unchanged.
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently (shared /tmp paths race; measured), and
+  the provisioning family's two v4-side legs must run from the v4
+  checkout (recipe repaired this round). The distill-transitive TZ pins,
+  the committed-fixture rule, and the venue/staging rules stand
+  unchanged.
   (The superseded baseline paragraphs formerly kept here "for history" are
   archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the

@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Unified the 4.8.2/4.8.3 drift catch-up + lock-order round (P4.D71 ∥ P4.D72 ∥
+P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76 — all seven closed) onto main; the
+oracle baseline moves to `48396682` and the drift debt is cleared (v4 HEAD
+`11553944` = 4.8.4 is tests+docs only, NO-PORT). Landed: the group wardrobe
+tiers + bundle dissolution on both sides (dogfood finding #78 closed — v4's
+Bug-61 fix ported with a deterministic race beat), the three composer features
+whole (smart typography, `:` emoji + `\` Unicode typeaheads and pickers over
+v4's code-identical engines and byte-copied corpora/datasets; bugs 62 + 63
+fixed), the three chat_settings columns (D23 re-dump + boot ensure + Zod-exact
+PUT arms), the P4.D68 open-before-lock escalation discharged (lock before any
+partition open on boot/unlock/setup) with setup hardening and .dbkey
+unknown-field preservation, and the SDK wire re-check (neutral outside the
+self-dating version markers). The unification review caught and fixed two
+would-have-shipped bugs: the empty typeahead menu swallowed Enter/Tab/arrows
+(v4 falls through), and first-run Setup failed on a not-yet-created data dir
+(the lock reorder outran the dir creation; every test had masked it). Gate:
+430 test binaries / 2,067 / 0 with the round's env block; the 25 affected
+oracle families regenerated fresh; ng test 319 files / 4,614 / 0; full
+Playwright 212/212 zero skips. Versions: core 0.0.540, harness 0.0.460, host
+0.0.69, web 0.0.72, SPA 0.5.478.
+
 Closed a coverage hole in the group wardrobe tier (P4.D71 unit 5, tests and
 fixtures only — no behavior change). The chat-start pool's own group read and
 the per-character tier in default-outfit resolution had shipped with no

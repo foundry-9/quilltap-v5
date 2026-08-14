@@ -39,10 +39,15 @@ test.describe('Smart typography (P4.D74)', () => {
     await mock?.close();
   });
 
-  async function maybeUnlock(page: Page) {
+  /**
+   * Unlock if the gate screen came up; otherwise wait for `landmark` (the
+   * Chats heading by default — pass the messages list when reloading INSIDE a
+   * chat, where no list heading ever renders).
+   */
+  async function maybeUnlock(page: Page, landmark?: ReturnType<Page['locator']>) {
     const passphrase = page.locator('#qt-passphrase');
-    const chats = page.getByRole('heading', { name: 'Chats', exact: true });
-    await expect(passphrase.or(chats).first()).toBeVisible({ timeout: 15_000 });
+    const arrived = landmark ?? page.getByRole('heading', { name: 'Chats', exact: true });
+    await expect(passphrase.or(arrived).first()).toBeVisible({ timeout: 15_000 });
     if (await passphrase.count()) {
       await passphrase.fill(E2E_PASSPHRASE);
       await page.getByRole('button', { name: 'Unlock' }).click();
@@ -212,26 +217,45 @@ test.describe('Smart typography (P4.D74)', () => {
     // live no-reload repaint — that path (query-cache subscription → the
     // displayQuotes signal → the memo key) is pinned at unit level in
     // `render-cache.spec.ts` and `smart-typography/settings.spec.ts`.
-    const put = await page.request.put('/api/v1/settings/chat', {
-      data: { smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: true } },
+    // The save rides the `chatSettingsUpdate` dispatch, exactly as the SPA's
+    // settings cards do — v5 ships NO `/api/v1/settings/chat` REST alias (the
+    // aliased settings routes are text-replacements/taboo/brahma-console
+    // only). This beat's first live run was at the 4.8.2-round unification,
+    // where the v4-path PUT it was written with answered 404.
+    const put = await page.request.post('/api/dispatch', {
+      data: {
+        type: 'chatSettingsUpdate',
+        settings: {
+          smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: true },
+        },
+      },
     });
     expect(put.ok()).toBe(true);
+    expect(((await put.json()) as { type?: string }).type).toBe('chatSettings');
 
     await page.reload();
-    await maybeUnlock(page);
+    await maybeUnlock(page, page.locator('.qt-chat-messages-list'));
     await expect(bubble).toContainText('“Hello there,”');
 
     // The stored bytes never moved: what the model, the embeddings and every
-    // export see is still exactly what was typed.
-    const read = await page.request.get(`/api/v1/chats/${chatId}`);
+    // export see is still exactly what was typed. Read them through the
+    // Markdown export edge (P4.d28 — a byte render of STORED content; v5 has
+    // no bare REST chat read, the action-less GET serves the background).
+    const read = await page.request.get(`/api/v1/chats/${chatId}?action=export-markdown`);
     expect(read.ok()).toBe(true);
-    const body = JSON.stringify(await read.json());
-    expect(body).toContain('\\"Hello there,\\"');
+    const body = await read.text();
+    expect(body).toContain('"Hello there," she said warmly.');
     expect(body).not.toContain('“Hello there,”');
 
-    // Put the instance back the way the fixture ships it.
-    const reset = await page.request.put('/api/v1/settings/chat', {
-      data: { smartTypographySettings: { displayQuotes: false, dashes: true, ellipsis: true } },
+    // Put the instance back the way the fixture ships it (same dispatch wire
+    // as the flip above).
+    const reset = await page.request.post('/api/dispatch', {
+      data: {
+        type: 'chatSettingsUpdate',
+        settings: {
+          smartTypographySettings: { displayQuotes: false, dashes: true, ellipsis: true },
+        },
+      },
     });
     expect(reset.ok()).toBe(true);
   });

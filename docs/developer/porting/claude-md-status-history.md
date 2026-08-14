@@ -1911,3 +1911,24 @@ Contents:
   v5 (no registry exists; no `repair-text-embeddings` needed).
   Versions: core 0.0.271, harness 0.0.239, host 0.0.20, web 0.0.28,
   quilltap-tauri 0.0.4, SPA 0.5.169.
+
+## Superseded baseline paragraph — 03154b72 (archived 2026-08-14 at the 4.8.2/4.8.3-round unification)
+
+- **Oracle baseline: `03154b72` (2026-08-12, v4 main HEAD — "merge: 4.8.1
+  back into main", version `4.9.0-dev.0`), adopted at the 4.8.1-release
+  drift-round unification — NO v4 drift debt remains.** v4 released 4.8.0
+  and 4.8.1 and now develops on TWO branches: `main` (4.9-dev) and
+  `bugfix` (4.8.x maintenance; release content reaches main squashed via
+  the `release:`/`merge:` pair, so measure drift with `git diff
+  <baseline> main`, not the bugfix commit list). **Drift-check BOTH
+  branches every round** (`git log <baseline>..main` AND `git log
+  main..bugfix -- lib/ app/ packages/`) and verify the checkout's branch
+  (`git branch --show-current`) before any regen — pin a detached
+  worktree on any mismatch, drift, or dirty tree
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+  At this round's gate the checkout was back on main at the baseline with
+  two dirty files — the v4 Bug-61 filing (`docs/developer/bugs/*`), this
+  round's own upstream filing, docs-only and outside every oracle import
+  graph. The sweep driver remains the sanctioned per-family regen path;
+  the distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged.

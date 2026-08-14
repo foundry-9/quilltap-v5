@@ -4675,3 +4675,61 @@ detached worktree on any mismatch/drift/dirty
 sweep driver remains the sanctioned per-family regen path; the
 distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged. Drift-check before every round.
+
+## The 4.8.2/4.8.3 drift catch-up + lock-order round — UNIFIED (2026-08-14)
+
+**P4.D71 ∥ P4.D72 ∥ P4.D73 ∥ P4.D74 ∥ P4.D75 ∥ P4.46 ∥ P4.D76 — ALL SEVEN
+CLOSED; the oracle baseline MOVES to `48396682` and the drift debt is
+CLEARED** (v4 HEAD `11553944` is the 4.8.4 release — tests + docs only,
+zero lib/app/packages, NO-PORT; lib-identical to the baseline). Landed:
+the group wardrobe tiers + bundle dissolution both sides (dogfood finding
+**#78 CLOSED** — v4's Bug-61 fix ported, the race beat forces it
+deterministically), the three composer features whole (smart typography,
+emoji, Unicode — engines code-identical, corpora byte-replayed, the
+caret-anchored typeahead built without precedent), the three
+`chat_settings` columns through the D23 re-dump + boot ensure + Zod-exact
+PUT arms, the P4.D68 escalation DISCHARGED (lock before ANY partition
+open on boot/unlock/setup, contended proofs via WAL-parking) + setup
+hardening (pepper never withheld; destructive retry refused) + the
+`.dbkey` unknown-field preservation, and the SDK wire re-check
+(neutrality proven; the "byte-identical outside self-dating markers"
+restatement). The §3 unification review caught and fixed two
+would-have-shipped bugs: the empty typeahead menu swallowing Enter
+(v4 falls through — a typo'd `:smiel` + Enter would not send) and
+first-run Setup dying on a missing `data/` dir (the lock reorder outran
+the dir creation; every test had masked it). Round record:
+`status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The owed dogfood pass** (standing queue, several rounds deep) — now
+   ALSO gaining this round's live surfaces: group-held garments + bundle
+   dissolution on the Friday copy, the bug-61 dialog race gone, smart
+   typography + the `:`/`\` typeaheads + pickers in real writing, the
+   fresh-instance Setup walk (missing-dir arm now covered by test, worth
+   one human walk), the bug-60 live proof, the re-encryption sweep +
+   held-bundle guard, and the standing 💸 queue.
+2. **P4.D65 items 5–6** (the small open remainder; its header enumerates
+   them).
+3. **The v4-side human filing** (the archived-seat-badge GET gap).
+4. **The banked `external_tmp_input` driver extension** (P4.45 unit-4
+   record).
+5. Banked smalls: the google-wire recorded-not-asserted headers (P4.D76),
+   the sibling settings arms' Zod-collapse seam (P4.D73's bank), the
+   `p4.9l` composer toolbar (would make the pickers reachable from the
+   composer), the stale `docs/v4` API.md mirror sweep.
+
+**Standing regen note:** the oracle baseline is **`48396682`** ("merge:
+4.8.3 back into main", adopted at this unification). v4 HEAD is
+`11553944` ("merge: 4.8.4 back into main") — **NO-PORT, verified**: the
+delta is two composer-typeahead test files, a jest helper, and release
+docs; `git diff 48396682 main -- lib/ app/ packages/` is empty, so
+oracles regenerate straight from the checkout while HEAD stays there.
+Drift-check BOTH branches and the checkout's branch before any regen;
+pin a detached worktree on mismatch/drift/dirty. The sweep driver
+remains the sanctioned regen path — **never run two sweeps
+concurrently** (they race on shared /tmp oracle paths; measured this
+round), and the provisioning family's two v4-side legs must run from
+the v4 checkout (recipe repaired this round). The distill-transitive TZ
+pins, the committed-fixture rule, and the venue/staging rules stand
+unchanged. Drift-check before every round.
