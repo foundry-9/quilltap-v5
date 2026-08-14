@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Fixed the arrow keys appearing to do nothing in the composer's emoji and symbol
+menus (dogfood finding #85). They always worked with the mouse away from the
+menu; with the pointer resting on it — where it usually is, since the menu opens
+at the caret you just clicked — every keypress was undone by the row list being
+rebuilt underneath the cursor. The rows are now updated in place when only the
+highlight moved.
+
+Fixed typed backslashes doubling on their way out of the editor (dogfood finding
+#84). `$\alpha$` written in the composer reached the message as `$\\alpha$` —
+broken LaTeX for KaTeX and a doubled backslash for any model reading the
+transcript — and the same went for Windows paths and any other literal
+backslash. The markdown serializer escaped the backslash where v4's never does.
+Text written by a character was never affected; it does not pass through the
+editor.
+
 Corrected the paused-chat notice in the Salon (dogfood finding #83). It claimed
 "the next character won't speak until you resume", which is not what pause does
 in either app: pause stops the auto-chain between characters, and a message you

@@ -489,3 +489,81 @@ describe('D17 gate — v4 GFM tables (recorded from the real TABLE_TRANSFORMER)'
     expect(tableVectors.length).toBe(20);
   });
 });
+
+/**
+ * Backslashes — dogfood finding #84.
+ *
+ * A writer typing `$\alpha$` in the composer got `$\\alpha$` on the wire: broken
+ * LaTeX for KaTeX, and a doubled backslash for the LLM reading the transcript.
+ * `prosemirror-markdown`'s `esc()` escapes the backslash itself; Lexical's
+ * export (the `shouldPreserveNewLines = true` branch v4 takes) does not, and the
+ * ported `stripMarkdownEscapes` deliberately refuses `\` — so nothing undid it.
+ *
+ * Every `out` below was MEASURED, not reasoned: each vector was pushed through
+ * v4's real `$exportComposerMarkdown` in a jsdom editor, once from a typed text
+ * node (`TYPED_EXPORT` — the gesture that broke) and once through
+ * `$importComposerMarkdown` first (`BACKSLASH_ROUND_TRIP` — the draft-restore
+ * path, where Lexical's import unescape makes several vectors legitimately
+ * lossy). Fix the port, not the table.
+ */
+const TYPED_EXPORT: { name: string; typed: string; out: string }[] = [
+  { name: 'inline LaTeX', typed: '$\\alpha$', out: '$\\alpha$' },
+  { name: 'display LaTeX', typed: '$$\\phi$$', out: '$$\\phi$$' },
+  { name: 'a lone backslash', typed: 'a \\ b', out: 'a \\ b' },
+  { name: 'a Windows path', typed: 'C:\\Users\\csebold', out: 'C:\\Users\\csebold' },
+  { name: 'two backslashes', typed: '\\\\', out: '\\\\' },
+  { name: 'backslash before a star', typed: '\\*not bold\\*', out: '\\*not bold\\*' },
+  { name: 'backslash before a backtick', typed: 'a \\` b', out: 'a \\` b' },
+  { name: 'backslash before a bracket', typed: '\\[bracket\\]', out: '\\[bracket\\]' },
+  { name: 'bare brackets, no backslash', typed: '[bracket]', out: '[bracket]' },
+  { name: 'a trailing backslash', typed: 'trailing\\', out: 'trailing\\' },
+  { name: 'backslash before an underscore', typed: '\\_under\\_', out: '\\_under\\_' },
+  { name: 'a LaTeX command mid-sentence', typed: 'x \\to y', out: 'x \\to y' },
+];
+
+/** The same vectors through v4's import → export (drafts round-trip this way). */
+const BACKSLASH_ROUND_TRIP: { name: string; md: string; out: string }[] = [
+  { name: 'inline LaTeX', md: '$\\alpha$', out: '$\\alpha$' },
+  { name: 'display LaTeX', md: '$$\\phi$$', out: '$$\\phi$$' },
+  { name: 'a lone backslash', md: 'a \\ b', out: 'a \\ b' },
+  { name: 'a Windows path', md: 'C:\\Users\\csebold', out: 'C:\\Users\\csebold' },
+  // Lossy on IMPORT, in v4 too: markdown's own escape rules read `\\` as an
+  // escaped backslash and `\*` as a literal star, so the source spelling is
+  // gone before either editor exports anything.
+  { name: 'two backslashes collapse on import', md: '\\\\', out: '\\' },
+  { name: 'escaped stars import as literals', md: '\\*not bold\\*', out: '*not bold*' },
+  { name: 'escaped backtick imports as a literal', md: 'a \\` b', out: 'a ` b' },
+  { name: 'escaped brackets import as literals', md: '\\[bracket\\]', out: '[bracket]' },
+  { name: 'bare brackets, no backslash', md: '[bracket]', out: '[bracket]' },
+  { name: 'a trailing backslash', md: 'trailing\\', out: 'trailing\\' },
+  { name: 'escaped underscores import as literals', md: '\\_under\\_', out: '_under_' },
+  { name: 'a LaTeX command mid-sentence', md: 'x \\to y', out: 'x \\to y' },
+];
+
+/** Serialize a paragraph of literal text — what typing produces, no parser. */
+function typedExport(text: string): string {
+  const doc = dialectSchema.node('doc', null, [
+    dialectSchema.node('paragraph', null, text.length > 0 ? [dialectSchema.text(text)] : []),
+  ]);
+  return serializeMarkdown(doc);
+}
+
+describe('backslashes survive the composer (dogfood #84, measured from v4)', () => {
+  for (const v of TYPED_EXPORT) {
+    it(`typed: ${v.name}`, () => {
+      expect(typedExport(v.typed)).toBe(v.out);
+    });
+  }
+
+  for (const v of BACKSLASH_ROUND_TRIP) {
+    it(`round-trip: ${v.name}`, () => {
+      expect(roundTrip(v.md)).toBe(v.out);
+    });
+  }
+
+  it('a backslash inside a fenced code block is untouched', () => {
+    // Code is emitted raw — `esc()` never runs there — so this was never
+    // broken. Pinned so the fix above cannot start reaching into code.
+    expect(roundTrip('```\n$\\alpha$\n```')).toBe('```\n$\\alpha$\n```');
+  });
+});

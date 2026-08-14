@@ -585,6 +585,37 @@ export function stripMarkdownEscapes(markdown: string, chars: string[]): string 
 const PRESERVED_MARKDOWN_CHARS = ['*', '_', '`', '~'];
 
 /**
+ * Undo `prosemirror-markdown`'s escaping of the BACKSLASH itself — the one
+ * character {@link stripMarkdownEscapes} structurally cannot reach.
+ *
+ * v4 exports through `@lexical/markdown` with `shouldPreserveNewLines = true`
+ * (`$exportComposerMarkdown` → `$convertToMarkdownString(…, undefined, true)`),
+ * and that flag picks the escape regex `[*_\`~]` — no backslash — where the
+ * other branch would use `[*_\`~\\]`. So Lexical never emits `\\`, v4 never had
+ * anything to strip, and its `stripMarkdownEscapes` filters `\` out of the char
+ * list on purpose. v5 ported that filter faithfully but sits on a serializer
+ * whose `esc()` escapes ``[`*\~[]_]`` — backslash included — so every typed
+ * backslash was doubling on the way to the wire. `$\alpha$` reached the message
+ * (and the LLM, and KaTeX) as `$\\alpha$`, which is broken LaTeX: dogfood
+ * finding #84.
+ *
+ * Measured against v4's REAL bridge rather than reasoned about: a text node
+ * carrying each vector, exported through `$exportComposerMarkdown`, comes back
+ * byte-identical for all of `$\alpha$`, `C:\Users\me`, `\\`, `\*`, `` \` ``,
+ * `\[`, `x \to y`, `trailing\`. The corpus in `markdown-round-trip.spec.ts`
+ * pins that table.
+ *
+ * Runs LAST, after the two `stripMarkdownEscapes` passes: those consume the
+ * `\X` pairs first, so what remains is exactly `esc()`'s own doubling. The
+ * dialect's `hard_break` writes a bare `\n` (not the `\`-newline
+ * prosemirror-markdown defaults to), so no line-break syntax passes through
+ * here.
+ */
+function stripBackslashEscapes(markdown: string): string {
+  return markdown.replace(/\\\\/g, '\\');
+}
+
+/**
  * The dialect serializer: the basic serializer with `em` emitting `_…_` (not
  * `*…*`), unordered lists using `-` with check-list prefixes, and everything
  * else inherited. Output is post-processed with {@link stripMarkdownEscapes}
@@ -698,11 +729,12 @@ export function serializeMarkdown(doc: PMNode, unitToken?: object): string {
   const raw = dialectSerializer.serialize(doc);
   const unpreserved = stripMarkdownEscapes(raw, PRESERVED_MARKDOWN_CHARS);
   // prosemirror-markdown's `esc()` also backslash-escapes `[`/`]` in text nodes;
-  // Lexical's export regex (`[*_\`~\\]`) never does, so v4 emits bare brackets
-  // (a `[note]` footnote, a `[` in prose). Strip those escapes too so brackets
-  // survive byte-identically. Link syntax is emitted via the mark, not `esc`,
-  // so this does not disturb real links.
+  // Lexical's export regex (`[*_\`~]`, the `shouldPreserveNewLines` branch)
+  // never does, so v4 emits bare brackets (a `[note]` footnote, a `[` in
+  // prose). Strip those escapes too so brackets survive byte-identically. Link
+  // syntax is emitted via the mark, not `esc`, so this does not disturb real
+  // links.
   const stripped = stripMarkdownEscapes(unpreserved, ['[', ']']);
   const unit = unitToken ? getListIndentUnit(unitToken) : DEFAULT_LIST_INDENT_UNIT;
-  return applyListIndentUnit(stripped, unit);
+  return applyListIndentUnit(stripBackslashEscapes(stripped), unit);
 }

@@ -187,4 +187,89 @@ test.describe('Composer character insertion (P4.D75)', () => {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
+
+  test('the arrows move the highlight with the pointer resting on the menu (dogfood #85)', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type(':smi');
+    const menu = page.locator('.qt-typeahead-menu');
+    await expect(menu).toBeVisible({ timeout: 15_000 });
+
+    const options = menu.locator('.qt-typeahead-option');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+
+    // Park the pointer ON the first row — where a writer's mouse naturally sits,
+    // since the menu opens at the caret they just clicked. Rebuilding the rows
+    // on each render used to re-fire `mouseenter` under that stationary pointer
+    // and yank the selection back, so the arrows appeared dead.
+    const box = await options.first().boundingBox();
+    if (!box) throw new Error('the menu has no box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'false');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+
+    await page.keyboard.press('ArrowUp');
+    await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(editor).toHaveAttribute('aria-activedescendant', 'qt-emoji-typeahead-option-1');
+
+    // Hovering is still a real affordance — it just must not fight the keyboard.
+    const third = await options.nth(2).boundingBox();
+    if (!third) throw new Error('the third row has no box');
+    await page.mouse.move(third.x + third.width / 2, third.y + third.height / 2);
+    await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await blankComposer(page);
+  });
+
+  test('a typed backslash reaches the markdown verbatim (dogfood #84)', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    // The composer surface where it was reported: `$\alpha$` typed into the
+    // Salon composer arrived on the wire as `$\\alpha$` — broken LaTeX for
+    // KaTeX and a doubled backslash for the LLM reading the transcript. The
+    // `\` typeahead sees the same keystrokes, so this also proves it leaves a
+    // backslash it never commits alone.
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('$\\alpha$');
+    await expect(editor).toContainText('$\\alpha$');
+    await blankComposer(page);
+
+    // The serialized bytes themselves — the composer has no source view, but
+    // every editing surface shares one `serializeMarkdown`, and a markdown
+    // field's source toggle is a live window onto its output. Nothing is
+    // posted: the beat cancels out.
+    await page.getByRole('button', { name: 'Insert announcement' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('.qt-markdown-field .qt-rich-editor-content').click();
+    await page.keyboard.type('$\\alpha$ in C:\\Users\\me');
+
+    await dialog.getByRole('button', { name: 'Edit markdown source' }).click();
+    const source = dialog.locator('.qt-markdown-field-source');
+    await expect(source).toBeVisible();
+    // Single backslashes, exactly as typed — v4's Lexical export escapes
+    // `* _ ` ~` and nothing else.
+    await expect(source).toHaveValue('$\\alpha$ in C:\\Users\\me');
+
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
 });

@@ -99,6 +99,11 @@ export interface CaretBox {
 export class TypeaheadMenu {
   private anchor: HTMLDivElement | null = null;
   private menu: HTMLDivElement | null = null;
+  /**
+   * The keys currently in the DOM, so a selection-only render can update the
+   * existing rows instead of replacing them — see {@link render}.
+   */
+  private renderedKeys: string[] | null = null;
 
   constructor(private readonly options: TypeaheadMenuOptions) {}
 
@@ -121,7 +126,45 @@ export class TypeaheadMenu {
     anchor.style.top = `${caret.top}px`;
     anchor.style.height = `${Math.max(caret.bottom - caret.top, 1)}px`;
 
-    menu.replaceChildren(...this.renderRows(rows, selectedIndex));
+    // Rows are updated IN PLACE whenever the key list is unchanged — the whole
+    // point being that the option elements survive (dogfood finding #85).
+    //
+    // v4 renders these rows from React with `key={row.key}`, so moving the
+    // highlight rewrites `aria-selected` and `className` on nodes that stay put.
+    // v5's first cut rebuilt the list on every render, and `replaceChildren`
+    // under a stationary mouse pointer makes Chromium re-evaluate hover and fire
+    // `mouseenter` on the freshly-created row beneath it — which calls
+    // `onHighlight` and drags the selection straight back to the hovered row.
+    // Arrow keys then did nothing at all for any writer whose pointer happened
+    // to rest over the menu (it opens at the caret, right where they just
+    // clicked); with the pointer elsewhere the same build moved the highlight
+    // perfectly, which is what made it look like an arrow-key bug rather than a
+    // rendering one.
+    //
+    // Equal keys mean equal rows: the key IS the inserted character, and glyph /
+    // label / detail are a pure function of the dataset entry behind it. So only
+    // the selection-bearing attributes can differ, and only those are written.
+    const keys = rows.map((row) => row.key);
+    const reusable =
+      rows.length > 0 &&
+      this.renderedKeys !== null &&
+      this.renderedKeys.length === keys.length &&
+      menu.children.length === keys.length &&
+      this.renderedKeys.every((key, index) => key === keys[index]);
+
+    if (reusable) {
+      for (let index = 0; index < keys.length; index += 1) {
+        const option = menu.children[index] as HTMLElement;
+        option.setAttribute('aria-selected', String(index === selectedIndex));
+        option.className =
+          index === selectedIndex
+            ? 'qt-typeahead-option qt-typeahead-option-active'
+            : 'qt-typeahead-option';
+      }
+    } else {
+      menu.replaceChildren(...this.renderRows(rows, selectedIndex));
+      this.renderedKeys = keys;
+    }
 
     const anchorRect = anchor.getBoundingClientRect();
     const { placement, align } = resolvePlacement({
@@ -145,6 +188,7 @@ export class TypeaheadMenu {
     this.anchor.remove();
     this.anchor = null;
     this.menu = null;
+    this.renderedKeys = null;
     this.clearAnnouncement();
   }
 
