@@ -230,6 +230,18 @@ moved from `equipped-slots.ts` to the new module, matching v4's own move out
 of the dialog. v4's unit suite ported case-for-case (11 tests) and
 mutation-proven: reverting either helper to its pre-fix shape fails four
 cases. No behavior change yet — the dialog wiring is unit 2.
+Ported smart typography Part A into the SPA renderer (P4.D74 unit 3):
+`remark-smartypants` curls straight quotes at render time when
+`smartTypographySettings.displayQuotes` is on, at v4's exact position in
+the pipeline and behind v4's two cached processors. Stored content is
+never modified. Code, math and link targets are excluded structurally,
+and a roleplay template that claims a quote character as a delimiter —
+or a dialogue detection naming a straight quote without its curly forms
+— suppresses curling for the whole render. The renderer reads the
+setting itself, as v4 does, so every message surface agrees; the render
+memo now keys on it so a toggle repaints what is already on screen. The
+v4-captured parity corpus grows 51 → 67 vectors.
+
 Fixed bug 62 in the SPA renderer and recaptured the v4 parity corpus
 (P4.D74 unit 2): the default dialogue pattern and the paragraph-level
 detection chars now carry the curly double quotes as v4 does since

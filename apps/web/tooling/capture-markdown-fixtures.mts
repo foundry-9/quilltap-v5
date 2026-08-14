@@ -74,6 +74,12 @@ interface RenderOptions {
     closingChars: string[];
     className: string;
   } | null;
+  /**
+   * `smartTypographySettings.displayQuotes` (v4 Layer 1.6 Part A, `2d31810f`).
+   * Absent is v4's own `displayQuotes = false` default — which is what every
+   * pre-typography vector captured, so they stay the neutrality baseline.
+   */
+  displayQuotes?: boolean;
 }
 
 /**
@@ -213,6 +219,137 @@ const CORPUS: { name: string; input: string; options?: RenderOptions }[] = [
     name: 'template-null-dialogue-detection-falls-back',
     input: '"Hello there," she said warmly.',
     options: { dialogueDetection: null },
+  },
+  // --- Layer 1.6 Part A (2d31810f): render-time quote curling ---------------
+  // Each `quotes-on-*` vector is paired with an `-off` twin over the SAME input
+  // with `displayQuotes: false`, so the pair proves the setting reached the
+  // pipeline rather than the bytes merely looking plausible.
+  {
+    name: 'quotes-on-dialogue',
+    input: '"Hello there," she said warmly.',
+    options: { displayQuotes: true },
+  },
+  {
+    name: 'quotes-off-dialogue',
+    input: '"Hello there," she said warmly.',
+    options: { displayQuotes: false },
+  },
+  {
+    // smartypants' famous apostrophe guesses, captured rather than argued
+    // about: this is precisely the cosmetic-wrong-guess class the feature
+    // accepts because nothing is written down.
+    name: 'quotes-on-apostrophes',
+    input: "It's the '80s, isn't it? 'Tis so.",
+    options: { displayQuotes: true },
+  },
+  {
+    name: 'quotes-off-apostrophes',
+    input: "It's the '80s, isn't it? 'Tis so.",
+    options: { displayQuotes: false },
+  },
+  {
+    // The insertion POINT, pinned: the typographer runs after remark-breaks, so
+    // it sees the text already split around a `break` node. Quote pairing
+    // across that split is what would move if the plugin were reordered.
+    name: 'quotes-on-soft-break',
+    input: '"Hello\nthere," she said.',
+    options: { displayQuotes: true },
+  },
+  {
+    // `dashes: false`, permanently — `run it with --verbose` must survive being
+    // written in prose. Part B handles dashes at the keystroke instead.
+    name: 'quotes-on-dashes-untouched',
+    input: 'Run it with --verbose --- honestly, "yes".',
+    options: { displayQuotes: true },
+  },
+  {
+    // `ellipses: false` — Part B owns `...`, where it becomes a real character
+    // in the writer's text rather than a display substitution.
+    name: 'quotes-on-ellipses-untouched',
+    input: 'Wait... "really"?',
+    options: { displayQuotes: true },
+  },
+  {
+    // Structural skip 1: an `inlineCode` node is not a text node.
+    name: 'quotes-on-inline-code',
+    input: 'Run `git commit -m "wip"` and then say "done".',
+    options: { displayQuotes: true },
+  },
+  {
+    // Structural skip 2: a fenced `code` node is not a text node either.
+    name: 'quotes-on-code-fence',
+    input: '```\nprint("hello")\n```\n\nAnd "afterwards".',
+    options: { displayQuotes: true },
+  },
+  {
+    // Structural skip 3: math is its own node type, and the raw LaTeX survives
+    // into KaTeX's <annotation> — a string transform here would have eaten it.
+    name: 'quotes-on-math',
+    input: 'Behold \\(\\text{"x"}\\) and then "prose".',
+    options: { displayQuotes: true },
+  },
+  {
+    // Structural skip 4: a link target is a `url` PROPERTY, not a text node.
+    name: 'quotes-on-link-url',
+    input: 'Visit [the site](https://example.com/a\'b) and say "hello".',
+    options: { displayQuotes: true },
+  },
+  {
+    // Suppression rule 1: a wrap pattern with an `rpBody` group whose delimiter
+    // is a straight quote. Curling would desynchronize its escape pass from its
+    // match pass, so the typographer stands down for the WHOLE render.
+    name: 'quotes-suppressed-by-rpbody-quote-delimiter',
+    input: '"she said softly" and then "again".',
+    options: {
+      displayQuotes: true,
+      renderingPatterns: [{ pattern: '"(?<rpBody>[^"]+)"', className: 'qt-chat-narration' }],
+    },
+  },
+  {
+    // The negative control for rule 1: an `rpBody` wrap that claims `%%`, not a
+    // quote, must NOT suppress.
+    name: 'quotes-not-suppressed-by-safe-rpbody',
+    input: '%%she said softly%% and then "again".',
+    options: {
+      displayQuotes: true,
+      renderingPatterns: [{ pattern: '%%(?<rpBody>[^%]+)%%', className: 'qt-chat-narration' }],
+    },
+  },
+  {
+    // Suppression rule 2: a dialogue detection naming the straight quote
+    // WITHOUT its curly counterpart — the bug-62 shape arriving via a custom
+    // template instead of via the shipped fallback.
+    name: 'quotes-suppressed-by-straight-only-detection',
+    input: '"Hello there," she said warmly.',
+    options: {
+      displayQuotes: true,
+      dialogueDetection: {
+        openingChars: ['"'],
+        closingChars: ['"'],
+        className: 'qt-chat-dialogue',
+      },
+    },
+  },
+  {
+    // The negative control for rule 2: a detection that declares the curly
+    // forms alongside the straight one is safe, so curling proceeds.
+    name: 'quotes-not-suppressed-by-curly-aware-detection',
+    input: '"Hello there," she said warmly.',
+    options: {
+      displayQuotes: true,
+      dialogueDetection: {
+        openingChars: ['"', '“'],
+        closingChars: ['"', '”'],
+        className: 'qt-chat-dialogue',
+      },
+    },
+  },
+  {
+    // A detection naming NO quote at all is not quote-sensitive: guillemets
+    // cannot stop matching because of curling.
+    name: 'quotes-not-suppressed-by-guillemet-detection',
+    input: '«Bonjour» and "hello".',
+    options: { displayQuotes: true, dialogueDetection: CUSTOM_DIALOGUE },
   },
 ];
 

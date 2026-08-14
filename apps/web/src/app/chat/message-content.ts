@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
+import { DisplayQuotesSetting } from './render/display-quotes';
 import { renderMarkdownCached } from './render/render-cache';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 
@@ -46,6 +47,16 @@ export class MessageContent {
   readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
 
   private readonly sanitizer = inject(DomSanitizer);
+  /**
+   * Smart typography, Part A: curl quotes on DISPLAY only. Read here rather than
+   * threaded down as an input because this component is the message renderer for
+   * every surface that has one — the Salon, streaming messages, thinking blocks,
+   * announcements, the Brahma console — and the setting is a display preference
+   * that should apply to all of them consistently (v4 `MessageContent.tsx:345`,
+   * verbatim reasoning). A template that curling would break overrides it inside
+   * the renderer; see `render/typography.ts`.
+   */
+  private readonly displayQuotes = inject(DisplayQuotesSetting).displayQuotes;
 
   protected readonly html = computed<SafeHtml>(() =>
     this.sanitizer.bypassSecurityTrustHtml(
@@ -53,6 +64,7 @@ export class MessageContent {
         blobMountPointId: this.blobMountPointId(),
         renderingPatterns: this.renderingPatterns(),
         dialogueDetection: this.dialogueDetection(),
+        displayQuotes: this.displayQuotes(),
       }),
     ),
   );

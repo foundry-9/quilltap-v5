@@ -60,7 +60,14 @@ export function renderMarkdownCached(
     SEP +
     refId(options?.dialogueDetection) +
     SEP +
-    (options?.blobMountPointId ?? '');
+    (options?.blobMountPointId ?? '') +
+    SEP +
+    // The typographer state is part of the key, not an afterthought: flipping
+    // `displayQuotes` must repaint EVERY message that is already in the memo,
+    // and a key without it would keep serving the old quotes until the content
+    // itself changed. (v4 has the same problem one layer up and solves it by
+    // invalidating the whole chats query when the toggle is saved.)
+    (options?.displayQuotes ? '1' : '0');
 
   const hit = cache.get(key);
   if (hit !== undefined) return hit;

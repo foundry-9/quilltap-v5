@@ -66925,3 +66925,81 @@ was green: reverting the PATTERN to the four-0x22 form reds
 straight-only reds it too (one from `applyRoleplayPatterns`, one from
 `applyDialogueDetection`, and v4's comment is right that a template
 where the two disagree is a visible split). Render suite: 107 tests.
+
+### Unit record — P4.D74 unit 3 (Part A: render-time quote curling)
+
+v4 keeps `lib/markdown/typography.ts` because it has TWO remark pipelines
+that are duplicated by convention (client react-markdown while a message
+streams, server unified once it is persisted) and a disagreement between
+them changes a message's appearance the instant it stops streaming. v5
+has ONE renderer — it dropped the server `renderedHtml` fast path
+entirely — so the port keeps the file for what is left when the
+duplication is gone: the DECISIONS. `typography.ts` carries
+`SMARTYPANTS_OPTIONS`, `isQuoteSensitiveRoleplayConfig` (with the
+`hasRpBodyGroup` mirror of the private discriminator in v4's
+`roleplay-rendering.ts`), and `shouldCurlQuotes`, with v4's reasoning
+comments intact — including the paragraph on why `dashes` is off
+permanently and not a tuning question.
+
+**The wiring is v4's, line for line.** `remark-smartypants@3.0.3` (v4's
+resolved version) sits between `remarkBreaks` and `remarkRehype`, so it
+runs over mdast TEXT nodes; the processor pair is cached exactly as v4
+caches it (`{plain, curled}`, plugin list fixed at construction); and
+`dialogueConfig` is now resolved at the TOP of the render rather than at
+the dialogue pass, because the suppression check must see the same config
+that pass will use.
+
+**The one seam.** v4 reads the setting inside `MessageContent.tsx`
+itself, not as a prop, and says why: that component is the message
+renderer for every surface that has one. v5's `qt-message-content` is the
+same single renderer, so it reads it the same way — but through a root
+`DisplayQuotesSetting` singleton rather than a per-component query,
+because an Angular component doing what v4's `useQuery` does would open a
+query per message row AND would hard-require a `QueryClient` in every
+spec that renders a message. The service holds ONE cache subscription and
+one signal; **without a `QueryClient` it is inert and the signal stays
+`false`**, which keeps `qt-message-content` mountable with no query layer
+at all (every existing message spec still passes untouched). It also
+`ensureQueryData`s the row itself, because the Brahma console and the
+help chat render messages without ever mounting the Salon or a settings
+card.
+
+`render-cache.ts`'s memo key gained the typographer state. Without it a
+toggle would repaint nothing already rendered — the same class of bug the
+P4.30 template threading guards against, and the component-level proof
+("repaints an already-rendered message when the setting flips") is in
+`display-quotes.spec.ts`.
+
+**The corpus grew 51 → 67 vectors**, all captured from v4's REAL renderer
+at the `48396682` pin (same recipe as unit 2). Sixteen new rows: an
+on/off PAIR over identical input for dialogue and for apostrophes (the
+pair is what makes "curled" mean "v4 emitted these bytes"), the four
+structural skips (inline code, fenced code, math — where the raw
+`\text{"x"}` survives into KaTeX's `<annotation>` — and a link target,
+which is a `url` PROPERTY rather than a text node), both suppression
+rules each with its nearest SAFE neighbour, a guillemet detection that
+must not suppress, and three option pins (`--verbose ---` untouched,
+`Wait...` untouched, and a soft-break vector). `typography.spec.ts` names
+what each vector is for; the unit-level table over
+`isQuoteSensitiveRoleplayConfig` adds the arms the corpus cannot reach
+(an apostrophe wrap delimiter; a quote-bearing pattern with NO rpBody
+group, which is the shipped dialogue pattern's own shape and must NOT
+suppress).
+
+**Mutation-proven (first run green), seven inversions:** dropping the
+rpBody suppression reds `quotes-suppressed-by-rpbody-quote-delimiter`;
+dropping the detection suppression reds
+`quotes-suppressed-by-straight-only-detection`; `dashes: true` reds
+`quotes-on-dashes-untouched`; `ellipses: true` reds
+`quotes-on-ellipses-untouched`; dropping the seam's pass-through reds two
+component cases; dropping the cache-key term reds the repaint case.
+
+**One honest negative result:** moving `remark-smartypants` to BEFORE
+`remarkBreaks` changes not a single byte of the 67-vector corpus,
+soft-break vector included. It cannot: remark-breaks only splits a
+paragraph's text around `break` nodes, and the plugin concatenates all
+text nodes seamlessly before processing, so it sees the same string
+either way. The plugin is still placed exactly where v4 places it (and
+the vector stays), but the position is NOT pinned by measurement today —
+it would begin to matter the moment a plugin between the two rewrote
+text.

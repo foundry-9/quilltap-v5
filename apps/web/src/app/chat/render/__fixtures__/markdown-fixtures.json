@@ -332,5 +332,174 @@
       "dialogueDetection": null
     },
     "html": "<p><span class=\"qt-chat-dialogue\">\"Hello there,\"</span> she said warmly.</p>"
+  },
+  {
+    "name": "quotes-on-dialogue",
+    "input": "\"Hello there,\" she said warmly.",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">“Hello there,”</span> she said warmly.</p>"
+  },
+  {
+    "name": "quotes-off-dialogue",
+    "input": "\"Hello there,\" she said warmly.",
+    "options": {
+      "displayQuotes": false
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"Hello there,\"</span> she said warmly.</p>"
+  },
+  {
+    "name": "quotes-on-apostrophes",
+    "input": "It's the '80s, isn't it? 'Tis so.",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>It’s the ’80s, isn’t it? ‘Tis so.</p>"
+  },
+  {
+    "name": "quotes-off-apostrophes",
+    "input": "It's the '80s, isn't it? 'Tis so.",
+    "options": {
+      "displayQuotes": false
+    },
+    "html": "<p>It's the '80s, isn't it? 'Tis so.</p>"
+  },
+  {
+    "name": "quotes-on-soft-break",
+    "input": "\"Hello\nthere,\" she said.",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>“Hello<br>\nthere,” she said.</p>"
+  },
+  {
+    "name": "quotes-on-dashes-untouched",
+    "input": "Run it with --verbose --- honestly, \"yes\".",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>Run it with --verbose --- honestly, <span class=\"qt-chat-dialogue\">“yes”</span>.</p>"
+  },
+  {
+    "name": "quotes-on-ellipses-untouched",
+    "input": "Wait... \"really\"?",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>Wait... <span class=\"qt-chat-dialogue\">“really”</span>?</p>"
+  },
+  {
+    "name": "quotes-on-inline-code",
+    "input": "Run `git commit -m \"wip\"` and then say \"done\".",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>Run <code>git commit -m \"wip\"</code> and then say <span class=\"qt-chat-dialogue\">“done”</span>.</p>"
+  },
+  {
+    "name": "quotes-on-code-fence",
+    "input": "```\nprint(\"hello\")\n```\n\nAnd \"afterwards\".",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<pre><code>print(\"hello\")\n</code></pre>\n<p>And <span class=\"qt-chat-dialogue\">“afterwards”</span>.</p>"
+  },
+  {
+    "name": "quotes-on-math",
+    "input": "Behold \\(\\text{\"x\"}\\) and then \"prose\".",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>Behold <span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><mtext>\"x\"</mtext></mrow><annotation encoding=\"application/x-tex\">\\text{\"x\"}</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.6944em;\"></span><span class=\"mord text\"><span class=\"mord\">\"x\"</span></span></span></span></span> and then <span class=\"qt-chat-dialogue\">“prose”</span>.</p>"
+  },
+  {
+    "name": "quotes-on-link-url",
+    "input": "Visit [the site](https://example.com/a'b) and say \"hello\".",
+    "options": {
+      "displayQuotes": true
+    },
+    "html": "<p>Visit <a href=\"https://example.com/a&#x27;b\">the site</a> and say <span class=\"qt-chat-dialogue\">“hello”</span>.</p>"
+  },
+  {
+    "name": "quotes-suppressed-by-rpbody-quote-delimiter",
+    "input": "\"she said softly\" and then \"again\".",
+    "options": {
+      "displayQuotes": true,
+      "renderingPatterns": [
+        {
+          "pattern": "\"(?<rpBody>[^\"]+)\"",
+          "className": "qt-chat-narration"
+        }
+      ]
+    },
+    "html": "<p><span class=\"qt-chat-narration\">\"she said softly\"</span> and then <span class=\"qt-chat-narration\">\"again\"</span>.</p>"
+  },
+  {
+    "name": "quotes-not-suppressed-by-safe-rpbody",
+    "input": "%%she said softly%% and then \"again\".",
+    "options": {
+      "displayQuotes": true,
+      "renderingPatterns": [
+        {
+          "pattern": "%%(?<rpBody>[^%]+)%%",
+          "className": "qt-chat-narration"
+        }
+      ]
+    },
+    "html": "<p><span class=\"qt-chat-narration\">%%she said softly%%</span> and then “again”.</p>"
+  },
+  {
+    "name": "quotes-suppressed-by-straight-only-detection",
+    "input": "\"Hello there,\" she said warmly.",
+    "options": {
+      "displayQuotes": true,
+      "dialogueDetection": {
+        "openingChars": [
+          "\""
+        ],
+        "closingChars": [
+          "\""
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"Hello there,\"</span> she said warmly.</p>"
+  },
+  {
+    "name": "quotes-not-suppressed-by-curly-aware-detection",
+    "input": "\"Hello there,\" she said warmly.",
+    "options": {
+      "displayQuotes": true,
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">“Hello there,”</span> she said warmly.</p>"
+  },
+  {
+    "name": "quotes-not-suppressed-by-guillemet-detection",
+    "input": "«Bonjour» and \"hello\".",
+    "options": {
+      "displayQuotes": true,
+      "dialogueDetection": {
+        "openingChars": [
+          "«"
+        ],
+        "closingChars": [
+          "»"
+        ],
+        "className": "qt-chat-custom-dialogue"
+      }
+    },
+    "html": "<p>«Bonjour» and <span class=\"qt-chat-dialogue\">“hello”</span>.</p>"
   }
 ]

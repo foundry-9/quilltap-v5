@@ -26,8 +26,10 @@ import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
+import remarkSmartypants from 'remark-smartypants';
 
 import { REMARK_MATH_OPTIONS, normalizeMathDelimiters } from './math';
+import { SMARTYPANTS_OPTIONS, shouldCurlQuotes } from './typography';
 import {
   type CompiledRule,
   type DialogueDetection,
@@ -54,6 +56,14 @@ export interface MarkdownRenderOptions {
    * paths pass through untouched.
    */
   blobMountPointId?: string | null;
+  /**
+   * `smartTypographySettings.displayQuotes` — curl straight quotes on the way to
+   * the screen (Layer 1.6, Part A). Presentational only: `content` is never
+   * modified, so the model, the embeddings and every export still see what the
+   * writer typed. A template that would be broken by curling overrides this —
+   * see {@link shouldCurlQuotes}.
+   */
+  displayQuotes?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,29 +206,49 @@ export function applyWrapBlockClasses(html: string, compiledRules: CompiledRule[
 // The processor (built once, matching v4's cached processor)
 // ---------------------------------------------------------------------------
 
-function createMarkdownProcessor() {
-  return unified()
+function createMarkdownProcessor(curlQuotes: boolean) {
+  const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     // remark-math parses $$…$$ math (single-dollar math is off — see math.ts);
     // rehype-katex below renders it. Sits between gfm and breaks, matching v4.
     .use(remarkMath, REMARK_MATH_OPTIONS)
-    .use(remarkBreaks)
-    .use(remarkRehype)
-    // Render math to KaTeX markup BEFORE highlight, so highlight never touches
-    // the math subtrees (matches v4's plugin order).
-    .use(rehypeKatex)
-    .use(rehypeHighlight, { ignoreMissing: true, detect: false })
-    .use(rehypeStringify);
+    .use(remarkBreaks);
+
+  // Smart typography (Layer 1.6, Part A): quotes only, never dashes. Sits
+  // between remarkBreaks and remarkRehype so it operates on mdast TEXT nodes —
+  // which is what structurally excludes code, math and link targets, each of
+  // which is a distinct node type or a property rather than text. v4's exact
+  // insertion point; the shared options live in `typography.ts`.
+  if (curlQuotes) {
+    processor.use(remarkSmartypants, SMARTYPANTS_OPTIONS);
+  }
+
+  return (
+    processor
+      .use(remarkRehype)
+      // Render math to KaTeX markup BEFORE highlight, so highlight never touches
+      // the math subtrees (matches v4's plugin order).
+      .use(rehypeKatex)
+      .use(rehypeHighlight, { ignoreMissing: true, detect: false })
+      .use(rehypeStringify)
+  );
 }
 
-let cachedProcessor: ReturnType<typeof createMarkdownProcessor> | null = null;
+// Cached processor instances — one per typographer state, because the plugin
+// list is fixed at construction time. Two booleans, two processors (v4's own
+// `cachedProcessors` pair).
+const cachedProcessors: {
+  plain: ReturnType<typeof createMarkdownProcessor> | null;
+  curled: ReturnType<typeof createMarkdownProcessor> | null;
+} = { plain: null, curled: null };
 
-function getProcessor() {
-  if (!cachedProcessor) {
-    cachedProcessor = createMarkdownProcessor();
+function getProcessor(curlQuotes: boolean) {
+  const slot = curlQuotes ? 'curled' : 'plain';
+  if (!cachedProcessors[slot]) {
+    cachedProcessors[slot] = createMarkdownProcessor(curlQuotes);
   }
-  return cachedProcessor;
+  return cachedProcessors[slot];
 }
 
 // ---------------------------------------------------------------------------
@@ -235,11 +265,17 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     renderingPatterns = DEFAULT_RENDERING_PATTERNS,
     dialogueDetection = DEFAULT_DIALOGUE_DETECTION,
     blobMountPointId = null,
+    displayQuotes = false,
   } = options;
 
   try {
     const patterns = renderingPatterns.length > 0 ? renderingPatterns : DEFAULT_RENDERING_PATTERNS;
     const compiledRules = compileRenderingPatterns(patterns);
+    // `dialogueConfig` is resolved HERE rather than at the dialogue pass below,
+    // because the typographer's suppression check needs the SAME config that
+    // pass will eventually use — an explicit `null` means the fallback, not "no
+    // dialogue detection" (v4's own note at this line).
+    const dialogueConfig = dialogueDetection || DEFAULT_DIALOGUE_DETECTION;
 
     const trimmedContent = content.trim();
 
@@ -253,7 +289,15 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     const escapedContent = escapeMarkdownInBrackets(mathNormalizedContent, patterns);
     const linkifiedContent = linkifyBareQtapUris(escapedContent);
 
-    const processor = getProcessor();
+    // The typographer, when on, runs inside this step and therefore BEFORE the
+    // roleplay layer below — which is why a template whose patterns match a
+    // literal straight quote must suppress it.
+    const curlQuotes = shouldCurlQuotes({
+      displayQuotes,
+      renderingPatterns: patterns,
+      dialogueDetection: dialogueConfig,
+    });
+    const processor = getProcessor(curlQuotes);
     const file = processor.processSync(linkifiedContent);
     let html = String(file);
 
@@ -261,7 +305,6 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     html = applyRoleplayPatterns(html, compiledRules);
     html = applyLineScopedClasses(html, compiledRules);
 
-    const dialogueConfig = dialogueDetection || DEFAULT_DIALOGUE_DETECTION;
     html = applyDialogueDetection(html, dialogueConfig);
 
     // The blob-image rewrite runs last, on the finished HTML — the roleplay

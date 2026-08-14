@@ -94,3 +94,46 @@ describe('renderMarkdownCached — the roleplay template busts the memo', () => 
     expect(second).toBe(first);
   });
 });
+
+/**
+ * P4.D74 — the typographer state belongs in the key. Flipping the Smart
+ * Typography toggle must repaint every message already in the memo; a key
+ * without `displayQuotes` would go on serving straight quotes until the content
+ * itself changed, which is the same class of bug the template threading above
+ * guards against. (v4 has the analogous problem one layer up — its persisted
+ * messages carry server-rendered HTML — and solves it by invalidating the whole
+ * chats query when the setting is saved.)
+ */
+describe('renderMarkdownCached — the displayQuotes key (P4.D74)', () => {
+  beforeEach(() => clearRenderCache());
+
+  const LINE = '"Hello there," she said warmly.';
+
+  it('keys the two typographer states apart', () => {
+    const plain = renderMarkdownCached(LINE);
+    const curled = renderMarkdownCached(LINE, { displayQuotes: true });
+    expect(plain).toContain('"Hello there,"');
+    expect(curled).toContain('“Hello there,”');
+  });
+
+  it('renders the same bytes as the uncached call in both states', () => {
+    expect(renderMarkdownCached(LINE, { displayQuotes: true })).toBe(
+      renderMarkdownToHtml(LINE, { displayQuotes: true }),
+    );
+    expect(renderMarkdownCached(LINE, { displayQuotes: false })).toBe(
+      renderMarkdownToHtml(LINE, { displayQuotes: false }),
+    );
+  });
+
+  it('still hits the memo when the state has not moved', () => {
+    const first = renderMarkdownCached(LINE, { displayQuotes: true });
+    const second = renderMarkdownCached(LINE, { displayQuotes: true });
+    expect(second).toBe(first);
+  });
+
+  it('treats absent and false as the same key (v4 default is false)', () => {
+    const absent = renderMarkdownCached(LINE);
+    const explicit = renderMarkdownCached(LINE, { displayQuotes: false });
+    expect(explicit).toBe(absent);
+  });
+});
