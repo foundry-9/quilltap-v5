@@ -410,6 +410,22 @@ impl EngineAssembler for HostAssembler {
     /// `Setup` claim before provisioning and claim again through `open_ready`.
     fn pre_open(&self, _data_dir: &std::path::Path) -> Result<(), String> {
         let lock_path = lock::instance_lock_path(&self.base_dir);
+        // The lock file lives in `<base>/data/`, and on a brand-new install
+        // NOTHING has created that directory yet — before the P4.46 reorder it
+        // was `save_dbkey`'s `create_dir_all`, which now runs AFTER this claim.
+        // v4 pre-creates the instance paths before `connect()` locks; mirror
+        // that here or first-run `Setup` dies on `create_new` with NotFound
+        // (the 4.8.2-round unification review's executed repro — every test
+        // had masked it by pre-creating `data/`).
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create the instance data dir for the lock: {e}"))?;
+        }
+        // If the claim succeeds but the open/assemble behind it then fails
+        // (wrong pepper, driver failure), the lock file stays behind with no
+        // heartbeat: bounded on purpose — the same process re-acquires
+        // re-entrantly, a same-host contender reaps the dead PID, and a
+        // cross-host contender waits out at most the stale window.
         lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())
     }
 

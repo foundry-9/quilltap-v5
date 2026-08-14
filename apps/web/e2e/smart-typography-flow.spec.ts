@@ -206,9 +206,12 @@ test.describe('Smart typography (P4.D74)', () => {
       .last();
     await expect(bubble).toContainText('"Hello there,"');
 
-    // Flip the display setting, then watch the ALREADY-rendered message
-    // repaint — the render memo is keyed on the typographer state, so a stale
-    // memo would keep the straight quotes and this is what catches it.
+    // Flip the display setting, then re-render the message with it on. The
+    // `page.reload()` below rebuilds the render memo from scratch, so this
+    // beat proves the STORED-bytes-vs-display split end to end but NOT the
+    // live no-reload repaint — that path (query-cache subscription → the
+    // displayQuotes signal → the memo key) is pinned at unit level in
+    // `render-cache.spec.ts` and `smart-typography/settings.spec.ts`.
     const put = await page.request.put('/api/v1/settings/chat', {
       data: { smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: true } },
     });

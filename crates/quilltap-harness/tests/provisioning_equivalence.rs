@@ -33,7 +33,11 @@
 //!   QT_DBKEY_V5_OUT=/tmp/qt-v5-dbkey \
 //!     cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
 //!
-//! Then prove v4 reads the v5 outputs:
+//! Then prove v4 reads the v5 outputs. These two legs MUST run from the v4
+//! checkout (their scripts import v4's `@/lib` alias, which only resolves
+//! under v4's tsconfig — from any other cwd they die with ERR_MODULE_NOT_FOUND,
+//! which the 4.8.2-round unify sweep hit):
+//!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_V5_PROVISIONED=/tmp/qt-v5-provisioned \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-v5-provisioned.ts
 //!   QT_DBKEY_V5_FIXTURE=/tmp/qt-v5-dbkey \

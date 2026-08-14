@@ -293,6 +293,24 @@ describe('charTypeaheadPlugin — emoji profile', () => {
       expect(h.pressKey('Enter').handled).toBe(false);
     });
 
+    it('the EMPTY menu owns nothing but Escape — a typo plus Enter still sends (the 4.8.2-round review find)', async () => {
+      // v4's Lexical typeahead returns false from Enter/Tab with no selectable
+      // option and skips preventDefault on the arrows, so `:smiel` (no matches,
+      // the empty-label menu showing) never traps the writer. Consuming these
+      // was the unification review's one blocking find.
+      const h = mount();
+      await warmIndex(h);
+
+      h.seed('hello :zzqx');
+      expect(h.menuRows()).toEqual([]); // open, in its empty-label state
+      expect(h.pressKey('Enter').handled).toBe(false);
+      expect(h.pressKey('Tab').handled).toBe(false);
+      expect(h.pressKey('ArrowDown').handled).toBe(false);
+      expect(h.pressKey('ArrowUp').handled).toBe(false);
+      expect(h.pressKey('Escape').handled).toBe(true);
+      expect(h.menuRows()).toBeNull();
+    });
+
     it('stays shut on a CLOSED trigger — no jack-in-the-box after `:smile:`', async () => {
       const h = mount();
       await warmIndex(h);

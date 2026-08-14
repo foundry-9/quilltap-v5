@@ -299,6 +299,22 @@ describe('charTypeaheadPlugin — unicode profile', () => {
       expect(h.menuRows()![0]).toBe('rightwards arrow');
     });
 
+    it('the EMPTY menu owns nothing but Escape (the 4.8.2-round review find)', async () => {
+      // Same contract as the emoji suite's empty-menu case: with a live `\`
+      // query that matches nothing, Enter/Tab/arrows fall through as v4's
+      // Lexical typeahead lets them; only Escape is consumed.
+      const h = mount();
+      await warmIndex(h);
+
+      h.seed('\\zzqxw');
+      expect(h.menuRows()).toEqual([]);
+      expect(h.pressKey('Enter').handled).toBe(false);
+      expect(h.pressKey('Tab').handled).toBe(false);
+      expect(h.pressKey('ArrowDown').handled).toBe(false);
+      expect(h.pressKey('Escape').handled).toBe(true);
+      expect(h.menuRows()).toBeNull();
+    });
+
     it('commits the highlighted row on Enter with NO trailing space', async () => {
       const h = mount();
       await warmIndex(h);

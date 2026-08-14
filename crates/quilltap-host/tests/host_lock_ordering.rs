@@ -248,3 +248,52 @@ async fn contended_setup_creates_nothing_at_all() {
     // No key file, no partitions: only the lock we planted.
     assert_eq!(dir_listing(&data), ["quilltap.lock"]);
 }
+
+/// First-run `Setup` against a base dir whose `data/` does NOT exist yet — the
+/// brand-new-install path (a platform-default base dir, a fresh `--data-dir`,
+/// a new Docker volume). The P4.46 reorder put the lock claim ahead of
+/// `save_dbkey`, which had been the thing that created the directory, so
+/// `pre_open` must create it itself or every first run dies on the lock's
+/// `create_new` with NotFound. Every OTHER test here pre-creates `data/`,
+/// which is exactly how the regression hid — this one must not.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn setup_creates_the_data_dir_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    assert!(
+        !data.exists(),
+        "the point of this test is a MISSING data dir"
+    );
+
+    let host = Host::start(base_config(dir.path())).unwrap();
+    match host.core().dispatch(Request::Health).await {
+        Response::Health(h) => assert_eq!(h.pepper_state, PepperState::NeedsSetup),
+        other => panic!("unexpected: {other:?}"),
+    }
+
+    match host
+        .core()
+        .dispatch(Request::Setup {
+            passphrase: String::new(),
+        })
+        .await
+    {
+        Response::Setup(s) => {
+            assert!(!s.pepper.is_empty(), "setup must hand back the pepper");
+            assert!(!s.requires_restart, "a clean first run needs no restart");
+        }
+        other => panic!("unexpected: {other:?}"),
+    }
+
+    // The dir now exists and holds the lock, the key file, and the partitions.
+    let listing = dir_listing(&data);
+    assert!(
+        listing.contains(&"quilltap.lock".to_string()),
+        "{listing:?}"
+    );
+    assert!(
+        listing.contains(&"quilltap.dbkey".to_string()),
+        "{listing:?}"
+    );
+    assert!(listing.contains(&"quilltap.db".to_string()), "{listing:?}");
+}

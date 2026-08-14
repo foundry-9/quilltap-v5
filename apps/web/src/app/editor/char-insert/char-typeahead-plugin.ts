@@ -342,21 +342,28 @@ export function charTypeaheadPlugin(options: CharTypeaheadOptions): Plugin {
     const runtime = runtimes.get(view);
     if (!runtime || runtime.openTrigger === null) return false;
 
+    // The EMPTY menu (a live trigger with zero matches, showing `emptyLabel`)
+    // owns nothing but Escape. v4's Lexical typeahead returns false from its
+    // Enter/Tab handlers when `options[selectedIndex]` is null and skips
+    // preventDefault on the arrows with zero options — so `:smiel` (a typo,
+    // no matches) followed by Enter still SENDS the message, Tab still moves
+    // focus, and the arrows still move the caret. Consuming them here was the
+    // 4.8.2-round unification review's one blocking find.
     switch (key) {
       case 'ArrowDown':
-        if (runtime.rows.length === 0) return true;
+        if (runtime.rows.length === 0) return false;
         runtime.selected = (runtime.selected + 1) % runtime.rows.length;
         refresh(view);
         return true;
       case 'ArrowUp':
-        if (runtime.rows.length === 0) return true;
+        if (runtime.rows.length === 0) return false;
         runtime.selected =
           (runtime.selected - 1 + runtime.rows.length) % runtime.rows.length;
         refresh(view);
         return true;
       case 'Enter':
       case 'Tab':
-        if (runtime.rows.length === 0) return true;
+        if (runtime.rows.length === 0) return false;
         commitRow(view, runtime.selected);
         return true;
       case 'Escape':
