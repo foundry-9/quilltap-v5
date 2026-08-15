@@ -553,8 +553,16 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         migrated_table(&conn);
         let profiles = vec![
-            record("a0000000-0000-4000-8000-000000000001", "Off", Some(json!(false))),
-            record("a0000000-0000-4000-8000-000000000002", "On", Some(json!(true))),
+            record(
+                "a0000000-0000-4000-8000-000000000001",
+                "Off",
+                Some(json!(false)),
+            ),
+            record(
+                "a0000000-0000-4000-8000-000000000002",
+                "On",
+                Some(json!(true)),
+            ),
             record("a0000000-0000-4000-8000-000000000003", "Silent", None),
         ];
         let mut id_map = IdMap::default();
