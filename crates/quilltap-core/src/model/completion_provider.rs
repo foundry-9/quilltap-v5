@@ -149,10 +149,32 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
             api_key: api_key.to_string(),
         };
 
-        let resp = transport
-            .execute(&request, policy)
-            .await
-            .map_err(|e| CompletionError::new(e.message))?;
+        let resp = match transport.execute(&request, policy).await {
+            Ok(r) => r,
+            Err(e) => {
+                // P4.D78 (v4 `d9c5a1c7`): a model that refuses the `think`
+                // parameter gets ONE retry with the key deleted. Every other
+                // failure surfaces unchanged, exactly as before.
+                match crate::model::ollama_think_retry::think_retry_request(provider, &request, &e)
+                {
+                    Some(retry) => {
+                        tracing::warn!(
+                            target: "quilltap::model::completion_provider",
+                            provider = %provider,
+                            model = %params.model,
+                            error = %e.message,
+                            "Ollama rejected the think parameter; retrying without it"
+                        );
+                        transport
+                            .execute(&retry, policy)
+                            .await
+                            // v4 surfaces the SECOND failure's text.
+                            .map_err(|retry_err| CompletionError::new(retry_err.message))?
+                    }
+                    None => return Err(CompletionError::new(e.message)),
+                }
+            }
+        };
         let json = resp
             .json()
             .map_err(|e| CompletionError::new(format!("response parse: {e}")))?;
@@ -467,5 +489,161 @@ mod tests {
             seen.url
         );
         assert!(seen.url.ends_with(":generateContent"));
+    }
+
+    // ------------------------------------------------------------------
+    // P4.D78 — the Ollama retry-without-`think` quartet (non-streaming half).
+    // Same four arms as the streaming twin; see that module's note on why the
+    // fourth arm is the provider scope, not the flag's value (v4's guard is
+    // `'think' in requestBody`, so a `think: false` body DOES retry).
+    // ------------------------------------------------------------------
+
+    /// A transport with a queued outcome per call, recording every request.
+    struct ScriptedTransport {
+        outcomes: std::sync::Mutex<std::collections::VecDeque<Result<Vec<u8>, TransportError>>>,
+        seen: std::sync::Mutex<Vec<TransportRequest>>,
+    }
+
+    impl ScriptedTransport {
+        fn new(outcomes: Vec<Result<Vec<u8>, TransportError>>) -> Self {
+            Self {
+                outcomes: std::sync::Mutex::new(outcomes.into()),
+                seen: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl ProviderTransport for ScriptedTransport {
+        fn execute<'a>(
+            &'a self,
+            request: &'a TransportRequest,
+            _policy: &'a TransportPolicy,
+        ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
+            self.seen.lock().unwrap().push(request.clone());
+            let outcome = self.outcomes.lock().unwrap().pop_front();
+            Box::pin(async move {
+                match outcome {
+                    Some(Ok(body)) => Ok(TransportResponse { status: 200, body }),
+                    Some(Err(e)) => Err(e),
+                    None => Err(TransportError {
+                        message: "scripted transport: no outcome queued".to_string(),
+                        status: None,
+                    }),
+                }
+            })
+        }
+        fn execute_stream<'a>(
+            &'a self,
+            _request: &'a TransportRequest,
+            _policy: &'a TransportPolicy,
+        ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
+        {
+            Box::pin(async move {
+                Err(TransportError {
+                    message: "no stream".to_string(),
+                    status: None,
+                })
+            })
+        }
+    }
+
+    fn ollama_body(text: &str) -> Vec<u8> {
+        format!(
+            r#"{{"model":"qwen3:8b","message":{{"role":"assistant","content":"{text}"}},"done":true,"prompt_eval_count":1,"eval_count":1}}"#
+        )
+        .into_bytes()
+    }
+
+    fn think_rejection() -> TransportError {
+        TransportError {
+            message: r#"HTTP 400: {"error":"\"qwen3:8b\" does not support disabling thinking"}"#
+                .to_string(),
+            status: Some(400),
+        }
+    }
+
+    async fn run_ollama(
+        transport: &ScriptedTransport,
+        provider: &str,
+        model: &str,
+    ) -> Result<CompletionResponse, CompletionError> {
+        execute_completion(
+            transport,
+            provider,
+            None,
+            "",
+            &params(model),
+            &TransportPolicy::default(),
+            "Quilltap/test",
+            None,
+        )
+        .await
+    }
+
+    /// Arm 1 — rejected, then retried WITHOUT `think`; the answer comes back.
+    #[tokio::test]
+    async fn think_rejection_retries_once_without_think() {
+        let t = ScriptedTransport::new(vec![Err(think_rejection()), Ok(ollama_body("hello"))]);
+        let resp = run_ollama(&t, "OLLAMA", "qwen3:8b")
+            .await
+            .expect("completion");
+        assert_eq!(resp.content, "hello");
+
+        let seen = t.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "expected the original attempt + one retry");
+        let first: serde_json::Value = serde_json::from_slice(&seen[0].body).unwrap();
+        assert_eq!(first["think"], serde_json::json!(false));
+        let retry: serde_json::Value = serde_json::from_slice(&seen[1].body).unwrap();
+        assert!(retry.get("think").is_none());
+        assert_eq!(first["messages"], retry["messages"]);
+        assert_eq!(first["options"], retry["options"]);
+    }
+
+    /// Arm 2 — both attempts rejected: the SECOND message surfaces, two calls.
+    #[tokio::test]
+    async fn think_rejection_twice_surfaces_the_second_error() {
+        let t = ScriptedTransport::new(vec![
+            Err(think_rejection()),
+            Err(TransportError {
+                message: "HTTP 500: still thinking about it".to_string(),
+                status: Some(500),
+            }),
+        ]);
+        let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
+            .await
+            .expect_err("both attempts fail");
+        assert_eq!(err.message, "HTTP 500: still thinking about it");
+        assert_eq!(t.seen.lock().unwrap().len(), 2);
+    }
+
+    /// Arm 3 — a think-UNRELATED error never retries.
+    #[tokio::test]
+    async fn a_non_think_error_never_retries() {
+        let t = ScriptedTransport::new(vec![
+            Err(TransportError {
+                message: r#"HTTP 404: {"error":"model \"nope\" not found"}"#.to_string(),
+                status: Some(404),
+            }),
+            Ok(ollama_body("unreachable")),
+        ]);
+        let err = run_ollama(&t, "OLLAMA", "qwen3:8b")
+            .await
+            .expect_err("404 surfaces");
+        assert!(err.message.contains("404"));
+        assert_eq!(t.seen.lock().unwrap().len(), 1);
+    }
+
+    /// Arm 4 — the salvage is Ollama-only.
+    #[tokio::test]
+    async fn the_salvage_is_ollama_only() {
+        let t = ScriptedTransport::new(vec![
+            Err(think_rejection()),
+            Ok(br#"{"choices":[{"message":{"content":"unreachable"}}]}"#.to_vec()),
+        ]);
+        let err = run_ollama(&t, "OPENAI_COMPATIBLE", "local-model")
+            .await
+            .expect_err("the failure surfaces unchanged");
+        assert!(err.message.contains("400"));
+        assert_eq!(t.seen.lock().unwrap().len(), 1);
     }
 }

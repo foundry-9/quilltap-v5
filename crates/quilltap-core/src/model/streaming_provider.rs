@@ -348,41 +348,64 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
             let bytes_rx = match self.transport.execute_stream(&request, &self.policy).await {
                 Ok(rx) => rx,
                 Err(e) => {
-                    // Pre-stream failure. If this was a chained request, retry once
-                    // with the full input (the fallback); a plain pre-stream failure
-                    // with no chaining keeps today's single-error behavior
-                    // byte-for-byte.
-                    let fallback = match fallback_prepared {
-                        Some(fb) => fb,
-                        None => return single_error(e.message),
-                    };
-                    let (fallback_request, fallback_decoder, fallback_attachment_results) =
-                        match fallback {
-                            Ok(p) => p,
-                            // The full-input build can only fail where the chained
-                            // build already did (and that returned above), but stay
-                            // loud rather than swallow.
-                            Err(pe) => return single_error(pe.message),
-                        };
-                    tracing::warn!(
-                        target: "quilltap::model::streaming_provider",
-                        provider = %request.provider,
-                        "Conversation chaining failed, falling back to full input"
-                    );
-                    match self
-                        .transport
-                        .execute_stream(&fallback_request, &self.policy)
-                        .await
-                    {
-                        Ok(rx) => {
-                            // Swap in the full-input build's decoder + attachment
-                            // report for the pump below.
-                            decoder = fallback_decoder;
-                            attachment_results = fallback_attachment_results;
-                            rx
+                    // P4.D78 (v4 `d9c5a1c7`): an Ollama model that refuses the
+                    // `think` parameter gets ONE retry with the key deleted.
+                    // Re-calling `execute_stream` re-arms the first-byte timer
+                    // per attempt, which is v4's `openStream()` refactor
+                    // verbatim (the `AbortController` is built inside it). This
+                    // arm is provider-disjoint from the chaining fallback below
+                    // — only OPENAI chains, only OLLAMA carries `think`.
+                    if let Some(retry) = crate::model::ollama_think_retry::think_retry_request(
+                        provider, &request, &e,
+                    ) {
+                        tracing::warn!(
+                            target: "quilltap::model::streaming_provider",
+                            provider = %request.provider,
+                            error = %e.message,
+                            "Ollama rejected the think parameter; retrying without it"
+                        );
+                        match self.transport.execute_stream(&retry, &self.policy).await {
+                            Ok(rx) => rx,
+                            // v4 surfaces the SECOND failure (the retry's error).
+                            Err(retry_err) => return single_error(retry_err.message),
                         }
-                        // v4 surfaces the SECOND failure (the retry's error).
-                        Err(retry_err) => return single_error(retry_err.message),
+                    } else {
+                        // Pre-stream failure. If this was a chained request, retry once
+                        // with the full input (the fallback); a plain pre-stream failure
+                        // with no chaining keeps today's single-error behavior
+                        // byte-for-byte.
+                        let fallback = match fallback_prepared {
+                            Some(fb) => fb,
+                            None => return single_error(e.message),
+                        };
+                        let (fallback_request, fallback_decoder, fallback_attachment_results) =
+                            match fallback {
+                                Ok(p) => p,
+                                // The full-input build can only fail where the chained
+                                // build already did (and that returned above), but stay
+                                // loud rather than swallow.
+                                Err(pe) => return single_error(pe.message),
+                            };
+                        tracing::warn!(
+                            target: "quilltap::model::streaming_provider",
+                            provider = %request.provider,
+                            "Conversation chaining failed, falling back to full input"
+                        );
+                        match self
+                            .transport
+                            .execute_stream(&fallback_request, &self.policy)
+                            .await
+                        {
+                            Ok(rx) => {
+                                // Swap in the full-input build's decoder + attachment
+                                // report for the pump below.
+                                decoder = fallback_decoder;
+                                attachment_results = fallback_attachment_results;
+                                rx
+                            }
+                            // v4 surfaces the SECOND failure (the retry's error).
+                            Err(retry_err) => return single_error(retry_err.message),
+                        }
                     }
                 }
             };
@@ -516,12 +539,29 @@ mod tests {
     struct ScriptedStreamTransport {
         // Front-popped per call: `Err(message)` = pre-stream failure; `Ok(frames)`
         // = a scripted byte stream.
-        outcomes: Mutex<std::collections::VecDeque<Result<Vec<StreamBytes>, String>>>,
+        outcomes: Mutex<std::collections::VecDeque<Result<Vec<StreamBytes>, TransportError>>>,
         seen: Mutex<Vec<TransportRequest>>,
     }
 
     impl ScriptedStreamTransport {
         fn new(outcomes: Vec<Result<Vec<StreamBytes>, String>>) -> Self {
+            Self::typed(
+                outcomes
+                    .into_iter()
+                    .map(|o| {
+                        o.map_err(|message| TransportError {
+                            message,
+                            status: None,
+                        })
+                    })
+                    .collect(),
+            )
+        }
+
+        /// Outcomes carrying a real [`TransportError`] — the think-retry tests
+        /// need `status: Some(..)` (v4's `!response.ok`), which a bare message
+        /// cannot express.
+        fn typed(outcomes: Vec<Result<Vec<StreamBytes>, TransportError>>) -> Self {
             Self {
                 outcomes: Mutex::new(outcomes.into()),
                 seen: Mutex::new(Vec::new()),
@@ -552,10 +592,7 @@ mod tests {
             let outcome = self.outcomes.lock().unwrap().pop_front();
             Box::pin(async move {
                 match outcome {
-                    Some(Err(message)) => Err(TransportError {
-                        message,
-                        status: None,
-                    }),
+                    Some(Err(e)) => Err(e),
                     Some(Ok(frames)) => {
                         let (tx, rx) = tokio::sync::mpsc::channel(frames.len().max(1));
                         for f in frames {
@@ -1015,6 +1052,146 @@ mod tests {
             2,
             "one retry, then stop"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // P4.D78 — the Ollama retry-without-`think` quartet (streaming half).
+    //
+    // v4 wraps the stream OPEN in the salvage, so each attempt re-arms the
+    // first-byte timer (its `openStream()` refactor). Note the fourth arm:
+    // v4's own suite proves a `think: false` body DOES retry (its guard is
+    // `'think' in requestBody`, key presence — not truthiness), so the arm
+    // that must not fire is the provider scope, not the flag's value.
+    // ------------------------------------------------------------------
+
+    fn ollama_params() -> StreamParams {
+        params("qwen3:8b")
+    }
+
+    fn ollama_stream(text: &str) -> Vec<StreamBytes> {
+        vec![Ok(format!(
+            "{{\"model\":\"qwen3:8b\",\"message\":{{\"role\":\"assistant\",\"content\":\"{text}\"}},\"done\":false}}\n\
+             {{\"model\":\"qwen3:8b\",\"message\":{{\"role\":\"assistant\",\"content\":\"\"}},\"done\":true}}\n"
+        )
+        .into_bytes())]
+    }
+
+    fn think_rejection() -> TransportError {
+        TransportError {
+            message: r#"HTTP 400: {"error":"\"qwen3:8b\" does not support disabling thinking"}"#
+                .to_string(),
+            status: Some(400),
+        }
+    }
+
+    /// Arm 1 — rejected, then retried WITHOUT `think`, and the stream proceeds.
+    #[tokio::test]
+    async fn think_rejection_retries_once_without_think() {
+        let t = ScriptedStreamTransport::typed(vec![
+            Err(think_rejection()),
+            Ok(ollama_stream("hello")),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OLLAMA", None, &ollama_params()).await).await;
+        let chunks: Vec<_> = items.iter().map(|r| r.as_ref().unwrap()).collect();
+        assert_eq!(
+            chunks
+                .iter()
+                .map(|c| c.content.as_str())
+                .collect::<String>(),
+            "hello"
+        );
+        assert!(chunks.last().unwrap().done);
+
+        let seen = p.transport.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "expected the original attempt + one retry");
+        let first: serde_json::Value = serde_json::from_slice(&seen[0].body).unwrap();
+        // The default profile sends `think: false` — and v4 retries anyway,
+        // because its guard is key PRESENCE.
+        assert_eq!(first["think"], serde_json::json!(false));
+        let retry: serde_json::Value = serde_json::from_slice(&seen[1].body).unwrap();
+        assert!(
+            retry.get("think").is_none(),
+            "the retry deletes the think key"
+        );
+        // Nothing else moves: the retry is the same body minus one key.
+        assert_eq!(first["model"], retry["model"]);
+        assert_eq!(first["options"], retry["options"]);
+        assert_eq!(seen[0].url, seen[1].url);
+    }
+
+    /// Arm 2 — both attempts rejected: one error carrying the SECOND message,
+    /// and exactly two calls (the retry body has no `think` left to delete, so
+    /// the salvage cannot loop).
+    #[tokio::test]
+    async fn think_rejection_twice_is_a_single_error() {
+        let t = ScriptedStreamTransport::typed(vec![
+            Err(think_rejection()),
+            Err(TransportError {
+                message: "HTTP 500: still thinking about it".to_string(),
+                status: Some(500),
+            }),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OLLAMA", None, &ollama_params()).await).await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].as_ref().unwrap_err().message,
+            "HTTP 500: still thinking about it"
+        );
+        assert_eq!(p.transport.seen.lock().unwrap().len(), 2);
+    }
+
+    /// Arm 3 — a think-UNRELATED error never retries (v4's `isThinkRejection`).
+    #[tokio::test]
+    async fn a_non_think_error_never_retries() {
+        let t = ScriptedStreamTransport::typed(vec![
+            Err(TransportError {
+                message: r#"HTTP 404: {"error":"model \"nope\" not found"}"#.to_string(),
+                status: Some(404),
+            }),
+            Ok(ollama_stream("unreachable")),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OLLAMA", None, &ollama_params()).await).await;
+        assert_eq!(items.len(), 1);
+        assert!(items[0].as_ref().unwrap_err().message.contains("404"));
+        assert_eq!(p.transport.seen.lock().unwrap().len(), 1);
+    }
+
+    /// Arm 4 — the salvage is Ollama-only. A think-mentioning failure on another
+    /// provider surfaces unchanged (that provider's body has no `think` key and
+    /// v4's code does not exist outside the Ollama plugin).
+    #[tokio::test]
+    async fn the_salvage_is_ollama_only() {
+        let t = ScriptedStreamTransport::typed(vec![
+            Err(think_rejection()),
+            Ok(responses_api_stream("unreachable")),
+        ]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let items = drain(p.stream_message("OPENAI", None, &params("gpt-4o")).await).await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(p.transport.seen.lock().unwrap().len(), 1);
     }
 
     /// A pre-stream failure with NO chaining keeps the single-error behavior — no

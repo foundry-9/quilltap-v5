@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Ollama declares tool use, and the retry-without-think lands (P4.D78 units
+5-6, v4 d9c5a1c7): a non-ok Ollama response whose body mentions "think" now
+re-sends once with the parameter deleted, on both the streaming and the
+non-streaming path, proven by fake-transport quartets and a new tier-3 arm
+driving v4's real plugin with fetch mocked below it. The regenerated
+manifests flip `OLLAMA.capabilities.toolUse` to true.
+
+Fixed the provider-manifest generator's stale google auth entry: P4.47
+corrected the committed manifest to the `x-goog-api-key` header but not the
+generator's augmentation table, so the next regen would have silently
+reverted it (the P4.39 class of rot).
+
 The Ollama stream decoder now routes reasoning (P4.D78 unit 4, v4
 d9c5a1c7): native `message.thinking` deltas and inline `<think>` interiors
 land on one cumulative `reasoningContent`, reasoning-only chunks carry empty

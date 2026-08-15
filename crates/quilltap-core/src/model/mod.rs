@@ -29,6 +29,7 @@ pub mod embedding_wire;
 pub mod image;
 pub mod image_dialects;
 pub mod ollama_think_parser;
+pub mod ollama_think_retry;
 pub(crate) mod provider_auth;
 pub mod provider_io;
 pub mod provider_models_api;

@@ -35,6 +35,13 @@
  * the only symptom was a blank `defaultModels` in `imageProfileList`). The regen
  * recipe below is safe to run straight into the manifest dir again.
  *
+ * Repaired AGAIN 2026-08-15 by P4.D78, same class: P4.47 (B) corrected google's
+ * `auth` to the `x-goog-api-key` HEADER in the committed manifest and never
+ * taught the AUGMENTATION table below, so the first regen after it would have
+ * reverted the fix. **When a hand-fix lands in a committed manifest, fix this
+ * table in the same commit** — the augmentation fields are exactly the ones no
+ * v4 getter can re-derive, so nothing else will catch the drift.
+ *
  * Regen recipe (after a v4 provider-metadata drift):
  *   cd ~/source/quilltap-server
  *   node ~/source/quilltap-v5/harness/oracle/providers/gen-provider-manifests.mjs \
@@ -90,7 +97,15 @@ const PROVIDERS = [
     aug: {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
       endpoints: { chat: '/models', models: '/models' },
-      auth: { kind: 'query', param: 'key' },
+      // P4.47 (B), re-applied here by P4.D78: v4 builds
+      // `new GoogleGenAI({apiKey, httpOptions})` and the SDK sets
+      // `X-Goog-Api-Key` on every request, leaving the url untouched (the only
+      // `?key=` in the whole plugin is the unused Live/WebSocket path). P4.47
+      // corrected the COMMITTED manifest but not this table, so re-running the
+      // recipe silently reverted the fix — the P4.39 `imageGenerationModels`
+      // class of rot. Pinned in both directions by
+      // `request_builder_google_wire_equivalence`.
+      auth: { kind: 'header', header: 'x-goog-api-key' },
       streamDecoder: 'google-parts',
       requestTransform: 'google',
     },

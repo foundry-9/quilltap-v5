@@ -17,6 +17,67 @@ packages/ plugins/` is strictly one-directional (every hunk removes what main
 added — bugfix is behind, carrying nothing portable). Regen therefore runs
 straight from the checkout, no pinned worktree.
 
+**Unit 5 — the retry-without-`think`, both paths (core 0.0.554, harness
+0.0.478).** New `model/ollama_think_retry.rs` holds the predicate as three
+literal readings of v4's guards: `!response.ok` → `TransportError::status`
+is `Some` (a network failure/timeout carries `None` and never reaches v4's
+branch either), `isThinkRejection` → `/think/i` over the error text, and
+`'think' in requestBody` → the built body still carries the key, which makes
+the salvage one-shot by construction. The retry body is v4's
+`delete` + re-`stringify`: `shift_remove`, so every other key keeps its
+position. Wired into BOTH compositions — `execute_completion` and
+`WireStreamingProvider::stream_message`, where re-calling `execute_stream`
+re-arms the first-byte timer per attempt (v4's `openStream()` refactor). The
+streaming arm is provider-disjoint from the P4.41 chaining fallback (only
+OPENAI chains, only OLLAMA carries `think`), so the two salvages cannot
+interact.
+
+**⚠ The order's fourth quartet arm was wrong about v4, and the oracle proves
+it.** The order asked for "think-off body never retries" — but v4's guard is
+key PRESENCE, not truthiness, and v4's own suite retries on a default
+`think: false` body. The tier-3 oracle records exactly that
+(`attempts[0].think == false`, followed by a retry). The arm that must NOT
+fire is the provider scope, so the quartets are: rejects-then-succeeds,
+rejects-twice (the SECOND error surfaces; exactly two attempts), a
+think-unrelated error never retries, and the salvage is Ollama-only. Both
+compositions carry all four (8 unit tests), plus 4 predicate tests pinning
+the key-order-preserving delete.
+
+*The tier-3 arm* (`ollama_think_retry_tier3_equivalence`, new family): the
+oracle drives v4's REAL `OllamaProvider.streamMessage` AND `.sendMessage`
+with only `global.fetch` mocked below them, recording per arm the **attempt
+fingerprint** — how many requests v4 issued and whether each body still
+carried `think`, with its value — plus the recovered content or the raised
+failure. Three arms × two methods; v5 drives the REAL compositions over a
+scripted transport serving the same outcomes. **One documented, pre-existing
+divergence: the error TEXT** — v4 raises `Ollama API error: <status> <body>`
+where v5's single reqwest transport renders every provider's non-2xx as
+`HTTP <status>: <body>` (the nine-SDK collapse in `model::transport`'s
+header). The comparison asserts v4 and v5 agree on *whether* the call failed
+and that v5 carries v4's status and body text, so it is not vacuous. A
+`retried >= 4` floor keeps an oracle that lost the retrying arms from
+passing green. Mutation-proven: dropping `is_think_rejection` from the
+predicate → red at `non-think-error/stream`.
+
+**Unit 6 — the manifest regen (same commit).** `gen-provider-manifests.mjs`
+re-run against the pinned checkout: `OLLAMA.capabilities.toolUse` flips
+`false → true` (the per-profile Allow Tool Use checkbox stays the gate). The
+generated manifests carry no version field, so v4's `1.0.40 → 1.0.41` bump
+has no v5 surface. `provider_registry_equivalence` + `providers_listing_
+equivalence` regenerated fresh and green; mutation-proven (forcing `toolUse:
+false` reddens the registry family at the `supportsCapability` row).
+
+**⚠ The regen exposed a SECOND stale-generator bug, fixed here.** Running the
+committed recipe also rewrote `google.json`'s `auth` from the
+`x-goog-api-key` HEADER back to `?key=` — reverting **P4.47 (B)**, which had
+corrected the committed manifest and never taught the generator's
+AUGMENTATION table. That is the P4.39 `imageGenerationModels` class exactly:
+the augmentation fields are the ones no v4 getter can re-derive, so nothing
+else can catch the drift. The table now carries the header form with the
+reasoning, and the generator's header gained the standing rule — *when a
+hand-fix lands in a committed manifest, fix the table in the same commit*.
+Re-run after the repair: `ollama.json` is the ONLY changed file.
+
 **Unit 4 — the streaming decoder + the recorded corpus (core 0.0.553,
 harness 0.0.477).** `OllamaNdjsonDecoder` gains the reasoning routing: native
 `message.thinking` deltas append to `reasoning_so_far`; content deltas go
