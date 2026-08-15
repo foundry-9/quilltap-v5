@@ -70720,3 +70720,240 @@ sibling oracle is invalidated.
 - **The v4-side filing** for the swallow (v4's own preflight reads an
   unreadable table as "the id is free") is owed to the human's upstream
   list — this lane does not patch v4, since that moves the oracle baseline.
+## P4.D81 unit 1 — the multi-character prefill default, client twin (v4 `23af7146`)
+
+**Branch:** `claude/p4-drift-spa-riders-port-86c19f`. **v4 pin:**
+`aa464abf` (drift-checked at lane start: `git log aa464abf..main` empty,
+tree clean on `main`; `bugfix` measured by `git diff main bugfix -- lib/
+app/ packages/ plugins/ components/` — behind main, nothing portable).
+
+**What landed.** `apps/web/src/app/screens/settings/providers/
+multi-character-prefill.ts` — `defaultMultiCharacterPrefill(provider)`,
+transcribed from v4 `lib/llm/multi-character-prefill.ts:36,41-44`: an exact
+Set membership test on the upper-cased provider, `ANTHROPIC` the only
+member, an absent/empty provider `true`.
+
+**Scope of the twin — deliberately half of v4's module.** v4's file also
+exports `profileUsesNamePrefill` (`:52-59`), the tri-state resolution of a
+STORED value. v5 keeps that server-side (P4.D79's
+`services/multi_character_prefill.rs`) and nothing in the SPA resolves a
+stored value: the form seeds `profile.multiCharacterPrefill ?? default(...)`
+(unit 2) and sends whatever the box holds, so the client only ever needs the
+default. Recorded in the module doc-comment so a later reader does not read
+the missing export as a drop.
+
+**The differential.** v4's client is the oracle (the standing SPA rule).
+`multi-character-prefill.spec.ts` transcribes v4's own suite case for case
+(`__tests__/unit/lib/llm/multi-character-prefill.test.ts:8-28`) and adds two
+arms v4 leaves implicit: a mixed-case `Anthropic`, and
+`ANTHROPIC_COMPATIBLE` → `true` (the membership test is exact, not a
+substring match — the arm that would go red if the port reached for
+`includes`).
+
+**Gate:** `ng test --filter "defaultMultiCharacterPrefill"` — 5 passed.
+
+## P4.D81 unit 2 — the multi-character prefill checkbox (v4 `23af7146`)
+
+**What landed.** The field end to end in the profile editor:
+`ProfileFormData.multiCharacterPrefill: boolean` (+ `initialFormState` true),
+the load seed `profile.multiCharacterPrefill ?? defaultMultiCharacterPrefill(
+profile.provider)`, the carry on BOTH request bodies, the checkbox in v4's DOM
+slot (after the pseudo-tool block, before Supports image attachments) with
+v4's label/helpText/warning bytes, and the provider-switch re-seed inside the
+existing new-profile guard. `ConnectionProfileDto` gains
+`multiCharacterPrefill?: boolean | null` (Contract B) — carried verbatim off
+the wire, tri-state preserved.
+
+**The form is never tri-state.** v4's `null` means "never chosen"; the form
+resolves it once at load and holds a plain boolean thereafter, so an edit-save
+of an old Anthropic row writes an explicit `false` rather than leaving the
+column null. That is v4's behaviour too (its `buildRequestBody` sends
+`form.formData.multiCharacterPrefill` unconditionally) — noted because it
+means the SPA has no way to write a null back, by design.
+
+**The differential (v4's client as oracle).** `profile-form.spec.ts` (new)
+pins the pure half: the initial true, a stored true/false verbatim (incl. the
+tri-state's point — an OPENAI profile deliberately OFF must not read back ON),
+the null/absent seed per PROVIDER (Anthropic false, OpenAI true), and both
+bodies' carry. `profile-modal.spec.ts` gains the modal's three obligations:
+render + help text with no warning; the provider switch re-seeding a NEW
+profile both ways (OPENAI → ANTHROPIC → OPENAI) and NOT clobbering a saved
+choice on an existing one; the warning appearing only when the box is ticked
+against the provider default.
+
+**Mutation-proven:** the courier carry — the row v4 pointedly does NOT force
+false while forcing its two neighbours. Hardcoding `multiCharacterPrefill:
+true` in the courier branch reddens the courier arm (1 failed), and the arm
+asserts BOTH values so a hardcoded `true` cannot pass. Restored, green.
+
+**Gate:** `ng test --filter "multiCharacterPrefill"` 5 passed;
+`--filter "ProfileModal"` 15 passed.
+
+## P4.D81 unit 3 — Ollama's Enable Thinking, and the parameters bag that stopped leaking (v4 `d9c5a1c7`)
+
+**Two things, and the second is the bigger one.**
+
+**(a) The checkbox.** v4 renders `enable_thinking` from the Ollama plugin's new
+`getProviderOptionsSchema()` through the generic `ProviderOptionsPanel`. v5 has
+no option-schema machinery (`optionsSchema` hardcoded null — the standing
+documented absence, P4.D78 Tier 3), so the row is a HARDCODED provider-gated
+field writing the same `parameters.enable_thinking` key (Contract A). v4's
+label (`Enable Thinking`), its four helpText sentences, and the panel's
+`Ollama Options` heading + `qt-settings-shell` chrome are carried, so the
+rendered result matches; only the mechanism differs. **Recorded as a mechanism
+divergence in the component doc-comment**, explicitly NOT a stepping stone.
+
+**One ordered behaviour divergence:** v4's `BooleanField` checks
+`value === true` (`ProviderOptionsPanel.tsx:143`); v5 also accepts the STRING
+`'true'`, because the wire side does (Contract A). A profile carrying the
+string form behaves as ON, so v4 would show it OFF — and the next save would
+"fix" it to a real false without the user touching it.
+
+**(b) The bag round-trip — a real v5 defect this unit closes.**
+`buildProfileRequestBody` built `parameters` from the three sampling controls
+ALONE, so opening any profile and pressing Update silently DROPPED every other
+key in the blob. Nothing rendered them, so nothing noticed; but the wire side
+reads several — `num_ctx` (P4.D79 injects it, "an explicit non-null `num_ctx`
+already in the stored blob wins"), and OpenRouter's
+`providerPreferences`/`enableZDR` (`request_builder/chat_completions.rs:697,947`).
+`ProfileFormData` now carries v4's `rawParams` bag (the blob minus the three
+sampling keys) and the builder spreads it after them, in v4's order.
+
+**Not ported, deliberately:** v4's legacy OpenRouter
+`providerPreferences → enableZDR` translation-and-delete on load
+(`useProfileForm.ts:51-56`). It exists to feed the schema renderer v5 lacks,
+and porting the DELETE half alone would destroy data v5's own request builder
+still reads. Recorded at the load site.
+
+**The differential.** `profile-form.spec.ts` gains five arms: the strip on
+load (three sampling keys out, everything else verbatim), non-mutation of the
+source DTO, the save carrying controls + bag, an untouched-profile byte-for-byte
+round-trip (the regression pin), and the courier's still-empty bag. The modal
+spec gains six: hidden for non-Ollama; default unchecked with v4's help text;
+stored `true`; stored `'true'`; any other string OFF (the tolerance is exact,
+not truthy); and a save writing a real BOOLEAN while `temperature`/`num_ctx`
+ride through untouched.
+
+**Mutation-proven:** dropping `...form.parameters` from the builder reddens
+three arms (the round-trip, the save-carry, and the modal's write-through);
+restored, 42 passed.
+
+**Gate:** `ng test --filter "Enable Thinking"` 6 passed; `--filter "bag"` 42
+passed (the file's whole set).
+
+## P4.D81 unit 4 — the archived-badge beat FLIP, and the pass-through pin (v4 `aa464abf` bug 66)
+
+**The flip (Contract C).** `character-archive-flow.spec.ts`'s round-1 beat
+pinned a v4 BUG faithfully: on a fresh load neither app could light the
+Archived badge, because the chat GET enriches through `getCharacterDetail`,
+which never carried `archivedAt`. v4 `aa464abf` fixed it — so the ⚠ header is
+retired and the beat now asserts BOTH badges (`.qt-badge-absent` × 2, `Absent`
+then `Archived`, plus the Archived badge's title). Gated behind the new
+`P4D80_ENRICHMENT_LANDED = false`, a NAMED constant per the standing e2e rule
+(a probe cannot tell an absent key from a seat that simply is not archived);
+the unifier flips it and RUNS the beat at first activation. Seeds stay derived
+from the shared seeder module, never transcribed (the `f4955e0e` lesson).
+
+**The v5 half of bug 66 was already right, and is now pinned.** v4 had TWO
+drop sites; the second was `useParticipants`, which rebuilt each participant's
+`character` field by field for `ParticipantCard`. **v5 has no such rebuild** —
+`salon-conversation.ts:487` binds `chat()!.participants` straight through
+`chat-sidebar` → `participants-section` → `participant-card`, contract-typed.
+Surveyed (Tier 2 item 7) and now pinned by a `chat-sidebar.spec.ts` arm that
+badges from the payload alone, with a control seat lacking the key asserting
+`['Absent']` so the positive arm cannot pass on the status alone.
+
+So the whole v5-side fix belongs to P4.D80's `chat_enrichment.rs`; nothing in
+`apps/web` needed a change, which is what the flipped beat will prove.
+
+**Gate:** `ng test --filter "archivedAt"` 1 passed; `playwright --list` over
+the file — 10 tests, the flipped beat present at `:219`.
+
+## P4.D81 unit 5 — the bug-67 convergence records, and the greeting fold pin
+
+**Bug 67 — v4 converged on v5, so the records flip.** v5's composer has sent
+the SOURCE textarea's bytes since P4.9L, recorded there as a DELIBERATE
+DIVERGENCE naming `SalonView.tsx:1581` and queued as a v4-side finding. v4
+`aa464abf` adopted exactly that, routing both halves through the new
+`app/salon/[id]/composer-source-mode.ts`
+(`resolveComposerSubmitText` / `resolveComposerHasContent`). **No v5 behaviour
+changed**: the `chat-composer.ts` comment and the toolbar spec's tail now
+record the convergence instead of the divergence.
+
+**Both halves measured, not assumed.** v4's fix has a second half — the Send
+GATE, which in v4 read the editor's stale presence flag. v5 reaches the same
+place by a different route: `onSourceInput` → `onContentChange` feeds `text()`,
+which `canSend` reads. Surveyed and now PINNED by a new toolbar-spec arm: with
+nothing typed the gate is shut, text typed ONLY in the source textarea opens it,
+and the submit carries those bytes. (v4's new `composer-source-mode.test.ts`
+is 54 lines of case shapes; nothing to port — v5 has one composer component
+where v4 has a page plus a child, so there is no seam to put a module on.)
+
+**Tier 2 — the greeting thinking fold.** P4.D79's server half persists
+`reasoningContent` on an auto-generated opening greeting (v4 `23af7146`'s
+second fix: `generateGreetingMessage` read `chunk.content` and dropped the
+rest). The rendering side needs nothing new — a greeting is simply the chat's
+first assistant message, and `reasoningBlocks()` already folds a bare
+`reasoningContent` into one block. Pinned anyway, with its negative arm, so
+the two halves cannot drift apart unnoticed.
+
+**Gate:** `ng test --filter "Send lights"` 1 passed; `--filter "greeting"` 4
+passed.
+
+## P4.D81 — the lane's deferrals, verdicts, and gate
+
+**Tier 3, loud (all three, plus one the survey turned up).**
+
+1. **The optionsSchema machinery stays unported** (the standing documented
+   absence; P4.D78's Tier 3). Unit 3's hardcoded Ollama row is the RECORDED
+   MECHANISM DIVERGENCE, not a stepping stone: when the schema machinery is
+   eventually ported, the hardcoded row is deleted, not extended. Consequence
+   worth naming — any option a plugin adds after this baseline is invisible in
+   the v5 editor until someone hardcodes it or the machinery lands. It is now
+   preserved-on-save rather than dropped (unit 3), which is the difference
+   between "not editable" and "destroyed by editing".
+2. **💸 A live-Ollama proof is owed** — a real thinking model streaming into the
+   fold with the box ticked, and the same chat with the prefill box unticked
+   (v4's own bug-68 verification shape: prefill on → 0 reasoning chars, off →
+   hundreds). Joins the standing dogfood queue with this round's other 💸 items.
+   Nothing in this lane can prove it: v5's Ollama wire is P4.D78's, and the SPA
+   half only writes the key.
+3. **v4's `ProfileFormData` modernization (CHANGELOG_V4:4123 — nine top-level
+   provider fields folded into the `parameters` bag) is OUT OF SCOPE and this
+   drift did not touch it.** Measured, since the order asked: v5's form never
+   carried those nine fields (`fallbackModels`, `enableZDR`, `providerOrder`,
+   `useCustomModel`, `enableCacheBreakpoints`, `cacheStrategy`, `cacheTTL`,
+   `verbosity`, `reasoningEffort`) — it was written after the modernization, so
+   v5's shape was already v4's post-modernization shape MINUS the bag. Unit 3
+   supplied the bag, so the shapes now agree; what remains missing is only the
+   renderer (item 1).
+4. **The e2e gate flip is Contract C's** — `P4D80_ENRICHMENT_LANDED` is the
+   unifier's to flip, and the beat is theirs to run live.
+
+**Verdicts on the order's "verify, don't edit" items.**
+
+- **`allowToolUse` seeding on new Ollama profiles** (`profile-modal.ts:637-639`
+  in the order's survey; now `:698` after the prefill re-seed): verified
+  UNTOUCHED and correct. It reads `cfg?.capabilities?.toolUse`, so P4.D78's
+  manifest flip makes new Ollama profiles default-ticked with zero SPA change.
+- **The participant pipeline** (Tier 2 item 7): no rebuild-drop exists; pinned
+  in unit 4.
+- **The greeting fold**: renders from `reasoningContent` already; pinned in
+  unit 5.
+
+**Not deferred but worth flagging to the unifier:** unit 3's bag round-trip is
+a REAL behaviour change beyond v4-parity bookkeeping — before it, any profile
+save from the v5 editor dropped `num_ctx` and OpenRouter's preference keys.
+P4.D79's `num_ctx` injection reads "an explicit non-null `num_ctx` already in
+the stored blob wins", so the two lanes meet exactly here.
+
+**The lane gate.** `ng test`: **324 files / 4,741 tests / 0 failed** (exit 0).
+`ng build`: clean. **Playwright `character-archive-flow.spec.ts` by name: 9
+passed / 1 skipped** (exit 0) — the skip is the flipped beat in its GATED form,
+by design; the other nine ran live against the real axum server, so the flip did
+not disturb the file's siblings (beat 6, the seeded-stamp beat that shares the
+sidebar gesture, is green). The lane built its own debug `quilltap-web` +
+`quilltap` for the run; no `--release` build was made. Diff scope confirmed
+`apps/web/**` + the two append-only docs — **no `crates/**`, no `harness/**`**.
+Spelling guard run over every touched file, clean. Versions: SPA 0.5.487 →
+0.5.492; no crate touched.

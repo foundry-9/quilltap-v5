@@ -771,14 +771,18 @@ export class ChatComposer implements OnInit {
     // decoupled ComposerSyncPlugin posture) — authoritative over the debounced
     // `text` signal, and byte-faithful to the v4 composer dialect.
     //
-    // DELIBERATE DIVERGENCE in source mode: v4 reads the LEXICAL handle here
-    // too (`SalonView.tsx:1581`) while its bridge is `suspendSync`ed, so a send
-    // made with the raw-source textarea open silently discards every source
-    // edit — and since `hasContent` also comes from the editor, the Send button
-    // does not even light for text typed there. v5 sends the bytes the writer
-    // can see. Same shape as the markdown-field picker divergence (P4.D75): a
-    // control that visibly does nothing is not worth reproducing. Queued as a
-    // v4-side finding.
+    // In source mode the TEXTAREA is authoritative, not the editor handle: its
+    // bridge is `suspendSync`ed, so the handle still holds the pre-toggle
+    // document. This began as a v5 divergence (v4 read the handle
+    // unconditionally, silently discarding every source edit on send) and was
+    // queued as a v4-side finding; **v4 CONVERGED at `aa464abf`** (bug 67), which
+    // routes both halves of the decision through its new
+    // `app/salon/[id]/composer-source-mode.ts` —
+    // `resolveComposerSubmitText(showSource, input, editorMarkdown)` for the
+    // bytes and `resolveComposerHasContent` for the Send gate. v5's second half
+    // is `onSourceInput` → `onContentChange`, which keeps `text()` (and so
+    // `canSend`) in step with the textarea. Same behaviour, no shared module:
+    // v5 has one composer component where v4 has a page and a child.
     const content = this.showSource() ? this.sourceText() : (this.editorView()?.getMarkdown() ?? '');
     this.send.emit({
       content: content.trim(),

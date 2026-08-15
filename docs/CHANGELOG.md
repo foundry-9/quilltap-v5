@@ -176,6 +176,36 @@ v4 propagates here: v4 swallows the same read errors, so this is a
 deliberate divergence under the import/restore ruling, except on the
 unavailable-document-store leg, where v4 genuinely throws and v5 was simply
 wrong.
+Recorded the P4.D81 lane's deferrals and gate: the provider option-schema
+renderer stays unported, a live Ollama thinking proof is owed, and the archived
+badge beat's gate is the unifier's to flip.
+
+Recorded that v4 adopted Quilltap-v5's source-view send behavior in 4.9: a send
+made with the raw-Markdown view open ships what the writer can see. No behavior
+change here — comments and test notes only, plus a spec pinning that Send lights
+for text typed only in source view.
+
+Turned the archived-seat sidebar beat around: it now expects both the Absent
+and Archived badges on a fresh load, gated until the server projection that
+makes that possible lands beside it.
+
+Added an Ollama "Enable Thinking" option to the connection-profile editor,
+writing `enable_thinking` into the profile's parameters. Editing a profile no
+longer drops the parameter keys the editor shows no control for — `num_ctx`,
+OpenRouter's provider preferences, and the rest now survive a save.
+
+Added the multi-character prefill checkbox to the connection-profile editor:
+"Announce the speaker in multi-character scenes ([Name] prefill)", seeded from
+the stored value or, when a profile has never chosen, from the provider
+default. Switching provider re-seeds it on a new profile and leaves a saved
+one alone. Ticking it on Anthropic warns that recent models reject a request
+handed over mid-turn. The value ships on create and update, including the
+Courier's, which renders the same assembled context.
+
+Ported v4's multi-character prefill default into the SPA
+(`defaultMultiCharacterPrefill`): off for Anthropic, on for every other
+provider, on when the provider is absent. It seeds the connection-profile
+editor's new checkbox; the stored value's resolution stays server-side.
 
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the

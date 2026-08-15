@@ -3083,6 +3083,16 @@ export interface ConnectionProfileDto {
   useNativeWebSearch?: boolean;
   allowToolUse?: boolean;
   pseudoToolMode?: 'auto' | 'native' | 'simple-json' | 'text-block';
+  /**
+   * P4.D81 Contract B (v4 `types.ts:67-72`, `23af7146`): the multi-character
+   * turn anchor. `true` prefills an assistant `[Name]` message, `false` appends
+   * a prose instruction instead. **Tri-state on purpose** — `null`/absent means
+   * the profile never chose (a row older than the column, or one imported from
+   * a pre-4.9 bundle) and resolves to
+   * `defaultMultiCharacterPrefill(provider)`. Carried verbatim off the wire; the
+   * resolution lives server-side.
+   */
+  multiCharacterPrefill?: boolean | null;
   supportsImageUpload?: boolean;
   modelClass?: string | null;
   maxContext?: number | null;
