@@ -69591,3 +69591,31 @@ restored, 42 passed.
 
 **Gate:** `ng test --filter "Enable Thinking"` 6 passed; `--filter "bag"` 42
 passed (the file's whole set).
+
+## P4.D81 unit 4 — the archived-badge beat FLIP, and the pass-through pin (v4 `aa464abf` bug 66)
+
+**The flip (Contract C).** `character-archive-flow.spec.ts`'s round-1 beat
+pinned a v4 BUG faithfully: on a fresh load neither app could light the
+Archived badge, because the chat GET enriches through `getCharacterDetail`,
+which never carried `archivedAt`. v4 `aa464abf` fixed it — so the ⚠ header is
+retired and the beat now asserts BOTH badges (`.qt-badge-absent` × 2, `Absent`
+then `Archived`, plus the Archived badge's title). Gated behind the new
+`P4D80_ENRICHMENT_LANDED = false`, a NAMED constant per the standing e2e rule
+(a probe cannot tell an absent key from a seat that simply is not archived);
+the unifier flips it and RUNS the beat at first activation. Seeds stay derived
+from the shared seeder module, never transcribed (the `f4955e0e` lesson).
+
+**The v5 half of bug 66 was already right, and is now pinned.** v4 had TWO
+drop sites; the second was `useParticipants`, which rebuilt each participant's
+`character` field by field for `ParticipantCard`. **v5 has no such rebuild** —
+`salon-conversation.ts:487` binds `chat()!.participants` straight through
+`chat-sidebar` → `participants-section` → `participant-card`, contract-typed.
+Surveyed (Tier 2 item 7) and now pinned by a `chat-sidebar.spec.ts` arm that
+badges from the payload alone, with a control seat lacking the key asserting
+`['Absent']` so the positive arm cannot pass on the status alone.
+
+So the whole v5-side fix belongs to P4.D80's `chat_enrichment.rs`; nothing in
+`apps/web` needed a change, which is what the flipped beat will prove.
+
+**Gate:** `ng test --filter "archivedAt"` 1 passed; `playwright --list` over
+the file — 10 tests, the flipped beat present at `:219`.

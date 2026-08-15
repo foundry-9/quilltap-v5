@@ -263,4 +263,58 @@ describe('ChatSidebar', () => {
     );
     expect(buttons).toEqual([]);
   });
+  /**
+   * P4.D81 Tier 2 — the v5 analog of v4's bug-66 second drop site. v4's
+   * `useParticipants` rebuilt every participant's `character` field by field
+   * for `ParticipantCard`, so the tombstone had to be re-carried explicitly
+   * (`aa464abf`, `useParticipants.ts:129`). v5 has no such rebuild: the chat
+   * GET's participants reach the card contract-typed and untransformed. This
+   * pins that — the badge lights from the payload alone, with nothing between
+   * the input and the card teaching the pipeline about `archivedAt`.
+   */
+  it('carries archivedAt through the sidebar to the card, untransformed', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice'),
+      participant('bob', 'Bob', {
+        status: 'absent',
+        character: {
+          id: 'char-bob',
+          name: 'Bob',
+          title: null,
+          avatarUrl: null,
+          defaultImageId: null,
+          defaultImage: null,
+          archivedAt: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ]);
+    fixture.detectChanges();
+
+    const seat = Array.from(sidebarEl(fixture).querySelectorAll('qt-participant-card')).find((c) =>
+      c.textContent?.includes('Bob'),
+    )!;
+    const badges = Array.from(seat.querySelectorAll('.qt-badge-absent')).map((b) =>
+      b.textContent?.trim(),
+    );
+    // Absent first, Archived after — both, as v4 renders them.
+    expect(badges).toEqual(['Absent', 'Archived']);
+
+    // And a seat WITHOUT the key badges only Absent, so the assertion above is
+    // reading the payload rather than the archived-looking status.
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice'),
+      participant('bob', 'Bob', { status: 'absent' }),
+    ]);
+    fixture.detectChanges();
+    const plain = Array.from(sidebarEl(fixture).querySelectorAll('qt-participant-card')).find((c) =>
+      c.textContent?.includes('Bob'),
+    )!;
+    expect(
+      Array.from(plain.querySelectorAll('.qt-badge-absent')).map((b) => b.textContent?.trim()),
+    ).toEqual(['Absent']);
+  });
 });

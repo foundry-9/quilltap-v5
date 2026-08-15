@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Turned the archived-seat sidebar beat around: it now expects both the Absent
+and Archived badges on a fresh load, gated until the server projection that
+makes that possible lands beside it.
+
 Added an Ollama "Enable Thinking" option to the connection-profile editor,
 writing `enable_thinking` into the profile's parameters. Editing a profile no
 longer drops the parameter keys the editor shows no control for — `num_ctx`,
