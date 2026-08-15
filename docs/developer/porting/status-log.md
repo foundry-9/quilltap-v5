@@ -9,6 +9,64 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D79 (the `aa464abf` drift, profile/host half), IN PROGRESS
+
+**v4 baseline `aa464abf`, drift-checked at lane start 2026-08-15:** v4's
+checkout was on `main`, clean, at exactly `aa464abf`; `git log aa464abf..main`
+empty; `git log main..bugfix` carried only `3a76b17d` (the 4.8.4 marker) and
+`009c49b2` (a test-only deflake) plus commits already below the 4.8.3 marker.
+No drift. Oracles regenerated from a lane-unique detached worktree pinned at
+the baseline (`/tmp/qt-v4-pin-p4d79-aa464abf`, node_modules symlinked both
+places per `oracle-regen-pinned-v4-worktree`).
+
+### Unit 1 — the D23 re-dump + the `multiCharacterPrefill` boot ensure
+
+v4 `23af7146` adds `connection_profiles.multiCharacterPrefill` in two places,
+and **the order's premise that they agree is REFUTED by measurement** (the
+P4.D77 lesson repeating, and the reason D23 re-dumps are mechanical):
+
+- **generateDDL** — the re-dump at the pin emits `"multiCharacterPrefill"
+  INTEGER`, with **no DEFAULT clause**. v4's `ConnectionProfileSchema` field is
+  `z.boolean().nullable().optional()` with no `.default()`, and the schema
+  translator only emits a DEFAULT when the Zod field carries one. Harmless on a
+  fresh instance: v4's create route always resolves and STORES a boolean, so
+  nothing there leans on a column default.
+- **The migration** `add-profile-multi-character-prefill-field-v1` (and
+  `sqlite-initial-schema.ts`) emits `INTEGER DEFAULT 1`, then backfills.
+
+The re-dump is the only `fresh_schema.json` delta in the round (mount-index and
+llm-logs byte-identical; the one changed statement is the
+`connection_profiles` CREATE, column inserted after `pseudoToolMode`).
+`provisioning_matches_v4_fresh_instance` went red at the re-dump exactly as
+designed and is green over the new schema; the v4-reads-v5 cross-compat leg
+(`verify-v5-provisioned.ts`) re-run and green.
+
+The boot ensure (`db/connection_profiles_prefill_repair.rs`, wired at
+`quilltap-host/src/host.rs` beside the P4.D73/P4.D77 repairs) reproduces the
+**migration** shape, as v4's own migration would for an existing instance.
+
+**⚠ The guard is at the COLUMN level, not per statement.** v4's migration
+`shouldRun()` is "the column is absent", so its two UPDATEs fire exactly once
+in an instance's life. A boot ensure that re-ran the Anthropic UPDATE every
+boot would clobber a user's explicit `true` on an Anthropic profile — which
+v4's profile editor deliberately permits (ticking it on Anthropic is allowed
+and merely warned about). Six unit tests pin this: the backfill split (with
+`upper()` case-insensitivity), the DEFAULT clause, **the no-reclobber property
+in both directions** (an explicit true on Anthropic and an explicit false on
+OpenAI both survive a second boot), a post-add NULL left alone (the tri-state
+is deliberate — a pre-4.9 import means "never chosen"), the generateDDL shape
+recognised as present, and the table-less no-op.
+
+NO-PORT recorded: v4's migration pretty label ("Deciding who is announced at
+the door") — v5 surfaces no migration labels anywhere (the P4.D63/P4.D73
+precedent).
+
+**Measured while surveying, load-bearing for units 4/5:** v4's SQLite
+hydration (`backends/sqlite/backend.ts:429-437`) maps a NULL boolean column to
+`undefined`, which `JSON.stringify` OMITS — so a NULL `multiCharacterPrefill`
+is an ABSENT key in every v4 net read, not `null`. 0 → `false`, 1 → `true`.
+v5's marshal follows the `maxContext` precedent (omit on NULL).
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

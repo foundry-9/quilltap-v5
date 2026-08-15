@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Added the connection_profiles.multiCharacterPrefill column (P4.D79 unit 1,
+v4 23af7146): the D23 fresh-schema re-dump at the aa464abf pin, plus a boot
+ensure that gives an existing instance v4's migration shape. The two v4
+shapes differ here — generateDDL emits a bare INTEGER (the Zod field has no
+default), the migration emits INTEGER DEFAULT 1 and backfills Anthropic
+profiles off. The ensure's guard is at the column level, not per statement,
+because v4's backfill runs exactly once: re-running it every boot would
+clobber a user's explicit choice on an Anthropic profile. Versions: core
+0.0.550, host 0.0.71.
+
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
 think/num_ctx request fields with the retry-without-think, the toolUse
