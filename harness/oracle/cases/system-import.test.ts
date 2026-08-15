@@ -313,6 +313,85 @@ function buildCases(): CaseSpec[] {
     },
   });
 
+  // ── [P4.48] planted read failures ──────────────────────────────────────────
+  //
+  // The preview's existence checks used to swallow repository read errors to
+  // "doesn't exist" on the v5 side. These two arms plant a failure IN THE
+  // DATABASE (on the per-case fixture COPY, never the committed bytes) and
+  // record what v4 really does, because the escalation's premise — that v4
+  // propagates — is wrong, and only measurement settles which leg is which.
+  //
+  //   * DROP TABLE tags  → v4's `_findById` is a `safeQuery(…, null)`, so the
+  //     read error is SWALLOWED and the preview answers `exists: false`. v5 now
+  //     refuses. Recorded as a DIVERGENCE, pinned in both directions.
+  //   * a project row with a NULL officialMountPointId → the slim read succeeds
+  //     and `applyOverlayOne` THROWS, un-wrapped by any safeQuery, sinking v4's
+  //     whole preview. v5 matches. Recorded as an EQUALITY.
+  //
+  // Whether v4 threw is emitted verbatim (`error` vs `preview`), so the Rust
+  // side classifies from the oracle rather than from an assumption.
+  const plantedPreviewCase = (
+    name: string,
+    plant: (db: any) => void,
+    payload: unknown,
+  ): CaseSpec => ({
+    name,
+    run: async (spec) => {
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      plant(getRawDatabase()!);
+      const { previewImport } = await import('@/lib/import/quilltap-import-service');
+      try {
+        const preview = await previewImport(spec.userId, payload as never);
+        return { kind: 'preview_planted', payload, preview, error: null };
+      } catch (err) {
+        return {
+          kind: 'preview_planted',
+          payload,
+          preview: null,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  });
+
+  const plantedPayload = (data: Record<string, unknown>) => ({
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'tags',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data,
+  });
+
+  cases.push(
+    plantedPreviewCase(
+      'preview_planted_unreadable_tags_table',
+      (db) => db.exec('DROP TABLE tags'),
+      plantedPayload({
+        tags: [{ id: 'zz000000-0000-4000-8000-0000000000aa', name: 'Unreadable' }],
+      }),
+    ),
+  );
+
+  // PROJECT_1 from `build-system-data-fixture.ts` — a deterministic id in the
+  // committed fixture, so both sides address the same row.
+  cases.push(
+    plantedPreviewCase(
+      'preview_planted_unavailable_project_store',
+      (db) =>
+        db
+          .prepare('UPDATE projects SET officialMountPointId = NULL WHERE id = ?')
+          .run('a3000000-0000-4000-8000-000000000001'),
+      plantedPayload({
+        projects: [{ id: 'a3000000-0000-4000-8000-000000000001', name: 'The Voyage' }],
+      }),
+    ),
+  );
+
   // Malformed inputs — the reader's throwing arms (v4's exact messages).
   const throwCase = (name: string, bytes: Buffer): CaseSpec => ({
     name,

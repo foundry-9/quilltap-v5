@@ -69601,3 +69601,97 @@ pinning the DB-error divergence in BOTH directions and the overlay leg as an
 equality.
 
 **Versions:** core 0.0.550.
+
+## P4.48 unit 2 — the planted-failure differential arms (2026-08-15)
+
+Three arms over v4's REAL `previewImport` / `executeImport` at the
+`aa464abf` pin, each planting the failure IN THE DATABASE on a per-case
+fixture COPY (the committed `system-data-*` bytes stay read-only — no
+fixture changed, so no sibling oracle is invalidated). Every arm is
+mutation-proven.
+
+### The measurement, and what it settled
+
+Unit 1's disposition rested on reading v4's source. These arms make v4 SAY
+it. Both predictions held exactly:
+
+| arm | v4's recorded output | disposition |
+|---|---|---|
+| `preview_planted_unreadable_tags_table` (`DROP TABLE tags`) | `error: null`, preview returns `exists: false` | **DIVERGENCE**, pinned both directions |
+| `preview_planted_unavailable_project_store` (`PROJECT_1.officialMountPointId = NULL`) | throws `Project a3000000-…-000000000001 has no usable document store (officialMountPointId=null): officialMountPointId is null` | **EQUALITY**, message byte-for-byte |
+| `execute_preserve_ids_unavailable_store_refuses` (same plant, preserveIds import claiming that id) | `success:false`, `warnings: []`, all three partitions byte-identical to the baseline | **EQUALITY**, body + full state |
+
+So the "v4 propagates at all ten sites" premise is now refuted by v4's own
+output, not merely by a reading of `safeQuery`. The equality arms are the
+ones that prove the fix: v5 used to read a failed store read as "the id is
+free" and march on to attempt id-carrying INSERTs.
+
+The execute arm rides the existing `execute_prepped` mechanism (P4.D46) with
+a new named prep, `orphan-project-store`, applied identically on both sides
+BEFORE the `preState` dump, so the baselines still compare byte-equal.
+
+### Both tripwires on the divergence are live
+
+`preview_planted_unreadable_tags_table` fails if EITHER side moves:
+
+- v4 stops answering `exists:false` → "re-measure before trusting this
+  divergence" (a partial upstream fix cannot pass unnoticed);
+- v5 stops refusing → "either P4.48 regressed or v4 converged and this arm
+  should become a plain equality — measure before deciding".
+
+### Vacuity guards
+
+Both engines' `orphan-project-store` plants assert they touched exactly ONE
+row. A plant that silently matches nothing is the in-database form of the
+`planted-fs-conditions-in-differentials` trap, and it leaves a permanently
+green arm proving nothing. (This lane had already been bitten once by a
+vacuous assertion — see unit 1's entities mutation proof.)
+
+### Mutation proofs (one per arm, each restored after)
+
+- preview projects site → `.ok().flatten()` ⇒ `preview_planted_unavailable_
+  project_store` fails: "v4 refused with … but v5 answered a preview".
+- preview tags site → `.ok().flatten()` ⇒ `preview_planted_unreadable_tags_
+  table` fails: "v5 did NOT refuse a planted read failure".
+- preflight Project site → `.ok().flatten()` ⇒
+  `execute_preserve_ids_unavailable_store_refuses` fails on the result body.
+
+### Regen recipes (both families, at the `aa464abf` pin)
+
+Unchanged from the families' `//!` headers apart from the case counts — the
+new arms need no new fixture and no new env var. Case-count guards moved:
+`system_import_equivalence` 27 → **29**, `system_import_state` 33 → **34**,
+and the execute family's by-name shape list gained
+`execute_preserve_ids_unavailable_store_refuses` so a truncated oracle
+cannot pass by arithmetic.
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+# preview family
+TMPO=/tmp/qt-sysimport-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-import.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-import.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-import
+# execute family: same shape, TMPO=/tmp/qt-sysimportexec-oracle,
+#   cases/system-import-execute.test.ts, testTimeout=600000,
+#   QT_ORACLE_OUT=/tmp/oracle-system-import-execute.ndjson,
+#   selector `-- system-import-execute`
+```
+
+Run:
+
+```
+QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson \
+QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
+  cargo test -p quilltap-harness --test system_import_equivalence \
+                                 --test system_import_state
+```
+
+**Versions:** harness 0.0.474.

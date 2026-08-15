@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Pinned the import read-failure behavior with three differential arms that
+plant a failure in the database itself and compare against v4's real import
+and preview. Two legs, measured rather than assumed: an unavailable document
+store sinks both engines identically (the refusal message compared byte for
+byte, and the preflight proven to write nothing across all three
+partitions), while an unreadable table is swallowed by v4 and refused by v5
+— recorded as a deliberate divergence with tripwires in both directions.
+
 The `.qtap` import no longer mistakes an unreadable database for an empty
 one. Every existence check in the preserve-ids preflight, the per-item
 importers, and the import preview used to swallow a read failure and report

@@ -38,6 +38,33 @@
 //!   short-stream case only ever proved where the error landed, never that the
 //!   round trip works. Both sides now assemble `dataBase64: "AAAABBBB"`.
 //!
+//! ## [P4.48] The planted read-failure arms — one equality, one divergence
+//!
+//! The preview's existence checks used to swallow repository read errors to
+//! `exists: false`. Two arms plant a failure IN THE DATABASE, on a per-case
+//! fixture COPY (the committed bytes stay read-only), and hold each leg to the
+//! disposition MEASUREMENT earned — the order's premise that v4 propagates at
+//! all of them is refuted, by v4's own recorded output:
+//!
+//! - `preview_planted_unavailable_project_store` — **EQUALITY**. `PROJECT_1`'s
+//!   `officialMountPointId` is nulled, so the slim read succeeds and
+//!   `applyOverlayOne` throws. That call is NOT wrapped in a `safeQuery` and
+//!   `previewImport` carries no `try`, so v4's whole preview dies too. The
+//!   refusal message is compared BYTE FOR BYTE (`Project … has no usable
+//!   document store (officialMountPointId=null): officialMountPointId is
+//!   null`), which also keeps P4.D51's per-entity wording convergence honest.
+//! - `preview_planted_unreadable_tags_table` — **DIVERGENCE**, pinned in BOTH
+//!   directions. `DROP TABLE tags`, then a tags payload. v4's `_findById` is a
+//!   `safeQuery(…, null)` — FALLBACK mode — so v4 SWALLOWS the read error and
+//!   reports a confident `exists: false` its instance cannot support. v5
+//!   refuses, under the standing 2026-08-03 ruling that this family fixes v4's
+//!   bugs rather than reproducing them. Both tripwires are live: if v4 stops
+//!   answering `exists:false` the arm says re-measure, and if v5 stops refusing
+//!   it says either P4.48 regressed or v4 converged.
+//!
+//! Mutation-proven: reverting the preview's projects site reddens the first,
+//! reverting its tags site reddens the second.
+//!
 //! Generate the oracle (see the .test.ts header), then run:
 //!   QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson \
 //!     cargo test -p quilltap-harness --test system_import_equivalence -- --nocapture
@@ -74,6 +101,51 @@ fn fresh_db(tag: &str) -> Db {
         TEST_PEPPER,
     )
     .expect("open db")
+}
+
+/// [P4.48] The in-database failures the planted-preview arms stage. Both run on
+/// a per-case fixture COPY — the committed bytes are read-only — and each must
+/// produce a read ERROR rather than an empty result, which is what the oracle's
+/// own recorded outcome proves for the v4 side.
+#[derive(Clone, Copy)]
+enum Plant {
+    /// The table the preview is about to consult is simply gone. v4 swallows
+    /// this (`safeQuery(…, null)`); v5 refuses.
+    DropTagsTable,
+    /// The slim row survives but its document store does not, so the read
+    /// succeeds and the OVERLAY throws. v4 throws here too.
+    OrphanProjectStore,
+}
+
+/// `PROJECT_1` from `build-system-data-fixture.ts` — deterministic in the
+/// committed fixture, so both engines address the same row.
+const FIXTURE_PROJECT_ID: &str = "a3000000-0000-4000-8000-000000000001";
+
+fn apply_plant(db: &Db, plant: Plant) -> Result<(), String> {
+    db.write_blocking(move |ws| {
+        let main = ws.main().connection();
+        match plant {
+            Plant::DropTagsTable => {
+                main.execute_batch("DROP TABLE tags")?;
+            }
+            Plant::OrphanProjectStore => {
+                let touched = main.execute(
+                    "UPDATE projects SET officialMountPointId = NULL WHERE id = ?1",
+                    [FIXTURE_PROJECT_ID],
+                )?;
+                // A plant that touches nothing is a silently green arm — the
+                // `planted-fs-conditions-in-differentials` trap in its
+                // in-database form.
+                assert_eq!(
+                    touched, 1,
+                    "the fixture no longer carries project {FIXTURE_PROJECT_ID}; \
+                     the plant would be a no-op and the arm vacuous"
+                );
+            }
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())
 }
 
 fn decode(v: &Value) -> Vec<u8> {
@@ -220,6 +292,97 @@ fn system_import_read_matches_oracle() {
                     },
                 }
             }
+            // [P4.48] A read failure planted IN THE DATABASE, on a per-case
+            // fixture COPY. The oracle records whether v4 threw; this side
+            // classifies from that record rather than from an assumption, and
+            // holds each arm to the disposition the measurement earned.
+            "preview_planted" => {
+                let plant = match name {
+                    "preview_planted_unreadable_tags_table" => Plant::DropTagsTable,
+                    "preview_planted_unavailable_project_store" => Plant::OrphanProjectStore,
+                    other => {
+                        failed.push(format!("{other}: no Rust plant defined for this case"));
+                        continue;
+                    }
+                };
+                let planted = fresh_db(&format!("planted-{ran}"));
+                if let Err(e) = apply_plant(&planted, plant) {
+                    failed.push(format!("{name}: could not apply the plant: {e}"));
+                    continue;
+                }
+                let p = &exp["payload"];
+                let export = QuilltapExport {
+                    manifest: p["manifest"].clone(),
+                    data: p["data"].clone(),
+                };
+                let got = planted.read_main(|main| {
+                    planted.read_mount_index(|mount| preview_import(main, mount, &user, &export))
+                });
+
+                match (exp["error"].as_str(), &got) {
+                    // ── the EQUALITY leg ────────────────────────────────────
+                    // v4 threw. `applyOverlayOne` is not wrapped in a
+                    // `safeQuery` and `previewImport` has no `try`, so an
+                    // unavailable store sinks the preview on both sides. The
+                    // message is compared BYTE FOR BYTE — v5's single
+                    // `OverlayError::Unavailable` Display was converged onto
+                    // v4's per-entity wording by P4.D51, and this is the arm
+                    // that keeps it honest.
+                    (Some(expected), Err(e)) => {
+                        let actual = e.to_string();
+                        if actual != expected {
+                            failed.push(format!(
+                                "{name}: refusal message differs\n  rust:   {actual}\n  \
+                                 oracle: {expected}"
+                            ));
+                            continue;
+                        }
+                    }
+                    (Some(expected), Ok(v)) => {
+                        failed.push(format!(
+                            "{name}: v4 refused with {expected:?} but v5 answered a \
+                             preview — the propagation fix has regressed at this \
+                             site.\n  rust: {v}"
+                        ));
+                        continue;
+                    }
+                    // ── the DIVERGENCE leg, pinned in BOTH directions ───────
+                    // v4 did NOT throw: its `_findById` is a
+                    // `safeQuery(…, null)`, so an unreadable table reads as
+                    // "the id is free" and the preview reports a confident
+                    // `exists: false` the instance cannot support. v5 refuses
+                    // instead, under the standing 2026-08-03 ruling that this
+                    // family FIXES v4's bugs rather than reproducing them.
+                    (None, Err(_)) => {
+                        // v5 refuses (correct) and v4 still swallows — the
+                        // recorded divergence. Assert v4's swallow is still
+                        // exactly what we recorded, so a partial upstream fix
+                        // cannot pass unnoticed.
+                        let v4_exists = exp["preview"]["entities"]["tags"][0]["exists"].as_bool();
+                        if v4_exists != Some(false) {
+                            failed.push(format!(
+                                "{name}: v4's swallow no longer reports `exists:false` \
+                                 — re-measure before trusting this divergence.\n  \
+                                 oracle: {}",
+                                exp["preview"]
+                            ));
+                            continue;
+                        }
+                    }
+                    (None, Ok(v)) => {
+                        // BOTH sides swallowed. Either v5 regressed, or v4
+                        // converged and this divergence is ready to retire —
+                        // the tripwire that makes the pin two-directional.
+                        failed.push(format!(
+                            "{name}: v5 did NOT refuse a planted read failure. Either \
+                             the P4.48 propagation regressed, or v4 has converged and \
+                             this arm should become a plain equality — measure before \
+                             deciding.\n  rust: {v}"
+                        ));
+                        continue;
+                    }
+                }
+            }
             other => {
                 failed.push(format!("{name}: unknown oracle kind {other}"));
                 continue;
@@ -235,6 +398,7 @@ fn system_import_read_matches_oracle() {
         failed.len(),
         failed.join("\n\n")
     );
-    // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob`, added by P4.d22.
-    assert_eq!(ran, 27, "expected 27 cases to run, ran {ran}");
+    // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob` (P4.d22) + the two
+    // planted read-failure arms (P4.48).
+    assert_eq!(ran, 29, "expected 29 cases to run, ran {ran}");
 }
