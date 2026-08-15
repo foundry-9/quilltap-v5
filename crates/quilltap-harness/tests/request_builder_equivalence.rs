@@ -257,6 +257,18 @@ fn request_builder_matches_v4() {
     // The OpenRouter SDK-send path where v4's UA/X-Title legitimately diverge —
     // asserted exercised so a corpus that lost those rows cannot pass silently.
     let mut openrouter_sdk_rows = 0usize;
+    // P4.D78 Ollama thinking-wire shape: `think` is now on EVERY ollama body,
+    // and `options.num_ctx` appears only for a bag that coerces to a finite
+    // positive number. Assert the SHAPE (a `think:true` arm, a `think:false`
+    // arm, a num_ctx-present arm, and a bag-present-but-key-omitted arm) rather
+    // than a hand count — a regenerated corpus that lost one of these would
+    // otherwise pass green with the feature untested.
+    let (
+        mut saw_think_true,
+        mut saw_think_false,
+        mut saw_num_ctx,
+        mut saw_num_ctx_omitted_with_bag,
+    ) = (false, false, false, false);
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -309,6 +321,32 @@ fn request_builder_matches_v4() {
                 .any(|f| f.get("error").and_then(Value::as_str) == Some("File data not loaded"))
             {
                 saw_no_data_failure = true;
+            }
+        }
+
+        // P4.D78 shape bookkeeping, read off v4's RECORDED body (the oracle
+        // side), so a v5 regression cannot make the coverage claim true.
+        if provider == "OLLAMA" {
+            if let Some(body) = row
+                .get("body")
+                .and_then(Value::as_str)
+                .and_then(|b| serde_json::from_str::<Value>(b).ok())
+            {
+                match body.get("think") {
+                    Some(Value::Bool(true)) => saw_think_true = true,
+                    Some(Value::Bool(false)) => saw_think_false = true,
+                    other => panic!(
+                        "OLLAMA/{case}[{mode}]: v4 recorded think={other:?} — the field is \
+                         supposed to be present and boolean on every body"
+                    ),
+                }
+                let has_num_ctx = body.get("options").and_then(|o| o.get("num_ctx")).is_some();
+                let has_bag = row["input"].get("profileParameters").is_some();
+                if has_num_ctx {
+                    saw_num_ctx = true;
+                } else if has_bag {
+                    saw_num_ctx_omitted_with_bag = true;
+                }
             }
         }
 
@@ -498,6 +536,24 @@ fn request_builder_matches_v4() {
             "no recorded headers checked for provider {p} — regenerate the corpus"
         );
     }
+    // P4.D78 — the Ollama thinking-wire coverage shape.
+    assert!(
+        saw_think_true,
+        "corpus lost its ollama `think: true` vector (enable_thinking on)"
+    );
+    assert!(
+        saw_think_false,
+        "corpus lost its ollama `think: false` vector (the always-present default)"
+    );
+    assert!(
+        saw_num_ctx,
+        "corpus lost its ollama `options.num_ctx` vector"
+    );
+    assert!(
+        saw_num_ctx_omitted_with_bag,
+        "corpus lost its ollama num_ctx-rejected vector (a profile bag whose \
+         value leaves the key off the wire)"
+    );
     assert!(
         openrouter_sdk_rows > 0,
         "the OpenRouter SDK-send divergence (speakeasy UA / no X-Title) is no longer \

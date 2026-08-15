@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Ollama requests now carry the thinking switch and the context window
+(P4.D78 unit 2, v4 d9c5a1c7): `build_ollama_body` emits a top-level `think`
+on every body (false when the profile's `enable_thinking` is off) and
+`options.num_ctx` when the profile bag coerces to a finite positive number.
+The request-envelope corpus regenerated at the aa464abf pin — 14 new Ollama
+cases in both modes, every non-Ollama vector byte-identical.
+
 Ported the Ollama inline-`<think>` stream parser (P4.D78 unit 1, v4
 d9c5a1c7): `ThinkTagStreamParser` plus the one-shot `extract_think_blocks`,
 carrying the partial-tag holdback, the swallowed-opening-tag rule and its

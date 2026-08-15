@@ -17,6 +17,36 @@ packages/ plugins/` is strictly one-directional (every hunk removes what main
 added — bugfix is behind, carrying nothing portable). Regen therefore runs
 straight from the checkout, no pinned worktree.
 
+**Unit 2 — the request builder: `think` + `options.num_ctx` (core 0.0.551,
+harness 0.0.475).** `build_ollama_body` gains v4's two new fields in v4's exact
+assignment order: top-level `think` between `stream` and `options` (ALWAYS
+present — `think: false` when off), and `options.num_ctx` last inside the
+options bag. Two new public helpers next to the builder, each a literal port:
+`ollama_enable_thinking` (`value === true || value === 'true'` — a truthy
+non-`"true"` string and the number 1 are both FALSE) and `ollama_num_ctx`
+(v4 coerces ONLY the number and string arms, so a boolean or `null` is NaN
+here rather than JS `ToNumber`'s 1/0; the string arm goes through
+`jsnum::number_from_str`, then `is_finite && > 0` and `floor`). Contract A's
+read half; nothing host-side is touched (P4.D79 owns the injection).
+
+*The differential:* the request-envelope corpus regenerated at the pin with
+**14 new Ollama cases** recorded in BOTH modes (28 rows; corpus 163 → 191) —
+thinking on/off/string-on/truthy-string-off/numeric-one-off, num_ctx as
+number/string/fractional-floored, the five arms that leave the key OFF the
+wire (zero, negative, unparseable, null, boolean), and one combined
+tools+stop+both-fields vector. **Corpus delta measured, not assumed:** 0
+non-Ollama vectors changed; all 6 pre-existing Ollama vectors changed exactly
+as predicted (`think: false` is now on every body); 28 new. Four
+shape assertions added to the family (a `think:true` arm, a `think:false`
+arm, a num_ctx-present arm, a bag-present-but-key-omitted arm) read off v4's
+RECORDED body so a v5 regression cannot make the coverage claim true, plus a
+loud panic if any recorded Ollama body ever lacks a boolean `think`.
+
+*Mutation-proven both ways:* relaxing the `> 0` guard to `>= 0` → red at
+`num-ctx-zero-omitted`; accepting any non-empty `enable_thinking` string →
+red at `thinking-truthy-string-off`. Family green at 191 envelopes;
+`tool_wire_call_site` / `tool_wire_equivalence` unaffected.
+
 **Unit 1 — the think-parser twin + its tier-1 differential (core 0.0.550,
 harness 0.0.474).** New `model/ollama_think_parser.rs`: `ThinkTagStreamParser`
 (`push`/`flush`/`reasoning`) + the one-shot `extract_think_blocks`, a

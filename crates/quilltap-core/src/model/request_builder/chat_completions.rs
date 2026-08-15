@@ -1023,6 +1023,42 @@ fn openrouter_vision_response_format(input: &RequestInput) -> Option<Value> {
 // Ollama (raw fetch to /api/chat)
 // ============================================================================
 
+/// v4 `resolveEnableThinking` (`plugins/dist/qtap-plugin-ollama/provider.ts`,
+/// `d9c5a1c7`): the profile's `enable_thinking` option, defaulting to false —
+/// thinking models answer without a reasoning pass, keeping output clean for
+/// JSON-shaped work. The string form is tolerated in case an older profile
+/// stored one; EVERY other value (including a truthy non-`"true"` string) is
+/// false.
+pub fn ollama_enable_thinking(profile_parameters: Option<&Value>) -> bool {
+    match profile_parameters.and_then(|p| p.get("enable_thinking")) {
+        Some(Value::Bool(true)) => true,
+        Some(Value::String(s)) => s == "true",
+        _ => false,
+    }
+}
+
+/// v4 `resolveNumCtx`: the context window to request via `options.num_ctx`. The
+/// host injects the profile's Max Context into `profileParameters.num_ctx` for
+/// Ollama profiles; without it the server allocates its own default and
+/// silently truncates longer prompts. `None` leaves the field off the wire —
+/// the server/Modelfile default applies, exactly as before.
+///
+/// v4 coerces ONLY the number and string arms (`typeof value === 'number' ?
+/// value : typeof value === 'string' ? Number(value) : NaN`), so a boolean or
+/// `null` is NaN here rather than JS `ToNumber`'s 1/0 — reproduced literally.
+pub fn ollama_num_ctx(profile_parameters: Option<&Value>) -> Option<f64> {
+    let n = match profile_parameters.and_then(|p| p.get("num_ctx")) {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
+        Some(Value::String(s)) => crate::jsnum::number_from_str(s),
+        _ => f64::NAN,
+    };
+    if n.is_finite() && n > 0.0 {
+        Some(n.floor())
+    } else {
+        None
+    }
+}
+
 pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
     collect_drop_failures(&input.messages, OLLAMA_ATTACHMENT_ERROR, results);
     let messages = chat_messages(&input.messages, false, false, &mut plain_user_content);
@@ -1031,11 +1067,25 @@ pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentRes
         .set("temperature", num(input.temperature.unwrap_or(0.7)))
         .set("num_predict", num(input.max_tokens.unwrap_or(4096) as f64))
         .set("top_p", num(input.top_p.unwrap_or(1.0)))
-        .set_opt("stop", stop_value(input));
+        .set_opt("stop", stop_value(input))
+        // Context window from the profile's Max Context (undefined keys are
+        // dropped by JSON.stringify, leaving the server default in charge).
+        .set_opt(
+            "num_ctx",
+            ollama_num_ctx(input.profile_parameters.as_ref()).map(num),
+        );
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
         .set("stream", json!(input.stream))
+        // Ollama's native thinking switch (0.9+; older servers ignore unknown
+        // fields). ALWAYS present — `think: false` when off. When off,
+        // thinking-capable models answer directly; when on, Ollama returns the
+        // reasoning separately as `message.thinking`.
+        .set(
+            "think",
+            json!(ollama_enable_thinking(input.profile_parameters.as_ref())),
+        )
         .set("options", options.into_value());
     if let Some(t) = &input.tools {
         if !t.is_empty() {
