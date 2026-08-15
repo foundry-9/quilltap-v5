@@ -1018,6 +1018,17 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
     for label, stage in (("regen", r.regen), ("run", r.run)):
         if not stage:
             continue
+        # A committed-corpus family's "regen" is a RECORDING script that
+        # rewrites bytes checked into the repo — running it in a sweep
+        # (especially against a pinned worktree missing the recorder's
+        # runtime deps) CLOBBERS the committed corpus with refusal rows.
+        # Found at the help-drift unification, where exactly that happened
+        # to `google-wire.recorded.ndjson`. Recording is a deliberate,
+        # by-hand act; a sweep only ever runs the committed corpus's cargo
+        # half.
+        if label == "regen" and "committed_corpus" in r.notes:
+            print(f"skipping regen for committed-corpus family {family}")
+            continue
         script = shield_fixture_envs(normalize(stage, v5w, family), v5w, family)
         if label == "run" and "--nocapture" not in script:
             # Make skip notices observable so a family that silently SKIPs
@@ -1056,6 +1067,23 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
                     exit=3,
                 )
                 return rec
+    # Committed-bytes tripwire (warn-class — some recipes mutate committed
+    # fixtures DELIBERATELY, by extender): if this family's stages left any
+    # tracked fixture modified, say so loudly in the record, so a clobber is
+    # visible at the results artifact instead of riding a later `git add -A`
+    # (the google-wire lesson from the help-drift unification).
+    dirt = subprocess.run(
+        [
+            "git", "-C", str(v5w), "status", "--porcelain", "--",
+            "harness/oracle/fixtures", "crates/quilltap-web/tests/fixtures",
+        ],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if dirt:
+        rec.setdefault("warnings", []).append(
+            f"tracked fixture bytes modified by this family's stages:\n{dirt}"
+        )
+        print(f"WARNING [{family}] tracked fixture bytes modified:\n{dirt}")
     return rec
 
 

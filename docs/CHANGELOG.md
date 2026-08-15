@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Restored the recorded google-wire corpus after the unification gate's sweep
+clobbered it: running the family through the sweep executed its RECORDING
+script against the pinned v4 worktree, where the google plugin's runtime
+deps are absent, so all eighteen recordings refused and the committed bytes
+were overwritten with refusal rows (then swept into a commit by a broad
+add). The sweep driver now never runs a committed-corpus family's recording
+stage — recording is a deliberate by-hand act — and warns loudly whenever
+any family's stages leave tracked fixture bytes modified.
+
 Fixed two wire-status divergences the unification review's new error-status
 assert caught in the settings routes: a validation failure whose message
 carries no "Invalid" (a bare threshold out of range) now answers 500 exactly
