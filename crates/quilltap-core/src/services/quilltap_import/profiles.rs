@@ -64,6 +64,16 @@ struct ImportedConnectionProfile {
     model_class: Option<String>,
     #[serde(default)]
     max_context: Option<f64>,
+    /// `["boolean","null"]` in the export schema (v4 `23af7146`). A real v4
+    /// export never emits an explicit `null` — a never-chosen profile's
+    /// net-read OMITS the key (NULL boolean → `undefined` → dropped by
+    /// `JSON.stringify`) — so folding null and absent into `None` here is
+    /// faithful for every bundle v4 can produce. (A hand-crafted bundle
+    /// carrying a literal `null` would get an explicit NULL written by v4's
+    /// `insertOne` and the column OMITTED by v5 — observable only on a
+    /// migrated instance whose DDL default is 1. Recorded, not modeled.)
+    #[serde(default)]
+    multi_character_prefill: Option<bool>,
     #[serde(default)]
     max_tokens: Option<f64>,
     #[serde(default)]
@@ -239,33 +249,12 @@ fn create_connection_profile(
         use_native_web_search: p.use_native_web_search,
         allow_tool_use: p.allow_tool_use,
         pseudo_tool_mode: p.pseudo_tool_mode,
-        // ⚠ P4.D79 STOPPED HERE, by its order's Shared-contract tripwire.
-        //
-        // v4 `23af7146` adds `multiCharacterPrefill` to the export schema
-        // (`["boolean","null"]`) and its importer carries it through the
-        // `...profileData` spread, so a 4.9 bundle's stored choice round-trips.
-        // The order predicted that carry would ride the `CpCreate` deserialize;
-        // MEASUREMENT shows it does not — this importer parses its own
-        // `ImportedConnectionProfile` DTO first, so the carry needs TWO lines
-        // INSIDE `quilltap_import/**`, which the round's Shared contract
-        // assigns to the sibling lane P4.48. The order's rule for exactly this
-        // case is to stop and record the ordered edit rather than touch P4.48's
-        // files.
-        //
-        // ORDERED EDIT (for the unifier, once P4.48 has landed):
-        //   1. `ImportedConnectionProfile` gains
-        //        #[serde(default)]
-        //        multi_character_prefill: Option<bool>,
-        //   2. this line becomes
-        //        multi_character_prefill: p.multi_character_prefill,
-        //
-        // MEANWHILE the behaviour here is the conservative one, not a silent
-        // wrong answer: `None` omits the column from the INSERT, which is
-        // exactly what importing a PRE-4.9 bundle does in v4 — the tri-state
-        // "never chosen", which the resolver reads as the provider default.
-        // The bounded gap is a 4.9 bundle whose profile explicitly stored a
-        // NON-default choice: it imports as "never chosen" instead.
-        multi_character_prefill: None,
+        // v4 `23af7146`'s importer carries `multiCharacterPrefill` through its
+        // `...profileData` spread, so a 4.9 bundle's stored choice round-trips
+        // (absent → column omitted, the DDL default / tri-state decides — the
+        // pre-4.9 shape). Landed at the round's unification: P4.D79's ordered
+        // edit, applied once P4.48's ownership of this file had merged.
+        multi_character_prefill: p.multi_character_prefill,
         model_class: p.model_class,
         max_context: p.max_context,
         max_tokens: p.max_tokens,
@@ -505,4 +494,85 @@ fn create_embedding_profile(
     };
     repo.create(&create, &opts)?;
     Ok(opts.id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The migrated-shape table, columns exactly as the CpCreate INSERT names
+    /// them (SQLite's dynamic typing makes the affinities immaterial here).
+    fn migrated_table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE connection_profiles (\
+               id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+               transport TEXT, courierDeltaMode INTEGER, apiKeyId TEXT, \
+               baseUrl TEXT, modelName TEXT, parameters TEXT, isDefault INTEGER, \
+               isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
+               allowToolUse INTEGER, pseudoToolMode TEXT, \
+               \"multiCharacterPrefill\" INTEGER DEFAULT 1, \
+               modelClass TEXT, maxContext REAL, maxTokens REAL, \
+               isDangerousCompatible INTEGER, supportsImageUpload INTEGER, \
+               tags TEXT, sortIndex REAL, totalTokens REAL, totalPromptTokens REAL, \
+               totalCompletionTokens REAL, messageCount REAL, createdAt TEXT, \
+               updatedAt TEXT)",
+        )
+        .unwrap();
+    }
+
+    fn record(id: &str, name: &str, prefill: Option<Value>) -> Value {
+        let mut rec = json!({
+            "id": id,
+            "name": name,
+            "provider": "OPENROUTER",
+            "modelName": "m",
+        });
+        if let Some(v) = prefill {
+            rec["multiCharacterPrefill"] = v;
+        }
+        rec
+    }
+
+    fn stored_prefill(conn: &Connection, name: &str) -> Option<i64> {
+        conn.query_row(
+            "SELECT \"multiCharacterPrefill\" FROM connection_profiles WHERE name = ?1",
+            [name],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .unwrap()
+    }
+
+    /// The unification wire's pin (P4.D79's ordered edit, applied at unify):
+    /// a 4.9 bundle's stored `multiCharacterPrefill` round-trips through the
+    /// import, and an absent key still lets the DDL default decide (here the
+    /// MIGRATED shape's `DEFAULT 1`; on a fresh generateDDL instance, NULL —
+    /// pinned by `connection_profiles_tier2`).
+    #[test]
+    fn import_carries_the_stored_prefill_choice() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrated_table(&conn);
+        let profiles = vec![
+            record("a0000000-0000-4000-8000-000000000001", "Off", Some(json!(false))),
+            record("a0000000-0000-4000-8000-000000000002", "On", Some(json!(true))),
+            record("a0000000-0000-4000-8000-000000000003", "Silent", None),
+        ];
+        let mut id_map = IdMap::default();
+        let counts = import_connection_profiles(
+            &conn,
+            "user",
+            &profiles,
+            &ImportOptions::seed_defaults(),
+            &mut id_map,
+        )
+        .unwrap();
+        assert_eq!(counts.imported, 3);
+        // The stored choice round-trips (the pre-unify code imported ALL THREE
+        // as "never chosen" — this is the arm that reddens on a regression)...
+        assert_eq!(stored_prefill(&conn, "Off"), Some(0));
+        assert_eq!(stored_prefill(&conn, "On"), Some(1));
+        // ...and an absent key is still the column-omitting INSERT: the
+        // migrated DDL default answers, not an explicit NULL write.
+        assert_eq!(stored_prefill(&conn, "Silent"), Some(1));
+    }
 }
