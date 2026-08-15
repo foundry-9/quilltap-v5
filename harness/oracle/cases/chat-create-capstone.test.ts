@@ -54,6 +54,13 @@ interface CaseSpec {
   /** Canned greeting content the streaming boundary yields (records the prompt). */
   greetingContent?: string;
   greetingUsage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  /**
+   * P4.D79: the CUMULATIVE `reasoningContent` values the greeting stream emits.
+   * v4 persists the last one onto the stored greeting message
+   * (`reasoningContent: firstMessageReasoning || null`), so it lands in the
+   * diffed `chat_messages` dump.
+   */
+  greetingReasoning?: string[];
   /** Canned outfit-choice content the cheap-LLM boundary returns. */
   outfitContent?: string;
 }
@@ -185,6 +192,7 @@ async function runCase(
           if (c.greetingContent === undefined) {
             throw new Error(`unexpected streamMessage call in case ${c.name}`);
           }
+          for (const r of c.greetingReasoning ?? []) yield { reasoningContent: r };
           if (c.greetingContent) yield { content: c.greetingContent };
           if (c.greetingUsage) yield { usage: c.greetingUsage };
         },

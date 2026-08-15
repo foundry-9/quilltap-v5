@@ -1210,8 +1210,12 @@ async fn create_initial_messages_scenario_and_staff<EMB, CMP, STR>(
 
     // Auto-generated first character message.
     let mut first_message_content = js_trim(&context.first_message).to_string();
+    // v4 `23af7146`: reasoning is only ever captured for a GENERATED greeting —
+    // a scripted one never touched a model. DISPLAY ONLY, like every other
+    // stored turn.
+    let mut first_message_reasoning = String::new();
     if first_message_content.is_empty() {
-        first_message_content = auto_generate_first_message(
+        let generated = auto_generate_first_message(
             db,
             main,
             deps,
@@ -1222,6 +1226,8 @@ async fn create_initial_messages_scenario_and_staff<EMB, CMP, STR>(
             llm_logs,
         )
         .await;
+        first_message_content = generated.content;
+        first_message_reasoning = generated.reasoning_content;
     }
     if first_message_content.is_empty() {
         first_message_content = match context.user_character.as_ref() {
@@ -1268,6 +1274,14 @@ async fn create_initial_messages_scenario_and_staff<EMB, CMP, STR>(
         "id": uuid::Uuid::new_v4().to_string(),
         "role": "ASSISTANT",
         "content": first_message_content,
+        // v4 `reasoningContent: firstMessageReasoning || null` — the JS `||`
+        // maps the empty string to null, so a scripted first message (and a
+        // model that produced no thinking) stores an explicit NULL.
+        "reasoningContent": if first_message_reasoning.is_empty() {
+            Value::Null
+        } else {
+            Value::String(first_message_reasoning.clone())
+        },
         "attachments": [],
         "createdAt": now_iso(),
     });
@@ -1376,6 +1390,30 @@ async fn post_opening_outfit_and_avatar(
 // autoGenerateFirstMessage (v4 L578-829)
 // ============================================================================
 
+/// A generated opening greeting (v4 `GeneratedGreeting`, `23af7146`).
+/// `reasoning_content` is the thinking a reasoning model produced while
+/// composing it — DISPLAY ONLY, persisted onto the greeting message so the
+/// Salon renders its thinking fold like any other turn. Empty for the give-up
+/// paths and for models that produced none.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct GeneratedGreeting {
+    pub content: String,
+    pub reasoning_content: String,
+}
+
+impl GeneratedGreeting {
+    /// v4's `NO_GREETING` constant — the shape all four give-up paths return.
+    fn none() -> Self {
+        Self::default()
+    }
+    fn from_result(res: &crate::services::initial_greeting::GreetingResult) -> Self {
+        Self {
+            content: res.content.clone(),
+            reasoning_content: res.reasoning_content.clone(),
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn auto_generate_first_message<EMB, CMP, STR>(
     db: &Db,
@@ -1386,7 +1424,7 @@ async fn auto_generate_first_message<EMB, CMP, STR>(
     chat_id: &str,
     project_id: Option<&str>,
     llm_logs: Option<&Connection>,
-) -> String
+) -> GeneratedGreeting
 where
     EMB: EmbeddingProvider + Send + Sync,
     CMP: CompletionProvider + Send + Sync,
@@ -1421,25 +1459,25 @@ where
     });
 
     let Some(participant) = participant else {
-        return String::new();
+        return GeneratedGreeting::none();
     };
     let Some(connection_profile_id) = participant
         .get("connectionProfileId")
         .and_then(Value::as_str)
     else {
-        return String::new();
+        return GeneratedGreeting::none();
     };
 
     let connection_profile = match connection_profiles::find_by_id(main, connection_profile_id) {
         Ok(Some(p)) => p,
-        _ => return String::new(),
+        _ => return GeneratedGreeting::none(),
     };
 
     let mut api_key = String::new();
     if let Some(api_key_id) = connection_profile.get("apiKeyId").and_then(Value::as_str) {
         match api_keys::find_by_id(main, api_key_id) {
             Ok(Some(k)) => api_key = k.key_value,
-            _ => return String::new(),
+            _ => return GeneratedGreeting::none(),
         }
     }
 
@@ -1599,7 +1637,7 @@ where
         match generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
             Ok(res) => {
                 if !res.content.is_empty() {
-                    return res.content;
+                    return GeneratedGreeting::from_result(&res);
                 }
                 if res.content_filter_detected {
                     content_filter_hit = true;
@@ -1617,7 +1655,7 @@ where
         match generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
             Ok(res) => {
                 if !res.content.is_empty() {
-                    return res.content;
+                    return GeneratedGreeting::from_result(&res);
                 }
                 if res.content_filter_detected {
                     content_filter_hit = true;
@@ -1629,7 +1667,7 @@ where
 
     // Attempt 3: content-filter → Concierge uncensored reroute.
     if content_filter_hit {
-        if let Some(content) = attempt_uncensored_reroute(
+        if let Some(greeting) = attempt_uncensored_reroute(
             main,
             deps,
             context,
@@ -1644,8 +1682,8 @@ where
         )
         .await
         {
-            if !content.is_empty() {
-                return content;
+            if !greeting.content.is_empty() {
+                return greeting;
             }
         }
     }
@@ -1655,12 +1693,12 @@ where
         let r = base_request();
         if let Ok(res) = generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
             if !res.content.is_empty() {
-                return res.content;
+                return GeneratedGreeting::from_result(&res);
             }
         }
     }
 
-    String::new()
+    GeneratedGreeting::none()
 }
 
 /// v4 attempt-3 body (L748-804): resolve the Concierge uncensored provider and
@@ -1679,7 +1717,7 @@ async fn attempt_uncensored_reroute<EMB, CMP, STR>(
     project: Option<&GreetingProjectContext>,
     recent_block: Option<&str>,
     log: Option<&GreetingLog<'_>>,
-) -> Option<String>
+) -> Option<GeneratedGreeting>
 where
     EMB: EmbeddingProvider + Send + Sync,
     CMP: CompletionProvider + Send + Sync,
@@ -1752,7 +1790,7 @@ where
     };
 
     match generate_greeting_message(deps.streaming, &request, log).await {
-        Ok(res) if !res.content.is_empty() => Some(res.content),
+        Ok(res) if !res.content.is_empty() => Some(GeneratedGreeting::from_result(&res)),
         _ => None,
     }
 }

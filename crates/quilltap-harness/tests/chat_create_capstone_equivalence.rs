@@ -87,6 +87,10 @@ struct CaseSpec {
     greeting_content: Option<String>,
     #[serde(default)]
     greeting_usage: Option<UsageSpec>,
+    /// P4.D79: the CUMULATIVE reasoning the greeting stream emits; the last
+    /// non-empty one is persisted onto the stored greeting message.
+    #[serde(default)]
+    greeting_reasoning: Vec<String>,
     #[serde(default)]
     outfit_content: Option<String>,
 }
@@ -402,6 +406,12 @@ fn chat_create_capstone_matches_oracle() {
             let msgs = to_messages(&rec.messages);
             if rec.kind == "stream" {
                 let mut chunks: Vec<StreamChunkResult> = Vec::new();
+                for r in &c.greeting_reasoning {
+                    chunks.push(Ok(StreamChunk {
+                        reasoning_content: Some(r.clone()),
+                        ..Default::default()
+                    }));
+                }
                 if let Some(content) = c.greeting_content.as_deref() {
                     if !content.is_empty() {
                         chunks.push(Ok(StreamChunk::content(content)));

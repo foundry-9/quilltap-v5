@@ -319,6 +319,40 @@ cases), which is also the proof the tolerance works.
 Import/restore: see unit 4 — restore carries the field, the `.qtap` import
 carry is STOPPED by the ownership tripwire with its ordered edit recorded.
 
+### Unit 6 — the greeting's reasoning capture
+
+`GreetingResult` gains `reasoning_content`, accumulated by **ASSIGNMENT** (v4's
+comment, carried: providers emit `reasoningContent` CUMULATIVELY — the full
+thinking-so-far on every chunk, not a delta) behind v4's `if
+(chunk.reasoningContent)` JS-truthiness guard, so an empty chunk does NOT clear
+what came before. Trimmed alongside the content.
+`auto_generate_first_message` returns a `GeneratedGreeting {content,
+reasoning_content}` with a `none()` constructor standing in for v4's
+`NO_GREETING`, through **all four attempts + the Concierge reroute**; the
+stored greeting message carries `reasoningContent: firstMessageReasoning ||
+null` — the JS `||`, so an empty string persists as an explicit NULL.
+
+v4's `logger.debug` on a captured reasoning has no ported analog (v5 emits no
+tracing from this module); recorded, not invented.
+
+**Differentials.** `initial_greeting_equivalence` grew `cannedReasoning` on
+three existing cases plus a new
+`reasoning_empty_chunk_does_not_clear` case, and now compares
+`reasoningContent`. The oracle CONFIRMED all three predicted behaviours against
+v4's real code rather than my reading of it: cumulative last-wins
+(`"Let me think about a greeting for Aria."`), trimming
+(`"  weighing the project brief  "` → trimmed), and the empty trailing chunk
+leaving `"thought one and two"` intact. A guard asserts at least one case
+actually captured reasoning, so a stale oracle cannot pass by comparing
+empty-to-empty. `chat_create_capstone` gained `greetingReasoning` on
+`generated_greeting`, which makes the PERSISTED value a comparand in the
+`chat_messages` dump — and every other case is the scripted/absent arm, which
+pins the NULL.
+
+**Mutation-proven three ways:** concatenating instead of assigning, dropping
+the JS-truthiness guard, and never persisting the value each redden their
+family.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

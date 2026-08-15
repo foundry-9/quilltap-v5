@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Greeting generation now captures a thinking model's reasoning and persists it
+on the opening message (P4.D79 unit 6, v4 23af7146). Providers emit
+reasoningContent cumulatively — the full thinking-so-far on every chunk — so
+it is accumulated by assignment, not concatenation, and an empty chunk does
+not clear what came before; the value is trimmed alongside the content and
+carried through all four greeting attempts and the Concierge reroute. It is
+display-only, and a scripted first message stores NULL because it never
+touched a model. The greeting differential grew a reasoning-carrying case
+(plus one that pins the empty-chunk rule) and the chat-create capstone now
+diffs the persisted value. Versions: core 0.0.556, harness 0.0.478.
+
 Carried multiCharacterPrefill through the .qtap export (P4.D79 unit 5, v4
 23af7146). schema-key-order.json was regenerated from v4's live schemas rather
 than hand-appended, so the key lands in its schema slot after pseudoToolMode

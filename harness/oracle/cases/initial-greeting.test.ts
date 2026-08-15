@@ -41,6 +41,13 @@ interface CaseSpec {
   recentConversationsBlock: string | null;
   cannedContent: string;
   cannedUsage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  /**
+   * P4.D79: the CUMULATIVE `reasoningContent` values a thinking model emits —
+   * each chunk carries the full thinking-so-far, not a delta, which is why v4
+   * ASSIGNS rather than concatenates. Emitted as its own chunks before the
+   * content, the way the real providers interleave them.
+   */
+  cannedReasoning?: string[];
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +84,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
             recorded.set(c.id, { provider, model: params.model, temperature: params.temperature ?? null, messages });
           }
           void key;
+          for (const r of c.cannedReasoning ?? []) yield { reasoningContent: r };
           if (c.cannedContent) yield { content: c.cannedContent };
           if (c.cannedUsage) yield { usage: c.cannedUsage };
         },
@@ -105,7 +113,11 @@ it('generates greetings (records prompt bytes + result)', async () => {
       JSON.stringify({
         id: c.id,
         request: recorded.get(c.id),
-        result: { content: result.content, contentFilterDetected: result.contentFilterDetected },
+        result: {
+          content: result.content,
+          reasoningContent: result.reasoningContent,
+          contentFilterDetected: result.contentFilterDetected,
+        },
       }),
     );
   }
