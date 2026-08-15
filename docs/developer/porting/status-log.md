@@ -69319,3 +69319,154 @@ v4 checkout.
 wholesale, because it rewrote 78 lines of `salon-conversation.ts` and 27 of
 `custom-tools-popup.ts` that this lane never touched. The committed diff carries
 only this lane's own edits.
+
+---
+
+## Round record — the help-drift unification (P4.D77 ∥ P4.D65-remainder ∥ P4.47 ∥ P4.9L), 2026-08-14
+
+**Unified on main; the oracle baseline MOVES to `24633026` and the drift
+debt is CLEARED.** Four lanes, 19 lane commits cherry-picked in dependency
+order (D77 → D65-rem → P4.47 → P4.9L), plus four unification commits: the
+P4.47→D77 handoff wire, the §3 findings, the corpus restoration + driver
+hardening, and this docs commit. Conflicts were versions + the two
+append-only docs only, resolved by accumulation/union — no source-level
+conflict, so Ownership held.
+
+### The §3 review (three parallel reviewers + the unifier's own read)
+
+**No blocking findings in any lane's delivered scope — but the review's own
+new assert found two wire divergences that would have shipped, and the gate
+found two sweep-driver defects.** Everything below was fixed on the unify
+branch before merge:
+
+1. **The settings error-status split** (P4.47 §3, the headline): v4's PUT
+   catch answers `errorMessage.includes('Invalid') ? 400 : 500` — a
+   validation failure whose ZodError text carries no "Invalid" (a bare
+   threshold `too_big`/`too_small`: "Too big: expected number to be <=1")
+   answers **500** in v4; v5 answered 400 unconditionally. Bodies were
+   identical, and the oracle RECORDED `status` per row while the harness
+   never asserted it — invisible to a body-only diff. Fixed at the
+   assignment-walk error arm; the harness now asserts the recorded status
+   on every ERROR row (success rows deliberately excluded: v4's REST
+   200-vs-201 is a transport-edge property v5's dispatch envelope does not
+   carry — documented at the assert). Mutation-proven red-first
+   (`s_put_danger_threshold_too_big`: oracle 500, got 400).
+2. **The connection-profile duplicate arms answered 400 where v4 conflicts
+   409** — caught by that same new assert on its second run (`cp_create_dup`).
+   v4 `connection-profiles/route.ts:206` + `[id]/route.ts:176` both
+   `conflict(...)`; v5 had `bad_request` at both arms though
+   `ErrorKind::Conflict` existed and `dispatch.rs` already maps it to 409
+   (text-replacements was already using it). Both arms flipped; the family
+   re-run green.
+3. **The composer's Generate Image button dropped v4's `disabled`**
+   (`ComposerGutterTools.tsx:106`) — clickable while sending. Fixed.
+4. **The `applyDelimiterCommand` list-shape claim was FALSE**: the doc
+   comment said PM's `$from.parent` "is the same node for every shape this
+   toolbar can reach", but a caret inside a LIST (reachable from this very
+   toolbar) diverges — v4's `getTopLevelElement()` flattens the whole
+   ListNode into one raw text run; v5 rewrites only the caret's item.
+   Kept as v5's behavior DELIBERATELY (PM's non-textblock `textContent`
+   has no `\n` separators and no position mapping; flattening a list from
+   one button press is destruction this port declines to reproduce — the
+   P4.D75 adapter rule), but now RECORDED in the comment and pinned by a
+   new spec (`list: only the caret's item`; ng test 4,710 → 4,711).
+5. **Two comments misstating v4's `safeQuery` semantics** (help_doc_chunks
+   repo + the embed job's count arm): v4's no-fallback `safeQuery` logs and
+   RETHROWS — the shipped BEHAVIOR was faithful in both arms, but the
+   carried why-comments asserted the opposite mechanism. Corrected.
+6. **A stale header sentence** in `help_doc_sync.rs` ("no
+   `EMBEDDING_REINDEX_ALL` handler exists") — the host registers it and it
+   drives `sync_help_docs` with the real walk (`host.rs:523` →
+   `embedding_reindex_job.rs:427`), so the SYNC half runs in production on
+   a reindex-all; what stays dark is only the boot-time ensure path and
+   with it the P4.D77 upgrade backfill. Corrected — an upgrade of the
+   deferral's record, verified against the code before rewriting.
+7. **The reindex clear-pair's transaction shape** (docs cleared + chunks
+   cleared in ONE v5 write vs v4's two awaits) — same class as the
+   backfill's recorded divergence, now recorded beside it.
+
+**Reviewer notes recorded, NOT fixed** (all cosmetic or unreachable, named
+so they cannot silently become claims): `truncate_utf16` yields U+FFFD where
+JS `substring` keeps a lone surrogate at a budget cut point (astral char at
+exactly 1500/600/1000); `find_by_doc_id` tie order on duplicate chunkIndex
+(unwritable by `replace_for_doc`, UNIQUE-forbidden on the migration shape);
+v5's one-picker-at-a-time vs v4's independent popovers; v4 hides the
+delimiter section during a template re-fetch where v5 keeps the previous
+buttons until resolve; the source textarea's `spellcheck=false`/aria-label
+v4 lacks; the sweep driver's `OUTPUT_ENV` regex matching any var containing
+`OUT` (fail-soft, warn-class); v4's non-streaming `x-server-timeout` +
+`x-goog-api-client` recorded-not-modelled (the standing P4.44 deferral).
+
+### The gate's own two catches (the sweep-infrastructure class)
+
+The unified regen (29 families through the driver, pinned at a detached
+`24633026` worktree because v4's live tree carries uncommitted
+Ollama-thinking WIP) failed on two families, both the round's own defect
+class in the last unrepaired places:
+
+- **`character_archive_tier2`** — the driver's fixture shield copies a
+  `QT_FIXTURE*` `.db` to /tmp but not its `.db.meta.json` sidecar, so the
+  oracle case's sidecar read landed on a path nothing populated. The shield
+  now copies sidecars.
+- **`builtin_mounts`** — its recipe read `.qt-oracle-mirror` under the v4
+  checkout that no stage of it built (the comment said "cp -R … → here");
+  the `--v4` rewrite correctly pointed it into the fresh pinned worktree,
+  which had no mirror. The recipe now stages its own mirror. (P4.47's new
+  class could not see it — it inspects /tmp paths only.)
+
+Both re-run green at the pin after repair.
+
+**And one self-inflicted clobber, caught by the plain workspace run and
+fully recovered:** running `request_builder_google_wire_equivalence`
+through the sweep executed its RECORDING script against the pinned
+worktree, where the google plugin's runtime deps are absent — all 18
+recordings refused and the script overwrote the COMMITTED corpus with
+refusal rows, which a broad `git add -A` then swept into the §3 findings
+commit. The plain `cargo test --workspace` failed on the family and
+exposed it; the corpus was restored byte-identical from the pre-clobber
+commit and verified (18 rows, all with bodies + `x-goog-api-key`). The
+driver now (a) NEVER runs a committed-corpus family's recording stage — 
+recording is a deliberate by-hand act — and (b) warns loudly whenever any
+family's stages leave tracked fixture bytes modified, so a clobber shows
+in the results artifact instead of riding a later add. **Lesson, for the
+memory note: `git add -A` after a sweep is how a clobber becomes a
+commit — stage by name at unification.**
+
+### The unification wires
+
+- The P4.47→D77 `help_doc_sync_guards` handoff discharged: the recipe now
+  stages its own fixture into a family-specific /tmp path (driver flag
+  cleared; `--list` ok 293 → 294).
+- No cross-lane contract names this round (server-only ∥ tests-only ∥
+  tooling ∥ SPA-only); the shared-contract obligations were ownership,
+  version accumulation, and the handoff above.
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (default +
+  `--features quilltap-core/native-transport`); `cargo build --release`
+  exit 0.
+- **`cargo test --workspace`: 431 test binaries / 2,082 tests / 0 failed,
+  exit 0** (after the corpus restoration; the first run's failure was the
+  clobber, above).
+- **The round's differentials by name through the sweep driver, all
+  regenerated FRESH at the `24633026` pin, zero SKIP:** the 29-family run
+  (27 ok first pass; `builtin_mounts` + `character_archive_tier2` ok after
+  the infrastructure repairs) + `settings_routes_equivalence` re-run with
+  the new error-status assert + `request_builder_google_wire_equivalence`
+  re-run post-restoration. Artifacts:
+  `harness/tools/sweep-results/2026-08-14-unify-help-drift-round*.json`.
+- SPA: `ng test` **322 files / 4,711 tests / 0 failed**; `ng build` clean.
+- **Full Playwright: 219 passed / 0 failed / 0 skipped (5.6 m)** — the suite at P4.9L's grown size (215 → 219), all five of its beats confirmed by name in the run log, over the union incl. the §3 findings fixes.
+- Spelling guard green (rides the workspace run).
+
+**Versions:** core 0.0.549, harness 0.0.473, host 0.0.70, SPA 0.5.487;
+web/cli/tauri/sys unchanged.
+
+**Standing after the round:** the in-flight v4 Ollama-thinking drift is the
+top next candidate the moment it lands; the D65-5a preflight order, the
+owed dogfood pass (now + this round's surfaces), `p4.9l2`, `p4.9i2`, and
+the banked smalls follow — the list lives in `phase-4.md`. The two v4-side
+filings owed by the human: the source-mode send discarding edits (P4.9L),
+the archived-seat-badge GET gap (standing).

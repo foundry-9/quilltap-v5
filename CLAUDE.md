@@ -1122,26 +1122,62 @@ records THERE. Update this summary only when a phase or round completes.
   owed: Part C step 12 and the whole standing 💸 queue (Almanack, Taboo,
   OpenRouter pricing, the vision send, P4.D49). Record: `status-log.md` →
   "Dogfood pass — the 4.8.2/4.8.3 round"; rows in `dogfood-findings.md`.
-- **Oracle baseline: `48396682` (2026-08-13, v4 main — "merge: 4.8.3 back
-  into main"), adopted at the 4.8.2/4.8.3 drift-round unification — NO v4
-  drift debt remains.** v4 HEAD is `11553944` ("merge: 4.8.4 back into
-  main"), ONE release past the baseline and **NO-PORT, verified**: the
-  delta is two composer-typeahead test files, a jest test helper, and
-  release docs — `git diff 48396682 main -- lib/ app/ packages/` is
-  EMPTY, so oracles regenerate straight from the checkout while HEAD
-  stays there. **Drift-check BOTH branches every round** (`git log
-  <baseline>..main` AND `git log main..bugfix -- lib/ app/ packages/`;
-  release content reaches main squashed via the `release:`/`merge:`
-  pair, so measure drift with `git diff`, not the bugfix commit list)
-  and verify the checkout's branch before any regen — pin a detached
-  worktree on any mismatch, drift, or dirty tree
-  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
-  The sweep driver remains the sanctioned per-family regen path — never
-  run two sweeps concurrently (shared /tmp paths race; measured), and
-  the provisioning family's two v4-side legs must run from the v4
-  checkout (recipe repaired this round). The distill-transitive TZ pins,
-  the committed-fixture rule, and the venue/staging rules stand
-  unchanged.
+- **The help-drift round (P4.D77 ∥ P4.D65-remainder ∥ P4.47 ∥ P4.9L):
+  UNIFIED on main (2026-08-14) — ALL FOUR CLOSED; the oracle baseline
+  MOVES to `24633026` and the drift debt is CLEARED.** v4's one drift
+  commit (section-level help embeddings + Guide content search) absorbed
+  across every ported surface: the `help_doc_chunks` substrate (the D23
+  re-dump's generateDDL shape AND the migration shape via the boot
+  ensure — the order's "they agree" premise REFUTED, both shapes
+  deliberate; `chunk_index` is `f64` after the REAL-affinity defect the
+  differential caught), the chunking over the Scriptorium chunker, the
+  sync re-slice + upgrade backfill (one recorded transaction-shape
+  divergence), the HELP_DOC job's chunk pass (three vacuous-green corpus
+  masks found and fixed by mutation), the reindex/reapply riders, and
+  `help_search`'s `max(doc, best-section)` blend + section-led tool
+  block — the Guide client half banked verbatim at `p4.9i2` ∥ the D65
+  items 5–6 coverage remainder (a STALE ORACLE MOCK found by consequence
+  — jest.setup's `getDefaultEmbeddingProfile` null stub was starving
+  v4's import of embedding jobs; item 5a ESCALATED: the preflight
+  swallows read errors at ten sites, ordered next) ∥ P4.47's three
+  smalls, one upgraded to a REAL FIX (v5 sent google's api key as
+  `?key=` where v4's SDK sends `X-Goog-Api-Key` — three-way confirmed,
+  both composition-level unit tests flipped) ∥ P4.9L: the composer
+  formatting toolbar against a NEW v4-side jsdom recorder (56 vectors),
+  v4's 2-column composer layout (**dogfood #75 CLOSED**, band-aid
+  retired), the pickers' composer entrance, five live beats (suite 215
+  → 219); v4's source-mode send discarding edits is a NEW v4-side
+  filing. **The §3 review fixed at unification:** the settings
+  error-status split (v4's `includes('Invalid') ? 400 : 500` — a
+  threshold-only Zod failure answers 500) + the connection-profile
+  duplicate arms' 409, both caught by the review's NEW per-row
+  error-status assert (mutation-proven red-first); the Generate-Image
+  disabled gate; the list-shape false-equivalence claim (now a recorded,
+  spec-pinned divergence); four comment corrections. **The gate itself
+  caught two sweep-driver defects:** the fixture shield dropped
+  `.db.meta.json` sidecars, and the driver ran a committed-corpus
+  family's RECORDING stage — clobbering the google-wire corpus against
+  the pinned worktree (restored; the driver now never runs recording
+  stages and warns on tracked-fixture writes). Gate + versions: the
+  round record in `status-log.md`. 💸 owed: P4.D77's trio + #75's
+  acceptance look, on the standing queue.
+- **Oracle baseline: `24633026` (2026-08-14, v4 main — "feat:
+  section-level help embeddings and content search in the Guide"),
+  adopted at the help-drift unification — NO v4 drift debt remains.**
+  ⚠ v4's working tree carries uncommitted **Ollama "Enable Thinking"
+  WIP** (the next drift, already in flight) — verify branch +
+  cleanliness before ANY regen; pin a detached worktree on
+  mismatch/drift/dirt (`oracle-regen-pinned-v4-worktree`, or
+  `recipe_sweep.py --v4 <pin>`). **Drift-check BOTH branches every
+  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
+  app/ packages/` — measure bugfix with `diff`, never the commit list;
+  bugs 64/65 sit BELOW the 4.8.3 marker and are pre-baseline). The
+  sweep driver remains the sanctioned per-family regen path — never run
+  two sweeps concurrently; it now copies `.db.meta.json` sidecars when
+  shielding, NEVER runs a committed-corpus family's recording stage,
+  and warns when a family's stages modify tracked fixtures. The
+  distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged.
   (The superseded baseline paragraphs formerly kept here "for history" are
   archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the

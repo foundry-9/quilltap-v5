@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Unified the help-drift round: the server half of v4's section-level help
+search (the help_doc_chunks table, chunking, the sync's re-slice and upgrade
+backfill, the embedding job's chunk pass, the reindex/reapply riders, and
+best-section ranking in help_search), the archive-family coverage remainder,
+three maintenance smalls (the settings Zod arms, the google api-key header
+fix, the sweep driver's staging-dependency class), and the composer
+formatting toolbar with v4's composer layout. The oracle baseline moves to
+24633026. The unification review fixed two wire-status divergences, a
+disabled-state gap, and a mis-claimed editor divergence before merge; the
+gate repaired two sweep-driver defects and restored a briefly-clobbered
+recorded corpus. Full gate green: 431 test binaries / 2,082 tests, the
+round's differentials regenerated fresh at the pinned baseline, ng test
+4,711, and the full Playwright suite (numbers in the round record).
+Versions: core 0.0.549, harness 0.0.473, host 0.0.70, SPA 0.5.487.
+
 Restored the recorded google-wire corpus after the unification gate's sweep
 clobbered it: running the family through the sweep executed its RECORDING
 script against the pinned v4 worktree, where the google plugin's runtime

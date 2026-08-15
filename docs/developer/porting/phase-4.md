@@ -4733,3 +4733,69 @@ round), and the provisioning family's two v4-side legs must run from
 the v4 checkout (recipe repaired this round). The distill-transitive TZ
 pins, the committed-fixture rule, and the venue/staging rules stand
 unchanged. Drift-check before every round.
+
+## The help-drift round (P4.D77 ∥ P4.D65-remainder ∥ P4.47 ∥ P4.9L) — UNIFIED 2026-08-14
+
+All four lanes CLOSED (order status headers carry the per-lane verdicts; the
+round record is in `status-log.md`). The oracle baseline MOVES to
+**`24633026`** and the drift debt is CLEARED. Highlights: the server half of
+v4's section-level help search is live end to end (the Guide client half
+banked verbatim at `p4.9i2`, m6 row 11); the composer formatting toolbar +
+v4's composer layout landed (dogfood #75 closed); the settings Zod-collapse
+arms, the google auth-transport fix (`?key=` → `X-Goog-Api-Key`), and the
+sweep driver's staging-dependency class all closed; the P4.D65 archive
+coverage remainder landed with a stale-oracle-mock catch. The §3 review
+fixed, at unification: the settings error-status split (v4's
+`includes('Invalid') ? 400 : 500`) + the connection-profile duplicate 409s —
+both caught by the review's new per-row error-status assert; the composer
+Generate-Image disabled gate; the list-shape divergence pin; and the gate
+itself caught + fixed two sweep-infrastructure defects (the fixture shield's
+missing `.meta.json` sidecar copy; the driver running a committed corpus's
+RECORDING stage — which clobbered and then briefly committed the google-wire
+corpus before restoration).
+
+**Next candidates, in rough value order:**
+
+1. **The v4 Ollama "Enable Thinking" drift, already in flight** — visible as
+   uncommitted WIP in v4's working tree during this round (a `think-parser`,
+   provider-options schema rows, `help/connection-profiles.md`); expect the
+   catch-up round the moment v4 commits it. Drift-check will catch it.
+2. **The D65-5a escalation order**: the import preflight's exists-checks
+   swallow repo READ errors to "id free" at TEN sites
+   (`quilltap_import/mod.rs:805,826,835,845`, `entities.rs:445,532`,
+   `preview.rs:124,130,148,172`) where v4 propagates and refuses the whole
+   import — a real v5 defect with a live consumer (the archive service);
+   the fix is core source + one planted-unreadable-table differential arm.
+3. **The owed dogfood pass** — now ALSO gaining this round's live surfaces:
+   the composer toolbar + v4 layout on real data (#75's acceptance look),
+   the delimiter buttons over a real template, and the standing 💸 queue
+   plus P4.D77's trio (the upgrade backfill on the Friday copy — reachable
+   once `ensure_help_docs_synced` is wired, the `p4.9i2` seam; a real
+   `help_search` section answer; the reindex/reapply riders at scale).
+4. **`p4.9l2`** — the DocumentPane formatting toolbar (m6 §4 row 14b; every
+   component exists, the pane's wiring does not).
+5. **`p4.9i2`** — the HelpChat/Guide vertical, now carrying the enriched
+   P4.D77 bank (the search route's exact snippet mechanics, the client
+   debounce/stale-tagging, the help-md copy deltas).
+6. Banked smalls: the settings repo-validate sibling fields
+   (`imageDescriptionProfileId` / `uncensoredImageDescriptionProfileId` /
+   `contextCompressionSettings` / `thinkingDisplay` — named at the P4.47
+   deferral site); the two v4-side filings (the source-mode send discarding
+   edits — NEW from P4.9L; the archived-seat-badge GET gap — standing); the
+   stale `docs/v4` API.md mirror sweep.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`24633026`** ("feat: section-level help embeddings and content search in
+the Guide", adopted at the help-drift unification). ⚠ v4's working tree
+carried uncommitted Ollama-thinking WIP through this round — verify
+branch + cleanliness before any regen and pin a detached worktree on any
+mismatch/drift/dirt (`recipe_sweep.py --v4 <pin>`). Drift-check BOTH
+branches (bugfix measured by `git diff`, never the commit list — bugs
+64/65 live BELOW the 4.8.3 marker and are pre-baseline). The sweep driver
+remains the sanctioned regen path — never run two sweeps concurrently;
+the driver now (this round) copies `.db.meta.json` sidecars when
+shielding fixtures, NEVER runs a committed-corpus family's recording
+stage (recording is a by-hand act), and warns whenever a family's stages
+leave tracked fixture bytes modified. The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.
+Drift-check before every round.
