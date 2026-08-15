@@ -26,7 +26,7 @@
     "imageGeneration": false,
     "embeddings": true,
     "webSearch": false,
-    "toolUse": false
+    "toolUse": true
   },
   "configRequirements": {
     "requiresApiKey": false,

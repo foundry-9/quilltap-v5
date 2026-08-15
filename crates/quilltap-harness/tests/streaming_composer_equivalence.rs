@@ -13,10 +13,14 @@
 //! decoders proved, now through the full compose path (decoder selection by
 //! manifest, the flavor split, the pump thread, EOF finish).
 //!
-//! Ollama respects the W4.7b push-boundary caveat: v4's plugin splits each
-//! network read on `\n` with NO cross-read buffer (a ported bug), so ollama is
-//! replayed at whole-buffer + line-aligned chunkings only (the byte-at-a-time
-//! lossy bug-parity is asserted in the decoder's own unit tests).
+//! Ollama is replayed at whole-buffer, line-aligned AND byte-at-a-time
+//! chunkings. The older caveat here — that v4's plugin split each network read
+//! on `\n` with NO cross-read buffer, so byte-at-a-time diverged BY DESIGN —
+//! has been stale since v4 bug 35 (`43a1b5b1`) taught the splitter to carry the
+//! partial line and the incomplete UTF-8 tail across reads; the decoder
+//! differential has replayed all three chunkings since. Measured at P4.D78: the
+//! byte chunking is green through the full compose path too, so the exclusion
+//! is gone from the code as well as from this comment.
 //!
 //! Google note: the composer derives `is_thinking_model` from the call's model
 //! via the ported v4 predicate (`request_builder::google::is_thinking_model`),
@@ -324,8 +328,9 @@ fn chunkings_sse(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     ]
 }
 
-/// Whole-buffer + line-aligned (ollama NDJSON — the ported no-buffer bug makes
-/// byte-at-a-time diverge from v4 BY DESIGN).
+/// Whole-buffer + line-aligned + byte-at-a-time (ollama NDJSON). v4 bug 35's
+/// buffered splitter makes the decoder push-boundary-insensitive, so all three
+/// agree with v4's single line-aligned recording.
 fn chunkings_ndjson(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -338,7 +343,11 @@ fn chunkings_ndjson(wire: &[u8]) -> Vec<(&'static str, Vec<Vec<u8>>)> {
     if start < wire.len() {
         lines.push(wire[start..].to_vec());
     }
-    vec![("whole", vec![wire.to_vec()]), ("per-line", lines)]
+    vec![
+        ("whole", vec![wire.to_vec()]),
+        ("per-line", lines),
+        ("byte", wire.iter().map(|b| vec![*b]).collect()),
+    ]
 }
 
 fn run_decoder_fixture(decoder: &str) {
@@ -350,6 +359,12 @@ fn run_decoder_fixture(decoder: &str) {
         .build()
         .unwrap();
     let mut checked = 0;
+    let mut chunkings_run = 0usize;
+    // P4.D78 — a composition-level witness that reasoning survives the FULL
+    // compose path (build → transport → manifest-selected decoder → the pump
+    // thread → the chunk channel), not just the decoder in isolation. Counted
+    // off the chunks the COMPOSER emitted; asserted non-zero for ollama below.
+    let mut reasoning_cases = 0usize;
     for spec in &cases {
         let tag = spec["provider"].as_str().unwrap();
         let case = spec["case"].as_str().unwrap();
@@ -366,11 +381,32 @@ fn run_decoder_fixture(decoder: &str) {
         } else {
             chunkings_sse(&wire)
         };
+        let mut saw_reasoning_here = false;
+        chunkings_run = chunkings.len();
         for (chunking, pieces) in chunkings {
             let (chunks, err) = rt.block_on(drive_composer(provider, model, pieces));
+            if chunks.iter().any(|c| {
+                c.reasoning_content
+                    .as_deref()
+                    .is_some_and(|r| !r.is_empty())
+            }) {
+                saw_reasoning_here = true;
+            }
             assert_matches(oracle, chunking, &chunks, &err);
         }
+        if saw_reasoning_here {
+            reasoning_cases += 1;
+        }
         checked += 1;
+    }
+    if decoder == "ollama_ndjson" {
+        // The reasoning corpus can only prove the wiring while it is present:
+        // a regenerated cases.json that lost the thinking vectors would leave
+        // every other assertion here green with the feature untested.
+        assert!(
+            reasoning_cases >= 4,
+            "composer/ollama_ndjson saw reasoning on only {reasoning_cases} case(s) —              the thinking vectors are missing from the corpus, or reasoning stopped              reaching the composer's chunk channel"
+        );
     }
     assert_eq!(
         checked,
@@ -378,7 +414,14 @@ fn run_decoder_fixture(decoder: &str) {
         "{decoder}: {checked} cases in cases.json but {} recorded",
         recorded.len()
     );
-    eprintln!("OK: composer/{decoder} — {checked} case(s) × 2 chunkings match v4.");
+    eprintln!(
+        "OK: composer/{decoder} — {checked} case(s) × {chunkings_run} chunking(s) match v4{}.",
+        if reasoning_cases > 0 {
+            format!(" ({reasoning_cases} carrying reasoning end to end)")
+        } else {
+            String::new()
+        }
+    );
 }
 
 #[test]

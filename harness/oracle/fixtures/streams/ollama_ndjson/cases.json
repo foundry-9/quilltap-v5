@@ -25,5 +25,65 @@
     "wire": "ollama-unicode.wire",
     "model": "qwen",
     "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-native-thinking",
+    "wire": "ollama-native-thinking.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7,
+    "profileParameters": { "enable_thinking": true }
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-inline-think",
+    "wire": "ollama-inline-think.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-orphan-close",
+    "wire": "ollama-orphan-close.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-orphan-close-streamed",
+    "wire": "ollama-orphan-close-streamed.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-think-tail",
+    "wire": "ollama-think-tail.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-unterminated-think",
+    "wire": "ollama-unterminated-think.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-mixed-channels-tools",
+    "wire": "ollama-mixed-channels-tools.wire",
+    "model": "qwen3:8b",
+    "temperature": 0.7,
+    "tools": [
+      { "type": "function", "function": { "name": "get_weather", "description": "w", "parameters": { "type": "object", "properties": {} } } }
+    ]
   }
 ]

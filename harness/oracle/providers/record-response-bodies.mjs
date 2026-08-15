@@ -109,6 +109,22 @@ function bodiesFor(provider) {
       return [
         { name: 'plain', model: 'llama3.2', body: j({ model: 'llama3.2', created_at: '2026-07-23T00:00:00Z', message: { role: 'assistant', content: 'Hello from Ollama.' }, done: true, total_duration: 100, prompt_eval_count: 9, eval_count: 5 }) },
         { name: 'not-done', model: 'llama3.2', body: j({ model: 'llama3.2', created_at: '2026-07-23T00:00:01Z', message: { role: 'assistant', content: 'Cut off mid-' }, done: false, prompt_eval_count: 9, eval_count: 4 }) },
+        // P4.D78 (v4 d9c5a1c7) — the two reasoning channels on the non-streaming
+        // path. `thinking` is Ollama's native field (it parsed the template);
+        // inline `<think>` blocks are what leaks into `content` when it did not.
+        // reasoningContent is `native + inline` and is attached ONLY when the
+        // concatenation is non-empty, so `plain`/`not-done` above stay bare.
+        { name: 'native-thinking', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:00Z', message: { role: 'assistant', content: 'The answer.', thinking: 'native musing' }, done: true, prompt_eval_count: 7, eval_count: 3 }) },
+        { name: 'inline-think', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:01Z', message: { role: 'assistant', content: '<think>inline musing</think>\n\nHello' }, done: true, prompt_eval_count: 8, eval_count: 4 }) },
+        { name: 'both-channels', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:02Z', message: { role: 'assistant', content: '<think>inline musing</think>\n\nHello', thinking: 'native musing. ' }, done: true, prompt_eval_count: 3, eval_count: 4 }) },
+        // The swallowed-opening-tag shape, live-reproduced by v4 against a
+        // Qwen3 GGUF in no-think mode (the shape that corrupted JSON tasks).
+        { name: 'orphan-close', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:03Z', message: { role: 'assistant', content: 'Okay, the user wants a JSON array of animals. Commas, quotes, brackets. Done.\n</think>\n\n["cat", "dog", "heron"]' }, done: true, prompt_eval_count: 10, eval_count: 20 }) },
+        { name: 'unterminated-think', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:04Z', message: { role: 'assistant', content: '<think>cut off mid-' }, done: false, prompt_eval_count: 5, eval_count: 2 }) },
+        // An empty `thinking` string must NOT materialize reasoningContent.
+        { name: 'empty-thinking-omitted', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:05Z', message: { role: 'assistant', content: 'Plain.', thinking: '' }, done: true, prompt_eval_count: 2, eval_count: 2 }) },
+        // A non-string `thinking` / `content` is ignored by v4's typeof guards.
+        { name: 'non-string-channels', model: 'qwen3:8b', body: j({ model: 'qwen3:8b', created_at: '2026-08-15T00:00:06Z', message: { role: 'assistant', content: null, thinking: 42 }, done: true, prompt_eval_count: 1, eval_count: 1 }) },
       ];
     case 'openai':
       // The Responses API wire. NOTE: no top-level `output_text` — that key is

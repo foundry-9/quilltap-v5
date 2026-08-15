@@ -28,8 +28,10 @@
 //!     text parts, thought-part reasoning, `thoughtSignature`,
 //!     `promptTokenCount`/`candidatesTokenCount` minus `cachedContentTokenCount`.
 //!   - **ollama non-stream** ([`parse_ollama`], `POST /api/chat`):
-//!     `message.content`, `done ? 'stop' : 'length'`, `prompt_eval_count` /
-//!     `eval_count`.
+//!     `message.content` split through the think parser,
+//!     `done ? 'stop' : 'length'`, `prompt_eval_count` / `eval_count`, and
+//!     `reasoningContent` = native `message.thinking` + the inline `<think>`
+//!     interiors (attached only when non-empty — P4.D78 / v4 `d9c5a1c7`).
 //!
 //! The chat-completions / anthropic / ollama flavors read the wire body directly.
 //! The responses-API + google flavors read the SDK-normalized fields (`output_text`
@@ -883,12 +885,23 @@ fn build_google_raw(response: &Value) -> Value {
 
 /// Parse an Ollama `POST /api/chat` non-streaming response body.
 pub fn parse_ollama(response: &Value) -> NonStreamingResponse {
-    let content = response
+    // P4.D78 (v4 `d9c5a1c7`): reasoning may arrive on the dedicated `thinking`
+    // field (Ollama parsed the model's template) or as inline `<think>` blocks
+    // in the content (it did not). Route BOTH into `reasoningContent` and keep
+    // the message clean. A non-string on either field is ignored (v4's `typeof
+    // … === 'string' ? … : ''` guards).
+    let raw_content = response
         .get("message")
         .and_then(|m| m.get("content"))
         .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+        .unwrap_or("");
+    let split = crate::model::ollama_think_parser::extract_think_blocks(raw_content);
+    let native_thinking = response
+        .get("message")
+        .and_then(|m| m.get("thinking"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let reasoning_content = format!("{native_thinking}{}", split.reasoning);
     let done = response
         .get("done")
         .and_then(Value::as_bool)
@@ -896,7 +909,7 @@ pub fn parse_ollama(response: &Value) -> NonStreamingResponse {
     let prompt = i64_at(response, "prompt_eval_count");
     let eval = i64_at(response, "eval_count");
     NonStreamingResponse {
-        content,
+        content: split.content,
         finish_reason: Some(if done { "stop" } else { "length" }.to_string()),
         usage: StreamUsage {
             prompt_tokens: prompt,
@@ -904,7 +917,13 @@ pub fn parse_ollama(response: &Value) -> NonStreamingResponse {
             total_tokens: prompt + eval,
         },
         tool_calls: Vec::new(),
-        reasoning_content: None,
+        // v4's `...(reasoningContent ? { reasoningContent } : {})` — an empty
+        // concatenation leaves the field OFF the response entirely.
+        reasoning_content: if reasoning_content.is_empty() {
+            None
+        } else {
+            Some(reasoning_content)
+        },
         thought_signature: None,
         cache_usage: None,
         raw: response.clone(),

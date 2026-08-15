@@ -354,6 +354,27 @@ function casesFor(provider) {
     add('tools-stop', { ...base, model: 'llama3', tools: [TOOL], stop: ['DONE'] });
     // P4.21 — Ollama DROPS attachments (body shows plain string content).
     add('image-attachment', { ...base, model: 'llama3', messages: [SYS, USER_IMG] });
+    // P4.D78 (v4 d9c5a1c7) — the thinking switch + the context window. `think`
+    // is ALWAYS on the body (false when off, which every pre-existing vector
+    // above now shows); `options.num_ctx` appears only when the profile bag
+    // coerces to a finite positive number.
+    add('thinking-on', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true } });
+    add('thinking-on-string', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: 'true' } });
+    add('thinking-off-explicit', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: false } });
+    // Truthy but not `true`/`'true'` → off (v4's strict comparison).
+    add('thinking-truthy-string-off', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: 'yes' } });
+    add('thinking-numeric-one-off', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: 1 } });
+    add('num-ctx-number', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: 40960 } });
+    add('num-ctx-string', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: '32768' } });
+    add('num-ctx-fractional-floored', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: 8192.9 } });
+    // Every arm that leaves the key OFF the wire: zero, negative, unparseable,
+    // null, boolean (v4 coerces only the number and string arms).
+    add('num-ctx-zero-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: 0 } });
+    add('num-ctx-negative-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: -1 } });
+    add('num-ctx-garbage-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: 'lots' } });
+    add('num-ctx-null-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: null } });
+    add('num-ctx-true-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: true } });
+    add('thinking-and-num-ctx-with-tools', { ...base, model: 'qwen3:8b', tools: [TOOL], stop: ['DONE'], profileParameters: { enable_thinking: true, num_ctx: 16384 } });
   } else if (provider === 'openai-compatible') {
     add('plain', { ...base, model: 'local-model' });
     add('stop-cache', { ...base, model: 'local-model', stop: ['END'], cacheKey: 'char-1' });

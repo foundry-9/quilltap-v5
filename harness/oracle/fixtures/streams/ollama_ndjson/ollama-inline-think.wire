@@ -1,0 +1,6 @@
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:00Z","message":{"role":"assistant","content":"<th"},"done":false}
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:01Z","message":{"role":"assistant","content":"ink>quiet "},"done":false}
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:02Z","message":{"role":"assistant","content":"scheming</th"},"done":false}
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:03Z","message":{"role":"assistant","content":"ink>\n\nHello "},"done":false}
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:04Z","message":{"role":"assistant","content":"world"},"done":false}
+{"model":"qwen3:8b","created_at":"2026-08-15T00:01:05Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":5}

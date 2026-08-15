@@ -9,6 +9,288 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D78 (the `aa464abf` Ollama-thinking drift, provider-wire half) — v4 `d9c5a1c7`
+
+Baseline **`aa464abf`**, drift-checked clean at lane start: `git log aa464abf..main`
+empty, v4 tree clean, checkout on `main`; `git diff main bugfix -- lib/ app/
+packages/ plugins/` is strictly one-directional (every hunk removes what main
+added — bugfix is behind, carrying nothing portable). Regen therefore runs
+straight from the checkout, no pinned worktree.
+
+**Unit 5 — the retry-without-`think`, both paths (core 0.0.554, harness
+0.0.478).** New `model/ollama_think_retry.rs` holds the predicate as three
+literal readings of v4's guards: `!response.ok` → `TransportError::status`
+is `Some` (a network failure/timeout carries `None` and never reaches v4's
+branch either), `isThinkRejection` → `/think/i` over the error text, and
+`'think' in requestBody` → the built body still carries the key, which makes
+the salvage one-shot by construction. The retry body is v4's
+`delete` + re-`stringify`: `shift_remove`, so every other key keeps its
+position. Wired into BOTH compositions — `execute_completion` and
+`WireStreamingProvider::stream_message`, where re-calling `execute_stream`
+re-arms the first-byte timer per attempt (v4's `openStream()` refactor). The
+streaming arm is provider-disjoint from the P4.41 chaining fallback (only
+OPENAI chains, only OLLAMA carries `think`), so the two salvages cannot
+interact.
+
+**⚠ The order's fourth quartet arm was wrong about v4, and the oracle proves
+it.** The order asked for "think-off body never retries" — but v4's guard is
+key PRESENCE, not truthiness, and v4's own suite retries on a default
+`think: false` body. The tier-3 oracle records exactly that
+(`attempts[0].think == false`, followed by a retry). The arm that must NOT
+fire is the provider scope, so the quartets are: rejects-then-succeeds,
+rejects-twice (the SECOND error surfaces; exactly two attempts), a
+think-unrelated error never retries, and the salvage is Ollama-only. Both
+compositions carry all four (8 unit tests), plus 4 predicate tests pinning
+the key-order-preserving delete.
+
+*The tier-3 arm* (`ollama_think_retry_tier3_equivalence`, new family): the
+oracle drives v4's REAL `OllamaProvider.streamMessage` AND `.sendMessage`
+with only `global.fetch` mocked below them, recording per arm the **attempt
+fingerprint** — how many requests v4 issued and whether each body still
+carried `think`, with its value — plus the recovered content or the raised
+failure. Three arms × two methods; v5 drives the REAL compositions over a
+scripted transport serving the same outcomes. **One documented, pre-existing
+divergence: the error TEXT** — v4 raises `Ollama API error: <status> <body>`
+where v5's single reqwest transport renders every provider's non-2xx as
+`HTTP <status>: <body>` (the nine-SDK collapse in `model::transport`'s
+header). The comparison asserts v4 and v5 agree on *whether* the call failed
+and that v5 carries v4's status and body text, so it is not vacuous. A
+`retried >= 4` floor keeps an oracle that lost the retrying arms from
+passing green. Mutation-proven: dropping `is_think_rejection` from the
+predicate → red at `non-think-error/stream`.
+
+**Unit 6 — the manifest regen (same commit).** `gen-provider-manifests.mjs`
+re-run against the pinned checkout: `OLLAMA.capabilities.toolUse` flips
+`false → true` (the per-profile Allow Tool Use checkbox stays the gate). The
+generated manifests carry no version field, so v4's `1.0.40 → 1.0.41` bump
+has no v5 surface. `provider_registry_equivalence` + `providers_listing_
+equivalence` regenerated fresh and green; mutation-proven (forcing `toolUse:
+false` reddens the registry family at the `supportsCapability` row).
+
+**⚠ The regen exposed a SECOND stale-generator bug, fixed here.** Running the
+committed recipe also rewrote `google.json`'s `auth` from the
+`x-goog-api-key` HEADER back to `?key=` — reverting **P4.47 (B)**, which had
+corrected the committed manifest and never taught the generator's
+AUGMENTATION table. That is the P4.39 `imageGenerationModels` class exactly:
+the augmentation fields are the ones no v4 getter can re-derive, so nothing
+else can catch the drift. The table now carries the header form with the
+reasoning, and the generator's header gained the standing rule — *when a
+hand-fix lands in a committed manifest, fix the table in the same commit*.
+Re-run after the repair: `ollama.json` is the ONLY changed file.
+
+**Unit 4 — the streaming decoder + the recorded corpus (core 0.0.553,
+harness 0.0.477).** `OllamaNdjsonDecoder` gains the reasoning routing: native
+`message.thinking` deltas append to `reasoning_so_far`; content deltas go
+through a stream-lifetime `ThinkTagStreamParser` whose new reasoning is
+spliced BY INDEX (`inline_reasoning_seen`) so an interior is never counted
+twice. `reasoningContent` is emitted **CUMULATIVELY**, riding the visible
+chunk when one exists and otherwise on a `content: ""` chunk. `total_content`
+now accumulates the VISIBLE text, so the terminal `raw_response.message.
+content` the tool loop reads is think-free. At done the parser is flushed:
+the tail (if any) is one more content chunk BEFORE the terminal chunk and
+carries no reasoning; reasoning the flush revealed reaches ONLY the terminal
+chunk's conditional `reasoningContent`.
+
+*The corpus — recorded BY HAND at the pin* (the sweep driver never runs a
+committed-corpus family's recording stage). Seven new `.wire` transcripts +
+`cases.json` rows, recorded through v4's REAL `streamMessage`: native
+thinking, inline think straddling BOTH NDJSON lines and tag boundaries, the
+orphan close, a held partial tag that flushes as content, an unterminated
+block whose flush only reaches the terminal chunk, and a mixed-channel stream
+that also carries a tool call (pinning that the think-free `total_content`
+and the normalized `tool_calls` coexist). Corpus 3 → 10 cases; **every
+pre-existing vector byte-identical (measured)**.
+
+**⚠ The finding worth carrying: v4's orphan-close rule barely fires in
+streaming.** `sanitize` sets `emittedVisible` on the FIRST non-empty release,
+and `orphanEligible` requires `!emittedVisible` — so a `</think>` that
+arrives in a later delta than the reasoning it closes is already too late,
+and the whole block ships as visible content. Both shapes are now pinned:
+`ollama-orphan-close` (the close arrives in the same delta — the rule FIRES,
+reasoning captured) and `ollama-orphan-close-streamed` (the reasoning
+streamed first — the rule does NOT fire, `</think>` and all ships as
+content). v5 reproduces v4 exactly in both; this is v4 behavior, not a v5
+gap, and the non-firing arm is the one a "fix" would silently break.
+
+*Mutation-proven three ways:* emitting the reasoning DELTA instead of the
+cumulative counter → red at `ollama-inline-think` chunk 1; emitting the flush
+tail AFTER the terminal chunk → red at `ollama-think-tail` chunk 1;
+accumulating the RAW content into `raw_response` → red at
+`ollama-inline-think` chunk 4. Three new Rust unit tests pin the cumulative
+contract, the tail ordering, and the flush-reaches-only-the-terminal rule.
+
+**Tier-2 items 7 + 8, both discharged — and item 7 was bigger than a
+comment.** The `streaming_composer_equivalence` header claimed ollama was
+replayed at whole + line-aligned only because of "the ported no-buffer bug".
+MEASURED: that has been stale since v4 bug 35, and the byte chunking is green
+through the FULL compose path — so the exclusion is gone from the code too
+(`chunkings_ndjson` now returns three chunkings; the header records the
+measurement). Item 8 landed as a composition-level witness counted off the
+chunks the COMPOSER emitted, with a `>= 4` floor for ollama so a corpus that
+lost the thinking vectors cannot leave the family green with the feature
+untested. Composer family: 10 ollama cases × 3 chunkings, 5 carrying
+reasoning end to end.
+
+**Unit 3 — the non-streaming parse (core 0.0.552, harness 0.0.476).**
+`parse_ollama` splits `message.content` through `extract_think_blocks` and
+concatenates the native `message.thinking` AHEAD of the inline reasoning
+(v4's `nativeThinking + inlineReasoning` order), attaching `reasoningContent`
+only when the concatenation is non-empty (v4's
+`...(reasoningContent ? … : {})`). Both `typeof … === 'string'` guards
+carried, so a non-string `content`/`thinking` is ignored rather than
+coerced.
+
+*The differential:* the recorded-body corpus (`response_parse_equivalence`)
+grew **seven Ollama cases** — native-only, inline-only, both channels (which
+pins the concatenation ORDER), the swallowed-open orphan shape v4
+live-reproduced against a Qwen3 GGUF, an unterminated block, an empty
+`thinking` string that must NOT materialize the field, and a
+non-string-channels row. Pre-existing rows byte-identical (measured: zero
+changed; corpus 30 → 37). Three coverage assertions added over v4's RECORDED
+response — a native-reasoning row, an inline-reasoning row, and a row with no
+`reasoningContent` at all — plus the floor raised 29 → 36.
+
+*Mutation-proven:* attaching `reasoning_content` unconditionally → 4 of 37
+rows diverge (`plain`, `not-done`, `empty-thinking-omitted`,
+`non-string-channels`).
+
+**Unit 2 — the request builder: `think` + `options.num_ctx` (core 0.0.551,
+harness 0.0.475).** `build_ollama_body` gains v4's two new fields in v4's exact
+assignment order: top-level `think` between `stream` and `options` (ALWAYS
+present — `think: false` when off), and `options.num_ctx` last inside the
+options bag. Two new public helpers next to the builder, each a literal port:
+`ollama_enable_thinking` (`value === true || value === 'true'` — a truthy
+non-`"true"` string and the number 1 are both FALSE) and `ollama_num_ctx`
+(v4 coerces ONLY the number and string arms, so a boolean or `null` is NaN
+here rather than JS `ToNumber`'s 1/0; the string arm goes through
+`jsnum::number_from_str`, then `is_finite && > 0` and `floor`). Contract A's
+read half; nothing host-side is touched (P4.D79 owns the injection).
+
+*The differential:* the request-envelope corpus regenerated at the pin with
+**14 new Ollama cases** recorded in BOTH modes (28 rows; corpus 163 → 191) —
+thinking on/off/string-on/truthy-string-off/numeric-one-off, num_ctx as
+number/string/fractional-floored, the five arms that leave the key OFF the
+wire (zero, negative, unparseable, null, boolean), and one combined
+tools+stop+both-fields vector. **Corpus delta measured, not assumed:** 0
+non-Ollama vectors changed; all 6 pre-existing Ollama vectors changed exactly
+as predicted (`think: false` is now on every body); 28 new. Four
+shape assertions added to the family (a `think:true` arm, a `think:false`
+arm, a num_ctx-present arm, a bag-present-but-key-omitted arm) read off v4's
+RECORDED body so a v5 regression cannot make the coverage claim true, plus a
+loud panic if any recorded Ollama body ever lacks a boolean `think`.
+
+*Mutation-proven both ways:* relaxing the `> 0` guard to `>= 0` → red at
+`num-ctx-zero-omitted`; accepting any non-empty `enable_thinking` string →
+red at `thinking-truthy-string-off`. Family green at 191 envelopes;
+`tool_wire_call_site` / `tool_wire_equivalence` unaffected.
+
+**Tier-3 dispositions (both explicit, per the order).**
+
+- **`optionsSchema` stays UNMODELLED — v4's new `getProviderOptionsSchema`
+  does NOT port.** v5 hardcodes `"optionsSchema": null` on every provider row
+  (`api/settings.rs`) and the providers-listing differential normalizes it
+  out; that documented absence STANDS. The user-visible half — the Enable
+  Thinking checkbox that writes the `enable_thinking` key this lane READS —
+  is P4.D81's, as a recorded mechanism divergence (v5's SPA renders the row
+  from its own knowledge of the provider rather than from a server-sent
+  schema).
+- The wardrobe image-analysis call site of `profileParams` has no v5 twin
+  (typed refusal at `api/wardrobe.rs`, P4.9f1); its NO-PORT note rides
+  P4.D79, not this lane.
+
+**Lane gate.** `cargo fmt --all --check`; clippy `--workspace --all-targets`
+clean AND with `--features quilltap-core/native-transport`; `cargo build
+--release` (exit 0); the full workspace test run with the lane's four-variable
+oracle env block — **433 test binaries / 2,107 passed / 0 failed** (cargo exit
+0). The lane's nine families re-run BY NAME with `--nocapture` and each
+positively confirmed to have RUN, **zero SKIP**: `ollama_think_parser_
+equivalence` (339 cases / 958 pushes), `ollama_think_retry_tier3_equivalence`
+(6 arms, 4 retried), `request_builder_equivalence` (191 envelopes, headers
+pinned for 8 providers), `response_parse_equivalence` (37 rows),
+`stream_decoders_equivalence` (ollama 10 cases × 3 chunkings; the other four
+decoders unchanged), `streaming_composer_equivalence` (composer/ollama 10 × 3,
+5 carrying reasoning end to end), `provider_registry_equivalence` (253 rows),
+`providers_listing_equivalence`, and `request_builder_google_wire_equivalence`
+(18 cases — the family that would have caught the reverted google auth).
+Both new families also run end-to-end through the sanctioned sweep driver
+(`recipe_sweep.py --run <family>`, each `ok … recipe ran end-to-end`); the
+driver's `--self-test` is clean. **Requires Python 3.12+** —
+`harness/tools/recipe_sweep.py` has a backslash inside an f-string, so the
+system `python3` (3.9 on this Mac) dies with a `SyntaxError`; use
+`/opt/homebrew/bin/python3.13`. Nothing in `apps/web` is touched.
+
+**⚠ v4's working tree went DIRTY mid-lane, and every oracle was re-proved
+against a pin.** The tree was clean on `main` at `aa464abf` when the lane
+started; by the gate it carried uncommitted bug-70 WIP (`turn-extras.ts`,
+`context-manager.ts`, `lib/llm/index.ts`, `model-context-data.ts` and eight
+more). HEAD never moved. Rather than reason about which oracles could see
+those files, ALL EIGHT were regenerated from a lane-unique detached worktree
+pinned at `aa464abf` and diffed: the think-parser oracle, the think-retry
+tier-3 oracle, the provider-registry and providers-listing oracles, the
+generated manifests, the ollama stream recording, the request-envelope corpus
+and the response-body corpus are **every one byte-identical**. The dirt
+reached nothing.
+
+*A pinned-worktree gotcha worth carrying:* the memory note's two symlinks
+(`node_modules`, `packages/quilltap/node_modules`) are NOT enough for any
+oracle that loads a provider plugin — each `plugins/dist/qtap-plugin-*/`
+carries its OWN untracked `node_modules`, and without those the registry and
+listing oracles die on `Cannot find module '@anthropic-ai/sdk'`. The failure
+is loud, but the SHELL redirect had already truncated the output file to
+zero, so the first diff read as "DIFFERS" on an empty file — a false alarm
+that looks exactly like real drift. Symlink the plugin dirs too.
+
+**Unit 1 — the think-parser twin + its tier-1 differential (core 0.0.550,
+harness 0.0.474).** New `model/ollama_think_parser.rs`: `ThinkTagStreamParser`
+(`push`/`flush`/`reasoning`) + the one-shot `extract_think_blocks`, a
+byte-faithful port of v4's `plugins/dist/qtap-plugin-ollama/think-parser.ts`.
+The three mechanics carried whole: the **partial-tag holdback**
+(`partial_tag_suffix_length` — the longest strict prefix of a tag the pending
+text ends with, held until the next push resolves it), the
+**swallowed-opening-tag rule** (`orphan_eligible = !saw_think_block &&
+!emitted_visible`, with the `emitted_visible` cutoff that puts a stray close tag
+in an ordinary answer beyond its reach), and the **sanitize rule** (JS `\s`
+leading-strip via `jsstr::js_trim_start`, armed only while nothing visible has
+been emitted and a block was actually consumed, so a no-think response passes
+byte-for-byte).
+
+*The one JS-fidelity decision.* v4 indexes UTF-16 code units; the port indexes
+BYTES. That is exact here because both tags are pure ASCII — every index taken
+is either a `find` hit on an ASCII needle or a suffix that matched an ASCII tag
+prefix, so every split point is a char boundary and every held length is the
+same number in either measure. Recorded in the module header rather than left
+implicit, since it is the one place a future non-ASCII sentinel would break the
+equality.
+
+*The differential* (`ollama_think_parser_equivalence`, new family): the oracle
+`harness/oracle/cases/ollama-think-parser.ts` imports v4's REAL
+`think-parser.ts` and drives it over the committed case table
+`harness/oracle/fixtures/ollama-think-parser/cases.json` (339 rows / 958
+pushes), recording the visible text released by EACH push, the reasoning
+accumulated after it, the flush release, and the one-shot split. Both sides read
+the same table, whose rows are explicit `pushes: string[]` — no chop arithmetic
+has to agree across the language boundary (JS chops by UTF-16 unit, Rust by
+byte). The table (regenerated by the committed
+`fixtures/ollama-think-parser/gen-cases.mjs`) carries v4's own suite verbatim,
+**every single split point** of eight tag-bearing texts (so each tag is
+straddled at every offset), every ordered PAIR of split points for one of them,
+plus the adversarial one-offs: lone tags, a tag arriving one char at a time,
+held prefixes at flush, whitespace-only releases, U+FEFF (JS whitespace, not
+Rust's) vs U+0085 (Rust's, not JS's), astral/CJK payloads around and inside
+tags, and an open tag nested inside a block.
+
+*Mutation-proven, three ways, each caught by a different family:* dropping the
+`!emitted_visible` half of `orphan_eligible` → red at
+`straddle-orphan-split-1`; dropping the orphan-eligible close-tag holdback →
+red at `straddle-orphan-split-5`; swapping `js_trim_start` for Rust's
+`trim_start` → red at `js-ws-after-block-feff`. Green first run before the
+mutations and after restoring. Rust-side unit module mirrors v4's own eight
+parser assertions.
+
+Gate for the unit: `cargo test -p quilltap-core --lib model::ollama_think_parser`
+8/8; `QT_ORACLE_OLLAMA_THINK_PARSER=… cargo test -p quilltap-harness --test
+ollama_think_parser_equivalence` 1/1 (339 cases); `cargo fmt --all --check`.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

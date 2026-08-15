@@ -2,6 +2,55 @@
 
 ## Recent Changes
 
+Re-proved every P4.D78 oracle against a v4 worktree pinned at aa464abf after
+the v4 checkout went dirty mid-lane with unrelated WIP: all eight (the two new
+oracles, the registry and listing oracles, the generated manifests, the ollama
+stream recording, and the request-envelope and response-body corpora) are
+byte-identical. Docs and a recipe-header correction only.
+
+Ollama declares tool use, and the retry-without-think lands (P4.D78 units
+5-6, v4 d9c5a1c7): a non-ok Ollama response whose body mentions "think" now
+re-sends once with the parameter deleted, on both the streaming and the
+non-streaming path, proven by fake-transport quartets and a new tier-3 arm
+driving v4's real plugin with fetch mocked below it. The regenerated
+manifests flip `OLLAMA.capabilities.toolUse` to true.
+
+Fixed the provider-manifest generator's stale google auth entry: P4.47
+corrected the committed manifest to the `x-goog-api-key` header but not the
+generator's augmentation table, so the next regen would have silently
+reverted it (the P4.39 class of rot).
+
+The Ollama stream decoder now routes reasoning (P4.D78 unit 4, v4
+d9c5a1c7): native `message.thinking` deltas and inline `<think>` interiors
+land on one cumulative `reasoningContent`, reasoning-only chunks carry empty
+content, the parser's flush releases its tail as a content chunk before the
+terminal one, and the terminal `rawResponse` content is think-free. Seven new
+recorded stream vectors; every pre-existing vector byte-identical. The
+composer differential's stale ollama byte-chunking exclusion is retired — all
+three chunkings now run there too.
+
+The non-streaming Ollama parse now routes both reasoning channels (P4.D78
+unit 3, v4 d9c5a1c7): `parse_ollama` splits `message.content` through the
+think parser and concatenates the native `message.thinking` ahead of the
+inline reasoning, attaching `reasoningContent` only when the result is
+non-empty. Seven new Ollama cases in the response-body corpus; every
+pre-existing row byte-identical.
+
+Ollama requests now carry the thinking switch and the context window
+(P4.D78 unit 2, v4 d9c5a1c7): `build_ollama_body` emits a top-level `think`
+on every body (false when the profile's `enable_thinking` is off) and
+`options.num_ctx` when the profile bag coerces to a finite positive number.
+The request-envelope corpus regenerated at the aa464abf pin — 14 new Ollama
+cases in both modes, every non-Ollama vector byte-identical.
+
+Ported the Ollama inline-`<think>` stream parser (P4.D78 unit 1, v4
+d9c5a1c7): `ThinkTagStreamParser` plus the one-shot `extract_think_blocks`,
+carrying the partial-tag holdback, the swallowed-opening-tag rule and its
+emitted-visible cutoff, the flush semantics, and the JS-whitespace sanitize.
+New tier-1 differential `ollama_think_parser_equivalence` drives v4's real
+think-parser.ts over a committed 339-case table that enumerates every split
+point of both tags.
+
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
 think/num_ctx request fields with the retry-without-think, the toolUse
