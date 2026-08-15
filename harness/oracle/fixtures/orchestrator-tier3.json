@@ -10,7 +10,11 @@
    "name": "Primary",
    "provider": "ANTHROPIC",
    "modelName": "claude-sonnet",
-   "parameters": { "temperature": 0.42, "maxTokens": 321, "topP": 0.87 }
+   "parameters": {
+    "temperature": 0.42,
+    "maxTokens": 321,
+    "topP": 0.87
+   }
   },
   {
    "id": "b0000001-0000-4000-8000-000000000001",
@@ -44,6 +48,20 @@
    "name": "CheapDefault",
    "provider": "OPENAI",
    "modelName": "cheap-configured-model"
+  },
+  {
+   "id": "aa000079-0000-4000-8000-000000000079",
+   "name": "PrefillOffRouter",
+   "provider": "OPENROUTER",
+   "modelName": "router-noprefill",
+   "multiCharacterPrefill": false
+  },
+  {
+   "id": "ab000079-0000-4000-8000-00000000007a",
+   "name": "PrefillOnAnthropic",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-prefill-on",
+   "multiCharacterPrefill": true
   }
  ],
  "chatSettings": {
@@ -125,6 +143,24 @@
    "talkativeness": 0.5,
    "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
    "canBeCarina": true
+  },
+  {
+   "id": "ac000079-0000-4000-8000-00000000007b",
+   "name": "Prudence",
+   "description": "A router-backed companion whose profile forbids the prefill.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "aa000079-0000-4000-8000-000000000079"
+  },
+  {
+   "id": "ad000079-0000-4000-8000-00000000007c",
+   "name": "Anselm",
+   "description": "An Anthropic-backed companion whose profile insists on the prefill.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "ab000079-0000-4000-8000-00000000007a"
   }
  ],
  "chats": [
@@ -1045,6 +1081,46 @@
      "participantId": "fa1c0003-0000-4000-8000-0000000000c3"
     }
    ]
+  },
+  {
+   "id": "ae000079-0000-4000-8000-00000000007d",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "af0a0079-0000-4000-8000-0000000000a3",
+     "character": "ac000079-0000-4000-8000-00000000007b",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "af0b0079-0000-4000-8000-0000000000b3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "b0000079-0000-4000-8000-00000000007e",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "b10a0079-0000-4000-8000-0000000000a4",
+     "character": "ad000079-0000-4000-8000-00000000007c",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "b10b0079-0000-4000-8000-0000000000b4",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -1393,6 +1469,28 @@
    "streamLabel": "fair_rotation_pause",
    "cheapLLMSettings": true,
    "summaryCheck": false
+  },
+  {
+   "name": "prefill_off_nonanthropic",
+   "kind": "single",
+   "chatId": "ae000079-0000-4000-8000-00000000007d",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "prefill_off_nonanthropic",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "af0a0079-0000-4000-8000-0000000000a3"
+  },
+  {
+   "name": "prefill_on_anthropic",
+   "kind": "single",
+   "chatId": "b0000079-0000-4000-8000-00000000007e",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "prefill_on_anthropic",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "b10a0079-0000-4000-8000-0000000000a4"
   }
  ],
  "streams": {
@@ -2184,6 +2282,36 @@
       "promptTokens": 22,
       "completionTokens": 7,
       "totalTokens": 29
+     }
+    }
+   ]
+  ],
+  "prefill_off_nonanthropic": [
+   [
+    {
+     "content": "Prudence inclines her head."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 14,
+      "completionTokens": 4,
+      "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "prefill_on_anthropic": [
+   [
+    {
+     "content": "Anselm bows in turn."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 14,
+      "completionTokens": 4,
+      "totalTokens": 18
      }
     }
    ]

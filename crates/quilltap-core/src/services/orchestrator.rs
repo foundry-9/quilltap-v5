@@ -2172,6 +2172,23 @@ where
     }
     let empty_participants: Vec<Value> = Vec::new();
     let cp_created_at = json_str(&character_participant, "createdAt");
+    // The EFFECTIVE connection profile's stored row. v4 passes
+    // `streamingState.effectiveProfile` — the full object — to both
+    // `buildMessageContext` (for `profileUsesNamePrefill`) and `profileParams`
+    // (for `modelParams`); v5 carries the rerouted profile as the 4-field
+    // [`EffectiveProfile`], so a rerouted turn re-reads the row the router
+    // already loaded. The old hardcoded anchor test read
+    // `effective_profile.provider`, so reading the ORIGINAL profile here would
+    // be a regression on the danger-reroute path — measured: the tier-3's
+    // `danger_live_reroute` case goes red.
+    let effective_profile_row: Value = if did_reroute {
+        db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| connection_profile.clone())
+    } else {
+        connection_profile.clone()
+    };
     let mc_params = message_context::MessageContextParams {
         is_multi_character,
         provider: &effective_profile.provider,
@@ -2183,6 +2200,12 @@ where
             .unwrap_or(false),
         character_participant_created_at: cp_created_at.as_deref(),
         character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
+        // v4 `profileUsesNamePrefill(connectionProfile)` at the call site
+        // (`23af7146`). The profile is the same object the old hardcoded
+        // `connectionProfile.provider === 'ANTHROPIC'` test read.
+        use_prefill: crate::services::multi_character_prefill::profile_uses_name_prefill_value(
+            &effective_profile_row,
+        ),
         participants: chat
             .get("participants")
             .and_then(Value::as_array)
@@ -2353,18 +2376,9 @@ where
     // default; the P4.D79 corpus gives the Primary profile a real bag and the
     // oracle now records the whole `modelParams` at the wire.
     //
-    // The bag comes from the EFFECTIVE profile, so a danger reroute uses the
-    // rerouted profile's parameters — v5 carries the rerouted profile as the
-    // 4-field `EffectiveProfile`, so its row is re-read by id (the same row the
-    // router loaded).
-    let effective_profile_row: Value = if did_reroute {
-        db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| connection_profile.clone())
-    } else {
-        connection_profile.clone()
-    };
+    // The bag comes from the EFFECTIVE profile (resolved above, beside the turn
+    // anchor's own read of the same row), so a danger reroute uses the rerouted
+    // profile's parameters.
     let model_params =
         crate::cheap_llm::profile_params_value(&effective_profile_row).unwrap_or_else(|| json!({}));
     // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`

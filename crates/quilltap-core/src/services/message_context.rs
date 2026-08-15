@@ -512,16 +512,23 @@ pub struct MessageContextParams<'a> {
     pub character_participant_created_at: Option<&'a str>,
     /// v4 `character.systemTransparency` (single-character opaque test).
     pub character_system_transparency: Option<bool>,
+    /// Which route anchors a multi-character turn to this character —
+    /// [`crate::services::multi_character_prefill::profile_uses_name_prefill`]
+    /// over the chat's connection profile, resolved at the call site exactly as
+    /// v4 resolves it (`profileUsesNamePrefill(connectionProfile)`). Ignored
+    /// when the chat is single-character.
+    pub use_prefill: bool,
     /// The chat's participants array (for the opaque-anywhere LLM-participant scan).
     pub participants: &'a [Value],
     /// characterId → systemTransparency for the multi-character opaque test.
     pub participant_transparency: &'a std::collections::HashMap<String, Option<bool>>,
 }
 
-/// The multi-character scene-block instruction appended to the system prompt for
-/// Anthropic (v4 line 781, verbatim incl. the em-dash and the `[Name]`/`Name:`
-/// literals).
-fn anthropic_scene_instruction(name: &str) -> String {
+/// The multi-character scene-block instruction appended to the system prompt on
+/// the PROSE route (v4 verbatim incl. the em-dash and the `[Name]`/`Name:`
+/// literals). Byte-unchanged by v4 `23af7146`, which only moved it out of the
+/// Anthropic-only branch — so this text is the same bytes it has always been.
+fn multi_character_prose_instruction(name: &str) -> String {
     format!(
         "\n\nIMPORTANT — this is a multi-character scene. Respond as {name} and ONLY {name}: \
 write only {name}'s own dialogue, actions, and thoughts for this single turn, then stop. \
@@ -529,6 +536,51 @@ Never write, narrate, quote, or continue another participant's turn, and never l
 with another participant's name (no \"[Name]\" or \"Name:\" speaker tags for anyone but {name}). \
 Output only {name}'s contribution."
     )
+}
+
+/// v4 `applyMultiCharacterTurnAnchor` (`23af7146`). In multi-character chats,
+/// anchor each reply to the responding character and forbid it from writing
+/// anyone else's turn. Two routes, chosen PER PROFILE by
+/// `multiCharacterPrefill` — this replaced a hardcoded provider test:
+///
+///   - **prefill** — append an assistant `[Name]` message. The model
+///     structurally continues only that character's line; the leading tag is
+///     stripped downstream by `stripCharacterNamePrefix()`.
+///   - **prose** — append an instruction to the system message instead, leaving
+///     the conversation ending on a user message. v4 deliberately does NOT tell
+///     the model to emit a `[Name]` tag: that both contradicts the always-on
+///     Identity Reminder ("do not prefix with your name") and teaches weaker
+///     models the very screenplay format they then run away with, writing the
+///     whole cast's turns. Identity is anchored in prose and foreign speaker
+///     tags forbidden outright.
+///
+/// `finalize_message_response` truncates a response at the first foreign
+/// `[Name]`/`Name:` tag as a structural backstop either way.
+///
+/// The prose route is a no-op when there is no system message (v4's
+/// `if (systemIdx < 0) return`). Mutates in place, as v4 does.
+pub fn apply_multi_character_turn_anchor(
+    formatted_messages: &mut Vec<FormattedMsg>,
+    character_name: &str,
+    use_prefill: bool,
+) {
+    if use_prefill {
+        formatted_messages.push(FormattedMsg {
+            role: "assistant".to_string(),
+            content: format!("[{character_name}]"),
+            // v4 sets both explicitly `undefined` on this synthesized message.
+            name: None,
+            thought_signature: None,
+            attachments: None,
+        });
+        return;
+    }
+
+    let Some(sys_idx) = formatted_messages.iter().position(|m| m.role == "system") else {
+        return;
+    };
+    let extra = multi_character_prose_instruction(character_name);
+    formatted_messages[sys_idx].content.push_str(&extra);
 }
 
 /// Whether the responding participant is a party to `m` — v4's section-B whisper
@@ -827,22 +879,13 @@ where
         }
     }
 
-    // --- M. Multi-character scene block. ---
+    // --- M. Multi-character turn anchor. ---
     if is_multi {
-        if params.provider == "ANTHROPIC" {
-            if let Some(sys_idx) = formatted_messages.iter().position(|m| m.role == "system") {
-                let extra = anthropic_scene_instruction(params.responding_character_name);
-                formatted_messages[sys_idx].content.push_str(&extra);
-            }
-        } else {
-            formatted_messages.push(FormattedMsg {
-                role: "assistant".to_string(),
-                content: format!("[{}]", params.responding_character_name),
-                name: None,
-                thought_signature: None,
-                attachments: None,
-            });
-        }
+        apply_multi_character_turn_anchor(
+            &mut formatted_messages,
+            params.responding_character_name,
+            params.use_prefill,
+        );
     }
 
     Ok(MessageContextResult {

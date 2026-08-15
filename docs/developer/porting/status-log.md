@@ -182,6 +182,43 @@ lane; flagged for the unifier): `services/carina_query.rs` (finding 2),
 `services/title_update_job.rs`, `tools/generate_image.rs` — the last four only
 to add `max_context` to their `cheap_llm_profile_from_value` helpers.
 
+### Unit 3 — the per-profile multi-character turn anchor
+
+`message_context.rs` §M is now `apply_multi_character_turn_anchor(&mut
+formatted_messages, character_name, use_prefill)`, a public twin of v4's
+exported function, and `MessageContextParams` carries `use_prefill` resolved
+at the call site exactly as v4 resolves it. The prose sentence moved out of
+the Anthropic-only branch **byte-unchanged** (the old
+`anthropic_scene_instruction` renamed to `multi_character_prose_instruction`,
+same `format!`). Both call sites converted: `orchestrator.rs` and
+`regenerate_swipe.rs`.
+
+The connection-profile net read gained the column (`CP_COLUMNS` +
+`marshal_cp_row`), with a new `put_opt_bool` helper: v4's SQLite hydration
+maps a NULL boolean to `undefined`, so a NULL is an **absent key** in every v4
+net read, never `null` — measured at `backends/sqlite/backend.ts:429-437`, not
+assumed. Without this read the resolver could never see a stored choice.
+
+**Corpus:** `orchestrator-tier3` gains two profiles, two characters, two
+chats, two calls and two stream specs that INVERT the old provider rule —
+`prefill_off_nonanthropic` (OPENROUTER, stored `false` → prose) and
+`prefill_on_anthropic` (ANTHROPIC, stored `true` → prefill). The oracle
+confirms the flip directly: the OpenRouter request ends on a system message
+carrying the prose sentence, the Anthropic one ends on an assistant
+`[Anselm]`. The NULL-both-ways arms were already covered by the existing
+`nonanthropic_scene` (OPENROUTER → prefill) and the Anthropic multi-character
+cases (→ prose). The fixture builder passes `multiCharacterPrefill` through.
+
+**The corpus caught a real regression in this unit's first draft.** The
+initial call site resolved from `connection_profile` (the ORIGINAL profile);
+`danger_live_reroute` went red, because v4 resolves from
+`streamingState.effectiveProfile` — which is what the OLD hardcoded test read
+too (`effective_profile.provider`). Both the anchor and unit 7's `modelParams`
+now share one `effective_profile_row`, re-read by id when a reroute happened.
+
+**Mutation-proven:** making the resolver ignore the stored choice reddens both
+new cases with `no canned stream queued`.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

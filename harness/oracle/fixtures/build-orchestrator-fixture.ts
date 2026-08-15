@@ -115,6 +115,12 @@ interface Spec {
     parameters?: Record<string, unknown>;
     /** P4.D79: the Max Context override (the `num_ctx` injection's input). */
     maxContext?: number;
+    /**
+     * P4.D79 (v4 `23af7146`): the per-profile multi-character `[Name]` turn
+     * anchor. Tri-state — omit it for the "never chosen" NULL that resolves to
+     * the provider default.
+     */
+    multiCharacterPrefill?: boolean;
   }>;
   chatSettings: {
     id: string;
@@ -237,6 +243,9 @@ async function main(): Promise<void> {
           : {}),
         ...(cp.parameters !== undefined ? { parameters: cp.parameters } : {}),
         ...(cp.maxContext !== undefined ? { maxContext: cp.maxContext } : {}),
+        ...(cp.multiCharacterPrefill !== undefined
+          ? { multiCharacterPrefill: cp.multiCharacterPrefill }
+          : {}),
       } as never,
       { id: cp.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

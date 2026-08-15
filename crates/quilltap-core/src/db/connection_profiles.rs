@@ -436,9 +436,9 @@ impl<'c> ConnectionProfilesRepository<'c> {
 /// order = [`marshal_cp_row`]'s field access order).
 const CP_COLUMNS: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
      baseUrl, modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-     allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, isDangerousCompatible, \
-     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, totalCompletionTokens, \
-     messageCount, createdAt, updatedAt";
+     allowToolUse, pseudoToolMode, multiCharacterPrefill, modelClass, maxContext, maxTokens, \
+     isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
+     totalCompletionTokens, messageCount, createdAt, updatedAt";
 
 // Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
 fn put_opt_string(
@@ -448,6 +448,15 @@ fn put_opt_string(
 ) {
     if let Some(s) = v {
         obj.insert(key.to_string(), serde_json::Value::String(s));
+    }
+}
+// Insert a nullable-optional BOOLEAN column. v4's SQLite hydration
+// (`backends/sqlite/backend.ts:429-437`) maps a NULL boolean to `undefined`,
+// which `JSON.stringify` OMITS — so a NULL is an ABSENT key in every v4 net
+// read, never `null`. 0 → false, 1 → true.
+fn put_opt_bool(obj: &mut serde_json::Map<String, serde_json::Value>, key: &str, v: Option<i64>) {
+    if let Some(n) = v {
+        obj.insert(key.to_string(), serde_json::Value::Bool(n == 1));
     }
 }
 // Insert a nullable-optional number column (`NULL` → omit, else JS render).
@@ -513,43 +522,48 @@ fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
         "pseudoToolMode".into(),
         Value::String(r.get::<_, String>(15)?),
     );
-    put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(16)?);
-    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(17)?);
-    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(18)?);
+    put_opt_bool(
+        &mut obj,
+        "multiCharacterPrefill",
+        r.get::<_, Option<i64>>(16)?,
+    );
+    put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(17)?);
+    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(18)?);
+    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(19)?);
     obj.insert(
         "isDangerousCompatible".into(),
-        Value::Bool(r.get::<_, i64>(19)? == 1),
-    );
-    obj.insert(
-        "supportsImageUpload".into(),
         Value::Bool(r.get::<_, i64>(20)? == 1),
     );
     obj.insert(
+        "supportsImageUpload".into(),
+        Value::Bool(r.get::<_, i64>(21)? == 1),
+    );
+    obj.insert(
         "tags".into(),
-        array_or_empty(r.get::<_, Option<String>>(21)?),
+        array_or_empty(r.get::<_, Option<String>>(22)?),
     );
     obj.insert(
         "sortIndex".into(),
-        super::js_number_to_json(r.get::<_, f64>(22)?),
-    );
-    obj.insert(
-        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(23)?),
     );
     obj.insert(
-        "totalPromptTokens".into(),
+        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(24)?),
     );
     obj.insert(
-        "totalCompletionTokens".into(),
+        "totalPromptTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(25)?),
     );
     obj.insert(
-        "messageCount".into(),
+        "totalCompletionTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(26)?),
     );
-    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
-    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
+    obj.insert(
+        "messageCount".into(),
+        super::js_number_to_json(r.get::<_, f64>(27)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(28)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(29)?));
     Ok(Value::Object(obj))
 }
 

@@ -333,6 +333,12 @@ where
             .unwrap_or(false),
         character_participant_created_at: cp_created_at.as_deref(),
         character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
+        // v4 `23af7146` — the anchor route lives inside `buildMessageContext`,
+        // so the swipe path resolves it from the same profile the send path
+        // does.
+        use_prefill: crate::services::multi_character_prefill::profile_uses_name_prefill_value(
+            &connection_profile,
+        ),
         participants: chat
             .get("participants")
             .and_then(Value::as_array)

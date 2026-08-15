@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Made the multi-character [Name] turn anchor per-profile (P4.D79 unit 3, v4
+23af7146). The hardcoded "Anthropic gets prose, everyone else gets the
+prefill" branch is replaced by applyMultiCharacterTurnAnchor over the
+profile's own multiCharacterPrefill choice, resolved through the tri-state
+resolver; the prose sentence is byte-unchanged. The connection-profile net
+read carries the new column (a NULL reads as an absent key, matching v4's
+SQLite hydration). The orchestrator tier-3 corpus gains two cases that invert
+the old provider rule — an OpenRouter profile with the prefill off takes the
+prose route, an Anthropic profile with it on takes the prefill — and the
+danger-reroute case pinned that the anchor resolves from the EFFECTIVE
+profile, not the original. Versions: core 0.0.553, harness 0.0.476.
+
 Consolidated every profile-parameters construction site onto the shared
 profileParams helper and ported its Ollama num_ctx injection (P4.D79 unit 7,
 v4 d9c5a1c7). The helper gains the injection (Max Context becomes
