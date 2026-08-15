@@ -12,8 +12,17 @@
 //! to empty → filter); and a with-context case (memories + project +
 //! recent-conversations block folded into the augmented prompt).
 //!
-//! Build the oracle (Node 24, from the v4 checkout — see the .ts header):
-//!   QT_ORACLE_OUT=/tmp/oracle-greeting.ndjson npx jest ... initial-greeting
+//! Build the oracle (Node 24, from the v4 checkout; jest ignores `.claude/`
+//! venues, so the case stages through a /tmp mirror):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-greeting-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/initial-greeting.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/initial-greeting.json" "$TMPO/fixtures/"
+//!   cd ~/source/quilltap-server
+//!   QT_ORACLE_OUT=/tmp/oracle-greeting.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- initial-greeting
 //! Run:
 //!   QT_ORACLE_GREETING=/tmp/oracle-greeting.ndjson \
 //!     cargo test -p quilltap-harness --test initial_greeting_equivalence
