@@ -20,8 +20,11 @@
 //! Run:
 //!   QT_ORACLE_OLLAMA_THINK_PARSER=/tmp/oracle-ollama-think-parser.ndjson cargo test -p quilltap-harness --test ollama_think_parser_equivalence
 //!
-//! Regenerate the case table itself (committed; a clean tree means no change):
-//!   node ~/source/quilltap-v5/harness/oracle/fixtures/ollama-think-parser/gen-cases.mjs ~/source/quilltap-v5/harness/oracle/fixtures/ollama-think-parser/cases.json
+//! The case table itself is COMMITTED and only regenerated when the corpus
+//! changes; its generator (`harness/oracle/fixtures/ollama-think-parser/
+//! gen-cases.mjs`) carries the invocation in its own header. It is deliberately
+//! NOT part of the recipe above — the sweep driver must never write a tracked
+//! fixture.
 
 use std::path::{Path, PathBuf};
 

@@ -184,6 +184,62 @@ loud panic if any recorded Ollama body ever lacks a boolean `think`.
 red at `thinking-truthy-string-off`. Family green at 191 envelopes;
 `tool_wire_call_site` / `tool_wire_equivalence` unaffected.
 
+**Tier-3 dispositions (both explicit, per the order).**
+
+- **`optionsSchema` stays UNMODELLED — v4's new `getProviderOptionsSchema`
+  does NOT port.** v5 hardcodes `"optionsSchema": null` on every provider row
+  (`api/settings.rs`) and the providers-listing differential normalizes it
+  out; that documented absence STANDS. The user-visible half — the Enable
+  Thinking checkbox that writes the `enable_thinking` key this lane READS —
+  is P4.D81's, as a recorded mechanism divergence (v5's SPA renders the row
+  from its own knowledge of the provider rather than from a server-sent
+  schema).
+- The wardrobe image-analysis call site of `profileParams` has no v5 twin
+  (typed refusal at `api/wardrobe.rs`, P4.9f1); its NO-PORT note rides
+  P4.D79, not this lane.
+
+**Lane gate.** `cargo fmt --all --check`; clippy `--workspace --all-targets`
+clean AND with `--features quilltap-core/native-transport`; `cargo build
+--release` (exit 0); the full workspace test run with the lane's four-variable
+oracle env block — **433 test binaries / 2,107 passed / 0 failed** (cargo exit
+0). The lane's nine families re-run BY NAME with `--nocapture` and each
+positively confirmed to have RUN, **zero SKIP**: `ollama_think_parser_
+equivalence` (339 cases / 958 pushes), `ollama_think_retry_tier3_equivalence`
+(6 arms, 4 retried), `request_builder_equivalence` (191 envelopes, headers
+pinned for 8 providers), `response_parse_equivalence` (37 rows),
+`stream_decoders_equivalence` (ollama 10 cases × 3 chunkings; the other four
+decoders unchanged), `streaming_composer_equivalence` (composer/ollama 10 × 3,
+5 carrying reasoning end to end), `provider_registry_equivalence` (253 rows),
+`providers_listing_equivalence`, and `request_builder_google_wire_equivalence`
+(18 cases — the family that would have caught the reverted google auth).
+Both new families also run end-to-end through the sanctioned sweep driver
+(`recipe_sweep.py --run <family>`, each `ok … recipe ran end-to-end`); the
+driver's `--self-test` is clean. **Requires Python 3.12+** —
+`harness/tools/recipe_sweep.py` has a backslash inside an f-string, so the
+system `python3` (3.9 on this Mac) dies with a `SyntaxError`; use
+`/opt/homebrew/bin/python3.13`. Nothing in `apps/web` is touched.
+
+**⚠ v4's working tree went DIRTY mid-lane, and every oracle was re-proved
+against a pin.** The tree was clean on `main` at `aa464abf` when the lane
+started; by the gate it carried uncommitted bug-70 WIP (`turn-extras.ts`,
+`context-manager.ts`, `lib/llm/index.ts`, `model-context-data.ts` and eight
+more). HEAD never moved. Rather than reason about which oracles could see
+those files, ALL EIGHT were regenerated from a lane-unique detached worktree
+pinned at `aa464abf` and diffed: the think-parser oracle, the think-retry
+tier-3 oracle, the provider-registry and providers-listing oracles, the
+generated manifests, the ollama stream recording, the request-envelope corpus
+and the response-body corpus are **every one byte-identical**. The dirt
+reached nothing.
+
+*A pinned-worktree gotcha worth carrying:* the memory note's two symlinks
+(`node_modules`, `packages/quilltap/node_modules`) are NOT enough for any
+oracle that loads a provider plugin — each `plugins/dist/qtap-plugin-*/`
+carries its OWN untracked `node_modules`, and without those the registry and
+listing oracles die on `Cannot find module '@anthropic-ai/sdk'`. The failure
+is loud, but the SHELL redirect had already truncated the output file to
+zero, so the first diff read as "DIFFERS" on an empty file — a false alarm
+that looks exactly like real drift. Symlink the plugin dirs too.
+
 **Unit 1 — the think-parser twin + its tier-1 differential (core 0.0.550,
 harness 0.0.474).** New `model/ollama_think_parser.rs`: `ThinkTagStreamParser`
 (`push`/`flush`/`reasoning`) + the one-shot `extract_think_blocks`, a

@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Re-proved every P4.D78 oracle against a v4 worktree pinned at aa464abf after
+the v4 checkout went dirty mid-lane with unrelated WIP: all eight (the two new
+oracles, the registry and listing oracles, the generated manifests, the ollama
+stream recording, and the request-envelope and response-body corpora) are
+byte-identical. Docs and a recipe-header correction only.
+
 Ollama declares tool use, and the retry-without-think lands (P4.D78 units
 5-6, v4 d9c5a1c7): a non-ok Ollama response whose body mentions "think" now
 re-sends once with the parameter deleted, on both the streaming and the
