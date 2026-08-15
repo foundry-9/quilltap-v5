@@ -176,6 +176,12 @@ pub struct EnrichedCharacterDetail {
     pub default_image: Option<EnrichedImage>,
     pub talkativeness: f64,
     pub system_prompts: Vec<EnrichedCharacterSystemPrompt>,
+    /// Archive tombstone timestamp — participant chips badge archived seats
+    /// (character-archive spec §5.2). Mirrors the enrichment in
+    /// `app/api/v1/chats/[id]/helpers.ts` (v5:
+    /// [`crate::services::chat_participants::EnrichedParticipantCharacter::archived_at`]).
+    /// v4 bug 66, `aa464abf`.
+    pub archived_at: Option<String>,
 }
 
 /// v4 `getConnectionProfile`'s `apiKey` summary — `{ id, provider, label }` (no
@@ -267,6 +273,8 @@ pub fn get_character_detail(
         .get("talkativeness")
         .and_then(Value::as_f64)
         .unwrap_or(0.5);
+    // v4 `character.archivedAt ?? null` — read once, carried on BOTH returns.
+    let archived_at = s(&character, "archivedAt");
 
     // Avatar-override branch: a chat-specific avatar wins over the default image.
     if let Some(cid) = chat_id {
@@ -291,6 +299,7 @@ pub fn get_character_detail(
                             }),
                             talkativeness,
                             system_prompts,
+                            archived_at,
                         }));
                     }
                 }
@@ -320,6 +329,9 @@ pub fn get_character_detail(
         default_image,
         talkativeness,
         system_prompts,
+        // Bug 66: the chat GET renders the sidebar, so the archive badge needs
+        // this projection here too — not only in the participants/PUT enrichment.
+        archived_at,
     }))
 }
 

@@ -69470,3 +69470,237 @@ owed dogfood pass (now + this round's surfaces), `p4.9l2`, `p4.9i2`, and
 the banked smalls follow — the list lives in `phase-4.md`. The two v4-side
 filings owed by the human: the source-mode send discarding edits (P4.9L),
 the archived-seat-badge GET gap (standing).
+
+## P4.D80 — the `aa464abf` bug-66/67/69 commit, server side (2026-08-15)
+
+**Order:** `work-orders/p4.d80-bug66-69-convergence-server.md`. **v4 baseline
+`aa464abf`**, drift-checked at lane start: HEAD *is* `aa464abf`, the checkout on
+`main`, the tree CLEAN; `git diff main bugfix -- lib/ app/ packages/ plugins/`
+shows bugfix strictly BEHIND main (every hunk a deletion going main→bugfix),
+so nothing portable sits on the 4.8.x branch. Oracle regenerated directly from
+the checkout — no detached pin needed.
+
+Two code deliverables, both riding the one committed
+`character-archive-{main,mount}.db` family, and both landing in ONE commit:
+they are two halves of a single v4 commit, they share one differential family,
+and they share one oracle regeneration — splitting them would have meant
+committing a corpus-count assert that is wrong two minutes later. The bank and
+the dispositions ride a second, docs-only commit.
+
+### Unit 1 — bug 66: the chat-GET enrichment carries `archivedAt`
+
+v4 converging on the bug THIS PORT filed (v4 `315e51d2` files it; `aa464abf`
+fixes it). v5 had reproduced it faithfully: `EnrichedCharacterDetail` carried no
+`archived_at`, so the Salon sidebar — which renders from the chat GET — could
+not light the Archived badge on a fresh load, only after a participants action
+whose reply goes through the OTHER projection.
+
+`services/chat_enrichment.rs`: the field on the struct (`:184`, after
+`system_prompts`, so the serialized key order is v4's), read once at `:277`
+(`s(&character, "archivedAt")` = v4's `character.archivedAt ?? null`) and
+carried on BOTH returns — the avatar-override early return (`:302`) and the
+main one (`:334`), with v4's two comments. Nothing in `api/salon.rs` was
+touched: both call sites (`assemble_chat_get` and the chat-PUT re-enrichment)
+serialize the struct, so the field flowed without a projection edit — the
+order's predicted no-op, confirmed.
+
+The asymmetric twin (`services/chat_participants.rs:334-338,444,474`, the v4
+`helpers.ts` projection, reached only from `chat_cast.rs`) already carried the
+key and is unchanged: that asymmetry WAS bug 66 and is now closed from the
+other side.
+
+### Unit 2 — bug 69: the rehydrate self-heal for a clobbered digest row
+
+v4's file watcher re-derived `files.sha256` from the ENCRYPTED bytes moments
+after every archive, overwriting the §4.2d plaintext digest with a ciphertext
+one; every later rehydrate then refused the bundle as corrupt and archiving was
+one-way.
+
+`services/character_archive/service.rs:565-620`: on a digest mismatch the arm
+now computes `storedDigest = sha256(raw)` — which needs `raw` to survive the
+decrypt, so the plaintext binding became a `Cow` (borrowed on the legacy
+plaintext-bundle path, owned on the decrypt path; no extra copy on either).
+If `fileRow.sha256 != storedDigest` the EXISTING refusal fires with its
+sentence UNCHANGED. If equal, the row (not the bundle) is what was damaged:
+warn, push v4's fixed warning sentence onto `clobber_warnings`, and attempt
+`files.update(archiveFileId, {sha256: plaintextDigest})` — a repair failure
+warns and the rehydrate CONTINUES. The result's warnings are
+`[...clobberWarnings, ...result.warnings]` (`:734`), clobber warnings
+PREPENDED. `digest_prefix` (`:743`) is v4's `digest.slice(0,12) + '...'` log
+form without assuming 64 hex characters, since a clobbered value is whatever
+was written over it.
+
+**Why the arm ports at all when v5 cannot cause the damage.** The survey held:
+v5 ports no file-storage watcher and no boot reconciliation (`api::files.rs:1642`
+`files_sync` refuses loudly by name), and the only `files.sha256` writers are
+the same-name upload overwrite and image generation. The arm exists because v5
+opens the same instances a pre-4.9 v4 damaged. That reasoning is now a comment
+at the arm.
+
+**Tier-2 item 5 — `sha256` alone, MEASURED not asserted.** v4 repairs the
+digest and leaves `size` (an archive row's `size` is the real on-disk encrypted
+byte count). Rather than assert that about the patch struct, the clobbered case
+plants `size = 1` alongside the damaged digest and both sides must hand it back
+still wrong: confirmed in the oracle (`state.files` ARCHIVE row `size: 1`) and
+matched by v5. A port that "helpfully" corrected the size would go red on the
+`files` table dump.
+
+**Tier-2 item 6 — the stale-lore comment.** `create_archive_file_record`'s
+mint-the-id-first comment is v4 lore about a watcher v5 does not have. Kept
+(the ORDER it forces — row before bytes — is still correct and still
+load-bearing for v4-written instances) and annotated as such, with a pointer to
+bug 69 as the watcher's second hole in the same area.
+
+### The differential — `character_archive_tier2_equivalence`, 17 → 20 cases
+
+The family gained three cases and a fourth comparand section.
+
+- **`character_detail_enrichment`** drives v4's REAL
+  `lib/services/chat-enrichment.service.ts` `getCharacterDetail` against v5's
+  `chat_enrichment::get_character_detail` over seven probes: Sable with no
+  chatId (main return), Sable on the quay chat (the avatar-override early
+  return — the fixture's `avatarOverrides[0]` points there), Sable on a chat
+  with no override, Tor (the all-null leg), a missing character (`null` both
+  sides), then the SAME two Sable probes after a tombstone. The tombstone is
+  planted by raw UPDATE rather than by archiving, deliberately: archiving
+  PRUNES the vault, a pruned override face resolves to nothing, and the probe
+  would silently fall through to the main return and stop being the shape it
+  is there to cover.
+- **`rehydrate_digest_clobbered`** archives Sable for real, downloads the
+  bundle AS STORED, plants that digest (plus the wrong `size`) on the row, and
+  rehydrates: both sides succeed, warn with the byte-exact sentence, and repair.
+- **`rehydrate_digest_corrupt`** plants `deadbeef`×8 — neither digest — and
+  both sides refuse with the unchanged sentence. Without this leg the self-heal
+  could swallow every mismatch and still pass.
+- **`digestProbe`** (new section) classifies what each ARCHIVE row's recorded
+  `sha256` actually digests: `plaintext` / `stored` / `other`. The digest itself
+  is minted (the bundle carries a bundle-time stamp) and is blinded in the state
+  dump for exactly that reason, so the CLASS is what proves the row was
+  REPAIRED rather than merely tolerated. Emitted for all 20 cases; an oracle
+  regenerated before this round has no such key, which makes a stale NDJSON loud
+  instead of silent (`oracle-regen-silent-stale-pass`).
+- A refusal sentence quotes the bundle's plaintext digest, which can never agree
+  across two runs let alone two languages; both sides blind their OWN plaintext
+  digest to `<plaintext-sha>` before the diff. The PLANTED half stays literal,
+  so the two digests in `expected … got …` remain distinguishable.
+
+**Mutation proofs, both run:**
+
+1. Repair write redirected to a non-existent id → `rehydrate_digest_clobbered`
+   section `digestProbe` goes red (`got "stored"` / `want "plaintext"`) while
+   `result` stays green — i.e. the rehydrate still succeeds and only the repair
+   assert falls, exactly the ordered proof.
+2. `archived_at: None` on the avatar-override return only →
+   `character_detail_enrichment` result=DIFF (2788 vs 2790 bytes: the
+   `sable_archived_override` probe). The main-return leg alone would not have
+   caught it.
+
+**Regen recipe** (unchanged shape, in both file headers; Node 24; jest ignores
+`.claude/` venues so the case is copied to a /tmp mirror):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-character-archive-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/character-archive-tier2.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/character-archive.json"       "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_ARCHIVE_MAIN=$V5W/crates/quilltap-web/tests/fixtures/character-archive-main.db \
+QT_FIXTURE_ARCHIVE_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/character-archive-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-character-archive.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- character-archive-tier2
+# then, from the worktree:
+QT_ORACLE_CHARACTER_ARCHIVE=/tmp/oracle-character-archive.ndjson \
+  cargo test -p quilltap-harness --test character_archive_tier2_equivalence
+```
+
+**Fixtures: none changed.** The committed `character-archive-*.db` pair is
+READ-ONLY here; every planted condition is an in-test mutation on the per-case
+COPY (`sweep-recipes-write-into-the-repo`, the committed-fixture rule). No
+other family's oracle is invalidated.
+
+### Bug 69's unportable half — BANKED (beside the P4.D62 bug-53 bank)
+
+`lib/file-storage/digest-policy.ts` is NEW in `aa464abf` and has **no v5 twin**:
+v5 has no `watcher.ts` and no `reconciliation.ts` at all — `files_sync` refuses
+loudly (`crates/quilltap-core/src/api/files.rs:1642`) and bug 53's guards were
+banked at P4.D62 for the same reason. Banked here beside them:
+
+1. **`preservesContentDigest(category)`** — one rule, one call site each:
+   `CONTENT_DIGEST_CATEGORIES = new Set(['ARCHIVE'])`, and
+   `preservesContentDigest(c) === !!c && CONTENT_DIGEST_CATEGORIES.has(c)`
+   (an unknown/absent category counts as an ORDINARY row, because disk-derived
+   digests are the norm). Its doc-comment is the reasoning: an archive row's
+   `sha256` is the digest of the PLAINTEXT of encrypted disk bytes, because
+   that is what survives a passphrase change and what rehydration verifies;
+   `size` is NOT affected and may be corrected freely.
+2. **`watcher.ts:215-234`** — `const keepDigest = preservesContentDigest(existing.category)`;
+   the change gate becomes `(!keepDigest && sha256 !== existing.sha256) || stats.size !== existing.size`;
+   the patch spreads `...(keepDigest ? {} : { sha256 })`; the log line reports
+   `newSha256: 'preserved (content digest)'` when kept.
+3. **`reconciliation.ts:105-118`** — on the size-mismatch path, `updates.sha256`
+   is written ONLY when `!preservesContentDigest(dbRecord.category)`; the size
+   correction is unconditional (re-encryption after a passphrase change is
+   exactly when an archive row's size legitimately moves).
+
+⚠ **Loud:** whenever the file-storage watcher / boot-reconciliation subsystem is
+ported, the digest policy is part of its **Tier 1**, not a follow-up. Porting
+the watcher without it re-introduces bug 69 on v5 instances — and this lane's
+self-heal would then be papering over damage v5 itself was causing.
+
+### Dispositions — three v4 commits, zero code
+
+- **`54fdfb43` "re-emit job-child debug and trace logs at their own levels" —
+  NO-PORT.** v4's parent relays a FORKED job child's log lines and its relay
+  mapped only error/warn/info, so debug/trace arrived stamped `info`; the fix
+  maps trace→`log.trace` and debug/unknown→`log.debug` in
+  `lib/background-jobs/host/processor-host.ts`. v5 has no job child and no log
+  relay — the standing fork/IPC ruling (`w4.8-job-runner.md:14-21`,
+  `[[job-runner-fork-ipc-non-port]]`). `services/job_runner.rs` logs
+  IN-PROCESS at source levels already, mapping v4's dispatcher lines one for
+  one (`:398` Dispatching job → info, `:437` Job completed → info, `:447` Job
+  failed → warn). There is no level to re-map: the bug being fixed is a
+  property of the relay, and the relay is what v5 does not have.
+- **`55d63022` (move the 4.8 CHANGELOG into `CHANGELOG_V4.md`) — NO-PORT**,
+  docs only.
+- **`315e51d2` (filing v4 bugs 66 and 67) — NO-PORT**, docs only. These are the
+  very bugs this port reported upstream; unit 1 above is v4's fix for 66
+  arriving back.
+
+### Bug 67 — CONVERGENCE, no v5 code
+
+v4's new `app/salon/[id]/composer-source-mode.ts` + the `SalonView` change adopt
+exactly what v5 already ships as a pinned DELIBERATE DIVERGENCE
+(`apps/web/src/.../chat-composer.ts:774-786`, the P4.9L record): a send made
+while the raw-source view is showing must send the TEXTAREA's bytes, and Send
+must gate on the same visible surface. Nothing to port. The divergence-record
+retirement is P4.D81's, per Contract C's sibling; this lane records only that
+the convergence happened.
+
+### Deferrals (loud) and what this lane did NOT touch
+
+- The watcher / boot-reconciliation subsystem stays unported — standing loud
+  refusal at `api/files.rs:1642`. This lane only GREW its bank.
+- The archived-badge e2e beat flip
+  (`apps/web/e2e/character-archive-flow.spec.ts:192-236`, still carrying its ⚠
+  "V4 BUG, REPRODUCED FAITHFULLY" header) is P4.D81's, gated behind
+  `P4D80_ENRICHMENT_LANDED`; the unifier RUNS it at first activation (the
+  gated-beat first-run rot class). **This lane touched no file under
+  `apps/web/`** — confirmed in the diff.
+- The help-doc deltas of `aa464abf` (`help/character-management.md` +8,
+  `help/chat-settings.md` +9) go VERBATIM to the `p4.9i2` bank, not here.
+- 💸 **A live rehydrate of a REAL clobbered row** (if the Friday copy carries
+  one — every character archived by a pre-4.9 v4 while the watcher ran should)
+  joins the owed dogfood queue. Recorded, not attempted: this lane never points
+  a writable open at live data.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean and again with `--features
+quilltap-core/native-transport`; `cargo build --release` exit 0; full
+`cargo test --workspace` with `QT_ORACLE_CHARACTER_ARCHIVE` set (numbers in the
+commit); `character_archive_tier2_equivalence` positively confirmed RAN — all
+20 cases printed by name, zero SKIP — over an oracle regenerated fresh at the
+`aa464abf` pin. Spelling guard rides the harness run. `apps/web` untouched.

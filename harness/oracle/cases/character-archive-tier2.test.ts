@@ -12,6 +12,10 @@
  *     are the CLASSES it dispatches on).
  *   - `state`  — a canonicalized dump of every table the lifecycle can touch,
  *     across BOTH partitions.
+ *   - `digestProbe` — per ARCHIVE `files` row, WHAT its recorded `sha256`
+ *     digests (`plaintext` / `stored` / `other`). Added at P4.D80: the digest
+ *     itself is minted and blinded, so the class is what proves bug 69's
+ *     self-heal actually REPAIRED the row.
  *   - `bundle` — the archive bundle DECRYPTED and parsed. ⚠ The ciphertext is
  *     nondeterministic (fresh salt + IV per bundle), so the bytes on disk can
  *     never be compared; the plaintext export is the comparand, and each side
@@ -126,7 +130,22 @@ type CaseName =
   | 'archive_key_unavailable'
   | 'archive_rehydrate_passphrase_mismatch'
   | 'archive_prune_incomplete'
-  | 'rehydrate_pre_revision_avatar';
+  | 'rehydrate_pre_revision_avatar'
+  // ── P4.D80 (v4 `aa464abf`, bugs 66 + 69) ──
+  // Bug 66's projection needs a character carrying a REAL tombstone, and bug
+  // 69's self-heal needs a REAL bundle whose row can be damaged — both of
+  // which exist only on this fixture, once `archiveCharacter` has run.
+  | 'character_detail_enrichment'
+  | 'rehydrate_digest_clobbered'
+  | 'rehydrate_digest_corrupt';
+
+/**
+ * The digest a `rehydrate_digest_corrupt` row is planted with: 64 hex
+ * characters that are neither the plaintext digest nor the ciphertext one, so
+ * the self-heal must NOT engage. Deterministic on both sides, which keeps the
+ * refusal sentence's `expected …` half a real comparand.
+ */
+const CORRUPT_DIGEST = 'deadbeef'.repeat(8);
 
 /**
  * The instance-passphrase seam, as a mutable box.
@@ -285,6 +304,9 @@ async function runCase(
   const { archiveCharacter, rehydrateCharacter } = await import(
     '@/lib/characters/archive-service'
   );
+  // Bug 66's projection, driven directly: `getCharacterDetail` is what the chat
+  // GET enriches every participant through.
+  const { getCharacterDetail } = await import('@/lib/services/chat-enrichment.service');
   const { decryptArchive, isEncryptedArchive } = await import('@/lib/characters/archive-crypto');
   const { assembleExportFromStream } = await import('@/lib/import/quilltap-import-stream');
   const { readNdjsonLines } = await import('@/lib/import/ndjson-reader');
@@ -504,6 +526,92 @@ async function runCase(
         payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
         break;
       }
+
+      // ── Bug 66: `getCharacterDetail` carries the tombstone ────────────────
+      // The Salon sidebar renders from the chat GET, which enriches every
+      // participant through this function; without the projection the Archived
+      // badge could not light on a fresh load. BOTH returns are probed — the
+      // avatar-override early return (Sable's `avatarOverrides[0]` points at
+      // the quay chat) and the main one — before and after a tombstone.
+      //
+      // The tombstone is planted by raw UPDATE rather than by archiving:
+      // archiving PRUNES the vault, and a pruned override face would resolve to
+      // nothing and silently fall through to the main return, so the
+      // avatar-override + archived probe would stop being that shape at all.
+      case 'character_detail_enrichment': {
+        const repos = getRepositories();
+        const probe = async (
+          label: string,
+          characterId: string,
+          chatId?: string,
+        ): Promise<Record<string, unknown>> => ({
+          label,
+          detail: (await getCharacterDetail(characterId, repos, chatId)) ?? null,
+        });
+        const probes: Array<Record<string, unknown>> = [];
+        probes.push(await probe('sable_live_main', spec.sable));
+        probes.push(await probe('sable_live_override', spec.sable, spec.chatSeated));
+        // A chat with no override for Sable still takes the main return.
+        probes.push(await probe('sable_live_other_chat', spec.sable, spec.chatRemoved));
+        probes.push(await probe('tor_live_main', spec.tor));
+        probes.push(await probe('missing_character', '00000000-0000-4000-8000-00000000dead'));
+        await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [
+          '2026-03-02T00:00:00.000Z',
+          spec.sable,
+        ]);
+        probes.push(await probe('sable_archived_main', spec.sable));
+        probes.push(await probe('sable_archived_override', spec.sable, spec.chatSeated));
+        payload.result = { probes };
+        break;
+      }
+
+      // ── Bug 69: the clobbered-row self-heal ───────────────────────────────
+      // v4's file watcher re-derived `sha256` from the ENCRYPTED bytes moments
+      // after an archive was written, so the row held the ciphertext digest and
+      // every later rehydrate refused the bundle as corrupt — archiving was
+      // one-way. Plant exactly that damage (the digest of the file as stored)
+      // and the rehydrate must succeed, warn, and repair the row.
+      case 'rehydrate_digest_clobbered': {
+        const archived = (await archiveCharacter(spec.userId, spec.sable)) as {
+          archiveFileId: string | null;
+        };
+        const fileId = archived.archiveFileId ?? '';
+        const entry = await getRepositories().files.findById(fileId);
+        if (!entry) throw new Error('the archive row vanished after archiving');
+        const stored = await fileStorageManager.downloadFile(entry);
+        const storedDigest = require('node:crypto')
+          .createHash('sha256')
+          .update(stored)
+          .digest('hex') as string;
+        // `size` is planted WRONG alongside the digest, and must come back out
+        // wrong: the repair writes `sha256` ALONE. An archive row's `size` is
+        // the real on-disk (encrypted) byte count, so a port that "helpfully"
+        // corrected it here would diverge on the `files` state dump — which is
+        // the only way to measure the claim rather than assert it.
+        await rawQuery('UPDATE files SET sha256 = ?, size = ? WHERE id = ?', [
+          storedDigest,
+          1,
+          fileId,
+        ]);
+        payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
+        break;
+      }
+
+      // The discriminating leg: a digest that is NEITHER the plaintext's nor
+      // the file-as-stored's is a genuinely corrupt bundle, and the refusal
+      // sentence is unchanged. Without this arm the self-heal could swallow
+      // every mismatch and still pass.
+      case 'rehydrate_digest_corrupt': {
+        const archived = (await archiveCharacter(spec.userId, spec.sable)) as {
+          archiveFileId: string | null;
+        };
+        await rawQuery('UPDATE files SET sha256 = ? WHERE id = ?', [
+          CORRUPT_DIGEST,
+          archived.archiveFileId ?? '',
+        ]);
+        payload.result = await capture(() => rehydrateCharacter(spec.userId, spec.sable));
+        break;
+      }
     }
 
     // The bundle, DECRYPTED (never the ciphertext — see the header).
@@ -512,6 +620,18 @@ async function runCase(
       [],
     )) as Array<Record<string, unknown>>;
     const bundles: unknown[] = [];
+    /**
+     * P4.D80 — what each ARCHIVE row's `sha256` actually digests, classified
+     * against the bytes it points at. The digests themselves are minted
+     * (`state.files`'s ARCHIVE sha256 is blinded Rust-side for exactly that
+     * reason), so the CLASS is the comparand: `plaintext` is the healthy
+     * §4.2d recording, `stored` is the bug-69 clobber, `other` is a genuinely
+     * corrupt row. It is what proves the self-heal repaired the row rather
+     * than merely tolerating the mismatch.
+     */
+    const digestProbe: Array<{ fileId: string; digests: string }> = [];
+    /** Each bundle's PLAINTEXT digest — blinded out of `result` below. */
+    const plaintextDigests: string[] = [];
     for (const row of canonicalizeRows(archiveRows)) {
       const entry = await getRepositories().files.findById(row.id as string);
       if (!entry) continue;
@@ -532,8 +652,33 @@ async function runCase(
       });
       const parsed = await assembleExportFromStream(readNdjsonLines(stream));
       bundles.push({ manifest: parsed.manifest, data: parsed.data });
+
+      const crypto = require('node:crypto');
+      const plaintextDigest = crypto.createHash('sha256').update(plaintext).digest('hex') as string;
+      const storedDigest = crypto.createHash('sha256').update(raw).digest('hex') as string;
+      plaintextDigests.push(plaintextDigest);
+      const recorded = (row.sha256 as string | null) ?? '';
+      digestProbe.push({
+        fileId: row.id as string,
+        digests:
+          recorded === plaintextDigest
+            ? 'plaintext'
+            : recorded === storedDigest
+              ? 'stored'
+              : 'other',
+      });
     }
     payload.bundles = bundles;
+    payload.digestProbe = digestProbe;
+    // A refusal sentence quotes the bundle's plaintext digest, which is minted
+    // per run (the manifest carries a bundle-time stamp) and can never agree
+    // across two runs, let alone two languages. Blind it — the PLANTED half of
+    // the sentence stays literal, so the two digests remain distinguishable.
+    if (payload.result !== undefined) {
+      let text = JSON.stringify(payload.result);
+      for (const d of plaintextDigests) text = text.split(d).join('<plaintext-sha>');
+      payload.result = JSON.parse(text);
+    }
 
     // The whole reachable state, both partitions.
     const state: Record<string, unknown> = {};
@@ -598,6 +743,9 @@ async function main(): Promise<void> {
     'archive_rehydrate_passphrase_mismatch',
     'archive_prune_incomplete',
     'rehydrate_pre_revision_avatar',
+    'character_detail_enrichment',
+    'rehydrate_digest_clobbered',
+    'rehydrate_digest_corrupt',
   ];
 
   const outLines: string[] = [];
