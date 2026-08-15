@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Filed the round's two v4-side findings upstream as v4 bugs 66 and 67 (the
+archived-seat badge that cannot light on a fresh load, and the raw-source
+view's send discarding source edits) — a docs-only commit in the v4
+checkout, left unpushed beside the in-flight Ollama work.
+
 Unified the help-drift round: the server half of v4's section-level help
 search (the help_doc_chunks table, chunking, the sync's re-slice and upgrade
 backfill, the embedding job's chunk pass, the reindex/reapply riders, and

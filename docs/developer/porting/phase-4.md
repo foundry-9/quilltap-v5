@@ -4780,9 +4780,12 @@ corpus before restoration).
 6. Banked smalls: the settings repo-validate sibling fields
    (`imageDescriptionProfileId` / `uncensoredImageDescriptionProfileId` /
    `contextCompressionSettings` / `thinkingDisplay` — named at the P4.47
-   deferral site); the two v4-side filings (the source-mode send discarding
-   edits — NEW from P4.9L; the archived-seat-badge GET gap — standing); the
-   stale `docs/v4` API.md mirror sweep.
+   deferral site); the stale `docs/v4` API.md mirror sweep. ~~The two
+   v4-side filings~~ **FILED 2026-08-14 as v4 bugs 66 (the
+   archived-seat-badge GET gap) and 67 (the source-mode send discarding
+   edits)** — committed docs-only in the v4 checkout (not pushed; the
+   human's tree carries the in-flight Ollama WIP). Their fixes arrive as
+   ordinary drift; v5's pins flip by design when they land.
 
 **Standing regen note (supersedes the one above):** the oracle baseline is
 **`24633026`** ("feat: section-level help embeddings and content search in
