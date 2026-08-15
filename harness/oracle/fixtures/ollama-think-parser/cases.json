@@ -1,0 +1,2654 @@
+[
+  {
+    "id": "v4-whole-split",
+    "pushes": [
+      "<think>pondering deeply</think>\n\nHello there"
+    ]
+  },
+  {
+    "id": "v4-no-think-passthrough",
+    "pushes": [
+      "  leading space kept\nand newlines too "
+    ]
+  },
+  {
+    "id": "v4-unterminated",
+    "pushes": [
+      "<think>cut off mid-"
+    ]
+  },
+  {
+    "id": "v4-orphan-close",
+    "pushes": [
+      "Okay, let's see. The user wants JSON.\n</think>\n\n[\"cat\", \"dog\"]"
+    ]
+  },
+  {
+    "id": "v4-stray-close-after-block",
+    "pushes": [
+      "<think>real</think>answer </think> tail"
+    ]
+  },
+  {
+    "id": "v4-multiple-blocks",
+    "pushes": [
+      "<think>first</think>Answer part one <think>second</think>and two"
+    ]
+  },
+  {
+    "id": "v4-partial-tag-never-completes",
+    "pushes": [
+      "half a tag <thi",
+      "rd of the way"
+    ]
+  },
+  {
+    "id": "v4-chop-1",
+    "pushes": [
+      "I",
+      "n",
+      "t",
+      "r",
+      "o",
+      " ",
+      "<",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      "s",
+      "o",
+      "m",
+      "e",
+      "\n",
+      "r",
+      "e",
+      "a",
+      "s",
+      "o",
+      "n",
+      "i",
+      "n",
+      "g",
+      "<",
+      "/",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      " ",
+      "a",
+      "n",
+      "d",
+      " ",
+      "t",
+      "h",
+      "e",
+      " ",
+      "a",
+      "n",
+      "s",
+      "w",
+      "e",
+      "r",
+      "<",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      "m",
+      "o",
+      "r",
+      "e",
+      "<",
+      "/",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      "!"
+    ]
+  },
+  {
+    "id": "v4-chop-2",
+    "pushes": [
+      "In",
+      "tr",
+      "o ",
+      "<t",
+      "hi",
+      "nk",
+      ">s",
+      "om",
+      "e\n",
+      "re",
+      "as",
+      "on",
+      "in",
+      "g<",
+      "/t",
+      "hi",
+      "nk",
+      "> ",
+      "an",
+      "d ",
+      "th",
+      "e ",
+      "an",
+      "sw",
+      "er",
+      "<t",
+      "hi",
+      "nk",
+      ">m",
+      "or",
+      "e<",
+      "/t",
+      "hi",
+      "nk",
+      ">!"
+    ]
+  },
+  {
+    "id": "v4-chop-3",
+    "pushes": [
+      "Int",
+      "ro ",
+      "<th",
+      "ink",
+      ">so",
+      "me\n",
+      "rea",
+      "son",
+      "ing",
+      "</t",
+      "hin",
+      "k> ",
+      "and",
+      " th",
+      "e a",
+      "nsw",
+      "er<",
+      "thi",
+      "nk>",
+      "mor",
+      "e</",
+      "thi",
+      "nk>",
+      "!"
+    ]
+  },
+  {
+    "id": "v4-chop-5",
+    "pushes": [
+      "Intro",
+      " <thi",
+      "nk>so",
+      "me\nre",
+      "asoni",
+      "ng</t",
+      "hink>",
+      " and ",
+      "the a",
+      "nswer",
+      "<thin",
+      "k>mor",
+      "e</th",
+      "ink>!"
+    ]
+  },
+  {
+    "id": "v4-chop-7",
+    "pushes": [
+      "Intro <",
+      "think>s",
+      "ome\nrea",
+      "soning<",
+      "/think>",
+      " and th",
+      "e answe",
+      "r<think",
+      ">more</",
+      "think>!"
+    ]
+  },
+  {
+    "id": "v4-chop-11",
+    "pushes": [
+      "Intro <thin",
+      "k>some\nreas",
+      "oning</thin",
+      "k> and the ",
+      "answer<thin",
+      "k>more</thi",
+      "nk>!"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-1",
+    "pushes": [
+      "A",
+      "<think>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-2",
+    "pushes": [
+      "A<",
+      "think>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-3",
+    "pushes": [
+      "A<t",
+      "hink>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-4",
+    "pushes": [
+      "A<th",
+      "ink>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-5",
+    "pushes": [
+      "A<thi",
+      "nk>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-6",
+    "pushes": [
+      "A<thin",
+      "k>R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-7",
+    "pushes": [
+      "A<think",
+      ">R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-8",
+    "pushes": [
+      "A<think>",
+      "R</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-9",
+    "pushes": [
+      "A<think>R",
+      "</think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-10",
+    "pushes": [
+      "A<think>R<",
+      "/think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-11",
+    "pushes": [
+      "A<think>R</",
+      "think>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-12",
+    "pushes": [
+      "A<think>R</t",
+      "hink>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-13",
+    "pushes": [
+      "A<think>R</th",
+      "ink>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-14",
+    "pushes": [
+      "A<think>R</thi",
+      "nk>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-15",
+    "pushes": [
+      "A<think>R</thin",
+      "k>B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-16",
+    "pushes": [
+      "A<think>R</think",
+      ">B"
+    ]
+  },
+  {
+    "id": "straddle-basic-split-17",
+    "pushes": [
+      "A<think>R</think>",
+      "B"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-1",
+    "pushes": [
+      "p",
+      "re</think>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-2",
+    "pushes": [
+      "pr",
+      "e</think>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-3",
+    "pushes": [
+      "pre",
+      "</think>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-4",
+    "pushes": [
+      "pre<",
+      "/think>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-5",
+    "pushes": [
+      "pre</",
+      "think>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-6",
+    "pushes": [
+      "pre</t",
+      "hink>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-7",
+    "pushes": [
+      "pre</th",
+      "ink>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-8",
+    "pushes": [
+      "pre</thi",
+      "nk>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-9",
+    "pushes": [
+      "pre</thin",
+      "k>post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-10",
+    "pushes": [
+      "pre</think",
+      ">post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-11",
+    "pushes": [
+      "pre</think>",
+      "post"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-12",
+    "pushes": [
+      "pre</think>p",
+      "ost"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-13",
+    "pushes": [
+      "pre</think>po",
+      "st"
+    ]
+  },
+  {
+    "id": "straddle-orphan-split-14",
+    "pushes": [
+      "pre</think>pos",
+      "t"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-1",
+    "pushes": [
+      "<",
+      "think>r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-2",
+    "pushes": [
+      "<t",
+      "hink>r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-3",
+    "pushes": [
+      "<th",
+      "ink>r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-4",
+    "pushes": [
+      "<thi",
+      "nk>r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-5",
+    "pushes": [
+      "<thin",
+      "k>r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-6",
+    "pushes": [
+      "<think",
+      ">r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-7",
+    "pushes": [
+      "<think>",
+      "r</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-8",
+    "pushes": [
+      "<think>r",
+      "</think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-9",
+    "pushes": [
+      "<think>r<",
+      "/think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-10",
+    "pushes": [
+      "<think>r</",
+      "think>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-11",
+    "pushes": [
+      "<think>r</t",
+      "hink>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-12",
+    "pushes": [
+      "<think>r</th",
+      "ink>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-13",
+    "pushes": [
+      "<think>r</thi",
+      "nk>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-14",
+    "pushes": [
+      "<think>r</thin",
+      "k>   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-15",
+    "pushes": [
+      "<think>r</think",
+      ">   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-16",
+    "pushes": [
+      "<think>r</think>",
+      "   \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-17",
+    "pushes": [
+      "<think>r</think> ",
+      "  \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-18",
+    "pushes": [
+      "<think>r</think>  ",
+      " \n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-19",
+    "pushes": [
+      "<think>r</think>   ",
+      "\n\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-20",
+    "pushes": [
+      "<think>r</think>   \n",
+      "\n  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-21",
+    "pushes": [
+      "<think>r</think>   \n\n",
+      "  Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-22",
+    "pushes": [
+      "<think>r</think>   \n\n ",
+      " Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-23",
+    "pushes": [
+      "<think>r</think>   \n\n  ",
+      "Answer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-24",
+    "pushes": [
+      "<think>r</think>   \n\n  A",
+      "nswer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-25",
+    "pushes": [
+      "<think>r</think>   \n\n  An",
+      "swer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-26",
+    "pushes": [
+      "<think>r</think>   \n\n  Ans",
+      "wer"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-27",
+    "pushes": [
+      "<think>r</think>   \n\n  Answ",
+      "er"
+    ]
+  },
+  {
+    "id": "straddle-ws-after-close-split-28",
+    "pushes": [
+      "<think>r</think>   \n\n  Answe",
+      "r"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-1",
+    "pushes": [
+      "v",
+      "is<think>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-2",
+    "pushes": [
+      "vi",
+      "s<think>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-3",
+    "pushes": [
+      "vis",
+      "<think>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-4",
+    "pushes": [
+      "vis<",
+      "think>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-5",
+    "pushes": [
+      "vis<t",
+      "hink>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-6",
+    "pushes": [
+      "vis<th",
+      "ink>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-7",
+    "pushes": [
+      "vis<thi",
+      "nk>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-8",
+    "pushes": [
+      "vis<thin",
+      "k>tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-9",
+    "pushes": [
+      "vis<think",
+      ">tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-10",
+    "pushes": [
+      "vis<think>",
+      "tail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-11",
+    "pushes": [
+      "vis<think>t",
+      "ail"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-12",
+    "pushes": [
+      "vis<think>ta",
+      "il"
+    ]
+  },
+  {
+    "id": "straddle-unterminated-split-13",
+    "pushes": [
+      "vis<think>tai",
+      "l"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-1",
+    "pushes": [
+      "a",
+      "<think></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-2",
+    "pushes": [
+      "a<",
+      "think></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-3",
+    "pushes": [
+      "a<t",
+      "hink></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-4",
+    "pushes": [
+      "a<th",
+      "ink></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-5",
+    "pushes": [
+      "a<thi",
+      "nk></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-6",
+    "pushes": [
+      "a<thin",
+      "k></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-7",
+    "pushes": [
+      "a<think",
+      "></think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-8",
+    "pushes": [
+      "a<think>",
+      "</think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-9",
+    "pushes": [
+      "a<think><",
+      "/think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-10",
+    "pushes": [
+      "a<think></",
+      "think>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-11",
+    "pushes": [
+      "a<think></t",
+      "hink>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-12",
+    "pushes": [
+      "a<think></th",
+      "ink>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-13",
+    "pushes": [
+      "a<think></thi",
+      "nk>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-14",
+    "pushes": [
+      "a<think></thin",
+      "k>b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-15",
+    "pushes": [
+      "a<think></think",
+      ">b"
+    ]
+  },
+  {
+    "id": "straddle-empty-block-split-16",
+    "pushes": [
+      "a<think></think>",
+      "b"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-1",
+    "pushes": [
+      "p",
+      "lain text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-2",
+    "pushes": [
+      "pl",
+      "ain text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-3",
+    "pushes": [
+      "pla",
+      "in text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-4",
+    "pushes": [
+      "plai",
+      "n text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-5",
+    "pushes": [
+      "plain",
+      " text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-6",
+    "pushes": [
+      "plain ",
+      "text with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-7",
+    "pushes": [
+      "plain t",
+      "ext with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-8",
+    "pushes": [
+      "plain te",
+      "xt with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-9",
+    "pushes": [
+      "plain tex",
+      "t with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-10",
+    "pushes": [
+      "plain text",
+      " with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-11",
+    "pushes": [
+      "plain text ",
+      "with no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-12",
+    "pushes": [
+      "plain text w",
+      "ith no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-13",
+    "pushes": [
+      "plain text wi",
+      "th no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-14",
+    "pushes": [
+      "plain text wit",
+      "h no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-15",
+    "pushes": [
+      "plain text with",
+      " no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-16",
+    "pushes": [
+      "plain text with ",
+      "no tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-17",
+    "pushes": [
+      "plain text with n",
+      "o tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-18",
+    "pushes": [
+      "plain text with no",
+      " tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-19",
+    "pushes": [
+      "plain text with no ",
+      "tags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-20",
+    "pushes": [
+      "plain text with no t",
+      "ags at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-21",
+    "pushes": [
+      "plain text with no ta",
+      "gs at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-22",
+    "pushes": [
+      "plain text with no tag",
+      "s at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-23",
+    "pushes": [
+      "plain text with no tags",
+      " at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-24",
+    "pushes": [
+      "plain text with no tags ",
+      "at all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-25",
+    "pushes": [
+      "plain text with no tags a",
+      "t all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-26",
+    "pushes": [
+      "plain text with no tags at",
+      " all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-27",
+    "pushes": [
+      "plain text with no tags at ",
+      "all"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-28",
+    "pushes": [
+      "plain text with no tags at a",
+      "ll"
+    ]
+  },
+  {
+    "id": "straddle-nothink-split-29",
+    "pushes": [
+      "plain text with no tags at al",
+      "l"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-1",
+    "pushes": [
+      "s",
+      "aid</think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-2",
+    "pushes": [
+      "sa",
+      "id</think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-3",
+    "pushes": [
+      "sai",
+      "d</think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-4",
+    "pushes": [
+      "said",
+      "</think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-5",
+    "pushes": [
+      "said<",
+      "/think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-6",
+    "pushes": [
+      "said</",
+      "think>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-7",
+    "pushes": [
+      "said</t",
+      "hink>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-8",
+    "pushes": [
+      "said</th",
+      "ink>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-9",
+    "pushes": [
+      "said</thi",
+      "nk>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-10",
+    "pushes": [
+      "said</thin",
+      "k>more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-11",
+    "pushes": [
+      "said</think",
+      ">more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-12",
+    "pushes": [
+      "said</think>",
+      "more"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-13",
+    "pushes": [
+      "said</think>m",
+      "ore"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-14",
+    "pushes": [
+      "said</think>mo",
+      "re"
+    ]
+  },
+  {
+    "id": "straddle-close-after-visible-split-15",
+    "pushes": [
+      "said</think>mor",
+      "e"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-1",
+    "pushes": [
+      "<",
+      "think>a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-2",
+    "pushes": [
+      "<t",
+      "hink>a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-3",
+    "pushes": [
+      "<th",
+      "ink>a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-4",
+    "pushes": [
+      "<thi",
+      "nk>a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-5",
+    "pushes": [
+      "<thin",
+      "k>a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-6",
+    "pushes": [
+      "<think",
+      ">a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-7",
+    "pushes": [
+      "<think>",
+      "a</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-8",
+    "pushes": [
+      "<think>a",
+      "</think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-9",
+    "pushes": [
+      "<think>a<",
+      "/think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-10",
+    "pushes": [
+      "<think>a</",
+      "think>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-11",
+    "pushes": [
+      "<think>a</t",
+      "hink>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-12",
+    "pushes": [
+      "<think>a</th",
+      "ink>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-13",
+    "pushes": [
+      "<think>a</thi",
+      "nk>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-14",
+    "pushes": [
+      "<think>a</thin",
+      "k>X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-15",
+    "pushes": [
+      "<think>a</think",
+      ">X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-16",
+    "pushes": [
+      "<think>a</think>",
+      "X<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-17",
+    "pushes": [
+      "<think>a</think>X",
+      "<think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-18",
+    "pushes": [
+      "<think>a</think>X<",
+      "think>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-19",
+    "pushes": [
+      "<think>a</think>X<t",
+      "hink>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-20",
+    "pushes": [
+      "<think>a</think>X<th",
+      "ink>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-21",
+    "pushes": [
+      "<think>a</think>X<thi",
+      "nk>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-22",
+    "pushes": [
+      "<think>a</think>X<thin",
+      "k>b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-23",
+    "pushes": [
+      "<think>a</think>X<think",
+      ">b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-24",
+    "pushes": [
+      "<think>a</think>X<think>",
+      "b</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-25",
+    "pushes": [
+      "<think>a</think>X<think>b",
+      "</think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-26",
+    "pushes": [
+      "<think>a</think>X<think>b<",
+      "/think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-27",
+    "pushes": [
+      "<think>a</think>X<think>b</",
+      "think>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-28",
+    "pushes": [
+      "<think>a</think>X<think>b</t",
+      "hink>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-29",
+    "pushes": [
+      "<think>a</think>X<think>b</th",
+      "ink>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-30",
+    "pushes": [
+      "<think>a</think>X<think>b</thi",
+      "nk>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-31",
+    "pushes": [
+      "<think>a</think>X<think>b</thin",
+      "k>Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-32",
+    "pushes": [
+      "<think>a</think>X<think>b</think",
+      ">Y"
+    ]
+  },
+  {
+    "id": "straddle-two-blocks-split-33",
+    "pushes": [
+      "<think>a</think>X<think>b</think>",
+      "Y"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-2",
+    "pushes": [
+      "q",
+      "<",
+      "think>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-3",
+    "pushes": [
+      "q",
+      "<t",
+      "hink>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-4",
+    "pushes": [
+      "q",
+      "<th",
+      "ink>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-5",
+    "pushes": [
+      "q",
+      "<thi",
+      "nk>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-6",
+    "pushes": [
+      "q",
+      "<thin",
+      "k>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-7",
+    "pushes": [
+      "q",
+      "<think",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-8",
+    "pushes": [
+      "q",
+      "<think>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-9",
+    "pushes": [
+      "q",
+      "<think>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-10",
+    "pushes": [
+      "q",
+      "<think>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-11",
+    "pushes": [
+      "q",
+      "<think>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-12",
+    "pushes": [
+      "q",
+      "<think>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-13",
+    "pushes": [
+      "q",
+      "<think>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-14",
+    "pushes": [
+      "q",
+      "<think>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-15",
+    "pushes": [
+      "q",
+      "<think>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-16",
+    "pushes": [
+      "q",
+      "<think>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-1-17",
+    "pushes": [
+      "q",
+      "<think>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-3",
+    "pushes": [
+      "q<",
+      "t",
+      "hink>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-4",
+    "pushes": [
+      "q<",
+      "th",
+      "ink>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-5",
+    "pushes": [
+      "q<",
+      "thi",
+      "nk>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-6",
+    "pushes": [
+      "q<",
+      "thin",
+      "k>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-7",
+    "pushes": [
+      "q<",
+      "think",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-8",
+    "pushes": [
+      "q<",
+      "think>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-9",
+    "pushes": [
+      "q<",
+      "think>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-10",
+    "pushes": [
+      "q<",
+      "think>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-11",
+    "pushes": [
+      "q<",
+      "think>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-12",
+    "pushes": [
+      "q<",
+      "think>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-13",
+    "pushes": [
+      "q<",
+      "think>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-14",
+    "pushes": [
+      "q<",
+      "think>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-15",
+    "pushes": [
+      "q<",
+      "think>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-16",
+    "pushes": [
+      "q<",
+      "think>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-2-17",
+    "pushes": [
+      "q<",
+      "think>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-4",
+    "pushes": [
+      "q<t",
+      "h",
+      "ink>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-5",
+    "pushes": [
+      "q<t",
+      "hi",
+      "nk>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-6",
+    "pushes": [
+      "q<t",
+      "hin",
+      "k>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-7",
+    "pushes": [
+      "q<t",
+      "hink",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-8",
+    "pushes": [
+      "q<t",
+      "hink>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-9",
+    "pushes": [
+      "q<t",
+      "hink>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-10",
+    "pushes": [
+      "q<t",
+      "hink>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-11",
+    "pushes": [
+      "q<t",
+      "hink>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-12",
+    "pushes": [
+      "q<t",
+      "hink>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-13",
+    "pushes": [
+      "q<t",
+      "hink>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-14",
+    "pushes": [
+      "q<t",
+      "hink>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-15",
+    "pushes": [
+      "q<t",
+      "hink>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-16",
+    "pushes": [
+      "q<t",
+      "hink>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-3-17",
+    "pushes": [
+      "q<t",
+      "hink>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-5",
+    "pushes": [
+      "q<th",
+      "i",
+      "nk>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-6",
+    "pushes": [
+      "q<th",
+      "in",
+      "k>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-7",
+    "pushes": [
+      "q<th",
+      "ink",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-8",
+    "pushes": [
+      "q<th",
+      "ink>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-9",
+    "pushes": [
+      "q<th",
+      "ink>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-10",
+    "pushes": [
+      "q<th",
+      "ink>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-11",
+    "pushes": [
+      "q<th",
+      "ink>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-12",
+    "pushes": [
+      "q<th",
+      "ink>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-13",
+    "pushes": [
+      "q<th",
+      "ink>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-14",
+    "pushes": [
+      "q<th",
+      "ink>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-15",
+    "pushes": [
+      "q<th",
+      "ink>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-16",
+    "pushes": [
+      "q<th",
+      "ink>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-4-17",
+    "pushes": [
+      "q<th",
+      "ink>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-6",
+    "pushes": [
+      "q<thi",
+      "n",
+      "k>w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-7",
+    "pushes": [
+      "q<thi",
+      "nk",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-8",
+    "pushes": [
+      "q<thi",
+      "nk>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-9",
+    "pushes": [
+      "q<thi",
+      "nk>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-10",
+    "pushes": [
+      "q<thi",
+      "nk>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-11",
+    "pushes": [
+      "q<thi",
+      "nk>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-12",
+    "pushes": [
+      "q<thi",
+      "nk>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-13",
+    "pushes": [
+      "q<thi",
+      "nk>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-14",
+    "pushes": [
+      "q<thi",
+      "nk>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-15",
+    "pushes": [
+      "q<thi",
+      "nk>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-16",
+    "pushes": [
+      "q<thi",
+      "nk>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-5-17",
+    "pushes": [
+      "q<thi",
+      "nk>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-7",
+    "pushes": [
+      "q<thin",
+      "k",
+      ">w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-8",
+    "pushes": [
+      "q<thin",
+      "k>",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-9",
+    "pushes": [
+      "q<thin",
+      "k>w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-10",
+    "pushes": [
+      "q<thin",
+      "k>w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-11",
+    "pushes": [
+      "q<thin",
+      "k>w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-12",
+    "pushes": [
+      "q<thin",
+      "k>w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-13",
+    "pushes": [
+      "q<thin",
+      "k>w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-14",
+    "pushes": [
+      "q<thin",
+      "k>w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-15",
+    "pushes": [
+      "q<thin",
+      "k>w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-16",
+    "pushes": [
+      "q<thin",
+      "k>w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-6-17",
+    "pushes": [
+      "q<thin",
+      "k>w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-8",
+    "pushes": [
+      "q<think",
+      ">",
+      "w</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-9",
+    "pushes": [
+      "q<think",
+      ">w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-10",
+    "pushes": [
+      "q<think",
+      ">w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-11",
+    "pushes": [
+      "q<think",
+      ">w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-12",
+    "pushes": [
+      "q<think",
+      ">w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-13",
+    "pushes": [
+      "q<think",
+      ">w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-14",
+    "pushes": [
+      "q<think",
+      ">w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-15",
+    "pushes": [
+      "q<think",
+      ">w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-16",
+    "pushes": [
+      "q<think",
+      ">w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-7-17",
+    "pushes": [
+      "q<think",
+      ">w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-9",
+    "pushes": [
+      "q<think>",
+      "w",
+      "</think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-10",
+    "pushes": [
+      "q<think>",
+      "w<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-11",
+    "pushes": [
+      "q<think>",
+      "w</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-12",
+    "pushes": [
+      "q<think>",
+      "w</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-13",
+    "pushes": [
+      "q<think>",
+      "w</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-14",
+    "pushes": [
+      "q<think>",
+      "w</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-15",
+    "pushes": [
+      "q<think>",
+      "w</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-16",
+    "pushes": [
+      "q<think>",
+      "w</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-8-17",
+    "pushes": [
+      "q<think>",
+      "w</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-10",
+    "pushes": [
+      "q<think>w",
+      "<",
+      "/think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-11",
+    "pushes": [
+      "q<think>w",
+      "</",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-12",
+    "pushes": [
+      "q<think>w",
+      "</t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-13",
+    "pushes": [
+      "q<think>w",
+      "</th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-14",
+    "pushes": [
+      "q<think>w",
+      "</thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-15",
+    "pushes": [
+      "q<think>w",
+      "</thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-16",
+    "pushes": [
+      "q<think>w",
+      "</think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-9-17",
+    "pushes": [
+      "q<think>w",
+      "</think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-11",
+    "pushes": [
+      "q<think>w<",
+      "/",
+      "think>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-12",
+    "pushes": [
+      "q<think>w<",
+      "/t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-13",
+    "pushes": [
+      "q<think>w<",
+      "/th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-14",
+    "pushes": [
+      "q<think>w<",
+      "/thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-15",
+    "pushes": [
+      "q<think>w<",
+      "/thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-16",
+    "pushes": [
+      "q<think>w<",
+      "/think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-10-17",
+    "pushes": [
+      "q<think>w<",
+      "/think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-12",
+    "pushes": [
+      "q<think>w</",
+      "t",
+      "hink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-13",
+    "pushes": [
+      "q<think>w</",
+      "th",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-14",
+    "pushes": [
+      "q<think>w</",
+      "thi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-15",
+    "pushes": [
+      "q<think>w</",
+      "thin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-16",
+    "pushes": [
+      "q<think>w</",
+      "think",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-11-17",
+    "pushes": [
+      "q<think>w</",
+      "think>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-12-13",
+    "pushes": [
+      "q<think>w</t",
+      "h",
+      "ink>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-12-14",
+    "pushes": [
+      "q<think>w</t",
+      "hi",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-12-15",
+    "pushes": [
+      "q<think>w</t",
+      "hin",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-12-16",
+    "pushes": [
+      "q<think>w</t",
+      "hink",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-12-17",
+    "pushes": [
+      "q<think>w</t",
+      "hink>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-13-14",
+    "pushes": [
+      "q<think>w</th",
+      "i",
+      "nk>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-13-15",
+    "pushes": [
+      "q<think>w</th",
+      "in",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-13-16",
+    "pushes": [
+      "q<think>w</th",
+      "ink",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-13-17",
+    "pushes": [
+      "q<think>w</th",
+      "ink>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-14-15",
+    "pushes": [
+      "q<think>w</thi",
+      "n",
+      "k>e"
+    ]
+  },
+  {
+    "id": "pair-open-split-14-16",
+    "pushes": [
+      "q<think>w</thi",
+      "nk",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-14-17",
+    "pushes": [
+      "q<think>w</thi",
+      "nk>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-15-16",
+    "pushes": [
+      "q<think>w</thin",
+      "k",
+      ">e"
+    ]
+  },
+  {
+    "id": "pair-open-split-15-17",
+    "pushes": [
+      "q<think>w</thin",
+      "k>",
+      "e"
+    ]
+  },
+  {
+    "id": "pair-open-split-16-17",
+    "pushes": [
+      "q<think>w</think",
+      ">",
+      "e"
+    ]
+  },
+  {
+    "id": "empty-input",
+    "pushes": [
+      ""
+    ]
+  },
+  {
+    "id": "no-pushes-at-all",
+    "pushes": []
+  },
+  {
+    "id": "empty-pushes-interleaved",
+    "pushes": [
+      "",
+      "<think>",
+      "",
+      "r",
+      "",
+      "</think>",
+      "",
+      "v",
+      ""
+    ]
+  },
+  {
+    "id": "lone-open-tag",
+    "pushes": [
+      "<think>"
+    ]
+  },
+  {
+    "id": "lone-close-tag",
+    "pushes": [
+      "</think>"
+    ]
+  },
+  {
+    "id": "close-then-open",
+    "pushes": [
+      "</think><think>r</think>v"
+    ]
+  },
+  {
+    "id": "open-tag-arrives-one-char-at-a-time",
+    "pushes": [
+      "<",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      "r",
+      "<",
+      "/",
+      "t",
+      "h",
+      "i",
+      "n",
+      "k",
+      ">",
+      "v"
+    ]
+  },
+  {
+    "id": "held-prefix-of-close-at-flush",
+    "pushes": [
+      "<think>r</think>tail</thin"
+    ]
+  },
+  {
+    "id": "held-prefix-of-open-at-flush",
+    "pushes": [
+      "tail<thin"
+    ]
+  },
+  {
+    "id": "held-prefix-of-close-orphan-eligible",
+    "pushes": [
+      "abc</thin"
+    ]
+  },
+  {
+    "id": "almost-close-then-real-text",
+    "pushes": [
+      "abc</thin",
+      "k more text"
+    ]
+  },
+  {
+    "id": "almost-open-then-real-text",
+    "pushes": [
+      "abc<thin",
+      "k more text"
+    ]
+  },
+  {
+    "id": "whitespace-only-after-block",
+    "pushes": [
+      "<think>r</think>   "
+    ]
+  },
+  {
+    "id": "whitespace-only-after-block-then-text",
+    "pushes": [
+      "<think>r</think>   ",
+      "  Hi"
+    ]
+  },
+  {
+    "id": "all-whitespace-no-block",
+    "pushes": [
+      "   \n\t  "
+    ]
+  },
+  {
+    "id": "js-ws-after-block-feff",
+    "pushes": [
+      "<think>r</think>﻿ Hi"
+    ]
+  },
+  {
+    "id": "js-ws-after-block-u0085-kept",
+    "pushes": [
+      "<think>r</think>Hi"
+    ]
+  },
+  {
+    "id": "astral-around-tags",
+    "pushes": [
+      "😀<think>🤔</think>👋"
+    ]
+  },
+  {
+    "id": "astral-split-mid-block",
+    "pushes": [
+      "😀<think>🤔",
+      "</think>👋"
+    ]
+  },
+  {
+    "id": "cjk-payload",
+    "pushes": [
+      "前置<think>思考</think>答え"
+    ]
+  },
+  {
+    "id": "accented-passthrough",
+    "pushes": [
+      "café naïve résumé"
+    ]
+  },
+  {
+    "id": "open-inside-block",
+    "pushes": [
+      "<think>a<think>b</think>c"
+    ]
+  },
+  {
+    "id": "close-close",
+    "pushes": [
+      "<think>a</think></think>c"
+    ]
+  },
+  {
+    "id": "reasoning-only",
+    "pushes": [
+      "<think>all of it</think>"
+    ]
+  },
+  {
+    "id": "reasoning-only-whitespace-tail",
+    "pushes": [
+      "<think>all of it</think>\n"
+    ]
+  }
+]

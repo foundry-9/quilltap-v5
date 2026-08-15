@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Ported the Ollama inline-`<think>` stream parser (P4.D78 unit 1, v4
+d9c5a1c7): `ThinkTagStreamParser` plus the one-shot `extract_think_blocks`,
+carrying the partial-tag holdback, the swallowed-opening-tag rule and its
+emitted-visible cutoff, the flush semantics, and the JS-whitespace sanitize.
+New tier-1 differential `ollama_think_parser_equivalence` drives v4's real
+think-parser.ts over a committed 339-case table that enumerates every split
+point of both tags.
+
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
 think/num_ctx request fields with the retry-without-think, the toolUse
