@@ -85,6 +85,11 @@ struct CreateData {
     allow_tool_use: bool,
     #[serde(rename = "pseudoToolMode")]
     pseudo_tool_mode: String,
+    /// P4.D79: tri-state. ABSENT from the op's `data` means v4's create input
+    /// never names the column, so the DDL default decides — the pre-4.9
+    /// import/restore shape.
+    #[serde(rename = "multiCharacterPrefill", default)]
+    multi_character_prefill: Option<bool>,
     #[serde(rename = "modelClass")]
     model_class: Option<String>,
     #[serde(rename = "maxContext")]
@@ -143,6 +148,8 @@ struct UpdateData {
     allow_tool_use: Option<bool>,
     #[serde(default, rename = "pseudoToolMode")]
     pseudo_tool_mode: Option<String>,
+    #[serde(rename = "multiCharacterPrefill", default)]
+    multi_character_prefill: Option<bool>,
     #[serde(default, rename = "modelClass")]
     model_class: Option<String>,
     #[serde(default, rename = "maxContext")]
@@ -235,6 +242,7 @@ fn connection_profiles_tier2_matches_oracle() {
                             use_native_web_search: data.use_native_web_search,
                             allow_tool_use: data.allow_tool_use,
                             pseudo_tool_mode: data.pseudo_tool_mode.clone(),
+                            multi_character_prefill: data.multi_character_prefill,
                             model_class: data.model_class.clone(),
                             max_context: data.max_context,
                             max_tokens: data.max_tokens,
@@ -272,6 +280,7 @@ fn connection_profiles_tier2_matches_oracle() {
                                 use_native_web_search: data.use_native_web_search,
                                 allow_tool_use: data.allow_tool_use,
                                 pseudo_tool_mode: data.pseudo_tool_mode.clone(),
+                                multi_character_prefill: data.multi_character_prefill,
                                 model_class: data.model_class.clone(),
                                 max_context: data.max_context,
                                 max_tokens: data.max_tokens,

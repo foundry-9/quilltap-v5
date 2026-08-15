@@ -94,6 +94,20 @@ pub struct CpCreate {
     pub allow_tool_use: bool,
     /// Enum TEXT (`'auto' | 'native' | 'simple-json' | 'text-block'`).
     pub pseudo_tool_mode: String,
+    /// The multi-character `[Name]` turn anchor (v4 `23af7146`), TRI-STATE:
+    /// `Some(b)` writes 0/1, **`None` OMITS the column from the INSERT** so the
+    /// DDL default applies — which is what v4 does and is not the same as
+    /// writing NULL. v4's `insertOne` builds its column list from
+    /// `Object.keys(row)` (`backends/sqlite/backend.ts:128`), and Zod drops an
+    /// absent `.optional()` key, so a pre-4.9 archive record simply never names
+    /// the column. On a fresh (generateDDL) instance that lands NULL — the
+    /// "never chosen" tri-state — while on a MIGRATED instance the
+    /// `INTEGER DEFAULT 1` lands 1. Both are v4's behaviour, and writing an
+    /// explicit NULL would silently diverge on the second.
+    ///
+    /// The create ROUTE always resolves a boolean, so `None` here is reached
+    /// only by import/restore of a pre-4.9 bundle.
+    pub multi_character_prefill: Option<bool>,
     /// `None` => SQL NULL.
     pub model_class: Option<String>,
     /// Nullable REAL int-override; `None` => SQL NULL.
@@ -149,6 +163,10 @@ pub struct CpUpdate {
     pub use_native_web_search: Option<bool>,
     pub allow_tool_use: Option<bool>,
     pub pseudo_tool_mode: Option<String>,
+    /// The multi-character `[Name]` turn anchor. `Some(b)` sets the column; the
+    /// route 400s on an explicit `null`, so clearing it back to the tri-state
+    /// NULL is not expressible (and v4 cannot express it either).
+    pub multi_character_prefill: Option<bool>,
     pub model_class: Option<String>,
     /// Set `modelClass` to SQL NULL (the route PUT's `modelClass: null|''`). Wins
     /// over [`Self::model_class`] when true.
@@ -189,47 +207,60 @@ impl<'c> ConnectionProfilesRepository<'c> {
         let tags_json = serde_json::to_string(&data.tags)
             .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
 
-        self.conn.execute(
+        // v4 names only the columns the parsed document actually carries, so an
+        // absent `multiCharacterPrefill` must be OMITTED (letting the DDL
+        // default decide) rather than written as NULL — see the field's doc.
+        let (prefill_col, prefill_placeholder) = match data.multi_character_prefill {
+            Some(_) => ("multiCharacterPrefill, ", "?30, "),
+            None => ("", ""),
+        };
+        let sql = format!(
             "INSERT INTO connection_profiles \
                (id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
                 modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-                allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, \
+                allowToolUse, pseudoToolMode, {prefill_col}modelClass, maxContext, maxTokens, \
                 isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
                 totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-                     ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
-            params![
-                opts.id,
-                data.user_id,
-                data.name,
-                data.provider,
-                data.transport,
-                i64::from(data.courier_delta_mode),
-                data.api_key_id,
-                data.base_url,
-                data.model_name,
-                parameters_json,
-                i64::from(data.is_default),
-                i64::from(data.is_cheap),
-                i64::from(data.allow_web_search),
-                i64::from(data.use_native_web_search),
-                i64::from(data.allow_tool_use),
-                data.pseudo_tool_mode,
-                data.model_class,
-                data.max_context,
-                data.max_tokens,
-                i64::from(data.is_dangerous_compatible),
-                i64::from(data.supports_image_upload),
-                tags_json,
-                data.sort_index,
-                data.total_tokens,
-                data.total_prompt_tokens,
-                data.total_completion_tokens,
-                data.message_count,
-                opts.created_at,
-                opts.updated_at,
-            ],
-        )?;
+                     {prefill_placeholder}?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, \
+                     ?27, ?28, ?29)"
+        );
+        let mut binds: Vec<Box<dyn ToSql>> = vec![
+            Box::new(opts.id.clone()),
+            Box::new(data.user_id.clone()),
+            Box::new(data.name.clone()),
+            Box::new(data.provider.clone()),
+            Box::new(data.transport.clone()),
+            Box::new(i64::from(data.courier_delta_mode)),
+            Box::new(data.api_key_id.clone()),
+            Box::new(data.base_url.clone()),
+            Box::new(data.model_name.clone()),
+            Box::new(parameters_json),
+            Box::new(i64::from(data.is_default)),
+            Box::new(i64::from(data.is_cheap)),
+            Box::new(i64::from(data.allow_web_search)),
+            Box::new(i64::from(data.use_native_web_search)),
+            Box::new(i64::from(data.allow_tool_use)),
+            Box::new(data.pseudo_tool_mode.clone()),
+            Box::new(data.model_class.clone()),
+            Box::new(data.max_context),
+            Box::new(data.max_tokens),
+            Box::new(i64::from(data.is_dangerous_compatible)),
+            Box::new(i64::from(data.supports_image_upload)),
+            Box::new(tags_json),
+            Box::new(data.sort_index),
+            Box::new(data.total_tokens),
+            Box::new(data.total_prompt_tokens),
+            Box::new(data.total_completion_tokens),
+            Box::new(data.message_count),
+            Box::new(opts.created_at.clone()),
+            Box::new(opts.updated_at.clone()),
+        ];
+        if let Some(b) = data.multi_character_prefill {
+            binds.push(Box::new(i64::from(b)));
+        }
+        let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+        self.conn.execute(&sql, refs.as_slice())?;
         Ok(())
     }
 
@@ -308,6 +339,10 @@ impl<'c> ConnectionProfilesRepository<'c> {
         if let Some(pseudo_tool_mode) = &patch.pseudo_tool_mode {
             assignments.push(format!("pseudoToolMode = ?{}", values.len() + 1));
             values.push(Box::new(pseudo_tool_mode.clone()));
+        }
+        if let Some(multi_character_prefill) = patch.multi_character_prefill {
+            assignments.push(format!("multiCharacterPrefill = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(multi_character_prefill)));
         }
         if patch.clear_model_class {
             assignments.push("modelClass = NULL".to_string());
@@ -607,6 +642,12 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
         "useNativeWebSearch",
         "allowToolUse",
         "pseudoToolMode",
+        // v4's create input always carries a resolved boolean (the route
+        // resolves the provider default when the client omits it), so the
+        // re-read always has it. A create that OMITTED it would leave it out of
+        // v4's return too — the re-read agrees on a fresh instance, where the
+        // omitted column reads back NULL.
+        "multiCharacterPrefill",
     ] {
         if let Some(v) = take(key) {
             out.insert(key.to_string(), v);

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Wired multiCharacterPrefill through the connection-profile create and update
+routes (P4.D79 unit 4, v4 23af7146). Create resolves the provider default when
+the client omits the field and stores it, so a create never writes the
+tri-state NULL; both routes 400 with v4's exact sentence on a present
+non-boolean, an explicit null included. The repo's create OMITS the column
+when the value is absent rather than writing NULL — measured against v4, whose
+INSERT names only the columns the parsed document carries, so on a fresh
+instance the omission lands NULL and on a migrated one the DEFAULT 1 lands 1;
+writing NULL would have passed the differential and diverged on upgraded
+instances. The restore path carries the field; the .qtap import carry is
+STOPPED by the round's ownership tripwire, with the two-line edit recorded at
+the site. Versions: core 0.0.554, harness 0.0.477.
+
 Made the multi-character [Name] turn anchor per-profile (P4.D79 unit 3, v4
 23af7146). The hardcoded "Anthropic gets prose, everyone else gets the
 prefill" branch is replaced by applyMultiCharacterTurnAnchor over the

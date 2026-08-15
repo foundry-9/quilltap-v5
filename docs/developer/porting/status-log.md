@@ -219,6 +219,81 @@ now share one `effective_profile_row`, re-read by id when a reroute happened.
 **Mutation-proven:** making the resolver ignore the stored choice reddens both
 new cases with `no canned stream queued`.
 
+### Unit 4 — the struct + route arms
+
+`CpCreate.multi_character_prefill: Option<bool>` and `CpUpdate
+.multi_character_prefill: Option<bool>`; create resolves the provider default
+when the field is absent and STORES it (never the tri-state NULL); both routes
+400 with v4's exact `multiCharacterPrefill must be a boolean` on a present
+non-boolean, an explicit `null` included. Neither is gated on `isCourier` —
+v4's comment: "not a tool flag; the Courier renders the same assembled context
+for the user to carry by hand".
+
+**⚠ `None` OMITS the column from the INSERT rather than writing NULL.**
+Measured, not assumed: v4's `insertOne` builds its column list from
+`Object.keys(row)` (`backends/sqlite/backend.ts:128`) and Zod drops an absent
+`.optional()` key, so a pre-4.9 archive record simply never names the column
+and the DDL DEFAULT decides. On a fresh (generateDDL) instance that lands NULL;
+on a MIGRATED instance the `INTEGER DEFAULT 1` lands 1. **Writing an explicit
+NULL would have passed this lane's differential and silently diverged on every
+upgraded instance** — the two shapes differ (see unit 1), which is exactly why
+this had to be measured rather than reasoned.
+
+**Contract B note for P4.D81:** the update bag reaches the handler as an
+untyped `serde_json::Value` straight from the dispatch verb
+(`api/types.rs::ConnectionProfileUpdate { profile: Value }`), so
+`Some(Value::Null)` is already distinguishable from absent and **no
+double-`Option` carry is needed**. The Taboo §3 hazard exists only where a
+typed DTO sits at the web edge; this verb has none, and v5 still ships no
+`/api/v1/connection-profiles` REST edge (the standing asymmetry, untouched).
+
+**Differentials.**
+
+- `connection_profiles_tier2` grew five ops: creates with `true` / `false` /
+  ABSENT, and two updates. The ABSENT row is deliberately left un-updated so
+  its create-time value stays observable — the first draft updated it and
+  masked the very measurement the case exists for. Oracle result: the absent
+  create lands **NULL**. (The differential also caught a false green in its own
+  wiring: the new `CreateData`/`UpdateData` fields needed an explicit
+  `#[serde(rename = "multiCharacterPrefill")]`, since that struct renames
+  per-field rather than `rename_all`; without it every prefill row read as
+  `None` on the Rust side.)
+- `settings_routes_equivalence` grew **eight** `connection_profiles` arms — the
+  Anthropic default-resolution create, an explicit `true` on Anthropic, an
+  explicit `false` on Ollama (the bug-68 case), and the four 400 arms (create
+  and update × explicit-null and non-boolean) with per-row error-status
+  asserts. Family total 7 → 15, with a new `>= 15` stale-oracle count guard
+  beside the existing ones. Suite: **107 cases matched**.
+- Mutation-proven twice: dropping the create's 400 arm, and making create
+  ignore the provider default, each redden the suite.
+
+**⚠ TRIPWIRE FIRED — the `.qtap` import carry is STOPPED, by the round's own
+Shared contract.** The order predicted the import/restore carry would ride the
+`CpCreate` deserialize. MEASUREMENT refutes that for the import half: `CpCreate`
+is a plain struct with no `Deserialize`, and
+`services/quilltap_import/profiles.rs` parses its own
+`ImportedConnectionProfile` DTO first — so the carry needs TWO lines INSIDE
+`quilltap_import/**`, which the Shared contract assigns to P4.48. Per the
+order's rule for exactly this case, the unit stops and records the ordered
+edit rather than touching P4.48's files:
+
+> 1. `ImportedConnectionProfile` gains `#[serde(default)]
+>    multi_character_prefill: Option<bool>,`
+> 2. the `CpCreate` construction's `multi_character_prefill: None,` becomes
+>    `multi_character_prefill: p.multi_character_prefill,`
+
+The comment is at the site, named and loud. Meanwhile the behaviour is the
+conservative one, not a silent wrong answer: `None` omits the column, which is
+exactly what importing a PRE-4.9 bundle does in v4. The bounded gap is a 4.9
+bundle whose profile stored a NON-default choice — it imports as "never
+chosen". **The RESTORE half DID land** (`services/backup/restore/
+orchestrator.rs` is not P4.48's), reading the tri-state with the existing `ob`
+helper.
+
+**Files touched outside the order's Ownership list** (none owned by a sibling;
+flagged for the unifier): `services/backup/restore/orchestrator.rs`,
+`services/quilltap_import/profiles.rs` (the refusal comment + `None` only).
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

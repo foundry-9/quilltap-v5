@@ -1240,6 +1240,18 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
     let is_courier = transport == "courier";
 
     let provider = get_str("provider").unwrap_or("").to_string();
+    // v4 `route.ts:176-184`, checked right after the transport gate. Present but
+    // not a boolean — INCLUDING an explicit `null` — is a 400; absent takes the
+    // provider default, which is then STORED (create never writes the tri-state
+    // NULL). Not gated on `isCourier`: v4's comment is that this is not a tool
+    // flag, and the Courier renders the same assembled context.
+    let multi_character_prefill = match bag.get("multiCharacterPrefill") {
+        None => crate::services::multi_character_prefill::default_multi_character_prefill(Some(
+            &provider,
+        )),
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return bad_request("multiCharacterPrefill must be a boolean"),
+    };
     let base_url = get_str("baseUrl").map(str::to_string);
     // resolvedSupportsImageUpload — the client field, else the static capability.
     let resolved_supports_image_upload =
@@ -1406,6 +1418,7 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
             get_bool("allowToolUse", true)
         },
         pseudo_tool_mode,
+        multi_character_prefill: Some(multi_character_prefill),
         model_class,
         max_context,
         max_tokens: None,
@@ -1702,6 +1715,20 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
             }
             patch.pseudo_tool_mode = Some(m.to_string());
         }
+    }
+
+    // v4 `[id]/route.ts:286-292`. NOT gated on `isCourier` — v4's comment: "not
+    // a tool flag; the Courier renders the same assembled context for the user
+    // to carry by hand". Present-but-not-boolean (an explicit `null` included)
+    // is a 400; the bag is an untyped `Value` all the way from the dispatch
+    // verb, so `Some(Value::Null)` reaches here intact and no double-`Option`
+    // carry is needed to keep it apart from absent (the Taboo §3 hazard exists
+    // only where a typed DTO sits at the web edge — this verb has none).
+    if let Some(v) = bag.get("multiCharacterPrefill") {
+        let Some(b) = v.as_bool() else {
+            return bad_request("multiCharacterPrefill must be a boolean");
+        };
+        patch.multi_character_prefill = Some(b);
     }
 
     if let Some(v) = bag.get("modelClass") {

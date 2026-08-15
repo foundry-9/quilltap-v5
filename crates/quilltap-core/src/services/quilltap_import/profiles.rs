@@ -239,6 +239,33 @@ fn create_connection_profile(
         use_native_web_search: p.use_native_web_search,
         allow_tool_use: p.allow_tool_use,
         pseudo_tool_mode: p.pseudo_tool_mode,
+        // ⚠ P4.D79 STOPPED HERE, by its order's Shared-contract tripwire.
+        //
+        // v4 `23af7146` adds `multiCharacterPrefill` to the export schema
+        // (`["boolean","null"]`) and its importer carries it through the
+        // `...profileData` spread, so a 4.9 bundle's stored choice round-trips.
+        // The order predicted that carry would ride the `CpCreate` deserialize;
+        // MEASUREMENT shows it does not — this importer parses its own
+        // `ImportedConnectionProfile` DTO first, so the carry needs TWO lines
+        // INSIDE `quilltap_import/**`, which the round's Shared contract
+        // assigns to the sibling lane P4.48. The order's rule for exactly this
+        // case is to stop and record the ordered edit rather than touch P4.48's
+        // files.
+        //
+        // ORDERED EDIT (for the unifier, once P4.48 has landed):
+        //   1. `ImportedConnectionProfile` gains
+        //        #[serde(default)]
+        //        multi_character_prefill: Option<bool>,
+        //   2. this line becomes
+        //        multi_character_prefill: p.multi_character_prefill,
+        //
+        // MEANWHILE the behaviour here is the conservative one, not a silent
+        // wrong answer: `None` omits the column from the INSERT, which is
+        // exactly what importing a PRE-4.9 bundle does in v4 — the tri-state
+        // "never chosen", which the resolver reads as the provider default.
+        // The bounded gap is a 4.9 bundle whose profile explicitly stored a
+        // NON-default choice: it imports as "never chosen" instead.
+        multi_character_prefill: None,
         model_class: p.model_class,
         max_context: p.max_context,
         max_tokens: p.max_tokens,
