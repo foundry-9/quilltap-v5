@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The help-sync guards differential's regen recipe now stages its own fixture
+into a family-specific /tmp path instead of silently reading the sync family's
+— the staging-dependency defect the new sweep-driver class flags, flagged by
+the P4.47 lane and repaired at unification per the round's shared contract.
+
 Recorded, in the code, why the section backfill's slicing loop is a single
 transaction where v4's is not: a failure part-way through rolls the whole pass
 back here and the next boot retries it, where v4 keeps what it wrote and waits

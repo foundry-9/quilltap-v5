@@ -17,18 +17,24 @@
 //!     the prune, so the rows survive (oracle-confirmed: `deleted: 0`, all three
 //!     rows left). v5 made the same refusal in this convergence.
 //!
-//! Generate (Node 24, from the v4 checkout), AFTER building the fixture:
+//! Generate (Node 24, from the v4 checkout). The fixture is built by the
+//! recipe's own first stage into a FAMILY-SPECIFIC path — this family used to
+//! read the sync family's `/tmp/qt-help-sync-main.db` without building it,
+//! which is the staging-dependency defect P4.47 (C)'s driver class flags
+//! (flagged there, repaired here per the round's Shared contract rule 3):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this tree>
 //!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-guards-main.db \
+//!     $N/node --import tsx $V5/harness/oracle/fixtures/build-help-sync-fixture.ts
 //!   : > /tmp/oracle-help-sync-guards.ndjson
 //!   for s in missing-dir no-markdown only-empty-files; do
-//!     QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db QT_HELP_SYNC_SCENARIO=$s \
+//!     QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-guards-main.db QT_HELP_SYNC_SCENARIO=$s \
 //!       $N/node --import tsx $V5/harness/oracle/cases/help-sync-guards.ts \
 //!       >> /tmp/oracle-help-sync-guards.ndjson
 //!   done
 //! Run:
 //!   QT_ORACLE_HELP_SYNC_GUARDS=/tmp/oracle-help-sync-guards.ndjson \
-//!   QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db \
+//!   QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-guards-main.db \
 //!     cargo test -p quilltap-harness --test help_doc_sync_guards_equivalence
 
 use serde::Deserialize;
