@@ -67,6 +67,36 @@ hydration (`backends/sqlite/backend.ts:429-437`) maps a NULL boolean column to
 is an ABSENT key in every v4 net read, not `null`. 0 → `false`, 1 → `true`.
 v5's marshal follows the `maxContext` precedent (omit on NULL).
 
+### Unit 2 — the resolver twin + its tier-1 differential
+
+`services/multi_character_prefill.rs` ports v4's whole module: the hostile-set
+constant, `default_multi_character_prefill`, `profile_uses_name_prefill`, and a
+`_value` helper over the net-read profile object the services carry.
+
+New family `multi_character_prefill_equivalence`
+(`QT_ORACLE_MULTI_CHAR_PREFILL`, oracle case
+`harness/oracle/cases/multi-character-prefill.ts`) drives v4's REAL module over
+16 providers × 8 stored states = **16 default + 128 resolve cases, all
+matched**. The corpus is built to pin the three things a hand-read misses: JS
+falsiness on `!provider` (the empty string), `toUpperCase()` on the hostile
+test (casing folds, whitespace does not — `' ANTHROPIC'` is NOT hostile), and
+`typeof … === 'boolean'` on the stored cell (`1`/`0`/`'true'` fall THROUGH to
+the provider default rather than coercing).
+
+**Mutation-proven, three ways, with one honest negative result:**
+
+- dropping `to_uppercase()` → red at `default 'anthropic-lower'`;
+- replacing the `typeof` guard with JS truthiness → red at
+  `resolve 'anthropic-upper/number-1'`;
+- **dropping the empty-string falsiness filter → STAYS GREEN.** Measured, not
+  assumed: `"".to_uppercase()` is not in the hostile set either, so both routes
+  answer `true` and the corpus cannot tell them apart. The filter stays because
+  it is what v4 wrote; the doc comment records that it is unobservable rather
+  than claiming coverage the corpus does not have.
+
+Assertions are shape-based, not hand counts (`harness-corpus-shape-constants-rot`):
+the resolve grid must be exactly `defaults × 8`.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

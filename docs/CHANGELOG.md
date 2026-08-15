@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Ported the multi-character prefill resolver (P4.D79 unit 2, v4 23af7146's
+lib/llm/multi-character-prefill.ts): the provider default (off for Anthropic,
+on everywhere else) and the tri-state resolution, where a stored null means
+"never chosen" and falls back to the default — so an Anthropic profile
+imported from a pre-4.9 bundle cannot come back with the prefill on. A new
+144-case tier-1 differential over providers by stored state, mutation-proven.
+Versions: core 0.0.551, harness 0.0.474.
+
 Added the connection_profiles.multiCharacterPrefill column (P4.D79 unit 1,
 v4 23af7146): the D23 fresh-schema re-dump at the aa464abf pin, plus a boot
 ensure that gives an existing instance v4's migration shape. The two v4
