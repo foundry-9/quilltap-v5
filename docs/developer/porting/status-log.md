@@ -19,6 +19,18 @@ No drift. Oracles regenerated from a lane-unique detached worktree pinned at
 the baseline (`/tmp/qt-v4-pin-p4d79-aa464abf`, node_modules symlinked both
 places per `oracle-regen-pinned-v4-worktree`).
 
+**⚠ v4's working tree went DIRTY mid-lane** (re-checked at the gate; HEAD still
+`aa464abf`, no new commits, but twelve modified files + three new ones — the
+human is building **bug 70, "budget ignores profile max context"**:
+`lib/chat/context-manager.ts`, `lib/tokens/token-counter.ts`,
+`lib/llm/model-context-data.ts`, a new
+`lib/services/chat-message/turn-extras.ts`, and — **directly on this lane's
+own ported surfaces** — `lib/services/chat-message/context-builder.service.ts`
+and `orchestrator.service.ts`, plus `help/connection-profiles.md`). Every
+oracle this lane generated ran from the PINNED worktree, so none of it is
+baked in; but **the unifier and every sibling must pin too**, and the next
+drift round inherits bug 70 on top of `aa464abf`.
+
 ### Unit 1 — the D23 re-dump + the `multiCharacterPrefill` boot ensure
 
 v4 `23af7146` adds `connection_profiles.multiCharacterPrefill` in two places,
@@ -373,6 +385,33 @@ the read tolerance, corrects the column count, and RETIRES the
 "CONSTRAINED to `{}` / single-key" claim, which had stopped describing reality.
 The deferral list keeps "set a nullable column to NULL via update" but notes
 that for this column v4 cannot express it either.
+
+### Lane gate (2026-08-15)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (plain and
+  `--features quilltap-core/native-transport`); `cargo build --release` green.
+- **`cargo test --workspace` with the lane's 20-variable oracle env block:
+  433 test binaries / 2,092 tests / 0 failed, exit 0, and ZERO `SKIP:` lines in
+  the whole log** — so nothing was gated off. The lane's ten families
+  positively confirmed to have RUN, by name:
+  `provisioning_equivalence` (3), `multi_character_prefill_equivalence`,
+  `profile_params_equivalence`, `orchestrator_tier3_equivalence`,
+  `connection_profiles_tier2_equivalence`, `settings_routes_equivalence`,
+  `system_export_equivalence`, `initial_greeting_equivalence`,
+  `chat_create_capstone_equivalence`, `file_attachment_tier3_equivalence`.
+- **Thirteen more families re-run through `recipe_sweep.py --run-all` over
+  oracles regenerated FRESH from the pinned worktree, all `ok`:**
+  `carina_query_tier3`, `announcer_tier3`, `answer_confirmation_tier3`,
+  `regenerate_swipe_tier3`, `message_context_leaves`, `build_context_tier3`,
+  `system_restore`, `system_restore_state`, `restore_vintage_state`,
+  `system_backup`, `memory_processor_tier3`, `context_summary_service_tier3`,
+  `compression_tier3`. (The sweep driver needs **Python 3.12+** — an f-string
+  backslash makes it a `SyntaxError` under the system 3.9; run it as
+  `python3.13`. And `--v4` takes a PATH, not a sha.)
+- `apps/web` untouched in the whole lane diff, as the order requires.
+- The v4-reads-v5 provisioning cross-compat leg re-run and green after the D23
+  re-dump.
 
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 

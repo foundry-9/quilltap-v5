@@ -1,662 +1,662 @@
 {
- "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
- "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
- "cpNoKeyId": "b1000000-0000-4000-8000-000000000001",
- "cpWithKeyId": "b2000000-0000-4000-8000-000000000002",
- "apiKeyId": "d1000000-0000-4000-8000-000000000001",
- "ariaId": "a1000000-0000-4000-8000-0000000000a1",
- "cleoId": "a2000000-0000-4000-8000-0000000000a2",
- "bramId": "a3000000-0000-4000-8000-0000000000a3",
- "roleplayTemplateUserDefaultId": "c1000000-0000-4000-8000-0000000000c1",
- "roleplayTemplateProjectDefaultId": "c2000000-0000-4000-8000-0000000000c2",
- "roleplayTemplateChosenId": "c3000000-0000-4000-8000-0000000000c3",
- "roleplayTemplateMissingId": "c9000000-0000-4000-8000-0000000000c9",
- "roleplayTemplates": [
-  {
-   "id": "c1000000-0000-4000-8000-0000000000c1",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "House Style",
-   "description": "The user's global default.",
-   "systemPrompt": "Write in the house style.",
-   "isBuiltIn": false,
-   "tags": [],
-   "delimiters": [],
-   "renderingPatterns": [],
-   "dialogueDetection": null,
-   "narrationDelimiters": "*"
-  },
-  {
-   "id": "c2000000-0000-4000-8000-0000000000c2",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Lantern Style",
-   "description": "The Lantern Project's default.",
-   "systemPrompt": "Write as the Lantern Project prefers.",
-   "isBuiltIn": false,
-   "tags": [],
-   "delimiters": [],
-   "renderingPatterns": [],
-   "dialogueDetection": null,
-   "narrationDelimiters": "*"
-  },
-  {
-   "id": "c3000000-0000-4000-8000-0000000000c3",
-   "userId": null,
-   "name": "Chosen By Hand",
-   "description": "Neither default \u2014 only ever reached by an explicit pick.",
-   "systemPrompt": "Write however the operator asked.",
-   "isBuiltIn": true,
-   "tags": [],
-   "delimiters": [],
-   "renderingPatterns": [],
-   "dialogueDetection": null,
-   "narrationDelimiters": "*"
-  }
- ],
- "connectionProfiles": [
-  {
-   "id": "b1000000-0000-4000-8000-000000000001",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Anthropic (no key)",
-   "provider": "ANTHROPIC",
-   "apiKeyId": null,
-   "modelName": "claude-sonnet-4-5",
-   "parameters": {}
-  },
-  {
-   "id": "b2000000-0000-4000-8000-000000000002",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Anthropic (with key)",
-   "provider": "ANTHROPIC",
-   "apiKeyId": "d1000000-0000-4000-8000-000000000001",
-   "modelName": "claude-sonnet-4-5",
-   "parameters": {
-    "temperature": 0.7
-   }
-  }
- ],
- "apiKeys": [
-  {
-   "id": "d1000000-0000-4000-8000-000000000001",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "label": "Anthropic",
-   "provider": "ANTHROPIC",
-   "key_value": "test-key-anthropic"
-  }
- ],
- "characters": {
-  "aria": {
-   "id": "a1000000-0000-4000-8000-0000000000a1",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Aria",
-   "identity": "A knight of the realm.",
-   "description": "A knight sworn to protect the realm.",
-   "manifesto": "",
-   "personality": "Bold and loyal.",
-   "exampleDialogues": "",
-   "title": "",
-   "firstMessage": "Well met, traveler! I am Aria.",
-   "talkativeness": 1.0,
-   "pronouns": {
-    "subject": "she",
-    "object": "her",
-    "possessive": "hers"
-   },
-   "aliases": [],
-   "physicalDescription": null,
-   "systemPrompts": [
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "cpNoKeyId": "b1000000-0000-4000-8000-000000000001",
+  "cpWithKeyId": "b2000000-0000-4000-8000-000000000002",
+  "apiKeyId": "d1000000-0000-4000-8000-000000000001",
+  "ariaId": "a1000000-0000-4000-8000-0000000000a1",
+  "cleoId": "a2000000-0000-4000-8000-0000000000a2",
+  "bramId": "a3000000-0000-4000-8000-0000000000a3",
+  "roleplayTemplateUserDefaultId": "c1000000-0000-4000-8000-0000000000c1",
+  "roleplayTemplateProjectDefaultId": "c2000000-0000-4000-8000-0000000000c2",
+  "roleplayTemplateChosenId": "c3000000-0000-4000-8000-0000000000c3",
+  "roleplayTemplateMissingId": "c9000000-0000-4000-8000-0000000000c9",
+  "roleplayTemplates": [
     {
-     "id": "5b000000-0000-4000-8000-000000000001",
-     "name": "Default",
-     "content": "You embody Aria, protector of the realm.",
-     "isDefault": true,
-     "createdAt": "2026-02-01T00:00:00.000Z",
-     "updatedAt": "2026-02-01T00:00:00.000Z"
-    }
-   ],
-   "scenarios": [
-    {
-     "id": "5c000000-0000-4000-8000-000000000001",
-     "title": "Opening",
-     "content": "A quiet keep at dawn.",
-     "createdAt": "2026-02-01T00:00:00.000Z",
-     "updatedAt": "2026-02-01T00:00:00.000Z"
-    }
-   ],
-   "controlledBy": "llm",
-   "isFavorite": false,
-   "npc": false,
-   "defaultImageId": null,
-   "defaultConnectionProfileId": null,
-   "defaultPartnerId": null,
-   "defaultRoleplayTemplateId": null,
-   "defaultImageProfileId": null,
-   "sillyTavernData": null,
-   "defaultAgentModeEnabled": null,
-   "defaultHelpToolsEnabled": null,
-   "defaultTimestampConfig": null,
-   "defaultScenarioId": null,
-   "defaultSystemPromptId": null,
-   "characterDocumentMountPointId": null,
-   "canDressThemselves": null,
-   "canCreateOutfits": null,
-   "systemTransparency": null,
-   "coreWhisperEnabled": null
-  },
-  "cleo": {
-   "id": "a2000000-0000-4000-8000-0000000000a2",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Cleo",
-   "identity": "A traveling scholar.",
-   "description": "A scholar who chronicles the realm.",
-   "manifesto": "",
-   "personality": "Wry and curious.",
-   "exampleDialogues": "",
-   "title": "",
-   "firstMessage": "Greetings. I am Cleo, keeper of records.",
-   "talkativeness": 0.1,
-   "pronouns": {
-    "subject": "she",
-    "object": "her",
-    "possessive": "hers"
-   },
-   "aliases": [],
-   "physicalDescription": null,
-   "systemPrompts": [
-    {
-     "id": "5b000000-0000-4000-8000-000000000002",
-     "name": "Default",
-     "content": "You embody Cleo, the scholar.",
-     "isDefault": true,
-     "createdAt": "2026-02-01T00:00:00.000Z",
-     "updatedAt": "2026-02-01T00:00:00.000Z"
-    }
-   ],
-   "scenarios": [],
-   "controlledBy": "llm",
-   "isFavorite": false,
-   "npc": false,
-   "defaultImageId": null,
-   "defaultConnectionProfileId": null,
-   "defaultPartnerId": null,
-   "defaultRoleplayTemplateId": null,
-   "defaultImageProfileId": null,
-   "sillyTavernData": null,
-   "defaultAgentModeEnabled": null,
-   "defaultHelpToolsEnabled": null,
-   "defaultTimestampConfig": null,
-   "defaultScenarioId": null,
-   "defaultSystemPromptId": null,
-   "characterDocumentMountPointId": null,
-   "canDressThemselves": null,
-   "canCreateOutfits": null,
-   "systemTransparency": null,
-   "coreWhisperEnabled": null
-  },
-  "bram": {
-   "id": "a3000000-0000-4000-8000-0000000000a3",
-   "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-   "name": "Bram",
-   "identity": "A quiet ranger.",
-   "description": "A ranger of the deep wood.",
-   "manifesto": "",
-   "personality": "Terse.",
-   "exampleDialogues": "",
-   "title": "",
-   "firstMessage": "",
-   "talkativeness": 1.0,
-   "pronouns": {
-    "subject": "he",
-    "object": "him",
-    "possessive": "his"
-   },
-   "aliases": [],
-   "physicalDescription": null,
-   "systemPrompts": [
-    {
-     "id": "5b000000-0000-4000-8000-000000000003",
-     "name": "Default",
-     "content": "You embody Bram, the ranger.",
-     "isDefault": true,
-     "createdAt": "2026-02-01T00:00:00.000Z",
-     "updatedAt": "2026-02-01T00:00:00.000Z"
-    }
-   ],
-   "scenarios": [],
-   "controlledBy": "llm",
-   "isFavorite": false,
-   "npc": false,
-   "defaultImageId": null,
-   "defaultConnectionProfileId": null,
-   "defaultPartnerId": null,
-   "defaultRoleplayTemplateId": null,
-   "defaultImageProfileId": null,
-   "sillyTavernData": null,
-   "defaultAgentModeEnabled": null,
-   "defaultHelpToolsEnabled": null,
-   "defaultTimestampConfig": null,
-   "defaultScenarioId": null,
-   "defaultSystemPromptId": null,
-   "characterDocumentMountPointId": null,
-   "canDressThemselves": null,
-   "canCreateOutfits": null,
-   "systemTransparency": null,
-   "coreWhisperEnabled": null
-  }
- },
- "cases": [
-  {
-   "name": "single_char_first_message",
-   "progressId": "e0000000-0000-4000-8000-000000000001",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000001",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "two_char_scenario",
-   "progressId": "e0000000-0000-4000-8000-000000000002",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000002",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     },
-     {
-      "type": "CHARACTER",
-      "characterId": "a2000000-0000-4000-8000-0000000000a2",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "scenario": "They meet at dawn in the keep."
-   }
-  },
-  {
-   "name": "no_progress",
-   "progressId": "e0000000-0000-4000-8000-000000000003",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "autonomous_adhoc",
-   "progressId": "e0000000-0000-4000-8000-000000000004",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000004",
-    "chatType": "autonomous",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     },
-     {
-      "type": "CHARACTER",
-      "characterId": "a2000000-0000-4000-8000-0000000000a2",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "generated_greeting",
-   "progressId": "e0000000-0000-4000-8000-000000000006",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "greetingContent": "Greetings from the deep wood. I am Bram.",
-   "greetingUsage": {
-    "promptTokens": 40,
-    "completionTokens": 9,
-    "totalTokens": 49
-   },
-   "greetingReasoning": [
-    "Considering the wood",
-    "Considering the wood and the hour."
-   ],
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000006",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a3000000-0000-4000-8000-0000000000a3",
-      "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
-     }
-    ]
-   }
-  },
-  {
-   "name": "autonomous_cron",
-   "progressId": "e0000000-0000-4000-8000-000000000005",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000005",
-    "chatType": "autonomous",
-    "scheduleCron": "0 9 * * *",
-    "budgetMaxTurns": 12,
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     },
-     {
-      "type": "CHARACTER",
-      "characterId": "a2000000-0000-4000-8000-0000000000a2",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "fictional_clock_unanchored",
-   "progressId": "e0000000-0000-4000-8000-000000000007",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000007",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": {
-     "mode": "EVERY_MESSAGE",
-     "format": "FRIENDLY",
-     "customFormat": null,
-     "useFictionalTime": true,
-     "fictionalBaseTimestamp": "1550-07-25T10:15",
-     "fictionalBaseRealTime": null,
-     "autoPrepend": true,
-     "timezone": "Europe/Istanbul",
-     "intervalMinutes": 15
-    }
-   }
-  },
-  {
-   "name": "fictional_clock_already_anchored",
-   "progressId": "e0000000-0000-4000-8000-000000000008",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000008",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": {
-     "mode": "EVERY_MESSAGE",
-     "format": "FRIENDLY",
-     "customFormat": null,
-     "useFictionalTime": true,
-     "fictionalBaseTimestamp": "1550-07-25T10:15",
-     "fictionalBaseRealTime": "2020-05-05T05:05:05Z",
-     "autoPrepend": true,
-     "timezone": "Europe/Istanbul",
-     "intervalMinutes": 15
-    }
-   }
-  },
-  {
-   "name": "real_time_clock_unstamped",
-   "progressId": "e0000000-0000-4000-8000-000000000009",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-000000000009",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": {
-     "mode": "EVERY_MESSAGE",
-     "format": "FRIENDLY",
-     "customFormat": null,
-     "useFictionalTime": false,
-     "fictionalBaseTimestamp": "1550-07-25T10:15",
-     "fictionalBaseRealTime": null,
-     "autoPrepend": true,
-     "timezone": "Europe/Istanbul",
-     "intervalMinutes": 15
-    }
-   }
-  },
-  {
-   "name": "tc_partial_normalized",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": {
-     "intervalMinutes": 45,
-     "junk": true,
-     "mode": "EVERY_N_MINUTES",
-     "customFormat": null
+      "id": "c1000000-0000-4000-8000-0000000000c1",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "House Style",
+      "description": "The user's global default.",
+      "systemPrompt": "Write in the house style.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
     },
-    "progressId": "e0000000-0000-4000-8000-0000000000c1"
-   },
-   "progressId": "e0000000-0000-4000-8000-0000000000c1"
-  },
-  {
-   "name": "tc_bad_value_rejected",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": {
-     "intervalMinutes": 0
+    {
+      "id": "c2000000-0000-4000-8000-0000000000c2",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Lantern Style",
+      "description": "The Lantern Project's default.",
+      "systemPrompt": "Write as the Lantern Project prefers.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
     },
-    "progressId": "e0000000-0000-4000-8000-0000000000c2"
-   },
-   "progressId": "e0000000-0000-4000-8000-0000000000c2"
+    {
+      "id": "c3000000-0000-4000-8000-0000000000c3",
+      "userId": null,
+      "name": "Chosen By Hand",
+      "description": "Neither default — only ever reached by an explicit pick.",
+      "systemPrompt": "Write however the operator asked.",
+      "isBuiltIn": true,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Anthropic (no key)",
+      "provider": "ANTHROPIC",
+      "apiKeyId": null,
+      "modelName": "claude-sonnet-4-5",
+      "parameters": {}
+    },
+    {
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Anthropic (with key)",
+      "provider": "ANTHROPIC",
+      "apiKeyId": "d1000000-0000-4000-8000-000000000001",
+      "modelName": "claude-sonnet-4-5",
+      "parameters": {
+        "temperature": 0.7
+      }
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "label": "Anthropic",
+      "provider": "ANTHROPIC",
+      "key_value": "test-key-anthropic"
+    }
+  ],
+  "characters": {
+    "aria": {
+      "id": "a1000000-0000-4000-8000-0000000000a1",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Aria",
+      "identity": "A knight of the realm.",
+      "description": "A knight sworn to protect the realm.",
+      "manifesto": "",
+      "personality": "Bold and loyal.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "Well met, traveler! I am Aria.",
+      "talkativeness": 1.0,
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000001",
+          "name": "Default",
+          "content": "You embody Aria, protector of the realm.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "5c000000-0000-4000-8000-000000000001",
+          "title": "Opening",
+          "content": "A quiet keep at dawn.",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    },
+    "cleo": {
+      "id": "a2000000-0000-4000-8000-0000000000a2",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Cleo",
+      "identity": "A traveling scholar.",
+      "description": "A scholar who chronicles the realm.",
+      "manifesto": "",
+      "personality": "Wry and curious.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "Greetings. I am Cleo, keeper of records.",
+      "talkativeness": 0.1,
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000002",
+          "name": "Default",
+          "content": "You embody Cleo, the scholar.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    },
+    "bram": {
+      "id": "a3000000-0000-4000-8000-0000000000a3",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Bram",
+      "identity": "A quiet ranger.",
+      "description": "A ranger of the deep wood.",
+      "manifesto": "",
+      "personality": "Terse.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "",
+      "talkativeness": 1.0,
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000003",
+          "name": "Default",
+          "content": "You embody Bram, the ranger.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    }
   },
-  {
-   "name": "tc_explicit_null_rejected",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "timestampConfig": null,
-    "progressId": "e0000000-0000-4000-8000-0000000000c3"
-   },
-   "progressId": "e0000000-0000-4000-8000-0000000000c3"
-  },
-  {
-   "name": "outfit_default_tri_tier",
-   "progressId": "e0000000-0000-4000-8000-0000000000d1",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000d1",
-    "projectId": "d0000000-0000-4000-8000-0000000000f2",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     },
-     {
-      "type": "CHARACTER",
-      "characterId": "a2000000-0000-4000-8000-0000000000a2",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "outfit_llm_choose_shared_composite",
-   "progressId": "e0000000-0000-4000-8000-0000000000d2",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000d2",
-    "projectId": "d0000000-0000-4000-8000-0000000000f2",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ],
-    "outfitSelections": [
-     {
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "mode": "llm_choose"
-     }
-    ]
-   },
-   "outfitContent": "{\"top\": [\"d0000000-0000-4000-8000-000000000004\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}"
-  },
-  {
-   "name": "rt_omitted_user_default",
-   "progressId": "e0000000-0000-4000-8000-0000000000e1",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000e1",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "rt_project_default_beats_user",
-   "progressId": "e0000000-0000-4000-8000-0000000000e2",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000e2",
-    "projectId": "d0000000-0000-4000-8000-0000000000f2",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "rt_explicit_beats_both_defaults",
-   "progressId": "e0000000-0000-4000-8000-0000000000e3",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000e3",
-    "projectId": "d0000000-0000-4000-8000-0000000000f2",
-    "roleplayTemplateId": "c3000000-0000-4000-8000-0000000000c3",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "rt_explicit_null_means_no_template",
-   "progressId": "e0000000-0000-4000-8000-0000000000e4",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000e4",
-    "roleplayTemplateId": null,
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  },
-  {
-   "name": "rt_unresolvable_id_rejected",
-   "progressId": "e0000000-0000-4000-8000-0000000000e5",
-   "tz": "UTC",
-   "nowMs": 1793664000000,
-   "random01": 0.0,
-   "request": {
-    "progressId": "e0000000-0000-4000-8000-0000000000e5",
-    "roleplayTemplateId": "c9000000-0000-4000-8000-0000000000c9",
-    "participants": [
-     {
-      "type": "CHARACTER",
-      "characterId": "a1000000-0000-4000-8000-0000000000a1",
-      "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
-     }
-    ]
-   }
-  }
- ]
+  "cases": [
+    {
+      "name": "single_char_first_message",
+      "progressId": "e0000000-0000-4000-8000-000000000001",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000001",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two_char_scenario",
+      "progressId": "e0000000-0000-4000-8000-000000000002",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000002",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenario": "They meet at dawn in the keep."
+      }
+    },
+    {
+      "name": "no_progress",
+      "progressId": "e0000000-0000-4000-8000-000000000003",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "autonomous_adhoc",
+      "progressId": "e0000000-0000-4000-8000-000000000004",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000004",
+        "chatType": "autonomous",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "generated_greeting",
+      "progressId": "e0000000-0000-4000-8000-000000000006",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingContent": "Greetings from the deep wood. I am Bram.",
+      "greetingUsage": {
+        "promptTokens": 40,
+        "completionTokens": 9,
+        "totalTokens": 49
+      },
+      "greetingReasoning": [
+        "Considering the wood",
+        "Considering the wood and the hour."
+      ],
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000006",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      }
+    },
+    {
+      "name": "autonomous_cron",
+      "progressId": "e0000000-0000-4000-8000-000000000005",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000005",
+        "chatType": "autonomous",
+        "scheduleCron": "0 9 * * *",
+        "budgetMaxTurns": 12,
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fictional_clock_unanchored",
+      "progressId": "e0000000-0000-4000-8000-000000000007",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000007",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": true,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": null,
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
+      }
+    },
+    {
+      "name": "fictional_clock_already_anchored",
+      "progressId": "e0000000-0000-4000-8000-000000000008",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000008",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": true,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": "2020-05-05T05:05:05Z",
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
+      }
+    },
+    {
+      "name": "real_time_clock_unstamped",
+      "progressId": "e0000000-0000-4000-8000-000000000009",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000009",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": false,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": null,
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
+      }
+    },
+    {
+      "name": "tc_partial_normalized",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "intervalMinutes": 45,
+          "junk": true,
+          "mode": "EVERY_N_MINUTES",
+          "customFormat": null
+        },
+        "progressId": "e0000000-0000-4000-8000-0000000000c1"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c1"
+    },
+    {
+      "name": "tc_bad_value_rejected",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "intervalMinutes": 0
+        },
+        "progressId": "e0000000-0000-4000-8000-0000000000c2"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c2"
+    },
+    {
+      "name": "tc_explicit_null_rejected",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": null,
+        "progressId": "e0000000-0000-4000-8000-0000000000c3"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c3"
+    },
+    {
+      "name": "outfit_default_tri_tier",
+      "progressId": "e0000000-0000-4000-8000-0000000000d1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d1",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_llm_choose_shared_composite",
+      "progressId": "e0000000-0000-4000-8000-0000000000d2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d2",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "outfitSelections": [
+          {
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "mode": "llm_choose"
+          }
+        ]
+      },
+      "outfitContent": "{\"top\": [\"d0000000-0000-4000-8000-000000000004\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}"
+    },
+    {
+      "name": "rt_omitted_user_default",
+      "progressId": "e0000000-0000-4000-8000-0000000000e1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_project_default_beats_user",
+      "progressId": "e0000000-0000-4000-8000-0000000000e2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e2",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_explicit_beats_both_defaults",
+      "progressId": "e0000000-0000-4000-8000-0000000000e3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e3",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "roleplayTemplateId": "c3000000-0000-4000-8000-0000000000c3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_explicit_null_means_no_template",
+      "progressId": "e0000000-0000-4000-8000-0000000000e4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e4",
+        "roleplayTemplateId": null,
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_unresolvable_id_rejected",
+      "progressId": "e0000000-0000-4000-8000-0000000000e5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e5",
+        "roleplayTemplateId": "c9000000-0000-4000-8000-0000000000c9",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    }
+  ]
 }
