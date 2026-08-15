@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Closed the connection-profile parameters key-order seam on the update path
+(P4.D79 tier 2). The corpus already pinned a non-sorted multi-key bag on
+create; the replace path now has its own arm, because the module's
+"constrained to {} or a single key" note stopped describing reality when the
+SPA began writing enable_thinking beside temperature. Insertion order
+round-trips both ways. The module doc was swept for the new column and the
+retired constraint. Versions: core 0.0.557, harness 0.0.479.
+
 Greeting generation now captures a thinking model's reasoning and persists it
 on the opening message (P4.D79 unit 6, v4 23af7146). Providers emit
 reasoningContent cumulatively — the full thinking-so-far on every chunk — so

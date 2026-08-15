@@ -12,7 +12,7 @@
 //! repo's `_create`/`_update`/`_delete`.
 //!
 //! This is by far the **widest marshaling surface** the tier-2 ports have hit:
-//! ~29 columns spanning every cell shape the port has met so far —
+//! ~30 columns spanning every cell shape the port has met so far —
 //!
 //!   - **three enum TEXT columns** (`provider`, `transport`, `pseudoToolMode`) —
 //!     v4's `ProviderEnum` is `z.string().min(1)` and the latter two are
@@ -45,9 +45,22 @@
 //!     this crate enables serde_json's `preserve_order`, so a `Value::Object` is
 //!     an `IndexMap` emitting *insertion* order exactly as v4's `JSON.stringify`
 //!     does. (This was once a tracked deferred seam on the assumption that
-//!     `Value` sorts its keys — `preserve_order` closed it.) The corpus still
-//!     constrains `parameters` to `{}` or a single-key object, but only because
-//!     nothing in it needs more; a multi-key object would marshal correctly.
+//!     `Value` sorts its keys — `preserve_order` closed it.) **P4.D79 closed the
+//!     corpus side too**: the old note here said the corpus constrained
+//!     `parameters` to `{}` / single-key, which stopped being true of REALITY
+//!     when the SPA began writing `enable_thinking` beside `temperature`. The
+//!     corpus now carries a non-sorted multi-key object on BOTH the create and
+//!     the update path, and both round-trip in insertion order.
+//!   - a **nullable-optional BOOLEAN column** (`multiCharacterPrefill`, v4
+//!     `23af7146`) → INTEGER 0/1 or NULL. Tri-state on purpose: NULL means
+//!     "never chosen", which
+//!     [`crate::services::multi_character_prefill`] resolves to the provider
+//!     default. On the READ side a NULL marshals to an ABSENT key (v4's SQLite
+//!     hydration maps a NULL boolean to `undefined`, which `JSON.stringify`
+//!     omits); on the WRITE side `None` OMITS the column from the INSERT rather
+//!     than writing NULL, so the DDL default decides exactly as it does in v4.
+//!     The read is column-tolerant (see [`cp_select_columns`]) so tables that
+//!     predate the column still open; the write is strict, as v4's is.
 //!
 //! To avoid relying on Zod create-time defaults (`transport`/`pseudoToolMode`/
 //! `courierDeltaMode`/`allowToolUse` and the many `false`/`0` defaults), the
@@ -61,8 +74,10 @@
 //!
 //! Deferred (not in the corpus): setting a nullable column **to NULL** via
 //! `update` (the patch models a provided field as "set to this value"; clearing a
-//! column to NULL lands when an op needs it), Zod's create-time defaults, and the
-//! open-JSON multi-key `parameters` key-order seam above.
+//! column to NULL lands when an op needs it — and for `multiCharacterPrefill`
+//! v4 cannot express it either, since its route 400s on an explicit null), and
+//! Zod's create-time defaults. The open-JSON multi-key `parameters` key-order
+//! seam is CLOSED (P4.D79, both paths).
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};

@@ -148,6 +148,12 @@ struct UpdateData {
     allow_tool_use: Option<bool>,
     #[serde(default, rename = "pseudoToolMode")]
     pseudo_tool_mode: Option<String>,
+    /// P4.D79 tier-2 item 8: the open-JSON `parameters` bag on UPDATE. The
+    /// create path already carried a non-sorted multi-key object; this closes
+    /// the same seam on the replace path, which is where the SPA now writes
+    /// `enable_thinking` beside `temperature`.
+    #[serde(default)]
+    parameters: Option<serde_json::Value>,
     #[serde(rename = "multiCharacterPrefill", default)]
     multi_character_prefill: Option<bool>,
     #[serde(default, rename = "modelClass")]
@@ -280,6 +286,7 @@ fn connection_profiles_tier2_matches_oracle() {
                                 use_native_web_search: data.use_native_web_search,
                                 allow_tool_use: data.allow_tool_use,
                                 pseudo_tool_mode: data.pseudo_tool_mode.clone(),
+                                parameters: data.parameters.clone(),
                                 multi_character_prefill: data.multi_character_prefill,
                                 model_class: data.model_class.clone(),
                                 max_context: data.max_context,

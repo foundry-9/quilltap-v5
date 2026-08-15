@@ -353,6 +353,27 @@ pins the NULL.
 the JS-truthiness guard, and never persisting the value each redden their
 family.
 
+### Tier 2 — items 8 and 9
+
+**Item 8 (the multi-key `parameters` seam): MEASURED and CLOSED, not
+deferred.** Half of it was already closed and the module doc had not caught up:
+the tier-2 corpus's second create op has carried a NON-SORTED multi-key bag
+(`{zeta, alpha, topP}`) since P4.6, and `preserve_order` reproduces
+`JSON.stringify`'s insertion order. What had no arm was the REPLACE path — the
+one the SPA now drives, writing `enable_thinking` beside `temperature`. A new
+update op replaces the bag with `{enable_thinking, temperature, num_ctx}`
+(non-sorted: sorted would be `enable_thinking, num_ctx, temperature`) and the
+oracle round-trips it in insertion order. The harness's `UpdateData` gained
+`parameters` to carry it.
+
+**Item 9 (the doc sweep):** `db/connection_profiles.rs`'s module header now
+describes the new nullable-optional boolean column (both its read shape — a
+NULL is an ABSENT key — and its write shape — `None` OMITS the column), records
+the read tolerance, corrects the column count, and RETIRES the
+"CONSTRAINED to `{}` / single-key" claim, which had stopped describing reality.
+The deferral list keeps "set a nullable column to NULL via update" but notes
+that for this column v4 cannot express it either.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

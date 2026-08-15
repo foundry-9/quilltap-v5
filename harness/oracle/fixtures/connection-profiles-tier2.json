@@ -346,6 +346,19 @@
    }
   },
   {
+   "kind": "update",
+   "comment": "P4.D79 tier-2 item 8: REPLACE the open-JSON `parameters` bag with a MULTI-KEY object whose keys are in NON-SORTED order (enable_thinking, temperature, num_ctx -- sorted would be enable_thinking, num_ctx, temperature). The create path already pinned this; the module doc's 'CONSTRAINED to {} / single-key' note predated the SPA writing enable_thinking beside temperature, so the UPDATE path needed its own arm. serde_json's preserve_order must reproduce JSON.stringify's INSERTION order on the replace, not just the insert.",
+   "id": "f6000000-0000-4000-8000-000000000004",
+   "data": {
+    "parameters": {
+     "enable_thinking": true,
+     "temperature": 0.3,
+     "num_ctx": 8192
+    },
+    "updatedAt": "2026-02-10T00:00:00.000Z"
+   }
+  },
+  {
    "kind": "delete",
    "comment": "Delete the first created profile (Ollama Local).",
    "id": "e5000000-0000-4000-8000-000000000003"
