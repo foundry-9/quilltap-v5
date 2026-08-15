@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the 93ed8abf drift catch-up round and committed its three work
+orders: P4.D82 (bug 70 — the context budget honors the profile's Max
+Context, with the new turn-extras tool-schema token accounting), P4.D83
+(the profile-parameters wire — resolveSamplingParams at all four call
+sites, the Ollama options/keep_alive/thinking-effort/request-timeout
+table, OPENAI_COMPATIBLE tool calling, and optionsSchema carried onto
+the provider manifests; stacked on P4.D82), and P4.D84 (the SPA
+schema-driven provider-options panel replacing the hardcoded Enable
+Thinking row, plus the tool-use seed hint and the supportsImageUpload
+re-seed). Docs only; no crate or SPA source touched.
+
 Unified the aa464abf drift catch-up round: the whole Ollama-thinking wire
 (inline think-block stream parsing on both channels, the think and num_ctx
 request fields with a one-shot retry when a model refuses the think
