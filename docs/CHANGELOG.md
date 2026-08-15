@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Added an Ollama "Enable Thinking" option to the connection-profile editor,
+writing `enable_thinking` into the profile's parameters. Editing a profile no
+longer drops the parameter keys the editor shows no control for — `num_ctx`,
+OpenRouter's provider preferences, and the rest now survive a save.
+
 Added the multi-character prefill checkbox to the connection-profile editor:
 "Announce the speaker in multi-character scenes ([Name] prefill)", seeded from
 the stored value or, when a profile has never chosen, from the provider

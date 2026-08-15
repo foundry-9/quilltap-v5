@@ -69539,3 +69539,55 @@ asserts BOTH values so a hardcoded `true` cannot pass. Restored, green.
 
 **Gate:** `ng test --filter "multiCharacterPrefill"` 5 passed;
 `--filter "ProfileModal"` 15 passed.
+
+## P4.D81 unit 3 — Ollama's Enable Thinking, and the parameters bag that stopped leaking (v4 `d9c5a1c7`)
+
+**Two things, and the second is the bigger one.**
+
+**(a) The checkbox.** v4 renders `enable_thinking` from the Ollama plugin's new
+`getProviderOptionsSchema()` through the generic `ProviderOptionsPanel`. v5 has
+no option-schema machinery (`optionsSchema` hardcoded null — the standing
+documented absence, P4.D78 Tier 3), so the row is a HARDCODED provider-gated
+field writing the same `parameters.enable_thinking` key (Contract A). v4's
+label (`Enable Thinking`), its four helpText sentences, and the panel's
+`Ollama Options` heading + `qt-settings-shell` chrome are carried, so the
+rendered result matches; only the mechanism differs. **Recorded as a mechanism
+divergence in the component doc-comment**, explicitly NOT a stepping stone.
+
+**One ordered behaviour divergence:** v4's `BooleanField` checks
+`value === true` (`ProviderOptionsPanel.tsx:143`); v5 also accepts the STRING
+`'true'`, because the wire side does (Contract A). A profile carrying the
+string form behaves as ON, so v4 would show it OFF — and the next save would
+"fix" it to a real false without the user touching it.
+
+**(b) The bag round-trip — a real v5 defect this unit closes.**
+`buildProfileRequestBody` built `parameters` from the three sampling controls
+ALONE, so opening any profile and pressing Update silently DROPPED every other
+key in the blob. Nothing rendered them, so nothing noticed; but the wire side
+reads several — `num_ctx` (P4.D79 injects it, "an explicit non-null `num_ctx`
+already in the stored blob wins"), and OpenRouter's
+`providerPreferences`/`enableZDR` (`request_builder/chat_completions.rs:697,947`).
+`ProfileFormData` now carries v4's `rawParams` bag (the blob minus the three
+sampling keys) and the builder spreads it after them, in v4's order.
+
+**Not ported, deliberately:** v4's legacy OpenRouter
+`providerPreferences → enableZDR` translation-and-delete on load
+(`useProfileForm.ts:51-56`). It exists to feed the schema renderer v5 lacks,
+and porting the DELETE half alone would destroy data v5's own request builder
+still reads. Recorded at the load site.
+
+**The differential.** `profile-form.spec.ts` gains five arms: the strip on
+load (three sampling keys out, everything else verbatim), non-mutation of the
+source DTO, the save carrying controls + bag, an untouched-profile byte-for-byte
+round-trip (the regression pin), and the courier's still-empty bag. The modal
+spec gains six: hidden for non-Ollama; default unchecked with v4's help text;
+stored `true`; stored `'true'`; any other string OFF (the tolerance is exact,
+not truthy); and a save writing a real BOOLEAN while `temperature`/`num_ctx`
+ride through untouched.
+
+**Mutation-proven:** dropping `...form.parameters` from the builder reddens
+three arms (the round-trip, the save-carry, and the modal's write-through);
+restored, 42 passed.
+
+**Gate:** `ng test --filter "Enable Thinking"` 6 passed; `--filter "bag"` 42
+passed (the file's whole set).

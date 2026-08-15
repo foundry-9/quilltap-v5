@@ -31,6 +31,19 @@ export interface ProfileFormData {
   useNativeWebSearch: boolean;
   modelClass: string;
   maxContext: string;
+  /**
+   * The profile's `parameters` blob MINUS the three sampling keys the form owns
+   * as top-level controls (v4 `useProfileForm.ts:46-50`'s `rawParams`). v4 hands
+   * this to `ProviderOptionsPanel`, the schema-driven renderer for each plugin's
+   * `getProviderOptionsSchema()`; v5 has no such machinery (the standing
+   * documented absence — `optionsSchema` is hardcoded null), so the bag is here
+   * for two reasons: the ONE hardcoded provider option v5 renders
+   * (`enable_thinking`, P4.D81 unit 3), and — more importantly — so that saving
+   * a profile does not silently DROP the keys nothing in the SPA renders
+   * (`num_ctx`, OpenRouter's `providerPreferences`/`enableZDR`, …), all of which
+   * the wire side still reads.
+   */
+  parameters: Record<string, unknown>;
 }
 
 export const initialFormState: ProfileFormData = {
@@ -55,11 +68,27 @@ export const initialFormState: ProfileFormData = {
   useNativeWebSearch: false,
   modelClass: '',
   maxContext: '',
+  parameters: {},
 };
+
+/**
+ * The sampling keys the form owns as dedicated controls; everything else in the
+ * stored blob rides `ProfileFormData.parameters` untouched (v4
+ * `useProfileForm.ts:47`).
+ */
+const TOP_LEVEL_PARAMETER_KEYS = ['temperature', 'max_tokens', 'top_p'] as const;
 
 /** Load an existing profile into the form for editing (v4 `loadProfileIntoForm`). */
 export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormData {
   const params = (profile.parameters ?? {}) as Record<string, unknown>;
+  // The rest of the blob rides along verbatim. v4 also MIGRATES the legacy
+  // OpenRouter `providerPreferences` shape into its flat schema keys here
+  // (`:51-56`) — deliberately not ported: that translation exists to feed the
+  // schema renderer v5 does not have, and dropping the legacy key would lose
+  // data v5's own request builder still reads
+  // (`request_builder/chat_completions.rs:697,947`).
+  const rest: Record<string, unknown> = { ...params };
+  for (const key of TOP_LEVEL_PARAMETER_KEYS) delete rest[key];
   return {
     name: profile.name,
     transport: profile.transport ?? 'api',
@@ -86,6 +115,7 @@ export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormD
     useNativeWebSearch: profile.useNativeWebSearch ?? false,
     modelClass: profile.modelClass ?? '',
     maxContext: profile.maxContext ? String(profile.maxContext) : '',
+    parameters: rest,
   };
 }
 
@@ -117,10 +147,14 @@ export function buildProfileRequestBody(form: ProfileFormData): Record<string, u
     };
   }
 
+  // v4 `:122-127`: the sampling controls first, then the provider-option keys
+  // spread over them — same order, so a bag that somehow carries a sampling key
+  // still loses to the form's control, as in v4.
   const parameters: Record<string, unknown> = {
     temperature: parseFloat(String(form.temperature)),
     max_tokens: parseInt(String(form.maxTokens), 10),
     top_p: parseFloat(String(form.topP)),
+    ...form.parameters,
   };
 
   return {

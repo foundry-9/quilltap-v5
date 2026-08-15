@@ -88,3 +88,81 @@ describe('profile form — multiCharacterPrefill', () => {
     expect(off['isDangerousCompatible']).toBe(false);
   });
 });
+
+/**
+ * The `parameters` bag round-trip (P4.D81 unit 3). v5 renders one provider
+ * option (Ollama's `enable_thinking`) and no others, so the bag's job here is
+ * mostly to survive a save — every key the SPA shows no control for still has a
+ * reader on the wire side.
+ */
+describe('profile form — the parameters bag', () => {
+  it('loads the blob minus the three sampling keys the form owns', () => {
+    const loaded = loadProfileIntoForm(
+      profile({
+        parameters: {
+          temperature: 0.4,
+          max_tokens: 512,
+          top_p: 0.9,
+          enable_thinking: true,
+          num_ctx: 32768,
+          providerPreferences: { order: ['groq'] },
+        },
+      }),
+    );
+    expect(loaded.temperature).toBe(0.4);
+    expect(loaded.maxTokens).toBe(512);
+    expect(loaded.topP).toBe(0.9);
+    expect(loaded.parameters).toEqual({
+      enable_thinking: true,
+      num_ctx: 32768,
+      providerPreferences: { order: ['groq'] },
+    });
+  });
+
+  it('does not mutate the DTO it loaded from', () => {
+    const dto = profile({ parameters: { temperature: 0.4, num_ctx: 8192 } });
+    loadProfileIntoForm(dto);
+    expect(dto.parameters).toEqual({ temperature: 0.4, num_ctx: 8192 });
+  });
+
+  it('sends the sampling controls AND the rest of the bag on save', () => {
+    const body = buildProfileRequestBody(
+      form({
+        temperature: 0.7,
+        maxTokens: 2048,
+        topP: 0.5,
+        parameters: { enable_thinking: true, num_ctx: 16384 },
+      }),
+    );
+    expect(body['parameters']).toEqual({
+      temperature: 0.7,
+      max_tokens: 2048,
+      top_p: 0.5,
+      enable_thinking: true,
+      num_ctx: 16384,
+    });
+  });
+
+  it('round-trips an untouched profile byte for byte', () => {
+    // The regression this exists for: before unit 3 the builder wrote a fresh
+    // three-key bag, so opening an Ollama profile and pressing Update silently
+    // dropped `enable_thinking` and `num_ctx`.
+    const stored = {
+      temperature: 1,
+      max_tokens: 1000,
+      top_p: 1,
+      enable_thinking: true,
+      num_ctx: 40960,
+    };
+    const body = buildProfileRequestBody(loadProfileIntoForm(profile({ parameters: stored })));
+    expect(body['parameters']).toEqual(stored);
+  });
+
+  it('the courier body still sends an empty bag (v4 :115)', () => {
+    expect(
+      buildProfileRequestBody(
+        form({ transport: 'courier', parameters: { enable_thinking: true } }),
+      )['parameters'],
+    ).toEqual({});
+  });
+});

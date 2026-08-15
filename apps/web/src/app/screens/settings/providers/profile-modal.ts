@@ -56,6 +56,20 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
  * slot disabled), the model combobox with a free-text fallback, sampling
  * parameters, the rich capability flags, and duplicate-name inline validation.
  * Copy + `qt-*` classes carry over verbatim.
+ *
+ * **Recorded mechanism divergence — provider options (P4.D81 unit 3).** v4
+ * renders the per-provider option rows from each plugin's
+ * `getProviderOptionsSchema()` through the generic `ProviderOptionsPanel`. v5
+ * has no plugin option-schema machinery — `optionsSchema` is hardcoded null, the
+ * standing documented absence — so the ONE option that exists at this baseline,
+ * Ollama's `enable_thinking` (v4 `d9c5a1c7`, plugin 1.0.41), is rendered here as
+ * a hardcoded provider-gated field writing the same `parameters` key. Label and
+ * help text are v4's schema strings verbatim, and the group keeps v4's
+ * `Ollama Options` heading and panel chrome, so the rendered result matches; only
+ * the mechanism differs. This is the recorded divergence, NOT a stepping stone
+ * toward the schema machinery (P4.D81 Tier 3). Every OTHER key in the bag —
+ * `num_ctx`, OpenRouter's preferences — is preserved unrendered rather than
+ * dropped on save.
  */
 @Component({
   selector: 'qt-profile-modal',
@@ -553,6 +567,36 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
               </p>
             </div>
           </div>
+
+          <!-- Provider-specific options. v4 renders this whole region from the
+               plugin's getProviderOptionsSchema() through ProviderOptionsPanel;
+               v5 has no schema machinery, so the one option that exists today is
+               hardcoded here (see the class doc-comment). Same slot as v4's
+               panel: after Max Context, before the tag editor. -->
+          @if (isOllama()) {
+            <div class="qt-settings-shell">
+              <h4 class="qt-settings-section-heading mb-3">Ollama Options</h4>
+              <div class="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="qt-pf-enable-thinking"
+                  class="qt-checkbox mt-0.5"
+                  [checked]="enableThinking()"
+                  (change)="setParameter('enable_thinking', $any($event.target).checked)"
+                />
+                <div class="flex flex-col gap-1">
+                  <label for="qt-pf-enable-thinking" class="text-sm">Enable Thinking</label>
+                  <p class="qt-text-xs">
+                    Let thinking-capable models (Qwen3, DeepSeek-R1, and kin) reason before
+                    answering. Reasoning streams into the thinking display rather than the reply.
+                    When off (the default), the model is asked to answer directly — best when you
+                    need clean output such as JSON. Either way, any &lt;think&gt; blocks that leak
+                    into the reply are routed to the thinking display.
+                  </p>
+                </div>
+              </div>
+            </div>
+          }
         }
       </div>
 
@@ -631,6 +675,21 @@ export class ProfileModal implements OnInit {
       !this.nameTaken(),
   );
 
+  protected readonly isOllama = computed(() => this.form().provider === 'OLLAMA');
+
+  /**
+   * The Ollama `enable_thinking` box. v4's `BooleanField` reads `value === true`
+   * (`ProviderOptionsPanel.tsx:143`); v5 also accepts the STRING `'true'`,
+   * because the wire side does (`build_ollama_body`, Contract A:
+   * `value === true || value === "true"`) — a profile imported with the string
+   * form behaves as ON, so showing it as OFF would be a lie the box could then
+   * silently "fix" on the next save.
+   */
+  protected readonly enableThinking = computed(() => {
+    const value = this.form().parameters['enable_thinking'];
+    return value === true || value === 'true';
+  });
+
   /**
    * The prefill box is ticked on a provider whose default is OFF (v4
    * `ProfileModal.tsx:786-787`) — today that is Anthropic alone, and the
@@ -662,6 +721,15 @@ export class ProfileModal implements OnInit {
 
   protected setField<K extends keyof ProfileFormData>(key: K, value: ProfileFormData[K]): void {
     this.form.update((f) => ({ ...f, [key]: value }));
+  }
+
+  /**
+   * Write one provider-option key into the `parameters` bag (v4's
+   * `setParameter`, `ProfileModal.tsx:200-215`). Every other key in the bag
+   * rides along untouched — including the ones v5 renders no control for.
+   */
+  protected setParameter(key: string, value: unknown): void {
+    this.form.update((f) => ({ ...f, parameters: { ...f.parameters, [key]: value } }));
   }
 
   protected parseNum(v: string): number {
