@@ -1956,3 +1956,23 @@ Contents:
   checkout (recipe repaired this round). The distill-transitive TZ pins,
   the committed-fixture rule, and the venue/staging rules stand
   unchanged.
+
+## Superseded baseline paragraph — `24633026` (archived at the aa464abf-round unification, 2026-08-15)
+
+- **Oracle baseline: `24633026` (2026-08-14, v4 main — "feat:
+  section-level help embeddings and content search in the Guide"),
+  adopted at the help-drift unification — NO v4 drift debt remains.**
+  ⚠ v4's working tree carries uncommitted **Ollama "Enable Thinking"
+  WIP** (the next drift, already in flight) — verify branch +
+  cleanliness before ANY regen; pin a detached worktree on
+  mismatch/drift/dirt (`oracle-regen-pinned-v4-worktree`, or
+  `recipe_sweep.py --v4 <pin>`). **Drift-check BOTH branches every
+  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
+  app/ packages/` — measure bugfix with `diff`, never the commit list;
+  bugs 64/65 sit BELOW the 4.8.3 marker and are pre-baseline). The
+  sweep driver remains the sanctioned per-family regen path — never run
+  two sweeps concurrently; it now copies `.db.meta.json` sidecars when
+  shielding, NEVER runs a committed-corpus family's recording stage,
+  and warns when a family's stages modify tracked fixtures. The
+  distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged.

@@ -1161,23 +1161,59 @@ records THERE. Update this summary only when a phase or round completes.
   stages and warns on tracked-fixture writes). Gate + versions: the
   round record in `status-log.md`. 💸 owed: P4.D77's trio + #75's
   acceptance look, on the standing queue.
-- **Oracle baseline: `24633026` (2026-08-14, v4 main — "feat:
-  section-level help embeddings and content search in the Guide"),
-  adopted at the help-drift unification — NO v4 drift debt remains.**
-  ⚠ v4's working tree carries uncommitted **Ollama "Enable Thinking"
-  WIP** (the next drift, already in flight) — verify branch +
-  cleanliness before ANY regen; pin a detached worktree on
-  mismatch/drift/dirt (`oracle-regen-pinned-v4-worktree`, or
-  `recipe_sweep.py --v4 <pin>`). **Drift-check BOTH branches every
+- **The `aa464abf` drift catch-up round (P4.D78 ∥ P4.D79 ∥ P4.D80 ∥
+  P4.D81 ∥ P4.48): UNIFIED on main (2026-08-15) — ALL FIVE CLOSED; the
+  oracle baseline MOVES to `aa464abf`.** Six v4 commits absorbed. The
+  Ollama-thinking wire whole (the stateful `<think>` parser chop-exact vs
+  v4's real parser; dual-channel reasoning on stream + non-stream; `think`
+  ALWAYS on the body + `options.num_ctx`; the retry-without-think in BOTH
+  compositions — the order's fourth quartet arm was WRONG about v4, the
+  guard is key PRESENCE; the `toolUse` manifest flip via regen, which
+  exposed and fixed the generator's augmentation table reverting P4.47(B)'s
+  google header) ∥ bug 68 end-to-end (`multiCharacterPrefill` through the
+  D23 re-dump — generateDDL and migration DDL DISAGREE again, both shapes
+  carried; the once-only backfill boot ensure; the resolver + per-profile
+  turn anchor; routes with the double-legged 400; export/import carry —
+  the ownership tripwire FIRED and the ordered edit landed at unification;
+  greeting reasoning persisted onto the first message) + the
+  `profileParams` consolidation, which fixed THREE pre-existing v5
+  defects: **the Salon primary stream had NO modelParams twin at all**
+  (every per-model setting silently dropped on the main chat path), the
+  Carina temperature read a nonexistent key, and **the SPA profile save
+  silently dropped every non-sampling `parameters` key** ∥ bugs 66/69
+  (the archivedAt enrichment + the beat FLIPPED live; the rehydrate
+  digest self-heal for rows v4's pre-4.9 watcher damaged; bug 67 a pure
+  convergence — v4 adopted v5's pinned source-mode send) ∥ P4.48 with its
+  premise REFUTED twice over: v4 SWALLOWS those read errors too
+  (`safeQuery` fallback mode), so the overlay leg landed as the
+  byte-match fix and the DB-read-error refusal as a ruled divergence
+  (both-directions tripwires); 23 sites, not 10. **The §3 review found NO
+  blocking findings** (a first) — fixed anyway: the rerouted-profile
+  fallback made loud, three comment corrections; the gate caught three
+  recipe defects (a literal `npx jest ...` placeholder; a
+  non-self-contained primary_stream recipe; two stale lane-pin paths).
+  Gate: 435 test binaries / 2,125 / 0 zero SKIP; the 28 affected families
+  fresh at the pin through the sweep driver; clippy both sets; release
+  build; ng 324 files / 4,741; full Playwright green (numbers in the
+  round record). Versions: core 0.0.564, harness 0.0.487, host 0.0.71,
+  SPA 0.5.493. 💸 the live Ollama-thinking proof + the round's surfaces
+  join the owed dogfood queue. Round record: `status-log.md`.
+- **Oracle baseline: `aa464abf` (2026-08-15, v4 main — "fix:
+  archived-seat badge (66), source-view send (67), archive digest
+  clobber (69)"), adopted at the aa464abf-round unification.** ⚠ v4 HEAD
+  is ALREADY PAST it: **`f933ba9c` (bug 70, context budget honors Max
+  Context) is the queued next drift** — top candidate in `phase-4.md`;
+  part is likely v4 converging on v5's `context_budget.rs` shape
+  (MEASURE, `convergence-lane-measure-dont-assume`). **Pin a detached
+  worktree at `aa464abf` for EVERY regen until that round lands**
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
   round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
-  app/ packages/` — measure bugfix with `diff`, never the commit list;
-  bugs 64/65 sit BELOW the 4.8.3 marker and are pre-baseline). The
-  sweep driver remains the sanctioned per-family regen path — never run
-  two sweeps concurrently; it now copies `.db.meta.json` sidecars when
-  shielding, NEVER runs a committed-corpus family's recording stage,
-  and warns when a family's stages modify tracked fixtures. The
-  distill-transitive TZ pins, the committed-fixture rule, and the
-  venue/staging rules stand unchanged.
+  app/ packages/` — measure bugfix with `diff`, never the commit list).
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.
   (The superseded baseline paragraphs formerly kept here "for history" are
   archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the

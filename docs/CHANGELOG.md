@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Unified the aa464abf drift catch-up round: the whole Ollama-thinking wire
+(inline think-block stream parsing on both channels, the think and num_ctx
+request fields with a one-shot retry when a model refuses the think
+parameter, the toolUse capability flip), the per-profile multi-character
+[Name] prefill column end to end with greeting reasoning persisted onto the
+first message, the profileParams consolidation (which also fixed three
+pre-existing v5 defects: the Salon primary stream sent no per-model
+parameters at all, the Carina answer read temperature from a nonexistent
+key, and the profile editor dropped every non-sampling parameters key on
+save), the archivedAt chat-GET enrichment with the archived-badge beat
+flipped live, the archive rehydrate self-heal for digest rows damaged by
+v4's pre-4.9 watcher, and the import preflight's read-error propagation
+(a ruled divergence — v4 swallows those errors — with both-directions
+tripwires). The oracle baseline moves to aa464abf; v4's bug-70 commit is
+the queued next drift. The unification review found no blocking findings;
+the gate repaired three harness recipes. Full gate green: 435 test
+binaries / 2,125 tests, the 28 affected differential families regenerated
+fresh at the pinned baseline, ng test 4,741, and the full Playwright suite
+(numbers in the round record). Versions: core 0.0.564, harness 0.0.487,
+host 0.0.71, SPA 0.5.493.
+
 Re-proved every P4.D78 oracle against a v4 worktree pinned at aa464abf after
 the v4 checkout went dirty mid-lane with unrelated WIP: all eight (the two new
 oracles, the registry and listing oracles, the generated manifests, the ollama

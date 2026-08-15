@@ -4802,3 +4802,67 @@ stage (recording is a by-hand act), and warns whenever a family's stages
 leave tracked fixture bytes modified. The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 Drift-check before every round.
+
+## The `aa464abf` drift catch-up round (P4.D78 ∥ P4.D79 ∥ P4.D80 ∥ P4.D81 ∥ P4.48) — UNIFIED 2026-08-15
+
+All five lanes CLOSED and unified on main (the round record is in
+`status-log.md`). The oracle baseline MOVES to **`aa464abf`** and the round's
+drift debt is CLEARED — but see candidate 1: v4 moved again mid-round.
+Highlights: the whole Ollama-thinking wire (the `<think>` stream parser, the
+`think`/`num_ctx` request fields with the retry-without-think, the `toolUse`
+manifest flip); bug 68's `multiCharacterPrefill` column end to end (D23
+re-dump + boot ensure with the once-only backfill, the resolver, the
+per-profile turn anchor, routes, export/import carry, the SPA checkbox);
+greeting reasoning persisted onto the first message; the `profileParams`
+consolidation — which also fixed THREE real pre-existing v5 defects (the
+Salon primary stream had NO `modelParams` twin, the Carina temperature read a
+nonexistent key, and the SPA's profile save silently dropped every
+non-sampling `parameters` key); bugs 66/69 absorbed (the archivedAt
+enrichment + flipped beat; the rehydrate digest self-heal) with bug 67 a pure
+convergence (v4 adopted v5's pinned source-mode behavior); and the P4.48
+escalation closed with its premise REFUTED — v4 swallows those read errors
+too (`safeQuery` fallback mode), so the DB-read-error refusal landed as a
+ruled divergence and the overlay leg as the byte-match fix. The §3 review
+found NO blocking findings (a first); the gate caught and fixed three recipe
+defects + two stale lane-pin paths.
+
+**Next candidates, in rough value order:**
+
+1. **The `f933ba9c` bug-70 drift catch-up** — v4 moved DURING the round:
+   context budget honors the profile's Max Context (`resolveContextWindow`
+   single-sourcing, `computeSafeInputLimit`, the new `turn-extras.ts`
+   tool-schema/agent-splice token accounting; touches context-manager,
+   orchestrator, context-builder, token-counter, model-context-data —
+   ported surfaces all). v5's `context_budget.rs:92` already resolves
+   profile-max-context-first, so part is likely v4 converging on v5's
+   shape — MEASURE (`convergence-lane-measure-dont-assume`). **Pin
+   `aa464abf` for every regen until this lands.**
+2. **The owed dogfood pass** — now also gaining this round's live surfaces:
+   a real Ollama thinking run (ticked → fold; prefill unticked → v4's
+   bug-68 verification shape), a real `num_ctx` send, the parameters-bag
+   round-trip on real data, a clobbered-digest rehydrate if the Friday copy
+   has one; plus the whole standing 💸 queue.
+3. **The v4-side filing** owed from P4.48: the import preflight's swallowed
+   DB read errors (v4 proceeds into a partial apply).
+4. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+   HelpChat/Guide vertical + its enriched bank).
+5. Banked smalls: the settings repo-validate sibling fields (named at the
+   P4.47 deferral site); the stale `docs/v4` API.md mirror sweep; **NEW
+   this round** — v5's `onProviderChange` never re-seeds
+   `supportsImageUpload` from the capability map on a provider switch
+   (v4's `handleProviderChange` does; pre-existing, found by the §3
+   review); the optionsSchema machinery question (delete-not-extend the
+   hardcoded Enable Thinking row when it ever lands).
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`aa464abf`** (2026-08-15, v4 main — "fix: archived-seat badge (66),
+source-view send (67), archive digest clobber (69)"), adopted at this
+round's unification. ⚠ v4 HEAD is ALREADY PAST it (`f933ba9c`, candidate 1)
+— **pin a detached worktree at `aa464abf` for every regen** until the
+catch-up lands (`recipe_sweep.py --v4 <pin-path>`; remember ALL THREE
+symlink classes: root node_modules, `packages/quilltap/node_modules`, the
+`plugins/dist/*/node_modules` dirs). Drift-check BOTH branches every round
+(bugfix measured by `diff`, never the commit list). The sweep driver remains
+the sanctioned per-family regen path — never run two sweeps concurrently.
+The distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.

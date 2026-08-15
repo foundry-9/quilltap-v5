@@ -70957,3 +70957,126 @@ sidebar gesture, is green). The lane built its own debug `quilltap-web` +
 `apps/web/**` + the two append-only docs — **no `crates/**`, no `harness/**`**.
 Spelling guard run over every touched file, clean. Versions: SPA 0.5.487 →
 0.5.492; no crate touched.
+
+## Round record — the `aa464abf` drift catch-up (P4.D78 ∥ P4.D79 ∥ P4.D80 ∥ P4.D81 ∥ P4.48), UNIFIED 2026-08-15
+
+**All five lanes CLOSED; the oracle baseline MOVES to `aa464abf`.** Branch
+`unify/aa464abf-drift-round`, merged in dependency order (D78 → D79 → D80 →
+P4.48 → D81); source-level conflicts: NONE (ownership held — the one shared
+file, `quilltap_import/profiles.rs`, composed exactly as the tripwire
+designed). Versions accumulated: core 0.0.549 → **0.0.564**, harness 0.0.473
+→ **0.0.487**, host 0.0.70 → **0.0.71**, SPA 0.5.487 → **0.5.493**;
+web/cli/tauri/sys unchanged. Per-lane records precede this entry.
+
+### ⚠ v4 drifted during the round — the next catch-up is queued
+
+v4 main moved past the pin mid-round: **`f933ba9c` "fix: context budget
+honors the profile's Max Context (bug 70)"** (+815/−53 — `resolveContextWindow`
+as the single window source, `computeSafeInputLimit`, the new
+`turn-extras.ts` tool-schema/agent-splice token accounting, touching
+context-manager, orchestrator, context-builder, token-counter,
+model-context-data). P4.D79's lane caught it being BUILT (dirty tree at its
+gate) and pinned; every unification regen ran from a detached worktree at
+`aa464abf` (`/tmp/qt-v4-pin-unify-aa464abf`). Note for the catch-up lane:
+v5's `context_budget.rs:92` already resolves profile-max-context-first, so
+part of bug 70 is likely v4 converging on v5's shape — MEASURE, don't assume
+(`convergence-lane-measure-dont-assume`). **Pin `aa464abf` for every regen
+until that round lands.**
+
+### The unification wires
+
+1. **P4.D79's tripwire-stopped import carry, landed** (`unify(wire)` commit):
+   `ImportedConnectionProfile.multi_character_prefill` + the `CpCreate`
+   pass-through, applied only once P4.48's ownership of `quilltap_import/**`
+   had merged; a new `import_carries_the_stored_prefill_choice` unit pin
+   (stored true/false round-trip + absent stays column-omitting). v4's
+   `...profileData` spread carry verified at the pin; the explicit-null
+   hand-crafted-bundle edge recorded in the field doc, not modeled.
+2. **`P4D80_ENRICHMENT_LANDED` flipped** — the archived-badge beat runs live
+   in the full suite below (its first activation).
+3. **Contracts A/B/C diffed name-for-name** across sides: `num_ctx`
+   (cheap_llm.rs:177 ↔ chat_completions.rs:1050), `enable_thinking`
+   (chat_completions.rs:1033 ↔ profile-modal.ts:585), the
+   `multiCharacterPrefill must be a boolean` sentence on both dispatch legs
+   (settings.rs:1253/1729) ↔ the SPA DTO, `archivedAt` on the enrichment ↔
+   the contract's existing declaration.
+
+### The §3 unification review (three parallel reviewers + own read of the union)
+
+**No blocking findings** — the first round in memory where nothing
+would-have-shipped. Fixed on the unify branch (`unify(review)` commit):
+
+- **The rerouted-profile fallback made LOUD** (R2 finding 1,
+  `orchestrator.rs`): v5 re-reads the effective profile row where v4 carries
+  the object; a failed read fell back to the ORIGINAL profile's anchor +
+  params with the error swallowed — now a targeted `tracing::warn` (behavior
+  unchanged; the tier-3 `danger_live_reroute` pin stands).
+- **An inverted precedence comment** (R3, `profile-form.ts`): the note
+  claimed the sampling controls beat the bag; the later spread WINS (v4 and
+  v5 alike). Unreachable today, but a reader trusting it would have created
+  a real divergence "fixing" the order.
+- **A divergence comment underclaiming its scope** (R3,
+  `quilltap_import/mod.rs`): the raw-read character exists-check has TWO
+  legs vs v4's overlay reader — the colliding leg (body differs) AND the
+  skippable-rehydrate leg (v5 proceeds where v4's overlay throw refuses up
+  front). Both now recorded at the site.
+- The `maxTokens` fractional-truncation seam noted beside the temperature
+  note; the profile-modal "ONE option" overclaim narrowed.
+- Recorded, not changed: v4's create-route 500s on a non-string provider
+  where v5 400s (accidental in v4); `put_opt_bool` strictness vs v4's
+  `Boolean(value)` fallback (tampered-DB only); the Infinity-maxContext
+  Value-path collapse (unreachable via any v4 route or bundle); the
+  `setParameter` missing delete-on-undefined arm (unreachable today).
+- **Banked as a small**: v4 re-seeds `supportsImageUpload` on provider
+  switch (`supportsMimeType(newProvider, …)`); v5's `onProviderChange` never
+  has (pre-existing, predates this round) — queue with the next SPA smalls
+  lane.
+
+**The gate itself caught, and this round fixed:**
+
+- **Two lane recipes referenced the deleted lane pin path**
+  (`multi_character_prefill` / `profile_params` — the lane-pin purge class,
+  again): repointed to the canonical checkout; the driver's `--v4` does the
+  pinning.
+- **`initial_greeting`'s recipe carried a literal `npx jest ...`
+  placeholder** — not runnable verbatim (the driver dutifully ran it; jest
+  resolved from the npx cache and died on config traversal). The full
+  staged /tmp-mirror block now rides the header.
+- **`primary_stream`'s recipe was not self-contained**: the family's second
+  test (the P4.41 fallback arm) needs `QT_ORACLE_OPENAI_FALLBACK`; its
+  stage + env var now ride the recipe. Both repairs re-proven through
+  `recipe_sweep.py` at the pin.
+- The unifier's own pin worktree initially missed the SECOND and THIRD
+  symlink classes (`packages/quilltap/node_modules` + the plugin dirs) —
+  17 spurious regen failures until fixed; the memory note had it exactly.
+
+### The gate (all at the `aa464abf` pin)
+
+- `cargo fmt --all --check` clean; clippy BOTH feature sets clean;
+  `cargo build --release` green.
+- **The round's 28 affected families regenerated FRESH from the pinned
+  worktree and re-run by name through `recipe_sweep.py`, all ok, zero
+  SKIP** (`/tmp/sweep-unify-aa464abf*.json` artifacts; initial_greeting +
+  primary_stream re-proven after their recipe repairs; primary_stream's
+  fallback leg ran with its oracle — 2 tests, not a silent skip).
+- **`cargo test --workspace` with the round's 47-variable env block: 435
+  test binaries / 2,125 tests / 0 failed, exit 0, zero `SKIP:` lines.**
+- SPA: `ng test` **324 files / 4,741 / 0**; `ng build` clean.
+- **Full Playwright: 219 passed / 0 failed / 0 skipped (15.0 m)** — the flipped archived-badge beat
+  live on its first activation.
+- Spelling guard rides the workspace run.
+
+### 💸 Owed to the standing dogfood queue (grown this round)
+
+A live Ollama thinking run (box ticked → reasoning in the fold; prefill
+unticked on the same chat → v4's bug-68 verification shape), a real
+`num_ctx` send against a local model, the OpenRouter/`enable_thinking`
+bag round-trip on real data, a real clobbered-digest rehydrate if the
+Friday copy has one, plus the standing queue (Almanack real-data report,
+Taboo live turn, OpenRouter pricing, the vision send, P4.D49
+budget/attribution, P4.D77's trio, #75's acceptance look).
+
+### Owed upstream (v4-side filings)
+
+- The import preflight's swallowed DB read errors (v4 proceeds into a
+  partial apply where v5 now refuses — the P4.48 divergence's other half).
