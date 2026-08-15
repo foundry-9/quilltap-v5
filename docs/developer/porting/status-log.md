@@ -69619,3 +69619,34 @@ So the whole v5-side fix belongs to P4.D80's `chat_enrichment.rs`; nothing in
 
 **Gate:** `ng test --filter "archivedAt"` 1 passed; `playwright --list` over
 the file — 10 tests, the flipped beat present at `:219`.
+
+## P4.D81 unit 5 — the bug-67 convergence records, and the greeting fold pin
+
+**Bug 67 — v4 converged on v5, so the records flip.** v5's composer has sent
+the SOURCE textarea's bytes since P4.9L, recorded there as a DELIBERATE
+DIVERGENCE naming `SalonView.tsx:1581` and queued as a v4-side finding. v4
+`aa464abf` adopted exactly that, routing both halves through the new
+`app/salon/[id]/composer-source-mode.ts`
+(`resolveComposerSubmitText` / `resolveComposerHasContent`). **No v5 behaviour
+changed**: the `chat-composer.ts` comment and the toolbar spec's tail now
+record the convergence instead of the divergence.
+
+**Both halves measured, not assumed.** v4's fix has a second half — the Send
+GATE, which in v4 read the editor's stale presence flag. v5 reaches the same
+place by a different route: `onSourceInput` → `onContentChange` feeds `text()`,
+which `canSend` reads. Surveyed and now PINNED by a new toolbar-spec arm: with
+nothing typed the gate is shut, text typed ONLY in the source textarea opens it,
+and the submit carries those bytes. (v4's new `composer-source-mode.test.ts`
+is 54 lines of case shapes; nothing to port — v5 has one composer component
+where v4 has a page plus a child, so there is no seam to put a module on.)
+
+**Tier 2 — the greeting thinking fold.** P4.D79's server half persists
+`reasoningContent` on an auto-generated opening greeting (v4 `23af7146`'s
+second fix: `generateGreetingMessage` read `chunk.content` and dropped the
+rest). The rendering side needs nothing new — a greeting is simply the chat's
+first assistant message, and `reasoningBlocks()` already folds a bare
+`reasoningContent` into one block. Pinned anyway, with its negative arm, so
+the two halves cannot drift apart unnoticed.
+
+**Gate:** `ng test --filter "Send lights"` 1 passed; `--filter "greeting"` 4
+passed.

@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Recorded that v4 adopted Quilltap-v5's source-view send behavior in 4.9: a send
+made with the raw-Markdown view open ships what the writer can see. No behavior
+change here — comments and test notes only, plus a spec pinning that Send lights
+for text typed only in source view.
+
 Turned the archived-seat sidebar beat around: it now expects both the Absent
 and Archived badges on a fresh load, gated until the server projection that
 makes that possible lands beside it.

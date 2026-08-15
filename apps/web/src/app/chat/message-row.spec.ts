@@ -580,3 +580,42 @@ describe('MessageRow — the Staff header bar (P4.26)', () => {
     expect(bar.querySelector('.qt-chat-system-bar-whisper')).toBeNull();
   });
 });
+
+/**
+ * P4.D81 Tier 2 — the client half of v4 `23af7146`'s greeting-reasoning fix.
+ * v4's `generateGreetingMessage` read `chunk.content` and nothing else, so a
+ * thinking model's reasoning while composing an opening greeting was discarded
+ * (one observed greeting cost 3,620 characters and rendered no fold). P4.D79
+ * carries `reasoningContent` onto the stored greeting; the rendering side needs
+ * nothing new — the fold is the same one every assistant message gets — and
+ * this pins that, so the two halves cannot drift apart unnoticed.
+ *
+ * A greeting IS just the chat's first assistant message: no marker field, no
+ * separate kind. The shape below is exactly that.
+ */
+describe('MessageRow — a greeting that carries reasoning', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const greeting = () =>
+    message({
+      id: 'greeting',
+      role: 'ASSISTANT',
+      content: 'The parlour door swings wide.',
+      reasoningContent: 'They arrive mid-storm; open on the weather.',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+  it('renders the thinking fold from reasoningContent alone', () => {
+    const fixture = render(greeting());
+    const folds = fixture.nativeElement.querySelectorAll('qt-thinking-block');
+    expect(folds.length).toBe(1);
+    expect(folds[0].textContent).toContain('They arrive mid-storm; open on the weather.');
+    // The reply itself is untouched by the fold.
+    expect(fixture.nativeElement.textContent).toContain('The parlour door swings wide.');
+  });
+
+  it('renders no fold when the greeting carries no reasoning', () => {
+    const fixture = render(message({ id: 'greeting', role: 'ASSISTANT', content: 'Hello.' }));
+    expect(fixture.nativeElement.querySelectorAll('qt-thinking-block').length).toBe(0);
+  });
+});

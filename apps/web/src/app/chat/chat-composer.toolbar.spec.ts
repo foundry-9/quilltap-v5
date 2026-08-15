@@ -217,12 +217,41 @@ describe('ChatComposer — the formatting toolbar', () => {
 
     expect(sourceTextarea(fixture).value).toBe('// a note');
 
-    // And the SEND takes the bytes the writer can see — v5's ruled divergence
-    // from v4, which reads its (suspend-synced) Lexical handle here and so
-    // discards every source edit.
+    // And the SEND takes the bytes the writer can see. This was v5's ruled
+    // divergence; v4 CONVERGED on it at `aa464abf` (bug 67) with
+    // `composer-source-mode.ts`'s `resolveComposerSubmitText`.
     const sent: ComposerSend[] = [];
     fixture.componentInstance.send.subscribe((e) => sent.push(e));
     fixture.componentInstance['submit']();
     expect(sent[0].content).toBe('// a note');
+  });
+
+  /**
+   * The OTHER half of v4's bug-67 fix (`resolveComposerHasContent`): in source
+   * view the editor's presence flag is stale, so the textarea's own value has to
+   * gate Send. v5 reaches it by a different route — `onSourceInput` feeds
+   * `onContentChange`, the same signal the editor feeds — and this pins that the
+   * route works, since text typed ONLY in source view is the case v4's Send
+   * button could not light for.
+   */
+  it('Send lights for text typed ONLY in the source textarea', async () => {
+    const fixture = render({ compositionMode: true });
+    await settle(fixture);
+
+    root(fixture).querySelector<HTMLButtonElement>('.qt-formatting-button-source')!.click();
+    fixture.detectChanges();
+    // Nothing typed anywhere yet: the gate is shut.
+    expect(fixture.componentInstance['canSend']()).toBe(false);
+
+    const area = sourceTextarea(fixture);
+    area.value = 'typed in source only';
+    area.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['canSend']()).toBe(true);
+    const sent: ComposerSend[] = [];
+    fixture.componentInstance.send.subscribe((e) => sent.push(e));
+    fixture.componentInstance['submit']();
+    expect(sent[0].content).toBe('typed in source only');
   });
 });
