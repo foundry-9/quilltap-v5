@@ -148,8 +148,10 @@ export function buildProfileRequestBody(form: ProfileFormData): Record<string, u
   }
 
   // v4 `:122-127`: the sampling controls first, then the provider-option keys
-  // spread over them — same order, so a bag that somehow carries a sampling key
-  // still loses to the form's control, as in v4.
+  // spread over them — same order. NOTE the later spread WINS in a JS object
+  // literal, so a bag that somehow carried a sampling key would override the
+  // form's control — in v4 and v5 alike. Unreachable in practice: the load
+  // path strips the three sampling keys out of the bag first.
   const parameters: Record<string, unknown> = {
     temperature: parseFloat(String(form.temperature)),
     max_tokens: parseInt(String(form.maxTokens), 10),

@@ -20,8 +20,9 @@
 //! `Infinity` is a number that passes `> 0` and then stringifies to `null`;
 //! `NaN` fails `> 0`; a STRING `maxContext` fails `typeof === 'number'`.
 //!
-//! Generate the oracle output (from the pinned v4 worktree):
-//!   cd /tmp/qt-v4-pin-p4d79-aa464abf
+//! Generate the oracle output (from the v4 checkout; pin a detached worktree
+//! via recipe_sweep.py --v4 when v4 HEAD has moved past the baseline):
+//!   cd ~/source/quilltap-server
 //!   ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!     ~/source/quilltap-v5/harness/oracle/cases/profile-params.ts \
 //!     > /tmp/oracle-profile-params.ndjson

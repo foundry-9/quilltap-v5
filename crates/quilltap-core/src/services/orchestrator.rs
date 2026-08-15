@@ -2182,10 +2182,29 @@ where
     // be a regression on the danger-reroute path — measured: the tier-3's
     // `danger_live_reroute` case goes red.
     let effective_profile_row: Value = if did_reroute {
-        db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| connection_profile.clone())
+        match db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
+        {
+            Ok(Some(row)) => row,
+            // v4 cannot lose the rerouted profile (it carries the full object
+            // in `streamingState.effectiveProfile`); v5 re-reads the row, so a
+            // failed read or a same-turn delete falls back to the ORIGINAL
+            // profile's anchor + params. Rare, but it must be LOUD — a silent
+            // fallback here is undiagnosable (the aa464abf unification
+            // review's finding).
+            other => {
+                let outcome = match other {
+                    Ok(_) => "row missing".to_string(),
+                    Err(e) => format!("read failed: {e}"),
+                };
+                tracing::warn!(
+                    target: "quilltap::orchestrator",
+                    profile_id = %effective_profile.id,
+                    %outcome,
+                    "Rerouted profile row unavailable at context build; falling back to the original profile's anchor and parameters",
+                );
+                connection_profile.clone()
+            }
+        }
     } else {
         connection_profile.clone()
     };
@@ -2390,6 +2409,9 @@ where
         // v4's `modelParams.temperature as number | undefined` is an unchecked
         // TS cast: a non-numeric cell would reach the SDK verbatim there and is
         // dropped here, the typed-field divergence this seam cannot avoid.
+        // Likewise `maxTokens`: v4 forwards a fractional cell verbatim where
+        // the typed i64 seam truncates it (1000.5 → 1000) — same class, noted
+        // at the aa464abf unification review.
         temperature: model_params.get("temperature").and_then(Value::as_f64),
         max_tokens: model_params
             .get("maxTokens")

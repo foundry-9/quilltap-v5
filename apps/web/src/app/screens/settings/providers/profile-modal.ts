@@ -61,7 +61,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
  * renders the per-provider option rows from each plugin's
  * `getProviderOptionsSchema()` through the generic `ProviderOptionsPanel`. v5
  * has no plugin option-schema machinery — `optionsSchema` is hardcoded null, the
- * standing documented absence — so the ONE option that exists at this baseline,
+ * standing documented absence — so the one option NEW at this baseline,
  * Ollama's `enable_thinking` (v4 `d9c5a1c7`, plugin 1.0.41), is rendered here as
  * a hardcoded provider-gated field writing the same `parameters` key. Label and
  * help text are v4's schema strings verbatim, and the group keeps v4's

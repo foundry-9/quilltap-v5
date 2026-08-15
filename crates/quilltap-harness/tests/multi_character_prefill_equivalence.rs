@@ -15,8 +15,9 @@
 //!     fall THROUGH to the provider default instead of coercing — the reason
 //!     the v5 helper uses `Value::as_bool()` and not a truthiness test.
 //!
-//! Generate the oracle output (from the pinned v4 worktree):
-//!   cd /tmp/qt-v4-pin-p4d79-aa464abf
+//! Generate the oracle output (from the v4 checkout; pin a detached worktree
+//! via recipe_sweep.py --v4 when v4 HEAD has moved past the baseline):
+//!   cd ~/source/quilltap-server
 //!   ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!     ~/source/quilltap-v5/harness/oracle/cases/multi-character-prefill.ts \
 //!     > /tmp/oracle-multi-character-prefill.ndjson

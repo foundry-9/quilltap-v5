@@ -746,10 +746,19 @@ fn preflight_preserve_ids(
                     // (`repos.characters.findById`). Existence is a row
                     // question, and a broken vault must not change the answer.
                     // The measured consequence is recorded as a divergence in
-                    // the P4.48 lane record: on a colliding character whose
-                    // vault is unavailable, v4's overlay throw wins (→
-                    // `success:false`, EMPTY warnings) where v5 reports the
-                    // ordinary collision. Both refuse; only the body differs.
+                    // the P4.48 lane record, and it has TWO legs (scope
+                    // widened at the aa464abf unification review):
+                    //  - COLLIDING character, vault unavailable: v4's overlay
+                    //    throw wins (→ `success:false`, EMPTY warnings) where
+                    //    v5 reports the ordinary collision. Both refuse; only
+                    //    the body differs.
+                    //  - SKIPPABLE character (rehydrate's target seat, row
+                    //    present), vault unavailable: v4's overlay throw
+                    //    refuses the whole import up front, where v5 grants
+                    //    the skip sanction and PROCEEDS — any vault failure
+                    //    surfaces later, from whichever write first touches
+                    //    the broken store. Same rationale: the seat's
+                    //    existence is not the vault's health.
                     let e = crate::db::characters_read::find_by_id_raw(main, id)
                         .map_err(|e| e.to_string())?
                         .is_some();
