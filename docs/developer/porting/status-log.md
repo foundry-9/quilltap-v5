@@ -69650,3 +69650,61 @@ the two halves cannot drift apart unnoticed.
 
 **Gate:** `ng test --filter "Send lights"` 1 passed; `--filter "greeting"` 4
 passed.
+
+## P4.D81 — the lane's deferrals, verdicts, and gate
+
+**Tier 3, loud (all three, plus one the survey turned up).**
+
+1. **The optionsSchema machinery stays unported** (the standing documented
+   absence; P4.D78's Tier 3). Unit 3's hardcoded Ollama row is the RECORDED
+   MECHANISM DIVERGENCE, not a stepping stone: when the schema machinery is
+   eventually ported, the hardcoded row is deleted, not extended. Consequence
+   worth naming — any option a plugin adds after this baseline is invisible in
+   the v5 editor until someone hardcodes it or the machinery lands. It is now
+   preserved-on-save rather than dropped (unit 3), which is the difference
+   between "not editable" and "destroyed by editing".
+2. **💸 A live-Ollama proof is owed** — a real thinking model streaming into the
+   fold with the box ticked, and the same chat with the prefill box unticked
+   (v4's own bug-68 verification shape: prefill on → 0 reasoning chars, off →
+   hundreds). Joins the standing dogfood queue with this round's other 💸 items.
+   Nothing in this lane can prove it: v5's Ollama wire is P4.D78's, and the SPA
+   half only writes the key.
+3. **v4's `ProfileFormData` modernization (CHANGELOG_V4:4123 — nine top-level
+   provider fields folded into the `parameters` bag) is OUT OF SCOPE and this
+   drift did not touch it.** Measured, since the order asked: v5's form never
+   carried those nine fields (`fallbackModels`, `enableZDR`, `providerOrder`,
+   `useCustomModel`, `enableCacheBreakpoints`, `cacheStrategy`, `cacheTTL`,
+   `verbosity`, `reasoningEffort`) — it was written after the modernization, so
+   v5's shape was already v4's post-modernization shape MINUS the bag. Unit 3
+   supplied the bag, so the shapes now agree; what remains missing is only the
+   renderer (item 1).
+4. **The e2e gate flip is Contract C's** — `P4D80_ENRICHMENT_LANDED` is the
+   unifier's to flip, and the beat is theirs to run live.
+
+**Verdicts on the order's "verify, don't edit" items.**
+
+- **`allowToolUse` seeding on new Ollama profiles** (`profile-modal.ts:637-639`
+  in the order's survey; now `:698` after the prefill re-seed): verified
+  UNTOUCHED and correct. It reads `cfg?.capabilities?.toolUse`, so P4.D78's
+  manifest flip makes new Ollama profiles default-ticked with zero SPA change.
+- **The participant pipeline** (Tier 2 item 7): no rebuild-drop exists; pinned
+  in unit 4.
+- **The greeting fold**: renders from `reasoningContent` already; pinned in
+  unit 5.
+
+**Not deferred but worth flagging to the unifier:** unit 3's bag round-trip is
+a REAL behaviour change beyond v4-parity bookkeeping — before it, any profile
+save from the v5 editor dropped `num_ctx` and OpenRouter's preference keys.
+P4.D79's `num_ctx` injection reads "an explicit non-null `num_ctx` already in
+the stored blob wins", so the two lanes meet exactly here.
+
+**The lane gate.** `ng test`: **324 files / 4,741 tests / 0 failed** (exit 0).
+`ng build`: clean. **Playwright `character-archive-flow.spec.ts` by name: 9
+passed / 1 skipped** (exit 0) — the skip is the flipped beat in its GATED form,
+by design; the other nine ran live against the real axum server, so the flip did
+not disturb the file's siblings (beat 6, the seeded-stamp beat that shares the
+sidebar gesture, is green). The lane built its own debug `quilltap-web` +
+`quilltap` for the run; no `--release` build was made. Diff scope confirmed
+`apps/web/**` + the two append-only docs — **no `crates/**`, no `harness/**`**.
+Spelling guard run over every touched file, clean. Versions: SPA 0.5.487 →
+0.5.492; no crate touched.

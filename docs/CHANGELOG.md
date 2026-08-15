@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Recorded the P4.D81 lane's deferrals and gate: the provider option-schema
+renderer stays unported, a live Ollama thinking proof is owed, and the archived
+badge beat's gate is the unifier's to flip.
+
 Recorded that v4 adopted Quilltap-v5's source-view send behavior in 4.9: a send
 made with the raw-Markdown view open ships what the writer can see. No behavior
 change here — comments and test notes only, plus a spec pinning that Send lights

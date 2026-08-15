@@ -209,7 +209,7 @@ test.describe('P4.D64 — the archive tombstone, read-only', () => {
    *
    * v5 has no `useParticipants` analog — the chat GET's participants reach
    * `qt-participant-card` contract-typed and untransformed (pinned at unit
-   * level in `participants-section.spec.ts`), so the whole fix is the server
+   * level in `chat-sidebar.spec.ts`), so the whole fix is the server
    * projection: P4.D80's `chat_enrichment.rs`.
    *
    * ACTIVATE-AT-UNIFY behind {@link P4D80_ENRICHMENT_LANDED}, flipped when
