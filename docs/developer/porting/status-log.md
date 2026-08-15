@@ -69704,3 +69704,25 @@ quilltap-core/native-transport`; `cargo build --release` exit 0; full
 commit); `character_archive_tier2_equivalence` positively confirmed RAN — all
 20 cases printed by name, zero SKIP — over an oracle regenerated fresh at the
 `aa464abf` pin. Spelling guard rides the harness run. `apps/web` untouched.
+
+### P4.D80 addendum — the oracle re-proven against a CLEAN pin
+
+v4's checkout was clean at lane start and went **dirty mid-lane** (a bug-70
+WIP: context/token budget vs profile `maxContext`, touching
+`lib/chat/context-manager.ts`, `lib/llm/{index,model-context-data}.ts`,
+`lib/tokens/token-counter.ts`, `lib/services/chat-message/*`, plus a new
+`turn-extras.ts`). HEAD never moved off `aa464abf`.
+
+None of those files is reachable from `archive-service.ts` or
+`chat-enrichment.service.ts`, but "not reachable" is an argument, not a
+measurement. So the family was regenerated from a detached worktree pinned at
+`aa464abf` (`/tmp/qt-v4-pin-p4d80-aa464abf`, lane-unique per
+`oracle-regen-pinned-v4-worktree`; both `node_modules` symlinks in place) and
+the Rust diff re-run against it: **all 20 cases green**, identical verdicts to
+the run against the working checkout. The lane's port is therefore pinned to
+clean `aa464abf` code, and the WIP is confirmed not to reach this family. The
+pin was removed afterwards; the sibling lane's `qt-v4-pin-p4d79-aa464abf` was
+left alone.
+
+⚠ For the unifier: v4 is now dirty on `lib/` — pin a detached worktree for ANY
+regen this round, and expect bug 70 as the next drift.
