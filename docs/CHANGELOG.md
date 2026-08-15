@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Re-ran the neighbouring import, restore and archive differentials against
+freshly regenerated oracles to confirm the import read-failure change moved
+no green-path byte. Six of seven green; the one red is v4 drift on a
+connection-profile column another lane is porting, not a regression here.
+
 Pinned the import read-failure behavior with three differential arms that
 plant a failure in the database itself and compare against v4's real import
 and preview. Two legs, measured rather than assumed: an unavailable document

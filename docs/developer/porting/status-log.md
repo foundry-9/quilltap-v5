@@ -69695,3 +69695,88 @@ QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
 ```
 
 **Versions:** harness 0.0.474.
+
+## P4.48 unit 3 — the happy-path re-run at the pin (2026-08-15)
+
+Tier 2 deliverable 4: the neighbouring import/restore/archive families
+regenerated FRESH at `aa464abf` through the sanctioned sweep driver and
+re-run by name, proving the propagation change altered no green-path byte.
+
+```
+python3.13 harness/tools/recipe_sweep.py --run-all \
+  --families qtap_import_equivalence,system_import_equivalence,\
+system_import_state,system_restore_equivalence,system_restore_state,\
+character_archive_tier2_equivalence,archive_reencrypt_tier2_equivalence \
+  --results /tmp/p448-sweep.json --force
+```
+
+**6 ok, 1 run_failed — and the one red is NOT this lane's.**
+
+| family | result |
+|---|---|
+| `qtap_import_equivalence` | ok |
+| `system_import_equivalence` | ok (29 cases, incl. the two new arms) |
+| `system_import_state` | ok (34 cases, incl. the new arm) |
+| `system_restore_equivalence` | ok |
+| `system_restore_state` | **run_failed — v4 drift, P4.D79's column** |
+| `character_archive_tier2_equivalence` | ok (the rehydrate path — the preflight's other live consumer) |
+| `archive_reencrypt_tier2_equivalence` | ok |
+
+### The `system_restore_state` red is the D23 tripwire, firing as designed
+
+The whole diff is ONE field on `main.connection_profiles`: the oracle carries
+`multiCharacterPrefill: null`, the Rust row has no such key. No row count
+differs, no warning differs, no other column differs. v5 has **zero**
+references to `multiCharacterPrefill` anywhere (`ggrep -ril` over `crates/` +
+`apps/` → 0); v4 at the pin has it in `lib/llm/multi-character-prefill.ts`,
+`lib/schemas/profile.types.ts` and the context builder.
+
+That column is **P4.D79's** deliverable by name ("the multiCharacterPrefill
+column through the D23 re-dump and boot ensure"). This lane cannot add or
+remove a schema column, and its change is confined to error propagation. So
+this is v4 drift the round absorbs elsewhere — **not a P4.48 regression, and
+not something to "fix" here.** It should go green once P4.D79 lands; the
+unifier should expect it red until then.
+
+Note for whoever runs the driver next: `harness/tools/recipe_sweep.py`
+requires **Python 3.12+** (it has an f-string containing a backslash). The
+`python3` on PATH here is 3.9 and dies with a `SyntaxError` before parsing
+its own `--help`; `/opt/homebrew/bin/python3.13` runs it fine. Worth a shebang
+or a version guard in the driver.
+
+### Full lane gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again
+  with `--features quilltap-core/native-transport`.
+- `cargo build --release` clean.
+- `cargo test --workspace` with this lane's two oracle env vars:
+  **431 test binaries / 2,089 tests / 0 failed** (cargo exit 0).
+- The three new arms positively confirmed to have RUN by name under
+  `--nocapture` (`OK preview_planted_unreadable_tags_table`,
+  `OK preview_planted_unavailable_project_store`,
+  `OK execute_preserve_ids_unavailable_store_refuses`) — the SKIP-masquerade
+  check, since an unset env var returns early and still passes.
+- `apps/web` untouched: 0 files changed in the lane, committed or otherwise.
+- Spelling guard green (rides the harness).
+
+**Versions:** core 0.0.550, harness 0.0.474. No fixture changed, so no
+sibling oracle is invalidated.
+
+### Left OPEN under this order (loud)
+
+- **The DB-read-error divergence is pinned on the PREVIEW path only.** The
+  execute path carries the equality arm (the overlay leg) but no
+  full-state divergence arm for the read-error leg, because v4 partially
+  applies there and v5 writes nothing — a whole-state both-directions pin
+  for a legitimately huge delta buys little over the preview pin of the
+  same `safeQuery` mechanism. Recorded rather than silently skipped.
+- **The character-reader divergence** (v5's preflight uses
+  `find_by_id_raw`, v4 uses the overlay-applying `findById`) is recorded at
+  the call site and in unit 1's entry, deliberately NOT changed, and NOT
+  pinned by an arm.
+- 💸 A live import against a genuinely damaged instance joins the owed
+  dogfood queue, per the order's Tier 3.
+- **The v4-side filing** for the swallow (v4's own preflight reads an
+  unreadable table as "the id is free") is owed to the human's upstream
+  list — this lane does not patch v4, since that moves the oracle baseline.
