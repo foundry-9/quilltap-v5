@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Ported v4's multi-character prefill default into the SPA
+(`defaultMultiCharacterPrefill`): off for Anthropic, on for every other
+provider, on when the provider is absent. It seeds the connection-profile
+editor's new checkbox; the stored value's resolution stays server-side.
+
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
 think/num_ctx request fields with the retry-without-think, the toolUse

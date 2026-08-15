@@ -69470,3 +69470,35 @@ owed dogfood pass (now + this round's surfaces), `p4.9l2`, `p4.9i2`, and
 the banked smalls follow — the list lives in `phase-4.md`. The two v4-side
 filings owed by the human: the source-mode send discarding edits (P4.9L),
 the archived-seat-badge GET gap (standing).
+
+## P4.D81 unit 1 — the multi-character prefill default, client twin (v4 `23af7146`)
+
+**Branch:** `claude/p4-drift-spa-riders-port-86c19f`. **v4 pin:**
+`aa464abf` (drift-checked at lane start: `git log aa464abf..main` empty,
+tree clean on `main`; `bugfix` measured by `git diff main bugfix -- lib/
+app/ packages/ plugins/ components/` — behind main, nothing portable).
+
+**What landed.** `apps/web/src/app/screens/settings/providers/
+multi-character-prefill.ts` — `defaultMultiCharacterPrefill(provider)`,
+transcribed from v4 `lib/llm/multi-character-prefill.ts:36,41-44`: an exact
+Set membership test on the upper-cased provider, `ANTHROPIC` the only
+member, an absent/empty provider `true`.
+
+**Scope of the twin — deliberately half of v4's module.** v4's file also
+exports `profileUsesNamePrefill` (`:52-59`), the tri-state resolution of a
+STORED value. v5 keeps that server-side (P4.D79's
+`services/multi_character_prefill.rs`) and nothing in the SPA resolves a
+stored value: the form seeds `profile.multiCharacterPrefill ?? default(...)`
+(unit 2) and sends whatever the box holds, so the client only ever needs the
+default. Recorded in the module doc-comment so a later reader does not read
+the missing export as a drop.
+
+**The differential.** v4's client is the oracle (the standing SPA rule).
+`multi-character-prefill.spec.ts` transcribes v4's own suite case for case
+(`__tests__/unit/lib/llm/multi-character-prefill.test.ts:8-28`) and adds two
+arms v4 leaves implicit: a mixed-case `Anthropic`, and
+`ANTHROPIC_COMPATIBLE` → `true` (the membership test is exact, not a
+substring match — the arm that would go red if the port reached for
+`includes`).
+
+**Gate:** `ng test --filter "defaultMultiCharacterPrefill"` — 5 passed.
