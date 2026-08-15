@@ -441,8 +441,13 @@ pub(super) fn import_projects(
         let source_id = super::id_of(raw);
         let name = display_name(raw);
         let out: Result<(), String> = (|| {
-            // v4's findById swallows overlay failures to null.
-            let existing = repo.find_by_id(&source_id).ok().flatten();
+            // [P4.48] v4's `repos.projects.findById` swallows a DB read error to
+            // null (`_findById` = `safeQuery(…, null)`) but does NOT swallow an
+            // overlay failure — `applyOverlayOne` throws, and this loop's
+            // per-item `catch` turns it into the `Failed to import project "…"`
+            // warning below. Propagating both legs matches v4 on the overlay
+            // one and is the ruled divergence on the read one.
+            let existing = repo.find_by_id(&source_id).map_err(|e| e.to_string())?;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
@@ -529,7 +534,8 @@ pub(super) fn import_groups(
         let source_id = super::id_of(raw);
         let name = display_name(raw);
         let out: Result<(), String> = (|| {
-            let existing = repo.find_by_id(&source_id).ok().flatten();
+            // [P4.48] See `import_projects` — same two legs, same disposition.
+            let existing = repo.find_by_id(&source_id).map_err(|e| e.to_string())?;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {

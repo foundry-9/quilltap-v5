@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The `.qtap` import no longer mistakes an unreadable database for an empty
+one. Every existence check in the preserve-ids preflight, the per-item
+importers, and the import preview used to swallow a read failure and report
+the id as free; a failed read now refuses the import (or sinks the preview)
+instead of going on to attempt id-carrying inserts into a database it could
+not read. Twenty-three sites in all — the escalation had counted ten,
+missing the multi-line ones. A fresh survey of v4 refuted the premise that
+v4 propagates here: v4 swallows the same read errors, so this is a
+deliberate divergence under the import/restore ruling, except on the
+unavailable-document-store leg, where v4 genuinely throws and v5 was simply
+wrong.
+
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
 think/num_ctx request fields with the retry-without-think, the toolUse

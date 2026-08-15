@@ -69470,3 +69470,134 @@ owed dogfood pass (now + this round's surfaces), `p4.9l2`, `p4.9i2`, and
 the banked smalls follow — the list lives in `phase-4.md`. The two v4-side
 filings owed by the human: the source-mode send discarding edits (P4.9L),
 the archived-seat-badge GET gap (standing).
+
+---
+
+## P4.48 unit 1 — the import preflight's swallowed read errors, propagated (2026-08-15)
+
+Branch `claude/p4-48-import-preflight-errors-3a4998`. v4 pin `aa464abf`
+(HEAD at lane start, tree clean, on `main`; `git log aa464abf..main` empty
+and the `bugfix` branch measured by `diff` — it trails main, nothing owed).
+
+### The order's central premise is REFUTED — measure, don't assume
+
+The order mandated "propagate at all ten sites, **byte-match v4's refusal
+surface**", on the escalation's finding that v4 "PROPAGATES the error and
+refuses the whole import". A fresh survey of v4's real code says otherwise,
+and the correction reshapes the deliverable rather than shrinking it.
+
+**The mechanism the escalation missed** is `lib/database/repositories/
+safe-query.ts`. `safeQuery` has TWO modes, chosen by argument count: three
+args = log-and-RETHROW, four args = log-and-return-FALLBACK. Every read the
+import preflight and preview perform bottoms out in
+`AbstractBaseRepository._findById`, which is:
+
+```ts
+return this.safeQuery(async () => { … }, 'Error finding entity by ID', { id }, null);
+```
+
+— four args. **FALLBACK mode.** So v4 swallows a DB read error to `null` at
+every repo this family consults, and v4's own preflight then reads the id as
+free, exactly as v5 did. Verified repo by repo, including the overrides:
+`roleplayTemplates.findById` has its own `safeQuery(…, null)`;
+`docMountBlobs.findById` its own `try/catch → null`; `chats`, `memories`,
+`tags`, `files`, `docMountPoints`, `docMountFolders`, `docMountFiles`,
+`docMountFileLinks`, the profile repos and the user-scoped wrappers all
+delegate to `_findById`.
+
+**The one leg where v4 genuinely throws** is the document-store overlay.
+`store-backed.repository.ts:66` is
+`applyOverlayOne(await this._findById(id))` — only the INNER call sits in a
+`safeQuery`. `applyOverlayOne` raises the entity's unavailability error
+un-wrapped when the row EXISTS but its store is missing/unreadable. The
+character repo has the same shape via `applyDocumentStoreOverlayOne`.
+
+**The measured truth table (v4 `aa464abf`):**
+
+| region | v4 on a DB read error | v4 on overlay-unavailable (existing row) | v5 before |
+|---|---|---|---|
+| preflight (`mod.rs`, 16 sites) | swallow → "id free" → import proceeds and partially applies | **THROW** → caught at `execute.ts:483` → `success:false`, `warnings` UNTOUCHED | swallow both |
+| import body (`entities.rs`, 2 sites) | swallow → "not existing" → create | **THROW** → per-item catch → `Failed to import project "X": <msg>`, item dropped | swallow both |
+| preview (`preview.rs`, 5 sites) | swallow → `exists:false` | **THROW** → propagates (`previewImport` has no `try`) | swallow both |
+
+So the fix splits in two, and only the second half is a byte-match:
+
+- **The overlay leg was a plain v5 port bug.** v5 now matches v4 exactly —
+  including that a preflight refusal leaves `warnings` alone, because v4's
+  catch at the preflight call site swallows the message (only the collision
+  path pushes one). No divergence owed.
+- **The DB-read-error leg is a deliberate divergence**, landed under the
+  standing 2026-08-03 ruling ("in backup/restore/import/export, v5 FIXES v4
+  bugs rather than reproducing them") which names `services/quilltap_import/**`
+  explicitly. v5 refuses where v4 proceeds. Owed: the both-directions pin in
+  the harness (unit 2) and the v4-side filing.
+
+### Site count: 23, not 10
+
+The escalation's ten came from a single-line grep. `.ok()` and `.flatten()`
+are on separate lines at most sites. Measured multi-line-aware: **mod.rs 16,
+entities.rs 2, preview.rs 5**. Two more of the same class were found beyond
+the escalation's list and fixed with them — `preview.rs`'s prompt-template
+`find_by_name` (`.ok().flatten()`) and its plugin-config `query_row(…)
+.is_ok()`, which folded a read failure into the same `false` as a genuine
+miss. Zero swallow sites remain in the three files.
+
+### One thing deliberately NOT changed
+
+`file_linked_in_target_vault` in the preflight keeps its `.unwrap_or(false)`.
+v4's `docMountFileLinks.findByFileId` is a `safeQuery(…, [])` — fallback to
+an EMPTY list, so `.some()` answers false. It is also a skip CLASSIFIER, not
+an existence check: answering false only withholds the skip sanction, which
+makes the import refuse a collision rather than silently claim an id. Marked
+with a ⚠ comment so the next reader does not "fix" it.
+
+### A recorded divergence found on the way (NOT changed)
+
+v5's preflight checks character existence with `characters_read::
+find_by_id_raw`; v4 uses `repos.characters.findById`, which applies the vault
+overlay and can throw. On a colliding character whose vault is unavailable v4
+answers `success:false` with EMPTY warnings (the overlay throw wins), where
+v5 answers the ordinary `Preserve IDs collision for character <id>`. Both
+refuse; only the body differs. Left as-is — existence is a row question and a
+broken vault should not change the answer — and recorded at the call site.
+
+### The unit sweep (all mutation-proven)
+
+`quilltap_import::tests` + a new `preview::tests`, 7 cases, driving the
+PUBLIC entry points over two cheap plants:
+
+1. **no tables at all** — the DB-read-error leg;
+2. **a `projects` row with a NULL `officialMountPointId`** — the slim read
+   succeeds, then `apply_overlay_one` raises `Unavailable` without touching
+   the mount DB. The overlay leg, exactly where v4 throws.
+
+The discriminator that makes the preflight cases mutation-sensitive: a
+preflight refusal answers `success:false` with `warnings` **empty**, where a
+body failure appends `Import failed: …`. Asserting emptiness proves the
+refusal came from the preflight.
+
+- `preflight_refuses_when_the_existence_read_fails` — 12 payload kinds
+- `preflight_refuses_for_the_document_store_kinds` — folder/document/blob
+- `preflight_refuses_when_a_colliding_projects_store_is_unavailable`
+- `import_projects_warns_when_the_existence_read_fails`
+- `preview_propagates_a_failed_existence_read` — 12 kinds
+- `preview_propagates_an_unavailable_project_store` — asserts the
+  `DbError::StoreUnavailable` arm survives structurally (the P4.23 503)
+- `a_genuine_miss_still_reads_as_free` — the not-found leg is UNCHANGED
+
+**Mutation proofs run, one per region:** reverting the Tag preflight site,
+the `entities.rs` projects site, or the `preview.rs` files site to
+`.ok().flatten()` reddens the matching case. The entities proof caught a
+**vacuous assertion in the first draft of this lane's own test**: asserting
+only the `Failed to import project "…"` prefix passes under the mutation
+too, because the swallowed read falls through to `create`, which fails
+against the stub database and pushes an identically-shaped warning
+(`…: sqlite error: no such table: doc_mount_points`). The test now asserts
+the overlay message body verbatim.
+
+**Owed within this lane (unit 2):** the planted-failure differential arms on
+`system_import_state` (execute) and `system_import_equivalence` (preview),
+pinning the DB-error divergence in BOTH directions and the overlay leg as an
+equality.
+
+**Versions:** core 0.0.550.

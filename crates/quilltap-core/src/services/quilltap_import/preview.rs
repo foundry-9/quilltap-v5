@@ -10,6 +10,16 @@
 //! entity carries `matchedExistingId`. That extra key is absent on an id match
 //! and absent on a miss (v4 builds the object literal three different ways).
 //!
+//! ## [P4.48] A failed existence read sinks the preview
+//!
+//! Every check below used to be `.ok().flatten()` — a read error read as
+//! "doesn't exist", which reports a confident `exists: false` the instance
+//! cannot actually support. They now propagate. `previewImport` carries no
+//! `try`, so v4's own throwing legs (an unavailable project/group store, which
+//! `applyOverlayOne` raises un-wrapped) sink its preview identically; the
+//! swallowing legs (`safeQuery(…, null)` inside `_findById`) are the ruled
+//! divergence recorded on the preflight in `mod.rs`.
+//!
 //! ## The shapes v4's `&&` spreads produce
 //!
 //! `entities.<kind>` is present only when that kind's array is NON-EMPTY, so a
@@ -118,16 +128,20 @@ pub fn preview_import(
     let projects_out = {
         let repo = projects::ProjectsRepository::new(main, mount);
         check(arr("projects"), "projects", &mut |id| {
-            // The overlay read throws when a project's store is missing; v4's
-            // `findById` swallows to `null`, so treat any overlay failure as
-            // "not found" rather than sinking the whole preview.
-            Ok(repo.find_by_id(id).ok().flatten().is_some())
+            // [P4.48] The old comment here claimed v4's `findById` swallows the
+            // overlay failure to `null`. The fresh survey at `aa464abf` says
+            // otherwise: `store-backed.findById` is
+            // `applyOverlayOne(await this._findById(id))` and only the INNER
+            // `_findById` sits in a `safeQuery(…, null)`. `applyOverlayOne`
+            // throws, un-wrapped, and `previewImport` has no `try` — so an
+            // unavailable store sinks v4's whole preview too.
+            Ok(repo.find_by_id(id).map_err(|e| e.into_db())?.is_some())
         })?
     };
     let groups_out = {
         let repo = groups::GroupsRepository::new(main, mount);
         check(arr("groups"), "groups", &mut |id| {
-            Ok(repo.find_by_id(id).ok().flatten().is_some())
+            Ok(repo.find_by_id(id).map_err(|e| e.into_db())?.is_some())
         })?
     };
 
@@ -145,7 +159,7 @@ pub fn preview_import(
         let mut conflicts = 0i64;
         for mp in arr("mountPoints").map(|v| v.as_slice()).unwrap_or(&[]) {
             let id = id_of(mp);
-            let exists = repo.find_full_json_by_id(&id).ok().flatten().is_some();
+            let exists = repo.find_full_json_by_id(&id)?.is_some();
             if exists {
                 conflicts += 1;
             }
@@ -169,7 +183,7 @@ pub fn preview_import(
         let mut conflicts = 0i64;
         for file in arr("files").map(|v| v.as_slice()).unwrap_or(&[]) {
             let id = id_of(file);
-            let exists = repo.find_by_id(&id).ok().flatten().is_some();
+            let exists = repo.find_by_id(&id)?.is_some();
             if exists {
                 conflicts += 1;
             }
@@ -208,9 +222,7 @@ pub fn preview_import(
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let existing = crate::db::prompt_templates::find_by_name(main, user_id, name)
-                .ok()
-                .flatten();
+            let existing = crate::db::prompt_templates::find_by_name(main, user_id, name)?;
             if existing.is_some() {
                 conflicts += 1;
             }
@@ -259,13 +271,20 @@ pub fn preview_import(
                 .get("pluginName")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let exists = main
-                .query_row(
-                    "SELECT 1 FROM plugin_configs WHERE userId = ?1 AND pluginName = ?2",
-                    rusqlite::params![user_id, plugin_name],
-                    |_| Ok(()),
-                )
-                .is_ok();
+            // [P4.48] `.is_ok()` used to stand here, which folded a read FAILURE
+            // into the same `false` as a genuine miss. v4's
+            // `pluginConfigs.findByUserAndPlugin` is another `safeQuery(…, null)`
+            // — the same swallow — so this is the ruled divergence leg, not a
+            // fidelity fix. Only `QueryReturnedNoRows` means "absent".
+            let exists = match main.query_row(
+                "SELECT 1 FROM plugin_configs WHERE userId = ?1 AND pluginName = ?2",
+                rusqlite::params![user_id, plugin_name],
+                |_| Ok(()),
+            ) {
+                Ok(()) => true,
+                Err(rusqlite::Error::QueryReturnedNoRows) => false,
+                Err(e) => return Err(e.into()),
+            };
             if exists {
                 conflicts += 1;
             }
@@ -414,4 +433,108 @@ fn check_characters(
         conflict_counts.insert("characters".to_string(), Value::from(conflicts));
     }
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// [P4.48] The preview's existence checks propagate a failed read instead of
+    /// reporting a confident `exists: false` the instance cannot support.
+    ///
+    /// v4's `previewImport` carries no `try`, so its own throwing legs sink the
+    /// preview identically; the legs v4 swallows (`safeQuery(…, null)`) are the
+    /// ruled divergence recorded on the preflight in `mod.rs`.
+    fn preview_of(data: Value, main: &Connection, mount: &Connection) -> Result<Value, DbError> {
+        let export = super::super::QuilltapExport {
+            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
+            data,
+        };
+        preview_import(main, mount, "user", &export)
+    }
+
+    /// Every kind whose existence test reads a repository, against a database
+    /// with no tables at all.
+    #[test]
+    fn preview_propagates_a_failed_existence_read() {
+        let cases: Vec<(&str, Value)> = vec![
+            ("chats", json!({"id": "ch1", "title": "C"})),
+            ("tags", json!({"id": "t1", "name": "T"})),
+            ("connectionProfiles", json!({"id": "cp1", "name": "P"})),
+            ("imageProfiles", json!({"id": "ip1", "name": "P"})),
+            ("embeddingProfiles", json!({"id": "ep1", "name": "P"})),
+            ("roleplayTemplates", json!({"id": "rt1", "name": "R"})),
+            ("projects", json!({"id": "pr1", "name": "P"})),
+            ("groups", json!({"id": "g1", "name": "G"})),
+            ("mountPoints", json!({"id": "mp1", "name": "S"})),
+            ("files", json!({"id": "f1", "originalFilename": "a.png"})),
+            ("promptTemplates", json!({"id": "pt1", "name": "T"})),
+            ("pluginConfigs", json!({"id": "pc1", "pluginName": "p"})),
+        ];
+        for (key, item) in cases {
+            let main = Connection::open_in_memory().unwrap();
+            let mount = Connection::open_in_memory().unwrap();
+            let out = preview_of(json!({ key: [item] }), &main, &mount);
+            assert!(
+                out.is_err(),
+                "{key}: an unreadable table must sink the preview, not read as \
+                 `exists: false`"
+            );
+        }
+    }
+
+    /// The overlay leg — v4 throws here too (`applyOverlayOne`, un-wrapped).
+    #[test]
+    fn preview_propagates_an_unavailable_project_store() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE projects (
+                 id TEXT PRIMARY KEY,
+                 name TEXT,
+                 officialMountPointId TEXT,
+                 createdAt TEXT,
+                 updatedAt TEXT
+             );
+             INSERT INTO projects (id, name, officialMountPointId, createdAt, updatedAt)
+             VALUES ('pr1', 'Planted', NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let err = preview_of(
+            json!({"projects": [{"id": "pr1", "name": "P"}]}),
+            &main,
+            &mount,
+        )
+        .expect_err("an unavailable store sinks the preview");
+        assert!(
+            matches!(err, DbError::StoreUnavailable { .. }),
+            "the `Unavailable` arm must survive structurally so the api layer \
+             can answer v4's contextful 503 (P4.23) — got {err:?}"
+        );
+    }
+
+    /// A genuine miss still reads as `exists: false` — only the ERROR leg moved.
+    #[test]
+    fn a_genuine_miss_still_reads_as_free() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE tags (
+                 id TEXT PRIMARY KEY,
+                 userId TEXT,
+                 name TEXT,
+                 nameLower TEXT,
+                 quickHide INTEGER,
+                 visualStyle TEXT,
+                 createdAt TEXT,
+                 updatedAt TEXT
+             );",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let out = preview_of(json!({"tags": [{"id": "t1", "name": "T"}]}), &main, &mount)
+            .expect("an empty but readable table is a clean miss");
+        assert_eq!(out["entities"]["tags"][0]["exists"], json!(false));
+        assert_eq!(out["conflictCounts"], json!({}));
+    }
 }
