@@ -4,7 +4,7 @@ name = "quilltap-core"
 version = "0.0.557"
 =======
 version = "0.0.550"
->>>>>>> claude/p4-d80-bug-convergence-8f1945
+>>>>>>> claude/p4-48-import-preflight-errors-3a4998
 edition = "2021"
 publish = false
 

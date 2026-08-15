@@ -450,6 +450,35 @@ fn validate_export_format(data: &Value) -> Result<(), ImportError> {
 ///
 /// Returns the collision message on refusal; `Ok(())` when the bundle may
 /// proceed (including the no-op when `preserve_ids` is off).
+///
+/// ## [P4.48] Read failures REFUSE — a measured divergence from v4
+///
+/// Every exists-check here used to be `repo.find…(id).ok().flatten()`, which
+/// collapses a `DbError` to `None` = "the id is free". That defeats the
+/// preflight's whole purpose: the preserveIds machinery would go on to attempt
+/// id-carrying INSERTs into a database it could not even read, and the
+/// refuse-on-collision / skip-if-present semantics degrade silently.
+///
+/// The lane's fresh v4 survey (`aa464abf`) **refuted** the premise that v4
+/// propagates here. v4's `AbstractBaseRepository._findById` is a
+/// `safeQuery(…, null)` — FALLBACK mode — so v4 swallows a read error to `null`
+/// at *every* repo this preflight consults, and its own preflight then treats
+/// the id as free exactly as v5 used to. The two legs measured:
+///
+/// - **DB read error** (unreadable/missing table): v4 swallows → the import
+///   proceeds and partially applies. v5 now REFUSES before any write. This is a
+///   deliberate divergence under the standing backup/restore/import ruling
+///   (2026-08-03: "fix v4 bugs in this family, don't match them"), pinned in
+///   BOTH directions by the harness so a v4 convergence cannot pass unnoticed.
+/// - **Overlay unavailable** on an EXISTING project/group row: v4's
+///   `applyOverlayOne` genuinely throws (it is not wrapped in `safeQuery`), and
+///   its caller catches ANY error into `success:false` with `warnings`
+///   untouched. v5 now matches that byte for byte — this leg was a plain port
+///   bug, no divergence owed.
+///
+/// The refusal message is never on the wire: `execute_import` logs it and
+/// answers `success:false` with whatever `warnings` already held, which is
+/// precisely v4's shape at `execute.ts:483`.
 fn preflight_preserve_ids(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
@@ -600,6 +629,14 @@ fn preflight_preserve_ids(
         }
     };
     // Does this content row have a link inside the target vault?
+    //
+    // ⚠ The `unwrap_or(false)` here is DELIBERATE and v4-faithful — do NOT
+    // "fix" it the way P4.48 fixed the exists-checks above. v4's
+    // `docMountFileLinks.findByFileId` is a `safeQuery(…, [])` (FALLBACK mode),
+    // so a read failure yields an EMPTY link list and `.some()` answers false.
+    // This is a skip CLASSIFIER, not an existence check: answering false only
+    // withholds the skip sanction, which makes the import refuse the collision
+    // rather than silently claim an id.
     let file_linked_in_target_vault = |file_id: &str| -> bool {
         let Some(target) = target_vault.as_deref() else {
             return false;
@@ -705,67 +742,66 @@ fn preflight_preserve_ids(
             }
             let (exists, skippable) = match kind {
                 Kind::Character => {
+                    // ⚠ `find_by_id_raw`, not the overlay reader v4 uses
+                    // (`repos.characters.findById`). Existence is a row
+                    // question, and a broken vault must not change the answer.
+                    // The measured consequence is recorded as a divergence in
+                    // the P4.48 lane record: on a colliding character whose
+                    // vault is unavailable, v4's overlay throw wins (→
+                    // `success:false`, EMPTY warnings) where v5 reports the
+                    // ordinary collision. Both refuse; only the body differs.
                     let e = crate::db::characters_read::find_by_id_raw(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some();
                     (e, target_character.as_deref() == Some(id.as_str()))
                 }
                 Kind::Tag => (
                     crate::db::tags::find_full_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::ConnectionProfile => (
                     crate::db::connection_profiles::find_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::ImageProfile => (
                     crate::db::image_profiles::find_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::EmbeddingProfile => (
                     crate::db::embedding_profiles::find_full_json_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::RoleplayTemplate => (
                     crate::db::roleplay_templates::find_full_json_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::Project => (
                     crate::db::projects::ProjectsRepository::new(main, mount)
                         .find_by_id(id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::Group => (
                     crate::db::groups::GroupsRepository::new(main, mount)
                         .find_by_id(id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::Chat => (
                     crate::db::chats_read::find_by_id(main, id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
@@ -774,8 +810,7 @@ fn preflight_preserve_ids(
                     // partial restore being re-run); another character's memory
                     // refuses.
                     let row = crate::db::memories_read::find_by_id(main, id)
-                        .ok()
-                        .flatten();
+                        .map_err(|e| e.to_string())?;
                     let owner = row
                         .as_ref()
                         .and_then(|m| m.get("characterId").and_then(Value::as_str))
@@ -788,21 +823,19 @@ fn preflight_preserve_ids(
                 Kind::DocumentStore => (
                     crate::db::doc_mount_points::DocMountPointsRepository::new(mount)
                         .find_full_json_by_id(id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     is_target_vault(Some(id)),
                 ),
                 Kind::File => (
                     crate::db::files::FilesRepository::new(main)
                         .find_by_id(id)
-                        .ok()
-                        .flatten()
+                        .map_err(|e| e.to_string())?
                         .is_some(),
                     false,
                 ),
                 Kind::DocumentStoreFolder => {
-                    let folder = folders_repo.find_by_id(id).ok().flatten();
+                    let folder = folders_repo.find_by_id(id).map_err(|e| e.to_string())?;
                     let skippable =
                         is_target_vault(folder.as_ref().map(|f| f.mount_point_id.as_str()));
                     (folder.is_some(), skippable)
@@ -823,7 +856,9 @@ fn preflight_preserve_ids(
                     // > already present is dedup rather than a collision. A
                     // > same-id/different-bytes row is a real clash and still
                     // > refuses.
-                    let existing = links_repo.find_content_row_by_id(id).ok().flatten();
+                    let existing = links_repo
+                        .find_content_row_by_id(id)
+                        .map_err(|e| e.to_string())?;
                     let carried_sha = lookup(&carried_content_sha, id);
                     let skippable = match (&existing, &carried_sha) {
                         (Some(row), Some(sha)) if &row.sha256 == sha => true,
@@ -832,7 +867,9 @@ fn preflight_preserve_ids(
                     (existing.is_some(), skippable)
                 }
                 Kind::DocumentStoreLink => {
-                    let link = links_repo.find_link_row_by_id(id).ok().flatten();
+                    let link = links_repo
+                        .find_link_row_by_id(id)
+                        .map_err(|e| e.to_string())?;
                     let skippable =
                         is_target_vault(link.as_ref().map(|l| l.mount_point_id.as_str()));
                     (link.is_some(), skippable)
@@ -842,7 +879,7 @@ fn preflight_preserve_ids(
                     // row is 1:1 with its content row, which `linkBlobContent`
                     // resolves by sha256 before reusing whatever blob row
                     // already hangs off it.
-                    let blob = blobs_repo.find_by_id(id).ok().flatten();
+                    let blob = blobs_repo.find_by_id(id).map_err(|e| e.to_string())?;
                     match blob {
                         None => (false, false),
                         Some(b) => {
@@ -1739,5 +1776,213 @@ mod tests {
         // The skipped bag never gains the optional extras.
         let skipped_keys = v["skipped"].as_object().unwrap().len();
         assert_eq!(skipped_keys, 11);
+    }
+
+    // ── [P4.48] the read-failure propagation sweep ───────────────────────────
+    //
+    // Two plants, both cheap and both exercised through the PUBLIC entry points
+    // so a regression at any single site is caught:
+    //
+    // 1. **No tables at all.** Every `find…` errors with `no such table`. This
+    //    is the DB-read-error leg — the one v4 swallows (`safeQuery(…, null)`)
+    //    and v5 now refuses, the ruled divergence.
+    // 2. **A `projects` row whose `officialMountPointId` is NULL.** The slim
+    //    read succeeds, then `apply_overlay_one` raises `Unavailable` without
+    //    touching the mount DB. This is the leg where v4 GENUINELY throws
+    //    (`applyOverlayOne` is not wrapped in `safeQuery`), so it is a plain
+    //    fidelity assertion, not a divergence.
+    //
+    // The discriminator that makes these mutation-sensitive: a preflight
+    // refusal answers `success:false` with `warnings` UNTOUCHED, where a
+    // failure inside the import body appends `Import failed: …`. Asserting the
+    // warnings are EMPTY therefore proves the refusal happened in the preflight
+    // and not later. Restore any one site to `.ok().flatten()` and the matching
+    // case flips to a body failure (or to success), reddening here.
+
+    fn preserve_ids_options() -> ImportOptions {
+        ImportOptions {
+            preserve_ids: true,
+            ..ImportOptions::seed_defaults()
+        }
+    }
+
+    fn export_with(kind: &str, item: Value) -> QuilltapExport {
+        QuilltapExport {
+            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
+            data: json!({ kind: [item] }),
+        }
+    }
+
+    /// A `projects` slim table holding one row with a NULL `officialMountPointId`.
+    fn main_with_storeless_project(id: &str) -> Connection {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE projects (
+                 id TEXT PRIMARY KEY,
+                 name TEXT,
+                 officialMountPointId TEXT,
+                 createdAt TEXT,
+                 updatedAt TEXT
+             );",
+        )
+        .unwrap();
+        main.execute(
+            "INSERT INTO projects (id, name, officialMountPointId, createdAt, updatedAt)
+             VALUES (?1, 'Planted', NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+        main
+    }
+
+    /// Every preflight kind, against a database with no tables at all: the
+    /// import must refuse BEFORE writing, with `warnings` untouched.
+    #[test]
+    fn preflight_refuses_when_the_existence_read_fails() {
+        // (payload key, a minimally-shaped item) — one per `checks` entry that
+        // reads through a repository. The document-store kinds are driven by
+        // `documents`/`blobs` records rather than a top-level array.
+        let cases: Vec<(&str, Value)> = vec![
+            ("characters", json!({"id": "c1", "name": "C"})),
+            ("tags", json!({"id": "t1", "name": "T"})),
+            ("connectionProfiles", json!({"id": "cp1", "name": "P"})),
+            ("imageProfiles", json!({"id": "ip1", "name": "P"})),
+            ("embeddingProfiles", json!({"id": "ep1", "name": "P"})),
+            ("roleplayTemplates", json!({"id": "rt1", "name": "R"})),
+            ("projects", json!({"id": "pr1", "name": "P"})),
+            ("groups", json!({"id": "g1", "name": "G"})),
+            ("chats", json!({"id": "ch1", "title": "C"})),
+            ("memories", json!({"id": "m1", "characterId": "c1"})),
+            ("mountPoints", json!({"id": "mp1", "name": "S"})),
+            ("files", json!({"id": "f1", "originalFilename": "a.png"})),
+        ];
+
+        for (key, item) in cases {
+            let main = Connection::open_in_memory().unwrap();
+            let mount = Connection::open_in_memory().unwrap();
+            let result = execute_import(
+                &main,
+                &mount,
+                "user",
+                &export_with(key, item),
+                &preserve_ids_options(),
+                None,
+            )
+            .expect("a refused preflight is still Ok(success:false)");
+            assert!(!result.success, "{key}: unreadable instance must refuse");
+            assert!(
+                result.warnings.is_empty(),
+                "{key}: the refusal must come from the preflight (warnings \
+                 untouched), not from a body failure — got {:?}",
+                result.warnings
+            );
+            assert_eq!(
+                result.imported,
+                ImportCounts::default(),
+                "{key}: nothing may be written"
+            );
+        }
+    }
+
+    /// The document-store kinds ride `documents`/`blobs`, so they need their own
+    /// payload shape — same refusal.
+    #[test]
+    fn preflight_refuses_for_the_document_store_kinds() {
+        let payloads = vec![
+            (
+                "folder",
+                json!({"folders": [{"id": "fo1", "mountPointId": "mp1"}]}),
+            ),
+            (
+                "document",
+                json!({"documents": [{"fileId": "df1", "linkId": "dl1", "contentSha256": "s"}]}),
+            ),
+            (
+                "blob",
+                json!({"blobs": [{"blobId": "b1", "fileId": "bf1", "linkId": "bl1", "sha256": "s"}]}),
+            ),
+        ];
+        for (label, data) in payloads {
+            let main = Connection::open_in_memory().unwrap();
+            let mount = Connection::open_in_memory().unwrap();
+            let export = QuilltapExport {
+                manifest: json!({"format": "quilltap-export", "version": "1.0"}),
+                data,
+            };
+            let result = execute_import(
+                &main,
+                &mount,
+                "user",
+                &export,
+                &preserve_ids_options(),
+                None,
+            )
+            .expect("a refused preflight is still Ok(success:false)");
+            assert!(!result.success, "{label}: unreadable vault must refuse");
+            assert!(
+                result.warnings.is_empty(),
+                "{label}: refusal must be the preflight's — got {:?}",
+                result.warnings
+            );
+        }
+    }
+
+    /// The overlay leg: v4's `applyOverlayOne` throws here too, so this is
+    /// fidelity, not divergence.
+    #[test]
+    fn preflight_refuses_when_a_colliding_projects_store_is_unavailable() {
+        let main = main_with_storeless_project("pr1");
+        let mount = Connection::open_in_memory().unwrap();
+        let result = execute_import(
+            &main,
+            &mount,
+            "user",
+            &export_with("projects", json!({"id": "pr1", "name": "P"})),
+            &preserve_ids_options(),
+            None,
+        )
+        .expect("a refused preflight is still Ok(success:false)");
+        assert!(!result.success);
+        assert!(
+            result.warnings.is_empty(),
+            "the overlay throw must land in the preflight's catch, which leaves \
+             warnings alone (v4 `execute.ts:483`) — got {:?}",
+            result.warnings
+        );
+    }
+
+    /// With `preserve_ids` OFF the preflight is a no-op, so the same plant is
+    /// felt by `import_projects` instead — where v4's per-item `catch` turns the
+    /// throw into a named warning and drops the item.
+    #[test]
+    fn import_projects_warns_when_the_existence_read_fails() {
+        let main = main_with_storeless_project("pr1");
+        let mount = Connection::open_in_memory().unwrap();
+        let result = execute_import(
+            &main,
+            &mount,
+            "user",
+            &export_with("projects", json!({"id": "pr1", "name": "Planted"})),
+            &ImportOptions::seed_defaults(),
+            None,
+        )
+        .expect("per-item failures never sink the import");
+        assert_eq!(
+            result.imported.projects, 0,
+            "the item must be dropped, not created"
+        );
+        // The warning must name the OVERLAY failure. Asserting only the
+        // `Failed to import project "…"` prefix would be vacuous: with the read
+        // swallowed the importer falls through to `create`, which fails against
+        // this stub database too and pushes an identically-shaped warning. The
+        // message body is what discriminates the fixed site from the broken one.
+        assert!(
+            result.warnings.iter().any(|w| w.starts_with(
+                "Failed to import project \"Planted\": Project pr1 has no usable \
+                 document store (officialMountPointId=null)"
+            )),
+            "v4's per-item catch must carry the overlay failure verbatim — got {:?}",
+            result.warnings
+        );
     }
 }

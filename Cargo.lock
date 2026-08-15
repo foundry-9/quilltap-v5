@@ -3778,7 +3778,7 @@ name = "quilltap-core"
 version = "0.0.557"
 =======
 version = "0.0.550"
->>>>>>> claude/p4-d80-bug-convergence-8f1945
+>>>>>>> claude/p4-48-import-preflight-errors-3a4998
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3825,7 +3825,7 @@ name = "quilltap-harness"
 version = "0.0.479"
 =======
 version = "0.0.474"
->>>>>>> claude/p4-d80-bug-convergence-8f1945
+>>>>>>> claude/p4-48-import-preflight-errors-3a4998
 dependencies = [
  "base64 0.22.1",
  "flate2",

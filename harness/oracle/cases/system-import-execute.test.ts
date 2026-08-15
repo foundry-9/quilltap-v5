@@ -1338,7 +1338,7 @@ function routeCase(
  */
 function executePreppedCase(
   name: string,
-  prep: 'drop-embedding-profiles' | 'builtin-default-profile',
+  prep: 'drop-embedding-profiles' | 'builtin-default-profile' | 'orphan-project-store',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
 ) {
@@ -1350,6 +1350,21 @@ function executePreppedCase(
       if (!db) throw new Error('main DB handle unavailable for prep');
       if (prep === 'drop-embedding-profiles') {
         db.exec('DELETE FROM "embedding_profiles"');
+      } else if (prep === 'orphan-project-store') {
+        // [P4.48] The slim project row survives, its document store does not.
+        // The preflight's `repos.projects.findById` therefore READS fine and
+        // `applyOverlayOne` throws — un-wrapped by any `safeQuery`, unlike the
+        // `_findById` beneath it. This is the one leg where v4 genuinely
+        // propagates, so the arm is an equality, not a divergence.
+        const touched = db
+          .prepare('UPDATE projects SET officialMountPointId = NULL WHERE id = ?')
+          .run('a3000000-0000-4000-8000-000000000001');
+        if (touched.changes !== 1) {
+          throw new Error(
+            'orphan-project-store prep touched no row — the fixture no longer ' +
+              'carries PROJECT_1 and the arm would be vacuous',
+          );
+        }
       } else {
         db.exec(`UPDATE "embedding_profiles" SET "provider" = 'BUILTIN'`);
       }
@@ -1734,6 +1749,34 @@ async function main(): Promise<void> {
         },
       }),
       { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+    ),
+    // [P4.48] The preflight's refusal when an existence read FAILS rather than
+    // missing. A preserveIds import whose bundle claims the very project whose
+    // document store the prep has just orphaned: v4's preflight read throws at
+    // `applyOverlayOne`, the call site at `execute.ts:483` catches ANY error
+    // into `success:false` with `warnings` UNTOUCHED, and not a row is written.
+    //
+    // The arm exists because v5 used to swallow that read to "the id is free"
+    // and march on to attempt id-carrying INSERTs. Both the result body and all
+    // three partitions are diffed, so "nothing was written" is proven rather
+    // than asserted.
+    executePreppedCase(
+      'execute_preserve_ids_unavailable_store_refuses',
+      'orphan-project-store',
+      () => ({
+        manifest: mergedPayload.manifest,
+        data: {
+          projects: [
+            { id: 'a3000000-0000-4000-8000-000000000001', name: 'The Voyage', state: {} },
+          ],
+        },
+      }),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: false,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
     ),
     routeCase('route_missing_export_data', () => ({})),
     routeCase('route_missing_options', () => ({

@@ -52,6 +52,25 @@
 //! other table, and `chunkCount` is compared as an ordinary column. Nothing here
 //! is skipped or normalized on that account any more.
 //!
+//! ## [P4.48] `execute_preserve_ids_unavailable_store_refuses`
+//!
+//! The preflight's refusal when an existence read FAILS rather than misses. The
+//! `orphan-project-store` prep nulls `PROJECT_1`'s `officialMountPointId` on
+//! both sides' fixture copies, then a preserveIds import claims that very id:
+//! the read succeeds and `applyOverlayOne` throws — the ONE leg where v4
+//! propagates too, since only the `_findById` beneath it sits in a
+//! `safeQuery(…, null)`.
+//!
+//! Measured on v4 at `aa464abf`: `success:false`, `warnings: []` (the catch at
+//! `execute.ts:483` swallows the message; only the collision path pushes one),
+//! and every partition byte-identical to the baseline. v5 now matches all
+//! three, which is what proves the fix — v5 used to read the failure as "the id
+//! is free" and march on to attempt id-carrying INSERTs into a store it could
+//! not read. An EQUALITY arm, not a divergence.
+//!
+//! Mutation-proven: reverting the preflight's Project site to `.ok().flatten()`
+//! reddens it on the result body.
+//!
 //! Generate the oracle (see `system-import-execute.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
 //!     cargo test -p quilltap-harness --test system_import_state -- --nocapture
@@ -995,7 +1014,8 @@ fn system_import_execute_state_equivalence() {
     // the carried ids, the same payload under `duplicate` behaving identically
     // because names alone do not conflict, and the id collision that refuses at
     // the preflight — which is WHY the duplicate fork is unreachable there).
-    assert_eq!(ran, 33, "expected 33 cases, ran {ran}");
+    // …+ P4.48's planted preflight-refusal arm.
+    assert_eq!(ran, 34, "expected 34 cases, ran {ran}");
     // …and the preserveIds family asserted by SHAPE, not just by the total, so a
     // truncated oracle cannot pass by arithmetic (the corpus-shape lesson). Each
     // arm is the only one covering its behaviour: the two refusal SENTENCES, the
@@ -1012,6 +1032,8 @@ fn system_import_execute_state_equivalence() {
         "execute_preserve_ids_plain_claims_ids",
         "execute_preserve_ids_duplicate_free_ids",
         "execute_preserve_ids_duplicate_existing_id_refuses",
+        // [P4.48] the refusal when the existence read FAILS rather than misses
+        "execute_preserve_ids_unavailable_store_refuses",
     ] {
         assert!(
             cases.iter().any(|c| c["name"] == arm),
@@ -1227,6 +1249,24 @@ fn run_execute_case(
                 .connection()
                 .execute_batch("UPDATE \"embedding_profiles\" SET \"provider\" = 'BUILTIN'")
                 .expect("prep: builtin default profile"),
+            // [P4.48] Orphan PROJECT_1's document store: the slim row survives,
+            // so the preflight's existence read SUCCEEDS and the overlay throws
+            // — the one leg where v4 propagates too.
+            "orphan-project-store" => {
+                let touched = conn
+                    .connection()
+                    .execute(
+                        "UPDATE projects SET officialMountPointId = NULL WHERE id = ?1",
+                        ["a3000000-0000-4000-8000-000000000001"],
+                    )
+                    .expect("prep: orphan project store");
+                // A plant that touches nothing leaves a vacuously green arm.
+                assert_eq!(
+                    touched, 1,
+                    "[{name}] the fixture no longer carries PROJECT_1 — the prep \
+                     would be a no-op and the arm vacuous"
+                );
+            }
             other => panic!("[{name}] unknown prep {other}"),
         }
     }

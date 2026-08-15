@@ -70411,3 +70411,312 @@ left alone.
 
 ⚠ For the unifier: v4 is now dirty on `lib/` — pin a detached worktree for ANY
 regen this round, and expect bug 70 as the next drift.
+---
+
+## P4.48 unit 1 — the import preflight's swallowed read errors, propagated (2026-08-15)
+
+Branch `claude/p4-48-import-preflight-errors-3a4998`. v4 pin `aa464abf`
+(HEAD at lane start, tree clean, on `main`; `git log aa464abf..main` empty
+and the `bugfix` branch measured by `diff` — it trails main, nothing owed).
+
+### The order's central premise is REFUTED — measure, don't assume
+
+The order mandated "propagate at all ten sites, **byte-match v4's refusal
+surface**", on the escalation's finding that v4 "PROPAGATES the error and
+refuses the whole import". A fresh survey of v4's real code says otherwise,
+and the correction reshapes the deliverable rather than shrinking it.
+
+**The mechanism the escalation missed** is `lib/database/repositories/
+safe-query.ts`. `safeQuery` has TWO modes, chosen by argument count: three
+args = log-and-RETHROW, four args = log-and-return-FALLBACK. Every read the
+import preflight and preview perform bottoms out in
+`AbstractBaseRepository._findById`, which is:
+
+```ts
+return this.safeQuery(async () => { … }, 'Error finding entity by ID', { id }, null);
+```
+
+— four args. **FALLBACK mode.** So v4 swallows a DB read error to `null` at
+every repo this family consults, and v4's own preflight then reads the id as
+free, exactly as v5 did. Verified repo by repo, including the overrides:
+`roleplayTemplates.findById` has its own `safeQuery(…, null)`;
+`docMountBlobs.findById` its own `try/catch → null`; `chats`, `memories`,
+`tags`, `files`, `docMountPoints`, `docMountFolders`, `docMountFiles`,
+`docMountFileLinks`, the profile repos and the user-scoped wrappers all
+delegate to `_findById`.
+
+**The one leg where v4 genuinely throws** is the document-store overlay.
+`store-backed.repository.ts:66` is
+`applyOverlayOne(await this._findById(id))` — only the INNER call sits in a
+`safeQuery`. `applyOverlayOne` raises the entity's unavailability error
+un-wrapped when the row EXISTS but its store is missing/unreadable. The
+character repo has the same shape via `applyDocumentStoreOverlayOne`.
+
+**The measured truth table (v4 `aa464abf`):**
+
+| region | v4 on a DB read error | v4 on overlay-unavailable (existing row) | v5 before |
+|---|---|---|---|
+| preflight (`mod.rs`, 16 sites) | swallow → "id free" → import proceeds and partially applies | **THROW** → caught at `execute.ts:483` → `success:false`, `warnings` UNTOUCHED | swallow both |
+| import body (`entities.rs`, 2 sites) | swallow → "not existing" → create | **THROW** → per-item catch → `Failed to import project "X": <msg>`, item dropped | swallow both |
+| preview (`preview.rs`, 5 sites) | swallow → `exists:false` | **THROW** → propagates (`previewImport` has no `try`) | swallow both |
+
+So the fix splits in two, and only the second half is a byte-match:
+
+- **The overlay leg was a plain v5 port bug.** v5 now matches v4 exactly —
+  including that a preflight refusal leaves `warnings` alone, because v4's
+  catch at the preflight call site swallows the message (only the collision
+  path pushes one). No divergence owed.
+- **The DB-read-error leg is a deliberate divergence**, landed under the
+  standing 2026-08-03 ruling ("in backup/restore/import/export, v5 FIXES v4
+  bugs rather than reproducing them") which names `services/quilltap_import/**`
+  explicitly. v5 refuses where v4 proceeds. Owed: the both-directions pin in
+  the harness (unit 2) and the v4-side filing.
+
+### Site count: 23, not 10
+
+The escalation's ten came from a single-line grep. `.ok()` and `.flatten()`
+are on separate lines at most sites. Measured multi-line-aware: **mod.rs 16,
+entities.rs 2, preview.rs 5**. Two more of the same class were found beyond
+the escalation's list and fixed with them — `preview.rs`'s prompt-template
+`find_by_name` (`.ok().flatten()`) and its plugin-config `query_row(…)
+.is_ok()`, which folded a read failure into the same `false` as a genuine
+miss. Zero swallow sites remain in the three files.
+
+### One thing deliberately NOT changed
+
+`file_linked_in_target_vault` in the preflight keeps its `.unwrap_or(false)`.
+v4's `docMountFileLinks.findByFileId` is a `safeQuery(…, [])` — fallback to
+an EMPTY list, so `.some()` answers false. It is also a skip CLASSIFIER, not
+an existence check: answering false only withholds the skip sanction, which
+makes the import refuse a collision rather than silently claim an id. Marked
+with a ⚠ comment so the next reader does not "fix" it.
+
+### A recorded divergence found on the way (NOT changed)
+
+v5's preflight checks character existence with `characters_read::
+find_by_id_raw`; v4 uses `repos.characters.findById`, which applies the vault
+overlay and can throw. On a colliding character whose vault is unavailable v4
+answers `success:false` with EMPTY warnings (the overlay throw wins), where
+v5 answers the ordinary `Preserve IDs collision for character <id>`. Both
+refuse; only the body differs. Left as-is — existence is a row question and a
+broken vault should not change the answer — and recorded at the call site.
+
+### The unit sweep (all mutation-proven)
+
+`quilltap_import::tests` + a new `preview::tests`, 7 cases, driving the
+PUBLIC entry points over two cheap plants:
+
+1. **no tables at all** — the DB-read-error leg;
+2. **a `projects` row with a NULL `officialMountPointId`** — the slim read
+   succeeds, then `apply_overlay_one` raises `Unavailable` without touching
+   the mount DB. The overlay leg, exactly where v4 throws.
+
+The discriminator that makes the preflight cases mutation-sensitive: a
+preflight refusal answers `success:false` with `warnings` **empty**, where a
+body failure appends `Import failed: …`. Asserting emptiness proves the
+refusal came from the preflight.
+
+- `preflight_refuses_when_the_existence_read_fails` — 12 payload kinds
+- `preflight_refuses_for_the_document_store_kinds` — folder/document/blob
+- `preflight_refuses_when_a_colliding_projects_store_is_unavailable`
+- `import_projects_warns_when_the_existence_read_fails`
+- `preview_propagates_a_failed_existence_read` — 12 kinds
+- `preview_propagates_an_unavailable_project_store` — asserts the
+  `DbError::StoreUnavailable` arm survives structurally (the P4.23 503)
+- `a_genuine_miss_still_reads_as_free` — the not-found leg is UNCHANGED
+
+**Mutation proofs run, one per region:** reverting the Tag preflight site,
+the `entities.rs` projects site, or the `preview.rs` files site to
+`.ok().flatten()` reddens the matching case. The entities proof caught a
+**vacuous assertion in the first draft of this lane's own test**: asserting
+only the `Failed to import project "…"` prefix passes under the mutation
+too, because the swallowed read falls through to `create`, which fails
+against the stub database and pushes an identically-shaped warning
+(`…: sqlite error: no such table: doc_mount_points`). The test now asserts
+the overlay message body verbatim.
+
+**Owed within this lane (unit 2):** the planted-failure differential arms on
+`system_import_state` (execute) and `system_import_equivalence` (preview),
+pinning the DB-error divergence in BOTH directions and the overlay leg as an
+equality.
+
+**Versions:** core 0.0.550.
+
+## P4.48 unit 2 — the planted-failure differential arms (2026-08-15)
+
+Three arms over v4's REAL `previewImport` / `executeImport` at the
+`aa464abf` pin, each planting the failure IN THE DATABASE on a per-case
+fixture COPY (the committed `system-data-*` bytes stay read-only — no
+fixture changed, so no sibling oracle is invalidated). Every arm is
+mutation-proven.
+
+### The measurement, and what it settled
+
+Unit 1's disposition rested on reading v4's source. These arms make v4 SAY
+it. Both predictions held exactly:
+
+| arm | v4's recorded output | disposition |
+|---|---|---|
+| `preview_planted_unreadable_tags_table` (`DROP TABLE tags`) | `error: null`, preview returns `exists: false` | **DIVERGENCE**, pinned both directions |
+| `preview_planted_unavailable_project_store` (`PROJECT_1.officialMountPointId = NULL`) | throws `Project a3000000-…-000000000001 has no usable document store (officialMountPointId=null): officialMountPointId is null` | **EQUALITY**, message byte-for-byte |
+| `execute_preserve_ids_unavailable_store_refuses` (same plant, preserveIds import claiming that id) | `success:false`, `warnings: []`, all three partitions byte-identical to the baseline | **EQUALITY**, body + full state |
+
+So the "v4 propagates at all ten sites" premise is now refuted by v4's own
+output, not merely by a reading of `safeQuery`. The equality arms are the
+ones that prove the fix: v5 used to read a failed store read as "the id is
+free" and march on to attempt id-carrying INSERTs.
+
+The execute arm rides the existing `execute_prepped` mechanism (P4.D46) with
+a new named prep, `orphan-project-store`, applied identically on both sides
+BEFORE the `preState` dump, so the baselines still compare byte-equal.
+
+### Both tripwires on the divergence are live
+
+`preview_planted_unreadable_tags_table` fails if EITHER side moves:
+
+- v4 stops answering `exists:false` → "re-measure before trusting this
+  divergence" (a partial upstream fix cannot pass unnoticed);
+- v5 stops refusing → "either P4.48 regressed or v4 converged and this arm
+  should become a plain equality — measure before deciding".
+
+### Vacuity guards
+
+Both engines' `orphan-project-store` plants assert they touched exactly ONE
+row. A plant that silently matches nothing is the in-database form of the
+`planted-fs-conditions-in-differentials` trap, and it leaves a permanently
+green arm proving nothing. (This lane had already been bitten once by a
+vacuous assertion — see unit 1's entities mutation proof.)
+
+### Mutation proofs (one per arm, each restored after)
+
+- preview projects site → `.ok().flatten()` ⇒ `preview_planted_unavailable_
+  project_store` fails: "v4 refused with … but v5 answered a preview".
+- preview tags site → `.ok().flatten()` ⇒ `preview_planted_unreadable_tags_
+  table` fails: "v5 did NOT refuse a planted read failure".
+- preflight Project site → `.ok().flatten()` ⇒
+  `execute_preserve_ids_unavailable_store_refuses` fails on the result body.
+
+### Regen recipes (both families, at the `aa464abf` pin)
+
+Unchanged from the families' `//!` headers apart from the case counts — the
+new arms need no new fixture and no new env var. Case-count guards moved:
+`system_import_equivalence` 27 → **29**, `system_import_state` 33 → **34**,
+and the execute family's by-name shape list gained
+`execute_preserve_ids_unavailable_store_refuses` so a truncated oracle
+cannot pass by arithmetic.
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+# preview family
+TMPO=/tmp/qt-sysimport-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-import.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-import.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-import
+# execute family: same shape, TMPO=/tmp/qt-sysimportexec-oracle,
+#   cases/system-import-execute.test.ts, testTimeout=600000,
+#   QT_ORACLE_OUT=/tmp/oracle-system-import-execute.ndjson,
+#   selector `-- system-import-execute`
+```
+
+Run:
+
+```
+QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson \
+QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
+  cargo test -p quilltap-harness --test system_import_equivalence \
+                                 --test system_import_state
+```
+
+**Versions:** harness 0.0.474.
+
+## P4.48 unit 3 — the happy-path re-run at the pin (2026-08-15)
+
+Tier 2 deliverable 4: the neighbouring import/restore/archive families
+regenerated FRESH at `aa464abf` through the sanctioned sweep driver and
+re-run by name, proving the propagation change altered no green-path byte.
+
+```
+python3.13 harness/tools/recipe_sweep.py --run-all \
+  --families qtap_import_equivalence,system_import_equivalence,\
+system_import_state,system_restore_equivalence,system_restore_state,\
+character_archive_tier2_equivalence,archive_reencrypt_tier2_equivalence \
+  --results /tmp/p448-sweep.json --force
+```
+
+**6 ok, 1 run_failed — and the one red is NOT this lane's.**
+
+| family | result |
+|---|---|
+| `qtap_import_equivalence` | ok |
+| `system_import_equivalence` | ok (29 cases, incl. the two new arms) |
+| `system_import_state` | ok (34 cases, incl. the new arm) |
+| `system_restore_equivalence` | ok |
+| `system_restore_state` | **run_failed — v4 drift, P4.D79's column** |
+| `character_archive_tier2_equivalence` | ok (the rehydrate path — the preflight's other live consumer) |
+| `archive_reencrypt_tier2_equivalence` | ok |
+
+### The `system_restore_state` red is the D23 tripwire, firing as designed
+
+The whole diff is ONE field on `main.connection_profiles`: the oracle carries
+`multiCharacterPrefill: null`, the Rust row has no such key. No row count
+differs, no warning differs, no other column differs. v5 has **zero**
+references to `multiCharacterPrefill` anywhere (`ggrep -ril` over `crates/` +
+`apps/` → 0); v4 at the pin has it in `lib/llm/multi-character-prefill.ts`,
+`lib/schemas/profile.types.ts` and the context builder.
+
+That column is **P4.D79's** deliverable by name ("the multiCharacterPrefill
+column through the D23 re-dump and boot ensure"). This lane cannot add or
+remove a schema column, and its change is confined to error propagation. So
+this is v4 drift the round absorbs elsewhere — **not a P4.48 regression, and
+not something to "fix" here.** It should go green once P4.D79 lands; the
+unifier should expect it red until then.
+
+Note for whoever runs the driver next: `harness/tools/recipe_sweep.py`
+requires **Python 3.12+** (it has an f-string containing a backslash). The
+`python3` on PATH here is 3.9 and dies with a `SyntaxError` before parsing
+its own `--help`; `/opt/homebrew/bin/python3.13` runs it fine. Worth a shebang
+or a version guard in the driver.
+
+### Full lane gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again
+  with `--features quilltap-core/native-transport`.
+- `cargo build --release` clean.
+- `cargo test --workspace` with this lane's two oracle env vars:
+  **431 test binaries / 2,089 tests / 0 failed** (cargo exit 0).
+- The three new arms positively confirmed to have RUN by name under
+  `--nocapture` (`OK preview_planted_unreadable_tags_table`,
+  `OK preview_planted_unavailable_project_store`,
+  `OK execute_preserve_ids_unavailable_store_refuses`) — the SKIP-masquerade
+  check, since an unset env var returns early and still passes.
+- `apps/web` untouched: 0 files changed in the lane, committed or otherwise.
+- Spelling guard green (rides the harness).
+
+**Versions:** core 0.0.550, harness 0.0.474. No fixture changed, so no
+sibling oracle is invalidated.
+
+### Left OPEN under this order (loud)
+
+- **The DB-read-error divergence is pinned on the PREVIEW path only.** The
+  execute path carries the equality arm (the overlay leg) but no
+  full-state divergence arm for the read-error leg, because v4 partially
+  applies there and v5 writes nothing — a whole-state both-directions pin
+  for a legitimately huge delta buys little over the preview pin of the
+  same `safeQuery` mechanism. Recorded rather than silently skipped.
+- **The character-reader divergence** (v5's preflight uses
+  `find_by_id_raw`, v4 uses the overlay-applying `findById`) is recorded at
+  the call site and in unit 1's entry, deliberately NOT changed, and NOT
+  pinned by an arm.
+- 💸 A live import against a genuinely damaged instance joins the owed
+  dogfood queue, per the order's Tier 3.
+- **The v4-side filing** for the swallow (v4's own preflight reads an
+  unreadable table as "the id is free") is owed to the human's upstream
+  list — this lane does not patch v4, since that moves the oracle baseline.
