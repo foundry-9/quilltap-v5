@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Planned the aa464abf drift catch-up round and committed five work orders:
+P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the
+think/num_ctx request fields with the retry-without-think, the toolUse
+manifest flip), P4.D79 (the multiCharacterPrefill column through the D23
+re-dump and boot ensure, the per-profile turn anchor, greeting reasoning
+capture, and the profileParams consolidation that also fixes three measured
+v5 divergences), P4.D80 (the bug-66 archivedAt enrichment and the bug-69
+rehydrate self-heal arm, with the round's three no-port dispositions),
+P4.D81 (the SPA riders: the prefill and Enable Thinking checkboxes, the
+archived-badge beat flip, the bug-67 convergence records), and P4.48 (the
+escalated import-preflight read-error propagation at ten sites). Docs only;
+the oracle baseline moves to aa464abf at the round's unification.
+
 Filed the round's two v4-side findings upstream as v4 bugs 66 and 67 (the
 archived-seat badge that cannot light on a fresh load, and the raw-source
 view's send discarding source edits) — a docs-only commit in the v4
