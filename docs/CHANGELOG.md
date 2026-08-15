@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added the multi-character prefill checkbox to the connection-profile editor:
+"Announce the speaker in multi-character scenes ([Name] prefill)", seeded from
+the stored value or, when a profile has never chosen, from the provider
+default. Switching provider re-seeds it on a new profile and leaves a saved
+one alone. Ticking it on Anthropic warns that recent models reject a request
+handed over mid-turn. The value ships on create and update, including the
+Courier's, which renders the same assembled context.
+
 Ported v4's multi-character prefill default into the SPA
 (`defaultMultiCharacterPrefill`): off for Anthropic, on for every other
 provider, on when the provider is absent. It seeds the connection-profile

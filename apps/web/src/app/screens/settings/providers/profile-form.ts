@@ -1,4 +1,5 @@
 import type { ConnectionProfileDto } from '../../../core/core-contract';
+import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 
 /** The connection-profile modal's editable form (v4 `types.ts` `ProfileFormData`). */
 export interface ProfileFormData {
@@ -17,6 +18,14 @@ export interface ProfileFormData {
   isDangerousCompatible: boolean;
   allowToolUse: boolean;
   pseudoToolMode: 'auto' | 'native' | 'simple-json' | 'text-block';
+  /**
+   * Multi-character turn anchor (v4 `types.ts:112-119`, `23af7146`). True sends
+   * the assistant `[Name]` prefill; false anchors the turn with a prose
+   * instruction in the system prompt instead. Seeded from the provider default
+   * when a profile has never recorded a choice — the form itself is never
+   * tri-state, only the stored column is.
+   */
+  multiCharacterPrefill: boolean;
   supportsImageUpload: boolean;
   allowWebSearch: boolean;
   useNativeWebSearch: boolean;
@@ -40,6 +49,7 @@ export const initialFormState: ProfileFormData = {
   isDangerousCompatible: false,
   allowToolUse: true,
   pseudoToolMode: 'auto',
+  multiCharacterPrefill: true,
   supportsImageUpload: false,
   allowWebSearch: false,
   useNativeWebSearch: false,
@@ -66,6 +76,11 @@ export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormD
     isDangerousCompatible: profile.isDangerousCompatible ?? false,
     allowToolUse: profile.allowToolUse ?? true,
     pseudoToolMode: profile.pseudoToolMode ?? 'auto',
+    // Null means the profile predates the field; show the provider default the
+    // server would resolve to, so the box reflects actual behaviour (v4
+    // `useProfileForm.ts:75-78`).
+    multiCharacterPrefill:
+      profile.multiCharacterPrefill ?? defaultMultiCharacterPrefill(profile.provider),
     supportsImageUpload: profile.supportsImageUpload ?? false,
     allowWebSearch: profile.allowWebSearch ?? false,
     useNativeWebSearch: profile.useNativeWebSearch ?? false,
@@ -88,6 +103,11 @@ export function buildProfileRequestBody(form: ProfileFormData): Record<string, u
       isCheap: form.isCheap,
       isDangerousCompatible: false,
       allowToolUse: false,
+      // Not a tool flag — the Courier renders the same assembled context for
+      // the user to carry by hand, so the turn anchor still applies (v4
+      // `useProfileForm.ts:107-109`; its sibling booleans are forced false
+      // here and this one pointedly is not).
+      multiCharacterPrefill: form.multiCharacterPrefill,
       supportsImageUpload: false,
       allowWebSearch: false,
       useNativeWebSearch: false,
@@ -113,6 +133,7 @@ export function buildProfileRequestBody(form: ProfileFormData): Record<string, u
     isDangerousCompatible: form.isDangerousCompatible,
     allowToolUse: form.allowToolUse,
     pseudoToolMode: form.pseudoToolMode,
+    multiCharacterPrefill: form.multiCharacterPrefill,
     supportsImageUpload: form.supportsImageUpload,
     allowWebSearch: form.allowWebSearch,
     useNativeWebSearch: form.useNativeWebSearch,

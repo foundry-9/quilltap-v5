@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
-import type { CoreRequest, ProviderInfo } from '../../../core/core-contract';
+import type { ConnectionProfileDto, CoreRequest, ProviderInfo } from '../../../core/core-contract';
 import { ProfileModal } from './profile-modal';
 
 function provider(over: Partial<ProviderInfo>): ProviderInfo {
@@ -31,7 +31,11 @@ function stubClient(over: Partial<CoreClient> = {}): Partial<CoreClient> {
 }
 
 async function render(
-  inputs: { takenNames?: Set<string>; providers?: ProviderInfo[] },
+  inputs: {
+    takenNames?: Set<string>;
+    providers?: ProviderInfo[];
+    profile?: ConnectionProfileDto | null;
+  },
   client: Partial<CoreClient> = stubClient(),
 ): Promise<ComponentFixture<ProfileModal>> {
   TestBed.configureTestingModule({
@@ -39,6 +43,7 @@ async function render(
     providers: [{ provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(ProfileModal);
+  fixture.componentRef.setInput('profile', inputs.profile ?? null);
   fixture.componentRef.setInput('providers', inputs.providers ?? [provider({})]);
   fixture.componentRef.setInput('apiKeys', []);
   fixture.componentRef.setInput('takenNames', inputs.takenNames ?? new Set<string>());
@@ -116,5 +121,111 @@ describe('ProfileModal (duplicate-name validation)', () => {
       max_tokens: 4096,
       top_p: 1,
     });
+  });
+});
+
+/**
+ * The multi-character prefill checkbox (P4.D81 unit 2; v4
+ * `ProfileModal.tsx:764-793` + `:237` from `23af7146`). The payload carries and
+ * the load seed are pinned in `profile-form.spec.ts`; these are the modal's own
+ * three obligations — render, re-seed, warn.
+ */
+describe('ProfileModal (multi-character prefill)', () => {
+  const WARNING = "Anthropic's recent models reject a request handed over mid-turn";
+
+  function prefillBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement {
+    const label = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).find((l) =>
+      l.textContent?.includes('Announce the speaker in multi-character scenes ([Name] prefill)'),
+    );
+    return label!.querySelector('input')!;
+  }
+
+  it('renders ticked on a provider whose default is on, with the help text and no warning', async () => {
+    const fixture = await render({});
+    expect(prefillBox(fixture).checked).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Ticked, a multi-character turn is handed to the model already opened with',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'for any model that spends its reply wondering whether the name was addressed to it',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(WARNING);
+  });
+
+  it('a provider switch re-seeds a NEW profile from the new provider default', async () => {
+    const fixture = await render({
+      providers: [provider({}), provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' })],
+    });
+    expect(prefillBox(fixture).checked).toBe(true);
+    fixture.componentInstance['onProviderChange']('ANTHROPIC');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(false);
+    // ...and back again: the re-seed is a seed, not a one-way latch.
+    fixture.componentInstance['onProviderChange']('OPENAI');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('a provider switch does NOT clobber an EXISTING profile’s saved choice', async () => {
+    // v4 keeps the re-seed inside the `if (!profile?.id)` guard alongside
+    // allowToolUse/supportsImageUpload (`:230-238`).
+    const fixture = await render({
+      profile: {
+        id: 'cp1',
+        name: 'Saved',
+        provider: 'OPENAI',
+        modelName: 'gpt-4',
+        parameters: {},
+        isDefault: false,
+        multiCharacterPrefill: false,
+      },
+      providers: [provider({}), provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' })],
+    });
+    expect(prefillBox(fixture).checked).toBe(false);
+    fixture.componentInstance['onProviderChange']('ANTHROPIC');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(false);
+  });
+
+  it('warns only when the box is ticked AGAINST the provider default', async () => {
+    const fixture = await render({
+      profile: {
+        id: 'cp1',
+        name: 'Saved',
+        provider: 'ANTHROPIC',
+        modelName: 'claude-sonnet-4-5-20250929',
+        parameters: {},
+        isDefault: false,
+        multiCharacterPrefill: null,
+      },
+      providers: [provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' })],
+    });
+    // Null → the Anthropic default (off), so no warning yet.
+    expect(prefillBox(fixture).checked).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain(WARNING);
+
+    const box = prefillBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(WARNING);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Leave this unticked unless you know your model tolerates it.',
+    );
+  });
+
+  it('ticking it on a provider that already defaults ON raises no warning', async () => {
+    const fixture = await render({});
+    const box = prefillBox(fixture);
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain(WARNING);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain(WARNING);
   });
 });

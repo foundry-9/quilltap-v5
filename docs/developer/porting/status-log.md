@@ -69502,3 +69502,40 @@ substring match — the arm that would go red if the port reached for
 `includes`).
 
 **Gate:** `ng test --filter "defaultMultiCharacterPrefill"` — 5 passed.
+
+## P4.D81 unit 2 — the multi-character prefill checkbox (v4 `23af7146`)
+
+**What landed.** The field end to end in the profile editor:
+`ProfileFormData.multiCharacterPrefill: boolean` (+ `initialFormState` true),
+the load seed `profile.multiCharacterPrefill ?? defaultMultiCharacterPrefill(
+profile.provider)`, the carry on BOTH request bodies, the checkbox in v4's DOM
+slot (after the pseudo-tool block, before Supports image attachments) with
+v4's label/helpText/warning bytes, and the provider-switch re-seed inside the
+existing new-profile guard. `ConnectionProfileDto` gains
+`multiCharacterPrefill?: boolean | null` (Contract B) — carried verbatim off
+the wire, tri-state preserved.
+
+**The form is never tri-state.** v4's `null` means "never chosen"; the form
+resolves it once at load and holds a plain boolean thereafter, so an edit-save
+of an old Anthropic row writes an explicit `false` rather than leaving the
+column null. That is v4's behaviour too (its `buildRequestBody` sends
+`form.formData.multiCharacterPrefill` unconditionally) — noted because it
+means the SPA has no way to write a null back, by design.
+
+**The differential (v4's client as oracle).** `profile-form.spec.ts` (new)
+pins the pure half: the initial true, a stored true/false verbatim (incl. the
+tri-state's point — an OPENAI profile deliberately OFF must not read back ON),
+the null/absent seed per PROVIDER (Anthropic false, OpenAI true), and both
+bodies' carry. `profile-modal.spec.ts` gains the modal's three obligations:
+render + help text with no warning; the provider switch re-seeding a NEW
+profile both ways (OPENAI → ANTHROPIC → OPENAI) and NOT clobbering a saved
+choice on an existing one; the warning appearing only when the box is ticked
+against the provider default.
+
+**Mutation-proven:** the courier carry — the row v4 pointedly does NOT force
+false while forcing its two neighbours. Hardcoding `multiCharacterPrefill:
+true` in the courier branch reddens the courier arm (1 failed), and the arm
+asserts BOTH values so a hardcoded `true` cannot pass. Restored, green.
+
+**Gate:** `ng test --filter "multiCharacterPrefill"` 5 passed;
+`--filter "ProfileModal"` 15 passed.

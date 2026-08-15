@@ -20,6 +20,7 @@ import {
   MODEL_CLASSES,
   normalizeProfileName,
 } from './model-classes';
+import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 import {
   buildProfileRequestBody,
   initialFormState,
@@ -448,6 +449,38 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 </p>
               </div>
             }
+            <!-- The multi-character turn anchor (v4 ProfileModal.tsx:764-793,
+                 23af7146): v4's slot exactly — after the pseudo-tool block,
+                 before Supports image attachments. -->
+            <div class="flex flex-col gap-1">
+              <label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="qt-checkbox"
+                  [checked]="form().multiCharacterPrefill"
+                  (change)="setField('multiCharacterPrefill', $any($event.target).checked)"
+                />
+                <span class="text-sm"
+                  >Announce the speaker in multi-character scenes ([Name] prefill)</span
+                >
+              </label>
+              <p class="qt-text-xs ml-6">
+                Ticked, a multi-character turn is handed to the model already opened with
+                <code>[Name]</code>, so it can only continue that character&apos;s line. Unticked,
+                the same instruction is given in prose and the model is left to begin the turn
+                itself. Untick it for models that refuse an opened turn outright, for local
+                thinking models whose reasoning never appears (an opened turn closes that door),
+                and for any model that spends its reply wondering whether the name was addressed
+                to it.
+              </p>
+              @if (prefillAgainstProviderDefault()) {
+                <p class="qt-text-xs qt-text-warning ml-6">
+                  Anthropic&apos;s recent models reject a request handed over mid-turn and will
+                  return an error on every multi-character reply. Leave this unticked unless you
+                  know your model tolerates it.
+                </p>
+              }
+            </div>
             <label class="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -598,6 +631,16 @@ export class ProfileModal implements OnInit {
       !this.nameTaken(),
   );
 
+  /**
+   * The prefill box is ticked on a provider whose default is OFF (v4
+   * `ProfileModal.tsx:786-787`) — today that is Anthropic alone, and the
+   * warning names it. Permitted, but warned about: some Anthropic-compatible
+   * endpoints do tolerate an assistant tail.
+   */
+  protected readonly prefillAgainstProviderDefault = computed(
+    () => this.form().multiCharacterPrefill && !defaultMultiCharacterPrefill(this.form().provider),
+  );
+
   protected readonly selectedModelClass = computed(() =>
     this.form().modelClass ? getModelClass(this.form().modelClass) : undefined,
   );
@@ -634,9 +677,13 @@ export class ProfileModal implements OnInit {
     if (cfg?.configRequirements?.baseUrlDefault && !this.form().baseUrl) {
       this.setField('baseUrl', cfg.configRequirements.baseUrlDefault);
     }
-    // New profiles: default allowToolUse from the provider's capability.
+    // New profiles: default allowToolUse from the provider's capability, and
+    // re-seed the turn anchor from the new provider's default (v4
+    // `handleProviderChange`, `:228-238` — both inside the same new-profile
+    // guard, so a saved choice is never clobbered on an existing profile).
     if (!this.profile()?.id) {
       this.setField('allowToolUse', cfg?.capabilities?.toolUse ?? false);
+      this.setField('multiCharacterPrefill', defaultMultiCharacterPrefill(provider));
     }
   }
 
