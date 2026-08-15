@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Carried multiCharacterPrefill through the .qtap export (P4.D79 unit 5, v4
+23af7146). schema-key-order.json was regenerated from v4's live schemas rather
+than hand-appended, so the key lands in its schema slot after pseudoToolMode
+instead of silently at the end of every exported profile record; a unit test
+pins the slot. The connection-profile net read also gained per-column
+tolerance: a table that predates the column selects a literal NULL instead of
+failing outright, which is how pre-migration instances and every fixture built
+before the drift stay readable. Versions: core 0.0.555.
+
 Wired multiCharacterPrefill through the connection-profile create and update
 routes (P4.D79 unit 4, v4 23af7146). Create resolves the provider default when
 the client omits the field and stores it, so a create never writes the

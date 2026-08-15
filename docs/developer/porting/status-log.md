@@ -294,6 +294,31 @@ helper.
 flagged for the unifier): `services/backup/restore/orchestrator.rs`,
 `services/quilltap_import/profiles.rs` (the refusal comment + `None` only).
 
+### Unit 5 — the export carry + the key-order regen + read tolerance
+
+`sanitize_profile` and the profile record stream are generic (reorder + copy
+every key), so the field carries as soon as the net read has it. The real work
+is `qtap_export/schema-key-order.json`, **REGENERATED** via the shipped
+`dump-export-key-order.ts` at the pin — the D65 lesson, since `reorder` is
+deliberately non-lossy and would have shipped a hand-missed key silently at the
+TAIL of every exported profile record. The regen's only delta is the one key,
+in v4's slot between `pseudoToolMode` and `modelClass`; a new unit test pins
+both neighbours AND the reorder's actual output, so a future D23 re-dump that
+stales this file fails loudly instead of quietly.
+
+**Per-column READ tolerance** (the P4.D63 `characters` archive precedent, same
+shape): `CP_COLUMNS` became `cp_select_columns(conn)`, which substitutes a
+literal `NULL` when `PRAGMA table_info` says the table predates the column.
+Without it every pre-migration instance AND every committed fixture built
+before the drift would fail the read outright with `no such column` — which is
+not hypothetical: `system-data-*.db` are committed at an older vintage, and the
+export differential exercises exactly that path. The WRITE side stays strict,
+as v4's is. `system_export_equivalence` green over the regenerated oracle (57
+cases), which is also the proof the tolerance works.
+
+Import/restore: see unit 4 — restore carries the field, the `.qtap` import
+carry is STOPPED by the ownership tripwire with its ordered edit recorded.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

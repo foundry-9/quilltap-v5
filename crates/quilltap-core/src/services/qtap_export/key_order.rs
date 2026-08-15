@@ -119,6 +119,37 @@ mod tests {
         );
     }
 
+    /// P4.D79: the regenerated table must place `multiCharacterPrefill` in v4's
+    /// schema slot — immediately after `pseudoToolMode`, NOT appended at the
+    /// end. The D65 lesson: `schema-key-order.json` stales on every D23 re-dump
+    /// and the non-lossy `reorder` would happily ship a new key at the tail,
+    /// which is a silent byte divergence in the `.qtap` artifact.
+    #[test]
+    fn connection_profile_carries_the_prefill_in_its_schema_slot() {
+        let t = template("connection_profile").expect("template");
+        let idx = t
+            .iter()
+            .position(|k| k == "multiCharacterPrefill")
+            .expect("multiCharacterPrefill is in the regenerated table");
+        assert_eq!(
+            t[idx - 1],
+            "pseudoToolMode",
+            "the prefill must follow pseudoToolMode"
+        );
+        assert_eq!(t[idx + 1], "modelClass", "and precede modelClass");
+
+        // And the reorder actually applies it: a net-read object in COLUMN order
+        // comes out in SCHEMA order with the key in place.
+        let v: Value = serde_json::from_str(
+            r#"{"id":"i","pseudoToolMode":"auto","modelClass":null,"multiCharacterPrefill":false}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            reorder("connection_profile", v).to_string(),
+            r#"{"id":"i","pseudoToolMode":"auto","multiCharacterPrefill":false,"modelClass":null}"#
+        );
+    }
+
     #[test]
     fn unknown_kind_passes_through() {
         let v: Value = serde_json::from_str(r#"{"b":1,"a":2}"#).unwrap();

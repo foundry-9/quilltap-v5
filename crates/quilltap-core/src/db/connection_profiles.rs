@@ -469,11 +469,50 @@ impl<'c> ConnectionProfilesRepository<'c> {
 /// from the `api_keys` table is the host's job.
 /// The shared column list every connection-profile net read selects (net-read
 /// order = [`marshal_cp_row`]'s field access order).
-const CP_COLUMNS: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
+/// The net-read column list up to and including `pseudoToolMode`.
+const CP_COLUMNS_HEAD: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
      baseUrl, modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-     allowToolUse, pseudoToolMode, multiCharacterPrefill, modelClass, maxContext, maxTokens, \
-     isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
+     allowToolUse, pseudoToolMode";
+/// The rest, from `modelClass` on — `multiCharacterPrefill` sits between the two.
+const CP_COLUMNS_TAIL: &str = "modelClass, maxContext, maxTokens, isDangerousCompatible, \
+     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
      totalCompletionTokens, messageCount, createdAt, updatedAt";
+
+/// The full `SELECT` list: [`CP_COLUMNS_HEAD`], then `multiCharacterPrefill` —
+/// **or a literal `NULL` when the table predates it** — then [`CP_COLUMNS_TAIL`].
+///
+/// v4 reads every collection with `SELECT *`, so a `connection_profiles` table
+/// that predates `add-profile-multi-character-prefill-field-v1` simply returns
+/// no such column and its `.nullable().optional()` schema key parses as absent.
+/// v5 names its columns, so it has to ask the table first — otherwise every
+/// pre-migration instance, and every differential fixture built before the
+/// drift, would fail the read outright with `no such column`. Selecting `NULL`
+/// keeps the marshaling arity fixed, and a NULL cell marshals to the same
+/// absent key v4's Zod produces — which the resolver then reads as "never
+/// chosen". The P4.D63 `characters` archive-column tolerance, same shape.
+///
+/// The WRITE side stays strict, exactly as v4's is: its `insertOne`/`update`
+/// name the document's keys, so v4 cannot write this field into a
+/// pre-migration table either. The boot ensure
+/// ([`crate::db::connection_profiles_prefill_repair`]) is what gets a real
+/// instance the column; this is what keeps old fixtures readable.
+fn cp_select_columns(conn: &Connection) -> String {
+    let prefill = if cp_table_has_column(conn, "multiCharacterPrefill") {
+        "multiCharacterPrefill"
+    } else {
+        "NULL"
+    };
+    format!("{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_TAIL}")
+}
+
+/// `PRAGMA table_info(connection_profiles)` membership. Fail-soft: an
+/// unreadable pragma (missing table) reports "absent", landing the caller on
+/// the same no-column path v4 takes.
+fn cp_table_has_column(conn: &Connection, column: &str) -> bool {
+    conn.prepare("SELECT 1 FROM pragma_table_info('connection_profiles') WHERE name = ?1")
+        .and_then(|mut stmt| stmt.exists([column]))
+        .unwrap_or(false)
+}
 
 // Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
 fn put_opt_string(
@@ -518,7 +557,7 @@ fn object_or_empty(v: Option<String>) -> serde_json::Value {
     }
 }
 
-/// Marshal one `connection_profiles` row selected in [`CP_COLUMNS`] order into
+/// Marshal one `connection_profiles` row selected in [`cp_select_columns`] order into
 /// the net-read [`serde_json::Value`].
 fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     use serde_json::{Map, Value};
@@ -678,7 +717,10 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
 pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
     let row = conn
         .query_row(
-            &format!("SELECT {CP_COLUMNS} FROM connection_profiles WHERE id = ?1"),
+            &format!(
+                "SELECT {} FROM connection_profiles WHERE id = ?1",
+                cp_select_columns(conn)
+            ),
             params![id],
             marshal_cp_row,
         )
@@ -694,7 +736,10 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
 /// matching v4's `collection.find({})` with no sort. Used by the dangerous-content
 /// provider-routing scan for `isDangerousCompatible` profiles.
 pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
-    let mut stmt = conn.prepare(&format!("SELECT {CP_COLUMNS} FROM connection_profiles"))?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM connection_profiles",
+        cp_select_columns(conn)
+    ))?;
     let rows = stmt.query_map([], marshal_cp_row)?;
     let mut out = Vec::new();
     for r in rows {
@@ -714,8 +759,9 @@ pub fn find_default(
     let row = conn
         .query_row(
             &format!(
-                "SELECT {CP_COLUMNS} FROM connection_profiles \
-                 WHERE userId = ?1 AND isDefault = 1 LIMIT 1"
+                "SELECT {} FROM connection_profiles \
+                 WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
+                cp_select_columns(conn)
             ),
             params![user_id],
             marshal_cp_row,
@@ -735,7 +781,8 @@ pub fn find_by_user_id(
     user_id: &str,
 ) -> Result<Vec<serde_json::Value>, DbError> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {CP_COLUMNS} FROM connection_profiles WHERE userId = ?1"
+        "SELECT {} FROM connection_profiles WHERE userId = ?1",
+        cp_select_columns(conn)
     ))?;
     let rows = stmt.query_map(params![user_id], marshal_cp_row)?;
     let mut out = Vec::new();
