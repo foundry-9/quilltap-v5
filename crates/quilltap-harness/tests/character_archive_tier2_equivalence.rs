@@ -1,11 +1,21 @@
 //! P4.D65 — the character-archive tier-2 differential.
 //!
 //! Drives `quilltap_core::services::character_archive::service::{archive_character,
-//! rehydrate_character}` through the SAME seventeen case sequences the oracle drives
+//! rehydrate_character}` through the SAME twenty case sequences the oracle drives
 //! v4's real `lib/characters/archive-service.ts` through, over a FRESH copy of
 //! the committed `character-archive-{main,mount}.db` pair per case, and diffs
-//! three comparands: the returned result (or the refusal's class + message), the
-//! DECRYPTED bundle, and a whole-table dump of BOTH partitions.
+//! four comparands: the returned result (or the refusal's class + message), the
+//! DECRYPTED bundle, `digestProbe`, and a whole-table dump of BOTH partitions.
+//!
+//! **P4.D80** (v4 `aa464abf`) added three cases and the `digestProbe` section:
+//! `character_detail_enrichment` drives `chat_enrichment::get_character_detail`
+//! (bug 66 — the chat-GET projection that carries `archivedAt`), and
+//! `rehydrate_digest_{clobbered,corrupt}` plant a damaged `files.sha256` on a
+//! REAL bundle to reach bug 69's self-heal and the refusal it must still make.
+//! `digestProbe` classifies what each ARCHIVE row's recorded digest actually
+//! digests (`plaintext` / `stored` / `other`) — the digest itself is minted and
+//! blinded, so the CLASS is what proves the self-heal REPAIRED the row rather
+//! than merely tolerating the mismatch.
 //!
 //! ⚠ **Ciphertext is never compared.** `encryptArchive` draws a fresh salt and
 //! IV per bundle, so the persisted bytes differ on every run on both sides. What
@@ -80,9 +90,17 @@ struct Spec {
     seed_timestamp: String,
     sable: String,
     tor: String,
+    chat_seated: String,
+    chat_removed: String,
 }
 
 const MISSING_CHARACTER: &str = "00000000-0000-4000-8000-00000000dead";
+
+/// The digest a `rehydrate_digest_corrupt` row is planted with — 64 hex
+/// characters that are neither the plaintext digest nor the ciphertext one, so
+/// bug 69's self-heal must NOT engage. Byte-identical to the oracle case's
+/// constant.
+const CORRUPT_DIGEST: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
 const MAIN_TABLES: [&str; 9] = [
     "characters",
@@ -436,6 +454,7 @@ fn normalize_sides(
     state: &Value,
     result: &Value,
     bundles: &Value,
+    digest_probe: &Value,
 ) -> Value {
     let mut norm = Normalizer {
         baked: baked.clone(),
@@ -445,7 +464,13 @@ fn normalize_sides(
     let state = normalize_state(&mut norm, state);
     let result = norm.value(result);
     let bundles = norm.value(bundles);
-    json!({ "result": result, "bundles": bundles, "state": state })
+    let digest_probe = norm.value(digest_probe);
+    json!({
+        "result": result,
+        "bundles": bundles,
+        "digestProbe": digest_probe,
+        "state": state,
+    })
 }
 
 fn looks_iso(s: &str) -> bool {
@@ -562,18 +587,25 @@ fn error_value(e: &ArchiveError) -> Value {
 /// one (the mismatch arm) — the comparand is what the bundle SAYS, and reading
 /// it back under a passphrase that cannot open it would only re-prove the
 /// refusal the `result` comparand already carries.
+///
+/// Returns the bundles, the per-row digest CLASS (`digestProbe` — see the
+/// oracle header; it is what proves bug 69's self-heal repaired the row rather
+/// than merely tolerating the mismatch), and every bundle's plaintext digest so
+/// the caller can blind it out of `result`.
 fn main_bundles(
     db: &Db,
     backend: &dyn StorageBackend,
     user_id: &str,
     seal: Option<&str>,
-) -> Vec<Value> {
+) -> (Vec<Value>, Vec<Value>, Vec<String>) {
     use quilltap_core::db::files::FilesRepository;
     let uid = user_id.to_string();
     let rows = db
         .read_main(move |c| FilesRepository::new(c).find_by_category(&uid, "ARCHIVE"))
         .expect("read archive files");
     let mut out = Vec::new();
+    let mut probes = Vec::new();
+    let mut plaintext_digests = Vec::new();
     let mut sorted: Vec<_> = rows;
     sorted.sort_by(|a, b| a.id.cmp(&b.id));
     for file in sorted {
@@ -603,9 +635,9 @@ fn main_bundles(
                     resolve_archive_passphrase(ambient_passphrase()).expect("resolve passphrase")
                 }
             };
-            decrypt_archive(&raw, &pass).expect("decrypt bundle")
+            std::borrow::Cow::Owned(decrypt_archive(&raw, &pass).expect("decrypt bundle"))
         } else {
-            raw
+            std::borrow::Cow::Borrowed(&raw[..])
         };
         let records =
             quilltap_core::services::quilltap_import::ndjson::read_ndjson_lines(&plaintext)
@@ -614,8 +646,29 @@ fn main_bundles(
             quilltap_core::services::quilltap_import::ndjson::assemble_export_from_stream(&records)
                 .expect("assemble bundle");
         out.push(json!({"manifest": parsed.manifest, "data": parsed.data}));
+
+        let plaintext_digest = sha256_hex(&plaintext);
+        let stored_digest = sha256_hex(&raw);
+        probes.push(json!({
+            "fileId": file.id,
+            "digests": if file.sha256 == plaintext_digest {
+                "plaintext"
+            } else if file.sha256 == stored_digest {
+                "stored"
+            } else {
+                "other"
+            },
+        }));
+        plaintext_digests.push(plaintext_digest);
     }
-    out
+    (out, probes, plaintext_digests)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 /// A dispatch `Response` in the `{status, body}` shape v4's route answers with.
@@ -720,6 +773,12 @@ struct OracleCase {
     result: Value,
     #[serde(default)]
     bundles: Value,
+    /// P4.D80. Absent in a STALE oracle, which is exactly what makes a stale
+    /// NDJSON loud here rather than silent (`oracle-regen-silent-stale-pass`):
+    /// every case with an ARCHIVE row would report `[]` against a populated v5
+    /// side.
+    #[serde(default, rename = "digestProbe")]
+    digest_probe: Value,
     #[serde(default)]
     state: Value,
 }
@@ -737,7 +796,7 @@ async fn character_archive_tier2_equivalence() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("oracle line"))
         .collect();
-    assert_eq!(oracle.len(), 17, "the corpus is seventeen cases");
+    assert_eq!(oracle.len(), 20, "the corpus is twenty cases");
 
     // The extender-minted ids, read from the committed sidecar rather than
     // transcribed — the oracle case reads the same file, so a re-pin in
@@ -1009,10 +1068,158 @@ async fn character_archive_tier2_equivalence() {
                     Err(e) => error_value(&e),
                 }
             }
+            // ── Bug 66: `get_character_detail` carries the tombstone ────────
+            // The Salon sidebar renders from the chat GET, which enriches every
+            // participant through this function. BOTH returns are probed — the
+            // avatar-override early return (Sable's `avatarOverrides[0]` points
+            // at the quay chat) and the main one — before and after a tombstone.
+            //
+            // The tombstone is planted by raw UPDATE rather than by archiving:
+            // archiving PRUNES the vault, and a pruned override face would
+            // resolve to nothing and fall through to the main return, so the
+            // avatar-override + archived probe would stop being that shape.
+            "character_detail_enrichment" => {
+                use quilltap_core::services::chat_enrichment::get_character_detail;
+                let probe = |db: &Db, character_id: &str, chat_id: Option<&str>| -> Value {
+                    let detail = db
+                        .read_main(|main| {
+                            db.read_mount_index(|mount| {
+                                get_character_detail(main, mount, character_id, chat_id)
+                            })
+                        })
+                        .expect("read main");
+                    // `None` (the missing-character probe) serializes to
+                    // `null`, which is v4's `?? null` on the same probe.
+                    serde_json::to_value(detail).unwrap_or(Value::Null)
+                };
+                let mut probes: Vec<Value> = Vec::new();
+                let mut push = |label: &str, detail: Value| {
+                    probes.push(json!({"label": label, "detail": detail}));
+                };
+                push("sable_live_main", probe(db, &spec.sable, None));
+                push(
+                    "sable_live_override",
+                    probe(db, &spec.sable, Some(&spec.chat_seated)),
+                );
+                push(
+                    "sable_live_other_chat",
+                    probe(db, &spec.sable, Some(&spec.chat_removed)),
+                );
+                push("tor_live_main", probe(db, &spec.tor, None));
+                push("missing_character", probe(db, MISSING_CHARACTER, None));
+                let sable = spec.sable.clone();
+                db.write(move |ws| {
+                    ws.main().connection().execute(
+                        "UPDATE characters SET archivedAt = ?1 WHERE id = ?2",
+                        rusqlite::params!["2026-03-02T00:00:00.000Z", sable],
+                    )?;
+                    Ok(())
+                })
+                .await
+                .expect("plant tombstone");
+                push("sable_archived_main", probe(db, &spec.sable, None));
+                push(
+                    "sable_archived_override",
+                    probe(db, &spec.sable, Some(&spec.chat_seated)),
+                );
+                json!({ "probes": probes })
+            }
+            // ── Bug 69: the clobbered-row self-heal ─────────────────────────
+            // v4's file watcher re-derived `sha256` from the ENCRYPTED bytes
+            // moments after an archive was written, so the row held the
+            // ciphertext digest and every later rehydrate refused the bundle as
+            // corrupt — archiving was one-way. Plant exactly that damage and
+            // the rehydrate must succeed, warn, and repair the row (the
+            // `digestProbe` section is where the repair is visible; the
+            // ARCHIVE row's sha256 itself is minted and blinded).
+            //
+            // v5 cannot CAUSE the damage — it ports no watcher and no boot
+            // reconciliation — but it opens the same instances a pre-4.9 v4
+            // damaged, which is why the arm ports at all.
+            "rehydrate_digest_clobbered" | "rehydrate_digest_corrupt" => {
+                let archived = archive_character(db, &spec.user_id, &spec.sable, &s)
+                    .await
+                    .expect("archive");
+                let file_id = archived.archive_file_id.clone().unwrap_or_default();
+                let planted = if case.name == "rehydrate_digest_corrupt" {
+                    // Neither the plaintext digest nor the file-as-stored one,
+                    // so the self-heal must NOT engage. Deterministic, which
+                    // keeps the refusal sentence's `expected …` half a real
+                    // comparand.
+                    CORRUPT_DIGEST.to_string()
+                } else {
+                    let entry = {
+                        let fid = file_id.clone();
+                        db.read_main(move |c| {
+                            quilltap_core::db::files::FilesRepository::new(c).find_full_by_id(&fid)
+                        })
+                        .expect("read archive row")
+                        .expect("archive row")
+                    };
+                    let raw = quilltap_core::services::file_storage::download_file(
+                        db,
+                        work.backend.as_ref(),
+                        &quilltap_core::db::files::FileEntry {
+                            id: entry.id.clone(),
+                            sha256: entry.sha256.clone(),
+                            original_filename: entry.original_filename.clone(),
+                            mime_type: entry.mime_type.clone(),
+                            size: entry.size,
+                            width: entry.width,
+                            height: entry.height,
+                            category: entry.category.clone(),
+                            generation_prompt: None,
+                            generation_model: None,
+                            generation_revised_prompt: None,
+                            description: entry.description.clone(),
+                            storage_key: entry.storage_key.clone(),
+                        },
+                    )
+                    .expect("download the bundle as stored");
+                    sha256_hex(&raw)
+                };
+                let fid = file_id.clone();
+                // The clobbered arm plants `size` WRONG too, and it must come
+                // back out wrong: the repair writes `sha256` ALONE (an archive
+                // row's `size` is the real on-disk encrypted byte count). That
+                // turns "sha256 only" into a measured comparand on the `files`
+                // state dump instead of a claim about the patch struct.
+                let plant_size = case.name == "rehydrate_digest_clobbered";
+                db.write(move |ws| {
+                    let c = ws.main().connection();
+                    if plant_size {
+                        c.execute(
+                            "UPDATE files SET sha256 = ?1, size = 1 WHERE id = ?2",
+                            rusqlite::params![planted, fid],
+                        )?;
+                    } else {
+                        c.execute(
+                            "UPDATE files SET sha256 = ?1 WHERE id = ?2",
+                            rusqlite::params![planted, fid],
+                        )?;
+                    }
+                    Ok(())
+                })
+                .await
+                .expect("plant the damaged digest");
+                match rehydrate_character(db, &spec.user_id, &spec.sable, &s).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
             other => panic!("unknown oracle case: {other}"),
         };
 
-        let bundles = Value::Array(main_bundles(db, work.backend.as_ref(), &spec.user_id, seal));
+        let (bundle_rows, probe_rows, plaintext_digests) =
+            main_bundles(db, work.backend.as_ref(), &spec.user_id, seal);
+        let bundles = Value::Array(bundle_rows);
+        let digest_probe = Value::Array(probe_rows);
+        // A refusal sentence quotes the bundle's plaintext digest, which is
+        // minted per run (the manifest carries a bundle-time stamp) and can
+        // never agree across two runs, let alone two languages. Blind it — the
+        // PLANTED half of the sentence stays literal, so the two digests remain
+        // distinguishable. The oracle blinds its own side identically.
+        let result = blind_plaintext_sha(&result, &plaintext_digests);
         let state = dump_state(db);
 
         // The ARCHIVE row's sha256 digests a plaintext carrying a bundle-time
@@ -1025,19 +1232,27 @@ async fn character_archive_tier2_equivalence() {
 
         // v4 nests an error's rider keys under `details`; v5 carries them flat
         // (the P4.6ah precedent), so the two shapes are reconciled on v4's side.
-        let mut got = normalize_sides(&baked, &spec.seed_timestamp, &got_state, &result, &bundles);
+        let mut got = normalize_sides(
+            &baked,
+            &spec.seed_timestamp,
+            &got_state,
+            &result,
+            &bundles,
+            &digest_probe,
+        );
         let mut want = normalize_sides(
             &baked,
             &spec.seed_timestamp,
             &want_state,
             &flatten_details(&case.result),
             &case.bundles,
+            &case.digest_probe,
         );
         for side in [&mut got, &mut want] {
             resort_state(&mut side["state"]);
         }
 
-        for section in ["result", "bundles"] {
+        for section in ["result", "bundles", "digestProbe"] {
             if got[section] != want[section] {
                 mismatches.push(format!(
                     "case {} section {section}:\n  got  {}\n  want {}",
@@ -1227,6 +1442,20 @@ fn assert_fixture_carries_profile_and_avatars(db: &Db, spec: &Spec, thumbnail_fi
 /// across two runs — let alone two languages. Its LENGTH still can, which is
 /// why `size` is left as a real comparand and `appVersion` is injected rather
 /// than stripped.
+/// Replace every bundle's PLAINTEXT digest wherever it appears in a comparand
+/// (a `ArchiveVerificationError`'s `got …` half is the only place it does).
+/// See the call site for why it can never agree across two runs.
+fn blind_plaintext_sha(v: &Value, digests: &[String]) -> Value {
+    if digests.is_empty() {
+        return v.clone();
+    }
+    let mut text = v.to_string();
+    for d in digests {
+        text = text.replace(d.as_str(), "<plaintext-sha>");
+    }
+    serde_json::from_str(&text).expect("re-parse the blinded result")
+}
+
 fn blind_archive_sha(state: &mut Value) {
     let Some(rows) = state.get_mut("files").and_then(Value::as_array_mut) else {
         return;

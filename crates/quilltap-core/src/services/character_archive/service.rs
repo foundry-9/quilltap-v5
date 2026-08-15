@@ -554,23 +554,83 @@ async fn restore_archive_bundle(
     // diagnoses a wrong one as ArchivePassphraseMismatchError ("predates your
     // passphrase change") via the header's key hash, before touching the
     // ciphertext — v5 resolves it here, one call earlier, from the same source.
-    let plaintext = if is_encrypted_archive(&raw) {
+    // `raw` stays alive past the decrypt: the bug-69 self-heal below needs the
+    // digest of the bytes AS STORED to tell a clobbered row from a corrupt one.
+    let plaintext: std::borrow::Cow<'_, [u8]> = if is_encrypted_archive(&raw) {
         let passphrase =
             resolve_archive_passphrase(seams.passphrase).map_err(ArchiveError::Crypto)?;
-        decrypt_archive(&raw, &passphrase).map_err(ArchiveError::Crypto)?
+        std::borrow::Cow::Owned(decrypt_archive(&raw, &passphrase).map_err(ArchiveError::Crypto)?)
     } else {
-        raw
+        std::borrow::Cow::Borrowed(&raw)
     };
 
     // The file row's sha256 is the plaintext digest (§4.2d) — the one check
     // that survives re-encryption and actually verifies content.
     let digest = sha256_hex(&plaintext);
+    let mut clobber_warnings: Vec<String> = Vec::new();
     if !file_row.sha256.is_empty() && digest != file_row.sha256 {
-        return Err(ArchiveError::Verification(format!(
-            "the bundle's decrypted content does not match its recorded digest \
-             (expected {}, got {digest}) — the bundle is corrupt",
-            file_row.sha256
-        )));
+        // Bug 69 self-heal (v4 `aa464abf`). Until the file watcher learned to
+        // leave content digests alone, it re-derived this row's sha256 from the
+        // encrypted bytes seconds after the archive was written, and every
+        // rehydrate afterwards failed here. If the recorded digest is exactly
+        // the digest of the file as stored, the bundle is intact and the ROW is
+        // what was damaged: repair it and carry on. Any other mismatch is a
+        // genuinely corrupt bundle.
+        //
+        // ⚠ No v5 code path can CAUSE this: v5 has no file-storage watcher and
+        // no boot reconciliation (`api::files::files_sync` refuses loudly), and
+        // the only writers of `files.sha256` are the same-name upload overwrite
+        // and image generation. The arm exists because v5 opens the same
+        // instances a pre-4.9 v4 damaged.
+        let stored_digest = sha256_hex(&raw);
+        if file_row.sha256 != stored_digest {
+            return Err(ArchiveError::Verification(format!(
+                "the bundle's decrypted content does not match its recorded digest \
+                 (expected {}, got {digest}) — the bundle is corrupt",
+                file_row.sha256
+            )));
+        }
+        tracing::warn!(
+            target: "quilltap::archive",
+            character_id,
+            archive_file_id,
+            recorded_digest = %digest_prefix(&file_row.sha256),
+            plaintext_digest = %digest_prefix(&digest),
+            "Repairing an archive row whose plaintext digest was overwritten with the ciphertext digest (bug 69)",
+        );
+        clobber_warnings.push(
+            "The bundle's recorded digest had been overwritten with the digest of its \
+             encrypted bytes; the contents verified against the file as stored, and the \
+             record has been repaired."
+                .to_string(),
+        );
+        // v4 repairs `sha256` ALONE — an archive row's `size` is the real
+        // on-disk (encrypted) byte count and was never wrong.
+        let repair_id = archive_file_id.to_string();
+        let repaired = digest.clone();
+        let repair = db
+            .write(move |ws| {
+                FilesRepository::new(ws.main().connection()).update(
+                    &repair_id,
+                    &crate::db::files::FileUpdate {
+                        sha256: Some(repaired),
+                        updated_at: crate::clock::now_iso(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .await;
+        if let Err(error) = repair {
+            // A repair failure is not fatal: the bundle verified, so the
+            // rehydrate continues and the row simply heals on a later run.
+            tracing::warn!(
+                target: "quilltap::archive",
+                character_id,
+                archive_file_id,
+                error = %error,
+                "Failed to repair the archive row digest; the rehydrate continues",
+            );
+        }
     }
 
     let export_data = parse_bundle(&plaintext)?;
@@ -669,8 +729,20 @@ async fn restore_archive_bundle(
             documents: result.imported.document_store_documents.unwrap_or(0),
             blobs: result.imported.document_store_blobs.unwrap_or(0),
         },
-        result.warnings,
+        // v4 `[...clobberWarnings, ...result.warnings]` — the repair warning
+        // leads, because it is about the bundle rather than about the import.
+        clobber_warnings
+            .into_iter()
+            .chain(result.warnings)
+            .collect(),
     ))
+}
+
+/// v4's `digest.slice(0, 12) + '...'` log form, without assuming the string is
+/// 64 hex characters (a clobbered row is whatever was written over it).
+fn digest_prefix(digest: &str) -> String {
+    let head: String = digest.chars().take(12).collect();
+    format!("{head}...")
 }
 
 /// §6 step 5: restored text documents come back with no chunks —
@@ -952,6 +1024,15 @@ async fn create_archive_file_record(
     // watcher's add event finds the record by storageKey and stays silent —
     // creating the row keyless and patching it post-upload raced the watcher
     // into adopting the fresh bundle as an orphaned DOCUMENT.
+    //
+    // ⚠ v4 LORE, kept deliberately: v5 ports no file watcher (`files_sync`
+    // refuses loudly), so the race this defends against cannot happen here —
+    // but the ORDER it forces (row before bytes) is still correct and still
+    // load-bearing for v4-written instances. v4's watcher had a second hole in
+    // this same area, bug 69: it re-derived `sha256` from the encrypted bytes
+    // and clobbered the plaintext digest recorded just below. That one IS
+    // reachable in v5 — through damaged rows, not through v5 code — and
+    // `restore_archive_bundle` self-heals it.
     let file_id = uuid::Uuid::new_v4().to_string();
     let storage_key = format!("{file_id}/character-archive.qtap");
     let now = crate::clock::now_iso();

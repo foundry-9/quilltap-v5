@@ -3774,7 +3774,11 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
+<<<<<<< HEAD
 version = "0.0.557"
+=======
+version = "0.0.550"
+>>>>>>> claude/p4-d80-bug-convergence-8f1945
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3817,7 +3821,11 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
+<<<<<<< HEAD
 version = "0.0.479"
+=======
+version = "0.0.474"
+>>>>>>> claude/p4-d80-bug-convergence-8f1945
 dependencies = [
  "base64 0.22.1",
  "flate2",

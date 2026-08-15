@@ -139,6 +139,19 @@ profiles off. The ensure's guard is at the column level, not per statement,
 because v4's backfill runs exactly once: re-running it every boot would
 clobber a user's explicit choice on an Anthropic profile. Versions: core
 0.0.550, host 0.0.71.
+Closed work order P4.D80. Docs only.
+
+Ported the server half of v4's aa464abf. The chat GET's character enrichment
+now carries archivedAt on both of its return paths, so the Salon sidebar can
+badge an archived seat on a fresh load instead of only after a participants
+action (v4 bug 66 — the bug this port filed upstream, now fixed on both
+sides). Rehydrating a character archive also self-heals a bundle row whose
+recorded digest was overwritten with the digest of its encrypted bytes: when
+the recorded digest is provably the digest of the file as stored, the bundle
+is intact and the record is repaired with a warning; any other mismatch is
+still refused as corrupt (v4 bug 69, reachable on instances a pre-4.9 v4
+damaged). The character-archive differential grows to 20 cases and gains a
+digest-classification comparand, both mutation-proven.
 
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the

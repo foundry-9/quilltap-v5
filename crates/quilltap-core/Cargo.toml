@@ -1,6 +1,10 @@
 [package]
 name = "quilltap-core"
+<<<<<<< HEAD
 version = "0.0.557"
+=======
+version = "0.0.550"
+>>>>>>> claude/p4-d80-bug-convergence-8f1945
 edition = "2021"
 publish = false
 
