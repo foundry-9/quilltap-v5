@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+The Ollama stream decoder now routes reasoning (P4.D78 unit 4, v4
+d9c5a1c7): native `message.thinking` deltas and inline `<think>` interiors
+land on one cumulative `reasoningContent`, reasoning-only chunks carry empty
+content, the parser's flush releases its tail as a content chunk before the
+terminal one, and the terminal `rawResponse` content is think-free. Seven new
+recorded stream vectors; every pre-existing vector byte-identical. The
+composer differential's stale ollama byte-chunking exclusion is retired — all
+three chunkings now run there too.
+
 The non-streaming Ollama parse now routes both reasoning channels (P4.D78
 unit 3, v4 d9c5a1c7): `parse_ollama` splits `message.content` through the
 think parser and concatenates the native `message.thinking` ahead of the

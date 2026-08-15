@@ -17,6 +17,59 @@ packages/ plugins/` is strictly one-directional (every hunk removes what main
 added — bugfix is behind, carrying nothing portable). Regen therefore runs
 straight from the checkout, no pinned worktree.
 
+**Unit 4 — the streaming decoder + the recorded corpus (core 0.0.553,
+harness 0.0.477).** `OllamaNdjsonDecoder` gains the reasoning routing: native
+`message.thinking` deltas append to `reasoning_so_far`; content deltas go
+through a stream-lifetime `ThinkTagStreamParser` whose new reasoning is
+spliced BY INDEX (`inline_reasoning_seen`) so an interior is never counted
+twice. `reasoningContent` is emitted **CUMULATIVELY**, riding the visible
+chunk when one exists and otherwise on a `content: ""` chunk. `total_content`
+now accumulates the VISIBLE text, so the terminal `raw_response.message.
+content` the tool loop reads is think-free. At done the parser is flushed:
+the tail (if any) is one more content chunk BEFORE the terminal chunk and
+carries no reasoning; reasoning the flush revealed reaches ONLY the terminal
+chunk's conditional `reasoningContent`.
+
+*The corpus — recorded BY HAND at the pin* (the sweep driver never runs a
+committed-corpus family's recording stage). Seven new `.wire` transcripts +
+`cases.json` rows, recorded through v4's REAL `streamMessage`: native
+thinking, inline think straddling BOTH NDJSON lines and tag boundaries, the
+orphan close, a held partial tag that flushes as content, an unterminated
+block whose flush only reaches the terminal chunk, and a mixed-channel stream
+that also carries a tool call (pinning that the think-free `total_content`
+and the normalized `tool_calls` coexist). Corpus 3 → 10 cases; **every
+pre-existing vector byte-identical (measured)**.
+
+**⚠ The finding worth carrying: v4's orphan-close rule barely fires in
+streaming.** `sanitize` sets `emittedVisible` on the FIRST non-empty release,
+and `orphanEligible` requires `!emittedVisible` — so a `</think>` that
+arrives in a later delta than the reasoning it closes is already too late,
+and the whole block ships as visible content. Both shapes are now pinned:
+`ollama-orphan-close` (the close arrives in the same delta — the rule FIRES,
+reasoning captured) and `ollama-orphan-close-streamed` (the reasoning
+streamed first — the rule does NOT fire, `</think>` and all ships as
+content). v5 reproduces v4 exactly in both; this is v4 behavior, not a v5
+gap, and the non-firing arm is the one a "fix" would silently break.
+
+*Mutation-proven three ways:* emitting the reasoning DELTA instead of the
+cumulative counter → red at `ollama-inline-think` chunk 1; emitting the flush
+tail AFTER the terminal chunk → red at `ollama-think-tail` chunk 1;
+accumulating the RAW content into `raw_response` → red at
+`ollama-inline-think` chunk 4. Three new Rust unit tests pin the cumulative
+contract, the tail ordering, and the flush-reaches-only-the-terminal rule.
+
+**Tier-2 items 7 + 8, both discharged — and item 7 was bigger than a
+comment.** The `streaming_composer_equivalence` header claimed ollama was
+replayed at whole + line-aligned only because of "the ported no-buffer bug".
+MEASURED: that has been stale since v4 bug 35, and the byte chunking is green
+through the FULL compose path — so the exclusion is gone from the code too
+(`chunkings_ndjson` now returns three chunkings; the header records the
+measurement). Item 8 landed as a composition-level witness counted off the
+chunks the COMPOSER emitted, with a `>= 4` floor for ollama so a corpus that
+lost the thinking vectors cannot leave the family green with the feature
+untested. Composer family: 10 ollama cases × 3 chunkings, 5 carrying
+reasoning end to end.
+
 **Unit 3 — the non-streaming parse (core 0.0.552, harness 0.0.476).**
 `parse_ollama` splits `message.content` through `extract_think_blocks` and
 concatenates the native `message.thinking` AHEAD of the inline reasoning
