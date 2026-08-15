@@ -358,10 +358,13 @@ where
     .map_err(|e| DbError::Key(format!("buildMessageContext failed: {e:?}")))?;
 
     // --- Single non-streaming generation (v4 132–153) ---
-    let params_value = connection_profile
-        .get("parameters")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    // v4 `d9c5a1c7`: `const params = profileParams(connectionProfile) ?? {}`,
+    // which REPLACED `(connectionProfile.parameters || {})`. Two behaviour
+    // changes ride the conversion, both v4's: a non-object `parameters` cell
+    // (a number, a string) now collapses to `{}` instead of being forwarded
+    // verbatim, and an Ollama profile's Max Context is injected as `num_ctx`.
+    let params_value =
+        crate::cheap_llm::profile_params_value(&connection_profile).unwrap_or_else(|| json!({}));
     let messages: Vec<CompletionMessage> = mc_result
         .formatted_messages
         .iter()

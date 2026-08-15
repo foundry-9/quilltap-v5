@@ -2337,18 +2337,54 @@ where
             },
         })
         .collect();
+    // v4 `orchestrator.service.ts:1034`:
+    //   const modelParams = profileParams(streamingState.effectiveProfile) ?? {}
+    // and `streaming.service.ts:395-400` reads the request's temperature /
+    // maxTokens / topP off that bag and forwards the bag itself as
+    // `profileParameters`.
+    //
+    // P4.D79 found v5 had NO twin of this line: the primary stream sent
+    // `temperature` read from a top-level `connection_profile.temperature` key
+    // that connection profiles do not have (so always `None`), and `maxTokens`
+    // / `topP` / `profileParameters` all hard-`None` — every per-model setting
+    // (DeepSeek reasoning off, an Ollama `num_ctx`, a profile's temperature)
+    // was silently dropped on the Salon's main path. The tier-3 corpus could
+    // not see it because every corpus profile left `parameters` at its `{}`
+    // default; the P4.D79 corpus gives the Primary profile a real bag and the
+    // oracle now records the whole `modelParams` at the wire.
+    //
+    // The bag comes from the EFFECTIVE profile, so a danger reroute uses the
+    // rerouted profile's parameters — v5 carries the rerouted profile as the
+    // 4-field `EffectiveProfile`, so its row is re-read by id (the same row the
+    // router loaded).
+    let effective_profile_row: Value = if did_reroute {
+        db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| connection_profile.clone())
+    } else {
+        connection_profile.clone()
+    };
+    let model_params =
+        crate::cheap_llm::profile_params_value(&effective_profile_row).unwrap_or_else(|| json!({}));
     // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`
     // into the primary stream. The stream provider maps `tools.length > 0 ? tools
     // : undefined` (here `actual_tools_value` is `None` for an empty slate).
     let params = StreamParams {
         messages: stream_messages,
         model: effective_profile.model_name.clone(),
-        temperature: json_f64(&connection_profile, "temperature"),
-        max_tokens: None,
-        top_p: None,
+        // v4's `modelParams.temperature as number | undefined` is an unchecked
+        // TS cast: a non-numeric cell would reach the SDK verbatim there and is
+        // dropped here, the typed-field divergence this seam cannot avoid.
+        temperature: model_params.get("temperature").and_then(Value::as_f64),
+        max_tokens: model_params
+            .get("maxTokens")
+            .and_then(Value::as_f64)
+            .map(|n| n as i64),
+        top_p: model_params.get("topP").and_then(Value::as_f64),
         tools: actual_tools_value.clone(),
         web_search_enabled: use_native_web_search,
-        profile_parameters: None,
+        profile_parameters: Some(model_params.clone()),
         cache_key: None,
         previous_response_id,
         stop: initial_stop_sequences.clone(),
@@ -3243,8 +3279,17 @@ where
         base_url: profile.base_url.clone(),
         is_cheap: false,
         is_dangerous_compatible: false,
+        // ⚠ Pre-existing simplification, unchanged by P4.D79: this basis is
+        // built from the 4-field [`EffectiveProfile`], so the profile's
+        // `parameters` / `maxContext` / `maxTokens` are not available here. It
+        // only matters on `getCheapLLMProvider`'s LAST fallback arm (where v4
+        // would return `selectionFromProfile(currentProfile)` carrying the
+        // profile's own parameters); every configured path selects from
+        // `available_profiles`, which do carry them. Banked, not widened here —
+        // see the P4.D79 lane record.
         parameters: None,
         max_tokens: None,
+        max_context: None,
         model_class: None,
     };
     // The fold-time episode pass runs LIVE here (v4's in-loop check calls the
@@ -3591,6 +3636,7 @@ pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
             == Some(true),
         parameters: v.get("parameters").cloned(),
         max_tokens: json_f64(v, "maxTokens"),
+        max_context: json_f64(v, "maxContext"),
         model_class: json_str(v, "modelClass"),
     }
 }

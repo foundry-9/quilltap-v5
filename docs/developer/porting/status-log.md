@@ -97,6 +97,91 @@ the provider default rather than coercing).
 Assertions are shape-based, not hand counts (`harness-corpus-shape-constants-rot`):
 the resolve grid must be exactly `defaults × 8`.
 
+### Unit 7 — the `profile_params` consolidation + the `num_ctx` injection
+
+v4 `d9c5a1c7` widened `profileParams()` and converted eight inline
+`profileParameters` construction sites onto it. v5's twin
+(`cheap_llm::profile_params`) is now `profile_params_parts(provider,
+parameters, max_context)` with two convenience wrappers, and every listed site
+routes through it. `CheapLlmProfile` and `ReaffirmationProfile` each gained a
+`max_context` field (the injection's input).
+
+New family `profile_params_equivalence` (`QT_ORACLE_PROFILE_PARAMS`, case
+`harness/oracle/cases/profile-params.ts`) drives v4's REAL helper over **15
+bag shapes × 6 providers × 10 maxContext values = 900 cases, all matched (40
+injecting)**. It compares the result BOTH structurally and as the literal
+`JSON.stringify` text, because two of v4's edges are key-ORDER facts:
+spreading an ARRAY base yields index keys (`{"0":"a","1":"b","num_ctx":…}`),
+and overwriting an existing `num_ctx: null` keeps the key at its ORIGINAL
+position rather than moving it to the end. The text comparison is also what
+forced `js_number_to_json` on the injected value — an integral `maxContext`
+arrives as `32768.0` off the REAL column and must render as JS's `32768`.
+
+Measured v4 edges the corpus pins (all confirmed against the real helper, none
+assumed): `provider === 'OLLAMA'` is case-SENSITIVE; `base?.num_ctx == null`
+is LOOSE, so `num_ctx: null` is overwritten while `0` and `false` suppress;
+a NON-object bag with an injecting provider still yields `{num_ctx}` (v4
+spreads `base ?? {}`); `Infinity` passes `typeof === 'number' && > 0` and then
+stringifies to `null` on both sides; `NaN` fails `> 0`; a STRING `maxContext`
+fails the `typeof` test entirely.
+
+**The three divergences the order predicted, all fixed by the conversion:**
+`regenerate_swipe` forwarded a non-object `parameters` cell verbatim (v4's new
+`profileParams(...) ?? {}` collapses it); `file_fallback` and `chat_create`'s
+greeting both dropped an ARRAY bag their `is_object()` filters rejected.
+`file_fallback` additionally now sets `profileParameters` unconditionally, as
+v4's `?? {}` makes its `typeof` guard vacuous.
+
+**⚠ Two LARGER gaps the order did not predict, found by consequence and fixed
+in this unit** — both the same shape, both invisible to every corpus until
+this unit made them measurable:
+
+1. **The Salon's primary stream had NO `modelParams` twin at all.**
+   `orchestrator.rs` built its `StreamParams` with `temperature` read off a
+   TOP-LEVEL `connection_profile.temperature` key that connection profiles do
+   not have (so always `None`), and `max_tokens` / `top_p` /
+   `profile_parameters` hard-`None`. Every per-model setting — a profile's
+   temperature, DeepSeek reasoning-off, an Ollama `num_ctx` — was silently
+   dropped on the main chat path. Now `profile_params_value` over the
+   EFFECTIVE profile (re-read by id after a danger reroute, since v5 carries
+   the rerouted profile as the 4-field `EffectiveProfile`).
+2. **The Carina answer read its temperature from the same non-existent
+   top-level key** (`carina_query.rs`). v4's `carina.service.ts:606` uses
+   `(connectionProfile.parameters ?? {})` — a different construction from
+   `profileParams`, deliberately not converted by `d9c5a1c7` — so v5 now
+   mirrors that shape exactly, and `maxTokens`/`topP` were threaded through
+   `StreamCtx` with it.
+
+**Why no corpus could see either:** every `orchestrator-tier3` profile left
+`parameters` at its `{}` default, so `modelParams` was empty on BOTH sides and
+the two implementations agreed vacuously (`recorded-but-unasserted-corpus-fields`,
+the same class). The fix to the CORPUS is the real deliverable here: the
+Primary profile now carries `{temperature: 0.42, maxTokens: 321, topP: 0.87}`,
+the fixture builder passes `parameters`/`maxContext` through, and the oracle
+records the whole `modelParams` bag at the wire beside the tool slate — a new
+`profileParameters at wire` assertion mirroring the W4.1g tool-slate one.
+Finding (2) surfaced the moment the corpus changed: the Carina answer stopped
+matching v4's canned key and the `carina_markup` event trace went red.
+
+**Mutation-proven both ways:** reverting `profile_parameters` to `None`
+reddens the new wire assertion; reverting the temperature read to the old
+top-level lookup reddens FOUR cases with `no canned stream queued`.
+
+⚠ Recorded, NOT fixed (banked): `run_summary_check`'s cheap-LLM selection
+basis is built from the 4-field `EffectiveProfile`, so its `parameters` /
+`maxContext` / `maxTokens` are `None`. Pre-existing; it only matters on
+`getCheapLLMProvider`'s LAST fallback arm, since every configured path selects
+from `available_profiles` (which do carry them). Commented at the site.
+
+NO-PORT: v4's eighth conversion site, `lib/wardrobe/image-analysis.ts:306`,
+has no v5 twin — the typed refusal stands.
+
+**Files touched outside the order's Ownership list** (none owned by a sibling
+lane; flagged for the unifier): `services/carina_query.rs` (finding 2),
+`services/image_job_common.rs`, `services/dangerous_content/gatekeeper_job.rs`,
+`services/title_update_job.rs`, `tools/generate_image.rs` — the last four only
+to add `max_context` to their `cheap_llm_profile_from_value` helpers.
+
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES to `1bed814f`

@@ -1537,10 +1537,13 @@ where
         .get("baseUrl")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let profile_parameters = connection_profile
-        .get("parameters")
-        .filter(|v| v.is_object())
-        .cloned();
+    // v4 `d9c5a1c7`: `profileParameters: profileParams(connectionProfile)` —
+    // the greeting's own inline `typeof === 'object'` copy became the shared
+    // helper, so an Ollama greeting carries `num_ctx` from Max Context. (An
+    // ARRAY `parameters` cell now forwards, as `typeof [] === 'object'`; the
+    // separate `parameters` variable above keeps v4's raw cast, which yields
+    // `undefined` for every key either way.)
+    let profile_parameters = crate::cheap_llm::profile_params_value(&connection_profile);
 
     let make_log = || -> Option<GreetingLog<'_>> {
         if deps.greeting_log && llm_logs.is_some() {

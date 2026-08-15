@@ -43,7 +43,7 @@
 
 use std::future::Future;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{api_keys, chats_read, connection_profiles};
@@ -504,8 +504,29 @@ where
         .filter(|t| tool_name(t).as_deref() != Some("ask_carina"))
         .collect();
     let use_native_web_search = built.use_native_web_search;
-    let profile_parameters = connection_profile.get("parameters").cloned();
-    let temperature = f(&connection_profile, "temperature");
+    // v4 `carina.service.ts:606`: `const modelParams = (connectionProfile
+    // .parameters ?? {})`, handed to `streamMessage`, which reads the request's
+    // temperature / maxTokens / topP off it and forwards it as
+    // `profileParameters`.
+    //
+    // P4.D79: v5 read `temperature` off a TOP-LEVEL `connection_profile
+    // .temperature` key that connection profiles do not have — always `None`.
+    // Invisible until the orchestrator tier-3 corpus gave its Primary profile a
+    // real parameters bag, at which point the Carina answer stopped matching
+    // v4's canned key entirely. The same class as the orchestrator's own
+    // missing `modelParams` twin, found by the same corpus change.
+    let model_params = connection_profile
+        .get("parameters")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let temperature = model_params.get("temperature").and_then(Value::as_f64);
+    let max_tokens = model_params
+        .get("maxTokens")
+        .and_then(Value::as_f64)
+        .map(|n| n as i64);
+    let top_p = model_params.get("topP").and_then(Value::as_f64);
+    let profile_parameters = Some(model_params);
 
     // 6. Run the LLM call + tool loop server-side (no live client streaming).
     let answerer_participant_id = char_participants
@@ -533,6 +554,8 @@ where
         base_url: base_url.as_deref(),
         model: &model_name,
         temperature,
+        max_tokens,
+        top_p,
         profile_parameters: profile_parameters.as_ref(),
     };
 
@@ -1033,7 +1056,10 @@ struct StreamCtx<'a> {
     provider: &'a str,
     base_url: Option<&'a str>,
     model: &'a str,
+    /// All three come off v4's `modelParams` bag (`streaming.service.ts:395-397`).
     temperature: Option<f64>,
+    max_tokens: Option<i64>,
+    top_p: Option<f64>,
     profile_parameters: Option<&'a Value>,
 }
 
@@ -1056,8 +1082,8 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         messages: messages.to_vec(),
         model: ctx.model.to_string(),
         temperature: ctx.temperature,
-        max_tokens: None,
-        top_p: None,
+        max_tokens: ctx.max_tokens,
+        top_p: ctx.top_p,
         tools: tools_value,
         web_search_enabled: use_native_web_search,
         profile_parameters: ctx.profile_parameters.cloned(),

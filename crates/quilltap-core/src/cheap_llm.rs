@@ -50,6 +50,11 @@ pub struct CheapLlmProfile {
     pub parameters: Option<Value>,
     /// Top-level maxTokens override (for `resolveMaxTokens`).
     pub max_tokens: Option<f64>,
+    /// Top-level `maxContext` override — the profile's Max Context. Read by
+    /// [`profile_params`] for the Ollama `num_ctx` injection (v4 `d9c5a1c7`
+    /// widened `profileParams`'s parameter to
+    /// `Pick<ConnectionProfile,'provider'|'parameters'> & {maxContext?}`).
+    pub max_context: Option<f64>,
     pub model_class: Option<String>,
 }
 
@@ -94,14 +99,108 @@ pub struct UncensoredFallbackOptions<'a> {
     pub is_dangerous_chat: Option<bool>,
 }
 
-/// v4 `profileParams`: a profile's parameters as a forwardable record — the
-/// JS `params && typeof params === 'object'` check (`null` is falsy despite
-/// `typeof null === 'object'`; arrays pass).
-pub fn profile_params(profile: &CheapLlmProfile) -> Option<Value> {
-    match &profile.parameters {
-        Some(v @ (Value::Object(_) | Value::Array(_))) => Some(v.clone()),
+/// The provider whose server allocates its own (usually far too small) context
+/// window unless the request carries `options.num_ctx`.
+const NUM_CTX_PROVIDER: &str = "OLLAMA";
+
+/// v4 `profileParams` (`lib/llm/cheap-llm.ts`), widened by `d9c5a1c7`. THE
+/// single chokepoint for turning a connection profile into the forwardable
+/// `profileParameters` record — every construction site goes through here so
+/// the injection below applies uniformly across the Salon and the utility
+/// paths.
+///
+/// Two steps, in v4's order:
+///
+/// 1. **Base** — the JS `params && typeof params === 'object'` check. `null` is
+///    falsy despite `typeof null === 'object'`, so it drops out; **arrays
+///    pass**, because `typeof [] === 'object'`.
+/// 2. **`num_ctx` injection** — for an Ollama profile with a positive numeric
+///    `maxContext`, and only when the stored bag does not already pin
+///    `num_ctx`, the profile's Max Context is injected. Ollama otherwise loads
+///    its own default window while the budgeter sizes prompts against Max
+///    Context, and the server silently truncates.
+///
+/// The faithful edges, each pinned by `profile_params_equivalence`:
+///
+/// - the provider test is `=== 'OLLAMA'`, **case-sensitive** — a stored
+///   `'ollama'` gets no injection;
+/// - `base?.num_ctx == null` is JS LOOSE equality, so an explicit `null` is
+///   overwritten but `0` and `false` both win and suppress the injection;
+/// - spreading an **array** base yields an object with index keys
+///   (`{"0":…,"1":…,"num_ctx":…}`) — v5's `preserve_order` `Map` reproduces
+///   that, and the insertion order with it;
+/// - overwriting an existing `num_ctx: null` keeps the key at its ORIGINAL
+///   position (JS object key order, and `IndexMap::insert` alike);
+/// - `typeof maxContext === 'number'` admits `Infinity` (which then
+///   stringifies to `null`, on both sides) and `NaN` (which fails `> 0`).
+pub fn profile_params_parts(
+    provider: &str,
+    parameters: Option<&Value>,
+    max_context: Option<f64>,
+) -> Option<Value> {
+    let base = match parameters {
+        Some(v @ (Value::Object(_) | Value::Array(_))) => Some(v),
         _ => None,
+    };
+
+    // `base?.num_ctx == null` — absent, or present-and-null.
+    let num_ctx_unset = base
+        .and_then(|b| b.get("num_ctx"))
+        .is_none_or(serde_json::Value::is_null);
+    let inject =
+        provider == NUM_CTX_PROVIDER && max_context.is_some_and(|n| n > 0.0) && num_ctx_unset;
+
+    if !inject {
+        return base.cloned();
     }
+
+    // `{ ...(base ?? {}), num_ctx: maxContext }`.
+    let mut out = serde_json::Map::new();
+    match base {
+        Some(Value::Object(o)) => {
+            for (k, v) in o {
+                out.insert(k.clone(), v.clone());
+            }
+        }
+        Some(Value::Array(a)) => {
+            for (i, v) in a.iter().enumerate() {
+                out.insert(i.to_string(), v.clone());
+            }
+        }
+        _ => {}
+    }
+    // `maxContext` is a REAL column, so an integral window arrives as `32768.0`
+    // and must render as JS's `32768` — the same `js_number_to_json` collapse
+    // every net read uses. It also maps a non-finite f64 to `null`, exactly as
+    // `JSON.stringify` renders `Infinity`.
+    out.insert(
+        "num_ctx".to_string(),
+        crate::db::js_number_to_json(max_context.unwrap_or_default()),
+    );
+    Some(Value::Object(out))
+}
+
+/// [`profile_params_parts`] over the cheap-LLM profile subset.
+pub fn profile_params(profile: &CheapLlmProfile) -> Option<Value> {
+    profile_params_parts(
+        &profile.provider,
+        profile.parameters.as_ref(),
+        profile.max_context,
+    )
+}
+
+/// [`profile_params_parts`] over a net-read connection-profile object (the
+/// shape the service paths carry). `maxContext` is a nullable REAL column, so
+/// an absent or NULL cell is `None`.
+pub fn profile_params_value(profile: &Value) -> Option<Value> {
+    profile_params_parts(
+        profile
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        profile.get("parameters"),
+        profile.get("maxContext").and_then(Value::as_f64),
+    )
 }
 
 /// JS `baseUrl || undefined`.

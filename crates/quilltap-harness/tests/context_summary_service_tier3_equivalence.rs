@@ -135,6 +135,8 @@ struct ProfileW {
     #[serde(default)]
     max_tokens: Option<f64>,
     #[serde(default)]
+    max_context: Option<f64>,
+    #[serde(default)]
     model_class: Option<String>,
 }
 
@@ -149,6 +151,7 @@ impl ProfileW {
             is_dangerous_compatible: self.is_dangerous_compatible,
             parameters: self.parameters,
             max_tokens: self.max_tokens,
+            max_context: self.max_context,
             model_class: self.model_class,
         }
     }

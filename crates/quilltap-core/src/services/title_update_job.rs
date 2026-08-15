@@ -101,6 +101,7 @@ fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
             .unwrap_or(false),
         parameters: v.get("parameters").cloned(),
         max_tokens: v.get("maxTokens").and_then(Value::as_f64),
+        max_context: v.get("maxContext").and_then(Value::as_f64),
         model_class: v
             .get("modelClass")
             .and_then(Value::as_str)

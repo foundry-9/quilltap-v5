@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Consolidated every profile-parameters construction site onto the shared
+profileParams helper and ported its Ollama num_ctx injection (P4.D79 unit 7,
+v4 d9c5a1c7). The helper gains the injection (Max Context becomes
+options.num_ctx for Ollama profiles that do not already pin it); the eight v4
+call sites' v5 twins now all route through it, which fixes three measured
+divergences on the way (regenerate-swipe forwarded a non-object parameters
+cell verbatim, the image-description fallback and the greeting both dropped
+an array bag). A new 900-case tier-1 differential compares the result both
+structurally and as literal JSON text, so key order is a comparand.
+
+Two larger gaps surfaced while converting, both pre-existing and both fixed:
+the Salon's primary stream had no modelParams twin at all, so a profile's
+temperature, maxTokens, topP and the whole parameters bag were silently
+dropped on every turn; and the Carina answer read its temperature from a
+top-level profile key that does not exist. The orchestrator tier-3 corpus
+gave its Primary profile a real parameters bag and the oracle now records
+the modelParams reaching the wire, which is what made both visible.
+Versions: core 0.0.552, harness 0.0.475.
+
 Ported the multi-character prefill resolver (P4.D79 unit 2, v4 23af7146's
 lib/llm/multi-character-prefill.ts): the provider default (off for Anthropic,
 on everywhere else) and the tri-state resolution, where a stored null means

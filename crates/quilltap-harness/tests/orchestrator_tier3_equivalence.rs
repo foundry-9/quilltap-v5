@@ -198,6 +198,12 @@ struct CannedStreamW {
     /// pass the identical array — proven per call.
     #[serde(default)]
     tools: Value,
+    /// P4.D79: the whole `modelParams` bag v4 passed to `streamMessage` for this
+    /// call key (v4 `profileParams(effectiveProfile) ?? {}`). Recorded because
+    /// the key only carries the temperature — v5 was passing NO profile
+    /// parameters at all, and no assertion could see it.
+    #[serde(rename = "modelParams", default)]
+    model_params: Value,
     sequences: Vec<Vec<ChunkW>>,
 }
 #[derive(Deserialize)]
@@ -257,15 +263,21 @@ struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
     /// The tool slate the ORACLE recorded reaching the wire, per call key (W4.1g).
     expected_tools: HashMap<String, Value>,
+    /// The `modelParams` bag the ORACLE recorded reaching the wire, per call key
+    /// (P4.D79).
+    expected_model_params: HashMap<String, Value>,
     /// The tool slate the RUST side actually passed, per call key — recorded here
     /// as each stream fires, then diffed against `expected_tools` after the run.
     recorded_tools: Mutex<HashMap<String, Value>>,
+    /// The `profileParameters` bag the RUST side actually passed, per call key.
+    recorded_model_params: Mutex<HashMap<String, Value>>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
         let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
             HashMap::new();
         let mut expected_tools: HashMap<String, Value> = HashMap::new();
+        let mut expected_model_params: HashMap<String, Value> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
@@ -280,12 +292,21 @@ impl QueuedStreamingProvider {
             } else {
                 Value::Array(Vec::new())
             };
-            expected_tools.insert(key, tools);
+            expected_tools.insert(key.clone(), tools);
+            // A missing/null recorded bag normalizes to `{}` (v4's `?? {}`).
+            let mp = if row.model_params.is_object() || row.model_params.is_array() {
+                row.model_params.clone()
+            } else {
+                Value::Object(serde_json::Map::new())
+            };
+            expected_model_params.insert(key, mp);
         }
         Self {
             queues: Mutex::new(queues),
             expected_tools,
+            expected_model_params,
             recorded_tools: Mutex::new(HashMap::new()),
+            recorded_model_params: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -311,6 +332,15 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .unwrap()
                 .entry(key.clone())
                 .or_insert(tools);
+            let mp = params
+                .profile_parameters
+                .clone()
+                .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+            self.recorded_model_params
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert(mp);
         }
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
@@ -946,6 +976,27 @@ fn orchestrator_tier3_matches_oracle() {
                     "tool slate at wire mismatch for key:\n{key}\n  got:  {gn:?}\n  want: {wn:?}"
                 );
             }
+        }
+    }
+
+    // --- modelParams AT THE WIRE (P4.D79) ---
+    // v4 builds `modelParams = profileParams(effectiveProfile) ?? {}` and
+    // forwards it as `profileParameters`; the call key only carries its
+    // temperature, so until this assertion existed the corpus could not tell
+    // that v5 was passing nothing at all. The corpus's Primary profile now
+    // carries a real parameters bag, which makes both halves measurable.
+    {
+        let recorded = streaming.recorded_model_params.lock().unwrap();
+        for (key, got_mp) in recorded.iter() {
+            let want_mp = streaming.expected_model_params.get(key).unwrap_or_else(|| {
+                panic!(
+                    "Rust made a stream call with no oracle-recorded modelParams for key:\n{key}"
+                )
+            });
+            assert_eq!(
+                got_mp, want_mp,
+                "profileParameters at wire mismatch for key:\n{key}"
+            );
         }
     }
 

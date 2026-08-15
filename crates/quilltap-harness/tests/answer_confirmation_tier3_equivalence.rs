@@ -109,6 +109,10 @@ struct ConnectionProfileSpec {
     #[serde(rename = "baseUrl")]
     base_url: Option<String>,
     parameters: Value,
+    /// P4.D79: the Max Context, for the shared `profileParams` helper the
+    /// re-affirmation call now goes through. Absent in every corpus row so far.
+    #[serde(rename = "maxContext", default)]
+    max_context: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -620,6 +624,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             } else {
                 Some(spec.connection_profile.parameters.clone())
             },
+            max_context: spec.connection_profile.max_context,
         };
         let confirmation_inputs = FinalizerConfirmationInputs {
             cheap_llm_selection: Some(cheap_selection),

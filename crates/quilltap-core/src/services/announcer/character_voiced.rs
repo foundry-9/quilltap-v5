@@ -193,12 +193,10 @@ fn build_selection(profile: &Value) -> CheapLlmSelection {
         // JS `profile.baseUrl || undefined` — the empty string is falsy.
         base_url: s(profile, "baseUrl").filter(|u| !u.is_empty()),
         connection_profile_id: s(profile, "id"),
-        // v4: `parameters && typeof parameters === 'object' ? parameters : undefined`
-        // — `typeof [] === 'object'` in JS, so an array qualifies too.
-        profile_parameters: match profile.get("parameters") {
-            Some(v @ (Value::Object(_) | Value::Array(_))) => Some(v.clone()),
-            _ => None,
-        },
+        // v4 `d9c5a1c7` converted this inline construction to the shared
+        // `profileParams()` helper, so the Ollama `num_ctx` injection applies
+        // to this utility call too.
+        profile_parameters: crate::cheap_llm::profile_params_value(profile),
     }
 }
 
