@@ -81,7 +81,9 @@
       "apiKeyId": "c3000000-0000-4000-8000-0000000000cc",
       "baseUrl": "https://api.openai.com/v1",
       "modelName": "gpt-4o",
-      "parameters": { "temperature": 0.7 },
+      "parameters": {
+        "temperature": 0.7
+      },
       "isDefault": true,
       "isCheap": true,
       "allowWebSearch": true,
@@ -93,7 +95,9 @@
       "maxTokens": 8192,
       "isDangerousCompatible": true,
       "supportsImageUpload": true,
-      "tags": ["d4000000-0000-4000-8000-0000000000d1"],
+      "tags": [
+        "d4000000-0000-4000-8000-0000000000d1"
+      ],
       "sortIndex": 5,
       "totalTokens": 1500,
       "totalPromptTokens": 1000,
@@ -153,7 +157,11 @@
         "apiKeyId": "c3000000-0000-4000-8000-0000000000cd",
         "baseUrl": "https://api.anthropic.com",
         "modelName": "claude-sonnet-4",
-        "parameters": { "zeta": true, "alpha": "x", "topP": 0.95 },
+        "parameters": {
+          "zeta": true,
+          "alpha": "x",
+          "topP": 0.95
+        },
         "isDefault": false,
         "isCheap": false,
         "allowWebSearch": true,
@@ -165,7 +173,9 @@
         "maxTokens": 16384,
         "isDangerousCompatible": false,
         "supportsImageUpload": true,
-        "tags": ["d4000000-0000-4000-8000-0000000000d2"],
+        "tags": [
+          "d4000000-0000-4000-8000-0000000000d2"
+        ],
         "sortIndex": 10,
         "totalTokens": 42,
         "totalPromptTokens": 30,
@@ -196,9 +206,156 @@
       "comment": "Update seed row A: replace tags array + set sortIndex. Exercises the JSON array column + a REAL counter on update.",
       "id": "a1000000-0000-4000-8000-000000000001",
       "data": {
-        "tags": ["d4000000-0000-4000-8000-0000000000d3", "d4000000-0000-4000-8000-0000000000d4"],
+        "tags": [
+          "d4000000-0000-4000-8000-0000000000d3",
+          "d4000000-0000-4000-8000-0000000000d4"
+        ],
         "sortIndex": 7,
         "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D79: create with multiCharacterPrefill TRUE. Pins the 0/1 INTEGER write.",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Prefill True",
+        "provider": "OpenRouter",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "llama3",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": true,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": false,
+        "pseudoToolMode": "auto",
+        "multiCharacterPrefill": true,
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "aa100000-0000-4000-8000-00000000ab01",
+        "createdAt": "2026-02-05T00:00:00.000Z",
+        "updatedAt": "2026-02-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D79: create with multiCharacterPrefill FALSE on an Anthropic profile (the provider default anyway, but stored EXPLICITLY -- distinct from the tri-state NULL).",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Prefill False",
+        "provider": "Anthropic",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "llama3",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": true,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": false,
+        "pseudoToolMode": "auto",
+        "multiCharacterPrefill": false,
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "aa100000-0000-4000-8000-00000000ab02",
+        "createdAt": "2026-02-06T00:00:00.000Z",
+        "updatedAt": "2026-02-06T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D79 THE MEASUREMENT: create with multiCharacterPrefill ABSENT -- the pre-4.9 import/restore shape. v4's insertOne builds its column list from Object.keys(row), and Zod drops an absent .optional() key, so the column is OMITTED from the INSERT and the DDL default decides. On this generateDDL fixture that is NULL (the column carries no DEFAULT clause); on a MIGRATED instance the same create would land 1. Writing an explicit NULL instead would pass here and diverge there.",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Prefill Absent",
+        "provider": "OpenAI",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "llama3",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": true,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": false,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "aa100000-0000-4000-8000-00000000ab03",
+        "createdAt": "2026-02-07T00:00:00.000Z",
+        "updatedAt": "2026-02-07T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "id": "aa100000-0000-4000-8000-00000000ab02",
+      "comment": "P4.D79: update an explicitly-stored FALSE to TRUE. Pins the UPDATE assignment (the route 400s on an explicit null, so clearing back to the tri-state NULL is not expressible on either side). The never-chosen row aa..ab03 is deliberately left untouched so its ABSENT-create value stays observable in the dump.",
+      "data": {
+        "multiCharacterPrefill": true,
+        "updatedAt": "2026-02-08T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "id": "aa100000-0000-4000-8000-00000000ab01",
+      "comment": "P4.D79: flip a stored TRUE to FALSE.",
+      "data": {
+        "multiCharacterPrefill": false,
+        "updatedAt": "2026-02-09T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D79 tier-2 item 8: REPLACE the open-JSON `parameters` bag with a MULTI-KEY object whose keys are in NON-SORTED order (enable_thinking, temperature, num_ctx -- sorted would be enable_thinking, num_ctx, temperature). The create path already pinned this; the module doc's 'CONSTRAINED to {} / single-key' note predated the SPA writing enable_thinking beside temperature, so the UPDATE path needed its own arm. serde_json's preserve_order must reproduce JSON.stringify's INSERTION order on the replace, not just the insert.",
+      "id": "f6000000-0000-4000-8000-000000000004",
+      "data": {
+        "parameters": {
+          "enable_thinking": true,
+          "temperature": 0.3,
+          "num_ctx": 8192
+        },
+        "updatedAt": "2026-02-10T00:00:00.000Z"
       }
     },
     {

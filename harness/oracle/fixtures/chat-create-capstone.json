@@ -335,6 +335,10 @@
         "completionTokens": 9,
         "totalTokens": 49
       },
+      "greetingReasoning": [
+        "Considering the wood",
+        "Considering the wood and the hour."
+      ],
       "request": {
         "progressId": "e0000000-0000-4000-8000-000000000006",
         "participants": [

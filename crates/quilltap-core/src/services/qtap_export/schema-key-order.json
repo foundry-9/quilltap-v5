@@ -297,6 +297,7 @@
     "useNativeWebSearch",
     "allowToolUse",
     "pseudoToolMode",
+    "multiCharacterPrefill",
     "modelClass",
     "maxContext",
     "maxTokens",

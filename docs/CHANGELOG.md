@@ -50,6 +50,95 @@ emitted-visible cutoff, the flush semantics, and the JS-whitespace sanitize.
 New tier-1 differential `ollama_think_parser_equivalence` drives v4's real
 think-parser.ts over a committed 339-case table that enumerates every split
 point of both tags.
+Closed the connection-profile parameters key-order seam on the update path
+(P4.D79 tier 2). The corpus already pinned a non-sorted multi-key bag on
+create; the replace path now has its own arm, because the module's
+"constrained to {} or a single key" note stopped describing reality when the
+SPA began writing enable_thinking beside temperature. Insertion order
+round-trips both ways. The module doc was swept for the new column and the
+retired constraint. Versions: core 0.0.557, harness 0.0.479.
+
+Greeting generation now captures a thinking model's reasoning and persists it
+on the opening message (P4.D79 unit 6, v4 23af7146). Providers emit
+reasoningContent cumulatively — the full thinking-so-far on every chunk — so
+it is accumulated by assignment, not concatenation, and an empty chunk does
+not clear what came before; the value is trimmed alongside the content and
+carried through all four greeting attempts and the Concierge reroute. It is
+display-only, and a scripted first message stores NULL because it never
+touched a model. The greeting differential grew a reasoning-carrying case
+(plus one that pins the empty-chunk rule) and the chat-create capstone now
+diffs the persisted value. Versions: core 0.0.556, harness 0.0.478.
+
+Carried multiCharacterPrefill through the .qtap export (P4.D79 unit 5, v4
+23af7146). schema-key-order.json was regenerated from v4's live schemas rather
+than hand-appended, so the key lands in its schema slot after pseudoToolMode
+instead of silently at the end of every exported profile record; a unit test
+pins the slot. The connection-profile net read also gained per-column
+tolerance: a table that predates the column selects a literal NULL instead of
+failing outright, which is how pre-migration instances and every fixture built
+before the drift stay readable. Versions: core 0.0.555.
+
+Wired multiCharacterPrefill through the connection-profile create and update
+routes (P4.D79 unit 4, v4 23af7146). Create resolves the provider default when
+the client omits the field and stores it, so a create never writes the
+tri-state NULL; both routes 400 with v4's exact sentence on a present
+non-boolean, an explicit null included. The repo's create OMITS the column
+when the value is absent rather than writing NULL — measured against v4, whose
+INSERT names only the columns the parsed document carries, so on a fresh
+instance the omission lands NULL and on a migrated one the DEFAULT 1 lands 1;
+writing NULL would have passed the differential and diverged on upgraded
+instances. The restore path carries the field; the .qtap import carry is
+STOPPED by the round's ownership tripwire, with the two-line edit recorded at
+the site. Versions: core 0.0.554, harness 0.0.477.
+
+Made the multi-character [Name] turn anchor per-profile (P4.D79 unit 3, v4
+23af7146). The hardcoded "Anthropic gets prose, everyone else gets the
+prefill" branch is replaced by applyMultiCharacterTurnAnchor over the
+profile's own multiCharacterPrefill choice, resolved through the tri-state
+resolver; the prose sentence is byte-unchanged. The connection-profile net
+read carries the new column (a NULL reads as an absent key, matching v4's
+SQLite hydration). The orchestrator tier-3 corpus gains two cases that invert
+the old provider rule — an OpenRouter profile with the prefill off takes the
+prose route, an Anthropic profile with it on takes the prefill — and the
+danger-reroute case pinned that the anchor resolves from the EFFECTIVE
+profile, not the original. Versions: core 0.0.553, harness 0.0.476.
+
+Consolidated every profile-parameters construction site onto the shared
+profileParams helper and ported its Ollama num_ctx injection (P4.D79 unit 7,
+v4 d9c5a1c7). The helper gains the injection (Max Context becomes
+options.num_ctx for Ollama profiles that do not already pin it); the eight v4
+call sites' v5 twins now all route through it, which fixes three measured
+divergences on the way (regenerate-swipe forwarded a non-object parameters
+cell verbatim, the image-description fallback and the greeting both dropped
+an array bag). A new 900-case tier-1 differential compares the result both
+structurally and as literal JSON text, so key order is a comparand.
+
+Two larger gaps surfaced while converting, both pre-existing and both fixed:
+the Salon's primary stream had no modelParams twin at all, so a profile's
+temperature, maxTokens, topP and the whole parameters bag were silently
+dropped on every turn; and the Carina answer read its temperature from a
+top-level profile key that does not exist. The orchestrator tier-3 corpus
+gave its Primary profile a real parameters bag and the oracle now records
+the modelParams reaching the wire, which is what made both visible.
+Versions: core 0.0.552, harness 0.0.475.
+
+Ported the multi-character prefill resolver (P4.D79 unit 2, v4 23af7146's
+lib/llm/multi-character-prefill.ts): the provider default (off for Anthropic,
+on everywhere else) and the tri-state resolution, where a stored null means
+"never chosen" and falls back to the default — so an Anthropic profile
+imported from a pre-4.9 bundle cannot come back with the prefill on. A new
+144-case tier-1 differential over providers by stored state, mutation-proven.
+Versions: core 0.0.551, harness 0.0.474.
+
+Added the connection_profiles.multiCharacterPrefill column (P4.D79 unit 1,
+v4 23af7146): the D23 fresh-schema re-dump at the aa464abf pin, plus a boot
+ensure that gives an existing instance v4's migration shape. The two v4
+shapes differ here — generateDDL emits a bare INTEGER (the Zod field has no
+default), the migration emits INTEGER DEFAULT 1 and backfills Anthropic
+profiles off. The ensure's guard is at the column level, not per statement,
+because v4's backfill runs exactly once: re-running it every boot would
+clobber a user's explicit choice on an Anthropic profile. Versions: core
+0.0.550, host 0.0.71.
 
 Planned the aa464abf drift catch-up round and committed five work orders:
 P4.D78 (the Ollama-thinking provider wire — think-tag stream parsing, the

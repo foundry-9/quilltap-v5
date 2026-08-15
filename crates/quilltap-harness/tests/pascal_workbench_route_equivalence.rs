@@ -147,6 +147,7 @@ fn insert_consult_profile(main: &std::path::Path) {
                 use_native_web_search: false,
                 allow_tool_use: false,
                 pseudo_tool_mode: "auto".into(),
+                multi_character_prefill: None,
                 model_class: None,
                 max_context: None,
                 max_tokens: None,

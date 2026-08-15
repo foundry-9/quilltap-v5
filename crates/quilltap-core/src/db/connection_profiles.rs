@@ -12,7 +12,7 @@
 //! repo's `_create`/`_update`/`_delete`.
 //!
 //! This is by far the **widest marshaling surface** the tier-2 ports have hit:
-//! ~29 columns spanning every cell shape the port has met so far —
+//! ~30 columns spanning every cell shape the port has met so far —
 //!
 //!   - **three enum TEXT columns** (`provider`, `transport`, `pseudoToolMode`) —
 //!     v4's `ProviderEnum` is `z.string().min(1)` and the latter two are
@@ -45,9 +45,22 @@
 //!     this crate enables serde_json's `preserve_order`, so a `Value::Object` is
 //!     an `IndexMap` emitting *insertion* order exactly as v4's `JSON.stringify`
 //!     does. (This was once a tracked deferred seam on the assumption that
-//!     `Value` sorts its keys — `preserve_order` closed it.) The corpus still
-//!     constrains `parameters` to `{}` or a single-key object, but only because
-//!     nothing in it needs more; a multi-key object would marshal correctly.
+//!     `Value` sorts its keys — `preserve_order` closed it.) **P4.D79 closed the
+//!     corpus side too**: the old note here said the corpus constrained
+//!     `parameters` to `{}` / single-key, which stopped being true of REALITY
+//!     when the SPA began writing `enable_thinking` beside `temperature`. The
+//!     corpus now carries a non-sorted multi-key object on BOTH the create and
+//!     the update path, and both round-trip in insertion order.
+//!   - a **nullable-optional BOOLEAN column** (`multiCharacterPrefill`, v4
+//!     `23af7146`) → INTEGER 0/1 or NULL. Tri-state on purpose: NULL means
+//!     "never chosen", which
+//!     [`crate::services::multi_character_prefill`] resolves to the provider
+//!     default. On the READ side a NULL marshals to an ABSENT key (v4's SQLite
+//!     hydration maps a NULL boolean to `undefined`, which `JSON.stringify`
+//!     omits); on the WRITE side `None` OMITS the column from the INSERT rather
+//!     than writing NULL, so the DDL default decides exactly as it does in v4.
+//!     The read is column-tolerant (see [`cp_select_columns`]) so tables that
+//!     predate the column still open; the write is strict, as v4's is.
 //!
 //! To avoid relying on Zod create-time defaults (`transport`/`pseudoToolMode`/
 //! `courierDeltaMode`/`allowToolUse` and the many `false`/`0` defaults), the
@@ -61,8 +74,10 @@
 //!
 //! Deferred (not in the corpus): setting a nullable column **to NULL** via
 //! `update` (the patch models a provided field as "set to this value"; clearing a
-//! column to NULL lands when an op needs it), Zod's create-time defaults, and the
-//! open-JSON multi-key `parameters` key-order seam above.
+//! column to NULL lands when an op needs it — and for `multiCharacterPrefill`
+//! v4 cannot express it either, since its route 400s on an explicit null), and
+//! Zod's create-time defaults. The open-JSON multi-key `parameters` key-order
+//! seam is CLOSED (P4.D79, both paths).
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
@@ -94,6 +109,20 @@ pub struct CpCreate {
     pub allow_tool_use: bool,
     /// Enum TEXT (`'auto' | 'native' | 'simple-json' | 'text-block'`).
     pub pseudo_tool_mode: String,
+    /// The multi-character `[Name]` turn anchor (v4 `23af7146`), TRI-STATE:
+    /// `Some(b)` writes 0/1, **`None` OMITS the column from the INSERT** so the
+    /// DDL default applies — which is what v4 does and is not the same as
+    /// writing NULL. v4's `insertOne` builds its column list from
+    /// `Object.keys(row)` (`backends/sqlite/backend.ts:128`), and Zod drops an
+    /// absent `.optional()` key, so a pre-4.9 archive record simply never names
+    /// the column. On a fresh (generateDDL) instance that lands NULL — the
+    /// "never chosen" tri-state — while on a MIGRATED instance the
+    /// `INTEGER DEFAULT 1` lands 1. Both are v4's behaviour, and writing an
+    /// explicit NULL would silently diverge on the second.
+    ///
+    /// The create ROUTE always resolves a boolean, so `None` here is reached
+    /// only by import/restore of a pre-4.9 bundle.
+    pub multi_character_prefill: Option<bool>,
     /// `None` => SQL NULL.
     pub model_class: Option<String>,
     /// Nullable REAL int-override; `None` => SQL NULL.
@@ -149,6 +178,10 @@ pub struct CpUpdate {
     pub use_native_web_search: Option<bool>,
     pub allow_tool_use: Option<bool>,
     pub pseudo_tool_mode: Option<String>,
+    /// The multi-character `[Name]` turn anchor. `Some(b)` sets the column; the
+    /// route 400s on an explicit `null`, so clearing it back to the tri-state
+    /// NULL is not expressible (and v4 cannot express it either).
+    pub multi_character_prefill: Option<bool>,
     pub model_class: Option<String>,
     /// Set `modelClass` to SQL NULL (the route PUT's `modelClass: null|''`). Wins
     /// over [`Self::model_class`] when true.
@@ -189,47 +222,60 @@ impl<'c> ConnectionProfilesRepository<'c> {
         let tags_json = serde_json::to_string(&data.tags)
             .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
 
-        self.conn.execute(
+        // v4 names only the columns the parsed document actually carries, so an
+        // absent `multiCharacterPrefill` must be OMITTED (letting the DDL
+        // default decide) rather than written as NULL — see the field's doc.
+        let (prefill_col, prefill_placeholder) = match data.multi_character_prefill {
+            Some(_) => ("multiCharacterPrefill, ", "?30, "),
+            None => ("", ""),
+        };
+        let sql = format!(
             "INSERT INTO connection_profiles \
                (id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
                 modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-                allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, \
+                allowToolUse, pseudoToolMode, {prefill_col}modelClass, maxContext, maxTokens, \
                 isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
                 totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-                     ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
-            params![
-                opts.id,
-                data.user_id,
-                data.name,
-                data.provider,
-                data.transport,
-                i64::from(data.courier_delta_mode),
-                data.api_key_id,
-                data.base_url,
-                data.model_name,
-                parameters_json,
-                i64::from(data.is_default),
-                i64::from(data.is_cheap),
-                i64::from(data.allow_web_search),
-                i64::from(data.use_native_web_search),
-                i64::from(data.allow_tool_use),
-                data.pseudo_tool_mode,
-                data.model_class,
-                data.max_context,
-                data.max_tokens,
-                i64::from(data.is_dangerous_compatible),
-                i64::from(data.supports_image_upload),
-                tags_json,
-                data.sort_index,
-                data.total_tokens,
-                data.total_prompt_tokens,
-                data.total_completion_tokens,
-                data.message_count,
-                opts.created_at,
-                opts.updated_at,
-            ],
-        )?;
+                     {prefill_placeholder}?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, \
+                     ?27, ?28, ?29)"
+        );
+        let mut binds: Vec<Box<dyn ToSql>> = vec![
+            Box::new(opts.id.clone()),
+            Box::new(data.user_id.clone()),
+            Box::new(data.name.clone()),
+            Box::new(data.provider.clone()),
+            Box::new(data.transport.clone()),
+            Box::new(i64::from(data.courier_delta_mode)),
+            Box::new(data.api_key_id.clone()),
+            Box::new(data.base_url.clone()),
+            Box::new(data.model_name.clone()),
+            Box::new(parameters_json),
+            Box::new(i64::from(data.is_default)),
+            Box::new(i64::from(data.is_cheap)),
+            Box::new(i64::from(data.allow_web_search)),
+            Box::new(i64::from(data.use_native_web_search)),
+            Box::new(i64::from(data.allow_tool_use)),
+            Box::new(data.pseudo_tool_mode.clone()),
+            Box::new(data.model_class.clone()),
+            Box::new(data.max_context),
+            Box::new(data.max_tokens),
+            Box::new(i64::from(data.is_dangerous_compatible)),
+            Box::new(i64::from(data.supports_image_upload)),
+            Box::new(tags_json),
+            Box::new(data.sort_index),
+            Box::new(data.total_tokens),
+            Box::new(data.total_prompt_tokens),
+            Box::new(data.total_completion_tokens),
+            Box::new(data.message_count),
+            Box::new(opts.created_at.clone()),
+            Box::new(opts.updated_at.clone()),
+        ];
+        if let Some(b) = data.multi_character_prefill {
+            binds.push(Box::new(i64::from(b)));
+        }
+        let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+        self.conn.execute(&sql, refs.as_slice())?;
         Ok(())
     }
 
@@ -308,6 +354,10 @@ impl<'c> ConnectionProfilesRepository<'c> {
         if let Some(pseudo_tool_mode) = &patch.pseudo_tool_mode {
             assignments.push(format!("pseudoToolMode = ?{}", values.len() + 1));
             values.push(Box::new(pseudo_tool_mode.clone()));
+        }
+        if let Some(multi_character_prefill) = patch.multi_character_prefill {
+            assignments.push(format!("multiCharacterPrefill = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(multi_character_prefill)));
         }
         if patch.clear_model_class {
             assignments.push("modelClass = NULL".to_string());
@@ -434,11 +484,50 @@ impl<'c> ConnectionProfilesRepository<'c> {
 /// from the `api_keys` table is the host's job.
 /// The shared column list every connection-profile net read selects (net-read
 /// order = [`marshal_cp_row`]'s field access order).
-const CP_COLUMNS: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
+/// The net-read column list up to and including `pseudoToolMode`.
+const CP_COLUMNS_HEAD: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
      baseUrl, modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-     allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, isDangerousCompatible, \
-     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, totalCompletionTokens, \
-     messageCount, createdAt, updatedAt";
+     allowToolUse, pseudoToolMode";
+/// The rest, from `modelClass` on — `multiCharacterPrefill` sits between the two.
+const CP_COLUMNS_TAIL: &str = "modelClass, maxContext, maxTokens, isDangerousCompatible, \
+     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
+     totalCompletionTokens, messageCount, createdAt, updatedAt";
+
+/// The full `SELECT` list: [`CP_COLUMNS_HEAD`], then `multiCharacterPrefill` —
+/// **or a literal `NULL` when the table predates it** — then [`CP_COLUMNS_TAIL`].
+///
+/// v4 reads every collection with `SELECT *`, so a `connection_profiles` table
+/// that predates `add-profile-multi-character-prefill-field-v1` simply returns
+/// no such column and its `.nullable().optional()` schema key parses as absent.
+/// v5 names its columns, so it has to ask the table first — otherwise every
+/// pre-migration instance, and every differential fixture built before the
+/// drift, would fail the read outright with `no such column`. Selecting `NULL`
+/// keeps the marshaling arity fixed, and a NULL cell marshals to the same
+/// absent key v4's Zod produces — which the resolver then reads as "never
+/// chosen". The P4.D63 `characters` archive-column tolerance, same shape.
+///
+/// The WRITE side stays strict, exactly as v4's is: its `insertOne`/`update`
+/// name the document's keys, so v4 cannot write this field into a
+/// pre-migration table either. The boot ensure
+/// ([`crate::db::connection_profiles_prefill_repair`]) is what gets a real
+/// instance the column; this is what keeps old fixtures readable.
+fn cp_select_columns(conn: &Connection) -> String {
+    let prefill = if cp_table_has_column(conn, "multiCharacterPrefill") {
+        "multiCharacterPrefill"
+    } else {
+        "NULL"
+    };
+    format!("{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_TAIL}")
+}
+
+/// `PRAGMA table_info(connection_profiles)` membership. Fail-soft: an
+/// unreadable pragma (missing table) reports "absent", landing the caller on
+/// the same no-column path v4 takes.
+fn cp_table_has_column(conn: &Connection, column: &str) -> bool {
+    conn.prepare("SELECT 1 FROM pragma_table_info('connection_profiles') WHERE name = ?1")
+        .and_then(|mut stmt| stmt.exists([column]))
+        .unwrap_or(false)
+}
 
 // Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
 fn put_opt_string(
@@ -448,6 +537,15 @@ fn put_opt_string(
 ) {
     if let Some(s) = v {
         obj.insert(key.to_string(), serde_json::Value::String(s));
+    }
+}
+// Insert a nullable-optional BOOLEAN column. v4's SQLite hydration
+// (`backends/sqlite/backend.ts:429-437`) maps a NULL boolean to `undefined`,
+// which `JSON.stringify` OMITS — so a NULL is an ABSENT key in every v4 net
+// read, never `null`. 0 → false, 1 → true.
+fn put_opt_bool(obj: &mut serde_json::Map<String, serde_json::Value>, key: &str, v: Option<i64>) {
+    if let Some(n) = v {
+        obj.insert(key.to_string(), serde_json::Value::Bool(n == 1));
     }
 }
 // Insert a nullable-optional number column (`NULL` → omit, else JS render).
@@ -474,7 +572,7 @@ fn object_or_empty(v: Option<String>) -> serde_json::Value {
     }
 }
 
-/// Marshal one `connection_profiles` row selected in [`CP_COLUMNS`] order into
+/// Marshal one `connection_profiles` row selected in [`cp_select_columns`] order into
 /// the net-read [`serde_json::Value`].
 fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     use serde_json::{Map, Value};
@@ -513,43 +611,48 @@ fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
         "pseudoToolMode".into(),
         Value::String(r.get::<_, String>(15)?),
     );
-    put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(16)?);
-    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(17)?);
-    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(18)?);
+    put_opt_bool(
+        &mut obj,
+        "multiCharacterPrefill",
+        r.get::<_, Option<i64>>(16)?,
+    );
+    put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(17)?);
+    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(18)?);
+    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(19)?);
     obj.insert(
         "isDangerousCompatible".into(),
-        Value::Bool(r.get::<_, i64>(19)? == 1),
-    );
-    obj.insert(
-        "supportsImageUpload".into(),
         Value::Bool(r.get::<_, i64>(20)? == 1),
     );
     obj.insert(
+        "supportsImageUpload".into(),
+        Value::Bool(r.get::<_, i64>(21)? == 1),
+    );
+    obj.insert(
         "tags".into(),
-        array_or_empty(r.get::<_, Option<String>>(21)?),
+        array_or_empty(r.get::<_, Option<String>>(22)?),
     );
     obj.insert(
         "sortIndex".into(),
-        super::js_number_to_json(r.get::<_, f64>(22)?),
-    );
-    obj.insert(
-        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(23)?),
     );
     obj.insert(
-        "totalPromptTokens".into(),
+        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(24)?),
     );
     obj.insert(
-        "totalCompletionTokens".into(),
+        "totalPromptTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(25)?),
     );
     obj.insert(
-        "messageCount".into(),
+        "totalCompletionTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(26)?),
     );
-    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
-    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
+    obj.insert(
+        "messageCount".into(),
+        super::js_number_to_json(r.get::<_, f64>(27)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(28)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(29)?));
     Ok(Value::Object(obj))
 }
 
@@ -593,6 +696,12 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
         "useNativeWebSearch",
         "allowToolUse",
         "pseudoToolMode",
+        // v4's create input always carries a resolved boolean (the route
+        // resolves the provider default when the client omits it), so the
+        // re-read always has it. A create that OMITTED it would leave it out of
+        // v4's return too — the re-read agrees on a fresh instance, where the
+        // omitted column reads back NULL.
+        "multiCharacterPrefill",
     ] {
         if let Some(v) = take(key) {
             out.insert(key.to_string(), v);
@@ -623,7 +732,10 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
 pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
     let row = conn
         .query_row(
-            &format!("SELECT {CP_COLUMNS} FROM connection_profiles WHERE id = ?1"),
+            &format!(
+                "SELECT {} FROM connection_profiles WHERE id = ?1",
+                cp_select_columns(conn)
+            ),
             params![id],
             marshal_cp_row,
         )
@@ -639,7 +751,10 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
 /// matching v4's `collection.find({})` with no sort. Used by the dangerous-content
 /// provider-routing scan for `isDangerousCompatible` profiles.
 pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
-    let mut stmt = conn.prepare(&format!("SELECT {CP_COLUMNS} FROM connection_profiles"))?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM connection_profiles",
+        cp_select_columns(conn)
+    ))?;
     let rows = stmt.query_map([], marshal_cp_row)?;
     let mut out = Vec::new();
     for r in rows {
@@ -659,8 +774,9 @@ pub fn find_default(
     let row = conn
         .query_row(
             &format!(
-                "SELECT {CP_COLUMNS} FROM connection_profiles \
-                 WHERE userId = ?1 AND isDefault = 1 LIMIT 1"
+                "SELECT {} FROM connection_profiles \
+                 WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
+                cp_select_columns(conn)
             ),
             params![user_id],
             marshal_cp_row,
@@ -680,7 +796,8 @@ pub fn find_by_user_id(
     user_id: &str,
 ) -> Result<Vec<serde_json::Value>, DbError> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {CP_COLUMNS} FROM connection_profiles WHERE userId = ?1"
+        "SELECT {} FROM connection_profiles WHERE userId = ?1",
+        cp_select_columns(conn)
     ))?;
     let rows = stmt.query_map(params![user_id], marshal_cp_row)?;
     let mut out = Vec::new();

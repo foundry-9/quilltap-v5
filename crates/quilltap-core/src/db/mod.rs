@@ -45,6 +45,7 @@ pub mod chats_read;
 pub mod chats_search;
 pub mod chats_tokens;
 pub mod connection_profiles;
+pub mod connection_profiles_prefill_repair;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
 pub mod conversation_search;

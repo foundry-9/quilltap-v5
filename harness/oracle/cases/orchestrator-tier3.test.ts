@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -262,9 +262,15 @@ async function main(): Promise<void> {
         // Record the tool slate reaching the wire (W4.1g: proven per call). v4
         // passes `tools.length > 0 ? tools : undefined`; normalize undefined → [].
         const toolsAtWire = (options.tools ?? []) as unknown[];
+        // P4.D79: record the whole `modelParams` bag reaching the wire, not just
+        // the temperature the key carries. v4 builds it with
+        // `profileParams(effectiveProfile) ?? {}` and forwards it as
+        // `profileParameters`; until this was recorded the corpus could not see
+        // that v5 sent nothing at all.
+        const modelParamsAtWire = (options.modelParams ?? {}) as Record<string, unknown>;
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);

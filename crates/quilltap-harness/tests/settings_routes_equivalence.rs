@@ -276,6 +276,7 @@ fn settings_routes_match_v4() {
     let mut brahma_console_cases = 0;
     let mut composer_settings_cases = 0;
     let mut settings_zod_cases = 0;
+    let mut connection_profile_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -392,6 +393,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
         }
+        if row["family"].as_str() == Some("connection_profiles") {
+            connection_profile_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
@@ -421,6 +425,13 @@ fn settings_routes_match_v4() {
     assert!(
         settings_zod_cases >= 27,
         "expected >= 27 settings_zod cases, got {settings_zod_cases} — regenerate the oracle"
+    );
+    // P4.D79: the eight multi-character-prefill arms on top of the family's
+    // original seven. Same stale-oracle guard as the families above — the three
+    // 400 arms in particular would simply be absent from a pre-P4.D79 oracle.
+    assert!(
+        connection_profile_cases >= 15,
+        "expected >= 15 connection_profiles cases, got {connection_profile_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }

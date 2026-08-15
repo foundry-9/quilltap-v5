@@ -333,6 +333,12 @@ where
             .unwrap_or(false),
         character_participant_created_at: cp_created_at.as_deref(),
         character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
+        // v4 `23af7146` — the anchor route lives inside `buildMessageContext`,
+        // so the swipe path resolves it from the same profile the send path
+        // does.
+        use_prefill: crate::services::multi_character_prefill::profile_uses_name_prefill_value(
+            &connection_profile,
+        ),
         participants: chat
             .get("participants")
             .and_then(Value::as_array)
@@ -358,10 +364,13 @@ where
     .map_err(|e| DbError::Key(format!("buildMessageContext failed: {e:?}")))?;
 
     // --- Single non-streaming generation (v4 132–153) ---
-    let params_value = connection_profile
-        .get("parameters")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    // v4 `d9c5a1c7`: `const params = profileParams(connectionProfile) ?? {}`,
+    // which REPLACED `(connectionProfile.parameters || {})`. Two behaviour
+    // changes ride the conversion, both v4's: a non-object `parameters` cell
+    // (a number, a string) now collapses to `{}` instead of being forwarded
+    // verbatim, and an Ollama profile's Max Context is injected as `num_ctx`.
+    let params_value =
+        crate::cheap_llm::profile_params_value(&connection_profile).unwrap_or_else(|| json!({}));
     let messages: Vec<CompletionMessage> = mc_result
         .formatted_messages
         .iter()

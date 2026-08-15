@@ -280,6 +280,10 @@ fn restore_on_writer(
                 use_native_web_search: b(p, "useNativeWebSearch", false),
                 allow_tool_use: b(p, "allowToolUse", true),
                 pseudo_tool_mode: str_or(p, "pseudoToolMode", "auto"),
+                // v4 `23af7146`: tri-state. A pre-4.9 archive has no such key,
+                // so `None` omits the column and the DDL default decides —
+                // exactly what v4's `...profileData` spread produces there.
+                multi_character_prefill: ob(p, "multiCharacterPrefill"),
                 model_class: os(p, "modelClass"),
                 max_context: on(p, "maxContext"),
                 max_tokens: on(p, "maxTokens"),

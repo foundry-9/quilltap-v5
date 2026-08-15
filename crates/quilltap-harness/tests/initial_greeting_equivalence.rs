@@ -48,6 +48,11 @@ struct CaseSpec {
     canned_content: String,
     #[serde(rename = "cannedUsage")]
     canned_usage: Option<UsageSpec>,
+    /// P4.D79: the CUMULATIVE `reasoningContent` values the canned stream emits
+    /// (each is the full thinking-so-far, not a delta — which is why v4 assigns
+    /// rather than concatenates).
+    #[serde(rename = "cannedReasoning", default)]
+    canned_reasoning: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +98,8 @@ struct OracleMessage {
 #[derive(Deserialize, PartialEq, Debug)]
 struct OracleResult {
     content: String,
+    #[serde(rename = "reasoningContent")]
+    reasoning_content: String,
     #[serde(rename = "contentFilterDetected")]
     content_filter_detected: bool,
 }
@@ -145,6 +152,12 @@ async fn initial_greeting_matches_oracle() {
             })
             .collect();
         let mut chunks: Vec<StreamChunkResult> = Vec::new();
+        for r in &c.canned_reasoning {
+            chunks.push(Ok(StreamChunk {
+                reasoning_content: Some(r.clone()),
+                ..Default::default()
+            }));
+        }
         if !c.canned_content.is_empty() {
             chunks.push(Ok(StreamChunk::content(&c.canned_content)));
         }
@@ -201,9 +214,19 @@ async fn initial_greeting_matches_oracle() {
 
         let got = OracleResult {
             content: result.content,
+            reasoning_content: result.reasoning_content,
             content_filter_detected: result.content_filter_detected,
         };
         assert_eq!(got, row.result, "case {}: rust != oracle", c.id);
     }
     assert_eq!(oracle.len(), cases.len(), "oracle case count drifted");
+    // P4.D79: a stale oracle predating the reasoning capture would carry no
+    // `reasoningContent` key at all and every case would compare empty-to-empty.
+    // At least one case must actually have captured some.
+    assert!(
+        oracle
+            .values()
+            .any(|r| !r.result.reasoning_content.is_empty()),
+        "no case captured reasoning — regenerate the oracle"
+    );
 }

@@ -416,9 +416,12 @@ pub struct ReaffirmationProfile {
     pub provider: String,
     pub model_name: String,
     pub base_url: Option<String>,
-    /// The profile's provider parameters (open JSON) — forwarded via the JS
-    /// `parameters && typeof === 'object'` guard.
+    /// The profile's provider parameters (open JSON) — forwarded through
+    /// [`crate::cheap_llm::profile_params_parts`] (v4 `d9c5a1c7` converted this
+    /// site to the shared helper).
     pub parameters: Option<Value>,
+    /// The profile's Max Context, for the helper's Ollama `num_ctx` injection.
+    pub max_context: Option<f64>,
 }
 
 /// Everything [`run_answer_confirmation`] needs (v4 `RunAnswerConfirmationOptions`
@@ -694,10 +697,14 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
         connection_profile_id: Some(opts.connection_profile.id.clone()),
         // v4 hardcodes `isLocal: false` on this path.
         is_local: false,
-        profile_parameters: match &opts.connection_profile.parameters {
-            Some(v @ (Value::Object(_) | Value::Array(_))) => Some(v.clone()),
-            _ => None,
-        },
+        // v4 `d9c5a1c7`: the inline `parameters && typeof === 'object'` copy
+        // became `profileParams(connectionProfile)`, so the Ollama `num_ctx`
+        // injection reaches the re-affirmation call too.
+        profile_parameters: crate::cheap_llm::profile_params_parts(
+            &opts.connection_profile.provider,
+            opts.connection_profile.parameters.as_ref(),
+            opts.connection_profile.max_context,
+        ),
     };
 
     let reaff_messages = vec![
@@ -1109,6 +1116,7 @@ mod tests {
             model_name: "big".into(),
             base_url: None,
             parameters: None,
+            max_context: None,
         }
     }
 

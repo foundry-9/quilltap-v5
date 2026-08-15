@@ -69,6 +69,12 @@ pub struct GreetingRequest {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GreetingResult {
     pub content: String,
+    /// Reasoning / chain-of-thought text captured from a thinking model while it
+    /// composed the greeting (v4 `23af7146`). DISPLAY ONLY — persisted onto the
+    /// greeting message so the Salon renders its thinking fold like any other
+    /// turn, and never fed back to any model. Empty when the model produced
+    /// none.
+    pub reasoning_content: String,
     /// v4 `contentFilterDetected`: the LLM burned completion tokens but returned
     /// no content (a likely content filter).
     pub content_filter_detected: bool,
@@ -180,6 +186,10 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
 
     let start = now_unix_ms();
     let mut accumulated = String::new();
+    // Providers emit `reasoningContent` CUMULATIVELY — the full thinking-so-far
+    // on every chunk that grows it, not a delta — so this is an ASSIGNMENT, not
+    // a concatenation. The same contract the Salon's streaming path relies on.
+    let mut accumulated_reasoning = String::new();
     let mut final_usage: Option<StreamUsage> = None;
     let mut stream_error: Option<StreamError> = None;
 
@@ -191,6 +201,11 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
             Ok(chunk) => {
                 if !chunk.content.is_empty() {
                     accumulated.push_str(&chunk.content);
+                }
+                // v4's `if (chunk.reasoningContent)` — JS truthiness, so an
+                // empty string does NOT clear what came before.
+                if let Some(r) = chunk.reasoning_content.as_deref().filter(|r| !r.is_empty()) {
+                    accumulated_reasoning = r.to_string();
                 }
                 if let Some(u) = chunk.usage {
                     final_usage = Some(u);
@@ -256,6 +271,7 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
     }
 
     let trimmed = js_trim(&accumulated).to_string();
+    let trimmed_reasoning = js_trim(&accumulated_reasoning).to_string();
     let content_filter_detected = trimmed.is_empty()
         && final_usage
             .as_ref()
@@ -264,6 +280,7 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
 
     Ok(GreetingResult {
         content: trimmed,
+        reasoning_content: trimmed_reasoning,
         content_filter_detected,
     })
 }

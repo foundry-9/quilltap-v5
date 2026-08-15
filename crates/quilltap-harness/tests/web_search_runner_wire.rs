@@ -186,6 +186,7 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
         use_native_web_search: false,
         allow_tool_use: true,
         pseudo_tool_mode: "auto".to_string(),
+        multi_character_prefill: None,
         model_class: None,
         max_context: None,
         max_tokens: None,

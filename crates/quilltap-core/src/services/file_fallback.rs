@@ -21,7 +21,7 @@
 //! differential).
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::files::image_processing::{
@@ -389,8 +389,11 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     // the differential — resolved for faithfulness).
     let _api_key = resolve_api_key(deps, profile).await;
 
-    // Parameters (snake_case input keys; camelCase wire output).
-    let params_obj = profile.get("parameters").cloned().unwrap_or(Value::Null);
+    // Parameters (snake_case input keys; camelCase wire output). v4 `d9c5a1c7`
+    // replaced the raw `imageDescProfile.parameters` cast with
+    // `profileParams(imageDescProfile) ?? {}`, so the bag is ALWAYS an object
+    // here and the Ollama `num_ctx` injection reaches the vision call.
+    let params_obj = crate::cheap_llm::profile_params_value(profile).unwrap_or_else(|| json!({}));
     let temperature = params_obj
         .get("temperature")
         .and_then(Value::as_f64)
@@ -433,11 +436,10 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         max_tokens: if max_tokens > 0 { max_tokens } else { 0 },
         strict_max_tokens: false,
         cache_key: None,
-        profile_parameters: if params_obj.is_object() {
-            Some(params_obj.clone())
-        } else {
-            None
-        },
+        // v4's guard is `if (modelParams && typeof modelParams === 'object')`
+        // over a value the `?? {}` above already made an object (or an array,
+        // which also passes `typeof`), so it is unconditionally set.
+        profile_parameters: Some(params_obj.clone()),
         attachments: attachments.clone(),
         // v4's `generateImageDescription` sets no `requestTimeoutMs`.
         request_timeout_ms: None,

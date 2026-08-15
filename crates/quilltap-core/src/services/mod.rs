@@ -121,6 +121,7 @@ pub mod memory_service;
 pub mod message_context;
 pub mod message_finalizer;
 pub mod mount_index;
+pub mod multi_character_prefill;
 pub mod native_tool_loop;
 pub mod off_scene;
 pub mod orchestrator;

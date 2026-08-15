@@ -290,6 +290,409 @@ parser assertions.
 Gate for the unit: `cargo test -p quilltap-core --lib model::ollama_think_parser`
 8/8; `QT_ORACLE_OLLAMA_THINK_PARSER=… cargo test -p quilltap-harness --test
 ollama_think_parser_equivalence` 1/1 (339 cases); `cargo fmt --all --check`.
+## Lane record — P4.D79 (the `aa464abf` drift, profile/host half), IN PROGRESS
+
+**v4 baseline `aa464abf`, drift-checked at lane start 2026-08-15:** v4's
+checkout was on `main`, clean, at exactly `aa464abf`; `git log aa464abf..main`
+empty; `git log main..bugfix` carried only `3a76b17d` (the 4.8.4 marker) and
+`009c49b2` (a test-only deflake) plus commits already below the 4.8.3 marker.
+No drift. Oracles regenerated from a lane-unique detached worktree pinned at
+the baseline (`/tmp/qt-v4-pin-p4d79-aa464abf`, node_modules symlinked both
+places per `oracle-regen-pinned-v4-worktree`).
+
+**⚠ v4's working tree went DIRTY mid-lane** (re-checked at the gate; HEAD still
+`aa464abf`, no new commits, but twelve modified files + three new ones — the
+human is building **bug 70, "budget ignores profile max context"**:
+`lib/chat/context-manager.ts`, `lib/tokens/token-counter.ts`,
+`lib/llm/model-context-data.ts`, a new
+`lib/services/chat-message/turn-extras.ts`, and — **directly on this lane's
+own ported surfaces** — `lib/services/chat-message/context-builder.service.ts`
+and `orchestrator.service.ts`, plus `help/connection-profiles.md`). Every
+oracle this lane generated ran from the PINNED worktree, so none of it is
+baked in; but **the unifier and every sibling must pin too**, and the next
+drift round inherits bug 70 on top of `aa464abf`.
+
+### Unit 1 — the D23 re-dump + the `multiCharacterPrefill` boot ensure
+
+v4 `23af7146` adds `connection_profiles.multiCharacterPrefill` in two places,
+and **the order's premise that they agree is REFUTED by measurement** (the
+P4.D77 lesson repeating, and the reason D23 re-dumps are mechanical):
+
+- **generateDDL** — the re-dump at the pin emits `"multiCharacterPrefill"
+  INTEGER`, with **no DEFAULT clause**. v4's `ConnectionProfileSchema` field is
+  `z.boolean().nullable().optional()` with no `.default()`, and the schema
+  translator only emits a DEFAULT when the Zod field carries one. Harmless on a
+  fresh instance: v4's create route always resolves and STORES a boolean, so
+  nothing there leans on a column default.
+- **The migration** `add-profile-multi-character-prefill-field-v1` (and
+  `sqlite-initial-schema.ts`) emits `INTEGER DEFAULT 1`, then backfills.
+
+The re-dump is the only `fresh_schema.json` delta in the round (mount-index and
+llm-logs byte-identical; the one changed statement is the
+`connection_profiles` CREATE, column inserted after `pseudoToolMode`).
+`provisioning_matches_v4_fresh_instance` went red at the re-dump exactly as
+designed and is green over the new schema; the v4-reads-v5 cross-compat leg
+(`verify-v5-provisioned.ts`) re-run and green.
+
+The boot ensure (`db/connection_profiles_prefill_repair.rs`, wired at
+`quilltap-host/src/host.rs` beside the P4.D73/P4.D77 repairs) reproduces the
+**migration** shape, as v4's own migration would for an existing instance.
+
+**⚠ The guard is at the COLUMN level, not per statement.** v4's migration
+`shouldRun()` is "the column is absent", so its two UPDATEs fire exactly once
+in an instance's life. A boot ensure that re-ran the Anthropic UPDATE every
+boot would clobber a user's explicit `true` on an Anthropic profile — which
+v4's profile editor deliberately permits (ticking it on Anthropic is allowed
+and merely warned about). Six unit tests pin this: the backfill split (with
+`upper()` case-insensitivity), the DEFAULT clause, **the no-reclobber property
+in both directions** (an explicit true on Anthropic and an explicit false on
+OpenAI both survive a second boot), a post-add NULL left alone (the tri-state
+is deliberate — a pre-4.9 import means "never chosen"), the generateDDL shape
+recognised as present, and the table-less no-op.
+
+NO-PORT recorded: v4's migration pretty label ("Deciding who is announced at
+the door") — v5 surfaces no migration labels anywhere (the P4.D63/P4.D73
+precedent).
+
+**Measured while surveying, load-bearing for units 4/5:** v4's SQLite
+hydration (`backends/sqlite/backend.ts:429-437`) maps a NULL boolean column to
+`undefined`, which `JSON.stringify` OMITS — so a NULL `multiCharacterPrefill`
+is an ABSENT key in every v4 net read, not `null`. 0 → `false`, 1 → `true`.
+v5's marshal follows the `maxContext` precedent (omit on NULL).
+
+### Unit 2 — the resolver twin + its tier-1 differential
+
+`services/multi_character_prefill.rs` ports v4's whole module: the hostile-set
+constant, `default_multi_character_prefill`, `profile_uses_name_prefill`, and a
+`_value` helper over the net-read profile object the services carry.
+
+New family `multi_character_prefill_equivalence`
+(`QT_ORACLE_MULTI_CHAR_PREFILL`, oracle case
+`harness/oracle/cases/multi-character-prefill.ts`) drives v4's REAL module over
+16 providers × 8 stored states = **16 default + 128 resolve cases, all
+matched**. The corpus is built to pin the three things a hand-read misses: JS
+falsiness on `!provider` (the empty string), `toUpperCase()` on the hostile
+test (casing folds, whitespace does not — `' ANTHROPIC'` is NOT hostile), and
+`typeof … === 'boolean'` on the stored cell (`1`/`0`/`'true'` fall THROUGH to
+the provider default rather than coercing).
+
+**Mutation-proven, three ways, with one honest negative result:**
+
+- dropping `to_uppercase()` → red at `default 'anthropic-lower'`;
+- replacing the `typeof` guard with JS truthiness → red at
+  `resolve 'anthropic-upper/number-1'`;
+- **dropping the empty-string falsiness filter → STAYS GREEN.** Measured, not
+  assumed: `"".to_uppercase()` is not in the hostile set either, so both routes
+  answer `true` and the corpus cannot tell them apart. The filter stays because
+  it is what v4 wrote; the doc comment records that it is unobservable rather
+  than claiming coverage the corpus does not have.
+
+Assertions are shape-based, not hand counts (`harness-corpus-shape-constants-rot`):
+the resolve grid must be exactly `defaults × 8`.
+
+### Unit 7 — the `profile_params` consolidation + the `num_ctx` injection
+
+v4 `d9c5a1c7` widened `profileParams()` and converted eight inline
+`profileParameters` construction sites onto it. v5's twin
+(`cheap_llm::profile_params`) is now `profile_params_parts(provider,
+parameters, max_context)` with two convenience wrappers, and every listed site
+routes through it. `CheapLlmProfile` and `ReaffirmationProfile` each gained a
+`max_context` field (the injection's input).
+
+New family `profile_params_equivalence` (`QT_ORACLE_PROFILE_PARAMS`, case
+`harness/oracle/cases/profile-params.ts`) drives v4's REAL helper over **15
+bag shapes × 6 providers × 10 maxContext values = 900 cases, all matched (40
+injecting)**. It compares the result BOTH structurally and as the literal
+`JSON.stringify` text, because two of v4's edges are key-ORDER facts:
+spreading an ARRAY base yields index keys (`{"0":"a","1":"b","num_ctx":…}`),
+and overwriting an existing `num_ctx: null` keeps the key at its ORIGINAL
+position rather than moving it to the end. The text comparison is also what
+forced `js_number_to_json` on the injected value — an integral `maxContext`
+arrives as `32768.0` off the REAL column and must render as JS's `32768`.
+
+Measured v4 edges the corpus pins (all confirmed against the real helper, none
+assumed): `provider === 'OLLAMA'` is case-SENSITIVE; `base?.num_ctx == null`
+is LOOSE, so `num_ctx: null` is overwritten while `0` and `false` suppress;
+a NON-object bag with an injecting provider still yields `{num_ctx}` (v4
+spreads `base ?? {}`); `Infinity` passes `typeof === 'number' && > 0` and then
+stringifies to `null` on both sides; `NaN` fails `> 0`; a STRING `maxContext`
+fails the `typeof` test entirely.
+
+**The three divergences the order predicted, all fixed by the conversion:**
+`regenerate_swipe` forwarded a non-object `parameters` cell verbatim (v4's new
+`profileParams(...) ?? {}` collapses it); `file_fallback` and `chat_create`'s
+greeting both dropped an ARRAY bag their `is_object()` filters rejected.
+`file_fallback` additionally now sets `profileParameters` unconditionally, as
+v4's `?? {}` makes its `typeof` guard vacuous.
+
+**⚠ Two LARGER gaps the order did not predict, found by consequence and fixed
+in this unit** — both the same shape, both invisible to every corpus until
+this unit made them measurable:
+
+1. **The Salon's primary stream had NO `modelParams` twin at all.**
+   `orchestrator.rs` built its `StreamParams` with `temperature` read off a
+   TOP-LEVEL `connection_profile.temperature` key that connection profiles do
+   not have (so always `None`), and `max_tokens` / `top_p` /
+   `profile_parameters` hard-`None`. Every per-model setting — a profile's
+   temperature, DeepSeek reasoning-off, an Ollama `num_ctx` — was silently
+   dropped on the main chat path. Now `profile_params_value` over the
+   EFFECTIVE profile (re-read by id after a danger reroute, since v5 carries
+   the rerouted profile as the 4-field `EffectiveProfile`).
+2. **The Carina answer read its temperature from the same non-existent
+   top-level key** (`carina_query.rs`). v4's `carina.service.ts:606` uses
+   `(connectionProfile.parameters ?? {})` — a different construction from
+   `profileParams`, deliberately not converted by `d9c5a1c7` — so v5 now
+   mirrors that shape exactly, and `maxTokens`/`topP` were threaded through
+   `StreamCtx` with it.
+
+**Why no corpus could see either:** every `orchestrator-tier3` profile left
+`parameters` at its `{}` default, so `modelParams` was empty on BOTH sides and
+the two implementations agreed vacuously (`recorded-but-unasserted-corpus-fields`,
+the same class). The fix to the CORPUS is the real deliverable here: the
+Primary profile now carries `{temperature: 0.42, maxTokens: 321, topP: 0.87}`,
+the fixture builder passes `parameters`/`maxContext` through, and the oracle
+records the whole `modelParams` bag at the wire beside the tool slate — a new
+`profileParameters at wire` assertion mirroring the W4.1g tool-slate one.
+Finding (2) surfaced the moment the corpus changed: the Carina answer stopped
+matching v4's canned key and the `carina_markup` event trace went red.
+
+**Mutation-proven both ways:** reverting `profile_parameters` to `None`
+reddens the new wire assertion; reverting the temperature read to the old
+top-level lookup reddens FOUR cases with `no canned stream queued`.
+
+⚠ Recorded, NOT fixed (banked): `run_summary_check`'s cheap-LLM selection
+basis is built from the 4-field `EffectiveProfile`, so its `parameters` /
+`maxContext` / `maxTokens` are `None`. Pre-existing; it only matters on
+`getCheapLLMProvider`'s LAST fallback arm, since every configured path selects
+from `available_profiles` (which do carry them). Commented at the site.
+
+NO-PORT: v4's eighth conversion site, `lib/wardrobe/image-analysis.ts:306`,
+has no v5 twin — the typed refusal stands.
+
+**Files touched outside the order's Ownership list** (none owned by a sibling
+lane; flagged for the unifier): `services/carina_query.rs` (finding 2),
+`services/image_job_common.rs`, `services/dangerous_content/gatekeeper_job.rs`,
+`services/title_update_job.rs`, `tools/generate_image.rs` — the last four only
+to add `max_context` to their `cheap_llm_profile_from_value` helpers.
+
+### Unit 3 — the per-profile multi-character turn anchor
+
+`message_context.rs` §M is now `apply_multi_character_turn_anchor(&mut
+formatted_messages, character_name, use_prefill)`, a public twin of v4's
+exported function, and `MessageContextParams` carries `use_prefill` resolved
+at the call site exactly as v4 resolves it. The prose sentence moved out of
+the Anthropic-only branch **byte-unchanged** (the old
+`anthropic_scene_instruction` renamed to `multi_character_prose_instruction`,
+same `format!`). Both call sites converted: `orchestrator.rs` and
+`regenerate_swipe.rs`.
+
+The connection-profile net read gained the column (`CP_COLUMNS` +
+`marshal_cp_row`), with a new `put_opt_bool` helper: v4's SQLite hydration
+maps a NULL boolean to `undefined`, so a NULL is an **absent key** in every v4
+net read, never `null` — measured at `backends/sqlite/backend.ts:429-437`, not
+assumed. Without this read the resolver could never see a stored choice.
+
+**Corpus:** `orchestrator-tier3` gains two profiles, two characters, two
+chats, two calls and two stream specs that INVERT the old provider rule —
+`prefill_off_nonanthropic` (OPENROUTER, stored `false` → prose) and
+`prefill_on_anthropic` (ANTHROPIC, stored `true` → prefill). The oracle
+confirms the flip directly: the OpenRouter request ends on a system message
+carrying the prose sentence, the Anthropic one ends on an assistant
+`[Anselm]`. The NULL-both-ways arms were already covered by the existing
+`nonanthropic_scene` (OPENROUTER → prefill) and the Anthropic multi-character
+cases (→ prose). The fixture builder passes `multiCharacterPrefill` through.
+
+**The corpus caught a real regression in this unit's first draft.** The
+initial call site resolved from `connection_profile` (the ORIGINAL profile);
+`danger_live_reroute` went red, because v4 resolves from
+`streamingState.effectiveProfile` — which is what the OLD hardcoded test read
+too (`effective_profile.provider`). Both the anchor and unit 7's `modelParams`
+now share one `effective_profile_row`, re-read by id when a reroute happened.
+
+**Mutation-proven:** making the resolver ignore the stored choice reddens both
+new cases with `no canned stream queued`.
+
+### Unit 4 — the struct + route arms
+
+`CpCreate.multi_character_prefill: Option<bool>` and `CpUpdate
+.multi_character_prefill: Option<bool>`; create resolves the provider default
+when the field is absent and STORES it (never the tri-state NULL); both routes
+400 with v4's exact `multiCharacterPrefill must be a boolean` on a present
+non-boolean, an explicit `null` included. Neither is gated on `isCourier` —
+v4's comment: "not a tool flag; the Courier renders the same assembled context
+for the user to carry by hand".
+
+**⚠ `None` OMITS the column from the INSERT rather than writing NULL.**
+Measured, not assumed: v4's `insertOne` builds its column list from
+`Object.keys(row)` (`backends/sqlite/backend.ts:128`) and Zod drops an absent
+`.optional()` key, so a pre-4.9 archive record simply never names the column
+and the DDL DEFAULT decides. On a fresh (generateDDL) instance that lands NULL;
+on a MIGRATED instance the `INTEGER DEFAULT 1` lands 1. **Writing an explicit
+NULL would have passed this lane's differential and silently diverged on every
+upgraded instance** — the two shapes differ (see unit 1), which is exactly why
+this had to be measured rather than reasoned.
+
+**Contract B note for P4.D81:** the update bag reaches the handler as an
+untyped `serde_json::Value` straight from the dispatch verb
+(`api/types.rs::ConnectionProfileUpdate { profile: Value }`), so
+`Some(Value::Null)` is already distinguishable from absent and **no
+double-`Option` carry is needed**. The Taboo §3 hazard exists only where a
+typed DTO sits at the web edge; this verb has none, and v5 still ships no
+`/api/v1/connection-profiles` REST edge (the standing asymmetry, untouched).
+
+**Differentials.**
+
+- `connection_profiles_tier2` grew five ops: creates with `true` / `false` /
+  ABSENT, and two updates. The ABSENT row is deliberately left un-updated so
+  its create-time value stays observable — the first draft updated it and
+  masked the very measurement the case exists for. Oracle result: the absent
+  create lands **NULL**. (The differential also caught a false green in its own
+  wiring: the new `CreateData`/`UpdateData` fields needed an explicit
+  `#[serde(rename = "multiCharacterPrefill")]`, since that struct renames
+  per-field rather than `rename_all`; without it every prefill row read as
+  `None` on the Rust side.)
+- `settings_routes_equivalence` grew **eight** `connection_profiles` arms — the
+  Anthropic default-resolution create, an explicit `true` on Anthropic, an
+  explicit `false` on Ollama (the bug-68 case), and the four 400 arms (create
+  and update × explicit-null and non-boolean) with per-row error-status
+  asserts. Family total 7 → 15, with a new `>= 15` stale-oracle count guard
+  beside the existing ones. Suite: **107 cases matched**.
+- Mutation-proven twice: dropping the create's 400 arm, and making create
+  ignore the provider default, each redden the suite.
+
+**⚠ TRIPWIRE FIRED — the `.qtap` import carry is STOPPED, by the round's own
+Shared contract.** The order predicted the import/restore carry would ride the
+`CpCreate` deserialize. MEASUREMENT refutes that for the import half: `CpCreate`
+is a plain struct with no `Deserialize`, and
+`services/quilltap_import/profiles.rs` parses its own
+`ImportedConnectionProfile` DTO first — so the carry needs TWO lines INSIDE
+`quilltap_import/**`, which the Shared contract assigns to P4.48. Per the
+order's rule for exactly this case, the unit stops and records the ordered
+edit rather than touching P4.48's files:
+
+> 1. `ImportedConnectionProfile` gains `#[serde(default)]
+>    multi_character_prefill: Option<bool>,`
+> 2. the `CpCreate` construction's `multi_character_prefill: None,` becomes
+>    `multi_character_prefill: p.multi_character_prefill,`
+
+The comment is at the site, named and loud. Meanwhile the behaviour is the
+conservative one, not a silent wrong answer: `None` omits the column, which is
+exactly what importing a PRE-4.9 bundle does in v4. The bounded gap is a 4.9
+bundle whose profile stored a NON-default choice — it imports as "never
+chosen". **The RESTORE half DID land** (`services/backup/restore/
+orchestrator.rs` is not P4.48's), reading the tri-state with the existing `ob`
+helper.
+
+**Files touched outside the order's Ownership list** (none owned by a sibling;
+flagged for the unifier): `services/backup/restore/orchestrator.rs`,
+`services/quilltap_import/profiles.rs` (the refusal comment + `None` only).
+
+### Unit 5 — the export carry + the key-order regen + read tolerance
+
+`sanitize_profile` and the profile record stream are generic (reorder + copy
+every key), so the field carries as soon as the net read has it. The real work
+is `qtap_export/schema-key-order.json`, **REGENERATED** via the shipped
+`dump-export-key-order.ts` at the pin — the D65 lesson, since `reorder` is
+deliberately non-lossy and would have shipped a hand-missed key silently at the
+TAIL of every exported profile record. The regen's only delta is the one key,
+in v4's slot between `pseudoToolMode` and `modelClass`; a new unit test pins
+both neighbours AND the reorder's actual output, so a future D23 re-dump that
+stales this file fails loudly instead of quietly.
+
+**Per-column READ tolerance** (the P4.D63 `characters` archive precedent, same
+shape): `CP_COLUMNS` became `cp_select_columns(conn)`, which substitutes a
+literal `NULL` when `PRAGMA table_info` says the table predates the column.
+Without it every pre-migration instance AND every committed fixture built
+before the drift would fail the read outright with `no such column` — which is
+not hypothetical: `system-data-*.db` are committed at an older vintage, and the
+export differential exercises exactly that path. The WRITE side stays strict,
+as v4's is. `system_export_equivalence` green over the regenerated oracle (57
+cases), which is also the proof the tolerance works.
+
+Import/restore: see unit 4 — restore carries the field, the `.qtap` import
+carry is STOPPED by the ownership tripwire with its ordered edit recorded.
+
+### Unit 6 — the greeting's reasoning capture
+
+`GreetingResult` gains `reasoning_content`, accumulated by **ASSIGNMENT** (v4's
+comment, carried: providers emit `reasoningContent` CUMULATIVELY — the full
+thinking-so-far on every chunk, not a delta) behind v4's `if
+(chunk.reasoningContent)` JS-truthiness guard, so an empty chunk does NOT clear
+what came before. Trimmed alongside the content.
+`auto_generate_first_message` returns a `GeneratedGreeting {content,
+reasoning_content}` with a `none()` constructor standing in for v4's
+`NO_GREETING`, through **all four attempts + the Concierge reroute**; the
+stored greeting message carries `reasoningContent: firstMessageReasoning ||
+null` — the JS `||`, so an empty string persists as an explicit NULL.
+
+v4's `logger.debug` on a captured reasoning has no ported analog (v5 emits no
+tracing from this module); recorded, not invented.
+
+**Differentials.** `initial_greeting_equivalence` grew `cannedReasoning` on
+three existing cases plus a new
+`reasoning_empty_chunk_does_not_clear` case, and now compares
+`reasoningContent`. The oracle CONFIRMED all three predicted behaviours against
+v4's real code rather than my reading of it: cumulative last-wins
+(`"Let me think about a greeting for Aria."`), trimming
+(`"  weighing the project brief  "` → trimmed), and the empty trailing chunk
+leaving `"thought one and two"` intact. A guard asserts at least one case
+actually captured reasoning, so a stale oracle cannot pass by comparing
+empty-to-empty. `chat_create_capstone` gained `greetingReasoning` on
+`generated_greeting`, which makes the PERSISTED value a comparand in the
+`chat_messages` dump — and every other case is the scripted/absent arm, which
+pins the NULL.
+
+**Mutation-proven three ways:** concatenating instead of assigning, dropping
+the JS-truthiness guard, and never persisting the value each redden their
+family.
+
+### Tier 2 — items 8 and 9
+
+**Item 8 (the multi-key `parameters` seam): MEASURED and CLOSED, not
+deferred.** Half of it was already closed and the module doc had not caught up:
+the tier-2 corpus's second create op has carried a NON-SORTED multi-key bag
+(`{zeta, alpha, topP}`) since P4.6, and `preserve_order` reproduces
+`JSON.stringify`'s insertion order. What had no arm was the REPLACE path — the
+one the SPA now drives, writing `enable_thinking` beside `temperature`. A new
+update op replaces the bag with `{enable_thinking, temperature, num_ctx}`
+(non-sorted: sorted would be `enable_thinking, num_ctx, temperature`) and the
+oracle round-trips it in insertion order. The harness's `UpdateData` gained
+`parameters` to carry it.
+
+**Item 9 (the doc sweep):** `db/connection_profiles.rs`'s module header now
+describes the new nullable-optional boolean column (both its read shape — a
+NULL is an ABSENT key — and its write shape — `None` OMITS the column), records
+the read tolerance, corrects the column count, and RETIRES the
+"CONSTRAINED to `{}` / single-key" claim, which had stopped describing reality.
+The deferral list keeps "set a nullable column to NULL via update" but notes
+that for this column v4 cannot express it either.
+
+### Lane gate (2026-08-15)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (plain and
+  `--features quilltap-core/native-transport`); `cargo build --release` green.
+- **`cargo test --workspace` with the lane's 20-variable oracle env block:
+  433 test binaries / 2,092 tests / 0 failed, exit 0, and ZERO `SKIP:` lines in
+  the whole log** — so nothing was gated off. The lane's ten families
+  positively confirmed to have RUN, by name:
+  `provisioning_equivalence` (3), `multi_character_prefill_equivalence`,
+  `profile_params_equivalence`, `orchestrator_tier3_equivalence`,
+  `connection_profiles_tier2_equivalence`, `settings_routes_equivalence`,
+  `system_export_equivalence`, `initial_greeting_equivalence`,
+  `chat_create_capstone_equivalence`, `file_attachment_tier3_equivalence`.
+- **Thirteen more families re-run through `recipe_sweep.py --run-all` over
+  oracles regenerated FRESH from the pinned worktree, all `ok`:**
+  `carina_query_tier3`, `announcer_tier3`, `answer_confirmation_tier3`,
+  `regenerate_swipe_tier3`, `message_context_leaves`, `build_context_tier3`,
+  `system_restore`, `system_restore_state`, `restore_vintage_state`,
+  `system_backup`, `memory_processor_tier3`, `context_summary_service_tier3`,
+  `compression_tier3`. (The sweep driver needs **Python 3.12+** — an f-string
+  backslash makes it a `SyntaxError` under the system 3.9; run it as
+  `python3.13`. And `--v4` takes a PATH, not a sha.)
+- `apps/web` untouched in the whole lane diff, as the order requires.
+- The v4-reads-v5 provisioning cross-compat leg re-run and green after the D23
+  re-dump.
 
 ## Round record — the `1bed814f` drift catch-up unification (P4.D57 ∥ P4.D58 ∥ P4.D59), 2026-08-08
 

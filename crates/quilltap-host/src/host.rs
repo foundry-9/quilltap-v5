@@ -890,6 +890,19 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
             )?;
             // === end P4.D73 ===
+            // === P4.D79 (v4 `23af7146`, migration
+            // `add-profile-multi-character-prefill-field-v1`) ===
+            // The `connection_profiles.multiCharacterPrefill` column, re-homed
+            // from v4's migration runner for the same reason. Load-bearing on
+            // an existing instance: without the column the profile PUT's
+            // `UPDATE … SET multiCharacterPrefill = ?` would 500, and the turn
+            // anchor would have no stored choice to read. The ensure carries
+            // v4's ONE-TIME backfill (Anthropic off, everything else on) and
+            // never re-runs it — see the module header on why an explicit
+            // choice must survive the next boot.
+            quilltap_core::db::connection_profiles_prefill_repair::
+                ensure_connection_profiles_prefill_column(main)?;
+            // === end P4.D79 ===
             // === P4.D77 (v4 `24633026`, migration
             // `create-help-doc-chunks-table-v1`) ===
             // The `help_doc_chunks` table itself, re-homed from v4's migration

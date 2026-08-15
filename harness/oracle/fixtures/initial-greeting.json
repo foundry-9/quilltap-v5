@@ -11,7 +11,16 @@
       "project": null,
       "recentConversationsBlock": null,
       "cannedContent": "Well met, traveler! I am Aria, and I stand ready.",
-      "cannedUsage": { "promptTokens": 40, "completionTokens": 12, "totalTokens": 52 }
+      "cannedUsage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "cannedReasoning": [
+        "Let me think",
+        "Let me think about a greeting",
+        "Let me think about a greeting for Aria."
+      ]
     },
     {
       "id": "content_filter",
@@ -24,7 +33,14 @@
       "project": null,
       "recentConversationsBlock": null,
       "cannedContent": "",
-      "cannedUsage": { "promptTokens": 40, "completionTokens": 5, "totalTokens": 45 }
+      "cannedUsage": {
+        "promptTokens": 40,
+        "completionTokens": 5,
+        "totalTokens": 45
+      },
+      "cannedReasoning": [
+        "I should decline this."
+      ]
     },
     {
       "id": "empty_no_usage",
@@ -50,7 +66,11 @@
       "project": null,
       "recentConversationsBlock": null,
       "cannedContent": "   \n  ",
-      "cannedUsage": { "promptTokens": 40, "completionTokens": 4, "totalTokens": 44 }
+      "cannedUsage": {
+        "promptTokens": 40,
+        "completionTokens": 4,
+        "totalTokens": 44
+      }
     },
     {
       "id": "with_context",
@@ -60,13 +80,52 @@
       "model": "gpt-5",
       "temperature": 0.5,
       "memories": [
-        { "aboutCharacterName": "Mira", "summary": "loves the sea" },
-        { "aboutCharacterName": "Mira", "summary": "fears the deep" }
+        {
+          "aboutCharacterName": "Mira",
+          "summary": "loves the sea"
+        },
+        {
+          "aboutCharacterName": "Mira",
+          "summary": "fears the deep"
+        }
       ],
-      "project": { "name": "Voyage", "description": "A sea trek.", "instructions": "Be nautical." },
+      "project": {
+        "name": "Voyage",
+        "description": "A sea trek.",
+        "instructions": "Be nautical."
+      },
       "recentConversationsBlock": "### Recent Conversations\n- A prior chat about tides.",
       "cannedContent": "Ahoy! Bo here — ready to set sail whenever you are.",
-      "cannedUsage": { "promptTokens": 90, "completionTokens": 14, "totalTokens": 104 }
+      "cannedUsage": {
+        "promptTokens": 90,
+        "completionTokens": 14,
+        "totalTokens": 104
+      },
+      "cannedReasoning": [
+        "  weighing the project brief  "
+      ]
+    },
+    {
+      "id": "reasoning_empty_chunk_does_not_clear",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "Hail.",
+      "cannedUsage": {
+        "promptTokens": 10,
+        "completionTokens": 2,
+        "totalTokens": 12
+      },
+      "cannedReasoning": [
+        "thought one",
+        "thought one and two",
+        ""
+      ]
     }
   ]
 }
