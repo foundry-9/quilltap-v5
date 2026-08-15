@@ -2,6 +2,8 @@
 
 ## Recent Changes
 
+Closed work order P4.D80. Docs only.
+
 Ported the server half of v4's aa464abf. The chat GET's character enrichment
 now carries archivedAt on both of its return paths, so the Salon sidebar can
 badge an archived seat on a fresh load instead of only after a participants
