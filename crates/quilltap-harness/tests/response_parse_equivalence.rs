@@ -147,6 +147,9 @@ fn response_parse_matches_v4_recorded_llm_responses() {
     // Coverage guard: every provider family must appear — a family silently
     // missing from the corpus is how a parse gap hides (#24's lesson).
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // P4.D78 — the two Ollama reasoning channels plus the conditional attach.
+    let (mut ollama_native_reasoning, mut ollama_inline_reasoning, mut ollama_no_reasoning) =
+        (false, false, false);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: Value = serde_json::from_str(line).expect("corpus line parses");
@@ -186,6 +189,22 @@ fn response_parse_matches_v4_recorded_llm_responses() {
             }
         }
 
+        if provider == "OLLAMA" {
+            let recorded_reasoning = rec["response"]
+                .get("reasoningContent")
+                .and_then(Value::as_str);
+            let native = body
+                .get("message")
+                .and_then(|m| m.get("thinking"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            match recorded_reasoning {
+                None => ollama_no_reasoning = true,
+                Some(_) if !native.is_empty() => ollama_native_reasoning = true,
+                Some(_) => ollama_inline_reasoning = true,
+            }
+        }
+
         cases += 1;
         let (g, w) = (canon(&got), canon(&want));
         if g != w {
@@ -209,7 +228,23 @@ fn response_parse_matches_v4_recorded_llm_responses() {
             "corpus is missing the {family} family entirely"
         );
     }
-    assert!(cases >= 29, "corpus shrank: {cases} cases (expected >= 29)");
+    assert!(cases >= 36, "corpus shrank: {cases} cases (expected >= 36)");
+    // P4.D78 — the Ollama reasoning channels. Both must be exercised, and at
+    // least one row must still record NO reasoningContent (v4's conditional
+    // attach): a corpus that lost either arm would pass with the feature
+    // untested. Asserted over v4's RECORDED response, not v5's parse.
+    assert!(
+        ollama_native_reasoning,
+        "corpus lost the ollama native `message.thinking` reasoning row"
+    );
+    assert!(
+        ollama_inline_reasoning,
+        "corpus lost the ollama inline `<think>` reasoning row"
+    );
+    assert!(
+        ollama_no_reasoning,
+        "corpus lost the ollama row with NO reasoningContent (the conditional attach)"
+    );
     assert!(
         failures.is_empty(),
         "{} of {cases} response-parse cases diverge from v4:\n{}",

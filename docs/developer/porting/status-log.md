@@ -17,6 +17,29 @@ packages/ plugins/` is strictly one-directional (every hunk removes what main
 added — bugfix is behind, carrying nothing portable). Regen therefore runs
 straight from the checkout, no pinned worktree.
 
+**Unit 3 — the non-streaming parse (core 0.0.552, harness 0.0.476).**
+`parse_ollama` splits `message.content` through `extract_think_blocks` and
+concatenates the native `message.thinking` AHEAD of the inline reasoning
+(v4's `nativeThinking + inlineReasoning` order), attaching `reasoningContent`
+only when the concatenation is non-empty (v4's
+`...(reasoningContent ? … : {})`). Both `typeof … === 'string'` guards
+carried, so a non-string `content`/`thinking` is ignored rather than
+coerced.
+
+*The differential:* the recorded-body corpus (`response_parse_equivalence`)
+grew **seven Ollama cases** — native-only, inline-only, both channels (which
+pins the concatenation ORDER), the swallowed-open orphan shape v4
+live-reproduced against a Qwen3 GGUF, an unterminated block, an empty
+`thinking` string that must NOT materialize the field, and a
+non-string-channels row. Pre-existing rows byte-identical (measured: zero
+changed; corpus 30 → 37). Three coverage assertions added over v4's RECORDED
+response — a native-reasoning row, an inline-reasoning row, and a row with no
+`reasoningContent` at all — plus the floor raised 29 → 36.
+
+*Mutation-proven:* attaching `reasoning_content` unconditionally → 4 of 37
+rows diverge (`plain`, `not-done`, `empty-thinking-omitted`,
+`non-string-channels`).
+
 **Unit 2 — the request builder: `think` + `options.num_ctx` (core 0.0.551,
 harness 0.0.475).** `build_ollama_body` gains v4's two new fields in v4's exact
 assignment order: top-level `think` between `stream` and `options` (ALWAYS

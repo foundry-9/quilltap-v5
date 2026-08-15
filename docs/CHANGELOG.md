@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+The non-streaming Ollama parse now routes both reasoning channels (P4.D78
+unit 3, v4 d9c5a1c7): `parse_ollama` splits `message.content` through the
+think parser and concatenates the native `message.thinking` ahead of the
+inline reasoning, attaching `reasoningContent` only when the result is
+non-empty. Seven new Ollama cases in the response-body corpus; every
+pre-existing row byte-identical.
+
 Ollama requests now carry the thinking switch and the context window
 (P4.D78 unit 2, v4 d9c5a1c7): `build_ollama_body` emits a top-level `think`
 on every body (false when the profile's `enable_thinking` is off) and
