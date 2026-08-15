@@ -51,8 +51,9 @@ const CHARACTER_ARCHIVE_SERVER_LANDED = true;
  * unification, once P4.D80 is on the branch. A named constant, not a probe:
  * a probe cannot tell an absent key from a seat that simply is not archived,
  * and would silently activate the beat into a guaranteed failure.
+ * FLIPPED at the aa464abf-round unification (P4.D80 is on the branch).
  */
-const P4D80_ENRICHMENT_LANDED = false;
+const P4D80_ENRICHMENT_LANDED = true;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
