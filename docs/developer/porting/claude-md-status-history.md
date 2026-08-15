@@ -1932,3 +1932,27 @@ Contents:
   graph. The sweep driver remains the sanctioned per-family regen path;
   the distill-transitive TZ pins, the committed-fixture rule, and the
   venue/staging rules stand unchanged.
+
+
+## Superseded baseline paragraph (48396682, replaced at the help-drift unification 2026-08-14)
+
+- **Oracle baseline: `48396682` (2026-08-13, v4 main — "merge: 4.8.3 back
+  into main"), adopted at the 4.8.2/4.8.3 drift-round unification — NO v4
+  drift debt remains.** v4 HEAD is `11553944` ("merge: 4.8.4 back into
+  main"), ONE release past the baseline and **NO-PORT, verified**: the
+  delta is two composer-typeahead test files, a jest test helper, and
+  release docs — `git diff 48396682 main -- lib/ app/ packages/` is
+  EMPTY, so oracles regenerate straight from the checkout while HEAD
+  stays there. **Drift-check BOTH branches every round** (`git log
+  <baseline>..main` AND `git log main..bugfix -- lib/ app/ packages/`;
+  release content reaches main squashed via the `release:`/`merge:`
+  pair, so measure drift with `git diff`, not the bugfix commit list)
+  and verify the checkout's branch before any regen — pin a detached
+  worktree on any mismatch, drift, or dirty tree
+  (`oracle-regen-pinned-v4-worktree`, or `recipe_sweep.py --v4 <pin>`).
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently (shared /tmp paths race; measured), and
+  the provisioning family's two v4-side legs must run from the v4
+  checkout (recipe repaired this round). The distill-transitive TZ pins,
+  the committed-fixture rule, and the venue/staging rules stand
+  unchanged.
