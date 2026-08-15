@@ -239,9 +239,11 @@ impl<'c> HelpDocChunksRepository<'c> {
     /// v4 `updateEmbedding` — store the embedding for one chunk (+ the minted
     /// `updatedAt` v4's `_update` stamps). Empty → SQL NULL, as everywhere else.
     ///
-    /// v4 swallows a failure here (`safeQuery` with no fallback value returns
-    /// undefined); the caller's per-chunk try/catch is what actually decides,
-    /// so this returns the row-matched bool and lets the job's arm interpret it.
+    /// v4's no-fallback `safeQuery` logs and RETHROWS (`safe-query.ts:52-58`),
+    /// so a DB error here throws into `embedHelpDocChunks`' per-chunk catch and
+    /// the chunk is not counted; a no-row-matched update merely returns null
+    /// and the caller counts on. This returns the row-matched bool and lets the
+    /// job's arm map exactly those two shapes (Err → warn+skip, Ok(_) → count).
     pub fn update_embedding(
         &self,
         id: &str,

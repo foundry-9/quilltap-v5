@@ -719,9 +719,12 @@ async fn embed_help_doc_chunks<E: EmbeddingProvider>(
                     })
                     .await;
                 match written {
-                    // v4's `updateEmbedding` swallows its own failure inside
-                    // `safeQuery` and the caller counts the chunk regardless, so
-                    // a row that vanished mid-job still increments `embedded`.
+                    // v4's no-fallback `safeQuery` logs and RETHROWS, so a hard
+                    // DB error lands in the per-chunk catch (the Err arm below)
+                    // and is NOT counted — but a no-row-matched update merely
+                    // returns null in v4, so a row that vanished mid-job still
+                    // increments `embedded` on both sides (hence `Ok(_)`, not
+                    // `Ok(true)`).
                     Ok(_) => embedded += 1,
                     Err(e) => tracing::warn!(
                         target: "quilltap::jobs",

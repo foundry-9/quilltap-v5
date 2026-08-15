@@ -225,10 +225,20 @@ function rawTextNodes(schema: Schema, text: string): PmNode[] {
  *    same two cases collapse to one expression: `from + cursor`. Proven
  *    equivalent by the oracle's caret column (which the spec reads as an offset
  *    from the block start — the only frame the two editors share).
- * 2. **The line arms' block text.** v4 reads `getTopLevelElement()`; PM's
- *    `$from.parent` is the TEXTBLOCK, which is the same node for every shape
- *    this toolbar can reach and, unlike the top-level element, is the one whose
- *    `textContent` offsets map 1:1 onto document positions.
+ * 2. **The line arms' block text — a RECORDED DIVERGENCE for lists.** v4 reads
+ *    `getTopLevelElement()`; PM's `$from.parent` is the TEXTBLOCK. For a flat
+ *    paragraph (or a paragraph inside a blockquote's textblock) the two agree.
+ *    For a caret inside a LIST — reachable from this very toolbar (the list
+ *    button, then a delimiter) — they do NOT: v4's top-level element is the
+ *    whole ListNode, whose children it replaces with one raw text run,
+ *    flattening the entire list; v5 rewrites only the caret's list-item
+ *    paragraph and leaves the list standing. Deliberate (the P4.D75 adapter
+ *    rule): PM's non-textblock `textContent` has no `\n` separators and its
+ *    offsets do not map onto document positions, so v4's shape cannot be
+ *    reproduced by offset surgery — and flattening a whole list from one
+ *    button press is destruction this port declines to reproduce. Pinned by
+ *    the `list: only the caret's item` spec; if a ruling ever wants v4's
+ *    flatten, this is the seam.
  * 3. **Marks.** v4 replaces the block's children with a single text node, so a
  *    bold run inside it loses its bold; `replaceWith` a bare text node does the
  *    same. Recorded rather than inferred (`wrap: a selected BOLD run — the

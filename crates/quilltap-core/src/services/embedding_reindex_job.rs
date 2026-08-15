@@ -446,6 +446,12 @@ async fn phase_help_docs(
             // they clear together — otherwise the re-embed pass would skip
             // every chunk that still had a (stale-profile) vector, since its
             // only skip test is "does this chunk already have one".
+            //
+            // Transaction shape: v4 awaits the two clears separately (a failure
+            // between them leaves docs cleared, chunks not, and phase 1's catch
+            // moves on); this one `db.write` rolls both back together — the
+            // same recorded class as the backfill's one-transaction note in
+            // `help_doc_sync.rs`, reachable only on a broken table.
             crate::db::help_doc_chunks::HelpDocChunksRepository::new(ws.main().connection())
                 .clear_all_embeddings(&now)
                 .map(|_| ())

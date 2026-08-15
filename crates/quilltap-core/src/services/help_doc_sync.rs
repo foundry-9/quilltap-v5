@@ -42,12 +42,16 @@
 //!
 //! [`ensure_help_docs_synced`] has **no production caller** — v4 reaches it from
 //! `HelpSearch.loadFromDatabase()`, and that class is unported (see
-//! [`crate::help_doc_slug`]). v4's OTHER sync trigger, the
-//! `EMBEDDING_REINDEX_ALL` job handler, is unported too: the job type is known
-//! (`job_runner.rs`) and `embedding_refit_job.rs` enqueues it, but no handler
-//! exists. So this module is correct FOR WHEN that wiring lands, and today only
-//! the differential drives it. Wiring it is the host's business (it owns the
-//! walk); the standing seam note lives at `db/help_search.rs`.
+//! [`crate::help_doc_slug`]). v4's OTHER sync trigger — the
+//! `EMBEDDING_REINDEX_ALL` job — IS wired (`quilltap-host` registers its
+//! handler, which drives [`sync_help_docs`] through the reindex; the "no
+//! handler exists" sentence that stood here was stale, corrected at the
+//! help-drift unification). So the SYNC half runs in production whenever a
+//! reindex-all is requested; what stays dark is the boot-time
+//! ensure/short-circuit path and, with it, the P4.D77 upgrade BACKFILL below,
+//! which only `ensure_help_docs_synced` reaches. Wiring that is the host's
+//! business (it owns the walk); the standing seam note lives at
+//! `db/help_search.rs`.
 
 use rusqlite::{params, Connection};
 

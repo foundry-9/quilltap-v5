@@ -12,9 +12,16 @@
 //!   - `live`     → provisioned once, then re-run → ADOPT (no duplicate rows).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout, via the mirror that lets
-//! `better-sqlite3` + `@/` both resolve):
-//!   MIRROR=~/source/quilltap-server/.qt-oracle-mirror   # cp -R harness/oracle → here
+//! `better-sqlite3` + `@/` both resolve). The mirror is (re)staged by the
+//! recipe's own first stage — it used to assume a pre-existing copy, which is
+//! the staging-dependency defect the P4.47 sweep class flags for /tmp paths
+//! and which bit here at the help-drift unification, where the `--v4` pin
+//! rewrite pointed MIRROR into a fresh worktree that had no mirror at all:
+//!   V5W=<this tree>
+//!   MIRROR=~/source/quilltap-server/.qt-oracle-mirror
 //!   cd ~/source/quilltap-server
+//!   rm -rf "$MIRROR/oracle" ; mkdir -p "$MIRROR"
+//!   cp -R "$V5W/harness/oracle" "$MIRROR/oracle"
 //!   : > /tmp/oracle-builtin-mounts.ndjson
 //!   for S in empty dangling live; do
 //!     QT_STATE=$S npx tsx "$MIRROR/oracle/cases/builtin-mounts.ts" \

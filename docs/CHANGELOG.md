@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Fixed two wire-status divergences the unification review's new error-status
+assert caught in the settings routes: a validation failure whose message
+carries no "Invalid" (a bare threshold out of range) now answers 500 exactly
+as v4's catch does, and creating or renaming a connection profile onto an
+existing name now answers 409 Conflict, not 400. Bodies were already
+identical; only the statuses moved. The settings differential now asserts
+the recorded status on every error row.
+
+Fixed the Generate Image composer button staying clickable while the
+composer is disabled (v4 disables it), and recorded — with a pinning spec —
+the deliberate divergence that a narration/OOC button pressed inside a list
+rewrites only the caret's item where v4 flattens the whole list into one
+text run. Corrected two help-chunk code comments that misstated v4's
+safe-query error semantics (the behavior was faithful; the stated mechanism
+was inverted), refreshed the stale "no reindex-all handler" note in the
+help-doc sync header, and recorded the reindex clear-pair's transaction
+shape beside the backfill's existing note.
+
 The help-sync guards differential's regen recipe now stages its own fixture
 into a family-specific /tmp path instead of silently reading the sync family's
 — the staging-dependency defect the new sweep-driver class flags, flagged by

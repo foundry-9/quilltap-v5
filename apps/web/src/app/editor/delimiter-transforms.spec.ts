@@ -196,3 +196,50 @@ describe('rich-text delimiter application — v4 recorded-vector parity', () => 
     expect(vectors.rich.some((v) => !v.out.applied)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The list divergence — pinned, NOT oracle-diffed
+// ---------------------------------------------------------------------------
+
+describe('line-arm delimiters inside a list — the recorded v4 divergence', () => {
+  /**
+   * v4's `getTopLevelElement()` makes the whole ListNode the block, so a
+   * delimiter press with the caret in a list item flattens the ENTIRE list
+   * into one raw text run. v5 deliberately rewrites only the caret's item
+   * paragraph and leaves the list standing (the module doc's point 2 — the
+   * P4.D75 adapter rule). This spec pins v5's half of that divergence so the
+   * choice cannot decay into an accident; if a ruling ever adopts v4's
+   * flatten, this is the spec to rewrite against a fresh recorded vector.
+   */
+  it('prefixes only the caret item and leaves the list structure standing', () => {
+    const s = dialectSchema;
+    const item = (text: string) =>
+      s.nodes['list_item'].create(null, [
+        s.nodes['paragraph'].create(null, s.text(text)),
+      ]);
+    const doc = s.nodes['doc'].create(null, [
+      s.nodes['bullet_list'].create(null, [item('one'), item('two')]),
+    ]);
+    let next = EditorState.create({ doc, schema: s });
+    // Caret inside "one": doc(1) > bullet_list(1) > list_item(1) > paragraph.
+    next = next.apply(next.tr.setSelection(TextSelection.create(next.doc, 4)));
+
+    const applied = applyDelimiterCommand({
+      kind: 'linePrefix',
+      name: 'OOC',
+      buttonName: 'OOC',
+      style: '',
+      marker: '// ',
+    })(next, (tr) => {
+      next = next.apply(tr);
+    });
+
+    expect(applied).toBe(true);
+    // The list survived, both items still items, only the caret's got the marker.
+    const list = next.doc.child(0);
+    expect(list.type.name).toBe('bullet_list');
+    expect(list.childCount).toBe(2);
+    expect(list.child(0).textContent).toBe('// one');
+    expect(list.child(1).textContent).toBe('two');
+  });
+});

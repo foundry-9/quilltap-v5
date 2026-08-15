@@ -1,0 +1,246 @@
+{
+  "label": "unify/help-drift-round gate regen at 24633026 (pinned worktree; v4 live tree dirty with in-flight Ollama WIP)",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "help_doc_chunking_equivalence",
+    "help_doc_sync_equivalence",
+    "help_doc_sync_guards_equivalence",
+    "help_doc_ensure_equivalence",
+    "help_docs_tier2_equivalence",
+    "help_docs_upsert_tier2_equivalence",
+    "help_tools_equivalence",
+    "embedding_generate_jobs_equivalence",
+    "embedding_remainder_equivalence",
+    "embedding_reapply_equivalence",
+    "search_tools_equivalence",
+    "provisioning_equivalence",
+    "builtin_templates_equivalence",
+    "builtin_mounts_equivalence",
+    "restore_vintage_state",
+    "character_archive_tier2_equivalence",
+    "mail_carina_tools_equivalence",
+    "self_inventory_equivalence",
+    "participant_resolver_tier2_equivalence",
+    "post_office_routes_equivalence",
+    "chats_participants_tier2_equivalence",
+    "system_import_state",
+    "system_delete_data_equivalence",
+    "settings_routes_equivalence",
+    "reset_builtins_equivalence",
+    "seed_avatars_equivalence",
+    "metadata_vault_roundtrip_equivalence",
+    "ensure_character_metadata_file_equivalence",
+    "request_builder_google_wire_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "help_doc_chunking_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_doc_sync_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_doc_sync_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_doc_ensure_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_docs_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_docs_upsert_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_generate_jobs_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_remainder_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "embedding_reapply_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "search_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "provisioning_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "builtin_templates_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "builtin_mounts_equivalence",
+      "status": "regen_failed",
+      "cause": "    at defaultResolve (node:internal/modules/esm/resolve:992:11)\n    at #cachedDefaultResolve (node:internal/modules/esm/loader:719:20)\n    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:736:38)\n    at nextStep (node:internal/modules/customization_hooks:189:26)\n    at resolveBaseSync (file:///Users/csebold/source/quilltap-server/node_modules/tsx/dist/register-C4vWVmug.mjs:2:10932)\n    at resolveDirectorySync (file:///Users/csebold/source/quilltap-server/node_modules/tsx/dist/register-C4vWVmug.mjs:2:12238)\n    at resolveTsPathsSync (file:///Users/csebold/source/quilltap-server/node_modules/tsx/dist/register-C4vWVmug.mjs:2:13445)\n    at resolve (file:///Users/csebold/source/quilltap-server/node_modules/tsx/dist/register-C4vWVmug.mjs:2:15991) {\n  code: 'ERR_MODULE_NOT_FOUND',\n  url: 'file:///tmp/qt-v4-pin-unify-24633026/.qt-oracle-mirror/oracle/cases/builtin-mounts.ts'\n}\nNode.js v24.13.1",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "restore_vintage_state",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "character_archive_tier2_equivalence",
+      "status": "regen_failed",
+      "cause": "    > 267 |   const meta = JSON.parse(fs.readFileSync(fixtures.main + '.meta.json', 'utf8')) as {\n          |                              ^\n      268 |     avatarThumbnailFileId: string;\n      269 |   };\n      270 |\n      at readFileSync (../qt-character-archive-oracle-character_archive_tier2_equivalence/cases/character-archive-tier2.test.ts:267:30)\n      at runCase (../qt-character-archive-oracle-character_archive_tier2_equivalence/cases/character-archive-tier2.test.ts:605:40)\n      at Object.main (../qt-character-archive-oracle-character_archive_tier2_equivalence/cases/character-archive-tier2.test.ts:613:9)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        0.321 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "mail_carina_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "self_inventory_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "participant_resolver_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "post_office_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chats_participants_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_import_state",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_delete_data_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "settings_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "reset_builtins_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "seed_avatars_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "metadata_vault_roundtrip_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "ensure_character_metadata_file_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "request_builder_google_wire_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 27,
+    "regen_failed": 2
+  }
+}

@@ -261,7 +261,20 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
     // existence check needs a read, so it runs before the write.
     let assignments = match build_settings_assignments(db, bag) {
         Ok(a) => a,
-        Err(msg) => return bad_request(msg),
+        // v4's catch splits the status on the MESSAGE (`route.ts:391`:
+        // `errorMessage.includes('Invalid') ? 400 : 500`) — so a validation
+        // failure whose ZodError text carries no "Invalid" anywhere (a
+        // threshold-only `too_big`/`too_small`: "Too big: expected number to
+        // be <=1") answers 500, not 400, with the same `{error}` body. Found
+        // at the help-drift unification (P4.47 §3); pinned by the harness's
+        // per-row `status` assert.
+        Err(msg) => {
+            return if msg.contains("Invalid") {
+                bad_request(msg)
+            } else {
+                Response::error(ErrorKind::Internal, msg)
+            };
+        }
     };
 
     let now = crate::clock::now_iso();
@@ -1260,10 +1273,16 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         .iter()
         .any(|p| s(p, "name").map(|n| normalize_profile_name(&n)) == Some(normalized.clone()))
     {
-        return bad_request(format!(
-            "A connection profile named \"{}\" already exists",
-            name.trim()
-        ));
+        // v4 answers `conflict(...)` → 409 here (`connection-profiles/
+        // route.ts:206`, `[id]/route.ts:176`) — was bad_request/400 until the
+        // help-drift unification's status-assert pass caught it.
+        return Response::error(
+            ErrorKind::Conflict,
+            format!(
+                "A connection profile named \"{}\" already exists",
+                name.trim()
+            ),
+        );
     }
 
     // apiKeyId provider-match (non-courier).
@@ -1530,10 +1549,14 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
             s(p, "id").as_deref() != Some(id)
                 && s(p, "name").map(|n| normalize_profile_name(&n)) == Some(normalized.clone())
         }) {
-            return bad_request(format!(
-                "A connection profile named \"{}\" already exists",
-                name.trim()
-            ));
+            // v4 `[id]/route.ts:176` — conflict → 409 (see the create arm).
+            return Response::error(
+                ErrorKind::Conflict,
+                format!(
+                    "A connection profile named \"{}\" already exists",
+                    name.trim()
+                ),
+            );
         }
         patch.name = Some(name.trim().to_string());
     }

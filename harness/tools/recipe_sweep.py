@@ -847,6 +847,14 @@ def shield_fixture_envs(script: str, v5w: Path, family: str) -> str:
         dst = shield_dir / src.name
         if str(src) not in copies:
             shutil.copyfile(src, dst)
+            # A fixture may carry a sidecar the oracle case reads from the
+            # SAME path it was handed (`<fixture>.meta.json` — the
+            # character-archive family's avatarThumbnailFileId carrier). A
+            # shield that copies only the .db strands that read on a path
+            # nothing populated; found at the help-drift unification.
+            sidecar = src.with_name(src.name + ".meta.json")
+            if sidecar.is_file():
+                shutil.copyfile(sidecar, dst.with_name(dst.name + ".meta.json"))
             copies[str(src)] = str(dst)
             print(f"shielded {src} -> {dst}")
         return f"{var}={copies[str(src)]}"

@@ -103,8 +103,13 @@ fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Re
     }
 }
 
-/// Run a single case's handler and return `(body, is_ack)`.
-fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -> (Value, bool) {
+/// Run a single case's handler and return `(body, is_ack, status)`.
+fn run_handler(
+    rt: &tokio::runtime::Runtime,
+    db: &Db,
+    user: &str,
+    req: &Value,
+) -> (Value, bool, u16) {
     let route = req["route"].as_str().unwrap();
     let method = req["method"].as_str().unwrap();
     let url = req["url"].as_str().unwrap();
@@ -200,10 +205,21 @@ fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -
         }
         other => panic!("unhandled route/method: {other:?}"),
     };
-    response_to_body(resp)
+    response_to_body_status(resp)
 }
 
 fn response_to_body(resp: Response) -> (Value, bool) {
+    let (body, is_ack, _) = response_to_body_status(resp);
+    (body, is_ack)
+}
+
+/// Like [`response_to_body`] but also projects the HTTP status the web edge
+/// would answer, so a row can pin v4's recorded `status` — added at the
+/// help-drift unification after the P4.47 §3 review found v4's
+/// `includes('Invalid') ? 400 : 500` split (a threshold-only Zod message
+/// carries no "Invalid" and answers 500) was invisible to a body-only diff.
+fn response_to_body_status(resp: Response) -> (Value, bool, u16) {
+    use quilltap_core::api::types::ErrorKind;
     match resp {
         Response::ChatSettings(v)
         | Response::ConnectionProfiles(v)
@@ -213,9 +229,17 @@ fn response_to_body(resp: Response) -> (Value, bool) {
         | Response::DataRetention(v)
         | Response::Taboo(v)
         | Response::BrahmaConsole(v)
-        | Response::Models(v) => (v, false),
-        Response::Ack(_) => (serde_json::json!({}), true),
-        Response::Error(e) => (serde_json::json!({ "error": e.message }), false),
+        | Response::Models(v) => (v, false, 200),
+        Response::Ack(_) => (serde_json::json!({}), true, 200),
+        Response::Error(e) => {
+            let status = match e.kind {
+                ErrorKind::BadRequest => 400,
+                ErrorKind::NotFound => 404,
+                ErrorKind::Conflict => 409,
+                _ => 500,
+            };
+            (serde_json::json!({ "error": e.message }), false, status)
+        }
         other => panic!("unexpected response variant: {other:?}"),
     }
 }
@@ -307,7 +331,7 @@ fn settings_routes_match_v4() {
             .expect("seed brahma-console");
         }
 
-        let (mut got_body, is_ack) = run_handler(&rt, &db, user, req);
+        let (mut got_body, is_ack, got_status) = run_handler(&rt, &db, user, req);
 
         // The `after` refetch (post-mutation family list).
         let after = req["after"].as_str();
@@ -331,6 +355,19 @@ fn settings_routes_match_v4() {
             assert_eq!(
                 oracle_body, got_body,
                 "[{name}] response body mismatch\noracle: {oracle_body}\ngot:    {got_body}"
+            );
+        }
+        // The wire status on ERROR rows (P4.47 §3 at the help-drift
+        // unification: v4's `includes('Invalid') ? 400 : 500` split was
+        // invisible to a body-only diff — a threshold-only Zod message answers
+        // 500). Success rows are deliberately NOT status-compared: v4's REST
+        // routes carry per-route 200-vs-201 (cp_create answers 201), while
+        // v5's settings surfaces ride `/api/dispatch`, whose envelope has no
+        // per-verb status — the modeled contract here is ErrorKind → status.
+        if let Some(want_status) = row["status"].as_u64().filter(|s| *s >= 400) {
+            assert_eq!(
+                want_status as u16, got_status,
+                "[{name}] error-status mismatch: oracle {want_status}, got {got_status}"
             );
         }
         if let Some(mut got_after) = got_after {

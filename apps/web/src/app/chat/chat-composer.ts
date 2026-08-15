@@ -269,6 +269,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Generate image"
                 aria-label="Generate image"
+                [disabled]="disabled()"
                 (click)="openGenerate.emit()"
               >
                 <qt-icon name="camera" class="w-5 h-5" />

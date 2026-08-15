@@ -1,0 +1,29 @@
+{
+  "label": "the two repaired regen failures, re-run at the pin",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "builtin_mounts_equivalence",
+    "character_archive_tier2_equivalence"
+  ],
+  "excluded": [],
+  "families": [
+    {
+      "family": "builtin_mounts_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "character_archive_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 2
+  }
+}
