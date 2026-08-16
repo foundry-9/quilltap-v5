@@ -3005,8 +3005,11 @@ export interface ChatSettingsDto {
 // Settings DTOs (v4 providers / connection-profiles / api-keys / models bodies)
 // ---------------------------------------------------------------------------
 
-/** One provider row (v4 GET `/providers`). `icon`/`optionsSchema` are `null` on
- *  the v5 manifest — documented absent fields, kept for shape faithfulness. */
+/** One provider row (v4 GET `/providers`). `icon` is `null` on the v5 manifest
+ *  — a documented absent field, kept for shape faithfulness. `optionsSchema`
+ *  carries the plugin's connection-profile options schema, or `null` for a
+ *  plugin that declares none; the SPA narrows it to `ProviderOptionsSchema`
+ *  where it renders it (`settings/providers/provider-options-panel`). */
 export interface ProviderInfo {
   id: string;
   name: string;

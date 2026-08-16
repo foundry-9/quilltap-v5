@@ -72027,3 +72027,29 @@ P4.D83; two thirds of it does not.
 **Flip `P4D83_OPTIONS_SCHEMA_LANDED` to `true` at unification** and expect the
 gated-beat first-run rot class (`4.8.2-round-unification`): this beat has
 never executed.
+
+### The lane gate
+
+- `ng test`: **326 files / 4,792 tests / 0 failed** (the suite grew by the
+  lane's 35 panel + 4 attachment-table + 10 modal + 3 form specs).
+- `ng build`: clean.
+- `cargo fmt --all --check`: clean. **No crate source touched**, so the order's
+  reduced cargo gate applies: `cargo build -p quilltap-web` green (built for
+  the e2e binaries in any case).
+- The spelling guard (`harness/tools/check_spelling.py`) exits 0.
+- **Full Playwright: 220 passed / 1 failed / 1 skipped (21.4 m)**, the suite
+  grown 219 → 222 by this lane's three beats. The one skip is this lane's
+  gated beat, skipping by its NAMED constant as designed.
+- **The one failure is NOT this lane's.** `salon-scroll.spec.ts`'s
+  virtualized-scroll beat timed out waiting for the Chats heading after
+  unlocking its OWN second server — beat #117, forty-eight beats BEFORE this
+  lane's first (workers: 1, alphabetical, and `salon-` sorts before
+  `settings-`), on a different server, exercising nothing this lane touches.
+  **Re-run in isolation: 1 passed.** A full-suite-only intermittent of the
+  recorded class.
+  Diagnosis for whoever picks it up: that beat is the suite's slowest unlock
+  (it spawns a second server for a deliberately long chat, and takes 5.8 s
+  end-to-end even unloaded), while its post-unlock assertion takes the bare
+  5 s default — the same idiom two dozen sibling specs use, which is why this
+  lane did NOT one-off harden it: the repo's deflake precedent is
+  reproduce-then-harden, and there is no deterministic reproduction here.
