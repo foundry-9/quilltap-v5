@@ -100,6 +100,12 @@ itself; the builder used to pack 10% past the line that then warned about
 it. The context builder also accepts `reserved_outgoing_tokens` — room held
 back for what the caller adds after the context is built — and says so by
 name when the fixed payload leaves no room for conversation history at all.
+Added the schema-driven provider-options renderer to the connection-profile
+editor (`qt-provider-options-panel`), a port of v4's `ProviderOptionsPanel`.
+It draws boolean, enum, multi-enum, string, and number fields from the schema
+each provider plugin declares, honors `showIf` guards and group headings, and
+writes each key into the profile's parameters bag one at a time so keys with
+no control still survive a save. Not yet wired into the modal.
 
 Planned the 93ed8abf drift catch-up round and committed its three work
 orders: P4.D82 (bug 70 — the context budget honors the profile's Max

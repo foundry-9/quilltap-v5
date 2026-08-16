@@ -71839,3 +71839,71 @@ across all five decoders.
 
 Versions: core 0.0.574, harness 0.0.498, host 0.0.72. Web, CLI, Tauri and the
 SPA untouched.
+## P4.D84 — the SPA schema-driven provider-options panel (the `93ed8abf` drift, SPA half)
+
+**Lane branch:** `claude/p4-provider-options-spa-a221a9`. **v4 baseline:**
+`93ed8abf` (drift-checked at lane start: HEAD exactly at the pin, tree clean;
+`bugfix` measured with `diff` and is BEHIND main — the 4.8.x line, nothing
+this lane consumes). **Ownership:** `apps/web/**` only; no crate, manifest,
+or oracle case touched. The oracle throughout is v4's **client** code
+(`impersonation-overlay-spa-gaps`), so every spec cites the v4 component
+lines it mirrors rather than driving a Rust differential.
+
+### Unit 1 — the renderer (`qt-provider-options-panel`)
+
+`apps/web/src/app/screens/settings/providers/provider-options-schema.ts` —
+the client-side narrowing of Contract B, written from the contract text
+(v4 `packages/plugin-types/src/plugins/provider-options.ts`), and
+`provider-options-panel.ts`, the port of v4's `ProviderOptionsPanel.tsx`
+(344 lines). All five field types, groups with `title`/`helpText`, `showIf`,
+the `default` display fallback, `multiEnumSource: 'fetchedModels'` with
+`max`, and v4's exact delete-vs-write semantics.
+
+**Measured from v4 before porting (three order premises sharpened):**
+
+- **`default` never seeds the bag.** The order's Tier-1 wording ("`default`
+  seeding on new profiles") reads as a write; v4 does no such thing. `default`
+  is consumed by `fieldValue` (`:43-47`) as a DISPLAY fallback only, and
+  nothing in `ProfileModal`/`useProfileForm` writes schema defaults on
+  create. The port matches: a new profile saves an empty bag until a control
+  is touched.
+- **`showIf` reads the RAW bag, not the defaulted value** (`:39-41` vs
+  `:43-47`). A sibling that merely *defaults* to the guard value leaves the
+  guarded field hidden. Spec-pinned and mutation-proven (planting the
+  defaulted lookup reddens exactly that case).
+- **A `boolean` is `value === true`** (`:149`). So v4 renders a hand-edited
+  `enable_thinking: 'true'` STRING as OFF. The order said to measure v4 and
+  match IT rather than the old v5 row — done: the P4.D81 string tolerance is
+  RETIRED with the row it belonged to. Nothing is silently "fixed" on save,
+  because an untouched box writes nothing and the string rides the bag to the
+  wire, where `build_ollama_body` still accepts it.
+- **Tier 3 (the multi-enum deferral) did NOT apply.** The order made it
+  conditional on no bundled schema exercising `multiEnumSource` at the pin —
+  measured: openrouter's `fallbackModels` declares `multiEnumSource:
+  'fetchedModels'` with `max: 2` (plugin `index.ts:136-139`), so multi-enum
+  landed in full, with the fetched-models filter (own model excluded), the
+  50-choice cap, the `max` disable, and the render-nothing-when-empty arm all
+  pinned. **No Tier-3 deferral is outstanding on the renderer.**
+
+**Two deliberate mechanism decisions, both recorded on the component:**
+
+- **`onDirective` not ported.** v4's panel exposes it for `affects` fields,
+  but v4's ONE caller never passes it: `ProfileModal` derives the model-input
+  swap straight from `parameters.useCustomModel === true` (`:198-203`, whose
+  own comment explains why). An Angular output nothing subscribes to is
+  cruft, so v5 skips it and the host derives the same way (unit 2).
+- **The enum `<select>` value is assigned in an `afterRenderEffect`, not a
+  `[value]` binding.** React assigns `select.value` AFTER the options mount,
+  so a stored value outside the option list leaves `selectedIndex` at -1 and
+  the control blank. An Angular `[value]` binding on the select runs before
+  the `@for` fills it (and `[selected]` on options makes the browser fall
+  back to row 0 instead of blank) — both would diverge. Pinned by a spec that
+  asserts `selectedIndex === -1` for an off-list stored value.
+
+**Parity specs:** `provider-options-panel.spec.ts`, 35 cases across seven
+describes — nothing-to-draw (null schema / empty groups / group ordering /
+unknown field type), boolean, enum, number, string, multi-enum, and the
+showIf matrix. Mutation-proven in four places: the showIf defaulted lookup,
+boolean truthiness for identity, the multi-enum own-model filter + 50-cap,
+and a cleared number emitting `''` instead of `undefined` — each reddens its
+own case and only its own.
