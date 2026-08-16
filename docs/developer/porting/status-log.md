@@ -71525,3 +71525,64 @@ Five new vectors (× 2 modes):
   suppresses the default `high`.
 - `z-ai/profile-params-skips` — the same skip rules through Z.AI's own
   normalizer.
+
+---
+
+## P4.D83 unit 4 — the Ollama profile-parameters wire (v4 `93ed8abf`, plugin 1.0.43)
+
+**Ported:** `applyOllamaProfileParameters` and its three tables, onto the unit-3
+applier. The two-level split is the whole shape: sampler knobs go INSIDE
+`options`, residency (`keep_alive`) and the thinking switch (`think`) are
+top-level, and three keys are read for control and never forwarded.
+
+- `OLLAMA_OPTION_PARAM_ALLOWLIST` — `num_ctx` (which keeps its old position,
+  being the table's first key) + `top_k` / `min_p` / the three penalties /
+  `seed` / the mirostat trio. `normalizeOption`'s JS `Number()` coercion and the
+  positive-integer floor for `num_ctx` are the SAME arithmetic v5's retired
+  `ollama_num_ctx` did, so every pre-existing `num-ctx-*` vector is unchanged.
+- `OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST = ['keep_alive']`, with v4's measured
+  normalization: Ollama 0.32.1 REFUSES `"-1"` as a duration (*"time: missing
+  unit in duration"*) while accepting the number, so a numeric string ships as a
+  NUMBER and anything else as the duration string it is. Absent by default —
+  nothing is sent unless the profile asks, leaving `OLLAMA_KEEP_ALIVE` in
+  charge.
+- `resolveThinkSetting` — `enable_thinking` × `thinking_effort` → `bool | level`.
+  `enable_thinking` stays the boolean it always was (the level rides its own key
+  rather than widening it into an enum, which would have shown every
+  already-thinking profile as blank while it went on thinking); an unrecognised
+  level falls back to `true` rather than shipping a value 0.32.1 refuses.
+- `OLLAMA_CONTROL_PARAMS` is declared and **asserted** off the wire: in v4 the
+  claim is true only by those keys' ABSENCE from both allow-lists, which is a
+  fact about two lists rather than a line of code, so
+  `ollama_control_params_are_off_the_wire` checks it (plus an
+  `allowlists_cannot_reach_the_request_shape` pin for model/messages/stream/
+  tools).
+
+### The differential
+
+`request_builder_equivalence`, re-recorded at the pin: **201 → 227 rows** (13
+new Ollama cases × 2 modes).
+
+**The order's prediction that the pre-existing 17 Ollama rows would change was
+WRONG, and measurably so:** all 17 are byte-identical. The old hand-rolled
+`resolveNumCtx` and the new table apply the identical coercion, `think` is
+unchanged for a boolean bag, and `keep_alive` is absent unless asked for — so
+the widening only shows on bags that use it.
+
+New vectors: `options-allowlist`, `options-mirostat`,
+`options-string-and-garbage` (JS-`Number()` strings, a non-finite value that
+omits the key, a non-allow-listed `num_gpu`, and a bag trying to set
+model/messages/stream/tools), the five `keep-alive-*` arms (numeric sentinel as
+a string, `"0"`, a bare number, a duration string, and blank→omitted), the four
+`think-effort-*` arms (a level, `max`, an unknown level, and a level with
+thinking off), and `control-params-off-the-wire`.
+
+The family's SHAPE assertions were widened with it (a corpus that loses a vector
+must not pass green): `think` may now be a level string — and a string outside
+Ollama's four levels PANICS — plus arms for a numeric `keep_alive`, a duration
+`keep_alive`, and at least one key from the widened options table.
+
+**Mutation-proven both ways:** dropping the keep_alive numeric normalization
+reddens `keep-alive-sentinel-string`; ignoring `thinking_effort` reddens
+`think-effort-level`. `ollama_think_parser` and `ollama_think_retry_tier3`
+regenerated at the pin and green.

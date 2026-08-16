@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Ollama now sends the sampler settings a connection profile saves. It read two
+keys — the context window and the thinking switch — beside a hardcoded options
+literal, and dropped every other one in silence, so no local model could run at
+its publisher's recommended settings. The options table now carries top_k,
+min_p, the three penalties, the seed and the mirostat trio; Keep Model Loaded
+rides the top level (sending nothing at all by default, leaving OLLAMA_KEEP_ALIVE
+in charge, and sending its two sentinels as numbers because the server refuses
+them as duration strings); and Thinking Effort folds into the thinking field as
+a level. The three control keys the provider reads for itself never reach the
+wire.
+
 Z.AI no longer sends a reasoning effort to a model that ignores it. A profile
 setting Reasoning Effort had it forwarded to every GLM, including the older
 models where the field is not honored; it is now sent only to the models that

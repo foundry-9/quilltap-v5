@@ -1082,40 +1082,148 @@ fn openrouter_vision_response_format(input: &RequestInput) -> Option<Value> {
 // Ollama (raw fetch to /api/chat)
 // ============================================================================
 
-/// v4 `resolveEnableThinking` (`plugins/dist/qtap-plugin-ollama/provider.ts`,
-/// `d9c5a1c7`): the profile's `enable_thinking` option, defaulting to false —
-/// thinking models answer without a reasoning pass, keeping output clean for
-/// JSON-shaped work. The string form is tolerated in case an older profile
-/// stored one; EVERY other value (including a truthy non-`"true"` string) is
-/// false.
-pub fn ollama_enable_thinking(profile_parameters: Option<&Value>) -> bool {
-    match profile_parameters.and_then(|p| p.get("enable_thinking")) {
+/// Keys forwarded verbatim into the Ollama request's `options` object (v4
+/// `OLLAMA_OPTION_PARAM_ALLOWLIST`, `profile-options.ts`).
+///
+/// `num_ctx` is injected by the host from the profile's Max Context (see
+/// `profile_params_parts`) and can also be set by hand. The mirostat trio has no
+/// field in the options schema — it is deliberately hand-set territory, and the
+/// allow-list is what makes that possible.
+pub const OLLAMA_OPTION_PARAM_ALLOWLIST: &[&str] = &[
+    "num_ctx",
+    "top_k",
+    "min_p",
+    "repeat_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+    "mirostat",
+    "mirostat_tau",
+    "mirostat_eta",
+];
+
+/// Keys forwarded verbatim at the TOP level of the Ollama request body (v4
+/// `OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST`).
+pub const OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST: &[&str] = &["keep_alive"];
+
+/// Keys the provider reads for control and NEVER forwards as-is (v4
+/// `OLLAMA_CONTROL_PARAMS`): `enable_thinking` + `thinking_effort` become the
+/// top-level `think` field, and `request_timeout_seconds` sets the client's
+/// wall-clock budget. Declared so "never on the wire" is a mechanical claim —
+/// `ollama_control_params_are_off_the_wire` asserts none of these appears in
+/// either allow-list.
+pub const OLLAMA_CONTROL_PARAMS: &[&str] = &[
+    "enable_thinking",
+    "thinking_effort",
+    "request_timeout_seconds",
+];
+
+/// Option keys Ollama types as numbers; a hand-edited profile may hold strings.
+const OLLAMA_NUMERIC_OPTIONS: &[&str] = OLLAMA_OPTION_PARAM_ALLOWLIST;
+
+/// Option keys that must be a positive integer or not be sent at all.
+const OLLAMA_POSITIVE_INTEGER_OPTIONS: &[&str] = &["num_ctx"];
+
+/// Thinking levels Ollama accepts in place of a boolean `think` (v4
+/// `OLLAMA_THINK_LEVELS`).
+///
+/// v4 measured these against a live Ollama 0.32.1: an unrecognised value is
+/// rejected outright — *"invalid think value: … (must be "high", "medium",
+/// "low", "max", true, or false)"* — so the set is the server's, not a guess.
+/// Older servers that predate levels reject the string; the provider's existing
+/// retry-without-`think` fallback covers them.
+pub const OLLAMA_THINK_LEVELS: &[&str] = &["low", "medium", "high", "max"];
+
+/// v4 `resolveThinkSetting` (`profile-options.ts`; was `resolveEnableThinking`
+/// before `93ed8abf`): the profile's thinking settings → Ollama's `think` field.
+///
+/// Defaults to `false`: thinking models answer without a reasoning pass, keeping
+/// output clean for JSON-shaped work. `enable_thinking` stays the BOOLEAN it has
+/// always been (the string form is tolerated in case an older profile stored
+/// one; EVERY other value, including a truthy non-`"true"` string, is false) —
+/// folding the levels into that same key would have shown every already-thinking
+/// profile as blank in the editor while it went on thinking. The level rides a
+/// second key that only applies when thinking is on.
+pub fn ollama_think_setting(profile_parameters: Option<&Value>) -> Value {
+    let enabled = match profile_parameters.and_then(|p| p.get("enable_thinking")) {
         Some(Value::Bool(true)) => true,
         Some(Value::String(s)) => s == "true",
         _ => false,
+    };
+    if !enabled {
+        return json!(false);
+    }
+    match profile_parameters.and_then(|p| p.get("thinking_effort")) {
+        Some(Value::String(s)) if OLLAMA_THINK_LEVELS.contains(&s.as_str()) => json!(s),
+        _ => json!(true),
     }
 }
 
-/// v4 `resolveNumCtx`: the context window to request via `options.num_ctx`. The
-/// host injects the profile's Max Context into `profileParameters.num_ctx` for
-/// Ollama profiles; without it the server allocates its own default and
-/// silently truncates longer prompts. `None` leaves the field off the wire —
-/// the server/Modelfile default applies, exactly as before.
-///
-/// v4 coerces ONLY the number and string arms (`typeof value === 'number' ?
-/// value : typeof value === 'string' ? Number(value) : NaN`), so a boolean or
-/// `null` is NaN here rather than JS `ToNumber`'s 1/0 — reproduced literally.
-pub fn ollama_num_ctx(profile_parameters: Option<&Value>) -> Option<f64> {
-    let n = match profile_parameters.and_then(|p| p.get("num_ctx")) {
-        Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
-        Some(Value::String(s)) => crate::jsnum::number_from_str(s),
+/// v4 `normalizeOption`: the numeric option keys go through JS `Number()` (the
+/// number and string arms ONLY — a boolean or `null` is NaN here rather than
+/// JS `ToNumber`'s 1/0), a non-finite result omits the key, and the
+/// positive-integer keys additionally floor and require `> 0`.
+fn ollama_normalize_option(key: &str, value: &Value) -> Option<Value> {
+    if !OLLAMA_NUMERIC_OPTIONS.contains(&key) {
+        return Some(value.clone());
+    }
+    let n = match value {
+        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
+        Value::String(s) => crate::jsnum::number_from_str(s),
         _ => f64::NAN,
     };
-    if n.is_finite() && n > 0.0 {
-        Some(n.floor())
-    } else {
-        None
+    if !n.is_finite() {
+        return None;
     }
+    if OLLAMA_POSITIVE_INTEGER_OPTIONS.contains(&key) {
+        return if n > 0.0 { Some(num(n.floor())) } else { None };
+    }
+    Some(num(n))
+}
+
+/// v4 `normalizeTopLevel`: Ollama parses `keep_alive` as a Go duration string or
+/// a bare number of seconds. Measured against 0.32.1: `"-1"` is REJECTED —
+/// *"time: missing unit in duration"* — while the number `-1` is accepted and
+/// means "never unload". So the two numeric sentinels the schema offers (-1 and
+/// 0) go out as NUMBERS and everything else as the duration string it is.
+fn ollama_normalize_top_level(key: &str, value: &Value) -> Option<Value> {
+    if key == "keep_alive" {
+        if let Value::String(s) = value {
+            let n = crate::jsnum::number_from_str(s);
+            return Some(if n.is_finite() { num(n) } else { value.clone() });
+        }
+    }
+    Some(value.clone())
+}
+
+/// v4 `applyOllamaProfileParameters` (`93ed8abf`) — the profile's parameters on
+/// an Ollama request body, in place.
+///
+/// Ollama's parameters live at two levels: the sampler knobs go inside the
+/// request's `options` object, while residency (`keep_alive`) and the thinking
+/// switch (`think`) are top-level fields. A couple of keys are read for control
+/// and never reach the wire at all. Before bug 71 those three groups were three
+/// bespoke lookups beside a hardcoded `options` literal, and every other key a
+/// user saved was dropped in silence — v5 reproduced that faithfully, reading
+/// only `num_ctx` and `enable_thinking`.
+///
+/// Nothing here can reach `model`, `messages`, `stream` or `tools`.
+fn apply_ollama_options(options: &mut Body, input: &RequestInput) {
+    apply_profile_params_with(
+        options,
+        input,
+        OLLAMA_OPTION_PARAM_ALLOWLIST,
+        |key, value, _, _| ollama_normalize_option(key, value),
+    );
+}
+
+fn apply_ollama_top_level(b: &mut Body, input: &RequestInput) {
+    apply_profile_params_with(
+        b,
+        input,
+        OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST,
+        |key, value, _, _| ollama_normalize_top_level(key, value),
+    );
 }
 
 pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
@@ -1126,30 +1234,101 @@ pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentRes
         .set("temperature", num(input.temperature.unwrap_or(0.7)))
         .set("num_predict", num(input.max_tokens.unwrap_or(4096) as f64))
         .set("top_p", num(input.top_p.unwrap_or(1.0)))
-        .set_opt("stop", stop_value(input))
-        // Context window from the profile's Max Context (undefined keys are
-        // dropped by JSON.stringify, leaving the server default in charge).
-        .set_opt(
-            "num_ctx",
-            ollama_num_ctx(input.profile_parameters.as_ref()).map(num),
-        );
+        .set_opt("stop", stop_value(input));
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
         .set("stream", json!(input.stream))
         // Ollama's native thinking switch (0.9+; older servers ignore unknown
-        // fields). ALWAYS present — `think: false` when off. When off,
-        // thinking-capable models answer directly; when on, Ollama returns the
-        // reasoning separately as `message.thinking`.
+        // fields). ALWAYS present — `think: false` when off. When on, Ollama
+        // returns the reasoning separately as `message.thinking`; a newer server
+        // also accepts an effort LEVEL in place of the boolean.
         .set(
             "think",
-            json!(ollama_enable_thinking(input.profile_parameters.as_ref())),
-        )
-        .set("options", options.into_value());
+            ollama_think_setting(input.profile_parameters.as_ref()),
+        );
+    // Everything else the profile may set. `num_ctx` (the host's injection of the
+    // profile's Max Context) is simply the option allow-list's first key, so it
+    // keeps the position it had when it was a hand-rolled lookup.
+    apply_ollama_options(&mut options, input);
+    b.set("options", options.into_value());
+    // Top-level `keep_alive` lands AFTER `options`: v4 assigns `body.options =
+    // options` inside `applyOllamaProfileParameters` before applying the
+    // top-level list, and `options` already held its literal position.
+    apply_ollama_top_level(&mut b, input);
     if let Some(t) = &input.tools {
         if !t.is_empty() {
             b.set("tools", json!(t));
         }
     }
     b.into_value()
+}
+
+#[cfg(test)]
+mod ollama_profile_param_tests {
+    use super::*;
+
+    /// v4's `OLLAMA_CONTROL_PARAMS` are read for control and must NEVER be
+    /// forwarded as-is. That is true in v4 by their absence from both
+    /// allow-lists, which is a claim about two lists rather than a line of code
+    /// — so it is asserted rather than trusted.
+    #[test]
+    fn ollama_control_params_are_off_the_wire() {
+        for key in OLLAMA_CONTROL_PARAMS {
+            assert!(
+                !OLLAMA_OPTION_PARAM_ALLOWLIST.contains(key),
+                "control param {key} leaked into the options allow-list"
+            );
+            assert!(
+                !OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST.contains(key),
+                "control param {key} leaked into the top-level allow-list"
+            );
+        }
+    }
+
+    /// A profile bag must not be able to retarget the request (v4's whole reason
+    /// for an allow-list rather than a spread).
+    #[test]
+    fn ollama_allowlists_cannot_reach_the_request_shape() {
+        for key in [
+            "model",
+            "messages",
+            "stream",
+            "stream_options",
+            "tools",
+            "think",
+        ] {
+            assert!(!OLLAMA_OPTION_PARAM_ALLOWLIST.contains(&key));
+            assert!(!OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST.contains(&key));
+        }
+    }
+
+    #[test]
+    fn think_setting_folds_effort_into_the_level() {
+        let t = |v: Value| ollama_think_setting(Some(&v));
+        assert_eq!(t(json!({})), json!(false));
+        assert_eq!(t(json!({ "enable_thinking": true })), json!(true));
+        assert_eq!(t(json!({ "enable_thinking": "true" })), json!(true));
+        // The level only applies when thinking is ON.
+        assert_eq!(
+            t(json!({ "enable_thinking": false, "thinking_effort": "high" })),
+            json!(false)
+        );
+        for level in OLLAMA_THINK_LEVELS {
+            assert_eq!(
+                t(json!({ "enable_thinking": true, "thinking_effort": level })),
+                json!(level)
+            );
+        }
+        // An unrecognised level falls back to the boolean rather than shipping a
+        // value Ollama 0.32.1 refuses outright.
+        assert_eq!(
+            t(json!({ "enable_thinking": true, "thinking_effort": "extreme" })),
+            json!(true)
+        );
+        assert_eq!(
+            t(json!({ "enable_thinking": true, "thinking_effort": 3 })),
+            json!(true)
+        );
+    }
 }

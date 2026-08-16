@@ -390,6 +390,32 @@ function casesFor(provider) {
     add('num-ctx-null-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: null } });
     add('num-ctx-true-omitted', { ...base, model: 'qwen3:8b', profileParameters: { num_ctx: true } });
     add('thinking-and-num-ctx-with-tools', { ...base, model: 'qwen3:8b', tools: [TOOL], stop: ['DONE'], profileParameters: { enable_thinking: true, num_ctx: 16384 } });
+    // P4.D83 (v4 `93ed8abf`): the widened `options` table, top-level
+    // `keep_alive`, and `think` as an effort LEVEL. Before this Ollama read
+    // exactly two profile keys and dropped every other one in silence.
+    add('options-allowlist', { ...base, model: 'qwen3:8b', profileParameters: { top_k: 40, min_p: 0.05, repeat_penalty: 1.1, presence_penalty: 0.2, frequency_penalty: 0.3, seed: 7 } });
+    // The mirostat trio has no options-schema field — hand-set territory the
+    // allow-list exists to permit.
+    add('options-mirostat', { ...base, model: 'qwen3:8b', profileParameters: { mirostat: 2, mirostat_tau: 5, mirostat_eta: 0.1 } });
+    // Hand-edited strings coerce through JS Number(); a non-finite one omits
+    // the key, and a non-allow-listed key never reaches the wire at all.
+    add('options-string-and-garbage', { ...base, model: 'qwen3:8b', profileParameters: { top_k: '40', min_p: 'lots', seed: '', repeat_penalty: null, num_gpu: 99, model: 'HIJACKED', messages: [], stream: false, tools: [] } });
+    // `keep_alive`: absent by default (nothing sent, OLLAMA_KEEP_ALIVE stays in
+    // charge); the two numeric sentinels go out as NUMBERS even when the editor
+    // stored the string form (0.32.1 refuses `"-1"` as a duration); anything
+    // else ships as the duration string it is.
+    add('keep-alive-sentinel-string', { ...base, model: 'qwen3:8b', profileParameters: { keep_alive: '-1' } });
+    add('keep-alive-zero-string', { ...base, model: 'qwen3:8b', profileParameters: { keep_alive: '0' } });
+    add('keep-alive-number', { ...base, model: 'qwen3:8b', profileParameters: { keep_alive: 300 } });
+    add('keep-alive-duration', { ...base, model: 'qwen3:8b', profileParameters: { keep_alive: '30m' } });
+    add('keep-alive-blank-omitted', { ...base, model: 'qwen3:8b', profileParameters: { keep_alive: '' } });
+    // `think` from enable_thinking x thinking_effort, and the control keys that
+    // are read but NEVER forwarded.
+    add('think-effort-level', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'high' } });
+    add('think-effort-max', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'max' } });
+    add('think-effort-unknown-level', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'extreme' } });
+    add('think-effort-without-thinking', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: false, thinking_effort: 'high' } });
+    add('control-params-off-the-wire', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'low', request_timeout_seconds: 900, num_ctx: 8192, keep_alive: -1 } });
   } else if (provider === 'openai-compatible') {
     add('plain', { ...base, model: 'local-model' });
     add('stop-cache', { ...base, model: 'local-model', stop: ['END'], cacheKey: 'char-1' });

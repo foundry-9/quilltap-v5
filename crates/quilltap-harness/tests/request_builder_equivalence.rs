@@ -263,11 +263,22 @@ fn request_builder_matches_v4() {
     // arm, a num_ctx-present arm, and a bag-present-but-key-omitted arm) rather
     // than a hand count — a regenerated corpus that lost one of these would
     // otherwise pass green with the feature untested.
+    //
+    // P4.D83 widens it: `think` may now be an effort LEVEL string, `keep_alive`
+    // reaches the top level (with the sentinels as NUMBERS), and the widened
+    // `options` table carries the rest of the profile's sampler knobs. Each of
+    // those gets its own arm for the same reason.
     let (
         mut saw_think_true,
         mut saw_think_false,
         mut saw_num_ctx,
         mut saw_num_ctx_omitted_with_bag,
+    ) = (false, false, false, false);
+    let (
+        mut saw_think_level,
+        mut saw_keep_alive_number,
+        mut saw_keep_alive_duration,
+        mut saw_widened_option,
     ) = (false, false, false, false);
 
     for line in text.lines() {
@@ -335,17 +346,51 @@ fn request_builder_matches_v4() {
                 match body.get("think") {
                     Some(Value::Bool(true)) => saw_think_true = true,
                     Some(Value::Bool(false)) => saw_think_false = true,
+                    // P4.D83: an effort level. v4 refuses any string outside
+                    // OLLAMA_THINK_LEVELS, so a level outside the set here means
+                    // the recorder (or the port) invented one.
+                    Some(Value::String(s)) => {
+                        assert!(
+                            ["low", "medium", "high", "max"].contains(&s.as_str()),
+                            "OLLAMA/{case}[{mode}]: v4 recorded think={s:?}, not one of \
+                             Ollama's four levels"
+                        );
+                        saw_think_level = true;
+                    }
                     other => panic!(
                         "OLLAMA/{case}[{mode}]: v4 recorded think={other:?} — the field is \
-                         supposed to be present and boolean on every body"
+                         supposed to be present on every body, as a boolean or a level"
                     ),
                 }
-                let has_num_ctx = body.get("options").and_then(|o| o.get("num_ctx")).is_some();
+                let opts = body.get("options");
+                let has_num_ctx = opts.and_then(|o| o.get("num_ctx")).is_some();
                 let has_bag = row["input"].get("profileParameters").is_some();
                 if has_num_ctx {
                     saw_num_ctx = true;
                 } else if has_bag {
                     saw_num_ctx_omitted_with_bag = true;
+                }
+                // P4.D83: at least one body must carry a key from the WIDENED
+                // options table (i.e. one that is neither the four literals nor
+                // num_ctx), or the table is untested.
+                if let Some(Value::Object(o)) = opts {
+                    if o.keys().any(|k| {
+                        !matches!(
+                            k.as_str(),
+                            "temperature" | "num_predict" | "top_p" | "stop" | "num_ctx"
+                        )
+                    }) {
+                        saw_widened_option = true;
+                    }
+                }
+                match body.get("keep_alive") {
+                    Some(Value::Number(_)) => saw_keep_alive_number = true,
+                    Some(Value::String(_)) => saw_keep_alive_duration = true,
+                    Some(other) => panic!(
+                        "OLLAMA/{case}[{mode}]: v4 recorded keep_alive={other:?} — it goes out \
+                         as a number (the sentinels) or a duration string, nothing else"
+                    ),
+                    None => {}
                 }
             }
         }
@@ -553,6 +598,25 @@ fn request_builder_matches_v4() {
         saw_num_ctx_omitted_with_bag,
         "corpus lost its ollama num_ctx-rejected vector (a profile bag whose \
          value leaves the key off the wire)"
+    );
+    assert!(
+        saw_think_level,
+        "corpus lost its ollama `think: <level>` vector (thinking_effort folded \
+         into the think field)"
+    );
+    assert!(
+        saw_widened_option,
+        "corpus lost its ollama widened-`options` vector — the allow-list table \
+         beyond the four literals is untested"
+    );
+    assert!(
+        saw_keep_alive_number,
+        "corpus lost its ollama numeric `keep_alive` vector (the -1/0 sentinels, \
+         which 0.32.1 refuses as duration STRINGS)"
+    );
+    assert!(
+        saw_keep_alive_duration,
+        "corpus lost its ollama duration-string `keep_alive` vector"
     );
     assert!(
         openrouter_sdk_rows > 0,

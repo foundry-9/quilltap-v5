@@ -42,6 +42,13 @@ use serde_json::Value;
 use crate::provider_manifest::Registry;
 
 pub use chat_completions::openrouter_non_streaming_is_vision;
+// The Ollama profile-parameter tables (P4.D83, v4 `93ed8abf`). Re-exported as
+// the provider's declared contract: what a connection profile may set, and the
+// three control keys read but never forwarded.
+pub use chat_completions::{
+    OLLAMA_CONTROL_PARAMS, OLLAMA_OPTION_PARAM_ALLOWLIST, OLLAMA_THINK_LEVELS,
+    OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST,
+};
 pub use google::sanitize_schema_for_google;
 
 // ============================================================================
