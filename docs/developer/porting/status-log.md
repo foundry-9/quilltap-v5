@@ -71996,3 +71996,34 @@ under the provider select (`ProfileModal.tsx:355-357`, via
 divergence on this component, not part of the `93ed8abf` drift, and porting it
 would pull in v4's description-formatting helper. Queue it with the next SPA
 smalls lane — the table it needs is now in place.
+
+### Unit 4 — the e2e walk (`settings-provider-options-flow.spec.ts`)
+
+Three beats, and only ONE of them needed gating — measured rather than
+assumed. The order's Tier-2 item reads as though the whole file waits on
+P4.D83; two thirds of it does not.
+
+- **The tool-use hint beat runs NOW.** It is driven by
+  `capabilities.toolUse`, and `openai_compatible.json` already carries
+  `toolUse: false` on v5's manifest (P4.D83 owns keeping it byte-stable, not
+  introducing it). The beat asserts the seed (off), the hint's two halves,
+  that the box is ENABLED and ticks freely, that the hint does not chase the
+  box, and that switching to Ollama (`toolUse: true` since P4.D78) seeds it on
+  and drops the hint.
+- **The vision re-seed beat runs NOW** — the client attachment table is the
+  whole mechanism, so there is no wire to wait for. OLLAMA → unticked, OPENAI
+  → ticked, on a new profile.
+- **The options round-trip beat is GATED** behind
+  `P4D83_OPTIONS_SCHEMA_LANDED = false`. Until that lane lands, every manifest
+  serves `optionsSchema: null` and the panel correctly draws nothing, so the
+  beat would fail on an empty modal. A NAMED constant, not a probe: a probe
+  cannot tell a listing that legitimately serves null (google, which declares
+  no schema) from one that has not learned to serve schemas yet. It creates an
+  Ollama profile, walks the `showIf` guard open, sets thinking effort /
+  keep-alive / request timeout, saves, reopens from the list, asserts all four
+  values off the stored bag, and DELETES the profile so the shared server is
+  left as found.
+
+**Flip `P4D83_OPTIONS_SCHEMA_LANDED` to `true` at unification** and expect the
+gated-beat first-run rot class (`4.8.2-round-unification`): this beat has
+never executed.

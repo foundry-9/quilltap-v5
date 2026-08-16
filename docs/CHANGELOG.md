@@ -100,6 +100,11 @@ itself; the builder used to pack 10% past the line that then warned about
 it. The context builder also accepts `reserved_outgoing_tokens` — room held
 back for what the caller adds after the context is built — and says so by
 name when the fixed payload leaves no room for conversation history at all.
+Added an end-to-end walk for the connection-profile editor's provider-driven
+surfaces: the tool-use hint and the vision re-seed run live, and the
+schema-driven options round trip is written and waiting on the wire half of
+this round.
+
 The connection-profile editor now explains itself when a provider does not
 advertise tool support: the box still starts off, but a note under it says an
 endpoint that really does speak native function calling can be switched on
