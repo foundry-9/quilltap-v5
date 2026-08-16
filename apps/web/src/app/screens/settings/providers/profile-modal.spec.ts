@@ -240,6 +240,130 @@ describe('ProfileModal (multi-character prefill)', () => {
 });
 
 /**
+ * The tool-use seed hint and the two capability seeds on provider change
+ * (Contract C + v4 `ProfileModal.tsx:228-243`, `:742-748`, bug 71).
+ */
+describe('ProfileModal (tool-use seed hint and capability seeds)', () => {
+  const HINT =
+    'This provider does not advertise tool support, so new profiles start with it off. ' +
+    'If your endpoint does speak native function calling — llama-server with --jinja, ' +
+    'vLLM, LM Studio — you may turn it on regardless.';
+
+  const OAC = provider({
+    id: 'OPENAI_COMPATIBLE',
+    name: 'OPENAI_COMPATIBLE',
+    displayName: 'OpenAI Compatible',
+    capabilities: {
+      chat: true,
+      imageGeneration: false,
+      embeddings: false,
+      webSearch: false,
+      toolUse: false,
+    },
+    configRequirements: { requiresApiKey: false, requiresBaseUrl: true },
+  });
+  const TOOLED = provider({
+    capabilities: {
+      chat: true,
+      imageGeneration: false,
+      embeddings: false,
+      webSearch: false,
+      toolUse: true,
+    },
+  });
+
+  /** Collapse template whitespace the way the browser renders it. */
+  function flat(fixture: ComponentFixture<ProfileModal>): string {
+    return ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  function toolBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement {
+    const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+      (l) => l.textContent?.includes('Allow tool use'),
+    );
+    return label!.querySelector('input')!;
+  }
+
+  function imageBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement {
+    const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+      (l) => l.textContent?.includes('Supports image attachments'),
+    );
+    return label!.querySelector('input')!;
+  }
+
+  it('renders the hint verbatim when the capability is false', async () => {
+    const fixture = await render({ providers: [OAC] });
+    fixture.componentInstance['onProviderChange']('OPENAI_COMPATIBLE');
+    fixture.detectChanges();
+    expect(flat(fixture)).toContain(HINT);
+  });
+
+  it('does not render it for a provider that does advertise tool support', async () => {
+    const fixture = await render({ providers: [TOOLED] });
+    expect(flat(fixture)).not.toContain('does not advertise tool support');
+  });
+
+  it('leaves the box editable — the capability is a SEED, never a clamp', async () => {
+    const fixture = await render({ providers: [OAC] });
+    fixture.componentInstance['onProviderChange']('OPENAI_COMPATIBLE');
+    fixture.detectChanges();
+    const box = toolBox(fixture);
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(toolBox(fixture).checked).toBe(true);
+    // The hint stays put; it explains the seed, it does not track the box.
+    expect(flat(fixture)).toContain('you may turn it on regardless');
+  });
+
+  it('re-seeds supportsImageUpload from the new provider on a NEW profile (v4 `:238-241`)', async () => {
+    const OLLAMA = provider({
+      id: 'OLLAMA',
+      name: 'OLLAMA',
+      displayName: 'Ollama',
+      configRequirements: { requiresApiKey: false, requiresBaseUrl: true },
+    });
+    const fixture = await render({ providers: [provider({}), OLLAMA] });
+    // OPENAI accepts image/jpeg in v4's table; OLLAMA does not.
+    fixture.componentInstance['onProviderChange']('OPENAI');
+    fixture.detectChanges();
+    expect(imageBox(fixture).checked).toBe(true);
+    fixture.componentInstance['onProviderChange']('OLLAMA');
+    fixture.detectChanges();
+    expect(imageBox(fixture).checked).toBe(false);
+  });
+
+  it('does NOT re-seed it on an EXISTING profile (v4 keeps it inside the `:235` guard)', async () => {
+    const fixture = await render({
+      profile: {
+        id: 'cp1',
+        name: 'Saved',
+        provider: 'OPENAI',
+        modelName: 'gpt-4',
+        parameters: {},
+        isDefault: false,
+        supportsImageUpload: true,
+      },
+      providers: [
+        provider({}),
+        provider({
+          id: 'OLLAMA',
+          name: 'OLLAMA',
+          displayName: 'Ollama',
+          configRequirements: { requiresApiKey: false, requiresBaseUrl: true },
+        }),
+      ],
+    });
+    expect(imageBox(fixture).checked).toBe(true);
+    fixture.componentInstance['onProviderChange']('OLLAMA');
+    fixture.detectChanges();
+    expect(imageBox(fixture).checked).toBe(true);
+  });
+});
+
+/**
  * The schema-driven provider-options panel in its host (P4.D84; v4
  * `ProfileModal.tsx:194-196` + `:899-908`). The renderer's own semantics are
  * pinned in `provider-options-panel.spec.ts`; these are the modal's four

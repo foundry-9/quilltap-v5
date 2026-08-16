@@ -14,6 +14,7 @@ import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../cor
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { ModelSelector } from '../../../ui/model-selector';
+import { supportsMimeType } from './attachment-support';
 import {
   getModelClass,
   makeUniqueProfileName,
@@ -462,6 +463,17 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 >Allow tool use (overrides chat and project tool settings when disabled)</span
               >
             </label>
+            <!-- The seed-never-clamp hint (v4 ProfileModal.tsx:742-748, bug
+                 71): the box above stays editable whatever the capability
+                 says, so a provider that advertises no tool support explains
+                 why it starts off rather than locking anything. -->
+            @if (!reqs().supportsToolUse) {
+              <p class="qt-text-xs ml-6">
+                This provider does not advertise tool support, so new profiles start with it off. If
+                your endpoint does speak native function calling — llama-server with
+                <code>--jinja</code>, vLLM, LM Studio — you may turn it on regardless.
+              </p>
+            }
             @if (form().allowToolUse) {
               <div class="flex flex-col gap-1 ml-6">
                 <label for="qt-pf-pseudo" class="text-sm">Tool format</label>
@@ -769,12 +781,23 @@ export class ProfileModal implements OnInit {
     if (cfg?.configRequirements?.baseUrlDefault && !this.form().baseUrl) {
       this.setField('baseUrl', cfg.configRequirements.baseUrlDefault);
     }
-    // New profiles: default allowToolUse from the provider's capability, and
-    // re-seed the turn anchor from the new provider's default (v4
-    // `handleProviderChange`, `:228-238` — both inside the same new-profile
-    // guard, so a saved choice is never clobbered on an existing profile).
+    // New profiles: default allowToolUse and supportsImageUpload from the new
+    // provider's capabilities, and re-seed the turn anchor from its default (v4
+    // `handleProviderChange`, `:228-243` — all three inside the same
+    // new-profile guard, so a saved choice is never clobbered on an existing
+    // profile).
+    //
+    // `toolUse` is a SEED, never a clamp: the checkbox stays editable whatever
+    // the capability says. OPENAI_COMPATIBLE declares `false` because an
+    // arbitrary endpoint is the conservative case, but a user pointing at
+    // llama-server --jinja knows better than we do (v4 bug 71) — hence the hint
+    // rendered under the box.
     if (!this.profile()?.id) {
       this.setField('allowToolUse', cfg?.capabilities?.toolUse ?? false);
+      // v4 passes the pre-change baseUrl here; `supportsMimeType` never reads
+      // it (the table is static), so the argument is dropped rather than
+      // faked.
+      this.setField('supportsImageUpload', supportsMimeType(provider, 'image/jpeg'));
       this.setField('multiCharacterPrefill', defaultMultiCharacterPrefill(provider));
     }
   }

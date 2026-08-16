@@ -71951,3 +71951,48 @@ every obligation the old describe pinned is re-pinned on the new mechanism.
 `profile-form.spec.ts` gains the three legacy-translation cases. Mutation-proven:
 rebuilding the bag inside `setParameter` reddens the preserve case and the
 delete case, and nothing else.
+
+### Unit 3 — Contract C's tool-use hint and the `supportsImageUpload` re-seed
+
+**The hint** (v4 `ProfileModal.tsx:742-748`, bug 71) renders under the tool-use
+checkbox whenever `!reqs().supportsToolUse`, in v4's slot — after the box,
+before the tool-format block. Text verbatim, whitespace-normalized around the
+`--jinja` code span exactly as Contract C specifies, spec-pinned against a
+whitespace-collapsed render so the assertion sees what a reader sees. The
+seed-never-clamp semantics are unchanged and now pinned as such: the box is
+seeded false, is NOT disabled, ticks freely, and the hint does not follow the
+box (it explains the seed).
+
+**The `supportsImageUpload` re-seed** (the aa464abf-round banked small; v4
+`:238-241`) sits inside the same new-profile guard as `allowToolUse` and
+`multiCharacterPrefill` — measured, and v4's placement matches v5's existing
+guard, so no restructuring was needed. Pinned in both directions: a NEW
+profile's box flips OPENAI→true / OLLAMA→false on a provider switch, an
+EXISTING profile's saved `true` survives a switch to a provider with no image
+support.
+
+**The datum it seeds from — measured, not invented.** The order asked for the
+providers listing's attachment data; the listing carries none, in v4 either
+(`app/api/v1/providers/route.ts:25-55` serves capabilities/configRequirements/
+optionsSchema and no attachment field). What v4's seed actually reads is the
+STATIC client table in `lib/llm/attachment-support.ts`, kept client-side
+because the plugin registry is server-only. So that table is transcribed into
+`attachment-support.ts` with `getSupportedMimeTypes`/`supportsMimeType`, mime
+lists verbatim, and its two imperfections carried and spec-pinned rather than
+quietly repaired:
+
+- **Z_AI and DEEPSEEK have no row** and fall through to "no attachments", so a
+  new profile on either starts with the vision box unticked — in BOTH apps.
+  (The staleness of this table is already a recorded v4-side find from P4.21.)
+- **`baseUrl` is in v4's signature and entirely unread**; v5 omits the
+  parameter rather than carrying an ignored one, and the call site says so.
+
+Only the two readers the seed needs are ported — v4's description helpers stay
+out, so no dead code lands.
+
+**Banked, loudly, not landed:** v4 renders a `Non-image attachments: …` line
+under the provider select (`ProfileModal.tsx:355-357`, via
+`getAttachmentSupportDescription`); v5 has never had it. It is a PRE-EXISTING
+divergence on this component, not part of the `93ed8abf` drift, and porting it
+would pull in v4's description-formatting helper. Queue it with the next SPA
+smalls lane — the table it needs is now in place.

@@ -100,6 +100,13 @@ itself; the builder used to pack 10% past the line that then warned about
 it. The context builder also accepts `reserved_outgoing_tokens` — room held
 back for what the caller adds after the context is built — and says so by
 name when the fixed payload leaves no room for conversation history at all.
+The connection-profile editor now explains itself when a provider does not
+advertise tool support: the box still starts off, but a note under it says an
+endpoint that really does speak native function calling can be switched on
+regardless. Changing the provider on a new profile also re-seeds the vision
+checkbox from that provider's attachment support, which it previously left
+alone.
+
 Cut the connection-profile editor over to the schema-driven options panel.
 The hardcoded Ollama "Enable Thinking" row is gone; Ollama's own schema draws
 it along with thinking effort, keep-alive, the request timeout, and the whole
