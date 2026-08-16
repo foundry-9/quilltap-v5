@@ -71746,3 +71746,59 @@ schemas are comparands. Two assertions beyond the row equality:
 **Mutation-proven both ways:** editing one Ollama field label reddens OLLAMA;
 giving google an empty `{groups:[]}` reddens GOOGLE.
 `provider_registry_equivalence` re-run at the pin — 253 rows, unchanged.
+
+---
+
+## P4.D83 — lane close: the Tier-2 measurements, and what the order got wrong
+
+### The entangled-red set (Tier 2, item 7)
+
+P4.D82 handed over an EMPTY red set, and this lane's own runs confirm why: the
+sampling fields are not in those families' compared surfaces — until this lane
+MADE them one (unit 2). `orchestrator_tier3`, `regenerate_swipe_tier3`,
+`primary_stream_tier3` all regenerated fresh at the `93ed8abf` pin through the
+sweep driver and ran green, with the orchestrator now carrying a sampling
+comparand it did not have before.
+
+### The sibling extractions (Tier 2, item 9) — MEASURED, and the order's list was mis-scoped
+
+The order named six v5 sites as "sibling hand-rolled sampling extractions that
+may want the resolver". Measured, **none of them extracts a sampling knob**:
+`announcer/character_voiced.rs`, `answer_confirmation.rs`, `cheap_llm_exec.rs`
+and the four `cheap_llm.rs` sites all shape the `profile_parameters` BAG
+(v4 `profileParams`) and never read `temperature`/`max_tokens`/`top_p`. v4's
+`d89babc4` did not touch them either. **None converted** — converting a site v4
+did not would be a divergence.
+
+Enumerated the other way, v4 has FIVE `resolveSamplingParams` call sites at the
+pin (`ggrep -rn resolveSamplingParams lib/ app/`): the four this lane ported,
+plus `streaming.service.ts:492`.
+
+### The rider — v4's fifth call site has no v5 twin
+
+`encodeDebugInfo` (`streaming.service.ts:487`, enqueued at
+`orchestrator.service.ts:1287`) is an SSE debug frame v5 does not emit at all —
+no `debugInfo` symbol exists anywhere in `crates/` or `apps/web/src`. Its
+`resolveSamplingParams` conversion has nothing to land against. **The future
+lane that ports the debug frame must carry the `d89babc4` edit to it** (the same
+carried-rider shape as P4.D82's `external-prompt-generator`). No code, no stub.
+
+### Predictions the round's measurements REFUTED
+
+1. **"The pre-existing 17 ollama envelope rows change exactly as predicted."**
+   They are byte-identical. The retired `resolveNumCtx` and the new allow-list
+   table apply the identical coercion, `think` is unchanged for a boolean bag,
+   and `keep_alive` is absent unless asked for.
+2. **"The corpora exercise the new reads."** Two of the four tier-3 fixtures
+   carried NO `parameters` bag at all, and the orchestrator's was written in the
+   camelCase spelling the fix tolerates — so all four would have passed before
+   AND after. Fixed by giving each a mixed-spelling bag.
+3. **"The sibling extractions may want the resolver."** None reads a sampling
+   knob (above).
+
+### Owned by another lane, flagged not touched
+
+`apps/web/src/app/core/core-contract.ts:3008`'s comment still says
+`icon`/`optionsSchema` are null on every row. `optionsSchema` is now served for
+eight of nine providers. The file is P4.D84's (`apps/web/**`); the comment wants
+one line of correction there or at unification.
