@@ -1657,11 +1657,30 @@ where
     };
 
     // --- Tool build gate (orchestrator.service.ts:729–900) ---
-    // forceToolsOnNextMessage flag (corpus keeps it clear). Same as the
-    // full-context bypass: no ported `ChatUpdate` setter, corpus keeps it clear,
-    // so the reset never fires (documented deferral for a tool-settings-changed
-    // turn — that path is wave-4 anyway).
-    let _force_tools = chat.get("forceToolsOnNextMessage").and_then(Value::as_bool) == Some(true);
+    // `forceToolsOnNextMessage` — set by the chat-settings save
+    // (`chat_admin::update_tool_settings`) when the operator changes the tool
+    // roster, and consumed exactly once: this turn tells the model its tools
+    // changed (the notice is built and measured in `turn_extras` below), then
+    // clears the flag. Until P4.D82 the read was reproduced but the flag was
+    // never consumed OR cleared, so a chat that had it set carried it forever.
+    let tool_settings_changed =
+        chat.get("forceToolsOnNextMessage").and_then(Value::as_bool) == Some(true);
+    if tool_settings_changed {
+        let write_chat_id = chat_id.clone();
+        db.write(move |w| {
+            w.main()
+                .chats()
+                .update(
+                    &write_chat_id,
+                    &crate::db::chats::ChatUpdate {
+                        force_tools_on_next_message: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .map(|_| ())
+        })
+        .await?;
+    }
 
     // Character-permission flags (v4 orchestrator.service.ts:758–762).
     let help_tools_enabled = character
@@ -1952,6 +1971,23 @@ where
         Some(Value::Array(actual_tools.clone()))
     };
 
+    // --- Turn extras (turn-extras.ts, v4 `f933ba9c`) ---
+    // Everything this turn will add to the payload *after* the context is built —
+    // the tool schemas, plus the agent-mode and tool-change system messages
+    // spliced in below. Built and measured HERE, before the context, so the
+    // builder can hold room for them instead of packing history into space they
+    // are about to occupy. The strings are reused at the splice sites; rebuilding
+    // them there is how a reservation and the text it pays for drift apart.
+    let turn_extras = crate::services::turn_extras::collect_turn_extras(
+        crate::services::turn_extras::TurnExtrasOptions {
+            tools: &actual_tools,
+            agent_mode_enabled,
+            agent_mode_max_turns: agent_mode.max_turns,
+            tool_settings_changed,
+            chars_per_token: crate::token_estimation::DEFAULT_CHARS_PER_TOKEN,
+        },
+    );
+
     // --- Async pre-compression cache check (pre-compute.service.ts compressionTask,
     //     W4.4a4) ---
     // When compression is enabled and not bypassed, consult the cache the finalizer
@@ -2083,7 +2119,9 @@ where
     let build_input = build_context_input(BuildContextArgs {
         user_id: &user_id,
         model_context_limit: input.model_context_limit,
-        reserved_outgoing_tokens: None,
+        // Room held back for the tool schemas and the system messages spliced in
+        // after the context is built (v4 `f933ba9c`).
+        reserved_outgoing_tokens: Some(turn_extras.reserved_tokens),
         timestamp_config: input.timestamp_config.clone(),
         timezone: input.timezone.clone(),
         server_tz: input.server_tz.clone(),
@@ -2269,17 +2307,50 @@ where
     // downstream consumers read.
     let mut formatted_messages = mc_result.formatted_messages;
 
+    // --- Tool Change Notification (orchestrator.service.ts:1224–1254) ---
+    // When the operator changed the tool roster, tell the model once. The notice
+    // is the string `collect_turn_extras` already measured (and reserved room
+    // for); it goes in before the LAST message when that is the user's new
+    // message, else at the end. v4's `findIndex` matches only a user message in
+    // the final position, and its `> 0` guard means a conversation whose ONLY
+    // message is that user turn takes the push arm.
+    if let Some(notice) = turn_extras.tool_change_notice.clone() {
+        let tool_change_message = message_context::FormattedMsg {
+            role: "system".to_string(),
+            content: notice,
+            name: None,
+            thought_signature: None,
+            attachments: Some(Vec::new()),
+        };
+        // v4's predicate is `m.role === 'user' && i === arr.length - 1`, so the
+        // index is the last position when a user message sits there, else -1.
+        let last_user_index = formatted_messages
+            .last()
+            .filter(|m| m.role == "user")
+            .map(|_| formatted_messages.len() - 1);
+        match last_user_index {
+            Some(idx) if idx > 0 => formatted_messages.insert(idx, tool_change_message),
+            _ => formatted_messages.push(tool_change_message),
+        }
+        let tool_names = crate::services::turn_extras::extract_tool_names(&actual_tools);
+        tracing::info!(
+            chat_id = %chat_id,
+            tool_count = tool_names.len(),
+            tools = ?tool_names,
+            "Injected tool change notification"
+        );
+    }
+
     // --- Agent Mode Instructions (orchestrator.service.ts:1113–1142, W4.4) ---
     // When agent mode is enabled, inject the agent-mode system-prompt block at the
     // first non-system position (or unshift / push per v4's index logic). This is
     // part of the provider request, so it changes the canned stream key — the
     // corpus's agent-mode cases bank the byte-exact injection.
-    if agent_mode_enabled {
+    if let Some(instructions) = turn_extras.agent_mode_instructions.clone() {
         let agent_mode_message = message_context::FormattedMsg {
             role: "system".to_string(),
-            content: crate::services::agent_mode::build_agent_mode_instructions(
-                agent_mode.max_turns,
-            ),
+            // The string `collect_turn_extras` measured — not a rebuild of it.
+            content: instructions,
             name: None,
             thought_signature: None,
             attachments: Some(Vec::new()),
@@ -2289,6 +2360,42 @@ where
             Some(idx) if idx > 0 => formatted_messages.insert(idx, agent_mode_message),
             Some(_) => formatted_messages.insert(0, agent_mode_message),
             None => formatted_messages.push(agent_mode_message),
+        }
+    }
+
+    // --- Pre-send payload check (orchestrator.service.ts:1314–1345, `f933ba9c`) ---
+    // Measure the WHOLE payload, not just the message array: the tool schemas ride
+    // alongside it and count against the same window. The ceiling is the budget's
+    // own `safe_input_limit` — the number the builder packed to — so this check
+    // cannot fire on a context that was filled exactly as instructed. Log-only in
+    // v4 as here: the turn still goes out, and the provider decides.
+    {
+        let pairs: Vec<(String, String)> = formatted_messages
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        let message_tokens = crate::token_estimation::count_messages_tokens(
+            &pairs,
+            crate::token_estimation::DEFAULT_CHARS_PER_TOKEN,
+        );
+        let estimated_input_tokens = message_tokens + turn_extras.tool_schema_tokens;
+        let safe_input_limit = built_context.budget.safe_input_limit;
+        if estimated_input_tokens > safe_input_limit {
+            tracing::warn!(
+                chat_id = %chat_id,
+                character_id = %character_id,
+                estimated_input_tokens,
+                message_tokens,
+                tool_schema_tokens = turn_extras.tool_schema_tokens,
+                tool_count = actual_tools.len(),
+                safe_input_limit,
+                model_context_limit = built_context.budget.total_limit,
+                response_reserve = built_context.budget.response_reserve,
+                safety_margin = built_context.budget.safety_margin,
+                reserved_outgoing_tokens = turn_extras.reserved_tokens,
+                overage = estimated_input_tokens - safe_input_limit,
+                "Context exceeds model safe input limit, payload may be rejected"
+            );
         }
     }
 

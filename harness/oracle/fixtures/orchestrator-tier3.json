@@ -1121,6 +1121,40 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "fc000001-0000-4000-8000-0000000000fc",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "fc0a0001-0000-4000-8000-0000000000a1",
+     "character": "c2000002-0000-4000-8000-000000000022",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "fc0b0001-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "fc010001-0000-4000-8000-000000000301",
+     "role": "USER",
+     "content": "hello there",
+     "participantId": null
+    },
+    {
+     "id": "fc010002-0000-4000-8000-000000000302",
+     "role": "ASSISTANT",
+     "content": "Greetings.",
+     "participantId": "fc0a0001-0000-4000-8000-0000000000a1"
+    }
+   ],
+   "forceToolsOnNextMessage": true
   }
  ],
  "calls": [
@@ -1491,6 +1525,17 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "b10a0079-0000-4000-8000-0000000000a4"
+  },
+  {
+   "name": "tool_settings_changed",
+   "kind": "single",
+   "chatId": "fc000001-0000-4000-8000-0000000000fc",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "tool_settings_changed",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "fc0a0001-0000-4000-8000-0000000000a1"
   }
  ],
  "streams": {
@@ -2312,6 +2357,21 @@
       "promptTokens": 14,
       "completionTokens": 4,
       "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "tool_settings_changed": [
+   [
+    {
+     "content": "A polite reply from Bertie."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 4,
+      "totalTokens": 16
      }
     }
    ]

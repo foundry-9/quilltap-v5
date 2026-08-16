@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+The turn now reserves room for what it adds after the context is built, and
+tells the model when its tool roster changed. A chat whose tool settings the
+operator edited set a flag that nothing ever consumed or cleared, so the
+model was never told and the flag stayed set forever; that turn now carries
+the tool-change notice and clears it. The pre-send payload check measures
+the messages plus the tool schemas against the same ceiling the builder
+packed to.
+
 Tool schemas now count toward the context budget. `count_tool_schema_tokens`
 measures the serialized slate (plus per-tool framing), and a new
 `turn_extras` module builds and measures everything a turn adds after the

@@ -75,6 +75,9 @@ interface ChatSpec {
   messages: MessageSpec[];
   /** W4.1g: per-chat disabled tool ids (the wire slate excludes them). */
   disabledTools?: string[];
+  /** P4.D82: the operator just changed the tool roster — this turn tells the
+   * model so (the tool-change notice) and clears the flag. */
+  forceToolsOnNextMessage?: boolean;
   /** W4.4: the Chat level of the agent-mode cascade (nullable — null = not set). */
   agentModeEnabled?: boolean;
   /** W4.4: seeded agent turn count (the reset gate zeroes it on a new user turn). */
@@ -336,6 +339,9 @@ async function main(): Promise<void> {
         chatType: chat.chatType,
         contextSummary: chat.contextSummary,
         ...(chat.disabledTools !== undefined ? { disabledTools: chat.disabledTools } : {}),
+        ...(chat.forceToolsOnNextMessage !== undefined
+          ? { forceToolsOnNextMessage: chat.forceToolsOnNextMessage }
+          : {}),
         ...(chat.agentModeEnabled !== undefined ? { agentModeEnabled: chat.agentModeEnabled } : {}),
         ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
         ...(chat.conciergeOverride !== undefined ? { conciergeOverride: chat.conciergeOverride } : {}),

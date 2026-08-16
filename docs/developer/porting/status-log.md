@@ -71239,3 +71239,104 @@ python3.13 harness/tools/recipe_sweep.py --run token_estimation_equivalence --v4
 cd /tmp/qt-v4-pin-p4d82-93ed8abf && npx tsx <v5w>/harness/oracle/cases/turn-extras.ts > /tmp/oracle-turn-extras.ndjson
 QT_ORACLE_TURN_EXTRAS=/tmp/oracle-turn-extras.ndjson cargo test -p quilltap-harness --test turn_extras_equivalence
 ```
+
+---
+
+## P4.D82 unit 4 — the orchestrator wiring, the tool-change splice, and the pre-send check (v4 `f933ba9c`)
+
+### What landed in `orchestrator.rs`
+
+- `collect_turn_extras` is called BEFORE the context build (v4's placement),
+  and `reserved_outgoing_tokens: Some(turn_extras.reserved_tokens)` rides into
+  `build_context_input` — so the builder holds room instead of packing history
+  into space the schemas and the spliced system messages are about to occupy.
+- The agent-mode splice now consumes `turn_extras.agent_mode_instructions`
+  rather than rebuilding the block at the splice site.
+- **The tool-change notice is LIVE — a pre-existing v5 deferral closed.**
+  `forceToolsOnNextMessage` was read but never consumed OR cleared: the flag's
+  SETTER has existed since `chat_admin::update_tool_settings`, so a chat whose
+  tool roster the operator changed carried the flag forever and the model was
+  never told. The turn now splices v4's notice (before the last message when
+  that is the user's new message, else at the end — v4's `findIndex` predicate
+  is `role === 'user' && i === len − 1`, so the index is the last position or
+  −1) and clears the flag. Reserving room for a notice that is never spliced
+  would have been a NEW v5 divergence, which is why this rode the same unit.
+- The pre-send payload check (log-only in v4 as here) is ported for the first
+  time: `message_tokens + tool_schema_tokens` against
+  `built_context.budget.safe_input_limit` — the number the builder packed to,
+  so it can no longer fire on a context filled exactly as instructed.
+- `regenerate_swipe` reserves nothing (v4's fix touches the orchestrator path
+  only; that path builds no tool schemas and splices nothing).
+
+### Differential
+
+`orchestrator_tier3` gained the op **`tool_settings_changed`** (a new chat
+carrying `forceToolsOnNextMessage: true`, plus the fixture builder's new column
+and a canned stream). The family's compared surface is SSE frames + the
+`chats` / `chat_messages` / `background_jobs` dumps, so the op pins **the flag
+clear** (`forceToolsOnNextMessage` 1 → 0 in the chats dump) —
+**mutation-proven**: disabling the clear reddens the op. The notice TEXT is not
+in that comparand (v4's `debugLLMRequest` frame is dropped by the harness); it
+is pinned instead, byte-for-byte, by `turn_extras_equivalence`.
+
+### The entangled-family red set the order asked for: **EMPTY**
+
+Every family the order named as "do NOT expect green" was regenerated fresh at
+the `93ed8abf` pin (which INCLUDES `d89babc4`'s sampling fix that this lane
+does not port) and **all ran green**:
+
+`orchestrator_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3` (2
+tests), `chats_tokens_tier2`, `chat_context_init`, plus the neutrality set
+`context_compression`, `message_context_leaves`, `context_feeders_leaves`, and
+(this lane's tier-2 verification) `enclave_step_tier3`,
+`brahma_orchestrator_tier3`, `first_message_context`.
+
+**Handing that to P4.D83:** the sampling fields (`temperature` / `max_tokens` /
+`top_p` / `profile_parameters`) are not in these families' compared surfaces —
+they are pinned by the request-envelope / profile-params / provider-wire
+families, which are P4.D83's to move. There is no red set to inherit here, and
+no red was suppressed: every run above is `EXIT=0` with the test RUN (the sweep
+driver appends `--nocapture` and fails on SKIP).
+
+### Tier-2 items, measured
+
+- **The enclave path (item 6): nothing differs, no pin needed.** The enclave
+  drives the SAME `process_message` spine (`enclave/step.rs:699` threads
+  `model_context_limit` into `ProcessMessageInput`; the profile is resolved
+  inside the orchestrator), so the fixed budget reaches it exactly as v4's
+  shared `buildContext` does. The autonomous per-turn clamp is on
+  `budget_info.max_available`, which the fix does not touch.
+  `enclave_step_tier3` green at the pin confirms it.
+- **`spine.rs:1013` (item 7): NOT moved, and the measurement says not to.**
+  `registry_inputs` returns the LOOKUP half only; the profile's Max Context is
+  applied downstream in `build_context`, which is exactly where v4 applies it.
+  The `(8192, false)` fallback is the model-window default when profile
+  pre-resolution fails, and it now matters LESS, not more: a profile found
+  downstream overrides it. `quilltap-host` was therefore not touched and not
+  version-bumped.
+- **`message_context.rs` (order's verify item): nothing to thread.** v4 forwards
+  `reservedOutgoingTokens` because its options bag is separate; in v5 the field
+  rides inside `BuildContextInput`, which `build_message_context` passes
+  verbatim.
+
+### Tier 3 — the deferral, recorded loudly (item 8)
+
+**`lib/services/external-prompt-generator.service.ts` has NO v5 twin.** The
+`generate-external-prompt` character action is unported (only the courier's
+`pendingExternalPrompt` carry exists, `services/courier_transport.rs:241–242`),
+so `f933ba9c`'s one-line fix there has nothing to land against. **The future
+lane that ports external-prompt-generator MUST carry the `f933ba9c` AND
+`d89babc4` edits to that file** — the same blind spot (a bare
+`getModelContextLimit` where a profile is in hand), plus D83's sampling read.
+No code, no stub.
+
+### Recorded coverage gaps (this lane's, stated rather than papered over)
+
+- `self_inventory`'s changed line (the `profile_fallback` last-turn window) is
+  not exercised by its corpus — the fixture seeds an `llmLog`, so the section
+  always takes the `llm_log` branch. The `??`-vs-resolve difference is pinned at
+  the function level by `context_budget`'s zero/negative rows.
+- The tool-change notice's TEXT is proven by `turn_extras_equivalence`, not by
+  the orchestrator corpus (that family drops the request frame).
+- `count_tool_schema_tokens`'s unserializable arm is unreachable in Rust and
+  unshippable through NDJSON (see the unit-2 record).
