@@ -4866,3 +4866,60 @@ symlink classes: root node_modules, `packages/quilltap/node_modules`, the
 the sanctioned per-family regen path — never run two sweeps concurrently.
 The distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+---
+
+## After the `93ed8abf` drift round (P4.D82 → P4.D83 stacked ∥ P4.D84) — UNIFIED 2026-08-16
+
+The whole three-commit drift absorbed (bug 70's context budget +
+turn-extras accounting; the sampling resolver at all five call sites —
+the corpus found the Carina fifth; the profile-parameters wire for
+Ollama/OAC/DeepSeek/Z.AI with OAC tool calling on both paths; the
+per-profile Ollama request timeout; optionsSchema served for all eight
+declaring providers and rendered by the SPA's new schema-driven panel,
+retiring the hardcoded Enable Thinking row and the P4.D81 machinery
+deferral). The §3 review fixed five real findings before merge — headline:
+the OAC `chat_template_kwargs` array-string omission (corpus-blind,
+mis-documented on both sides) and the half-ported pre-send validation
+(v4's client-facing `validating`/`warning` statuses now emitted and
+comparands). Round record: `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The owed dogfood pass** — now further grown: a real local-model turn
+   showing the profile's Max Tokens / Top P on the wire, the schema-driven
+   options panel on real data, an OAC tool call against a real
+   llama-server, the Ollama per-profile request timeout on a cold large
+   model; plus the whole standing 💸 queue (Almanack real-data report,
+   Taboo live turn, OpenRouter pricing, the vision send, P4.D49
+   budget/attribution, P4.D77's trio, #75's acceptance look, the
+   aa464abf-round Ollama-thinking proofs).
+2. **The v4-side filing** owed from P4.48: the import preflight's
+   swallowed DB read errors (v4 proceeds into a partial apply).
+3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+   HelpChat/Guide vertical + its enriched bank).
+4. Banked smalls: the `Non-image attachments:` line under the provider
+   select (NEW this round — the client attachment table it needs now
+   exists at `apps/web/.../providers/attachment-support.ts`); the settings
+   repo-validate sibling fields (P4.47 deferral site); the stale
+   `docs/v4` API.md mirror sweep; the reroute LOOKUP-half residue
+   (`model_context_limit` is host-resolved for the original profile —
+   recorded at `orchestrator.rs`'s build-args site; fixing it means
+   moving the registry lookup into the engine).
+5. Carried riders (for their future lanes, not standalone orders):
+   `external-prompt-generator.service.ts` (the `f933ba9c` + `d89babc4`
+   edits) and `encodeDebugInfo` (`streaming.service.ts:487`, the fifth
+   `resolveSamplingParams` site — v5 emits no debug frame).
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`93ed8abf`** (2026-08-15, v4 main — "fix: local providers send the
+profile's parameters; OAC can call tools (bug 71)"), adopted at this
+round's unification; the drift debt is CLEARED at the pin. Pin a detached
+worktree at `93ed8abf` for every regen if v4's checkout moves
+(`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+node_modules, `packages/quilltap/node_modules`, the
+`plugins/dist/*/node_modules` dirs). Drift-check BOTH branches every round
+(bugfix measured by `diff`, never the commit list). The sweep driver
+remains the sanctioned per-family regen path — never run two sweeps
+concurrently. The distill-transitive TZ pins, the committed-fixture rule,
+and the venue/staging rules stand unchanged.

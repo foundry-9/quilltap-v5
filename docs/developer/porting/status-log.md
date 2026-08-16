@@ -72053,3 +72053,115 @@ never executed.
   5 s default — the same idiom two dozen sibling specs use, which is why this
   lane did NOT one-off harden it: the repo's deflake precedent is
   reproduce-then-harden, and there is no deterministic reproduction here.
+
+---
+
+## The `93ed8abf` drift round — UNIFICATION (2026-08-16)
+
+**P4.D82 → P4.D83 (stacked) ∥ P4.D84: ALL THREE CLOSED; the oracle baseline
+MOVES to `93ed8abf` and the drift debt is CLEARED.** v4's three-commit day
+(bug 70 context budget, the sampling/timeout fixes, bug 71 profile
+parameters + OAC tools) absorbed whole. Reconciliation: ff to the stacked
+server tip, five cherry-picks for the SPA lane, docs union-merged; the only
+conflicts were the intended CHANGELOG/status-log unions.
+
+### The §3 unification review (three parallel reviewers + own read of the union)
+
+**Two would-have-shipped findings, both fixed on the unify branch
+(`unify(review)` commit `9e841c4fd`), plus three more real fixes:**
+
+1. **The OAC `chat_template_kwargs` array-string omission (the headline).**
+   v4's string-parse guard is `typeof parsed === 'object' && parsed !== null`
+   — a JS ARRAY passes it, so a hand-edited `"[1,2]"` reaches the wire parsed
+   in v4 and was silently omitted in v5. Corpus-blind (the non-object vector
+   used a scalar) and mis-documented in BOTH the v5 comment and the P4.D83
+   unit-5 lane record ("a parsed non-object … both omit" — wrong about v4;
+   corrected here). Fixed; the new `chat-template-kwargs-string-array`
+   envelope vectors (255 → 257, insertions-only re-record at the pin) pin it,
+   mutation-proven (the object-only arm reddens exactly that vector).
+2. **The pre-send validation was half-ported.** v4 emits an unconditional
+   `validating` status AND a `warning` status on overage — the user's only
+   signal a payload may be rejected — and the landed block did only
+   `tracing::warn!` with a comment claiming "log-only in v4". Fixed: both
+   frames now emitted (v4's texts, `Math.round` semantics, streaming path
+   only — v4's courier returns first), the warn log gained
+   provider/model/compressionApplied, and BOTH stages joined the
+   orchestrator tier-3 shared status vocabulary as sequence comparands.
+3. **A danger-rerouted turn budgeted to the ORIGINAL profile's Max Context**
+   (v4 budgets to the rerouted one). The effective-row load moved ABOVE the
+   turn-extras collect so the reservation, the budget and the params all
+   share one profile; the danger fixture's reroute target gained a differing
+   window (`maxContext: 1200`), and the mutation (original-profile read)
+   reddens exactly `danger_live_reroute`. Recorded residue: the LOOKUP half
+   (`model_context_limit`) is still the host's pre-dispatch resolution of
+   the original profile's model, so a rerouted profile naming NO maxContext
+   still budgets to the original model's window — noted at the site; fixing
+   it means moving the registry lookup into the engine.
+4. **The turn-extras reservation used a flat 3.5 chars/token where v4 uses
+   the provider's rate** (GOOGLE is 3.8 — a real packing difference, not a
+   log figure). Fixed via the manifest registry (the same read the
+   orchestrator does); the turn-extras family grew a `google-rate` row
+   (reserved 724 vs the OPENAI sibling's 782 — a real comparand).
+5. **The OAC NON-streaming `tool_calls` parse-back was not ported** (the
+   lane record said "both paths"; only the decoder half was). Ported with
+   v4's own filter — deliberately distinct from the DeepSeek-shape helper
+   in three arms (nameless entries SKIPPED, `arguments: null` → `"{}"`,
+   no `type` filter) — unit-pinned.
+
+Smaller §3 fixes: the transport policy composers' doc blocks un-swapped
+(with the retry-backdrop residue recorded on
+`with_provider_default_timeout`: v4's Ollama fetch is one attempt, v5's
+shared transport keeps its retry loop — the provider-I/O uniformity class);
+the sampling-capture and orchestrator sampling asserts gained the missing
+SYMMETRIC direction (an oracle-recorded call v5 never makes now fails);
+the Ollama default-timeout constant is tied to the transport default by
+test; `extract_tool_names` gained the null-entry domain note. The SPA
+reviewer found NO blocking findings; two recorded notes (a display-only
+number-clear divergence vs React's controlled snap-back; the `--jinja`
+code-span whitespace boundary, inside Contract C's normalization rule).
+
+### The unification wires
+
+- **Contracts diffed name-for-name:** B's 11 served optionsSchema keys all
+  declared in the SPA narrowing; C's hint text matches
+  whitespace-normalized, the OAC capability byte-stable at `false`.
+- **`P4D83_OPTIONS_SCHEMA_LANDED` flipped** — the options round-trip beat's
+  first-ever run happened in this gate (green; the predicted first-run rot
+  class did NOT materialize).
+- The P4.D82 status header's commit count corrected (three, not four);
+  P4.D83's header CLOSED at unification (the lane left it OPEN).
+
+### The gate (all at the `93ed8abf` pin, worktree `/tmp/qt-v4-pin-unify-93ed8abf`)
+
+- `cargo fmt --all --check` clean; clippy BOTH feature sets clean;
+  `cargo build --release` green.
+- **The round's 26 families regenerated FRESH from the pinned worktree and
+  re-run by name through `recipe_sweep.py`, all ok, zero SKIP** (incl.
+  providers_listing's "8 options schemas byte-for-byte, 1 null", the
+  turn-extras google-rate row, and the four sampling families under the
+  new symmetric assertion).
+- **`cargo test --workspace` with the round's 53-variable env block: 437
+  test binaries / 2,147 tests / 0 failed, exit 0, zero `SKIP:` lines.**
+- SPA: `ng test` 326 files / 4,792 / 0; `ng build` clean.
+- **Full Playwright: 222 passed / 0 failed / 0 skipped (5.2 m)** — the
+  options round-trip beat LIVE on its first activation (re-confirmed in
+  isolation: the spec's three beats 3/3), the lane-run salon-scroll
+  intermittent green in the full run.
+
+### Outliving the round
+
+- **Riders carried:** `external-prompt-generator.service.ts` (P4.D82's —
+  the future porting lane carries the `f933ba9c` + `d89babc4` edits) and
+  `encodeDebugInfo`/`streaming.service.ts:487` (P4.D83's — v4's fifth
+  `resolveSamplingParams` site; v5 emits no debug frame).
+- **Banked:** the `Non-image attachments:` line under the provider select
+  (P4.D84 — pre-existing divergence; the attachment table it needs now
+  exists client-side); the next SPA smalls lane.
+- **💸 Live proofs owed (join the standing dogfood queue):** a real
+  local-model turn showing the profile's Max Tokens / Top P on the wire,
+  the schema-driven options panel on real data, an OAC tool call against a
+  real llama-server, the Ollama per-profile request timeout on a cold
+  large model.
+
+Versions: core 0.0.575, harness 0.0.499, host 0.0.72, SPA 0.5.498;
+cli/web/tauri unchanged.

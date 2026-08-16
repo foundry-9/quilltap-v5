@@ -1198,22 +1198,67 @@ records THERE. Update this summary only when a phase or round completes.
   round record). Versions: core 0.0.564, harness 0.0.487, host 0.0.71,
   SPA 0.5.493. 💸 the live Ollama-thinking proof + the round's surfaces
   join the owed dogfood queue. Round record: `status-log.md`.
-- **Oracle baseline: `aa464abf` (2026-08-15, v4 main — "fix:
-  archived-seat badge (66), source-view send (67), archive digest
-  clobber (69)"), adopted at the aa464abf-round unification.** ⚠ v4 HEAD
-  is ALREADY PAST it: **`f933ba9c` (bug 70, context budget honors Max
-  Context) is the queued next drift** — top candidate in `phase-4.md`;
-  part is likely v4 converging on v5's `context_budget.rs` shape
-  (MEASURE, `convergence-lane-measure-dont-assume`). **Pin a detached
-  worktree at `aa464abf` for EVERY regen until that round lands**
-  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
-  node_modules, `packages/quilltap/node_modules`, the
-  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
-  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
-  app/ packages/` — measure bugfix with `diff`, never the commit list).
-  The sweep driver remains the sanctioned per-family regen path — never
-  run two sweeps concurrently. The distill-transitive TZ pins, the
-  committed-fixture rule, and the venue/staging rules stand unchanged.
+- **The `93ed8abf` drift round (P4.D82 → P4.D83 stacked ∥ P4.D84):
+  UNIFIED on main (2026-08-16) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `93ed8abf` and the drift debt is CLEARED.** v4's three-commit
+  day absorbed whole: bug 70 end-to-end (`resolveContextWindow`
+  single-sourcing the window profile-first, `computeSafeInputLimit` with
+  `ContextBudget` carrying `safeInputLimit`/`safetyMargin`, the
+  green-field `turn_extras` accounting reserving room for tool schemas +
+  splices BEFORE the context — and a pre-existing v5 deferral closed on
+  the way: the tool-change notice now splices and `forceToolsOnNextMessage`
+  clears) ∥ the sampling resolver at all FIVE call sites (the corpus found
+  the Carina fifth; two typed seams closed — `CompletionParams` gained
+  `top_p`, `max_tokens` became `Option` so absent stopped meaning 0; four
+  tier-3 fixtures gained mixed-spelling bags after two were found
+  measuring NOTHING), the profile-parameters wire (Ollama options table +
+  keep_alive numeric sentinels + thinking-effort levels; OAC allow-list +
+  `chat_template_kwargs` fold + tools on BOTH paths; DeepSeek/Z.AI
+  converged onto the one applier with a pre-existing Z.AI effort-gate bug
+  fixed; envelope corpus 191 → 257, the recorder's wrong-class catch),
+  the per-profile Ollama request timeout (streaming first-byte /
+  non-streaming whole-request, caller budget still wins, stalling-socket
+  proofs), and optionsSchema on all eight declaring manifests via the
+  generator ∥ the SPA's schema-driven provider-options panel (all five
+  field types + showIf + multi-enum landed whole — the Tier-3 deferral
+  condition was FALSE; the hardcoded Enable Thinking row DELETED with the
+  P4.D81 divergence retired; the tool-use seed hint; the
+  `supportsImageUpload` re-seed over the transcribed client attachment
+  table). **The §3 review fixed five real findings before merge** —
+  headline: the OAC `chat_template_kwargs` ARRAY-string omission
+  (corpus-blind and mis-documented on both sides; now corpus-pinned) and
+  the half-ported pre-send validation (v4's client-facing
+  `validating`/`warning` statuses now emitted and sequence-compared);
+  also the danger-reroute budget reading the ORIGINAL profile's window
+  (fixed + mutation-proven via the danger fixture's differing window),
+  the turn-extras estimator's flat 3.5 (now the provider's registry
+  rate, GOOGLE-row pinned), and the unported OAC non-streaming
+  `tool_calls` parse-back (landed with v4's own three-arm filter).
+  Gate: 437 test binaries / 2,147 / 0 with the round's 53-variable env
+  block, zero SKIP; the 26 affected families fresh at the pin through
+  the sweep driver; clippy both feature sets; release build; ng 326
+  files / 4,792; full Playwright green with the options round-trip
+  beat's first activation (numbers in the round record). Versions: core
+  0.0.575, harness 0.0.499, host 0.0.72, SPA 0.5.498. **💸 the round's
+  live proofs join the owed dogfood pass (top next candidate):** real
+  Max Tokens / Top P on a local wire, the options panel on real data,
+  OAC tools against llama-server, the request timeout on a cold model.
+  Riders carried: external-prompt-generator (D82) + `encodeDebugInfo`
+  (D83) — their future lanes carry the drift edits. Round record:
+  `status-log.md`.
+- **Oracle baseline: `93ed8abf` (2026-08-15, v4 main — "fix: local
+  providers send the profile's parameters; OAC can call tools (bug 71)"),
+  adopted at the 93ed8abf-round unification; the drift debt is CLEARED
+  at the pin.** Pin a detached worktree at `93ed8abf` for every regen
+  whenever the v4 checkout isn't cleanly on it (`recipe_sweep.py --v4
+  <pin-path>`; ALL THREE symlink classes: root node_modules,
+  `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
+  dirs). **Drift-check BOTH branches every round** (`git log
+  <baseline>..main` AND `git diff main bugfix -- lib/ app/ packages/` —
+  measure bugfix with `diff`, never the commit list). The sweep driver
+  remains the sanctioned per-family regen path — never run two sweeps
+  concurrently. The distill-transitive TZ pins, the committed-fixture
+  rule, and the venue/staging rules stand unchanged.
   (The superseded baseline paragraphs formerly kept here "for history" are
   archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the

@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Unified the 93ed8abf drift catch-up round: the context budget honors the
+profile's Max Context end-to-end (single-sourced window resolution, the unified
+safe-input-limit formula the builder and validator both read, tool schemas and
+spliced system messages measured and reserved before the context is built, and
+the tool-change notice now actually reaches the model — a pre-existing deferral
+closed), the profile's sampling knobs reach every completion path through one
+resolver (five call sites including Carina; Top P gained a seat in the
+non-streaming params; absent Max Tokens stopped meaning zero), the
+profile-parameters passthrough covers Ollama and OpenAI-compatible endpoints
+(sampler options, keep-alive, thinking effort, request timeout; OAC gains tool
+calling on both paths), each provider's connection-profile options schema is
+served and rendered by a schema-driven panel in the profile editor (replacing
+the hardcoded Enable Thinking row), and the tool-use seed hint plus the vision
+re-seed landed. The oracle baseline moves to 93ed8abf; the drift debt is
+cleared. Gate: 437 test binaries / 2,147 / 0 with the round's env block, 26
+families regenerated fresh at the pin with zero skips, clippy both feature
+sets, release build, ng test 4,792 / 0, full Playwright 222 / 0 / 0 with the
+options round-trip beat live on first activation. Versions: core 0.0.575,
+harness 0.0.499, host 0.0.72, SPA 0.5.498.
+
 The 93ed8abf unification review's fixes. A profile storing its OpenAI-compatible
 chat_template_kwargs as a JSON-array string now reaches the wire as the parsed
 array, matching the reference (objects only, before). The OpenAI-compatible

@@ -1976,3 +1976,24 @@ Contents:
   and warns when a family's stages modify tracked fixtures. The
   distill-transitive TZ pins, the committed-fixture rule, and the
   venue/staging rules stand unchanged.
+
+---
+
+## Superseded baseline paragraph (replaced at the 93ed8abf-round unification, 2026-08-16)
+
+- **Oracle baseline: `aa464abf` (2026-08-15, v4 main — "fix:
+  archived-seat badge (66), source-view send (67), archive digest
+  clobber (69)"), adopted at the aa464abf-round unification.** ⚠ v4 HEAD
+  is ALREADY PAST it: **`f933ba9c` (bug 70, context budget honors Max
+  Context) is the queued next drift** — top candidate in `phase-4.md`;
+  part is likely v4 converging on v5's `context_budget.rs` shape
+  (MEASURE, `convergence-lane-measure-dont-assume`). **Pin a detached
+  worktree at `aa464abf` for EVERY regen until that round lands**
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
+  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
+  app/ packages/` — measure bugfix with `diff`, never the commit list).
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.
