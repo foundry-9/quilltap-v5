@@ -38,6 +38,10 @@ async function render(
   },
   client: Partial<CoreClient> = stubClient(),
 ): Promise<ComponentFixture<ProfileModal>> {
+  // Reset first: a couple of cases render twice in one `it` to compare two
+  // bags, and TestBed refuses a second `configureTestingModule` once
+  // instantiated.
+  TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ProfileModal],
     providers: [{ provide: CoreClient, useValue: client }],
@@ -134,10 +138,9 @@ describe('ProfileModal (multi-character prefill)', () => {
   const WARNING = "Anthropic's recent models reject a request handed over mid-turn";
 
   function prefillBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement {
-    const label = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
-    ).find((l) =>
-      l.textContent?.includes('Announce the speaker in multi-character scenes ([Name] prefill)'),
+    const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+      (l) =>
+        l.textContent?.includes('Announce the speaker in multi-character scenes ([Name] prefill)'),
     );
     return label!.querySelector('input')!;
   }
@@ -156,7 +159,10 @@ describe('ProfileModal (multi-character prefill)', () => {
 
   it('a provider switch re-seeds a NEW profile from the new provider default', async () => {
     const fixture = await render({
-      providers: [provider({}), provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' })],
+      providers: [
+        provider({}),
+        provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' }),
+      ],
     });
     expect(prefillBox(fixture).checked).toBe(true);
     fixture.componentInstance['onProviderChange']('ANTHROPIC');
@@ -181,7 +187,10 @@ describe('ProfileModal (multi-character prefill)', () => {
         isDefault: false,
         multiCharacterPrefill: false,
       },
-      providers: [provider({}), provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' })],
+      providers: [
+        provider({}),
+        provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' }),
+      ],
     });
     expect(prefillBox(fixture).checked).toBe(false);
     fixture.componentInstance['onProviderChange']('ANTHROPIC');
@@ -231,22 +240,64 @@ describe('ProfileModal (multi-character prefill)', () => {
 });
 
 /**
- * The Ollama Enable Thinking checkbox (P4.D81 unit 3; v4 `d9c5a1c7`'s
- * `optionsSchema` field, rendered here as a hardcoded provider-gated row — the
- * recorded mechanism divergence on the component).
+ * The schema-driven provider-options panel in its host (P4.D84; v4
+ * `ProfileModal.tsx:194-196` + `:899-908`). The renderer's own semantics are
+ * pinned in `provider-options-panel.spec.ts`; these are the modal's four
+ * obligations — draw the active provider's schema and nothing else, merge each
+ * write into the PRESERVED bag, delete on `undefined`, and carry it all to the
+ * save payload.
+ *
+ * The P4.D81 hardcoded Enable Thinking row is GONE, and with it the
+ * `'true'`-string tolerance it carried: v4's generic `BooleanField` compares
+ * `value === true`, so a hand-edited string shows OFF in both apps now (the
+ * order's "measure v4 and match IT"). Nothing is silently rewritten — an
+ * untouched box writes nothing, so the string still reaches the wire, which
+ * does accept it.
  */
-describe('ProfileModal (Ollama Enable Thinking)', () => {
+describe('ProfileModal (schema-driven provider options)', () => {
+  const OLLAMA_SCHEMA = {
+    groups: [
+      {
+        title: 'Ollama Options',
+        fields: [
+          {
+            key: 'enable_thinking',
+            label: 'Enable Thinking',
+            type: 'boolean',
+            default: false,
+            helpText:
+              'Let thinking-capable models (Qwen3, DeepSeek-R1, and kin) reason before answering.',
+          },
+          {
+            key: 'thinking_effort',
+            label: 'Thinking Effort',
+            type: 'enum',
+            default: '',
+            showIf: { field: 'enable_thinking', equals: true },
+            enumValues: [
+              { value: '', label: 'Model default' },
+              { value: 'high', label: 'High' },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Sampling',
+        fields: [{ key: 'top_k', label: 'Top K', type: 'number' }],
+      },
+    ],
+  };
+
   const OLLAMA = provider({
     id: 'OLLAMA',
     name: 'OLLAMA',
     displayName: 'Ollama',
     configRequirements: { requiresApiKey: false, requiresBaseUrl: true },
+    optionsSchema: OLLAMA_SCHEMA,
   });
 
-  function thinkingBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement | null {
-    return (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
-      '#qt-pf-enable-thinking',
-    );
+  function box(fixture: ComponentFixture<ProfileModal>, id: string): HTMLInputElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(`#${id}`);
   }
 
   function ollamaProfile(parameters: Record<string, unknown>): ConnectionProfileDto {
@@ -260,66 +311,80 @@ describe('ProfileModal (Ollama Enable Thinking)', () => {
     };
   }
 
-  it('is hidden for a non-Ollama provider', async () => {
-    const fixture = await render({});
-    expect(thinkingBox(fixture)).toBeNull();
-    expect(fixture.nativeElement.textContent).not.toContain('Enable Thinking');
+  it('draws nothing when the active provider declares no schema', async () => {
+    // GOOGLE is the one bundled plugin without a schema at `93ed8abf`, and the
+    // wire serves it as null (Contract B).
+    const fixture = await render({ providers: [provider({ optionsSchema: null })] });
+    expect(box(fixture, 'pof-enable_thinking')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Ollama Options');
   });
 
-  it('renders unchecked by default on Ollama, with v4’s help text', async () => {
+  it('draws the active provider’s groups and fields, help text and all', async () => {
     const fixture = await render({ profile: ollamaProfile({}), providers: [OLLAMA] });
-    expect(thinkingBox(fixture)!.checked).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Ollama Options');
+    expect(fixture.nativeElement.textContent).toContain('Sampling');
+    expect(box(fixture, 'pof-enable_thinking')!.checked).toBe(false);
+    expect(box(fixture, 'pof-top_k')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain(
       'Let thinking-capable models (Qwen3, DeepSeek-R1, and kin) reason before answering.',
     );
-    expect(fixture.nativeElement.textContent).toContain(
-      'any <think> blocks that leak into the reply are routed to the thinking display',
-    );
   });
 
-  it('reads a stored boolean true', async () => {
-    const fixture = await render({
+  it('reads a stored boolean true, and shows the STRING form as off (v4 `:149`)', async () => {
+    const on = await render({
       profile: ollamaProfile({ enable_thinking: true }),
       providers: [OLLAMA],
     });
-    expect(thinkingBox(fixture)!.checked).toBe(true);
-  });
+    expect(box(on, 'pof-enable_thinking')!.checked).toBe(true);
 
-  it('reads the STRING form the wire side also accepts', async () => {
-    // Contract A: `value === true || value === "true"`. v4's generic
-    // BooleanField would show this OFF (`value === true`) — v5's ordered
-    // divergence, recorded on the component.
-    const fixture = await render({
+    const str = await render({
       profile: ollamaProfile({ enable_thinking: 'true' }),
       providers: [OLLAMA],
     });
-    expect(thinkingBox(fixture)!.checked).toBe(true);
+    expect(box(str, 'pof-enable_thinking')!.checked).toBe(false);
   });
 
-  it('shows any OTHER string as off — the tolerance is exact, not truthy', async () => {
-    const fixture = await render({
-      profile: ollamaProfile({ enable_thinking: 'yes please' }),
-      providers: [OLLAMA],
-    });
-    expect(thinkingBox(fixture)!.checked).toBe(false);
+  it('a showIf field appears once its guard is satisfied through the panel', async () => {
+    const fixture = await render({ profile: ollamaProfile({}), providers: [OLLAMA] });
+    expect(box(fixture, 'pof-thinking_effort')).toBeNull();
+    const thinking = box(fixture, 'pof-enable_thinking')!;
+    thinking.checked = true;
+    thinking.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(box(fixture, 'pof-thinking_effort')).not.toBeNull();
   });
 
-  it('writes a BOOLEAN into the bag and leaves every other key alone', async () => {
+  it('a provider switch swaps which schema is drawn', async () => {
+    const fixture = await render({ providers: [provider({ optionsSchema: null }), OLLAMA] });
+    expect(fixture.nativeElement.textContent).not.toContain('Ollama Options');
+    fixture.componentInstance['onProviderChange']('OLLAMA');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Ollama Options');
+  });
+
+  it('writes into the PRESERVED bag and carries every unrendered key to the save', async () => {
     const dispatchExpect = vi.fn(async (_req: CoreRequest) => ({
       type: 'connectionProfile',
       data: { profile: { id: 'cp-ollama' } },
     }));
     const fixture = await render(
       {
-        profile: ollamaProfile({ temperature: 0.4, num_ctx: 40960, enable_thinking: 'true' }),
+        // `num_ctx` and `enableZDR` have no control in this schema; both must
+        // survive the save untouched (mutation guard: rebuilding the bag from
+        // the rendered fields reddens this case).
+        profile: ollamaProfile({
+          temperature: 0.4,
+          num_ctx: 40960,
+          enableZDR: true,
+          enable_thinking: 'true',
+        }),
         providers: [OLLAMA],
       },
       stubClient({ dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'] }),
     );
-    const box = thinkingBox(fixture)!;
-    box.checked = false;
-    box.dispatchEvent(new Event('change'));
+    const thinking = box(fixture, 'pof-enable_thinking')!;
+    thinking.checked = true;
+    thinking.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
     const submit = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
@@ -339,8 +404,113 @@ describe('ProfileModal (Ollama Enable Thinking)', () => {
       max_tokens: 1000,
       top_p: 1,
       // The string form is REPLACED by a real boolean, not left as text.
-      enable_thinking: false,
+      enable_thinking: true,
       num_ctx: 40960,
+      enableZDR: true,
     });
+  });
+
+  it('a cleared number field DELETES its key rather than storing a hole (v4 `:208-210`)', async () => {
+    const dispatchExpect = vi.fn(async (_req: CoreRequest) => ({
+      type: 'connectionProfile',
+      data: { profile: { id: 'cp-ollama' } },
+    }));
+    const fixture = await render(
+      {
+        profile: ollamaProfile({ top_k: 20, num_ctx: 8192 }),
+        providers: [OLLAMA],
+      },
+      stubClient({ dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'] }),
+    );
+    const topK = box(fixture, 'pof-top_k')!;
+    topK.value = '';
+    topK.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const submit = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Update Profile',
+    ) as HTMLButtonElement;
+    submit.click();
+    await fixture.whenStable();
+
+    const call = dispatchExpect.mock.calls
+      .map((c) => c[0] as unknown as { type: string; profile: Record<string, unknown> })
+      .find((c) => c.type === 'connectionProfileUpdate')!;
+    const parameters = call.profile['parameters'] as Record<string, unknown>;
+    expect('top_k' in parameters).toBe(false);
+    expect(parameters['num_ctx']).toBe(8192);
+  });
+});
+
+/**
+ * The `affects: 'modelInput'` directive (OpenRouter's `useCustomModel`). v4
+ * reads it straight off the parameters bag rather than through the panel's
+ * directive callback (`ProfileModal.tsx:198-203`, `:577-596`).
+ */
+describe('ProfileModal (the modelInput directive)', () => {
+  const OPENROUTER = provider({
+    id: 'OPENROUTER',
+    name: 'OPENROUTER',
+    displayName: 'OpenRouter',
+    optionsSchema: {
+      groups: [
+        {
+          title: 'OpenRouter Options',
+          fields: [
+            {
+              key: 'useCustomModel',
+              label: 'Use Custom Model ID',
+              type: 'boolean',
+              default: false,
+              affects: 'modelInput',
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  function orProfile(parameters: Record<string, unknown>): ConnectionProfileDto {
+    return {
+      id: 'cp-or',
+      name: 'Router',
+      provider: 'OPENROUTER',
+      modelName: 'openai/gpt-4o-mini',
+      parameters,
+      isDefault: false,
+    };
+  }
+
+  it('leaves the ordinary model control in place when the flag is absent', async () => {
+    const fixture = await render({ profile: orProfile({}), providers: [OPENROUTER] });
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#qt-pf-model',
+    )!;
+    expect(input.placeholder).toBe('e.g., gpt-4');
+  });
+
+  it('swaps in the free-text model entry the moment the flag is set (v4 `:577`)', async () => {
+    const fixture = await render({ profile: orProfile({}), providers: [OPENROUTER] });
+    const flag = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#pof-useCustomModel',
+    )!;
+    flag.checked = true;
+    flag.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#qt-pf-model',
+    )!;
+    expect(input.placeholder).toBe('e.g., openai/gpt-4-turbo');
+  });
+
+  it('honours only a real boolean true, as v4’s guard does (v4 `:203`)', async () => {
+    const fixture = await render({
+      profile: orProfile({ useCustomModel: 'true' }),
+      providers: [OPENROUTER],
+    });
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#qt-pf-model',
+    )!;
+    expect(input.placeholder).toBe('e.g., gpt-4');
   });
 });

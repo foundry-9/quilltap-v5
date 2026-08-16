@@ -33,15 +33,13 @@ export interface ProfileFormData {
   maxContext: string;
   /**
    * The profile's `parameters` blob MINUS the three sampling keys the form owns
-   * as top-level controls (v4 `useProfileForm.ts:46-50`'s `rawParams`). v4 hands
-   * this to `ProviderOptionsPanel`, the schema-driven renderer for each plugin's
-   * `getProviderOptionsSchema()`; v5 has no such machinery (the standing
-   * documented absence — `optionsSchema` is hardcoded null), so the bag is here
-   * for two reasons: the ONE hardcoded provider option v5 renders
-   * (`enable_thinking`, P4.D81 unit 3), and — more importantly — so that saving
-   * a profile does not silently DROP the keys nothing in the SPA renders
-   * (`num_ctx`, OpenRouter's `providerPreferences`/`enableZDR`, …), all of which
-   * the wire side still reads.
+   * as top-level controls (v4 `useProfileForm.ts:46-50`'s `rawParams`), and with
+   * the legacy OpenRouter `providerPreferences` shape translated to its flat
+   * schema key. Both apps hand this to the schema-driven renderer for each
+   * plugin's `getProviderOptionsSchema()` (v5: `ProviderOptionsPanel`, P4.D84).
+   * Keys the active schema declares no control for — `num_ctx`, another
+   * provider's options — still ride the bag untouched, so saving a profile
+   * never silently drops what the wire side still reads.
    */
   parameters: Record<string, unknown>;
 }
@@ -81,14 +79,23 @@ const TOP_LEVEL_PARAMETER_KEYS = ['temperature', 'max_tokens', 'top_p'] as const
 /** Load an existing profile into the form for editing (v4 `loadProfileIntoForm`). */
 export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormData {
   const params = (profile.parameters ?? {}) as Record<string, unknown>;
-  // The rest of the blob rides along verbatim. v4 also MIGRATES the legacy
-  // OpenRouter `providerPreferences` shape into its flat schema keys here
-  // (`:51-56`) — deliberately not ported: that translation exists to feed the
-  // schema renderer v5 does not have, and dropping the legacy key would lose
-  // data v5's own request builder still reads
-  // (`request_builder/chat_completions.rs:697,947`).
+  // The rest of the blob rides along verbatim, minus v4's legacy-OpenRouter
+  // translation (`useProfileForm.ts:51-57`): the nested `providerPreferences`
+  // shape becomes the flat `enableZDR` the options schema exposes, and the
+  // nested key is dropped so a re-save does not carry both. Ported at P4.D84
+  // with the schema renderer it feeds — until then v5 kept the nested key
+  // because nothing rendered the flat one. Both spellings reach the same wire
+  // bytes (`model/request_builder/chat_completions.rs:697,947` merges
+  // `enableZDR` into `dataCollection: 'deny'`), so the translation is
+  // lossless for the one field it covers; v4 loses any sibling
+  // `providerPreferences.order` on the same save, and v5 now loses it too.
   const rest: Record<string, unknown> = { ...params };
   for (const key of TOP_LEVEL_PARAMETER_KEYS) delete rest[key];
+  const legacyPrefs = rest['providerPreferences'] as { dataCollection?: string } | undefined;
+  if (legacyPrefs?.dataCollection === 'deny' && rest['enableZDR'] === undefined) {
+    rest['enableZDR'] = true;
+  }
+  delete rest['providerPreferences'];
   return {
     name: profile.name,
     transport: profile.transport ?? 'api',

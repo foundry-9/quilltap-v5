@@ -28,6 +28,8 @@ import {
   type ProfileFormData,
   type ProviderRequirements,
 } from './profile-form';
+import { ProviderOptionsPanel } from './provider-options-panel';
+import type { ProviderOptionsSchema } from './provider-options-schema';
 
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
   OPENAI: ['gpt-4', 'gpt-3.5-turbo', 'gpt-4-turbo'],
@@ -57,24 +59,24 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
  * parameters, the rich capability flags, and duplicate-name inline validation.
  * Copy + `qt-*` classes carry over verbatim.
  *
- * **Recorded mechanism divergence — provider options (P4.D81 unit 3).** v4
- * renders the per-provider option rows from each plugin's
- * `getProviderOptionsSchema()` through the generic `ProviderOptionsPanel`. v5
- * has no plugin option-schema machinery — `optionsSchema` is hardcoded null, the
- * standing documented absence — so the one option NEW at this baseline,
- * Ollama's `enable_thinking` (v4 `d9c5a1c7`, plugin 1.0.41), is rendered here as
- * a hardcoded provider-gated field writing the same `parameters` key. Label and
- * help text are v4's schema strings verbatim, and the group keeps v4's
- * `Ollama Options` heading and panel chrome, so the rendered result matches; only
- * the mechanism differs. This is the recorded divergence, NOT a stepping stone
- * toward the schema machinery (P4.D81 Tier 3). Every OTHER key in the bag —
- * `num_ctx`, OpenRouter's preferences — is preserved unrendered rather than
- * dropped on save.
+ * **Provider options are schema-driven, as in v4 (P4.D84).** The per-provider
+ * rows come from the active plugin's `getProviderOptionsSchema()`, carried on
+ * the providers listing as `optionsSchema` and rendered by
+ * {@link ProviderOptionsPanel}. This RETIRES the P4.D81 divergence — the
+ * hardcoded Ollama Enable Thinking row is gone, and Ollama's schema draws it
+ * (along with thinking effort, keep-alive, the request timeout, and the whole
+ * Sampling group) from the wire instead. Keys the schema declares no control
+ * for still ride the bag untouched on save, exactly as before.
+ *
+ * v4 passes the panel no directive callback; the one `affects: 'modelInput'`
+ * field in the bundled schemas (OpenRouter's `useCustomModel`) is read straight
+ * off the parameters bag to swap the model input between selector and free
+ * text (`ProfileModal.tsx:198-203`). v5 derives it the same way.
  */
 @Component({
   selector: 'qt-profile-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ModelSelector],
+  imports: [Modal, FormActions, ModelSelector, ProviderOptionsPanel],
   template: `
     <qt-modal
       [title]="editing() ? 'Edit Connection Profile' : 'Create Connection Profile'"
@@ -321,10 +323,27 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
             </p>
           </div>
 
-          <!-- Model -->
+          <!-- Model. v4 ProfileModal.tsx:577-625: the modelInput directive
+               branch first (free text, datalist from the fetched models when
+               there are any), then the selector, then the plain fallback. -->
           <div>
             <label for="qt-pf-model" class="block qt-text-label mb-2">Model *</label>
-            @if (fetchedModels().length > 0) {
+            @if (useCustomModelDirective()) {
+              <input
+                id="qt-pf-model"
+                type="text"
+                class="qt-input"
+                placeholder="e.g., openai/gpt-4-turbo"
+                list="qt-pf-model-suggestions"
+                [value]="form().modelName"
+                (input)="onModelChange($any($event.target).value)"
+              />
+              <datalist id="qt-pf-model-suggestions">
+                @for (m of customModelSuggestions(); track m) {
+                  <option [value]="m"></option>
+                }
+              </datalist>
+            } @else if (fetchedModels().length > 0) {
               <qt-model-selector
                 [models]="fetchedModels()"
                 [value]="form().modelName"
@@ -482,10 +501,9 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 Ticked, a multi-character turn is handed to the model already opened with
                 <code>[Name]</code>, so it can only continue that character&apos;s line. Unticked,
                 the same instruction is given in prose and the model is left to begin the turn
-                itself. Untick it for models that refuse an opened turn outright, for local
-                thinking models whose reasoning never appears (an opened turn closes that door),
-                and for any model that spends its reply wondering whether the name was addressed
-                to it.
+                itself. Untick it for models that refuse an opened turn outright, for local thinking
+                models whose reasoning never appears (an opened turn closes that door), and for any
+                model that spends its reply wondering whether the name was addressed to it.
               </p>
               @if (prefillAgainstProviderDefault()) {
                 <p class="qt-text-xs qt-text-warning ml-6">
@@ -568,34 +586,17 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
             </div>
           </div>
 
-          <!-- Provider-specific options. v4 renders this whole region from the
-               plugin's getProviderOptionsSchema() through ProviderOptionsPanel;
-               v5 has no schema machinery, so the one option that exists today is
-               hardcoded here (see the class doc-comment). Same slot as v4's
-               panel: after Max Context, before the tag editor. -->
-          @if (isOllama()) {
-            <div class="qt-settings-shell">
-              <h4 class="qt-settings-section-heading mb-3">Ollama Options</h4>
-              <div class="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  id="qt-pf-enable-thinking"
-                  class="qt-checkbox mt-0.5"
-                  [checked]="enableThinking()"
-                  (change)="setParameter('enable_thinking', $any($event.target).checked)"
-                />
-                <div class="flex flex-col gap-1">
-                  <label for="qt-pf-enable-thinking" class="text-sm">Enable Thinking</label>
-                  <p class="qt-text-xs">
-                    Let thinking-capable models (Qwen3, DeepSeek-R1, and kin) reason before
-                    answering. Reasoning streams into the thinking display rather than the reply.
-                    When off (the default), the model is asked to answer directly — best when you
-                    need clean output such as JSON. Either way, any &lt;think&gt; blocks that leak
-                    into the reply are routed to the thinking display.
-                  </p>
-                </div>
-              </div>
-            </div>
+          <!-- Provider-specific options — schema-driven, supplied by the active
+               plugin. v4's slot exactly (ProfileModal.tsx:899-908): after Max
+               Context, before the tag editor. -->
+          @if (optionsSchema(); as schema) {
+            <qt-provider-options-panel
+              [schema]="schema"
+              [parameters]="form().parameters"
+              [fetchedModels]="fetchedModels()"
+              [modelName]="form().modelName"
+              (setParameter)="setParameter($event.key, $event.value)"
+            />
           }
         }
       </div>
@@ -675,20 +676,33 @@ export class ProfileModal implements OnInit {
       !this.nameTaken(),
   );
 
-  protected readonly isOllama = computed(() => this.form().provider === 'OLLAMA');
+  /**
+   * The active provider's options schema (v4 `ProfileModal.tsx:194-196`). The
+   * wire contract types this `unknown | null`
+   * (`core-contract.ts` `ProviderInfo.optionsSchema`); the shape is Contract
+   * B's, narrowed here rather than validated — v4 hands the plugin's object
+   * straight to the renderer too.
+   */
+  protected readonly optionsSchema = computed<ProviderOptionsSchema | null>(() => {
+    const cfg = this.providers().find((p) => p.name === this.form().provider);
+    return (cfg?.optionsSchema ?? null) as ProviderOptionsSchema | null;
+  });
 
   /**
-   * The Ollama `enable_thinking` box. v4's `BooleanField` reads `value === true`
-   * (`ProviderOptionsPanel.tsx:143`); v5 also accepts the STRING `'true'`,
-   * because the wire side does (`build_ollama_body`, Contract A:
-   * `value === true || value === "true"`) — a profile imported with the string
-   * form behaves as ON, so showing it as OFF would be a lie the box could then
-   * silently "fix" on the next save.
+   * The one `affects: 'modelInput'` directive in the bundled schemas
+   * (OpenRouter's `useCustomModel`). v4 derives it straight from the parameters
+   * map rather than plumbing the panel's directive callback, "so deriving
+   * directly from the parameter map keeps the model input in sync without an
+   * extra useState/useEffect" (`ProfileModal.tsx:198-203`).
    */
-  protected readonly enableThinking = computed(() => {
-    const value = this.form().parameters['enable_thinking'];
-    return value === true || value === 'true';
-  });
+  protected readonly useCustomModelDirective = computed(
+    () => this.form().parameters['useCustomModel'] === true,
+  );
+
+  /** v4 `:590-594`: the free-text datalist prefers the fetched models. */
+  protected readonly customModelSuggestions = computed(() =>
+    this.fetchedModels().length > 0 ? this.fetchedModels() : this.modelSuggestions(),
+  );
 
   /**
    * The prefill box is ticked on a provider whose default is OFF (v4
@@ -725,11 +739,21 @@ export class ProfileModal implements OnInit {
 
   /**
    * Write one provider-option key into the `parameters` bag (v4's
-   * `setParameter`, `ProfileModal.tsx:200-215`). Every other key in the bag
-   * rides along untouched — including the ones v5 renders no control for.
+   * `setParameter`, `ProfileModal.tsx:205-216`). Every other key in the bag
+   * rides along untouched — including the ones the schema declares no control
+   * for. `undefined` DELETES the key rather than storing a hole, which is how
+   * a cleared number field removes itself (v4 `:208-210`).
    */
   protected setParameter(key: string, value: unknown): void {
-    this.form.update((f) => ({ ...f, parameters: { ...f.parameters, [key]: value } }));
+    this.form.update((f) => {
+      const next = { ...f.parameters };
+      if (value === undefined) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return { ...f, parameters: next };
+    });
   }
 
   protected parseNum(v: string): number {

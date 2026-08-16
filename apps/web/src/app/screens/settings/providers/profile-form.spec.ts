@@ -90,9 +90,9 @@ describe('profile form — multiCharacterPrefill', () => {
 });
 
 /**
- * The `parameters` bag round-trip (P4.D81 unit 3). v5 renders one provider
- * option (Ollama's `enable_thinking`) and no others, so the bag's job here is
- * mostly to survive a save — every key the SPA shows no control for still has a
+ * The `parameters` bag round-trip (P4.D81 unit 3, extended at P4.D84 when the
+ * schema renderer landed). The bag feeds `ProviderOptionsPanel` and must
+ * survive a save: every key the active schema shows no control for still has a
  * reader on the wire side.
  */
 describe('profile form — the parameters bag', () => {
@@ -105,18 +105,42 @@ describe('profile form — the parameters bag', () => {
           top_p: 0.9,
           enable_thinking: true,
           num_ctx: 32768,
-          providerPreferences: { order: ['groq'] },
         },
       }),
     );
     expect(loaded.temperature).toBe(0.4);
     expect(loaded.maxTokens).toBe(512);
     expect(loaded.topP).toBe(0.9);
-    expect(loaded.parameters).toEqual({
-      enable_thinking: true,
-      num_ctx: 32768,
-      providerPreferences: { order: ['groq'] },
-    });
+    expect(loaded.parameters).toEqual({ enable_thinking: true, num_ctx: 32768 });
+  });
+
+  /**
+   * v4's legacy-OpenRouter translation (`useProfileForm.ts:51-57`), ported at
+   * P4.D84 with the schema renderer it exists to feed: without it an old
+   * profile would show its ZDR box unticked while the wire still denied data
+   * collection.
+   */
+  it('translates the legacy providerPreferences shape into the flat enableZDR key', () => {
+    const loaded = loadProfileIntoForm(
+      profile({ parameters: { providerPreferences: { dataCollection: 'deny' } } }),
+    );
+    expect(loaded.parameters).toEqual({ enableZDR: true });
+  });
+
+  it('drops the nested key without inventing a flag when it says nothing about ZDR', () => {
+    const loaded = loadProfileIntoForm(
+      profile({ parameters: { providerPreferences: { order: ['groq'] } } }),
+    );
+    expect(loaded.parameters).toEqual({});
+  });
+
+  it('leaves an explicit enableZDR alone rather than overwriting it (v4 `:54`)', () => {
+    const loaded = loadProfileIntoForm(
+      profile({
+        parameters: { enableZDR: false, providerPreferences: { dataCollection: 'deny' } },
+      }),
+    );
+    expect(loaded.parameters).toEqual({ enableZDR: false });
   });
 
   it('does not mutate the DTO it loaded from', () => {

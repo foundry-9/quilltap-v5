@@ -71907,3 +71907,47 @@ showIf matrix. Mutation-proven in four places: the showIf defaulted lookup,
 boolean truthiness for identity, the multi-enum own-model filter + 50-cap,
 and a cleared number emitting `''` instead of `undefined` — each reddens its
 own case and only its own.
+
+### Unit 2 — the profile-modal cutover
+
+The hardcoded Enable Thinking row is DELETED (`profile-modal.ts:571-599` at
+lane start, with its `isOllama()` and `enableThinking()` computeds), and the
+class-doc paragraph that recorded the P4.D81 mechanism divergence is rewritten
+to say the schema machinery is here. The panel renders in v4's exact slot
+(`ProfileModal.tsx:899-908` — after Max Context, before the tag editor),
+guarded by `optionsSchema()` as v4 guards it, fed the preserved bag plus the
+fetched models and the bound model name.
+
+- **`setParameter` gained v4's delete-on-undefined arm** (`:208-210`), the
+  arm the aa464abf round recorded as "unreachable today". A cleared number
+  field is what reaches it, so it is reachable now. Spec-pinned end to end:
+  clearing Top K removes the key from the save payload while `num_ctx`
+  survives.
+- **The `affects: 'modelInput'` directive landed** (Tier 2 item 6 — measured
+  as live: openrouter declares it on `useCustomModel`). Derived from
+  `parameters.useCustomModel === true` exactly as v4 does, swapping the model
+  control for v4's free-text input whose datalist prefers the fetched models
+  (`:577-596`). Pinned by placeholder (`e.g., openai/gpt-4-turbo` vs
+  `e.g., gpt-4`), including the identity guard: the string `'true'` does not
+  trip it.
+- **v4's legacy-OpenRouter translation is now ported**
+  (`useProfileForm.ts:51-57`): nested `providerPreferences.dataCollection ===
+  'deny'` becomes the flat `enableZDR: true` the schema exposes, and the
+  nested key is dropped. v5 had deliberately skipped this, and the recorded
+  reason — "that translation exists to feed the schema renderer v5 does not
+  have" — expired this unit. Without it, an old OpenRouter profile would show
+  its ZDR box unticked while the wire still denied data collection. Both
+  spellings reach identical wire bytes
+  (`model/request_builder/chat_completions.rs:697,947`), so the ZDR field is
+  lossless; a sibling `providerPreferences.order` is dropped on the next save
+  — in v4 too, which is why v5 follows.
+
+**Specs:** `profile-modal.spec.ts`'s Ollama describe is replaced by two —
+"schema-driven provider options" (7 cases: no schema draws nothing, groups +
+help text, boolean identity incl. the retired string tolerance, showIf through
+the host, the provider switch swapping schemas, the preserved-bag save, the
+cleared-number delete) and "the modelInput directive" (3 cases). None weakened:
+every obligation the old describe pinned is re-pinned on the new mechanism.
+`profile-form.spec.ts` gains the three legacy-translation cases. Mutation-proven:
+rebuilding the bag inside `setParameter` reddens the preserve case and the
+delete case, and nothing else.

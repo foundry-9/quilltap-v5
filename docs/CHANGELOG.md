@@ -100,6 +100,15 @@ itself; the builder used to pack 10% past the line that then warned about
 it. The context builder also accepts `reserved_outgoing_tokens` — room held
 back for what the caller adds after the context is built — and says so by
 name when the fixed payload leaves no room for conversation history at all.
+Cut the connection-profile editor over to the schema-driven options panel.
+The hardcoded Ollama "Enable Thinking" row is gone; Ollama's own schema draws
+it along with thinking effort, keep-alive, the request timeout, and the whole
+sampling group, and every other provider's options appear the same way.
+Clearing a numeric option now removes the key instead of leaving a hole,
+OpenRouter's "Use Custom Model ID" switches the model box to free text, and an
+old profile's nested OpenRouter data-collection preference is translated to the
+flat zero-data-retention flag the panel shows.
+
 Added the schema-driven provider-options renderer to the connection-profile
 editor (`qt-provider-options-panel`), a port of v4's `ProviderOptionsPanel`.
 It draws boolean, enum, multi-enum, string, and number fields from the schema
