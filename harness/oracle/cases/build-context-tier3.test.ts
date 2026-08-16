@@ -99,6 +99,14 @@ interface Op {
   }>;
   skipMemories: boolean;
   compressionEnabled: boolean;
+  /** P4.D82 (v4 `f933ba9c`, bug 70): a connection profile carrying ONLY a Max
+   *  Context, with no compression settings — the budget must follow the profile
+   *  window rather than the model-name lookup. */
+  profileMaxContext?: number;
+  /** P4.D82: `options.reservedOutgoingTokens` — the tokens the caller will add
+   *  after the context is built (tool schemas + spliced system messages), held
+   *  back from the message budget. */
+  reservedOutgoingTokens?: number;
   /** P4.D50: the instance-wide Taboo list this op runs under. Written through
    *  the REAL `setTabooSettings` before EVERY op (an absent field writes the
    *  empty list) so the row can never leak from one op to the next — the ops
@@ -371,6 +379,18 @@ async function main(): Promise<void> {
     }
     if (op.distillEnabled) {
       options.cheapLLMSelection = cheapLLMSelection;
+    }
+    // P4.D82: a profile-only op (no compression) — the budget window comes from
+    // the profile's Max Context (v4 `f933ba9c`).
+    if (op.profileMaxContext != null) {
+      options.connectionProfile = {
+        maxContext: op.profileMaxContext,
+        maxTokens: 1000,
+        modelClass: null,
+      };
+    }
+    if (op.reservedOutgoingTokens != null) {
+      options.reservedOutgoingTokens = op.reservedOutgoingTokens;
     }
     if (op.compressionEnabled) {
       options.connectionProfile = connectionProfile;

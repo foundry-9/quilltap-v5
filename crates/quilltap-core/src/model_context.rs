@@ -131,8 +131,43 @@ pub fn get_model_context_limit(
     default_context_by_provider(provider).unwrap_or(8192)
 }
 
+/// Resolve the effective context window — v4's `resolveContextWindow`
+/// (`lib/llm/model-context-data.ts:154`) in the lookup form: the profile's
+/// user-set Max Context wins, the name lookup is the fallback, and a zero or
+/// negative column falls through rather than producing a zero-token budget.
+///
+/// v4 keeps both halves in one module; v5 splits them (see this module's header),
+/// so the arithmetic half lives in [`crate::context_budget::resolve_context_window`]
+/// and this is the composition with [`get_model_context_limit`]. Callers holding a
+/// profile must route through one of the two rather than calling the lookup bare,
+/// or the budget and the compression trigger end up on two different windows
+/// (v4 bug 70).
+pub fn resolve_context_window(
+    provider: &str,
+    model_name: &str,
+    model_info: &[ModelInfo],
+    fallback_pricing: &[PricingRow],
+    registry_default: i64,
+    profile_max_context: Option<i64>,
+) -> i64 {
+    // The profile wins before the lookup runs at all (v4 returns early).
+    if let Some(c) = profile_max_context {
+        if c > 0 {
+            return c;
+        }
+    }
+    get_model_context_limit(
+        provider,
+        model_name,
+        model_info,
+        fallback_pricing,
+        registry_default,
+    )
+}
+
 /// Whether the model supports extended (> 32k) context — v4's
-/// `hasExtendedContext`.
+/// `hasExtendedContext`. Deliberately NOT profile-aware: v4's `f933ba9c` left
+/// this one on the bare lookup.
 pub fn has_extended_context(
     provider: &str,
     model_name: &str,
@@ -149,8 +184,13 @@ pub fn has_extended_context(
     ) > 32768
 }
 
-/// Safe input-context limit: the total window minus the response reserve and a
-/// 10% safety buffer (`ceil`), floored at 1000 — v4's `getSafeInputLimit`.
+/// Safe input-context limit: the resolved window minus the response reserve and
+/// a 10% safety buffer (`ceil`), floored at 1000 — v4's `getSafeInputLimit`.
+///
+/// Since `f933ba9c` v4 composes this from `computeSafeInputLimit` over
+/// `resolveContextWindow` instead of re-deriving the arithmetic, so the formula
+/// has exactly one owner ([`crate::context_budget::compute_safe_input_limit`])
+/// and the profile's Max Context governs here too.
 pub fn get_safe_input_limit(
     provider: &str,
     model_name: &str,
@@ -158,17 +198,15 @@ pub fn get_safe_input_limit(
     fallback_pricing: &[PricingRow],
     registry_default: i64,
     max_response_tokens: i64,
+    profile_max_context: Option<i64>,
 ) -> i64 {
-    let total = get_model_context_limit(
+    let total = resolve_context_window(
         provider,
         model_name,
         model_info,
         fallback_pricing,
         registry_default,
+        profile_max_context,
     );
-    // Math.ceil(total * 0.10) — total is integral and well under 2^53, so the
-    // f64 product is exact and the ceil is unambiguous.
-    let safety_buffer = ((total as f64) * 0.10).ceil() as i64;
-    let safe = total - max_response_tokens - safety_buffer;
-    safe.max(1000)
+    crate::context_budget::compute_safe_input_limit(total, max_response_tokens)
 }

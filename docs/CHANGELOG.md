@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+The context budget now honors the connection profile's Max Context (v4 bug
+70). A profile pointed at a model no lookup table knows — any `hf.co/...`
+Ollama tag, any custom OpenAI-compatible endpoint — was budgeted at the
+8192-token provider default while the compression trigger, which does read
+the profile, worked from the real window; history was trimmed to fit the
+small figure on every turn. `resolve_context_window` is now the single
+source of the window (the profile wins, the name lookup is the fallback, a
+zero or negative setting falls through), and the allocation, the safe-input
+limit, `calculate_max_available` and the self-inventory last-turn section
+all route through it. The builder and the pre-send validation now share one
+ceiling (`safe_input_limit` = window less response reserve less a 10%
+estimator margin), which `ContextBudget` carries alongside the margin
+itself; the builder used to pack 10% past the line that then warned about
+it. The context builder also accepts `reserved_outgoing_tokens` — room held
+back for what the caller adds after the context is built — and says so by
+name when the fixed payload leaves no room for conversation history at all.
+
 Planned the 93ed8abf drift catch-up round and committed its three work
 orders: P4.D82 (bug 70 — the context budget honors the profile's Max
 Context, with the new turn-extras tool-schema token accounting), P4.D83

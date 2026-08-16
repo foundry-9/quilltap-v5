@@ -15,8 +15,9 @@
 //!     cargo test -p quilltap-harness --test context_budget_equivalence
 
 use quilltap_core::context_budget::{
-    calculate_max_available, calculate_recent_message_count, get_recommended_context_allocation,
-    get_safe_input_limit, has_extended_context, resolve_max_tokens, should_summarize_conversation,
+    calculate_max_available, calculate_recent_message_count, compute_safe_input_limit,
+    get_recommended_context_allocation, get_safe_input_limit, has_extended_context,
+    resolve_context_window, resolve_max_tokens, should_summarize_conversation,
 };
 use serde::Deserialize;
 
@@ -44,6 +45,10 @@ struct AllocOut {
     recent_messages: f64,
     #[serde(rename = "responseReserve")]
     response_reserve: i64,
+    #[serde(rename = "safetyMargin")]
+    safety_margin: i64,
+    #[serde(rename = "safeInputLimit")]
+    safe_input_limit: i64,
 }
 
 #[derive(Deserialize)]
@@ -94,15 +99,19 @@ enum OracleRow {
     #[serde(rename = "allocation")]
     Allocation {
         id: String,
-        #[serde(rename = "totalLimit")]
-        total_limit: i64,
+        #[serde(rename = "modelContextLimit")]
+        model_context_limit: i64,
+        #[serde(rename = "maxContext")]
+        max_context: Option<i64>,
         out: AllocOut,
     },
     #[serde(rename = "safeInput")]
     SafeInput {
         id: String,
-        #[serde(rename = "totalLimit")]
-        total_limit: i64,
+        #[serde(rename = "modelContextLimit")]
+        model_context_limit: i64,
+        #[serde(rename = "maxContext")]
+        max_context: Option<i64>,
         #[serde(rename = "maxResponseTokens")]
         max_response_tokens: i64,
         out: i64,
@@ -113,6 +122,31 @@ enum OracleRow {
         #[serde(rename = "totalLimit")]
         total_limit: i64,
         out: bool,
+    },
+    /// v4 `resolveContextWindow` (`f933ba9c`). `profile_absent` records what JSON
+    /// cannot: a missing profile argument and a profile carrying an explicit null
+    /// both ship `maxContext: null`. Both resolve identically, and the row asserts
+    /// that by feeding the SAME `None` for either.
+    #[serde(rename = "resolveWindow")]
+    ResolveWindow {
+        id: String,
+        #[serde(rename = "modelContextLimit")]
+        model_context_limit: i64,
+        #[serde(rename = "maxContext")]
+        max_context: Option<i64>,
+        #[serde(rename = "profileAbsent")]
+        profile_absent: bool,
+        out: i64,
+    },
+    /// v4 `computeSafeInputLimit` (`f933ba9c`).
+    #[serde(rename = "computeSafe")]
+    ComputeSafe {
+        id: String,
+        #[serde(rename = "totalLimit")]
+        total_limit: i64,
+        #[serde(rename = "responseReserve")]
+        response_reserve: i64,
+        out: i64,
     },
 }
 
@@ -127,7 +161,7 @@ fn context_budget_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 7];
+    let mut counts = [0usize; 9];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Summarize {
@@ -194,10 +228,11 @@ fn context_budget_matches_oracle() {
             }
             OracleRow::Allocation {
                 id,
-                total_limit,
+                model_context_limit,
+                max_context,
                 out,
             } => {
-                let got = get_recommended_context_allocation(total_limit);
+                let got = get_recommended_context_allocation(model_context_limit, max_context);
                 assert_eq!(got.total_limit, out.total_limit, "allocation '{id}' total");
                 assert_eq!(
                     got.system_prompt, out.system_prompt,
@@ -219,16 +254,25 @@ fn context_budget_matches_oracle() {
                     got.response_reserve, out.response_reserve,
                     "allocation '{id}' reserve"
                 );
+                assert_eq!(
+                    got.safety_margin, out.safety_margin,
+                    "allocation '{id}' safetyMargin"
+                );
+                assert_eq!(
+                    got.safe_input_limit, out.safe_input_limit,
+                    "allocation '{id}' safeInputLimit"
+                );
                 counts[4] += 1;
             }
             OracleRow::SafeInput {
                 id,
-                total_limit,
+                model_context_limit,
+                max_context,
                 max_response_tokens,
                 out,
             } => {
                 assert_eq!(
-                    get_safe_input_limit(total_limit, max_response_tokens),
+                    get_safe_input_limit(model_context_limit, max_response_tokens, max_context),
                     out,
                     "safeInput '{id}'"
                 );
@@ -241,6 +285,38 @@ fn context_budget_matches_oracle() {
             } => {
                 assert_eq!(has_extended_context(total_limit), out, "hasExtended '{id}'");
                 counts[6] += 1;
+            }
+            OracleRow::ResolveWindow {
+                id,
+                model_context_limit,
+                max_context,
+                profile_absent,
+                out,
+            } => {
+                assert_eq!(
+                    resolve_context_window(model_context_limit, max_context),
+                    out,
+                    "resolveWindow '{id}'"
+                );
+                if profile_absent {
+                    // The absent-profile arm must resolve exactly as the
+                    // null-maxContext arm does (v4 short-circuits on `?.`).
+                    assert_eq!(max_context, None, "resolveWindow '{id}' absent-but-set");
+                }
+                counts[7] += 1;
+            }
+            OracleRow::ComputeSafe {
+                id,
+                total_limit,
+                response_reserve,
+                out,
+            } => {
+                assert_eq!(
+                    compute_safe_input_limit(total_limit, response_reserve),
+                    out,
+                    "computeSafe '{id}'"
+                );
+                counts[8] += 1;
             }
         }
     }

@@ -2083,6 +2083,7 @@ where
     let build_input = build_context_input(BuildContextArgs {
         user_id: &user_id,
         model_context_limit: input.model_context_limit,
+        reserved_outgoing_tokens: None,
         timestamp_config: input.timestamp_config.clone(),
         timezone: input.timezone.clone(),
         server_tz: input.server_tz.clone(),
@@ -3643,6 +3644,11 @@ pub(crate) struct BuildContextArgs<'a> {
     /// the per-run token budget. `None` (every non-autonomous caller) leaves the
     /// budget untouched.
     pub autonomous_context_cap: Option<i64>,
+    /// The tokens this turn will add to the payload after the context is built
+    /// (v4 `options.reservedOutgoingTokens`, `f933ba9c`) — the tool schemas plus
+    /// the system messages the orchestrator splices in. `None` leaves the message
+    /// budget untouched.
+    pub reserved_outgoing_tokens: Option<i64>,
     /// "Nothing to add" turn-skipping — the per-turn ephemeral instruction
     /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
     /// (regenerate-swipe) that never offer the pass.
@@ -3733,6 +3739,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
 
     BuildContextInput {
         model_context_limit: args.model_context_limit,
+        reserved_outgoing_tokens: args.reserved_outgoing_tokens,
         user_id: args.user_id.to_string(),
         character,
         user_character: args.user_character,

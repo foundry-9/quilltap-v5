@@ -13,7 +13,8 @@
 //!     cargo test -p quilltap-harness --test model_context_equivalence
 
 use quilltap_core::model_context::{
-    get_model_context_limit, get_safe_input_limit, has_extended_context, ModelInfo, PricingRow,
+    get_model_context_limit, get_safe_input_limit, has_extended_context, resolve_context_window,
+    ModelInfo, PricingRow,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -52,7 +53,13 @@ enum Row {
         model: String,
         #[serde(rename = "maxResponseTokens")]
         max_response_tokens: i64,
+        /// The profile's Max Context for this query (`null` = no profile at all).
+        #[serde(rename = "maxContext")]
+        max_context: Option<i64>,
         limit: i64,
+        /// v4 `resolveContextWindow(provider, model, profile)` — the profile-first
+        /// window the budget now uses (`f933ba9c`, bug 70).
+        resolved: i64,
         extended: bool,
         #[serde(rename = "safeInput")]
         safe_input: i64,
@@ -118,7 +125,9 @@ fn model_context_matches_oracle() {
             provider,
             model,
             max_response_tokens,
+            max_context,
             limit,
+            resolved,
             extended,
             safe_input,
         } = q
@@ -141,6 +150,18 @@ fn model_context_matches_oracle() {
             "getModelContextLimit({provider}, {model})"
         );
         assert_eq!(
+            resolve_context_window(
+                provider,
+                model,
+                &c.model_info,
+                &c.fallback_pricing,
+                c.registry_default,
+                *max_context
+            ),
+            *resolved,
+            "resolveContextWindow({provider}, {model}, {max_context:?})"
+        );
+        assert_eq!(
             has_extended_context(
                 provider,
                 model,
@@ -158,7 +179,8 @@ fn model_context_matches_oracle() {
                 &c.model_info,
                 &c.fallback_pricing,
                 c.registry_default,
-                *max_response_tokens
+                *max_response_tokens,
+                *max_context
             ),
             *safe_input,
             "getSafeInputLimit({provider}, {model}, {max_response_tokens})"

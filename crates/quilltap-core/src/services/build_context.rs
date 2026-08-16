@@ -233,6 +233,16 @@ pub struct ContextBudget {
     #[serde(serialize_with = "serialize_js_number")]
     pub recent_messages_budget: f64,
     pub response_reserve: i64,
+    /// Tokens held back beyond the response reserve to absorb estimator error
+    /// (10% of the window). Part of `safe_input_limit`; broken out for logging.
+    pub safety_margin: i64,
+    /// The ceiling the outgoing payload must fit under:
+    /// `total_limit − response_reserve − safety_margin`.
+    ///
+    /// This is what the builder packs to *and* what the pre-send validation
+    /// checks against — one number, so a full context can no longer be reported
+    /// as an overage it was told to produce (v4 `f933ba9c`).
+    pub safe_input_limit: i64,
 }
 
 /// Serialize an `f64` the way v4's `JSON.stringify` renders it (integer-valued →
@@ -502,6 +512,19 @@ pub struct BuildContextInput {
     /// non-autonomous caller passes `None`, so pre-existing corpora are
     /// untouched.
     pub autonomous_context_cap: Option<i64>,
+    /// v4 `options.reservedOutgoingTokens` (`f933ba9c`): tokens the caller will
+    /// add to this turn's payload *after* the context is built, and which
+    /// therefore cannot be discovered by measuring what the builder produced —
+    /// the tool/function schemas (never in the message array at all), plus any
+    /// system message the orchestrator splices in downstream (agent-mode
+    /// instructions, the tool-change notice).
+    ///
+    /// Held back from the message budget so the builder doesn't pack history into
+    /// space that is already spoken for. `None` → unchanged behavior. See
+    /// [`crate::services::turn_extras`], which builds those additions and
+    /// measures them in one place so the reservation and the text it pays for
+    /// can't drift apart.
+    pub reserved_outgoing_tokens: Option<i64>,
     /// "Nothing to add" turn-skipping — per-turn ephemeral instruction control
     /// (v4 `options.turnSkip`, b90cd1f5). When `offer_skip` is true, a Turn note
     /// is appended to (or pushed after) the outgoing messages inviting the
@@ -1703,8 +1726,20 @@ where
     let now_ms_f = input.now_ms as f64;
     let mut warnings: Vec<String> = Vec::new();
 
-    // Budget.
-    let allocation = get_recommended_context_allocation(input.model_context_limit);
+    // Budget. The window comes from the profile's Max Context when it has one
+    // (v4 `f933ba9c`, bug 70): the model-name lookup knows nothing about the
+    // user's setting, so a profile pointed at an unrecognised model (any
+    // `hf.co/...` Ollama tag, any OpenAI-compatible endpoint) used to budget
+    // against the 8192-token provider default while `calculate_max_available`
+    // below — which does read the profile — worked from the real window. The two
+    // then disagreed, and the smaller one won where it hurts: history trimmed to
+    // fit a window the model never had.
+    let profile_max_context = input
+        .connection_profile
+        .as_ref()
+        .and_then(|p| p.max_context);
+    let allocation =
+        get_recommended_context_allocation(input.model_context_limit, profile_max_context);
     let budget = ContextBudget {
         total_limit: allocation.total_limit,
         system_prompt_budget: allocation.system_prompt,
@@ -1713,6 +1748,8 @@ where
         summary_budget: allocation.conversation_summary,
         recent_messages_budget: allocation.recent_messages,
         response_reserve: allocation.response_reserve,
+        safety_margin: allocation.safety_margin,
+        safe_input_limit: allocation.safe_input_limit,
     };
 
     let is_multi_character = input.responding_participant.is_some()
@@ -2623,12 +2660,23 @@ where
     let summary_tokens = 0i64;
 
     // 4. Remaining budget for messages.
+    //
+    // The ceiling is `safe_input_limit` — window less response reserve less the
+    // estimator safety margin — which is the same number the pre-send validation
+    // checks against. Packing to `total_limit − response_reserve` instead (as
+    // this did) meant deliberately filling 10% past the line that then warned
+    // about it.
+    //
+    // `reserved_outgoing_tokens` is the caller's declaration of what it will add
+    // afterwards (tool schemas, agent-mode instructions, tool-change notice);
+    // history must not be packed into space those will occupy.
     let used_tokens = effective_system_prompt_tokens
         + memory_recap_tokens
         + memory_tokens
         + inter_character_memory_tokens
         + summary_tokens;
-    let remaining_budget = budget.total_limit - used_tokens - budget.response_reserve;
+    let reserved_outgoing_tokens = input.reserved_outgoing_tokens.unwrap_or(0);
+    let remaining_budget = budget.safe_input_limit - used_tokens - reserved_outgoing_tokens;
 
     // 5. Prepare messages.
     let mut messages_to_process: Vec<SelectableMessage> = if is_multi_character {
@@ -2743,8 +2791,34 @@ where
         });
     }
 
+    // The fixed parts of the payload (system prompt, memories, and whatever the
+    // caller reserved) can add up to more than the window allows, leaving nothing
+    // for the conversation itself. That state is worth saying out loud: the
+    // symptom is a character with no apparent memory of the exchange, and the
+    // trimming that produces it is otherwise indistinguishable from routine
+    // housekeeping.
+    if remaining_budget <= 0 {
+        warnings.push(format!(
+            "No room left for conversation history: the system prompt, memories and reserved payload ({} tokens) fill the {}-token input budget. Raise Max Context on the connection profile, or trim the character.",
+            used_tokens + reserved_outgoing_tokens,
+            budget.safe_input_limit
+        ));
+        tracing::warn!(
+            safe_input_limit = budget.safe_input_limit,
+            system_prompt_tokens = effective_system_prompt_tokens,
+            memory_tokens,
+            memory_recap_tokens,
+            inter_character_memory_tokens,
+            reserved_outgoing_tokens,
+            remaining_budget,
+            "[ContextManager] Message budget exhausted before any history"
+        );
+    }
+
     // 6. Select recent messages.
-    let recent_budget = remaining_budget.min(budget.recent_messages_budget.floor() as i64);
+    let recent_budget = remaining_budget
+        .min(budget.recent_messages_budget.floor() as i64)
+        .max(0);
     let selection = select_recent_messages(&messages_to_process, recent_budget, cpt);
     let selected_messages = selection.messages;
     let messages_tokens = selection.token_count;

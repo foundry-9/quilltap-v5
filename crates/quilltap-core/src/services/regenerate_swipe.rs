@@ -246,6 +246,10 @@ where
     let build_input = build_context_input(BuildContextArgs {
         user_id: &user_id,
         model_context_limit,
+        // v4's `f933ba9c` reserves the turn extras on the orchestrator path only;
+        // the regenerate/swipe path builds no tool schemas and splices nothing,
+        // so it reserves nothing here either.
+        reserved_outgoing_tokens: None,
         timestamp_config: timestamp_config.clone(),
         timezone: timezone.clone(),
         server_tz: server_tz.clone(),

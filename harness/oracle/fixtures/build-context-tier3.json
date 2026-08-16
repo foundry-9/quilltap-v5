@@ -888,6 +888,50 @@
         "that's not nothing",
         "as {{char}} always says"
       ]
+    },
+    {
+      "name": "profile_window_governs_budget",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessagesRepeat": {
+        "count": 40,
+        "userContent": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+        "assistantContent": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+      },
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "profileMaxContext": 8000,
+      "timestampMode": null
+    },
+    {
+      "name": "reserved_outgoing_trims_history",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessagesRepeat": {
+        "count": 40,
+        "userContent": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+        "assistantContent": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+      },
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "profileMaxContext": 8000,
+      "reservedOutgoingTokens": 2000,
+      "timestampMode": null
+    },
+    {
+      "name": "reserved_outgoing_exhausts_budget",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessagesRepeat": {
+        "count": 40,
+        "userContent": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+        "assistantContent": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+      },
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "profileMaxContext": 8000,
+      "reservedOutgoingTokens": 8000,
+      "timestampMode": null
     }
   ],
   "vaultConversationSummaries": [

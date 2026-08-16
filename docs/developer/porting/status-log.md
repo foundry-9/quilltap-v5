@@ -71080,3 +71080,111 @@ budget/attribution, P4.D77's trio, #75's acceptance look).
 
 - The import preflight's swallowed DB read errors (v4 proceeds into a
   partial apply where v5 now refuses — the P4.48 divergence's other half).
+
+---
+
+## P4.D82 unit 1 — `resolveContextWindow` + `computeSafeInputLimit` + the budget seam (v4 `f933ba9c`, bug 70)
+
+**Branch:** `claude/p4-context-budget-server-7a3db5`. **v4 pin:**
+`93ed8abf` (drift-checked at lane start: v4 HEAD == the baseline, tree
+clean, on `main`; `bugfix` behind main at `3a76b17d`, nothing portable).
+Regen throughout from the detached pin worktree
+`/tmp/qt-v4-pin-p4d82-93ed8abf` (all three symlink classes) via
+`recipe_sweep.py --v4`.
+
+### What landed
+
+- **`context_budget.rs`**: `CONTEXT_SAFETY_MARGIN_RATIO = 0.10`;
+  `resolve_context_window(model_context_limit, profile_max_context)` (the
+  injected-limit form of v4's `resolveContextWindow`); `compute_safe_input_limit`
+  (v4's `computeSafeInputLimit` — the old arithmetic-form `get_safe_input_limit`
+  RENAMED, since it was already exactly that formula and having two names for it
+  is the duplication v4's commit removes); `get_safe_input_limit` re-formed as
+  v4's profile-aware consumer (`compute` over `resolve`); `ContextAllocation`
+  gains `safety_margin` + `safe_input_limit`;
+  `get_recommended_context_allocation` now takes the profile and resolves the
+  window itself; `calculate_max_available` routes through `resolve_context_window`.
+- **`model_context.rs`**: the LOOKUP form `resolve_context_window(...)`
+  (v4 keeps both halves in one file; v5 splits them, so the two forms share
+  the name the way `has_extended_context` / `get_safe_input_limit` already
+  did); `get_safe_input_limit` gains the profile and DELEGATES to
+  `context_budget::compute_safe_input_limit` (v4 stopped re-deriving it).
+- **`build_context.rs`**: the seam. The allocation is computed from
+  `input.connection_profile.max_context` (v4's `calculateContextBudget(provider,
+  model, profile)`); `ContextBudget` carries `safetyMargin` + `safeInputLimit`
+  (appended, matching v4's return-literal key order); the message budget's
+  ceiling moves from `total_limit − response_reserve` to `safe_input_limit`;
+  the new `reserved_outgoing_tokens` input is subtracted; the
+  no-room-for-history case pushes v4's named warning + the
+  `[ContextManager] Message budget exhausted before any history` log, and the
+  recent-message budget gains v4's `Math.max(0, …)`.
+- **`self_inventory.rs`**: the last-turn `profile_fallback` window routes
+  through `resolve_context_window` — a REAL behavior change, not cosmetic:
+  v5's `profile.maxContext ?? lookup` reported a zero or negative Max Context
+  verbatim as the window.
+- `regenerate_swipe.rs` passes `reserved_outgoing_tokens: None` — v4's fix
+  reserves on the orchestrator path only (that path builds no tool schemas and
+  splices nothing).
+
+### Measured, not assumed (the order's convergence question)
+
+- **CONVERGENCE**: `calculate_max_available` already resolved profile-first;
+  routing it through the shared helper is behavior-identical (v4 converged on
+  v5's shape here). Proven by the `maxAvailable` rows staying green unchanged.
+- **NEW in v5**: the ALLOCATION path (`build_context.rs` budgeted from the raw
+  model window), the safe-input-limit unification, the reservation, the
+  no-room warning, and the `Math.max(0, …)` clamp.
+- **NOT profile-aware, measured**: v4's `hasExtendedContext` was deliberately
+  left on the bare lookup by `f933ba9c`. The oracle's `hasExtended` rows stay
+  profile-free and the model-context corpus pins it (a 65536 profile on an
+  8192-lookup model still reports `extended: false`).
+
+### Differentials
+
+- **`context_budget`** — new row kinds `resolveWindow` (11 cases: profile
+  wins / below-lookup / zero / negative / null / empty profile / null profile /
+  absent profile / huge finite / one token) and `computeSafe` (5); the
+  `allocation` (5 → 12) and `safeInput` (4 → 7) rows now carry
+  `modelContextLimit` + `maxContext` and drive v4's new signatures; the
+  allocation comparand gained `safetyMargin` + `safeInputLimit`. Counts
+  `[5, 5, 6, 4, 12, 7, 5, 11, 5]`. **NO Infinity row** — `JSON.stringify(Infinity)`
+  is `null`, so such a row would assert the opposite of what v4 did
+  (`p4.6ay-units-1-3-zod-and-js`); a huge finite window covers the arm honestly.
+  **Mutation-proven**: `Some(c) if c >= 0` (zero stops falling through) →
+  red on `resolveWindow 'zero-falls-through'`.
+- **`model_context`** — `query` rows gain `maxContext` + `resolved`; six new
+  queries incl. the `hf.co/...` tag with 65536 / 0 / −1 and an
+  OPENAI_COMPATIBLE endpoint. This is the family that pins the bug's own
+  shape: `limit: 8192, resolved: 65536, safeInput: 3276 → 54886`.
+- **`build_context_tier3`** — THREE new corpus ops (`profile_window_governs_budget`,
+  `reserved_outgoing_trims_history`, `reserved_outgoing_exhausts_budget`) over a
+  new profile-only corpus field (`profileMaxContext`, a connection profile with
+  no compression machinery) plus `reservedOutgoingTokens`. The reservation
+  observably binds (58 → 53 messages, 3204 → 2916 recent tokens) and the
+  exhaustion op carries v4's named warning verbatim. The pre-existing
+  `compression_applied` / `compression_from_cache` ops shifted from the 200k
+  tier to the 8k tier exactly as the order predicted — the fix's sharpest
+  witness, green byte-for-byte. **Mutation-proven twice**: dropping the
+  reservation → red on `reserved_outgoing_trims_history`; passing `None` for the
+  profile → red on `compression_applied`.
+- **`self_inventory`** — regenerated + re-run green. **Coverage gap, recorded:**
+  the fixture seeds an `llmLog`, so the last-turn section always takes the
+  `llm_log` branch (`grep -c profile_fallback` on the oracle = 0) — the changed
+  line is not exercised by this corpus. The `??`-vs-resolve difference it fixes
+  IS pinned at the function level by `context_budget`'s
+  `zero-falls-through` / `negative-falls-through` rows.
+
+### Gate (unit 1)
+
+`cargo fmt --all --check` clean; clippy BOTH feature sets clean;
+`cargo test --workspace` with the unit's env block: **435 test binaries /
+2,125 tests / 0 failed, exit 0, zero `SKIP:` lines**.
+
+### Regen recipes
+
+```
+python3.13 harness/tools/recipe_sweep.py --run context_budget_equivalence      --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
+python3.13 harness/tools/recipe_sweep.py --run model_context_equivalence       --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
+python3.13 harness/tools/recipe_sweep.py --run build_context_tier3_equivalence --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
+python3.13 harness/tools/recipe_sweep.py --run self_inventory_equivalence      --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
+```

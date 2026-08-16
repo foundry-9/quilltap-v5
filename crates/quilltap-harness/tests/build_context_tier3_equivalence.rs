@@ -98,6 +98,15 @@ struct SpecOp {
     messages_with_participants: Vec<SpecMwp>,
     skip_memories: bool,
     compression_enabled: bool,
+    /// P4.D82 (v4 `f933ba9c`, bug 70): a connection profile carrying ONLY a Max
+    /// Context — no compression settings, no cheap-LLM selection. The budget must
+    /// follow the profile window rather than the model-name lookup.
+    #[serde(default)]
+    profile_max_context: Option<i64>,
+    /// P4.D82: `options.reservedOutgoingTokens` — what the caller will add after
+    /// the context is built, held back from the message budget.
+    #[serde(default)]
+    reserved_outgoing_tokens: Option<i64>,
     /// P4.D50: the instance-wide Taboo list this op runs under (absent = empty).
     #[serde(default)]
     taboo_phrases: Vec<String>,
@@ -591,6 +600,19 @@ async fn build_context_tier3_matches_oracle() {
             )
         } else if op.distill_enabled {
             (None, None, Some(selection.clone()))
+        } else if let Some(max_context) = op.profile_max_context {
+            // P4.D82: profile-only — a window, no compression machinery.
+            (
+                Some(
+                    quilltap_core::services::build_context::ConnectionProfileInput {
+                        max_context: Some(max_context),
+                        max_tokens: Some(1000),
+                        model_class: None,
+                    },
+                ),
+                None,
+                None,
+            )
         } else {
             (None, None, None)
         };
@@ -617,6 +639,7 @@ async fn build_context_tier3_matches_oracle() {
             autonomous_context_cap: None,
             turn_skip: None,
             model_context_limit: model_limit(),
+            reserved_outgoing_tokens: op.reserved_outgoing_tokens,
             user_id: spec.user_id.clone(),
             character,
             user_character: Some(UserCharacter {

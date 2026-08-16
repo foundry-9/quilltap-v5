@@ -22,6 +22,49 @@ pub const DEFAULT_MAX_CONTEXT: i64 = 128000;
 pub const DEFAULT_MAX_TOKENS: i64 = 8000;
 /// Minimum floor for max_available to prevent degenerate cases.
 pub const MIN_MAX_AVAILABLE: i64 = 4096;
+/// Fraction of the context window held back beyond the response reserve, to
+/// absorb the gap between the character-based token estimates and the model's
+/// real tokenizer (v4 `CONTEXT_SAFETY_MARGIN_RATIO`).
+pub const CONTEXT_SAFETY_MARGIN_RATIO: f64 = 0.10;
+
+/// Resolve the effective context window for a request — v4's
+/// `resolveContextWindow` (`lib/llm/model-context-data.ts:154`) in this module's
+/// injected-limit form.
+///
+/// **This is the single source of truth for "how big is this model's window".**
+/// The profile's user-set Max Context wins over the table lookup: the tables are
+/// keyed by model name and go stale the moment someone points Ollama or an
+/// OpenAI-compatible endpoint at a model the table has never heard of, at which
+/// point the lookup silently returns a conservative provider default (8192 for
+/// OLLAMA / OPENAI_COMPATIBLE). Budgeting a 64k model as 8k truncates
+/// conversation history on every turn (v4 bug 70).
+///
+/// A zero or negative `profile_max_context` falls through to the lookup rather
+/// than producing a zero-token budget. `model_context_limit` is v4's
+/// `getModelContextLimit(provider, model)` result, injected at the boundary
+/// (registry resolution is out of scope — see the module note); the lookup form
+/// that composes both halves is [`crate::model_context::resolve_context_window`].
+pub fn resolve_context_window(model_context_limit: i64, profile_max_context: Option<i64>) -> i64 {
+    match profile_max_context {
+        Some(c) if c > 0 => c,
+        _ => model_context_limit,
+    }
+}
+
+/// The ceiling the outgoing payload must fit under: window, less the response
+/// reserve, less the safety margin — v4's `computeSafeInputLimit` (:188), floored
+/// at 1000.
+///
+/// **Everything that packs the payload and everything that validates it must use
+/// this same number.** They used not to: the context builder filled to
+/// `total_limit − response_reserve` while the pre-send check warned above
+/// `total_limit − response_reserve − 10%`, so the builder always aimed past the
+/// line the validator drew and a full context reported an overage it had been
+/// told to produce.
+pub fn compute_safe_input_limit(total_limit: i64, response_reserve: i64) -> i64 {
+    let safety_margin = (total_limit as f64 * CONTEXT_SAFETY_MARGIN_RATIO).ceil() as i64;
+    (total_limit - response_reserve - safety_margin).max(1000)
+}
 
 /// Whether a conversation should be summarized: more than 60% context usage, or
 /// more than 20 messages. (Usage is `estimated/limit*100`, a float compare.)
@@ -93,12 +136,13 @@ pub fn calculate_max_available(
     profile_max_tokens: Option<i64>,
     model_class: Option<&str>,
 ) -> MaxAvailable {
-    let max_context = match profile_max_context {
-        Some(c) if c > 0 => c,
-        // v4: `getModelContextLimit(...) || DEFAULT_MAX_CONTEXT` — the `|| DEFAULT`
-        // arm only fires if the limit is falsy (0), which it never is in practice.
-        _ if model_context_limit != 0 => model_context_limit,
-        _ => DEFAULT_MAX_CONTEXT,
+    // v4 `f933ba9c`: `resolveContextWindow(...) || DEFAULT_MAX_CONTEXT` — the
+    // `|| DEFAULT` arm only fires if the resolved window is falsy (0), which it
+    // never is in practice. The profile-first order this function already had is
+    // now the shared `resolve_context_window` (v4 converged on it here).
+    let max_context = match resolve_context_window(model_context_limit, profile_max_context) {
+        0 => DEFAULT_MAX_CONTEXT,
+        c => c,
     };
 
     let max_tokens = resolve_max_tokens(profile_max_tokens, model_class);
@@ -113,12 +157,18 @@ pub fn calculate_max_available(
     }
 }
 
-/// Safe input context limit: `total − maxResponse − ceil(total·10%)`, floored at
-/// 1000 (reserves the response plus a 10% safety buffer).
-pub fn get_safe_input_limit(total_limit: i64, max_response_tokens: i64) -> i64 {
-    let safety_buffer = (total_limit as f64 * 0.10).ceil() as i64;
-    let safe_limit = total_limit - max_response_tokens - safety_buffer;
-    safe_limit.max(1000)
+/// Safe input context limit for a resolved window — v4's `getSafeInputLimit`
+/// (:205) in injected-limit form: [`compute_safe_input_limit`] over
+/// [`resolve_context_window`], so the profile's Max Context governs here too.
+pub fn get_safe_input_limit(
+    model_context_limit: i64,
+    max_response_tokens: i64,
+    profile_max_context: Option<i64>,
+) -> i64 {
+    compute_safe_input_limit(
+        resolve_context_window(model_context_limit, profile_max_context),
+        max_response_tokens,
+    )
 }
 
 /// Whether a model supports extended context (> 32768 tokens).
@@ -138,12 +188,28 @@ pub struct ContextAllocation {
     pub conversation_summary: i64,
     pub recent_messages: f64,
     pub response_reserve: i64,
+    /// Tokens held back beyond the response reserve to absorb estimator error
+    /// (10% of the window). Part of `safe_input_limit`; broken out for logging.
+    pub safety_margin: i64,
+    /// The ceiling the outgoing payload must fit under:
+    /// `total_limit − response_reserve − safety_margin`.
+    pub safe_input_limit: i64,
 }
 
-/// Compute the recommended allocations for a resolved `total_limit`. Mirrors v4
-/// exactly: `Math.floor` on the percentage buckets (with floors), a tiered
-/// `response_reserve`, and an un-floored `recent_messages` fraction.
-pub fn get_recommended_context_allocation(total_limit: i64) -> ContextAllocation {
+/// Compute the recommended allocations for a window — v4's
+/// `getRecommendedContextAllocation`. The window is resolved through
+/// [`resolve_context_window`], so the profile's Max Context wins over the
+/// injected model-name lookup (v4 bug 70: budgeting from the lookup alone
+/// trimmed history to an 8192-token window a 64k profile never had).
+///
+/// Mirrors v4 exactly otherwise: `Math.floor` on the percentage buckets (with
+/// floors), a tiered `response_reserve`, and an un-floored `recent_messages`
+/// fraction.
+pub fn get_recommended_context_allocation(
+    model_context_limit: i64,
+    profile_max_context: Option<i64>,
+) -> ContextAllocation {
+    let total_limit = resolve_context_window(model_context_limit, profile_max_context);
     let t = total_limit as f64;
     let system_prompt = 4000.max((t * 0.20).floor() as i64);
     let memories = 2000.max((t * 0.04).floor() as i64);
@@ -176,5 +242,7 @@ pub fn get_recommended_context_allocation(total_limit: i64) -> ContextAllocation
         conversation_summary,
         recent_messages,
         response_reserve,
+        safety_margin: (t * CONTEXT_SAFETY_MARGIN_RATIO).ceil() as i64,
+        safe_input_limit: compute_safe_input_limit(total_limit, response_reserve),
     }
 }

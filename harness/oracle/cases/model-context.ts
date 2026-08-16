@@ -34,6 +34,7 @@ import {
   getModelContextLimit,
   hasExtendedContext,
   getSafeInputLimit,
+  resolveContextWindow,
 } from '@/lib/llm/model-context-data';
 import { FALLBACK_PRICING } from '@/lib/llm/pricing';
 import {
@@ -85,7 +86,12 @@ for (const p of PROVIDERS) {
 }
 
 // (provider, model, maxResponseTokens) — covering every lookup branch.
-const queries: Array<[string, string, number]> = [
+// Since v4 `f933ba9c` (bug 70) the lookup's two profile-aware consumers —
+// resolveContextWindow and getSafeInputLimit — take the connection profile, whose
+// Max Context wins over the name lookup (zero/negative/null fall through).
+// hasExtendedContext deliberately did NOT gain the parameter; measured, not
+// assumed. The fourth tuple slot is the profile's maxContext (null = no profile).
+const queries: Array<[string, string, number, (number | null)?]> = [
   // exact overrides
   ['OPENAI', 'gpt-4-32k', 4096],
   ['OLLAMA', 'phi3:mini', 4096],
@@ -119,16 +125,28 @@ const queries: Array<[string, string, number]> = [
   // safe-input floor (huge response reserve clamps to 1000)
   ['OLLAMA', 'phi3:mini', 1000000],
   ['ANTHROPIC', 'claude-sonnet-4-5-20250929', 8192],
+  // bug 70: an unrecognised tag on a provider whose default is the conservative
+  // 8192, with and without a Max Context on the profile.
+  ['OLLAMA', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL', 4096],
+  ['OLLAMA', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL', 4096, 65536],
+  ['OLLAMA', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL', 4096, 0],
+  ['OLLAMA', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL', 4096, -1],
+  ['OPENAI_COMPATIBLE', 'some-local-endpoint-model', 4096, 32768],
+  // a profile SMALLER than the table's answer still wins
+  ['OPENAI', 'gpt-4-32k', 4096, 4096],
 ];
-for (const [provider, model, maxResp] of queries) {
+for (const [provider, model, maxResp, maxContext] of queries) {
+  const profile = maxContext === undefined || maxContext === null ? undefined : { maxContext };
   rows.push({
     kind: 'query',
     provider,
     model,
     maxResponseTokens: maxResp,
+    maxContext: maxContext ?? null,
     limit: getModelContextLimit(provider as any, model),
+    resolved: resolveContextWindow(provider as any, model, profile),
     extended: hasExtendedContext(provider as any, model),
-    safeInput: getSafeInputLimit(provider as any, model, maxResp),
+    safeInput: getSafeInputLimit(provider as any, model, maxResp, profile),
   });
 }
 

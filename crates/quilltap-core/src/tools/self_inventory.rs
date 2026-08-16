@@ -1630,12 +1630,18 @@ fn build_last_turn_section(
 
     let provider = json_str(&profile, "provider").unwrap_or_default();
     let model_name = json_str(&profile, "modelName").unwrap_or_default();
-    // profile.maxContext ?? getModelContextLimit(...)
-    let context_window = profile
-        .get("maxContext")
-        .and_then(Value::as_f64)
-        .map(|f| f as i64)
-        .unwrap_or_else(|| env.model_context_limit(&provider, &model_name));
+    // v4 `f933ba9c`: `resolveContextWindow(profile.provider, profile.modelName,
+    // profile)` — the single source of truth, replacing this site's
+    // `profile.maxContext ?? getModelContextLimit(...)`. The difference is real:
+    // `??` only falls through on null, so a zero or negative Max Context used to
+    // be reported verbatim as the window.
+    let context_window = crate::context_budget::resolve_context_window(
+        env.model_context_limit(&provider, &model_name),
+        profile
+            .get("maxContext")
+            .and_then(Value::as_f64)
+            .map(|f| f as i64),
+    );
 
     Ok(LastTurnSection {
         available: true,
