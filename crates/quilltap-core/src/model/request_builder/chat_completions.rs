@@ -410,10 +410,14 @@ fn openai_compatible_normalize_profile_param(
     if key == "chat_template_kwargs" {
         if let Value::String(s) = value {
             return match serde_json::from_str::<Value>(s) {
-                Ok(v @ Value::Object(_)) => Some(v),
-                // v4: a parsed non-object (and a parse throw) both omit the key.
-                // `null` parses fine in JS and is `typeof 'object'`, but v4's
-                // `parsed !== null` guard rejects it.
+                // v4's guard is `typeof parsed === 'object' && parsed !== null`,
+                // and a JS ARRAY is `typeof 'object'` — so a hand-edited
+                // `"[1,2]"` reaches the wire as the parsed array in v4 and must
+                // here too (§3 review of the 93ed8abf round; the corpus pins it
+                // with `chat-template-kwargs-string-array`). A parsed scalar and
+                // a parse throw both omit; `null` parses fine in JS but v4's
+                // `!== null` guard rejects it.
+                Ok(v @ (Value::Object(_) | Value::Array(_))) => Some(v),
                 _ => None,
             };
         }
@@ -1489,6 +1493,19 @@ mod openai_compatible_tool_contract_tests {
             !manifest.capabilities.tool_use,
             "OAC's toolUse capability must stay false (v4 `93ed8abf` left it false \
              deliberately); the checkbox it seeds stays editable"
+        );
+    }
+
+    /// §3 of the 93ed8abf round: the constant's doc-comment claims it matches
+    /// the transport's process-wide default — a profile that names no timeout
+    /// falls through to the SAME 300 s either way (v4 returns the constant
+    /// explicitly; v5 falls through to the transport policy). The claim was
+    /// prose; this makes it a tripwire so the two cannot drift apart silently.
+    #[test]
+    fn ollama_default_timeout_matches_the_transport_default() {
+        assert_eq!(
+            super::OLLAMA_DEFAULT_REQUEST_TIMEOUT_SECONDS * 1000,
+            crate::model::transport::DEFAULT_REQUEST_TIMEOUT_MS as i64,
         );
     }
 }

@@ -8,8 +8,10 @@
 //!
 //! The oracle drives v4's REAL collectTurnExtras, which in turn pulls v4's real
 //! buildAgentModeInstructions and its real estimator — so the reservation
-//! arithmetic is compared end to end. Every row uses the OPENAI provider, whose
-//! estimator rate is the default 3.5 this side injects.
+//! arithmetic is compared end to end. Each row carries its provider; this side
+//! maps it through the manifest registry (the same read the orchestrator does),
+//! so the `google-rate-*` row pins the per-provider 3.8 figure while the rest
+//! ride the default 3.5.
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -22,11 +24,8 @@
 use quilltap_core::services::turn_extras::{
     build_tool_change_notice, collect_turn_extras, extract_tool_names, TurnExtrasOptions,
 };
-use quilltap_core::token_estimation::DEFAULT_CHARS_PER_TOKEN;
 use serde::Deserialize;
 use serde_json::Value;
-
-const CPT: f64 = DEFAULT_CHARS_PER_TOKEN;
 
 #[derive(Deserialize)]
 struct ExtrasOut {
@@ -66,6 +65,10 @@ enum OracleRow {
         agent_mode_max_turns: i64,
         #[serde(rename = "toolSettingsChanged")]
         tool_settings_changed: bool,
+        /// §3 of the 93ed8abf round: the estimator rate is per provider (the
+        /// `google-rate-*` row pins 3.8). Absent on older oracles → OPENAI.
+        #[serde(default)]
+        provider: Option<String>,
         out: ExtrasOut,
     },
 }
@@ -102,14 +105,21 @@ fn turn_extras_matches_oracle() {
                 agent_mode_enabled,
                 agent_mode_max_turns,
                 tool_settings_changed,
+                provider,
                 out,
             } => {
+                // The seam: v4 passes the Provider into its estimator; v5
+                // injects the rate. Map the row's provider through the SAME
+                // registry the orchestrator reads, so the google-rate row
+                // pins the per-provider figure end to end.
+                let cpt = quilltap_core::provider_manifest::Registry::built_in()
+                    .chars_per_token(provider.as_deref().unwrap_or("OPENAI"));
                 let got = collect_turn_extras(TurnExtrasOptions {
                     tools: &tools,
                     agent_mode_enabled,
                     agent_mode_max_turns,
                     tool_settings_changed,
-                    chars_per_token: CPT,
+                    chars_per_token: cpt,
                 });
                 assert_eq!(
                     got.agent_mode_instructions, out.agent_mode_instructions,

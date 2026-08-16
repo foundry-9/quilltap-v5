@@ -87,6 +87,15 @@ impl<P: CompletionProvider> SamplingCapture<P> {
                 "{what}: sampling at wire mismatch for key:\n{key}"
             );
         }
+        // The symmetric direction (§3 of the 93ed8abf round): every call the
+        // ORACLE recorded must have been made here too — a v5 path that
+        // silently makes fewer calls (≥1) must not pass on the subset.
+        for key in expected.keys() {
+            assert!(
+                recorded.contains_key(key),
+                "{what}: the oracle recorded a call v5 never made:\n{key}"
+            );
+        }
     }
 }
 
@@ -138,6 +147,15 @@ impl<P: StreamingCompletionProvider> SamplingStreamCapture<P> {
             assert_eq!(
                 got, want,
                 "{what}: sampling at wire mismatch for key:\n{key}"
+            );
+        }
+        // The symmetric direction (§3 of the 93ed8abf round): every call the
+        // ORACLE recorded must have been made here too — a v5 path that
+        // silently makes fewer calls (≥1) must not pass on the subset.
+        for key in expected.keys() {
+            assert!(
+                recorded.contains_key(key),
+                "{what}: the oracle recorded a call v5 never made:\n{key}"
             );
         }
     }

@@ -458,6 +458,10 @@ function casesFor(provider) {
     add('chat-template-kwargs-garbage', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '{not json' } });
     add('chat-template-kwargs-non-object', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '42' } });
     add('chat-template-kwargs-null-string', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: 'null' } });
+    // v4's string-parse guard is `typeof parsed === 'object' && parsed !== null`,
+    // and a JS array IS `typeof 'object'` — the parsed array goes on the wire.
+    // (§3 of the 93ed8abf unification: v5 originally accepted objects only.)
+    add('chat-template-kwargs-string-array', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '[1, "two"]' } });
     // Tools and the bag together — the two halves of bug 71 on one request.
     add('tools-and-profile-params', { ...base, model: 'local-model', tools: [TOOL], stop: ['END'], cacheKey: 'char-1', profileParameters: { top_k: 20, reasoning_effort: 'high' } });
   } else if (provider === 'openai') {

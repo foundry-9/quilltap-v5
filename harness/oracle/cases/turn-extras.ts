@@ -11,10 +11,12 @@
  * UI-adjacent sentence the model reads, and the agent-mode instructions are a
  * prompt block.
  *
- * The provider only selects the estimator's chars-per-token rate; every row uses
- * OPENAI, whose rate is the default 3.5 the Rust port injects. (An empty plugin
- * registry — this case initializes none — is exactly what makes the default
- * apply on the v4 side too.)
+ * The provider only selects the estimator's chars-per-token rate. Most rows use
+ * OPENAI (rate 3.5); the `google-rate-*` row pins the per-provider rate (3.8),
+ * which v4 reaches through its hardcoded CHARS_PER_TOKEN fallback when the
+ * plugin registry is uninitialized — the same figure the initialized registry
+ * gives in production. The Rust side maps each row's provider through its
+ * manifest registry.
  *
  * The unserializable-definition arm of countToolSchemaTokens is NOT covered here:
  * its input is a circular object, so no NDJSON row can carry it. See the
@@ -109,7 +111,7 @@ for (const [id, toolNames] of noticeCases) {
 }
 
 // collectTurnExtras(options)
-const extrasCases: Array<[string, unknown[], boolean, number, boolean]> = [
+const extrasCases: Array<[string, unknown[], boolean, number, boolean, string?]> = [
   // tools, agent mode off, no change → the schemas are the whole reservation
   ['schemas-only', [OPENAI_STYLE_TOOL], false, 25, false],
   // nothing at all → nothing reserved
@@ -127,8 +129,14 @@ const extrasCases: Array<[string, unknown[], boolean, number, boolean]> = [
   ['both-injections', [OPENAI_STYLE_TOOL, ANTHROPIC_STYLE_TOOL], true, 25, true],
   // an unrecognisable entry is still counted in the schemas but never named
   ['unnamed-tool-still-measured', [NAMELESS_TOOL], false, 25, true],
+  // §3 of the 93ed8abf round: the estimator rate is PER PROVIDER — GOOGLE is
+  // 3.8 (the registry answers the default here, so v4 falls through to its
+  // hardcoded CHARS_PER_TOKEN table, same figure the initialized registry
+  // gives), so the reservation for the same slate differs from OPENAI's. The
+  // Rust side maps the row's provider through its manifest registry.
+  ['google-rate-both-injections', [OPENAI_STYLE_TOOL, ANTHROPIC_STYLE_TOOL], true, 25, true, 'GOOGLE'],
 ];
-for (const [id, tools, agentModeEnabled, agentModeMaxTurns, toolSettingsChanged] of extrasCases) {
+for (const [id, tools, agentModeEnabled, agentModeMaxTurns, toolSettingsChanged, provider] of extrasCases) {
   rows.push({
     kind: 'extras',
     id,
@@ -136,11 +144,12 @@ for (const [id, tools, agentModeEnabled, agentModeMaxTurns, toolSettingsChanged]
     agentModeEnabled,
     agentModeMaxTurns,
     toolSettingsChanged,
+    provider: (provider ?? 'OPENAI') as string,
     out: collectTurnExtras({
       tools,
       agentMode: { enabled: agentModeEnabled, maxTurns: agentModeMaxTurns },
       toolSettingsChanged,
-      provider: 'OPENAI' as never,
+      provider: (provider ?? 'OPENAI') as never,
     }),
   });
 }

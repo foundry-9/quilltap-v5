@@ -124,17 +124,6 @@ impl Default for TransportPolicy {
 }
 
 impl TransportPolicy {
-    /// Apply a caller's per-request budget (v4
-    /// [`LLMParams.requestTimeoutMs`][crate::model::completion::CompletionParams::request_timeout_ms],
-    /// plugin-types 2.5.5) to this policy — the collapse of v4 plugin-utils'
-    /// `buildSdkRequestOptions` + `buildSdkClientOptions` onto v5's one transport.
-    ///
-    /// A set, positive budget is a **ceiling on a single attempt**: it replaces
-    /// the timeout AND drops `max_retries` to 0, because "three attempts at the
-    /// requested budget would spend three times what the caller agreed to"
-    /// (v4's own words). `None` or a non-positive value means "the caller named
-    /// no budget" and leaves this policy untouched — v4's
-    /// `typeof requested === 'number' && requested > 0` guard.
     /// Apply a PROVIDER-side default budget — the one a connection profile names
     /// for a provider that offers the setting (Ollama's
     /// `request_timeout_seconds`, P4.D83 / v4 `d89babc4`).
@@ -145,7 +134,11 @@ impl TransportPolicy {
     /// `defaultMs` argument to `resolveRequestTimeoutMs`, which a
     /// caller-supplied `requestTimeoutMs` still overrides. Compose in that order
     /// (`.with_provider_default_timeout(…).with_request_budget(…)`) and the
-    /// precedence is v4's.
+    /// precedence is v4's. (One recorded transport-uniformity residue: v4's
+    /// Ollama fetch makes ONE attempt, so the profile's number bounds the call
+    /// once; v5's shared non-streaming transport keeps its retry loop, so a
+    /// stalled endpoint can hold a turn for up to `1 + max_retries` budgets.
+    /// Pre-existing class — the provider-I/O divergence ruling.)
     #[must_use]
     pub fn with_provider_default_timeout(self, timeout_ms: Option<u64>) -> Self {
         match timeout_ms {
@@ -157,6 +150,17 @@ impl TransportPolicy {
         }
     }
 
+    /// Apply a caller's per-request budget (v4
+    /// [`LLMParams.requestTimeoutMs`][crate::model::completion::CompletionParams::request_timeout_ms],
+    /// plugin-types 2.5.5) to this policy — the collapse of v4 plugin-utils'
+    /// `buildSdkRequestOptions` + `buildSdkClientOptions` onto v5's one transport.
+    ///
+    /// A set, positive budget is a **ceiling on a single attempt**: it replaces
+    /// the timeout AND drops `max_retries` to 0, because "three attempts at the
+    /// requested budget would spend three times what the caller agreed to"
+    /// (v4's own words). `None` or a non-positive value means "the caller named
+    /// no budget" and leaves this policy untouched — v4's
+    /// `typeof requested === 'number' && requested > 0` guard.
     #[must_use]
     pub fn with_request_budget(self, request_timeout_ms: Option<i64>) -> Self {
         match request_timeout_ms {

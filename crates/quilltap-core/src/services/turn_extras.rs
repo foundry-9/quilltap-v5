@@ -37,6 +37,9 @@ use crate::token_estimation::{count_message_tokens, count_tool_schema_tokens};
 /// EMPTY name falls through to the next candidate exactly as an absent one does.
 /// A non-string name is out of the modeled domain: every producer of this slate
 /// (v4's tool builders and v5's [`crate::tools`]) types the name as a string.
+/// (Likewise a `null`/primitive ARRAY ENTRY: v4's `toolObj.function?.name`
+/// optional-chains only past `.function`, so a null entry throws there where
+/// this walk drops it — out of the modeled domain, noted not modeled.)
 pub fn extract_tool_names(tools: &[Value]) -> Vec<String> {
     tools
         .iter()

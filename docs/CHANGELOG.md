@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+The 93ed8abf unification review's fixes. A profile storing its OpenAI-compatible
+chat_template_kwargs as a JSON-array string now reaches the wire as the parsed
+array, matching the reference (objects only, before). The OpenAI-compatible
+non-streaming path parses tool calls back with the reference's own filter. The
+pre-send context validation now tells the client — an unconditional validating
+status and a warning status on overage, the user's only signal a payload may be
+rejected — instead of logging only. A danger-rerouted turn budgets its context
+to the rerouted profile's Max Context (it read the original's), and the
+turn-extras reservation uses the provider's own chars-per-token rate (Google is
+3.8, not the flat 3.5). Doc placement fixed on the transport policy composers;
+the sampling and timeout harness assertions gained their missing symmetric
+directions.
+
 The providers listing now carries each provider's connection-profile options
 schema — the fields, labels, help text and enum choices a profile editor draws
 for that provider. It was always null, so the panel had nothing to render;

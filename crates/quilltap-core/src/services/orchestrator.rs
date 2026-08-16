@@ -1971,6 +1971,45 @@ where
         Some(Value::Array(actual_tools.clone()))
     };
 
+    // The EFFECTIVE connection profile's stored row. v4 passes
+    // `streamingState.effectiveProfile` — the full object — to the turn-extras
+    // estimator, `calculateContextBudget` (via `buildMessageContext`) and
+    // `profileParams`; v5 carries the rerouted profile as the 4-field
+    // [`EffectiveProfile`], so a rerouted turn re-reads the row the router
+    // already loaded. Loaded HERE — above the turn-extras collect and the
+    // context build — so the reservation, the budget and the params all read
+    // the same profile a rerouted turn actually uses (§3 of the 93ed8abf
+    // round: it used to load after `build_context_input`, so the budget read
+    // the ORIGINAL profile's `maxContext` on a reroute; the tier-3's
+    // `danger_live_reroute` case now pins it with a differing window).
+    let effective_profile_row: Value = if did_reroute {
+        match db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
+        {
+            Ok(Some(row)) => row,
+            // v4 cannot lose the rerouted profile (it carries the full object
+            // in `streamingState.effectiveProfile`); v5 re-reads the row, so a
+            // failed read or a same-turn delete falls back to the ORIGINAL
+            // profile's anchor + params. Rare, but it must be LOUD — a silent
+            // fallback here is undiagnosable (the aa464abf unification
+            // review's finding).
+            other => {
+                let outcome = match other {
+                    Ok(_) => "row missing".to_string(),
+                    Err(e) => format!("read failed: {e}"),
+                };
+                tracing::warn!(
+                    target: "quilltap::orchestrator",
+                    profile_id = %effective_profile.id,
+                    %outcome,
+                    "Rerouted profile row unavailable at context build; falling back to the original profile's anchor and parameters",
+                );
+                connection_profile.clone()
+            }
+        }
+    } else {
+        connection_profile.clone()
+    };
+
     // --- Turn extras (turn-extras.ts, v4 `f933ba9c`) ---
     // Everything this turn will add to the payload *after* the context is built —
     // the tool schemas, plus the agent-mode and tool-change system messages
@@ -1984,7 +2023,13 @@ where
             agent_mode_enabled,
             agent_mode_max_turns: agent_mode.max_turns,
             tool_settings_changed,
-            chars_per_token: crate::token_estimation::DEFAULT_CHARS_PER_TOKEN,
+            // v4 passes `streamingState.effectiveProfile.provider` into the
+            // estimator, and the registry rate differs by provider (GOOGLE is
+            // 3.8) — a flat 3.5 here would size the reservation differently
+            // from v4 on those profiles (§3 of the 93ed8abf round; the
+            // turn-extras family's GOOGLE row pins it).
+            chars_per_token: crate::provider_manifest::Registry::built_in()
+                .chars_per_token(&effective_profile.provider),
         },
     );
 
@@ -2131,7 +2176,16 @@ where
         chat: &chat,
         character: &character,
         character_participant: &character_participant,
-        connection_profile: &effective_profile_profile(&connection_profile),
+        // v4 hands `calculateContextBudget` the EFFECTIVE profile (via
+        // `buildMessageContext`'s `streamingState.effectiveProfile`), so a
+        // danger-rerouted turn budgets to the rerouted profile's window (§3 of
+        // the 93ed8abf round — this read the ORIGINAL row before it). NOTE the
+        // residue: `model_context_limit` (the lookup half's fallback) is still
+        // the host's pre-dispatch resolution of the ORIGINAL profile's model,
+        // so a rerouted profile that names NO `maxContext` still budgets to
+        // the original model's window — recorded, not modeled; fixing it means
+        // moving the registry lookup into the engine.
+        connection_profile: &effective_profile_profile(&effective_profile_row),
         user_character,
         roleplay_template,
         is_multi_character,
@@ -2211,42 +2265,9 @@ where
     }
     let empty_participants: Vec<Value> = Vec::new();
     let cp_created_at = json_str(&character_participant, "createdAt");
-    // The EFFECTIVE connection profile's stored row. v4 passes
-    // `streamingState.effectiveProfile` — the full object — to both
-    // `buildMessageContext` (for `profileUsesNamePrefill`) and `profileParams`
-    // (for `modelParams`); v5 carries the rerouted profile as the 4-field
-    // [`EffectiveProfile`], so a rerouted turn re-reads the row the router
-    // already loaded. The old hardcoded anchor test read
-    // `effective_profile.provider`, so reading the ORIGINAL profile here would
-    // be a regression on the danger-reroute path — measured: the tier-3's
-    // `danger_live_reroute` case goes red.
-    let effective_profile_row: Value = if did_reroute {
-        match db.read_main(|c| crate::db::connection_profiles::find_by_id(c, &effective_profile.id))
-        {
-            Ok(Some(row)) => row,
-            // v4 cannot lose the rerouted profile (it carries the full object
-            // in `streamingState.effectiveProfile`); v5 re-reads the row, so a
-            // failed read or a same-turn delete falls back to the ORIGINAL
-            // profile's anchor + params. Rare, but it must be LOUD — a silent
-            // fallback here is undiagnosable (the aa464abf unification
-            // review's finding).
-            other => {
-                let outcome = match other {
-                    Ok(_) => "row missing".to_string(),
-                    Err(e) => format!("read failed: {e}"),
-                };
-                tracing::warn!(
-                    target: "quilltap::orchestrator",
-                    profile_id = %effective_profile.id,
-                    %outcome,
-                    "Rerouted profile row unavailable at context build; falling back to the original profile's anchor and parameters",
-                );
-                connection_profile.clone()
-            }
-        }
-    } else {
-        connection_profile.clone()
-    };
+    // (`effective_profile_row` is loaded ABOVE the turn-extras collect — the
+    // budget, the extras estimator and the readers below all share the one
+    // effective row, as v4 shares `streamingState.effectiveProfile`.)
     let mc_params = message_context::MessageContextParams {
         is_multi_character,
         provider: &effective_profile.provider,
@@ -2363,42 +2384,6 @@ where
         }
     }
 
-    // --- Pre-send payload check (orchestrator.service.ts:1314–1345, `f933ba9c`) ---
-    // Measure the WHOLE payload, not just the message array: the tool schemas ride
-    // alongside it and count against the same window. The ceiling is the budget's
-    // own `safe_input_limit` — the number the builder packed to — so this check
-    // cannot fire on a context that was filled exactly as instructed. Log-only in
-    // v4 as here: the turn still goes out, and the provider decides.
-    {
-        let pairs: Vec<(String, String)> = formatted_messages
-            .iter()
-            .map(|m| (m.role.clone(), m.content.clone()))
-            .collect();
-        let message_tokens = crate::token_estimation::count_messages_tokens(
-            &pairs,
-            crate::token_estimation::DEFAULT_CHARS_PER_TOKEN,
-        );
-        let estimated_input_tokens = message_tokens + turn_extras.tool_schema_tokens;
-        let safe_input_limit = built_context.budget.safe_input_limit;
-        if estimated_input_tokens > safe_input_limit {
-            tracing::warn!(
-                chat_id = %chat_id,
-                character_id = %character_id,
-                estimated_input_tokens,
-                message_tokens,
-                tool_schema_tokens = turn_extras.tool_schema_tokens,
-                tool_count = actual_tools.len(),
-                safe_input_limit,
-                model_context_limit = built_context.budget.total_limit,
-                response_reserve = built_context.budget.response_reserve,
-                safety_margin = built_context.budget.safety_margin,
-                reserved_outgoing_tokens = turn_extras.reserved_tokens,
-                overage = estimated_input_tokens - safe_input_limit,
-                "Context exceeds model safe input limit, payload may be rejected"
-            );
-        }
-    }
-
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "preparing".into(),
         message: format!("Preparing request for {character_name}..."),
@@ -2442,6 +2427,73 @@ where
             },
         )
         .await;
+    }
+
+    // --- Pre-send context validation (orchestrator.service.ts:1305–1356,
+    //     `f933ba9c`) ---
+    // Measure the WHOLE payload, not just the message array: the tool schemas ride
+    // alongside it and count against the same window. The ceiling is the budget's
+    // own `safe_input_limit` — the number the builder packed to — so this check
+    // cannot fire on a context that was filled exactly as instructed. v4 tells the
+    // CLIENT about it — an unconditional `validating` status, and a `warning`
+    // status on overage (the user's only signal the payload may be rejected) —
+    // and only the decision not to abort is log-side. Streaming path only: v4's
+    // courier dispatch returns long before this block (§3 of the 93ed8abf round;
+    // the first landing had it log-only and mis-said "log-only in v4").
+    sink.emit(ChatEvent::status(StatusPayload {
+        stage: "validating".into(),
+        message: format!("Validating context for {character_name}..."),
+        tool_name: None,
+        character_name: Some(character_name.clone()),
+        character_id: Some(character_id.clone()),
+    }));
+    {
+        let pairs: Vec<(String, String)> = formatted_messages
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        // v4 passes no provider into `countMessagesTokens` here, so the default
+        // rate applies on both sides (unlike the turn-extras reservation, which
+        // does carry the provider's rate).
+        let message_tokens = crate::token_estimation::count_messages_tokens(
+            &pairs,
+            crate::token_estimation::DEFAULT_CHARS_PER_TOKEN,
+        );
+        let estimated_input_tokens = message_tokens + turn_extras.tool_schema_tokens;
+        let safe_input_limit = built_context.budget.safe_input_limit;
+        if estimated_input_tokens > safe_input_limit {
+            tracing::warn!(
+                chat_id = %chat_id,
+                character_id = %character_id,
+                provider = %effective_profile.provider,
+                model = %effective_profile.model_name,
+                estimated_input_tokens,
+                message_tokens,
+                tool_schema_tokens = turn_extras.tool_schema_tokens,
+                tool_count = actual_tools.len(),
+                safe_input_limit,
+                model_context_limit = built_context.budget.total_limit,
+                response_reserve = built_context.budget.response_reserve,
+                safety_margin = built_context.budget.safety_margin,
+                reserved_outgoing_tokens = turn_extras.reserved_tokens,
+                compression_applied = built_context.compression_applied,
+                overage = estimated_input_tokens - safe_input_limit,
+                "Context exceeds model safe input limit, payload may be rejected"
+            );
+            // v4's client-facing warning, `Math.round(x / 1000)` on both figures.
+            sink.emit(ChatEvent::status(StatusPayload {
+                stage: "warning".into(),
+                message: format!(
+                    "Context (~{}k tokens) may exceed {} limit (~{}k tokens)",
+                    (estimated_input_tokens as f64 / 1000.0).round() as i64,
+                    effective_profile.model_name,
+                    (safe_input_limit as f64 / 1000.0).round() as i64
+                ),
+                tool_name: None,
+                character_name: Some(character_name.clone()),
+                character_id: Some(character_id.clone()),
+            }));
+        }
     }
 
     // --- Primary stream (orchestrator.service.ts:1205–1255) ---

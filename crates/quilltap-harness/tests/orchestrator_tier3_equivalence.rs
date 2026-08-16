@@ -487,6 +487,12 @@ fn shared_status_stage(stage: &str) -> bool {
             | "streaming"
             | "retrying"
             | "rerouting"
+            // §3 of the 93ed8abf round: v5 now emits v4's pre-send
+            // `validating` (unconditional, streaming path) and `warning`
+            // (overage) statuses, so both joined the shared vocabulary and are
+            // sequence-compared like the rest.
+            | "validating"
+            | "warning"
     )
 }
 
@@ -1061,6 +1067,14 @@ fn orchestrator_tier3_matches_oracle() {
                 panic!("Rust made a stream call with no oracle-recorded sampling for key:\n{key}")
             });
             assert_eq!(got, want, "sampling at wire mismatch for key:\n{key}");
+        }
+        // The symmetric direction (§3 of the 93ed8abf round): every call the
+        // oracle recorded must have been made here too.
+        for key in streaming.expected_sampling.keys() {
+            assert!(
+                recorded.contains_key(key),
+                "the oracle recorded a stream call v5 never made:\n{key}"
+            );
         }
     }
 

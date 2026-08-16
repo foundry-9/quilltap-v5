@@ -143,6 +143,48 @@ fn extract_openai_tool_calls(msg: &Value) -> Vec<ToolCall> {
         .collect()
 }
 
+/// v4 `OpenAICompatibleProvider.normalizeToolCalls`
+/// (`packages/plugin-utils/src/providers/openai-compatible.ts:302–324`, bug 71)
+/// — the OAC base's OWN filter, deliberately distinct from
+/// [`extract_openai_tool_calls`] in three arms: an entry lacking a truthy
+/// `function.name` is SKIPPED (the DeepSeek-shape helper keeps it with an empty
+/// name), `arguments: null` stringifies through v4's `?? {}` to `"{}"` (not
+/// `"null"`), and there is no `type` filter at all — any entry with a named
+/// function passes. Tolerates servers that hand back already-parsed argument
+/// objects where the OpenAI wire format specifies a JSON string. (v4's
+/// unchecked cast means a non-string truthy `name` would also pass there; a
+/// `Value`-typed read skips it — out of the modeled domain, noted not modeled.)
+fn normalize_oac_tool_calls(msg: &Value) -> Vec<ToolCall> {
+    let Some(arr) = msg.get("tool_calls").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|tc| {
+            let f = tc.get("function")?;
+            let name = f
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())?;
+            let arguments = match f.get("arguments") {
+                Some(Value::String(s)) => s.clone(),
+                // v4: `JSON.stringify(args ?? {})` — null and absent both `{}`.
+                Some(Value::Null) | None => "{}".to_string(),
+                Some(other) => serde_json::to_string(other).unwrap_or_else(|_| "{}".to_string()),
+            };
+            Some(ToolCall {
+                id: tc
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                type_: "function".to_string(),
+                name: name.to_string(),
+                arguments,
+            })
+        })
+        .collect()
+}
+
 /// Parse a chat-completions non-streaming response body.
 pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStreamingResponse {
     let empty = Value::Null;
@@ -288,7 +330,11 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                 .map(str::to_string);
 
             let (reasoning, tool_calls, cache_usage) = match flavor {
-                ChatFlavor::OpenAiCompatible => (None, Vec::new(), None),
+                // Bug 71 (v4 `93ed8abf`): the OAC base normalizes `tool_calls`
+                // on the non-streaming path too, with its own filter (see
+                // `normalize_oac_tool_calls`). No reasoning channel, no cache
+                // usage — v4's base `sendMessage` reads neither.
+                ChatFlavor::OpenAiCompatible => (None, normalize_oac_tool_calls(msg), None),
                 ChatFlavor::DeepSeek => {
                     let reasoning = msg
                         .get("reasoning_content")
@@ -1167,5 +1213,45 @@ mod tests {
         assert_eq!(p.raw["systemFingerprint"], Value::Null);
         assert_eq!(p.raw["usage"]["promptTokensDetails"]["cachedTokens"], 3);
         assert!(p.raw.get("system_fingerprint").is_none());
+    }
+
+    /// Bug 71 (v4 `93ed8abf`): the OAC non-streaming `tool_calls` normalize —
+    /// v4 `normalizeToolCalls` (`openai-compatible.ts:302–324`). The three arms
+    /// that make it DISTINCT from the DeepSeek-shape helper are each pinned:
+    /// a nameless entry is skipped (not kept with an empty name), a null
+    /// `arguments` becomes `"{}"` (not `"null"`), and an entry with no `type`
+    /// key still passes. Object arguments stringify; `id` defaults empty.
+    #[test]
+    fn oac_nonstreaming_tool_calls_normalize() {
+        let r = json!({
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        { "id": "a", "type": "function",
+                          "function": { "name": "lookup", "arguments": "{\"q\":1}" } },
+                        { "id": "b", "type": "function",
+                          "function": { "name": "", "arguments": "{}" } },
+                        { "id": "c", "type": "function",
+                          "function": { "arguments": "{}" } },
+                        { "function": { "name": "parsed_obj",
+                                        "arguments": { "x": [1, 2] } } },
+                        { "id": "e", "type": "function",
+                          "function": { "name": "null_args", "arguments": null } }
+                    ]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+        });
+        let p = parse_chat_completions(&r, ChatFlavor::OpenAiCompatible);
+        let names: Vec<&str> = p.tool_calls.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["lookup", "parsed_obj", "null_args"]);
+        assert_eq!(p.tool_calls[0].id, "a");
+        assert_eq!(p.tool_calls[0].arguments, "{\"q\":1}");
+        assert_eq!(p.tool_calls[1].id, "");
+        assert_eq!(p.tool_calls[1].arguments, "{\"x\":[1,2]}");
+        assert_eq!(p.tool_calls[2].arguments, "{}");
+        assert!(p.tool_calls.iter().all(|t| t.type_ == "function"));
     }
 }

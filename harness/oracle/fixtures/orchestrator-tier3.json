@@ -28,7 +28,8 @@
    "provider": "OPENROUTER",
    "modelName": "uncensored-model",
    "apiKeyId": "c0000004-0000-4000-8000-000000000004",
-   "isDangerousCompatible": true
+   "isDangerousCompatible": true,
+   "maxContext": 1200
   },
   {
    "id": "d0000001-0000-4000-8000-0000000000d1",
