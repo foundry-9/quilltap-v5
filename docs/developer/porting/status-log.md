@@ -71476,3 +71476,52 @@ a partial uncensored bag does not blank the rest) is split into
 family `initial_greeting` is NOT a proof site either: it drives
 `generateGreetingMessage` directly with an explicit temperature and never touches
 a profile bag — the bag→knob conversion lives in the capstone's territory.
+
+---
+
+## P4.D83 unit 3 — the ONE profile-parameter applier; DeepSeek/Z.AI converge (v4 `93ed8abf`)
+
+**Ported:** v4's `applyProfileParameters` (`@quilltap/plugin-utils` 2.3.0) —
+allow-listed, never spread; `null` and the empty string omit the key; the
+allow-list is ORDERED so a normalizer can merge into an earlier key. v5 already
+had the loop (`apply_profile_params`, DeepSeek-shaped); what this unit adds is
+v4's per-key hook — `ProfileParamNormalizer`, which takes the BODY so a value
+can be sent under a different key. That hook is what OAC's
+`reasoning_effort` → `chat_template_kwargs` fold and Ollama's two-level split
+need, and it is where the Z.AI gate below finally has somewhere to live.
+
+**v4's collapse is a NO-OP for v5's DeepSeek** — v5 already skipped `null`
+(v4's hand-rolled DeepSeek/Z.AI loops skipped only `undefined` and started
+skipping `null` at the collapse), so v5 was at the post-collapse behaviour
+before the commit landed. Pinned as byte-identical envelope rows rather than
+asserted.
+
+**A pre-existing v5 wire divergence, FOUND and FIXED:** v5 forwarded Z.AI's
+`reasoning_effort` to **every** GLM. v4 has gated it on
+`supportsReasoningEffort(params.model)` since long before the collapse — glm-5.2
+and newer only — so a profile with an effort set was sending an unhonoured (and
+possibly rejected) key to glm-4.6. No corpus vector crossed a profile effort
+with an old model, which is why it survived the P4.13/P4.14 rewrites.
+
+### The differential
+
+`request_builder_equivalence` over the committed corpus, re-recorded at the
+`93ed8abf` pin: **191 → 201 rows**, and the 191 pre-existing rows are
+BYTE-IDENTICAL — the neutrality gate for the collapse, on freshly recorded
+bytes rather than a stale file (`p4.d76-provider-sdk-wire-recheck-lane`).
+
+Five new vectors (× 2 modes):
+
+- `deepseek/profile-params-skips` — the empty string, `null`, and a bag trying
+  to set `model`/`messages`/`stream`/`tools`. The allow-list rules ARE the
+  behaviour the hand-rolled loop had; if the collapse moved any of them these
+  bytes move.
+- `deepseek/profile-params-thinking-object` — a profile that already stored the
+  object form passes through unreshaped.
+- `z-ai/profile-effort-unsupported-model` — glm-4.6 + a profile effort: v4 omits
+  the key. **Mutation-proven** (drop the gate → the row diverges with a leaked
+  `"reasoning_effort":"high"`).
+- `z-ai/profile-effort-supported-model` — glm-5.2 + `low`: forwarded, and it
+  suppresses the default `high`.
+- `z-ai/profile-params-skips` — the same skip rules through Z.AI's own
+  normalizer.

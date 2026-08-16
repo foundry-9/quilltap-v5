@@ -268,6 +268,13 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'deepseek-chat', cacheKey: 'char-42' });
     add('thinking-strip', { ...base, model: 'deepseek-chat', profileParameters: { thinking: 'enabled' } });
     add('profile-params', { ...base, model: 'deepseek-chat', profileParameters: { frequency_penalty: 0.5, presence_penalty: 0.2, reasoning_effort: 'high' } });
+    // P4.D83 (v4 `93ed8abf`): the NEUTRALITY gate for the collapse onto the
+    // shared `applyProfileParameters`. The skip rules (null, the empty string,
+    // a key not on the allow-list) and the `thinking` object reshape are the
+    // whole behaviour the hand-rolled loop had; if the collapse changed any of
+    // them these bytes move.
+    add('profile-params-skips', { ...base, model: 'deepseek-chat', profileParameters: { frequency_penalty: '', presence_penalty: null, logprobs: true, top_logprobs: 3, reasoning_effort: 'high', model: 'HIJACKED', messages: [], stream: false, tools: [] } });
+    add('profile-params-thinking-object', { ...base, model: 'deepseek-chat', profileParameters: { thinking: { type: 'disabled' } } });
     // P4.21 — DeepSeek DROPS attachments (body shows plain string content).
     add('image-attachment', { ...base, model: 'deepseek-chat', messages: [SYS, USER_IMG] });
   } else if (provider === 'z-ai') {
@@ -275,6 +282,14 @@ function casesFor(provider) {
     add('web-search', { ...base, model: 'glm-4.6', webSearchEnabled: true });
     add('tools-cache', { ...base, model: 'glm-4.6', tools: [TOOL], toolChoice: 'auto', cacheKey: 'char-7' });
     add('reasoning-default', { ...base, model: 'glm-5.2', tools: [TOOL] });
+    // P4.D83: the `reasoning_effort` MODEL GATE — v4 refuses to forward the key
+    // to a model that does not honour it (glm-4.6), and forwards it on one that
+    // does (glm-5.2, where it also suppresses the default `high`). v5 forwarded
+    // it to every GLM; no vector could see that because none crossed a profile
+    // effort with an old model.
+    add('profile-effort-unsupported-model', { ...base, model: 'glm-4.6', profileParameters: { reasoning_effort: 'high', thinking: 'disabled' } });
+    add('profile-effort-supported-model', { ...base, model: 'glm-5.2', profileParameters: { reasoning_effort: 'low' } });
+    add('profile-params-skips', { ...base, model: 'glm-5.2', profileParameters: { thinking: '', do_sample: null, reasoning_effort: 'medium', model: 'HIJACKED', messages: [], stream: false, tools: [] } });
     // P4.21 — the vision-model gate: a vision model gets image_url parts; a
     // non-vision model still switches to a parts ARRAY but reports the failure.
     add('image-attachment-vision', { ...base, model: 'glm-4.6v', messages: [SYS, USER_IMG] });

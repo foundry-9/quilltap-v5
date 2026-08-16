@@ -393,9 +393,33 @@ const DEEPSEEK_PROFILE_ALLOWLIST: &[&str] = &[
     "reasoning_effort",
 ];
 
-/// v4 DeepSeek `applyProfileParameters` — forward the allow-listed keys, with the
-/// `thinking: "enabled"` string → `{ type: "enabled" }` normalization.
-fn apply_profile_params(b: &mut Body, input: &RequestInput, allowlist: &[&str]) {
+/// v4 `applyProfileParameters` (`@quilltap/plugin-utils` 2.3.0, `93ed8abf`) —
+/// copy allow-listed keys from the profile's free-form `parameters` bag onto a
+/// request body.
+///
+/// Rules, all of which predate the helper (DeepSeek and Z.AI hand-rolled this
+/// identical loop before v4 collapsed them onto it):
+///
+/// - **Allow-list, never spread.** `model` / `messages` / `stream` /
+///   `stream_options` / `tools` must be unreachable from a profile — a
+///   misconfigured bag cannot be allowed to retarget the request.
+/// - **`null` and the empty string skip.** The empty string is what the
+///   schema-driven profile editor stores for "omit this and use the model
+///   default". (v4 also skips `undefined`, which JSON cannot express.)
+/// - **The allow-list is ORDERED.** Keys are applied in the order given, so a
+///   normalizer that merges into an earlier key (OAC's `chat_template_kwargs`)
+///   sees whatever the profile set for it.
+///
+/// `normalize` is v4's `ProfileParamNormalizer`: it returns the value to send,
+/// or `None` to omit the key entirely, and it takes the body so a value can be
+/// placed under a DIFFERENT key (OAC folds `reasoning_effort` into
+/// `chat_template_kwargs` that way, then omits the flat key).
+fn apply_profile_params_with(
+    b: &mut Body,
+    input: &RequestInput,
+    allowlist: &[&str],
+    normalize: impl Fn(&str, &Value, &RequestInput, &mut Body) -> Option<Value>,
+) {
     let Some(Value::Object(profile)) = &input.profile_parameters else {
         return;
     };
@@ -410,14 +434,24 @@ fn apply_profile_params(b: &mut Body, input: &RequestInput, allowlist: &[&str]) 
         if value.as_str() == Some("") {
             continue;
         }
-        if *key == "thinking" {
-            if let Some(s) = value.as_str() {
-                b.set(key, json!({ "type": s }));
-                continue;
-            }
-        }
-        b.set(key, value.clone());
+        let Some(out) = normalize(key, value, input, b) else {
+            continue;
+        };
+        b.set(key, out);
     }
+}
+
+/// v4 DeepSeek `normalizeProfileParam` (`93ed8abf`): the schema-driven editor
+/// stores `thinking` as a flat string (`"enabled"` / `"disabled"`); DeepSeek's
+/// wire shape is `{ type: … }`. A profile that already stored the object form
+/// passes through unchanged.
+fn deepseek_normalize_profile_param(key: &str, value: &Value) -> Value {
+    if key == "thinking" {
+        if let Some(s) = value.as_str() {
+            return json!({ "type": s });
+        }
+    }
+    value.clone()
 }
 
 /// v4 DeepSeek `stripThinkingIncompatibleParams` — when thinking is enabled, drop
@@ -454,7 +488,12 @@ pub fn build_deepseek_body(input: &RequestInput, results: &mut StreamAttachmentR
             b.set("user_id", json!(k));
         }
     }
-    apply_profile_params(&mut b, input, DEEPSEEK_PROFILE_ALLOWLIST);
+    apply_profile_params_with(
+        &mut b,
+        input,
+        DEEPSEEK_PROFILE_ALLOWLIST,
+        |key, value, _, _| Some(deepseek_normalize_profile_param(key, value)),
+    );
     strip_thinking_incompatible(&mut b);
     b.into_value()
 }
@@ -527,7 +566,27 @@ pub fn build_zai_body(input: &RequestInput, results: &mut StreamAttachmentResult
             b.set("user", json!(k));
         }
     }
-    apply_profile_params(&mut b, input, ZAI_PROFILE_ALLOWLIST);
+    // v4 Z.AI's normalizer (`93ed8abf` moved the loop out; the reshaping stayed).
+    // The `reasoning_effort` gate is the half v5 never had: v4 has skipped the
+    // key on a model that does not honour it since long before the collapse, and
+    // v5 forwarded it to every GLM — a pre-existing wire divergence this lane's
+    // per-key hook finally has somewhere to live.
+    apply_profile_params_with(
+        &mut b,
+        input,
+        ZAI_PROFILE_ALLOWLIST,
+        |key, value, inp, _| {
+            if key == "reasoning_effort" && !zai_supports_reasoning_effort(&inp.model) {
+                return None;
+            }
+            if key == "thinking" {
+                if let Some(s) = value.as_str() {
+                    return Some(json!({ "type": s }));
+                }
+            }
+            Some(value.clone())
+        },
+    );
     // Default reasoning_effort=high on glm-5.2+ unless thinking is disabled.
     if zai_supports_reasoning_effort(&input.model) && !b.contains("reasoning_effort") {
         let thinking_disabled = matches!(b.get("thinking"), Some(Value::Object(o)) if o.get("type").and_then(Value::as_str) == Some("disabled"));

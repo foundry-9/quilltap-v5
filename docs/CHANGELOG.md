@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Z.AI no longer sends a reasoning effort to a model that ignores it. A profile
+setting Reasoning Effort had it forwarded to every GLM, including the older
+models where the field is not honored; it is now sent only to the models that
+support it, matching what the rest of the stack already did. The
+profile-parameter passthrough itself became one shared mechanism with a
+per-key hook, so a provider can reshape a stored value or send it under a
+different key without hand-rolling the copy loop.
+
 A connection profile's Max Tokens and Top P now reach the model. Both were
 stored and displayed and never sent: the Salon's main path, the greeting
 (including its uncensored retry) and Carina's reference query all read them
