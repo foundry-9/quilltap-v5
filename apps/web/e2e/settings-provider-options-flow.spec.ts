@@ -37,7 +37,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * all) from one that has not learned to serve schemas yet, and would silently
  * activate the beat into guaranteed failure (the standing e2e rule).
  */
-const P4D83_OPTIONS_SCHEMA_LANDED = false;
+const P4D83_OPTIONS_SCHEMA_LANDED = true;
 
 const PROFILE_NAME = 'P4.D84 options walk';
 
