@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Recorded two dogfood findings from the 93ed8abf round's walk, both diagnosed as
+faithfully ported v4 bugs and filed upstream rather than fixed here. Clearing a
+numeric provider option puts the schema default straight back with the caret
+after it, so the next digit appends to it and a wrong value reaches the server.
+And a base URL picked up from Ollama or an OpenAI-compatible endpoint survives a
+switch to a provider that hides the field, breaking every connection test and
+saving onto the profile row. Both were measured by driving v4's own components,
+not by reading them. No product code changed.
+
 Unified the 93ed8abf drift catch-up round: the context budget honors the
 profile's Max Context end-to-end (single-sourced window resolution, the unified
 safe-input-limit formula the builder and validator both read, tool schemas and
