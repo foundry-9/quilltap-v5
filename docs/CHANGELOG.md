@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+An OpenAI-compatible endpoint can now call tools, and reads the profile's
+settings. It sent no tools on either path and never looked at the parameters
+blob, so a local llama-server with function calling could not be used for tool
+work and reasoning effort was unreachable. Tools and tool_choice now go on the
+body and tool calls are parsed back on both paths, with streamed argument
+fragments accumulated by index. The provider forwards its own allow-list —
+top_k, min_p, the three penalties, seed, cache_prompt — and folds reasoning
+effort into chat_template_kwargs, which is how llama-server reaches a
+template's arguments; a flat key parses and is never seen by the template. The
+tool-use capability stays off: it seeds the checkbox on a new profile and never
+disables it.
+
 Ollama now sends the sampler settings a connection profile saves. It read two
 keys — the context window and the thinking switch — beside a hardcoded options
 literal, and dropped every other one in silence, so no local model could run at

@@ -347,14 +347,102 @@ fn stop_value(input: &RequestInput) -> Option<Value> {
 // OpenAI-compatible base
 // ============================================================================
 
+/// Profile parameters the OPENAI_COMPATIBLE endpoint forwards, in APPLICATION
+/// ORDER (v4 `OPENAI_COMPATIBLE_PROFILE_PARAM_ALLOWLIST`, plugin 1.0.40).
+///
+/// `chat_template_kwargs` comes FIRST because `reasoning_effort` merges into it
+/// (see [`openai_compatible_normalize_profile_param`]), and a merge should see
+/// whatever the profile set for the object itself.
+///
+/// These are the keys `llama-server`'s `/v1/chat/completions` route accepts
+/// beyond the four standard sampling fields; an endpoint that does not know a
+/// key generally ignores it, and a profile that sets one is asserting something
+/// about its own server.
+const OPENAI_COMPATIBLE_PROFILE_ALLOWLIST: &[&str] = &[
+    "chat_template_kwargs",
+    "reasoning_effort",
+    "top_k",
+    "min_p",
+    "repeat_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+    "cache_prompt",
+];
+
+/// Keys stored as numbers; a hand-edited profile may hold the string form. Note
+/// the asymmetry with Ollama's table: v4 coerces here only when the value IS a
+/// string, so a number, boolean or object passes through verbatim.
+const OPENAI_COMPATIBLE_NUMERIC_PARAMS: &[&str] = &[
+    "top_k",
+    "min_p",
+    "repeat_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+];
+
+/// v4 `OpenAICompatibleEndpointProvider.normalizeProfileParam` (`93ed8abf`).
+fn openai_compatible_normalize_profile_param(
+    key: &str,
+    value: &Value,
+    body: &mut Body,
+) -> Option<Value> {
+    // LOAD-BEARING: `reasoning_effort` is NOT a top-level body key here.
+    //
+    // A local runtime's reasoning level lives in its chat template, and
+    // `llama-server` exposes template variables through `chat_template_kwargs` —
+    // a flat `reasoning_effort` key is accepted by the JSON parser and then never
+    // seen by the template, which is a silent no-op of exactly the kind bug 71 is
+    // about. Do not "simplify" this into a flat key.
+    if key == "reasoning_effort" {
+        let mut merged = match body.get("chat_template_kwargs") {
+            Some(Value::Object(o)) => o.clone(),
+            _ => serde_json::Map::new(),
+        };
+        merged.insert("reasoning_effort".into(), value.clone());
+        body.set("chat_template_kwargs", Value::Object(merged));
+        return None;
+    }
+    // There is no JSON field type in the options schema, so the object form can
+    // only come from a hand-edited profile. Accept the string spelling of it
+    // rather than shipping a string where the server expects an object.
+    if key == "chat_template_kwargs" {
+        if let Value::String(s) = value {
+            return match serde_json::from_str::<Value>(s) {
+                Ok(v @ Value::Object(_)) => Some(v),
+                // v4: a parsed non-object (and a parse throw) both omit the key.
+                // `null` parses fine in JS and is `typeof 'object'`, but v4's
+                // `parsed !== null` guard rejects it.
+                _ => None,
+            };
+        }
+    }
+    if OPENAI_COMPATIBLE_NUMERIC_PARAMS.contains(&key) {
+        if let Value::String(s) = value {
+            let n = crate::jsnum::number_from_str(s);
+            return if n.is_finite() { Some(num(n)) } else { None };
+        }
+    }
+    Some(value.clone())
+}
+
 /// v4 `OpenAICompatibleProvider.streamMessage` / `.sendMessage`
-/// (`@quilltap/plugin-utils`). The plainest chat-completions body — no tools, no
-/// profile params, just `user` on a cache key.
+/// (`@quilltap/plugin-utils`), as of `93ed8abf` (bug 71): the plain
+/// chat-completions body, now carrying tools and the allow-listed profile
+/// parameters.
 ///
 /// This provider does NOT share [`base_body`]'s key order: v4 writes one object
 /// literal per method, with `stop` BEFORE the stream keys, and `sendMessage`
 /// carries no `stream` key at all (the OpenAI SDK's non-streaming create sends
 /// the literal verbatim).
+///
+/// **`tools` are unconditional on the slate, not on the capability.** The
+/// manifest's `toolUse: false` is a SEED for a new profile's "Allow tool use"
+/// checkbox, not a ceiling — an arbitrary endpoint is the conservative default,
+/// but llama-server with `--jinja`, vLLM and LM Studio all speak native function
+/// calling. The runtime gate is the PROFILE's `allowToolUse`, upstream of here,
+/// so a slate that arrives has already passed it (v4's own comment).
 pub fn build_openai_compatible_body(
     input: &RequestInput,
     results: &mut StreamAttachmentResults,
@@ -377,6 +465,23 @@ pub fn build_openai_compatible_body(
             b.set("user", json!(k));
         }
     }
+    if let Some(tools) = &input.tools {
+        if !tools.is_empty() {
+            b.set("tools", json!(tools));
+            // v4 `params.toolChoice ?? 'auto'` — the base class defaults it,
+            // where DeepSeek/Z.AI pass the caller's value through untouched.
+            b.set(
+                "tool_choice",
+                input.tool_choice.clone().unwrap_or_else(|| json!("auto")),
+            );
+        }
+    }
+    apply_profile_params_with(
+        &mut b,
+        input,
+        OPENAI_COMPATIBLE_PROFILE_ALLOWLIST,
+        |key, value, _, body| openai_compatible_normalize_profile_param(key, value, body),
+    );
     b.into_value()
 }
 
@@ -1329,6 +1434,31 @@ mod ollama_profile_param_tests {
         assert_eq!(
             t(json!({ "enable_thinking": true, "thinking_effort": 3 })),
             json!(true)
+        );
+    }
+}
+
+#[cfg(test)]
+mod openai_compatible_tool_contract_tests {
+    use crate::provider_manifest::Registry;
+
+    /// Shared contract C, server half (v4 `93ed8abf`): `capabilities.toolUse`
+    /// is a SEED for a new profile's checkbox, never a clamp. OAC's capability
+    /// stays FALSE — an arbitrary endpoint is the conservative default — while
+    /// the provider sends `tools` whenever a slate arrives, because the runtime
+    /// gate is the PROFILE's `allowToolUse` (`services/tool_build.rs`, which
+    /// never consults the capability). Both halves asserted together, since it
+    /// is their COMBINATION that the contract names.
+    #[test]
+    fn oac_tool_capability_is_a_seed_not_a_clamp() {
+        let registry = Registry::built_in();
+        let manifest = registry
+            .get_provider("OPENAI_COMPATIBLE")
+            .expect("OPENAI_COMPATIBLE manifest");
+        assert!(
+            !manifest.capabilities.tool_use,
+            "OAC's toolUse capability must stay false (v4 `93ed8abf` left it false \
+             deliberately); the checkbox it seeds stays editable"
         );
     }
 }

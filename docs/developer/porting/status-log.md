@@ -71586,3 +71586,74 @@ Ollama's four levels PANICS — plus arms for a numeric `keep_alive`, a duration
 reddens `keep-alive-sentinel-string`; ignoring `thinking_effort` reddens
 `think-effort-level`. `ollama_think_parser` and `ollama_think_retry_tier3`
 regenerated at the pin and green.
+
+---
+
+## P4.D83 unit 5 — OPENAI_COMPATIBLE: tools on both paths, the allow-list, the `chat_template_kwargs` fold (v4 `93ed8abf`, plugin 1.0.40)
+
+**Ported:**
+
+- **Tools.** `tools` + `tool_choice` (defaulted to `"auto"`, where DeepSeek/Z.AI
+  pass the caller's value through) on the body, parsed back on both paths. In
+  the decoder the accumulator ALREADY existed — the change is dropping one
+  flavor guard — but the terminal shape is OAC's own and was recorded from v4,
+  not reasoned: `raw_response` is synthesized ONLY when the stream carried tool
+  calls (v4: an empty one on every ordinary turn "would be noise in the logs for
+  no gain"), it has NO `usage` key (unlike the SDK flavors), and entries whose
+  NAME never arrived are dropped (`.filter(tc => tc.name)`) where the SDK
+  flavors keep them.
+- **The allow-list** in v4's application ORDER, with `chat_template_kwargs`
+  FIRST so the `reasoning_effort` merge sees whatever the profile set for the
+  object. `reasoning_effort` is NOT a flat body key — it folds into
+  `chat_template_kwargs`, because a local runtime's reasoning level lives in its
+  chat template and a flat key parses and is then never seen (the silent no-op
+  bug 71 is about). The object's STRING spelling parses; a parse failure, a
+  parsed non-object, and `"null"` all omit the key.
+- v4's numeric coercion here is **asymmetric with Ollama's** and reproduced
+  literally: it fires only when the stored value IS a string, so a number,
+  boolean or object passes through verbatim.
+
+**Shared contract C, server half — MEASURED and confirmed.** The runtime tool
+gate is `services/tool_build.rs:459`, the PROFILE's `allowToolUse`; the
+capability is never consulted there. So `capabilities.toolUse: false` on the OAC
+manifest is a seed for a new profile's checkbox, not a ceiling, and it stays
+false. Pinned by `oac_tool_capability_is_a_seed_not_a_clamp`.
+
+### The differentials
+
+**`request_builder_equivalence`: 227 → 255 rows** (14 new OAC cases × 2 modes).
+This bucket was the corpus's thinnest at 4 vectors and had nothing to say about
+either half of the bug.
+
+**⚠ The recorder was instantiating the WRONG CLASS**, and it would have made the
+whole unit vacuously green. `record-request-envelopes.mjs` built
+`OpenAICompatibleProvider` — the re-exported BASE — whose
+`profileParamAllowlist` is now empty by default; the plugin actually
+instantiates `OpenAICompatibleEndpointProvider` (`index.ts:240`), which supplies
+the real one. Before `93ed8abf` the two were the same object, so the recorder's
+own comment ("the bundled plugin only re-exports the canonical class") had
+simply expired. The first run of the new vectors caught it as v4 recording NO
+profile params at all; the recorder now names the subclass with the reason.
+
+New vectors: `tools`, `tools-explicit-choice`, `tools-roundtrip-with-slate`,
+`profile-params`, `profile-params-strings` (incl. `cache_prompt: 'yes'`, which
+ships verbatim — the asymmetry above), `profile-params-skips` (a bag trying to
+set model/messages/stream/stream_options/tools), `reasoning-effort-fold`,
+`reasoning-effort-merges` (merge, don't clobber), `chat-template-kwargs-string`,
+`chat-template-kwargs-string-merged`, `chat-template-kwargs-garbage`,
+`chat-template-kwargs-non-object`, `chat-template-kwargs-null-string`, and
+`tools-and-profile-params`.
+
+**`stream_decoders_equivalence`: the `chat_completions_sse` family had NO
+OpenAiCompatible case at all** — the flavor was in the enum, in the manifest and
+in the Rust match arm, with nothing driving it. Three new committed `.wire`
+transcripts + their recording (the recorder and its regen script gained the
+provider): `openai-compatible-basic` (no tools → no `raw_response`),
+`openai-compatible-tools` (arguments fragmented across three frames, a second
+complete call, and a THIRD index that never gets a name — v4 drops it), and
+`openai-compatible-tools-with-text`. The other providers' recordings regenerated
+BYTE-IDENTICAL in the same run.
+
+**Mutation-proven:** keeping nameless accumulator entries reddens
+`openai-compatible-tools`; suppressing the terminal `raw_response` reddens it
+too.

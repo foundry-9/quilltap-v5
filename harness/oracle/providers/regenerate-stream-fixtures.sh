@@ -35,6 +35,7 @@ run() {
 run deepseek   qtap-plugin-deepseek   chat_completions_sse
 run z-ai       qtap-plugin-z-ai       chat_completions_sse
 run openrouter qtap-plugin-openrouter chat_completions_sse
+run openai-compatible qtap-plugin-openai-compatible chat_completions_sse
 run openai     qtap-plugin-openai     responses_api_sse
 run grok       qtap-plugin-grok       responses_api_sse
 run anthropic  qtap-plugin-anthropic  anthropic_sse

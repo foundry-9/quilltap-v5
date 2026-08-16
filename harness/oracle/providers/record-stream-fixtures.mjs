@@ -64,6 +64,20 @@ const PROVIDERS = {
       return new ZAIProvider();
     },
   },
+  // P4.D83 (v4 `93ed8abf`): the OPENAI_COMPATIBLE endpoint. Instantiate the
+  // SUBCLASS the plugin uses, not the re-exported base — since bug 71 the base
+  // declares an empty `profileParamAllowlist` and the subclass supplies the real
+  // one. (The stream decoder does not read it, but the two classes are no longer
+  // interchangeable and the recorder should not pretend otherwise.)
+  'openai-compatible': {
+    dir: 'plugins/dist/qtap-plugin-openai-compatible',
+    async make() {
+      const { OpenAICompatibleEndpointProvider } = await import(
+        pathToFileURL(resolve('provider.ts'))
+      );
+      return new OpenAICompatibleEndpointProvider('http://localhost:8080/v1');
+    },
+  },
   openrouter: {
     dir: 'plugins/dist/qtap-plugin-openrouter',
     async make() {

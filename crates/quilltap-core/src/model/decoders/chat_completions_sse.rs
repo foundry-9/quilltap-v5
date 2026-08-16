@@ -35,7 +35,11 @@ use crate::model::stream::{StreamCacheUsage, StreamUsage};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flavor {
     /// openai-compatible base: content deltas + a terminal usage-only chunk.
-    /// No tool accumulation, no `raw_response`, no reasoning, no cache usage.
+    /// Since v4 `93ed8abf` (bug 71) it DOES accumulate tool-call fragments and
+    /// assemble a terminal `raw_response` — but only when the stream carried
+    /// tool calls (an empty one on every ordinary turn "would be noise in the
+    /// logs for no gain"), and in its own shape: no `usage` inside it, no
+    /// reasoning, no cache usage.
     OpenAiCompatible,
     /// deepseek via the OpenAI SDK: reasoning is `delta.reasoning_content`; the
     /// terminal `raw_response` is `{ choices:[{ index:0, message:{ role,
@@ -147,8 +151,9 @@ impl ChatCompletionsSseDecoder {
                 }
             }
 
-            // tool-call fragments
-            if self.flavor != Flavor::OpenAiCompatible {
+            // tool-call fragments (EVERY flavor since v4 `93ed8abf` — the base
+            // class accumulates by index exactly as the SDK flavors do)
+            {
                 if let Some(tcs) = delta
                     .and_then(|d| d.get("tool_calls"))
                     .and_then(|t| t.as_array())
@@ -247,9 +252,43 @@ impl ChatCompletionsSseDecoder {
     }
 
     /// Assemble the terminal `raw_response` value in the flavor's exact shape.
+    /// The tool calls v4's base class assembles from the accumulator: entries
+    /// with an empty NAME are dropped (`.filter((tc) => tc.name)`), which the
+    /// SDK flavors do not do.
+    fn openai_compatible_tool_calls(&self) -> Vec<Value> {
+        self.tools
+            .iter()
+            .filter(|(_, t)| !t.name.is_empty())
+            .map(|(_, t)| {
+                json!({
+                    "id": t.id,
+                    "type": "function",
+                    "function": { "name": t.name, "arguments": t.arguments },
+                })
+            })
+            .collect()
+    }
+
     fn build_raw_response(&self) -> Value {
         if self.flavor == Flavor::OpenAiCompatible {
-            return Value::Null; // no raw_response on this flavor
+            // v4 `93ed8abf`: synthesized ONLY when the stream carried tool
+            // calls. No `usage` key here (unlike the SDK flavors) — v4's literal
+            // is choices-only.
+            let tool_calls = self.openai_compatible_tool_calls();
+            if tool_calls.is_empty() {
+                return Value::Null;
+            }
+            return json!({
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": Value::Array(tool_calls),
+                    },
+                    "finish_reason": self.finish_reason.clone().unwrap_or(Value::Null),
+                }],
+            });
         }
         if self.flavor.is_openai_sdk() {
             {
@@ -327,7 +366,14 @@ impl ChatCompletionsSseDecoder {
         };
         match self.flavor {
             Flavor::OpenAiCompatible => {
-                // No raw_response, no reasoning, no raw_provider_usage.
+                // No reasoning, no raw_provider_usage. `raw_response` only when
+                // the stream carried tool calls (v4 `93ed8abf`); the host's tool
+                // detection reads it, and an empty one on every ordinary turn
+                // would be log noise for no gain.
+                let raw = self.build_raw_response();
+                if !raw.is_null() {
+                    chunk.raw_response = Some(raw);
+                }
             }
             Flavor::DeepSeek | Flavor::ZAi => {
                 chunk.raw_response = Some(self.build_raw_response());

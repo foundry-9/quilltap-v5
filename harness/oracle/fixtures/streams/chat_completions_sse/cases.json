@@ -113,5 +113,58 @@
         }
       }
     ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-basic",
+    "wire": "openai-compatible-basic.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-tools",
+    "wire": "openai-compatible-tools.wire",
+    "model": "local-model",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-tools-with-text",
+    "wire": "openai-compatible-tools-with-text.wire",
+    "model": "local-model",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
   }
 ]

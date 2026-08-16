@@ -1,0 +1,8 @@
+data: {"id":"oac3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Let me check. "}}]}
+
+data: {"id":"oac3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":null,"tool_calls":[{"index":0,"id":"call_oac4","type":"function","function":{"name":"get_weather","arguments":"{}"}}]}}]}
+
+data: {"id":"oac3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

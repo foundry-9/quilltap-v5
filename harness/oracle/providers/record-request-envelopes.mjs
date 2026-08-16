@@ -57,14 +57,21 @@ const PROVIDERS = {
   openai: async () => new (await import(pathToFileURL(resolve('provider.ts')))).OpenAIProvider(),
   grok: async () => new (await import(pathToFileURL(resolve('provider.ts')))).GrokProvider(),
   google: async () => new (await import(pathToFileURL(resolve('provider.ts')))).GoogleProvider(),
-  // The bundled plugin only re-exports @quilltap/plugin-utils' canonical class;
-  // the base url matches v5's OPENAI_COMPATIBLE manifest so the recorded url is
+  // The base url matches v5's OPENAI_COMPATIBLE manifest so the recorded url is
   // the one `build_request` produces. (Added P4.11 unit 2 — this provider had
   // NO corpus coverage at all, in either mode.)
+  //
+  // ⚠ P4.D83: this MUST be `OpenAICompatibleEndpointProvider`, the subclass the
+  // plugin actually instantiates (`index.ts:240`), NOT the re-exported base.
+  // Before v4 `93ed8abf` the two were the same object; now the base declares an
+  // EMPTY `profileParamAllowlist` and the subclass supplies the real one, so
+  // recording through the base silently produces bodies with no profile
+  // parameters at all — a corpus that looks green while the feature is
+  // untested. It takes the url as a bare string, as the plugin passes it.
   'openai-compatible': async () =>
-    new (await import(pathToFileURL(resolve('provider.ts')))).OpenAICompatibleProvider({
-      baseUrl: 'http://localhost:8080/v1',
-    }),
+    new (await import(pathToFileURL(resolve('provider.ts')))).OpenAICompatibleEndpointProvider(
+      'http://localhost:8080/v1',
+    ),
 };
 
 // A minimal SSE stream body that lets each decoder's streamMessage complete
@@ -422,6 +429,37 @@ function casesFor(provider) {
     add('tool-roundtrip', { ...base, model: 'local-model', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
     // P4.21 — the OpenAI-compatible base DROPS attachments.
     add('image-attachment', { ...base, model: 'local-model', messages: [SYS, USER_IMG] });
+    // P4.D83 (v4 `93ed8abf`, bug 71). This bucket was the corpus's thinnest at
+    // 4 vectors, and it had NOTHING to say about either half of the bug: the
+    // provider sent no `tools` on either path, and never read the profile bag.
+    // tools: on the body with the defaulted tool_choice, and with the caller's
+    // own choice; the assistant/tool round trip crossed with a slate.
+    add('tools', { ...base, model: 'local-model', tools: [TOOL] });
+    add('tools-explicit-choice', { ...base, model: 'local-model', tools: [TOOL], toolChoice: 'required' });
+    add('tools-roundtrip-with-slate', { ...base, model: 'local-model', tools: [TOOL], messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
+    // The allow-list, whole: every key at once, then the pieces that are easy to
+    // get wrong on their own.
+    add('profile-params', { ...base, model: 'local-model', profileParameters: { top_k: 40, min_p: 0.05, repeat_penalty: 1.1, presence_penalty: 0.2, frequency_penalty: 0.3, seed: 7, cache_prompt: true } });
+    // Hand-edited strings coerce; a non-finite one omits the key. Note the
+    // asymmetry with Ollama: v4 coerces here ONLY when the value is a string, so
+    // `cache_prompt: 'yes'` ships verbatim.
+    add('profile-params-strings', { ...base, model: 'local-model', profileParameters: { top_k: '40', min_p: 'lots', seed: '', cache_prompt: 'yes' } });
+    // A bag cannot retarget the request, and a key off the allow-list is dropped.
+    add('profile-params-skips', { ...base, model: 'local-model', profileParameters: { top_k: null, min_p: '', num_gpu: 99, model: 'HIJACKED', messages: [], stream: false, stream_options: {}, tools: [] } });
+    // reasoning_effort FOLDS into chat_template_kwargs — never a flat key.
+    add('reasoning-effort-fold', { ...base, model: 'local-model', profileParameters: { reasoning_effort: 'high' } });
+    // …merging over, not clobbering, whatever the profile set for the object.
+    add('reasoning-effort-merges', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: { enable_thinking: true }, reasoning_effort: 'low' } });
+    // The object's STRING spelling parses (the options schema has no JSON field,
+    // so only a hand-edited profile can carry one).
+    add('chat-template-kwargs-string', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '{"enable_thinking":true}' } });
+    add('chat-template-kwargs-string-merged', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '{"enable_thinking":true}', reasoning_effort: 'medium' } });
+    // Unparseable, and parseable-but-not-an-object: both omit the key entirely.
+    add('chat-template-kwargs-garbage', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '{not json' } });
+    add('chat-template-kwargs-non-object', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '42' } });
+    add('chat-template-kwargs-null-string', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: 'null' } });
+    // Tools and the bag together — the two halves of bug 71 on one request.
+    add('tools-and-profile-params', { ...base, model: 'local-model', tools: [TOOL], stop: ['END'], cacheKey: 'char-1', profileParameters: { top_k: 20, reasoning_effort: 'high' } });
   } else if (provider === 'openai') {
     add('plain', { ...base, model: 'gpt-4o' });
     add('first-call', { ...base, model: 'gpt-4o', messages: [SYS, USER] });
