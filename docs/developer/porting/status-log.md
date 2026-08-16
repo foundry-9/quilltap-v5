@@ -71340,3 +71340,60 @@ No code, no stub.
   the orchestrator corpus (that family drops the request frame).
 - `count_tool_schema_tokens`'s unserializable arm is unreachable in Rust and
   unshippable through NDJSON (see the unit-2 record).
+
+---
+
+## P4.D83 unit 1 — `resolve_sampling_params`, the one profile→sampling reader (v4 `d89babc4`)
+
+**Lane:** `claude/p4-d83-profile-params-wire-6c441b`, STACKED on P4.D82's tip
+(`465e3d54`). **v4 baseline `93ed8abf`**, drift-checked at lane start: v4's
+checkout is ON `main` at exactly `93ed8abf` with a clean tree, and
+`git diff main bugfix -- lib/ app/ packages/ plugins/` is deletions only
+(bugfix is the 4.8.x branch, behind main, carrying nothing portable). Every
+regen this lane runs uses the detached pin
+`/tmp/qt-v4-pin-p4d83-93ed8abf` with all three symlink classes.
+
+**Ported:** `crates/quilltap-core/src/sampling_params.rs` — v4
+`lib/llm/sampling-params.ts` 1:1 (`SamplingParams` + `resolveSamplingParams` +
+the private `readNumber`). Three things the shape depends on, carried
+deliberately:
+
+- **`max_tokens` is `Option<f64>`, not `Option<i64>`.** v4's resolver returns a
+  JS number; the truncation to a typed integer is the CALL SITE's seam (the
+  orchestrator's already-recorded fractional-cell divergence), not the
+  resolver's. Truncating here would have hidden it.
+- **Strings go through `jsnum::number_from_str`**, not Rust's `parse` — v4 uses
+  `Number(value)`, so `"  0.5  "`, `"0x800"`, `"0b101"`, `""` and `"1e3"` are
+  all numbers there and only two of them parse in Rust. Mutation-proven.
+- **A present-but-unusable key does NOT end the search.** v4's loop `continue`s
+  on a non-finite value, so `{max_tokens: "warm", maxTokens: 4096}` resolves to
+  4096. Mutation-proven (the naive early-return also reddens the plain
+  camelCase case, since `max_tokens` is absent there).
+
+**Differential — NEW family `sampling_params` (tier-1, EXACT).** Oracle
+`harness/oracle/cases/sampling-params.ts` imports v4's REAL
+`resolveSamplingParams`; `crates/quilltap-harness/tests/sampling_params_equivalence.rs`
+runs the identical 36-case corpus and compares knob-by-knob (an absent key in
+the oracle line — `JSON.stringify` drops `undefined` — must be `None` in v5).
+The corpus mines v4's own 76-line suite case-for-case (10 rows) and then goes
+past it, because a TypeScript test cannot see where a Rust port diverges: the
+12 JS-`Number()` string forms, the 4 fall-through shapes, the non-finite and
+odd-number rows, the non-number value types, and the 4 non-object blobs an
+unchecked cast can deliver.
+
+Regen recipe:
+```
+cd /tmp/qt-v4-pin-p4d83-93ed8abf
+npx tsx <worktree>/harness/oracle/cases/sampling-params.ts > /tmp/oracle-sampling-params.ndjson
+QT_ORACLE_SAMPLING_PARAMS=/tmp/oracle-sampling-params.ndjson \
+  cargo test -p quilltap-harness --test sampling_params_equivalence
+```
+
+**Mutation proofs (both red, then restored green):** (1) the string arm swapped
+to `s.parse::<f64>()` → 7 diffs across the JS-coercion rows; (2) the loop's
+`continue` swapped for an early return → 5 diffs including the plain
+camelCase row.
+
+**Not wired yet.** This unit lands the reader only; the four call sites are
+unit 2. Nothing reads it in production at this commit — deliberate, so the
+resolver's own differential is the proof rather than a downstream family's.

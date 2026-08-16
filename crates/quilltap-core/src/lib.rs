@@ -213,6 +213,7 @@ pub mod provider_manifest;
 pub mod recall_history;
 pub mod recall_tags;
 pub mod rng_patterns;
+pub mod sampling_params;
 pub mod scenario_text;
 pub mod scriptorium;
 pub mod select_speaker;

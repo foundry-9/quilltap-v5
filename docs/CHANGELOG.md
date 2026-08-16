@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+A connection profile's sampling knobs now have one reader. `resolve_sampling_params`
+maps a profile's free-form `parameters` blob to the three per-request fields —
+canonical snake_case (`temperature` / `max_tokens` / `top_p`) first, camelCase
+tolerated for a hand-edited or imported blob, absent knobs left unset so nothing
+is invented. Strings go through the same number coercion the rest of the port
+uses, and a key that is present but unusable falls through to the other
+spelling rather than ending the search.
+
 The turn now reserves room for what it adds after the context is built, and
 tells the model when its tool roster changed. A chat whose tool settings the
 operator edited set a flag that nothing ever consumed or cleared, so the
