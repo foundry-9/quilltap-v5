@@ -1094,6 +1094,8 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         cache_key: None,
         previous_response_id: None,
         stop: Vec::new(),
+        // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
+        request_timeout_ms: None,
     };
     let mut rx = streaming
         .stream_message(ctx.provider, ctx.base_url, &params)

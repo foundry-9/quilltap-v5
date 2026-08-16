@@ -71657,3 +71657,50 @@ BYTE-IDENTICAL in the same run.
 **Mutation-proven:** keeping nameless accumulator entries reddens
 `openai-compatible-tools`; suppressing the terminal `raw_response` reddens it
 too.
+
+---
+
+## P4.D83 unit 6 — the Ollama per-profile request timeout (v4 `d89babc4`, plugin 1.0.42)
+
+**Ported:** `resolveProfileTimeoutMs` as `ollama_profile_timeout_ms` +
+`provider_profile_timeout_ms` (a one-arm match: only Ollama offers the setting
+at the pin, its endpoint being a local box whose "how long is too long" nobody
+else can answer). `TransportPolicy::with_provider_default_timeout` is the new
+composition step — it replaces the timeout ONLY, leaving the retry count, because
+a provider-side default is a better default and not a caller's ceiling. Composed
+as `.with_provider_default_timeout(…).with_request_budget(…)`, which is v4's
+`resolveRequestTimeoutMs(params, resolveProfileTimeoutMs(params))` precedence
+exactly.
+
+`StreamParams` gained `request_timeout_ms`. No v5 (or v4) streaming caller sets
+one today; the field exists because the caller's ceiling MUST win over the
+provider default, and a resolver with no way to express that could not be proven
+to honour it. Applied at all three `execute_stream` sites — including the
+think-retry, whose re-call re-arms the timer, which is v4's `openStream()`
+verbatim (the `AbortController` is built inside it).
+
+Where each budget bites is the pre-existing, documented split: streaming =
+time-to-headers only (a whole-exchange ceiling would truncate a long answer),
+non-streaming = the whole exchange. Nothing new was invented for either.
+
+### The proofs (unit tier — the P4.15 falsifiability ruling)
+
+A timeout is wall-clock behaviour no NDJSON corpus can observe, so:
+
+1. **`a_profile_timeout_sets_the_streaming_budget_and_keeps_retries`** — reads
+   the policy the transport was HANDED (a new `seen_policy` on the fake), so the
+   resolution is proven without racing a clock.
+2. **`an_unusable_profile_timeout_falls_through_to_the_default`** — seven bags
+   (absent, `""`, `"soon"`, `0`, `-30`, `null`, `true`) leave the policy
+   untouched; the string form of a real number IS honoured.
+3. **`a_caller_budget_beats_the_profile_and_other_providers_ignore_it`** — the
+   caller's 20 s wins over the profile's 900 s AND drops retries to 0 (a ceiling
+   on one attempt); the same bag on DEEPSEEK changes nothing.
+4. **`a_profile_timeout_actually_bounds_the_wire`** (streaming) and
+   **`a_profile_timeout_bounds_a_non_streaming_send`** (`quilltap-host`) — real
+   stalling sockets, because a budget that resolves correctly and is then dropped
+   on the floor would pass all three assertions above.
+
+**Mutation-proven:** removing the `with_provider_default_timeout` composition
+reddens (1) and (2) immediately, and hangs (4) past 60 s before it fails — the
+wall-clock claim is real, not decorative.

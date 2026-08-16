@@ -268,7 +268,20 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
         // call's transport policy — a ceiling on one attempt, retries off. The
         // process-wide policy stands when the caller named none. This is the only
         // per-call path; the field never reaches a request body (v4 same).
-        let policy = self.policy.with_request_budget(params.request_timeout_ms);
+        // P4.D83 (v4 `d89babc4`): a provider that offers a per-profile budget
+        // (Ollama's `request_timeout_seconds`) supplies the DEFAULT, and the
+        // caller's ceiling still wins — v4's `buildRequestAbortSignal(params,
+        // resolveProfileTimeoutMs(params))` in the same order. Non-streaming, so
+        // this bounds the whole exchange (module header).
+        let policy = self
+            .policy
+            .with_provider_default_timeout(
+                quilltap_core::model::request_builder::provider_profile_timeout_ms(
+                    provider,
+                    params.profile_parameters.as_ref(),
+                ),
+            )
+            .with_request_budget(params.request_timeout_ms);
         async move {
             quilltap_core::model::completion_provider::execute_completion(
                 &self.transport,
@@ -3390,5 +3403,73 @@ mod tests {
         // UTC and an unresolvable zone (falls back to UTC) are both 0.
         assert_eq!(js_local_offset_minutes("UTC", summer_noon_utc), 0);
         assert_eq!(js_local_offset_minutes("Not/AZone", summer_noon_utc), 0);
+    }
+}
+
+#[cfg(test)]
+mod profile_timeout_tests {
+    use super::*;
+    use quilltap_core::model::completion::{
+        CompletionMessage, CompletionParams, CompletionProvider,
+    };
+    use quilltap_core::model::transport::TransportPolicy;
+    use serde_json::json;
+
+    /// P4.D83 (v4 `d89babc4`), the NON-STREAMING half of the timeout quartet.
+    ///
+    /// The composition lives here — `execute_completion` takes the policy as an
+    /// argument — so it is proven here, against an endpoint that accepts the
+    /// connection and never answers. On this path the budget bounds the WHOLE
+    /// exchange (v4's `buildRequestAbortSignal(params,
+    /// resolveProfileTimeoutMs(params))`), so a profile that names 0.2 s must
+    /// fail in well under the shared 300 s default.
+    #[tokio::test]
+    async fn a_profile_timeout_bounds_a_non_streaming_send() {
+        use tokio::io::AsyncReadExt;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf).await;
+                    std::future::pending::<()>().await;
+                });
+            }
+        });
+
+        let provider = WireCompletionProvider::new(
+            std::collections::HashMap::<String, String>::new(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+            None,
+        );
+        let params = CompletionParams {
+            messages: vec![CompletionMessage::user("hi")],
+            model: "qwen3:8b".to_string(),
+            temperature: Some(0.7),
+            max_tokens: Some(64),
+            strict_max_tokens: false,
+            top_p: None,
+            cache_key: None,
+            profile_parameters: Some(json!({ "request_timeout_seconds": 0.2 })),
+            attachments: Vec::new(),
+            request_timeout_ms: None,
+        };
+        let started = std::time::Instant::now();
+        let result = provider
+            .send_message("OLLAMA", Some(&format!("http://{addr}")), &params)
+            .await;
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "the profile's 0.2 s budget must fire, not the 300 s default (took {:?})",
+            started.elapsed()
+        );
+        assert!(
+            result.is_err(),
+            "a silent endpoint must surface as an error, got {result:?}"
+        );
     }
 }

@@ -371,6 +371,18 @@ pub struct StreamParams {
     /// Stop sequences (v4 `stop?: string | string[]`), normalised to a list;
     /// empty when unset.
     pub stop: Vec<String>,
+    /// v4 `LLMParams.requestTimeoutMs` on the STREAMING half (P4.D83): a hard
+    /// wall-clock ceiling for this one call, in milliseconds, bounding
+    /// time-to-first-byte only (the transport module header explains why a
+    /// whole-exchange ceiling would truncate a long generation).
+    ///
+    /// The field exists because v4's `LLMParams` carries it on both halves and
+    /// because it must WIN over a provider-side profile default — that
+    /// precedence is the contract, and a resolver with no way to express the
+    /// caller's ceiling could not be proven to honour it. No v5 streaming caller
+    /// sets one today (the cheap-LLM deadlines all go through the completion
+    /// half), and no v4 streaming caller does either.
+    pub request_timeout_ms: Option<i64>,
 }
 
 /// The streaming completion boundary — every streamed model call goes through
@@ -560,6 +572,7 @@ mod tests {
             cache_key: Some("char:abc".to_string()),
             previous_response_id: None,
             stop: Vec::new(),
+            request_timeout_ms: None,
         }
     }
 

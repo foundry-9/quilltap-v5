@@ -300,6 +300,8 @@ where
         cache_key: None,
         previous_response_id: None,
         stop: Vec::new(),
+        // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
+        request_timeout_ms: None,
     };
 
     let mut full_response = String::new();

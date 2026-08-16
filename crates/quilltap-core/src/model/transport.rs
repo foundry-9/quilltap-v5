@@ -135,6 +135,28 @@ impl TransportPolicy {
     /// (v4's own words). `None` or a non-positive value means "the caller named
     /// no budget" and leaves this policy untouched — v4's
     /// `typeof requested === 'number' && requested > 0` guard.
+    /// Apply a PROVIDER-side default budget — the one a connection profile names
+    /// for a provider that offers the setting (Ollama's
+    /// `request_timeout_seconds`, P4.D83 / v4 `d89babc4`).
+    ///
+    /// Unlike [`with_request_budget`](Self::with_request_budget) this replaces
+    /// the timeout ONLY: it is a better default, not a caller's ceiling, so the
+    /// retry count stands. v4's shape exactly — the profile's number is the
+    /// `defaultMs` argument to `resolveRequestTimeoutMs`, which a
+    /// caller-supplied `requestTimeoutMs` still overrides. Compose in that order
+    /// (`.with_provider_default_timeout(…).with_request_budget(…)`) and the
+    /// precedence is v4's.
+    #[must_use]
+    pub fn with_provider_default_timeout(self, timeout_ms: Option<u64>) -> Self {
+        match timeout_ms {
+            Some(ms) if ms > 0 => Self {
+                timeout: Duration::from_millis(ms),
+                ..self
+            },
+            _ => self,
+        }
+    }
+
     #[must_use]
     pub fn with_request_budget(self, request_timeout_ms: Option<i64>) -> Self {
         match request_timeout_ms {

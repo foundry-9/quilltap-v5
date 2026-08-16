@@ -1264,6 +1264,36 @@ pub fn ollama_think_setting(profile_parameters: Option<&Value>) -> Value {
     }
 }
 
+/// v4 `DEFAULT_REQUEST_TIMEOUT_SECONDS` (`profile-options.ts`): the wait when the
+/// profile names none, restated in the unit the profile field uses. Matches
+/// [`DEFAULT_REQUEST_TIMEOUT_MS`](crate::model::transport::DEFAULT_REQUEST_TIMEOUT_MS).
+pub const OLLAMA_DEFAULT_REQUEST_TIMEOUT_SECONDS: i64 = 300;
+
+/// v4 `resolveProfileTimeoutMs` (`profile-options.ts`) — the profile's
+/// `request_timeout_seconds` in milliseconds, or `None` when it named none.
+///
+/// A local Ollama has no fixed answer to "how long should this take": loading a
+/// 27B model off disk and reading a 20k-token prompt can outlast the shared
+/// 5-minute default on a busy machine, while a small model on a quiet one should
+/// fail fast. The number is therefore the user's, per connection profile.
+/// Anything absent, unparseable or non-positive falls through.
+///
+/// v4 returns the DEFAULT rather than "nothing" here; `None` is v5's way of
+/// saying the same thing, because the transport's own default already IS that
+/// number and leaving the policy untouched keeps its retry count too.
+pub fn ollama_profile_timeout_ms(profile_parameters: Option<&Value>) -> Option<u64> {
+    let n = match profile_parameters.and_then(|p| p.get("request_timeout_seconds")) {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
+        Some(Value::String(s)) => crate::jsnum::number_from_str(s),
+        _ => f64::NAN,
+    };
+    if n.is_finite() && n > 0.0 {
+        Some((n * 1000.0) as u64)
+    } else {
+        None
+    }
+}
+
 /// v4 `normalizeOption`: the numeric option keys go through JS `Number()` (the
 /// number and string arms ONLY — a boolean or `null` is NaN here rather than
 /// JS `ToNumber`'s 1/0), a non-finite result omits the key, and the

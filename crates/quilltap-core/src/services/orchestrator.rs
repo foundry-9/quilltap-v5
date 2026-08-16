@@ -2535,6 +2535,8 @@ where
         cache_key: None,
         previous_response_id,
         stop: initial_stop_sequences.clone(),
+        // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
+        request_timeout_ms: None,
     };
 
     let is_paused = chat

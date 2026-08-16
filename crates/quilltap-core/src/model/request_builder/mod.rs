@@ -46,9 +46,27 @@ pub use chat_completions::openrouter_non_streaming_is_vision;
 // the provider's declared contract: what a connection profile may set, and the
 // three control keys read but never forwarded.
 pub use chat_completions::{
-    OLLAMA_CONTROL_PARAMS, OLLAMA_OPTION_PARAM_ALLOWLIST, OLLAMA_THINK_LEVELS,
-    OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST,
+    ollama_profile_timeout_ms, OLLAMA_CONTROL_PARAMS, OLLAMA_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    OLLAMA_OPTION_PARAM_ALLOWLIST, OLLAMA_THINK_LEVELS, OLLAMA_TOP_LEVEL_PARAM_ALLOWLIST,
 };
+
+/// The per-request wall-clock budget a connection PROFILE names, if its provider
+/// offers one (P4.D83, v4 `93ed8abf`/`d89babc4`). Only Ollama does at the pin —
+/// its endpoint is a local box whose "how long is too long" nobody else can
+/// answer — so this is a one-arm match rather than a table; a second provider
+/// that grows the field adds an arm here.
+///
+/// `None` means "the profile named none", leaving the process-wide policy (its
+/// timeout AND its retry count) in charge.
+pub fn provider_profile_timeout_ms(
+    provider: &str,
+    profile_parameters: Option<&Value>,
+) -> Option<u64> {
+    match provider {
+        "OLLAMA" => ollama_profile_timeout_ms(profile_parameters),
+        _ => None,
+    }
+}
 pub use google::sanitize_schema_for_google;
 
 // ============================================================================

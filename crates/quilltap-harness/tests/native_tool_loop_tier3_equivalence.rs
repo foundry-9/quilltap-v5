@@ -401,6 +401,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
             cache_key: None,
             previous_response_id: None,
             stop: Vec::new(),
+            request_timeout_ms: None,
         };
         let formatted_messages: Vec<ThreadedMessage> = c
             .formatted_messages

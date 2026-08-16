@@ -212,6 +212,7 @@ async fn captured_body_opts(
         cache_key: None,
         previous_response_id: None,
         stop: Vec::new(),
+        request_timeout_ms: None,
     };
     let formatted_messages = vec![
         ThreadedMessage {
@@ -621,6 +622,7 @@ fn chaining_base_params() -> StreamParams {
         cache_key: None,
         previous_response_id: None,
         stop: Vec::new(),
+        request_timeout_ms: None,
     }
 }
 

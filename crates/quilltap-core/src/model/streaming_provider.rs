@@ -319,6 +319,22 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
         // Prepare synchronously; the async part is only the transport call.
         let prepared = self.prepare(provider, base_url, params);
+        // P4.D83 (v4 `d89babc4`): this call's wall-clock budget. A provider that
+        // offers the setting (Ollama) takes its number from the PROFILE — a
+        // better default, so the retry count stands — and a caller-supplied
+        // ceiling still wins and forbids retrying past itself. On the streaming
+        // path the budget bounds time-to-headers only (module header), which is
+        // v4's `openStream()` verbatim: the `AbortController` is armed INSIDE it,
+        // so each attempt (including the think-retry below) re-arms the timer.
+        let policy = self
+            .policy
+            .with_provider_default_timeout(
+                crate::model::request_builder::provider_profile_timeout_ms(
+                    provider,
+                    params.profile_parameters.as_ref(),
+                ),
+            )
+            .with_request_budget(params.request_timeout_ms);
         // The conversation-chaining fallback (dogfood #69). v4's OpenAI provider
         // wraps the chained `responses.create` in a try/catch: when the request
         // carried `previous_response_id` and the create fails BEFORE the first
@@ -345,7 +361,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                 Err(e) => return single_error(e.message),
             };
 
-            let bytes_rx = match self.transport.execute_stream(&request, &self.policy).await {
+            let bytes_rx = match self.transport.execute_stream(&request, &policy).await {
                 Ok(rx) => rx,
                 Err(e) => {
                     // P4.D78 (v4 `d9c5a1c7`): an Ollama model that refuses the
@@ -364,7 +380,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                             error = %e.message,
                             "Ollama rejected the think parameter; retrying without it"
                         );
-                        match self.transport.execute_stream(&retry, &self.policy).await {
+                        match self.transport.execute_stream(&retry, &policy).await {
                             Ok(rx) => rx,
                             // v4 surfaces the SECOND failure (the retry's error).
                             Err(retry_err) => return single_error(retry_err.message),
@@ -393,7 +409,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                         );
                         match self
                             .transport
-                            .execute_stream(&fallback_request, &self.policy)
+                            .execute_stream(&fallback_request, &policy)
                             .await
                         {
                             Ok(rx) => {
@@ -475,6 +491,7 @@ mod tests {
     use super::*;
     use crate::model::transport::{BoxFuture, StreamBytes, TransportError, TransportResponse};
     use std::sync::Mutex;
+    use std::time::Duration;
 
     /// A transport replaying scripted byte frames (or a pre-stream failure),
     /// recording the request it saw.
@@ -482,6 +499,9 @@ mod tests {
         frames: Vec<StreamBytes>,
         fail_before_stream: Option<String>,
         seen: Mutex<Option<TransportRequest>>,
+        /// P4.D83: the policy `execute_stream` was handed — the composed per-call
+        /// budget, recorded so the resolution is proven without racing a clock.
+        seen_policy: Mutex<Option<TransportPolicy>>,
     }
 
     impl FakeStreamTransport {
@@ -490,6 +510,7 @@ mod tests {
                 frames,
                 fail_before_stream: None,
                 seen: Mutex::new(None),
+                seen_policy: Mutex::new(None),
             }
         }
     }
@@ -510,10 +531,11 @@ mod tests {
         fn execute_stream<'a>(
             &'a self,
             request: &'a TransportRequest,
-            _policy: &'a TransportPolicy,
+            policy: &'a TransportPolicy,
         ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>>
         {
             *self.seen.lock().unwrap() = Some(request.clone());
+            *self.seen_policy.lock().unwrap() = Some(*policy);
             let frames = self.frames.clone();
             let fail = self.fail_before_stream.clone();
             Box::pin(async move {
@@ -622,6 +644,7 @@ mod tests {
             cache_key: None,
             previous_response_id: None,
             stop: Vec::new(),
+            request_timeout_ms: None,
         }
     }
 
@@ -1074,6 +1097,167 @@ mod tests {
              {{\"model\":\"qwen3:8b\",\"message\":{{\"role\":\"assistant\",\"content\":\"\"}},\"done\":true}}\n"
         )
         .into_bytes())]
+    }
+
+    // -----------------------------------------------------------------------
+    // P4.D83 — the per-profile request timeout (v4 `d89babc4`, Ollama 1.0.42)
+    //
+    // Not oracle-checkable (the P4.15 ruling: a corpus cannot observe wall
+    // clock), so the quartet is unit-tier. The first three read the policy the
+    // transport was HANDED — deterministic, no clock — and the fourth proves the
+    // number actually bounds a real socket, so a composition that resolved
+    // correctly and then dropped the result cannot pass.
+    // -----------------------------------------------------------------------
+
+    fn ollama_params_with(bag: serde_json::Value) -> StreamParams {
+        StreamParams {
+            profile_parameters: Some(bag),
+            ..ollama_params()
+        }
+    }
+
+    async fn policy_for(params: &StreamParams) -> TransportPolicy {
+        let t = FakeStreamTransport::new(ollama_stream("hi"));
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let _ = drain(p.stream_message("OLLAMA", None, params).await).await;
+        let seen = *p.transport.seen_policy.lock().unwrap();
+        seen.expect("execute_stream was called")
+    }
+
+    /// The profile's number becomes the streaming call's budget — and ONLY the
+    /// budget: it is a better default, not a caller's ceiling, so the retry
+    /// count stands (v4 passes it as `resolveRequestTimeoutMs`'s `defaultMs`).
+    #[tokio::test]
+    async fn a_profile_timeout_sets_the_streaming_budget_and_keeps_retries() {
+        let policy = policy_for(&ollama_params_with(
+            serde_json::json!({ "request_timeout_seconds": 900 }),
+        ))
+        .await;
+        assert_eq!(policy.timeout, Duration::from_secs(900));
+        assert_eq!(
+            policy.max_retries,
+            TransportPolicy::default().max_retries,
+            "a provider-side default must not disable retries"
+        );
+    }
+
+    /// Blank, absent, unparseable and non-positive all fall through, leaving the
+    /// shared 300 s default (v4 `DEFAULT_REQUEST_TIMEOUT_SECONDS`) untouched.
+    /// The string form is accepted because a hand-edited bag carries strings.
+    #[tokio::test]
+    async fn an_unusable_profile_timeout_falls_through_to_the_default() {
+        for bag in [
+            serde_json::json!({}),
+            serde_json::json!({ "request_timeout_seconds": "" }),
+            serde_json::json!({ "request_timeout_seconds": "soon" }),
+            serde_json::json!({ "request_timeout_seconds": 0 }),
+            serde_json::json!({ "request_timeout_seconds": -30 }),
+            serde_json::json!({ "request_timeout_seconds": null }),
+            serde_json::json!({ "request_timeout_seconds": true }),
+        ] {
+            let policy = policy_for(&ollama_params_with(bag.clone())).await;
+            assert_eq!(
+                policy,
+                TransportPolicy::default(),
+                "bag {bag} must leave the policy alone"
+            );
+        }
+        // …and the string form of a real number IS honoured.
+        let policy = policy_for(&ollama_params_with(
+            serde_json::json!({ "request_timeout_seconds": "45" }),
+        ))
+        .await;
+        assert_eq!(policy.timeout, Duration::from_secs(45));
+    }
+
+    /// A caller-supplied budget still WINS, and (being a ceiling on one attempt)
+    /// forbids retrying past itself — the cheap-LLM task deadlines stay hard.
+    /// Also: only OLLAMA offers the setting, so the same bag on another provider
+    /// changes nothing.
+    #[tokio::test]
+    async fn a_caller_budget_beats_the_profile_and_other_providers_ignore_it() {
+        let mut capped = ollama_params_with(serde_json::json!({ "request_timeout_seconds": 900 }));
+        capped.request_timeout_ms = Some(20_000);
+        let policy = policy_for(&capped).await;
+        assert_eq!(policy.timeout, Duration::from_millis(20_000));
+        assert_eq!(policy.max_retries, 0);
+
+        let t = FakeStreamTransport::new(vec![]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let deepseek = StreamParams {
+            profile_parameters: Some(serde_json::json!({ "request_timeout_seconds": 900 })),
+            ..params("deepseek-chat")
+        };
+        let _ = drain(p.stream_message("DEEPSEEK", None, &deepseek).await).await;
+        assert_eq!(
+            p.transport.seen_policy.lock().unwrap().unwrap(),
+            TransportPolicy::default(),
+            "no other provider reads request_timeout_seconds at the pin"
+        );
+    }
+
+    /// The fourth arm, and the only one that touches a socket: a profile budget
+    /// that RESOLVES correctly and is then dropped on the floor would pass the
+    /// three assertions above. Against an endpoint that accepts the connection
+    /// and never answers, the stream must fail at the profile's number rather
+    /// than hold the turn for the shared 300 s default.
+    ///
+    /// Feature-gated with the concrete transport, like `transport.rs`'s own
+    /// deadline proofs; `cargo test --workspace` compiles core with
+    /// `native-transport` (quilltap-host requires it and cargo unifies features),
+    /// so this runs in the ordinary gate.
+    #[cfg(feature = "native-transport")]
+    #[tokio::test]
+    async fn a_profile_timeout_actually_bounds_the_wire() {
+        use tokio::io::AsyncReadExt;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf).await;
+                    // Hold it open, silently, forever.
+                    std::future::pending::<()>().await;
+                });
+            }
+        });
+
+        let provider = WireStreamingProvider::new(
+            crate::model::transport::ReqwestTransport::new(),
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let params = ollama_params_with(serde_json::json!({ "request_timeout_seconds": 0.2 }));
+        let started = std::time::Instant::now();
+        let chunks = drain(
+            provider
+                .stream_message("OLLAMA", Some(&format!("http://{addr}")), &params)
+                .await,
+        )
+        .await;
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the profile's 0.2 s budget must fire, not the 300 s default (took {:?})",
+            started.elapsed()
+        );
+        assert!(
+            chunks.iter().any(|c| c.is_err()),
+            "a silent endpoint must surface as a stream error, got {chunks:?}"
+        );
     }
 
     fn think_rejection() -> TransportError {

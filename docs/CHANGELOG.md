@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+An Ollama connection profile can set its own Request Timeout. A turn was
+bounded by the shared five-minute default with nothing in the UI to change it,
+and loading a large model off disk plus reading a long prompt both happen
+before the first token — a big model on a busy machine could cross the ceiling
+and leave no reply at all. The profile's `request_timeout_seconds` now sets
+that budget on both the streaming first-token wait and the whole non-streaming
+request. Blank, absent or unparseable falls through to 300 seconds, so nothing
+changes for a profile that never touches it, and a caller that has already
+decided what the work is worth waiting for still wins.
+
 An OpenAI-compatible endpoint can now call tools, and reads the profile's
 settings. It sent no tools on either path and never looked at the parameters
 blob, so a local llama-server with function calling could not be used for tool

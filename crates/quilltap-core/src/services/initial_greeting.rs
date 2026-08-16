@@ -182,6 +182,8 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
         cache_key: build_character_cache_key(req.character_id.as_deref()),
         previous_response_id: None,
         stop: Vec::new(),
+        // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
+        request_timeout_ms: None,
     };
 
     let start = now_unix_ms();
