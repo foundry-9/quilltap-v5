@@ -1928,9 +1928,16 @@ pub async fn connection_profile_reset_sort(db: &Db, user_id: &str) -> Response {
 
 /// v4 `GET /api/v1/providers` — the plugin-registry listing becomes a read over
 /// the v5 manifest [`Registry`]. Emits the LLM providers only (no search-provider
-/// manifest is ported — a documented absence); `icon`/`optionsSchema` are always
-/// `null` (the manifest deliberately lacks them, per the W4.7a survey), and
-/// `type` is always `"llm"`.
+/// manifest is ported — a documented absence); `icon` is always `null` (the
+/// manifest deliberately lacks it), and `type` is always `"llm"`.
+///
+/// `optionsSchema` is served from the manifest since P4.D83 (shared contract B):
+/// per provider, v4's `ProviderOptionsSchema` verbatim, or `null` exactly when
+/// the plugin declares none (google only, at the `93ed8abf` pin). Field keys are
+/// storage keys inside the profile's `parameters` blob and must round-trip
+/// untouched — the renderer reads and writes the flat bag, and the provider
+/// reads the SAME keys at call time — so the value is carried opaquely and never
+/// reshaped here.
 pub fn provider_list() -> Response {
     let registry = Registry::built_in();
     let providers: Vec<Value> = registry
@@ -1970,7 +1977,7 @@ pub fn provider_list() -> Response {
                     "toolUse": m.capabilities.tool_use,
                 },
                 "configRequirements": Value::Object(config),
-                "optionsSchema": Value::Null,
+                "optionsSchema": m.options_schema.clone().unwrap_or(Value::Null),
             })
         })
         .collect();

@@ -71704,3 +71704,45 @@ A timeout is wall-clock behaviour no NDJSON corpus can observe, so:
 **Mutation-proven:** removing the `with_provider_default_timeout` composition
 reddens (1) and (2) immediately, and hangs (4) past 60 s before it fails — the
 wall-clock claim is real, not decorative.
+
+---
+
+## P4.D83 unit 7 — `optionsSchema` on the manifests and the providers listing (shared contract B)
+
+**Ported:** the field v5 never had. `api/settings.rs` served a hard
+`optionsSchema: Value::Null` for every provider, and
+`providers_listing_equivalence` normalized the field away on both sides — a
+documented absence from the W4.7a survey, and the reason P4.D84's panel had
+nothing to render.
+
+- `Manifest.options_schema: Option<Value>` — deliberately OPAQUE, not a typed
+  tree. The shape is v4's `plugin-types/.../provider-options.ts`; a typed mirror
+  would have to reproduce v4's key ORDER to stay byte-identical and would rot on
+  v4's next field, where an opaque carry (with `preserve_order` keeping insertion
+  order) cannot. P4.D84 narrows its own client-side type from the contract text.
+- The GENERATOR extracts it (`byte-exact-static-data-transcription`: ship the
+  generator, never a hand-copied tree). v4's route swallows a getter throw and
+  falls back to `undefined`; the generator makes it a LOUD non-zero exit instead,
+  because a generator that silently emits `null` for a provider whose schema
+  merely failed to build would bake the failure into a committed file.
+- All nine manifests regenerated at the pin: **insertions only** — no other
+  manifest field moved. Eight declare a schema (anthropic 5 fields, deepseek 2,
+  grok 1, ollama 10, openai 3, openai-compatible 8, openrouter 3, z-ai 2);
+  google is `null`.
+
+### The differential
+
+`providers_listing_equivalence` with the normalizer REMOVED, so all eight
+schemas are comparands. Two assertions beyond the row equality:
+
+- **byte-for-byte, ORDER included.** `Value` equality is order-INDEPENDENT under
+  `preserve_order` (an `IndexMap`'s `PartialEq` ignores position) and the
+  renderer draws fields in the order it receives them — so both sides are
+  re-serialized and the STRINGS compared.
+- **shape, not a hand count:** exactly one provider must answer `null` and every
+  other must declare, so an oracle that lost the getter (or a generator that
+  emitted `null` quietly) cannot pass green with the field untested.
+
+**Mutation-proven both ways:** editing one Ollama field label reddens OLLAMA;
+giving google an empty `{groups:[]}` reddens GOOGLE.
+`provider_registry_equivalence` re-run at the pin — 253 rows, unchanged.

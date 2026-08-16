@@ -273,6 +273,32 @@ function resolveImageGenerationModels(plugin, dir) {
 }
 
 /**
+ * The plugin's connection-profile options schema, or null when it declares none
+ * (P4.D83, v4 `93ed8abf`). Getter-derived, so it is EXTRACTED rather than
+ * transcribed — `byte-exact-static-data-transcription`: ship the generator, not
+ * a hand-copied tree that rots on v4's next field.
+ *
+ * v4's route wraps the call in try/catch and falls back to `undefined`; here a
+ * THROW is a loud non-zero exit instead, because a generator that silently emits
+ * `null` for a provider whose schema merely failed to build would bake the
+ * failure into a committed file.
+ */
+function resolveOptionsSchema(plugin, dir) {
+  if (typeof plugin.getProviderOptionsSchema !== 'function') return null;
+  let schema;
+  try {
+    schema = plugin.getProviderOptionsSchema();
+  } catch (err) {
+    fail(`${dir}: getProviderOptionsSchema threw — ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (schema === undefined || schema === null) return null;
+  if (typeof schema !== 'object' || !Array.isArray(schema.groups)) {
+    fail(`${dir}: getProviderOptionsSchema returned ${JSON.stringify(schema)}, not { groups: [...] }`);
+  }
+  return schema;
+}
+
+/**
  * The committed manifests carry `imageGenerationModels` on ONE line where every
  * other array is pretty-printed. Stringify through a sentinel so the field keeps
  * its schema position and the inline rendering is exact.
@@ -336,6 +362,7 @@ function buildManifest(provider) {
       webSearch: !!plugin.capabilities.webSearch,
       toolUse: !!plugin.capabilities.toolUse,
     },
+    optionsSchema: resolveOptionsSchema(plugin, provider.dir),
     configRequirements: {
       requiresApiKey: !!cfg.requiresApiKey,
       requiresBaseUrl: !!cfg.requiresBaseUrl,

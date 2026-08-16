@@ -28,6 +28,38 @@
     "webSearch": true,
     "toolUse": false
   },
+  "optionsSchema": {
+    "groups": [
+      {
+        "title": "OpenRouter Options",
+        "fields": [
+          {
+            "key": "enableZDR",
+            "label": "Enable Zero Data Retention (ZDR)",
+            "helpText": "Providers will not store or log your prompts and responses.",
+            "type": "boolean",
+            "default": false
+          },
+          {
+            "key": "useCustomModel",
+            "label": "Use Custom Model ID",
+            "helpText": "Enter an arbitrary model ID not in the fetched list.",
+            "type": "boolean",
+            "default": false,
+            "affects": "modelInput"
+          },
+          {
+            "key": "fallbackModels",
+            "label": "Fallback Models (max 2)",
+            "type": "multi-enum",
+            "multiEnumSource": "fetchedModels",
+            "max": 2,
+            "default": []
+          }
+        ]
+      }
+    ]
+  },
   "configRequirements": {
     "requiresApiKey": true,
     "requiresBaseUrl": false,

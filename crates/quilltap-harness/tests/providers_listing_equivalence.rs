@@ -29,12 +29,18 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-/// Strip the fields the manifest deliberately lacks so the diff is over the
+/// Strip the ONE field the manifest deliberately lacks (`icon` — v4 exposes
+/// plugin icons the manifest does not carry) so the diff is over the
 /// manifest-covered surface only.
+///
+/// **`optionsSchema` is NO LONGER normalized away (P4.D83, shared contract B).**
+/// It was a documented absence; the manifests now carry it, extracted by the
+/// generator from each plugin's `getProviderOptionsSchema()`, so all eight
+/// declaring plugins' schemas are diffed byte-for-byte here — which is also
+/// P4.D84's server-side proof that the panel renders what v4 renders.
 fn normalize(mut p: Value) -> Value {
     if let Some(obj) = p.as_object_mut() {
         obj.remove("icon");
-        obj.remove("optionsSchema");
     }
     p
 }
@@ -67,8 +73,44 @@ fn providers_listing_matches_v4() {
     );
 
     // Registration order matches (the manifest set is in v4's registration order).
+    let mut with_schema = 0usize;
+    let mut without_schema = 0usize;
     for (o, g) in oracle_providers.iter().zip(got_providers.iter()) {
         let g_norm = normalize(g.clone());
         assert_eq!(o, &g_norm, "provider mismatch for id {:?}", o.get("id"));
+
+        // P4.D83, shared contract B: `optionsSchema` byte-for-byte, ORDER
+        // included. `Value` equality above is order-INDEPENDENT (preserve_order
+        // gives an IndexMap, whose PartialEq ignores position), and the renderer
+        // draws the fields in the order it receives them — so re-serialize both
+        // sides and compare the strings.
+        let (o_schema, g_schema) = (&o["optionsSchema"], &g["optionsSchema"]);
+        assert_eq!(
+            serde_json::to_string(o_schema).unwrap(),
+            serde_json::to_string(g_schema).unwrap(),
+            "optionsSchema bytes (field ORDER included) differ for id {:?}",
+            o.get("id")
+        );
+        if o_schema.is_null() {
+            without_schema += 1;
+        } else {
+            with_schema += 1;
+        }
     }
+
+    // Shape, not a hand count: at the `93ed8abf` pin EIGHT of the nine built-ins
+    // declare a schema and exactly one (google) does not. An oracle that lost the
+    // getter — or a generator that silently emitted `null` — would otherwise pass
+    // green with the whole field untested.
+    assert_eq!(
+        without_schema, 1,
+        "expected exactly one provider with NO options schema (google)"
+    );
+    assert!(
+        with_schema >= 8,
+        "expected every other built-in to declare an options schema, got {with_schema}"
+    );
+    eprintln!(
+        "OK: providers listing matched v4 ({with_schema} options schemas byte-for-byte,          {without_schema} null)"
+    );
 }

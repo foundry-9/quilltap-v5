@@ -28,6 +28,81 @@
     "webSearch": true,
     "toolUse": true
   },
+  "optionsSchema": {
+    "groups": [
+      {
+        "title": "OpenAI Options",
+        "fields": [
+          {
+            "key": "verbosity",
+            "label": "Verbosity",
+            "type": "enum",
+            "default": "",
+            "helpText": "Scales how long and detailed the answer is. Supported on GPT-5 and newer models; older models will ignore it.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "low",
+                "label": "Low"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              }
+            ]
+          },
+          {
+            "key": "reasoningEffort",
+            "label": "Reasoning Effort",
+            "type": "enum",
+            "default": "",
+            "helpText": "How hard the model thinks before responding. Applies to reasoning models (o-series, GPT-5); ignored on non-reasoning models. Background tasks always use Low regardless of this setting.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "minimal",
+                "label": "Minimal"
+              },
+              {
+                "value": "low",
+                "label": "Low"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Reasoning",
+        "helpText": "Request a reasoning summary so the model's thinking can be shown in chat (display only; never re-fed to the model). Only the reasoning OpenAI models (GPT-5, o-series) produce one. OpenAI does not always expose a summary — if nothing appears, the model simply did not return one.",
+        "fields": [
+          {
+            "key": "reasoningSummary",
+            "label": "Show Reasoning Summary",
+            "type": "boolean",
+            "default": false
+          }
+        ]
+      }
+    ]
+  },
   "configRequirements": {
     "requiresApiKey": true,
     "requiresBaseUrl": false,

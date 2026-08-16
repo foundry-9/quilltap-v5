@@ -252,6 +252,20 @@ pub struct Manifest {
     pub capabilities: Capabilities,
     #[serde(rename = "configRequirements")]
     pub config_requirements: ConfigRequirements,
+    /// The plugin's connection-profile options schema (v4
+    /// `plugin.getProviderOptionsSchema?.()`), served verbatim on the providers
+    /// listing — `null` exactly when the plugin declares none (google only, at
+    /// the `93ed8abf` pin).
+    ///
+    /// Deliberately an opaque `serde_json::Value` rather than a typed tree: the shape is
+    /// v4's `packages/plugin-types/.../provider-options.ts`, the generator
+    /// EXTRACTS it from the built plugin object, and the listing hands it
+    /// straight to the renderer. A typed mirror would have to reproduce v4's key
+    /// ORDER to stay byte-identical and would rot the moment v4 adds a field —
+    /// where an opaque carry (with `preserve_order` keeping insertion order)
+    /// cannot. P4.D84 narrows its own client-side type from the contract text.
+    #[serde(default, rename = "optionsSchema")]
+    pub options_schema: Option<serde_json::Value>,
     #[serde(rename = "messageFormat")]
     pub message_format: MessageFormat,
     /// `null` when the provider declares no cheap-model config.

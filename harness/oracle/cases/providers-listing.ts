@@ -43,7 +43,14 @@ function main() {
     const plugin = m.plugin || m.default?.plugin || m.default;
     const md = plugin.metadata;
     const cfg = plugin.config;
-    // The exact route transform (minus icon/optionsSchema, normalized away).
+    // P4.D83: the plugin's options schema, exactly as the route reads it
+    // (`plugin.getProviderOptionsSchema?.() ?? null`). v4 wraps the call in a
+    // try/catch that falls back to undefined; no built-in throws, and a throw
+    // here should be visible rather than silently recorded as null.
+    const optionsSchema = plugin.getProviderOptionsSchema
+      ? (plugin.getProviderOptionsSchema() ?? null)
+      : null;
+    // The exact route transform (minus icon, normalized away).
     rows.push({
       id: md.providerName,
       name: md.providerName,
@@ -68,6 +75,7 @@ function main() {
         ...(cfg.baseUrlPlaceholder != null ? { baseUrlPlaceholder: cfg.baseUrlPlaceholder } : {}),
         ...(cfg.baseUrlDefault != null ? { baseUrlDefault: cfg.baseUrlDefault } : {}),
       },
+      optionsSchema,
     });
   }
   process.stdout.write(JSON.stringify({ providers: rows, count: rows.length }) + '\n');

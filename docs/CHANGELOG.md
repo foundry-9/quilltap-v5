@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The providers listing now carries each provider's connection-profile options
+schema — the fields, labels, help text and enum choices a profile editor draws
+for that provider. It was always null, so the panel had nothing to render;
+eight of the nine built-in providers declare one, and the ninth (Google) still
+answers null because it declares none.
+
 An Ollama connection profile can set its own Request Timeout. A turn was
 bounded by the shared five-minute default with nothing in the UI to change it,
 and loading a large model off disk plus reading a long prompt both happen

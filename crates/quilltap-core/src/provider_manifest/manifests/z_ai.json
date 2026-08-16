@@ -28,6 +28,61 @@
     "webSearch": true,
     "toolUse": true
   },
+  "optionsSchema": {
+    "groups": [
+      {
+        "title": "Z.AI Options",
+        "helpText": "Thinking mode enables the GLM reasoning models' extended chain-of-thought, shown in the Salon (display only; never re-fed to the model). Only the hybrid-reasoning GLM models (glm-4.5/4.6 family, glm-5.x) produce it; with thinking off, nothing appears.",
+        "fields": [
+          {
+            "key": "thinking",
+            "label": "Thinking Mode",
+            "type": "enum",
+            "default": "",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "enabled",
+                "label": "Enabled"
+              },
+              {
+                "value": "disabled",
+                "label": "Disabled"
+              }
+            ]
+          },
+          {
+            "key": "reasoning_effort",
+            "label": "Reasoning Effort",
+            "type": "enum",
+            "default": "",
+            "helpText": "A dial for how hard glm-5.2 cogitates before it speaks (thinking must be lit; lesser models pay it no heed). Minimal all but silences the rumination; High and Max open the throttle — and mind that low and medium quietly fold up to High, xhigh up to Max. Leave it at (model default) and glm-5.2 still sets to High of its own accord, sparing you the API's spendthrift Max.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "minimal",
+                "label": "Minimal"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              },
+              {
+                "value": "max",
+                "label": "Max"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "configRequirements": {
     "requiresApiKey": true,
     "requiresBaseUrl": false,
