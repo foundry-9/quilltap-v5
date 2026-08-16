@@ -98,8 +98,18 @@ pub struct CompletionParams {
     /// `None` when the profile is known not to support a custom temperature
     /// (v4 omits the field entirely rather than sending a default).
     pub temperature: Option<f64>,
-    pub max_tokens: i64,
+    /// `None` when the caller names no generation cap, so each provider's own
+    /// default applies (v4 `params.maxTokens ?? 4096`, and the Responses API's
+    /// reasoning floor). P4.D83 made this optional: the regenerate/swipe and
+    /// image-description callers used to collapse "the profile set none" to `0`,
+    /// which reached the wire as a literal `max_tokens: 0` where v4 sends the
+    /// provider default.
+    pub max_tokens: Option<i64>,
     pub strict_max_tokens: bool,
+    /// Nucleus sampling (v4 `topP`), `None` when the profile sets none. Added by
+    /// P4.D83: v4's image-description fallback sets `messageParams.topP` and the
+    /// completion path structurally could not carry it.
+    pub top_p: Option<f64>,
     pub cache_key: Option<String>,
     pub profile_parameters: Option<serde_json::Value>,
     /// Attachments carried on the (single, last) user message — only the W4.4b
@@ -462,8 +472,9 @@ mod tests {
             messages,
             model: model.to_string(),
             temperature,
-            max_tokens: 2048,
+            max_tokens: Some(2048),
             strict_max_tokens: true,
+            top_p: None,
             cache_key: None,
             profile_parameters: None,
             attachments: Vec::new(),

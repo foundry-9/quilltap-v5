@@ -179,16 +179,33 @@ async function runCase(
 
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
+    /** The knobs a call carried, with the undefined ones omitted (P4.D83). */
+    const samplingOf = (p: { temperature?: number; maxTokens?: number; topP?: number }) => ({
+      ...(p.temperature !== undefined ? { temperature: p.temperature } : {}),
+      ...(p.maxTokens !== undefined ? { maxTokens: p.maxTokens } : {}),
+      ...(p.topP !== undefined ? { topP: p.topP } : {}),
+    });
     return {
       __esModule: true,
       ...actual,
       createLLMProvider: async (provider: string, _baseUrl?: string) => ({
         streamMessage: async function* streamMessage(
-          params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+            maxTokens?: number;
+            topP?: number;
+          },
           _apiKey: string,
         ) {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
-          recordings.push({ kind: 'stream', provider, model: params.model, temperature: params.temperature ?? null, messages });
+          // P4.D83 (v4 `d89babc4`): the greeting path's sampling knobs, resolved
+          // by the REAL `autoGenerateFirstMessage` off the profile's bag. The
+          // key carries only the temperature, so Max Tokens and Top P went
+          // unmeasured — and v5 read them under camelCase names the editor never
+          // writes.
+          recordings.push({ kind: 'stream', provider, model: params.model, temperature: params.temperature ?? null, sampling: samplingOf(params), messages });
           if (c.greetingContent === undefined) {
             throw new Error(`unexpected streamMessage call in case ${c.name}`);
           }
@@ -197,11 +214,17 @@ async function runCase(
           if (c.greetingUsage) yield { usage: c.greetingUsage };
         },
         sendMessage: async (
-          params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+            maxTokens?: number;
+            topP?: number;
+          },
           _apiKey: string,
         ) => {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
-          recordings.push({ kind: 'send', provider, model: params.model, temperature: params.temperature ?? null, messages });
+          recordings.push({ kind: 'send', provider, model: params.model, temperature: params.temperature ?? null, sampling: samplingOf(params), messages });
           if (c.outfitContent === undefined) {
             throw new Error(`unexpected sendMessage call in case ${c.name}`);
           }

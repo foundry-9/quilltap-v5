@@ -39,6 +39,8 @@
 //!   QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db \
 //!     cargo test -p quilltap-harness --test chat_create_capstone_equivalence
 
+mod sampling_capture;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -53,7 +55,7 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
-    CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamUsage,
+    canned_stream_key, CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamUsage,
 };
 use quilltap_core::services::chat_create::{
     handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult,
@@ -110,6 +112,10 @@ struct Recording {
     provider: String,
     model: String,
     temperature: Option<f64>,
+    /// P4.D83: the sampling knobs v4's REAL `autoGenerateFirstMessage` resolved
+    /// off the profile's bag for this call (absent keys = knobs left undefined).
+    #[serde(default)]
+    sampling: Value,
     messages: Vec<RecMsg>,
 }
 #[derive(Deserialize)]
@@ -402,8 +408,19 @@ fn chat_create_capstone_matches_oracle() {
         let embedding = CannedEmbeddingProvider::new();
         let mut completion = CannedCompletionProvider::new();
         let mut streaming = CannedStreamingProvider::new();
+        let mut expected_stream_sampling: HashMap<String, Value> = HashMap::new();
         for rec in &recordings {
             let msgs = to_messages(&rec.messages);
+            if rec.kind == "stream" {
+                expected_stream_sampling.insert(
+                    canned_stream_key(&rec.provider, &rec.model, rec.temperature, &msgs),
+                    if rec.sampling.is_object() {
+                        rec.sampling.clone()
+                    } else {
+                        Value::Object(serde_json::Map::new())
+                    },
+                );
+            }
             if rec.kind == "stream" {
                 let mut chunks: Vec<StreamChunkResult> = Vec::new();
                 for r in &c.greeting_reasoning {
@@ -442,6 +459,16 @@ fn chat_create_capstone_matches_oracle() {
                 );
             }
         }
+        // P4.D83: record what the PORT put on the greeting stream.
+        let streaming =
+            sampling_capture::SamplingStreamCapture::new(streaming, |provider, params| {
+                canned_stream_key(
+                    provider,
+                    &params.model,
+                    params.temperature,
+                    &params.messages,
+                )
+            });
         let executor = CheapLlmTaskExecutor::new();
         let api_keys = NoApiKeys;
 
@@ -695,6 +722,13 @@ fn chat_create_capstone_matches_oracle() {
             "case {}: DTO create-echo null seam — v4-present/rust-absent null keys: {:?}",
             c.name, null_only_v4
         );
+        // --- the greeting's SAMPLING knobs AT THE WIRE (P4.D83) ---
+        // Only cases that actually stream a greeting have anything to compare;
+        // the rest record nothing, and asserting on them would be vacuous.
+        if recordings.iter().any(|r| r.kind == "stream") {
+            streaming.assert_matches(&expected_stream_sampling, &format!("greeting ({})", c.name));
+        }
+
         eprintln!(
             "OK: chat-create case {} matched oracle (all sections).",
             c.name

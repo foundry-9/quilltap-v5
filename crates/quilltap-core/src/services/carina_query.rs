@@ -520,12 +520,16 @@ where
         .filter(|v| !v.is_null())
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let temperature = model_params.get("temperature").and_then(Value::as_f64);
-    let max_tokens = model_params
-        .get("maxTokens")
-        .and_then(Value::as_f64)
-        .map(|n| n as i64);
-    let top_p = model_params.get("topP").and_then(Value::as_f64);
+    // P4.D83 (v4 `d89babc4`): a FIFTH site reached through v4's converted
+    // function. v4's `d89babc4` names four call sites, but Carina is not one of
+    // them — it hands its bag to `streamMessage`, which is itself one of the
+    // four, so Carina's sampling moved with it. v5 resolves before its own
+    // narrower seam, so the resolver has to be called here too; the orchestrator
+    // corpus caught this the moment the sampling knobs became a comparand.
+    let sampling = crate::sampling_params::resolve_sampling_params(Some(&model_params));
+    let temperature = sampling.temperature;
+    let max_tokens = sampling.max_tokens.map(|n| n as i64);
+    let top_p = sampling.top_p;
     let profile_parameters = Some(model_params);
 
     // 6. Run the LLM call + tool loop server-side (no live client streaming).

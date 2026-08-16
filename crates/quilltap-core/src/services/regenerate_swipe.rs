@@ -416,10 +416,16 @@ where
                 .collect()
         })
         .unwrap_or_default();
-    let temperature = json_f64(&params_value, "temperature");
-    let max_tokens = json_f64(&params_value, "max_tokens")
-        .map(|f| f as i64)
-        .unwrap_or(0);
+    // P4.D83 (v4 `d89babc4`): `...resolveSamplingParams(params)` replaced three
+    // hand-rolled casts here. Two changes ride the conversion, both v4's: `top_p`
+    // is now read at all (it never was on this path), and a knob the profile
+    // stores under the camelCase spelling is honoured. The absent-`max_tokens`
+    // arm also stops lying — v5 collapsed it to `0`, which reached the wire as a
+    // literal `max_tokens: 0` where v4 leaves the key to the provider's default.
+    let sampling = crate::sampling_params::resolve_sampling_params(Some(&params_value));
+    let temperature = sampling.temperature;
+    let max_tokens = sampling.max_tokens.map(|f| f as i64);
+    let top_p = sampling.top_p;
     let provider = json_str(&connection_profile, "provider").unwrap_or_default();
     let base_url = json_str(&connection_profile, "baseUrl");
     let model = json_str(&connection_profile, "modelName").unwrap_or_default();
@@ -433,6 +439,7 @@ where
                 temperature,
                 max_tokens,
                 strict_max_tokens: false,
+                top_p,
                 cache_key: Some(character_id.clone()),
                 profile_parameters: Some(params_value),
                 attachments,

@@ -394,13 +394,18 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     // `profileParams(imageDescProfile) ?? {}`, so the bag is ALWAYS an object
     // here and the Ollama `num_ctx` injection reaches the vision call.
     let params_obj = crate::cheap_llm::profile_params_value(profile).unwrap_or_else(|| json!({}));
-    let temperature = params_obj
-        .get("temperature")
-        .and_then(Value::as_f64)
-        .unwrap_or(DEFAULT_VISION_TEMPERATURE);
-    let mut max_tokens = params_obj
-        .get("max_tokens")
-        .and_then(Value::as_i64)
+    // P4.D83 (v4 `d89babc4`): the three hand-rolled `typeof === 'number'` reads
+    // became `resolveSamplingParams(modelParams)` + the two defaults. The
+    // reasoning-floor logic below is unchanged; what moves is that a
+    // string-valued or camelCase knob now counts, and `top_p` reaches the wire
+    // (v4 sets `messageParams.topP`; v5's completion path could not carry one
+    // until this lane widened `CompletionParams`).
+    let sampling = crate::sampling_params::resolve_sampling_params(Some(&params_obj));
+    let temperature = sampling.temperature.unwrap_or(DEFAULT_VISION_TEMPERATURE);
+    let top_p = sampling.top_p;
+    let mut max_tokens = sampling
+        .max_tokens
+        .map(|n| n as i64)
         .unwrap_or(DEFAULT_VISION_MAX_TOKENS);
     let reasoning = is_reasoning_model(&model_name);
     if reasoning && max_tokens < 4000 {
@@ -433,8 +438,17 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         messages: messages.clone(),
         model: model_name.clone(),
         temperature: Some(temperature),
-        max_tokens: if max_tokens > 0 { max_tokens } else { 0 },
+        // v4 `if (maxTokens !== undefined && maxTokens > 0) messageParams.maxTokens = …`
+        // — a non-positive cap leaves the key OFF, so the provider default
+        // applies. v5 used to pass `0`, which the builders emitted literally.
+        max_tokens: if max_tokens > 0 {
+            Some(max_tokens)
+        } else {
+            None
+        },
         strict_max_tokens: false,
+        // v4 `if (topP !== undefined) messageParams.topP = topP` — no default.
+        top_p,
         cache_key: None,
         // v4's guard is `if (modelParams && typeof modelParams === 'object')`
         // over a value the `?? {}` above already made an object (or an array,

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+A connection profile's Max Tokens and Top P now reach the model. Both were
+stored and displayed and never sent: the Salon's main path, the greeting
+(including its uncensored retry) and Carina's reference query all read them
+under camelCase names the profile editor does not write, so two of the three
+sampling knobs came out empty on every turn and the provider fell back to its
+own defaults. Regenerate/swipe read the snake_case names but never read Top P
+at all, so the original reply and a regeneration of it disagreed. All five
+sites now go through the one resolver, and the image-description fallback
+sends Top P as well — the non-streaming path had nowhere to carry one. A
+profile that names no Max Tokens now leaves the field off the request, where
+regenerate and the image description used to send a literal zero.
+
 A connection profile's sampling knobs now have one reader. `resolve_sampling_params`
 maps a profile's free-form `parameters` blob to the three per-request fields —
 canonical snake_case (`temperature` / `max_tokens` / `top_p`) first, camelCase

@@ -2511,21 +2511,24 @@ where
     // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`
     // into the primary stream. The stream provider maps `tools.length > 0 ? tools
     // : undefined` (here `actual_tools_value` is `None` for an empty slate).
+    // P4.D83 (v4 `d89babc4`): the three sampling knobs come from the ONE
+    // resolver. v4 read `modelParams.maxTokens` / `.topP` here — camelCase names
+    // the profile editor never writes — so on this path a profile's Max Tokens
+    // and Top P were dropped on every turn and the provider's own defaults
+    // applied (on Ollama, `num_predict 4096` / `top_p 1`). v5 had the same bug,
+    // and worse: it also reached regenerate-only agreement, so the original
+    // reply and a regeneration of it disagreed.
+    //
+    // `maxTokens` keeps its typed seam: v4 forwards a fractional cell verbatim
+    // where the typed i64 truncates it (1000.5 → 1000) — noted at the aa464abf
+    // unification review, unchanged here.
+    let sampling = crate::sampling_params::resolve_sampling_params(Some(&model_params));
     let params = StreamParams {
         messages: stream_messages,
         model: effective_profile.model_name.clone(),
-        // v4's `modelParams.temperature as number | undefined` is an unchecked
-        // TS cast: a non-numeric cell would reach the SDK verbatim there and is
-        // dropped here, the typed-field divergence this seam cannot avoid.
-        // Likewise `maxTokens`: v4 forwards a fractional cell verbatim where
-        // the typed i64 seam truncates it (1000.5 → 1000) — same class, noted
-        // at the aa464abf unification review.
-        temperature: model_params.get("temperature").and_then(Value::as_f64),
-        max_tokens: model_params
-            .get("maxTokens")
-            .and_then(Value::as_f64)
-            .map(|n| n as i64),
-        top_p: model_params.get("topP").and_then(Value::as_f64),
+        temperature: sampling.temperature,
+        max_tokens: sampling.max_tokens.map(|n| n as i64),
+        top_p: sampling.top_p,
         tools: actual_tools_value.clone(),
         web_search_enabled: use_native_web_search,
         profile_parameters: Some(model_params.clone()),

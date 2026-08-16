@@ -6,13 +6,11 @@
 //! `JSON.stringify` dropped is an "absent knob" (`undefined` there, `None`
 //! here), and a present key must equal the Rust `f64` exactly.
 //!
-//! Generate the oracle (Node 24, from a v4 checkout pinned at the baseline):
-//!   cd /tmp/qt-v4-pin-p4d83-93ed8abf
-//!   npx tsx <worktree>/harness/oracle/cases/sampling-params.ts \
-//!     > /tmp/oracle-sampling-params.ndjson
+//! Generate the oracle (Node 24; the driver repoints the checkout at a pin):
+//!   cd ~/source/quilltap-server
+//!   npx tsx $V5W/harness/oracle/cases/sampling-params.ts > /tmp/oracle-sampling-params.ndjson
 //! Run:
-//!   QT_ORACLE_SAMPLING_PARAMS=/tmp/oracle-sampling-params.ndjson \
-//!     cargo test -p quilltap-harness --test sampling_params_equivalence
+//!   QT_ORACLE_SAMPLING_PARAMS=/tmp/oracle-sampling-params.ndjson cargo test -p quilltap-harness --test sampling_params_equivalence
 
 use quilltap_core::sampling_params::resolve_sampling_params;
 use serde_json::{json, Value};

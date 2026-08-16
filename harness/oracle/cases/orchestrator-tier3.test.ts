@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -232,6 +232,15 @@ async function main(): Promise<void> {
   // ---- streamMessage (the primary stream) ----
   jest.doMock('@/lib/services/chat-message/streaming.service', () => {
     const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
+    // The REAL resolver the mocked-away `streamMessage` would have called
+    // (P4.D83): imported, never reimplemented.
+    const { resolveSamplingParams } = jest.requireActual('@/lib/llm/sampling-params') as {
+      resolveSamplingParams: (p?: Record<string, unknown>) => {
+        temperature?: number;
+        maxTokens?: number;
+        topP?: number;
+      };
+    };
     return {
       __esModule: true,
       ...actual,
@@ -268,9 +277,18 @@ async function main(): Promise<void> {
         // `profileParameters`; until this was recorded the corpus could not see
         // that v5 sent nothing at all.
         const modelParamsAtWire = (options.modelParams ?? {}) as Record<string, unknown>;
+        // P4.D83 (v4 `d89babc4`): the three sampling knobs the REAL
+        // `streaming.service.ts` derives from that bag. This mock stands in for
+        // `streamMessage` itself, which is where v4 calls the resolver — so the
+        // resolver is invoked here, on v4's own code, rather than left
+        // unmeasured. (v5's orchestrator resolves before its narrower seam, so
+        // this is the only place the two computations meet.) JSON.stringify
+        // drops the undefined knobs, which is the "absent" the Rust side
+        // reproduces by omitting the key.
+        const samplingAtWire = resolveSamplingParams(modelParamsAtWire) as unknown as Record<string, unknown>;
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);

@@ -105,7 +105,7 @@ async function main(): Promise<void> {
 
   const cannedCompletions = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; response: string; usage: unknown }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; sampling: Record<string, number>; response: string; usage: unknown }
   >();
 
   jest.resetModules();
@@ -133,7 +133,13 @@ async function main(): Promise<void> {
       ...actual,
       createLLMProvider: async (provider: string) => ({
         sendMessage: async (
-          params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+            maxTokens?: number;
+            topP?: number;
+          },
           _apiKey: string
         ) => {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
@@ -144,6 +150,16 @@ async function main(): Promise<void> {
               model: params.model,
               temperature: params.temperature ?? null,
               messages,
+              // P4.D83 (v4 `d89babc4`): the sampling knobs the REAL
+              // `regenerateMessageAsSwipe` resolved off the profile's bag and
+              // put on this call. Recorded because the key carries only the
+              // temperature — Max Tokens and Top P could differ silently, and
+              // `top_p` was never read on this path at all.
+              sampling: {
+                ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+                ...(params.maxTokens !== undefined ? { maxTokens: params.maxTokens } : {}),
+                ...(params.topP !== undefined ? { topP: params.topP } : {}),
+              },
               response: spec.completion.response,
               usage: spec.completion.usage,
             });

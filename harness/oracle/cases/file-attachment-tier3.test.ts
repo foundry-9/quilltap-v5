@@ -181,6 +181,8 @@ async function main(): Promise<void> {
         sendMessage: async (params: {
           model: string;
           temperature?: number;
+          maxTokens?: number;
+          topP?: number;
           messages: Array<{ role: string; content: string; attachments?: Array<{ filename: string; mimeType: string }> }>;
         }) => {
           const att = params.messages?.[0]?.attachments?.[0];
@@ -198,6 +200,17 @@ async function main(): Promise<void> {
             provider,
             model: params.model,
             temperature: params.temperature ?? null,
+            // P4.D83 (v4 `d89babc4`): the knobs `describeImageWithProfile`
+            // resolved off the describer profile's bag (`sampling.temperature ??
+            // 0.7`, `sampling.maxTokens ?? 1000`, `sampling.topP`). `topP` never
+            // reached this call in v5 — its completion params could not carry
+            // one — and the corpus could not see it because both describer
+            // profiles carried an EMPTY bag.
+            sampling: {
+              ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+              ...(params.maxTokens !== undefined ? { maxTokens: params.maxTokens } : {}),
+              ...(params.topP !== undefined ? { topP: params.topP } : {}),
+            },
             filename,
             mimeType,
             content: entry.content,

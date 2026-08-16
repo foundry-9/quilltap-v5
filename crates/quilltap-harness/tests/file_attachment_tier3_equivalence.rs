@@ -43,6 +43,8 @@
 //!   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-fa-mount.db \
 //!     cargo test -p quilltap-harness --test file_attachment_tier3_equivalence -- --nocapture
 
+mod sampling_capture;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -51,8 +53,8 @@ use quilltap_core::db::files::FileEntry;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::files::image_processing::NotConfiguredTranscoder;
 use quilltap_core::model::completion::{
-    CannedCompletionProvider, CompletionAttachment, CompletionMessage, CompletionResponse,
-    CompletionUsage,
+    canned_completion_key_with_attachments, CannedCompletionProvider, CompletionAttachment,
+    CompletionMessage, CompletionResponse, CompletionUsage,
 };
 use quilltap_core::services::chat_files::{
     load_and_process_files, load_chat_files_for_llm, FileBytesStore, LoadChatFilesOptions,
@@ -133,6 +135,10 @@ enum OracleRow {
         provider: String,
         model: String,
         temperature: Option<f64>,
+        /// P4.D83: the sampling knobs v4's REAL `describeImageWithProfile` put
+        /// on this vision call (absent keys = knobs v4 left undefined).
+        #[serde(default)]
+        sampling: Value,
         filename: String,
         #[serde(rename = "mimeType")]
         mime_type: String,
@@ -233,6 +239,7 @@ fn file_attachment_matches_oracle() {
 
     // Parse the oracle: canned rows → the completion provider; case rows by label.
     let mut cases: HashMap<String, (String, Value)> = HashMap::new();
+    let mut expected_sampling: HashMap<String, Value> = HashMap::new();
     let mut provider = CannedCompletionProvider::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle {oracle_path}: {e}"))
@@ -252,6 +259,7 @@ fn file_attachment_matches_oracle() {
                 provider: prov,
                 model,
                 temperature,
+                sampling,
                 filename,
                 mime_type,
                 content,
@@ -259,6 +267,25 @@ fn file_attachment_matches_oracle() {
                 usage,
             } => {
                 let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
+                expected_sampling.insert(
+                    canned_completion_key_with_attachments(
+                        &prov,
+                        &model,
+                        temperature,
+                        &messages,
+                        &[CompletionAttachment {
+                            id: String::new(),
+                            filename: filename.clone(),
+                            mime_type: mime_type.clone(),
+                            data: String::new(),
+                        }],
+                    ),
+                    if sampling.is_object() {
+                        sampling
+                    } else {
+                        Value::Object(serde_json::Map::new())
+                    },
+                );
                 let attachments = vec![CompletionAttachment {
                     // Off the canned key (P4.21) — the oracle's recorded keys carry no id.
                     id: String::new(),
@@ -286,6 +313,17 @@ fn file_attachment_matches_oracle() {
             }
         }
     }
+
+    // P4.D83: record what the PORT put on each vision call.
+    let provider = sampling_capture::SamplingCapture::new(provider, |prov, params| {
+        canned_completion_key_with_attachments(
+            prov,
+            &params.model,
+            params.temperature,
+            &params.messages,
+            &params.attachments,
+        )
+    });
 
     // The FSM byte store (fileId -> Option<bytes>).
     let mut by_file_id: HashMap<String, Option<Vec<u8>>> = HashMap::new();
@@ -407,6 +445,9 @@ fn file_attachment_matches_oracle() {
             .expect("oracle missing case lcffl_mount");
         assert_eq!(&got, want, "lcffl_mount diverged");
     }
+
+    // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
+    provider.assert_matches(&expected_sampling, "image-description fallback");
 
     drop(db);
     cleanup(&main_work, &mount_work);

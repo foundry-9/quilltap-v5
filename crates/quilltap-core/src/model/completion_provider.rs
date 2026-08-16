@@ -81,8 +81,12 @@ pub(crate) fn request_input_from_params(params: &CompletionParams) -> RequestInp
         model: params.model.clone(),
         messages,
         temperature: params.temperature,
-        max_tokens: Some(params.max_tokens),
-        top_p: None,
+        max_tokens: params.max_tokens,
+        // P4.D83 (v4 `d89babc4`): the image-description fallback sets
+        // `messageParams.topP` from the profile's `top_p`; before this the
+        // completion path had nowhere to carry it and every non-streaming send
+        // went out without one.
+        top_p: params.top_p,
         stop: None,
         tools: None,
         tool_choice: None,
@@ -243,8 +247,9 @@ mod tests {
             messages: vec![CompletionMessage::user("hi")],
             model: model.to_string(),
             temperature: Some(0.3),
-            max_tokens: 2048,
+            max_tokens: Some(2048),
             strict_max_tokens: true,
+            top_p: None,
             cache_key: None,
             profile_parameters: None,
             attachments: Vec::new(),

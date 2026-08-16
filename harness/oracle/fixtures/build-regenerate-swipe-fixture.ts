@@ -83,7 +83,7 @@ interface Spec {
   testPepperBase64: string;
   seedTimestamp: string;
   dimensions: number;
-  connectionProfiles: Array<{ id: string; name: string; provider: string; modelName: string }>;
+  connectionProfiles: Array<{ id: string; name: string; provider: string; modelName: string; parameters?: Record<string, unknown> }>;
   characters: CharacterSpec[];
   chatSettings: Array<{ id: string; userId: string; onSwipeRegenerate: string }>;
   chats: ChatSpec[];
@@ -177,7 +177,15 @@ async function main(): Promise<void> {
 
   for (const cp of spec.connectionProfiles) {
     await repos.connections.create(
-      { userId: spec.chats[0].userId, name: cp.name, provider: cp.provider, modelName: cp.modelName } as never,
+      {
+        userId: spec.chats[0].userId,
+        name: cp.name,
+        provider: cp.provider,
+        modelName: cp.modelName,
+        // P4.D83: the profile's sampling bag — the regenerate path resolves its
+        // three knobs off it, and without one the corpus measures nothing.
+        ...(cp.parameters !== undefined ? { parameters: cp.parameters } : {}),
+      } as never,
       { id: cp.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
   }

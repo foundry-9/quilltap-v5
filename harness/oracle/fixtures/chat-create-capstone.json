@@ -70,7 +70,9 @@
       "apiKeyId": "d1000000-0000-4000-8000-000000000001",
       "modelName": "claude-sonnet-4-5",
       "parameters": {
-        "temperature": 0.7
+        "temperature": 0.7,
+        "max_tokens": 321,
+        "topP": 0.87
       }
     }
   ],

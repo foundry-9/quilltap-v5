@@ -427,7 +427,9 @@ impl CheapLlmTaskExecutor {
             messages: messages.to_vec(),
             model: selection.model_name.clone(),
             temperature,
-            max_tokens: effective_max_tokens,
+            max_tokens: Some(effective_max_tokens),
+            // v4's cheap-LLM `baseParams` names no `topP`.
+            top_p: None,
             // Cheap tasks use strictMaxTokens so providers don't apply
             // reasoning-model minimums that add verbosity and latency.
             strict_max_tokens: true,

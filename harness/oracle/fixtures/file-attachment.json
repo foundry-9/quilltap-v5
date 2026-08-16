@@ -21,7 +21,11 @@
       "isCheap": true,
       "baseUrl": null,
       "apiKeyId": null,
-      "parameters": {}
+      "parameters": {
+        "temperature": 0.42,
+        "max_tokens": 321,
+        "topP": 0.87
+      }
     },
     {
       "id": "30000000-0000-4000-8000-0000000000d2",

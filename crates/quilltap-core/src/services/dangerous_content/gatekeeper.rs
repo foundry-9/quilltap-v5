@@ -546,10 +546,11 @@ where
         messages,
         model: cheap_llm_selection.model_name.clone(),
         temperature: Some(0.1),
-        max_tokens: 500,
-        // v4 sets no strictMaxTokens / cacheKey on this call; neither is in the
-        // canned-completion key, so they don't affect the differential.
+        max_tokens: Some(500),
+        // v4 sets no strictMaxTokens / cacheKey / topP on this call; none is in
+        // the canned-completion key, so they don't affect the differential.
         strict_max_tokens: false,
+        top_p: None,
         cache_key: None,
         profile_parameters: cheap_llm_selection.profile_parameters.clone(),
         attachments: Vec::new(),

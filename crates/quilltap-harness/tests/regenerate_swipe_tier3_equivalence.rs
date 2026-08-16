@@ -45,12 +45,15 @@
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
 //!     cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence
 
+mod sampling_capture;
+
 use std::collections::HashMap;
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{chats_messages_read, chats_read, dump_table_json_conn};
 use quilltap_core::model::completion::{
-    CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
+    canned_completion_key, CannedCompletionProvider, CompletionMessage, CompletionRole,
+    CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::build_context::NoopSeams as BcNoopSeams;
@@ -103,6 +106,10 @@ struct CannedCompletionW {
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
     response: String,
+    /// P4.D83: the sampling knobs v4's REAL `regenerateMessageAsSwipe` resolved
+    /// off the profile bag for this call (absent keys = knobs v4 left undefined).
+    #[serde(default)]
+    sampling: Value,
     #[serde(default)]
     usage: Option<UsageW>,
 }
@@ -283,6 +290,7 @@ fn regenerate_swipe_tier3_matches_oracle() {
         .build()
         .expect("tokio runtime");
 
+    let mut expected_sampling: HashMap<String, Value> = HashMap::new();
     let mut completion = CannedCompletionProvider::new();
     for row in &canned_completions {
         let messages = to_completion_messages(&row.messages);
@@ -299,7 +307,25 @@ fn regenerate_swipe_tier3_matches_oracle() {
             &row.response,
             usage,
         );
+        expected_sampling.insert(
+            canned_completion_key(&row.provider, &row.model, row.temperature, &messages),
+            if row.sampling.is_object() {
+                row.sampling.clone()
+            } else {
+                Value::Object(serde_json::Map::new())
+            },
+        );
     }
+    // P4.D83: record what the PORT put on each call, so the three knobs are a
+    // comparand rather than an unmeasured field.
+    let completion = sampling_capture::SamplingCapture::new(completion, |provider, params| {
+        canned_completion_key(
+            provider,
+            &params.model,
+            params.temperature,
+            &params.messages,
+        )
+    });
     let embedding = CannedEmbeddingProvider::new();
     let executor = CheapLlmTaskExecutor::new();
     let bc_seams = BcNoopSeams;
@@ -396,6 +422,9 @@ fn regenerate_swipe_tier3_matches_oracle() {
         normalize_id_table(g, &spec.seed_timestamp);
         normalize_id_table(w, &spec.seed_timestamp);
     }
+
+    // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
+    completion.assert_matches(&expected_sampling, "regenerate-swipe");
 
     assert_rows_eq("chats", &got_chats, &want_chats);
     assert_rows_eq("chat_messages", &got_msgs, &want_msgs);

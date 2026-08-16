@@ -9,7 +9,12 @@
       "id": "cc000001-0000-4000-8000-000000000001",
       "name": "Primary",
       "provider": "ANTHROPIC",
-      "modelName": "claude-sonnet"
+      "modelName": "claude-sonnet",
+      "parameters": {
+        "temperature": 0.42,
+        "max_tokens": 321,
+        "topP": 0.87
+      }
     }
   ],
   "characters": [

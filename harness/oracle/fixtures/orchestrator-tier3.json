@@ -12,7 +12,7 @@
    "modelName": "claude-sonnet",
    "parameters": {
     "temperature": 0.42,
-    "maxTokens": 321,
+    "max_tokens": 321,
     "topP": 0.87
    }
   },

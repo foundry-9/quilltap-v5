@@ -1568,9 +1568,17 @@ where
     let recent_conversations_block =
         build_recent_conversations_block(main, &character_id, Some(chat_id), limit);
 
-    let temperature = extract_number(parameters.get("temperature"));
-    let max_tokens = extract_number(parameters.get("maxTokens")).map(|n| n as i64);
-    let top_p = extract_number(parameters.get("topP"));
+    // P4.D83 (v4 `d89babc4`): `const sampling = resolveSamplingParams(parameters)`.
+    // The greeting had the camelCase bug too — `parameters.maxTokens` / `.topP`
+    // are names the profile editor never writes, so a greeting went out with the
+    // provider's defaults while Settings displayed the profile's own figures.
+    // Note the blob is the RAW `parameters` cell (v4's `rawParameters ?? {}`),
+    // not `profileParams(...)` — v4 resolves the sampling knobs off the former
+    // and forwards the latter as `profileParameters`.
+    let sampling = crate::sampling_params::resolve_sampling_params(Some(&parameters));
+    let temperature = sampling.temperature;
+    let max_tokens = sampling.max_tokens.map(|n| n as i64);
+    let top_p = sampling.top_p;
     let base_url = connection_profile
         .get("baseUrl")
         .and_then(Value::as_str)
@@ -1701,6 +1709,25 @@ where
     GeneratedGreeting::none()
 }
 
+/// The Concierge-uncensored branch's sampling (v4 `d89babc4`,
+/// `app/api/v1/chats/route.ts`): each knob resolved from the UNCENSORED
+/// profile's bag falls back to the character's own profile INDEPENDENTLY, so an
+/// uncensored profile that sets only a temperature still borrows the original's
+/// Max Tokens and Top P. Split out so the rule is testable — the capstone corpus
+/// has no dangerous-reroute case, so nothing else pins it.
+fn borrow_sampling(
+    uncensored: Option<&Value>,
+    outer: &Value,
+) -> crate::sampling_params::SamplingParams {
+    let u = crate::sampling_params::resolve_sampling_params(uncensored);
+    let o = crate::sampling_params::resolve_sampling_params(Some(outer));
+    crate::sampling_params::SamplingParams {
+        temperature: u.temperature.or(o.temperature),
+        max_tokens: u.max_tokens.or(o.max_tokens),
+        top_p: u.top_p.or(o.top_p),
+    }
+}
+
 /// v4 attempt-3 body (L748-804): resolve the Concierge uncensored provider and
 /// retry the greeting through it. Every failure resolves to `None` (v4's
 /// try/catch swallow).
@@ -1758,14 +1785,15 @@ where
         .and_then(|p| p.get("parameters").cloned())
         .filter(|v| v.is_object());
 
-    let ext =
-        |obj: &Option<Value>, key: &str| extract_number(obj.as_ref().and_then(|o| o.get(key)));
-    let temperature = ext(&uncensored_params, "temperature")
-        .or_else(|| extract_number(parameters.get("temperature")));
-    let max_tokens = ext(&uncensored_params, "maxTokens")
-        .or_else(|| extract_number(parameters.get("maxTokens")))
-        .map(|n| n as i64);
-    let top_p = ext(&uncensored_params, "topP").or_else(|| extract_number(parameters.get("topP")));
+    // P4.D83 (v4 `d89babc4`): both bags go through the resolver, and each knob
+    // falls back to the character's own profile INDEPENDENTLY — an uncensored
+    // profile that only sets a temperature still borrows the original's Max
+    // Tokens and Top P. (v4: `resolveSamplingParams(uncensoredParams ?? {})`
+    // then `uncensoredSampling.x ?? sampling.x`, knob by knob.)
+    let borrowed = borrow_sampling(uncensored_params.as_ref(), parameters);
+    let temperature = borrowed.temperature;
+    let max_tokens = borrowed.max_tokens.map(|n| n as i64);
+    let top_p = borrowed.top_p;
 
     let request = GreetingRequest {
         system_prompt: context.system_prompt.clone(),
@@ -1862,16 +1890,6 @@ pub fn build_recent_conversations_block(
 // ============================================================================
 // Small helpers
 // ============================================================================
-
-/// v4 `extractNumber`: a JSON number → itself; a JSON string → `Number(x)`
-/// (`NaN` → `None`); else `None`.
-fn extract_number(value: Option<&Value>) -> Option<f64> {
-    match value {
-        Some(Value::Number(n)) => n.as_f64().filter(|f| !f.is_nan()),
-        Some(Value::String(s)) => s.trim().parse::<f64>().ok().filter(|f| !f.is_nan()),
-        _ => None,
-    }
-}
 
 /// A `Sized` adapter over a `&dyn ApiKeyResolver`, so the generic
 /// `resolve_provider_for_dangerous_content<A: ApiKeyResolver>` (which takes
@@ -2094,12 +2112,34 @@ mod tests {
         );
     }
 
+    /// P4.D83: the Concierge-uncensored borrow is PER KNOB. v4 spreads the
+    /// uncensored profile's own resolution over the character profile's one
+    /// knob at a time (`uncensoredSampling.x ?? sampling.x`), so a partial
+    /// uncensored bag does not blank the rest. No differential covers this —
+    /// the capstone corpus has no dangerous-reroute case.
     #[test]
-    fn extract_number_forms() {
-        assert_eq!(extract_number(Some(&json!(0.7))), Some(0.7));
-        assert_eq!(extract_number(Some(&json!("0.5"))), Some(0.5));
-        assert_eq!(extract_number(Some(&json!("nope"))), None);
-        assert_eq!(extract_number(Some(&Value::Null)), None);
-        assert_eq!(extract_number(None), None);
+    fn uncensored_sampling_borrows_each_knob_independently() {
+        let outer = json!({ "temperature": 0.9, "max_tokens": 4096, "top_p": 0.5 });
+
+        // Only a temperature: the other two come from the character's profile.
+        let b = borrow_sampling(Some(&json!({ "temperature": 0.2 })), &outer);
+        assert_eq!(b.temperature, Some(0.2));
+        assert_eq!(b.max_tokens, Some(4096.0));
+        assert_eq!(b.top_p, Some(0.5));
+
+        // An empty (or missing) uncensored bag borrows everything.
+        for uncensored in [Some(json!({})), None] {
+            let b = borrow_sampling(uncensored.as_ref(), &outer);
+            assert_eq!(b.temperature, Some(0.9));
+            assert_eq!(b.max_tokens, Some(4096.0));
+            assert_eq!(b.top_p, Some(0.5));
+        }
+
+        // The uncensored bag's own spellings are tolerated the same way, and a
+        // knob neither bag sets stays unset.
+        let b = borrow_sampling(Some(&json!({ "maxTokens": 128 })), &json!({}));
+        assert_eq!(b.max_tokens, Some(128.0));
+        assert_eq!(b.temperature, None);
+        assert_eq!(b.top_p, None);
     }
 }

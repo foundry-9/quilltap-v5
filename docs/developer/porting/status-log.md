@@ -71397,3 +71397,82 @@ camelCase row.
 **Not wired yet.** This unit lands the reader only; the four call sites are
 unit 2. Nothing reads it in production at this commit — deliberate, so the
 resolver's own differential is the proof rather than a downstream family's.
+
+---
+
+## P4.D83 unit 2 — the sampling call sites, and the fifth one the corpus found (v4 `d89babc4`)
+
+**Ported:** v4's four `resolveSamplingParams` call sites, plus a fifth v4 gets
+for free and v5 does not.
+
+| Site | v5 anchor | What moved |
+|---|---|---|
+| Salon primary stream | `services/orchestrator.rs` | `maxTokens`/`topP` → the resolver |
+| Regenerate / swipe | `services/regenerate_swipe.rs` | + `top_p` (never read here), + absent `max_tokens` stops meaning `0` |
+| Greeting | `services/chat_create.rs` | `maxTokens`/`topP` → the resolver |
+| Greeting, uncensored | `chat_create::borrow_sampling` | per-knob borrow from the outer profile |
+| Image description | `services/file_fallback.rs` | + `top_p` on the wire, + string/camel knobs count |
+| **Carina reference query** | `services/carina_query.rs` | **the fifth site — see below** |
+
+**The fifth site.** v4's commit names four call sites, and Carina is not one of
+them: `carina.service.ts:606` hands its bag to `streamMessage`, which IS one of
+the four, so Carina's sampling moved with it. v5 resolves BEFORE its own,
+narrower provider seam, so the resolver has to be called at every site that
+builds a `StreamParams` — the shared-helper Nth-site class. Nothing in the
+order predicted it; the orchestrator differential caught it on its first run the
+moment the sampling knobs became a comparand.
+
+**Two typed seams closed on the way (both pre-existing v5 defects):**
+
+- `CompletionParams` **had no `top_p` at all**, so v4's
+  `messageParams.topP = topP` on the image-description call had nowhere to go.
+  Added and threaded through `request_input_from_params` to every builder that
+  reads it.
+- `CompletionParams.max_tokens` was `i64`, and regenerate/swipe collapsed
+  "the profile named none" to `0` — which is not the same as absent: the
+  builders emit `max_tokens: 0` where v4's `?? 4096` (and the Responses API's
+  reasoning floor) apply the provider default. It is now `Option<i64>`; the
+  canned tier-3 key does not carry `max_tokens`, so no oracle key moved.
+
+v4 deleted its `extractNumber` in this commit; v5's twin in `chat_create.rs`
+went with it (its only remaining caller was its own unit test).
+
+### The differential — four corpora that measured NOTHING before this
+
+Every one of these families' seams sits BELOW v4's resolution (the mocked
+provider receives the resolved knobs), or — for the orchestrator, whose seam is
+`streamMessage` itself — the mock now calls v4's REAL `resolveSamplingParams`.
+But the canned key carries only the temperature, so a dropped Max Tokens was
+invisible; and **two of the four fixtures carried no `parameters` bag at all**
+(`p4.d79-multichar-prefill-lane`: a bag left at `{}` measures nothing
+downstream of it). Both halves were fixed:
+
+- shared `tests/sampling_capture/mod.rs` — `SamplingCapture` /
+  `SamplingStreamCapture` wrap the canned providers and record
+  `{temperature?, maxTokens?, topP?}` per call key (absent knobs omitted, the
+  shape `JSON.stringify` gives v4's `SamplingParams`). `assert_matches` refuses
+  to pass when nothing was recorded.
+- each oracle records the same object; each fixture's profile bag now carries
+  **mixed spellings on purpose** — `max_tokens` snake (the arm that was broken)
+  and `topP` camel (the arm that must keep working) — so one corpus measures
+  both arms of the resolver rather than re-testing tier 1.
+
+| Family | Fixture change | Mutation proof |
+|---|---|---|
+| `orchestrator_tier3` | Primary bag `maxTokens` → `max_tokens` | camelCase read back → RED (and its FIRST run caught Carina) |
+| `regenerate_swipe_tier3` | Primary gained a bag (had none) | `top_p = None` → RED |
+| `file_attachment_tier3` | describer gained a bag (was `{}`; the second stays `{}` so the 0.7/1000 defaults arm stays measured) | `top_p: None` → RED |
+| `chat_create_capstone` | keyed profile's bag widened | greeting `max_tokens = None` → RED |
+
+All four regenerated fresh from the `93ed8abf` pin through the sweep driver and
+re-run by name, zero SKIP.
+
+### Recorded coverage gap (stated, not papered over)
+
+**No differential covers the Concierge-uncensored borrow** — the capstone corpus
+has no dangerous-reroute case. The rule (each knob falls back INDEPENDENTLY, so
+a partial uncensored bag does not blank the rest) is split into
+`chat_create::borrow_sampling` and pinned by a unit test instead. The greeting
+family `initial_greeting` is NOT a proof site either: it drives
+`generateGreetingMessage` directly with an explicit temperature and never touches
+a profile bag — the bag→knob conversion lives in the capstone's territory.

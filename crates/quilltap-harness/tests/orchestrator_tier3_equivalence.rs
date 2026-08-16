@@ -80,7 +80,7 @@ use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 mod common;
 
@@ -204,6 +204,14 @@ struct CannedStreamW {
     /// parameters at all, and no assertion could see it.
     #[serde(rename = "modelParams", default)]
     model_params: Value,
+    /// P4.D83: the three sampling knobs v4's REAL `resolveSamplingParams`
+    /// derived from that bag inside `streamMessage` — the function this family
+    /// mocks, which is where v4 resolves them. Keys `JSON.stringify` dropped are
+    /// the knobs v4 left undefined. The corpus's Primary profile deliberately
+    /// mixes spellings (`max_tokens` snake, `topP` camel) so both arms of the
+    /// resolver are measured here, not just asserted at tier 1.
+    #[serde(default)]
+    sampling: Value,
     sequences: Vec<Vec<ChunkW>>,
 }
 #[derive(Deserialize)]
@@ -271,6 +279,25 @@ struct QueuedStreamingProvider {
     recorded_tools: Mutex<HashMap<String, Value>>,
     /// The `profileParameters` bag the RUST side actually passed, per call key.
     recorded_model_params: Mutex<HashMap<String, Value>>,
+    /// P4.D83: the sampling knobs the ORACLE recorded / the RUST side passed.
+    expected_sampling: HashMap<String, Value>,
+    recorded_sampling: Mutex<HashMap<String, Value>>,
+}
+
+/// The three knobs as `{temperature?, maxTokens?, topP?}` with absent knobs
+/// OMITTED — the shape `JSON.stringify` gives v4's `SamplingParams`.
+fn sampling_object(temperature: Option<f64>, max_tokens: Option<i64>, top_p: Option<f64>) -> Value {
+    let mut o = serde_json::Map::new();
+    if let Some(t) = temperature {
+        o.insert("temperature".into(), json!(t));
+    }
+    if let Some(m) = max_tokens {
+        o.insert("maxTokens".into(), json!(m));
+    }
+    if let Some(p) = top_p {
+        o.insert("topP".into(), json!(p));
+    }
+    Value::Object(o)
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -278,6 +305,7 @@ impl QueuedStreamingProvider {
             HashMap::new();
         let mut expected_tools: HashMap<String, Value> = HashMap::new();
         let mut expected_model_params: HashMap<String, Value> = HashMap::new();
+        let mut expected_sampling: HashMap<String, Value> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
@@ -299,7 +327,13 @@ impl QueuedStreamingProvider {
             } else {
                 Value::Object(serde_json::Map::new())
             };
-            expected_model_params.insert(key, mp);
+            expected_model_params.insert(key.clone(), mp);
+            let sampling = if row.sampling.is_object() {
+                row.sampling.clone()
+            } else {
+                Value::Object(serde_json::Map::new())
+            };
+            expected_sampling.insert(key, sampling);
         }
         Self {
             queues: Mutex::new(queues),
@@ -307,6 +341,8 @@ impl QueuedStreamingProvider {
             expected_model_params,
             recorded_tools: Mutex::new(HashMap::new()),
             recorded_model_params: Mutex::new(HashMap::new()),
+            expected_sampling,
+            recorded_sampling: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -341,6 +377,13 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .unwrap()
                 .entry(key.clone())
                 .or_insert(mp);
+            self.recorded_sampling
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| {
+                    sampling_object(params.temperature, params.max_tokens, params.top_p)
+                });
         }
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
@@ -997,6 +1040,27 @@ fn orchestrator_tier3_matches_oracle() {
                 got_mp, want_mp,
                 "profileParameters at wire mismatch for key:\n{key}"
             );
+        }
+    }
+
+    // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
+    // v4 resolves them inside `streamMessage` (mocked here, so the mock calls
+    // v4's REAL `resolveSamplingParams`); v5's orchestrator resolves them before
+    // its narrower provider seam. Both sides must reach the same three numbers.
+    // Before this lane v5 read `modelParams.maxTokens` / `.topP`, spellings the
+    // profile editor never writes — so Max Tokens and Top P were dropped on
+    // every Salon turn.
+    {
+        let recorded = streaming.recorded_sampling.lock().unwrap();
+        assert!(
+            !recorded.is_empty(),
+            "no stream call recorded — the sampling assertion would be vacuous"
+        );
+        for (key, got) in recorded.iter() {
+            let want = streaming.expected_sampling.get(key).unwrap_or_else(|| {
+                panic!("Rust made a stream call with no oracle-recorded sampling for key:\n{key}")
+            });
+            assert_eq!(got, want, "sampling at wire mismatch for key:\n{key}");
         }
     }
 
