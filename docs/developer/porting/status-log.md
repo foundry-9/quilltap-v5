@@ -71188,3 +71188,54 @@ python3.13 harness/tools/recipe_sweep.py --run model_context_equivalence       -
 python3.13 harness/tools/recipe_sweep.py --run build_context_tier3_equivalence --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
 python3.13 harness/tools/recipe_sweep.py --run self_inventory_equivalence      --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
 ```
+
+---
+
+## P4.D82 units 2–3 — `countToolSchemaTokens` + the `turn_extras` module (v4 `f933ba9c`)
+
+**Unit 2 — `count_tool_schema_tokens`** (`token_estimation.rs`, v4
+`lib/tokens/token-counter.ts`). The serialized tool slate plus 4 tokens of
+framing per tool; an empty slate is 0. Tool schemas ride beside the message
+array and were never counted at all, which understates the payload by exactly
+the amount that matters most on a small window.
+
+- **`token-estimation` family**: new `toolSchema` row kind (7 cases — empty,
+  OpenAI shape, Anthropic shape, both, three trivial entries pinning the
+  per-tool overhead, a unicode+escape row pinning the UTF-16 length basis over
+  the SERIALIZED text, and a nulls/nesting row). Mutation-proven
+  (`TOOL_OVERHEAD` 4 → 3 → red, 78 vs 79).
+- **Recorded limitation**: v4's `catch → 0` arm (an unserializable definition)
+  **cannot be carried by any NDJSON row** — its input is precisely what
+  `JSON.stringify` refuses to write. The Rust twin keeps the guard and says why:
+  a `serde_json::Value` tree cannot be circular, so the arm is unreachable
+  there; v4 pins it in its own unit test.
+
+**Unit 3 — `services/turn_extras.rs`** (v4
+`lib/services/chat-message/turn-extras.ts`, 114 lines): `extract_tool_names`,
+`build_tool_change_notice`, `collect_turn_extras` + `TurnExtras`. The one place
+the post-context additions are built and measured, so the reservation and the
+text it pays for cannot drift.
+
+- **NEW family `turn_extras_equivalence`** (`QT_ORACLE_TURN_EXTRAS`), driving
+  v4's REAL `collectTurnExtras` — which pulls v4's real
+  `buildAgentModeInstructions` and its real estimator, so the whole reservation
+  arithmetic is compared rather than re-derived. Counts `[7, 4, 9]`: 7
+  name-extraction rows (both provider shapes, an unrecognisable entry, the
+  EMPTY-`function.name`-falls-through-to-`name` arm, both-empty dropped, a null
+  name dropped, order preserved), 4 notice rows (incl. the all-disabled
+  sentence), 9 `collectTurnExtras` rows (schemas only / nothing / agent mode with
+  and without tools / a different maxTurns / the notice alone / the all-disabled
+  notice / both injections / an unnamed tool still measured but never named).
+  Strings compared EXACTLY. **Green on its first run**; mutation-proven twice
+  (one word changed in the notice → red; estimating the spliced extras without
+  the per-message overhead → red).
+- Seam: v4 passes the `Provider` to the estimator; v5 injects
+  `chars_per_token` (the established `token_estimation` seam).
+
+### Regen recipe
+
+```
+python3.13 harness/tools/recipe_sweep.py --run token_estimation_equivalence --v4 /tmp/qt-v4-pin-p4d82-93ed8abf
+cd /tmp/qt-v4-pin-p4d82-93ed8abf && npx tsx <v5w>/harness/oracle/cases/turn-extras.ts > /tmp/oracle-turn-extras.ndjson
+QT_ORACLE_TURN_EXTRAS=/tmp/oracle-turn-extras.ndjson cargo test -p quilltap-harness --test turn_extras_equivalence
+```

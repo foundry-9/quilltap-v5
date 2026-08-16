@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Tool schemas now count toward the context budget. `count_tool_schema_tokens`
+measures the serialized slate (plus per-tool framing), and a new
+`turn_extras` module builds and measures everything a turn adds after the
+context is built — the tool schemas, the agent-mode instructions, and the
+tool-change notice — in one place, so the room reserved for them and the
+text that fills it cannot drift apart.
+
 The context budget now honors the connection profile's Max Context (v4 bug
 70). A profile pointed at a model no lookup table knows — any `hf.co/...`
 Ollama tag, any custom OpenAI-compatible endpoint — was budgeted at the

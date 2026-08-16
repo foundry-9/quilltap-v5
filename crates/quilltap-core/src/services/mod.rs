@@ -158,6 +158,7 @@ pub mod title_update_job;
 pub mod tool_build;
 pub mod tool_call_threading;
 pub mod tool_execution;
+pub mod turn_extras;
 pub mod turn_orchestrator;
 pub mod turn_transcript;
 pub mod user_identity_resolver;

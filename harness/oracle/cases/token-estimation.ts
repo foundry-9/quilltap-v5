@@ -23,6 +23,7 @@ import {
   truncateToTokenLimit,
   getContextUsagePercent,
   getContextWarningLevel,
+  countToolSchemaTokens,
 } from '@/lib/tokens/token-counter';
 
 type Msg = { role: string; content: string };
@@ -33,7 +34,8 @@ type Row =
   | { kind: 'conversation'; id: string; messages: Msg[]; out: number }
   | { kind: 'truncate'; id: string; text: string; maxTokens: number; suffix: string; out: string }
   | { kind: 'usage'; id: string; usedTokens: number; contextLimit: number; out: number }
-  | { kind: 'warning'; id: string; usedTokens: number; contextLimit: number; out: string };
+  | { kind: 'warning'; id: string; usedTokens: number; contextLimit: number; out: string }
+  | { kind: 'toolSchema'; id: string; tools: unknown[]; out: number };
 
 const rows: Row[] = [];
 
@@ -109,6 +111,53 @@ const warnCases: Array<[string, number, number]> = [
 ];
 for (const [id, used, limit] of warnCases) {
   rows.push({ kind: 'warning', id, usedTokens: used, contextLimit: limit, out: getContextWarningLevel(used, limit) });
+}
+
+// countToolSchemaTokens(tools, provider) — v4 `f933ba9c` (bug 70). The tools ride
+// as JSON, so the Rust side measures the SAME serialized bytes v4 measured (both
+// encoders emit compact JSON with raw UTF-8 and insertion-order keys).
+//
+// The unserializable→0 arm is NOT shippable here: its input is a circular object,
+// which is precisely what JSON.stringify cannot write, so no NDJSON row can carry
+// it. v4 pins it in its own unit test; the Rust twin keeps the guard (a
+// serde_json::Value tree cannot be circular, so the arm is unreachable there).
+const OPENAI_STYLE_TOOL = {
+  type: 'function',
+  function: {
+    name: 'doc_read',
+    description: 'Read a document from the vault by path.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Vault-relative path to the file.' },
+      },
+      required: ['path'],
+    },
+  },
+};
+const ANTHROPIC_STYLE_TOOL = {
+  name: 'doc_write',
+  description: 'Write a document into the vault.',
+  input_schema: {
+    type: 'object',
+    properties: { path: { type: 'string' }, content: { type: 'string' } },
+  },
+};
+const toolCases: Array<[string, unknown[]]> = [
+  ['empty', []],
+  ['openai-one', [OPENAI_STYLE_TOOL]],
+  ['anthropic-one', [ANTHROPIC_STYLE_TOOL]],
+  ['both-shapes', [OPENAI_STYLE_TOOL, ANTHROPIC_STYLE_TOOL]],
+  // Per-tool overhead is 4 each, so three trivial entries are 12 above the JSON.
+  ['three-trivial', [{ name: 'a' }, { name: 'b' }, { name: 'c' }]],
+  // Non-ASCII + an escape: the length basis is UTF-16 code units over the
+  // SERIALIZED text, and `"` / `\` widen it.
+  ['unicode-and-escapes', [{ name: 'ünïcode', description: 'a "quoted" \\ backslash — em dash 😀' }]],
+  // Nulls and nested arrays survive the stringify unchanged.
+  ['nulls-and-nesting', [{ name: 'n', extra: null, list: [1, 2, [3, { deep: true }]] }]],
+];
+for (const [id, tools] of toolCases) {
+  rows.push({ kind: 'toolSchema', id, tools, out: countToolSchemaTokens(tools) });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

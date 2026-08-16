@@ -54,6 +54,39 @@ pub fn count_messages_tokens(messages: &[(String, String)], chars_per_token: f64
     sum + CONVERSATION_OVERHEAD
 }
 
+/// Per-tool framing (delimiters, name/description separators) beyond the
+/// serialized JSON itself — v4's `TOOL_OVERHEAD`.
+const TOOL_OVERHEAD: i64 = 4;
+
+/// Estimate the tokens a tool/function-definition list occupies in a request —
+/// v4's `countToolSchemaTokens` (`lib/tokens/token-counter.ts`, `f933ba9c`).
+///
+/// Tool schemas never appear in the message array, but every provider serializes
+/// them into the same payload the context window measures — a dozen tools with
+/// fleshed-out parameter descriptions is thousands of tokens. Counting only
+/// messages therefore understates the payload by exactly the amount that matters
+/// most on a small window, where the tool block can outweigh the conversation.
+///
+/// The shape is provider-specific (`{type, function:{...}}` for OpenAI-style,
+/// flat `{name, input_schema}` for Anthropic-style), so this measures the
+/// serialized form rather than reaching into either layout. An empty slate is 0.
+///
+/// v4 catches a `JSON.stringify` throw (a circular definition) and returns 0
+/// rather than losing a turn that would otherwise succeed. A [`Value`] tree
+/// cannot be circular, so the guard is unreachable here — it is kept because the
+/// failure mode it names is a property of the caller's data, not of the encoder,
+/// and a future non-`Value` tool shape would resurrect it.
+pub fn count_tool_schema_tokens(tools: &[serde_json::Value], chars_per_token: f64) -> i64 {
+    if tools.is_empty() {
+        return 0;
+    }
+    let serialized = match serde_json::to_string(tools) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    estimate_tokens(&serialized, chars_per_token) + tools.len() as i64 * TOOL_OVERHEAD
+}
+
 /// Truncate `text` to fit within `max_tokens`, appending `suffix` when it had to
 /// cut. Preserves as much as possible and prefers a trailing word boundary.
 ///

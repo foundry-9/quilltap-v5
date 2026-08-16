@@ -13,8 +13,9 @@
 //!     cargo test -p quilltap-harness --test token_estimation_equivalence
 
 use quilltap_core::token_estimation::{
-    count_message_tokens, count_messages_tokens, estimate_tokens, get_context_usage_percent,
-    get_context_warning_level, truncate_to_token_limit, DEFAULT_CHARS_PER_TOKEN,
+    count_message_tokens, count_messages_tokens, count_tool_schema_tokens, estimate_tokens,
+    get_context_usage_percent, get_context_warning_level, truncate_to_token_limit,
+    DEFAULT_CHARS_PER_TOKEN,
 };
 use serde::Deserialize;
 
@@ -71,6 +72,17 @@ enum OracleRow {
         context_limit: i64,
         out: String,
     },
+    /// v4 `countToolSchemaTokens` (`f933ba9c`): the serialized tool slate plus 4
+    /// tokens of framing per tool. The tools ride as JSON so both sides measure
+    /// the same bytes. The circular-definition→0 arm cannot be shipped through
+    /// NDJSON (its input is what JSON.stringify refuses to write) — see the case
+    /// header; the Rust guard is unreachable because a `Value` cannot be circular.
+    #[serde(rename = "toolSchema")]
+    ToolSchema {
+        id: String,
+        tools: Vec<serde_json::Value>,
+        out: i64,
+    },
 }
 
 #[test]
@@ -86,7 +98,7 @@ fn token_estimation_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 6];
+    let mut counts = [0usize; 7];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Estimate { id, text, out } => {
@@ -155,6 +167,14 @@ fn token_estimation_matches_oracle() {
                     "warning '{id}'"
                 );
                 counts[5] += 1;
+            }
+            OracleRow::ToolSchema { id, tools, out } => {
+                assert_eq!(
+                    count_tool_schema_tokens(&tools, CPT),
+                    out,
+                    "toolSchema '{id}'"
+                );
+                counts[6] += 1;
             }
         }
     }
