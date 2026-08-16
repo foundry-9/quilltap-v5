@@ -71802,3 +71802,11 @@ carried-rider shape as P4.D82's `external-prompt-generator`). No code, no stub.
 `icon`/`optionsSchema` are null on every row. `optionsSchema` is now served for
 eight of nine providers. The file is P4.D84's (`apps/web/**`); the comment wants
 one line of correction there or at unification.
+
+**Gate catch (P4.D83):** the full-workspace run found a SECOND consumer of the
+`chat_completions_sse` fixtures — `streaming_composer_equivalence` maps each
+fixture's provider tag to a registry id through an exhaustive match, and the new
+`openai-compatible` cases panicked it (`unknown fixture provider tag`). Neither
+the decoder differential nor any by-name run touches that binary, so only the
+whole-workspace gate could surface it. One arm added; the composer is green
+across all five decoders.

@@ -105,6 +105,10 @@ fn canonical_provider(tag: &str) -> &'static str {
         "z-ai" => "Z_AI",
         "openrouter" => "OPENROUTER",
         "ollama" => "OLLAMA",
+        // P4.D83: the `chat_completions_sse` family gained its first
+        // OpenAiCompatible cases, and this composer is the fixtures' SECOND
+        // consumer — the full-workspace gate is what surfaced that.
+        "openai-compatible" => "OPENAI_COMPATIBLE",
         other => panic!("unknown fixture provider tag {other}"),
     }
 }
