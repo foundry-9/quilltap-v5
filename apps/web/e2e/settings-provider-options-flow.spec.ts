@@ -343,8 +343,11 @@ test.describe('P4.D86 — the profile editor’s three fixed seams', () => {
     await page.getByPlaceholder('Add a tag...').fill(TAG_NAME);
     await page.getByPlaceholder('Add a tag...').press('Enter');
 
-    // Immediate persistence: the chip is there before any Save.
-    const chip = page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME });
+    // Immediate persistence: the chip is there before any Save. Scoped to the
+    // DIALOG: the editor's invalidation live-updates the card BEHIND the modal
+    // too (correct product behavior, v4's query invalidation does the same),
+    // so a page-wide count sees the card's pill as a second match.
+    const chip = page.getByRole('dialog').locator('.qt-tag-badge').filter({ hasText: TAG_NAME });
     await expect(chip).toHaveCount(1, { timeout: 15_000 });
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(providerSelect(page)).toHaveCount(0);
@@ -357,15 +360,15 @@ test.describe('P4.D86 — the profile editor’s three fixed seams', () => {
       timeout: 15_000,
     });
     await tagged.getByRole('button', { name: 'Edit' }).click();
-    await expect(page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME })).toHaveCount(1, {
-      timeout: 15_000,
-    });
+    await expect(
+      page.getByRole('dialog').locator('.qt-tag-badge').filter({ hasText: TAG_NAME }),
+    ).toHaveCount(1, { timeout: 15_000 });
 
     // Detach again, so the shared server is left as it was found.
     await page.getByRole('button', { name: `Remove ${TAG_NAME} tag` }).click();
-    await expect(page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME })).toHaveCount(0, {
-      timeout: 15_000,
-    });
+    await expect(
+      page.getByRole('dialog').locator('.qt-tag-badge').filter({ hasText: TAG_NAME }),
+    ).toHaveCount(0, { timeout: 15_000 });
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(providerSelect(page)).toHaveCount(0);
 
