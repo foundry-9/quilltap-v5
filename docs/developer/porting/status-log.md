@@ -72498,3 +72498,77 @@ two cases — the form-level `ALWAYS sends the baseUrl key` and the modal-level
 lane asserts only what leaves the client.
 
 **Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.
+
+---
+
+## P4.D86 unit 3 — the profile tag surface, in its fixed form (v4 Bug 74 client, `d123658d`)
+
+**Lane:** P4.D86. **Files:** `apps/web/src/app/core/core-contract.ts`,
+`connection-profiles-card.ts`, `profile-modal.ts`, NEW
+`profile-tag-editor{.ts,.spec.ts}`. **Oracle:** v4's CLIENT at `d123658d` —
+`ProfileCard.tsx:163-168`, `components/tags/tag-editor.tsx`, and the NEW
+`__tests__/unit/components/tags/tag-editor-paths.test.tsx`.
+
+### The three layers, and which of them v5 had
+
+Bug 74 is "tagging a connection profile had never worked, three layers deep".
+
+1. **The path.** v4's entity-agnostic TagEditor named `/api/v1/profiles/<id>`,
+   a route that has never existed. **v5 had no profile tag editor at all** — the
+   card's header called tag editing a named deferral. So this layer is a port,
+   not a fix.
+2. **The route.** The connection-profile GET had no `get-tags` action and
+   answered an unknown one with the whole profile body. P4.D85's.
+3. **The shape.** `ProfileCard` read `tag.name` off `enrichWithTags`'s
+   `{tagId, tag}` envelope and drew every tag as an empty pill. **v5 carried the
+   same confusion**, one step earlier: `ConnectionProfileDto.tags` was typed
+   `ProfileTag[]` (flat `{id,name}`) while v5's own
+   `api/settings.rs enrich_with_tags` sends the envelope. Nothing rendered it,
+   so nothing had caught it.
+
+### The port
+
+- **`EnrichedProfileTag { tagId, tag }`** declared in the contract (v4's new
+  `EnrichedTag`), and `ConnectionProfileDto.tags` retyped to it. **`EditorTag`**
+  declared as the FLAT shape both `?action=get-tags` routes answer — the client
+  half of v4's `resolveEditorTags` consolidation — with `CharacterTagDetail`
+  becoming an alias of it rather than a second declaration of the same three
+  fields. The two shapes each have one owner; conflating them WAS the bug.
+- The three Shared-contract verbs added to the Request union:
+  `connectionProfileGetTags` / `AddTag` / `RemoveTag`.
+- **The card** renders tag pills from the envelope, destructured
+  (`entry.tag.name`), in v4's slot after the parameters line. The header's
+  "tag editing … are named deferrals" line retired for the tag half.
+- **`ProfileTagEditor`** — a new component following **v4's IMMEDIATE
+  persistence**, not the character form's staged simplification: v4's TagEditor
+  writes add/remove straight to the entity's own endpoints, and the profile
+  modal has no single Save bag tags could ride. v4's two failure sentences are
+  carried verbatim ("Failed to add tag. Please try again." /
+  "Failed to remove tag. Please try again."), which is what those catches exist
+  for. Mounted in BOTH of v4's slots — the courier branch and the API branch —
+  and only when editing (`profile?.id`).
+
+### The differential
+
+Nine cases in `profile-tag-editor.spec.ts`. v4's parity cases assert the URL
+each entity type reaches for, "because the component's only contract with the
+server is that string"; v5 has no URL layer here, so the equivalent assertion is
+the VERB and the profile id, including the bug's signature (no character/chat
+verb leaks out of the profile editor). The add path pins v4's two legs in order
+(`tagCreate` then attach), the immediate-persistence contract is pinned by
+asserting no `connectionProfileUpdate` accompanies a remove, and all three
+failure arms pin the toast sentences.
+
+### Recorded seams (NOT closed here)
+
+- v5's `enrich_with_tags` nests only `{id, name}` where v4 nests the full row —
+  a documented seam in `api/settings.rs`. The card renders the name, which is
+  all either app draws: v5 has no port of v4's tag-style provider, so every SPA
+  surface draws plain `qt-tag-badge` pills. Not this lane's to change.
+- The character Tags tab (`characters/view/tabs/tags-tab.ts`) has the same
+  immediate persistence but NO failure catches at all, so v4's two sentences
+  never fire there. Pre-existing, a different surface, recorded not touched.
+
+**Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.
+The tag surface is inert until P4.D85 serves the verbs; the e2e beat is gated
+`P4D85_PROFILE_TAGS_LANDED`.

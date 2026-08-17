@@ -18,9 +18,15 @@ interface Badge {
 /**
  * The Connection Profiles card (v4 `components/settings/connection-profiles/`):
  * the sortable list (badges, provider/model, up/down reorder + Reset Sort),
- * create/edit over the profile modal, and delete-with-confirm. Drag reordering is
- * replaced by up/down buttons (no dnd dependency); tag editing + the message-count
- * heuristic are named deferrals. Copy + `qt-*` classes carry over verbatim.
+ * create/edit over the profile modal, tag pills, and delete-with-confirm. Drag
+ * reordering is replaced by up/down buttons (no dnd dependency); the
+ * message-count heuristic is a named deferral. Copy + `qt-*` classes carry over
+ * verbatim.
+ *
+ * Tags render from the LIST enrichment's `{ tagId, tag }` envelope, NOT a flat
+ * tag — reading `name` off the envelope is what drew every pill empty in v4
+ * (Bug 74's third layer, `ProfileCard.tsx:163-168` at `d123658d`). Editing them
+ * is the modal's job, over the item route's own verbs.
  */
 @Component({
   selector: 'qt-connection-profiles-card',
@@ -125,6 +131,13 @@ interface Badge {
                           {{ paramOf(profile, 'max_tokens', 1000) }} • Top P:
                           {{ paramOf(profile, 'top_p', 1) }}
                         </div>
+                        @if (profile.tags && profile.tags.length > 0) {
+                          <div class="mt-3 flex flex-wrap gap-2">
+                            @for (entry of profile.tags; track entry.tagId) {
+                              <span class="qt-tag-badge qt-tag-badge-sm">{{ entry.tag.name }}</span>
+                            }
+                          </div>
+                        }
                       </div>
                     </div>
                     <div class="flex gap-2 flex-shrink-0">

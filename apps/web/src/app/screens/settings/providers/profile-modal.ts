@@ -30,6 +30,7 @@ import {
   type ProfileFormData,
   type ProviderRequirements,
 } from './profile-form';
+import { ProfileTagEditor } from './profile-tag-editor';
 import { ProviderOptionsPanel } from './provider-options-panel';
 import type { ProviderOptionsSchema } from './provider-options-schema';
 
@@ -78,7 +79,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 @Component({
   selector: 'qt-profile-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ModelSelector, ProviderOptionsPanel],
+  imports: [Modal, FormActions, ModelSelector, ProviderOptionsPanel, ProfileTagEditor],
   template: `
     <qt-modal
       [title]="editing() ? 'Edit Connection Profile' : 'Create Connection Profile'"
@@ -228,6 +229,13 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
             manifestos, scene state, and wardrobe context are all still bundled into the prompt as
             normal — the external LLM just doesn&apos;t have any way to call back into Quilltap.
           </div>
+
+          <!-- Tag editor - editing only (v4 ProfileModal.tsx:451-455). -->
+          @if (profile()?.id; as profileId) {
+            <div class="pt-4">
+              <qt-profile-tag-editor [profileId]="profileId" />
+            </div>
+          }
         }
 
         <!-- API Key + Base URL (API transport only) -->
@@ -610,6 +618,14 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
               [modelName]="form().modelName"
               (setParameter)="setParameter($event.key, $event.value)"
             />
+          }
+
+          <!-- Tag editor - editing only, API path. The courier path renders
+               its own above (v4 ProfileModal.tsx:935-940). -->
+          @if (profile()?.id; as profileId) {
+            <div class="pt-4">
+              <qt-profile-tag-editor [profileId]="profileId" />
+            </div>
           }
         }
       </div>

@@ -535,8 +535,7 @@ export interface ChatOutfitSummaryRequest {
  * (`components/tools/search-replace/types.ts`).
  */
 export type SearchReplaceScopeWire =
-  | { type: 'chat'; chatId: string }
-  | { type: 'character'; characterId: string };
+  { type: 'chat'; chatId: string } | { type: 'character'; characterId: string };
 
 /**
  * Search & replace dry-run (v4 `POST /api/v1/search-replace?action=preview`).
@@ -854,6 +853,32 @@ export interface ConnectionProfileTestRequest {
 export interface ConnectionProfileTestMessageRequest {
   type: 'connectionProfileTestMessage';
   profile: Record<string, unknown>;
+}
+
+/**
+ * The connection profile's own tags (v4
+ * `app/api/v1/connection-profiles/[id]/route.ts`
+ * `?action=get-tags|add-tag|remove-tag`, `d123658d`). The P4.D86 Shared
+ * contract, served by P4.D85.
+ *
+ * `connectionProfileGetTags` answers `{ tags: EditorTag[] }` — the FLAT shape,
+ * entity order preserved, ids with no surviving tag dropped silently. Not to
+ * be confused with the listing's {@link EnrichedProfileTag} envelope (that
+ * conflation WAS v4 Bug 74's second layer).
+ */
+export interface ConnectionProfileGetTagsRequest {
+  type: 'connectionProfileGetTags';
+  profileId: string;
+}
+export interface ConnectionProfileAddTagRequest {
+  type: 'connectionProfileAddTag';
+  profileId: string;
+  tagId: string;
+}
+export interface ConnectionProfileRemoveTagRequest {
+  type: 'connectionProfileRemoveTag';
+  profileId: string;
+  tagId: string;
 }
 
 /** API-key CRUD + test (v4 `api-keys`). */
@@ -2098,6 +2123,9 @@ export type CoreRequest =
   | { type: 'connectionProfileResetSort' }
   | ConnectionProfileTestRequest
   | ConnectionProfileTestMessageRequest
+  | ConnectionProfileGetTagsRequest
+  | ConnectionProfileAddTagRequest
+  | ConnectionProfileRemoveTagRequest
   | { type: 'apiKeyList' }
   | ApiKeyCreateRequest
   | ApiKeyUpdateRequest
@@ -2857,11 +2885,7 @@ export interface CharacterDetail {
 }
 
 /** The character's own tag details (v4 `?action=get-tags`). */
-export interface CharacterTagDetail {
-  id: string;
-  name: string;
-  visualStyle: string | null;
-}
+export type CharacterTagDetail = EditorTag;
 
 /** The header stat line (v4 `?action=stats` → `stats`). */
 export interface CharacterStats {
@@ -3068,6 +3092,39 @@ export interface ProfileTag {
   name: string;
 }
 
+/**
+ * A tag as the connection-profiles **collection** endpoint sends it:
+ * `enrichWithTags`'s `{ tagId, tag }` envelope, not a flat tag (v4
+ * `connection-profiles/types.ts` `EnrichedTag`, `d123658d`).
+ *
+ * Declared rather than assumed because this field was typed as the flat shape
+ * while the wire carried envelopes on BOTH sides — so the card would have read
+ * `name` off the envelope and drawn every tag as an empty pill (v4 Bug 74,
+ * third layer). The item route's `?action=get-tags` answers flat
+ * {@link EditorTag}s; these two shapes are not interchangeable.
+ *
+ * ⚠ v5's enrichment marshals only `{id, name}` into the nested tag (a
+ * documented seam in `api/settings.rs` `enrich_with_tags`), where v4 nests the
+ * full row. The card renders the name, which is all either app draws without a
+ * tag-style provider.
+ */
+export interface EnrichedProfileTag {
+  tagId: string;
+  tag: ProfileTag;
+}
+
+/**
+ * The FLAT tag shape both `?action=get-tags` routes answer — characters and
+ * connection profiles alike (v4 `lib/api/middleware/enrichment.ts`
+ * `resolveEditorTags`, `d123658d`, which exists precisely so the two answers
+ * the tag editor consumes cannot drift apart again).
+ */
+export interface EditorTag {
+  id: string;
+  name: string;
+  visualStyle: string | null;
+}
+
 /** One enriched connection profile (v4 `connection-profiles` list/detail). */
 export interface ConnectionProfileDto {
   id: string;
@@ -3101,7 +3158,7 @@ export interface ConnectionProfileDto {
   maxContext?: number | null;
   sortIndex?: number;
   apiKey?: ProfileApiKeyRef | null;
-  tags?: ProfileTag[];
+  tags?: EnrichedProfileTag[];
 }
 
 /** Per-model info returned alongside a models fetch (v4 `ModelInfo`). */
@@ -5754,13 +5811,7 @@ export interface ChatOutfitGetRequest {
  * branches only on `replace` (`api/chat_outfits.rs:422,441-446`).
  */
 export type ChatEquipMode =
-  | 'wear'
-  | 'replace'
-  | 'equip'
-  | 'add_to_slot'
-  | 'remove_from_slot'
-  | 'clear_slot'
-  | 'set_all';
+  'wear' | 'replace' | 'equip' | 'add_to_slot' | 'remove_from_slot' | 'clear_slot' | 'set_all';
 
 /**
  * v4 `POST /api/v1/chats/{id}?action=equip` (`outfit.ts:35-79` schema,
@@ -5784,11 +5835,7 @@ export interface WardrobeTransferDestinationsRequest {
 }
 
 /** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */
-export type WardrobeTransferScope =
-  | 'general'
-  | 'project'
-  | 'group'
-  | 'character';
+export type WardrobeTransferScope = 'general' | 'project' | 'group' | 'character';
 
 /** v4 `POST /api/v1/wardrobe/transfers` (`transfers/route.ts:47-57`). */
 export interface WardrobeTransferApplyRequest {

@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Connection profiles can be tagged. The editor's tag box adds and removes tags as
+you go, and the tags now show their names on the profile card instead of drawing
+as empty pills. Ports the client half of v4's bug-74 fix, where tagging a profile
+had never worked at all.
+
 Fixed a base URL following a connection profile onto a provider that neither
 shows nor takes one. Selecting Ollama fills in localhost:11434; switching to a
 hosted provider hid the field but kept the value, and every connection test,
