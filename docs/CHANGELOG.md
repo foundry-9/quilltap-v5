@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed Fetch Models returning a fixed list of eleven Claude models for
+Anthropic instead of the models your key can actually reach. The models
+request was sent without the `anthropic-version` header Anthropic
+requires, so the API rejected it and the code fell back to its built-in
+list without reporting anything. Providers declare fixed headers like
+that in their manifests, and the two hand-built wire calls — the models
+list and the generic connection probe — now send them. Found by
+dogfooding (finding #89).
+
 Unified the d123658d connection-profile-editor round (P4.D85 server ∥
 P4.D86 SPA). The oracle baseline moves to d123658d and the drift debt is
 cleared; v4's one newer commit (9c01fa99, sample-prompt content) is

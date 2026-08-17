@@ -305,11 +305,7 @@ pub(crate) fn collect_drop_failures(
 /// `anthropic-version`).
 fn auth_headers(manifest: &crate::provider_manifest::Manifest) -> Vec<(String, String)> {
     let mut headers = vec![("content-type".to_string(), "application/json".to_string())];
-    if let Some(extra) = &manifest.auth.extra {
-        for (k, v) in extra {
-            headers.push((k.clone(), v.clone()));
-        }
-    }
+    headers.extend(super::provider_auth::declared_auth_extras(manifest));
     headers
 }
 

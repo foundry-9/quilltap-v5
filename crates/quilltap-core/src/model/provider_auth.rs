@@ -20,7 +20,45 @@
 //! bank. Now pinned by `request_builder_google_wire_equivalence`, in both
 //! directions: v5 must send the header AND must not append the query param.
 
-use crate::provider_manifest::Registry;
+use crate::provider_manifest::{Manifest, Registry};
+
+/// The manifest's fixed `auth.extra` headers — the constants a provider requires
+/// on EVERY request alongside the key itself. Today anthropic's
+/// `anthropic-version: 2023-06-01` is the only one; v4 never has to think about
+/// it because its plugins go through the vendor SDKs, which set it on every call
+/// the client makes.
+///
+/// Kept apart from [`apply_auth`] rather than folded into it: `apply_auth` runs
+/// on headers a request builder has usually already produced, and
+/// [`auth_headers`](super::request_builder) puts the extras there — folding them
+/// in here would send `anthropic-version` twice on every completion. The callers
+/// that need this are the ones that build a wire call WITHOUT a request builder
+/// (`api::provider_actions`'s models list and generic validate probe), which had
+/// no source for the extras at all.
+///
+/// Dogfood #89: without it the models GET 400s and the fetcher silently answers
+/// v4's static fallback list, so Fetch Models could never return a real
+/// anthropic catalogue.
+pub(crate) fn declared_auth_extras(manifest: &Manifest) -> Vec<(String, String)> {
+    manifest
+        .auth
+        .extra
+        .iter()
+        .flatten()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+/// [`declared_auth_extras`] for a provider NAME — nothing for an unknown one.
+pub(crate) fn declared_auth_extras_for(
+    registry: &Registry,
+    provider: &str,
+) -> Vec<(String, String)> {
+    registry
+        .get_provider(provider)
+        .map(declared_auth_extras)
+        .unwrap_or_default()
+}
 
 /// Inject the api key per the manifest `auth` scheme onto (headers, url).
 ///

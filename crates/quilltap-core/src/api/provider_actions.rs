@@ -57,7 +57,7 @@ use std::sync::Arc;
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::model::provider_auth::apply_auth;
+use crate::model::provider_auth::{apply_auth, declared_auth_extras_for};
 use crate::model::provider_models_api::{models_list_request, parse_models_list};
 use crate::model::request_builder::{build_request, RequestInput, StreamMessage};
 use crate::model::transport::transport_headers;
@@ -211,8 +211,11 @@ impl<T: SyncWireTransport> ConnectionValidator for WireConnectionValidator<'_, T
                 };
                 let req = models_list_request(provider);
                 let mut url = join_url(&base, req.path);
+                // The manifest's fixed auth extras, which a bare wire call has
+                // no request builder to supply (see the models fetcher below).
+                let extras = declared_auth_extras_for(registry, provider);
                 let mut headers =
-                    transport_headers(provider, &[], self.user_agent, self.base_url_env);
+                    transport_headers(provider, &extras, self.user_agent, self.base_url_env);
                 apply_auth(registry, provider, api_key, &mut headers, &mut url);
                 probe_ok(self.transport, req.method, url, headers, "")
             }
@@ -290,7 +293,14 @@ impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
         let base = effective_base(registry, provider, base_url).unwrap_or_default();
         let req = models_list_request(provider);
         let mut url = join_url(&base, req.path);
-        let mut headers = transport_headers(provider, &[], self.user_agent, self.base_url_env);
+        // v4 lists models through the vendor SDK, which carries the provider's
+        // fixed headers on every call; this path builds the request by hand, so
+        // the manifest's `auth.extra` has to come from the registry. Without
+        // anthropic's `anthropic-version` the GET 400s, the catch below answers
+        // the static fallback, and Fetch Models silently reports 11 stale ids
+        // instead of the account's real catalogue (dogfood #89).
+        let extras = declared_auth_extras_for(registry, provider);
+        let mut headers = transport_headers(provider, &extras, self.user_agent, self.base_url_env);
         apply_auth(registry, provider, api_key, &mut headers, &mut url);
 
         let models: Vec<String> = match self.transport.send(req.method, &url, &headers, "") {
@@ -458,8 +468,14 @@ mod tests {
     use std::sync::Mutex;
 
     /// Records requests; answers from a scripted (status, body) queue.
+    /// `(method, url, body, headers)`. The headers slot was `_headers` until
+    /// dogfood #89 — which is precisely why a models GET that had never carried
+    /// `anthropic-version` passed every test in this module: the fake wire threw
+    /// away the one field the bug lived in.
+    type SeenCall = (String, String, String, Vec<(String, String)>);
+
     struct ScriptedWire {
-        seen: Mutex<Vec<(String, String, String)>>,
+        seen: Mutex<Vec<SeenCall>>,
         replies: Mutex<Vec<Result<WireResponse, String>>>,
     }
 
@@ -477,13 +493,15 @@ mod tests {
             &self,
             method: &str,
             url: &str,
-            _headers: &[(String, String)],
+            headers: &[(String, String)],
             body: &str,
         ) -> Result<WireResponse, String> {
-            self.seen
-                .lock()
-                .unwrap()
-                .push((method.to_string(), url.to_string(), body.to_string()));
+            self.seen.lock().unwrap().push((
+                method.to_string(),
+                url.to_string(),
+                body.to_string(),
+                headers.to_vec(),
+            ));
             let mut replies = self.replies.lock().unwrap();
             if replies.is_empty() {
                 Err("no scripted reply".to_string())
@@ -581,6 +599,61 @@ mod tests {
         let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
         assert_eq!(models.len(), 11);
         assert_eq!(models[0], "claude-opus-4-6");
+    }
+
+    /// Dogfood #89. v4 lists anthropic's models through the SDK, which sends
+    /// `anthropic-version` on every call; v5 builds the GET by hand, and without
+    /// the manifest's `auth.extra` the API answers 400 — so the live catalogue
+    /// was unreachable and the catch-branch fallback above answered every time.
+    /// Both halves are asserted: the header goes out ONCE, and a 200 body is
+    /// actually parsed (a green fallback list is what the bug looked like).
+    #[test]
+    fn anthropic_models_fetch_carries_the_version_header() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(
+            200,
+            "{\"data\":[{\"id\":\"claude-live-1\"}]}",
+        ))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
+        assert_eq!(models, vec!["claude-live-1".to_string()]);
+
+        let seen = wire.seen.lock().unwrap();
+        assert_eq!(seen[0].0, "GET");
+        assert_eq!(seen[0].1, "https://api.anthropic.com/v1/models");
+        let versions: Vec<&String> = seen[0]
+            .3
+            .iter()
+            .filter(|(k, _)| k == "anthropic-version")
+            .map(|(_, v)| v)
+            .collect();
+        assert_eq!(versions, vec!["2023-06-01"], "sent once, with v4's value");
+        assert!(
+            seen[0]
+                .3
+                .iter()
+                .any(|(k, v)| k == "x-api-key" && v == "sk-ant"),
+            "the key header still rides alongside the extras"
+        );
+    }
+
+    /// The guard on the fix: extras are the manifest's, not a blanket anthropic
+    /// header bolted onto every provider.
+    #[test]
+    fn a_provider_declaring_no_extras_gets_none() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{\"data\":[]}"))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        f.fetch("OPENAI_COMPATIBLE", "k", Some("http://127.0.0.1:9/v1"))
+            .unwrap();
+        let seen = wire.seen.lock().unwrap();
+        assert!(!seen[0].3.iter().any(|(k, _)| k == "anthropic-version"));
     }
 
     #[test]

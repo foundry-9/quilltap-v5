@@ -72804,3 +72804,55 @@ unsorted-bag design and the `known_ids` `tags` group.
 Versions: core 0.0.575 → **0.0.577**, harness 0.0.499 → **0.0.501**, SPA
 0.5.498 → **0.5.505** (lane 0.5.502 + the §3 type fix + the wire flip +
 the gate's spec-scoping fix); host/web/cli/tauri unchanged.
+
+## Dogfood fix — finding #89, the anthropic models fetch (2026-08-17)
+
+Out of the `d123658d`-round dogfood walk, Part A. Fetch Models on an
+Anthropic profile reported "Found 11 models" and listed the same eleven
+`claude-*` ids whatever the key held — v4's catch-branch fallback,
+answered so smoothly that nothing on screen said the live fetch had
+failed.
+
+**The cause.** v4 lists models through the vendor SDK, which puts
+`anthropic-version: 2023-06-01` on every call it makes. v5 builds that GET
+by hand: `WireModelsFetcher::fetch` passed `&[]` as its built-headers, and
+`apply_auth` injects only `auth.header` — so the manifest's declared
+`auth.extra` had **no reader outside the request builder**. Anthropic
+refuses the versionless request, and the fetcher's ANTHROPIC arm
+(`provider_actions.rs:305`) turns any non-2xx into the static list. The
+completion paths were never affected: `build_request`'s `auth_headers`
+folds the extras in, which is why every provider corpus stayed green while
+this sat broken beside them.
+
+**Why nothing measured it.** The module's `ScriptedWire` fake took
+`_headers` and threw it away — the one field the bug lived in was
+structurally unobservable to every test in the file. (The
+`recorded-but-unasserted-corpus-fields` class, one level lower: not
+recorded-and-unasserted but never recorded at all.)
+
+**The fix.** `declared_auth_extras` / `declared_auth_extras_for`
+(`model/provider_auth.rs`) is now the single source for a provider's fixed
+auth headers. `request_builder::auth_headers` reads it — output-identical,
+and proven so by `request_builder_equivalence` and
+`request_builder_google_wire_equivalence` (which carries the P4.47 (B)
+header pin) staying green. Both hand-built wire calls in
+`api::provider_actions` seed their headers from it: the models list (the
+bug) and the generic `_` validate probe (unreachable for anthropic, which
+has its own completion probe, and no other shipped manifest declares
+extras — changed with it so the next one that does cannot re-open the
+hole).
+
+`ScriptedWire` gained its headers slot.
+`anthropic_models_fetch_carries_the_version_header` asserts the header
+goes out exactly once with v4's value, that `x-api-key` still rides beside
+it, and that a 200 body is genuinely parsed — a green fallback list being
+precisely what the bug looked like. Mutation-proven: restoring `&[]` reds
+it. `a_provider_declaring_no_extras_gets_none` is the guard.
+
+**💸 The live proof is owed** — the walk's next Anthropic Fetch Models
+against the real key should list the account's catalogue, not eleven ids.
+
+Sibling finding #90 (the stale `apiKeyId` surviving a provider change) is a
+faithfully ported v4 bug and got no v5 change; see `dogfood-findings.md`.
+
+Versions: core 0.0.577 → **0.0.578**; nothing else touched.
