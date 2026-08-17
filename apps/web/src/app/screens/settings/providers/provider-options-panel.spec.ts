@@ -1,7 +1,8 @@
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
-import { ProviderOptionsPanel } from './provider-options-panel';
+import { ProviderNumberField, ProviderOptionsPanel, toInputString } from './provider-options-panel';
 import type { ProviderOptionsSchema } from './provider-options-schema';
 
 /**
@@ -41,6 +42,76 @@ async function render(inputs: {
 
 function el<T extends HTMLElement>(fixture: ComponentFixture<unknown>, selector: string): T | null {
   return (fixture.nativeElement as HTMLElement).querySelector<T>(selector);
+}
+
+/** The child component drawing one `number` row, for the paths the DOM cannot reach. */
+function numberField(fixture: ComponentFixture<unknown>, key: string): ProviderNumberField {
+  const found = fixture.debugElement
+    .queryAll(By.directive(ProviderNumberField))
+    .map((d) => d.componentInstance as ProviderNumberField)
+    .find((c) => c.field().key === key);
+  if (!found) throw new Error(`no number field for ${key}`);
+  return found;
+}
+
+interface RoundTrip {
+  fixture: ComponentFixture<ProviderOptionsPanel>;
+  /** The bag as the host currently holds it. */
+  bag: () => Record<string, unknown>;
+}
+
+/**
+ * The panel wired to its REAL host behaviour: every `setParameter` write lands
+ * back in the `parameters` input, `undefined` DELETING the key exactly as
+ * `ProfileModal.setParameter` does (v4's `ParameterHost`). Bug 72 only exists
+ * in that round trip, so the number cases below need it.
+ */
+async function renderRoundTrip(inputs: {
+  schema: ProviderOptionsSchema;
+  parameters?: Record<string, unknown>;
+}): Promise<RoundTrip> {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({ imports: [ProviderOptionsPanel] });
+  const fixture = TestBed.createComponent(ProviderOptionsPanel);
+  let bag: Record<string, unknown> = { ...(inputs.parameters ?? {}) };
+  fixture.componentRef.setInput('schema', inputs.schema);
+  fixture.componentRef.setInput('parameters', bag);
+  fixture.componentRef.setInput('fetchedModels', []);
+  fixture.componentRef.setInput('modelName', '');
+  fixture.componentInstance.setParameter.subscribe(({ key, value }) => {
+    const next = { ...bag };
+    if (value === undefined) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    bag = next;
+    fixture.componentRef.setInput('parameters', bag);
+  });
+  fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
+  return { fixture, bag: () => bag };
+}
+
+/** One keystroke at a time, the way `userEvent.type` drives v4's cases. */
+async function typeInto(host: RoundTrip, input: HTMLInputElement, text: string): Promise<void> {
+  for (const ch of text) {
+    input.value = input.value + ch;
+    input.dispatchEvent(new Event('input'));
+    host.fixture.detectChanges();
+    await host.fixture.whenStable();
+    host.fixture.detectChanges();
+  }
+}
+
+/** `userEvent.clear` — select all, delete, one input event. */
+async function clearInput(host: RoundTrip, input: HTMLInputElement): Promise<void> {
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  host.fixture.detectChanges();
+  await host.fixture.whenStable();
+  host.fixture.detectChanges();
 }
 
 function text(fixture: ComponentFixture<unknown>): string {
@@ -249,6 +320,7 @@ describe('ProviderOptionsPanel (number fields)', () => {
             label: 'Request Timeout (seconds)',
             type: 'number',
             default: 300,
+            helpText: 'Leave blank for the default.',
           },
           { key: 'top_k', label: 'Top K', type: 'number' },
         ],
@@ -256,18 +328,24 @@ describe('ProviderOptionsPanel (number fields)', () => {
     ],
   };
 
-  it('shows the schema default when the bag is empty, and the stored number when it is not (v4 `:43-47`, `:285-290`)', async () => {
+  it('renders an unset number as blank with the default as placeholder (v4 `:48-52`, `:331-334`)', async () => {
+    // Absent and explicitly-default must not look identical, or the field's own
+    // "leave blank for the default" is unreachable and unverifiable (Bug 72).
     const { fixture } = await render({ schema, parameters: { top_k: 20 } });
-    expect(el<HTMLInputElement>(fixture, '#pof-request_timeout_seconds')!.value).toBe('300');
+    const timeout = el<HTMLInputElement>(fixture, '#pof-request_timeout_seconds')!;
+    expect(timeout.value).toBe('');
+    expect(timeout.getAttribute('placeholder')).toBe('300');
     expect(el<HTMLInputElement>(fixture, '#pof-top_k')!.value).toBe('20');
   });
 
-  it('leaves a field with no default and no stored value blank (v4 `:290`)', async () => {
+  it('leaves a field with no default without a placeholder at all (v4 `:334`)', async () => {
     const { fixture } = await render({ schema });
-    expect(el<HTMLInputElement>(fixture, '#pof-top_k')!.value).toBe('');
+    const topK = el<HTMLInputElement>(fixture, '#pof-top_k')!;
+    expect(topK.value).toBe('');
+    expect(topK.hasAttribute('placeholder')).toBe(false);
   });
 
-  it('writes a NUMBER for a numeric entry (v4 `:305`)', async () => {
+  it('writes a NUMBER for a numeric entry (v4 `:343`)', async () => {
     const { fixture, writes } = await render({ schema });
     const input = el<HTMLInputElement>(fixture, '#pof-top_k')!;
     input.value = '40';
@@ -276,7 +354,7 @@ describe('ProviderOptionsPanel (number fields)', () => {
     expect(typeof writes[0].value).toBe('number');
   });
 
-  it('emits undefined for a cleared field — the host DELETES the key (v4 `:302-303`)', async () => {
+  it('emits undefined for a cleared field — the host DELETES the key (v4 `:338-339`)', async () => {
     const { fixture, writes } = await render({ schema, parameters: { top_k: 20 } });
     const input = el<HTMLInputElement>(fixture, '#pof-top_k')!;
     input.value = '';
@@ -284,24 +362,105 @@ describe('ProviderOptionsPanel (number fields)', () => {
     expect(writes).toEqual([{ key: 'top_k', value: undefined }]);
   });
 
-  it('keeps an unparseable entry as the raw string (v4 `:306`)', async () => {
+  it('keeps an unparseable entry as the raw string (v4 `:343`)', async () => {
     // Unreachable through a real `<input type="number">`, which reports '' for
     // rubbish — carried because v4 carries it.
     const { fixture, writes } = await render({ schema });
-    fixture.componentInstance['emitNumber'](
-      { key: 'top_k', label: 'Top K', type: 'number' },
-      'abc',
-    );
+    numberField(fixture, 'top_k')['onInput']('abc');
     expect(writes).toEqual([{ key: 'top_k', value: 'abc' }]);
   });
 
-  it('hands a stored STRING to the input verbatim (v4 `:288-289`)', async () => {
-    // The coercion passes the string through — v4's `NumberField` does the
+  it('hands a stored STRING to the input verbatim (v4 `:56-60`)', async () => {
+    // The coercion passes the string through — v4's `toInputString` does the
     // same. Both apps then hand it to an `<input type="number">`, which
     // DISCARDS a non-numeric value and shows blank; a numeric string survives.
     const { fixture } = await render({ schema, parameters: { top_k: '20' } });
-    expect(fixture.componentInstance['asNumericText']('abc')).toBe('abc');
+    expect(toInputString('abc')).toBe('abc');
     expect(el<HTMLInputElement>(fixture, '#pof-top_k')!.value).toBe('20');
+  });
+});
+
+/**
+ * Bug 72 — clearing a numeric option used to repaint the schema default with
+ * the caret after it, so the next keystroke appended to it (300 → 3005).
+ *
+ * These mirror v4's own new cases in
+ * `__tests__/unit/components/settings/provider-options-panel.test.tsx` at
+ * `d123658d`, driven through the panel's REAL host round trip: `setParameter`
+ * writes straight back into the `parameters` input, deleting on `undefined`
+ * exactly as `ProfileModal.setParameter` does. The bug only exists in that
+ * round trip.
+ */
+describe('ProviderOptionsPanel (number fields — Bug 72)', () => {
+  const schema: ProviderOptionsSchema = {
+    groups: [
+      {
+        fields: [
+          {
+            key: 'request_timeout_seconds',
+            label: 'Request Timeout (seconds)',
+            type: 'number',
+            default: 300,
+            helpText: 'Leave blank for the default.',
+          },
+        ],
+      },
+    ],
+  };
+
+  it('stays empty when cleared, and the key leaves the bag', async () => {
+    const host = await renderRoundTrip({ schema, parameters: { request_timeout_seconds: 300 } });
+    const input = el<HTMLInputElement>(host.fixture, '#pof-request_timeout_seconds')!;
+    expect(input.value).toBe('300');
+
+    await clearInput(host, input);
+    expect(input.value).toBe('');
+    expect(host.bag()).not.toHaveProperty('request_timeout_seconds');
+  });
+
+  it('does not prepend the default to the value typed after a clear', async () => {
+    const host = await renderRoundTrip({ schema, parameters: { request_timeout_seconds: 300 } });
+    const input = el<HTMLInputElement>(host.fixture, '#pof-request_timeout_seconds')!;
+    expect(input.value).toBe('300');
+
+    await clearInput(host, input);
+    await typeInto(host, input, '5');
+
+    expect(input.value).toBe('5');
+    expect(host.bag()['request_timeout_seconds']).toBe(5);
+  });
+
+  it('keeps a blank field absent across a reopen rather than writing the default', async () => {
+    const first = await renderRoundTrip({ schema, parameters: { request_timeout_seconds: 300 } });
+    await clearInput(first, el<HTMLInputElement>(first.fixture, '#pof-request_timeout_seconds')!);
+    expect(first.bag()).not.toHaveProperty('request_timeout_seconds');
+
+    // Reopening must not resurrect the default as a stored-looking value —
+    // otherwise a later change to the plugin's default never reaches the
+    // profiles that deliberately never set one.
+    const reopened = await renderRoundTrip({ schema, parameters: first.bag() });
+    expect(el<HTMLInputElement>(reopened.fixture, '#pof-request_timeout_seconds')!.value).toBe('');
+  });
+
+  it('re-seeds the box when the parameter moves for some other reason', async () => {
+    const { fixture } = await render({ schema, parameters: { request_timeout_seconds: 300 } });
+    fixture.componentRef.setInput('parameters', { request_timeout_seconds: 900 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el<HTMLInputElement>(fixture, '#pof-request_timeout_seconds')!.value).toBe('900');
+  });
+
+  it('does not rewrite the box when the host normalizes its own echo', async () => {
+    // ⚠ THE MUTATION PROOF for the `syncedFrom` spelling. Reconciling the draft
+    // against the incoming string alone (or a `linkedSignal` keyed on it)
+    // rewrites `007` to the `7` the bag stored, under the caret — v4's commit
+    // warns the naive re-sync reintroduces Bug 72 for exactly this reason.
+    const host = await renderRoundTrip({ schema });
+    const input = el<HTMLInputElement>(host.fixture, '#pof-request_timeout_seconds')!;
+    await typeInto(host, input, '007');
+    expect(host.bag()['request_timeout_seconds']).toBe(7);
+    expect(input.value).toBe('007');
   });
 });
 

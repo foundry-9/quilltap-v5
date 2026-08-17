@@ -72367,3 +72367,69 @@ touched; **no REST edge, so `quilltap-web` is deliberately unbumped**.
   `/api/dispatch` in the Shared contract's spelling, and the PUT `baseUrl: ''`
   → NULL coercion its poisoned-row clear depends on is now pinned in both
   directions.
+---
+
+## P4.D86 unit 1 — the number field's own draft (v4 Bug 72, `d123658d`)
+
+**Lane:** P4.D86 (the SPA half of the `d123658d` round). **Files:**
+`apps/web/src/app/screens/settings/providers/provider-options-panel{.ts,.spec.ts}`.
+**Oracle:** v4's CLIENT at `d123658d` — `ProviderOptionsPanel.tsx` and the five
+cases its commit adds to
+`__tests__/unit/components/settings/provider-options-panel.test.tsx`.
+
+### What v4 changed
+
+Clearing a numeric provider option snapped back to the schema default and
+swallowed the next keystroke (clear 300, type 5, store 3005). Emptying the box
+emits `undefined`, `setParameter` deletes the key, and `fieldValue` then falls
+back to `field.default`. v4's fix is two-part: `NumberField` holds its own draft
+string reconciled against a `syncedFrom` companion, and `fieldValue` returns
+`undefined` for number fields so the default renders as a PLACEHOLDER.
+
+### What v5 actually did (the recorded divergence RE-MEASURED)
+
+The P4.D84 round recorded "a display-only number-clear divergence vs React's
+controlled snap-back". Re-measured against v4's NEW behaviour, that note is
+**retired, not carried**: v5's `[value]="asNumericText(row.value)"` binding
+happened not to reproduce the 3005 append (the bound string was unchanged
+'300' → '300', so Angular never wrote it back), but it carried the same class of
+defect one keystroke over — Angular writes the bound string whenever it CHANGES,
+so typing `00` emitted `0`, the binding recomputed `'0'`, and the box was
+rewritten under the caret. And the placeholder half was simply absent: an unset
+number rendered its default as a real value, so "leave blank for the default"
+was unreachable in v5 exactly as in v4.
+
+### The port
+
+- `toInputString` extracted (v4 `:56-60`), exported for the spec.
+- **`ProviderNumberField`** — a child component, as in v4, because the draft is
+  per-row state and Angular has no per-`@for`-row hook. `draft` and `syncedFrom`
+  signals; an `effect` reads `incoming` and compares it against `untracked(syncedFrom)`,
+  re-seeding both only when the parameter genuinely moved underneath.
+  `write()` sets `syncedFrom` to the value the host will hand back before
+  emitting, so the own-echo is never mistaken for an external move.
+- `placeholder` = `toInputString(field.default)`, absent when there is no default.
+- The panel's `fieldValue` equivalent returns `undefined` for `type === 'number'`;
+  every other control keeps the fallback as a real value (the enum row preselects
+  from it).
+
+### The differential
+
+The five v4 cases mirrored 1:1 in a new `(number fields — Bug 72)` describe,
+driven through a `renderRoundTrip` harness that IS the real host — `setParameter`
+writes back into the `parameters` input and DELETES on `undefined`, exactly as
+`ProfileModal.setParameter` does (v4's `ParameterHost`). Typing is one keystroke
+at a time, as `userEvent.type` drives v4's.
+
+**Mutation-proven.** Changing the reconciliation to compare against the DRAFT
+(the naive spelling v4's commit message warns about) reddens exactly one case —
+"does not rewrite the box when the host normalizes its own echo": `007` is
+rewritten to the `7` the bag stored, under the caret. Measured, not asserted:
+`Tests 1 failed | 4 passed`, `AssertionError: expected '7' to be '007'`.
+
+Two pre-existing cases were rewritten rather than deleted, because the behaviour
+they pinned is what v4 changed: the schema default now shows as a placeholder,
+not a value. The `emitNumber`/`asNumericText` reach-ins moved to the child
+component and the exported helper.
+
+**Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.

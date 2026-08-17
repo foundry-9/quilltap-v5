@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Fixed a numeric provider option in the connection-profile editor putting the
+schema default straight back when you clear it, so the next digit appended to it
+and a wrong value was stored (clear 300, type 5, get 3005). The box now keeps its
+own draft while you edit, and an unset option shows its default as a placeholder
+rather than a value, so "leave blank for the default" is a state you can see
+yourself reach. Ports v4's bug-72 fix.
+
 Connection profiles can be tagged. The three actions v4 grew in its bug-74 fix
 — read a profile's tags, add one, remove one — are now verbs, and the two tag
 shapes that had drifted apart in v4 each have one owner here: the flat shape the

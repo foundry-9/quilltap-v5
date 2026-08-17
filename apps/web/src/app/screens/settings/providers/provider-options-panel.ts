@@ -4,8 +4,11 @@ import {
   ElementRef,
   afterRenderEffect,
   computed,
+  effect,
   input,
   output,
+  signal,
+  untracked,
   viewChildren,
 } from '@angular/core';
 
@@ -14,6 +17,109 @@ import type {
   ProviderOptionField,
   ProviderOptionsSchema,
 } from './provider-options-schema';
+
+/**
+ * A stored value (or a schema default) as the string an `<input>` displays
+ * (v4 `ProviderOptionsPanel.tsx` `toInputString`, `:56-60`).
+ */
+export function toInputString(value: unknown): string {
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value;
+  return '';
+}
+
+/**
+ * One `number` row (v4's `NumberField`, `:288-352`).
+ *
+ * A separate component because the box owns its own string while it is being
+ * edited, rather than reading straight off the value input. A half-typed number
+ * is not a value the bag can hold — `1.` and `-` both arrive as `''`, and `00`
+ * round-trips as `0` — and a control that re-derives its display from what the
+ * host stored will fight the person typing (v4 Bug 72).
+ *
+ * `syncedFrom` is the input value the draft was last reconciled against.
+ * Writing through sets it to the value the host will hand back, so our own echo
+ * is never mistaken for the parameter changing underneath us. Anything else
+ * moving the input (a different profile, a schema swap) re-seeds both.
+ *
+ * ⚠ The naive spelling — reconciling against the DRAFT, or a `linkedSignal`
+ * keyed on the incoming string — reintroduces the bug: every echo that
+ * normalizes differently from what was typed (`007` → `7`) is rewritten under
+ * the caret. The spec pins that with a leading-zero entry.
+ */
+@Component({
+  selector: 'qt-provider-number-field',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [':host { display: block; }'],
+  template: `
+    <label [for]="fieldId()" class="qt-text-label-xs">{{ field().label }}</label>
+    <input
+      [id]="fieldId()"
+      type="number"
+      class="qt-input text-sm"
+      [value]="draft()"
+      [attr.placeholder]="placeholder()"
+      (input)="onInput($any($event.target).value)"
+    />
+    @if (field().helpText) {
+      <p class="qt-text-xs mt-1">{{ field().helpText }}</p>
+    }
+  `,
+})
+export class ProviderNumberField {
+  readonly field = input.required<ProviderOptionField>();
+  /** The host's value for this key — `undefined` when the bag holds none. */
+  readonly value = input<unknown>(undefined);
+  /** One write back into the host's bag; `undefined` DELETES the key. */
+  readonly valueChange = output<unknown>();
+
+  protected readonly draft = signal('');
+  private readonly syncedFrom = signal('');
+
+  protected readonly fieldId = computed(() => `pof-${this.field().key}`);
+
+  /**
+   * An empty box means "unset", so the schema default shows through as the
+   * PLACEHOLDER — the only way the user can see they have reached the state the
+   * help text calls "leave blank for the default" (v4 `:331-334`).
+   */
+  protected readonly placeholder = computed(() => {
+    const fallback = this.field().default;
+    return fallback === undefined ? null : toInputString(fallback);
+  });
+
+  private readonly incoming = computed(() => toInputString(this.value()));
+
+  constructor() {
+    // v4 reconciles during render (`:308-312`); the signal equivalent is an
+    // effect reading `incoming` alone — `syncedFrom` is read untracked so that
+    // writing it here cannot re-trigger this same effect.
+    effect(() => {
+      const incoming = this.incoming();
+      if (incoming !== untracked(this.syncedFrom)) {
+        this.syncedFrom.set(incoming);
+        this.draft.set(incoming);
+      }
+    });
+  }
+
+  /** v4's `NumberField` onChange (`:335-345`). */
+  protected onInput(raw: string): void {
+    this.draft.set(raw);
+    if (raw === '') {
+      this.write(undefined);
+      return;
+    }
+    const parsed = Number(raw);
+    this.write(Number.isNaN(parsed) ? raw : parsed);
+  }
+
+  /** v4's `emit` (`:314-317`) — remember what the host will hand back. */
+  private write(next: unknown): void {
+    this.syncedFrom.set(toInputString(next));
+    this.valueChange.emit(next);
+  }
+}
 
 /** One rendered choice inside a `multi-enum` field. */
 interface PreparedChoice {
@@ -57,15 +163,17 @@ interface PreparedGroup {
  * - `showIf` compares the RAW stored value (`:39-41`) — a sibling whose value
  *   is only a schema `default` does not satisfy the guard, because the default
  *   is a display fallback and was never written into the bag.
- * - `default` is that display fallback alone (`:43-47`); neither app seeds the
- *   bag on a new profile.
+ * - `default` is that display fallback alone (`:43-53`); neither app seeds the
+ *   bag on a new profile. A `number` field is the one exception: its default
+ *   renders as the input's PLACEHOLDER, never as a value, so an unset option
+ *   reads as unset (v4 Bug 72 — see {@link ProviderNumberField}).
  * - A `boolean` is checked on `value === true` (`:149`) — a hand-edited
  *   `'true'` STRING shows OFF, and shows off in v4 too. (The P4.D81 hardcoded
  *   Enable Thinking row tolerated the string; that divergence retires with the
  *   row. Untouched, the string still rides the bag to the wire, where
  *   `build_ollama_body` does accept it — nothing is silently "fixed".)
- * - A cleared `number` emits `undefined`, which DELETES the key (`:302-303`);
- *   an unparseable one stores the raw string (`:306`).
+ * - A cleared `number` emits `undefined`, which DELETES the key (`:338-339`);
+ *   an unparseable one stores the raw string (`:343`).
  * - `multi-enum` with zero resolvable choices renders nothing (`:232`), and
  *   `fetchedModels` choices exclude the profile's own model and cap at 50
  *   (`:220-224`).
@@ -80,6 +188,7 @@ interface PreparedGroup {
 @Component({
   selector: 'qt-provider-options-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ProviderNumberField],
   styles: [':host { display: block; }'],
   template: `
     @if (groups().length > 0) {
@@ -165,21 +274,11 @@ interface PreparedGroup {
                     </div>
                   }
                   @case ('number') {
-                    <div>
-                      <label [for]="fieldId(row.field)" class="qt-text-label-xs">{{
-                        row.field.label
-                      }}</label>
-                      <input
-                        [id]="fieldId(row.field)"
-                        type="number"
-                        class="qt-input text-sm"
-                        [value]="asNumericText(row.value)"
-                        (input)="emitNumber(row.field, $any($event.target).value)"
-                      />
-                      @if (row.field.helpText) {
-                        <p class="qt-text-xs mt-1">{{ row.field.helpText }}</p>
-                      }
-                    </div>
+                    <qt-provider-number-field
+                      [field]="row.field"
+                      [value]="row.value"
+                      (valueChange)="emit(row.field, $event)"
+                    />
                   }
                   @case ('string') {
                     <div>
@@ -262,9 +361,16 @@ export class ProviderOptionsPanel {
   }
 
   private prepare(field: ProviderOptionField, parameters: Record<string, unknown>): PreparedField {
-    // v4 `fieldValue` (`:43-47`): stored wins, `default` is the display fallback.
+    // v4 `fieldValue` (`:43-53`): stored wins, `default` is the display
+    // fallback — EXCEPT for a number field, which renders its default as a
+    // placeholder rather than a value, so an unset option reads as unset.
+    // Without that, "absent" and "explicitly the default" look identical and
+    // *"leave blank for the default"* is a state the user can never see
+    // themselves reach (Bug 72). Every other control needs the fallback as a
+    // real value: the enum row relies on it to preselect.
     const stored = parameters[field.key];
-    const value = stored !== undefined ? stored : field.default;
+    const value =
+      stored !== undefined ? stored : field.type === 'number' ? undefined : field.default;
     if (field.type !== 'multi-enum') {
       return { field, value, choices: [], selected: [] };
     }
@@ -309,25 +415,8 @@ export class ProviderOptionsPanel {
     return typeof value === 'string' ? value : '';
   }
 
-  /** v4's `NumberField` coercion (`:285-290`) — a stored string shows verbatim. */
-  protected asNumericText(value: unknown): string {
-    if (typeof value === 'number') return String(value);
-    if (typeof value === 'string') return value;
-    return '';
-  }
-
   protected emit(field: ProviderOptionField, value: unknown): void {
     this.setParameter.emit({ key: field.key, value });
-  }
-
-  /** v4's `NumberField` onChange (`:300-307`). */
-  protected emitNumber(field: ProviderOptionField, raw: string): void {
-    if (raw === '') {
-      this.emit(field, undefined);
-      return;
-    }
-    const parsed = Number(raw);
-    this.emit(field, Number.isNaN(parsed) ? raw : parsed);
   }
 
   /** v4's `MultiEnumField` onChange (`:254-260`). */
