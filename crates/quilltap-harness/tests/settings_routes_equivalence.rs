@@ -543,8 +543,8 @@ fn settings_routes_match_v4() {
     // guard — before this lane v5 had NO profile tag verbs at all, so a
     // pre-P4.D85 oracle carries none of these rows and would pass by absence.
     assert!(
-        profile_tag_cases >= 16,
-        "expected >= 16 connection_profile_tags cases, got {profile_tag_cases} — regenerate the oracle"
+        profile_tag_cases >= 21,
+        "expected >= 21 connection_profile_tags cases, got {profile_tag_cases} — regenerate the oracle"
     );
     // …and the three RECORDED-ONLY v4 arms specifically (the two action-gate
     // 400s + the no-action GET body). These are the rows a regeneration is most

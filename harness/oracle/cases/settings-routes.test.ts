@@ -1194,6 +1194,72 @@ describe('settings-routes oracle', () => {
       body: {},
       recorded: true,
     },
+    // P4.D85 tier 2 — the PUT `baseUrl` arm P4.D86's poisoned-row clear depends
+    // on. The CLAUDE profile is baked with a stale base URL precisely so `''`
+    // has something to clear.
+    {
+      name: 'cp_update_base_url_empty',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.claude),
+      paramId: spec.profiles.claude,
+      body: { baseUrl: '' },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_base_url_value',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.claude),
+      paramId: spec.profiles.claude,
+      body: { baseUrl: 'https://api.example.test/v1' },
+      after: 'connProfiles',
+    },
+    {
+      // The SAME clear against a row whose `baseUrl` is ALREADY SQL NULL. v4's
+      // `_update` answers `validate({...existing, ...data})` and `existing` (a
+      // DB read) has no `baseUrl` key at all, so this is where the explicit
+      // `null` gets its POSITION decided — by Zod's shape order, not by the
+      // spread. Measured, not assumed.
+      name: 'cp_update_base_url_empty_already_null',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { baseUrl: '' },
+      after: 'connProfiles',
+    },
+    {
+      // The other three keys the PUT can clear to an explicit null, all against
+      // columns that are already SQL NULL: same in-memory-merge question.
+      name: 'cp_update_clear_optionals',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { apiKeyId: null, modelClass: null, maxContext: null },
+      after: 'connProfiles',
+    },
+    {
+      // The courier gate sets apiKeyId AND baseUrl to null in one go.
+      name: 'cp_update_courier_gate',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.claude),
+      paramId: spec.profiles.claude,
+      body: { transport: 'courier' },
+      after: 'connProfiles',
+    },
     // api keys.
     { name: 'ak_list', family: 'api_keys', user: 'A', route: 'apiKeys', method: 'GET', url: `http://x${AK}` },
     {

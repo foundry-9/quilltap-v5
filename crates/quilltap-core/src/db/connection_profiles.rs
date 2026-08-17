@@ -520,6 +520,23 @@ fn cp_select_columns(conn: &Connection) -> String {
     format!("{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_TAIL}")
 }
 
+/// The profile document's key order — the Zod SHAPE order v4's
+/// `ConnectionProfileSchema` parse rebuilds every entity in, which is also
+/// [`marshal_cp_row`]'s field order. Derived from the two column consts rather
+/// than transcribed, so it cannot drift away from the marshal.
+///
+/// Needed because v4's `_update` answers `validate({...existing, ...updateData})`
+/// — an IN-MEMORY merge — so a key the PUT cleared to `null` is present in the
+/// answer at its SHAPE position even though the re-read row omits it. See
+/// [`crate::api::settings::connection_profile_update`].
+pub fn cp_schema_key_order() -> Vec<&'static str> {
+    let split = |s: &'static str| s.split(',').map(str::trim).collect::<Vec<_>>();
+    let mut keys = split(CP_COLUMNS_HEAD);
+    keys.push("multiCharacterPrefill");
+    keys.extend(split(CP_COLUMNS_TAIL));
+    keys
+}
+
 /// `PRAGMA table_info(connection_profiles)` membership. Fail-soft: an
 /// unreadable pragma (missing table) reports "absent", landing the caller on
 /// the same no-column path v4 takes.

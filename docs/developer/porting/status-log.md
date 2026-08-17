@@ -72281,3 +72281,47 @@ independently measurable and is stated rather than implied: v4 skipping the
 WRITE when nothing changed is unobservable here (the only witness would be
 `updatedAt`, which the family normalizes). The observable contract — the bag is
 unchanged — is pinned.
+
+### Unit 3 — the update response's cleared nulls (a v5 divergence the new fixture exposed)
+
+Tier 2 asked for one row: a PUT `baseUrl: ''` → NULL. Adding it turned the
+family **RED**, and the cause was not the coercion (v5's `baseUrl || null` arm
+was already right) but the RESPONSE shape.
+
+**What v4 does.** `_update` (`base.repository.ts:342-370`) answers
+`validate({...existing, ...data})` — the IN-MEMORY merge, never a re-read. So a
+key the PUT set to `null` is PRESENT in the answer as an explicit `null`, while
+the same row read back from SQL OMITS it (a NULL cell is `undefined` after Zod,
+which `JSON.stringify` drops). v5 answers from a re-read, so it omitted the key.
+
+**Why nobody had seen it.** Every profile column in the corpus was already SQL
+NULL, so `existing` had no key for the merge to overwrite and both sides agreed
+by accident. The fixture's new stale `baseUrl` on the CLAUDE profile is what
+made a clear observable at all.
+
+**The position question was MEASURED, not assumed.** A key absent from
+`existing` could plausibly have been appended at the end by the spread. It is
+not: Zod's object parse rebuilds in SHAPE order, so an explicit `null` lands at
+its schema position either way. Three arms pin it — a clear against a column
+that HELD a value (`cp_update_base_url_empty`), the same clear against a column
+already NULL (`cp_update_base_url_empty_already_null`), and the other three
+clearable keys at once (`cp_update_clear_optionals`: `apiKeyId`, `modelClass`,
+`maxContext`) — plus `cp_update_courier_gate`, where the courier gate nulls two
+keys the body never mentioned. A fifth row (`cp_update_base_url_value`) proves
+the arm is not simply always-null.
+
+**The port.** `cleared_null_keys` reads the four clear flags off the built
+`CpUpdate` (`api_key_id: Some(None)`, `clear_base_url`, `clear_model_class`,
+`clear_max_context`); `restore_cleared_nulls` rebuilds the enriched object in
+schema order, inserting `null` for each. The key order comes from
+`db::connection_profiles::cp_schema_key_order()`, **derived from the two column
+consts rather than transcribed**, so it cannot drift away from the marshal.
+
+**Mutation-proven:** removing the restoration turns `cp_update_base_url_empty`
+RED.
+
+Scope note: this is the connection-profile update response only. v4's
+in-memory-merge answer is a BASE-repository property, so the same divergence may
+exist wherever a v5 update handler re-reads and its v4 twin clears a column to
+null. Nothing in this lane's evidence says it does or doesn't elsewhere —
+recorded here as a lead, not a claim.

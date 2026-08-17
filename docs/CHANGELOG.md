@@ -10,6 +10,14 @@ the enveloped shape the list endpoints send. The enveloped one now carries the
 whole tag record, as v4's does; it had been narrowed to an id and a name, which
 nothing could catch because no profile in the test corpus had ever had a tag.
 
+Clearing a connection profile's base URL, model class, max context, or API key
+now answers with that field explicitly empty, as v4 does, instead of leaving it
+out of the reply altogether. A client reading the saved profile straight back
+off the response could not tell a cleared field from one the server had
+declined to send. Found by giving a test profile a stored base URL — with every
+column already empty, the two behaved identically and the difference could not
+be seen.
+
 Planned the `d123658d` connection-profile-editor drift round and committed its
 two work orders: P4.D85 (server — the profile tag verbs, the GET action gate,
 and the `resolveEditorTags` convergence from v4's bug-74 fix) and P4.D86 (SPA —

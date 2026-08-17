@@ -1778,6 +1778,7 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
     }
 
     patch.updated_at = crate::clock::now_iso();
+    let cleared = cleared_null_keys(&patch);
     let (cid, patch2) = (id.to_string(), patch);
     let updated = db
         .write(move |w| {
@@ -1797,9 +1798,73 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
         enrich_profile(conn, &profile, true)
     });
     match out {
-        Ok(v) => Response::ConnectionProfile(json!({ "profile": v })),
+        Ok(mut v) => {
+            restore_cleared_nulls(&mut v, &cleared);
+            Response::ConnectionProfile(json!({ "profile": v }))
+        }
         Err(e) => internal(e),
     }
+}
+
+/// The keys a PUT can clear to an explicit `null` (`TaggableBaseRepository`
+/// aside, these are the four `updateData.<k> = null` sites in v4's route, plus
+/// the courier gate's two).
+fn cleared_null_keys(patch: &connection_profiles::CpUpdate) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if matches!(patch.api_key_id, Some(None)) {
+        out.push("apiKeyId");
+    }
+    if patch.clear_base_url {
+        out.push("baseUrl");
+    }
+    if patch.clear_model_class {
+        out.push("modelClass");
+    }
+    if patch.clear_max_context {
+        out.push("maxContext");
+    }
+    out
+}
+
+/// v4's `_update` answers `validate({...existing, ...updateData})` — the
+/// IN-MEMORY merge, never a re-read (`base.repository.ts:342-370`). So a key the
+/// PUT set to `null` is PRESENT as an explicit `null` in the response, while the
+/// same row read back from SQL omits it (a NULL cell is `undefined` after Zod,
+/// which `JSON.stringify` drops). v5 answers from a re-read, so the cleared keys
+/// are put back here.
+///
+/// Their POSITION is the schema's, not the merge's: Zod's object parse rebuilds
+/// in SHAPE order, so a key absent from `existing` does not land at the end.
+/// Measured against v4 at `d123658d`, both ways (a row whose column already held
+/// a value, and one whose column was already NULL) — the
+/// `cp_update_base_url_empty*` / `cp_update_clear_optionals` /
+/// `cp_update_courier_gate` corpus arms.
+///
+/// This was invisible until P4.D85 gave the fixture a profile with a stored
+/// `baseUrl`: with every column already NULL, `existing` had no key for the
+/// merge to overwrite and both sides agreed by accident.
+fn restore_cleared_nulls(profile: &mut Value, cleared: &[&str]) {
+    if cleared.is_empty() {
+        return;
+    }
+    let Some(obj) = profile.as_object() else {
+        return;
+    };
+    let mut rebuilt = Map::new();
+    for key in connection_profiles::cp_schema_key_order() {
+        if let Some(v) = obj.get(key) {
+            rebuilt.insert(key.to_string(), v.clone());
+        } else if cleared.contains(&key) {
+            rebuilt.insert(key.to_string(), Value::Null);
+        }
+    }
+    // Anything the enrichment appended past the document's own keys (`apiKey`).
+    for (k, v) in obj {
+        if !rebuilt.contains_key(k) {
+            rebuilt.insert(k.clone(), v.clone());
+        }
+    }
+    *profile = Value::Object(rebuilt);
 }
 
 /// v4 `DELETE /api/v1/connection-profiles/[id]`. → ack.
