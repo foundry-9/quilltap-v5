@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Planned the `d123658d` connection-profile-editor drift round and committed its
+two work orders: P4.D85 (server — the profile tag verbs, the GET action gate,
+and the `resolveEditorTags` convergence from v4's bug-74 fix) and P4.D86 (SPA —
+the bug-72 number-field draft machinery, the bug-73 `outboundBaseUrl`
+chokepoint with the always-send save body, and the profile tag surface). v4's
+`d123658d` fixes bugs 72 and 73, which this port's own 2026-08-16 dogfood walk
+found and filed, plus bug 74 (profile tagging had never worked). The sibling
+commit `d81ccc17` is docs-only, no port. Docs only; no code changed.
+
 Recorded the 93ed8abf round's dogfood coverage through Part B. Three of the
 round's four owed live proofs are discharged on real Friday data: Max Tokens
 and Top P reaching a local wire along with the keep-alive sentinels, the
