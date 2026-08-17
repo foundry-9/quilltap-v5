@@ -72325,3 +72325,45 @@ in-memory-merge answer is a BASE-repository property, so the same divergence may
 exist wherever a v5 update handler re-reads and its v4 twin clears a column to
 null. Nothing in this lane's evidence says it does or doesn't elsewhere —
 recorded here as a lead, not a claim.
+
+### P4.D85 lane gate
+
+At the `d123658d` pin (v4 main HEAD, tree clean — no pinned worktree needed):
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (default and
+  `--features quilltap-core/native-transport`).
+- `cargo test --workspace` with the lane's three oracle env vars
+  (`QT_ORACLE_SETTINGS_ROUTES`, `QT_FIXTURE_SETTINGS`,
+  `QT_ORACLE_CHARACTERS_READS`): **437 test binaries / 2,147 tests / 0
+  failed, exit 0** — run twice, once per commit. Both lane families
+  positively confirmed to have RUN (`settings_routes_match_v4 ... ok`,
+  `characters_reads_match_oracle ... ok`), not skipped.
+- The two families regenerated FRESH at the pin through
+  `recipe_sweep.py --run`, zero SKIP: `settings_routes_equivalence` (128
+  cases matched, up from 108) and `characters_reads_equivalence`.
+- Eight mutation proofs, each applied alone and reverted, all RED: order
+  preservation, `visualStyle` omitted-not-null, drop-missing, the full-tag
+  envelope, the add-tag dedupe, both `z.uuid()` gates, and the cleared-null
+  restoration.
+
+Commits: `31d37e80` (units 1–2 — they share the corpus file and v4 shipped
+them as one change) and `73ade2db` (unit 3).
+Versions: core 0.0.575 → 0.0.577, harness 0.0.499 → 0.0.501. No other crate
+touched; **no REST edge, so `quilltap-web` is deliberately unbumped**.
+
+### Outliving the lane
+
+- **`auto-configure` is UNPORTED** (no service, no consumer, no action
+  surface) — a deviation from the order's tier-3 "loud typed refusal", argued
+  in unit 2's record. v4's sentence naming it is pinned by a recorded row.
+- **The `help/connection-profiles.md` drift edit → the `p4.9i2` bank**
+  (recorded, not ported, per the order).
+- **Lead, not a claim:** v4's in-memory-merge update answer is a BASE-repository
+  property. The same divergence unit 3 fixed for connection profiles may exist
+  wherever a v5 update handler re-reads and its v4 twin clears a column to
+  null. Nothing here measured that either way.
+- **P4.D86's dependency is satisfied:** the three verbs are live on
+  `/api/dispatch` in the Shared contract's spelling, and the PUT `baseUrl: ''`
+  → NULL coercion its poisoned-row clear depends on is now pinned in both
+  directions.
