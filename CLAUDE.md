@@ -1250,19 +1250,57 @@ records THERE. Update this summary only when a phase or round completes.
   Riders carried: external-prompt-generator (D82) + `encodeDebugInfo`
   (D83) — their future lanes carry the drift edits. Round record:
   `status-log.md`.
-- **Oracle baseline: `93ed8abf` (2026-08-15, v4 main — "fix: local
-  providers send the profile's parameters; OAC can call tools (bug 71)"),
-  adopted at the 93ed8abf-round unification; the drift debt is CLEARED
-  at the pin.** Pin a detached worktree at `93ed8abf` for every regen
-  whenever the v4 checkout isn't cleanly on it (`recipe_sweep.py --v4
-  <pin-path>`; ALL THREE symlink classes: root node_modules,
-  `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
-  dirs). **Drift-check BOTH branches every round** (`git log
-  <baseline>..main` AND `git diff main bugfix -- lib/ app/ packages/` —
-  measure bugfix with `diff`, never the commit list). The sweep driver
-  remains the sanctioned per-family regen path — never run two sweeps
-  concurrently. The distill-transitive TZ pins, the committed-fixture
-  rule, and the venue/staging rules stand unchanged.
+- **The `d123658d` connection-profile-editor drift round (P4.D85 ∥
+  P4.D86): UNIFIED on main (2026-08-17) — BOTH CLOSED; the oracle
+  baseline MOVES to `d123658d` and the drift debt is CLEARED** (v4's one
+  newer commit `9c01fa99` = the MODERN sample-prompt trio, plugin/help
+  content only, NO-PORT with evidence). v4's fix for bugs 72/73 — this
+  port's own dogfood findings #87/#88 coming back — plus bug 74 (profile
+  tagging had never worked) absorbed whole. Server: the
+  `resolve_editor_tags` flat resolver with BOTH `get-tags` call sites
+  through it (characters convergence proven output-neutral), the three
+  profile-tag verbs with v4's exact bodies, settings-routes 108 → 128
+  cases over a fixture that finally carries tags (unsorted bag + dangling
+  id + stale baseUrl; the three v4 action-gate arms RECORDED-ONLY with an
+  exact-count guard), and **a real v5 divergence fixed**: cleared PUT
+  keys answer as explicit `null` in schema position as v4's
+  in-memory-merge does (`restore_cleared_nulls`, mutation-proven; the
+  class is an open LEAD on other update surfaces). The
+  `enrich_with_tags` `{id,name}` narrowing closed (the vacuous-corpus
+  class — its own doc comment named the excuse). SPA: the
+  `ProviderNumberField` draft/`syncedFrom` machinery with
+  default-as-placeholder (the naive re-sync spelling mutation-pinned;
+  the P4.D84 recorded number-clear divergence re-measured and RETIRED),
+  the `outboundBaseUrl` chokepoint over v5's own FIVE sites with the
+  always-send save body, the profile tag surface in its fixed form
+  (immediate persistence, v4's toast sentences), the banked
+  `Non-image attachments:` line, and v4's own verification walk as three
+  e2e beats — the tag beat activated at unification, green on its first
+  run. **The §3 review's catch (the cross-lane staleness class):**
+  P4.D86's `EnrichedProfileTag` documented a narrowing P4.D85 closed in
+  the same round — retyped to the full `TagDto` at the wire.
+  `auto-configure` ratified UNPORTED (no action surface to refuse from;
+  the sentence pinned by a recorded row). Gate: numbers in the round
+  record. Versions: core 0.0.577, harness 0.0.501, SPA 0.5.505;
+  host/web/cli/tauri unchanged. **💸 the dogfood queue gains:** profile
+  tags end-to-end, the cleared-number heal, the poisoned-base-URL heal
+  on real pre-bug-73 rows. **The owed dogfood pass (Parts C/D + the
+  standing 💸 queue) remains the top next candidate.** Round record:
+  `status-log.md`.
+- **Oracle baseline: `d123658d` (2026-08-17, v4 main — "fix:
+  connection-profile editor bugs 72, 73 and 74"), adopted at the
+  d123658d-round unification; the drift debt is CLEARED at the pin, and
+  `9c01fa99` (sample-prompt content) is dispositioned NO-PORT — a drift
+  check landing on it alone owes nothing.** Pin a detached worktree at
+  `d123658d` for every regen whenever the v4 checkout isn't cleanly on it
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
+  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
+  app/ packages/` — measure bugfix with `diff`, never the commit list).
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.
   (The superseded baseline paragraphs formerly kept here "for history" are
   archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the

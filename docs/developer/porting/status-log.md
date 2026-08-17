@@ -72689,3 +72689,118 @@ and a `providers: []` modal with a saved profile).
 - Contract cross-check done: the three verb names and payload shapes match
   P4.D85's order text exactly.
 - Versions: SPA `0.5.498` → **`0.5.502`**. No crate version moved.
+
+---
+
+## Round record — the `d123658d` connection-profile-editor drift round (P4.D85 ∥ P4.D86), UNIFIED 2026-08-17
+
+Unify branch `unify/d123658d-round`; both lanes cherry-picked in dependency
+order (server before SPA), conflicts only in the two append-only files,
+resolved as both-sides union. **The oracle baseline MOVES to `d123658d`**
+and the drift debt is CLEARED at the pin: v4's one commit past it at
+unification, `9c01fa99` ("feat(prompts): modernize sample prompts, add the
+MODERN trio"), is **NO-PORT with evidence** — it touches only
+`plugins/dist/qtap-plugin-default-system-prompts/**` (prompt content, a
+manifest count) and `help/prompts.md`, zero `lib/`/`app/` code; v5 consumes
+both plugin content and help markdown from the instance at runtime (the
+help sync takes the host's file list), so nothing is owed. `d81ccc17` (the
+bug-72/73 filings) was classified docs-only NO-PORT at planning.
+
+### The §3 unification review
+
+**One finding, fixed on the unify branch (`3917c9be0`) — the cross-lane
+staleness class:** P4.D86 declared `EnrichedProfileTag.tag` as
+`ProfileTag {id, name}` and documented the `api/settings.rs`
+`enrich_with_tags` narrowing as a standing seam — but sibling lane P4.D85
+CLOSED that exact seam in the same round (the envelope now nests the full
+marshaled tag, corpus-pinned). Each lane record was individually correct;
+only the union was wrong, which is exactly what the lanes could not see.
+Retyped to `TagDto` (v4's `EnrichedTag` nests the full `Tag`), the
+orphaned `ProfileTag` removed, the doc rewritten to record the closure.
+No behavior change — the card reads `.name` either way.
+
+**One deviation ratified as-argued:** P4.D85's order asked for a loud
+typed refusal on `auto-configure`; the lane landed it UNPORTED instead,
+because v5 has no `?action=` surface for connection profiles — a refusal
+arm would be a phantom verb with no caller, a stub by another name. v4's
+action-gate sentence naming all three actions is pinned by a RECORDED-ONLY
+oracle row with an exact-count guard (`== 3`), so upstream copy drift is
+still caught. The order's status header records the deviation.
+
+Also verified during the review (no action needed): the
+`resolve_editor_tags` twin against v4's `enrichment.ts:113-150` and both
+call sites through it; `restore_cleared_nulls`'s schema-position claim and
+its derived (not transcribed) key order; the `NumberField` port against
+v4's `:288-352` line by line, incl. the mount-seeding difference (v4
+`useState(incoming)`, v5 effect-seeded — behaviorally identical, both
+specs' cases pin it); the outbound chokepoint's five v5 sites; the
+attachment-description sentence against v4's `:189-216`; the tag editor's
+two toast sentences and one-catch-for-two-legs structure; the fixture's
+unsorted-bag design and the `known_ids` `tags` group.
+
+### The unification wires (`61b84acad`)
+
+- **`P4D85_PROFILE_TAGS_LANDED` flipped `true`** — the gated tag beat's
+  first-ever live run happened in this gate (green: add a tag in the
+  modal, it persists, survives a reopen, and names itself on the card).
+- **The Shared contract diffed name-for-name across sides:** the three
+  verb spellings (serde `tag = "type"` + `rename_all = "camelCase"`
+  against the SPA's literal strings), the flat get-tags shape, the
+  `{success, tag}` full-row add answer, the remove ack, and the PUT
+  `baseUrl` `'' → NULL` seam. Clean — no divergence.
+
+### The gate (all regens through `recipe_sweep.py --v4 /tmp/qt-v4-pin-unify-d123658d`, the detached pin at `d123658d`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release`
+  green.
+- The round's two families regenerated FRESH at the pin through
+  `recipe_sweep.py --run-all --families …` and re-run by name, both ok,
+  zero SKIP: `settings_routes_equivalence` (128 cases, up from 108 —
+  fresh-oracle row count verified in the NDJSON) and
+  `characters_reads_equivalence`.
+- **`cargo test --workspace` with the round's env vars
+  (`QT_ORACLE_SETTINGS_ROUTES`, `QT_FIXTURE_SETTINGS`,
+  `QT_ORACLE_CHARACTERS_READS` + the two characters fixture vars): 437
+  test binaries / 2,147 tests / 0 failed, exit 0, zero `SKIP:` lines** —
+  both lane families positively confirmed to have RUN.
+- SPA: `ng test` **327 files / 4,827 tests / 0**; `ng build` clean.
+- **Full Playwright: 225 passed / 0 failed / 0 skipped (5.0 m)** — the
+  suite grew 222 → 225 with the round's three beats. **The gate itself
+  caught one spec defect on the activated tag beat's first-ever live run
+  (the predicted first-run class):** its page-wide chip count found TWO
+  matches — the modal editor's chip AND the card's pill behind the modal,
+  which the editor's `['connectionProfiles']` invalidation live-updates
+  the moment the tag attaches. Product behavior correct on both sides
+  (v4's invalidation does the same); the spec's locator was ambiguous
+  (the e2e-traps locator-ambiguity class). Fixed on the unify branch
+  (`2119a3d3b`): the three in-modal counts scope through
+  `getByRole('dialog')`; nothing weakened. The full suite was then
+  re-run whole — the 225/0/0 above is the post-fix run.
+- **Tooling note (the human's standing complaint, root-caused this
+  gate):** the ng CLI in this repo completes its work and then never
+  exits — a stale esbuild `--service --ping` daemon keeps the event loop
+  alive (proof: a hung `ng test` exited 0 the instant a leftover daemon
+  from a prior killed run was killed). Long gates now chain on LOG
+  sentinels, never on ng process exit; the pattern is recorded in the
+  `background-gate-latency-fix` memory note.
+
+### Outliving the round
+
+- **The cleared-null LEAD (P4.D85 unit 3's scope note):** v4's `_update`
+  answers the in-memory merge on EVERY `TaggableBaseRepository` entity, so
+  the explicit-`null` divergence fixed here for connection profiles may
+  exist on any other v5 update surface whose v4 twin clears columns —
+  unmeasured either way; phase-4.md candidate 4.
+- **`auto-configure`** stays unported (ratified above); it becomes owed
+  the moment v5 grows a profile `?action=` surface or the CLI grows
+  profile-tag commands.
+- **The two banked help-doc drift edits** (`help/connection-profiles.md`,
+  `help/prompts.md`) ride the `p4.9i2` bank.
+- **💸 Live proofs joining the standing dogfood queue:** profile tags
+  end-to-end on real data, the cleared-number heal on a real profile, and
+  the poisoned-base-URL heal on any pre-bug-73 row in the Friday copy.
+
+Versions: core 0.0.575 → **0.0.577**, harness 0.0.499 → **0.0.501**, SPA
+0.5.498 → **0.5.505** (lane 0.5.502 + the §3 type fix + the wire flip +
+the gate's spec-scoping fix); host/web/cli/tauri unchanged.

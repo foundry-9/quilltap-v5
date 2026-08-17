@@ -4923,3 +4923,86 @@ node_modules, `packages/quilltap/node_modules`, the
 remains the sanctioned per-family regen path — never run two sweeps
 concurrently. The distill-transitive TZ pins, the committed-fixture rule,
 and the venue/staging rules stand unchanged.
+
+---
+
+## The `d123658d` connection-profile-editor drift round (P4.D85 ∥ P4.D86) — UNIFIED on main (2026-08-17)
+
+Both lanes CLOSED; the oracle baseline MOVES to **`d123658d`** and the
+drift debt is CLEARED at the pin (v4's one commit past it, `9c01fa99`,
+is classified NO-PORT below). v4's `d123658d` fixed bugs 72/73 — this
+port's own dogfood findings #87/#88 coming back — plus bug 74 (profile
+tagging had never worked, three layers deep).
+
+- **P4.D85 (server):** the `resolve_editor_tags` flat-tag resolver with
+  both `get-tags` call sites through it (the characters convergence
+  proven output-neutral), the three profile-tag verbs with v4's exact
+  bodies and repo semantics, the settings-routes family 108 → 128 cases
+  over a fixture that finally carries tags (order-preservation /
+  drop-missing / omitted-`visualStyle` all measurable; the three v4
+  action-gate arms RECORDED-ONLY with an exact-count guard), and a real
+  v5 divergence fixed: cleared PUT keys now answer as explicit `null` in
+  schema position, as v4's in-memory-merge does (`restore_cleared_nulls`,
+  five corpus arms, mutation-proven). The `enrich_with_tags` `{id,name}`
+  narrowing closed (the vacuous-corpus class). `auto-configure` is
+  UNPORTED by ratified deviation (no action surface exists to refuse
+  from); its sentence is pinned by a recorded row.
+- **P4.D86 (SPA):** the `ProviderNumberField` draft/`syncedFrom`
+  machinery with default-as-placeholder (the naive re-sync spelling
+  mutation-proven RED), the `outboundBaseUrl` chokepoint over v5's own
+  FIVE sites with the always-send save body (the P4.D84 recorded
+  number-clear divergence re-measured and RETIRED), the profile tag
+  surface in its fixed form (card pills off the `{tagId, tag}` envelope,
+  the modal editor with v4's immediate persistence and toast sentences),
+  the banked `Non-image attachments:` line, and v4's own verification
+  walk as three e2e beats (the tag beat activated at unification).
+
+**The §3 review's catch:** P4.D86's `EnrichedProfileTag` doc + type
+carried a claim its own sibling made stale mid-round (the `{id,name}`
+narrowing P4.D85 closed) — retyped to the full `TagDto` with the doc
+rewritten, the cross-lane blind-spot class. **NO-PORT:** v4 `9c01fa99`
+(the MODERN sample-prompt trio + model-specific prompt rewrites) touches
+only `plugins/dist/qtap-plugin-default-system-prompts/**` +
+`help/prompts.md` — plugin/help content v5 consumes from the instance at
+runtime, zero `lib/`/`app/` code; `d81ccc17` is the bug filings,
+docs-only.
+
+Gate + versions: the round record in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The owed dogfood pass** — Parts C/D of the paused 2026-08-16 walk
+   (the bug-70 context-budget legs; the standing 💸 queue: the Almanack
+   real-data report, the live Taboo turn, OpenRouter pricing with a real
+   key, the vision send, the P4.D49 budget/attribution proofs, the
+   orphan-reaper boot heal, the quote-delimiter roleplay template, OAC
+   tools against a real llama-server) — now further grown by THIS round's
+   surfaces: profile tags end-to-end on real data, the cleared-number
+   heal on a real profile, the poisoned-base-URL heal on any pre-bug-73
+   row in the Friday copy.
+2. **The v4-side filing owed from P4.48** (the import preflight's
+   swallowed DB read errors).
+3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+   HelpChat/Guide vertical + its enriched bank, incl. the two banked
+   help-doc drift edits).
+4. Banked smalls: the settings repo-validate sibling fields (P4.47
+   deferral site); the stale `docs/v4` API.md mirror sweep; the reroute
+   LOOKUP-half residue (`orchestrator.rs` build-args site); the P4.D85
+   lead — v4's in-memory-merge update answer is a BASE-repository
+   property, so the cleared-null divergence may exist on OTHER update
+   surfaces whose v4 twin clears columns (unmeasured either way).
+5. Carried riders: `external-prompt-generator.service.ts` (P4.D82) and
+   `encodeDebugInfo` (P4.D83) for their future lanes.
+
+**Standing regen note (supersedes the one above):** the oracle baseline
+is **`d123658d`** (2026-08-17, v4 main — "fix: connection-profile editor
+bugs 72, 73 and 74"), adopted at this round's unification; the drift
+debt is CLEARED at the pin, and v4's `9c01fa99` (sample-prompt content,
+NO-PORT) is dispositioned — a drift check landing on it alone owes
+nothing. Pin a detached worktree at `d123658d` for every regen if v4's
+checkout moves (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink
+classes). Drift-check BOTH branches every round (bugfix measured by
+`diff`, never the commit list). The sweep driver remains the sanctioned
+per-family regen path — never run two sweeps concurrently. The
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.

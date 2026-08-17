@@ -1997,3 +1997,21 @@ Contents:
   The sweep driver remains the sanctioned per-family regen path — never
   run two sweeps concurrently. The distill-transitive TZ pins, the
   committed-fixture rule, and the venue/staging rules stand unchanged.
+
+---
+
+## Superseded baseline paragraph (replaced at the d123658d-round unification, 2026-08-17)
+
+- **Oracle baseline: `93ed8abf` (2026-08-15, v4 main — "fix: local
+  providers send the profile's parameters; OAC can call tools (bug 71)"),
+  adopted at the 93ed8abf-round unification; the drift debt is CLEARED
+  at the pin.** Pin a detached worktree at `93ed8abf` for every regen
+  whenever the v4 checkout isn't cleanly on it (`recipe_sweep.py --v4
+  <pin-path>`; ALL THREE symlink classes: root node_modules,
+  `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
+  dirs). **Drift-check BOTH branches every round** (`git log
+  <baseline>..main` AND `git diff main bugfix -- lib/ app/ packages/` —
+  measure bugfix with `diff`, never the commit list). The sweep driver
+  remains the sanctioned per-family regen path — never run two sweeps
+  concurrently. The distill-transitive TZ pins, the committed-fixture
+  rule, and the venue/staging rules stand unchanged.

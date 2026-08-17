@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Unified the d123658d connection-profile-editor round (P4.D85 server ∥
+P4.D86 SPA). The oracle baseline moves to d123658d and the drift debt is
+cleared; v4's one newer commit (9c01fa99, sample-prompt content) is
+classified no-port. The unification review caught one cross-lane
+staleness before merge — the SPA's enriched-tag type documented a
+narrowing its sibling lane had closed in the same round — fixed with the
+type widened to the full tag row. The gated profile-tag e2e beat was
+activated and passed its first live run. Final versions: core 0.0.577,
+harness 0.0.501, SPA 0.5.505; host/web/cli/tauri unchanged.
+
 Closed work order P4.D86, the SPA half of the `d123658d` round. Docs only; no
 code changed.
 
