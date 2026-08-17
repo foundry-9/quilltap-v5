@@ -1240,9 +1240,13 @@ records THERE. Update this summary only when a phase or round completes.
   files / 4,792; full Playwright green with the options round-trip
   beat's first activation (numbers in the round record). Versions: core
   0.0.575, harness 0.0.499, host 0.0.72, SPA 0.5.498. **💸 the round's
-  live proofs join the owed dogfood pass (top next candidate):** real
-  Max Tokens / Top P on a local wire, the options panel on real data,
-  OAC tools against llama-server, the request timeout on a cold model.
+  live proofs: THREE DISCHARGED on the 2026-08-16 walk** (Max Tokens and
+  Top P on a local wire + the Keep Alive sentinels, read through the new
+  `harness/tools/wire-tap.py`; the request timeout on a cold model; the
+  options panel on real data) — **OAC tools against llama-server remains
+  OWED**, the one arm of v4 bug 71 never run against a real server on
+  either side. That walk is PAUSED after Part B (findings #87/#88, both
+  filed as v4 bugs 72/73); Parts C and D are the next pass.
   Riders carried: external-prompt-generator (D82) + `encodeDebugInfo`
   (D83) — their future lanes carry the drift edits. Round record:
   `status-log.md`.

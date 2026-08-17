@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Recorded the 93ed8abf round's dogfood coverage through Part B. Three of the
+round's four owed live proofs are discharged on real Friday data: Max Tokens
+and Top P reaching a local wire along with the keep-alive sentinels, the
+per-profile request timeout firing on a cold model, and the provider-options
+panel driven on real profiles. OpenAI-compatible tool calling against a local
+llama-server is still owed.
+
 Added `harness/tools/wire-tap.py`, a byte-faithful TCP tap for reading what a
 local provider actually receives. Neither the LLM Inspector nor the logs can
 answer that — the log stores a summary of the request, and the IO layer traces

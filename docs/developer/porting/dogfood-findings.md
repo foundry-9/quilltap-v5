@@ -570,6 +570,32 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The 2026-08-16 walk (the `93ed8abf` round) — coverage so far, walk PAUSED
+  after Part B.** Findings #87 and #88 came out of Part A, both diagnosed as
+  faithfully ported v4 bugs and filed upstream (v4 bugs 72 and 73); no v5
+  product code changed in this pass. **WALKED CLEAN — Part A** (the
+  schema-driven provider-options panel on real Friday data: both Ollama groups
+  rendering with the hardcoded Enable Thinking row gone, `showIf`, the enum
+  round-trip incl. back to "Model default", the provider swap across five
+  providers with google correctly rendering no group, and an unmodified save of
+  a long-lived pre-schema profile) and **Part B** (steps 8–10).
+  **💸 THREE of the round's four live proofs are DISCHARGED:** Max Tokens on a
+  local wire (a reply that stopped at exactly 40 tokens), the per-profile
+  request timeout on a cold model, and — read through `wire-tap.py` — Top P and
+  the Keep Alive sentinels arriving in `options{}` as numbers. The options panel
+  on real data is covered by Part A. **STILL OWED from this round: OAC tool
+  calling against llama-server** (step 11, not run — no local llama.cpp; it is
+  the one arm of v4 bug 71 that has never met a real server on either side).
+  **NOT yet walked — the next pass starts here:** Part C (the bug-70 context
+  budget: a small Max Context on the largest chat, the `No room left for
+  conversation history` warning path, the tool-change notice splicing once and
+  not repeating, and history shrinking to make room for tool schemas) and
+  Part D (the standing 💸 queue: the Almanack's first real-data report, the live
+  Taboo section on a real turn, the OpenRouter pricing fix with a real key, the
+  vision send, the P4.D49 budget/attribution proofs, the orphan-reaper's boot
+  heal, and the 2026-08-14 leftover — a roleplay template whose delimiter is a
+  quote character).
+
 - **The LLM Inspector cannot show the provider wire body — stop sending walks
   there for it (2026-08-16, the `93ed8abf` walk's Part B).** `llm_logs.request`
   holds v4's `summarizeRequest` projection only (messages, temperature,
