@@ -72165,3 +72165,119 @@ code-span whitespace boundary, inside Contract C's normalization rule).
 
 Versions: core 0.0.575, harness 0.0.499, host 0.0.72, SPA 0.5.498;
 cli/web/tauri unchanged.
+
+---
+
+## P4.D85 — connection-profile tags, the server half (v4 `d123658d`, Bug 74)
+
+Lane branch `claude/p4-profile-tags-server-3fd3d6`. Drift check at lane start:
+v4 main HEAD **is** `d123658d`, tree clean; `git diff main bugfix -- lib/ app/
+packages/` carries nothing main lacks (the diff is 4.8.x-branch code main has
+moved past — including the very N+1 tag loop `d123658d` replaced). Every oracle
+this lane touches was regenerated from that checkout, unpinned, through
+`recipe_sweep.py`.
+
+### Unit 1 — the two tag shapes get one owner each, and the corpus can finally see them
+
+**v4's shape.** `resolveEditorTags(tagIds, repos)`
+(`lib/api/middleware/enrichment.ts:139`) is a flattening of `enrichWithTags`:
+one batched `findByIds`, a loop over the ENTITY's own id order against the
+id→tag map, and the `{tagId, tag}` envelope unwrapped to the flat
+`EditorTag {id, name, visualStyle}`. Bug 74's second layer was that the two
+`get-tags` routes each open-coded their own resolution and were free to drift;
+`d123658d` converged both onto this one function.
+
+**The port.** `db::tags::resolve_editor_tags` is that function (batched, entity
+order preserved, unresolved ids dropped, `visualStyle` OMITTED — not null — when
+the column is NULL). It REPLACES `find_details_by_ids`, and BOTH v5 call sites
+go through it: `api::characters::character_get_tags` (converged, retiring the
+N+1 loop it faithfully reproduced) and the new
+`api::settings::connection_profile_get_tags` (unit 2).
+
+**The convergence is output-neutral.** `characters_reads_equivalence`
+regenerated fresh at `d123658d` and re-run: green. (Aria carries ONE tag, so
+that arm proves neutrality, not the order/drop semantics — those are proved by
+the profile `get-tags` rows below, and both call sites are the same function.)
+
+**A real seam closed on the way.** `api::settings::enrich_with_tags` carried a
+DOCUMENTED narrowing: its nested `tag` was `{id, name}` where v4 sends the full
+marshaled Tag. Its own doc comment named the reason it survived — *"the corpus
+keeps profiles tag-less so both sides produce `[]`"*. That is the vacuous-corpus
+class exactly: nothing could write a profile tag, because no add-tag verb
+existed, so the comparand was empty and the shape measured nothing. The
+envelope now carries the full entity (via the new batched
+`db::tags::find_full_by_ids`), which is what `image_profiles` and
+`embedding_profiles` already did — settings was the lone outlier.
+
+**The fixture makes both shapes measurable.** `build-settings-fixture.ts` bakes
+three tags (`Adventure` with NO `visualStyle`, `Mystery` with one, `Unused`) and
+gives the GPT profile the bag `[mystery, <dangling>, adventure]` — not id order,
+not name order, and the middle id backs no row. One bag proves three things at
+once: order preservation, drop-missing, and present-vs-omitted `visualStyle`.
+The Rust harness's `known_ids` gains the `tags` group so those ids compare
+LITERALLY instead of collapsing to `<newid>` on both sides (which would have
+blinded the very arms the bag exists to prove). The CLAUDE profile is baked with
+a stale `baseUrl` — v4 Bug 73's poisoned row — for unit 3.
+
+**Mutation-proven** (each applied alone, differential run, restored):
+order-reversal RED, `visualStyle: null` instead of omitted RED, keeping
+unresolved ids RED, narrowing the envelope back to `{id, name}` RED.
+
+### Unit 2 — the three tag verbs
+
+`connectionProfileGetTags` / `connectionProfileAddTag` /
+`connectionProfileRemoveTag` (the Shared contract's spelling), dispatch arms in
+`api/engine.rs`, handlers in `api/settings.rs`, repo semantics measured from
+v4's `TaggableBaseRepository` rather than assumed:
+
+- **add-tag**: ownership 404 → `z.uuid()` on `tagId` (a ZodError escapes the
+  route into `handleRouteError`, which answers 400 `Validation error`; the
+  `details` issue array is v4-implementation-specific and dropped on both sides,
+  as the other settings families do) → tag existence 404 → push-and-persist
+  **only when the id is not already held** → `{success: true, tag}` with the
+  full tag row.
+- **remove-tag**: ownership 404 → `z.uuid()` → filter-and-persist **only when
+  the array shrank** → `{success: true}`. NO tag-existence check, so removing
+  the dangling id works and removing an unheld id is a silent success.
+
+**No REST edge, and the action gates have no v5 counterpart.** v4 reaches all of
+this through `?action=` on the item route. v5 has no `?action=` surface for
+connection profiles — the SPA and every other consumer ride `/api/dispatch`, and
+the §1 verbs ARE the action selection. Per the order's P4.D66 warning I looked
+for a consumer that needs the URL and found none (`ggrep` over
+`crates/quilltap-cli/src`, `crates/quilltap-web/src`, `apps/web/src`: the SPA
+dispatches `connectionProfileList`/`Update`/… and nothing addresses
+`/api/v1/connection-profiles/{id}`). So no edge landed. v4's two action-gate
+400s and its no-action GET body are **RECORDED-ONLY** rows — asserted for shape
+with no v5 drive, the `search_replace_equivalence` middleware-arm precedent — so
+upstream copy drift is still caught:
+
+- `Unknown action: bogus. Available actions: get-tags`
+- `Unknown action: bogus. Available actions: add-tag, remove-tag, auto-configure`
+- the no-action GET still answering the enriched `{profile}` with its
+  `{tagId, tag}` envelope (the gate must not have swallowed it)
+
+**`auto-configure` is UNPORTED, not refused.** The order's tier-3 bullet asked
+for a loud typed refusal on the action; that presumes an action surface. There
+is none, there is no `autoConfigureProfile` service in v5, and `ggrep
+"autoConfigure|auto-configure" apps/web/src crates/` finds nothing — so a
+refusal arm would need a phantom verb with no caller, which is a stub by another
+name. It is recorded here and in the lane report instead, and v4's own sentence
+naming all three actions is pinned by the recorded row above. **This is a
+deliberate deviation from the order's literal wording; the unifier should read
+it as such.**
+
+**Corpus:** 16 new `connection_profile_tags` rows — get-tags populated / empty /
+profile-404, the two recorded gates, the recorded no-action GET, add-tag success
+/ already-held / unknown-tag / malformed / missing-field / unknown-profile,
+remove-tag success / absent / dangling / malformed. Per-family `>=` count guard
+added (the stale-oracle class), plus an `== 3` guard on the recorded arms
+specifically: nothing on the v5 side drives them, so they are the rows a
+regeneration is likeliest to lose silently.
+
+**Mutation-proven:** dropping the add-tag dedupe RED (`cp_add_tag_already_held`
+after-refetch), dropping either `z.uuid()` gate RED. One claim is NOT
+independently measurable and is stated rather than implied: v4 skipping the
+WRITE when nothing changed is unobservable here (the only witness would be
+`updatedAt`, which the family normalizes). The observable contract — the bag is
+unchanged — is pinned.

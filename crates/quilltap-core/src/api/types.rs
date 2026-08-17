@@ -145,6 +145,30 @@ pub enum Request {
     ConnectionProfileDelete {
         profile_id: String,
     },
+    /// v4 `GET /api/v1/connection-profiles/[id]?action=get-tags` — the FLAT
+    /// `EditorTag` list (`{tags: [{id, name, visualStyle?}]}`), the profile's own
+    /// tag order preserved and unresolved ids dropped. NOT the `{tagId, tag}`
+    /// envelope the list/detail bodies carry (v4 Bug 74's third layer was
+    /// conflating them).
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileGetTags {
+        profile_id: String,
+    },
+    /// v4 `POST /api/v1/connection-profiles/[id]?action=add-tag` — `{success,
+    /// tag}` with the full tag row; a `tagId` no tag backs is a 404.
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileAddTag {
+        profile_id: String,
+        tag_id: String,
+    },
+    /// v4 `POST /api/v1/connection-profiles/[id]?action=remove-tag` —
+    /// `{success: true}`. No tag-existence check (v4 removes by id from the
+    /// profile's own array).
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileRemoveTag {
+        profile_id: String,
+        tag_id: String,
+    },
     /// v4 `?action=reorder` — the contract's ordered-id list.
     #[serde(rename_all = "camelCase")]
     ConnectionProfileReorder {

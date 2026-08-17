@@ -43,6 +43,8 @@ interface Spec {
   apiKeys: { openai: string; anthropic: string };
   profiles: { gpt: string; claude: string };
   providerModels: { a: string; b: string };
+  /** P4.D85 — the three baked tags plus a DANGLING id no row backs. */
+  tags: { adventure: string; mystery: string; unused: string; dangling: string };
 }
 
 const CP_URL = '/api/v1/connection-profiles';
@@ -79,6 +81,12 @@ interface CaseSpec {
    *  REAL setter before the case runs — the merge-over-current arms need it.
    *  The Rust harness seeds identically. */
   seedBrahmaConsole?: number;
+  /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
+   *  `?action=` surface for connection profiles (the verbs ARE the action
+   *  selection and no REST edge exists), so v4's two action-gate 400s and the
+   *  no-action GET body are RECORDED and shape-asserted rather than driven.
+   *  The `search_replace` middleware-arm precedent. */
+  recorded?: boolean;
 }
 
 function mockRequest(url: string, method: Method, body?: unknown): unknown {
@@ -168,7 +176,14 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       response = (await (c.method === 'GET' ? mod.GET : mod.POST)(req as never)) as never;
     } else if (c.route === 'connProfileItem') {
       const mod = await import('@/app/api/v1/connection-profiles/[id]/route');
-      const fn = c.method === 'PUT' ? mod.PUT : c.method === 'DELETE' ? mod.DELETE : mod.GET;
+      const fn =
+        c.method === 'PUT'
+          ? mod.PUT
+          : c.method === 'DELETE'
+            ? mod.DELETE
+            : c.method === 'POST'
+              ? mod.POST
+              : mod.GET;
       response = (await fn(req as never, params as never)) as never;
     } else if (c.route === 'apiKeys') {
       const mod = await import('@/app/api/v1/api-keys/route');
@@ -195,8 +210,14 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     const body = await response.json();
     // The Rust port surfaces validation failures as the `{error}` envelope; the
     // Zod issue array is v4-implementation-specific, so drop `details` here.
+    // (P4.D85 adds `connProfileItem`: the add/remove-tag `z.uuid()` failure is
+    // thrown past the route into `handleRouteError`'s ZodError arm, whose
+    // `validationError` body carries the raw issue array.)
     if (
-      (c.route === 'dataRetention' || c.route === 'taboo' || c.route === 'brahmaConsole') &&
+      (c.route === 'dataRetention' ||
+        c.route === 'taboo' ||
+        c.route === 'brahmaConsole' ||
+        c.route === 'connProfileItem') &&
       body &&
       typeof body === 'object' &&
       'details' in (body as Record<string, unknown>)
@@ -218,6 +239,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         after: c.after ?? null,
         seedTaboo: c.seedTaboo ?? null,
         seedBrahmaConsole: c.seedBrahmaConsole ?? null,
+        recorded: c.recorded ?? false,
       },
       status,
       body,
@@ -272,6 +294,8 @@ describe('settings-routes oracle', () => {
 
   const CP = '/api/v1/connection-profiles';
   const cbase = (id: string) => `http://x${CP}/${id}`;
+  /** A well-formed uuid that names no row (P4.D85's ownership-404 arms). */
+  const MISSING_ID = '5e4f0000-0000-4000-8000-0000000000ff';
   const AK = '/api/v1/api-keys';
   const abase = (id: string) => `http://x${AK}/${id}`;
 
@@ -982,6 +1006,193 @@ describe('settings-routes oracle', () => {
       method: 'POST',
       url: `http://x${CP}?action=reset-sort`,
       after: 'connProfiles',
+    },
+    // P4.D85 (v4 `d123658d`, Bug 74) — the connection-profile tag surface. The
+    // GPT profile's baked bag is [mystery, <dangling>, adventure]: not id order,
+    // not name order, and the middle id backs no row.
+    {
+      // The FLAT `EditorTag` shape (`resolveEditorTags`) — order preserved,
+      // dangling dropped, `visualStyle` present on mystery / omitted on
+      // adventure.
+      name: 'cp_get_tags',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'GET',
+      url: `${cbase(spec.profiles.gpt)}?action=get-tags`,
+      paramId: spec.profiles.gpt,
+    },
+    {
+      name: 'cp_get_tags_empty',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'GET',
+      url: `${cbase(spec.profiles.claude)}?action=get-tags`,
+      paramId: spec.profiles.claude,
+    },
+    {
+      // Ownership 404 runs BEFORE the action gate.
+      name: 'cp_get_tags_unknown_profile',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'GET',
+      url: `${cbase(MISSING_ID)}?action=get-tags`,
+      paramId: MISSING_ID,
+    },
+    {
+      // RECORDED-ONLY: v4's GET action gate. v5 has no `?action=` surface here.
+      name: 'cp_get_unknown_action',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'GET',
+      url: `${cbase(spec.profiles.gpt)}?action=bogus`,
+      paramId: spec.profiles.gpt,
+      recorded: true,
+    },
+    {
+      // RECORDED-ONLY: the no-action GET body, which the new gate must NOT have
+      // disturbed. v5 has no single-profile GET verb (the SPA reads the list).
+      name: 'cp_get_no_action',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'GET',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      recorded: true,
+    },
+    {
+      name: 'cp_add_tag',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=add-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.unused },
+      after: 'connProfiles',
+    },
+    {
+      // Already held: `TaggableBaseRepository.addTag` skips the write entirely,
+      // so the bag must NOT gain a duplicate — and the answer is the same
+      // `{success, tag}`.
+      name: 'cp_add_tag_already_held',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=add-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.mystery },
+      after: 'connProfiles',
+    },
+    {
+      // A well-formed uuid no tag row backs → `notFound('Tag')`.
+      name: 'cp_add_tag_unknown_tag',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=add-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.dangling },
+    },
+    {
+      // `z.uuid()` failure — measure what v4 ACTUALLY answers rather than
+      // assuming (it throws past the route into `handleRouteError`).
+      name: 'cp_add_tag_malformed',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=add-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: 'not-a-uuid' },
+    },
+    {
+      name: 'cp_add_tag_missing_field',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=add-tag`,
+      paramId: spec.profiles.gpt,
+      body: {},
+    },
+    {
+      name: 'cp_add_tag_unknown_profile',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(MISSING_ID)}?action=add-tag`,
+      paramId: MISSING_ID,
+      body: { tagId: spec.tags.unused },
+    },
+    {
+      // The removed id is the FIRST of three, so the survivors' order is
+      // observable in the refetch.
+      name: 'cp_remove_tag',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=remove-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.mystery },
+      after: 'connProfiles',
+    },
+    {
+      // Not held: the array does not shrink, so v4 skips the write entirely and
+      // still answers `{success: true}`.
+      name: 'cp_remove_tag_absent',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=remove-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.unused },
+      after: 'connProfiles',
+    },
+    {
+      // The DANGLING id is held by the profile but backs no tag row — remove-tag
+      // has no existence check, so it must come out.
+      name: 'cp_remove_tag_dangling',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=remove-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: spec.tags.dangling },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_remove_tag_malformed',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=remove-tag`,
+      paramId: spec.profiles.gpt,
+      body: { tagId: 'not-a-uuid' },
+    },
+    {
+      // RECORDED-ONLY: v4's POST action gate, naming all THREE v4 actions (the
+      // third, `auto-configure`, is unported — no service, no consumer).
+      name: 'cp_post_unknown_action',
+      family: 'connection_profile_tags',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'POST',
+      url: `${cbase(spec.profiles.gpt)}?action=bogus`,
+      paramId: spec.profiles.gpt,
+      body: {},
+      recorded: true,
     },
     // api keys.
     { name: 'ak_list', family: 'api_keys', user: 'A', route: 'apiKeys', method: 'GET', url: `http://x${AK}` },

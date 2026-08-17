@@ -14,7 +14,13 @@
 //! `dangerousContentSettings`, whose present-but-invalid legs had NO corpus
 //! case and so collapsed to invented sentences; the family reaches five Zod
 //! issue codes and pins the cheap-LLM ordering, whose parse happens in the
-//! repo's whole-object validate rather than at the route).
+//! repo's whole-object validate rather than at the route), and P4.D85
+//! (`connection_profile_tags` — v4 Bug 74's `get-tags` / `add-tag` /
+//! `remove-tag`, over a fixture whose OPENAI profile finally carries tags: an
+//! unsorted bag with a dangling id, so order-preservation, drop-missing and
+//! present-vs-omitted `visualStyle` are all measurable. Three of its rows are
+//! RECORDED-ONLY — v4 action-gate arms with no v5 counterpart by design; see
+//! the main loop).
 //!
 //! Both sides run each case over a FRESH copy of the committed fixture; the
 //! response body (+ a post-mutation family-list refetch, observing the persisted
@@ -70,7 +76,12 @@ fn known_ids(spec: &Value) -> HashSet<String> {
     for k in ["userA", "userB", "settingsIdA", "roleplayTemplateId"] {
         push(&spec[k]);
     }
-    for group in ["apiKeys", "profiles", "providerModels"] {
+    // P4.D85: `tags` joins the baked-id groups so the tag ids in an enriched
+    // profile / a `get-tags` answer are compared LITERALLY rather than collapsing
+    // to `<newid>` on both sides (which would blind the order-preservation and
+    // drop-missing arms the fixture's unsorted, partly-dangling bag exists to
+    // prove). The dangling id rides the same group for the same reason.
+    for group in ["apiKeys", "profiles", "providerModels", "tags"] {
         if let Some(obj) = spec[group].as_object() {
             for v in obj.values() {
                 push(v);
@@ -148,6 +159,36 @@ fn run_handler(
             param_id.unwrap(),
             body,
         )),
+        // P4.D85. v5 carries no `?action=` surface for connection profiles — the
+        // verbs ARE the action selection — so the URL's action selects the verb
+        // here exactly as `connProfiles` POST does above. Only the actions v5
+        // implements reach this point; v4's two action-GATE arms are `recorded`
+        // rows, asserted for shape without a v5 drive (see the main loop).
+        ("connProfileItem", "GET") => {
+            assert!(
+                url.contains("action=get-tags"),
+                "only get-tags is driven on the item GET; other actions are recorded rows"
+            );
+            settings::connection_profile_get_tags(db, param_id.unwrap())
+        }
+        ("connProfileItem", "POST") => {
+            let tag_id = body["tagId"].as_str().unwrap_or("");
+            if url.contains("action=add-tag") {
+                rt.block_on(settings::connection_profile_add_tag(
+                    db,
+                    param_id.unwrap(),
+                    tag_id,
+                ))
+            } else if url.contains("action=remove-tag") {
+                rt.block_on(settings::connection_profile_remove_tag(
+                    db,
+                    param_id.unwrap(),
+                    tag_id,
+                ))
+            } else {
+                panic!("unhandled connProfileItem POST action: {url}");
+            }
+        }
         ("connProfileItem", "DELETE") => {
             rt.block_on(settings::connection_profile_delete(db, param_id.unwrap()))
         }
@@ -277,6 +318,8 @@ fn settings_routes_match_v4() {
     let mut composer_settings_cases = 0;
     let mut settings_zod_cases = 0;
     let mut connection_profile_cases = 0;
+    let mut profile_tag_cases = 0;
+    let mut recorded_cases = 0;
     for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let name = row["name"].as_str().unwrap().to_string();
@@ -286,6 +329,66 @@ fn settings_routes_match_v4() {
         } else {
             &user_b
         };
+
+        // P4.D85 RECORDED-ONLY arms. v4 reaches the connection-profile tag
+        // actions through `?action=` on the item route; v5 has no such surface
+        // (no REST edge exists — the SPA and every other consumer ride
+        // `/api/dispatch`, and the §1 verbs ARE the action selection). So v4's
+        // two action-GATE 400s and the no-action GET body have no v5
+        // counterpart BY DESIGN. Their bytes are recorded and asserted here so
+        // upstream drift in either sentence is still caught — the
+        // `search_replace_equivalence` middleware-arm precedent.
+        if req["recorded"].as_bool() == Some(true) {
+            recorded_cases += 1;
+            profile_tag_cases += 1;
+            let want = match name.as_str() {
+                "cp_get_unknown_action" => Some((
+                    400_u64,
+                    "Unknown action: bogus. Available actions: get-tags".to_string(),
+                )),
+                "cp_post_unknown_action" => Some((
+                    400,
+                    "Unknown action: bogus. Available actions: add-tag, remove-tag, auto-configure"
+                        .to_string(),
+                )),
+                "cp_get_no_action" => None,
+                other => panic!("unknown recorded case: {other}"),
+            };
+            match want {
+                Some((status, error)) => {
+                    assert_eq!(
+                        row["status"].as_u64(),
+                        Some(status),
+                        "[{name}] recorded v4 status changed"
+                    );
+                    assert_eq!(
+                        row["body"]["error"].as_str(),
+                        Some(error.as_str()),
+                        "[{name}] recorded v4 action-gate sentence changed"
+                    );
+                }
+                None => {
+                    // The no-action GET must still answer the enriched profile —
+                    // the new action gate must not have swallowed it.
+                    assert_eq!(
+                        row["status"].as_u64(),
+                        Some(200),
+                        "[{name}] recorded v4 status changed"
+                    );
+                    assert_eq!(
+                        row["body"]["profile"]["id"].as_str(),
+                        spec["profiles"]["gpt"].as_str(),
+                        "[{name}] the no-action GET no longer answers the enriched profile"
+                    );
+                    assert!(
+                        row["body"]["profile"]["tags"][0]["tag"]["name"].is_string(),
+                        "[{name}] the no-action GET lost the {{tagId, tag}} envelope"
+                    );
+                }
+            }
+            n += 1;
+            continue;
+        }
 
         // Fresh fixture copy per case (mutations mint / delete).
         let tmp = tempfile::tempdir().unwrap();
@@ -396,6 +499,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("connection_profiles") {
             connection_profile_cases += 1;
         }
+        if row["family"].as_str() == Some("connection_profile_tags") {
+            profile_tag_cases += 1;
+        }
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
@@ -432,6 +538,20 @@ fn settings_routes_match_v4() {
     assert!(
         connection_profile_cases >= 15,
         "expected >= 15 connection_profiles cases, got {connection_profile_cases} — regenerate the oracle"
+    );
+    // P4.D85: the connection-profile tag family (v4 Bug 74). Same stale-oracle
+    // guard — before this lane v5 had NO profile tag verbs at all, so a
+    // pre-P4.D85 oracle carries none of these rows and would pass by absence.
+    assert!(
+        profile_tag_cases >= 16,
+        "expected >= 16 connection_profile_tags cases, got {profile_tag_cases} — regenerate the oracle"
+    );
+    // …and the three RECORDED-ONLY v4 arms specifically (the two action-gate
+    // 400s + the no-action GET body). These are the rows a regeneration is most
+    // likely to lose silently, because nothing on the v5 side drives them.
+    assert!(
+        recorded_cases == 3,
+        "expected exactly 3 recorded-only v4 arms, got {recorded_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
 }

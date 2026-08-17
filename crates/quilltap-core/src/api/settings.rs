@@ -47,6 +47,7 @@ use crate::db::{
 use crate::provider_manifest::{Capability, Registry};
 use crate::services::profile_names::normalize_profile_name;
 
+use super::chat_outfits::is_zod_uuid;
 use super::types::{ErrorKind, Response};
 
 // ===========================================================================
@@ -162,25 +163,29 @@ fn enrich_with_api_key(conn: &rusqlite::Connection, api_key_id: Option<&str>) ->
     }
 }
 
-/// v4 `enrichWithTags(tagIds, repos)` → `[{tagId, tag}]`, preserving input order,
-/// dropping unresolved ids. The nested `tag` object is the full v4 `Tag`; the
-/// ported [`tags::find_by_ids`] returns only `{id,name}` — a **documented seam**
-/// (full-tag marshaling on profiles is deferred; the corpus keeps profiles
-/// tag-less so both sides produce `[]`).
+/// v4 `enrichProfile`'s tag arm (`connection-profiles/[id]/route.ts:59-66`, the
+/// same shape as `enrichWithTags`) → `[{tagId, tag}]`, preserving the profile's
+/// own tag order and dropping unresolved ids. The nested `tag` is the **full**
+/// marshaled v4 `Tag`.
+///
+/// P4.D85 closed the documented `{id,name}`-only seam this carried: the corpus
+/// had no tagged profile (nothing could write one — there was no add-tag verb),
+/// so both sides produced `[]` and the narrow shape measured nothing. The
+/// settings fixture now bakes a tagged profile, and the nested object is the
+/// full entity v4 sends. Distinct from the FLAT `EditorTag` that `get-tags`
+/// answers — never conflate the two (v4 Bug 74's third layer).
 fn enrich_with_tags(conn: &rusqlite::Connection, tag_ids: &[String]) -> Value {
     if tag_ids.is_empty() {
         return json!([]);
     }
-    let rows = tags::find_by_ids(conn, tag_ids).unwrap_or_default();
-    let by_id: std::collections::HashMap<&str, &tags::TagRow> =
-        rows.iter().map(|t| (t.id.as_str(), t)).collect();
-    let mut out = Vec::new();
-    for id in tag_ids {
-        if let Some(t) = by_id.get(id.as_str()) {
-            out.push(json!({ "tagId": id, "tag": { "id": t.id, "name": t.name } }));
-        }
-    }
-    Value::Array(out)
+    let tags = tags::find_full_by_ids(conn, tag_ids).unwrap_or_default();
+    Value::Array(
+        tags.into_iter()
+            .map(
+                |tag| json!({ "tagId": tag.get("id").cloned().unwrap_or(Value::Null), "tag": tag }),
+            )
+            .collect(),
+    )
 }
 
 /// Build the enriched-profile object: `{...profile, apiKey [, tags]}` (v4
@@ -1816,6 +1821,154 @@ pub async fn connection_profile_delete(db: &Db, id: &str) -> Response {
         Ok(_) => Response::Ack(super::types::AckDto::default()),
         Err(e) => internal(e),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Connection-profile tags (v4 Bug 74, commit `d123658d`)
+//
+// v4 reaches these three through `?action=` on the item route; v5 has no
+// `?action=` surface for connection profiles (no REST edge exists — the SPA and
+// every other consumer ride `/api/dispatch`), so the ACTIONS are the verbs and
+// v4's two action-gate 400 sentences have no v5 counterpart. The differential
+// RECORDS both v4 gate arms and asserts their bytes so upstream copy drift is
+// caught — the `search_replace` middleware-arm precedent. `auto-configure` is
+// the third v4 POST action and is unported (no service, no consumer); it is
+// recorded the same way rather than given a phantom verb to refuse from.
+// ---------------------------------------------------------------------------
+
+/// v4 `GET /api/v1/connection-profiles/[id]?action=get-tags` — ownership 404
+/// first (the GET's own `findById` gate), then the FLAT `EditorTag` list.
+pub fn connection_profile_get_tags(db: &Db, id: &str) -> Response {
+    let id_owned = id.to_string();
+    let out = db.read_main(move |conn| {
+        let Some(profile) = connection_profiles::find_by_id(conn, &id_owned)? else {
+            return Ok(None);
+        };
+        Ok(Some(tags::resolve_editor_tags(
+            conn,
+            &tag_ids_of(&profile),
+        )?))
+    });
+    match out {
+        Ok(Some(t)) => Response::ConnectionProfile(json!({ "tags": t })),
+        Ok(None) => not_found("Connection profile"),
+        Err(e) => internal(e),
+    }
+}
+
+/// A profile's own `tags` id array (the slim column), string entries only.
+fn tag_ids_of(profile: &Value) -> Vec<String> {
+    profile
+        .get("tags")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// v4 `?action=add-tag` — ownership 404, `z.uuid()` on `tagId` (a ZodError is
+/// caught by `handleRouteError` → 400 `Validation error`), tag existence 404,
+/// then `TaggableBaseRepository.addTag`: push + persist ONLY when the id is not
+/// already held. Answers `{success: true, tag}` with the full tag row (201 on
+/// v4's wire; the dispatch envelope carries no per-verb status).
+pub async fn connection_profile_add_tag(db: &Db, id: &str, tag_id: &str) -> Response {
+    let (pid, tid) = (id.to_string(), tag_id.to_string());
+    let pre = db.read_main(move |conn| {
+        let Some(profile) = connection_profiles::find_by_id(conn, &pid)? else {
+            return Ok(None);
+        };
+        Ok(Some((
+            tag_ids_of(&profile),
+            tags::find_full_by_id(conn, &tid)?,
+        )))
+    });
+    let (current, tag) = match pre {
+        Ok(Some(v)) => v,
+        Ok(None) => return not_found("Connection profile"),
+        Err(e) => return internal(e),
+    };
+    // v4 parses the body BEFORE the tag lookup, so a malformed `tagId` is a 400
+    // even when it would also have missed.
+    if !is_zod_uuid(tag_id) {
+        return validation_error();
+    }
+    let Some(tag) = tag else {
+        return not_found("Tag");
+    };
+    if !current.iter().any(|t| t == tag_id) {
+        let mut next = current;
+        next.push(tag_id.to_string());
+        let now = crate::clock::now_iso();
+        let pid2 = id.to_string();
+        if let Err(e) = db
+            .write(move |w| {
+                connection_profiles::ConnectionProfilesRepository::new(w.main().connection())
+                    .update(
+                        &pid2,
+                        &connection_profiles::CpUpdate {
+                            tags: Some(next),
+                            updated_at: now,
+                            ..Default::default()
+                        },
+                    )
+            })
+            .await
+        {
+            return internal(e);
+        }
+    }
+    Response::ConnectionProfile(json!({ "success": true, "tag": tag }))
+}
+
+/// v4 `?action=remove-tag` — ownership 404, `z.uuid()` on `tagId`, then
+/// `TaggableBaseRepository.removeTag`: filter the id out and persist ONLY when
+/// the array actually shrank. NO tag-existence check (removing an id no tag
+/// backs is a silent success). Answers `{success: true}`.
+pub async fn connection_profile_remove_tag(db: &Db, id: &str, tag_id: &str) -> Response {
+    let (pid, tid) = (id.to_string(), tag_id.to_string());
+    let current = match db.read_main(move |conn| {
+        Ok(connection_profiles::find_by_id(conn, &pid)?.map(|p| tag_ids_of(&p)))
+    }) {
+        Ok(Some(v)) => v,
+        Ok(None) => return not_found("Connection profile"),
+        Err(e) => return internal(e),
+    };
+    if !is_zod_uuid(tag_id) {
+        return validation_error();
+    }
+    let filtered: Vec<String> = current.iter().filter(|t| *t != &tid).cloned().collect();
+    if filtered.len() != current.len() {
+        let now = crate::clock::now_iso();
+        let pid2 = id.to_string();
+        if let Err(e) = db
+            .write(move |w| {
+                connection_profiles::ConnectionProfilesRepository::new(w.main().connection())
+                    .update(
+                        &pid2,
+                        &connection_profiles::CpUpdate {
+                            tags: Some(filtered),
+                            updated_at: now,
+                            ..Default::default()
+                        },
+                    )
+            })
+            .await
+        {
+            return internal(e);
+        }
+    }
+    Response::ConnectionProfile(json!({ "success": true }))
+}
+
+/// v4 `handleRouteError`'s ZodError arm (`lib/api/middleware/context.ts:166`) →
+/// `validationError(error)` → 400 `{error: 'Validation error', details: [...]}`.
+/// The `details` array is v4-implementation-specific (the Zod issue objects) and
+/// the differential drops it on both sides, as the other settings families do.
+fn validation_error() -> Response {
+    bad_request("Validation error")
 }
 
 /// v4 `?action=reorder` — the contract sends `orderedIds`; each id's `sortIndex`

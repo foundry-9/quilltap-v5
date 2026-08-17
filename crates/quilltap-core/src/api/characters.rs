@@ -238,8 +238,12 @@ pub fn character_default_partner(db: &Db, _user_id: &str, character_id: &str) ->
     }
 }
 
-/// v4 `?action=get-tags` — N+1 `tags.findById` → `{id,name,visualStyle}`,
-/// dropping missing, order-preserving.
+/// v4 `?action=get-tags` — the FLAT `EditorTag` projection
+/// `{id,name,visualStyle}`, dropping missing, order-preserving. Shares
+/// [`tags::resolve_editor_tags`] with the connection-profile `get-tags` twin so
+/// the two answers TagEditor consumes cannot drift apart again (v4 Bug 74's
+/// second layer; v4 converged its own two routes onto `resolveEditorTags` in
+/// `d123658d`, retiring the N+1 `tags.findById` loop this used to reproduce).
 pub fn character_get_tags(db: &Db, _user_id: &str, character_id: &str) -> Response {
     let character_id = character_id.to_string();
     let result = read_main_mount(db, move |main, mount| {
@@ -256,7 +260,7 @@ pub fn character_get_tags(db: &Db, _user_id: &str, character_id: &str) -> Respon
                     .collect()
             })
             .unwrap_or_default();
-        let details = tags::find_details_by_ids(main, &tag_ids)?;
+        let details = tags::resolve_editor_tags(main, &tag_ids)?;
         Ok(Ok(details))
     });
     match result {

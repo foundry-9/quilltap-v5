@@ -173,45 +173,76 @@ pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<TagRow>, DbE
     Ok(out)
 }
 
-/// v4 characters `get-tags` action projection — `{ id, name, visualStyle }` for
-/// each requested tag id, in **input order**, dropping ids not found (v4 maps
-/// `tags.findById` per id and filters `Boolean`). `visualStyle` is the parsed
-/// object or `null`.
-pub fn find_details_by_ids(
+/// v4 `resolveEditorTags(tagIds, repos)` (`lib/api/middleware/enrichment.ts:139`)
+/// — the FLAT `EditorTag` shape `{ id, name, visualStyle }` TagEditor consumes,
+/// for each requested tag id, in **input order**, dropping ids not found.
+///
+/// v4 builds it on `enrichWithTags` (one batched `findByIds`, then a loop over
+/// the entity's own `tagIds` against the id→tag map) and only unwraps the
+/// `{tagId, tag}` envelope; this is that shape, one query and the same loop.
+///
+/// Bug 74's second layer was that the two `get-tags` routes (characters and
+/// connection profiles) each open-coded their own resolution and were free to
+/// drift; v4 settled it on this one function, and so does v5 — BOTH v5 call
+/// sites ([`crate::api::characters::character_get_tags`] and
+/// [`crate::api::settings::connection_profile_get_tags`]) go through here.
+/// Do not re-open-code it for a third entity.
+pub fn resolve_editor_tags(
     conn: &Connection,
     ids: &[String],
 ) -> Result<Vec<serde_json::Value>, DbError> {
     if ids.is_empty() {
         return Ok(vec![]);
     }
-    let mut stmt = conn.prepare("SELECT id, name, visualStyle FROM tags WHERE id = ?1")?;
+    let by_id = load_tag_styles(conn, ids)?;
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
-        let row = stmt
-            .query_row(params![id], |r| {
-                let id: String = r.get(0)?;
-                let name: String = r.get(1)?;
-                let vs: Option<String> = r.get(2)?;
-                Ok((id, name, vs))
-            })
-            .optional()?;
-        if let Some((id, name, vs)) = row {
-            // v4's marshaled tag exposes `visualStyle` as `.optional()` — a stored
-            // NULL comes back `undefined`, so `{id,name,visualStyle}` OMITS the key
-            // (JSON.stringify drops undefined). Only a present style object is
-            // emitted. Confirmed against the oracle.
-            let mut obj = serde_json::Map::new();
-            obj.insert("id".into(), serde_json::Value::String(id));
-            obj.insert("name".into(), serde_json::Value::String(name));
-            if let Some(text) = vs {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
-                    obj.insert("visualStyle".into(), parsed);
-                }
+        let Some((name, vs)) = by_id.get(id.as_str()) else {
+            continue;
+        };
+        // v4's marshaled tag exposes `visualStyle` as `.optional()` — a stored
+        // NULL comes back `undefined`, so `{id,name,visualStyle}` OMITS the key
+        // (JSON.stringify drops undefined). Only a present style object is
+        // emitted. Confirmed against the oracle.
+        let mut obj = serde_json::Map::new();
+        obj.insert("id".into(), serde_json::Value::String(id.clone()));
+        obj.insert("name".into(), serde_json::Value::String(name.clone()));
+        if let Some(text) = vs {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
+                obj.insert("visualStyle".into(), parsed);
             }
-            out.push(serde_json::Value::Object(obj));
         }
+        out.push(serde_json::Value::Object(obj));
     }
     Ok(out)
+}
+
+/// v4 `repos.tags.findByIds(ids)` narrowed to what [`resolve_editor_tags`] needs:
+/// one `id IN (…)` query, keyed by id. Rows not found are simply absent (v4's
+/// `findByFilter` returns a shorter array).
+fn load_tag_styles(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, (String, Option<String>)>, DbError> {
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, name, visualStyle FROM tags WHERE id IN ({placeholders})"
+    ))?;
+    let binds: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    let rows = stmt.query_map(binds.as_slice(), |r| {
+        let id: String = r.get(0)?;
+        let name: String = r.get(1)?;
+        let vs: Option<String> = r.get(2)?;
+        Ok((id, (name, vs)))
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        let (id, v) = row?;
+        map.insert(id, v);
+    }
+    Ok(map)
 }
 
 /// v4 `repos.tags.findById(id)` — the full marshaled Tag entity `{id, userId,
@@ -227,6 +258,44 @@ pub fn find_full_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json:
     stmt.query_row(params![id], marshal_full_tag)
         .optional()
         .map_err(DbError::from)
+}
+
+/// The full marshaled Tag entity for each requested id, in **input order**,
+/// dropping ids not found — v4's connection-profile `enrichProfile` maps
+/// `repos.tags.findById` over the profile's own `tags` array and filters the
+/// misses (`app/api/v1/connection-profiles/[id]/route.ts:60-66`), and
+/// `enrichWithTags` does the same batched. The `{tagId, tag}` ENVELOPE that
+/// wraps these is the collection endpoints' shape, NOT the flat `EditorTag` of
+/// [`resolve_editor_tags`] — two shapes, each with one owner (conflating them
+/// was v4 Bug 74's third layer).
+pub fn find_full_by_ids(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<Vec<serde_json::Value>, DbError> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, userId, name, nameLower, quickHide, visualStyle, createdAt, updatedAt \
+         FROM tags WHERE id IN ({placeholders})"
+    ))?;
+    let binds: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    let rows = stmt.query_map(binds.as_slice(), marshal_full_tag)?;
+    let mut by_id: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let tag = row?;
+        if let Some(id) = tag.get("id").and_then(serde_json::Value::as_str) {
+            by_id.insert(id.to_string(), tag.clone());
+        }
+    }
+    Ok(ids
+        .iter()
+        .filter_map(|id| by_id.get(id.as_str()).cloned())
+        .collect())
 }
 
 /// Marshal a full `tags` row (the `SELECT id, userId, name, nameLower, quickHide,

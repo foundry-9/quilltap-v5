@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Connection profiles can be tagged. The three actions v4 grew in its bug-74 fix
+— read a profile's tags, add one, remove one — are now verbs, and the two tag
+shapes that had drifted apart in v4 each have one owner here: the flat shape the
+tag editor reads, shared by the character and connection-profile answers, and
+the enveloped shape the list endpoints send. The enveloped one now carries the
+whole tag record, as v4's does; it had been narrowed to an id and a name, which
+nothing could catch because no profile in the test corpus had ever had a tag.
+
 Planned the `d123658d` connection-profile-editor drift round and committed its
 two work orders: P4.D85 (server — the profile tag verbs, the GET action gate,
 and the `resolveEditorTags` convergence from v4's bug-74 fix) and P4.D86 (SPA —

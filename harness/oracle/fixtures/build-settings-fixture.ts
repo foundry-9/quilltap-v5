@@ -8,7 +8,9 @@
  * harness normalizes):
  *   - userA (the main user: a chat_settings row, two connection profiles [an
  *     OPENAI default + an ANTHROPIC], two api keys they reference, a roleplay
- *     template, two cached OPENAI provider_models rows),
+ *     template, two cached OPENAI provider_models rows, three tags — the OPENAI
+ *     profile carrying a deliberately unsorted tag bag with a dangling id, see
+ *     `SPEC.tags`),
  *   - userB (a bare user with NO chat_settings row — the GET default-injection /
  *     fresh-row PUT cases).
  *
@@ -47,6 +49,23 @@ const SPEC = {
   providerModels: {
     a: '5e600000-0000-4000-8000-000000000001',
     b: '5e600000-0000-4000-8000-000000000002',
+  },
+  // P4.D85 (v4 Bug 74). Three tags + a DANGLING id that no row backs. The GPT
+  // profile carries [mystery, dangling, adventure] so both tag surfaces are
+  // measurable at once:
+  //   - order preservation — mystery precedes adventure, which is neither id
+  //     order nor name order, so an implementation that sorts (or that lets the
+  //     `IN (…)` result order win) is caught;
+  //   - drop-missing — the dangling id must vanish from both shapes;
+  //   - `visualStyle` OMITTED vs present — adventure has none, mystery does.
+  // Before this the corpus had NO tagged profile (nothing could write one —
+  // there was no add-tag verb), so every tag comparand was `[]` and the whole
+  // enrichment measured nothing.
+  tags: {
+    adventure: '5e700000-0000-4000-8000-000000000001',
+    mystery: '5e700000-0000-4000-8000-000000000002',
+    unused: '5e700000-0000-4000-8000-000000000003',
+    dangling: '5e700000-0000-4000-8000-0000000000ff',
   },
 };
 
@@ -131,6 +150,36 @@ async function main() {
     }) as never,
   );
 
+  // tags (P4.D85) — `adventure` has NO visualStyle (the key must be omitted from
+  // both tag shapes), `mystery` carries one, `unused` exists only so the add-tag
+  // case has a tag to attach that the profile does not already hold.
+  const { TagSchema } = await import('@/lib/schemas/types');
+  await ensureCollection('tags', TagSchema);
+  await repos.tags.create(
+    { userId: USER_A, name: 'Adventure' } as never,
+    { id: SPEC.tags.adventure, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.tags.create(
+    {
+      userId: USER_A,
+      name: 'Mystery',
+      visualStyle: {
+        emoji: '🔍',
+        foregroundColor: '#111827',
+        backgroundColor: '#fde68a',
+        emojiOnly: false,
+        bold: true,
+        italic: false,
+        strikethrough: false,
+      },
+    } as never,
+    { id: SPEC.tags.mystery, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.tags.create(
+    { userId: USER_A, name: 'Unused' } as never,
+    { id: SPEC.tags.unused, createdAt: TS, updatedAt: TS } as never,
+  );
+
   // connection_profiles.
   await repos.connections.create(
     {
@@ -145,7 +194,8 @@ async function main() {
       isDefault: true,
       isCheap: false,
       sortIndex: 0,
-      tags: [],
+      // NOT id order, NOT name order, and the middle id backs no row.
+      tags: [SPEC.tags.mystery, SPEC.tags.dangling, SPEC.tags.adventure],
     } as never,
     { id: SPEC.profiles.gpt, createdAt: TS, updatedAt: TS } as never,
   );
@@ -156,7 +206,11 @@ async function main() {
       provider: 'ANTHROPIC',
       transport: 'api',
       apiKeyId: SPEC.apiKeys.anthropic,
-      baseUrl: null,
+      // P4.D85: a STALE base URL on a hosted provider — v4 Bug 73's poisoned row
+      // exactly. It gives the PUT's `baseUrl || null` arm something to clear, so
+      // the `''` → NULL coercion P4.D86's client depends on is measurable rather
+      // than assumed.
+      baseUrl: 'http://localhost:11434',
       modelName: 'claude-sonnet',
       parameters: {},
       isDefault: false,

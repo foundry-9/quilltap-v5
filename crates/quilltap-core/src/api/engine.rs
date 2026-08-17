@@ -821,6 +821,22 @@ impl CoreEngine {
                 Ok(db) => super::settings::connection_profile_delete(&db, &profile_id).await,
                 Err(r) => r,
             },
+            Request::ConnectionProfileGetTags { profile_id } => match self.ready_db() {
+                Ok(db) => super::settings::connection_profile_get_tags(&db, &profile_id),
+                Err(r) => r,
+            },
+            Request::ConnectionProfileAddTag { profile_id, tag_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_add_tag(&db, &profile_id, &tag_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileRemoveTag { profile_id, tag_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_remove_tag(&db, &profile_id, &tag_id).await
+                }
+                Err(r) => r,
+            },
             Request::ConnectionProfileReorder { ordered_ids } => match self.ready_db() {
                 Ok(db) => {
                     super::settings::connection_profile_reorder(&db, SINGLE_USER_ID, &ordered_ids)
