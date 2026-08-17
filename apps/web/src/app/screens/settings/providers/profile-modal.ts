@@ -26,6 +26,7 @@ import {
   buildProfileRequestBody,
   initialFormState,
   loadProfileIntoForm,
+  outboundBaseUrl,
   type ProfileFormData,
   type ProviderRequirements,
 } from './profile-form';
@@ -814,12 +815,22 @@ export class ProfileModal implements OnInit {
     }
   }
 
+  /**
+   * The base URL as it is allowed to leave the FORM (v4's `outboundBaseUrl`,
+   * Bug 73). Every form-driven outbound site reads this rather than
+   * `form().baseUrl`; the edit-time model fetch reads the SAVED profile and so
+   * resolves its own requirement in {@link autoFetchModelsForEdit}.
+   */
+  private outbound(): string {
+    return outboundBaseUrl(this.providers(), this.form().provider, this.form().baseUrl);
+  }
+
   private profilePayloadForActions(): Record<string, unknown> {
     const f = this.form();
     return {
       provider: f.provider,
       apiKeyId: f.apiKeyId || undefined,
-      baseUrl: f.baseUrl || undefined,
+      baseUrl: this.outbound() || undefined,
     };
   }
 
@@ -871,7 +882,7 @@ export class ProfileModal implements OnInit {
           type: 'modelFetch',
           provider: this.form().provider,
           apiKeyId: this.form().apiKeyId || undefined,
-          baseUrl: this.form().baseUrl || undefined,
+          baseUrl: this.outbound() || undefined,
         },
         'models',
       );
@@ -899,7 +910,7 @@ export class ProfileModal implements OnInit {
         profile: {
           provider: f.provider,
           apiKeyId: f.apiKeyId || undefined,
-          baseUrl: f.baseUrl || undefined,
+          baseUrl: this.outbound() || undefined,
           modelName: f.modelName,
           parameters: {
             temperature: parseFloat(String(f.temperature)),
@@ -922,14 +933,24 @@ export class ProfileModal implements OnInit {
     }
   }
 
+  /**
+   * A stored row can carry a base URL its provider does not take — every
+   * profile saved before Bug 73 was fixed, and any import. Reading the
+   * requirement here rather than the row's truthiness keeps the edit-time model
+   * fetch off the wrong endpoint; the next save clears the row. A provider the
+   * list does not know about (not loaded, or the fetch failed) keeps its stored
+   * URL — absence is not evidence (v4 `ProfileModal.tsx:73-80`).
+   */
   private async autoFetchModelsForEdit(p: ConnectionProfileDto): Promise<void> {
+    const saved = this.providers().find((cfg) => cfg.name === p.provider);
+    const savedTakesBaseUrl = !saved || (saved.configRequirements?.requiresBaseUrl ?? false);
     try {
       const resp = await this.core.dispatchExpect(
         {
           type: 'modelFetch',
           provider: p.provider,
           apiKeyId: p.apiKeyId || undefined,
-          baseUrl: p.baseUrl || undefined,
+          baseUrl: (savedTakesBaseUrl && p.baseUrl) || undefined,
         },
         'models',
       );
@@ -946,7 +967,7 @@ export class ProfileModal implements OnInit {
     }
     this.saving.set(true);
     this.connectError.set(null);
-    const body = buildProfileRequestBody(this.form());
+    const body = buildProfileRequestBody(this.form(), this.providers());
     const id = this.profile()?.id;
     try {
       if (id) {

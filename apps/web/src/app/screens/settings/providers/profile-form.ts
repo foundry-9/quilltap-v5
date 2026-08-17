@@ -1,4 +1,4 @@
-import type { ConnectionProfileDto } from '../../../core/core-contract';
+import type { ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
 import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 
 /** The connection-profile modal's editable form (v4 `types.ts` `ProfileFormData`). */
@@ -126,8 +126,42 @@ export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormD
   };
 }
 
+/**
+ * The base URL as it is allowed to leave the form (v4
+ * `useProfileForm.ts` `outboundBaseUrl`, `:38-57`).
+ *
+ * A provider that does not require one hides the field (the modal's
+ * `reqs().requiresBaseUrl` gate), so whatever is still sitting in form state
+ * belongs to a provider the user has since moved off — most often the
+ * `localhost:11434` that selecting Ollama auto-filled. Sending it points every
+ * probe, and the saved row, at the wrong endpoint with nothing on screen to
+ * explain it and no gesture that clears it (v4 Bug 73). The value stays in form
+ * state so switching back restores it; it simply never reaches the wire.
+ *
+ * A provider missing from `providers` is not evidence of anything — the list
+ * has not loaded, or its fetch failed — so the stored value is left alone there
+ * rather than clearing a working profile on a failed fetch.
+ *
+ * ⚠ This is the ONE gate; every outbound site reads it rather than the form's
+ * raw `baseUrl`. v5 has five (v4's four plus the modal's edit-time model
+ * fetch, which reads the SAVED profile rather than form state and so resolves
+ * its own requirement — see `ProfileModal.savedProviderTakesBaseUrl`).
+ */
+export function outboundBaseUrl(
+  providers: readonly ProviderInfo[],
+  provider: string,
+  baseUrl: string,
+): string {
+  const known = providers.find((p) => p.name === provider);
+  if (known && !known.configRequirements?.requiresBaseUrl) return '';
+  return baseUrl || '';
+}
+
 /** Build the create/update request body (v4 `useProfileForm.buildRequestBody`). */
-export function buildProfileRequestBody(form: ProfileFormData): Record<string, unknown> {
+export function buildProfileRequestBody(
+  form: ProfileFormData,
+  providers: readonly ProviderInfo[],
+): Record<string, unknown> {
   if (form.transport === 'courier') {
     return {
       name: form.name,
@@ -183,7 +217,14 @@ export function buildProfileRequestBody(form: ProfileFormData): Record<string, u
     modelClass: form.modelClass || null,
     maxContext: form.maxContext ? parseInt(form.maxContext, 10) : null,
     apiKeyId: form.apiKeyId || null,
-    ...(form.baseUrl ? { baseUrl: form.baseUrl } : {}),
+    // Always sent, never conditionally: an empty string is how the row is
+    // *cleared* of a base URL the current provider does not take, so a profile
+    // that picked one up from an earlier provider heals on its next save rather
+    // than staying broken and invisible (v4 Bug 73). Omitting the key leaves
+    // the update handler's `baseUrl !== undefined` gate untripped and every
+    // already-poisoned row broken forever. Both handlers map a falsy value to
+    // NULL.
+    baseUrl: outboundBaseUrl(providers, form.provider, form.baseUrl),
     parameters,
   };
 }

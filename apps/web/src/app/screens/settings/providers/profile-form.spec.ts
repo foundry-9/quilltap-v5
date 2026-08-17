@@ -1,12 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ConnectionProfileDto } from '../../../core/core-contract';
+import type { ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
 import {
   buildProfileRequestBody,
   initialFormState,
   loadProfileIntoForm,
+  outboundBaseUrl,
   type ProfileFormData,
 } from './profile-form';
+
+function providerInfo(
+  name: string,
+  requiresBaseUrl: boolean,
+  baseUrlDefault?: string,
+): ProviderInfo {
+  return {
+    id: name,
+    name,
+    displayName: name,
+    description: '',
+    abbreviation: name.slice(0, 2),
+    type: 'llm',
+    capabilities: { chat: true, imageGeneration: false, embeddings: false, webSearch: false },
+    configRequirements: { requiresApiKey: !requiresBaseUrl, requiresBaseUrl, baseUrlDefault },
+  };
+}
+
+/** The three providers v4's own Bug-73 cases use, same requirements. */
+const PROVIDERS: ProviderInfo[] = [
+  providerInfo('OPENAI', false),
+  providerInfo('OLLAMA', true, 'http://localhost:11434'),
+  providerInfo('OPENAI_COMPATIBLE', true, 'http://localhost:8080/v1'),
+];
 
 function profile(over: Partial<ConnectionProfileDto>): ConnectionProfileDto {
   return {
@@ -64,10 +89,14 @@ describe('profile form — multiCharacterPrefill', () => {
 
   it('the API create/update body carries the box (v4 useProfileForm.ts:141)', () => {
     expect(
-      buildProfileRequestBody(form({ multiCharacterPrefill: true }))['multiCharacterPrefill'],
+      buildProfileRequestBody(form({ multiCharacterPrefill: true }), PROVIDERS)[
+        'multiCharacterPrefill'
+      ],
     ).toBe(true);
     expect(
-      buildProfileRequestBody(form({ multiCharacterPrefill: false }))['multiCharacterPrefill'],
+      buildProfileRequestBody(form({ multiCharacterPrefill: false }), PROVIDERS)[
+        'multiCharacterPrefill'
+      ],
     ).toBe(false);
   });
 
@@ -77,9 +106,13 @@ describe('profile form — multiCharacterPrefill', () => {
     // off the form, because "the Courier renders the same assembled context
     // for the user to carry by hand, so the turn anchor still applies". Both
     // values asserted: a hardcoded `true` would pass the first arm alone.
-    const on = buildProfileRequestBody(form({ transport: 'courier', multiCharacterPrefill: true }));
+    const on = buildProfileRequestBody(
+      form({ transport: 'courier', multiCharacterPrefill: true }),
+      PROVIDERS,
+    );
     const off = buildProfileRequestBody(
       form({ transport: 'courier', multiCharacterPrefill: false }),
+      PROVIDERS,
     );
     expect(on['multiCharacterPrefill']).toBe(true);
     expect(off['multiCharacterPrefill']).toBe(false);
@@ -157,6 +190,7 @@ describe('profile form — the parameters bag', () => {
         topP: 0.5,
         parameters: { enable_thinking: true, num_ctx: 16384 },
       }),
+      PROVIDERS,
     );
     expect(body['parameters']).toEqual({
       temperature: 0.7,
@@ -178,15 +212,99 @@ describe('profile form — the parameters bag', () => {
       enable_thinking: true,
       num_ctx: 40960,
     };
-    const body = buildProfileRequestBody(loadProfileIntoForm(profile({ parameters: stored })));
+    const body = buildProfileRequestBody(
+      loadProfileIntoForm(profile({ parameters: stored })),
+      PROVIDERS,
+    );
     expect(body['parameters']).toEqual(stored);
+  });
+
+  it('the courier body sends no baseUrl key at all (v4 `:113-138` returns early)', () => {
+    // The courier branch returns before the chokepoint, in both apps: provider,
+    // api key and base URL are all unused in that mode.
+    const body = buildProfileRequestBody(
+      form({ transport: 'courier', provider: 'OLLAMA', baseUrl: 'http://localhost:11434' }),
+      PROVIDERS,
+    );
+    expect(body).not.toHaveProperty('baseUrl');
   });
 
   it('the courier body still sends an empty bag (v4 :115)', () => {
     expect(
       buildProfileRequestBody(
         form({ transport: 'courier', parameters: { enable_thinking: true } }),
+        PROVIDERS,
       )['parameters'],
     ).toEqual({});
+  });
+});
+
+/**
+ * Bug 73 — the base URL as it is allowed to leave the form.
+ *
+ * The unit half of v4's `profile-modal-base-url.test.tsx` (`d123658d`): the
+ * chokepoint itself and the always-send save body. The gesture half — driving
+ * the provider dropdown and reading the bytes that leave — is in
+ * `profile-modal.spec.ts`.
+ */
+describe('profile form — outboundBaseUrl (Bug 73)', () => {
+  it('drops a base URL the resolved provider does not take', () => {
+    expect(outboundBaseUrl(PROVIDERS, 'OPENAI', 'http://localhost:11434')).toBe('');
+  });
+
+  it('still sends it on a provider that does take one', () => {
+    expect(outboundBaseUrl(PROVIDERS, 'OLLAMA', 'http://localhost:11434')).toBe(
+      'http://localhost:11434',
+    );
+  });
+
+  it('leaves a stored base URL alone when the provider list has not loaded', () => {
+    // The tab renders the modal before the providers listing answers, and the
+    // fetch can fail outright. An unknown provider is not evidence that it
+    // takes no base URL, so an existing Ollama profile must not be cleared by a
+    // save (v4 `useProfileForm.ts:56`).
+    expect(outboundBaseUrl([], 'OLLAMA', 'http://localhost:11434')).toBe('http://localhost:11434');
+    expect(outboundBaseUrl(PROVIDERS, 'SOME_PLUGIN', 'http://box.local:9090/v1')).toBe(
+      'http://box.local:9090/v1',
+    );
+  });
+
+  it('answers the empty string, never undefined, when there is nothing to send', () => {
+    expect(outboundBaseUrl(PROVIDERS, 'OPENAI', '')).toBe('');
+    expect(outboundBaseUrl([], 'OLLAMA', '')).toBe('');
+  });
+
+  it('ALWAYS sends the baseUrl key on the save body, empty when the provider takes none', () => {
+    // ⚠ The mutation proof for the always-send spelling: omitting the key (what
+    // v5 did before this lane, and v4 before `d123658d`) leaves the update
+    // handler's `baseUrl !== undefined` gate untripped, so every already
+    // poisoned row stays broken forever with no gesture that clears it.
+    const cleared = buildProfileRequestBody(
+      form({ provider: 'OPENAI', baseUrl: 'http://localhost:11434' }),
+      PROVIDERS,
+    );
+    expect(Object.prototype.hasOwnProperty.call(cleared, 'baseUrl')).toBe(true);
+    expect(cleared['baseUrl']).toBe('');
+
+    // ...and a fresh profile that never had one still sends the key.
+    const fresh = buildProfileRequestBody(form({ provider: 'OPENAI', baseUrl: '' }), PROVIDERS);
+    expect(Object.prototype.hasOwnProperty.call(fresh, 'baseUrl')).toBe(true);
+    expect(fresh['baseUrl']).toBe('');
+  });
+
+  it('carries the real value through on a provider that takes one', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'OLLAMA', baseUrl: 'http://localhost:11434' }),
+      PROVIDERS,
+    );
+    expect(body['baseUrl']).toBe('http://localhost:11434');
+  });
+
+  it('carries an unknown provider’s stored URL verbatim onto the save body', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'OLLAMA', baseUrl: 'http://localhost:11434' }),
+      [],
+    );
+    expect(body['baseUrl']).toBe('http://localhost:11434');
   });
 });

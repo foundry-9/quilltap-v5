@@ -72433,3 +72433,68 @@ not a value. The `emitNumber`/`asNumericText` reach-ins moved to the child
 component and the exported helper.
 
 **Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.
+
+---
+
+## P4.D86 unit 2 — the `outboundBaseUrl` chokepoint (v4 Bug 73, `d123658d`)
+
+**Lane:** P4.D86. **Files:** `profile-form{.ts,.spec.ts}`,
+`profile-modal{.ts,.spec.ts}` (all under
+`apps/web/src/app/screens/settings/providers/`). **Oracle:** v4's CLIENT at
+`d123658d` — `useProfileForm.ts` + `ProfileModal.tsx`, and the six cases of the
+NEW `__tests__/unit/components/settings/profile-modal-base-url.test.tsx`.
+
+### What v4 changed
+
+Selecting Ollama auto-fills `localhost:11434`; selecting a hosted provider hides
+the field but KEEPS the value, and every outbound site sent it on truthiness
+rather than on `requiresBaseUrl`. The profile could not connect, with the
+offending value rendered nowhere and no gesture that clears it. v4 adds an
+`outboundBaseUrl` chokepoint, makes the save body ALWAYS send the key (`''` when
+the provider takes none, because omitting it leaves the PUT's
+`baseUrl !== undefined` gate untripped and every already-poisoned row broken
+forever), and leaves an UNKNOWN provider's stored URL alone — an unloaded
+provider list is not evidence that a provider takes no base URL.
+
+### v5's own site count — FIVE, not v4's four
+
+Counted rather than assumed (the P4.D83 lesson). v5's are: the three
+form-driven probes (`connect` via `profilePayloadForActions`, `fetchModels`,
+`testMessage`), the save body (`buildProfileRequestBody`), and — the fifth —
+the modal's edit-time auto-fetch `autoFetchModelsForEdit`, which reads the SAVED
+profile rather than form state and therefore resolves its own requirement
+(v4's `savedProviderTakesBaseUrl`, `ProfileModal.tsx:73-80`). v4's
+`supportsMimeType` gate has no v5 analogue: v5 already drops the `baseUrl`
+argument entirely, because the attachment table is static and never reads it.
+
+### The port
+
+- `outboundBaseUrl(providers, provider, baseUrl)` — a pure function in
+  `profile-form.ts`, since v5's builder is a free function rather than a hook.
+  Unknown provider → the stored value verbatim; known-and-takes-none → `''`.
+- `buildProfileRequestBody` gained a `providers` parameter and now writes
+  `baseUrl:` unconditionally. The COURIER branch returns before the chokepoint
+  in both apps, and still sends no `baseUrl` key at all — pinned.
+- `ProfileModal.outbound()` wraps the chokepoint for the three form-driven
+  probes; `autoFetchModelsForEdit` resolves the saved provider's requirement.
+
+### The differential
+
+v4's six cases mirrored 1:1 in a new `ProfileModal base URL (Bug 73)` describe,
+driven through the REAL gesture (the provider `<select>`) with the dispatch
+layer captured, so the assertions are on the bytes that leave the form. Four
+more cases cover v5's own surface: the fetch-models and test-message probes,
+the hidden value surviving in form state, and the fifth site both ways
+(poisoned row → no baseUrl; genuine Ollama row and unknown provider → sent).
+The chokepoint itself has seven unit cases in `profile-form.spec.ts`.
+
+**Mutation-proven.** Reverting the save body to the conditional spread reddens
+two cases — the form-level `ALWAYS sends the baseUrl key` and the modal-level
+`saves the profile with an empty base URL` — with the stale
+`http://localhost:11434` reaching the wire. Measured:
+`Tests 2 failed | 16 passed`.
+
+**Server side:** the `'' → NULL` coercion is P4.D85's Shared-contract line; this
+lane asserts only what leaves the client.
+
+**Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Fixed a base URL following a connection profile onto a provider that neither
+shows nor takes one. Selecting Ollama fills in localhost:11434; switching to a
+hosted provider hid the field but kept the value, and every connection test,
+model fetch and save still sent it, so the profile could not connect with
+nothing on screen to explain why and no way to clear it. The value now stays in
+the form (switching back restores it) but never reaches the wire, and a save
+always sends the field so an already-broken profile heals the next time you save
+it. A provider the app has not loaded keeps its stored URL. Ports v4's bug-73
+fix.
+
 Fixed a numeric provider option in the connection-profile editor putting the
 schema default straight back when you clear it, so the next digit appended to it
 and a wrong value was stored (clear 300, type 5, get 3005). The box now keeps its

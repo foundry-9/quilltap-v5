@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
@@ -44,7 +45,7 @@ async function render(
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ProfileModal],
-    providers: [{ provide: CoreClient, useValue: client }],
+    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(ProfileModal);
   fixture.componentRef.setInput('profile', inputs.profile ?? null);
@@ -636,5 +637,268 @@ describe('ProfileModal (the modelInput directive)', () => {
       '#qt-pf-model',
     )!;
     expect(input.placeholder).toBe('e.g., gpt-4');
+  });
+});
+
+/**
+ * Bug 73 — a base URL picked up from one provider must not follow the profile
+ * onto a provider that neither shows nor takes one.
+ *
+ * These mirror v4's `__tests__/unit/components/settings/profile-modal-base-url.
+ * test.tsx` at `d123658d` case for case, driven through the real gesture (the
+ * provider dropdown) with the dispatch layer captured, so every assertion is on
+ * the bytes that actually leave the form.
+ *
+ * v5 has FIVE outbound sites where v4 names four: the three form-driven probes
+ * (connect / fetch models / test message), the save body, and the modal's
+ * edit-time model fetch, which reads the SAVED profile rather than form state
+ * and resolves its own requirement.
+ */
+describe('ProfileModal base URL (Bug 73)', () => {
+  const OPENAI = provider({
+    id: 'OPENAI',
+    name: 'OPENAI',
+    displayName: 'OpenAI',
+    configRequirements: { requiresApiKey: true, requiresBaseUrl: false },
+  });
+  const OLLAMA = provider({
+    id: 'OLLAMA',
+    name: 'OLLAMA',
+    displayName: 'Ollama',
+    configRequirements: {
+      requiresApiKey: false,
+      requiresBaseUrl: true,
+      baseUrlDefault: 'http://localhost:11434',
+    },
+  });
+  const OAC = provider({
+    id: 'OPENAI_COMPATIBLE',
+    name: 'OPENAI_COMPATIBLE',
+    displayName: 'OpenAI Compatible',
+    configRequirements: {
+      requiresApiKey: false,
+      requiresBaseUrl: true,
+      baseUrlDefault: 'http://localhost:8080/v1',
+    },
+  });
+  const PROVIDERS = [OPENAI, OLLAMA, OAC];
+
+  /** Every request the modal dispatched, in order, both dispatch entry points. */
+  function recorder(): { client: Partial<CoreClient>; seen: CoreRequest[] } {
+    const seen: CoreRequest[] = [];
+    const client = stubClient({
+      dispatchExpect: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return req.type === 'modelFetch'
+          ? { type: 'models', data: { models: [] } }
+          : { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+      }) as unknown as CoreClient['dispatchExpect'],
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return { valid: true, message: 'ok', success: true };
+      }) as unknown as CoreClient['dispatchData'],
+    });
+    return { client, seen };
+  }
+
+  function first(seen: CoreRequest[], type: string): Record<string, unknown> {
+    const found = seen.find((r) => r.type === type);
+    if (!found)
+      throw new Error(`no ${type} dispatched (saw ${seen.map((r) => r.type).join(', ')})`);
+    return found as unknown as Record<string, unknown>;
+  }
+
+  /** The real gesture: pick a provider from the dropdown. */
+  function selectProvider(fixture: ComponentFixture<ProfileModal>, name: string): void {
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    select.value = name;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  function baseUrlBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#qt-pf-baseurl');
+  }
+
+  it('fills the base URL for Ollama and hides it again on OpenAI', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    selectProvider(fixture, 'OLLAMA');
+    expect(baseUrlBox(fixture)!.value).toBe('http://localhost:11434');
+
+    selectProvider(fixture, 'OPENAI');
+    expect(baseUrlBox(fixture)).toBeNull();
+  });
+
+  it('does not send the stale base URL when connecting on the new provider', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'OPENAI');
+    fixture.componentInstance['setField']('apiKeyId', 'key-openai');
+
+    await fixture.componentInstance['connect']();
+    const req = first(seen, 'connectionProfileTest');
+    const sent = req['profile'] as Record<string, unknown>;
+    expect(sent['provider']).toBe('OPENAI');
+    expect(sent['baseUrl']).toBeUndefined();
+  });
+
+  it('does not send the stale base URL when fetching models or testing a message', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'OPENAI');
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+
+    await fixture.componentInstance['fetchModels']();
+    expect(first(seen, 'modelFetch')['baseUrl']).toBeUndefined();
+
+    await fixture.componentInstance['testMessage']();
+    const message = first(seen, 'connectionProfileTestMessage')['profile'] as Record<
+      string,
+      unknown
+    >;
+    expect(message['baseUrl']).toBeUndefined();
+  });
+
+  it('saves the profile with an empty base URL, so the row cannot be written broken', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'OPENAI');
+    typeName(fixture, 'Hosted');
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+    fixture.detectChanges();
+
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileCreate')['profile'] as Record<string, unknown>;
+    expect(body['provider']).toBe('OPENAI');
+    expect(Object.prototype.hasOwnProperty.call(body, 'baseUrl')).toBe(true);
+    expect(body['baseUrl']).toBe('');
+  });
+
+  it('still sends the base URL on a provider that takes one', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    selectProvider(fixture, 'OLLAMA');
+
+    await fixture.componentInstance['connect']();
+    const sent = first(seen, 'connectionProfileTest')['profile'] as Record<string, unknown>;
+    expect(sent['baseUrl']).toBe('http://localhost:11434');
+  });
+
+  it('leaves a stored base URL alone when the provider list has not loaded', async () => {
+    // The card renders the modal before the providers listing answers, and the
+    // fetch can fail outright. An unknown provider is not evidence that it takes
+    // no base URL, so an existing Ollama profile must not be cleared by a save.
+    const { client, seen } = recorder();
+    const fixture = await render(
+      {
+        providers: [],
+        profile: {
+          id: 'cp1',
+          name: 'Local',
+          provider: 'OLLAMA',
+          modelName: 'qwen3',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileUpdate')['profile'] as Record<string, unknown>;
+    expect(body['baseUrl']).toBe('http://localhost:11434');
+  });
+
+  it('does not swap a typed endpoint for ollama’s default on the way back', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+    const box = baseUrlBox(fixture)!;
+    box.value = 'http://box.local:9090/v1';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+
+    expect(baseUrlBox(fixture)!.value).toBe('http://box.local:9090/v1');
+  });
+
+  it('keeps the hidden value in form state, so switching back restores it', async () => {
+    // v4's comment on the chokepoint: "The value stays in form state so
+    // switching back restores it; it simply never reaches the wire."
+    const fixture = await render({ providers: PROVIDERS });
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'OPENAI');
+    expect(baseUrlBox(fixture)).toBeNull();
+    selectProvider(fixture, 'OLLAMA');
+    expect(baseUrlBox(fixture)!.value).toBe('http://localhost:11434');
+  });
+
+  it('keeps the edit-time model fetch off a poisoned row’s endpoint', async () => {
+    // v5's fifth site (v4 `ProfileModal.tsx:73-80`): the auto-fetch on open
+    // reads the SAVED profile, so a row written before the fix must not point
+    // the probe at the wrong endpoint.
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: PROVIDERS,
+        profile: {
+          id: 'cp1',
+          name: 'Poisoned',
+          provider: 'OPENAI',
+          modelName: 'gpt-4',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['baseUrl']).toBeUndefined();
+  });
+
+  it('sends the saved base URL when the saved provider does take one', async () => {
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: PROVIDERS,
+        profile: {
+          id: 'cp1',
+          name: 'Local',
+          provider: 'OLLAMA',
+          modelName: 'qwen3',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['baseUrl']).toBe('http://localhost:11434');
+  });
+
+  it('sends an unknown saved provider’s base URL rather than clearing the probe', async () => {
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: [],
+        profile: {
+          id: 'cp1',
+          name: 'Local',
+          provider: 'OLLAMA',
+          modelName: 'qwen3',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['baseUrl']).toBe('http://localhost:11434');
   });
 });
