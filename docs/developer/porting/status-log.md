@@ -72623,3 +72623,69 @@ was left to it rather than shared, so a leaked row cannot collide through
 five beats run live (the two new ungated ones on their first run). No crate
 touched — the release binaries the e2e needs were built from main's identical
 crate tree.
+
+---
+
+## P4.D86 — LANE CLOSED (2026-08-17)
+
+**Branch:** `claude/p4-profile-editor-spa-2ad578`. **Commits:** `3453a520`
+(bug 72) → `559edf20` (bug 73) → `a31d8625` (bug 74 client) → `e7147275`
+(the banked attachment line + the beats). **Baseline:** v4 `d123658d`,
+drift-checked at lane start (HEAD exactly at the pin, tree clean; `bugfix`
+measured by `diff` and carries nothing main lacks).
+
+**Tier 1 and tier 2 both land WHOLE. Nothing deferred.** The order's tier-3
+section anticipated nothing, and nothing arose — including the unknown-provider
+arm, which turned out to be exercisable at both levels (a `providers: []` form
+and a `providers: []` modal with a saved profile).
+
+### Order premises, measured
+
+- **"the recorded P4.D84 number-clear divergence"** — RE-MEASURED against v4's
+  new behaviour and RETIRED rather than carried. v5 did not reproduce the exact
+  3005 append, but carried the same defect one keystroke over (typing `00`
+  emitted `0` and the binding rewrote the box), and had no placeholder half at
+  all. The note is not left standing.
+- **"count v5's OWN outbound sites rather than assuming v4's four"** — v5 has
+  FIVE. The extra is the modal's edit-time auto-fetch, which reads the SAVED
+  profile; v4 gates it separately for the same reason. v4's sixth gate
+  (`supportsMimeType`) has no v5 analogue at all, because v5 already drops the
+  unread `baseUrl` argument.
+- **"verify `requiresBaseUrl` reaches the SPA"** — it does, non-optional on
+  `ProviderInfo.configRequirements`.
+- **"the fixture must contain what the beat waits on"** — no fixture change
+  needed: the tag editor creates its own tag through `tagCreate`, which the e2e
+  instance already serves.
+
+### Recorded, not closed (neither is this lane's)
+
+- v5's `enrich_with_tags` nests `{id, name}` where v4 nests the full tag row
+  (the documented `api/settings.rs` seam). Immaterial to what either app draws:
+  v5 has no port of v4's tag-style provider, so every SPA surface renders plain
+  `qt-tag-badge` pills.
+- The character Tags tab has the same immediate persistence but NO failure
+  catches, so v4's two toast sentences never fire there. Pre-existing, a
+  different surface.
+
+### The gate
+
+- `ng test` **327 files / 4,827 / 0** (the suite grew 4,824 → 4,827 across the
+  lane); `ng build` clean; `tsc --noEmit` clean; `check_spelling.py` exit 0.
+- **Playwright `aa-foundation` + the profile-editor spec: 6 passed / 1 skipped
+  (the gated tag beat), 55.5 s** — both new ungated beats green on their FIRST
+  live run.
+- **No crate touched** (`git diff main -- crates/ Cargo.toml Cargo.lock` empty),
+  so no cargo gate is owed. The e2e binaries were built from this worktree's
+  crate tree — byte-identical to main's — into the shared release target.
+- Mutation proofs, both measured not asserted: the `syncedFrom` spelling
+  (naive → `007` rewritten to `7`) and the always-send save body (conditional →
+  the stale URL on the wire in two cases).
+
+### For the unifier
+
+- **Flip `P4D85_PROFILE_TAGS_LANDED` to `true`** in
+  `apps/web/e2e/settings-provider-options-flow.spec.ts` once P4.D85's three
+  verbs are served. That beat has never run.
+- Contract cross-check done: the three verb names and payload shapes match
+  P4.D85's order text exactly.
+- Versions: SPA `0.5.498` → **`0.5.502`**. No crate version moved.

@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+Closed work order P4.D86, the SPA half of the `d123658d` round. Docs only; no
+code changed.
+
 The connection-profile editor names what a provider accepts as attachments
 again, under the provider dropdown, matching v4.
 
