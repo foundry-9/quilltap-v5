@@ -570,6 +570,20 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The LLM Inspector cannot show the provider wire body — stop sending walks
+  there for it (2026-08-16, the `93ed8abf` walk's Part B).** `llm_logs.request`
+  holds v4's `summarizeRequest` projection only (messages, temperature,
+  `max_tokens`, `toolCount` — `services/llm_logging.rs:151`), so `options{}`,
+  `keep_alive`, `num_ctx` and `top_p` are structurally absent; and
+  `model/provider_io.rs` / `wire.rs` / `transport.rs` log nothing at any
+  tracing level. Both are v4-faithful. **The walk step that told the human to
+  read request bodies in the Inspector was the error.** For local providers the
+  answer is now committed: `harness/tools/wire-tap.py`, a byte-faithful TCP tap
+  (point the profile's Base URL at it; streaming survives, bodies print).
+  Verified against real ollama with a streaming `/api/chat`. Hosted providers
+  remain unobservable from inside the app — a claim about their wire bytes has
+  to be proven by the request-builder corpora, not by a walk.
+
 - **The 2026-08-14 walk (the 4.8.2/4.8.3 round) — coverage summary.** 38
   steps in six parts on the Friday copy; findings #79–#86 came out of it, two
   of them real defects (#84 the doubled backslash, #85 the arrows dead under

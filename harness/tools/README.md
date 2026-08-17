@@ -238,3 +238,33 @@ a byte-for-byte no-op, and `--self-test` asserts both that and the redirect.
   ONLY when the named oracle case's own header carries the complete recipe —
   the driver restores from there. If neither side is complete, the family is
   `non_extractable` and the header must be fixed.
+
+## `wire-tap.py` — reading what actually goes out on the provider wire
+
+Neither surface a dogfood walk reaches for can answer "what bytes did we
+send?". `llm_logs` stores v4's `summarizeRequest` projection — messages,
+temperature, `max_tokens`, `toolCount` — so the LLM Inspector shows no
+`options{}`, no `keep_alive`, no `num_ctx`, no `top_p`; and the IO layer
+(`model/provider_io.rs`, `wire.rs`, `transport.rs`) logs nothing at any
+level. That is v4-faithful, not a gap to fix — but it means a claim like
+"the profile's parameters reach the wire" cannot be checked from inside
+the app.
+
+`wire-tap.py` is a byte-faithful TCP tap for local providers: it prints
+each request body and relays the bytes untouched, so streaming and
+chunked responses behave exactly as they would without it.
+
+```bash
+python3 harness/tools/wire-tap.py                     # :11435 -> ollama :11434
+python3 harness/tools/wire-tap.py 8081 127.0.0.1:1234 # -> llama-server
+```
+
+Point the connection profile's **Base URL** at the listen port and send.
+Message arrays are summarized to a count and a byte size (they are long
+and rarely the thing under test); every other key prints in full, which is
+where the parameters live.
+
+Two cautions. It is HTTP-only and binds `127.0.0.1` — it cannot tap a
+hosted provider, by design. And a base URL pointed at the tap **persists
+on the profile**: clear it when you are done, or the profile silently
+stops working the moment the tap is not running (v4 bug 73's territory).

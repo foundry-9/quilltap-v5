@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added `harness/tools/wire-tap.py`, a byte-faithful TCP tap for reading what a
+local provider actually receives. Neither the LLM Inspector nor the logs can
+answer that — the log stores a summary of the request, and the IO layer traces
+nothing — so a claim that the profile's parameters reach the wire had no way to
+be checked by hand. Point a connection profile's base URL at the tap and every
+request body prints while the bytes relay untouched. Dev tooling only; nothing
+in the app changed.
+
 Recorded two dogfood findings from the 93ed8abf round's walk, both diagnosed as
 faithfully ported v4 bugs and filed upstream rather than fixed here. Clearing a
 numeric provider option puts the schema default straight back with the caret
