@@ -3087,11 +3087,6 @@ export interface ProfileApiKeyRef {
   isActive: boolean;
 }
 
-export interface ProfileTag {
-  id: string;
-  name: string;
-}
-
 /**
  * A tag as the connection-profiles **collection** endpoint sends it:
  * `enrichWithTags`'s `{ tagId, tag }` envelope, not a flat tag (v4
@@ -3103,14 +3098,14 @@ export interface ProfileTag {
  * third layer). The item route's `?action=get-tags` answers flat
  * {@link EditorTag}s; these two shapes are not interchangeable.
  *
- * ⚠ v5's enrichment marshals only `{id, name}` into the nested tag (a
- * documented seam in `api/settings.rs` `enrich_with_tags`), where v4 nests the
- * full row. The card renders the name, which is all either app draws without a
- * tag-style provider.
+ * The nested `tag` is the FULL tag row, as v4's `EnrichedTag` types it —
+ * P4.D85 closed the `{id, name}` narrowing v5's enrichment used to carry
+ * (the seam was invisible while no fixture profile had tags; see
+ * `api/settings.rs` `enrich_with_tags`).
  */
 export interface EnrichedProfileTag {
   tagId: string;
-  tag: ProfileTag;
+  tag: TagDto;
 }
 
 /**
