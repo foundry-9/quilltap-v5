@@ -14,7 +14,7 @@ import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../cor
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { ModelSelector } from '../../../ui/model-selector';
-import { supportsMimeType } from './attachment-support';
+import { getAttachmentSupportDescription, supportsMimeType } from './attachment-support';
 import {
   getModelClass,
   makeUniqueProfileName,
@@ -161,6 +161,9 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                   </option>
                 }
               </select>
+              <!-- v4 ProfileModal.tsx:379-381. The baseUrl argument v4 passes
+                   is unread by the static table on both sides. -->
+              <p class="qt-text-xs mt-1">Non-image attachments: {{ attachmentSupport() }}</p>
             </div>
           }
         </div>
@@ -741,6 +744,11 @@ export class ProfileModal implements OnInit {
    */
   protected readonly prefillAgainstProviderDefault = computed(
     () => this.form().multiCharacterPrefill && !defaultMultiCharacterPrefill(this.form().provider),
+  );
+
+  /** v4 `ProfileModal.tsx:379-381` — the line under the provider select. */
+  protected readonly attachmentSupport = computed(() =>
+    getAttachmentSupportDescription(this.form().provider),
   );
 
   protected readonly selectedModelClass = computed(() =>

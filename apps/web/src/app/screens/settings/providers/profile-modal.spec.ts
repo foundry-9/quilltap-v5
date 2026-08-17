@@ -902,3 +902,43 @@ describe('ProfileModal base URL (Bug 73)', () => {
     expect(first(seen, 'modelFetch')['baseUrl']).toBe('http://localhost:11434');
   });
 });
+
+/**
+ * The `Non-image attachments:` line under the provider select (v4
+ * `ProfileModal.tsx:379-381`), banked at P4.D84 and landed with this round's
+ * same-family work. The `baseUrl` argument v4 passes is unread by the static
+ * table on both sides, so v5 omits it as it does for `supportsMimeType`.
+ */
+describe('ProfileModal (attachment support line)', () => {
+  function flatText(fixture: ComponentFixture<ProfileModal>): string {
+    return ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  it('names the active provider’s attachment support, and follows the dropdown', async () => {
+    const fixture = await render({
+      providers: [
+        provider({ id: 'OPENAI', name: 'OPENAI', displayName: 'OpenAI' }),
+        provider({ id: 'ANTHROPIC', name: 'ANTHROPIC', displayName: 'Anthropic' }),
+        provider({ id: 'OLLAMA', name: 'OLLAMA', displayName: 'Ollama' }),
+      ],
+    });
+    expect(flatText(fixture)).toContain('Non-image attachments: Images (JPEG, PNG, GIF, WEBP)');
+
+    fixture.componentInstance['onProviderChange']('ANTHROPIC');
+    fixture.detectChanges();
+    expect(flatText(fixture)).toContain(
+      'Non-image attachments: Images (JPEG, PNG, GIF, WEBP), PDF documents, Text files (TXT)',
+    );
+
+    fixture.componentInstance['onProviderChange']('OLLAMA');
+    fixture.detectChanges();
+    expect(flatText(fixture)).toContain('Non-image attachments: No file attachments supported');
+  });
+
+  it('does not draw the line on the courier transport (v4 gates it on !isCourier)', async () => {
+    const fixture = await render({});
+    fixture.componentInstance['setField']('transport', 'courier');
+    fixture.detectChanges();
+    expect(flatText(fixture)).not.toContain('Non-image attachments:');
+  });
+});

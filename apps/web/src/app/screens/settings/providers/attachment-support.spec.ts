@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getSupportedMimeTypes, supportsMimeType } from './attachment-support';
+import {
+  getAttachmentSupportDescription,
+  getSupportedMimeTypes,
+  supportsMimeType,
+} from './attachment-support';
 
 /**
  * The static client capability table, transcribed from v4
@@ -63,5 +67,23 @@ describe('attachment support (v4 client table)', () => {
     expect(supportsMimeType('OLLAMA', 'image/jpeg')).toBe(false);
     expect(supportsMimeType('ANTHROPIC', 'application/pdf')).toBe(true);
     expect(supportsMimeType('OPENAI', 'application/pdf')).toBe(false);
+  });
+
+  /**
+   * The sentence under the modal's provider select (v4
+   * `getAttachmentSupportDescription`, `:189-216`) — three categories in a
+   * fixed order, comma-joined, image subtypes upper-cased, `text/plain` spelled
+   * TXT, and one fixed sentence for a provider that takes nothing.
+   */
+  it('renders v4’s attachment sentence for each provider', () => {
+    expect(getAttachmentSupportDescription('OPENAI')).toBe('Images (JPEG, PNG, GIF, WEBP)');
+    expect(getAttachmentSupportDescription('ANTHROPIC')).toBe(
+      'Images (JPEG, PNG, GIF, WEBP), PDF documents, Text files (TXT)',
+    );
+    expect(getAttachmentSupportDescription('OLLAMA')).toBe('No file attachments supported');
+    expect(getAttachmentSupportDescription('OPENAI_COMPATIBLE')).toBe(
+      'No file attachments supported',
+    );
+    expect(getAttachmentSupportDescription('NOT_A_PROVIDER')).toBe('No file attachments supported');
   });
 });

@@ -56,3 +56,45 @@ export function getSupportedMimeTypes(provider: string): readonly string[] {
 export function supportsMimeType(provider: string, mimeType: string): boolean {
   return getSupportedMimeTypes(provider).includes(mimeType);
 }
+
+/**
+ * A user-facing description of a provider's attachment support (v4
+ * `getAttachmentSupportDescription`, `lib/llm/attachment-support.ts:189-216`),
+ * rendered under the connection-profile modal's provider select.
+ *
+ * Sentence structure carried verbatim: the three categories in this order,
+ * comma-joined, with the image mime subtypes upper-cased and `text/plain`
+ * spelled `TXT`. A provider with no entry at all answers the single fixed
+ * sentence.
+ *
+ * `baseUrl` is part of v4's signature and, in v4, entirely unread — the
+ * hardcoded table above is the only source. Omitted here rather than carried as
+ * an ignored parameter, exactly as {@link supportsMimeType} does.
+ */
+export function getAttachmentSupportDescription(provider: string): string {
+  const mimeTypes = getSupportedMimeTypes(provider);
+  if (mimeTypes.length === 0) return 'No file attachments supported';
+
+  const parts: string[] = [];
+  const images = mimeTypes.filter((t) => t.startsWith('image/'));
+  const documents = mimeTypes.filter((t) => t === 'application/pdf');
+  const text = mimeTypes.filter((t) => t.startsWith('text/'));
+
+  if (images.length > 0) {
+    parts.push(`Images (${images.map((t) => t.replace('image/', '').toUpperCase()).join(', ')})`);
+  }
+  if (documents.length > 0) {
+    parts.push('PDF documents');
+  }
+  if (text.length > 0) {
+    parts.push(
+      `Text files (${text
+        .map((t) => {
+          const format = t.replace('text/', '');
+          return format === 'plain' ? 'TXT' : format.toUpperCase();
+        })
+        .join(', ')})`,
+    );
+  }
+  return parts.join(', ');
+}

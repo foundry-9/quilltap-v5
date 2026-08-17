@@ -39,7 +39,26 @@ import { E2E_PASSPHRASE } from './support/env';
  */
 const P4D83_OPTIONS_SCHEMA_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (lane P4.D85 — the server half of the `d123658d` round).
+ *
+ * The three tag verbs (`connectionProfileGetTags` / `AddTag` / `RemoveTag`)
+ * land with that lane; until then the editor's first read is refused and the
+ * beat below would fail on an empty chip row. Flip this to `true` at
+ * unification.
+ *
+ * A NAMED constant, deliberately, not a capability probe: a probe cannot tell
+ * "the verb is not implemented" from "this profile genuinely has no tags", and
+ * would silently activate the beat into guaranteed failure (the standing e2e
+ * rule).
+ */
+const P4D85_PROFILE_TAGS_LANDED = false;
+
 const PROFILE_NAME = 'P4.D84 options walk';
+const BASE_URL_PROFILE = 'P4.D86 base-url walk';
+const TAG_PROFILE = 'P4.D86 tag walk';
+const NUMBER_PROFILE = 'P4.D86 number walk';
+const TAG_NAME = 'p4d86-fast-and-cheap';
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -182,6 +201,177 @@ test.describe('P4.D84 — the profile editor’s provider-driven surfaces', () =
     await card.getByRole('button', { name: 'Delete' }).click();
     await card.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.locator('.qt-card').filter({ hasText: PROFILE_NAME })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+  });
+});
+
+/**
+ * P4.D86 — v4's own verification walk for `d123658d`, beat for beat:
+ * "connect succeeds on OpenAI after visiting Ollama and the saved row holds
+ * NULL; a cleared timeout stays cleared, stores 5 rather than 3005, and
+ * round-trips as absent; a tag added through the modal persists, survives a
+ * reopen, and shows its name on the card."
+ *
+ * SELF-CLEANING: each beat deletes the profile it created.
+ */
+test.describe('P4.D86 — the profile editor’s three fixed seams', () => {
+  test('a base URL picked up from Ollama does not follow the profile to a hosted provider', async ({
+    page,
+  }) => {
+    await openProfilesCard(page);
+    await page.getByRole('button', { name: '+ Add Profile' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+
+    // Ollama auto-fills its default; the row is saved WITH it, so the beat has
+    // a genuinely poisoned row to heal rather than an empty one.
+    await providerSelect(page).selectOption('OLLAMA');
+    await expect(page.locator('#qt-pf-baseurl')).toHaveValue('http://localhost:11434');
+    await page.locator('#qt-pf-name').fill(BASE_URL_PROFILE);
+    await page.locator('#qt-pf-model').fill('qwen3:8b');
+    await page.getByRole('button', { name: 'Create Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    const card = page.locator('.qt-card').filter({ hasText: BASE_URL_PROFILE });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByText('Base URL: http://localhost:11434')).toBeVisible();
+
+    // Move it to a hosted provider: the field goes away, and the save must send
+    // an EMPTY baseUrl so the stored row is cleared rather than left broken and
+    // invisible. Read back off the card, which renders the stored column.
+    await card.getByRole('button', { name: 'Edit' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+    await providerSelect(page).selectOption('OPENAI');
+    await expect(page.locator('#qt-pf-baseurl')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Update Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    const healed = page.locator('.qt-card').filter({ hasText: BASE_URL_PROFILE });
+    await expect(healed).toBeVisible({ timeout: 15_000 });
+    await expect(healed.getByText('Base URL:')).toHaveCount(0);
+
+    await healed.getByRole('button', { name: 'Delete' }).click();
+    await healed.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.locator('.qt-card').filter({ hasText: BASE_URL_PROFILE })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+  });
+
+  test('a cleared numeric option stores what is typed next, and round-trips absent', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D83_OPTIONS_SCHEMA_LANDED,
+      'the providers listing serves optionsSchema: null until P4.D83 lands',
+    );
+
+    await openProfilesCard(page);
+    await page.getByRole('button', { name: '+ Add Profile' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+
+    await providerSelect(page).selectOption('OLLAMA');
+    await page.locator('#qt-pf-name').fill(NUMBER_PROFILE);
+    await page.locator('#qt-pf-baseurl').fill('http://localhost:11434');
+    await page.locator('#qt-pf-model').fill('qwen3:8b');
+
+    // Unset: blank box, default showing through as the placeholder. "Absent"
+    // and "explicitly the default" must not look identical (Bug 72).
+    const timeout = page.locator('#pof-request_timeout_seconds');
+    await expect(timeout).toHaveValue('');
+    await expect(timeout).toHaveAttribute('placeholder', '300');
+
+    await timeout.fill('300');
+    await timeout.fill('');
+    await timeout.pressSequentially('5');
+    // The bug's signature was 3005 — the default repainted with the caret after it.
+    await expect(timeout).toHaveValue('5');
+
+    await page.getByRole('button', { name: 'Create Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+    const card = page.locator('.qt-card').filter({ hasText: NUMBER_PROFILE });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+
+    await card.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.locator('#pof-request_timeout_seconds')).toHaveValue('5');
+
+    // Clear it and save: the key leaves the bag, so the reopen shows blank
+    // rather than resurrecting the schema default as a stored-looking value.
+    await page.locator('#pof-request_timeout_seconds').fill('');
+    await page.getByRole('button', { name: 'Update Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.locator('#pof-request_timeout_seconds')).toHaveValue('');
+    await expect(page.locator('#pof-request_timeout_seconds')).toHaveAttribute(
+      'placeholder',
+      '300',
+    );
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    await card.getByRole('button', { name: 'Delete' }).click();
+    await card.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.locator('.qt-card').filter({ hasText: NUMBER_PROFILE })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+  });
+
+  test('a tag added in the modal persists, survives a reopen, and names itself on the card', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D85_PROFILE_TAGS_LANDED,
+      'the three connection-profile tag verbs land with P4.D85 — flip P4D85_PROFILE_TAGS_LANDED when they do',
+    );
+
+    await openProfilesCard(page);
+    await page.getByRole('button', { name: '+ Add Profile' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+    await providerSelect(page).selectOption('OPENAI');
+    await page.locator('#qt-pf-name').fill(TAG_PROFILE);
+    await page.locator('#qt-pf-model').fill('gpt-4');
+    await page.getByRole('button', { name: 'Create Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    const card = page.locator('.qt-card').filter({ hasText: TAG_PROFILE });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+
+    // The editor only exists when EDITING — v4 renders it on `profile?.id`.
+    await card.getByRole('button', { name: 'Edit' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '+ Add Tag' }).click();
+    await page.getByPlaceholder('Add a tag...').fill(TAG_NAME);
+    await page.getByPlaceholder('Add a tag...').press('Enter');
+
+    // Immediate persistence: the chip is there before any Save.
+    const chip = page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME });
+    await expect(chip).toHaveCount(1, { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    // Survives a reopen (the get-tags read), and NAMES itself on the card (the
+    // `{tagId, tag}` envelope read correctly — Bug 74's third layer drew every
+    // pill empty).
+    const tagged = page.locator('.qt-card').filter({ hasText: TAG_PROFILE });
+    await expect(tagged.locator('.qt-tag-badge').filter({ hasText: TAG_NAME })).toHaveCount(1, {
+      timeout: 15_000,
+    });
+    await tagged.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME })).toHaveCount(1, {
+      timeout: 15_000,
+    });
+
+    // Detach again, so the shared server is left as it was found.
+    await page.getByRole('button', { name: `Remove ${TAG_NAME} tag` }).click();
+    await expect(page.locator('.qt-tag-badge').filter({ hasText: TAG_NAME })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+
+    await tagged.getByRole('button', { name: 'Delete' }).click();
+    await tagged.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.locator('.qt-card').filter({ hasText: TAG_PROFILE })).toHaveCount(0, {
       timeout: 15_000,
     });
   });

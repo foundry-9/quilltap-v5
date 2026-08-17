@@ -72572,3 +72572,54 @@ failure arms pin the toast sentences.
 **Gate:** `ng test` 327 files / 4,824 / 0; `ng build` clean. No crate touched.
 The tag surface is inert until P4.D85 serves the verbs; the e2e beat is gated
 `P4D85_PROFILE_TAGS_LANDED`.
+
+---
+
+## P4.D86 unit 4 — the banked attachment line, and the round's three beats
+
+**Lane:** P4.D86 (tier 2). **Files:** `attachment-support{.ts,.spec.ts}`,
+`profile-modal{.ts,.spec.ts}`, `apps/web/e2e/settings-provider-options-flow.spec.ts`.
+
+### The `Non-image attachments:` line
+
+Banked at P4.D84 as a pre-existing divergence, landed here because it is the
+same component family and `d123658d` touches that exact line. Ports v4's
+`getAttachmentSupportDescription` (`lib/llm/attachment-support.ts:189-216`):
+three categories in a fixed order, comma-joined, image subtypes upper-cased,
+`text/plain` spelled `TXT`, and one fixed sentence for a provider that takes
+nothing. The `baseUrl` argument v4 passes is unread by the static table on both
+sides, so v5 omits it exactly as it already does for `supportsMimeType` — which
+also means v4's `d123658d` change to that argument (`(reqs.requiresBaseUrl &&
+baseUrl) || undefined`) is a no-op v5 has nothing to port.
+
+Five sentence cases in `attachment-support.spec.ts` plus two modal cases (the
+line follows the dropdown across three providers; it is absent on the courier
+transport, which v4 gates the same way).
+
+### The beats (v4's own verification walk)
+
+v4's commit closes with the walk it ran against a running instance; all three
+legs are now Playwright beats in the profile-editor spec file.
+
+- **base URL (ungated).** Creates a genuinely poisoned Ollama row (the card
+  shows `Base URL: http://localhost:11434`), edits it onto OpenAI, saves, and
+  asserts the card no longer shows a base URL — i.e. the always-send `''`
+  reached the wire and the update handler mapped it to NULL. Self-cleaning.
+- **number field (ungated).** Asserts the unset placeholder, drives
+  clear → type 5 (the `3005` signature), round-trips through a save, then clears
+  and re-opens to prove the key left the bag rather than the default returning.
+  Self-cleaning.
+- **tags — GATED `P4D85_PROFILE_TAGS_LANDED = false`.** A named constant, not a
+  probe: a probe cannot tell "the verb is not implemented" from "this profile
+  has no tags". Flip at unification. Needs no fixture work — the editor creates
+  its own tag through `tagCreate`, which the e2e instance already serves
+  (`quick-hide-flow` uses it), so the `tags` table is present.
+
+Each beat uses its OWN profile name; the existing P4.D84 beat's `PROFILE_NAME`
+was left to it rather than shared, so a leaked row cannot collide through
+`takenNames`.
+
+**Gate:** `ng test` 327 files / 4,827 / 0; `ng build` clean; the spec file's
+five beats run live (the two new ungated ones on their first run). No crate
+touched — the release binaries the e2e needs were built from main's identical
+crate tree.
