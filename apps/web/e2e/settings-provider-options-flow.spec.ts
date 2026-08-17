@@ -52,7 +52,7 @@ const P4D83_OPTIONS_SCHEMA_LANDED = true;
  * would silently activate the beat into guaranteed failure (the standing e2e
  * rule).
  */
-const P4D85_PROFILE_TAGS_LANDED = false;
+const P4D85_PROFILE_TAGS_LANDED = true;
 
 const PROFILE_NAME = 'P4.D84 options walk';
 const BASE_URL_PROFILE = 'P4.D86 base-url walk';
