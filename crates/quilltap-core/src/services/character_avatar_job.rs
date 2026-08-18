@@ -49,7 +49,7 @@ pub struct CharacterAvatarPayload {
     pub chat_id: String,
     pub character_id: String,
     pub image_profile_id: String,
-    /// One-shot `{ top, bottom, footwear, accessories }` override.
+    /// One-shot `{ top, bottom, footwear, accessories, hair }` override.
     pub equipped_slots_override: Option<Value>,
 }
 

@@ -46,8 +46,9 @@ use serde_json::Value;
 use super::chats::{ChatUpdate, ChatsRepository};
 use super::{chats_read, DbError};
 
-/// The closed slot set v4 walks when removing an item (`WARDROBE_SLOT_TYPES`).
-const WARDROBE_SLOT_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+/// The closed slot set v4 walks when removing an item — read from the ONE
+/// registry (`4423ad10`'s consolidation).
+const WARDROBE_SLOT_TYPES: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 /// Drop `item_id` from a single character's slots object, mutating it in place.
 /// Mirrors v4 exactly: for each slot key, read `slots[slotKey] ?? []` and rewrite

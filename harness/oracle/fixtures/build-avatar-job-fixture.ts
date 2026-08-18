@@ -59,6 +59,8 @@ interface ChatSpec {
   imageProfileId: string;
   equipped: Record<string, string[]>;
   equippedSlotsOverride?: Record<string, string[]>;
+  /** Keep the pre-hair FOUR-key stored shape (the v4-crash divergence pin). */
+  legacySlots?: boolean;
   expectWrite: boolean;
 }
 interface Spec {
@@ -263,12 +265,20 @@ async function main(): Promise<void> {
     updatedAt: TS,
   });
   const charName = (id: string): string => spec.characters.find((c) => c.id === id)!.name;
-  // v4's stored equippedOutfit always carries all four slots as arrays; a partial
-  // map makes resolveEquippedOutfitForCharacter throw ("slots.X is not iterable").
-  const SLOTS = ['top', 'bottom', 'footwear', 'accessories'];
-  const fullSlots = (m: Record<string, string[]>): Record<string, string[]> => {
+  // v4's stored equippedOutfit always carries every live slot as an array; a
+  // partial map makes resolveEquippedOutfitForCharacter throw ("rootIds is not
+  // iterable"). Since `4423ad10` the live list is FIVE slots (hair). A case
+  // marked `legacySlots: true` keeps the pre-hair FOUR-key stored shape — the
+  // real bytes of a chat written before the hair slot existed — to pin the
+  // v4-crash / v5-tolerance divergence (v4 bug, filed upstream).
+  const SLOTS = ['top', 'bottom', 'footwear', 'accessories', 'hair'];
+  const LEGACY_SLOTS = ['top', 'bottom', 'footwear', 'accessories'];
+  const fullSlots = (
+    m: Record<string, string[]>,
+    legacy: boolean,
+  ): Record<string, string[]> => {
     const out: Record<string, string[]> = {};
-    for (const s of SLOTS) out[s] = m[s] ?? [];
+    for (const s of legacy ? LEGACY_SLOTS : SLOTS) out[s] = m[s] ?? [];
     return out;
   };
   for (const [, chat] of Object.entries(spec.chats)) {
@@ -279,7 +289,9 @@ async function main(): Promise<void> {
         chatType: 'salon',
         alertCharactersOfLanternImages: true,
         participants: [mkParticipant(chat.characterId, charName(chat.characterId))],
-        equippedOutfit: { [chat.characterId]: fullSlots(chat.equipped) },
+        equippedOutfit: {
+          [chat.characterId]: fullSlots(chat.equipped, chat.legacySlots === true),
+        },
       } as never,
       { id: chat.id, createdAt: TS, updatedAt: TS } as never,
     );

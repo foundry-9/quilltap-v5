@@ -16,8 +16,7 @@ use crate::jsstr::{js_trim_end, utf16_len, utf16_truncate};
 use crate::pronoun_gender::gender_noun_from_pronouns;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{
-    decorate_outfit_items_title_only, describe_outfit_with_omit, OutfitSlotName, OutfitSlotValues,
-    Slots,
+    decorate_outfit_items_title_only, describe_outfit_with_omit, OutfitSlotName, Slots,
 };
 
 /// Cap for the avatar aesthetic preamble (v4 `AVATAR_AESTHETIC_MAX_CHARS`).
@@ -55,6 +54,7 @@ pub struct LeafCounts {
     pub bottom: usize,
     pub footwear: usize,
     pub accessories: usize,
+    pub hair: usize,
 }
 
 /// v4 `buildCharacterAvatarPrompt`. `character` is the vault-overlaid character
@@ -127,24 +127,29 @@ pub fn build_character_avatar_prompt(
 
         top_is_bare = resolved.top.is_empty();
         let accessories = decorate_outfit_items_title_only(&resolved.accessories);
+        // A hairdo is the most visible thing in a head-and-shoulders portrait,
+        // so it rides along on BOTH branches below.
+        let hair = decorate_outfit_items_title_only(&resolved.hair);
 
         if top_is_bare {
             // Bare-topped character. Deliberately do NOT emit "topless"/"naked"
             // wardrobe language: it trips SFW image-provider moderation. The
             // tighter collarbone crop in the intro conveys the exposure; here we
-            // only list accessories at or above the collar. Also avoid
-            // describeOutfit's "completely naked and unadorned" fallback (which
-            // would fire, reintroducing nudity language, when accessories are
-            // empty too) — hence the explicit empty-accessories `''` branch.
-            outfit_text = if accessories.is_empty() {
+            // only list accessories at or above the collar, plus a styled
+            // hairdo. Also avoid describeOutfit's "completely naked and
+            // unadorned" fallback (which would fire, reintroducing nudity
+            // language, when accessories AND hair are both empty) — hence the
+            // explicit empty `''` branch. (The guard keying on accessories
+            // alone was v4's likeliest silent-drop bug in the whole feature —
+            // `4423ad10` widened it to `accessories || hair`.)
+            outfit_text = if accessories.is_empty() && hair.is_empty() {
                 String::new()
             } else {
-                let slots = OutfitSlotValues {
-                    top: Vec::new(),
-                    bottom: Vec::new(),
-                    footwear: Vec::new(),
-                    accessories,
-                };
+                let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
+                    "accessories" => accessories.clone(),
+                    "hair" => hair.clone(),
+                    _ => Vec::new(),
+                });
                 js_trim_end(&describe_outfit_with_omit(
                     &slots,
                     &[
@@ -156,12 +161,13 @@ pub fn build_character_avatar_prompt(
                 .to_string()
             };
         } else {
-            let slots = OutfitSlotValues {
-                top: decorate_outfit_items_title_only(&resolved.top),
-                bottom: decorate_outfit_items_title_only(&resolved.bottom),
-                footwear: decorate_outfit_items_title_only(&resolved.footwear),
-                accessories,
-            };
+            let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
+                "accessories" => accessories.clone(),
+                "hair" => hair.clone(),
+                _ => decorate_outfit_items_title_only(resolved.slot(slot)),
+            });
+            // Hair is deliberately NOT omitted — the hairdo belongs in a
+            // portrait.
             outfit_text = js_trim_end(&describe_outfit_with_omit(
                 &slots,
                 &[OutfitSlotName::Bottom, OutfitSlotName::Footwear],
@@ -173,6 +179,7 @@ pub fn build_character_avatar_prompt(
         leaf_counts.bottom = resolved.bottom.len();
         leaf_counts.footwear = resolved.footwear.len();
         leaf_counts.accessories = resolved.accessories.len();
+        leaf_counts.hair = resolved.hair.len();
     }
 
     let has_appearance = !physical_text.is_empty() || !outfit_text.is_empty();

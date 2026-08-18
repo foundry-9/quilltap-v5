@@ -38,6 +38,7 @@ fn slots(
         bottom: v(bottom),
         footwear: v(footwear),
         accessories: v(accessories),
+        hair: Vec::new(),
     }
 }
 

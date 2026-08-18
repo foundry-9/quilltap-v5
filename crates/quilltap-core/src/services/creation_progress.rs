@@ -65,7 +65,7 @@ pub struct OutfitPreviewEntry {
     pub is_composite: bool,
 }
 
-/// The decided four-slot outfit rendered read-only in the dialog (v4
+/// The decided per-slot outfit rendered read-only in the dialog (v4
 /// `OutfitPreviewSlots`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OutfitPreviewSlots {
@@ -73,6 +73,7 @@ pub struct OutfitPreviewSlots {
     pub bottom: Vec<OutfitPreviewEntry>,
     pub footwear: Vec<OutfitPreviewEntry>,
     pub accessories: Vec<OutfitPreviewEntry>,
+    pub hair: Vec<OutfitPreviewEntry>,
 }
 
 /// A `log`-frame severity (v4 `level?: 'info' | 'warn' | 'error'`).

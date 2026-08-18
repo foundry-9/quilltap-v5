@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Ported the server half of v4's hair wardrobe slot (P4.D87, v4 4423ad10).
+Wardrobe slots now number five — top, bottom, footwear, accessories, hair
+— with hair holding a hairdo, not hair: an empty hair slot means unstyled,
+never bald, so no report, prompt, or tool result ever mentions hair when
+the slot is blank (two per-slot dumps that printed a literal
+"hair: (empty)" line are fixed at all three v5 sites). Nudity semantics
+compute over clothing slots only; a hair-only pick still counts as "chose
+nothing to wear"; avatars carry the hairdo on both the dressed and
+bare-top branches (the bare-top guard keyed on accessories alone and
+would have silently dropped it); undressing keeps the hairstyle in scene
+state. The ten duplicated slot lists collapse onto one registry
+(WARDROBE_SLOT_META) with per-slot label/clothing/report-when-empty
+metadata; three deliberately frozen legacy lists stay at four. The outfit
+hash gains the hair key unconditionally (each chat re-derives its cached
+clothing summary once). No schema or migration change: absent hair keys
+read as empty. Thirty-one differential families regenerated fresh from a
+pinned 979652a9 v4 worktree, all green, plus a new outfit_hash_equivalence
+tier-1 family. Found and pinned upstream: v4 itself crashes avatar
+generation on any pre-hair chat row (raw four-key equipped state reaches
+the five-slot resolver with no default) — v5 tolerates the legacy shape
+by design, pinned both directions with a convergence tripwire.
+
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it
 reshapes the response, which the API itself never sends, so every model was

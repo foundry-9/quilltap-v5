@@ -523,6 +523,50 @@ fn avatar_job_matches_oracle() {
             &payload,
         ));
         let got_threw: Option<String> = outcome.err();
+
+        // ── The pre-hair stored-shape divergence pin (P4.D87) ───────────────
+        // v4 at `979652a9` reads `chat.equippedOutfit[cid]` RAW (no schema
+        // parse) and its five-slot resolver loop calls
+        // `expandComposites(slots[slot], …)` without a `?? []` — so a chat row
+        // written BEFORE the hair slot existed (four keys) crashes the whole
+        // avatar job with "rootIds is not iterable". That is a v4 BUG (filed
+        // upstream from this lane); v5's `Slots::from_value` reads a missing
+        // slot key as empty, per the no-migration guarantee, and completes.
+        // Pinned in BOTH directions: this arm retires to a plain equality the
+        // moment v4's regenerated oracle stops throwing.
+        if label.as_str() == "legacy_four_key_equipped" {
+            match want.threw.as_deref() {
+                Some(msg) if msg.contains("is not iterable") => {
+                    assert_eq!(
+                        got_threw, None,
+                        "{label}: v5 must tolerate a pre-hair four-key equipped row"
+                    );
+                    // The tolerance is real work, not a skip: v5 completed the
+                    // job and wrote the avatar.
+                    let cid = case.id.clone();
+                    let avatars: Option<String> = db
+                        .read_main(move |c| {
+                            Ok(c.query_row(
+                                "SELECT characterAvatars FROM chats WHERE id = ?1",
+                                [cid.as_str()],
+                                |r| r.get::<_, Option<String>>(0),
+                            )?)
+                        })
+                        .expect("read characterAvatars");
+                    let wrote = avatars
+                        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                        .and_then(|v| v.as_object().map(|o| !o.is_empty()))
+                        .unwrap_or(false);
+                    assert!(wrote, "{label}: v5 should have written the avatar");
+                    continue;
+                }
+                other => panic!(
+                    "{label}: v4 no longer crashes on a pre-hair equipped row ({other:?}) — \
+                     the divergence CONVERGED; retire this pin to a plain equality"
+                ),
+            }
+        }
+
         assert_eq!(
             got_threw, want.threw,
             "{}: threw diverged\n  rust:   {:?}\n  oracle: {:?}",

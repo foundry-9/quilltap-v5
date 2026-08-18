@@ -49,8 +49,9 @@ use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::types::{ErrorKind, Response};
 
-/// The four coverage slots (v4 `WardrobeItemTypeEnum` / `WARDROBE_SLOT_TYPES`).
-const WARDROBE_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+/// The coverage slots (v4 `WardrobeItemTypeEnum` / `WARDROBE_SLOT_TYPES`) —
+/// read from the ONE registry (`4423ad10`'s consolidation).
+const WARDROBE_TYPES: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())

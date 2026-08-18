@@ -19,8 +19,9 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 
 /// v4 `AvatarGenerationParams` — the inputs the trigger needs. The
-/// `equipped_slots_override` is a one-shot `{ top, bottom, footwear,
-/// accessories }` slot map (forwarded into the job payload verbatim when set).
+/// `equipped_slots_override` is a one-shot `EquippedSlots` map (`{ top, bottom,
+/// footwear, accessories, hair }`, forwarded into the job payload verbatim when
+/// set).
 #[derive(Clone, Debug)]
 pub struct AvatarGenerationParams {
     pub user_id: String,
@@ -30,7 +31,7 @@ pub struct AvatarGenerationParams {
     /// chat's stored `imageProfileId` is NOT mutated.
     pub image_profile_id_override: Option<String>,
     /// One-shot equipped-slots override (a JSON `{ top, bottom, footwear,
-    /// accessories }` object) forwarded into the job payload.
+    /// accessories, hair }` object) forwarded into the job payload.
     pub equipped_slots_override: Option<Value>,
 }
 

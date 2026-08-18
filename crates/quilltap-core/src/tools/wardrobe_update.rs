@@ -38,7 +38,7 @@ struct UpdateInput {
     component_item_ids: Option<Vec<String>>,
 }
 
-const SLOT_ENUM: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+const SLOT_ENUM: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 fn opt_string(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<String>, ()> {
     match obj.get(key) {

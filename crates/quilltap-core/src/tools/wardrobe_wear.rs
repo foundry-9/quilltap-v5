@@ -64,7 +64,7 @@ fn failure(error: impl Into<String>) -> WardrobeWearToolOutput {
 
 const VALIDATION_ERROR: &str = "Invalid input: provide a non-empty \"operations\" array. Each operation needs an item_id or item_title; mode=add_to_slot also needs a slot.";
 const MODE_ENUM: [&str; 3] = ["wear", "replace", "add_to_slot"];
-const SLOT_ENUM: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+const SLOT_ENUM: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 /// One validated wear op.
 struct WearOp {
@@ -408,6 +408,12 @@ pub fn format(output: &WardrobeWearToolOutput) -> String {
                     .join(", ")
             })
             .unwrap_or_default();
+        // An unreported-if-blank slot (hair) is omitted entirely when empty
+        // rather than listed as "(empty)" — the model must never read that as
+        // baldness.
+        if ids.is_empty() && !crate::wardrobe::is_slot_reported_when_empty(slot) {
+            continue;
+        }
         let label = if ids.is_empty() {
             "(empty)".to_string()
         } else {

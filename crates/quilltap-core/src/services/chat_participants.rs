@@ -1233,34 +1233,14 @@ pub async fn handle_remove_participant(
 // `applyOutfitForAddedParticipant` (v4 `actions/participants.ts:169`)
 // ===========================================================================
 
-/// v4's four-slot equipped-outfit shape (the same object
-/// `services::outfit_selections` writes).
+/// v4's equipped-outfit shape (the same object `services::outfit_selections`
+/// writes) — the canonical serialization, hair key included.
 fn slots_value(slots: &crate::wardrobe::Slots) -> Value {
-    json!({
-        "top": slots.top,
-        "bottom": slots.bottom,
-        "footwear": slots.footwear,
-        "accessories": slots.accessories,
-    })
+    slots.to_value()
 }
 
 fn slots_from_value(v: &Value) -> crate::wardrobe::Slots {
-    let arr = |k: &str| -> Vec<String> {
-        v.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    crate::wardrobe::Slots {
-        top: arr("top"),
-        bottom: arr("bottom"),
-        footwear: arr("footwear"),
-        accessories: arr("accessories"),
-    }
+    crate::wardrobe::Slots::from_value(Some(v))
 }
 
 /// v4 `applyOutfitForAddedParticipant` — dress a freshly-added (or reactivated)

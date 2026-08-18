@@ -73019,3 +73019,108 @@ Orders: `work-orders/p4.d87-wardrobe-hair-core.md`,
 `p4.d90-workspace-tab-refresh.md`; `p4.49-file-logging.md` (pre-existing,
 baseline note updated). The plan is mirrored in `phase-4.md` → "The
 `979652a9` drift round".
+
+## P4.D87 — the hair slot, core half (v4 `4423ad10` + Bug 75) — unit 1: the server port whole
+
+- **Unit 1–4+6 (one commit — the compile cascade is atomic): v4 `4423ad10`'s
+  server half landed whole.** The registry (`WARDROBE_SLOT_TYPES` = 5 with
+  hair appended LAST, `WardrobeSlotMeta` + `WARDROBE_SLOT_META` +
+  `CLOTHING_SLOT_TYPES` + `UNREPORTED_IF_BLANK_SLOT_TYPES` +
+  `is_slot_reported_when_empty` + the three slot-guidance sentences
+  byte-copied into `wardrobe.rs`; the two derived consts' derivations pinned
+  by unit test since Rust consts can't filter). The 10-copy consolidation:
+  `vault_overlay::WARDROBE_ITEM_TYPES`, the four tools' `SLOT_ENUM`,
+  `db/chats_outfits`, `api/chat_outfits`, `api/wardrobe` all read the ONE
+  registry; the three FROZEN sites (`vault_overlay::validate_outfit`,
+  `LEGACY_SLOT_ORDER`, `LEGACY_PRESET_SLOT_ORDER`) stay at four with
+  do-not-widen comments. The typed five-field changes: `OutfitSlotValues` +
+  the `build_outfit_slot_values` helper v5 never had (all six literal
+  construction sites through it or the slot accessor), `OutfitSlotName::Hair`,
+  the `describe_outfit_with_omit` rewrite as v4's generic registry loop
+  (rule 13 pinned: styled hair blocks the "completely naked and unadorned"
+  collapse, falling through to `- naked` + fallbacks + the hair line),
+  `Slots` + `hair` with the persisted key order `top,bottom,footwear,
+  accessories,hair` (`slot`/`slot_mut` made pub so walks iterate the
+  registry; three duplicated local parse/serialize twins in `chat_create`/
+  `chat_participants`/`chat_merge` consolidated onto `from_value`/
+  `to_value`), the hash `Normalized` + `hair` UNCONDITIONALLY (the accepted
+  one-miss-per-chat; no conditional key omission), `has_equipped_items` over
+  all five via `.any()` (the hair-only-counts fix), `accept_llm_choice` over
+  `CLOTHING_SLOT_TYPES` only (a hair-only pick is still "chose nothing to
+  wear"), the avatar `accessories || hair` bare-top guard (v4's "likeliest
+  silent-drop bug") with hair on BOTH branches and hair deliberately NOT
+  omitted from the dressed crop, the three `(empty)`-dump fixes (v5 has
+  three sites for v4's two — the shared formatter was duplicated), the
+  resolve-equipped walks over the registry (hair items now actually
+  resolve), `upgrade_legacy_equipped_slots` over the live list (absent
+  legacy slots upgrade to `[]`), and the scene-state prompt bytes (both
+  prompts: the undress-keeps-the-hairstyle rule + the say-NOTHING-when-unset
+  rule, byte-exact). Tool definitions: the five `definitions/data.rs` JSON
+  constants edited byte-for-byte to v4's regenerated snapshot (enum + the
+  `HAIR_SLOT_GUIDANCE` sentence + the braided-updo example + the
+  clothing-slot rewording in the Naked-composite gloss);
+  `OUTFIT_SELECTION_PROMPT` gained the hair line + example keys + the
+  deliberate-nudity-is-about-clothing paragraph. `OutfitPreviewSlots` gained
+  `hair` (Green Room frames). Mirrored v4's
+  `equipped-slots-forward-compat.test.ts` (in `wardrobe.rs` tests) and
+  `unreported-if-blank-slots.test.ts` (as
+  `crates/quilltap-core/tests/unreported_if_blank_slots.rs`, 12 tests;
+  the `image-analysis` sibling skipped — surface unported).
+- **Differentials (all regenerated FRESH from the pinned `979652a9` worktree
+  via the sweep driver, `--v4 /tmp/qt-v4-pin-p4d87-979652a9`, zero SKIP):**
+  `tool_definitions_equivalence` (+canonical), `wardrobe_tools_equivalence`
+  (fixture rebuilt; corpus 31 → 35 ops with the hair quartet —
+  create-equip / take-off / wear / clear_slot — plus the reportWhenEmpty
+  dump tripwire), `outfit_llm_choose_tier3_equivalence` (prompt bytes
+  end-to-end), `chats_outfits_tier2_equivalence` (the zero-normalization
+  family, green at the new five-key shape), `dissolve_bundles_equivalence`,
+  `build_context_tier3_equivalence`, `chat_create_capstone_equivalence`,
+  `avatar_job_tier3_equivalence` (see the fixture rework below),
+  `image_generation_tier3_equivalence`, `context_feeders_leaves_equivalence`,
+  the six vault wardrobe families, `system_restore_equivalence` +
+  `system_restore_state` + `restore_vintage_state`, and the verify-and-run
+  eight (`wardrobe_tier2`, `wardrobe_public_read`, `wardrobe_transfers_tier2`,
+  `chat_cast_routes`, `chat_export`, `post_office_aurora`,
+  `pascal_build_tools_roster`, `tool_build`) — plus three adjacent families
+  run as insurance (`wardrobe_routes`, `character_avatar_write_tier2`,
+  `seed_avatars`). All green. The `(empty)`-leak mutation-proven at ALL
+  THREE v5 sites individually (create → op[8], wear → op[15], take_off →
+  op[18], each red with the guard removed, green restored).
+- **NEW family `outfit_hash_equivalence`** (tier-1 exact, 8 cases over v4's
+  REAL `hashEquippedSlots`/`hasEquippedItems`): pins the five-key preimage,
+  the legacy-four-key ≡ explicit-five-key identity (what makes the upgrade
+  miss a ONE-time event — the tier-2 "re-derive" deliverable, landed at the
+  mechanism), layering-order significance, and hair-only-counts. Recipe in
+  the test header; oracle `harness/oracle/cases/outfit-hash.ts`.
+- **A REAL v4 BUG found by the avatar-job regen, TO FILE UPSTREAM:** v4 at
+  `979652a9` reads `chat.equippedOutfit[cid]` RAW (`chats.repository.ts:548`
+  casts, never parses) and the `4423ad10` resolver loop calls
+  `expandComposites(slots[slot], …)` with no `?? []` — so EVERY chat row
+  written before the hair slot existed (four keys) CRASHES avatar generation
+  ("rootIds is not iterable"; the scene-state / context-manager sites
+  degrade soft behind their try/catches, silently losing live clothing).
+  The avatar-job fixture builder was writing v4's pre-hair four-key shape,
+  which turned 7 of 9 oracle cases into that crash; the builder now writes
+  the five-key shape v4's own writers produce today, a `legacySlots` flag
+  keeps ONE case (`legacy_four_key_equipped`) on the true pre-hair bytes,
+  and the harness pins the divergence BOTH directions (v4 throws, v5
+  completes and writes — v5's `from_value` reads a missing key as `[]` per
+  the no-migration guarantee) with a convergence tripwire that fires the
+  moment v4's regenerated oracle stops throwing. Fixture also gained two
+  hairdo cases (`clothed_with_hairdo`, `bare_top_hairdo_only` — the latter
+  is the exact guard v4 fixed: hair-only bare-top must emit the hair line,
+  not '') proving both avatar branches' prompt bytes against the
+  prompt-keyed canned provider.
+- **Deferrals (loud):** the `SCENE_STATE_TRACKING` job handler's
+  baseline-clothing change has no v5 landing site (`quilltap-host/src/
+  spine.rs:1446` — no handler); only the prompt-text half landed. The
+  generator/image-analysis hair edits (incl. `character-field-semantics`,
+  `generated-items`, wizard/optimizer sentences, `HAIR_PHYSICAL_BOUNDARY` /
+  `HAIR_PHYSICAL_DESCRIPTION_NOTE` consumers) stay banked riders on the
+  future generators lane — the two prose constants are ported and exported
+  so that lane composes the same bytes. `qtap-export.schema.json` has no v5
+  file: the structural import path ACCEPTS `types: ["hair"]` and an
+  `equippedOutfit.hair` key (proven by the Bug-75 fixture import + the
+  vault `types:` widening) — recorded as the disposition. v4's
+  `WardrobeListPresetResult.slots` widening has no v5 counterpart
+  (v5's `wardrobe_list` never populates presets).

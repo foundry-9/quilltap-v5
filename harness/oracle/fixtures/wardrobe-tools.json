@@ -359,6 +359,51 @@
         ],
         "recipient": "Basil"
       }
+    },
+    {
+      "name": "create_hairdo",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Braided Crown",
+        "types": [
+          "hair"
+        ],
+        "equip_now": true
+      }
+    },
+    {
+      "name": "takeoff_hairdo",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Braided Crown"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wear_hairdo",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Braided Crown"
+          }
+        ]
+      }
+    },
+    {
+      "name": "clear_hair_slot",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "mode": "clear_slot",
+            "slot": "hair"
+          }
+        ]
+      }
     }
   ],
   "callerGroupItems": [

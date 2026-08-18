@@ -81,7 +81,7 @@ use crate::services::prospero_notifications::{
 };
 use crate::services::system_prompt_compiler::compile_all_identity_stacks;
 use crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat;
-use crate::wardrobe::{OutfitSlotValues, Slots};
+use crate::wardrobe::Slots;
 
 use super::aurora_notifications::post_opening_outfit_whisper;
 
@@ -1318,7 +1318,7 @@ async fn post_opening_outfit_and_avatar(
     };
 
     let mut item_ids: Vec<String> = Vec::new();
-    for slot in ["top", "bottom", "footwear", "accessories"] {
+    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
         for id in slot_ids(&equipped_slots, slot) {
             item_ids.push(id);
         }
@@ -1358,12 +1358,7 @@ async fn post_opening_outfit_and_avatar(
             .filter_map(|id| title_by_id.get(&id).cloned())
             .collect()
     };
-    let outfit = OutfitSlotValues {
-        top: titles_for("top"),
-        bottom: titles_for("bottom"),
-        footwear: titles_for("footwear"),
-        accessories: titles_for("accessories"),
-    };
+    let outfit = crate::wardrobe::build_outfit_slot_values(titles_for);
 
     let character_name = character
         .get("name")
@@ -1950,24 +1945,11 @@ fn opt_f64(v: Option<f64>) -> Value {
     }
 }
 
-/// Parse `Slots` out of a manual-mode selection's `slots` Value.
+/// Parse `Slots` out of a manual-mode selection's `slots` Value (the canonical
+/// reader — a missing slot key, `hair` on pre-hair payloads included, reads as
+/// empty).
 fn slots_from_value(v: &Value) -> Slots {
-    let arr = |k: &str| -> Vec<String> {
-        v.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    Slots {
-        top: arr("top"),
-        bottom: arr("bottom"),
-        footwear: arr("footwear"),
-        accessories: arr("accessories"),
-    }
+    Slots::from_value(Some(v))
 }
 
 /// v4 L1178-1207: build the outfit-selection list — explicit selections plus a

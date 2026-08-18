@@ -555,24 +555,12 @@ fn parse_outfit_selections(rows: Option<&[Value]>) -> Option<Vec<OutfitSelection
     for r in rows {
         let character_id = r.get("characterId").and_then(Value::as_str)?.to_string();
         let mode = r.get("mode").and_then(Value::as_str)?.to_string();
-        let slots = r.get("slots").and_then(Value::as_object).map(|s| {
-            let arr = |k: &str| -> Vec<String> {
-                s.get(k)
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            };
-            Slots {
-                top: arr("top"),
-                bottom: arr("bottom"),
-                footwear: arr("footwear"),
-                accessories: arr("accessories"),
-            }
-        });
+        // The canonical reader (a missing slot key reads as empty); the
+        // object gate keeps a non-object `slots` value reading as None.
+        let slots = r
+            .get("slots")
+            .filter(|s| s.is_object())
+            .map(|s| Slots::from_value(Some(s)));
         out.push(OutfitSelection {
             character_id,
             mode,

@@ -322,9 +322,10 @@ pub struct ChatMessage {
 }
 
 /// v4 `wardrobeItemsToSlotValues` / the resolver's inline `valuesFor`: per-slot
-/// arrays for `describeOutfit`, image-prompt preferred over title.
+/// arrays for `describeOutfit`, image-prompt preferred over title (built over
+/// v4's `buildOutfitSlotValues`, so new slots ride the registry).
 fn wardrobe_items_to_slot_values(items: &[EquippedWardrobeItem]) -> OutfitSlotValues {
-    let values_for = |slot: &str| -> Vec<String> {
+    crate::wardrobe::build_outfit_slot_values(|slot| {
         items
             .iter()
             .filter(|i| i.slot == slot)
@@ -333,13 +334,7 @@ fn wardrobe_items_to_slot_values(items: &[EquippedWardrobeItem]) -> OutfitSlotVa
                 _ => i.title.clone(),
             })
             .collect()
-    };
-    OutfitSlotValues {
-        top: values_for("top"),
-        bottom: values_for("bottom"),
-        footwear: values_for("footwear"),
-        accessories: values_for("accessories"),
-    }
+    })
 }
 
 /// v4 `resolveAppearance`: build the character + message sections, run the

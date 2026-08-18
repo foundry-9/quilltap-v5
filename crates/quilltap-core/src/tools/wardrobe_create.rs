@@ -74,7 +74,7 @@ fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
 
 const VALIDATION_ERROR: &str = "Invalid input: title (string) is required. Either supply types (non-empty array of valid slot types) for a leaf item, or component_item_ids / component_titles for a composite item.";
 
-const SLOT_ENUM: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+const SLOT_ENUM: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 /// Validated `wardrobe_create` input (v4 `WardrobeCreateToolInput`).
 struct CreateInput {
@@ -551,6 +551,16 @@ pub fn format(output: &WardrobeCreateToolOutput) -> String {
         if let Some(state) = &output.current_state {
             let slot_summary = WARDROBE_SLOT_TYPES
                 .iter()
+                // An unreported-if-blank slot (hair) drops out when empty —
+                // never surfaced as "(empty)", which reads as "has no hair".
+                .filter(|slot| {
+                    let occupied = state
+                        .get(**slot)
+                        .and_then(Value::as_array)
+                        .map(|a| !a.is_empty())
+                        .unwrap_or(false);
+                    occupied || crate::wardrobe::is_slot_reported_when_empty(slot)
+                })
                 .map(|slot| {
                     let ids = state
                         .get(*slot)

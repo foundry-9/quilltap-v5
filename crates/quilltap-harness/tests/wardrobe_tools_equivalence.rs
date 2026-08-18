@@ -264,6 +264,27 @@ fn wardrobe_tools_match_oracle() {
             "op[{i}] {} diverged\n  rust:   {got}\n  oracle: {want}",
             op.name
         );
+
+        // The reportWhenEmpty tripwire (P4.D87): a blank hair slot must vanish
+        // from the per-slot STATE dump — never a "hair:" row (an "(empty)"
+        // there reads as baldness). The byte-diff above proves v4-parity; this
+        // catches BOTH sides agreeing on a leak (a corpus-blindness guard,
+        // asserted on the two ops that leave the hair slot empty — their
+        // effect lines legitimately name the slot; the dump must not).
+        if op.name == "takeoff_hairdo" || op.name == "clear_hair_slot" {
+            let dump = formatted
+                .split("Current outfit:")
+                .nth(1)
+                .unwrap_or_default()
+                .split("Summary:")
+                .next()
+                .unwrap_or_default();
+            assert!(
+                !dump.contains("hair:"),
+                "op[{i}] {} leaked a hair row into the blank-slot dump:\n{formatted}",
+                op.name
+            );
+        }
     }
 
     // Read the mutated state back and diff (the "tables" diff, read-back form).

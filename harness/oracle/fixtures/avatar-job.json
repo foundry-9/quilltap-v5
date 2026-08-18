@@ -25,7 +25,7 @@
     "apply to avatars). The primary corpus (userA) keeps danger mode OFF, so the avatar",
     "path fires NO completion LLM calls (avatars have no LLM rewrite). userB exercises the",
     "post-hoc moderation reroute (mode AUTO_ROUTE + scanImagePrompts false so the pre-scan",
-    "classify is skipped; the primary provider returns a moderation error → reroute to the",
+    "classify is skipped; the primary provider returns a moderation error \u2192 reroute to the",
     "uncensored profile). The pre-scan classify + AUTO_ROUTE prompt reroute is a tracked",
     "deferral proven byte-for-byte by the W4.2 danger differentials + image_generation_tier3",
     "(which compose the identical generate_with_reroute + classify machinery).",
@@ -36,26 +36,36 @@
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
   "frozenNowMs": 1735732800000,
-
   "generalMountPointId": "9e000000-0000-4000-8000-00000000fee1",
   "auroraAesthetic": "AURORA STYLE: Depict every figure with painterly warmth and soft rim lighting. Skin tones stay natural and luminous; fabrics fall with believable weight and texture. Favor an intimate three-quarter framing, shallow depth of field, and a muted jewel-toned palette. Faces are expressive and specific, never generic; hair catches the light. Avoid plastic-smooth rendering, harsh flash, or exaggerated proportions. Keep clothing consistent with the described wardrobe and the character's established look, honoring silhouette and colour. The overall impression should read as a considered portrait by a patient painter who knows the subject well, with careful attention to the eyes and the set of the mouth. This preamble is deliberately long enough to exceed the six-hundred UTF-16 unit cap so the truncation boundary is exercised end to end against the oracle.",
-
   "apiKeys": {
     "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_PRIMARY",
     "a0000000-0000-4000-8000-0000000000c2": "IMGKEY_UNCENSORED"
   },
-
   "users": [
-    { "id": "aa000000-0000-4000-8000-0000000000aa", "username": "avatar-userA", "name": "User A", "email": "a@example.com" },
-    { "id": "bb000000-0000-4000-8000-0000000000bb", "username": "avatar-userB", "name": "User B", "email": "b@example.com" }
+    {
+      "id": "aa000000-0000-4000-8000-0000000000aa",
+      "username": "avatar-userA",
+      "name": "User A",
+      "email": "a@example.com"
+    },
+    {
+      "id": "bb000000-0000-4000-8000-0000000000bb",
+      "username": "avatar-userB",
+      "name": "User B",
+      "email": "b@example.com"
+    }
   ],
-
   "characters": [
     {
       "id": "c0aa0000-0000-4000-8000-000000000001",
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "name": "Aurora",
-      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
       "physicalDescription": {
         "id": "d0aa0000-0000-4000-8000-000000000001",
         "name": "Portrait",
@@ -69,7 +79,11 @@
       "id": "c0aa0000-0000-4000-8000-000000000002",
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "name": "Bram",
-      "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      },
       "physicalDescription": {
         "id": "d0aa0000-0000-4000-8000-000000000002",
         "name": "Portrait",
@@ -80,13 +94,21 @@
       "id": "c0aa0000-0000-4000-8000-000000000003",
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "name": "Cipher",
-      "pronouns": { "subject": "they", "object": "them", "possessive": "their" }
+      "pronouns": {
+        "subject": "they",
+        "object": "them",
+        "possessive": "their"
+      }
     },
     {
       "id": "c0bb0000-0000-4000-8000-000000000001",
       "userId": "bb000000-0000-4000-8000-0000000000bb",
       "name": "Vesper",
-      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
       "physicalDescription": {
         "id": "d0bb0000-0000-4000-8000-000000000001",
         "name": "Portrait",
@@ -94,47 +116,204 @@
       }
     }
   ],
-
   "wardrobeItems": [
-    { "id": "a1000000-0000-4000-8000-000000000001", "characterId": "c0aa0000-0000-4000-8000-000000000001", "title": "Blue Blouse", "types": ["top"], "description": "A crisp blue blouse.", "imagePrompt": "a crisp blue silk blouse" },
-    { "id": "a1000000-0000-4000-8000-000000000002", "characterId": "c0aa0000-0000-4000-8000-000000000001", "title": "Grey Skirt", "types": ["bottom"], "imagePrompt": "a pleated grey wool skirt" },
-    { "id": "a1000000-0000-4000-8000-000000000003", "characterId": "c0aa0000-0000-4000-8000-000000000001", "title": "Leather Boots", "types": ["footwear"], "imagePrompt": "tall brown leather boots" },
-    { "id": "a1000000-0000-4000-8000-000000000004", "characterId": "c0aa0000-0000-4000-8000-000000000001", "title": "Silver Necklace", "types": ["accessories"], "imagePrompt": "a delicate silver pendant necklace" },
-    { "id": "a1000000-0000-4000-8000-000000000005", "characterId": "c0aa0000-0000-4000-8000-000000000001", "title": "Wool Jacket", "types": ["top"], "imagePrompt": "a charcoal wool jacket" },
-    { "id": "a2000000-0000-4000-8000-000000000001", "characterId": "c0aa0000-0000-4000-8000-000000000002", "title": "Copper Cuff", "types": ["accessories"], "imagePrompt": "a hammered copper wrist cuff" },
-    { "id": "a2000000-0000-4000-8000-000000000002", "characterId": "c0aa0000-0000-4000-8000-000000000002", "title": "Canvas Trousers", "types": ["bottom"], "imagePrompt": "worn canvas work trousers" },
-    { "id": "a3000000-0000-4000-8000-000000000001", "characterId": "c0bb0000-0000-4000-8000-000000000001", "title": "Velvet Coat", "types": ["top"], "imagePrompt": "a deep red velvet coat" }
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Blue Blouse",
+      "types": [
+        "top"
+      ],
+      "description": "A crisp blue blouse.",
+      "imagePrompt": "a crisp blue silk blouse"
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Grey Skirt",
+      "types": [
+        "bottom"
+      ],
+      "imagePrompt": "a pleated grey wool skirt"
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Leather Boots",
+      "types": [
+        "footwear"
+      ],
+      "imagePrompt": "tall brown leather boots"
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Silver Necklace",
+      "types": [
+        "accessories"
+      ],
+      "imagePrompt": "a delicate silver pendant necklace"
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Wool Jacket",
+      "types": [
+        "top"
+      ],
+      "imagePrompt": "a charcoal wool jacket"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000001",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "title": "Copper Cuff",
+      "types": [
+        "accessories"
+      ],
+      "imagePrompt": "a hammered copper wrist cuff"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000002",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "title": "Canvas Trousers",
+      "types": [
+        "bottom"
+      ],
+      "imagePrompt": "worn canvas work trousers"
+    },
+    {
+      "id": "a3000000-0000-4000-8000-000000000001",
+      "characterId": "c0bb0000-0000-4000-8000-000000000001",
+      "title": "Velvet Coat",
+      "types": [
+        "top"
+      ],
+      "imagePrompt": "a deep red velvet coat"
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "title": "Braided Crown",
+      "types": [
+        "hair"
+      ],
+      "imagePrompt": "a braided crown updo"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000003",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "title": "Marcel Waves",
+      "types": [
+        "hair"
+      ],
+      "imagePrompt": "sculpted marcel waves"
+    }
   ],
-
   "imageProfiles": [
-    { "id": "e0aa0000-0000-4000-8000-000000000001", "userId": "aa000000-0000-4000-8000-0000000000aa", "name": "Primary Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
-    { "id": "e0aa0000-0000-4000-8000-000000000002", "userId": "aa000000-0000-4000-8000-0000000000aa", "name": "No Key Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": null, "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
-    { "id": "e0bb0000-0000-4000-8000-000000000001", "userId": "bb000000-0000-4000-8000-0000000000bb", "name": "Blocked Images", "provider": "OPENAI", "modelName": "blocked-model", "apiKeyId": "a0000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
-    { "id": "e0bb0000-0000-4000-8000-000000000002", "userId": "bb000000-0000-4000-8000-0000000000bb", "name": "Uncensored Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-0000000000c2", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
+    {
+      "id": "e0aa0000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Primary Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": true,
+      "isDangerousCompatible": false,
+      "tags": []
+    },
+    {
+      "id": "e0aa0000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "No Key Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": null,
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": false,
+      "tags": []
+    },
+    {
+      "id": "e0bb0000-0000-4000-8000-000000000001",
+      "userId": "bb000000-0000-4000-8000-0000000000bb",
+      "name": "Blocked Images",
+      "provider": "OPENAI",
+      "modelName": "blocked-model",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": true,
+      "isDangerousCompatible": false,
+      "tags": []
+    },
+    {
+      "id": "e0bb0000-0000-4000-8000-000000000002",
+      "userId": "bb000000-0000-4000-8000-0000000000bb",
+      "name": "Uncensored Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c2",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": true,
+      "tags": []
+    }
   ],
-
   "chatSettings": [
     {
       "id": "5e000000-0000-4000-8000-0000000000f0",
       "userId": "aa000000-0000-4000-8000-0000000000aa",
-      "dangerousContentSettings": { "mode": "OFF", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
-      "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false }
+      "dangerousContentSettings": {
+        "mode": "OFF",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      }
     },
     {
       "id": "5e000000-0000-4000-8000-0000000000f1",
       "userId": "bb000000-0000-4000-8000-0000000000bb",
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "uncensoredImageProfileId": "e0bb0000-0000-4000-8000-000000000002", "displayMode": "SHOW", "showWarningBadges": true },
-      "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false }
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "uncensoredImageProfileId": "e0bb0000-0000-4000-8000-000000000002",
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      }
     }
   ],
-
   "chats": {
     "happy_vault": {
       "id": "ca000001-0000-4000-8000-000000000001",
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "top": ["a1000000-0000-4000-8000-000000000001"], "accessories": ["a1000000-0000-4000-8000-000000000004"] },
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
       "expectWrite": true
     },
     "clothed_baseline": {
@@ -142,7 +321,20 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "top": ["a1000000-0000-4000-8000-000000000001"], "bottom": ["a1000000-0000-4000-8000-000000000002"], "footwear": ["a1000000-0000-4000-8000-000000000003"], "accessories": ["a1000000-0000-4000-8000-000000000004"] },
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a1000000-0000-4000-8000-000000000002"
+        ],
+        "footwear": [
+          "a1000000-0000-4000-8000-000000000003"
+        ],
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
       "expectWrite": true
     },
     "bare_with_acc": {
@@ -150,7 +342,11 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000002",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "accessories": ["a2000000-0000-4000-8000-000000000001"] },
+      "equipped": {
+        "accessories": [
+          "a2000000-0000-4000-8000-000000000001"
+        ]
+      },
       "expectWrite": true
     },
     "bare_without": {
@@ -158,7 +354,11 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000002",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "bottom": ["a2000000-0000-4000-8000-000000000002"] },
+      "equipped": {
+        "bottom": [
+          "a2000000-0000-4000-8000-000000000002"
+        ]
+      },
       "expectWrite": true
     },
     "equipped_override": {
@@ -166,8 +366,20 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "top": ["a1000000-0000-4000-8000-000000000005"] },
-      "equippedSlotsOverride": { "top": ["a1000000-0000-4000-8000-000000000001"], "bottom": [], "footwear": [], "accessories": [] },
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000005"
+        ]
+      },
+      "equippedSlotsOverride": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
       "expectWrite": true
     },
     "aesthetic_preamble": {
@@ -175,7 +387,11 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "top": ["a1000000-0000-4000-8000-000000000001"] },
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ]
+      },
       "expectWrite": true
     },
     "no_appearance": {
@@ -191,7 +407,11 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000002",
-      "equipped": { "top": ["a1000000-0000-4000-8000-000000000001"] },
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ]
+      },
       "expectWrite": false
     },
     "posthoc_reroute": {
@@ -199,7 +419,51 @@
       "userId": "bb000000-0000-4000-8000-0000000000bb",
       "characterId": "c0bb0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0bb0000-0000-4000-8000-000000000001",
-      "equipped": { "top": ["a3000000-0000-4000-8000-000000000001"] },
+      "equipped": {
+        "top": [
+          "a3000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "expectWrite": true
+    },
+    "clothed_with_hairdo": {
+      "id": "ca00000a-0000-4000-8000-00000000000a",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "hair": [
+          "a1000000-0000-4000-8000-000000000006"
+        ]
+      },
+      "expectWrite": true
+    },
+    "bare_top_hairdo_only": {
+      "id": "ca00000b-0000-4000-8000-00000000000b",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "hair": [
+          "a2000000-0000-4000-8000-000000000003"
+        ]
+      },
+      "expectWrite": true
+    },
+    "legacy_four_key_equipped": {
+      "id": "ca00000c-0000-4000-8000-00000000000c",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "legacySlots": true,
       "expectWrite": true
     }
   }

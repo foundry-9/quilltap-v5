@@ -40,7 +40,7 @@
 //! sides), so the divergent path is never exercised.
 
 use rusqlite::Connection;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::archetype_wardrobe::{find_archetypes, find_archetypes_in_mounts};
@@ -70,18 +70,20 @@ const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a rolepl
 
 Choose items that are contextually appropriate. For example, formal wear for a business meeting, casual clothes for relaxing at home, or era-appropriate costume for a historical setting.
 
-You MUST respond with ONLY a JSON object mapping slot names to ARRAYS of wardrobe item IDs. Valid slots are: \"top\", \"bottom\", \"footwear\", \"accessories\". Use an empty array [] for any slot you want to leave empty.
+You MUST respond with ONLY a JSON object mapping slot names to ARRAYS of wardrobe item IDs. Valid slots are: \"top\", \"bottom\", \"footwear\", \"accessories\", \"hair\". Use an empty array [] for any slot you want to leave empty. The \"hair\" slot holds a hairstyle or hairdo (braided, permed, elegantly coiffed, a wig) — not the hair itself. Leave \"hair\" empty for the character's natural, unstyled hair.
 
 You may put multiple items in the same slot to layer them (e.g. a t-shirt under a sweater); list them inner-to-outer.
 
 If the available wardrobe contains a composite item (its description mentions it bundles other items, or its title implies an outfit set), you may pick that composite directly — equipping it places it in all the slots it covers.
 
 Example response:
-{\"top\": [\"uuid-tshirt\", \"uuid-sweater\"], \"bottom\": [\"uuid-jeans\"], \"footwear\": [\"uuid-boots\"], \"accessories\": []}
+{\"top\": [\"uuid-tshirt\", \"uuid-sweater\"], \"bottom\": [\"uuid-jeans\"], \"footwear\": [\"uuid-boots\"], \"accessories\": [], \"hair\": []}
 
 Wearing nothing at all is a legitimate choice, but you must mark it as a choice. If the character genuinely should be unclothed — a nudist at home, a bath or swim scene, a setting where clothing would be absurd — leave every slot empty AND include \"deliberate\": true:
 
-{\"deliberate\": true, \"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": []}
+{\"deliberate\": true, \"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": [], \"hair\": []}
+
+Deliberate nudity is about the clothing slots — an unclothed character may still keep a styled hairdo, so fill or empty \"hair\" on its own merits.
 
 An all-empty response WITHOUT \"deliberate\": true is read as a failure to choose, and the character will be dressed in their default outfit instead. Do not use the empty response to opt out of the task — if you are unsure, pick something.
 
@@ -124,15 +126,10 @@ fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-/// A `Slots` → the `{top,bottom,footwear,accessories}` `Value` that
-/// `set_equipped_outfit` stores.
+/// A `Slots` → the `{top,bottom,footwear,accessories,hair}` `Value` that
+/// `set_equipped_outfit` stores (the canonical serialization).
 fn slots_to_value(slots: &Slots) -> Value {
-    json!({
-        "top": slots.top,
-        "bottom": slots.bottom,
-        "footwear": slots.footwear,
-        "accessories": slots.accessories,
-    })
+    slots.to_value()
 }
 
 /// v4 `resolveDefaultOutfit`'s pure half — the default outfit computed from an
@@ -170,12 +167,10 @@ pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
         };
         if let Some(types) = item.get("types").and_then(Value::as_array) {
             for t in types {
-                match t.as_str() {
-                    Some("top") => slots.top.push(id.to_string()),
-                    Some("bottom") => slots.bottom.push(id.to_string()),
-                    Some("footwear") => slots.footwear.push(id.to_string()),
-                    Some("accessories") => slots.accessories.push(id.to_string()),
-                    _ => {}
+                if let Some(slot) = t.as_str() {
+                    if WARDROBE_SLOT_TYPES.contains(&slot) {
+                        slots.slot_mut(slot).push(id.to_string());
+                    }
                 }
             }
         }
@@ -265,13 +260,7 @@ fn parse_outfit_response(content: &str, items: &[Value]) -> LlmOutfitChoice {
             None | Some(Value::Null) => Vec::new(),
             Some(other) => vec![other],
         };
-        let target = match slot {
-            "top" => &mut result.top,
-            "bottom" => &mut result.bottom,
-            "footwear" => &mut result.footwear,
-            "accessories" => &mut result.accessories,
-            _ => continue,
-        };
+        let target = result.slot_mut(slot);
         for cand in candidates {
             let Some(id) = cand.as_str() else { continue };
             if !valid.contains(id) {
@@ -417,6 +406,7 @@ fn to_outfit_preview_slots(
         bottom: map(&leaf.bottom),
         footwear: map(&leaf.footwear),
         accessories: map(&leaf.accessories),
+        hair: map(&leaf.hair),
     }
 }
 
@@ -839,10 +829,11 @@ pub async fn choose_llm_outfit<C: CompletionProvider>(
 /// when the caller should fall back.
 fn accept_llm_choice(choice: Option<&LlmOutfitChoice>) -> Option<(Slots, bool)> {
     let choice = choice?;
-    let picked = !choice.slots.top.is_empty()
-        || !choice.slots.bottom.is_empty()
-        || !choice.slots.footwear.is_empty()
-        || !choice.slots.accessories.is_empty();
+    // Only the *clothing* slots count here: a pick of nothing but a hairdo is
+    // still "chose nothing to wear" (v4 `4423ad10` — CLOTHING_SLOT_TYPES.some).
+    let picked = crate::wardrobe::CLOTHING_SLOT_TYPES
+        .iter()
+        .any(|slot| !choice.slots.slot(slot).is_empty());
     let declared_bare = choice.deliberately_unclothed;
     if picked || declared_bare {
         Some((choice.slots.clone(), declared_bare && !picked))

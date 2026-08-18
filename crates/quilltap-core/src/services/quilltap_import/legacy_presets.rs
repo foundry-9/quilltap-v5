@@ -10,7 +10,9 @@
 
 use serde_json::{json, Value};
 
-/// v4 `LEGACY_PRESET_SLOT_ORDER` — the deterministic slot walk.
+/// v4 `LEGACY_PRESET_SLOT_ORDER` — the deterministic slot walk. **FROZEN at
+/// the four pre-hair names**: legacy presets predate the hair slot, and v4
+/// `4423ad10` deliberately left this list at four. Do NOT widen.
 const LEGACY_PRESET_SLOT_ORDER: &[&str] = &["top", "bottom", "footwear", "accessories"];
 
 /// v4 `legacyPresetToComposite` (`legacy-presets.ts:43`). Preserves the preset id

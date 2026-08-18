@@ -1279,18 +1279,9 @@ fn resolve_live_clothing(
                             main, &docs, &cid2, &slots, &tiers,
                         )?;
                     Ok(crate::wardrobe::describe_outfit(
-                        &crate::wardrobe::OutfitSlotValues {
-                            top: crate::wardrobe::decorate_outfit_items_title_only(&values.top),
-                            bottom: crate::wardrobe::decorate_outfit_items_title_only(
-                                &values.bottom,
-                            ),
-                            footwear: crate::wardrobe::decorate_outfit_items_title_only(
-                                &values.footwear,
-                            ),
-                            accessories: crate::wardrobe::decorate_outfit_items_title_only(
-                                &values.accessories,
-                            ),
-                        },
+                        &crate::wardrobe::build_outfit_slot_values(|slot| {
+                            crate::wardrobe::decorate_outfit_items_title_only(values.slot(slot))
+                        }),
                     ))
                 })
             })

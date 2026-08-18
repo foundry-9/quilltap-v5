@@ -26,15 +26,154 @@ use serde_json::Value;
 use crate::clock::iso_to_ms;
 
 /// The canonical slot order (v4 `WARDROBE_SLOT_TYPES`). Every union / render walks
-/// this order so output is deterministic.
-pub const WARDROBE_SLOT_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+/// this order so output is deterministic. Append new slots at the END — inserting
+/// mid-list rewrites every serialized `types` array and reorders existing UI.
+pub const WARDROBE_SLOT_TYPES: [&str; 5] = ["top", "bottom", "footwear", "accessories", "hair"];
+
+/// Per-slot presentation and semantics metadata (v4 `WardrobeSlotMeta`). One
+/// place to describe a slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WardrobeSlotMeta {
+    /// Singular display label ("Hair").
+    pub label: &'static str,
+    /// Group-header label in the item editor ("Tops", "Hair").
+    pub group_label: &'static str,
+    /// qt-* badge class for this slot's chip.
+    pub badge_class: &'static str,
+    /// True for garment slots that participate in nudity semantics; false for
+    /// styling slots (hair). Drives naked collapses and deliberate-unclothed
+    /// detection.
+    pub is_clothing: bool,
+    /// Whether an EMPTY slot is reported at all — to an LLM, to an image model,
+    /// or to the user.
+    ///
+    /// True for garment slots, where emptiness is real information: an empty top
+    /// means "topless", an empty footwear slot means "barefoot".
+    ///
+    /// False for styling slots ("unreported-if-blank"). An empty `hair` slot does
+    /// NOT mean the character has no hair — it means their hair is in its natural,
+    /// unstyled state, which the physical description already covers. Saying
+    /// anything at all about it invites a model to render a bald character or to
+    /// narrate the absence. Every surface that lists slots must SKIP an empty
+    /// unreported-if-blank slot entirely rather than emitting a phrase, a label,
+    /// or an "(empty)" marker for it.
+    ///
+    /// Use [`is_slot_reported_when_empty`] at reporting sites rather than testing
+    /// slot names.
+    pub report_when_empty: bool,
+    /// Phrase rendered when a *reported* slot is empty. `Some` exactly when
+    /// `report_when_empty` is true; `None` for unreported-if-blank slots, which
+    /// render nothing.
+    pub empty_fallback: Option<&'static str>,
+}
+
+/// The registry rows (v4 `WARDROBE_SLOT_META`), index-aligned with
+/// [`WARDROBE_SLOT_TYPES`].
+pub const WARDROBE_SLOT_META: [WardrobeSlotMeta; 5] = [
+    WardrobeSlotMeta {
+        label: "Top",
+        group_label: "Tops",
+        badge_class: "qt-badge-wardrobe-top",
+        is_clothing: true,
+        report_when_empty: true,
+        empty_fallback: Some("topless"),
+    },
+    WardrobeSlotMeta {
+        label: "Bottom",
+        group_label: "Bottoms",
+        badge_class: "qt-badge-wardrobe-bottom",
+        is_clothing: true,
+        report_when_empty: true,
+        empty_fallback: Some("bottomless"),
+    },
+    WardrobeSlotMeta {
+        label: "Footwear",
+        group_label: "Footwear",
+        badge_class: "qt-badge-wardrobe-footwear",
+        is_clothing: true,
+        report_when_empty: true,
+        empty_fallback: Some("barefoot"),
+    },
+    WardrobeSlotMeta {
+        label: "Accessories",
+        group_label: "Accessories",
+        badge_class: "qt-badge-wardrobe-accessories",
+        is_clothing: true,
+        report_when_empty: true,
+        empty_fallback: Some("no accessories"),
+    },
+    WardrobeSlotMeta {
+        label: "Hair",
+        group_label: "Hair",
+        badge_class: "qt-badge-wardrobe-hair",
+        is_clothing: false,
+        report_when_empty: false,
+        empty_fallback: None,
+    },
+];
+
+/// The registry row for a slot name (v4 `WARDROBE_SLOT_META[slot]`); `None` for
+/// an unknown slot.
+pub fn slot_meta(slot: &str) -> Option<&'static WardrobeSlotMeta> {
+    WARDROBE_SLOT_TYPES
+        .iter()
+        .position(|s| *s == slot)
+        .map(|i| &WARDROBE_SLOT_META[i])
+}
+
+/// Slots that count as clothing for nudity/undress semantics (v4
+/// `CLOTHING_SLOT_TYPES`, derived from the registry's `isClothing` — the
+/// derivation is pinned by a unit test since Rust consts can't filter).
+pub const CLOTHING_SLOT_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+
+/// Slots that vanish from every report when empty (v4
+/// `UNREPORTED_IF_BLANK_SLOT_TYPES`; today: `hair`). Derivation pinned by a
+/// unit test, like [`CLOTHING_SLOT_TYPES`].
+pub const UNREPORTED_IF_BLANK_SLOT_TYPES: [&str; 1] = ["hair"];
+
+/// v4 `isSlotReportedWhenEmpty(slot)` — true when an empty `slot` should still
+/// be reported (as a phrase, a label, or an "(empty)" marker). False for
+/// unreported-if-blank slots — skip them. Call this at every site that
+/// enumerates slots for an LLM, an image model, or the reader. An unknown slot
+/// reads as reported (the conservative default; v4 would throw).
+pub fn is_slot_reported_when_empty(slot: &str) -> bool {
+    slot_meta(slot).is_none_or(|m| m.report_when_empty)
+}
+
+// ===========================================================================
+// slot-guidance.ts — the shared LLM-facing wording for the hair slot
+// ===========================================================================
+//
+// The `hair` slot is the one that needs explaining every time it is offered to
+// a model: it holds a *hairdo*, not hair. Keeping the sentence in one place
+// means the wardrobe tools, the outfit-choosing prompt, the character
+// generators, and the image analyser all draw the wardrobe/physical line the
+// same way — a model that reads two different versions of this rule files
+// hair colour as a garment.
+
+/// v4 `HAIR_SLOT_GUIDANCE` — the wardrobe/physical boundary for hair, phrased
+/// for a tool parameter description. Append to any `types`/`slot` parameter
+/// gloss.
+pub const HAIR_SLOT_GUIDANCE: &str = "The \"hair\" slot holds a hairstyle or hairdo (braided, permed, an updo, a wig) — the styling, not the hair itself; natural hair colour and length belong in the character's physical description, and an empty hair slot simply means unstyled hair.";
+
+/// v4 `HAIR_PHYSICAL_BOUNDARY` — the same boundary phrased for a prose prompt
+/// paragraph (the character generators and optimizer), where it reads as an
+/// exception to the "permanent body features are physical description" rule.
+/// (The generator surfaces are unported; the sentence lives here so the future
+/// generators lane composes the same bytes.)
+pub const HAIR_PHYSICAL_BOUNDARY: &str = "Anything permanently part of the body (scars, tattoos, fur) is PHYSICAL DESCRIPTION, not wardrobe — with one deliberate exception: a hairSTYLE goes in the wardrobe's \"hair\" slot, while the hair's natural colour, length, and texture stay in the physical description.";
+
+/// v4 `HAIR_PHYSICAL_DESCRIPTION_NOTE` — the complement of
+/// [`HAIR_PHYSICAL_BOUNDARY`], for physical-description prompts that would
+/// otherwise claim all hair. (Same unported-surface note as above.)
+pub const HAIR_PHYSICAL_DESCRIPTION_NOTE: &str = "Natural hair — colour, length, texture — belongs here; a deliberate hairSTYLE (braids, an updo, a wig) belongs in the WARDROBE's \"hair\" slot instead. Describe the hair itself, not its styling.";
 
 // ===========================================================================
 // composite-types.ts — unionTypes
 // ===========================================================================
 
 /// v4 `unionTypes(components)` — the union of the components' slot types, in
-/// canonical slot order (`top → bottom → footwear → accessories`).
+/// canonical slot order (`top → bottom → footwear → accessories → hair`).
 pub fn union_types<'a, I>(component_types: I) -> Vec<String>
 where
     I: IntoIterator<Item = &'a [String]>,
@@ -64,6 +203,34 @@ pub struct OutfitSlotValues {
     pub bottom: Vec<String>,
     pub footwear: Vec<String>,
     pub accessories: Vec<String>,
+    pub hair: Vec<String>,
+}
+
+impl OutfitSlotValues {
+    /// Read a slot's titles by canonical name (an unknown name reads as `top`,
+    /// unreachable — callers only walk [`WARDROBE_SLOT_TYPES`]).
+    pub fn slot(&self, name: &str) -> &[String] {
+        match name {
+            "top" => &self.top,
+            "bottom" => &self.bottom,
+            "footwear" => &self.footwear,
+            "accessories" => &self.accessories,
+            "hair" => &self.hair,
+            _ => &self.top,
+        }
+    }
+}
+
+/// v4 `buildOutfitSlotValues(fn)` — build a full [`OutfitSlotValues`] by asking
+/// `f` for each slot's strings, in canonical slot order.
+pub fn build_outfit_slot_values<F: FnMut(&str) -> Vec<String>>(mut f: F) -> OutfitSlotValues {
+    OutfitSlotValues {
+        top: f("top"),
+        bottom: f("bottom"),
+        footwear: f("footwear"),
+        accessories: f("accessories"),
+        hair: f("hair"),
+    }
 }
 
 /// An insertion-ordered `value → [slot]` accumulator (v4's `Map<string,
@@ -88,14 +255,6 @@ impl OrderedGroups {
     }
 }
 
-fn join_or_fallback(items: &[String], fallback: &str) -> String {
-    if items.is_empty() {
-        fallback.to_string()
-    } else {
-        items.join(", ")
-    }
-}
-
 /// A slot name for [`describe_outfit_with_omit`]'s `omit` set (v4
 /// `OutfitSlotName`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,11 +263,25 @@ pub enum OutfitSlotName {
     Bottom,
     Footwear,
     Accessories,
+    Hair,
+}
+
+impl OutfitSlotName {
+    /// The canonical slot string this name addresses.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OutfitSlotName::Top => "top",
+            OutfitSlotName::Bottom => "bottom",
+            OutfitSlotName::Footwear => "footwear",
+            OutfitSlotName::Accessories => "accessories",
+            OutfitSlotName::Hair => "hair",
+        }
+    }
 }
 
 /// v4 `describeOutfit(slots)` (no `omit`) — the markdown outfit description. Thin
-/// wrapper over [`describe_outfit_with_omit`] with an empty omit set (all four
-/// slots visible), byte-identical to v4's default-options call.
+/// wrapper over [`describe_outfit_with_omit`] with an empty omit set (all slots
+/// visible), byte-identical to v4's default-options call.
 pub fn describe_outfit(slots: &OutfitSlotValues) -> String {
     describe_outfit_with_omit(slots, &[])
 }
@@ -119,17 +292,29 @@ pub fn describe_outfit(slots: &OutfitSlotValues) -> String {
 /// fallbacks (the avatar/portrait crop routes through this: bottom/footwear are
 /// omitted so a cropped torso never grows shoes/pants, and the bare-top path
 /// omits top/bottom/footwear so an empty-but-visible top can't emit "topless").
+///
+/// An empty slot whose `report_when_empty` is false (hair) contributes nothing
+/// at all: a hairdo is styling, not a garment — an empty hair slot means the
+/// character's hair is in its natural state, which the physical description
+/// already covers. Such a slot never emits a negative-space line (a character
+/// with no hair item must never read as bald) and never blocks the "naked"
+/// collapse — but a STYLED hairdo does block the "completely naked and
+/// unadorned" collapse, so an unclothed character with braids reads as
+/// `- naked` + the garment fallbacks + the hair line (v4's rule 13).
 pub fn describe_outfit_with_omit(slots: &OutfitSlotValues, omit: &[OutfitSlotName]) -> String {
-    let omitted = |name: OutfitSlotName| omit.contains(&name);
-    // `null` (v4) = omitted; `Some(&slice)` = visible.
-    let top = (!omitted(OutfitSlotName::Top)).then_some(slots.top.as_slice());
-    let bottom = (!omitted(OutfitSlotName::Bottom)).then_some(slots.bottom.as_slice());
-    let footwear = (!omitted(OutfitSlotName::Footwear)).then_some(slots.footwear.as_slice());
-    let accessories =
-        (!omitted(OutfitSlotName::Accessories)).then_some(slots.accessories.as_slice());
+    // Slot → `Some(titles)` when visible, `None` when omitted (v4's `visible`
+    // map), index-aligned with WARDROBE_SLOT_TYPES.
+    let visible: Vec<Option<&[String]>> = WARDROBE_SLOT_TYPES
+        .iter()
+        .map(|name| {
+            let omitted = omit.iter().any(|o| o.as_str() == *name);
+            (!omitted).then(|| slots.slot(name))
+        })
+        .collect();
 
-    // All VISIBLE slots empty → "completely naked and unadorned".
-    let all_visible_empty = [top, bottom, footwear, accessories]
+    // All VISIBLE slots empty (clothing AND hair) → "completely naked and
+    // unadorned".
+    let all_visible_empty = visible
         .iter()
         .all(|v| v.map(|s| s.is_empty()).unwrap_or(true));
     if all_visible_empty {
@@ -140,26 +325,32 @@ pub fn describe_outfit_with_omit(slots: &OutfitSlotValues, omit: &[OutfitSlotNam
     let mut groups = OrderedGroups::new();
 
     // The "naked" collapse only applies when both top and bottom are VISIBLE.
-    if top.map(<[String]>::is_empty).unwrap_or(false)
-        && bottom.map(<[String]>::is_empty).unwrap_or(false)
-    {
+    let naked_collapse = matches!(
+        (visible[0], visible[1]),
+        (Some(top), Some(bottom)) if top.is_empty() && bottom.is_empty()
+    );
+    if naked_collapse {
         lines.push("- naked".to_string());
-    } else {
-        if let Some(top) = top {
-            groups.add("top", join_or_fallback(top, "topless"));
-        }
-        if let Some(bottom) = bottom {
-            groups.add("bottom", join_or_fallback(bottom, "bottomless"));
-        }
     }
-    if let Some(footwear) = footwear {
-        groups.add("footwear", join_or_fallback(footwear, "barefoot"));
-    }
-    if let Some(accessories) = accessories {
-        groups.add(
-            "accessories",
-            join_or_fallback(accessories, "no accessories"),
-        );
+
+    for (i, slot) in WARDROBE_SLOT_TYPES.iter().enumerate() {
+        if naked_collapse && (*slot == "top" || *slot == "bottom") {
+            continue;
+        }
+        let Some(items) = visible[i] else { continue };
+        if !items.is_empty() {
+            groups.add(slot, items.join(", "));
+            continue;
+        }
+        // Empty slot: render its negative-space phrase, unless the slot is
+        // unreported-if-blank (hair) — those vanish entirely rather than telling
+        // a reader or an image model that something is missing.
+        if !is_slot_reported_when_empty(slot) {
+            continue;
+        }
+        if let Some(fallback) = slot_meta(slot).and_then(|m| m.empty_fallback) {
+            groups.add(slot, fallback.to_string());
+        }
     }
 
     for (value, slots_for_value) in &groups.entries {
@@ -331,15 +522,16 @@ pub fn expand_composites(
 // outfit-displacement.ts — the pure slot mutators
 // ===========================================================================
 
-/// The four equipped slots (v4 `EquippedSlots`), each an array of item ids. Slot
-/// order is fixed (`top → bottom → footwear → accessories`) so it serializes
-/// byte-identically to v4's `JSON.stringify`.
+/// The equipped slots (v4 `EquippedSlots`), each an array of item ids. Slot
+/// order is fixed (`top → bottom → footwear → accessories → hair`) so it
+/// serializes byte-identically to v4's `JSON.stringify`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Slots {
     pub top: Vec<String>,
     pub bottom: Vec<String>,
     pub footwear: Vec<String>,
     pub accessories: Vec<String>,
+    pub hair: Vec<String>,
 }
 
 impl Slots {
@@ -349,23 +541,27 @@ impl Slots {
     }
 
     /// Read a slot's array by name (an unknown name is unreachable — the callers
-    /// only pass the four valid slots).
-    fn slot(&self, name: &str) -> &Vec<String> {
+    /// only pass the valid slots). Public so slot walks iterate
+    /// [`WARDROBE_SLOT_TYPES`] instead of restating the field list.
+    pub fn slot(&self, name: &str) -> &Vec<String> {
         match name {
             "top" => &self.top,
             "bottom" => &self.bottom,
             "footwear" => &self.footwear,
             "accessories" => &self.accessories,
+            "hair" => &self.hair,
             _ => &self.top,
         }
     }
 
-    fn slot_mut(&mut self, name: &str) -> &mut Vec<String> {
+    /// Mutable sibling of [`Slots::slot`], public for the same reason.
+    pub fn slot_mut(&mut self, name: &str) -> &mut Vec<String> {
         match name {
             "top" => &mut self.top,
             "bottom" => &mut self.bottom,
             "footwear" => &mut self.footwear,
             "accessories" => &mut self.accessories,
+            "hair" => &mut self.hair,
             _ => &mut self.top,
         }
     }
@@ -393,17 +589,23 @@ impl Slots {
             bottom: read("bottom"),
             footwear: read("footwear"),
             accessories: read("accessories"),
+            // Absent on any payload written before the hair slot existed —
+            // reads as [] with nothing else disturbed (v4's no-migration
+            // guarantee: every slot on EquippedSlotsSchema defaults to []).
+            hair: read("hair"),
         }
     }
 
-    /// Serialize to the ordered `{top,bottom,footwear,accessories}` JSON object v4
-    /// persists (slot order fixed; `serde_json` preserve-order keeps it).
+    /// Serialize to the ordered `{top,bottom,footwear,accessories,hair}` JSON
+    /// object v4 persists (slot order fixed; `serde_json` preserve-order keeps
+    /// it).
     pub fn to_value(&self) -> Value {
         let mut m = serde_json::Map::new();
         m.insert("top".into(), to_str_array(&self.top));
         m.insert("bottom".into(), to_str_array(&self.bottom));
         m.insert("footwear".into(), to_str_array(&self.footwear));
         m.insert("accessories".into(), to_str_array(&self.accessories));
+        m.insert("hair".into(), to_str_array(&self.hair));
         Value::Object(m)
     }
 }
@@ -576,18 +778,25 @@ pub fn normalize_no_item_sentinel(value: Option<&str>) -> Option<String> {
 
 /// v4 `hashEquippedSlots` (`lib/wardrobe/outfit-hash.ts`): the deterministic short
 /// hash of a character's equipped wardrobe slots. Slot-key order is normalized
-/// (`{top, bottom, footwear, accessories}`); each slot's array is hashed in its
-/// stored order (layering matters). A null/empty outfit hashes to a stable
+/// (`{top, bottom, footwear, accessories, hair}`); each slot's array is hashed in
+/// its stored order (layering matters). A null/empty outfit hashes to a stable
 /// sentinel. SHA-256 over `JSON.stringify(normalized)`, first 16 hex chars.
+///
+/// The hair key is serialized UNCONDITIONALLY (v4's design doc forbids
+/// conditional key omission): every chat with a cached pre-hair hash misses
+/// exactly once and re-derives its clothing summary — the accepted upgrade
+/// cost of adding a slot.
 pub fn hash_equipped_slots(slots: Option<&Slots>) -> String {
-    // `JSON.stringify({top, bottom, footwear, accessories})` in key order — a
-    // typed serde struct declares that order here, where the hash depends on it.
+    // `JSON.stringify({top, bottom, footwear, accessories, hair})` in key order
+    // — a typed serde struct declares that order here, where the hash depends
+    // on it.
     #[derive(serde::Serialize)]
     struct Normalized<'a> {
         top: &'a [String],
         bottom: &'a [String],
         footwear: &'a [String],
         accessories: &'a [String],
+        hair: &'a [String],
     }
     let empty: Vec<String> = Vec::new();
     let n = Normalized {
@@ -595,17 +804,22 @@ pub fn hash_equipped_slots(slots: Option<&Slots>) -> String {
         bottom: slots.map(|s| s.bottom.as_slice()).unwrap_or(&empty),
         footwear: slots.map(|s| s.footwear.as_slice()).unwrap_or(&empty),
         accessories: slots.map(|s| s.accessories.as_slice()).unwrap_or(&empty),
+        hair: slots.map(|s| s.hair.as_slice()).unwrap_or(&empty),
     };
     let json = serde_json::to_string(&n).unwrap_or_else(|_| "{}".to_string());
     let hex = crate::db::doc_mount_file_links::sha256_of_string(&json);
     hex.chars().take(16).collect()
 }
 
-/// v4 `hasEquippedItems`: true when at least one slot holds an equipped item.
+/// v4 `hasEquippedItems`: true when at least one slot holds an equipped item —
+/// ALL slots, hair included (a hair-only outfit counted as "nothing equipped"
+/// before v4 `4423ad10`, a silent bug its `.some()` rewrite fixed).
 pub fn has_equipped_items(slots: Option<&Slots>) -> bool {
     match slots {
         None => false,
-        Some(s) => s.top.len() + s.bottom.len() + s.footwear.len() + s.accessories.len() > 0,
+        Some(s) => WARDROBE_SLOT_TYPES
+            .iter()
+            .any(|slot| !s.slot(slot).is_empty()),
     }
 }
 
@@ -642,10 +856,42 @@ mod tests {
     #[test]
     fn union_types_is_canonical_slot_order() {
         let a = types(&["accessories", "top"]);
-        let b = types(&["bottom"]);
+        let b = types(&["bottom", "hair"]);
         let got = union_types([a.as_slice(), b.as_slice()]);
-        // Canonical order regardless of input order.
-        assert_eq!(got, types(&["top", "bottom", "accessories"]));
+        // Canonical order regardless of input order — hair LAST.
+        assert_eq!(got, types(&["top", "bottom", "accessories", "hair"]));
+    }
+
+    #[test]
+    fn registry_derivations_are_pinned() {
+        // CLOTHING_SLOT_TYPES / UNREPORTED_IF_BLANK_SLOT_TYPES are v4-derived
+        // (filters of the registry); Rust consts can't filter, so this test IS
+        // the derivation.
+        let clothing: Vec<&str> = WARDROBE_SLOT_TYPES
+            .iter()
+            .zip(WARDROBE_SLOT_META.iter())
+            .filter(|(_, m)| m.is_clothing)
+            .map(|(s, _)| *s)
+            .collect();
+        assert_eq!(clothing, CLOTHING_SLOT_TYPES);
+        let unreported: Vec<&str> = WARDROBE_SLOT_TYPES
+            .iter()
+            .zip(WARDROBE_SLOT_META.iter())
+            .filter(|(_, m)| !m.report_when_empty)
+            .map(|(s, _)| *s)
+            .collect();
+        assert_eq!(unreported, UNREPORTED_IF_BLANK_SLOT_TYPES);
+        // v4's invariant: emptyFallback is non-null exactly for reported slots.
+        for m in &WARDROBE_SLOT_META {
+            assert_eq!(m.empty_fallback.is_none(), !m.report_when_empty);
+        }
+        // The registry rows are addressable by name and hair is the styling slot.
+        assert!(!is_slot_reported_when_empty("hair"));
+        for slot in CLOTHING_SLOT_TYPES {
+            assert!(is_slot_reported_when_empty(slot));
+        }
+        assert_eq!(slot_meta("hair").unwrap().label, "Hair");
+        assert!(slot_meta("bald").is_none());
     }
 
     #[test]
@@ -654,16 +900,57 @@ mod tests {
             describe_outfit(&OutfitSlotValues::default()),
             "- completely naked and unadorned\n"
         );
-        // Top+bottom empty → "- naked"; footwear/accessories fall back.
+        // Top+bottom empty → "- naked"; footwear/accessories fall back; empty
+        // hair says NOTHING.
         let s = OutfitSlotValues {
             top: vec![],
             bottom: vec![],
             footwear: vec!["Boots".into()],
             accessories: vec![],
+            hair: vec![],
         };
         assert_eq!(
             describe_outfit(&s),
             "- naked\n- **footwear:** Boots\n- **accessories:** no accessories\n"
+        );
+    }
+
+    #[test]
+    fn describe_outfit_rule_13_styled_hair_blocks_the_full_collapse() {
+        // All clothing empty + hair styled → NOT "completely naked and
+        // unadorned"; fall through to "- naked" + fallbacks + the hair line.
+        let s = OutfitSlotValues {
+            hair: vec!["marcel waves".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            describe_outfit(&s),
+            "- naked\n- **footwear:** barefoot\n- **accessories:** no accessories\n- **hair:** marcel waves\n"
+        );
+    }
+
+    #[test]
+    fn describe_outfit_renders_a_styled_hairdo_and_skips_a_blank_one() {
+        let dressed = OutfitSlotValues {
+            top: vec!["linen shirt".into()],
+            bottom: vec!["wool trousers".into()],
+            footwear: vec!["oxfords".into()],
+            accessories: vec!["pocket watch".into()],
+            hair: vec!["braided crown".into()],
+        };
+        assert_eq!(
+            describe_outfit(&dressed),
+            "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories:** pocket watch\n- **hair:** braided crown\n"
+        );
+        // Same outfit, no hairdo → the hair line vanishes entirely (never
+        // "(empty)", never a fallback).
+        let unstyled = OutfitSlotValues {
+            hair: vec![],
+            ..dressed
+        };
+        assert_eq!(
+            describe_outfit(&unstyled),
+            "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories:** pocket watch\n"
         );
     }
 
@@ -677,6 +964,7 @@ mod tests {
             bottom: vec!["Pants".into()],
             footwear: vec!["Shoes".into()],
             accessories: vec!["Hat".into()],
+            hair: vec![],
         };
         assert_eq!(
             describe_outfit_with_omit(&s, &[OutfitSlotName::Bottom, OutfitSlotName::Footwear]),
@@ -689,6 +977,7 @@ mod tests {
             bottom: vec![],
             footwear: vec![],
             accessories: vec!["Necklace".into()],
+            hair: vec![],
         };
         assert_eq!(
             describe_outfit_with_omit(
@@ -725,11 +1014,64 @@ mod tests {
             bottom: vec!["Dress".into()],
             footwear: vec!["Heels".into()],
             accessories: vec![],
+            hair: vec![],
         };
         assert_eq!(
             describe_outfit(&s),
             "- **top, bottom:** Dress\n- **footwear:** Heels\n- **accessories:** no accessories\n"
         );
+    }
+
+    /// The no-migration guarantee for wardrobe slots (v4
+    /// `equipped-slots-forward-compat.test.ts`): `chats.equippedOutfit` is
+    /// unconstrained JSON and every slot defaults to `[]`, so a row written
+    /// before a slot existed parses cleanly with the new slot arriving empty.
+    #[test]
+    fn equipped_slots_forward_compat() {
+        const UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+        const UUID_B: &str = "550e8400-e29b-41d4-a716-446655440001";
+        // A pre-hair four-key row parses and supplies an empty hair slot.
+        let legacy_row = json!({
+            "top": [UUID_A],
+            "bottom": [UUID_B],
+            "footwear": [],
+            "accessories": [],
+        });
+        let parsed = Slots::from_value(Some(&legacy_row));
+        assert!(parsed.hair.is_empty());
+        // Nothing the old row DID say is disturbed.
+        assert_eq!(parsed.top, vec![UUID_A.to_string()]);
+        assert_eq!(parsed.bottom, vec![UUID_B.to_string()]);
+
+        // An empty object parses into every slot, all empty.
+        assert_eq!(Slots::from_value(Some(&json!({}))), Slots::fresh());
+
+        // Every declared slot round-trips: the serialization carries exactly
+        // the canonical slot list, in order — no more, no less.
+        let keys: Vec<String> = Slots::fresh()
+            .to_value()
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(keys, WARDROBE_SLOT_TYPES.map(String::from).to_vec());
+    }
+
+    #[test]
+    fn hash_gains_the_hair_key_unconditionally() {
+        // The five-key hash differs from the historical four-key hash even for
+        // an all-empty outfit — the accepted one-miss-per-chat upgrade. Pin the
+        // serialized preimage shape via a worn hairdo actually changing it.
+        let empty_hash = hash_equipped_slots(None);
+        let styled = Slots {
+            hair: vec!["braid-1".into()],
+            ..Default::default()
+        };
+        assert_ne!(hash_equipped_slots(Some(&styled)), empty_hash);
+        // And a hair-only outfit now counts as equipped (v4's `.some()` fix).
+        assert!(has_equipped_items(Some(&styled)));
+        assert!(!has_equipped_items(Some(&Slots::fresh())));
     }
 
     #[test]

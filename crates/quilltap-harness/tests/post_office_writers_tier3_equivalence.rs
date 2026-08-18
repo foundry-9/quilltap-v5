@@ -131,6 +131,9 @@ struct OutfitSpec {
     bottom: Vec<String>,
     footwear: Vec<String>,
     accessories: Vec<String>,
+    /// Absent on pre-hair fixture rows (reads as empty, matching v4's parse).
+    #[serde(default)]
+    hair: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -480,6 +483,7 @@ async fn run_case(db: &Db, spec: &Spec, c: &Case) {
                 bottom: o.bottom.clone(),
                 footwear: o.footwear.clone(),
                 accessories: o.accessories.clone(),
+                hair: o.hair.clone(),
             };
             post_outfit_change_whisper(
                 db,

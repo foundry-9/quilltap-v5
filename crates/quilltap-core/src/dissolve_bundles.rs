@@ -295,24 +295,15 @@ pub fn dissolve_bundles_in_slots(current_slots: &Slots, items_by_id: &WearableLo
     next
 }
 
-/// A slot's id array by name. An unrecognized name is unreachable — every
-/// caller filters through [`slots_covered_by`] or walks [`WARDROBE_SLOT_TYPES`].
+/// A slot's id array by name — the canonical accessor (an unrecognized name is
+/// unreachable — every caller filters through [`slots_covered_by`] or walks
+/// [`WARDROBE_SLOT_TYPES`]).
 fn slot_of<'a>(slots: &'a Slots, name: &str) -> &'a Vec<String> {
-    match name {
-        "bottom" => &slots.bottom,
-        "footwear" => &slots.footwear,
-        "accessories" => &slots.accessories,
-        _ => &slots.top,
-    }
+    slots.slot(name)
 }
 
 fn slot_mut<'a>(slots: &'a mut Slots, name: &str) -> &'a mut Vec<String> {
-    match name {
-        "bottom" => &mut slots.bottom,
-        "footwear" => &mut slots.footwear,
-        "accessories" => &mut slots.accessories,
-        _ => &mut slots.top,
-    }
+    slots.slot_mut(name)
 }
 
 #[cfg(test)]
@@ -360,6 +351,7 @@ mod tests {
             bottom: bottom.iter().map(|s| s.to_string()).collect(),
             footwear: footwear.iter().map(|s| s.to_string()).collect(),
             accessories: accessories.iter().map(|s| s.to_string()).collect(),
+            hair: Vec::new(),
         }
     }
 

@@ -46,8 +46,9 @@ use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardro
 
 use super::types::{ErrorKind, Response};
 
-/// The four coverage slots, in v4's declaration order (`WARDROBE_SLOT_TYPES`).
-const WARDROBE_SLOT_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+/// The coverage slots, in v4's declaration order — read from the ONE registry
+/// (`4423ad10`'s consolidation).
+const WARDROBE_SLOT_TYPES: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 /// The seven modes, in v4's enum order (`equip` = the deprecated `wear` alias).
 const EQUIP_MODES: [&str; 7] = [
@@ -958,6 +959,6 @@ mod tests {
         .unwrap();
         let slots = ok.slots.unwrap();
         let keys: Vec<&String> = slots.as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["top", "bottom", "footwear", "accessories"]);
+        assert_eq!(keys, ["top", "bottom", "footwear", "accessories", "hair"]);
     }
 }

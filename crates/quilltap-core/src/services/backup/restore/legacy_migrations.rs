@@ -8,8 +8,11 @@
 
 use serde_json::{Map, Value};
 
-/// v4 `LEGACY_SLOT_ORDER` (`:45`) — the order `componentItemIds` and `types`
-/// are derived in, so a folded composite is stable.
+/// v4 `LEGACY_SLOT_ORDER` (`:46`) — the order `componentItemIds` and `types`
+/// are derived in, so a folded composite is stable. **FROZEN at the four
+/// pre-hair names** — legacy presets and the `looksLegacy` probe address a
+/// shape that predates the hair slot; v4 `4423ad10` deliberately left them at
+/// four (its design doc §7.4 says otherwise — trust the code). Do NOT widen.
 const LEGACY_SLOT_ORDER: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
 
 /// v4 `dedupeAndOrderSlotTypes` (`:56`). The slot NAMES double as wardrobe item
@@ -56,8 +59,12 @@ fn is_truthy(v: Option<&Value>) -> bool {
 }
 
 /// v4 `upgradeLegacyEquippedSlots` (`:90`) — `null`/absent → `null`; otherwise
-/// each of the four slots becomes `Array.isArray ? filter(string) : string ?
-/// [string] : []`. **Idempotent**: an already-array shape passes through.
+/// each slot becomes `Array.isArray ? filter(string) : string ? [string] : []`.
+/// **Idempotent**: an already-array shape passes through.
+///
+/// Built over the LIVE slot list rather than the four legacy names (v4
+/// `4423ad10`): slots the legacy shape never had (hair) simply upgrade to
+/// `[]`, which is the correct reading of a backup written before they existed.
 pub fn upgrade_legacy_equipped_slots(raw: &Value) -> Option<Value> {
     // v4's `if (!raw) return null` — JS falsiness on the whole object.
     if !is_truthy(Some(raw)) {
@@ -76,7 +83,7 @@ pub fn upgrade_legacy_equipped_slots(raw: &Value) -> Option<Value> {
         }
     };
     let mut out = Map::new();
-    for slot in LEGACY_SLOT_ORDER {
+    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
         out.insert(slot.to_string(), upgrade(raw.get(slot)));
     }
     Some(Value::Object(out))
@@ -120,9 +127,11 @@ mod tests {
     fn equipped_slot_upgrade_is_idempotent() {
         let legacy = json!({"top": "a", "bottom": null, "footwear": null, "accessories": null});
         let once = upgrade_legacy_equipped_slots(&legacy).unwrap();
+        // Slots the legacy shape never had (hair) upgrade to [] — the correct
+        // reading of a backup written before they existed.
         assert_eq!(
             once,
-            json!({"top": ["a"], "bottom": [], "footwear": [], "accessories": []})
+            json!({"top": ["a"], "bottom": [], "footwear": [], "accessories": [], "hair": []})
         );
         assert_eq!(upgrade_legacy_equipped_slots(&once).unwrap(), once);
         assert_eq!(upgrade_legacy_equipped_slots(&Value::Null), None);

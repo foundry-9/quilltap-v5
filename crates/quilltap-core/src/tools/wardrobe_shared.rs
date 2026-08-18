@@ -417,6 +417,7 @@ fn current_slot_mut<'a>(slots: &'a mut Slots, name: &str) -> &'a mut Vec<String>
         "top" => &mut slots.top,
         "bottom" => &mut slots.bottom,
         "footwear" => &mut slots.footwear,
+        "hair" => &mut slots.hair,
         _ => &mut slots.accessories,
     }
 }
@@ -444,12 +445,9 @@ pub fn resolve_equipped_outfit_values(
             .unwrap_or_default()
             .to_string()
     };
-    Ok(OutfitSlotValues {
-        top: leaves.top.iter().map(title_of).collect(),
-        bottom: leaves.bottom.iter().map(title_of).collect(),
-        footwear: leaves.footwear.iter().map(title_of).collect(),
-        accessories: leaves.accessories.iter().map(title_of).collect(),
-    })
+    Ok(crate::wardrobe::build_outfit_slot_values(|slot| {
+        leaves.slot(slot).iter().map(&title_of).collect()
+    }))
 }
 
 /// The raw leaf items routed per output slot (v4 `resolveEquippedOutfitForCharacter`'s
@@ -462,6 +460,33 @@ pub struct LeafItemsBySlot {
     pub bottom: Vec<Value>,
     pub footwear: Vec<Value>,
     pub accessories: Vec<Value>,
+    pub hair: Vec<Value>,
+}
+
+impl LeafItemsBySlot {
+    /// Read a slot's leaf items by canonical name (unknown = `top`, unreachable
+    /// — callers only walk [`WARDROBE_SLOT_TYPES`]).
+    pub fn slot(&self, name: &str) -> &[Value] {
+        match name {
+            "top" => &self.top,
+            "bottom" => &self.bottom,
+            "footwear" => &self.footwear,
+            "accessories" => &self.accessories,
+            "hair" => &self.hair,
+            _ => &self.top,
+        }
+    }
+
+    fn slot_mut(&mut self, name: &str) -> &mut Vec<Value> {
+        match name {
+            "top" => &mut self.top,
+            "bottom" => &mut self.bottom,
+            "footwear" => &mut self.footwear,
+            "accessories" => &mut self.accessories,
+            "hair" => &mut self.hair,
+            _ => &mut self.top,
+        }
+    }
 }
 
 /// The shared first half of v4 `resolveEquippedOutfitForCharacter`: build the
@@ -482,16 +507,11 @@ fn resolve_equipped_leaves(
     slots: &Slots,
     tiers: &SharedWardrobeTiers,
 ) -> Vec<Value> {
-    // Unique equipped ids across all four input slots.
+    // Unique equipped ids across every input slot (v4 `allEquippedItemIds`).
     let mut equipped_ids: Vec<String> = Vec::new();
     let mut seen_id: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for slot in [
-        &slots.top,
-        &slots.bottom,
-        &slots.footwear,
-        &slots.accessories,
-    ] {
-        for id in slot {
+    for slot in WARDROBE_SLOT_TYPES {
+        for id in slots.slot(slot) {
             if seen_id.insert(id.clone()) {
                 equipped_ids.push(id.clone());
             }
@@ -536,13 +556,8 @@ fn resolve_equipped_leaves(
     // Expand each slot's composites, dedup leaves in first-seen order.
     let mut seen_leaf: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut ordered_leaves: Vec<Value> = Vec::new();
-    for slot in [
-        &slots.top,
-        &slots.bottom,
-        &slots.footwear,
-        &slots.accessories,
-    ] {
-        let expanded = expand_composites(slot, &items_by_id, None);
+    for slot in WARDROBE_SLOT_TYPES {
+        let expanded = expand_composites(slots.slot(slot), &items_by_id, None);
         for id in expanded.leaf_ids {
             if seen_leaf.contains(&id) {
                 continue;
@@ -580,12 +595,10 @@ pub fn resolve_equipped_outfit_leaf_values(
             .cloned()
             .unwrap_or_default();
         for t in &types {
-            match t.as_str() {
-                Some("top") => out.top.push(item.clone()),
-                Some("bottom") => out.bottom.push(item.clone()),
-                Some("footwear") => out.footwear.push(item.clone()),
-                Some("accessories") => out.accessories.push(item.clone()),
-                _ => {}
+            if let Some(slot) = t.as_str() {
+                if WARDROBE_SLOT_TYPES.contains(&slot) {
+                    out.slot_mut(slot).push(item.clone());
+                }
             }
         }
     }

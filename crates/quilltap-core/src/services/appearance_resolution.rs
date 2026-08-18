@@ -102,9 +102,10 @@ fn can_skip_resolution(
         .all(|c| c.equipped_wardrobe_items.len() <= 1)
 }
 
-/// v4 `wardrobeItemsToSlotValues` (the local copy in the default builder).
+/// v4 `wardrobeItemsToSlotValues` (the local copy in the default builder;
+/// built over v4's `buildOutfitSlotValues`, so new slots ride the registry).
 fn wardrobe_items_to_slot_values(items: &[WardrobeItemInput]) -> OutfitSlotValues {
-    let values_for = |slot: &str| -> Vec<String> {
+    crate::wardrobe::build_outfit_slot_values(|slot| {
         items
             .iter()
             .filter(|i| i.slot == slot)
@@ -113,13 +114,7 @@ fn wardrobe_items_to_slot_values(items: &[WardrobeItemInput]) -> OutfitSlotValue
                 _ => i.title.clone(),
             })
             .collect()
-    };
-    OutfitSlotValues {
-        top: values_for("top"),
-        bottom: values_for("bottom"),
-        footwear: values_for("footwear"),
-        accessories: values_for("accessories"),
-    }
+    })
 }
 
 /// v4's `physDesc` selection: `complete || long || medium || short || name`.

@@ -39,6 +39,9 @@ struct WireSlots {
     bottom: Vec<String>,
     footwear: Vec<String>,
     accessories: Vec<String>,
+    /// Absent on pre-hair corpus rows (reads as empty, matching v4's parse).
+    #[serde(default)]
+    hair: Vec<String>,
 }
 
 impl WireSlots {
@@ -48,6 +51,7 @@ impl WireSlots {
             bottom: self.bottom.clone(),
             footwear: self.footwear.clone(),
             accessories: self.accessories.clone(),
+            hair: self.hair.clone(),
         }
     }
 }

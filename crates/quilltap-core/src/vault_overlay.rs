@@ -69,8 +69,10 @@ pub fn stable_uuid_from_string(source: &str) -> String {
     )
 }
 
-/// The four wardrobe item types (v4 `WardrobeItemTypeEnum`), in declaration order.
-pub const WARDROBE_ITEM_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+/// The wardrobe item types (v4 `WardrobeItemTypeEnum`), in declaration order —
+/// read from the ONE registry (`4423ad10`'s consolidation), so the vault's
+/// `types:` frontmatter accepts every live slot (`hair` included).
+pub const WARDROBE_ITEM_TYPES: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 // ── JSON projection parsers (`properties.json` / `physical-prompts.json`) ─────
 //
@@ -530,6 +532,11 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
 /// `z.string().nullable().optional()`; unknown keys stripped; `outfit` itself is
 /// not nullable, so `null` fails). Returns `Some(())` if valid (the value is then
 /// discarded), `None` on any violation.
+///
+/// FROZEN at the four legacy names — this validates the retired
+/// `wardrobe.json` payload, whose schema predates the hair slot (v4's
+/// `LegacyWardrobeCharacterSchema` restates the four keys rather than reading
+/// the registry). Do NOT widen with new slots.
 fn validate_outfit(v: &Value) -> Option<()> {
     let obj = v.as_object()?; // non-object (incl. null) → violation
     for key in ["top", "bottom", "footwear", "accessories"] {
