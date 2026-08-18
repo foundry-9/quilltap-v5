@@ -74119,3 +74119,86 @@ reds (`expected 'Renamed Elsewhere' to be 'Half-typed name'`).
 Gate: the four touched spec files green by name; `ng build` clean (the
 `refresh(opts?)` widening is source-compatible with every existing
 caller). SPA 0.5.507 → 0.5.508.
+
+## P4.D90 unit 4 — the re-activation e2e beats + the lane's deferrals (2026-08-18)
+
+**Tier 2 landed** as a NEW spec file,
+`apps/web/e2e/workspace-tab-refresh-flow.spec.ts` (v4 shipped no e2e for
+this feature). Like `workspace-flow.spec.ts` it imports the BASE
+`@playwright/test`, never `./support/fixtures`, so the workspace flag
+stays ON; its name sorts after `workspace-flow`, before the `zz-*`
+destructives.
+
+Two beats, one per mechanism:
+
+1. **The map path** — open the Chats tab, park on a THIRD tab, return,
+   and a fresh `listChats` dispatch must arrive. The parking tab is the
+   Scriptorium, NOT Home: `home`'s map entry sweeps the chats prefix too
+   (v4's "sibling tabs sharing a prefix come back fresh"), so parking on
+   Home would refresh the chat list as well and the beat could not tell
+   the two refreshers apart. The Scriptorium's map entry is empty and its
+   own hook touches only mount points — and that visit is its FIRST
+   activation, which by contract refreshes nothing, which the beat pins
+   by asserting the `listChats` count is unchanged while parked.
+2. **The hand-rolled path** — the Scriptorium's silent re-list: return to
+   the tab, and while the fresh `mountPointList` is in flight the page
+   heading is still on screen and "Loading document stores..." never
+   appears.
+
+Both beats AWAIT the dispatch they trigger (`page.waitForRequest` on a
+post-body predicate over `POST /api/dispatch`), never a timeout — this
+feature IS a page-initiated refetch, the class the 2026-08-01 deflake
+round hardened (`e2e-playwright-traps` §the-unawaited-refetch).
+
+### The AT-UNIFY edit (P4.D88 owns the file) — the exact insertion
+
+`apps/web/src/app/wardrobe/wardrobe-control-dialog.ts`, in
+`WardrobeControlDialog`'s constructor (the same class that owns
+`reloadCurrentItems()` at `:709-711`), after the existing seeding
+effects:
+
+```ts
+    // As a rail-opened workspace tab, navigating back refreshes the garment
+    // list. Safe mid-edit: the fitting-room/live seeding is ref-gated, so a
+    // reload never blows away staged slots. v4
+    // `wardrobe-control-dialog.tsx:175-180`.
+    onTabActivated(() => {
+      void this.reloadCurrentItems();
+    });
+```
+
+with `onTabActivated` added to the existing
+`../workspace/workspace-contract` import.
+
+**v4's "the seeding is ref-gated" claim was VERIFIED against v5's own
+seeding before ordering the edit** (the order required this): v5's
+fitting-room seed effect early-returns on `this.fittingSeedKey ===
+seedKey` (`:606-608`) and the staged-Live seed effect early-returns on
+`this.liveSeededByChar.has(seedKey)` (`:626-629`), both keyed
+`characterId|chatId`. `reloadCurrentItems()` only replaces `items()`, so
+it re-runs the fitting effect, which returns at the seed-key guard — no
+staged slot is rebuilt. The claim holds in v5.
+
+### Deferred loudly (Tier 3)
+
+1. **The wardrobe dialog hook** — AT-UNIFY, spec above. This lane did not
+   touch the file (P4.D88 owns it this round).
+2. **The split-key-spelling consolidation** — `['connectionProfiles']` ∥
+   `['connection-profiles']`, `['apiKeys']` ∥ `['api-keys']`,
+   `['chatSettings']` ∥ `['chat-settings']`. The map sweeps BOTH of each
+   and the module doc names every file on both sides, so a future
+   maintenance lane can find them mechanically. Banked, not landed.
+3. **v4 prefixes with no v5 analogue** — `settings.generalState`,
+   `settings.taboo` (both fetch outside TanStack Query in v5) and
+   `plugins.all` (plugins are Rust-core; no client query). Recorded in
+   the map's module doc; nothing invented.
+
+**Gate for this unit:** `npx playwright test workspace-tab-refresh-flow`
+→ **2 passed (9.5 m)** against the real axum binary (the wall clock is
+global setup on DEBUG binaries — this lane touches no crate, so it built
+`cargo build -p quilltap-web -p quilltap-cli` debug rather than release;
+the unifier's release build makes the suite fast again). **Mutation
+proof:** neutering the fire in `watchTabActivation`
+(`if (false && was === false && now === true)`) + an SPA rebuild reds
+BOTH beats, each on the `waitForRequest` for the refetch it triggers —
+the beats cannot pass vacuously. SPA 0.5.508 → 0.5.509.

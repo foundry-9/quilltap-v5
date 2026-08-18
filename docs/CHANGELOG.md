@@ -93,6 +93,11 @@ notice now owns its own lifetime: it stays up while the image is still
 generating, reports the outcome for six seconds and then dismisses itself,
 is dropped if the turn ends without ever producing a result, clears at
 once when you stop a turn, and carries a close button of its own.
+Two end-to-end walks now cover the returning-to-a-tab refresh: leaving
+the chat list and coming back re-reads it, and returning to the
+Scriptorium re-lists its stores without the page blinking through its
+loading state.
+
 The workspace tabs that load their data outside the query cache now
 refresh on return too: My Photos, Scenarios, the Scriptorium (list and
 store detail), Generate Image's character list, and a character's stats,
