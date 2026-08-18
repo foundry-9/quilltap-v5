@@ -93,6 +93,12 @@ notice now owns its own lifetime: it stays up while the image is still
 generating, reports the outcome for six seconds and then dismisses itself,
 is dropped if the turn ends without ever producing a result, clears at
 once when you stop a turn, and carries a close button of its own.
+Workspace tabs now know whether they are the tab you are actually looking
+at. Each mounted tab's subtree gets a visibility signal, and a new
+`onTabActivated` hook runs a callback on every hidden-to-visible
+transition — never on the first activation, never when a tab is hidden,
+and never outside the workspace. Nothing uses it yet; the refresh it
+enables lands next.
 
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it

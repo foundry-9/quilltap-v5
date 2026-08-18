@@ -33,7 +33,12 @@ import {
   type Type,
 } from '@angular/core';
 
-import { WORKSPACE_TAB_ID, type WorkspaceTab } from '../workspace-contract';
+import {
+  WORKSPACE_TAB_ID,
+  WORKSPACE_TAB_VISIBLE,
+  watchTabActivation,
+  type WorkspaceTab,
+} from '../workspace-contract';
 import { TAB_VIEW_REGISTRY, type TabViewEntry } from './tab-registry';
 
 @Component({
@@ -53,6 +58,12 @@ import { TAB_VIEW_REGISTRY, type TabViewEntry } from './tab-registry';
 export class TabView {
   readonly tab = input.required<WorkspaceTab>();
   readonly active = input.required<boolean>();
+  /**
+   * The tab is its pane's active tab (actually on screen). v4 `TabView`'s
+   * `visible` prop — NOT the same as `active`, which also covers a hidden Salon
+   * mounted only to portal into a child tab.
+   */
+  readonly visible = input.required<boolean>();
 
   private readonly parentInjector = inject(Injector);
   private readonly registry = inject(TAB_VIEW_REGISTRY);
@@ -89,7 +100,10 @@ export class TabView {
   protected tabInjector(): Injector {
     if (!this._injector) {
       this._injector = Injector.create({
-        providers: [{ provide: WORKSPACE_TAB_ID, useValue: this.tab().id }],
+        providers: [
+          { provide: WORKSPACE_TAB_ID, useValue: this.tab().id },
+          { provide: WORKSPACE_TAB_VISIBLE, useValue: this.visible },
+        ],
         parent: this.parentInjector,
       });
     }

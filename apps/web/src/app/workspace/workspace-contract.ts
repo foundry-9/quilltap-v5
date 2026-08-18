@@ -12,7 +12,7 @@
  * `b8b12695`) and are corpus-locked by lane p4.9j1's tier-1 differential —
  * do not "improve" them; v4 is the oracle.
  */
-import { InjectionToken, type Signal } from '@angular/core';
+import { InjectionToken, effect, inject, untracked, type Signal } from '@angular/core';
 
 export type PaneId = 'left' | 'right';
 
@@ -303,3 +303,75 @@ export interface WorkspaceBackdropRegistry {
 export const WORKSPACE_BACKDROP_REGISTRY = new InjectionToken<WorkspaceBackdropRegistry>(
   'quilltap.workspace.backdropRegistry',
 );
+
+/**
+ * Whether the containing tab is its pane's ACTIVE (on-screen) tab — provided
+ * PER TAB by the host alongside {@link WORKSPACE_TAB_ID} (v4
+ * `WorkspaceTabVisibilityContext`). An absent token means "not inside the
+ * workspace" (a routed legacy screen), where a view is always effectively
+ * visible and {@link onTabActivated} is inert — v4's `null` context value.
+ *
+ * ⚠ Visible is NOT the same as mounted: the host mounts a hidden Salon while
+ * one of its child tabs is on screen (so it can portal its live pane into the
+ * child), and that Salon's `visible` stays false.
+ */
+export const WORKSPACE_TAB_VISIBLE = new InjectionToken<Signal<boolean>>(
+  'quilltap.workspace.tabVisible',
+);
+
+/**
+ * Runs `callback` each time the containing workspace tab is **re-activated** —
+ * a hidden→visible transition, i.e. the user navigated away and came back
+ * (v4 `useOnTabActivated`).
+ *
+ * Views use this to refresh their data sources so a kept-alive (never
+ * unmounted) tab doesn't show the world as it stood when the user left.
+ * Deliberately does NOT fire on the first visibility a caller observes (the
+ * view's own on-mount fetch covers that), never on visible→hidden, and never
+ * outside the workspace.
+ *
+ * Must be called from an injection context (a component/service constructor or
+ * a field initializer).
+ */
+export function onTabActivated(callback: () => void): void {
+  const visible = inject(WORKSPACE_TAB_VISIBLE, { optional: true });
+  if (!visible) return;
+  watchTabActivation(visible, callback);
+}
+
+/**
+ * The transition engine behind {@link onTabActivated}, exported for the tab
+ * host — which watches its OWN `visible` input rather than an injected token
+ * (it sits above the per-tab injector that provides it).
+ *
+ * Semantics, mirroring v4's `useOnTabActivated` exactly:
+ *  - the FIRST value observed is only a baseline — it never fires (v4 seeds
+ *    `prevVisibleRef` from the mounting render);
+ *  - fires only on `false → true`, never on `true → false`;
+ *  - `enabled` gates observation: while it is false nothing is watched and the
+ *    baseline is dropped, so the value seen when it flips true becomes the new
+ *    baseline. This is v5's translation of v4 MOUNTING
+ *    `TabActivationInvalidator` only once the tab has been activated once — the
+ *    first activation must not invalidate anything (the view is mounting and
+ *    fetching for itself).
+ *  - the callback runs `untracked`: v4's `callbackRef` indirection keeps the
+ *    effect's dependency list to `[visible]` alone, so a signal the callback
+ *    reads must never become a trigger for it.
+ */
+export function watchTabActivation(
+  visible: Signal<boolean>,
+  callback: () => void,
+  opts?: { enabled?: Signal<boolean> },
+): void {
+  let previous: boolean | undefined;
+  effect(() => {
+    const now = visible();
+    if (opts?.enabled && !opts.enabled()) {
+      previous = undefined;
+      return;
+    }
+    const was = previous;
+    previous = now;
+    if (was === false && now === true) untracked(callback);
+  });
+}

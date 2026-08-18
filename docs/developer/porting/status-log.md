@@ -73929,3 +73929,61 @@ lane's files reformats a great deal of pre-existing code in
 — those files are not prettier-clean on main. Every such hunk was reverted
 here and the diff carries this lane's changes ONLY; don't reintroduce the
 churn at unification.
+## P4.D90 unit 1 — the tab-visibility signal + `onTabActivated` (2026-08-18)
+
+Lane `claude/workspace-tab-refresh-caf606`, v4 baseline `979652a9` (drift
+re-checked at lane start: `git log 979652a9..main` EMPTY, `git diff main
+bugfix -- lib/ app/ packages/` shows only the release-branch lag, no new
+ported-surface drift).
+
+**Ported:** v4 `components/workspace/workspace-tab-context.tsx:47-104`
+(`WorkspaceTabVisibilityContext` + `useOnTabActivated`) and the `visible`
+prop threaded from `WorkspaceHost.tsx:127` through `TabView.tsx:148-156`.
+
+**v5 shape** (`app/workspace/workspace-contract.ts`):
+
+- `WORKSPACE_TAB_VISIBLE: InjectionToken<Signal<boolean>>`, provided in
+  `TabView`'s cached per-tab injector beside `WORKSPACE_TAB_ID`. Absent
+  token = v4's `null` context = "not inside the workspace".
+- `onTabActivated(cb)` — injects the token `{optional: true}` and is
+  wholly inert without it.
+- `watchTabActivation(visible, cb, {enabled?})` — the transition engine,
+  exported because the tab host watches its OWN `visible` input (it sits
+  ABOVE the per-tab injector that provides the token). Three carried
+  semantics: the first observed value is a baseline only (v4 seeds
+  `prevVisibleRef` from the mounting render); fire on `false→true` only;
+  the callback runs `untracked`, which is the Angular translation of
+  v4's `callbackRef` keeping the effect's dependency list to `[visible]`
+  alone.
+- `enabled` is v5-specific and load-bearing: v4 MOUNTS
+  `TabActivationInvalidator` only once the tab has been activated, so the
+  first activation never invalidates. v5's `TabView` exists from the
+  start, so the host passes `{enabled: everActive}` — while disabled the
+  baseline is dropped, and the value seen when it flips true becomes the
+  new baseline. Without it the FIRST activation of every tab would sweep
+  its queries while the view was still mounting and fetching.
+
+**Parity spec** — `app/workspace/core/tab-activation-refetch.spec.ts`,
+the 1:1 mirror of v4's `__tests__/unit/components/workspace/
+tab-activation-refetch.test.tsx` (hook half; the map half lands with
+unit 2). v4's React probe re-renders with a NEW callback to prove no
+stale one runs; v5 registers once in an injection context, so the
+equivalent guarantee is that the callback reads its state AT FIRE TIME.
+
+**Mutation proofs (both run, both red):**
+
+- *fire-on-mount* — `let previous: boolean | undefined = false` in
+  `watchTabActivation`: reds 3 of 4 (initial-mount, per-transition,
+  fire-time-state).
+- *stale capture* — the caller's callback freezing the value at
+  registration (`const frozen = label(); () => seen.push(frozen)`): reds
+  exactly the fire-time-state assertion. This is where a stale-callback
+  bug can actually live in the v5 spelling — `watchTabActivation` holds
+  one callback, so it cannot itself go stale.
+
+`chrome/tab-view.spec.ts` (the keep-alive mount-counter) gained the new
+required `visible` input at each `active` toggle; still green, the
+keep-alive invariants unchanged.
+
+Gate: `ng test --filter="onTabActivated"` 4/4 green. SPA 0.5.505 →
+0.5.506.

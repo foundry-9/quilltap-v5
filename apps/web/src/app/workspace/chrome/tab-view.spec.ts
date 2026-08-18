@@ -46,6 +46,7 @@ describe('TabView keep-alive', () => {
     const fixture = TestBed.createComponent(TabView);
     fixture.componentRef.setInput('tab', homeTab());
     fixture.componentRef.setInput('active', false);
+    fixture.componentRef.setInput('visible', false);
     fixture.detectChanges();
     // (1) Lazy-mount: inactive ⇒ not constructed.
     expect(constructions).toBe(0);
@@ -53,6 +54,7 @@ describe('TabView keep-alive', () => {
 
     // First activation constructs it once.
     fixture.componentRef.setInput('active', true);
+    fixture.componentRef.setInput('visible', true);
     fixture.detectChanges();
     expect(constructions).toBe(1);
     const stubEl = fixture.nativeElement.querySelector('[data-stub]');
@@ -60,12 +62,14 @@ describe('TabView keep-alive', () => {
 
     // (2a) Switched away (hidden by the host) — TabView keeps it mounted.
     fixture.componentRef.setInput('active', false);
+    fixture.componentRef.setInput('visible', false);
     fixture.detectChanges();
     expect(constructions).toBe(1);
     expect(fixture.nativeElement.querySelector('[data-stub]')).toBe(stubEl); // same DOM node
 
     // Back again — still the same instance.
     fixture.componentRef.setInput('active', true);
+    fixture.componentRef.setInput('visible', true);
     fixture.detectChanges();
     expect(constructions).toBe(1);
 

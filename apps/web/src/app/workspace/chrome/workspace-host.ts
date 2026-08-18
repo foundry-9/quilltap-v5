@@ -131,7 +131,7 @@ const DIVIDER_PX = 8;
           [style.display]="visible ? null : 'none'"
           (mousedown)="onPaneMouseDown(paneOf(tab.id))"
         >
-          <qt-tab-view [tab]="tab" [active]="isMounted(tab)" />
+          <qt-tab-view [tab]="tab" [active]="isMounted(tab)" [visible]="visible" />
         </div>
       }
 
