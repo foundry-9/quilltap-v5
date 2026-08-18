@@ -35,6 +35,8 @@ import {
   type WorkspaceBackdropEntry,
   type WorkspaceBackdropRegistry,
 } from '../../workspace/workspace-contract';
+import { initialChatStreamState, type ChatStreamState } from '../../core/chat-stream.reducer';
+import type { ToolExecutionStatus } from '../../chat/chat-composer';
 import { SalonConversation } from './salon-conversation';
 import { ToastService } from '../../ui/toast.service';
 
@@ -1914,5 +1916,331 @@ describe('SalonConversation — the roleplay template reaches the rendered rows 
 
     expect(seen).toEqual(['tpl-1']);
     expect(emotes(fixture)).toBe(1);
+  });
+});
+
+/**
+ * Bug 77 — the tool-execution notice owns its own lifetime.
+ *
+ * v4's banner above the composer ("Generating image..." / "Successfully
+ * generated N image(s)!") had exactly one teardown — a detached `setTimeout` at
+ * the bottom of `sendMessage`'s terminal `onDone` — so every other route out of
+ * a turn stranded it, and it carried no close control. v4 `25767c0f` moves
+ * ownership onto the notice itself.
+ *
+ * ⚠ v5 never ported this surface at all: the settled outcomes landed as toasts
+ * (which v4 raises TOO, with different sentences) and the `'pending'` half did
+ * not exist. So this is v4's mechanism landed in its FIXED form, and these are
+ * the first specs over `reportStreamTransitions` in either direction.
+ *
+ * No v4 test file shipped with the fix — the parity target is the surveyed v4
+ * mechanism at `useSSEStreaming.ts:37-38,308-357,381,417,424,848,1016,1128`,
+ * with the message bytes carried verbatim.
+ */
+describe('SalonConversation tool-execution notice (Bug 77)', () => {
+  /** A stream state carrying exactly the given generate_image calls. */
+  function state(
+    calls: { id: string; status: 'pending' | 'success' | 'error'; result?: unknown }[],
+    over: Partial<ChatStreamState> = {},
+  ): ChatStreamState {
+    return {
+      ...initialChatStreamState(),
+      toolBatches: calls.length
+        ? [{ offset: 0, calls: calls.map((c) => ({ name: 'generate_image', ...c })) }]
+        : [],
+      ...over,
+    };
+  }
+
+  /** Drive one transition through the vertical's reporter. */
+  function report(
+    fixture: ComponentFixture<SalonConversation>,
+    before: ChatStreamState,
+    after: ChatStreamState,
+  ): void {
+    (
+      fixture.componentInstance as unknown as {
+        reportStreamTransitions(a: ChatStreamState, b: ChatStreamState): void;
+      }
+    ).reportStreamTransitions(before, after);
+  }
+
+  function notice(fixture: ComponentFixture<SalonConversation>): ToolExecutionStatus | null {
+    return (
+      fixture.componentInstance as unknown as {
+        toolExecutionStatus(): ToolExecutionStatus | null;
+      }
+    ).toolExecutionStatus();
+  }
+
+  it('raises a pending notice the moment a generate_image batch is detected', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(fixture, state([]), state([{ id: 't0', status: 'pending' }]));
+    // v4 `trackToolsDetected:381` — the message bytes, verbatim.
+    expect(notice(fixture)).toEqual({
+      tool: 'generate_image',
+      status: 'pending',
+      message: 'Generating image...',
+    });
+  });
+
+  it('raises it only ONCE per call, however many transitions carry it', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const pending = state([{ id: 't0', status: 'pending' }]);
+    report(fixture, state([]), pending);
+    (fixture.componentInstance as unknown as { dismissToolExecutionStatus(): void })[
+      'dismissToolExecutionStatus'
+    ]();
+    // A transition where the call was already seen must not re-raise it — v4
+    // raises from the detection EVENT, which fires once.
+    report(fixture, pending, pending);
+    expect(notice(fixture)).toBeNull();
+  });
+
+  it('supersedes the pending notice with the settled one, and toasts alongside it', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const pending = state([{ id: 't0', status: 'pending' }]);
+    report(fixture, state([]), pending);
+    report(
+      fixture,
+      pending,
+      state([{ id: 't0', status: 'success', result: { images: [{}, {}] } }]),
+    );
+    // v4 `:417-421` raises the NOTICE and the toast both — different sentences,
+    // neither standing in for the other.
+    expect(notice(fixture)).toEqual({
+      tool: 'generate_image',
+      status: 'success',
+      message: 'Successfully generated 2 images!',
+    });
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'Image generation complete! 2 images generated.',
+    });
+  });
+
+  it('carries v4’s singular wording and its error fallback', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      state([{ id: 't0', status: 'pending' }]),
+      state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+    );
+    expect(notice(fixture)!.message).toBe('Successfully generated 1 image!');
+
+    report(
+      fixture,
+      state([{ id: 't1', status: 'pending' }]),
+      state([{ id: 't1', status: 'error', result: {} }]),
+    );
+    // v4 `:424` — the notice falls back to 'Failed to generate image' where the
+    // toast beside it says 'Unknown error'; both bytes are v4's.
+    expect(notice(fixture)).toEqual({
+      tool: 'generate_image',
+      status: 'error',
+      message: 'Failed to generate image',
+    });
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'Image generation failed: Unknown error',
+    });
+  });
+
+  it('a settled notice dismisses itself after 6s, and not a tick before', async () => {
+    // ⚠ Render BEFORE installing fake timers: the harness settles the TanStack
+    // queries by awaiting real `setTimeout(0)` ticks, which fake timers freeze —
+    // the test then hangs to its 5 s timeout, its `finally` never runs, and the
+    // leaked fake clock hangs every spec after it too.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    vi.useFakeTimers();
+    try {
+      report(
+        fixture,
+        state([{ id: 't0', status: 'pending' }]),
+        state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+      );
+      vi.advanceTimersByTime(5999);
+      expect(notice(fixture)).not.toBeNull();
+      vi.advanceTimersByTime(1);
+      expect(notice(fixture)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a pending notice never expires on its own', async () => {
+    // ⚠ Render BEFORE installing fake timers: the harness settles the TanStack
+    // queries by awaiting real `setTimeout(0)` ticks, which fake timers freeze —
+    // the test then hangs to its 5 s timeout, its `finally` never runs, and the
+    // leaked fake clock hangs every spec after it too.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    vi.useFakeTimers();
+    try {
+      report(fixture, state([]), state([{ id: 't0', status: 'pending' }]));
+      vi.advanceTimersByTime(60_000);
+      expect(notice(fixture)!.status).toBe('pending');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a new publish supersedes the previous countdown rather than stacking timers', async () => {
+    // ⚠ Render BEFORE installing fake timers: the harness settles the TanStack
+    // queries by awaiting real `setTimeout(0)` ticks, which fake timers freeze —
+    // the test then hangs to its 5 s timeout, its `finally` never runs, and the
+    // leaked fake clock hangs every spec after it too.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    vi.useFakeTimers();
+    try {
+      report(
+        fixture,
+        state([{ id: 't0', status: 'pending' }]),
+        state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+      );
+      vi.advanceTimersByTime(4000);
+      report(
+        fixture,
+        state([{ id: 't1', status: 'pending' }]),
+        state([{ id: 't1', status: 'success', result: { images: [{}, {}] } }]),
+      );
+      // The first notice's remaining 2s must not take the SECOND one down.
+      vi.advanceTimersByTime(2001);
+      expect(notice(fixture)!.message).toBe('Successfully generated 2 images!');
+      vi.advanceTimersByTime(4000);
+      expect(notice(fixture)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the turn-end boundary drops a STRANDED pending notice', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(fixture, state([]), state([{ id: 't0', status: 'pending' }]));
+    expect(notice(fixture)!.status).toBe('pending');
+    (fixture.componentInstance as unknown as { clearPendingToolExecutionStatus(): void })[
+      'clearPendingToolExecutionStatus'
+    ]();
+    expect(notice(fixture)).toBeNull();
+  });
+
+  it('the turn-end boundary does NOT cut a settled countdown short', async () => {
+    // ⚠ The mutation proof of the stranded-vs-settled distinction: a
+    // `clearPending` that cleared unconditionally (v4's own pre-fix shape, and
+    // the obvious wrong spelling) would rob the user of the outcome the instant
+    // the turn ended. Cutting the countdown short must red this.
+    // ⚠ Render BEFORE installing fake timers: the harness settles the TanStack
+    // queries by awaiting real `setTimeout(0)` ticks, which fake timers freeze —
+    // the test then hangs to its 5 s timeout, its `finally` never runs, and the
+    // leaked fake clock hangs every spec after it too.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    vi.useFakeTimers();
+    try {
+      report(
+        fixture,
+        state([{ id: 't0', status: 'pending' }]),
+        state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+      );
+      (fixture.componentInstance as unknown as { clearPendingToolExecutionStatus(): void })[
+        'clearPendingToolExecutionStatus'
+      ]();
+      expect(notice(fixture)!.message).toBe('Successfully generated 1 image!');
+      // ...and it still expires on its own schedule afterwards.
+      vi.advanceTimersByTime(6000);
+      expect(notice(fixture)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a turn ending by the ERROR arm still clears a stranded pending notice', async () => {
+    // The route v4's single `onDone` teardown missed entirely: an error arm left
+    // the banner pinned above the composer for the rest of the session.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const pending = state([{ id: 't0', status: 'pending' }]);
+    report(fixture, state([]), pending);
+    report(fixture, pending, state([{ id: 't0', status: 'pending' }], { error: 'Stream failed' }));
+    expect(notice(fixture)!.status).toBe('pending');
+    (fixture.componentInstance as unknown as { clearPendingToolExecutionStatus(): void })[
+      'clearPendingToolExecutionStatus'
+    ]();
+    expect(notice(fixture)).toBeNull();
+  });
+
+  it('stop() dismisses the notice at once, settled or not', async () => {
+    // v4 `stopStreaming:1128` calls dismiss directly — aborting a turn clears it
+    // immediately rather than leaving a settled one counting down.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      state([{ id: 't0', status: 'pending' }]),
+      state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+    );
+    (fixture.componentInstance as unknown as { stop(): void })['stop']();
+    expect(notice(fixture)).toBeNull();
+  });
+
+  it('teardown cancels a live countdown, so nothing writes state after destroy', async () => {
+    // ⚠ Render BEFORE installing fake timers: the harness settles the TanStack
+    // queries by awaiting real `setTimeout(0)` ticks, which fake timers freeze —
+    // the test then hangs to its 5 s timeout, its `finally` never runs, and the
+    // leaked fake clock hangs every spec after it too.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    vi.useFakeTimers();
+    try {
+      report(
+        fixture,
+        state([{ id: 't0', status: 'pending' }]),
+        state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
+      );
+      const settled = notice(fixture);
+      fixture.destroy();
+      // Had the countdown survived teardown it would blank the signal here; that
+      // it still holds the settled notice is the cancellation, observed.
+      vi.advanceTimersByTime(60_000);
+      expect(notice(fixture)).toEqual(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('draws the notice above the composer with v4’s a11y semantics and close control', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(fixture, state([]), state([{ id: 't0', status: 'pending' }]));
+    fixture.detectChanges();
+
+    const alert = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.qt-chat-composer-content [role="status"]',
+    )!;
+    expect(alert).not.toBeNull();
+    expect(alert.getAttribute('aria-live')).toBe('polite');
+    expect(alert.classList.contains('qt-alert-info')).toBe(true);
+    expect(alert.textContent).toContain('Generating image...');
+
+    const dismiss = alert.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notice"]')!;
+    expect(dismiss).not.toBeNull();
+    expect(dismiss.getAttribute('title')).toBe('Dismiss');
+    dismiss.click();
+    fixture.detectChanges();
+    expect(notice(fixture)).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '.qt-chat-composer-content [role="status"]',
+      ),
+    ).toBeNull();
+  });
+
+  it('paints the settled notice by outcome, as v4’s class ladder does', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      state([{ id: 't0', status: 'pending' }]),
+      state([{ id: 't0', status: 'error', result: { error: 'quota exhausted' } }]),
+    );
+    fixture.detectChanges();
+    const alert = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.qt-chat-composer-content [role="status"]',
+    )!;
+    expect(alert.classList.contains('qt-alert-error')).toBe(true);
+    expect(alert.textContent).toContain('quota exhausted');
   });
 });

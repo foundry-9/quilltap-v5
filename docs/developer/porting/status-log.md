@@ -73808,3 +73808,124 @@ v5's until this lane — reds **4** cases. (2) The whole pre-fix chokepoint
 (refuse nothing) plus the pre-fix edit-time fetch reds **11 of 24**. Both
 restored green.
 
+### Unit 2 — bug 77: the tool-execution notice owns its lifetime
+
+⚠ **The survey's headline held: v5 never ported this surface at all.**
+`toolExecutionStatus` / `"Generating image"` returned ZERO across
+`apps/web`. So this is not a drift edit but v4's surface landed in its
+FIXED form.
+
+**⚠ An order premise REFUTED by measurement, and it changed the port.** The
+order records v5's two settled-outcome toasts as "v5-invented" substitutes
+to be RETIRED. They are not invented — they are v4's own
+`showSuccessToast`/`showErrorToast` at `useSSEStreaming.ts:420,428`,
+byte-identical in v5 today, and **v4 raises them alongside the notice, not
+instead of it**. The notice and the toast carry *different sentences*
+(`Successfully generated 2 images!` vs `Image generation complete! 2 images
+generated.`; `Failed to generate image` vs `Image generation failed:
+Unknown error`) and neither stands in for the other. Retiring them would
+have been a fresh divergence. **Both are kept, both are now spec'd**, and
+the settled arm gained the notice beside them.
+
+Landed in `salon-conversation.ts` (the vertical owns the lifetime; the
+reducer stayed pure and was not opened):
+
+- `toolExecutionStatus` signal + a plain `toolStatusTimer` field (v4's ref
+  — nothing renders off it, so it must not be a signal) +
+  `TOOL_STATUS_DISMISS_MS = 6000`.
+- **`publishToolExecutionStatus` — the single door.** Clears any live timer
+  first, sets state; `'pending'` stays up indefinitely; a settled status
+  arms its own 6 s dismissal; each publish supersedes the one before.
+- **`clearPendingToolExecutionStatus`** — drops ONLY a stranded
+  `'pending'`; a settled notice keeps its own countdown. Called at v5's
+  SINGLE turn-end reconcile point, which stands in for v4's four
+  completion callbacks (its own comment already said so) — and that is
+  precisely the shape bug 77 is about: no route out of a turn may strand
+  the notice.
+- **`dismissToolExecutionStatus`** — the close button's handler, and what
+  `stop()` calls so aborting a turn clears it at once.
+- **Teardown** via the already-injected `DestroyRef`, so no timer writes
+  state after the component is gone.
+- The raise sites in `reportStreamTransitions`: a `generate_image` call
+  newly *detected* raises v4's `Generating image...` verbatim; a call newly
+  *settled* raises v4's outcome sentence AND its toast. Riding transitions
+  rather than events, "newly detected" is `id` absent from `before` and
+  "newly settled" is `status` pending in `before` — the `seen` set is new
+  beside the existing `settled` one.
+- The composer alert in `chat-composer.ts` above the chip row inside
+  `.qt-chat-composer-content`, with v4's `role="status"`,
+  `aria-live="polite"`, the class ladder, the spinner/check/alert icon
+  arms, `qt-label flex-1`, and the `qt-button-ghost flex-shrink-0 p-1`
+  close button (`title="Dismiss"`, `aria-label="Dismiss notice"`).
+  `[toolExecutionStatus]` + `(dismissToolExecutionStatus)` wired at the
+  salon's instantiation.
+
+**One recorded deviation from the order's letter.** The order says pin the
+status type LOCAL to the salon vertical. It is instead declared and
+exported in `chat/chat-composer.ts` — the component that DRAWS it. The
+composer needs the type too, and `chat/` is shared while `screens/salon/`
+is a screen, so a salon-held type would have inverted the dependency. The
+order's actual constraint — **not** `core-contract.ts`, which P4.D88 owns
+this round — is satisfied; the notice never crosses the wire. (v4 has the
+same split and resolves it by restating the shape structurally in the
+composer's props; a single exported interface is the better v5 spelling.)
+
+**Specs — the FIRST over `reportStreamTransitions` in either direction**
+(the survey confirmed nothing pinned it). 14 cases: pending raises, and
+raises only once per call; settled supersedes and toasts alongside;
+singular/plural wording and the error fallback; the 6 s self-dismissal
+`(5999 → still up, +1 → gone)`; a pending notice never expiring; a new
+publish superseding the previous countdown rather than stacking; the
+turn-end boundary dropping a stranded pending; the turn-end boundary NOT
+cutting a settled countdown short; a turn ending by the ERROR arm; `stop()`
+dismissing at once; teardown cancelling a live countdown; the alert's a11y
+attrs + close button + emit; the class ladder by outcome.
+
+**Mutation proofs (2).** (1) `clearPending` clearing unconditionally —
+v4's pre-fix shape and the obvious wrong spelling — reds exactly *the
+turn-end boundary does NOT cut a settled countdown short*. (2) Dropping
+the timer supersede inside `publish` reds exactly *a new publish supersedes
+the previous countdown rather than stacking timers*. Both restored green.
+
+**⚠ A trap worth the memory note.** Five fake-timer specs originally called
+the spec file's `render()` helper INSIDE `vi.useFakeTimers()`. The helper
+settles the TanStack queries by awaiting real `setTimeout(0)` ticks, which
+the fake clock freezes — so the test hung to its 5 s timeout, its `finally`
+never ran, and **the leaked fake clock then hung every spec after it**: 10
+failures from one ordering mistake, 9 of them in specs that were correct.
+Render before installing fake timers. Also re-hit: a backtick inside an
+inline-template HTML comment terminates the template literal and breaks
+the build.
+
+### Deferrals — loud and named
+
+- **Tier 2, the composer-alert Playwright beat: NOT taken**, per the
+  order's own allowance. v4 shipped no e2e for either fix, and a beat would
+  need a canned `generate_image` turn the salon e2e fixture does not carry
+  — the notice's whole subject is a real image-tool turn's lifetime, so a
+  cheap approximation would pin nothing the 14 unit specs do not already
+  pin. Decision recorded; the suite is unchanged at its prior count.
+- **Nothing else banked.** The Tier-3 contingency did not fire:
+  `PendingToolCall.status` does carry the distinguishable `'pending'`
+  signal the order hoped for, so no approximation was needed.
+- 💸 **A live proof is owed** to the next dogfood pass on both halves: a
+  real provider-switch save healing a poisoned row (bug 76), and a real
+  image-generation turn showing the notice appear, settle, self-dismiss —
+  and a stop() clearing it (bug 77).
+
+### The gate
+
+`ng test` **327 test files / 4,865 tests / 0 failed** (the suite grew with
+this lane's 38 new cases: 24 bug-76, 14 bug-77); `ng build` clean, zero
+ERROR lines. No Playwright run is owed — no beat was added. SPA
+`0.5.505 → 0.5.506`. No crate was touched, so no Rust gate is owed; `crates/**`,
+`core-contract.ts`, `app/wardrobe/**`, `app/workspace/**` and
+`chat-stream.reducer.ts` were not opened. The unifier recounts the SPA
+version across the three SPA lanes.
+
+⚠ **A formatting note for the unifier.** `npx prettier --write` on this
+lane's files reformats a great deal of pre-existing code in
+`salon-conversation.ts`, `chat-composer.ts` and both salon/provider specs
+— those files are not prettier-clean on main. Every such hunk was reverted
+here and the diff carries this lane's changes ONLY; don't reintroduce the
+churn at unification.

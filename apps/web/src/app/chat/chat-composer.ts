@@ -43,6 +43,23 @@ import { FileConflictDialog } from './file-conflict-dialog';
 import { SpeakingAsAvatar } from './speaking-as-avatar';
 import { ToastService } from '../ui/toast.service';
 
+/**
+ * The tool-execution notice drawn above the composer (v4 `useSSEStreaming.ts`
+ * `ToolExecutionStatus`, `:30-34`).
+ *
+ * v4 declares this in the salon's SSE hook and its `ChatComposer` restates the
+ * shape structurally in its props, so nothing shared holds it. v5 declares it
+ * HERE, in the component that draws it, rather than in the salon: `chat/` is
+ * shared and `screens/salon/` is a screen, so the salon importing downward is
+ * the only direction that does not invert the dependency. It deliberately does
+ * NOT live in `core-contract.ts` — the notice never crosses the wire.
+ */
+export interface ToolExecutionStatus {
+  tool: string;
+  status: 'pending' | 'success' | 'error';
+  message: string;
+}
+
 /** The character the human is currently speaking as (v4 `speakingAs` prop). */
 export interface SpeakingAsSeat {
   name: string;
@@ -122,6 +139,50 @@ export interface PendingToolResultChip extends RngPendingResult {
   template: `
     <div class="qt-chat-composer">
      <div class="qt-chat-composer-content">
+      <!-- Tool-execution notice (v4 ChatComposer.tsx:223-254). The notice owns
+           its own lifetime upstream (v4 Bug 77): a 'pending' one stays up until
+           its result lands or the turn ends, a settled one self-expires after
+           6 s, and this close button is the manual escape v4's alert never had. -->
+      @if (toolExecutionStatus(); as notice) {
+        <div
+          role="status"
+          aria-live="polite"
+          class="qt-alert flex items-center gap-2"
+          [class.qt-alert-info]="notice.status === 'pending'"
+          [class.qt-alert-success]="notice.status === 'success'"
+          [class.qt-alert-error]="notice.status === 'error'"
+        >
+          @if (notice.status === 'pending') {
+            <svg
+              class="w-5 h-5 animate-spin flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+          } @else if (notice.status === 'success') {
+            <qt-icon name="check-circle" class="w-5 h-5 flex-shrink-0" />
+          } @else {
+            <qt-icon name="alert-circle" class="w-5 h-5 flex-shrink-0" />
+          }
+          <span class="qt-label flex-1">{{ notice.message }}</span>
+          <button
+            type="button"
+            class="qt-button-ghost flex-shrink-0 p-1"
+            title="Dismiss"
+            aria-label="Dismiss notice"
+            (click)="dismissToolExecutionStatus.emit()"
+          >
+            <qt-icon name="close" class="w-4 h-4" />
+          </button>
+        </div>
+      }
       @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
         <div class="qt-chat-attachment-list mb-2">
           @for (file of attachedFiles(); track file.id) {
@@ -488,6 +549,12 @@ export class ChatComposer implements OnInit {
    */
   readonly pendingToolResults = input<PendingToolResultChip[]>([]);
   /**
+   * The tool-execution notice above the composer (v4 `ChatComposer.tsx`'s
+   * `toolExecutionStatus` prop, Bug 77). Raised, superseded and torn down by
+   * the salon vertical, which owns the lifetime; the composer only draws it.
+   */
+  readonly toolExecutionStatus = input<ToolExecutionStatus | null>(null);
+  /**
    * The character the human is currently speaking as — rendered as a persistent
    * full-height portrait directly left of the toolbar cluster (v4 `speakingAs`).
    * Null when the human plays no character (e.g. an all-LLM room); the salon
@@ -525,6 +592,8 @@ export class ChatComposer implements OnInit {
   readonly pendingToolResult = output<RngPendingResult>();
   /** The chip's ✕ (v4 `onRemovePendingToolResult`). */
   readonly removePendingToolResult = output<string>();
+  /** Dismiss the tool-execution notice early; it also self-expires once settled. */
+  readonly dismissToolExecutionStatus = output<void>();
 
   /**
    * Optional rather than required because the toolbar binds `inCodeBlock` in

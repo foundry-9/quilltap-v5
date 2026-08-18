@@ -18,6 +18,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import {
   ChatComposer,
   type PendingToolResultChip,
+  type ToolExecutionStatus,
   type SpeakingAsSeat,
 } from '../../chat/chat-composer';
 import {
@@ -416,6 +417,8 @@ interface CascadePrompt {
         [textReplacementsEnabled]="textReplacementsEnabled()"
         [composerSpellcheck]="composerSpellcheck()"
         [pendingToolResults]="pendingToolResults()"
+        [toolExecutionStatus]="toolExecutionStatus()"
+        (dismissToolExecutionStatus)="dismissToolExecutionStatus()"
         (compositionModeChange)="onCompositionModeChange($event)"
         (pendingToolResult)="onPendingToolResult($event)"
         (removePendingToolResult)="onRemovePendingToolResult($event)"
@@ -2786,6 +2789,14 @@ export class SalonConversation {
     // notifyQueueChange at all four useSSEStreaming completion callbacks
     // (:771/:827/:1018/:1038); v5's single reconcile point covers them).
     notifyQueueChange();
+    // Drop a tool-execution notice still stuck at 'pending' — its result never
+    // arrived (v4 Bug 77 calls `clearPendingToolExecutionStatus` at BOTH onDone
+    // boundaries, `:848`/`:1016`; this single reconcile point stands in for all
+    // of them, which is the whole point of the bug's fix: no route out of a turn
+    // may strand the notice). A SETTLED notice is deliberately left alone — its
+    // own 6 s countdown is running and cutting it short would rob the user of
+    // the outcome.
+    this.clearPendingToolExecutionStatus();
     this.stream.set(null);
     this.optimisticUser.set(null);
 
@@ -2803,6 +2814,78 @@ export class SalonConversation {
       await this.documentMode.handleLLMEditEnd();
     }
   }
+
+  /**
+   * The tool-execution notice above the composer (v4 `useSSEStreaming.ts`'s
+   * `toolExecutionStatus`, Bug 77). v5's SSE fold is the deliberately pure
+   * `chat-stream.reducer`, so the notice — state with a lifetime — lives here in
+   * the vertical, beside the other side effects the transitions raise.
+   */
+  protected readonly toolExecutionStatus = signal<ToolExecutionStatus | null>(null);
+
+  /**
+   * Auto-dismiss timer for a SETTLED notice. v4 held it in a ref; a plain field
+   * is its analogue here — nothing renders off it, so it must not be a signal.
+   */
+  private toolStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** How long a settled tool-execution notice lingers before it dismisses itself. */
+  private static readonly TOOL_STATUS_DISMISS_MS = 6000;
+
+  /**
+   * The single door for raising the notice (v4 `publishToolExecutionStatus`,
+   * `:342-357`). A `'pending'` notice stays up until it settles or the turn
+   * ends; a settled one schedules its own dismissal, so no caller has to
+   * remember to tear it down. Each publish supersedes the timer before it.
+   */
+  private publishToolExecutionStatus(status: ToolExecutionStatus): void {
+    this.clearToolStatusTimer();
+    this.toolExecutionStatus.set(status);
+    if (status.status !== 'pending') {
+      this.toolStatusTimer = setTimeout(() => {
+        this.toolStatusTimer = null;
+        this.toolExecutionStatus.set(null);
+      }, SalonConversation.TOOL_STATUS_DISMISS_MS);
+    }
+  }
+
+  /**
+   * Turn-boundary cleanup (v4 `clearPendingToolExecutionStatus`, `:333-340`):
+   * drop a notice that is still `'pending'` — its tool result never arrived. A
+   * settled notice is left alone; its own countdown is already running and
+   * cutting it short would rob the user of the outcome.
+   */
+  private clearPendingToolExecutionStatus(): void {
+    if (this.toolExecutionStatus()?.status === 'pending') {
+      this.toolExecutionStatus.set(null);
+    }
+  }
+
+  /**
+   * Clear the notice and any pending auto-dismiss timer (v4
+   * `dismissToolExecutionStatus`, `:324-331`) — the close button's handler, and
+   * what `stop()` calls so aborting a turn clears it at once.
+   */
+  protected dismissToolExecutionStatus(): void {
+    this.clearToolStatusTimer();
+    this.toolExecutionStatus.set(null);
+  }
+
+  private clearToolStatusTimer(): void {
+    if (this.toolStatusTimer !== null) {
+      clearTimeout(this.toolStatusTimer);
+      this.toolStatusTimer = null;
+    }
+  }
+
+  /**
+   * Cancel a live auto-dismiss timer on teardown, so nothing writes the signal
+   * after the component is gone (v4 clears the same ref in its unmount effect,
+   * `:308-322`).
+   */
+  private readonly _toolStatusTeardown = this.destroyRef.onDestroy(() =>
+    this.clearToolStatusTimer(),
+  );
 
   /**
    * v4 raises these from inside its SSE reader; v5's reader is the pure
@@ -2834,6 +2917,11 @@ export class SalonConversation {
     if (after.error && after.error !== before.error) {
       this.toasts.showError(after.error);
     }
+    // Every generate_image call already seen, and those of them already settled.
+    // v4 raises the notice from its two SSE callbacks (`trackToolsDetected` /
+    // `trackToolResult`); riding transitions, a call is "newly detected" when its
+    // id was absent before, and "newly settled" when it was pending before.
+    const seen = new Set(before.toolBatches.flatMap((b) => b.calls.map((c) => c.id)));
     const settled = new Set(
       before.toolBatches.flatMap((b) =>
         b.calls.filter((c) => c.status !== 'pending').map((c) => c.id),
@@ -2841,16 +2929,40 @@ export class SalonConversation {
     );
     for (const batch of after.toolBatches) {
       for (const call of batch.calls) {
-        if (call.name !== 'generate_image' || call.status === 'pending' || settled.has(call.id)) {
+        if (call.name !== 'generate_image') continue;
+        if (call.status === 'pending') {
+          // v4 `trackToolsDetected:381` — raised the moment the batch is
+          // detected, and it stays up until the result lands or the turn ends.
+          if (!seen.has(call.id)) {
+            this.publishToolExecutionStatus({
+              tool: 'generate_image',
+              status: 'pending',
+              message: `Generating image...`,
+            });
+          }
           continue;
         }
+        if (settled.has(call.id)) continue;
         const result = (call.result ?? {}) as { images?: unknown[]; error?: string };
         if (call.status === 'success') {
           const count = result.images?.length || 1;
+          // v4 raises the settled NOTICE and the toast both (`:417-421`) — the
+          // two carry different sentences and neither stands in for the other.
+          this.publishToolExecutionStatus({
+            tool: call.name,
+            status: 'success',
+            message: `Successfully generated ${count} image${count > 1 ? 's' : ''}!`,
+          });
           this.toasts.showSuccess(
             `Image generation complete! ${count} image${count > 1 ? 's' : ''} generated.`,
           );
         } else {
+          // v4 `:424-428`.
+          this.publishToolExecutionStatus({
+            tool: call.name,
+            status: 'error',
+            message: result.error || 'Failed to generate image',
+          });
           this.toasts.showError(`Image generation failed: ${result.error || 'Unknown error'}`);
         }
       }
@@ -2861,6 +2973,9 @@ export class SalonConversation {
     // The server turn rides the shared SSE and can't be aborted from here yet;
     // clear the local streaming overlay (tracked deferral: a real stop dispatch).
     // v4 `stopStreaming` (:1055-1057) reports only when prose had begun.
+    // v4 `stopStreaming:1128` dismisses outright — aborting a turn clears the
+    // notice at once, settled or not.
+    this.dismissToolExecutionStatus();
     if (this.stream()?.content) this.toasts.showInfo('Response stopped - chat paused');
     this.stream.set(null);
     this.optimisticUser.set(null);

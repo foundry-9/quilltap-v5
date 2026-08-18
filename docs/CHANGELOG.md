@@ -84,6 +84,16 @@ and clears the column otherwise, so a profile already saved that way —
 or imported that way — heals on its next ordinary save. Found by
 dogfooding (finding #90).
 
+Fixed the "Generating image..." notice above the composer never going
+away. It had exactly one teardown, at the end of one of the several routes
+a turn can finish by, so any other ending — a tool chain's intermediate
+turn, continue mode, either error arm — left it pinned above the composer
+for the rest of the session, with no close control to escape it. The
+notice now owns its own lifetime: it stays up while the image is still
+generating, reports the outcome for six seconds and then dismisses itself,
+is dropped if the turn ends without ever producing a result, clears at
+once when you stop a turn, and carries a close button of its own.
+
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it
 reshapes the response, which the API itself never sends, so every model was
