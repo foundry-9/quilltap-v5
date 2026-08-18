@@ -73678,3 +73678,53 @@ P4.D87's parse tolerance is missing, this LIVE beat says so at unification.
 
 **Gate:** the beat is inert, so no active beat moved; `ng test` 330 / 4,845 /
 0 and `ng build` clean. SPA 0.5.507 → 0.5.508.
+
+---
+
+## P4.D88 — LANE CLOSED (2026-08-18)
+
+**Branch:** `claude/p4-wardrobe-hair-spa-101b70`, three commits (`9170e891`
+registry + surfaces + CSS, `b2e2f469` the parity specs, `b52ed232` the gated
+beat). **Drift re-checked at lane end:** v4 main HEAD is still `979652a9`;
+`bugfix` still carries only the test-only `009c49b2`. **Versions:** SPA
+0.5.505 → 0.5.508. No crate touched, no fixture touched, no oracle authored or
+invalidated.
+
+### Tier 3 — the order's named deferrals, dispositioned
+
+- **v4 `use-outfit.ts:192`** (the equipped-by-slot map built from the list
+  instead of a literal): v5's twin is `wardrobe/outfit-store.ts`
+  `resolveItemDetails` — it EXISTS, so this was ported in unit 1 rather than
+  deferred.
+- **The generator-adjacent client surfaces** (v4's AI wizard
+  `components/characters/ai-wizard/types.ts` `FIELD_DESCRIPTIONS`, the
+  Character Optimizer): **v5 has no AI-wizard or optimizer client at all** —
+  grep finds no `FIELD_DESCRIPTIONS`, no `ai-wizard`, no optimizer component.
+  Nothing to port; it rides the future generators lane with the rest of that
+  surface (P4.D87's bank).
+- **The Green Room half of the tier-2 beat** — see unit 3. Needs a cheap-LLM
+  outfit run the suite does not stage; covered at component level, and a live
+  look is a dogfood item.
+- **v4's +101 `packages/theme-storybook` hunk** — no v5 target (v5 ships no
+  storybook package), as the order recorded.
+
+### What the unifier should know
+
+1. **The order's empty-hair-silence mandate is refuted** (unit 1) — v5 renders
+   the Hair row's "Empty" and the preview's "nothing" because v4 does. If that
+   is to change, it changes on BOTH sides.
+2. **The gate flip:** `P4D87_HAIR_SLOT_LANDED` in
+   `apps/web/e2e/wardrobe-flow.spec.ts` → `true` at unification, and the beat
+   runs live.
+3. **The bug-61 beat's four-key `chatEquip` body is deliberate** (unit 3) — a
+   wire check of the Shared contract's absent-key tolerance.
+4. **Playwright was NOT run.** No active beat moved (the one added beat is
+   inert), no release binaries exist in this worktree or in main's `target/`,
+   and building them for zero moved beats was disproportionate. The residual
+   risk was surveyed instead: no e2e beat counts slot rows, filter chips,
+   type checkboxes, or preview cards (`toHaveCount` never lands on any of
+   them), the wardrobe walk's locators are text-scoped, and the SPA's newly
+   five-key `set_all` body is tolerated by the PRE-P4.D87 server —
+   `parse_equip_body` strips unknown keys and defaults missing ones
+   (`chat_outfits.rs::equip_parse_slots_defaults_in_schema_order`), so the
+   live in-chat beat is unaffected either way.
