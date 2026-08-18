@@ -576,6 +576,31 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **Part B (the bug-70 context budget) — WALKED 2026-08-18, agent-driven, on the Friday copy.** Run against
+  a real 159-message chat by shrinking the responding profile's Max Context and reading the wire through
+  `llm_logs`. **B1 PASSES:** the window binds and history shrinks with it — at `maxContext` 140 000 the
+  request carried 70 messages / ~67.6k tokens; at 3 000 it carried **7 messages / ~7.4k**, i.e. system
+  prompt + identity reminder + compressed summary and essentially no history. (Note for anyone repeating
+  this: `max_tokens` is capped at 20 % of the window, `context_budget.rs:150`, so a naive
+  window-minus-max_tokens prediction is wrong.) **B2 PASSES:** the warning fired exactly once with correct
+  arithmetic — `safe_input_limit=1000 system_prompt_tokens=5422 memory_tokens=1186
+  inter_character_memory_tokens=301 reserved_outgoing_tokens=20843` (that reservation is P4.D82's
+  turn-extras accounting, not the raw `max_tokens`). **B4 is substantially evidenced** by the same run (the
+  reservation is computed and squeezes history) but was not isolated. **B3 (the tool-change notice splicing
+  once and not repeating) was NOT run** — the chat's built-in tool toggles are not in the composer gutter
+  (which carries Pascal's *Custom tools*, a different thing), and finding the surface was out of budget.
+  **The finding worth carrying: budget exhaustion is completely invisible to the user.** The turn succeeds,
+  the reply arrives looking entirely normal, and nothing on screen says the conversation history was
+  dropped — the code comment's predicted symptom ('a character with no apparent memory of the exchange')
+  reproduced exactly. Combined with **#93** (no log files), a user has no way to learn this happened,
+  during or after. That pairing is the strongest argument for P4.49.
+- **Diagnosed, NOT a bug (2026-08-18) — 'Enter does not send in the composer'.** Observed mid-walk and
+  nearly filed. The composer has two modes, and the gutter carries the toggle **'Switch to chat mode
+  (Enter to send)'**: in document/composition mode Enter inserts a paragraph, in chat mode it submits.
+  That is v4's `components/chat/lexical/plugins/KeyboardPlugin.tsx` contract line for line ('Plain Enter in
+  composition mode: let Lexical handle paragraph insertion' / 'Chat mode: Enter to submit, Shift+Enter for
+  linebreak'). Recorded so the next walker does not re-file it.
+
 - **The 2026-08-18 agent-driven pass (a first — Claude drove the SPA itself).** The human asked for an
   independent walk against the Friday copy; the server ran on a high port with `RUST_BACKTRACE=1` and the
   browser was driven directly. **Zero console errors, zero panics, four server WARNs — all four the
