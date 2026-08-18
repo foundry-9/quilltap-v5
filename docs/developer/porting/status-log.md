@@ -73158,3 +73158,80 @@ baseline note updated). The plan is mirrored in `phase-4.md` → "The
 - Oracle regen: via the sweep driver (`--run qtap_import_equivalence --v4
   /tmp/qt-v4-pin-p4d87-979652a9`); the fixture builder is unchanged — the
   new `.qtap` is read by the case/test directly.
+## P4.49 unit 1+2 — the file log transport: the record envelope, the stem fan-out, rotation (2026-08-18)
+
+**Lane:** `claude/p4-49-file-logging-3a6995` (work order
+`work-orders/p4.49-file-logging.md`, raised by dogfood finding #93).
+**Drift check at lane start:** v4 `main` HEAD is exactly `979652a9` (the
+round's new baseline — `git log 979652a9..HEAD` empty), and
+`git diff main bugfix -- lib/logger.ts lib/logging/` is EMPTY, so the
+subsystem this lane transcribes is identical on both branches. The order's
+survey stands unmodified.
+
+**Ported:** `lib/logging/transports/file.ts` (194 lines) →
+`crates/quilltap-web/src/log_file.rs` — `STEMS`, `activeLogName`,
+`rotatedLogName`, `belongsToStemFamily`, `FileTransport`'s
+`initializeDirectory`/`write`/`writeToFile`/`rotateFile`; plus the record
+envelope from `lib/logging/transports/base.ts`
+(`{timestamp, level, message, context, error?}`) and the five level names
+from `lib/logger.ts`'s `LogLevel`. The sweep (`purgeStrayLogs`) landed in
+this commit's file but is proven in unit 3.
+
+**Why this is a checked port when P4.18 ruled logs non-differential.** The
+order's carve-out: the ruling covers the *content* of an event (which events
+v5 emits, their wording, their field names — still v5's own, still no
+fidelity obligation). It does not cover file **behavior**: names, rotation
+order, the sweep predicate, the envelope key set, the error fan-out are a
+contract with the operator's existing greps, and v4 pins them with 36
+executable cases. The parity corpus is therefore v4's own
+`__tests__/unit/logging-transports.test.ts` — mirrored 1:1 the way an SPA
+lane mirrors v4's component tests when a surface has no NDJSON oracle
+(`impersonation-overlay-spa-gaps`). **No NDJSON family, no oracle regen.**
+
+**Family:** `quilltap-web::log_file::tests` — 19 cases in this commit.
+Mirrored from v4 by name: create-directory-on-init, size-tracking-seeded-
+from-stat, init-errors-swallowed, combined-for-all-levels, error-only-for-
+ERROR, no-error-file-for-non-errors, newline-appended, all-log-data-in-JSON,
+rotate-on-exceed, remove-oldest, rename-in-sequence, rotation-errors-
+swallowed, sizes-tracked-after-writes, level-fan-out-counts. Added beyond
+v4's corpus (the order's asks): the strictly-greater threshold, UTF-8 bytes
+vs characters, a gapped backup sequence, `max_files = 1`, `max_files = 0`,
+and independent per-stem rotation.
+
+**Mutation-proven** (each mutation reverted after measuring):
+
+| mutation | caught by |
+| --- | --- |
+| `content.len()` → `content.chars().count()` | `size_is_utf8_bytes_not_characters` |
+| threshold `>` → `>=` | `rotation_threshold_is_strictly_greater` |
+| shift loop loses `.rev()` | `shift_drops_the_oldest…` + `rotation_tolerates_gaps…` |
+| `max_files.saturating_sub(1)` → `max_files - 1` | `max_files_zero_does_not_underflow` (panics) |
+
+**The degenerate-`maxFiles` trap, recorded.** v4's shift loop runs `i` from
+`maxFiles - 2` down to `0`, so `maxFiles = 1` starts at `-1` and never
+executes. The obvious Rust spelling (`for i in (0..=max_files - 2)`)
+**underflows a `usize` and panics** where v4 merely skips — the order named
+this in advance and it is real. The port writes
+`(0..max_files.saturating_sub(1)).rev()`, empty for both `1` and `0`, and
+both cases are pinned.
+
+**Recorded divergences from v4** (both inside P4.18's non-checked carve, both
+in the module doc):
+
+1. v4's transport is async (`fs.promises`); v5's is synchronous, because a
+   `tracing` layer's `on_event` is. One mutex serializes size accounting,
+   rotation and the append — what v4 gets free from its event loop. The lock
+   is taken with `unwrap_or_else(|e| e.into_inner())`: a poisoned mutex must
+   never panic a logging path.
+2. v4's `error.name` is the JS constructor name. A `%e`-rendered Rust error
+   carries no runtime type name, so a recorded `error` field becomes
+   `{"name": "Error", "message": …}` with no `stack`. The envelope *keys*
+   stay v4's.
+
+Failure handling matches v4 site-for-site: every filesystem step in
+`rotate_file` is individually best-effort ("not present is fine" — v4's own
+comment at all three sites, load-bearing on a fresh directory), and an init
+or append failure is an `eprintln` + swallow (v4's `console.error`; a
+`tracing` event here would re-enter the layer).
+
+**Versions:** quilltap-web 0.0.72 → 0.0.73.

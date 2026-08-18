@@ -33,6 +33,12 @@ tier-1 family. Found and pinned upstream: v4 itself crashes avatar
 generation on any pre-hair chat row (raw four-key equipped state reaches
 the five-slot resolver with no default) — v5 tolerates the legacy shape
 by design, pinned both directions with a convergence tripwire.
+Quilltap now writes its logs to files again, the way the Node version
+did: `logs/combined.log` holds every record and `logs/error.log` holds the
+errors, both as one JSON object per line, rotating into numbered backups
+once a file passes its size limit. Until now the native build wrote only to
+the terminal it was launched from, so a warning worth acting on was gone the
+moment the window scrolled. Found by dogfooding (finding #93).
 
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it

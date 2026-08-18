@@ -31,6 +31,9 @@ pub mod embedding_profiles_routes;
 pub mod events;
 pub mod files_routes;
 pub mod health;
+// === P4.49: the file log transport (combined.log / error.log + rotation) ===
+pub mod log_file;
+// === end P4.49 ===
 // === P4.6ar: the llm-logs read surface + system image-aesthetics REST edges ===
 pub mod llm_logs_routes;
 // === P4.9P: the global-search REST edge ===
