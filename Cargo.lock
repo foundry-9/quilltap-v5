@@ -3864,7 +3864,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-tauri"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "axum",
  "http",
@@ -3884,7 +3884,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "axum",
  "base64 0.22.1",

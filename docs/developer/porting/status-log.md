@@ -73286,3 +73286,84 @@ bit does (`planted-fs-conditions-in-differentials`). Both tolerance cases are
 `#[cfg(unix)]`.
 
 **Versions:** quilltap-web 0.0.73 → 0.0.74.
+
+## P4.49 units 4 + 6 — the knobs, the layer, the composition, and the ruled default (2026-08-18)
+
+**Ported:** v4's `initializeTransports()` (`lib/logger.ts:41-67`) — the four
+`LOG_*` knobs and the console/file fan-out — as
+`log_file::resolve_log_settings` (pure, taking the raw env values; the
+process environment is read by `LogSettings::from_env`, because mutating env
+in a test races the parallel threads, the same reason
+`tracing_filter_directive` is pure).
+
+**Family:** `quilltap-web::log_file::knob_tests` — 5 cases (module total 33).
+The four defaults, v4's three `LOG_OUTPUT` values with the fan-out each
+implies, the `LOG_FILE_PATH` quirk both ways, the numeric knobs + their
+complaints, the destination table, and an end-to-end layer case asserting a
+real `tracing::info!`/`tracing::error!` pair lands in v4's envelope with the
+error record in BOTH files.
+
+**Mutation-proven** (each reverted after measuring): the never-silent clause
+dropped → `destinations_never_leave_a_process_silent`; the `'./logs'` quirk
+removed → `log_file_path_quirk_is_ported_not_simplified`; the default flipped
+to v4's `console` → `defaults_match_the_ruling…` + the destination table.
+
+**Unit 6 — the default is `both`, a RECORDED DIVERGENCE from v4's code
+default of `console`** (ruled by the human, 2026-08-18). The reasoning is
+carried verbatim onto `log_file::DEFAULT_LOG_OUTPUT` so it never reads as an
+accident: v4's own `.env.local:28` runs `LOG_OUTPUT="file"`, so no deployment
+in actual use relies on the code default; P4.18 already ruled log records
+non-differential, so a default cannot break an oracle; and a lane whose whole
+purpose is that v5's output evaporates must not depend on someone remembering
+an env var. **The ruling's stated expiry is recorded with it** — once primary
+development moves to Rust/Angular here, the default is expected to become
+environment-dependent rather than a flat `both`. That conditional is
+deliberately NOT built (there is no environment concept to hang it on); the
+four knobs are honoured in full so the change is a one-liner, and the future
+edit reads as a planned step rather than drift.
+
+**Two deliberate departures from v4's failure policy**, both stated in the
+doc comments:
+
+1. **An unusable knob does not refuse the boot.** v4 validates `LOG_OUTPUT`
+   and the two numeric knobs at its zod schema and throws. v5 falls back to
+   the default and emits the complaint as a `tracing::warn!` *after* the
+   subscriber exists. Refusing to start a server because a logging knob is
+   misspelled is the wrong trade for an operability surface.
+2. **No process is ever left with no destination.** `LOG_OUTPUT=file` with
+   no resolvable directory installs stderr anyway and says why. Pinned by
+   `destinations_never_leave_a_process_silent`, whose last row is the whole
+   point.
+
+**The ordering, resolved explicitly rather than with a global** (the order's
+⚠). `init_tracing` ran before `parse_args`/`resolve_instance_base_dir`, but
+the file layer needs the instance dir. Both binaries now resolve the instance
+FIRST and install the subscriber second:
+`quilltap-web/src/main.rs` and `quilltap-tauri/src/lib.rs`. **Nothing is lost
+by the move, measured:** `quilltap_host::instances` and
+`quilltap_host::paths` contain zero `tracing::` calls, and both binaries'
+failure arms there are `eprintln!` + `exit(2)` already. The timezone events
+still follow the install, unchanged. `init_tracing()` survives as
+`init_tracing_for_instance(None)` for callers with no instance (the
+idempotency test).
+
+**The layer.** `LogFileLayer` sits **beside** the stderr `fmt` layer under one
+`EnvFilter`, so `RUST_LOG` governs both destinations identically (the order's
+requirement), and `try_init` keeps the install idempotent. Field mapping:
+`message` → v4's `message`; a field named `error` → v4's `error` object (the
+codebase's established `error = %e` convention); everything else → `context`,
+prefixed with `module` (the event target) as the analog of v4's singleton
+`{service, environment}` prelude. Per P4.18 the *contents* of `context` carry
+no fidelity obligation — only the envelope's keys do. `f64` NaN/Infinity
+serialize as `null`, which is what `JSON.stringify` does.
+
+**Live smoke (the real binary, a scratch instance — NOT the acceptance run):**
+default → `logs/combined.log` written with v4's envelope AND stderr active;
+`LOG_OUTPUT=console` → no files; `LOG_OUTPUT=file` → files, no stderr records;
+`LOG_OUTPUT=nonsense` → both, with the complaint in the log; `LOG_FILE_PATH`
+→ the custom directory. **The order's acceptance run (the dogfood copy, the
+bug-70 warning grepped out of `combined.log`, `logs/terminals` and the
+`quilltap-*.log` family intact across a restart) is OWED to the next dogfood
+pass — 💸.**
+
+**Versions:** quilltap-web 0.0.74 → 0.0.75, quilltap-tauri 0.0.6 → 0.0.7.

@@ -44,6 +44,13 @@ files are left strictly alone. Until now the native build wrote only to the
 terminal it was launched from, so a warning worth acting on was gone the
 moment the window scrolled. Found by dogfooding (finding #93).
 
+Both destinations are on by default now. `LOG_OUTPUT` still chooses
+between `console`, `file` and `both`, and `LOG_FILE_PATH`,
+`LOG_FILE_MAX_SIZE` and `LOG_FILE_MAX_FILES` work as they always did; a
+value that cannot be read falls back to the default and says so in the log
+rather than refusing to start. A setup that asks for files but has nowhere
+to put them keeps writing to the terminal instead of going quiet.
+
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it
 reshapes the response, which the API itself never sends, so every model was

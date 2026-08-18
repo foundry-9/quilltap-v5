@@ -174,10 +174,33 @@ fn main() {
         std::env::set_var("TZ", zone);
     }
 
-    // The log surface, before anything else runs (P4.18). Events go to stderr,
-    // env-filtered by `RUST_LOG` (default `info`); the startup banner below
-    // stays on stdout.
-    quilltap_web::init_tracing();
+    // The instance must be resolved BEFORE the log surface: the file half
+    // (P4.49) writes into `<instance>/logs/`, and the alternative — reaching
+    // for a global that a later boot step fills in — would leave the first
+    // records homeless. Nothing is lost by the move: neither the instance
+    // registry nor the path resolver emits a `tracing` event, and both failure
+    // arms below are `eprintln!` + exit already.
+    let args = match parse_args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("quilltap-web: {e}");
+            std::process::exit(2);
+        }
+    };
+    let base_dir = match resolve_instance_base_dir(args.data_dir.clone(), args.instance.as_deref())
+    {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("quilltap-web: {e}");
+            std::process::exit(2);
+        }
+    };
+
+    // The log surface (P4.18 + P4.49). Events go to stderr and/or
+    // `<instance>/logs/{combined,error}.log` per `LOG_OUTPUT` (default
+    // `both`), env-filtered by `RUST_LOG` (default `info`); the startup banner
+    // below stays on stdout.
+    quilltap_web::init_tracing_for_instance(Some(&base_dir));
 
     // Now that the subscriber exists, say what the clock ended up as. A
     // rejected value is a warning, not a silent fall-back to UTC: a room
@@ -199,22 +222,6 @@ fn main() {
         }
         TimezoneResolution::Unset => {}
     }
-
-    let args = match parse_args() {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("quilltap-web: {e}");
-            std::process::exit(2);
-        }
-    };
-    let base_dir = match resolve_instance_base_dir(args.data_dir.clone(), args.instance.as_deref())
-    {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("quilltap-web: {e}");
-            std::process::exit(2);
-        }
-    };
     let version = env!("CARGO_PKG_VERSION").to_string();
 
     let rt = tokio::runtime::Builder::new_multi_thread()

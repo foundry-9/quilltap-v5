@@ -107,15 +107,84 @@ pub use state::{SharedState, StartupStatus, WebState};
 /// first for this port; the fidelity obligation stays on the DB/wire/UI
 /// surfaces).
 pub fn init_tracing() {
+    init_tracing_for_instance(None);
+}
+
+/// The same install, told where the instance lives so the **file** half of the
+/// log surface (P4.49) can reach `<instance>/logs/` — v4's `getLogsDir()`.
+///
+/// The layers sit under ONE `EnvFilter`, so `RUST_LOG` governs stderr and the
+/// files identically:
+///
+/// - the stderr `fmt` layer, when `LOG_OUTPUT` is `console` or `both`;
+/// - the [`log_file::LogFileLayer`], when `LOG_OUTPUT` is `file` or `both`
+///   AND a directory is resolvable (an explicit `LOG_FILE_PATH`, or the
+///   instance dir this is called with).
+///
+/// **v5's default is `both`** — a recorded divergence from v4's code default of
+/// `console`, ruled by the human (P4.49 unit 6); the reasoning lives on
+/// [`log_file::DEFAULT_LOG_OUTPUT`] with its own stated expiry.
+///
+/// A process is never left with **no** destination: if files were asked for and
+/// no directory is known, stderr is installed anyway and the reason is logged
+/// once the subscriber exists. Same for an unusable knob value — v4 refuses to
+/// boot on one (its zod schema), which is the wrong trade for a surface that
+/// exists to make failures visible.
+///
+/// ⚠ **Ordering.** The file layer needs the instance dir, which is only known
+/// after arg parsing and `resolve_instance_base_dir` — so both binaries now
+/// resolve the instance FIRST and install the subscriber second. Nothing is
+/// lost by the move: neither `quilltap_host::instances` nor
+/// `quilltap_host::paths` emits a single `tracing` event (measured), and both
+/// binaries' failure arms there are `eprintln!` + `exit(2)` already.
+/// Idempotent by `try_init`, as before.
+pub fn init_tracing_for_instance(instance_base_dir: Option<&std::path::Path>) {
+    use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
+
     let directive = tracing_filter_directive(std::env::var("RUST_LOG").ok().as_deref());
     // Lossy parse (env_logger-style): an invalid directive keeps its valid
     // parts rather than panicking the boot.
     let filter = EnvFilter::new(directive);
-    let _ = fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .try_init();
+
+    let (settings, mut complaints) = log_file::LogSettings::from_env();
+    let destinations = log_file::resolve_destinations(&settings, instance_base_dir);
+    complaints.extend(destinations.complaint.clone());
+
+    let file_layer = destinations.file_dir.as_ref().map(|dir| {
+        log_file::LogFileLayer::new(Arc::new(log_file::LogFileWriter::new(
+            dir.clone(),
+            settings.max_file_size,
+            settings.max_files,
+        )))
+    });
+    let console_layer = destinations
+        .console
+        .then(|| fmt::layer().with_writer(std::io::stderr));
+
+    let installed = tracing_subscriber::registry()
+        .with(filter)
+        .with(console_layer)
+        .with(file_layer)
+        .try_init()
+        .is_ok();
+
+    // Now that a subscriber exists, say what the knobs ended up as — a
+    // misspelled knob that silently fell back is exactly the invisible failure
+    // this lane exists to end.
+    if installed {
+        for complaint in complaints {
+            tracing::warn!("{complaint}");
+        }
+        if let Some(dir) = destinations.file_dir {
+            tracing::info!(
+                dir = %dir.display(),
+                max_file_size = settings.max_file_size,
+                max_files = settings.max_files,
+                "file logging is on: combined.log takes every record, error.log the errors"
+            );
+        }
+    }
 }
 
 /// The effective `EnvFilter` directive: `RUST_LOG` when set and non-blank, else

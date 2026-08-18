@@ -38,7 +38,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
 
@@ -877,5 +877,505 @@ mod sweep_tests {
         stdfs::write(dir.join("combined 2.log"), b"arrived later").unwrap();
         w.write("info", "{}\n");
         assert!(dir.join("combined 2.log").exists());
+    }
+}
+
+// ── Unit 4 — the knobs, and the `tracing` layer that feeds the transport ──
+
+/// v4's `LOG_OUTPUT` (`lib/env.ts:31`): where log records are sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogOutput {
+    Console,
+    File,
+    Both,
+}
+
+impl LogOutput {
+    pub fn wants_console(self) -> bool {
+        matches!(self, LogOutput::Console | LogOutput::Both)
+    }
+    pub fn wants_file(self) -> bool {
+        matches!(self, LogOutput::File | LogOutput::Both)
+    }
+}
+
+/// **v5's default is `both` — a recorded divergence from v4's code default of
+/// `console`** (ruled by the human, 2026-08-18, work order P4.49 unit 6).
+///
+/// The reasoning, recorded so it is never re-litigated as an accident: v4's own
+/// `.env.local` runs `LOG_OUTPUT="file"`, so no deployment in actual use relies
+/// on the code default; P4.18 already ruled log records non-differential, so a
+/// default cannot break an oracle; and a lane whose entire purpose is that v5's
+/// output evaporates must not depend on someone remembering an env var. `both`
+/// rather than v4's lived `file` because v5's stderr is genuinely useful when
+/// the binary runs in a terminal, which is how the dogfood server runs.
+///
+/// **Scoped to the port.** The ruling names its own expiry: once primary
+/// development moves to Rust/Angular in this repo, the default is expected to
+/// become environment-dependent (production vs development) rather than a flat
+/// `both`. That conditional is deliberately NOT built now — there is no
+/// environment concept here to hang it on. The four knobs below are honoured in
+/// full so the change is a one-liner when the time comes; treat it as a planned
+/// step, not drift.
+pub const DEFAULT_LOG_OUTPUT: LogOutput = LogOutput::Both;
+
+/// The resolved four knobs.
+#[derive(Debug, Clone)]
+pub struct LogSettings {
+    pub output: LogOutput,
+    /// `LOG_FILE_PATH`, **after v4's quirk** — `None` means "use the instance's
+    /// own logs dir".
+    pub explicit_path: Option<PathBuf>,
+    pub max_file_size: u64,
+    pub max_files: usize,
+}
+
+/// Resolve v4's four `LOG_*` knobs from their raw env values. Pure — the
+/// process environment is read by the caller, because mutating it in a test
+/// races the parallel test threads (the same reason `tracing_filter_directive`
+/// is pulled out pure).
+///
+/// Returns the settings plus any complaints about unusable values. v4 rejects
+/// those at the zod schema and refuses to boot; v5 falls back to the default
+/// and says so **after** the subscriber exists — refusing to start a server
+/// because a logging knob is misspelled is the wrong trade for an operability
+/// surface.
+///
+/// The `LOG_FILE_PATH` quirk (`lib/logger.ts:55-57`) is ported, not simplified:
+/// v4's zod schema *defaults* the variable to `'./logs'`, so the value is
+/// always set, and the transport therefore honours it **only if it is set AND
+/// is not the literal default**. A deployment that spells out `./logs` gets the
+/// instance's logs dir, not a relative directory beside the process's cwd.
+pub fn resolve_log_settings(
+    output: Option<&str>,
+    file_path: Option<&str>,
+    max_file_size: Option<&str>,
+    max_files: Option<&str>,
+) -> (LogSettings, Vec<String>) {
+    let mut complaints = Vec::new();
+
+    let output = match output.map(str::trim) {
+        None | Some("") => DEFAULT_LOG_OUTPUT,
+        Some("console") => LogOutput::Console,
+        Some("file") => LogOutput::File,
+        Some("both") => LogOutput::Both,
+        Some(other) => {
+            complaints.push(format!(
+                "LOG_OUTPUT={other:?} is not one of console/file/both; using the default"
+            ));
+            DEFAULT_LOG_OUTPUT
+        }
+    };
+
+    let explicit_path = match file_path.map(str::trim) {
+        None | Some("") => None,
+        // v4: `env.LOG_FILE_PATH && env.LOG_FILE_PATH !== './logs'`.
+        Some("./logs") => None,
+        Some(p) => Some(PathBuf::from(p)),
+    };
+
+    let max_file_size = match max_file_size.map(str::trim) {
+        None | Some("") => DEFAULT_MAX_FILE_SIZE,
+        Some(v) => v.parse::<u64>().unwrap_or_else(|_| {
+            complaints.push(format!(
+                "LOG_FILE_MAX_SIZE={v:?} is not a byte count; using the default"
+            ));
+            DEFAULT_MAX_FILE_SIZE
+        }),
+    };
+
+    let max_files = match max_files.map(str::trim) {
+        None | Some("") => DEFAULT_MAX_FILES,
+        Some(v) => v.parse::<usize>().unwrap_or_else(|_| {
+            complaints.push(format!(
+                "LOG_FILE_MAX_FILES={v:?} is not a count; using the default"
+            ));
+            DEFAULT_MAX_FILES
+        }),
+    };
+
+    (
+        LogSettings {
+            output,
+            explicit_path,
+            max_file_size,
+            max_files,
+        },
+        complaints,
+    )
+}
+
+impl LogSettings {
+    /// Read the four knobs straight out of the process environment.
+    pub fn from_env() -> (Self, Vec<String>) {
+        let get = |k: &str| std::env::var(k).ok();
+        let (output, path, size, files) = (
+            get("LOG_OUTPUT"),
+            get("LOG_FILE_PATH"),
+            get("LOG_FILE_MAX_SIZE"),
+            get("LOG_FILE_MAX_FILES"),
+        );
+        resolve_log_settings(
+            output.as_deref(),
+            path.as_deref(),
+            size.as_deref(),
+            files.as_deref(),
+        )
+    }
+
+    /// The directory the file transport would write into: an explicit
+    /// `LOG_FILE_PATH` wins, else the instance's own `logs/` — the same
+    /// `<base>/logs` `quilltap-host` already uses for `logs/terminals`
+    /// (v4's `getLogsDir()`).
+    pub fn resolve_dir(&self, instance_base_dir: Option<&Path>) -> Option<PathBuf> {
+        self.explicit_path
+            .clone()
+            .or_else(|| instance_base_dir.map(|d| d.join("logs")))
+    }
+}
+
+/// Which destinations a given set of knobs actually resolves to. Pulled out
+/// pure so the "never leave a process with **no** destination" rule can be
+/// pinned without installing a process-global subscriber (`try_init` succeeds
+/// exactly once per process, so the decision cannot be tested through it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogDestinations {
+    pub console: bool,
+    pub file_dir: Option<PathBuf>,
+    /// Set when files were asked for and no directory is known — the caller
+    /// emits it once the subscriber exists.
+    pub complaint: Option<String>,
+}
+
+/// Resolve [`LogSettings`] against the instance dir into concrete
+/// destinations. Console is installed when asked for **and** whenever the file
+/// half was asked for but could not be built — a `LOG_OUTPUT=file` process with
+/// nowhere to write must not fall silent, which is the exact failure this lane
+/// exists to end.
+pub fn resolve_destinations(
+    settings: &LogSettings,
+    instance_base_dir: Option<&Path>,
+) -> LogDestinations {
+    let mut complaint = None;
+    let file_dir = if settings.output.wants_file() {
+        match settings.resolve_dir(instance_base_dir) {
+            Some(dir) => Some(dir),
+            None => {
+                complaint = Some(
+                    "LOG_OUTPUT asks for files but no log directory is known (no instance \
+                     resolved and no LOG_FILE_PATH); logging to stderr only"
+                        .to_string(),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    LogDestinations {
+        console: settings.output.wants_console() || file_dir.is_none(),
+        file_dir,
+        complaint,
+    }
+}
+
+/// Collects a `tracing` event's fields into v4's record shape.
+///
+/// The split: the `message` field is v4's `message`; a field literally named
+/// `error` becomes v4's `error` object (the codebase's established convention
+/// is `tracing::warn!(error = %e, "…")`); everything else is `context`.
+/// Per P4.18 the *contents* of `context` are v5's own and carry no fidelity
+/// obligation — only the envelope's keys do.
+#[derive(Default)]
+struct FieldVisitor {
+    message: String,
+    context: Map<String, Value>,
+    error: Option<Value>,
+}
+
+impl FieldVisitor {
+    fn put(&mut self, name: &str, value: Value) {
+        match name {
+            "message" => {
+                self.message = match value {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                }
+            }
+            "error" => {
+                let message = match value {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                // v4's `error.name` is the JS constructor name; a Rust error
+                // rendered through `%`/`?` has no runtime type name, so the
+                // generic base name stands in and `stack` (optional in v4) is
+                // absent.
+                self.error = Some(json!({ "name": "Error", "message": message }));
+            }
+            other => {
+                self.context.insert(other.to_string(), value);
+            }
+        }
+    }
+}
+
+impl tracing::field::Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.put(field.name(), Value::String(format!("{value:?}")));
+    }
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.put(field.name(), Value::String(value.to_string()));
+    }
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.put(field.name(), json!(value));
+    }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.put(field.name(), json!(value));
+    }
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.put(field.name(), json!(value));
+    }
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        // `JSON.stringify` writes NaN/Infinity as `null`; so does this.
+        let v = serde_json::Number::from_f64(value)
+            .map(Value::Number)
+            .unwrap_or(Value::Null);
+        self.put(field.name(), v);
+    }
+}
+
+/// The `tracing_subscriber` layer that turns events into v4-shaped file
+/// records. Mounted **beside** the stderr fmt layer under the one `EnvFilter`,
+/// so `RUST_LOG` governs both destinations identically.
+pub struct LogFileLayer {
+    writer: Arc<LogFileWriter>,
+}
+
+impl LogFileLayer {
+    pub fn new(writer: Arc<LogFileWriter>) -> Self {
+        Self { writer }
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LogFileLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let metadata = event.metadata();
+        let level = level_name(metadata.level());
+
+        let mut visitor = FieldVisitor::default();
+        event.record(&mut visitor);
+
+        // v5's context: the event target first (the analog of v4's singleton
+        // `{service, environment}` prelude), then the event's own fields.
+        let mut context = Map::new();
+        context.insert("module".to_string(), json!(metadata.target()));
+        for (k, v) in visitor.context {
+            context.insert(k, v);
+        }
+
+        let line = render_line(
+            &quilltap_core::clock::now_iso(),
+            level,
+            &visitor.message,
+            context,
+            visitor.error,
+        );
+        self.writer.write(level, &line);
+    }
+}
+
+#[cfg(test)]
+mod knob_tests {
+    use super::*;
+
+    /// The four defaults. `LOG_OUTPUT` is v5's ruled `both`, NOT v4's code
+    /// default of `console` — see [`DEFAULT_LOG_OUTPUT`] for the ruling.
+    #[test]
+    fn defaults_match_the_ruling_and_v4s_numbers() {
+        let (s, complaints) = resolve_log_settings(None, None, None, None);
+        assert_eq!(s.output, LogOutput::Both);
+        assert_eq!(s.explicit_path, None);
+        assert_eq!(s.max_file_size, 10_485_760);
+        assert_eq!(s.max_files, 10);
+        assert!(complaints.is_empty());
+    }
+
+    /// v4's three `LOG_OUTPUT` values, and the fan-out each one asks for.
+    #[test]
+    fn output_values_match_v4s_enum() {
+        for (raw, expect, console, file) in [
+            ("console", LogOutput::Console, true, false),
+            ("file", LogOutput::File, false, true),
+            ("both", LogOutput::Both, true, true),
+        ] {
+            let (s, complaints) = resolve_log_settings(Some(raw), None, None, None);
+            assert_eq!(s.output, expect);
+            assert_eq!(s.output.wants_console(), console);
+            assert_eq!(s.output.wants_file(), file);
+            assert!(complaints.is_empty());
+        }
+    }
+
+    /// **The `LOG_FILE_PATH` quirk** (`lib/logger.ts:55-57`): the value is
+    /// honoured only if set AND not the literal default `'./logs'` — v4's zod
+    /// schema always sets it, so the literal is how a deployment says "no
+    /// override". A custom path IS honoured.
+    #[test]
+    fn log_file_path_quirk_is_ported_not_simplified() {
+        let instance = PathBuf::from("/srv/quilltap/Friday");
+
+        let (s, _) = resolve_log_settings(None, Some("./logs"), None, None);
+        assert_eq!(s.explicit_path, None);
+        assert_eq!(
+            s.resolve_dir(Some(&instance)),
+            Some(PathBuf::from("/srv/quilltap/Friday/logs")),
+            "the literal default means the instance's own logs dir"
+        );
+
+        let (s, _) = resolve_log_settings(None, Some("/var/log/quilltap"), None, None);
+        assert_eq!(s.explicit_path, Some(PathBuf::from("/var/log/quilltap")));
+        assert_eq!(
+            s.resolve_dir(Some(&instance)),
+            Some(PathBuf::from("/var/log/quilltap")),
+            "an explicit non-default path wins over the instance dir"
+        );
+
+        // Unset behaves as the default does.
+        let (s, _) = resolve_log_settings(None, None, None, None);
+        assert_eq!(
+            s.resolve_dir(Some(&instance)),
+            Some(PathBuf::from("/srv/quilltap/Friday/logs"))
+        );
+        assert_eq!(s.resolve_dir(None), None);
+    }
+
+    /// The numeric knobs parse, and an unusable value falls back **loudly** —
+    /// a complaint the caller emits once the subscriber exists.
+    #[test]
+    fn numeric_knobs_parse_and_complain() {
+        let (s, complaints) = resolve_log_settings(None, None, Some("2097152"), Some("4"));
+        assert_eq!(s.max_file_size, 2_097_152);
+        assert_eq!(s.max_files, 4);
+        assert!(complaints.is_empty());
+
+        let (s, complaints) = resolve_log_settings(
+            Some("everywhere"),
+            None,
+            Some("ten megabytes"),
+            Some("lots"),
+        );
+        assert_eq!(s.output, DEFAULT_LOG_OUTPUT);
+        assert_eq!(s.max_file_size, DEFAULT_MAX_FILE_SIZE);
+        assert_eq!(s.max_files, DEFAULT_MAX_FILES);
+        assert_eq!(
+            complaints.len(),
+            3,
+            "each unusable knob complains: {complaints:?}"
+        );
+    }
+
+    /// The destination table. The load-bearing row is the last one: files
+    /// asked for with nowhere to put them still gets stderr, loudly.
+    #[test]
+    fn destinations_never_leave_a_process_silent() {
+        let instance = PathBuf::from("/srv/Friday");
+        let settings = |raw: &str| resolve_log_settings(Some(raw), None, None, None).0;
+
+        let d = resolve_destinations(&settings("console"), Some(&instance));
+        assert!(d.console);
+        assert_eq!(d.file_dir, None);
+        assert_eq!(d.complaint, None);
+
+        let d = resolve_destinations(&settings("file"), Some(&instance));
+        assert!(!d.console, "file-only means file-only when a dir is known");
+        assert_eq!(d.file_dir, Some(PathBuf::from("/srv/Friday/logs")));
+        assert_eq!(d.complaint, None);
+
+        let d = resolve_destinations(&settings("both"), Some(&instance));
+        assert!(d.console);
+        assert_eq!(d.file_dir, Some(PathBuf::from("/srv/Friday/logs")));
+
+        // The default, with no instance: console, and no complaint (`both`
+        // already wanted console).
+        let d = resolve_destinations(&resolve_log_settings(None, None, None, None).0, None);
+        assert!(d.console);
+        assert_eq!(d.file_dir, None);
+        assert!(
+            d.complaint.is_some(),
+            "the missing file half is still said out loud"
+        );
+
+        // File-only with nowhere to write: stderr anyway, and a complaint.
+        let d = resolve_destinations(&settings("file"), None);
+        assert!(
+            d.console,
+            "a file-only process with no directory must not fall silent"
+        );
+        assert_eq!(d.file_dir, None);
+        assert!(d.complaint.is_some());
+    }
+
+    /// An event's fields land in v4's envelope: `message` is the message,
+    /// `error` becomes the error object, everything else is context — with the
+    /// event target as `module`.
+    #[test]
+    fn the_layer_writes_v4_shaped_records() {
+        use tracing_subscriber::prelude::*;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let writer = Arc::new(LogFileWriter::new(
+            tmp.path().to_path_buf(),
+            DEFAULT_MAX_FILE_SIZE,
+            DEFAULT_MAX_FILES,
+        ));
+        let subscriber =
+            tracing_subscriber::registry().with(LogFileLayer::new(Arc::clone(&writer)));
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(
+                chat_id = "c-1",
+                turn = 3u64,
+                ratio = 0.5,
+                "context assembled"
+            );
+            tracing::error!(error = "disk full", "write failed");
+        });
+
+        let combined = std::fs::read_to_string(tmp.path().join("combined.log")).unwrap();
+        let lines: Vec<&str> = combined.lines().collect();
+        assert_eq!(lines.len(), 2);
+
+        let first: Value = serde_json::from_str(lines[0]).unwrap();
+        let keys: Vec<&str> = first.as_object().unwrap().keys().map(|k| &**k).collect();
+        assert_eq!(keys, vec!["timestamp", "level", "message", "context"]);
+        assert_eq!(first["level"], json!("info"));
+        assert_eq!(first["message"], json!("context assembled"));
+        assert_eq!(
+            first["context"]["module"],
+            json!("quilltap_web::log_file::knob_tests")
+        );
+        assert_eq!(first["context"]["chat_id"], json!("c-1"));
+        assert_eq!(first["context"]["turn"], json!(3));
+        assert_eq!(first["context"]["ratio"], json!(0.5));
+        // v4's `toISOString()` shape.
+        let ts = first["timestamp"].as_str().unwrap();
+        assert_eq!(ts.len(), 24, "{ts}");
+        assert!(ts.ends_with('Z') && ts.contains('T'));
+
+        let second: Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(second["level"], json!("error"));
+        assert_eq!(second["message"], json!("write failed"));
+        assert_eq!(second["error"]["message"], json!("disk full"));
+        assert!(second["context"].get("error").is_none());
+
+        // The error record went to BOTH files; the info record to combined only.
+        let errors = std::fs::read_to_string(tmp.path().join("error.log")).unwrap();
+        assert_eq!(errors.lines().count(), 1);
+        assert!(errors.contains("write failed"));
     }
 }

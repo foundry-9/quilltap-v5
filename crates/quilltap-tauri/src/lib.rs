@@ -103,11 +103,10 @@ fn parse_args() -> Args {
 /// served `StartupStatus` (a conflicted/failed instance still answers
 /// `health` — the SPA's setup/lock surfaces need it).
 pub fn run() {
-    // The log surface, before boot (P4.18) — shares the HTTP binary's helper so
-    // the format is uniform across deployments. Events go to stderr under
-    // `RUST_LOG` (default `info`).
-    quilltap_web::init_tracing();
-
+    // The instance is resolved BEFORE the log surface, because the file half
+    // (P4.49) writes into `<instance>/logs/` — the same reordering the HTTP
+    // binary made, for the same reason. Neither the registry nor the path
+    // resolver emits a `tracing` event, so the move loses nothing.
     let args = parse_args();
     let base_dir =
         match quilltap_web::resolve_instance_base_dir(args.data_dir, args.instance.as_deref()) {
@@ -117,6 +116,13 @@ pub fn run() {
                 std::process::exit(2);
             }
         };
+
+    // The log surface (P4.18 + P4.49) — shares the HTTP binary's helper so the
+    // format and the knobs are uniform across deployments. Events go to stderr
+    // and/or `<instance>/logs/{combined,error}.log` per `LOG_OUTPUT` (default
+    // `both`), under `RUST_LOG` (default `info`). The desktop shell is the
+    // deployment where this matters most: there is no terminal watching it.
+    quilltap_web::init_tracing_for_instance(Some(&base_dir));
     let version = env!("CARGO_PKG_VERSION").to_string();
 
     // Boot inside the Tauri async runtime so the Host's cadence tasks (job
