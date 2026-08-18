@@ -55,6 +55,10 @@ The `quilltap` command-line tool still logs only to the terminal, as it
 always has — it reads the log files rather than writing them, and a
 short-lived command must not rotate a log file out from under a running
 server.
+Added tests covering the new hair wardrobe slot: the slot registry's rows,
+the item editor's grouping, the rose badge on a chosen hairdo, and an
+outfit payload saved before hair existed still rendering.
+
 Added the "hair" wardrobe slot to the app. It holds a hairdo — braids, an
 updo, marcel waves, a wig — not hair itself; colour, length, and texture
 stay in the physical description. Hair appears wherever the other four

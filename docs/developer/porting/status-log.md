@@ -73602,3 +73602,42 @@ because the key is required.
 
 **Gate:** `ng test` 330 files / 4,845 / 0; `ng build` clean; `cargo fmt --all
 --check` clean. No crate touched. SPA 0.5.505 → 0.5.506.
+
+---
+
+## P4.D88 unit 2 — the parity specs (v4 `4423ad10` client)
+
+**Lane:** P4.D88. **Files:** NEW `wardrobe/slot-meta.spec.ts`,
+`wardrobe/item-editor/constants.spec.ts`,
+`screens/new-chat/outfit-slots-preview.spec.ts`. **Oracle:** v4's REAL client —
+`lib/schemas/wardrobe.types.ts:29,77-104`,
+`components/wardrobe/wardrobe-item-editor/constants.ts`,
+`components/wardrobe/OutfitSlotsPreview.tsx`.
+
+Three files, because v4's commit shipped no client test with its SPA half.
+
+- **`slot-meta.spec.ts`** — the five-slot order with hair LAST; the whole meta
+  table asserted LITERALLY against v4's rows (a derived expectation would agree
+  with any mistake the registry makes — the `blinded-comparand` lesson);
+  `CLOTHING_SLOT_TYPES` excluding hair; `UNREPORTED_IF_BLANK_SLOT_TYPES` and
+  `isSlotReportedWhenEmpty`; the `emptyFallback`-iff-`reportWhenEmpty`
+  invariant; `freshSlots` minting independent arrays; `cloneSlots` deep-copying
+  and reading a MISSING key as `[]`.
+- **`constants.spec.ts`** — `GROUP_LABEL` (hair → "Hair"), `GROUP_ORDER` with
+  `multi` last, and `getCandidateGroup` on a single- vs multi-slot hairdo.
+- **`outfit-slots-preview.spec.ts`** — five cards in canonical order; the rose
+  badge on a chosen hairdo and on nothing else; v4's "nothing" vacancy in an
+  EMPTY hair card (the refuted-silence premise, pinned as v4 renders it); and a
+  four-key legacy frame rendering through v4's `slots[key] ?? []` guard.
+
+### Mutation proofs (all four went red, then were restored)
+
+| mutation | reddened |
+|---|---|
+| `entries: s[slot.key]` (drop `?? []`) | the legacy-frame case — `TypeError: Cannot read properties of undefined (reading 'length')` |
+| `[...slots[s]]` in `cloneSlots` (drop `?? []`) | "cloneSlots reads a MISSING slot key as []" |
+| hair `reportWhenEmpty: false → true` | the meta-row case, the unreported-if-blank case, AND the fallback-invariant case |
+| hair `badgeClass` → the accessories class | the meta-row case, the preview's rose-badge case, AND the composer's Hair-row case |
+
+**Gate:** `ng test` 330 files / 4,845 / 0. No crate touched. SPA 0.5.506 →
+0.5.507.
