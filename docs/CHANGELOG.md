@@ -93,6 +93,16 @@ notice now owns its own lifetime: it stays up while the image is still
 generating, reports the outcome for six seconds and then dismisses itself,
 is dropped if the turn ends without ever producing a result, clears at
 once when you stop a turn, and carries a close button of its own.
+Returning to a workspace tab now refreshes what it shows. Because tabs
+stay mounted, a tab you came back to still displayed whatever it had
+loaded when you left it. Each tab kind now declares which cached reads
+go stale on re-activation — Home refreshes the dashboard plus chats,
+projects and characters; Characters, the chat list, Projects, Files,
+Generate Image, Pascal's tools, your profile and Settings each refresh
+their own. Live surfaces (a conversation, a terminal, Document Mode,
+the Brahma console) and editors holding unsaved work are deliberately
+left alone, and the chat sweep never touches a conversation's own data.
+
 Workspace tabs now know whether they are the tab you are actually looking
 at. Each mounted tab's subtree gets a visibility signal, and a new
 `onTabActivated` hook runs a callback on every hidden-to-visible

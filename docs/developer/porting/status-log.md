@@ -73987,3 +73987,67 @@ keep-alive invariants unchanged.
 
 Gate: `ng test --filter="onTabActivated"` 4/4 green. SPA 0.5.505 →
 0.5.506.
+
+## P4.D90 unit 2 — the kind→prefix invalidation map (2026-08-18)
+
+**Ported:** v4 `lib/workspace/tab-refetch.ts` (104 lines, NEW at
+`979652a9`) + `TabView.tsx`'s `TabActivationInvalidator`, as
+`app/workspace/core/tab-refetch.ts` + a `watchTabActivation` in
+`chrome/tab-view.ts`. v4's module doc — the deliberately-empty roster
+and its reasoning — is carried quoted, and every translation is cited so
+a drift check can diff the two files entry for entry.
+
+**Translations onto v5's keys** (v5 has NO central key module: 32
+per-vertical `*.api.ts`, 22 exported `*Keys` objects):
+
+- v4 `chats.lists = ['chats','list']` → v5 `['chats']`. v4 had to narrow
+  because its per-chat keys live UNDER `['chats', id, …]`; v5's are
+  `['chat', id]` SINGULAR (`['chat', id, 'outfit-summary']`,
+  `['chatFilesList', id]`, `['chatPhotoAlbums', id]`), so the bare
+  collection prefix is already detail/state-safe by construction. The
+  spec pins that no prefix in the map starts with `chat`.
+- `home`/`aurora`/`prospero`/`character-view`/`generate-image`/
+  `custom-tools`/`profile` map onto `homeKeys.all`, `characterKeys.*`,
+  `groupKeys.all`, `tagKeys.all`, `projectKeys.all`,
+  `imageProfileKeys.all`, `['customTools']`, `profileKeys.detail`.
+  `prospero`'s single `['projects']` covers v5's TanStack project DETAIL
+  too (detail/chats/files/stores all hang off that prefix), which is
+  what v4 achieves by hand-refetching each of them.
+- **Split spellings, both swept** (census in the module doc):
+  `['connectionProfiles']` ∥ `['connection-profiles']`, `['apiKeys']` ∥
+  `['api-keys']`, `['chatSettings']` ∥ `['chat-settings']`.
+
+**Mechanism divergences, recorded not invented:**
+
+- `scriptorium` — v4 sweeps `mountPoints.all`; v5 has NO TanStack key
+  for document stores (`ScriptoriumStore` + `store-detail` hold signals).
+  Entry EMPTY; both views take the hook in unit 3.
+- `photos` — same shape: v5's gallery is hand-rolled. Entry EMPTY, hook
+  in unit 3.
+- `generate-image` — v4's `characters.all` reaches its TanStack list;
+  v5's `loadEntities` is hand-rolled, so the page ALSO takes an explicit
+  hook (unit 3). The prefixes stay for the sibling tabs sharing them.
+- `salon-new` — v5-only kind, ruled into v4's editors bucket (a form
+  holding unsaved input).
+- **Gaps with no v5 analogue** (v4 prefixes dropped, recorded): v4's
+  `settings.generalState` and `settings.taboo` — the general-state editor
+  and the Taboo card fetch outside TanStack Query in v5 — and
+  `plugins.all`, since plugins are Rust-core with no client query.
+
+**Parity spec** — the map half of
+`core/tab-activation-refetch.spec.ts`, mirroring v4's four map
+assertions (home's exact ordering; the chats-collection prefix; the
+payload-scoped `character-view` incl. the `[]` without a payload; the
+empty roster) plus three v5-only cases: BOTH spellings of every split
+key, the settings list in order, and the singleton list tabs. The
+roster case reads the kind union from `DEFAULT_TAB_META`'s
+`Record<TabKind, …>` and asserts BOTH directions (which kinds refresh,
+which are empty) by name — so a kind added to the union without a
+decision, or one silently dropped from the map, reds it.
+
+**Mutation proof:** deleting `case 'files'` from the map reds two specs
+(the roster and the singleton-prefix case). Run and confirmed.
+
+Gate: `ng test --filter="tabActivationQueryKeys"` 7/7 green; the
+keep-alive spec gained a `provideTanStackQuery` provider (TabView now
+injects the query client) and stays green. SPA 0.5.506 → 0.5.507.

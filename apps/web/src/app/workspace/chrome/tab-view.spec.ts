@@ -14,6 +14,7 @@
 
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { TabView } from './tab-view';
@@ -41,7 +42,10 @@ describe('TabView keep-alive', () => {
   it('lazy-mounts, then never re-instantiates across active toggles and payload refreshes', () => {
     constructions = 0;
     TestBed.configureTestingModule({
-      providers: [{ provide: TAB_VIEW_REGISTRY, useValue: registry() }],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: TAB_VIEW_REGISTRY, useValue: registry() },
+      ],
     });
     const fixture = TestBed.createComponent(TabView);
     fixture.componentRef.setInput('tab', homeTab());
