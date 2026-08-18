@@ -46,6 +46,13 @@ import {
  */
 const SEEDED_ACCESSORY = 'Aether Scarf';
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D88 → P4.D87). The hair beat round-trips a `types:
+ * ['hair']` item through the server, which only accepts the fifth slot once the
+ * server half (P4.D87) lands. Flip to `true` at unification.
+ */
+const P4D87_HAIR_SLOT_LANDED = false;
+
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
 const INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'wardrobe-instance');
@@ -215,6 +222,68 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(
       page.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' }).first(),
     ).toContainText('· default', { timeout: 10_000 });
+    await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D88 — the fifth slot, end to end through the dialog: create a hairdo,
+   * see it badged in the wardrobe list, compose it into the Hair slot row, and
+   * find it again after a reopen (so the `types: ['hair']` round trip really
+   * reached the server).
+   *
+   * The Green Room half of the order's Tier-2 beat (the rose badge on a
+   * decided outfit) is DEFERRED and named: the preview only paints when the
+   * chat-start outfit LLM chooses, and this suite stages no cheap-LLM outfit
+   * run. It is covered at component level by
+   * `screens/new-chat/outfit-slots-preview.spec.ts`.
+   */
+  test('creates a hairdo, badges it, and composes it into the Hair slot (ACTIVATE-AT-UNIFY, lane P4.D87)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D87_HAIR_SLOT_LANDED,
+      'ACTIVATE-AT-UNIFY (lane P4.D87): the server rejects types:["hair"] until the server half lands',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    await page.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+    await page.locator('#wardrobe-title').fill('Marcel Waves');
+    // Among the five Type(s) labels only one contains "hair" (substring match —
+    // a regex would trip on un-normalized whitespace, the P4.9a memory).
+    await page
+      .locator('label')
+      .filter({ hasText: 'hair' })
+      .locator('input[type="checkbox"]')
+      .click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    // The row lands in the character tier wearing the rose slot badge.
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
+    const wavesRow = page
+      .locator('.qt-card-interactive')
+      .filter({ hasText: 'Marcel Waves' })
+      .first();
+    await expect(wavesRow).toBeVisible();
+    await expect(wavesRow.locator('.qt-badge-wardrobe-hair')).toHaveText('hair');
+
+    // The Hair slot row exists in the Outfit Builder and takes the hairdo.
+    const hairRow = page.locator('.qt-card').filter({ hasText: 'Hair' }).first();
+    await hairRow.getByRole('button', { name: '+', exact: true }).click();
+    await hairRow.getByRole('button', { name: /Marcel Waves/ }).click();
+    await expect(hairRow).toContainText('Marcel Waves');
+
+    // Close, reopen: the hairdo persisted server-side (the round trip's proof).
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await page.getByRole('button', { name: 'Open wardrobe for Aria' }).click();
+    await expect(
+      page.locator('.qt-card-interactive').filter({ hasText: 'Marcel Waves' }).first(),
+    ).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'Done' }).click();
   });
 

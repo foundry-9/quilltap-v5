@@ -73641,3 +73641,40 @@ Three files, because v4's commit shipped no client test with its SPA half.
 
 **Gate:** `ng test` 330 files / 4,845 / 0. No crate touched. SPA 0.5.506 →
 0.5.507.
+
+---
+
+## P4.D88 unit 3 — the gated hair beat (tier 2)
+
+**Lane:** P4.D88. **File:** `apps/web/e2e/wardrobe-flow.spec.ts`.
+
+One beat, committed inert behind `P4D87_HAIR_SLOT_LANDED = false` (the order's
+named gate — the server rejects `types: ['hair']` until the sibling lane
+lands). It mirrors the file's LIVE first beat: open Aria's wardrobe dialog →
+create "Marcel Waves" with the hair type ticked → assert the row's
+`.qt-badge-wardrobe-hair` reads "hair" → open the Hair slot row's picker and
+wear it → close, reopen, and find it again (the reopen is the proof the
+`types: ['hair']` round trip actually reached the server).
+
+**No seed change was needed** — the beat creates its own item through the
+dialog, so there is nothing for the fixture to contain and nothing for the
+fixture-missing-TABLE class to bite. The seeded pre-state rule
+(`wardrobe-set-all-flake-deflaked`) does not apply either: every state this
+beat waits on is non-empty by the time it is awaited (the created row, then the
+composed chip).
+
+**DEFERRED, named:** the order's Green-Room half of this beat (the rose badge
+on a decided outfit in the creation dialog). That preview only paints when the
+chat-start outfit LLM chooses an outfit, and this suite stages no cheap-LLM
+outfit run; the Green Room also closes as soon as the create dispatch resolves,
+so the assertion would be a race. It is covered at component level by
+`screens/new-chat/outfit-slots-preview.spec.ts`, and a live look belongs to the
+dogfood queue.
+
+**Left deliberately un-widened:** the bug-61 beat's raw `chatEquip set_all`
+body (`:428`) still posts FOUR slot keys. That is a free wire-level check of
+the Shared contract's "an ABSENT `hair` key reads as `[]` on BOTH sides" — if
+P4.D87's parse tolerance is missing, this LIVE beat says so at unification.
+
+**Gate:** the beat is inert, so no active beat moved; `ng test` 330 / 4,845 /
+0 and `ng build` clean. SPA 0.5.507 → 0.5.508.
