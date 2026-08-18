@@ -51,7 +51,7 @@ const SEEDED_ACCESSORY = 'Aether Scarf';
  * ['hair']` item through the server, which only accepts the fifth slot once the
  * server half (P4.D87) lands. Flip to `true` at unification.
  */
-const P4D87_HAIR_SLOT_LANDED = false;
+const P4D87_HAIR_SLOT_LANDED = true;
 
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;

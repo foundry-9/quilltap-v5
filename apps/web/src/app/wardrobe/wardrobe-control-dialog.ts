@@ -50,6 +50,7 @@ import {
   toggleItemDefault,
 } from './wardrobe.api';
 import { ToastService } from '../ui/toast.service';
+import { onTabActivated } from '../workspace/workspace-contract';
 
 interface CharacterSummary {
   id: string;
@@ -638,6 +639,14 @@ export class WardrobeControlDialogInner {
           [characterId]: seed,
         })),
       );
+    });
+
+    // As a rail-opened workspace tab, navigating back refreshes the garment
+    // list. Safe mid-edit: the fitting-room/live seeding is ref-gated, so a
+    // reload never blows away staged slots. v4
+    // `wardrobe-control-dialog.tsx:175-180`.
+    onTabActivated(() => {
+      void this.reloadCurrentItems();
     });
   }
 
