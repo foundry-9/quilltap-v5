@@ -1,0 +1,183 @@
+{
+  "manifest": {
+    "format": "quilltap-export",
+    "version": "1.0",
+    "exportType": "characters",
+    "createdAt": "2026-02-28T17:11:10.563Z",
+    "appVersion": "3.1.1",
+    "settings": {
+      "includeMemories": true,
+      "scope": "selected",
+      "selectedIds": [
+        "c0b75000-0000-4000-8000-000000000001"
+      ]
+    },
+    "counts": {
+      "characters": 2,
+      "memories": 42
+    }
+  },
+  "data": {
+    "characters": [
+      {
+        "id": "c0b75000-0000-4000-8000-000000000001",
+        "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "name": "Bram Fitzwilliam",
+        "title": "Haberdasher of the Bug-75 Proof",
+        "description": "A gentleman whose composite outfits must survive an id re-mint.",
+        "personality": "Precise about references; dislikes dangling ones.",
+        "scenario": "A fitting room at the back of the haberdashery, mirrors on three sides.",
+        "firstMessage": "",
+        "exampleDialogues": "",
+        "systemPrompts": [
+          {
+            "id": "b75b0001-0001-4001-a001-000000000101",
+            "name": "Main",
+            "content": "You are Bram Fitzwilliam, a precise haberdasher. Keep your composite outfits well referenced.",
+            "isDefault": true,
+            "createdAt": "2026-02-28T01:35:43.937Z",
+            "updatedAt": "2026-02-28T01:35:43.937Z"
+          }
+        ],
+        "avatarUrl": "",
+        "defaultImageId": null,
+        "isFavorite": false,
+        "npc": false,
+        "talkativeness": 0.5,
+        "controlledBy": "llm",
+        "defaultHelpToolsEnabled": true,
+        "partnerLinks": [],
+        "aliases": [],
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "tags": [],
+        "avatarOverrides": [],
+        "physicalDescriptions": [],
+        "clothingRecords": [],
+        "wardrobeItems": [
+          {
+            "id": "b75a0001-0001-4001-a001-000000000001",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Ash-Grey Waistcoat",
+            "description": null,
+            "types": [
+              "top"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [],
+            "replace": false,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          },
+          {
+            "id": "b75a0002-0002-4002-a002-000000000002",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Marcel Waves",
+            "description": null,
+            "types": [
+              "hair"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [],
+            "replace": false,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          },
+          {
+            "id": "b75a0003-0003-4003-a003-000000000003",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Oxblood Brogues",
+            "description": null,
+            "types": [
+              "footwear"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [],
+            "replace": false,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          },
+          {
+            "id": "b75a0004-0004-4004-a004-000000000004",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Sunday Best",
+            "description": null,
+            "types": [
+              "top",
+              "footwear",
+              "hair"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [
+              "b75a0001-0001-4001-a001-000000000001",
+              "b75a0003-0003-4003-a003-000000000003",
+              "b75a0002-0002-4002-a002-000000000002"
+            ],
+            "replace": true,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          },
+          {
+            "id": "b75a0005-0005-4005-a005-000000000005",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Full Regalia",
+            "description": null,
+            "types": [
+              "top",
+              "footwear",
+              "hair"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [
+              "b75a0004-0004-4004-a004-000000000004"
+            ],
+            "replace": false,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          },
+          {
+            "id": "b75a0006-0006-4006-a006-000000000006",
+            "characterId": "c0b75000-0000-4000-8000-000000000001",
+            "title": "Phantom Ensemble",
+            "description": null,
+            "types": [
+              "top"
+            ],
+            "appropriateness": "formal",
+            "isDefault": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "componentItemIds": [
+              "b75a0001-0001-4001-a001-000000000001",
+              "b75adead-dead-4ead-adea-00000000dead"
+            ],
+            "replace": false,
+            "createdAt": "2026-08-18T12:00:00.000Z",
+            "updatedAt": "2026-08-18T12:00:00.000Z"
+          }
+        ],
+        "createdAt": "2026-02-28T01:36:09.846Z",
+        "updatedAt": "2026-02-28T01:52:49.459Z"
+      }
+    ],
+    "memories": []
+  }
+}

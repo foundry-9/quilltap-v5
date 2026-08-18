@@ -73124,3 +73124,37 @@ baseline note updated). The plan is mirrored in `phase-4.md` → "The
   vault `types:` widening) — recorded as the disposition. v4's
   `WardrobeListPresetResult.slots` widening has no v5 counterpart
   (v5's `wardrobe_list` never populates presets).
+
+## P4.D87 — unit 2: Bug 75, the .qtap composite-id remap (v4 `40d507cc`'s ported subset)
+
+- **The leaf-first `componentItemIds` remap landed** in
+  `services/quilltap_import/characters.rs` — v5 HAD the bug (import
+  re-minted wardrobe item ids and copied composite references verbatim, so
+  imported outfits arrived hollow). Now: `new_id_by_old_id` pre-minted over
+  the importable (non-archetype) items, `composite_depth` recursion with the
+  shared-seen cycle guard, a STABLE sort on precomputed depth (v4 sorts with
+  a fresh set per comparison — same order, ties keep export order),
+  references remapped through the map with v4's warning sentence VERBATIM on
+  a dangling reference, and the pre-minted id threaded into the create (the
+  `Cycle` arm evaluates against the REMAPPED ids). Folded legacy-preset
+  composites ride the same remap, as in v4.
+- **The differential:** `qtap_import_equivalence` gained the Bug-75 leg over
+  the NEW committed `harness/oracle/fixtures/qtap-import-bug75.qtap`
+  (character "Bram Fitzwilliam": three leaves incl. a `types: ["hair"]` item
+  — which also proves the structural import path accepts hair — a depth-1
+  composite bundling all three, a depth-2 composite bundling THAT, and a
+  composite carrying one dangling reference). The existing size-multiset
+  check is BLIND to the remap (a 36-char UUID remaps size-neutrally —
+  exactly the `uuid-normalizer-blinds-fixture-baked-ids` class), so the
+  comparand reads the items back through each side's REAL vault-overlay
+  reader (`repos.wardrobe.findByCharacterId` / `wardrobe_read::
+  find_by_character_id`) and diffs by RELATIONSHIP through one shared token
+  map covering row ids AND reference elements; warnings diff exactly; a
+  belt-and-braces pass asserts every surviving reference resolved to a
+  sibling token. **Mutation-proven**: restoring the verbatim-copy line goes
+  red at the relationship diff. Lorian counts updated (3 characters /
+  3 mount points / 14 wardrobe `.md` links / scaffold ×3); the skip-branch
+  re-import assertions unchanged.
+- Oracle regen: via the sweep driver (`--run qtap_import_equivalence --v4
+  /tmp/qt-v4-pin-p4d87-979652a9`); the fixture builder is unchanged — the
+  new `.qtap` is read by the case/test directly.

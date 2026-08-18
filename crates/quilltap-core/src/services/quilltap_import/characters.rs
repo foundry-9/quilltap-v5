@@ -426,34 +426,109 @@ fn import_character_wardrobe_items(
 
     let links = DocMountFileLinksRepository::new(mount);
     let docs = DocMountDocumentsRepository::new(mount);
-    for item in &combined {
-        // Skip archetype items (characterId = null) — shared, not per-character.
-        let has_character_id = item
-            .get("characterId")
-            .map(|v| !v.is_null())
-            .unwrap_or(false);
-        if !has_character_id {
-            continue;
-        }
 
+    // Skip archetype items (characterId = null) — shared, not per-character.
+    let importable: Vec<&Value> = combined
+        .iter()
+        .filter(|item| {
+            item.get("characterId")
+                .map(|v| !v.is_null())
+                .unwrap_or(false)
+        })
+        .collect();
+
+    // Item ids are re-minted on import, so composite `componentItemIds` — which
+    // reference the export's original ids — must be remapped to the new ids
+    // (v4 Bug 75, `40d507cc`). Pre-assign every new id, remap the references,
+    // and create leaf items before the composites that bundle them so no
+    // composite is ever written ahead of its components. References that don't
+    // resolve within this character's own items (e.g. archetype components) are
+    // dropped with a warning rather than left dangling.
+    let new_id_by_old_id: std::collections::HashMap<String, String> = importable
+        .iter()
+        .filter_map(|item| {
+            item.get("id")
+                .and_then(Value::as_str)
+                .map(|id| (id.to_string(), uuid::Uuid::new_v4().to_string()))
+        })
+        .collect();
+
+    // v4 `compositeDepth(item, seen)` — 0 for a leaf or an already-seen id (the
+    // shared `seen` set is the cycle guard); otherwise 1 + the deepest resolved
+    // component.
+    fn composite_depth(
+        item: &Value,
+        importable: &[&Value],
+        seen: &mut std::collections::HashSet<String>,
+    ) -> usize {
+        let component_ids: Vec<&str> = item
+            .get("componentItemIds")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+        if component_ids.is_empty() || seen.contains(id) {
+            return 0;
+        }
+        seen.insert(id.to_string());
+        let mut max = 0;
+        for component_id in component_ids {
+            if let Some(component) = importable
+                .iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(component_id))
+            {
+                max = max.max(composite_depth(component, importable, seen) + 1);
+            }
+        }
+        max
+    }
+
+    // v4 sorts with a fresh `seen` per comparison; a STABLE sort on the
+    // precomputed depth yields the same order (ties keep export order).
+    let mut ordered: Vec<&Value> = importable.clone();
+    ordered.sort_by_key(|item| {
+        composite_depth(item, &importable, &mut std::collections::HashSet::new())
+    });
+
+    for item in ordered {
         let title = item
             .get("title")
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
 
-        // Mint id/timestamps (v4 `repos.wardrobe.create` materializes them before
-        // the vault projection). `migratedFromClothingRecordId` forced null on
-        // import; `characterId` set to the new character; the rest passed through.
+        let original_component_ids = str_array(item, "componentItemIds");
+        let remapped_component_ids: Vec<String> = original_component_ids
+            .iter()
+            .filter_map(|old_id| new_id_by_old_id.get(old_id).cloned())
+            .collect();
+        if remapped_component_ids.len() != original_component_ids.len() {
+            warnings.push(format!(
+                "Wardrobe item \"{}\" referenced {} component item(s) not present in the import; those references were dropped.",
+                title,
+                original_component_ids.len() - remapped_component_ids.len()
+            ));
+        }
+
+        // Timestamps minted here (v4 `repos.wardrobe.create` materializes them
+        // before the vault projection); the id is the PRE-MINTED one from the
+        // remap table (v4 `wardrobe.create({...}, { id })`), so composite
+        // references written above resolve. `migratedFromClothingRecordId`
+        // forced null on import; `characterId` set to the new character; the
+        // rest passed through.
         let now = crate::clock::now_iso();
         let stored = WardrobeItem {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: item
+                .get("id")
+                .and_then(Value::as_str)
+                .and_then(|id| new_id_by_old_id.get(id).cloned())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             character_id: Some(Some(new_character_id.to_string())),
             title: title.clone(),
             description: Some(opt_string(item, "description")),
             image_prompt: Some(opt_string(item, "imagePrompt")),
             types: str_array(item, "types"),
-            component_item_ids: str_array(item, "componentItemIds"),
+            component_item_ids: remapped_component_ids,
             appropriateness: Some(opt_string(item, "appropriateness")),
             is_default: item
                 .get("isDefault")

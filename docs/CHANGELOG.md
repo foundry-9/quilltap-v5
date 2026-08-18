@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Fixed .qtap character import leaving composite outfits hollow (v4 Bug 75
+ported; v5 had the same defect). Import re-mints wardrobe item ids, but
+composite componentItemIds kept referencing the export's original ids.
+The importer now pre-assigns every new id, creates leaf items before the
+composites that bundle them, remaps the references, and drops a dangling
+reference with a warning instead of leaving it pointing at nothing.
+Proven by a new committed composite-chain .qtap fixture whose items are
+read back through both sides' real vault readers and compared by
+relationship.
+
 Ported the server half of v4's hair wardrobe slot (P4.D87, v4 4423ad10).
 Wardrobe slots now number five — top, bottom, footwear, accessories, hair
 — with hair holding a hairdo, not hair: an empty hair slot means unstyled,

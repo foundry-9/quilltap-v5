@@ -30,10 +30,21 @@
 //! table (deterministic relativePath / fileName per file) carries the structural
 //! diff.
 //!
-//! Also exercises the `skip` branch: a SECOND `execute_import` on the imported DB
+//! Also exercises the `skip` branch: a re-import of the seed on the imported DB
 //! must skip both characters (name-match) and re-create no wardrobe/vault, while
 //! memories (remap-only, always-insert) double — asserted Rust-side against the
 //! first-run oracle state.
+//!
+//! THE BUG-75 LEG (v4 `40d507cc`): both sides additionally import the committed
+//! `qtap-import-bug75.qtap` — a character whose wardrobe carries a depth-2
+//! composite chain plus one dangling component reference. Item ids are
+//! re-minted on import, so stored `componentItemIds` must be REMAPPED to the
+//! new sibling ids (created leaf-first) and the dangling reference dropped with
+//! v4's exact warning. The size-multiset check is BLIND to this (a 36-char UUID
+//! remaps size-neutrally), so the items are read back through each side's REAL
+//! vault-overlay reader and diffed by RELATIONSHIP: item ids and every
+//! `componentItemIds` element go through one shared token map — a hollow import
+//! (old export ids) yields tokens matching no sibling row and diverges loudly.
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -150,6 +161,55 @@ fn spec_path() -> PathBuf {
 fn qtap_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../assets/first-startup/imports/lorian-and-riya.qtap")
+}
+fn bug75_qtap_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/qtap-import-bug75.qtap")
+}
+
+/// Project a vault-overlaid wardrobe item to the bug-75 comparand fields
+/// (mirrors the oracle case's projection).
+fn bug75_project(item: &Value) -> Value {
+    serde_json::json!({
+        "id": item.get("id").cloned().unwrap_or(Value::Null),
+        "title": item.get("title").cloned().unwrap_or(Value::Null),
+        "types": item.get("types").cloned().unwrap_or(Value::Null),
+        "componentItemIds": item.get("componentItemIds").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
+        "isDefault": item.get("isDefault").cloned().unwrap_or(Value::Bool(false)),
+        "replace": item.get("replace").cloned().unwrap_or(Value::Bool(false)),
+    })
+}
+
+/// Remap the bug-75 items' ids AND `componentItemIds` elements through ONE
+/// shared token map (title-sorted walk). An element that maps to no sibling
+/// row id keeps its raw UUID — which is exactly how a hollow import shows up.
+fn bug75_normalize(items: &mut [Value]) {
+    let mut map: HashMap<String, String> = HashMap::new();
+    for it in items.iter() {
+        if let Some(id) = it.get("id").and_then(Value::as_str) {
+            let next = format!("W_{}", map.len());
+            map.entry(id.to_string()).or_insert(next);
+        }
+    }
+    for it in items.iter_mut() {
+        let obj = it.as_object_mut().expect("bug75 item object");
+        let token = obj
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| map.get(id).cloned());
+        if let Some(token) = token {
+            obj.insert("id".to_string(), Value::String(token));
+        }
+        if let Some(Value::Array(refs)) = obj.get_mut("componentItemIds") {
+            for r in refs.iter_mut() {
+                if let Value::String(s) = r {
+                    if let Some(tok) = map.get(s.as_str()) {
+                        *r = Value::String(tok.clone());
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<String, String>) {
@@ -277,6 +337,31 @@ fn qtap_import_tier2_matches_oracle() {
         "2 destination character ids"
     );
 
+    // The Bug-75 leg: import the committed composite fixture (see header).
+    let bug75_qtap =
+        std::fs::read_to_string(bug75_qtap_path()).expect("read committed bug75 .qtap");
+    let bug75_export = parse_export_file(&bug75_qtap).expect("parse bug75 .qtap");
+    let bug75_result = execute_import(
+        main.connection(),
+        mount.connection(),
+        SINGLE_USER_ID,
+        &bug75_export,
+        &ImportOptions::seed_defaults(),
+        None,
+    )
+    .expect("bug75 execute_import");
+    assert!(
+        bug75_result.success,
+        "bug75 import should succeed: {:?}",
+        bug75_result.warnings
+    );
+    assert_eq!(
+        bug75_result.imported_character_ids.len(),
+        1,
+        "1 bug75 destination character id"
+    );
+    let bram_id = bug75_result.imported_character_ids[0].clone();
+
     let mut got = dump_all(&main, &mount);
     let mut want: Vec<Value> = TABLES
         .iter()
@@ -310,7 +395,11 @@ fn qtap_import_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().len()
     };
-    assert_eq!(rows_len("characters"), 2, "2 character rows");
+    assert_eq!(
+        rows_len("characters"),
+        3,
+        "2 seed character rows + the bug75 character"
+    );
     // Wardrobe is VAULT-backed (each item → a `Wardrobe/*.md` doc-mount file), so
     // the slim `wardrobe_items` table stays empty — the items are verified via the
     // doc_mount link diff + the file size-multiset below.
@@ -320,7 +409,7 @@ fn qtap_import_tier2_matches_oracle() {
         "no slim wardrobe rows (vault-backed)"
     );
     assert_eq!(rows_len("memories"), 42, "42 memory rows");
-    assert_eq!(rows_len("points"), 2, "2 vault mount-point rows");
+    assert_eq!(rows_len("points"), 3, "3 vault mount-point rows");
 
     // The link TOTAL is deliberately not pinned to a literal. It is two halves and
     // only one of them is ours: the `Wardrobe/*.md` links come from the committed
@@ -342,8 +431,8 @@ fn qtap_import_tier2_matches_oracle() {
         .partition(|p| p.starts_with("Wardrobe/"));
     assert_eq!(
         wardrobe.len(),
-        8,
-        "4 wardrobe `.md` per character × 2 characters (seed-derived): {wardrobe:?}"
+        14,
+        "4 wardrobe `.md` × 2 seed characters + 6 bug75 items: {wardrobe:?}"
     );
     let mut distinct_wardrobe = wardrobe.clone();
     distinct_wardrobe.sort_unstable();
@@ -359,7 +448,7 @@ fn qtap_import_tier2_matches_oracle() {
     }
     let mut offenders: Vec<String> = scaffold_counts
         .iter()
-        .filter(|(_, n)| **n != 2)
+        .filter(|(_, n)| **n != 3)
         .map(|(p, n)| format!("{p} ×{n}"))
         .collect();
     offenders.sort();
@@ -419,6 +508,74 @@ fn qtap_import_tier2_matches_oracle() {
         assert_eq!(ores["success"], Value::Bool(true));
         assert_eq!(ores["imported"]["characters"], Value::from(2));
         assert_eq!(ores["imported"]["memories"], Value::from(42));
+    }
+
+    // The Bug-75 comparand: read Bram's items back through v5's REAL
+    // vault-overlay reader and diff by relationship against v4's read (see
+    // header). Warnings diff EXACTLY — the dangling reference must produce
+    // v4's sentence, byte for byte.
+    let obug75 = oracle.get("bug75").expect(
+        "oracle missing the bug75 section — regenerate the NDJSON from a case file that has the Bug-75 leg",
+    );
+    let oracle_warnings: Vec<String> = obug75["warnings"]
+        .as_array()
+        .expect("bug75.warnings")
+        .iter()
+        .map(|w| w.as_str().unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(
+        bug75_result.warnings, oracle_warnings,
+        "bug75 import warnings diverged"
+    );
+    assert!(
+        oracle_warnings
+            .iter()
+            .any(|w| w.contains("component item(s) not present in the import")),
+        "the corpus lost its dangling-reference arm: {oracle_warnings:?}"
+    );
+
+    let docs = quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(
+        mount.connection(),
+    );
+    let mut got_items: Vec<Value> = quilltap_core::db::wardrobe_read::find_by_character_id(
+        main.connection(),
+        &docs,
+        &bram_id,
+        true,
+    )
+    .expect("read bram wardrobe")
+    .iter()
+    .map(bug75_project)
+    .collect();
+    got_items.sort_by(|a, b| {
+        a["title"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["title"].as_str().unwrap_or_default())
+    });
+    let mut want_items: Vec<Value> = obug75["items"].as_array().expect("bug75.items").clone();
+    assert_eq!(
+        got_items.len(),
+        6,
+        "6 bug75 wardrobe items expected: {got_items:?}"
+    );
+    bug75_normalize(&mut got_items);
+    bug75_normalize(&mut want_items);
+    assert_eq!(
+        got_items, want_items,
+        "bug75 componentItemIds relationship state diverged"
+    );
+    // Belt and braces: the composite chain actually RESOLVED — every remaining
+    // component reference is a token of a sibling row (a hollow import leaves
+    // raw UUIDs here).
+    for it in &got_items {
+        for r in it["componentItemIds"].as_array().unwrap() {
+            let s = r.as_str().unwrap_or_default();
+            assert!(
+                s.starts_with("W_"),
+                "unresolved component reference survived the import: {s} in {it}"
+            );
+        }
     }
 
     // Run 2 (the skip branch): characters skip by NAME match, no new wardrobe/vault

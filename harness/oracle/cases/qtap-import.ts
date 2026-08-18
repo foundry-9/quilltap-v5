@@ -99,6 +99,42 @@ async function main(): Promise<void> {
     includeRelatedEntities: false,
   });
 
+  // Bug-75 leg (v4 `40d507cc`): a SECOND import of the committed composite
+  // fixture — a character whose wardrobe carries a depth-2 composite chain plus
+  // one dangling component reference. Item ids are re-minted on import, so the
+  // stored `componentItemIds` must be REMAPPED to the new sibling ids
+  // (leaf-first), and the dangling reference must be dropped with a warning.
+  // The size-multiset diff above is blind to this (a 36-char UUID remaps
+  // size-neutrally), so the items are read back through v4's REAL vault-overlay
+  // reader and row-diffed by relationship.
+  const bug75Path = join(here, '..', 'fixtures', 'qtap-import-bug75.qtap');
+  const bug75Data = JSON.parse(readFileSync(bug75Path, 'utf8'));
+  const bug75Result = await executeImport(SINGLE_USER_ID, bug75Data, {
+    conflictStrategy: 'skip',
+    includeMemories: true,
+    includeRelatedEntities: false,
+  });
+  if (!bug75Result.success || bug75Result.importedCharacterIds.length !== 1) {
+    throw new Error(
+      `bug75 import did not land one character: ${JSON.stringify(bug75Result)}`
+    );
+  }
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const bramItems = await getRepositories().wardrobe.findByCharacterId(
+    bug75Result.importedCharacterIds[0],
+    true
+  );
+  const bug75Items = bramItems
+    .map((i) => ({
+      id: i.id,
+      title: i.title,
+      types: i.types,
+      componentItemIds: i.componentItemIds ?? [],
+      isDefault: i.isDefault ?? false,
+      replace: i.replace ?? false,
+    }))
+    .sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+
   // MAIN db: characters + wardrobe_items + memories, read RAW through v4's backend.
   const dumpMain = async (table: string, orderBy: string) => {
     const columns = (
@@ -153,6 +189,10 @@ async function main(): Promise<void> {
       files,
       documents,
       links,
+      bug75: {
+        warnings: bug75Result.warnings,
+        items: bug75Items,
+      },
     }) + '\n'
   );
   process.exit(0);
