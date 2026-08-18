@@ -4896,9 +4896,9 @@ comparands). Round record: `status-log.md`.
    aa464abf-round Ollama-thinking proofs).
 2. **The v4-side filing** owed from P4.48: the import preflight's
    swallowed DB read errors (v4 proceeds into a partial apply).
-3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+4. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
    HelpChat/Guide vertical + its enriched bank).
-4. Banked smalls: the `Non-image attachments:` line under the provider
+5. Banked smalls: the `Non-image attachments:` line under the provider
    select (NEW this round — the client attachment table it needs now
    exists at `apps/web/.../providers/attachment-support.ts`); the settings
    repo-validate sibling fields (P4.47 deferral site); the stale
@@ -4971,7 +4971,19 @@ Gate + versions: the round record in `status-log.md`.
 
 **Next candidates, in rough value order:**
 
-1. **The owed dogfood pass** — Parts C/D of the paused 2026-08-16 walk
+1. **P4.49 — v4's file logging** (`work-orders/p4.49-file-logging.md`,
+   ORDERED 2026-08-18 from dogfood finding #93; **the human raised its
+   priority explicitly**: every v5 diagnosis currently starts with less
+   instrumentation than v4 had, and the walk that found it immediately hit
+   a warning readable only by whoever was watching the terminal). v4
+   writes `combined.log` + `error.log` into the instance's `logs/` with
+   rotation and a startup sweep for iCloud/Finder conflict files; v5 has
+   no file appender at all. Small and disjoint — 194 lines of v4 to port,
+   its own 36-case test file as the parity corpus, no `api/**`, no
+   `services/**`, no `apps/web/**`, no oracle regen — so it composes with
+   any drift lane. One ruling left for the human (the default; see the
+   order's unit 6).
+2. **The owed dogfood pass** — Parts C/D of the paused 2026-08-16 walk
    (the bug-70 context-budget legs; the standing 💸 queue: the Almanack
    real-data report, the live Taboo turn, OpenRouter pricing with a real
    key, the vision send, the P4.D49 budget/attribution proofs, the
@@ -4980,7 +4992,7 @@ Gate + versions: the round record in `status-log.md`.
    surfaces: profile tags end-to-end on real data, the cleared-number
    heal on a real profile, the poisoned-base-URL heal on any pre-bug-73
    row in the Friday copy.
-2. **The v4-side filing owed from P4.48** (the import preflight's
+3. **The v4-side filing owed from P4.48** (the import preflight's
    swallowed DB read errors).
 3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
    HelpChat/Guide vertical + its enriched bank, incl. the two banked
@@ -4991,7 +5003,7 @@ Gate + versions: the round record in `status-log.md`.
    lead — v4's in-memory-merge update answer is a BASE-repository
    property, so the cleared-null divergence may exist on OTHER update
    surfaces whose v4 twin clears columns (unmeasured either way).
-5. Carried riders: `external-prompt-generator.service.ts` (P4.D82) and
+6. Carried riders: `external-prompt-generator.service.ts` (P4.D82) and
    `encodeDebugInfo` (P4.D83) for their future lanes.
 
 **Standing regen note (supersedes the one above):** the oracle baseline
