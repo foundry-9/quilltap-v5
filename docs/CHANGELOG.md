@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Unified the 979652a9 drift round: five parallel lanes, all closed. The
+wardrobe gains its fifth slot — hair, holding a hairdo rather than hair —
+threaded through every tool, prompt, avatar branch, import, export, and
+dialog, with an empty hair slot deliberately saying nothing anywhere (empty
+means unstyled, never bald). Importing a .qtap with composite outfits now
+remaps their component references, so imported outfits arrive whole instead
+of hollow. An API key no longer follows a connection profile onto another
+provider, and an already-poisoned profile heals on its next ordinary save.
+The image-generation notice above the composer now owns its own lifetime: it
+appears when generation starts, reports the outcome, dismisses itself after
+six seconds, and carries a close button — no route out of a turn can strand
+it. Workspace tabs refresh their data when you navigate back to them, with
+live surfaces and unsaved editors deliberately left alone. And the server
+now writes combined.log and error.log into the instance's logs directory
+with rotation and a startup sweep for iCloud and Finder conflict files, so
+warnings survive the terminal.
+
 Fixed .qtap character import leaving composite outfits hollow (v4 Bug 75
 ported; v5 had the same defect). Import re-mints wardrobe item ids, but
 composite componentItemIds kept referencing the export's original ids.

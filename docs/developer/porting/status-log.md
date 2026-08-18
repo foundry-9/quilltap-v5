@@ -74202,3 +74202,87 @@ proof:** neutering the fire in `watchTabActivation`
 (`if (false && was === false && now === true)`) + an SPA rebuild reds
 BOTH beats, each on the `waitForRequest` for the refetch it triggers —
 the beats cannot pass vacuously. SPA 0.5.508 → 0.5.509.
+
+## ROUND RECORD — the `979652a9` drift round UNIFIED (P4.D87 ∥ P4.D88 ∥ P4.D89 ∥ P4.D90 ∥ P4.49), 2026-08-18
+
+**All five lanes CLOSED and unified onto main; the oracle baseline MOVES to
+`979652a9` and the drift debt is CLEARED.** Branch `unify/979652a9-round`:
+17 lane commits cherry-picked in dependency order (D87 core → P4.49 crates →
+D88 → D89 → D90), version files accumulated by recount (three SPA lanes off
+one base — final SPA 0.5.514), the append-only docs union-merged, zero
+source-level conflicts (Ownership held).
+
+**The §3 review (four parallel per-lane fidelity reviewers + the unifier's
+own read of the contract seams): NO BLOCKING FINDINGS anywhere — and one
+substantive catch, fixed on the unify branch (`8b083f49`):**
+
+- **The bug-77 turn-end WIRING was unpinned** (the round's would-have-shipped
+  item): every boundary spec invoked the private
+  `clearPendingToolExecutionStatus` directly, so deleting the ONE production
+  call in the send flow's reconcile tail reddened nothing — the exact
+  stranded-pending shape bug 77 exists to prevent, shipping invisibly (the
+  #58 PumpPause WIRING-test class). A new spec drives `send()` end to end;
+  mutation-proven (1 failed / 4,897 with the call commented; green restored).
+- Three recordings added from the reviews: the P4.49 knob-TRIM divergence
+  sentence (v5 trims env values where v4 feeds raw bytes to zod); the
+  `watchTabActivation` injection-context requirement (NG0203); the Bug-75
+  fixture's manifest counts corrected (said 2 characters / 42 memories over
+  1 / 0 — copied from lorian-and-riya; neither importer reads counts).
+- Review verdicts worth keeping: D87's claimed v4 avatar-crash bug is REAL
+  (independently re-derived from v4 source); D88's refutation of the
+  empty-hair-silence mandate is CORRECT (v4 components render "Empty"/
+  "nothing"); D89's refutation of the retire-the-toasts premise is CORRECT
+  (the toasts are v4's own, raised alongside the notice); D90's `enabled`
+  reading of v4's invalidator mount is CORRECT. Minor notes recorded in the
+  reviews, none blocking: the beat-level negative assertions in the two D90
+  beats are softer than their comments read (the deterministic pins live in
+  the unit specs), the `buildProfileRequestBody` apiKeys default-`[]` seam
+  (fail-open toward keeping a stored key — v4's safe direction), and D88's
+  four prettier-shape hunks in `dissolve-bundles.spec.ts`.
+
+**The wires (`9e23e871`):** `P4D87_HAIR_SLOT_LANDED` flipped TRUE (the D88
+wardrobe beat live — green on its first unified run); the D90 AT-UNIFY
+activation hook applied to `wardrobe-control-dialog.ts` exactly as the lane
+record specifies (P4.D88 owned the file); the D87↔D88 Shared contract
+diffed name-for-name across all THREE registries (v4, Rust, SPA) — every
+label, badge class, clothing flag, reporting flag, fallback, and the
+append-LAST order agree.
+
+**The gate (all fresh on the unify branch):** `cargo fmt --all --check`
+clean; `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH
+feature sets; release build clean (2m48s). **The 34 affected families
+regenerated FRESH from the v4 checkout sitting exactly at `979652a9`
+(clean) through the sweep driver and re-run by name: 34/34 ok, zero SKIP**
+(`/tmp/sweep-unify-979652a9.json`, label "unify 979652a9 round gate") —
+incl. the NEW `outfit_hash_equivalence`, the rebuilt wardrobe-tools corpus
+(31 → 35 ops), the five-key `chats_outfits_tier2` zero-normalization family,
+and `qtap_import_equivalence`'s Bug-75 leg. `cargo test --workspace`: **439
+test binaries / 2,205 passed / 0 failed** (exit 0; the two grep-visible
+"FAILED" strings are a vintage fixture's tolerated embedding-profiles WARN).
+SPA: `ng test` **331 files / 4,898 / 0**; `ng build` clean; **full
+Playwright 228 passed / 0 failed / 0 skipped (5.8 m)** — the suite grew
+with the hair beat (live at the flip) and D90's two re-activation beats.
+
+**Versions:** core 0.0.579 → **0.0.581**, harness 0.0.501 → **0.0.503**,
+web 0.0.72 → **0.0.76**, cli 0.0.9 → **0.0.10**, tauri 0.0.6 → **0.0.7**,
+SPA 0.5.505 → **0.5.514**; host/sys unchanged.
+
+**Standing after the round:**
+
+- **TWO v4-side filings owed** (both found by this round): the avatar-crash
+  bug (pre-hair four-key `equippedOutfit` rows with items equipped crash
+  avatar generation, "rootIds is not iterable"; scene-state/context sites
+  degrade soft — the D87 convergence tripwire fires when v4 fixes it), and
+  nothing else new (bugs 75/76/77 were v4's own fixes this round absorbed).
+- **💸 the dogfood queue gains:** the P4.49 acceptance run (the bug-70
+  warning grepped out of `combined.log` on the Friday copy; `logs/terminals`
+  + the `quilltap-*.log` family intact across a restart), the bug-76
+  poisoned-row heal on a real save, a real image turn's notice lifecycle
+  (appear → settle → self-dismiss; stop() clears), the hair slot end-to-end
+  on real data (a hairdo worn on a real character; the Green Room rose
+  badge; an avatar regen carrying the hairdo), and tab re-activation
+  freshness on the real instance. Parts C/D of the paused walk still stand
+  ahead of these.
+- Banked: the split-query-key-spelling consolidation (D90's module doc names
+  every file); the generators-lane rider bank grew the `4423ad10`
+  hair edits; the wardrobe `help/*.md` drift rides `p4.9i2`.

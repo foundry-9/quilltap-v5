@@ -5088,3 +5088,51 @@ Regens pin a detached v4 worktree at `979652a9`. The owed dogfood pass
 (candidate 2 above) stays queued behind the round and gains its
 surfaces (the hair slot end-to-end, the healed api-key save, the notice
 lifetime, tab-refresh on real data, the first greppable `combined.log`).
+
+**ROUND CLOSED — UNIFIED on main 2026-08-18; ALL FIVE LANES CLOSED; the
+oracle baseline MOVES to `979652a9` and the drift debt is CLEARED.** The §3
+review found no blocking findings; its one substantive catch (the bug-77
+turn-end WIRING unpinned — specs drove the private method, not the send
+path) was fixed + mutation-proven on the unify branch. Three order premises
+were refuted by measurement in-lane and stand as recorded: the empty-hair
+SILENCE mandate (v4's components render "Empty"/"nothing" — reportWhenEmpty
+is a lib/-only rule), the retire-the-toasts premise (they are v4's own,
+raised alongside the notice), and the unknown-provider key arm (the
+displayability filter still applies once keys have loaded). Gate: the round
+record in `status-log.md`. TWO v4-side filings owed: the avatar-crash bug
+on pre-hair `equippedOutfit` rows (D87's convergence tripwire armed).
+
+**Next candidates, in rough value order:**
+
+1. **The owed dogfood pass** — Parts C/D of the paused walk + the standing
+   💸 queue, now further grown by THIS round's surfaces: the P4.49
+   acceptance run (the bug-70 warning grepped out of `combined.log`), the
+   bug-76 poisoned-row heal, the notice lifecycle on a real image turn,
+   the hair slot end-to-end (worn hairdo, rose badge, avatar regen), and
+   tab re-activation freshness on the Friday copy.
+2. **The two v4-side filings**: the avatar-crash bug (pre-hair four-key
+   `equippedOutfit` + equipped items → "rootIds is not iterable"), plus
+   the still-owed P4.48 import-preflight filing.
+3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+   HelpChat/Guide vertical + its enriched bank, now incl. the wardrobe
+   help drift from `4423ad10`/`dd3616a1`).
+4. Banked smalls: the split-query-key-spelling consolidation (D90's map
+   doc names every file both sides); the settings repo-validate sibling
+   fields; the stale `docs/v4` API.md mirror sweep; the reroute
+   LOOKUP-half residue; the P4.D85 cleared-null LEAD on other update
+   surfaces.
+5. Carried riders: the generators lane bank (external-prompt-generator,
+   `encodeDebugInfo`, the `40d507cc` taxonomy + `4423ad10` hair edits for
+   wizard/optimizer/ai-import/image-analysis).
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`979652a9`** (2026-08-18, v4 main — "feat(workspace): refresh a tab's
+data when it is navigated back to"), adopted at this round's unification;
+the drift debt is CLEARED at the pin. Pin a detached worktree at
+`979652a9` for every regen if v4's checkout moves
+(`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes).
+Drift-check BOTH branches every round (bugfix measured by `diff`, never
+the commit list — its only unabsorbed content today is the test-only
+`009c49b2`). The sweep driver remains the sanctioned per-family regen
+path — never run two sweeps concurrently. The distill-transitive TZ pins,
+the committed-fixture rule, and the venue/staging rules stand unchanged.

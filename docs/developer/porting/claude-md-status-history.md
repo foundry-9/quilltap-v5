@@ -2015,3 +2015,17 @@ Contents:
   remains the sanctioned per-family regen path — never run two sweeps
   concurrently. The distill-transitive TZ pins, the committed-fixture
   rule, and the venue/staging rules stand unchanged.
+
+
+## Superseded baseline paragraph (replaced at the 979652a9-round unification, 2026-08-18)
+
+- **Oracle baseline: `d123658d` (2026-08-17, v4 main — "fix:
+  connection-profile editor bugs 72, 73 and 74"), adopted at the
+  d123658d-round unification; the drift debt is CLEARED at the pin, and
+  `9c01fa99` (sample-prompt content) is dispositioned NO-PORT — a drift
+  check landing on it alone owes nothing.** Pin a detached worktree at
+  `d123658d` for every regen whenever the v4 checkout isn't cleanly on it
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). [...] (tail unchanged — see the live
+  paragraph in CLAUDE.md, which carries the same standing rules.)

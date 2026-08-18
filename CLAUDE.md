@@ -1287,12 +1287,55 @@ records THERE. Update this summary only when a phase or round completes.
   on real pre-bug-73 rows. **The owed dogfood pass (Parts C/D + the
   standing 💸 queue) remains the top next candidate.** Round record:
   `status-log.md`.
-- **Oracle baseline: `d123658d` (2026-08-17, v4 main — "fix:
-  connection-profile editor bugs 72, 73 and 74"), adopted at the
-  d123658d-round unification; the drift debt is CLEARED at the pin, and
-  `9c01fa99` (sample-prompt content) is dispositioned NO-PORT — a drift
-  check landing on it alone owes nothing.** Pin a detached worktree at
-  `d123658d` for every regen whenever the v4 checkout isn't cleanly on it
+- **The `979652a9` drift round (P4.D87 ∥ P4.D88 ∥ P4.D89 ∥ P4.D90 ∥
+  P4.49): UNIFIED on main (2026-08-18) — ALL FIVE CLOSED; the oracle
+  baseline MOVES to `979652a9` and the drift debt is CLEARED.** v4's
+  eight-commit day absorbed whole plus the long-owed file logging. The
+  hair slot end-to-end (a FIFTH wardrobe slot — a hairdo, not hair —
+  through ONE slot-meta registry replacing v5's ten hard-coded copies
+  server-side and eleven SPA sites; `reportWhenEmpty` at every narration
+  site; nudity over clothing slots only; the avatar `accessories || hair`
+  guard on both branches; byte-exact prompts + tool definitions; the
+  accepted one-miss hash invalidation; import/export/restore carry; the
+  NEW `outfit_hash_equivalence` family; the rose badge + Green Room
+  preview + the live wardrobe beat) ∥ Bug 75 (the `.qtap` composite
+  `componentItemIds` leaf-first remap — v5 measurably HAD the bug;
+  relationship-token differential over the new committed
+  `qtap-import-bug75.qtap`) ∥ bug 76 (the `outboundApiKeyId` chokepoint
+  over v5's FIVE outbound sites, always-send `|| null` heal, v4's 7-case
+  suite mirrored 1:1 — **dogfood finding #90 CLOSED**) + bug 77 (the
+  tool-execution notice landed as v4's surface in its FIXED form — v5 had
+  never ported it; single-door publish, self-owned 6 s lifetime, close
+  button; the order's retire-the-toasts premise REFUTED: they are v4's
+  own, kept alongside) ∥ the workspace tab re-activation refresh (the
+  visibility token + `onTabActivated` with the v5-`enabled` latch, the
+  kind→prefix map over v5's fragmented keys with split spellings swept
+  BOTH ways, silent hand-rolled reloads, v4's 8 parity assertions, two
+  live e2e beats) ∥ P4.49 file logging LIVE (`combined.log`/`error.log`
+  + rotation + the iCloud/Finder stray sweep; the ruled `both` default
+  with recorded expiry; the CLI ruled a non-port by measurement — v4's
+  CLI only READS logs; 33 cases, eleven mutations). **The §3 review: NO
+  blocking findings; its catch — the bug-77 turn-end WIRING was unpinned
+  (specs drove the private method; the production call could vanish
+  unseen) — fixed + mutation-proven at unification.** A REAL v4 bug found
+  and pinned both directions with a convergence tripwire, TO FILE
+  UPSTREAM: v4 at `979652a9` crashes avatar generation on any pre-hair
+  four-key `equippedOutfit` row with items equipped. Gate: 34/34 families
+  fresh at the pin zero SKIP; 439 test binaries / 2,205 / 0; clippy both
+  feature sets; release build; ng 331 files / 4,898; full Playwright
+  **228/228 zero skips**. Versions: core 0.0.581, harness 0.0.503, web
+  0.0.76, cli 0.0.10, tauri 0.0.7, SPA 0.5.514. **💸 the dogfood queue
+  gains:** the `combined.log` acceptance grep, the poisoned-key heal, the
+  notice lifecycle, the worn hairdo + rose badge + avatar regen, tab
+  re-activation freshness. **The owed dogfood pass (Parts C/D + the
+  standing 💸 queue) remains the top next candidate.** Round record:
+  `status-log.md`.
+- **Oracle baseline: `979652a9` (2026-08-18, v4 main — "feat(workspace):
+  refresh a tab's data when it is navigated back to"), adopted at the
+  979652a9-round unification; the drift debt is CLEARED at the pin, and
+  the `bugfix` branch's only unabsorbed content is the test-only
+  `009c49b2` deflake (NO-PORT).** Pin a detached worktree at
+  `979652a9` for every regen whenever the v4 checkout isn't cleanly on it
   (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
   node_modules, `packages/quilltap/node_modules`, the
   `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
