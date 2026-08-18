@@ -85,5 +85,17 @@ fn locate_amalgamation() -> PathBuf {
     if let Ok(d) = std::env::var("SQLITE3MC_AMALGAMATION_DIR") {
         return PathBuf::from(d);
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vendor")
+    // Cargo sets CARGO_MANIFEST_DIR in the build script's RUNTIME environment,
+    // and that is the copy to trust. `env!` bakes the path in at compile time —
+    // and because this crate's version is pinned so the 12 MB C compile stays
+    // cached, that baked path outlives whatever tree produced it. A lane
+    // worktree sharing this `target/` dir compiles the build script once with
+    // its own path inside it; delete the worktree and every later release build
+    // in the MAIN tree dies looking for a vendor dir that no longer exists,
+    // with nothing to invalidate the binary that remembers it. (Hit 2026-08-18,
+    // after the P4.D86 worktree was removed.) The `env!` stays as the fallback
+    // for a build script run outside Cargo.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
+    PathBuf::from(manifest_dir).join("vendor")
 }

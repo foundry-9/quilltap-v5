@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Fixed a release build failing in the main checkout after a lane worktree
+was deleted. The SQLite3MC build script resolved its vendor directory
+with a compile-time path, and the compiled build script is cached
+indefinitely because that crate's version is deliberately pinned — so a
+worktree sharing the same target directory could leave its own path
+baked in, pointing at a directory that no longer existed. The path is now
+read at build time.
+
 Fixed Fetch Models returning a fixed list of eleven Claude models for
 Anthropic instead of the models your key can actually reach. The models
 request was sent without the `anthropic-version` header Anthropic
