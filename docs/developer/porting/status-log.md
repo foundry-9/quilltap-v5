@@ -73728,3 +73728,83 @@ invalidated.
    `parse_equip_body` strips unknown keys and defaults missing ones
    (`chat_outfits.rs::equip_parse_slots_defaults_in_schema_order`), so the
    live in-chat beat is unaffected either way.
+## P4.D89 — bugs 76 + 77, the SPA client fixes (v4 `8bd802a3` + `25767c0f`), 2026-08-18
+
+Lane branch `claude/p4-client-bugs-76-77-7f05b7`, worktree
+`.claude/worktrees/p4-client-bugs-76-77-7f05b7`. **Drift-checked at lane
+start:** `git log 979652a9..HEAD` EMPTY on v4 `main` (HEAD is `979652a9`
+itself, tree clean); `git log main..bugfix` carries only the already-known
+4.8.x line whose one unaccounted commit is the test-only `009c49b2`
+deflake (NO-PORT). The oracle did not move under the lane.
+
+Both fixes are client-local; no Rust differential is owed, and none was
+written. The oracle for both is v4's REAL client — for bug 76 its own new
+test suite, for bug 77 the surveyed mechanism (no v4 test shipped).
+
+### Unit 1 — bug 76: an api key no longer follows a profile onto another provider
+
+Bug 73's shape one field over, and this port's own dogfood **finding #90**
+coming back as a v4 fix. Ported whole:
+
+- **`outboundApiKeyId(providers, apiKeys, provider, apiKeyId)`** — a free
+  function beside `outboundBaseUrl` in `profile-form.ts` (v5's builder is
+  not a hook, so v4's `useCallback` becomes a pure function; the P4.D86
+  shape). It refuses on BOTH counts the select can: the provider renders
+  no key control, or the id is outside the options the select would list
+  (`keysForProvider`'s own filter, asked as a question). Both
+  absence-is-not-evidence arms carried: the `known &&` guard (an unloaded
+  provider list is no reason to judge a provider keyless) and the
+  `apiKeys.length > 0` guard (an unloaded key list is no reason to call a
+  stored id undisplayable — stripping a key off a working profile is the
+  worse bug).
+- **The always-send save body**: `buildProfileRequestBody` gained an
+  `apiKeys` parameter (exactly the way P4.D86 added `providers`) and
+  `apiKeyId` routes through the chokepoint with `|| null`. Omitting the
+  key leaves the update handler's `apiKeyId !== undefined` gate untripped,
+  so a row already written poisoned would stay refused forever; `null`
+  clears the column, and the row **heals on its next ordinary save**. The
+  courier branch's pinned `apiKeyId: null` is untouched (and now spec'd).
+- **All five v5 outbound sites** through a thin `outboundKey()` wrapper:
+  the Connect payload, Fetch Models, Test Message, the save body, and the
+  edit-time model fetch. ⚠ v5 counts FIVE where v4 names four — the same
+  count the base-URL twin has, for the same reason (v5's
+  `autoFetchModelsForEdit` reads the SAVED profile, not form state).
+- **Connect judges what may LEAVE, not what is held**: the condition moved
+  to `!this.outboundKey()`. The sentence
+  `'API Key is required for this provider'` already matched v4 byte for
+  byte; only the predicate changed.
+- **The `savedTakesApiKey` edit-time twin**, defaulting **`?? true`** where
+  the base-URL twin defaults `?? false` — keys are the common case.
+- **`onProviderChange` deliberately untouched** and now spec-pinned: the
+  value is inert while it cannot be shown, not destroyed, and returns if
+  the user switches back.
+
+**Specs.** v4's `profile-modal-api-key.test.tsx` (7 cases) mirrored 1:1 in
+`profile-modal.spec.ts` as `describe('ProfileModal api key (Bug 76)')`,
+driven through the REAL gestures (the provider dropdown and the API Key
+select) with the dispatch layer captured — plus five v5-specific arms the
+five-site count owes (the edit-time fetch on a poisoned row, on a
+key-taking saved provider, on an unknown saved provider; the fetch-models
+/ test-message pair; the `onProviderChange` pin). The `render` harness
+gained an `apiKeys` input. A unit-tier
+`describe('profile form — outboundApiKeyId (Bug 76)')` sits beside Bug
+73's in `profile-form.spec.ts`. 24 cases, all green.
+
+**⚠ One order premise moved under measurement.** The order's reading of
+the unloaded-provider arm implied an unknown provider keeps its stored key
+outright. It does not: the `known &&` guard spares only the KEYLESS
+refusal, and the displayability filter still applies whenever the key list
+HAS loaded — so an unknown provider whose loaded key list names no key of
+its own answers `''`, which is exactly what its blank select shows. The
+spec asserting otherwise went red on its first run; v4's code was read
+again, the port was found correct, and **the spec was fixed, not the
+port**. Both halves are now pinned (`an unknown provider still faces the
+displayability filter once keys HAVE loaded`, including the arm where a
+key DOES name the plugin provider and goes out).
+
+**Mutation proofs (2, both red-first-by-construction).** (1) The
+omit-when-empty save-body spelling — v4's own pre-`8bd802a3` shape, and
+v5's until this lane — reds **4** cases. (2) The whole pre-fix chokepoint
+(refuse nothing) plus the pre-fix edit-time fetch reds **11 of 24**. Both
+restored green.
+

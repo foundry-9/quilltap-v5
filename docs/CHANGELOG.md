@@ -72,6 +72,17 @@ editor's types and component groups, the project wardrobe, the
 all wearing a rose badge. The app now reads one slot registry instead of
 five copies of the slot list, and an outfit saved before the hair slot
 existed still opens, with hair empty.
+Fixed an API key following a connection profile onto a provider that
+cannot use it. Switching a profile from, say, Anthropic to Ollama left the
+stored key in place while the API Key control disappeared, and the save
+was then refused with "API key provider does not match profile provider" —
+naming a field the dialog no longer showed, with no gesture anywhere that
+cleared it. Switching between two hosted providers was worse still: the
+control read blank while the wire carried the old provider's key. A
+profile now sends only a key its current provider could actually display,
+and clears the column otherwise, so a profile already saved that way —
+or imported that way — heals on its next ordinary save. Found by
+dogfooding (finding #90).
 
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it

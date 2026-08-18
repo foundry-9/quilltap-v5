@@ -1,4 +1,4 @@
-import type { ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
+import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
 import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 
 /** The connection-profile modal's editable form (v4 `types.ts` `ProfileFormData`). */
@@ -157,10 +157,62 @@ export function outboundBaseUrl(
   return baseUrl || '';
 }
 
+/**
+ * The api key as it is allowed to leave the form (v4 `useProfileForm.ts`
+ * `outboundApiKeyId`, `:63-98`) — the exact twin of {@link outboundBaseUrl},
+ * one field over (v4 Bug 76; this port's own dogfood finding #90).
+ *
+ * `onProviderChange` deliberately never clears `apiKeyId` — the value stays in
+ * form state so switching back restores it — but the select cannot express what
+ * is stored once the provider moves. On a keyless provider it is not rendered
+ * at all; on a different hosted provider its options are filtered to that
+ * provider (`ProfileModal.keysForProvider`), so the stored id matches nothing
+ * and the control reads blank. Sending it anyway had the dialog saying no key
+ * was selected while the wire carried one, and the save refused with
+ * `API key provider does not match profile provider` — naming a field the
+ * dialog does not show, with no gesture on a keyless provider that clears it.
+ *
+ * So: send only what the select could currently display, refusing on BOTH
+ * counts the select can — the provider renders no key control, or the id is
+ * outside the options the select would list.
+ *
+ * Absence is not evidence in either list. A provider list that has not loaded
+ * is no reason to judge the provider keyless (the `known &&` guard), and an api
+ * key list that has not loaded is no reason to call a stored id undisplayable
+ * (the `length > 0` guard) — stripping a key off a working profile would be the
+ * worse bug.
+ *
+ * ⚠ This is the ONE gate; every outbound site reads it rather than the form's
+ * raw `apiKeyId`. v5 has five (v4's four plus the modal's edit-time model
+ * fetch, which reads the SAVED profile rather than form state and so resolves
+ * its own requirement — see `ProfileModal.autoFetchModelsForEdit`).
+ */
+export function outboundApiKeyId(
+  providers: readonly ProviderInfo[],
+  apiKeys: readonly ApiKeyDto[],
+  provider: string,
+  apiKeyId: string,
+): string {
+  const stored = apiKeyId || '';
+  if (!stored) return '';
+
+  const known = providers.find((p) => p.name === provider);
+  if (known && !known.configRequirements?.requiresApiKey) return '';
+
+  // The select's own option filter, asked as a question.
+  if (apiKeys.length > 0) {
+    const displayable = apiKeys.some((key) => key.id === stored && key.provider === provider);
+    if (!displayable) return '';
+  }
+
+  return stored;
+}
+
 /** Build the create/update request body (v4 `useProfileForm.buildRequestBody`). */
 export function buildProfileRequestBody(
   form: ProfileFormData,
   providers: readonly ProviderInfo[],
+  apiKeys: readonly ApiKeyDto[] = [],
 ): Record<string, unknown> {
   if (form.transport === 'courier') {
     return {
@@ -216,7 +268,14 @@ export function buildProfileRequestBody(
     useNativeWebSearch: form.useNativeWebSearch,
     modelClass: form.modelClass || null,
     maxContext: form.maxContext ? parseInt(form.maxContext, 10) : null,
-    apiKeyId: form.apiKeyId || null,
+    // Always sent, never conditionally: `null` is how the row is *cleared* of a
+    // key the current provider cannot use, so a profile that carried one across
+    // a provider change — or arrived that way by import — heals on its next
+    // save rather than being refused forever (v4 Bug 76). Omitting the key
+    // leaves the update handler's `apiKeyId !== undefined` gate untripped and
+    // every already-poisoned row broken forever. Both handlers map a
+    // null/absent value to a cleared column.
+    apiKeyId: outboundApiKeyId(providers, apiKeys, form.provider, form.apiKeyId) || null,
     // Always sent, never conditionally: an empty string is how the row is
     // *cleared* of a base URL the current provider does not take, so a profile
     // that picked one up from an earlier provider heals on its next save rather

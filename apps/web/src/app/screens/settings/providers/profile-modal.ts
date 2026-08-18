@@ -26,6 +26,7 @@ import {
   buildProfileRequestBody,
   initialFormState,
   loadProfileIntoForm,
+  outboundApiKeyId,
   outboundBaseUrl,
   type ProfileFormData,
   type ProviderRequirements,
@@ -849,11 +850,26 @@ export class ProfileModal implements OnInit {
     return outboundBaseUrl(this.providers(), this.form().provider, this.form().baseUrl);
   }
 
+  /**
+   * The api key as it is allowed to leave the FORM (v4's `outboundApiKeyId`,
+   * Bug 76). Every form-driven outbound site reads this rather than
+   * `form().apiKeyId`; the edit-time model fetch reads the SAVED profile and so
+   * resolves its own requirement in {@link autoFetchModelsForEdit}.
+   */
+  private outboundKey(): string {
+    return outboundApiKeyId(
+      this.providers(),
+      this.apiKeys(),
+      this.form().provider,
+      this.form().apiKeyId,
+    );
+  }
+
   private profilePayloadForActions(): Record<string, unknown> {
     const f = this.form();
     return {
       provider: f.provider,
-      apiKeyId: f.apiKeyId || undefined,
+      apiKeyId: this.outboundKey() || undefined,
       baseUrl: this.outbound() || undefined,
     };
   }
@@ -867,7 +883,10 @@ export class ProfileModal implements OnInit {
       this.connectError.set('Base URL is required for this provider');
       return;
     }
-    if (this.reqs().requiresApiKey && !this.form().apiKeyId) {
+    // Judged on what may leave, not on what is held: a key the select cannot
+    // show is not a key the user chose for this provider, and "API Key is
+    // required" is the honest thing to say about a blank control (v4 Bug 76).
+    if (this.reqs().requiresApiKey && !this.outboundKey()) {
       this.connectError.set('API Key is required for this provider');
       return;
     }
@@ -905,7 +924,7 @@ export class ProfileModal implements OnInit {
         {
           type: 'modelFetch',
           provider: this.form().provider,
-          apiKeyId: this.form().apiKeyId || undefined,
+          apiKeyId: this.outboundKey() || undefined,
           baseUrl: this.outbound() || undefined,
         },
         'models',
@@ -933,7 +952,7 @@ export class ProfileModal implements OnInit {
         type: 'connectionProfileTestMessage',
         profile: {
           provider: f.provider,
-          apiKeyId: f.apiKeyId || undefined,
+          apiKeyId: this.outboundKey() || undefined,
           baseUrl: this.outbound() || undefined,
           modelName: f.modelName,
           parameters: {
@@ -968,12 +987,18 @@ export class ProfileModal implements OnInit {
   private async autoFetchModelsForEdit(p: ConnectionProfileDto): Promise<void> {
     const saved = this.providers().find((cfg) => cfg.name === p.provider);
     const savedTakesBaseUrl = !saved || (saved.configRequirements?.requiresBaseUrl ?? false);
+    // The same reading for the api key (v4 Bug 76, `ProfileModal.tsx:84-88`): a
+    // row written before that fix — or by import — can carry a key its provider
+    // does not take, and probing a keyless endpoint with one is how the
+    // mismatch stays invisible. NOTE the default is `?? true` where the base-URL
+    // twin defaults `?? false` — keys are the common case.
+    const savedTakesApiKey = !saved || (saved.configRequirements?.requiresApiKey ?? true);
     try {
       const resp = await this.core.dispatchExpect(
         {
           type: 'modelFetch',
           provider: p.provider,
-          apiKeyId: p.apiKeyId || undefined,
+          apiKeyId: (savedTakesApiKey && p.apiKeyId) || undefined,
           baseUrl: (savedTakesBaseUrl && p.baseUrl) || undefined,
         },
         'models',
@@ -991,7 +1016,7 @@ export class ProfileModal implements OnInit {
     }
     this.saving.set(true);
     this.connectError.set(null);
-    const body = buildProfileRequestBody(this.form(), this.providers());
+    const body = buildProfileRequestBody(this.form(), this.providers(), this.apiKeys());
     const id = this.profile()?.id;
     try {
       if (id) {

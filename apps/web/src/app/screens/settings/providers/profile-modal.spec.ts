@@ -3,7 +3,12 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
-import type { ConnectionProfileDto, CoreRequest, ProviderInfo } from '../../../core/core-contract';
+import type {
+  ApiKeyDto,
+  ConnectionProfileDto,
+  CoreRequest,
+  ProviderInfo,
+} from '../../../core/core-contract';
 import { ProfileModal } from './profile-modal';
 
 function provider(over: Partial<ProviderInfo>): ProviderInfo {
@@ -36,6 +41,7 @@ async function render(
     takenNames?: Set<string>;
     providers?: ProviderInfo[];
     profile?: ConnectionProfileDto | null;
+    apiKeys?: ApiKeyDto[];
   },
   client: Partial<CoreClient> = stubClient(),
 ): Promise<ComponentFixture<ProfileModal>> {
@@ -50,7 +56,7 @@ async function render(
   const fixture = TestBed.createComponent(ProfileModal);
   fixture.componentRef.setInput('profile', inputs.profile ?? null);
   fixture.componentRef.setInput('providers', inputs.providers ?? [provider({})]);
-  fixture.componentRef.setInput('apiKeys', []);
+  fixture.componentRef.setInput('apiKeys', inputs.apiKeys ?? []);
   fixture.componentRef.setInput('takenNames', inputs.takenNames ?? new Set<string>());
   fixture.detectChanges();
   await fixture.whenStable();
@@ -940,5 +946,359 @@ describe('ProfileModal (attachment support line)', () => {
     fixture.componentInstance['setField']('transport', 'courier');
     fixture.detectChanges();
     expect(flatText(fixture)).not.toContain('Non-image attachments:');
+  });
+});
+
+/**
+ * Bug 76 — an api key chosen for one provider must not follow the profile onto
+ * a provider that neither shows it nor can use it.
+ *
+ * These mirror v4's `__tests__/unit/components/settings/profile-modal-api-key.
+ * test.tsx` at `8bd802a3` case for case (all seven), driven through the real
+ * gestures — the provider dropdown and the API Key select — with the dispatch
+ * layer captured, so every assertion is on the bytes that actually leave the
+ * form. Four of v4's seven fail pre-fix.
+ *
+ * v5 has FIVE outbound sites where v4 names four: the three form-driven probes
+ * (connect / fetch models / test message), the save body, and the modal's
+ * edit-time model fetch, which reads the SAVED profile rather than form state
+ * and resolves its own requirement.
+ *
+ * Closes this port's dogfood finding #90.
+ */
+describe('ProfileModal api key (Bug 76)', () => {
+  const ANTHROPIC = provider({
+    id: 'ANTHROPIC',
+    name: 'ANTHROPIC',
+    displayName: 'Anthropic',
+    configRequirements: { requiresApiKey: true, requiresBaseUrl: false },
+  });
+  const OPENAI = provider({
+    id: 'OPENAI',
+    name: 'OPENAI',
+    displayName: 'OpenAI',
+    configRequirements: { requiresApiKey: true, requiresBaseUrl: false },
+  });
+  const OLLAMA = provider({
+    id: 'OLLAMA',
+    name: 'OLLAMA',
+    displayName: 'Ollama',
+    configRequirements: {
+      requiresApiKey: false,
+      requiresBaseUrl: true,
+      baseUrlDefault: 'http://localhost:11434',
+    },
+  });
+  const PROVIDERS = [ANTHROPIC, OPENAI, OLLAMA];
+
+  function apiKey(id: string, prov: string, label: string): ApiKeyDto {
+    return {
+      id,
+      provider: prov,
+      label,
+      isActive: true,
+      lastUsed: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      keyPreview: 'sk-…abcd',
+    };
+  }
+
+  const API_KEYS: ApiKeyDto[] = [
+    apiKey('key-anthropic', 'ANTHROPIC', 'Anthropic key'),
+    apiKey('key-openai', 'OPENAI', 'OpenAI key'),
+  ];
+
+  /** Every request the modal dispatched, in order, both dispatch entry points. */
+  function recorder(): { client: Partial<CoreClient>; seen: CoreRequest[] } {
+    const seen: CoreRequest[] = [];
+    const client = stubClient({
+      dispatchExpect: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return req.type === 'modelFetch'
+          ? { type: 'models', data: { models: [] } }
+          : { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+      }) as unknown as CoreClient['dispatchExpect'],
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return { valid: true, message: 'ok', success: true };
+      }) as unknown as CoreClient['dispatchData'],
+    });
+    return { client, seen };
+  }
+
+  function find(seen: CoreRequest[], type: string): Record<string, unknown> | undefined {
+    return seen.find((r) => r.type === type) as unknown as Record<string, unknown> | undefined;
+  }
+
+  function first(seen: CoreRequest[], type: string): Record<string, unknown> {
+    const found = find(seen, type);
+    if (!found)
+      throw new Error(`no ${type} dispatched (saw ${seen.map((r) => r.type).join(', ')})`);
+    return found;
+  }
+
+  /** The real gesture: pick a provider from the dropdown. */
+  function selectProvider(fixture: ComponentFixture<ProfileModal>, name: string): void {
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    select.value = name;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  function keySelect(fixture: ComponentFixture<ProfileModal>): HTMLSelectElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#qt-pf-key');
+  }
+
+  /** The real gesture: pick an api key from the select. */
+  function selectApiKey(fixture: ComponentFixture<ProfileModal>, id: string): void {
+    const select = keySelect(fixture)!;
+    select.value = id;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  it('saves no api key after ANTHROPIC → OLLAMA, where the select is not even rendered', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+
+    selectProvider(fixture, 'OLLAMA');
+    expect(keySelect(fixture)).toBeNull();
+
+    typeName(fixture, 'Local');
+    fixture.componentInstance['setField']('modelName', 'qwen3');
+    fixture.detectChanges();
+
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileCreate')['profile'] as Record<string, unknown>;
+    expect(body['provider']).toBe('OLLAMA');
+    expect(body['apiKeyId']).toBeNull();
+  });
+
+  it('sends no api key on a hosted → hosted switch, where the select reads blank', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+
+    selectProvider(fixture, 'OPENAI');
+    // The stored id is not among OpenAI's options, so the control shows blank.
+    expect(keySelect(fixture)!.value).toBe('');
+
+    await fixture.componentInstance['connect']();
+
+    // Nothing reaches the wire: the blank control is taken at its word, and the
+    // form says so rather than probing OpenAI with an Anthropic key.
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'API Key is required for this provider',
+    );
+    expect(find(seen, 'connectionProfileTest')).toBeUndefined();
+  });
+
+  it('clears the column on save after a hosted → hosted switch', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+    selectProvider(fixture, 'OPENAI');
+
+    typeName(fixture, 'Hosted');
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+    fixture.detectChanges();
+
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileCreate')['profile'] as Record<string, unknown>;
+    expect(body['provider']).toBe('OPENAI');
+    expect(Object.prototype.hasOwnProperty.call(body, 'apiKeyId')).toBe(true);
+    expect(body['apiKeyId']).toBeNull();
+  });
+
+  it('still sends the key the user picked for the provider that takes it', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'OPENAI');
+    selectApiKey(fixture, 'key-openai');
+
+    await fixture.componentInstance['connect']();
+    const sent = first(seen, 'connectionProfileTest')['profile'] as Record<string, unknown>;
+    expect(sent['provider']).toBe('OPENAI');
+    expect(sent['apiKeyId']).toBe('key-openai');
+  });
+
+  it('restores the remembered key when the provider is switched back', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+    selectProvider(fixture, 'OLLAMA');
+    selectProvider(fixture, 'ANTHROPIC');
+
+    // `onProviderChange` never clears the field — the value is inert while it
+    // cannot be shown, not destroyed.
+    expect(keySelect(fixture)!.value).toBe('key-anthropic');
+
+    await fixture.componentInstance['connect']();
+    const sent = first(seen, 'connectionProfileTest')['profile'] as Record<string, unknown>;
+    expect(sent['apiKeyId']).toBe('key-anthropic');
+  });
+
+  it('leaves a stored key alone when neither list has loaded', async () => {
+    // The card renders the modal before the providers listing and the key list
+    // answer, and either fetch can fail outright. Absence is not evidence — an
+    // existing profile must not be cleared of its key by an ordinary save.
+    const { client, seen } = recorder();
+    const fixture = await render(
+      {
+        providers: [],
+        apiKeys: [],
+        profile: {
+          id: 'cp1',
+          name: 'Hosted',
+          provider: 'ANTHROPIC',
+          modelName: 'claude-sonnet-4-5-20250929',
+          apiKeyId: 'key-anthropic',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileUpdate')['profile'] as Record<string, unknown>;
+    expect(body['apiKeyId']).toBe('key-anthropic');
+  });
+
+  it('heals a row already written with a mismatched key on its next ordinary save', async () => {
+    // Written before this fix, or by import: the row is on OLLAMA and still
+    // carries an Anthropic key. The update handler gates on
+    // `apiKeyId !== undefined`, so the save must send `null` rather than
+    // omitting the field, or the row stays broken and refused forever.
+    const { client, seen } = recorder();
+    const fixture = await render(
+      {
+        providers: PROVIDERS,
+        apiKeys: API_KEYS,
+        profile: {
+          id: 'cp1',
+          name: 'Local',
+          provider: 'OLLAMA',
+          modelName: 'qwen3',
+          apiKeyId: 'key-anthropic',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileUpdate')['profile'] as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, 'apiKeyId')).toBe(true);
+    expect(body['apiKeyId']).toBeNull();
+  });
+
+  it('keeps the edit-time model fetch off a poisoned row’s key', async () => {
+    // v5's fifth site (v4 `ProfileModal.tsx:84-88,100`): the auto-fetch on open
+    // reads the SAVED profile, so a row written before the fix must not probe a
+    // keyless endpoint with a key. NOTE the default is `?? true` where the
+    // base-URL twin defaults `?? false`.
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: PROVIDERS,
+        apiKeys: API_KEYS,
+        profile: {
+          id: 'cp1',
+          name: 'Poisoned',
+          provider: 'OLLAMA',
+          modelName: 'qwen3',
+          apiKeyId: 'key-anthropic',
+          baseUrl: 'http://localhost:11434',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['apiKeyId']).toBeUndefined();
+  });
+
+  it('sends the saved key when the saved provider does take one', async () => {
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: PROVIDERS,
+        apiKeys: API_KEYS,
+        profile: {
+          id: 'cp1',
+          name: 'Hosted',
+          provider: 'ANTHROPIC',
+          modelName: 'claude-sonnet-4-5-20250929',
+          apiKeyId: 'key-anthropic',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['apiKeyId']).toBe('key-anthropic');
+  });
+
+  it('sends an unknown saved provider’s key rather than clearing the probe', async () => {
+    const { client, seen } = recorder();
+    await render(
+      {
+        providers: [],
+        apiKeys: API_KEYS,
+        profile: {
+          id: 'cp1',
+          name: 'Hosted',
+          provider: 'ANTHROPIC',
+          modelName: 'claude-sonnet-4-5-20250929',
+          apiKeyId: 'key-anthropic',
+          parameters: {},
+          isDefault: false,
+        },
+      },
+      client,
+    );
+    expect(first(seen, 'modelFetch')['apiKeyId']).toBe('key-anthropic');
+  });
+
+  it('does not send the stale key when fetching models or testing a message', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+    selectProvider(fixture, 'OPENAI');
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+
+    await fixture.componentInstance['fetchModels']();
+    expect(first(seen, 'modelFetch')['apiKeyId']).toBeUndefined();
+
+    await fixture.componentInstance['testMessage']();
+    const message = first(seen, 'connectionProfileTestMessage')['profile'] as Record<
+      string,
+      unknown
+    >;
+    expect(message['apiKeyId']).toBeUndefined();
+  });
+
+  it('leaves the api key untouched on a provider change (v4 `handleProviderChange`)', async () => {
+    // Pinned: the value stays in form state so switching back restores it. A
+    // spelling that cleared `apiKeyId` here would pass the outbound cases and
+    // break this one.
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS });
+    selectProvider(fixture, 'ANTHROPIC');
+    selectApiKey(fixture, 'key-anthropic');
+    selectProvider(fixture, 'OLLAMA');
+    expect(fixture.componentInstance['form']().apiKeyId).toBe('key-anthropic');
+    selectProvider(fixture, 'OPENAI');
+    expect(fixture.componentInstance['form']().apiKeyId).toBe('key-anthropic');
   });
 });

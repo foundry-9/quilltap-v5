@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
+import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
 import {
   buildProfileRequestBody,
   initialFormState,
   loadProfileIntoForm,
+  outboundApiKeyId,
   outboundBaseUrl,
   type ProfileFormData,
 } from './profile-form';
@@ -306,5 +307,176 @@ describe('profile form — outboundBaseUrl (Bug 73)', () => {
       [],
     );
     expect(body['baseUrl']).toBe('http://localhost:11434');
+  });
+});
+
+/**
+ * Bug 76 — the api key as it is allowed to leave the form.
+ *
+ * The unit half of v4's `__tests__/unit/components/settings/
+ * profile-modal-api-key.test.tsx` (`8bd802a3`): the chokepoint itself and the
+ * always-send save body. The gesture half — driving the provider dropdown and
+ * reading the bytes that leave — is in `profile-modal.spec.ts`.
+ *
+ * This closes this port's own dogfood finding #90, filed 2026-08-17 against a
+ * faithfully ported v4 defect and fixed v4-side at `8bd802a3`.
+ */
+describe('profile form — outboundApiKeyId (Bug 76)', () => {
+  /** v4's own three providers, same requirements (`profile-modal-api-key.test.tsx:26-49`). */
+  function keyProvider(
+    name: string,
+    requiresApiKey: boolean,
+    requiresBaseUrl: boolean,
+  ): ProviderInfo {
+    return {
+      id: name,
+      name,
+      displayName: name,
+      description: '',
+      abbreviation: name.slice(0, 2),
+      type: 'llm',
+      capabilities: { chat: true, imageGeneration: false, embeddings: false, webSearch: false },
+      configRequirements: { requiresApiKey, requiresBaseUrl },
+    };
+  }
+
+  const KEY_PROVIDERS: ProviderInfo[] = [
+    keyProvider('ANTHROPIC', true, false),
+    keyProvider('OPENAI', true, false),
+    keyProvider('OLLAMA', false, true),
+  ];
+
+  function apiKey(id: string, provider: string): ApiKeyDto {
+    return {
+      id,
+      provider,
+      label: `${provider} key`,
+      isActive: true,
+      lastUsed: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      keyPreview: 'sk-…abcd',
+    };
+  }
+
+  const API_KEYS: ApiKeyDto[] = [
+    apiKey('key-anthropic', 'ANTHROPIC'),
+    apiKey('key-openai', 'OPENAI'),
+  ];
+
+  it('drops the key on a provider that renders no key control at all', () => {
+    // Refusal count 1: OLLAMA declares `requiresApiKey: false`, so the select
+    // is not rendered — nothing on screen could show the stored id.
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'OLLAMA', 'key-anthropic')).toBe('');
+  });
+
+  it('drops a key belonging to a DIFFERENT hosted provider', () => {
+    // Refusal count 2: the select's options are filtered to the current
+    // provider, so an Anthropic key on OPENAI matches nothing and reads blank.
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'OPENAI', 'key-anthropic')).toBe('');
+  });
+
+  it('still sends a key the select would list for this provider', () => {
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'OPENAI', 'key-openai')).toBe('key-openai');
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'ANTHROPIC', 'key-anthropic')).toBe(
+      'key-anthropic',
+    );
+  });
+
+  it('leaves a stored key alone when the PROVIDER list has not loaded', () => {
+    // Absence is not evidence: an unloaded (or failed) provider fetch is no
+    // reason to judge the provider keyless (v4's `known &&` guard). The key
+    // itself still has to belong to the stored provider, so the case that
+    // survives is the one where it does.
+    expect(outboundApiKeyId([], API_KEYS, 'ANTHROPIC', 'key-anthropic')).toBe('key-anthropic');
+  });
+
+  it('an unknown provider still faces the displayability filter once keys HAVE loaded', () => {
+    // The `known &&` guard only spares the keyless refusal; the select's option
+    // filter is unconditional above an empty list, and a plugin provider with no
+    // key of its own reads blank exactly as any other mismatch does. Measured
+    // against v4's chokepoint rather than assumed — the two absence arms guard
+    // different things.
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'SOME_PLUGIN', 'key-anthropic')).toBe('');
+    // ...and with a key that DOES name the plugin provider, it goes out.
+    expect(
+      outboundApiKeyId(
+        KEY_PROVIDERS,
+        [...API_KEYS, apiKey('key-plugin', 'SOME_PLUGIN')],
+        'SOME_PLUGIN',
+        'key-plugin',
+      ),
+    ).toBe('key-plugin');
+  });
+
+  it('leaves a stored key alone when the KEY list has not loaded', () => {
+    // The other absence arm: an empty key list means "not loaded", never "no
+    // keys exist" — stripping a key off a working profile would be the worse
+    // bug (v4's `apiKeys.length > 0` guard).
+    expect(outboundApiKeyId(KEY_PROVIDERS, [], 'OPENAI', 'key-anthropic')).toBe('key-anthropic');
+  });
+
+  it('the keyless refusal still wins when the key list has not loaded', () => {
+    // Ordering matters: v4 asks the provider first, so a keyless provider drops
+    // the id whether or not the key list ever answered.
+    expect(outboundApiKeyId(KEY_PROVIDERS, [], 'OLLAMA', 'key-anthropic')).toBe('');
+  });
+
+  it('answers the empty string, never undefined, when there is nothing to send', () => {
+    expect(outboundApiKeyId(KEY_PROVIDERS, API_KEYS, 'OPENAI', '')).toBe('');
+    expect(outboundApiKeyId([], [], 'OPENAI', '')).toBe('');
+  });
+
+  it('ALWAYS sends the apiKeyId key on the save body, null when the provider cannot use it', () => {
+    // ⚠ The mutation proof for the always-send spelling: omitting the key (what
+    // v5 did before this lane, and v4 before `8bd802a3`) leaves the update
+    // handler's `apiKeyId !== undefined` gate untripped, so every already
+    // poisoned row stays broken and refused forever with no gesture that
+    // clears it.
+    const cleared = buildProfileRequestBody(
+      form({ provider: 'OLLAMA', apiKeyId: 'key-anthropic' }),
+      KEY_PROVIDERS,
+      API_KEYS,
+    );
+    expect(Object.prototype.hasOwnProperty.call(cleared, 'apiKeyId')).toBe(true);
+    expect(cleared['apiKeyId']).toBeNull();
+
+    // ...and a fresh profile that never had one still sends the key.
+    const fresh = buildProfileRequestBody(
+      form({ provider: 'OPENAI', apiKeyId: '' }),
+      KEY_PROVIDERS,
+      API_KEYS,
+    );
+    expect(Object.prototype.hasOwnProperty.call(fresh, 'apiKeyId')).toBe(true);
+    expect(fresh['apiKeyId']).toBeNull();
+  });
+
+  it('carries the real value through on a provider that takes it', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'OPENAI', apiKeyId: 'key-openai' }),
+      KEY_PROVIDERS,
+      API_KEYS,
+    );
+    expect(body['apiKeyId']).toBe('key-openai');
+  });
+
+  it('carries a stored key verbatim onto the save body when neither list has loaded', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'ANTHROPIC', apiKeyId: 'key-anthropic' }),
+      [],
+      [],
+    );
+    expect(body['apiKeyId']).toBe('key-anthropic');
+  });
+
+  it('leaves the courier branch’s pinned null alone', () => {
+    // The courier transport forces `apiKeyId: null` regardless — the chokepoint
+    // never runs there (v4 `useProfileForm.ts:104`).
+    const body = buildProfileRequestBody(
+      form({ transport: 'courier', provider: 'ANTHROPIC', apiKeyId: 'key-anthropic' }),
+      KEY_PROVIDERS,
+      API_KEYS,
+    );
+    expect(body['apiKeyId']).toBeNull();
   });
 });
