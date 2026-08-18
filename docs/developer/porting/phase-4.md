@@ -5018,3 +5018,73 @@ classes). Drift-check BOTH branches every round (bugfix measured by
 per-family regen path — never run two sweeps concurrently. The
 distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+## The `979652a9` drift round (P4.D87 ∥ P4.D88 ∥ P4.D89 ∥ P4.D90 ∥ P4.49): ORDERED 2026-08-18
+
+The drift check found v4 EIGHT commits past `d123658d` (HEAD `979652a9`,
+tree clean; `bugfix` measured by `diff` — its only unabsorbed content is
+`009c49b2`, a test-only typeahead deflake, NO-PORT). Five behavior
+commits land on ported surfaces; the round is a drift catch-up plus the
+already-ordered P4.49. Orders (each carries its own survey-verified
+starting points, dated 2026-08-18):
+
+- **P4.D87** (`work-orders/p4.d87-wardrobe-hair-core.md`) — the hair
+  slot's server half (`4423ad10`): the slot-meta registry over v5's TEN
+  hard-coded four-slot copies, the `reportWhenEmpty` contract, nudity
+  over clothing slots only, both avatar branches (the `accessories ||
+  hair` guard), the prompt bytes, tool definitions, the outfit hash's
+  accepted invalidation, import/export/restore carry — PLUS Bug 75
+  (`40d507cc`'s one ported surface: the `.qtap` composite
+  `componentItemIds` leaf-first remap; **v5 has the bug today**,
+  `quilltap_import/characters.rs:429-456`). Owns all
+  `quilltap-core`/`quilltap-harness` edits and ~20 family regens
+  (`chats_outfits_tier2` is guaranteed red until its oracle regenerates
+  — by design).
+- **P4.D88** (`work-orders/p4.d88-wardrobe-hair-spa.md`) — the hair
+  slot's SPA half: build the registry (v5 has none), consolidate the 11
+  hard-coded sites, the rose badge tokens, the `?? []` forward-compat
+  guard, the Green Room preview; the live beat gated
+  `P4D87_HAIR_SLOT_LANDED`. Owns `app/wardrobe/**` +
+  `core-contract.ts` this round. Shared contract (the registry rows +
+  wire shapes) binding and identical with P4.D87.
+- **P4.D89** (`work-orders/p4.d89-client-bugs-76-77.md`) — bug 76
+  (`8bd802a3`: the `outboundApiKeyId` chokepoint over v5's FIVE outbound
+  sites, always-send `|| null`, the `savedTakesApiKey ?? true` twin;
+  v4's 7-case suite mirrored 1:1; **closes dogfood finding #90**) + bug
+  77 (`25767c0f`) — where the survey found **v5 never ported the
+  tool-execution notice at all** (settled-only toasts substituted), so
+  the lane lands the surface in its fixed form (single-door publish,
+  self-owned 6 s lifetime, close button, `role="status"`), retiring the
+  invented toasts.
+- **P4.D90** (`work-orders/p4.d90-workspace-tab-refresh.md`) — the
+  workspace tab re-activation refresh (`979652a9`): the visibility
+  token + `onTabActivated` primitive, the kind→query-prefix map over
+  v5's fragmented keys (split spellings invalidated on BOTH sides,
+  recorded), `{silent}` re-loads on the hand-rolled views, v4's
+  deliberately-untouched roster (+ v5-only `salon-new` ruled into the
+  editors bucket by v4's own reasoning), v4's 8-assertion parity spec
+  mirrored. The `wardrobe-control-dialog.ts` hook is an AT-UNIFY edit
+  (P4.D88 owns the file).
+- **P4.49** (`work-orders/p4.49-file-logging.md`, previously ordered;
+  baseline note updated — the drift does not touch `lib/logger.ts`) —
+  runs beside the drift lanes; the only other crate-touching lane
+  (`quilltap-web`/`quilltap-cli`).
+
+**NO-PORT dispositions this round:** `dd3616a1` (docs + plugin-dist
+rebuild noise — `git show --stat -- lib/ app/ packages/quilltap/` is
+EMPTY; its wardrobe `help/*.md` edits ride the `p4.9i2` bank, and
+`help/character-editing.md` is touched by BOTH `4423ad10` and
+`dd3616a1` — take in order); `8fe63c4f` (the bug-76 filing, docs);
+`3d391ac6` (merge); `009c49b2` (bugfix, test-only). **Banked riders:**
+the REST of `40d507cc` + `4423ad10`'s generator/image-analysis hair
+edits ride the future generators lane (verified unported: no
+wizard/optimizer/summon/ai-import surface exists in v5; Summon is a
+named SPA refusal stub).
+
+**Execution shape:** all five lanes in parallel, each in its own
+worktree per the `carryout` skill; version bumps — D87: core+harness
+(+host if needed); P4.49: web+cli; D88/D89/D90: SPA (unifier recounts).
+Regens pin a detached v4 worktree at `979652a9`. The owed dogfood pass
+(candidate 2 above) stays queued behind the round and gains its
+surfaces (the hair slot end-to-end, the healed api-key save, the notice
+lifetime, tab-refresh on real data, the first greppable `combined.log`).

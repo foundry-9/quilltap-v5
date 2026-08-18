@@ -72915,3 +72915,107 @@ manual declaration in v4 too, seeded from provider capability on new
 profiles only.
 
 Versions: core 0.0.578 → **0.0.579**.
+
+## Round planned — the `979652a9` drift round (P4.D87 ∥ P4.D88 ∥ P4.D89 ∥ P4.D90 ∥ P4.49), 2026-08-18
+
+**The drift-check found v4 moved:** main went `d123658d` → `979652a9` —
+eight commits in two days, five substantive and on ported surfaces; the
+checkout sat on `main`, clean, at the new HEAD at planning. `bugfix` was
+measured by `diff`: its only unabsorbed content is `009c49b2` (a
+test-only composer-typeahead deflake, NO-PORT) plus the `3a76b17d` 4.8.4
+branch marker. Per the setupphase rule, planning stopped, the drift was
+classified (four fresh surveys, all dated 2026-08-18, recorded verbatim
+in the orders), and this round IS the catch-up. The oracle baseline
+moves to `979652a9` at unification.
+
+**The drift, classified:**
+
+- **`4423ad10` — the hair slot** (a fifth wardrobe slot: a hairdo, not
+  hair). The heaviest item: ~40 ported lib files + the SPA wardrobe
+  surface. v4 consolidated its slot lists into one `WARDROBE_SLOT_META`
+  registry on the way; v5 has TEN hard-coded four-slot list copies
+  (server) + eleven SPA sites and NO registry on either side, so both
+  halves are build-the-registry lanes. The commit fixed three of its own
+  silent v4 bugs in the four-slot era (hair-only outfits read as
+  unequipped by the hash; hair items never resolved; the bare-top avatar
+  guard keyed on accessories alone) — all three shapes exist in v5's
+  faithful port and go out with the feature. No
+  `PROMPT_CACHE_STRUCTURE_VERSION` change; no DDL. → **P4.D87** (server)
+  ∥ **P4.D88** (SPA), shared contract pinned in both orders.
+- **`40d507cc` — the generators taxonomy + Bug 75.** The three AI
+  character generators are UNPORTED in v5 (verified: no
+  wizard/optimizer/summon/ai-import module anywhere; Summon is a named
+  SPA refusal stub at `add-character-dialog.ts:221-237`) — those edits
+  (and `4423ad10`'s generator/image-analysis riders) are banked on the
+  future generators lane. The ONE ported surface is the Bug-75 fix:
+  `.qtap` import re-mints wardrobe ids but copies composite
+  `componentItemIds` verbatim, so imported outfits arrive hollow — **v5
+  has the bug today** (`quilltap_import/characters.rs:429-456`, single
+  unordered pass, `Uuid::new_v4` at `:450`, verbatim copy at `:456`).
+  → folded into **P4.D87** (same file family).
+- **`8bd802a3` — bug 76** (an api key follows a profile onto another
+  provider): v4 fixing the defect this port's dogfood walk filed
+  (finding #90; v5 reproduces it). The `outboundApiKeyId` chokepoint —
+  bug 73's twin one field over, plus the decision the base-URL fix never
+  faced (an id the select cannot display must not reach the wire), two
+  absence-is-not-evidence arms, the always-send `|| null` heal, and the
+  `savedProviderTakesApiKey ?? true` edit-time twin. v4 shipped a 7-case
+  suite (4 fail pre-fix) — the parity corpus. → **P4.D89** fix A.
+- **`25767c0f` — bug 77** (the tool-execution notice's lifetime). The
+  survey's headline: **v5 never ported the notice surface at all** —
+  zero `toolExecutionStatus` hits in `apps/web`; the settled outcomes
+  ride as two invented toasts in `reportStreamTransitions`
+  (`salon-conversation.ts:2838-2857`), the `'pending'` half
+  (`Generating image...`) doesn't exist, and nothing pins
+  `reportStreamTransitions` in any spec. So the lane lands v4's surface
+  in its FIXED form (single-door publish, self-owned 6 s dismissal,
+  close button, `role="status"`/`aria-live="polite"`), retiring the
+  invented toasts. Two v5 design constraints stated in the order: the
+  stream reducer is contractually pure (timers live in
+  `SalonConversation`), and v5's single turn-end reconcile point stands
+  in for v4's four `onDone`s. → **P4.D89** fix B.
+- **`979652a9` — workspace tab re-activation refresh.** Kept-alive tabs
+  refetch on hidden→visible: a visibility signal + `useOnTabActivated`
+  (fires on transition only, latest callback, inert outside the
+  workspace), a central kind→query-prefix map, `{silent}` re-loads for
+  hand-rolled views, and a deliberately-untouched roster (live
+  SSE/PTY surfaces + unsaved-state editors). v5 has ZERO re-activation
+  machinery, no central key module (32 per-vertical `*.api.ts`, several
+  SPLIT KEY SPELLINGS — `['connectionProfiles']`/`['connection-profiles']`,
+  `['apiKeys']`/`['api-keys']`, `['chatSettings']`/`['chat-settings']`
+  — the map invalidates both; consolidation banked), and 24 tab kinds
+  to v4's 23 (`salon-new` ruled into the editors bucket by v4's own
+  reasoning). One file collision found and pinned: P4.D88 owns
+  `wardrobe-control-dialog.ts`; P4.D90's ~6-line hook there is an
+  AT-UNIFY edit. → **P4.D90**.
+- **NO-PORT:** `dd3616a1` (docs + plugin-dist rebuild noise — the
+  `lib/ app/ packages/quilltap/` stat is EMPTY; the 13 `plugins/dist`
+  diffs are bundler path-comment rewrites, sampled; its wardrobe
+  `help/*.md` edits ride the `p4.9i2` bank, noting
+  `help/character-editing.md` is touched by both `4423ad10` and
+  `dd3616a1` — take in order); `8fe63c4f` (the bug-76 filing);
+  `3d391ac6` (merge); bugfix `009c49b2` (tests only).
+
+**P4.49 rides the round** (ordered 2026-08-18, earlier today; the human
+raised its priority). Its baseline note updated to `979652a9` — the
+drift touches neither `lib/logger.ts` nor `lib/logging/**` (verified by
+`git log d123658d..main -- lib/logger.ts lib/logging/`). It is the only
+other crate-touching lane (`quilltap-web` + `quilltap-cli`), so P4.D87's
+crate ownership is scoped to `quilltap-core`/`quilltap-harness`.
+
+**Ownership summary:** P4.D87 `crates/quilltap-core` +
+`crates/quilltap-harness` (+host only if the avatar-job payload needs
+it) — bumps core+harness; P4.D88 `app/wardrobe/**` + new-chat outfit
+files + `core-contract.ts` + the qt-components CSS — bumps SPA; P4.D89
+providers profile-form/modal + chat-composer + salon-conversation —
+bumps SPA; P4.D90 `app/workspace/**` + photos/scenarios/scriptorium/
+generate-image screens — bumps SPA; P4.49 `quilltap-web`/`quilltap-cli`
+— bumps web+cli. Three SPA lanes bump `apps/web`: the unifier recounts
+(`parallel-round-playbook` §C). Regens pin a detached v4 worktree at
+`979652a9` through the sweep driver.
+
+Orders: `work-orders/p4.d87-wardrobe-hair-core.md`,
+`p4.d88-wardrobe-hair-spa.md`, `p4.d89-client-bugs-76-77.md`,
+`p4.d90-workspace-tab-refresh.md`; `p4.49-file-logging.md` (pre-existing,
+baseline note updated). The plan is mirrored in `phase-4.md` → "The
+`979652a9` drift round".
