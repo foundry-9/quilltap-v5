@@ -73367,3 +73367,35 @@ bug-70 warning grepped out of `combined.log`, `logs/terminals` and the
 pass — 💸.**
 
 **Versions:** quilltap-web 0.0.74 → 0.0.75, quilltap-tauri 0.0.6 → 0.0.7.
+
+## P4.49 unit 5 — the CLI's twin: RULED by measurement, no file transport (2026-08-18)
+
+The order asked for this one to be **measured, not guessed** — "measure what
+v4's `npx quilltap` actually does before choosing". Measured at `979652a9`:
+
+- Nothing under `packages/quilltap/` imports `@/lib/logger` or
+  `lib/logging/transports` — the grep for a logger require/import across
+  `packages/quilltap/bin` + `lib` is **empty**.
+- Nothing there appends to any file in `logs/` (`appendFileSync` /
+  `createWriteStream` / `writeFileSync` against a log path: **empty**).
+- Its only dealing with these files is `lib/logs-commands.js`, which **reads**
+  `combined.log`, `error.log`, `quilltap-stdout.log`, `quilltap-stderr.log`
+  and `startup.log` for `quilltap logs --stream`. The stdout/stderr/startup
+  files come from the desktop launcher's process redirection (`docs/
+  WINDOWS.md`), not from any logger.
+
+**v4's CLI is a log READER, never a writer.** So `quilltap-cli`'s inlined
+`init_cli_tracing` stays stderr-only and grows no file layer — the faithful
+port.
+
+It is also the safe one, and the two agree. Every `quilltap` verb is
+short-lived; a CLI file transport would run `purgeStrayLogs` and possibly a
+**rotation** on every invocation, renaming the active file out from under a
+server mid-append. That is the hazard the order named, and the measurement
+resolves it without a judgement call.
+
+**This is a ruled non-port, not a deferral** — nothing is banked, and the
+reasoning is carried on `init_cli_tracing`'s doc comment so a future reader
+does not "finish" it.
+
+**Versions:** quilltap-cli 0.0.9 → 0.0.10.

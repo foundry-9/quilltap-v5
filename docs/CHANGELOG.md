@@ -51,6 +51,11 @@ value that cannot be read falls back to the default and says so in the log
 rather than refusing to start. A setup that asks for files but has nowhere
 to put them keeps writing to the terminal instead of going quiet.
 
+The `quilltap` command-line tool still logs only to the terminal, as it
+always has — it reads the log files rather than writing them, and a
+short-lived command must not rotate a log file out from under a running
+server.
+
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it
 reshapes the response, which the API itself never sends, so every model was

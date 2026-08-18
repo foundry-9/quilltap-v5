@@ -188,6 +188,26 @@ fn launcher_main(args: &[String]) {
 /// `try_init`. In practice silent for normal CLI verbs (they run no job pump or
 /// cheap-LLM path); it exists so `RUST_LOG=debug quilltap …` can surface
 /// core/host events when a verb does touch an instrumented path.
+///
+/// ## No file transport here — ruled by measurement, P4.49 unit 5
+///
+/// The file half of the log surface (`combined.log`/`error.log` + rotation)
+/// deliberately stops at `quilltap-web`. **v4's `npx quilltap` is a log
+/// READER, never a writer**, measured at `979652a9`: nothing under
+/// `packages/quilltap/` imports `@/lib/logger` or the transports at all, and
+/// nothing there appends to a file in `logs/`. Its one dealing with these files
+/// is `lib/logs-commands.js`, which *reads* `combined.log`, `error.log`,
+/// `quilltap-stdout.log`, `quilltap-stderr.log` and `startup.log` for
+/// `quilltap logs --stream`. (The stdout/stderr/startup files come from the
+/// desktop launcher's process redirection, not from any logger.)
+///
+/// So stderr-only is the faithful port, and it also avoids the hazard the work
+/// order flagged: a short-lived client process appending to — and, worse,
+/// **rotating** — the active log while a server holds it. Every `quilltap`
+/// verb is short-lived, so a CLI file transport would run `purgeStrayLogs` and
+/// possibly a rotation on every invocation, renaming the file the running
+/// server is mid-append into. Faithfulness and safety agree; the decision is
+/// not a deferral and there is nothing banked.
 fn init_cli_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
