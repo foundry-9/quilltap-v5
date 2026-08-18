@@ -35,9 +35,18 @@
 //! `getAvailableModels`: the models-list GET (the ported
 //! [`models_list_request`](crate::model::provider_models_api::models_list_request)
 //! and [`parse_models_list`](crate::model::provider_models_api::parse_models_list)).
-//! Every plugin catches wire failures → `[]` EXCEPT anthropic, whose catch
-//! returns a static fallback list (transcribed below verbatim). An UNKNOWN
-//! provider is the one `Err` (v4 `createLLMProvider` throws → the route 500s).
+//! Most plugins catch wire failures → `[]`. **TWO do not, and their arms
+//! differ** (both transcribed below verbatim; the second was missing until
+//! dogfood #91):
+//!   - `anthropic` — a static fallback list from its CATCH only. A successful
+//!     fetch that yields nothing stays empty.
+//!   - `google` — a static fallback list from its catch AND from a successful
+//!     fetch whose filtered list came back empty
+//!     (`if (modelList.length === 0)`, `provider.ts:882`). An empty google
+//!     answer is therefore unreachable in v4.
+//!
+//! An UNKNOWN provider is the one `Err` (v4 `createLLMProvider` throws → the
+//! route 500s).
 //!
 //! **Documented divergence (named):** v4's `modelsWithInfo` enriches each id
 //! from the plugin's `getModelsWithMetadata` / `getModelMetadata` /
@@ -107,6 +116,20 @@ const ANTHROPIC_FALLBACK_MODELS: [&str; 11] = [
     "claude-3-7-sonnet-20250219",
     "claude-3-5-haiku-20241022",
     "claude-3-haiku-20240307",
+];
+
+/// v4 google `getAvailableModels`'s fallback list (`GoogleProvider`, transcribed
+/// verbatim at `d123658d`). Unlike anthropic's, v4 answers it from BOTH the
+/// catch and the empty-result branch.
+const GOOGLE_FALLBACK_MODELS: [&str; 8] = [
+    "gemini-3-flash-preview",
+    "gemini-3-pro-preview",
+    "gemini-3-pro-image-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash-image",
+    "imagen-4",
+    "imagen-4-fast",
 ];
 
 /// Join a base url and an endpoint path without doubling the slash.
@@ -303,21 +326,34 @@ impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
         let mut headers = transport_headers(provider, &extras, self.user_agent, self.base_url_env);
         apply_auth(registry, provider, api_key, &mut headers, &mut url);
 
-        let models: Vec<String> = match self.transport.send(req.method, &url, &headers, "") {
+        let mut models: Vec<String> = match self.transport.send(req.method, &url, &headers, "") {
             Ok(resp) if (200..300).contains(&resp.status) => {
                 match serde_json::from_str::<Value>(&resp.body) {
                     Ok(body) => parse_models_list(provider, &body),
                     Err(_) => Vec::new(),
                 }
             }
-            // Wire/HTTP failure: v4's plugin catch — anthropic falls back to
-            // its static list, everyone else returns [].
+            // Wire/HTTP failure: v4's plugin catch — anthropic and google fall
+            // back to their static lists, everyone else returns [].
             _ if provider == "ANTHROPIC" => ANTHROPIC_FALLBACK_MODELS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            _ if provider == "GOOGLE" => GOOGLE_FALLBACK_MODELS
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
             _ => Vec::new(),
         };
+        // google alone also falls back on an EMPTY result from a SUCCESSFUL
+        // fetch (`if (modelList.length === 0)`), so v4 never answers google with
+        // nothing. anthropic deliberately does not — its arm is the catch only.
+        if provider == "GOOGLE" && models.is_empty() {
+            models = GOOGLE_FALLBACK_MODELS
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+        }
         let models_with_info: Vec<Value> = models.iter().map(|id| json!({ "id": id })).collect();
         Ok((models, models_with_info))
     }
@@ -654,6 +690,74 @@ mod tests {
             .unwrap();
         let seen = wire.seen.lock().unwrap();
         assert!(!seen[0].3.iter().any(|(k, _)| k == "anthropic-version"));
+    }
+
+    /// Dogfood #91. v4's google plugin answers its static list from BOTH the
+    /// catch and an empty successful fetch, so google is never reported as
+    /// having no models. v5 had neither arm.
+    #[test]
+    fn google_falls_back_on_a_wire_failure() {
+        let wire = ScriptedWire::new(vec![Err("refused".to_string())]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
+        assert_eq!(models.len(), 8);
+        assert_eq!(models[0], "gemini-3-flash-preview");
+    }
+
+    /// The arm anthropic does NOT have: a 200 whose models all filter out still
+    /// answers the static list.
+    #[test]
+    fn google_falls_back_on_an_empty_successful_fetch() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(
+            200,
+            "{\"models\":[{\"name\":\"models/embedding-001\",\"supportedGenerationMethods\":[\"embedContent\"]}]}",
+        ))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
+        assert_eq!(
+            models.len(),
+            8,
+            "an empty google answer is unreachable in v4"
+        );
+    }
+
+    /// A real google body parses through to the real ids — the fallback must not
+    /// be masking a parse that still fails (which is exactly how #91 hid).
+    #[test]
+    fn google_parses_a_real_rest_body() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(
+            200,
+            "{\"models\":[{\"name\":\"models/gemini-2.5-pro\",\"supportedGenerationMethods\":[\"generateContent\"]}]}",
+        ))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
+        assert_eq!(models, vec!["gemini-2.5-pro".to_string()]);
+    }
+
+    /// The guard on the asymmetry: anthropic's fallback is the CATCH only, so a
+    /// successful-but-empty fetch stays empty. Sharing one arm would be wrong.
+    #[test]
+    fn anthropic_does_not_fall_back_on_an_empty_successful_fetch() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{\"data\":[]}"))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+        };
+        let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
+        assert!(models.is_empty());
     }
 
     #[test]

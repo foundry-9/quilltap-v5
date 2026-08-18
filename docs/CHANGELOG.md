@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Fixed Fetch Models returning nothing for Google. Two faults compounded:
+the model list was filtered on a field name the Google SDK invents when it
+reshapes the response, which the API itself never sends, so every model was
+discarded; and the fallback list Quilltap keeps for exactly this case was
+missing, so the empty result reached the screen instead of being covered.
+Both are restored, including the distinction that Google falls back on an
+empty result as well as on an outright failure, where Anthropic falls back
+only on failure. Found by dogfooding (finding #91).
+
 Fixed a release build failing in the main checkout after a lane worktree
 was deleted. The SQLite3MC build script resolved its vendor directory
 with a compile-time path, and the compiled build script is cached

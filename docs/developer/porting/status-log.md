@@ -72856,3 +72856,62 @@ Sibling finding #90 (the stale `apiKeyId` surviving a provider change) is a
 faithfully ported v4 bug and got no v5 change; see `dogfood-findings.md`.
 
 Versions: core 0.0.577 → **0.0.578**; nothing else touched.
+
+## Dogfood fix — finding #91, the google models fetch (2026-08-18)
+
+The same walk, one provider over from #89, and the same shape: v5
+reimplements by hand what v4 gets from a vendor SDK, and loses something
+the SDK was doing. Two defects, and the second hid the first.
+
+**(a) The capability key does not exist on the wire.** v5 filtered
+google's list on `supportedActions`. That is the `@google/genai` SDK's
+RENAME of the REST field: the bundle v4 ships does
+`getValueByPath(fromObject, ['supportedGenerationMethods'])` →
+`setValueByPath(toObject, ['supportedActions'])`
+(`plugins/dist/qtap-plugin-google/node_modules/@google/genai/dist/
+index.cjs:15115`). v4's plugin filters the SDK's post-rename objects and
+is right; v5 parses the raw REST body, where that name never appears, so
+every model failed the filter.
+
+**(b) v4 has a google fallback and v5 had none.** v4's plugin answers a
+static 8-model list from its catch AND from a successful fetch whose
+filtered list came back empty (`provider.ts:882`) — so **an empty google
+answer is unreachable in v4**. `provider_actions.rs`'s module header
+positively claimed anthropic was the only provider with a fallback; it was
+wrong, and the two arms are not even the same shape (anthropic's is the
+catch only).
+
+The endpoint and the `x-goog-api-key` header were never at fault — probed
+live, a bogus key gets `API key not valid`, which means the header is
+read.
+
+**Why nothing measured it.** There is **no differential family for the
+models list at all** — the surface is unit-tier only — and the single
+google unit case fed a body carrying `supportedActions`, i.e. a fixture
+invented from the same misreading as the parser. It agreed with the code
+and stayed green. A v4-side oracle would not have settled it either: v4's
+filter sees SDK-shaped objects, so only a body captured from the REST wire
+can pin this. That is what the corrected fixture now is.
+
+**The fix.** `parse_models_list` reads `supportedGenerationMethods`, with
+the SDK name kept as a fallback arm so a body already in SDK shape still
+parses. `GOOGLE_FALLBACK_MODELS` transcribed verbatim and wired to both of
+v4's arms. Tests: the corrected REST fixture (mutation-proven both ways —
+it reds the old parser), `google_falls_back_on_a_wire_failure`,
+`google_falls_back_on_an_empty_successful_fetch`,
+`google_parses_a_real_rest_body` (so the new fallback cannot mask a parse
+that still fails — exactly how this hid), and
+`anthropic_does_not_fall_back_on_an_empty_successful_fetch` guarding the
+asymmetry. Module header corrected.
+
+**💸 The live proof is owed** — a real google key should now list the
+account's catalogue rather than the eight fallback ids. Note that the
+fallback makes the failure mode quiet again by design, so the proof is
+"the list is not exactly those eight", not "the list is non-empty".
+
+Also from this walk, recorded and NOT fixed: finding #92 — neither app
+states whether a model can take image attachments; the checkbox is a
+manual declaration in v4 too, seeded from provider capability on new
+profiles only.
+
+Versions: core 0.0.578 → **0.0.579**.

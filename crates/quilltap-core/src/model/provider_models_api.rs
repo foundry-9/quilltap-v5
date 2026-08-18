@@ -12,9 +12,19 @@
 //!   - `anthropic`: `GET {baseUrl}/models` → `{ data: [{ id }] }` (NO sort; a
 //!     static fallback list on failure). `validate` = a minimal `messages.create`
 //!     (a POST — a transport concern, not a models list).
-//!   - `google`: `GET {baseUrl}/models` → `{ models: [{ name, supportedActions }] }`
-//!     — keep `generateContent`-capable, strip the `models/` prefix. `validate` = a
+//!   - `google`: `GET {baseUrl}/models` →
+//!     `{ models: [{ name, supportedGenerationMethods }] }` — keep
+//!     `generateContent`-capable, strip the `models/` prefix. `validate` = a
 //!     minimal `generateContent` (POST).
+//!
+//!     ⚠ **The capability key is `supportedGenerationMethods` on the WIRE.** v4
+//!     reads `model.supportedActions`, but that is the `@google/genai` SDK's
+//!     RENAME of the REST field (`dist/index.cjs:15115` —
+//!     `getValueByPath(fromObject, ['supportedGenerationMethods'])` →
+//!     `setValueByPath(toObject, ['supportedActions'])`). v5 parses the raw REST
+//!     body, where the SDK's name never appears — reading it filtered out every
+//!     model and Fetch Models answered an empty list (dogfood #91). The SDK name
+//!     is still accepted, so a response already in SDK shape parses too.
 //!   - `ollama`: `GET {baseUrl}/api/tags` → `{ models: [{ name }] }` (both
 //!     `validate` and `models`; no API key).
 //!
@@ -76,7 +86,9 @@ pub fn parse_models_list(provider: &str, body: &Value) -> Vec<String> {
             .map(|arr| {
                 arr.iter()
                     .filter(|m| {
-                        m.get("supportedActions")
+                        // REST first, the SDK's rename second (module header).
+                        m.get("supportedGenerationMethods")
+                            .or_else(|| m.get("supportedActions"))
                             .and_then(Value::as_array)
                             .map(|a| a.iter().any(|v| v.as_str() == Some("generateContent")))
                             .unwrap_or(false)
@@ -163,13 +175,27 @@ mod tests {
         assert_eq!(parse_models_list("Z_AI", &body), vec!["glm-4.6", "glm-4v"]);
     }
 
+    /// The body shape google's REST API actually returns — the key is
+    /// `supportedGenerationMethods`. This case used to feed `supportedActions`
+    /// (the `@google/genai` SDK's rename of it), so it agreed with the parser's
+    /// own misreading and stayed green while production returned nothing
+    /// (dogfood #91).
     #[test]
     fn google_filters_capability_and_strips_prefix() {
         let body = json!({ "models": [
-            { "name": "models/gemini-2.5-flash", "supportedActions": ["generateContent"] },
-            { "name": "models/embedding-001", "supportedActions": ["embedContent"] }
+            { "name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent", "countTokens"] },
+            { "name": "models/embedding-001", "supportedGenerationMethods": ["embedContent"] }
         ]});
         assert_eq!(parse_models_list("GOOGLE", &body), vec!["gemini-2.5-flash"]);
+    }
+
+    /// A body already in SDK shape still parses — the fallback arm.
+    #[test]
+    fn google_also_accepts_the_sdk_key() {
+        let body = json!({ "models": [
+            { "name": "models/gemini-2.5-pro", "supportedActions": ["generateContent"] }
+        ]});
+        assert_eq!(parse_models_list("GOOGLE", &body), vec!["gemini-2.5-pro"]);
     }
 
     #[test]
