@@ -73235,3 +73235,54 @@ or append failure is an `eprintln` + swallow (v4's `console.error`; a
 `tracing` event here would re-enter the layer).
 
 **Versions:** quilltap-web 0.0.72 → 0.0.73.
+
+## P4.49 unit 3 — the stray-log sweep, pinned in both directions (2026-08-18)
+
+**Ported:** v4's `purgeStrayLogs()` + `belongsToStemFamily()`
+(`lib/logging/transports/file.ts:39-47,93-120`). The predicate is the only
+part of this transport that **deletes**, so it is pinned in both directions:
+what it eats, and what it must never eat.
+
+**Family:** `quilltap-web::log_file::sweep_tests` — 8 cases (family total now
+27). The predicate table (9 belonging / 10 foreign entries), a multi-byte
+follower, v4's own directory listing entry-for-entry run against a **real**
+filesystem rather than a mocked `readdir`, the `maxFiles`-relative allowlist,
+a same-named directory, the two tolerance arms, and the once-at-init timing.
+
+**The v5-specific spare, live.** v4's fixture listing carries `terminals`;
+in v5 that is `logs/terminals`, the PTY transcript directory
+`quilltap-host::host.rs` owns (`host.rs:469,688` — the ONLY other user of the
+instance `logs/` dir). The case creates it **with a file inside** and asserts
+both survive, so the one thing another subsystem owns in this directory is
+mechanically protected rather than protected by reading the predicate.
+
+**Mutation-proven** (each reverted after measuring):
+
+| mutation | caught by |
+| --- | --- |
+| predicate drops the `is_ascii_alphanumeric` guard | `stem_family_predicate_matches_v4` + `sweep_deletes_conflicts_and_spares_neighbours` (`errors.log` deleted) |
+| sweep drops the stem-family check | `sweep_deletes_conflicts_and_spares_neighbours` (launcher files deleted) |
+| allowlist ignores `max_files` | `allowlist_follows_max_files` |
+| allowlist check dropped | 7 cases, incl. both rotation cases (the active file eaten at init) |
+
+**Two mechanism differences reaching v4's answer, recorded:**
+
+1. **Byte indexing vs UTF-16.** v4 tests `entry[stem.length]` — a UTF-16 code
+   unit — against `/[a-zA-Z0-9]/`. The stems are ASCII, so the byte at that
+   offset is the same character; a multi-byte follower yields a non-ASCII
+   byte here and a non-alphanumeric code unit (or a lone surrogate) there.
+   Both say "belongs". Pinned by `multibyte_follower_belongs_like_v4` because
+   the mechanisms differ even though the verdict does not.
+2. **A directory in the family survives.** v4 calls `unlink` on a matching
+   directory and swallows the EISDIR/EPERM; `fs::remove_file` behaves
+   identically. That is the one way a *belonging* name is spared, and it is
+   what keeps a hypothetical `combined.old/` intact — recorded so nobody
+   "fixes" it into a recursive delete.
+
+**The planted-condition trap, avoided.** `readdir_failure_is_tolerated`
+clears the **directory's own** mode bits rather than a target file's:
+`chmod 000` on a target does not deny access on macOS — the parent's search
+bit does (`planted-fs-conditions-in-differentials`). Both tolerance cases are
+`#[cfg(unix)]`.
+
+**Versions:** quilltap-web 0.0.73 → 0.0.74.

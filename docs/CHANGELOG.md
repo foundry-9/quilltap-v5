@@ -36,8 +36,12 @@ by design, pinned both directions with a convergence tripwire.
 Quilltap now writes its logs to files again, the way the Node version
 did: `logs/combined.log` holds every record and `logs/error.log` holds the
 errors, both as one JSON object per line, rotating into numbered backups
-once a file passes its size limit. Until now the native build wrote only to
-the terminal it was launched from, so a warning worth acting on was gone the
+once a file passes its size limit. On startup the log directory is also
+swept of the debris a synced folder collects — iCloud conflict copies like
+`combined 2.log`, Finder duplicates, and leftovers from an older rotation
+naming — while terminal transcripts and the launcher's own stdout/stderr
+files are left strictly alone. Until now the native build wrote only to the
+terminal it was launched from, so a warning worth acting on was gone the
 moment the window scrolled. Found by dogfooding (finding #93).
 
 Fixed Fetch Models returning nothing for Google. Two faults compounded:

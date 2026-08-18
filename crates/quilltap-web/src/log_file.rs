@@ -653,3 +653,229 @@ mod tests {
         assert!(!tmp.path().join("error.0.log").exists());
     }
 }
+
+/// Unit 3 — the stray-file sweep. Its own module because this predicate is the
+/// only part of the transport that **deletes**, and it has to be pinned in both
+/// directions: what it eats, and what it must never eat.
+///
+/// v4's own comment names the three shapes it exists for — leftovers from an
+/// older `<stem>.log.<N>` rotation, iCloud sync conflicts (`combined 2.log`,
+/// `combined.log.9 2`) and Finder duplicates (`combined(2).log`) — all of which
+/// accumulate in an instance directory that lives in iCloud or Dropbox.
+#[cfg(test)]
+mod sweep_tests {
+    use super::*;
+    use std::fs as stdfs;
+    use tempfile::TempDir;
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<String> = stdfs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// v4's `belongsToStemFamily` as a table: the exact stem, a
+    /// non-alphanumeric follower, and — the subtle half — an **alphanumeric**
+    /// follower which makes the entry somebody else's file.
+    #[test]
+    fn stem_family_predicate_matches_v4() {
+        for belongs in [
+            "combined",
+            "error",
+            "combined.log",
+            "combined 2.log",
+            "combined(2).log",
+            "combined-old.log",
+            "combined.log.3",
+            "error 2.log",
+            "error.log.10",
+        ] {
+            assert!(
+                belongs_to_stem_family(belongs),
+                "{belongs} belongs to a stem family"
+            );
+        }
+        for foreign in [
+            "errors.log",
+            "combined2.log",
+            "error2",
+            "embedded-server.log",
+            "startup.log",
+            "quilltap-stdout.log",
+            "quilltap-stderr.log",
+            "stdout.log",
+            "terminals",
+            "",
+        ] {
+            assert!(
+                !belongs_to_stem_family(foreign),
+                "{foreign} is not ours to delete"
+            );
+        }
+    }
+
+    /// A multi-byte follower is not ASCII-alphanumeric, so it belongs — the
+    /// same answer v4's `/[a-zA-Z0-9]/` gives the UTF-16 code unit at that
+    /// offset. Pinned because the byte-vs-code-unit indexing is a real
+    /// difference in mechanism reaching the same verdict.
+    #[test]
+    fn multibyte_follower_belongs_like_v4() {
+        assert!(belongs_to_stem_family("combined空.log"));
+        assert!(belongs_to_stem_family("error—2.log"));
+    }
+
+    /// v4's "should delete files that do not match the allowed combined/error
+    /// names", entry for entry — its exact directory listing, run against the
+    /// real filesystem rather than a mocked `readdir`.
+    #[test]
+    fn sweep_deletes_conflicts_and_spares_neighbours() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        let allowed = [
+            "combined.log",
+            "combined.0.log",
+            "combined.9.log",
+            "error.log",
+            "error.3.log",
+        ];
+        let garbage = [
+            "combined 2.log",
+            "combined 11.log",
+            "combined(2).log",
+            "combined.log.5",
+            "combined.log.6 2",
+            "combined.log(1).3",
+            "error.log.10",
+        ];
+        let foreign = [
+            "quilltap-stderr.log",
+            "quilltap-stdout.log",
+            "startup.log",
+            "stdout.log",
+            "embedded-server.log",
+            // starts with "error" but the next char is alphanumeric
+            "errors.log",
+        ];
+        for name in allowed.iter().chain(garbage.iter()).chain(foreign.iter()) {
+            stdfs::write(dir.join(name), b"x").unwrap();
+        }
+        // v4's listing carries `terminals` — in v5 it is the live PTY
+        // transcript directory (`host.rs`'s `logs/terminals`), the one thing in
+        // this directory another subsystem owns. It must survive with its
+        // contents.
+        stdfs::create_dir(dir.join("terminals")).unwrap();
+        stdfs::write(dir.join("terminals").join("session.log"), b"pty").unwrap();
+
+        let _w = LogFileWriter::new(dir.to_path_buf(), DEFAULT_MAX_FILE_SIZE, 10);
+
+        for name in garbage {
+            assert!(!dir.join(name).exists(), "{name} should have been swept");
+        }
+        for name in allowed.iter().chain(foreign.iter()) {
+            assert!(dir.join(name).exists(), "{name} must not be touched");
+        }
+        assert!(dir.join("terminals").is_dir());
+        assert_eq!(
+            stdfs::read_to_string(dir.join("terminals").join("session.log")).unwrap(),
+            "pty"
+        );
+    }
+
+    /// The allowlist is `maxFiles`-relative: at `maxFiles = 3`, `.0`–`.2` are
+    /// kept and `.3` upward is a leftover from a larger setting — exactly what
+    /// the sweep exists to clear.
+    #[test]
+    fn allowlist_follows_max_files() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        for name in [
+            "combined.0.log",
+            "combined.2.log",
+            "combined.3.log",
+            "error.9.log",
+        ] {
+            stdfs::write(dir.join(name), b"x").unwrap();
+        }
+        let _w = LogFileWriter::new(dir.to_path_buf(), DEFAULT_MAX_FILE_SIZE, 3);
+        assert_eq!(
+            names(dir),
+            vec!["combined.0.log", "combined.2.log"],
+            ".3 and .9 are out of range at maxFiles = 3"
+        );
+    }
+
+    /// A **directory** whose name belongs to a stem family: v4 calls `unlink`
+    /// on it and swallows the EISDIR/EPERM, so the directory survives.
+    /// `remove_file` behaves the same. Recorded because it is the one way a
+    /// belonging name is spared.
+    #[test]
+    fn a_directory_in_the_family_survives_the_unlink() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        stdfs::create_dir(dir.join("combined.old")).unwrap();
+        stdfs::write(dir.join("combined.old").join("inner"), b"x").unwrap();
+        assert!(belongs_to_stem_family("combined.old"));
+
+        let _w = LogFileWriter::new(dir.to_path_buf(), DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_FILES);
+        assert!(dir.join("combined.old").is_dir());
+    }
+
+    /// v4's "should tolerate readdir failures during purge": an unreadable
+    /// directory returns early and initialization still seeds the sizes.
+    /// Reproduced by clearing the parent's search bit — `chmod 000` on the
+    /// target alone does not deny access on macOS
+    /// (`planted-fs-conditions-in-differentials`).
+    #[test]
+    #[cfg(unix)]
+    fn readdir_failure_is_tolerated() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("logs");
+        stdfs::create_dir(&dir).unwrap();
+        stdfs::set_permissions(&dir, stdfs::Permissions::from_mode(0o000)).unwrap();
+
+        let w = LogFileWriter::new(dir.clone(), DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_FILES);
+        w.write("info", "{}\n");
+
+        stdfs::set_permissions(&dir, stdfs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// v4's "should tolerate unlink failures during purge": a stray file that
+    /// cannot be removed leaves the rest of the sweep — and the size seeding —
+    /// intact.
+    #[test]
+    #[cfg(unix)]
+    fn unlink_failure_is_tolerated() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let tmp = TempDir::new().unwrap();
+        let outer = tmp.path().join("outer");
+        stdfs::create_dir(&outer).unwrap();
+        stdfs::write(outer.join("combined.log.5"), b"stray").unwrap();
+        stdfs::write(outer.join("combined 2.log"), b"stray").unwrap();
+        // Read + execute but not write: the entries list, the unlinks fail.
+        stdfs::set_permissions(&outer, stdfs::Permissions::from_mode(0o555)).unwrap();
+
+        let _w = LogFileWriter::new(outer.clone(), DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_FILES);
+        assert!(outer.join("combined.log.5").exists());
+
+        stdfs::set_permissions(&outer, stdfs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// The sweep runs **once, at initialization** — v4 calls it from
+    /// `initializeDirectory`, never from `write`. A stray file that lands while
+    /// the process is running survives until the next boot.
+    #[test]
+    fn sweep_runs_only_at_initialization() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let w = LogFileWriter::new(dir.to_path_buf(), DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_FILES);
+        stdfs::write(dir.join("combined 2.log"), b"arrived later").unwrap();
+        w.write("info", "{}\n");
+        assert!(dir.join("combined 2.log").exists());
+    }
+}
