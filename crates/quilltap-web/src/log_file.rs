@@ -1062,8 +1062,9 @@ pub fn resolve_destinations(
             Some(dir) => Some(dir),
             None => {
                 complaint = Some(
-                    "LOG_OUTPUT asks for files but no log directory is known (no instance \
-                     resolved and no LOG_FILE_PATH); logging to stderr only"
+                    "LOG_OUTPUT asks for files (it defaults to `both`) but no log directory \
+                     is known — no instance was resolved and LOG_FILE_PATH is unset; logging \
+                     to stderr only"
                         .to_string(),
                 );
                 None

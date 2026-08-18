@@ -87,9 +87,16 @@ use serde_json::json;
 
 pub use state::{SharedState, StartupStatus, WebState};
 
-/// Initialize the process-global log surface (P4.18): a `tracing-subscriber`
-/// fmt subscriber writing to **stderr**, env-filtered by `RUST_LOG` (default
-/// `info` when unset — the analog of v4's `LOG_LEVEL` default INFO).
+/// Initialize the process-global log surface (P4.18) with **no instance dir**:
+/// a `tracing-subscriber` fmt subscriber writing to **stderr**, env-filtered by
+/// `RUST_LOG` (default `info` when unset — the analog of v4's `LOG_LEVEL`
+/// default INFO).
+///
+/// Callers that know where the instance lives want
+/// [`init_tracing_for_instance`] instead — the file half of the log surface
+/// (P4.49: `combined.log` / `error.log` + rotation) needs the instance dir, and
+/// both shipping binaries pass it. This entry point remains for callers that
+/// have no instance at all.
 ///
 /// This restores v4-parity of *operability*: v4 is NOT silent — it logs
 /// structured JSON to the console (and/or rotated files) at every one of the

@@ -73399,3 +73399,112 @@ reasoning is carried on `init_cli_tracing`'s doc comment so a future reader
 does not "finish" it.
 
 **Versions:** quilltap-cli 0.0.9 → 0.0.10.
+
+## P4.49 — LANE CLOSED: v4's file logging is live (2026-08-18)
+
+**Branch:** `claude/p4-49-file-logging-3a6995`. **Order:**
+`work-orders/p4.49-file-logging.md` (dogfood finding #93). **All six units
+landed; nothing is OPEN under the order.** No NDJSON family, no oracle regen,
+no fixture touched, no SPA file touched — this lane invalidates nothing.
+
+**Commits (4):**
+
+| commit | units |
+| --- | --- |
+| `0d0d9012` | 1 + 2 — the record envelope, the stem fan-out, rotation |
+| `86b5cc4c` | 3 — the stray-log sweep, both directions |
+| `1819dd37` | 4 + 6 — the knobs, the layer, the composition, the ruled default |
+| `e45f86e5` | 5 — the CLI ruled by measurement |
+
+**Drift check at lane start:** v4 `main` HEAD is exactly `979652a9`
+(`git log 979652a9..HEAD` empty), and `git diff main bugfix -- lib/logger.ts
+lib/logging/` is EMPTY — the subsystem is identical on both branches, so the
+order's survey stood unmodified. Nothing in this lane is time-sensitive to a
+v4 change.
+
+**The parity corpus, and why it is not an NDJSON family.** P4.18 ruled log
+records non-differential; the order carved out the file *behavior* and that
+carve is what this lane honours. v4's own
+`__tests__/unit/logging-transports.test.ts` is the oracle — the file-transport
+half mirrored 1:1 the way an SPA lane mirrors v4's component tests
+(`impersonation-overlay-spa-gaps`). **Family:** `quilltap-web::log_file` — 33
+cases across `tests` (19), `sweep_tests` (8) and `knob_tests` (6). Run by
+`cargo test -p quilltap-web --lib log_file`; no env vars, nothing to skip.
+
+**Eleven mutations measured across the lane**, each reverted after measuring,
+each caught by its intended case: bytes→chars, `>`→`>=`, the shift losing
+`.rev()`, `saturating_sub`→`- 1`, the predicate's alphanumeric guard, the
+sweep's family check, the `max_files`-relative allowlist, the allowlist check
+itself, the never-silent clause, the `'./logs'` quirk, and the default
+flipped back to v4's `console`.
+
+**Recorded divergences (5), all with their reasoning at the site:**
+
+1. **`LOG_OUTPUT` defaults to `both`, not v4's `console`** — the human's unit-6
+   ruling, with its stated expiry (an environment-dependent default later)
+   deliberately NOT built.
+2. **Synchronous transport** where v4's is async — a `tracing` layer's
+   `on_event` is synchronous; one mutex serializes what v4's event loop
+   serializes for free, taken poison-tolerantly so a logging path can never
+   panic.
+3. **`error.name` is the generic `"Error"`** and `stack` is absent — a
+   `%e`-rendered Rust error has no runtime type name. Envelope keys stay v4's.
+4. **An unusable knob does not refuse the boot** (v4's zod schema throws) — it
+   falls back and complains once the subscriber exists.
+5. **No process is left with no destination** — `LOG_OUTPUT=file` with nowhere
+   to write installs stderr anyway and says why.
+
+**Two mechanism differences that reach v4's answer** (pinned, not smoothed):
+byte indexing where v4 indexes a UTF-16 code unit, and a same-named directory
+surviving because `remove_file` fails on it exactly as v4's `unlink` does.
+
+**A v4-side documentation nit, not worth a filing:** `.env.example:78`'s
+comment says `LOG_FILE_MAX_FILES` defaults to 5; the code
+(`file.ts:64`) and `lib/logging/README.md` both say 10. The port follows the
+code.
+
+**Container consequence, checked:** `Dockerfile` sets
+`QUILLTAP_DATA_DIR=/app/quilltap`, so records now land in the mounted volume
+at `/app/quilltap/logs/` — and because the default is `both` rather than v4's
+lived `file`, `docker logs` keeps working exactly as before instead of going
+quiet.
+
+**💸 OWED — the order's acceptance run, on real data.** Launch the dogfood
+copy, squeeze Max Context until the bug-70 warning fires, grep it out of
+`logs/combined.log`, then confirm `logs/terminals` and the `quilltap-*.log`
+family are untouched after a restart. It joins the standing dogfood queue;
+what landed here is unit-tier proof plus a live smoke of the real binary
+against a scratch instance (every `LOG_OUTPUT` value, the fallback complaint,
+a custom `LOG_FILE_PATH`, the v4-shaped records on disk).
+
+**Nothing deferred, nothing banked, no stubs.** Unit 5 is a ruled non-port
+with its reasoning on the function; it is not a deferral.
+
+**Versions:** quilltap-web 0.0.72 → 0.0.76, quilltap-tauri 0.0.6 → 0.0.7,
+quilltap-cli 0.0.9 → 0.0.10. `quilltap-core`, `quilltap-host` and
+`quilltap-harness` untouched.
+
+**For the unifier.** Sibling lanes this round are P4.D87 (`quilltap-core` +
+`quilltap-harness`) and P4.D88/D89/D90 (SPA only) — **no file overlap with
+this lane at all**; the only shared files are the two append-only documents.
+This lane touches no `api/**`, no `services/**`, no `apps/web/**`, and no
+fixture, so no sibling's oracles are invalidated by it.
+
+**The gate** (run from the lane worktree, `CARGO_INCREMENTAL=0` throughout):
+
+- `cargo fmt --all --check` — clean.
+- `cargo test --workspace` — **437 test binaries / 2,187 passed / 0 failed /
+  0 ignored**, exit 0. The lane's 33 `log_file` cases positively confirmed to
+  have RUN (counted in the log by name), not skipped.
+  ⚠ Sequencing, stated honestly: the workspace run started before two late
+  edits landed (the `init_tracing` doc header, and the wording of the
+  no-directory complaint string). Both clippy passes and the release build ran
+  **after** them, and `cargo test -p quilltap-web` was re-run on the final
+  bytes — 27 binaries / 79 passed / 0 failed, the 33-case family included. No assertion
+  reads that string's wording (`destinations_never_leave_a_process_silent`
+  checks `is_some()`), so the workspace numbers stand.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0.
+- the same **with `--features quilltap-core/native-transport`** — exit 0.
+- `cargo build --workspace --release` — exit 0.
+- No SPA gate: this lane touches nothing under `apps/web/`.
+- Spelling: `Quilltap` throughout; the diff greps clean for the misspelling.
