@@ -33,8 +33,16 @@ export class ScriptoriumStore {
 
   readonly isEmpty = computed(() => this._stores().length === 0);
 
-  async fetchStores(): Promise<void> {
-    this._loading.set(true);
+  /**
+   * `silent` refreshes in place without flipping `loading` (workspace tab
+   * re-activation) — v4 `useDocumentStores.fetchStores({ silent })`. A loading
+   * flip would swap the list for its spinner and unmount an in-place store
+   * detail.
+   */
+  async fetchStores(opts?: { silent?: boolean }): Promise<void> {
+    if (!opts?.silent) {
+      this._loading.set(true);
+    }
     this._error.set(null);
     try {
       this._stores.set(await api.fetchStores(this.core));

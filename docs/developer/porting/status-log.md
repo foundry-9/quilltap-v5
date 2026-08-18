@@ -74051,3 +74051,71 @@ decision, or one silently dropped from the map, reds it.
 Gate: `ng test --filter="tabActivationQueryKeys"` 7/7 green; the
 keep-alive spec gained a `provideTanStackQuery` provider (TabView now
 injects the query client) and stays green. SPA 0.5.506 → 0.5.507.
+
+## P4.D90 unit 3 — the hand-rolled views' silent reloads (2026-08-18)
+
+**Ported:** v4's per-view `useOnTabActivated` + `{ silent }` wiring —
+`AuroraView.tsx:101-106`, `CharacterDetailView.tsx:202-208`,
+`PhotosView.tsx:82-116`, `ProsperoView.tsx:41-46`,
+`ProjectDetailView.tsx:104-113`, `ScenariosView.tsx:23-27`,
+`ScriptoriumView.tsx:67-72`, `DocumentStoreDetailView.tsx:63-70`,
+`FileBrowser.tsx:291-296,350-354`.
+
+**Landed in v5:**
+
+- **Photos** — `loadInitial(opts?)` gained v4's `silent`; the hook calls
+  it `{silent: true}`. v4's generation guard is untouched.
+- **Scenarios** — `ScenarioMutator.refresh(opts?)` (the interface AND
+  `makeScenarioMutator`, so the project Scenarios card inherits the
+  option); the page hooks `refresh({silent: true})`.
+- **The Scriptorium** — `ScriptoriumStore.fetchStores(opts?)` +
+  `StoreDetail.loadStore(opts?)`, hooked in both the list and the drilled
+  detail. The file load stays LOUD, as v4 leaves it.
+- **Generate Image** — an explicit hook on `loadEntities` (the recorded
+  mechanism divergence: v4's list is TanStack and its map entry reaches
+  it; v5's is hand-rolled).
+- **Character detail** — the map covers detail/prompts/photos; the hook
+  additionally invalidates `characterKeys.stats`, `characterKeys.chats`
+  and `memoryKeys.list`, which is what v4's `dataRefreshKey` bump drives
+  (the stats fetch, the Conversations tab, the Memories tab) off one
+  React counter.
+
+**Not edited, with reasons:**
+
+- **Aurora / the characters list** — v5's groups section is TanStack
+  (`groupKeys.*`), where v4's `useGroups` is hand-rolled; the `aurora`
+  map entry reaches it. No hook needed.
+- **Prospero list + project detail** — all TanStack under `['projects']`.
+- **FileBrowser** — v5's is TanStack (`['files','general']`) and its
+  Refresh button is `query.refetch()`, which is loud by construction
+  (`isPending` stays false while data is on screen). v4 had to add the
+  `{silent}` split because its browser is hand-rolled.
+- **`wardrobe-control-dialog.ts`** — AT-UNIFY, P4.D88 owns the file (see
+  the lane record's handshake).
+
+**v4's `isEditing` guard — measured, NOT needed (Tier-1 item 5).** v4
+guards its project refetch because `fetchProject` re-seeds `editForm`
+unconditionally. v5 seeds ONCE PER ID (`project-detail.ts:189-202`
+`seededFor`), so a refetch of the same project cannot clobber typing.
+Pinned by a new `ProjectDetailScreen` spec — and the FIRST spelling of
+that spec was a FALSE GREEN: an invalidation that answers a deep-equal
+payload keeps TanStack's previous object reference, so the seed effect
+never re-runs and the assertion passes whatever the guard does (the
+known structural-sharing class). The spec now scripts a CHANGED project
+on the second read and asserts the read count; with the guard removed it
+reds (`expected 'Renamed Elsewhere' to be 'Half-typed name'`).
+
+**Mutation proofs (each run, each red):**
+
+- photos hook `{silent: true}` → `()`: reds the new
+  `PhotosPage tab re-activation` spec (`expected true to be false` — the
+  grid flipped to loading).
+- `fetchStores({silent: true})` → `()`: reds the new
+  `Scriptorium tab re-activation` spec (`expected 'Loading document
+  stores...' to contain 'Grimoire'`).
+- the project seed guard `seededFor !== project.id` → `true`: reds the
+  new project-refetch spec.
+
+Gate: the four touched spec files green by name; `ng build` clean (the
+`refresh(opts?)` widening is source-compatible with every existing
+caller). SPA 0.5.507 → 0.5.508.

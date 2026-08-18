@@ -13,6 +13,7 @@ import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
 import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
+import { projectKeys } from './projects.api';
 import { ProjectDetailScreen } from './project-detail';
 import { ProsperoList } from './prospero-list';
 import { ToastService } from '../../ui/toast.service';
@@ -641,6 +642,52 @@ describe('ProjectDetailScreen', () => {
     await settle(fixture);
     expect(fixture.nativeElement.querySelector('qt-error-alert')).toBeNull();
     expect(toasts()).toEqual([{ type: 'error', message: 'save failed' }]);
+  });
+
+  /**
+   * P4.D90: the `prospero` tab-activation entry sweeps the whole `['projects']`
+   * prefix, which includes this screen's `projects.detail` read. v4 needed an
+   * `isEditing` guard on its re-activation refresh because `fetchProject`
+   * re-seeds `editForm` unconditionally (`ProjectDetailView.tsx:104-113`); v5
+   * seeds ONCE PER ID, so a refetch of the SAME project cannot clobber
+   * in-progress typing and the guard is unnecessary. Pinned here so the
+   * measurement cannot rot silently.
+   */
+  it('a project refetch does not clobber in-progress header edits (v4 isEditing guard unnecessary)', async () => {
+    // The refetch must answer a CHANGED project: TanStack's structural sharing
+    // keeps the previous object reference for a deep-equal payload, and a
+    // reference that never changes cannot re-run the seed effect at all — the
+    // spec would pass whatever the guard did (the `false-green` class).
+    let reads = 0;
+    const fixture = await render(
+      stubClient((r) => {
+        if (r.type !== 'projectGet') return undefined;
+        reads += 1;
+        return { project: project({ name: reads > 1 ? 'Renamed Elsewhere' : 'Airship Saga' }) };
+      }),
+    );
+    (
+      [...fixture.nativeElement.querySelectorAll('button')].find(
+        (b: HTMLButtonElement) => b.textContent?.trim() === 'Edit',
+      ) as HTMLButtonElement
+    ).click();
+    await settle(fixture);
+    const nameInput = fixture.nativeElement.querySelector(
+      'input[aria-label="Project name"]',
+    ) as HTMLInputElement;
+    nameInput.value = 'Half-typed name';
+    nameInput.dispatchEvent(new Event('input'));
+    await settle(fixture);
+
+    // What tab re-activation does to this screen.
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: projectKeys.all });
+    await settle(fixture);
+    expect(reads).toBeGreaterThan(1);
+
+    const after = fixture.nativeElement.querySelector(
+      'input[aria-label="Project name"]',
+    ) as HTMLInputElement;
+    expect(after.value).toBe('Half-typed name');
   });
 });
 

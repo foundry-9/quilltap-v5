@@ -13,6 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
+import { onTabActivated } from '../../workspace/workspace-contract';
 import {
   GalleryEntry,
   PAGE_SIZE,
@@ -349,6 +350,12 @@ export class PhotosPage implements OnDestroy {
 
   constructor() {
     void this.loadInitial();
+    // Navigating back to this tab restarts the gallery from a fresh first page
+    // (silently — the current grid stays up while it loads). v4
+    // `PhotosView.tsx:113-116`.
+    onTabActivated(() => {
+      void this.loadInitial({ silent: true });
+    });
     // The sentinel only exists once there are entries to scroll past, so the
     // observer is (re)attached whenever the element appears or is replaced.
     effect(() => {
@@ -437,10 +444,16 @@ export class PhotosPage implements OnDestroy {
     void this.loadInitial();
   }
 
-  /** v4's `fetchInitial` effect (`:79-105`). */
-  private async loadInitial(): Promise<void> {
+  /**
+   * v4's `fetchFirstPage` (`:83-116`) — the first-page fetch shared by the
+   * on-search-change path and the tab re-activation refresh. `silent` keeps the
+   * current grid on screen (no loading flip) while the fresh page loads.
+   */
+  private async loadInitial(opts?: { silent?: boolean }): Promise<void> {
     const generation = ++this.generation;
-    this.loading.set(true);
+    if (!opts?.silent) {
+      this.loading.set(true);
+    }
     this.error.set(null);
     try {
       const result = await fetchGallery(this.core, {

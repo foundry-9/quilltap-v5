@@ -1,8 +1,10 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { WORKSPACE_TAB_VISIBLE } from '../../workspace/workspace-contract';
 import { PhotosPage } from './photos-page';
 import {
   GalleryEntry,
@@ -335,5 +337,54 @@ describe('PhotosPage (v4 app/photos/PhotosView.tsx)', () => {
     expect(page.entries()).toHaveLength(0);
     expect(page.total()).toBe(0);
     accepted.mockRestore();
+  });
+});
+
+describe('PhotosPage tab re-activation (P4.D90, v4 PhotosView.tsx:113-116)', () => {
+  beforeEach(() => {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+      observe(): void {}
+      disconnect(): void {}
+    };
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reloads the first page silently — the grid never flips back to its loading state', async () => {
+    const { client, calls } = stubClient([
+      { entries: [entry({ linkId: 'L1', fileName: 'a.webp' })], total: 1, hasMore: false },
+      { entries: [entry({ linkId: 'L2', fileName: 'b.webp' })], total: 1, hasMore: false },
+    ]);
+    const visible = signal(true);
+    TestBed.configureTestingModule({
+      imports: [PhotosPage],
+      providers: [
+        { provide: CoreClient, useValue: client },
+        { provide: WORKSPACE_TAB_VISIBLE, useValue: visible },
+        provideRouter([]),
+      ],
+    });
+    const fixture = TestBed.createComponent(PhotosPage);
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(calls.length).toBe(1);
+
+    const loading = () =>
+      (fixture.componentInstance as unknown as { loading: () => boolean }).loading();
+
+    // Leave the tab and come back.
+    visible.set(false);
+    fixture.detectChanges();
+    expect(calls.length).toBe(1); // hiding refreshes nothing
+    visible.set(true);
+    fixture.detectChanges();
+    // The refresh is in flight and the grid is still up: v4's `{ silent: true }`.
+    expect(loading()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('a.webp');
+
+    await settle(fixture);
+    expect(calls.length).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('b.webp');
   });
 });

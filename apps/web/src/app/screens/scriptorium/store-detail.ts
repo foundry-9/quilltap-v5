@@ -12,7 +12,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
-import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
+import { WORKSPACE_TAB_ID, onTabActivated } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
 import { FileManager } from '../../files/file-manager/file-manager';
 import type { MountType } from '../../files/types';
@@ -268,6 +268,18 @@ export class StoreDetail implements OnInit {
     return at ? new Date(at).toLocaleString() : 'Never';
   });
 
+  constructor() {
+    // Navigating back to the containing workspace tab refreshes the store and
+    // its file list in place (silent store load — no loading flip, which would
+    // swap the page for its loading state; v4 leaves the FILE load loud, as
+    // `DocumentStoreDetailView.tsx:63-70` does). v5's document stores are
+    // hand-rolled signals, so this hook IS the refresh for this surface.
+    onTabActivated(() => {
+      void this.loadStore({ silent: true });
+      void this.loadFiles();
+    });
+  }
+
   ngOnInit(): void {
     void this.loadStore();
     void this.loadFiles();
@@ -282,8 +294,14 @@ export class StoreDetail implements OnInit {
     void this.router.navigate(['/scriptorium']);
   }
 
-  protected async loadStore(): Promise<void> {
-    this.loading.set(true);
+  /**
+   * `silent` refreshes in place without flipping `loading` (tab re-activation)
+   * — v4 `useDocumentStoreDetail.fetchStore({ silent })`.
+   */
+  protected async loadStore(opts?: { silent?: boolean }): Promise<void> {
+    if (!opts?.silent) {
+      this.loading.set(true);
+    }
     this.error.set(null);
     try {
       this.store.set(await fetchStore(this.core, this.storeId()));

@@ -1,10 +1,11 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { DocMountPointDto } from '../../core/core-contract';
-import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
+import { WORKSPACE_TAB_ID, WORKSPACE_TAB_VISIBLE } from '../../workspace/workspace-contract';
 import { CreateStoreDialog } from './create-store-dialog';
 import { DirectoryPicker } from './directory-picker';
 import { FileTable } from './file-table';
@@ -260,6 +261,59 @@ describe('ScriptoriumList (in-tab drill)', () => {
 // ---------------------------------------------------------------------------
 // CreateStoreDialog — database hides the path + pattern fields.
 // ---------------------------------------------------------------------------
+describe('Scriptorium tab re-activation (P4.D90, v4 ScriptoriumView.tsx:67-72 + DocumentStoreDetailView.tsx:63-70)', () => {
+  function handler(r: DispatchReq): unknown {
+    switch (r.type) {
+      case 'mountPointList':
+        return { mountPoints: [store({ id: 'm1', name: 'Grimoire' })] };
+      case 'mountPointGet':
+        return { mountPoint: store({ id: 'm1', name: 'Grimoire' }) };
+      case 'mountFilesList':
+        return { files: [] };
+      default:
+        return {};
+    }
+  }
+
+  it('re-lists the stores silently — the list never flips back to its loading state', async () => {
+    const seen: DispatchReq[] = [];
+    const visible = signal(true);
+    TestBed.configureTestingModule({
+      imports: [ScriptoriumList],
+      providers: [
+        provideRouter([]),
+        {
+          provide: CoreClient,
+          useValue: stubClient((r) => {
+            seen.push(r);
+            return handler(r);
+          }),
+        },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-s' },
+        { provide: WORKSPACE_TAB_VISIBLE, useValue: visible },
+      ],
+    });
+    const fixture = TestBed.createComponent(ScriptoriumList);
+    fixture.detectChanges();
+    await settle(fixture);
+    const listCalls = () => seen.filter((r) => r.type === 'mountPointList').length;
+    expect(listCalls()).toBe(1);
+
+    visible.set(false);
+    fixture.detectChanges();
+    expect(listCalls()).toBe(1); // hiding refreshes nothing
+
+    visible.set(true);
+    fixture.detectChanges();
+    // In flight, with the current list still on screen (v4's `{ silent: true }`).
+    expect(fixture.nativeElement.textContent).toContain('Grimoire');
+    expect(fixture.nativeElement.querySelector('qt-loading-state')).toBeNull();
+
+    await settle(fixture);
+    expect(listCalls()).toBe(2);
+  });
+});
+
 describe('CreateStoreDialog', () => {
   function render(): ComponentFixture<CreateStoreDialog> {
     TestBed.configureTestingModule({

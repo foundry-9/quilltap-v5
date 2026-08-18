@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import { onTabActivated } from '../../workspace/workspace-contract';
 import { Icon } from '../../ui/icon';
 import { ScenariosManager } from './shared/scenarios-manager';
 import { generalScenarioMutator, type ScenarioMutator } from './scenarios.api';
@@ -53,6 +54,15 @@ import { generalScenarioMutator, type ScenarioMutator } from './scenarios.api';
 export class ScenariosPage implements OnInit {
   private readonly core = inject(CoreClient);
   protected readonly mutator = signal<ScenarioMutator | null>(null);
+
+  constructor() {
+    // Navigating back to this tab refreshes the list in place (silent — the
+    // current scenarios stay on screen while the fresh set loads). v4
+    // `ScenariosView.tsx:23-27`.
+    onTabActivated(() => {
+      void this.mutator()?.refresh({ silent: true });
+    });
+  }
 
   ngOnInit(): void {
     const m = generalScenarioMutator(this.core);

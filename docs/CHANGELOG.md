@@ -93,6 +93,13 @@ notice now owns its own lifetime: it stays up while the image is still
 generating, reports the outcome for six seconds and then dismisses itself,
 is dropped if the turn ends without ever producing a result, clears at
 once when you stop a turn, and carries a close button of its own.
+The workspace tabs that load their data outside the query cache now
+refresh on return too: My Photos, Scenarios, the Scriptorium (list and
+store detail), Generate Image's character list, and a character's stats,
+conversations and memories. Each refresh happens in place — the page you
+came back to stays on screen while fresh data arrives, instead of
+blinking through its loading state.
+
 Returning to a workspace tab now refreshes what it shows. Because tabs
 stay mounted, a tab you came back to still displayed whatever it had
 loaded when you left it. Each tab kind now declares which cached reads

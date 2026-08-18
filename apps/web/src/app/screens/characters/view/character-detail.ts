@@ -16,7 +16,11 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 import { map } from 'rxjs';
 
-import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
+import {
+  WORKSPACE_HANDLE,
+  WORKSPACE_TAB_ID,
+  onTabActivated,
+} from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type {
   CharacterConnectionProfile,
@@ -41,6 +45,7 @@ import {
   fetchDefaultPartner,
   rehydrateCharacter,
 } from '../characters.api';
+import { memoryKeys } from '../../../memory/memory.api';
 import { resolveUserToken } from '../templates';
 import { ArchiveCharacterDialog } from './archive-character-dialog';
 import { CharacterHeader } from './character-header';
@@ -367,6 +372,26 @@ export class CharacterDetail {
       untracked(() =>
         this.router.navigate(['/salon/new'], { queryParams: { characterId: this.id() } }),
       );
+    });
+
+    // Navigating back to the containing workspace tab refreshes the character
+    // and everything v4 keys off `dataRefreshKey` (v4
+    // `CharacterDetailView.tsx:202-208`). The tab-activation map already sweeps
+    // detail / prompts / photos for this kind; v4 additionally bumps a React
+    // counter that re-runs the stats fetch, the Conversations tab and the
+    // Memories tab, which in v5 are three separate query keys — so they are
+    // named here rather than left unrefreshed. No `loading` flips: TanStack
+    // keeps the previous data on screen while it refetches.
+    onTabActivated(() => {
+      const id = this.id();
+      if (!id) return;
+      for (const queryKey of [
+        characterKeys.stats(id),
+        characterKeys.chats(id),
+        memoryKeys.list(id),
+      ]) {
+        void this.queryClient.invalidateQueries({ queryKey });
+      }
     });
   }
 

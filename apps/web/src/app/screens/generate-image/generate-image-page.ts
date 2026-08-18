@@ -11,6 +11,7 @@ import {
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
+import { onTabActivated } from '../../workspace/workspace-contract';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
 import { ImageModal } from '../../images/image-modal';
 import { fileUrl } from '../../images/image-urls';
@@ -308,6 +309,18 @@ export class GenerateImagePage implements OnInit {
       .filter((e) => e.name.toLowerCase().includes(term))
       .slice(0, 10);
   });
+
+  constructor() {
+    // MECHANISM DIVERGENCE, deliberate: v4's `generate-image` tab entry sweeps
+    // `characters.all`, which reaches its TanStack character list
+    // (`GenerateImageView.tsx:49-51`). v5's insert list is hand-rolled
+    // (`loadEntities`), so the map entry cannot reach it — this page takes the
+    // hook as well. The map keeps its prefixes for the sibling tabs that share
+    // them.
+    onTabActivated(() => {
+      void this.loadEntities();
+    });
+  }
 
   ngOnInit(): void {
     void this.loadEntities();

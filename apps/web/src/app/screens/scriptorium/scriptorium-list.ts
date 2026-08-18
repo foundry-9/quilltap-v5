@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
+import { WORKSPACE_TAB_ID, onTabActivated } from '../../workspace/workspace-contract';
 import { LoadingState } from '../../ui/loading-state';
 import { ConvertStoreDialog } from './convert-store-dialog';
 import { CreateStoreDialog } from './create-store-dialog';
@@ -164,6 +164,14 @@ export class ScriptoriumList implements OnInit {
     effect(() => {
       const id = this.initialStoreId();
       if (id) untracked(() => this.selectedStoreId.set(id));
+    });
+
+    // Navigating back to this tab refreshes the list in place (silent — no
+    // loading flip, which would unmount an in-place store detail). v4
+    // `ScriptoriumView.tsx:67-72`. v5's stores are hand-rolled signals, so the
+    // tab-activation map has no entry for this kind — this hook IS the refresh.
+    onTabActivated(() => {
+      void this.store.fetchStores({ silent: true });
     });
   }
 

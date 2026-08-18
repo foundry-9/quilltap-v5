@@ -42,7 +42,8 @@ export interface ScenarioMutator {
   readonly loading: Signal<boolean>;
   readonly error: Signal<string | null>;
   readonly mountPointId: Signal<string | null>;
-  refresh(): Promise<void>;
+  /** `silent` refreshes in place without flipping `loading` (tab re-activation). */
+  refresh(opts?: { silent?: boolean }): Promise<void>;
   createScenario(input: ScenarioCreateInput): Promise<ScenarioResult<{ path: string }>>;
   updateScenario(scenarioPath: string, input: ScenarioUpdateInput): Promise<ScenarioResult>;
   renameScenario(
@@ -92,8 +93,12 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     warnings.set(body.warnings ?? []);
   }
 
-  async function refresh(): Promise<void> {
-    loading.set(true);
+  async function refresh(opts?: { silent?: boolean }): Promise<void> {
+    // A silent refresh (workspace tab re-activation) keeps the current list on
+    // screen instead of flipping the manager back to its loading state.
+    if (!opts?.silent) {
+      loading.set(true);
+    }
     error.set(null);
     try {
       const data = await ops.list();
