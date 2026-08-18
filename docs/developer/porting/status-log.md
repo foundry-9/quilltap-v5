@@ -73296,7 +73296,7 @@ process environment is read by `LogSettings::from_env`, because mutating env
 in a test races the parallel threads, the same reason
 `tracing_filter_directive` is pure).
 
-**Family:** `quilltap-web::log_file::knob_tests` — 5 cases (module total 33).
+**Family:** `quilltap-web::log_file::knob_tests` — 6 cases (module total 33).
 The four defaults, v4's three `LOG_OUTPUT` values with the fan-out each
 implies, the `LOG_FILE_PATH` quirk both ways, the numeric knobs + their
 complaints, the destination table, and an end-to-end layer case asserting a

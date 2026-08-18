@@ -357,6 +357,10 @@ export function onTabActivated(callback: () => void): void {
  *  - the callback runs `untracked`: v4's `callbackRef` indirection keeps the
  *    effect's dependency list to `[visible]` alone, so a signal the callback
  *    reads must never become a trigger for it.
+ *
+ * Like {@link onTabActivated}, this creates an `effect()` and must therefore be
+ * called from an injection context (a constructor / field initializer) — a
+ * non-context caller hits NG0203 at runtime.
  */
 export function watchTabActivation(
   visible: Signal<boolean>,

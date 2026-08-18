@@ -946,6 +946,12 @@ pub struct LogSettings {
 /// always set, and the transport therefore honours it **only if it is set AND
 /// is not the literal default**. A deployment that spells out `./logs` gets the
 /// instance's logs dir, not a relative directory beside the process's cwd.
+///
+/// Recorded divergence (rides #4's fall-back-don't-refuse spirit): every knob
+/// value is TRIMMED before interpretation, where v4 feeds the raw bytes to its
+/// zod schema — so `LOG_OUTPUT=" file"` is honoured here and refused there, and
+/// a `LOG_FILE_PATH` of `" ./logs "` collapses to the quirk default rather than
+/// being taken as a literal whitespace-wrapped path.
 pub fn resolve_log_settings(
     output: Option<&str>,
     file_path: Option<&str>,

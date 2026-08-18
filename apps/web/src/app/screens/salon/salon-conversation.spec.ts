@@ -2123,6 +2123,28 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
     expect(notice(fixture)).toBeNull();
   });
 
+  it('a REAL send that completes clears a stranded pending notice (the wiring, not the method)', async () => {
+    // The §3 unification catch: every other boundary spec invokes the private
+    // clear method directly, so deleting the ONE production call in the send
+    // flow's reconcile tail would red nothing — the exact bug-77 shape shipping
+    // invisibly (the #58 PumpPause WIRING-test lesson). This spec drives
+    // `send()` end to end instead: the notice is raised through the production
+    // door, the turn completes, and the reconcile tail must be what clears it.
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chatDetail(), events$));
+    const inst = fixture.componentInstance as unknown as {
+      send(p: { content: string; fileIds: string[] }): void;
+    };
+    report(fixture, state([]), state([{ id: 't0', status: 'pending' }]));
+    expect(notice(fixture)!.status).toBe('pending');
+    inst.send({ content: 'paint the estate at dusk', fileIds: [] });
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(notice(fixture)).toBeNull();
+  });
+
   it('the turn-end boundary does NOT cut a settled countdown short', async () => {
     // ⚠ The mutation proof of the stranded-vs-settled distinction: a
     // `clearPending` that cleared unconditionally (v4's own pre-fix shape, and
