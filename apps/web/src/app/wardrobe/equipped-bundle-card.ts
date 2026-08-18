@@ -2,8 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 
 import type { WardrobeItemDto } from '../core/core-contract';
 import type { EquippedBundle } from './equipped-slots';
-import { TYPE_BADGE_CLASS } from './item-editor/constants';
-import { SLOT_LABEL } from './equipped-slot-row';
+import { WARDROBE_SLOT_META } from './slot-meta';
 
 /**
  * Renders a multi-slot composite ("bundle") as a single card above the slot
@@ -30,8 +29,8 @@ import { SLOT_LABEL } from './equipped-slot-row';
           </div>
           <div class="flex flex-wrap gap-1 mt-1">
             @for (slot of bundle().occupiedSlots; track slot) {
-              <span class="qt-badge uppercase" [class]="badgeClass[slot]">
-                {{ slotLabel[slot] }}
+              <span class="qt-badge uppercase" [class]="slotMeta[slot].badgeClass">
+                {{ slotMeta[slot].label }}
               </span>
             }
           </div>
@@ -70,8 +69,7 @@ export class EquippedBundleCard {
   readonly takeOff = output<EquippedBundle>();
   readonly breakApart = output<EquippedBundle>();
 
-  protected readonly badgeClass = TYPE_BADGE_CLASS;
-  protected readonly slotLabel = SLOT_LABEL;
+  protected readonly slotMeta = WARDROBE_SLOT_META;
 
   /** v4 `:51-52`. */
   protected readonly title = computed(

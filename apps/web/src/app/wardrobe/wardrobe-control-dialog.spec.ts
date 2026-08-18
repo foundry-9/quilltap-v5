@@ -30,8 +30,9 @@ function dto(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDt
 
 const SHIRT = dto({ id: 'shirt', title: 'Shirt', isDefault: true });
 const HAT = dto({ id: 'hat', title: 'Hat', types: ['accessories'] });
+const WAVES = dto({ id: 'waves', title: 'Marcel Waves', types: ['hair'] });
 
-const WORN: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [] };
+const WORN: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [], hair: [] };
 
 /** The default route: two characters, c1's wardrobe, a worn outfit for c1. */
 function defaultRoute(req: AnyRequest): Record<string, unknown> | Error {
@@ -132,6 +133,33 @@ const equips = (seen: AnyRequest[]): AnyRequest[] =>
 describe('WardrobeControlDialogInner — chat-aware behavior', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it('offers a slot filter per slot plus All, Hair included (v4 SLOT_FILTERS, P4.D88)', async () => {
+    const { fixture, component } = await renderInner(null, (req) =>
+      (req.type as string) === 'characterWardrobeList'
+        ? { wardrobeItems: (req as { characterId?: string }).characterId === 'c1' ? [SHIRT, HAT, WAVES] : [] }
+        : defaultRoute(req),
+    );
+    const chips = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button.qt-button-sm'),
+    ).map((b) => b.textContent?.trim());
+    for (const label of ['All', 'Top', 'Bottom', 'Footwear', 'Accessories', 'Hair']) {
+      expect(chips).toContain(label);
+    }
+
+    // …and the Hair chip narrows the wardrobe LIST to hairdos (v4
+    // `filteredItems`). Scope to the rows: the Builder's slot rows carry the
+    // default-outfit shirt regardless of the filter.
+    const c = component as unknown as { slotFilter: { set(v: string): void } };
+    c.slotFilter.set('hair');
+    fixture.detectChanges();
+    const rows = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('qt-wardrobe-item-row'),
+    ).map((r) => r.textContent ?? '');
+    expect(rows.some((t) => t.includes('Marcel Waves'))).toBe(true);
+    expect(rows.some((t) => t.includes('Shirt'))).toBe(false);
+    expect(rows.some((t) => t.includes('Hat'))).toBe(false);
+  });
+
   it('rightTab defaults to live in chat and builder out of chat (v4 :203-204)', async () => {
     const inChat = await renderInner('chat-1');
     expect(inner(inChat.component).rightTab()).toBe('live');
@@ -179,6 +207,7 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
           bottom: [],
           footwear: [],
           accessories: ['hat'],
+          hair: [],
         },
       },
     ]);
@@ -225,7 +254,7 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
         chatId: 'chat-1',
         characterId: 'c1',
         mode: 'set_all',
-        slots: { top: [], bottom: [], footwear: [], accessories: [] },
+        slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
       },
     ]);
     expect(closedSpy).toHaveBeenCalledTimes(1);
@@ -435,7 +464,7 @@ describe('WardrobeControlDialogInner — bundles dissolve as they go on', () => 
       };
     }
     if ((req.type as string) === 'chatOutfitGet') {
-      return { equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [] } } };
+      return { equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } } };
     }
     return defaultRoute(req);
   };

@@ -3373,8 +3373,14 @@ export interface ScenarioListDto {
   warnings: string[];
 }
 
-/** The four wardrobe coverage slots (v4 `WardrobeItemTypeEnum`). */
-export type WardrobeSlotType = 'top' | 'bottom' | 'footwear' | 'accessories';
+/**
+ * The five wardrobe coverage slots, in canonical order (v4
+ * `WardrobeItemTypeEnum`, derived from `WARDROBE_SLOT_TYPES`). `hair` holds a
+ * hairdo — braids, an updo, a wig — not hair itself; natural hair stays in the
+ * physical description. Appended LAST: inserting mid-list would rewrite every
+ * serialized `types` array. The SPA's registry is `wardrobe/slot-meta.ts`.
+ */
+export type WardrobeSlotType = 'top' | 'bottom' | 'footwear' | 'accessories' | 'hair';
 
 /**
  * One project (or character) wardrobe item (v4 `WardrobeItemSchema`). The
@@ -3791,13 +3797,14 @@ export interface OutfitPreviewEntry {
   isComposite: boolean;
 }
 
-/** The decided four-slot outfit rendered read-only in the Green Room (Rust `OutfitPreviewSlots`). */
-export interface OutfitPreviewSlots {
-  top: OutfitPreviewEntry[];
-  bottom: OutfitPreviewEntry[];
-  footwear: OutfitPreviewEntry[];
-  accessories: OutfitPreviewEntry[];
-}
+/**
+ * The decided per-slot outfit rendered read-only in the Green Room (Rust
+ * `OutfitPreviewSlots`). One key per slot, v4's own shape since `4423ad10`
+ * (`Record<WardrobeItemType, OutfitPreviewEntry[]>` — never restate the list).
+ * A frame minted by an older server omits `hair`; readers tolerate that with
+ * `?? []` rather than widening the type.
+ */
+export type OutfitPreviewSlots = Record<WardrobeSlotType, OutfitPreviewEntry[]>;
 
 /**
  * Creation-progress frame fields (D6 — the Green Room), re-pinned P4.6q FROM
@@ -5788,6 +5795,9 @@ export interface EquippedSlots {
   bottom: string[];
   footwear: string[];
   accessories: string[];
+  /** The hairdo slot (v4 `4423ad10`). An older payload omits it; readers
+   *  tolerate the absence as `[]`, as v4's `cloneEquippedSlots` does. */
+  hair: string[];
 }
 
 /** v4 `GET /api/v1/chats/{id}?action=outfit` (`outfit.ts` `handleGetOutfit`). */
@@ -5819,7 +5829,7 @@ export interface ChatEquipRequest {
   chatId: string;
   characterId: string;
   mode: ChatEquipMode;
-  slot?: 'top' | 'bottom' | 'footwear' | 'accessories';
+  slot?: WardrobeSlotType;
   itemId?: string | null;
   slots?: EquippedSlots;
 }

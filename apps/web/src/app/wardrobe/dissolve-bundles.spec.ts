@@ -50,7 +50,13 @@ function makeItem(
 const buildMap = (items: WardrobeItemDto[]): Map<string, WardrobeItemDto> =>
   new Map(items.map((i) => [i.id, i]));
 
-const empty = (): EquippedSlots => ({ top: [], bottom: [], footwear: [], accessories: [] });
+const empty = (): EquippedSlots => ({
+  top: [],
+  bottom: [],
+  footwear: [],
+  accessories: [],
+  hair: [],
+});
 
 // "Man in Black": a four-slot bundle over four single-slot garments.
 const shirt = makeItem('shirt', ['top']);
@@ -142,12 +148,14 @@ describe('layLeavesIntoSlots', () => {
       bottom: [],
       footwear: ['sandals'],
       accessories: [],
+      hair: [],
     };
     expect(layLeavesIntoSlots(worn, manInBlack, leaves, { clearCoveredSlots: false })).toEqual({
       top: ['vest', 'shirt'],
       bottom: [],
       footwear: ['sandals', 'boots'],
       accessories: [],
+      hair: [],
     });
   });
 
@@ -157,12 +165,14 @@ describe('layLeavesIntoSlots', () => {
       bottom: ['skirt'],
       footwear: ['sandals'],
       accessories: ['hat'],
+      hair: [],
     };
     expect(layLeavesIntoSlots(worn, manInBlack, leaves, { clearCoveredSlots: true })).toEqual({
       top: ['shirt'],
       bottom: [],
       footwear: ['boots'],
       accessories: [],
+      hair: [],
     });
   });
 
@@ -175,17 +185,25 @@ describe('layLeavesIntoSlots', () => {
       bottom: [],
       footwear: ['sandals'],
       accessories: [],
+      hair: [],
     };
     expect(layLeavesIntoSlots(worn, topOnly, leaves, { clearCoveredSlots: true })).toEqual({
       top: ['shirt'],
       bottom: [],
       footwear: ['boots'],
       accessories: [],
+      hair: [],
     });
   });
 
   it('does not duplicate a part already worn', () => {
-    const worn: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [] };
+    const worn: EquippedSlots = {
+      top: ['shirt'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     const result = layLeavesIntoSlots(worn, manInBlack, leaves, { clearCoveredSlots: false });
     expect(result.top).toEqual(['shirt']);
   });
@@ -199,12 +217,19 @@ describe('wearItemIntoSlots with a bundle', () => {
       bottom: ['trousers'],
       footwear: ['boots'],
       accessories: ['gloves'],
+      hair: [],
     });
     expect(JSON.stringify(result)).not.toContain('man-in-black');
   });
 
   it('layers the parts over what is worn by default', () => {
-    const worn: EquippedSlots = { top: ['vest'], bottom: [], footwear: [], accessories: [] };
+    const worn: EquippedSlots = {
+      top: ['vest'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     expect(wearItemIntoSlots(worn, manInBlack, WARDROBE).top).toEqual(['vest', 'shirt']);
   });
 
@@ -220,12 +245,14 @@ describe('wearItemIntoSlots with a bundle', () => {
       bottom: ['skirt'],
       footwear: ['sandals'],
       accessories: ['hat'],
+      hair: [],
     };
     expect(wearItemIntoSlots(worn, replacing, WARDROBE)).toEqual({
       top: ['shirt'],
       bottom: ['trousers'],
       footwear: ['boots'],
       accessories: ['gloves'],
+      hair: [],
     });
   });
 
@@ -235,6 +262,7 @@ describe('wearItemIntoSlots with a bundle', () => {
       bottom: ['man-in-black'],
       footwear: ['man-in-black'],
       accessories: ['man-in-black'],
+      hair: [],
     });
   });
 
@@ -244,6 +272,7 @@ describe('wearItemIntoSlots with a bundle', () => {
       bottom: [],
       footwear: [],
       accessories: [],
+      hair: [],
     });
   });
 });
@@ -255,12 +284,14 @@ describe('replaceItemIntoSlots with a bundle', () => {
       bottom: ['skirt'],
       footwear: [],
       accessories: [],
+      hair: [],
     };
     expect(replaceItemIntoSlots(worn, manInBlack, WARDROBE)).toEqual({
       top: ['shirt'],
       bottom: ['trousers'],
       footwear: ['boots'],
       accessories: ['gloves'],
+      hair: [],
     });
   });
 });
@@ -272,6 +303,7 @@ describe('addItemToSlot with a bundle', () => {
       bottom: [],
       footwear: [],
       accessories: [],
+      hair: [],
     });
   });
 
@@ -289,12 +321,14 @@ describe('dissolveBundlesInSlots', () => {
       bottom: ['man-in-black'],
       footwear: ['man-in-black'],
       accessories: ['man-in-black'],
+      hair: [],
     };
     expect(dissolveBundlesInSlots(worn, WARDROBE)).toEqual({
       top: ['undershirt', 'shirt', 'scarf'],
       bottom: ['trousers'],
       footwear: ['boots'],
       accessories: ['gloves'],
+      hair: [],
     });
   });
 
@@ -302,12 +336,19 @@ describe('dissolveBundlesInSlots', () => {
     const hat = makeItem('hat', ['accessories']);
     const kit = makeItem('kit', ['top'], ['shirt', 'hat']);
     const map = buildMap([shirt, hat, kit]);
-    const worn: EquippedSlots = { top: ['kit'], bottom: [], footwear: [], accessories: [] };
+    const worn: EquippedSlots = {
+      top: ['kit'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     expect(dissolveBundlesInSlots(worn, map)).toEqual({
       top: ['shirt'],
       bottom: [],
       footwear: [],
       accessories: ['hat'],
+      hair: [],
     });
   });
 
@@ -317,13 +358,20 @@ describe('dissolveBundlesInSlots', () => {
       bottom: ['trousers'],
       footwear: [],
       accessories: [],
+      hair: [],
     };
     expect(dissolveBundlesInSlots(worn, WARDROBE)).toBe(worn);
   });
 
   it('leaves an unresolvable bundle in place', () => {
     const orphan = makeItem('orphan', ['top'], ['nowhere']);
-    const worn: EquippedSlots = { top: ['orphan'], bottom: [], footwear: [], accessories: [] };
+    const worn: EquippedSlots = {
+      top: ['orphan'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     expect(dissolveBundlesInSlots(worn, buildMap([orphan])).top).toEqual(['orphan']);
   });
 });

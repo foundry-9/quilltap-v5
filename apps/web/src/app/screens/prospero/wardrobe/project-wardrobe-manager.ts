@@ -132,7 +132,7 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
                     [checked]="draft().types.includes(type)"
                     (change)="toggleType(type)"
                   />
-                  {{ type }}
+                  <span class="capitalize">{{ type }}</span>
                 </label>
               }
             </div>

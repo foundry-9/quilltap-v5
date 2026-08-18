@@ -28,7 +28,7 @@
  * on reconcile.
  */
 
-import { WARDROBE_SLOT_TYPES } from '../screens/prospero/wardrobe.api';
+import { cloneSlots, freshSlots, WARDROBE_SLOT_TYPES } from './slot-meta';
 import type { EquippedSlots, WardrobeSlotType } from '../core/core-contract';
 import { expandComposites } from './expand-composites';
 
@@ -134,12 +134,7 @@ export function layLeavesIntoSlots(
   leaves: readonly DissolvedLeaf[],
   options: { clearCoveredSlots: boolean },
 ): EquippedSlots {
-  const slots: EquippedSlots = {
-    top: [...currentSlots.top],
-    bottom: [...currentSlots.bottom],
-    footwear: [...currentSlots.footwear],
-    accessories: [...currentSlots.accessories],
-  };
+  const slots: EquippedSlots = cloneSlots(currentSlots);
 
   if (options.clearCoveredSlots) {
     const covered = new Set<WardrobeSlotType>(slotsCoveredBy(bundle));
@@ -186,7 +181,7 @@ export function dissolveBundlesInSlots(
 
   if (dissolved.size === 0) return currentSlots;
 
-  const next: EquippedSlots = { top: [], bottom: [], footwear: [], accessories: [] };
+  const next: EquippedSlots = freshSlots();
 
   // Substitute in place, so a bundle's parts inherit its position in the
   // layering order rather than jumping to the end of the slot.

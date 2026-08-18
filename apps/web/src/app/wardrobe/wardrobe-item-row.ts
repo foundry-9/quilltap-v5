@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { TYPE_BADGE_CLASS } from './item-editor/constants';
-import { SLOT_LABEL } from './equipped-slot-row';
+import { WARDROBE_SLOT_META } from './slot-meta';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -63,7 +62,7 @@ import { SLOT_LABEL } from './equipped-slot-row';
               <span class="qt-text-xs qt-text-secondary">· default</span>
             }
             @for (t of item().types; track t) {
-              <span class="qt-badge" [class]="badgeClass[t]">{{ t }}</span>
+              <span class="qt-badge" [class]="slotMeta[t].badgeClass">{{ t }}</span>
             }
           </div>
           @if (item().appropriateness) {
@@ -110,8 +109,10 @@ import { SLOT_LABEL } from './equipped-slot-row';
                           (click)="pickSlot(slot)"
                           class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:qt-bg-muted"
                         >
-                          <span>{{ slotLabel[slot] }}</span>
-                          <span class="qt-badge" [class]="badgeClass[slot]">{{ slot }}</span>
+                          <span>{{ slotMeta[slot].label }}</span>
+                          <span class="qt-badge" [class]="slotMeta[slot].badgeClass">{{
+                            slot
+                          }}</span>
                         </button>
                       </li>
                     }
@@ -269,8 +270,7 @@ export class WardrobeItemRow {
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 
-  protected readonly badgeClass = TYPE_BADGE_CLASS;
-  protected readonly slotLabel = SLOT_LABEL;
+  protected readonly slotMeta = WARDROBE_SLOT_META;
 
   protected readonly expanded = signal(false);
   protected readonly slotPickerOpen = signal(false);
@@ -292,7 +292,7 @@ export class WardrobeItemRow {
   protected readonly addTooltip = computed(() => {
     const types = this.item().types;
     if (types.length === 1) {
-      return `${this.addAction() === 'layer' ? 'Layer onto' : 'Add to'} ${SLOT_LABEL[types[0]].toLowerCase()}`;
+      return `${this.addAction() === 'layer' ? 'Layer onto' : 'Add to'} ${WARDROBE_SLOT_META[types[0]].label.toLowerCase()}`;
     }
     return this.addAction() === 'layer' ? 'Layer onto a slot' : 'Add to a slot';
   });

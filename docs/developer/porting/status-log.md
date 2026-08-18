@@ -73508,3 +73508,97 @@ fixture, so no sibling's oracles are invalidated by it.
 - `cargo build --workspace --release` — exit 0.
 - No SPA gate: this lane touches nothing under `apps/web/`.
 - Spelling: `Quilltap` throughout; the diff greps clean for the misspelling.
+---
+
+## P4.D88 unit 1 — the SPA slot registry and the fifth slot (v4 `4423ad10` client)
+
+**Lane:** P4.D88. **Files:** NEW `apps/web/src/app/wardrobe/slot-meta.ts`;
+`core-contract.ts`; `wardrobe/{equipped-slots,dissolve-bundles,outfit-store,
+equipped-slot-row,equipped-bundle-card,wardrobe-item-row,wardrobe-control-dialog}.ts`;
+`wardrobe/item-editor/{constants,types,wardrobe-component-picker}.ts`;
+`screens/new-chat/{outfit-selector,outfit-slots-preview}.ts`;
+`screens/prospero/wardrobe.api.ts`;
+`screens/prospero/wardrobe/project-wardrobe-manager.ts`; the two
+`styles/qt-components/` mirrors. **Oracle:** v4's REAL client at `979652a9`
+(`4423ad10`'s client half) — no new v4 client test shipped with it, so the
+parity is against the component behavior at the cited lines.
+
+### What v4's client half actually is
+
+A net deletion. `lib/schemas/wardrobe.types.ts` gained `WARDROBE_SLOT_TYPES` +
+`WARDROBE_SLOT_META` (label / groupLabel / badgeClass / isClothing /
+reportWhenEmpty / emptyFallback), after which five local label-and-badge maps
+were deleted and hair appeared automatically in every surface that had been
+restating the list. v5 had already collapsed those five maps into two
+(`SLOT_LABEL` in `equipped-slot-row.ts`, `TYPE_BADGE_CLASS` in
+`item-editor/constants.ts`); both are now gone, and every consumer reads
+`WARDROBE_SLOT_META`.
+
+### Where the registry lives, and the two helper names
+
+`app/wardrobe/slot-meta.ts` holds the ordered list, the meta table,
+`CLOTHING_SLOT_TYPES`, `isSlotReportedWhenEmpty`,
+`UNREPORTED_IF_BLANK_SLOT_TYPES`, and the two snapshot helpers. The canonical
+list used to live in `screens/prospero/wardrobe.api.ts`, which now re-exports
+it so its importers are undisturbed.
+
+The helpers keep v5's established names: `freshSlots` IS v4's new
+`makeEmptyEquippedSlots`, `cloneSlots` IS v4's new `cloneEquippedSlots` — v4's
+rename came with a behavior change (it retired a
+`{...EMPTY_EQUIPPED_SLOTS}` spread that shared arrays) that v5 never had. Both
+are now registry-driven, so a sixth slot arrives in them for free, and
+`cloneSlots` gained v4's `slots[s] ?? []` tolerance. They had to move OUT of
+`equipped-slots.ts` into the registry module: `dissolve-bundles.ts` needs them
+and `equipped-slots.ts` imports `dissolve-bundles.ts` (an import cycle).
+`equipped-slots.ts` re-exports both.
+
+### The contract
+
+`WardrobeSlotType` gains `'hair'`; `EquippedSlots` gains `hair: string[]`;
+`ChatEquipRequest.slot` becomes `WardrobeSlotType` (v4 swapped its inline
+`z.enum` for `WardrobeItemTypeEnum` at the same line); and `OutfitPreviewSlots`
+becomes `Record<WardrobeSlotType, OutfitPreviewEntry[]>` — v4's own shape
+choice for that type in this commit.
+
+### ⚠ The order's "empty-hair silence" premise is REFUTED by measurement
+
+The order's mandate asked that "NOTHING renders for an empty hair slot (no
+filter chip count, no vacancy text — mirror the reportWhenEmpty contract
+wherever the SPA lists slots)", with a mutation proof for the silence.
+Measured against v4's real client at `979652a9`: `reportWhenEmpty` is consumed
+in `lib/` ONLY — `lib/tools/handlers/wardrobe-{create-handler,handler-shared}.ts`
+and `lib/wardrobe/outfit-description.ts`, i.e. the surfaces that narrate an
+outfit to a model or into prose. **No v4 component reads it.** v4's
+`OutfitSlotsPreview` renders a card for all five slots and prints "nothing" in
+an empty hair card; v4's `EquippedSlotRow` renders the Hair row and prints
+"Empty"; the slot-filter chips carry no counts on either side. Inventing the
+silence in v5 would have been a divergence, so v5 renders what v4 renders and
+the SPA has no `reportWhenEmpty` reader at all (the flag is carried in the
+registry for parity and for any future narration site). The SPA also has no
+twin of `outfit-description.ts` — the vacancy phrases live in the Rust core,
+which is P4.D87's half. The specs pin v4's actual render, in both directions.
+
+### The CSS
+
+`--qt-badge-wardrobe-hair-{bg,fg}` light + dark, the selector-line addition,
+and the rose rule, in v5's `_variables.css` / `_content.css` mirrors — the
+Shared contract's values, byte-for-byte with v4's `app/styles/` hunk. v4's
++101 theme-storybook hunk has no v5 target (v5 ships no storybook package).
+
+### Riders
+
+`ProjectWardrobeManager`'s slot checkboxes gained v4's `capitalize` span.
+
+### The parity cases in the touched specs
+
+`outfit-composer.spec.ts` — five slot rows, the Hair row's rose badge, a worn
+hairdo as a chip. `wardrobe-control-dialog.spec.ts` — the slot-filter chips
+include Hair, and the Hair chip narrows the wardrobe LIST (scoped to
+`qt-wardrobe-item-row`: the Builder's slot rows carry the default-outfit shirt
+regardless of the filter). `wardrobe-item-editor.spec.ts` — the Type(s)
+checkboxes are the five slots with hair last, and a hairdo saves with
+`types: ['hair']`. Every other spec's `EquippedSlots` literal gained `hair: []`
+because the key is required.
+
+**Gate:** `ng test` 330 files / 4,845 / 0; `ng build` clean; `cargo fmt --all
+--check` clean. No crate touched. SPA 0.5.505 → 0.5.506.

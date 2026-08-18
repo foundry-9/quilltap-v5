@@ -16,5 +16,5 @@ export interface CandidateItem {
   isShared: boolean;
 }
 
-/** v4 `types.ts:17`. */
-export type CandidateGroup = 'top' | 'bottom' | 'footwear' | 'accessories' | 'multi';
+/** v4 `types.ts:17` — every slot, plus the multi-slot catch-all. */
+export type CandidateGroup = WardrobeSlotType | 'multi';

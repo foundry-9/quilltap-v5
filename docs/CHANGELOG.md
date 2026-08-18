@@ -55,6 +55,15 @@ The `quilltap` command-line tool still logs only to the terminal, as it
 always has — it reads the log files rather than writing them, and a
 short-lived command must not rotate a log file out from under a running
 server.
+Added the "hair" wardrobe slot to the app. It holds a hairdo — braids, an
+updo, marcel waves, a wig — not hair itself; colour, length, and texture
+stay in the physical description. Hair appears wherever the other four
+slots do: the wardrobe dialog's slot filters and equipped rows, the item
+editor's types and component groups, the project wardrobe, the
+"same as last conversation" preview, and the Green Room's outfit preview,
+all wearing a rose badge. The app now reads one slot registry instead of
+five copies of the slot list, and an outfit saved before the hair slot
+existed still opens, with hair empty.
 
 Fixed Fetch Models returning nothing for Google. Two faults compounded:
 the model list was filtered on a field name the Google SDK invents when it

@@ -231,6 +231,28 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
   // -------------------------------------------------------------------------
   // Types / bundle machinery (v4 :226-257)
   // -------------------------------------------------------------------------
+  it('offers a Type(s) checkbox per slot, hair LAST, and saves a hairdo (P4.D88)', async () => {
+    const { fixture, component, seen } = await render();
+    // The Type(s) checkboxes are the `items-center` labels; the default-outfit
+    // checkbox below them is `items-start`.
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label.inline-flex.items-center'),
+    ).map((l) => l.textContent?.trim());
+    expect(labels).toEqual(['top', 'bottom', 'footwear', 'accessories', 'hair']);
+
+    const c = component as unknown as {
+      title: { set(v: string): void };
+      handleTypeToggle: (t: string) => void;
+      handleSave: () => Promise<void>;
+    };
+    c.title.set('Marcel Waves');
+    c.handleTypeToggle('hair');
+    await c.handleSave();
+    await settle(fixture);
+    const created = seen.find((r) => (r.type as string) === 'characterWardrobeCreate');
+    expect((created?.['item'] as { types: string[] }).types).toEqual(['hair']);
+  });
+
   it('computedTypes mirrors the server union in canonical order (v4 :226-230)', async () => {
     const { component } = await render({}, (req) =>
       (req.type as string) === 'characterWardrobeList'

@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
 import { WARDROBE_SLOT_TYPES } from '../equipped-slots';
 import type { WardrobeSlotType } from '../../core/core-contract';
-import { GROUP_LABEL, GROUP_ORDER, TYPE_BADGE_CLASS } from './constants';
+import { GROUP_LABEL, GROUP_ORDER } from './constants';
+import { WARDROBE_SLOT_META } from '../slot-meta';
 import type { CandidateGroup, CandidateItem } from './types';
 
 /**
@@ -26,7 +27,7 @@ import type { CandidateGroup, CandidateItem } from './types';
             <span class="qt-text-xs qt-text-secondary italic">no slots covered yet</span>
           } @else {
             @for (t of effectiveTypes(); track t) {
-              <span class="qt-badge uppercase" [class]="badgeClass[t]">{{ t }}</span>
+              <span class="qt-badge uppercase" [class]="slotMeta[t].badgeClass">{{ t }}</span>
             }
           }
         </div>
@@ -213,6 +214,6 @@ export class WardrobeComponentPicker {
 
   protected readonly groupOrder = GROUP_ORDER;
   protected readonly groupLabel = GROUP_LABEL;
-  protected readonly badgeClass = TYPE_BADGE_CLASS;
+  protected readonly slotMeta = WARDROBE_SLOT_META;
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
 }

@@ -42,7 +42,7 @@ describe('equippedSlotsEqual', () => {
   // Carried over with the move from `equipped-slots.spec.ts` (v4 originally had
   // this inline in the dialog).
   it('compares the four slot arrays element-wise, in order', () => {
-    const a: EquippedSlots = { top: ['x'], bottom: [], footwear: ['y'], accessories: [] };
+    const a: EquippedSlots = { top: ['x'], bottom: [], footwear: ['y'], accessories: [], hair: [] };
     expect(equippedSlotsEqual(a, cloneSlots(a))).toBe(true);
     expect(equippedSlotsEqual(a, { ...cloneSlots(a), top: ['z'] })).toBe(false);
   });

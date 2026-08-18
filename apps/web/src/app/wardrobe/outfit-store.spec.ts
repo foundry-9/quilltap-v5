@@ -87,7 +87,7 @@ describe('resolveItemDetails (v4 use-outfit.ts:185-213)', () => {
       summary({ id: 'pants', title: 'Pants', types: ['bottom'] }),
     ];
     const out = resolveItemDetails(
-      { top: ['suit'], bottom: ['suit'], footwear: [], accessories: [] },
+      { top: ['suit'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
       items,
     );
     expect(out['top']).toEqual([{ itemId: 'jacket', title: 'Jacket' }]);
@@ -146,7 +146,7 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
         case 'chatOutfitGet':
           return {
             equippedOutfit: {
-              c1: { top: ['shirt'], bottom: [], footwear: [], accessories: [] },
+              c1: { top: ['shirt'], bottom: [], footwear: [], accessories: [], hair: [] },
             },
           };
         case 'characterWardrobeList':
@@ -172,7 +172,7 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
       switch (req.type as string) {
         case 'chatOutfitGet':
           return {
-            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [] } },
+            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } },
           };
         case 'characterWardrobeList':
           return {
@@ -233,7 +233,7 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
       switch (req.type as string) {
         case 'chatOutfitGet':
           return {
-            equippedOutfit: { c1: { top: ['x'], bottom: [], footwear: [], accessories: [] } },
+            equippedOutfit: { c1: { top: ['x'], bottom: [], footwear: [], accessories: [], hair: [] } },
           };
         case 'characterWardrobeList':
           return { wardrobeItems: [dto({ id: 'x' })] };
@@ -261,7 +261,7 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
       switch (req.type as string) {
         case 'chatOutfitGet':
           return {
-            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [] } },
+            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } },
           };
         case 'characterWardrobeList':
           return {
@@ -293,6 +293,7 @@ describe('createOutfitStore (v4 use-outfit.ts)', () => {
       bottom: [],
       footwear: ['leaf-shoe'],
       accessories: [],
+      hair: [],
     });
 
     await store.removeFromSlot('c1', 'top', null);

@@ -16,6 +16,7 @@ function slots(): OutfitPreviewSlots {
     bottom: [],
     footwear: [],
     accessories: [],
+    hair: [],
   };
 }
 

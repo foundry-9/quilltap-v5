@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import type { OutfitPreviewEntry, OutfitPreviewSlots } from '../../core/core-contract';
+import { WARDROBE_SLOT_META, WARDROBE_SLOT_TYPES } from '../../wardrobe/slot-meta';
 
 interface SlotRow {
   key: keyof OutfitPreviewSlots;
@@ -9,17 +10,23 @@ interface SlotRow {
   entries: OutfitPreviewEntry[];
 }
 
-const SLOTS: { key: keyof OutfitPreviewSlots; label: string; badge: string }[] = [
-  { key: 'top', label: 'Top', badge: 'qt-badge-wardrobe-top' },
-  { key: 'bottom', label: 'Bottom', badge: 'qt-badge-wardrobe-bottom' },
-  { key: 'footwear', label: 'Footwear', badge: 'qt-badge-wardrobe-footwear' },
-  { key: 'accessories', label: 'Accessories', badge: 'qt-badge-wardrobe-accessories' },
-];
+const SLOTS: { key: keyof OutfitPreviewSlots; label: string; badge: string }[] =
+  WARDROBE_SLOT_TYPES.map((key) => ({
+    key,
+    label: WARDROBE_SLOT_META[key].label,
+    badge: WARDROBE_SLOT_META[key].badgeClass,
+  }));
 
 /**
- * Read-only four-slot render of a decided outfit (v4 `OutfitSlotsPreview`).
+ * Read-only per-slot render of a decided outfit (v4 `OutfitSlotsPreview`).
  * Presentational — the Green Room uses it to show what an LLM-run character
  * chose to wear.
+ *
+ * `?? []` in {@link OutfitSlotsPreview.rows} is v4's forward-compat guard
+ * (`OutfitSlotsPreview.tsx:27`): a frame minted before a slot existed renders
+ * that slot empty instead of crashing. Every slot gets a card, empty or not —
+ * v4's client renders the vacancy ("nothing") for all five, `reportWhenEmpty`
+ * being a `lib/`-side narration rule, not a UI one.
  */
 @Component({
   selector: 'qt-outfit-slots-preview',

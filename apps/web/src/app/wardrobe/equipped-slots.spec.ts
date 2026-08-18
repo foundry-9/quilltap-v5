@@ -34,7 +34,13 @@ function item(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemD
 
 describe('wearItemIntoSlots (v4 outfit-displacement.ts:74-87)', () => {
   it('layers into each covered slot when replace is falsy (append, no-op if present)', () => {
-    const start: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [] };
+    const start: EquippedSlots = {
+      top: ['shirt'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     const next = wearItemIntoSlots(start, { id: 'sweater', types: ['top'] });
     expect(next.top).toEqual(['shirt', 'sweater']);
     // No-op when already present (v4 :82 `includes` guard).
@@ -52,6 +58,7 @@ describe('wearItemIntoSlots (v4 outfit-displacement.ts:74-87)', () => {
       bottom: ['jeans'],
       footwear: ['boots'],
       accessories: [],
+      hair: [],
     };
     const next = wearItemIntoSlots(start, { id: 'dress', types: ['top', 'bottom'], replace: true });
     expect(next.top).toEqual(['dress']);
@@ -116,7 +123,11 @@ describe('sortForDefaultOutfit (v4 default-outfit.ts sortForDefaultOutfit)', () 
 });
 
 describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
-  const suit = item({ id: 'suit', types: ['top', 'bottom'], componentItemIds: ['jacket', 'pants'] });
+  const suit = item({
+    id: 'suit',
+    types: ['top', 'bottom'],
+    componentItemIds: ['jacket', 'pants'],
+  });
   const jacket = item({ id: 'jacket', types: ['top'] });
   const pants = item({ id: 'pants', types: ['bottom'] });
   const scarf = item({ id: 'scarf', types: ['accessories'] });
@@ -124,7 +135,7 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
 
   it('promotes a composite occupying ≥2 slots into a bundle and strips it from remainders', () => {
     const grouped = groupEquippedSlots(
-      { top: ['suit'], bottom: ['suit'], footwear: [], accessories: ['scarf'] },
+      { top: ['suit'], bottom: ['suit'], footwear: [], accessories: ['scarf'], hair: [] },
       all,
     );
     expect(grouped.bundles).toEqual([
@@ -136,7 +147,7 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
 
   it('keeps layered leaves that share a slot with a bundle composite (v4 rule 2)', () => {
     const grouped = groupEquippedSlots(
-      { top: ['suit', 'jacket'], bottom: ['suit'], footwear: [], accessories: [] },
+      { top: ['suit', 'jacket'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
       all,
     );
     expect(grouped.slotRemainders.top).toEqual(['jacket']);
@@ -145,7 +156,7 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
   it('leaves single-slot composites inline in remainders (v4 rule 3)', () => {
     const oneSlot = item({ id: 'combo', types: ['top'], componentItemIds: ['jacket'] });
     const grouped = groupEquippedSlots(
-      { top: ['combo'], bottom: [], footwear: [], accessories: [] },
+      { top: ['combo'], bottom: [], footwear: [], accessories: [], hair: [] },
       [...all, oneSlot],
     );
     expect(grouped.bundles).toEqual([]);
@@ -154,7 +165,7 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
 
   it('passes orphaned ids through as-is and never bundles them (v4 rule 4)', () => {
     const grouped = groupEquippedSlots(
-      { top: ['ghost'], bottom: ['ghost'], footwear: [], accessories: [] },
+      { top: ['ghost'], bottom: ['ghost'], footwear: [], accessories: [], hair: [] },
       all,
     );
     expect(grouped.bundles).toEqual([]);
@@ -168,7 +179,7 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
       componentItemIds: ['jacket', 'pants'],
     });
     const grouped = groupEquippedSlots(
-      { top: ['outfit3'], bottom: ['outfit3'], footwear: [], accessories: [] },
+      { top: ['outfit3'], bottom: ['outfit3'], footwear: [], accessories: [], hair: [] },
       [...all, cover3],
     );
     expect(grouped.bundles[0].allOccupied).toBe(false);
@@ -176,15 +187,23 @@ describe('groupEquippedSlots (v4 group-equipped.ts:61-113)', () => {
 });
 
 describe('bundle mutations (v4 bundle-mutations.ts)', () => {
-  const suit = item({ id: 'suit', types: ['top', 'bottom'], componentItemIds: ['jacket', 'pants'] });
+  const suit = item({
+    id: 'suit',
+    types: ['top', 'bottom'],
+    componentItemIds: ['jacket', 'pants'],
+  });
   const jacket = item({ id: 'jacket', types: ['top'] });
   const pants = item({ id: 'pants', types: ['bottom'] });
   const byId = new Map([suit, jacket, pants].map((i) => [i.id, i]));
-  const bundle = { compositeId: 'suit', occupiedSlots: ['top', 'bottom'] as const, allOccupied: true };
+  const bundle = {
+    compositeId: 'suit',
+    occupiedSlots: ['top', 'bottom'] as const,
+    allOccupied: true,
+  };
 
   it('takeOffBundleFromSlots removes the composite id from every occupied slot (v4 :23-32)', () => {
     const next = takeOffBundleFromSlots(
-      { top: ['suit', 'shirt'], bottom: ['suit'], footwear: [], accessories: [] },
+      { top: ['suit', 'shirt'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
       { ...bundle, occupiedSlots: [...bundle.occupiedSlots] },
     );
     expect(next.top).toEqual(['shirt']);
@@ -193,7 +212,7 @@ describe('bundle mutations (v4 bundle-mutations.ts)', () => {
 
   it('breakApartBundleInSlots replaces the composite with its slot-matching components (v4 :38-56)', () => {
     const next = breakApartBundleInSlots(
-      { top: ['suit'], bottom: ['suit', 'belt'], footwear: [], accessories: [] },
+      { top: ['suit'], bottom: ['suit', 'belt'], footwear: [], accessories: [], hair: [] },
       { ...bundle, occupiedSlots: [...bundle.occupiedSlots] },
       byId,
     );
@@ -202,7 +221,13 @@ describe('bundle mutations (v4 bundle-mutations.ts)', () => {
   });
 
   it('breakApart is a no-op when the composite is unknown (v4 :44)', () => {
-    const slots: EquippedSlots = { top: ['ghost'], bottom: [], footwear: [], accessories: [] };
+    const slots: EquippedSlots = {
+      top: ['ghost'],
+      bottom: [],
+      footwear: [],
+      accessories: [],
+      hair: [],
+    };
     expect(
       breakApartBundleInSlots(
         slots,
@@ -228,9 +253,11 @@ describe('nextCopyTitle (v4 next-copy-title.ts:21-29)', () => {
 
 describe('unionTypes (v4 composite-types.ts:17-23)', () => {
   it('unions component types in canonical slot order regardless of input order', () => {
-    expect(
-      unionTypes([{ types: ['accessories'] }, { types: ['bottom', 'top'] }]),
-    ).toEqual(['top', 'bottom', 'accessories']);
+    expect(unionTypes([{ types: ['accessories'] }, { types: ['bottom', 'top'] }])).toEqual([
+      'top',
+      'bottom',
+      'accessories',
+    ]);
   });
 });
 

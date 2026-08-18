@@ -1,15 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { TYPE_BADGE_CLASS } from './item-editor/constants';
-
-/** v4 `equipped-slot-row.tsx:29-34` — shared with the bundle card. */
-export const SLOT_LABEL: Record<WardrobeSlotType, string> = {
-  top: 'Top',
-  bottom: 'Bottom',
-  footwear: 'Footwear',
-  accessories: 'Accessories',
-};
+import { WARDROBE_SLOT_META } from './slot-meta';
 
 /**
  * One slot in the dialog's "Wearing now" column (v4
@@ -28,7 +20,7 @@ export const SLOT_LABEL: Record<WardrobeSlotType, string> = {
   template: `
     <div class="qt-card py-2 px-3">
       <div class="flex items-center justify-between mb-1">
-        <span class="qt-badge" [class]="badgeClass[slot()]">{{ label() }}</span>
+        <span class="qt-badge" [class]="slotMeta[slot()].badgeClass">{{ label() }}</span>
         <div class="flex items-center gap-1">
           <button
             type="button"
@@ -128,12 +120,14 @@ export class EquippedSlotRow {
   readonly remove = output<{ slot: WardrobeSlotType; itemId: string }>();
   readonly clear = output<WardrobeSlotType>();
 
-  protected readonly badgeClass = TYPE_BADGE_CLASS;
+  protected readonly slotMeta = WARDROBE_SLOT_META;
   protected readonly pickerOpen = signal(false);
   protected readonly search = signal('');
 
-  protected readonly label = computed(() => SLOT_LABEL[this.slot()]);
-  protected readonly lowerLabel = computed(() => SLOT_LABEL[this.slot()].toLowerCase());
+  protected readonly label = computed(() => WARDROBE_SLOT_META[this.slot()].label);
+  protected readonly lowerLabel = computed(() =>
+    WARDROBE_SLOT_META[this.slot()].label.toLowerCase(),
+  );
 
   private readonly itemsById = computed(
     () => new Map(this.allItems().map((i) => [i.id, i])),

@@ -29,6 +29,7 @@ import {
   type EquippedBundle,
   type EquippedSlots,
 } from './equipped-slots';
+import { WARDROBE_SLOT_TYPES } from './slot-meta';
 import { createOutfitStore, type OutfitStore } from './outfit-store';
 import {
   classifyStagedOutfits,
@@ -57,7 +58,7 @@ interface CharacterSummary {
 }
 
 type SlotFilter = 'all' | WardrobeSlotType;
-const SLOT_FILTERS: SlotFilter[] = ['all', 'top', 'bottom', 'footwear', 'accessories'];
+const SLOT_FILTERS: SlotFilter[] = ['all', ...WARDROBE_SLOT_TYPES];
 type ItemKind = 'items' | 'outfits';
 type RightTab = 'live' | 'builder';
 type EditorIntent = 'create-single' | 'create-bundle';
@@ -939,7 +940,7 @@ export class WardrobeControlDialogInner {
     const seen = new Set<string>();
     const components: string[] = [];
     const slots = this.fittingSlots();
-    for (const slot of ['top', 'bottom', 'footwear', 'accessories'] as const) {
+    for (const slot of WARDROBE_SLOT_TYPES) {
       for (const id of slots[slot]) {
         if (!seen.has(id)) {
           seen.add(id);

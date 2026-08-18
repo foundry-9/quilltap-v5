@@ -54,7 +54,7 @@ const ITEMS = [
 ];
 
 /** The worn snapshot the outfit read eventually publishes. */
-const WORN: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [] };
+const WORN: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [], hair: [] };
 
 interface Harness {
   fixture: ComponentFixture<WardrobeControlDialogInner>;

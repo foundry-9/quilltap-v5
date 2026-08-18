@@ -11,12 +11,11 @@
  *  - `lib/wardrobe/next-copy-title.ts` (`nextCopyTitle`)
  *  - `lib/wardrobe/composite-types.ts` (`unionTypes`)
  *
- * The slot vocabulary is the one already landed in
- * `screens/prospero/wardrobe.api.ts` (`WARDROBE_SLOT_TYPES`) — re-exported
- * here rather than re-derived, per the P4.9f2 order.
+ * The slot vocabulary is the registry's (`slot-meta.ts`, P4.D88) —
+ * re-exported here rather than re-derived, per the P4.9f2 order.
  */
 
-import { WARDROBE_SLOT_TYPES } from '../screens/prospero/wardrobe.api';
+import { cloneSlots, freshSlots, WARDROBE_SLOT_TYPES } from './slot-meta';
 import type {
   EquippedSlots,
   WardrobeItemDto,
@@ -29,7 +28,7 @@ import {
   type WearableLookup,
 } from './dissolve-bundles';
 
-export { WARDROBE_SLOT_TYPES };
+export { cloneSlots, freshSlots, WARDROBE_SLOT_TYPES };
 export type { EquippedSlots, WardrobeItemDto, WardrobeSlotType };
 
 // `EquippedSlots` itself moved to `core-contract.ts` at the round's
@@ -41,30 +40,10 @@ export type { EquippedSlots, WardrobeItemDto, WardrobeSlotType };
 /** Per-chat equipped outfit state, keyed by characterId (v4 `:131`). */
 export type EquippedOutfitState = Record<string, EquippedSlots>;
 
-/** Empty equipped slots (v4 `EMPTY_EQUIPPED_SLOTS`, `wardrobe.types.ts:154`).
+/** Empty equipped slots (v4 `EMPTY_EQUIPPED_SLOTS`, `wardrobe.types.ts:237`).
  *  Always spread (`{...EMPTY_EQUIPPED_SLOTS}` still shares the arrays — use
  *  `freshSlots()` for a mutable copy, as v4's callers do via `cloneSlots`). */
-export const EMPTY_EQUIPPED_SLOTS: Readonly<EquippedSlots> = {
-  top: [],
-  bottom: [],
-  footwear: [],
-  accessories: [],
-};
-
-/** A brand-new all-empty snapshot (v4 `outfit-displacement.ts:46-48`). */
-export function freshSlots(): EquippedSlots {
-  return { top: [], bottom: [], footwear: [], accessories: [] };
-}
-
-/** Deep copy (v4 `bundle-mutations.ts:13-20`). */
-export function cloneSlots(slots: EquippedSlots): EquippedSlots {
-  return {
-    top: [...slots.top],
-    bottom: [...slots.bottom],
-    footwear: [...slots.footwear],
-    accessories: [...slots.accessories],
-  };
-}
+export const EMPTY_EQUIPPED_SLOTS: Readonly<EquippedSlots> = freshSlots();
 
 // `equippedSlotsEqual` MOVED to `staged-live-outfits.ts` at 4.8.2 (v4
 // `07d4ccce` lifted it out of the dialog into that module alongside the rebase

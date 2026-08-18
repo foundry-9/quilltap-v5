@@ -15,13 +15,10 @@ import { type Signal, signal } from '@angular/core';
 import type { CoreClient } from '../../core/core-client';
 import type { WardrobeItemDto, WardrobeSlotType } from '../../core/core-contract';
 
-/** The four coverage slots, in v4's declaration order. */
-export const WARDROBE_SLOT_TYPES: readonly WardrobeSlotType[] = [
-  'top',
-  'bottom',
-  'footwear',
-  'accessories',
-];
+// The canonical slot list moved to the wardrobe slot registry with P4.D88
+// (v4 `4423ad10` did the same on its side); re-exported here so this module's
+// importers keep their import path.
+export { WARDROBE_SLOT_TYPES } from '../../wardrobe/slot-meta';
 
 /** The create payload (v4 `CreateProjectWardrobeInput`); blanks arrive as `null`. */
 export interface WardrobeCreateInput {

@@ -8,7 +8,12 @@ import {
   signal,
 } from '@angular/core';
 
-import type { ChatCreateOutfitSelectionInput, OutfitSelectionMode } from '../../core/core-contract';
+import type {
+  ChatCreateOutfitSelectionInput,
+  OutfitSelectionMode,
+  WardrobeSlotType,
+} from '../../core/core-contract';
+import { WARDROBE_SLOT_META, WARDROBE_SLOT_TYPES } from '../../wardrobe/slot-meta';
 
 /** One character eligible for a starting-outfit choice (v4 `OutfitSelectorCharacter`). */
 export interface OutfitSelectorCharacter {
@@ -50,34 +55,30 @@ export function computeSyncInitialMode(
 
 /**
  * v4's per-character equipped-outfit summary from a source chat
- * (`outfit-selector.tsx:102`): each of the four slots holds the items resolved
- * at the end of that conversation.
+ * (`outfit-selector.tsx:102`): each slot holds the items resolved at the end of
+ * that conversation.
  */
 export type PreviousOutfitSummary = Record<
   string,
-  Partial<Record<'top' | 'bottom' | 'footwear' | 'accessories', { itemId: string; title: string }[]>>
+  Partial<Record<WardrobeSlotType, { itemId: string; title: string }[]>>
 >;
 
-/** v4 `SLOT_LABELS`, for the continuation preview line. */
-const SLOT_LABELS: Record<'top' | 'bottom' | 'footwear' | 'accessories', string> = {
-  top: 'Top',
-  bottom: 'Bottom',
-  footwear: 'Footwear',
-  accessories: 'Accessories',
-};
-
-/** v4 `previousChatPreview` (`outfit-selector.tsx:385-405`). */
+/** v4 `previousChatPreview` (`outfit-selector.tsx:372-390`). v4's own
+ *  `SLOT_LABELS` map went with `4423ad10` — labels come from the registry. */
 export function previousChatPreview(
   slots: PreviousOutfitSummary[string] | null | undefined,
 ): string | null {
   if (!slots) return null;
-  const equipped = (['top', 'bottom', 'footwear', 'accessories'] as const)
-    .map((slot) => ({ slot, titles: (slots[slot] ?? []).map((i) => i.title) }))
-    .filter((entry) => entry.titles.length > 0);
+  const equipped = WARDROBE_SLOT_TYPES.map((slot) => ({
+    slot,
+    titles: (slots[slot] ?? []).map((i) => i.title),
+  })).filter((entry) => entry.titles.length > 0);
   if (equipped.length === 0) {
     return 'Nothing equipped at the end of the source chat — defaults will be used.';
   }
-  return equipped.map((e) => `${SLOT_LABELS[e.slot]}: ${e.titles.join(', ')}`).join(' · ');
+  return equipped
+    .map((e) => `${WARDROBE_SLOT_META[e.slot].label}: ${e.titles.join(', ')}`)
+    .join(' · ');
 }
 
 interface ModeOption {
