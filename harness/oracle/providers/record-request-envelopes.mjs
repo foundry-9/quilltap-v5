@@ -169,6 +169,13 @@ function makeResponse(bodyText, contentType) {
 // ---- Case corpus (shared shapes; provider-specific params via `only`) --------
 const SYS = { role: 'system', content: 'You are a helpful assistant.' };
 const USER = { role: 'user', content: 'Hello there.' };
+// P4.D93 (v4 `9125f492`, bug 82) — the head of a NON-opening turn: the context
+// builder deliberately emits three consecutive system blocks so a cache
+// breakpoint on the first survives churn in the others. Mirrors v4's own
+// `THREE_BLOCK_TURN` fixture (`__tests__/unit/plugins/leading-system-messages.test.ts`).
+const SYS_REINFORCEMENT = { role: 'system', content: 'REINFORCEMENT' };
+const SYS_SUMMARY = { role: 'system', content: 'SUMMARY' };
+const THREE_LEADING_SYSTEM = [SYS, SYS_REINFORCEMENT, SYS_SUMMARY, USER];
 const TOOL = {
   type: 'function',
   function: { name: 'search', description: 'Search.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
@@ -284,6 +291,11 @@ function casesFor(provider) {
     add('profile-params-thinking-object', { ...base, model: 'deepseek-chat', profileParameters: { thinking: { type: 'disabled' } } });
     // P4.21 — DeepSeek DROPS attachments (body shows plain string content).
     add('image-attachment', { ...base, model: 'deepseek-chat', messages: [SYS, USER_IMG] });
+    // P4.D93 (bug 82) — THE REGRESSION GUARD. DeepSeek is a hosted subclass of the
+    // same OAC base class and leaves `acceptsRepeatedSystemMessages` at its `true`
+    // default, so all THREE system messages must still be on the wire: folding
+    // here would cost the cache prefix the three blocks exist to protect.
+    add('three-leading-system-unfolded', { ...base, model: 'deepseek-chat', messages: THREE_LEADING_SYSTEM });
   } else if (provider === 'z-ai') {
     add('plain', { ...base, model: 'glm-4.6' });
     add('web-search', { ...base, model: 'glm-4.6', webSearchEnabled: true });
@@ -374,6 +386,10 @@ function casesFor(provider) {
   } else if (provider === 'ollama') {
     add('plain', { ...base, model: 'llama3' });
     add('tools-stop', { ...base, model: 'llama3', tools: [TOOL], stop: ['DONE'] });
+    // P4.D93 (bug 82): Ollama folds the leading system run UNCONDITIONALLY — it
+    // is a local runtime by definition, and the Qwen family raises on any system
+    // message after index 0.
+    add('three-leading-system', { ...base, model: 'qwen3.5-9b-q6', messages: THREE_LEADING_SYSTEM });
     // P4.21 — Ollama DROPS attachments (body shows plain string content).
     add('image-attachment', { ...base, model: 'llama3', messages: [SYS, USER_IMG] });
     // P4.D78 (v4 d9c5a1c7) — the thinking switch + the context window. `think`
@@ -426,6 +442,9 @@ function casesFor(provider) {
   } else if (provider === 'openai-compatible') {
     add('plain', { ...base, model: 'local-model' });
     add('stop-cache', { ...base, model: 'local-model', stop: ['END'], cacheKey: 'char-1' });
+    // P4.D93 (bug 82): the local-endpoint OAC plugin is the ONE
+    // `acceptsRepeatedSystemMessages = false` override in v4's tree, so it folds.
+    add('three-leading-system', { ...base, model: 'qwen3.5-9b-q6', messages: THREE_LEADING_SYSTEM });
     add('tool-roundtrip', { ...base, model: 'local-model', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
     // P4.21 — the OpenAI-compatible base DROPS attachments.
     add('image-attachment', { ...base, model: 'local-model', messages: [SYS, USER_IMG] });

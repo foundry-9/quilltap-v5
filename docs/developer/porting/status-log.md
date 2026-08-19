@@ -75100,3 +75100,50 @@ the participant resolver), so the two trees stay structurally aligned.
 `api/settings.rs:2276` (connection test), `provider_actions.rs:229`,
 `embedding_provider.rs:274`, the Almanack readers. v4's commit touched none
 of them.
+
+**Unit 4 — `collapse_leading_system_messages` + the two build sites (v4 bug
+82; core 0.0.587).** A free function in
+`model/request_builder/chat_completions.rs`, applied to the MAPPED JSON array
+at exactly two sites (`build_openai_compatible_body`, `build_ollama_body`),
+mirroring v4's post-`.map()` position. **Not inside `chat_messages`** — that
+shared mapper serves OAC, DeepSeek, Z.AI, OpenRouter (×2) and Ollama, so a
+fold there would leak to four hosted providers and cost them the cache prefix
+the three blocks exist to protect.
+
+*The property that has no counterpart.* v4 gates the OAC base class on a new
+`acceptsRepeatedSystemMessages` (default `true`) with ONE override in its
+whole tree: the local-endpoint OAC plugin. v5 has no provider subclassing —
+each provider is a free `build_*_body` and v5's `OpenAiCompatible` kind IS
+that plugin, the hosted subclasses having their own builders — so both v5
+folds are unconditional and every hosted builder is byte-identical because it
+never calls the fold. That mapping is recorded on the function, with v4's
+LOAD-BEARING comment carried.
+
+*Semantics, byte-for-byte:* the maximal LEADING run only (a later system
+message is never moved or merged); `< 2` returns the input **unchanged and
+un-reallocated** (v4 returns the same array reference and pins it with
+`toBe`; the Rust test pins the array's heap pointer, which is the stronger
+observable); empty/`null`/absent contents are dropped BEFORE the join;
+`"\n\n"` between blocks; the merged message keeps the FIRST block's other keys
+in their original positions (v4's `...run[0]` spread, and `content`'s slot is
+stable under `preserve_order`).
+
+*Differentials.* Five unit tests mirror v4's four pure cases plus the
+extra-keys arm. The committed request-envelopes corpus was regenerated with
+the recorder run deliberately from the pinned v4 tree (⚠ the sweep driver
+never runs recording stages) and gained SIX rows — `ollama` and
+`openai-compatible` `three-leading-system` in BOTH modes (folded), and
+`deepseek` `three-leading-system-unfolded` in both (**the regression guard**:
+three system messages still on the wire). **All 257 pre-existing rows are
+byte-identical** — verified by keying both files on `(provider, mode, case)`
+and diffing: zero missing, zero changed, six added. `request_builder_equivalence`
+263/263 green.
+
+*Two mutations.* Making the fold a no-op reddens the family; adding the fold
+to `build_deepseek_body` reddens `DEEPSEEK/three-leading-system-unfolded` with
+the folded body against v4's three blocks — the guard doing its job.
+
+*Verified, not assumed (the order asked):* `request_prefix_hashes_equivalence`
+regenerated at the pin and green over 17 rows. The fold is request-build-side
+and context assembly is untouched, so the prefix hashes could not move — and
+now that is measured.

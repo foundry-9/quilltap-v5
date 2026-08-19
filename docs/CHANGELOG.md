@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(providers): fold the leading system run for local endpoints (v4 bug 82)
+
+_Versions: core 0.0.587._
+
+Ports v4 `9125f492`'s `collapseLeadingSystemMessages`. The context builder
+deliberately emits the head of a turn as up to three consecutive `system`
+messages so a cache breakpoint on the first survives churn in the others. A
+hosted provider accepts that; a local runtime applies the model's own chat
+template, and the Qwen family — plus several Llama- and Gemma-derived templates
+— raises on any system message after index 0. The opening greeting sends one
+block and worked; every turn after it was refused with a 500.
+
+The repair is at request-build time, leaving the context assembly and its
+caching design untouched. The fold takes the maximal leading run of `system`
+messages, drops empty contents before joining the rest with a blank line, keeps
+the first block's other keys, and hands back an array of fewer than two leading
+system messages unchanged and un-reallocated.
+
+v5 has no provider subclassing, so v4's `acceptsRepeatedSystemMessages` property
+has no counterpart: v4's one override is on the local-endpoint OpenAI-Compatible
+plugin, which is exactly v5's `OpenAiCompatible` kind, and the hosted subclasses
+have their own builder functions here. Both v5 folds are therefore
+unconditional, applied at the two sites v4 folds at, and every hosted builder is
+byte-identical on the wire because it never calls the fold at all.
+
+The request-envelope corpus gained six rows recorded from v4's real plugins: a
+three-leading-system turn for Ollama and for OpenAI-Compatible on both the
+streaming and non-streaming paths, and the same turn for DeepSeek — the
+regression guard, with all three system messages still on the wire. The 257
+pre-existing rows are byte-identical. Request prefix hashes were re-checked at
+the pin rather than assumed unaffected, and are unchanged.
+
 #### 2026-08-19 — fix(providers): forward the key a profile attached, and refuse a dangling one (v4 bug 81, server)
 
 _Versions: core 0.0.586, host 0.0.73._

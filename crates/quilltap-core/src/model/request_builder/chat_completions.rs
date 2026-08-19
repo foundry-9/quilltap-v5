@@ -301,6 +301,80 @@ fn chat_messages(
     Value::Array(out)
 }
 
+/// v4 `collapseLeadingSystemMessages`
+/// (`packages/plugin-utils/src/providers/system-messages.ts`, bug 82) — fold a
+/// run of consecutive leading `system` messages into a single one, joining their
+/// contents with a blank line.
+///
+/// LOAD-BEARING. Quilltap's context builder deliberately emits the head of a
+/// turn as up to three consecutive `system` messages — the cacheable persona
+/// prefix, the static identity reinforcement, and the compressed-history summary
+/// — so that a cache breakpoint on the first is not invalidated by churn in the
+/// others. A hosted provider accepts that happily. A local runtime does not
+/// answer for itself: it applies the *model's own* chat template, and several
+/// families (Qwen most notably, plus Llama- and Gemma-derived templates)
+/// `raise_exception` on any system message after index 0. The whole request is
+/// then rejected before a token is generated, so the opening greeting — one
+/// system message — worked and every turn after it died with a 500.
+///
+/// The repair belongs here, at request-build time, rather than in the context
+/// assembly: the blocks stay separate for every provider that wants them
+/// separate, and the providers that cannot take them fold the run on the way out.
+///
+/// Only the *leading* run is touched — a system message that appears later is
+/// left where it is, because moving or merging it would change what the model is
+/// told and when. An array with fewer than two leading system messages is
+/// returned **unchanged and un-reallocated** (v4 returns the same array
+/// reference, pinned with `toBe` in its test), so a provider that folds still
+/// sends byte-identical requests everywhere the problem does not arise.
+///
+/// Empty contents are dropped BEFORE the join, so `['A', '', 'C']` folds to
+/// `"A\n\nC"` rather than leaving a stray blank line; the merged message keeps
+/// the FIRST block's other keys (v4's `...run[0]` spread) and blocks 2..n's
+/// extras are discarded.
+///
+/// **v5 has no provider subclassing**, so v4's `acceptsRepeatedSystemMessages`
+/// property has no counterpart: v4's ONE override lives on the local-endpoint OAC
+/// plugin, and v5's `OpenAiCompatible` kind IS that plugin (the hosted subclasses
+/// — DeepSeek, Z.AI, OpenRouter — have their own `build_*_body` functions here).
+/// So both v5 folds are unconditional, applied at exactly the two call sites v4
+/// folds at, and every hosted builder is byte-identical on the wire because it
+/// never calls this at all. A fold inside [`chat_messages`] would leak to four
+/// hosted providers — hence a free function applied after the map, mirroring v4's
+/// post-`.map()` position.
+fn collapse_leading_system_messages(messages: Value) -> Value {
+    let Some(arr) = messages.as_array() else {
+        return messages;
+    };
+    let run_len = arr
+        .iter()
+        .take_while(|m| m.get("role").and_then(Value::as_str) == Some("system"))
+        .count();
+    if run_len < 2 {
+        return messages;
+    }
+
+    // v4 `{ ...run[0], content }` — the first block's other keys survive, and
+    // `content` keeps its original position (an existing key's slot is stable
+    // under `preserve_order`).
+    let mut merged = arr[0].as_object().cloned().unwrap_or_default();
+    // v4 `m.content ?? ''` then `.filter(c => c.length > 0)` then `.join('\n\n')`.
+    // A non-string `content` is out of contract for a system message here: every
+    // mapper in this file emits `{role, content: <string>}` for one.
+    let content = arr[..run_len]
+        .iter()
+        .map(|m| m.get("content").and_then(Value::as_str).unwrap_or(""))
+        .filter(|c| !c.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    merged.insert("content".to_string(), json!(content));
+
+    let mut out = Vec::with_capacity(arr.len() - run_len + 1);
+    out.push(Value::Object(merged));
+    out.extend(arr[run_len..].iter().cloned());
+    Value::Array(out)
+}
+
 /// The plain user-content arm (attachments stripped from the body — the
 /// drop-and-report providers).
 fn plain_user_content(msg: &StreamMessage) -> Value {
@@ -452,7 +526,17 @@ pub fn build_openai_compatible_body(
     results: &mut StreamAttachmentResults,
 ) -> Value {
     collect_drop_failures(&input.messages, OPENAI_COMPATIBLE_ATTACHMENT_ERROR, results);
-    let messages = chat_messages(&input.messages, false, false, &mut plain_user_content);
+    // Endpoints whose chat template insists the system message be first and
+    // singular get the leading run folded into one (v4 bug 82). This kind IS
+    // v4's local-endpoint OAC plugin — the ONE `acceptsRepeatedSystemMessages =
+    // false` override in v4's tree — so the fold is unconditional here; the
+    // hosted subclasses have their own builders below and never fold.
+    let messages = collapse_leading_system_messages(chat_messages(
+        &input.messages,
+        false,
+        false,
+        &mut plain_user_content,
+    ));
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
@@ -1367,7 +1451,16 @@ fn apply_ollama_top_level(b: &mut Body, input: &RequestInput) {
 
 pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
     collect_drop_failures(&input.messages, OLLAMA_ATTACHMENT_ERROR, results);
-    let messages = chat_messages(&input.messages, false, false, &mut plain_user_content);
+    // Ollama hands the array to the *model's own* chat template, so the leading
+    // system run folds unconditionally — an Ollama endpoint is a local runtime by
+    // definition (v4 bug 82; v4 folds in both `sendMessage` and `streamMessage`,
+    // which are this one function here).
+    let messages = collapse_leading_system_messages(chat_messages(
+        &input.messages,
+        false,
+        false,
+        &mut plain_user_content,
+    ));
     let mut options = Body::new();
     options
         .set("temperature", num(input.temperature.unwrap_or(0.7)))
@@ -1506,6 +1599,118 @@ mod openai_compatible_tool_contract_tests {
         assert_eq!(
             super::OLLAMA_DEFAULT_REQUEST_TIMEOUT_SECONDS * 1000,
             crate::model::transport::DEFAULT_REQUEST_TIMEOUT_MS as i64,
+        );
+    }
+}
+
+#[cfg(test)]
+mod leading_system_tests {
+    use super::collapse_leading_system_messages;
+    use serde_json::{json, Value};
+
+    /// v4's `THREE_BLOCK_TURN` — the shape a normal (non-opening) turn actually
+    /// reaches a provider with.
+    fn three_block_turn() -> Value {
+        json!([
+            { "role": "system", "content": "PERSONA" },
+            { "role": "system", "content": "REINFORCEMENT" },
+            { "role": "system", "content": "SUMMARY" },
+            { "role": "user", "content": "hello" },
+            { "role": "assistant", "content": "hi" },
+            { "role": "user", "content": "again" },
+        ])
+    }
+
+    /// v4: "joins the leading run in order, with a blank line between blocks".
+    #[test]
+    fn joins_the_leading_run_in_order() {
+        assert_eq!(
+            collapse_leading_system_messages(three_block_turn()),
+            json!([
+                { "role": "system", "content": "PERSONA\n\nREINFORCEMENT\n\nSUMMARY" },
+                { "role": "user", "content": "hello" },
+                { "role": "assistant", "content": "hi" },
+                { "role": "user", "content": "again" },
+            ])
+        );
+    }
+
+    /// v4: "returns the very same array when there is nothing to fold" — three
+    /// `toBe` arms. Rust has no reference identity to assert, so this pins the
+    /// stronger observable: the array's heap buffer is not reallocated, i.e. the
+    /// input Value is moved straight back out.
+    #[test]
+    fn nothing_to_fold_returns_the_input_un_reallocated() {
+        for input in [
+            json!([{ "role": "system", "content": "PERSONA" }, { "role": "user", "content": "hi" }]),
+            json!([{ "role": "user", "content": "hi" }]),
+            json!([]),
+        ] {
+            let before = input.as_array().unwrap().as_ptr();
+            let expected = input.clone();
+            let out = collapse_leading_system_messages(input);
+            assert_eq!(out, expected);
+            assert_eq!(
+                out.as_array().unwrap().as_ptr(),
+                before,
+                "the untouched array must be handed straight back, not rebuilt"
+            );
+        }
+    }
+
+    /// v4: "leaves a later system message exactly where it is" — moving or
+    /// merging it would change what the model is told and when.
+    #[test]
+    fn a_later_system_message_stays_where_it_is() {
+        assert_eq!(
+            collapse_leading_system_messages(json!([
+                { "role": "system", "content": "A" },
+                { "role": "system", "content": "B" },
+                { "role": "user", "content": "hi" },
+                { "role": "system", "content": "LATE" },
+            ])),
+            json!([
+                { "role": "system", "content": "A\n\nB" },
+                { "role": "user", "content": "hi" },
+                { "role": "system", "content": "LATE" },
+            ])
+        );
+    }
+
+    /// v4: "skips an empty block rather than leaving a stray blank line" — the
+    /// drop happens BEFORE the join.
+    #[test]
+    fn an_empty_block_is_dropped_before_the_join() {
+        assert_eq!(
+            collapse_leading_system_messages(json!([
+                { "role": "system", "content": "A" },
+                { "role": "system", "content": "" },
+                { "role": "system", "content": "C" },
+            ])),
+            json!([{ "role": "system", "content": "A\n\nC" }])
+        );
+        // A null / absent content is v4's `?? ''` and drops the same way.
+        assert_eq!(
+            collapse_leading_system_messages(json!([
+                { "role": "system", "content": Value::Null },
+                { "role": "system", "content": "C" },
+                { "role": "system" },
+            ])),
+            json!([{ "role": "system", "content": "C" }])
+        );
+    }
+
+    /// v4's `...run[0]` spread: the FIRST block's other keys survive, blocks
+    /// 2..n's are discarded, and `content` keeps its original position.
+    #[test]
+    fn the_first_blocks_extra_keys_survive_and_the_rest_do_not() {
+        let out = collapse_leading_system_messages(json!([
+            { "role": "system", "content": "A", "name": "prefix", "cache_control": { "type": "ephemeral" } },
+            { "role": "system", "content": "B", "name": "second" },
+        ]));
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"[{"role":"system","content":"A\n\nB","name":"prefix","cache_control":{"type":"ephemeral"}}]"#
         );
     }
 }
