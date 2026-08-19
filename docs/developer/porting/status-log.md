@@ -74304,3 +74304,61 @@ will land on it; it owes nothing**, the `8fe63c4f` class):
 
 The v4 commit is LOCAL — pushing v4 is the human's call. No v5 source
 changed; nothing regenerates.
+
+## Ruling — the product version scheme (2026-08-18, human)
+
+**One canonical semver prerelease, `5.0.0-dev.N`, with derived platform
+projections.** From a planning conversation about how a multi-crate Rust
+workspace should be versioned, and how to get back what v4's top-level
+`package.json` version gives it: a single number that tracks the little
+changes as a whole.
+
+**What was decided.**
+
+- **The first real release is `5.0.0`** — a fixed point. Everything before
+  it is a prerelease *of* it, which is precisely what semver's prerelease
+  field is for and why it sorts correctly (`5.0.0-dev.1 < 5.0.0-dev.2 <
+  … < 5.0.0`). After 5.0.0 ships the rules are open again.
+- **The format is `5.0.0-dev.N`**, N incrementing once per source commit —
+  the same shape v4 already prints (`4.9.0-dev.28`), so both repos read
+  alike. Verified against Cargo, which accepts a dotted prerelease and
+  returns it verbatim from `env!("CARGO_PKG_VERSION")`.
+- **Odd/even minor numbering (the Linux 2.x scheme) was considered and
+  rejected.** It encodes a stability class rather than a counter, answers
+  neither "which build is this" nor "how far along", was abandoned
+  upstream in 2003 when parallel stable/dev trees stopped matching how the
+  work happened (which is also true here — one trunk, drift rounds, no
+  stabilization fork), and would spend the *minor* field permanently,
+  colliding with semver's meaning of it once 5.0.0 ships.
+- **One canonical string; every platform form is DERIVED, never a parallel
+  hand-maintained number.** Hand-maintained numbers drift the moment
+  someone forgets one.
+
+**Why it was raised now, and why it does NOT run now.** The port has three
+symptoms of the missing version — the About badge's recorded divergence
+(`about-page.ts:19`, "v5 has no product version"), one build answering with
+four different numbers (host/web/tauri/cli each report their own
+`CARGO_PKG_VERSION`, which `profile_web_routes.rs:200` documents and works
+around by asserting only the string's shape), and a ~19,400-line changelog
+under one flat heading with nothing to anchor on. But it touches the gate
+and buys nothing while v4 drift still lands every other day. Ordered as
+**PB1** (`work-orders/pb1-product-version-manifest.md`), the first
+**pre-beta** order, to run when parity work is winding down and before the
+first build anyone outside this repo installs. D21 is amended to carry the
+ruling; the standing pre-beta gate at the tail of `phase-4.md` is the
+planner's cue, deliberately kept OUT of the candidate list so it is not
+value-ordered against drift lanes.
+
+**Cross-platform findings banked in the order** (the human's stated
+production goal is Windows + Debian/tarball + linux-amd64/arm64 Docker from
+one source tree): the canonical string passes through GitHub tags and
+Docker tags verbatim; only two targets need a lossy projection (MSI's three
+numeric fields, macOS's `CFBundleShortVersionString` — both of which have a
+build-number slot the counter drops straight into, which is why N must stay
+a plain integer); and **the Debian trap** — a hyphen is structural in
+Debian's grammar, so `5.0.0-dev.28` parses as upstream `5.0.0` revision
+`dev.28` and sorts AFTER the release it precedes, making `apt` refuse the
+real 5.0.0 as a downgrade. The `.deb` projection is a deliberate `-` → `~`
+substitution.
+
+No v5 source changed; nothing regenerates.

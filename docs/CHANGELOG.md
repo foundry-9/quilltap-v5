@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Settled how v5 will be versioned and scheduled the work. The first real
+release is 5.0.0; until then the product version is the semver prerelease
+5.0.0-dev.N, one canonical string in the workspace manifest with every
+platform form derived from it. Today no such version exists: the About
+badge says so outright, a single build answers with four different numbers
+depending on whether you reach it through the server, the desktop shell or
+the CLI, and this changelog has no version anchors. The change is ordered
+as PB1, the first pre-beta work order, to run when parity work is winding
+down and before any build reaches an outside tester. Nothing ships yet;
+signing, publishing, the updater, multi-arch Docker and cross-platform CI
+stay deferred.
+
+Removed a stale version badge from the README. It showed a v4 version
+number and linked to a root package.json this repo does not have.
+
 Unified the 979652a9 drift round: five parallel lanes, all closed. The
 wardrobe gains its fifth slot — hair, holding a hairdo rather than hair —
 threaded through every tool, prompt, avatar branch, import, export, and

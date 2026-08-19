@@ -303,6 +303,24 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   do not port; the `ToolRunner` inner-fallback seam stays, loud);
   release/publishing/signing/updater work (dev builds + the in-repo Dockerfile
   only).
+
+  **Amended 2026-08-18 — the one release-adjacent piece that is scheduled,
+  not deferred indefinitely.** D21 defers release work; it does not defer
+  *knowing what version this is*. v5 has no product version at all today,
+  which is why the About badge carries a recorded divergence, why one build
+  reports four different numbers (host / web / tauri / cli each answer with
+  their own `CARGO_PKG_VERSION`), and why `docs/CHANGELOG.md` runs ~19,400
+  lines under a single flat heading. **Human ruling (2026-08-18): the first
+  real release is `5.0.0`, the counter until then is the semver prerelease
+  `5.0.0-dev.N`** (the shape v4 already prints), one canonical string with
+  *derived* platform projections — never a hand-maintained parallel number
+  per platform. Ordered as
+  [`work-orders/pb1-product-version-manifest.md`](./work-orders/pb1-product-version-manifest.md),
+  the first **PB** ("pre-beta") order, to run when parity is winding down
+  and **before the first build a beta tester installs** — see the standing
+  pre-beta gate at the tail of this file. Everything else under D21
+  (signing, publishing, the updater, multi-arch Docker, cross-platform CI)
+  stays deferred.
 - **D22 — No new features during the port.** Parity with v4 first; the
   v5-only capabilities already banked (e.g. `markCompleted`'s payload merge)
   stay dormant until post-parity.
@@ -5124,6 +5142,25 @@ on pre-hair `equippedOutfit` rows (D87's convergence tripwire armed).
 5. Carried riders: the generators lane bank (external-prompt-generator,
    `encodeDebugInfo`, the `40d507cc` taxonomy + `4423ad10` hair edits for
    wizard/optimizer/ai-import/image-analysis).
+
+**Standing pre-beta gate (not a candidate — do not value-order it against
+drift lanes).** One item is parked deliberately *outside* the candidate list
+above, to run when parity work is winding down and **before the first build
+anyone outside this repo installs**:
+
+- **PB1 — the product version manifest**
+  ([`work-orders/pb1-product-version-manifest.md`](./work-orders/pb1-product-version-manifest.md)).
+  The canonical `5.0.0-dev.N` in `[workspace.package]`, inherited by
+  host/web/cli/tauri only (never the pinned sys crate, never the
+  core/harness ledgers); the four transports made to agree; the About
+  divergence retired; the derived platform projections (the Debian `~`
+  trap, the MSI three-field limit, the Docker `+` illegality); changelog
+  anchoring. It touches the gate — a health-shape assertion goes red by
+  design on its first run — so it is worth nothing while v4 drift still
+  lands every other day, and worth doing before testers arrive. D21 as
+  amended carries the ruling; everything else release-shaped (signing,
+  publishing, the updater, multi-arch Docker, cross-platform CI) stays
+  deferred and unordered.
 
 **Standing regen note (supersedes the one above):** the oracle baseline is
 **`979652a9`** (2026-08-18, v4 main — "feat(workspace): refresh a tab's
