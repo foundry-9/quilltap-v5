@@ -15,6 +15,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { ToastService } from '../../../ui/toast.service';
+import { providerAcceptsApiKey } from './api-key-support';
 
 interface ProviderOption {
   value: string;
@@ -121,9 +122,15 @@ export class ApiKeyModal {
     },
   }));
 
+  /**
+   * Offered on "may this provider hold a key?", not "must it?" — the two answers
+   * differ for OpenAI-Compatible, whose hosted endpoints need a bearer token its
+   * local ones have no use for, and asking the stricter question left no way to
+   * create such a key at all (v4 bug 81).
+   */
   protected readonly providerOptions = computed<ProviderOption[]>(() =>
     (this.providersQuery.data() ?? [])
-      .filter((p) => p.type === 'llm' && p.configRequirements?.requiresApiKey)
+      .filter((p) => p.type === 'llm' && providerAcceptsApiKey(p.configRequirements))
       .map((p) => ({ value: p.name, label: p.displayName }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );

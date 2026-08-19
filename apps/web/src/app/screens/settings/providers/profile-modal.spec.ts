@@ -1302,3 +1302,201 @@ describe('ProfileModal api key (Bug 76)', () => {
     expect(fixture.componentInstance['form']().apiKeyId).toBe('key-anthropic');
   });
 });
+
+/**
+ * v4 bug 81 — a provider may take an api key without demanding one
+ * (`__tests__/unit/components/settings/profile-modal-optional-api-key.test.tsx`,
+ * five cases, mirrored here).
+ *
+ * `requiresApiKey` was answering two questions at once: "must this profile have
+ * a key?" and "may it have one?". For OpenAI-Compatible the honest answers are
+ * no and yes — the same provider serves an unauthenticated llama.cpp on
+ * localhost and a hosted endpoint behind a bearer token — and the single flag
+ * had to read `false`, which removed the key field from the form entirely.
+ *
+ * Driven like its Bug 76 twin above: the real modal, real dropdown gestures,
+ * every dispatch captured, so the assertions are on the bytes that leave the
+ * form.
+ */
+describe('ProfileModal optional api key (Bug 81)', () => {
+  const ANTHROPIC = provider({
+    id: 'ANTHROPIC',
+    name: 'ANTHROPIC',
+    displayName: 'Anthropic',
+    configRequirements: { requiresApiKey: true, requiresBaseUrl: false },
+  });
+  const OAC = provider({
+    id: 'OPENAI_COMPATIBLE',
+    name: 'OPENAI_COMPATIBLE',
+    displayName: 'OpenAI-Compatible',
+    configRequirements: {
+      requiresApiKey: false,
+      acceptsApiKey: true,
+      requiresBaseUrl: true,
+      baseUrlDefault: 'http://localhost:8080/v1',
+    },
+  });
+  const OLLAMA = provider({
+    id: 'OLLAMA',
+    name: 'OLLAMA',
+    displayName: 'Ollama',
+    configRequirements: {
+      requiresApiKey: false,
+      requiresBaseUrl: true,
+      baseUrlDefault: 'http://localhost:11434',
+    },
+  });
+  const PROVIDERS = [ANTHROPIC, OAC, OLLAMA];
+
+  const API_KEYS: ApiKeyDto[] = [
+    {
+      id: 'key-anthropic',
+      provider: 'ANTHROPIC',
+      label: 'Anthropic key',
+      isActive: true,
+      lastUsed: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      keyPreview: 'sk-…abcd',
+    },
+    {
+      id: 'key-oac',
+      provider: 'OPENAI_COMPATIBLE',
+      label: 'Together key',
+      isActive: true,
+      lastUsed: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      keyPreview: 'sk-…wxyz',
+    },
+  ];
+
+  function recorder(): { client: Partial<CoreClient>; seen: CoreRequest[] } {
+    const seen: CoreRequest[] = [];
+    const client = stubClient({
+      dispatchExpect: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return req.type === 'modelFetch'
+          ? { type: 'models', data: { models: [] } }
+          : { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+      }) as unknown as CoreClient['dispatchExpect'],
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return { valid: true, message: 'ok', success: true };
+      }) as unknown as CoreClient['dispatchData'],
+    });
+    return { client, seen };
+  }
+
+  function selectProvider(fixture: ComponentFixture<ProfileModal>, name: string): void {
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    select.value = name;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  function keySelect(fixture: ComponentFixture<ProfileModal>): HTMLSelectElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#qt-pf-key');
+  }
+
+  function keyLabel(fixture: ComponentFixture<ProfileModal>): string | null {
+    const label = (fixture.nativeElement as HTMLElement).querySelector<HTMLLabelElement>(
+      'label[for="qt-pf-key"]',
+    );
+    return label ? (label.textContent ?? '').trim() : null;
+  }
+
+  it('renders the key field unstarred for a provider that accepts but does not require one', async () => {
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS });
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+
+    expect(keySelect(fixture)).not.toBeNull();
+    expect(keyLabel(fixture)).toBe('API Key');
+    // …and the placeholder option says why it may be left alone.
+    expect(keySelect(fixture)!.options[0].textContent?.trim()).toBe(
+      'None — the endpoint needs no key',
+    );
+  });
+
+  it('still stars the field, and its placeholder, for a provider that demands one', async () => {
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS });
+    selectProvider(fixture, 'ANTHROPIC');
+
+    expect(keyLabel(fixture)).toBe('API Key *');
+    expect(keySelect(fixture)!.options[0].textContent?.trim()).toBe('Select an API Key');
+  });
+
+  it('still hides the field for a provider that accepts no key at all', async () => {
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS });
+    selectProvider(fixture, 'OLLAMA');
+
+    expect(keySelect(fixture)).toBeNull();
+    expect(keyLabel(fixture)).toBeNull();
+  });
+
+  it('sends the attached key to a hosted OpenAI-compatible endpoint', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+    const select = keySelect(fixture)!;
+    select.value = 'key-oac';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    await fixture.componentInstance['connect']();
+    const test = seen.find((r) => r.type === 'connectionProfileTest') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(test).toBeDefined();
+    const profile = test['profile'] as Record<string, unknown>;
+    expect(profile['provider']).toBe('OPENAI_COMPATIBLE');
+    expect(profile['apiKeyId']).toBe('key-oac');
+  });
+
+  it('saves without a key, because the field is optional rather than merely present', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+    typeName(fixture, 'Local llama.cpp');
+    fixture.componentInstance['setField']('modelName', 'qwen3.5-9b-q6');
+    fixture.detectChanges();
+
+    await fixture.componentInstance['submit']();
+    const create = seen.find((r) => r.type === 'connectionProfileCreate') as unknown as Record<
+      string,
+      unknown
+    >;
+    const body = create['profile'] as Record<string, unknown>;
+    expect(body['provider']).toBe('OPENAI_COMPATIBLE');
+    expect(body['apiKeyId']).toBeNull();
+  });
+
+  it('does not carry an OpenAI-compatible key onto a provider that takes none', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS, apiKeys: API_KEYS }, client);
+    selectProvider(fixture, 'OPENAI_COMPATIBLE');
+    const select = keySelect(fixture)!;
+    select.value = 'key-oac';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    selectProvider(fixture, 'OLLAMA');
+    expect(keySelect(fixture)).toBeNull();
+
+    typeName(fixture, 'Local');
+    fixture.componentInstance['setField']('modelName', 'qwen3');
+    fixture.detectChanges();
+
+    await fixture.componentInstance['submit']();
+    const create = seen.find((r) => r.type === 'connectionProfileCreate') as unknown as Record<
+      string,
+      unknown
+    >;
+    const body = create['profile'] as Record<string, unknown>;
+    expect(body['provider']).toBe('OLLAMA');
+    expect(body['apiKeyId']).toBeNull();
+  });
+});

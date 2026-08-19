@@ -75147,3 +75147,47 @@ the folded body against v4's three blocks — the guard doing its job.
 regenerated at the pin and green over 17 rows. The fold is request-build-side
 and context assembly is untouched, so the prefix hashes could not move — and
 now that is measured.
+
+**Unit 5 — the SPA half (SPA 0.5.521).** New
+`screens/settings/providers/api-key-support.ts` — the v5 twin of v4's
+`lib/llm/api-key-support.ts`, deliberately import-free, with v4's
+doc-comments carried. Every reader routes through it:
+`api-key-modal.providerOptions` (the Add-New-API-Key filter — OAC now
+appears, Ollama still does not), `profile-modal.reqs()` (which gained
+`acceptsApiKey` beside `requiresApiKey`), and `profile-form.outboundApiKeyId`
+— **the one gate every outbound site reads**, which is what actually let the
+attached key leave the form. `ProviderRequirements` gained the field;
+`core-contract.ts`'s `ProviderInfo.configRequirements` gained
+`acceptsApiKey?: boolean`.
+
+*The template, per v4's map:* the field is shown on `acceptsApiKey`, the
+label is `API Key *` / `API Key` on `requiresApiKey`, the placeholder option
+is `Select an API Key` / `None — the endpoint needs no key`, and the
+two-column grid class follows the field's own visibility.
+`autoFetchModelsForEdit`'s `savedTakesApiKey` flips to accepts (v4 `:91-92`).
+
+*Classified and LEFT on `requiresApiKey`, each against v4's map:* the Fetch
+Models disable gate (v4 `:549` deliberately stays), the Connect guard (v4's
+save guard is requires-only because the field is optional — v5's was ALREADY
+requires-only, so the order's predicted relaxation was unnecessary; measured,
+not assumed), `submit()`/`isValid()` (no api-key condition at all), the
+wizard (`wizard-state.ts:78`, `api-key-entry-step.ts`) and the
+embedding-profile modal (v4 left both), and
+`connection-profiles-card.missingApiKey` (a requires-shaped warning whose v4
+counterpart the commit did not touch).
+
+*Specs.* Seven, mirroring v4's added cases 1:1 — its one `api-key-modal`
+case (OAC offered / Ollama absent, both `requiresApiKey: false`) and its five
+`profile-modal-optional-api-key` cases (unstarred field; hidden for Ollama;
+attached key sent to a hosted OAC endpoint; saves keyless; a switch to a
+keyless provider does not carry the key), plus the starred-label counterpart
+v4 asserts by negation. Driven the Bug-76 way: the real modal, real dropdown
+gestures, every dispatch captured, assertions on the bytes that leave the
+form. **Mutation-proven**: spelling `providerAcceptsApiKey` as
+`providerRequiresApiKey` (the pre-bug-81 reading) reddens four of the seven,
+across both spec files.
+
+**Measured: v5 invented no server-side create/attach gate.** `api_key_create`
+validates only non-empty provider/label/key; the profile-save `apiKeyId`
+check is a provider-MATCH only. The block was client-only in v5 as it was in
+v4, so this unit is the whole of it.

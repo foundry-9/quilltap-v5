@@ -1,4 +1,5 @@
 import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
+import { providerAcceptsApiKey } from './api-key-support';
 import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 
 /** The connection-profile modal's editable form (v4 `types.ts` `ProfileFormData`). */
@@ -182,6 +183,11 @@ export function outboundBaseUrl(
  * (the `length > 0` guard) — stripping a key off a working profile would be the
  * worse bug.
  *
+ * "Keyless" here is {@link providerAcceptsApiKey}, not `requiresApiKey`: an
+ * OpenAI-Compatible profile pointed at a hosted endpoint holds an optional key,
+ * and the stricter reading silently dropped it on the way to the wire (v4 bug
+ * 81) — which is the same failure this gate exists to prevent, one flag over.
+ *
  * ⚠ This is the ONE gate; every outbound site reads it rather than the form's
  * raw `apiKeyId`. v5 has five (v4's four plus the modal's edit-time model
  * fetch, which reads the SAVED profile rather than form state and so resolves
@@ -197,7 +203,7 @@ export function outboundApiKeyId(
   if (!stored) return '';
 
   const known = providers.find((p) => p.name === provider);
-  if (known && !known.configRequirements?.requiresApiKey) return '';
+  if (known && !providerAcceptsApiKey(known.configRequirements)) return '';
 
   // The select's own option filter, asked as a question.
   if (apiKeys.length > 0) {
@@ -291,6 +297,13 @@ export function buildProfileRequestBody(
 /** The provider's config requirements the form gates on (v4 `getProviderRequirements`). */
 export interface ProviderRequirements {
   requiresApiKey: boolean;
+  /**
+   * Whether a key *may* be attached, as against `requiresApiKey`'s "must it
+   * be?" — the question the key field, its star, and its placeholder are all
+   * decided by (v4 bug 81). Resolved through `providerAcceptsApiKey`, so an
+   * absent flag means the same answer as `requiresApiKey`.
+   */
+  acceptsApiKey: boolean;
   requiresBaseUrl: boolean;
   supportsWebSearch: boolean;
   supportsToolUse: boolean;

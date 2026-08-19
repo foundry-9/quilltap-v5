@@ -14,6 +14,7 @@ import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../cor
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { ModelSelector } from '../../../ui/model-selector';
+import { providerAcceptsApiKey, providerRequiresApiKey } from './api-key-support';
 import { getAttachmentSupportDescription, supportsMimeType } from './attachment-support';
 import {
   getModelClass,
@@ -244,20 +245,33 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 
         <!-- API Key + Base URL (API transport only) -->
         @if (!isCourier()) {
+          <!--
+            Shown when the provider *takes* a key; starred only when it demands
+            one. OpenAI-Compatible is the provider where those differ — a hosted
+            endpoint needs a bearer token, a local llama.cpp has nowhere to put
+            one — so its field is offered and optional rather than absent (v4
+            bug 81).
+          -->
           <div
-            [class]="
-              reqs().requiresApiKey && reqs().requiresBaseUrl ? 'grid grid-cols-2 gap-4' : ''
-            "
+            [class]="reqs().acceptsApiKey && reqs().requiresBaseUrl ? 'grid grid-cols-2 gap-4' : ''"
           >
-            @if (reqs().requiresApiKey) {
+            @if (reqs().acceptsApiKey) {
               <div>
-                <label for="qt-pf-key" class="block qt-text-label mb-2">API Key *</label>
+                <label for="qt-pf-key" class="block qt-text-label mb-2">{{
+                  reqs().requiresApiKey ? 'API Key *' : 'API Key'
+                }}</label>
                 <select
                   id="qt-pf-key"
                   class="qt-select"
                   (change)="setField('apiKeyId', $any($event.target).value)"
                 >
-                  <option value="" [selected]="!form().apiKeyId">Select an API Key</option>
+                  <option value="" [selected]="!form().apiKeyId">
+                    {{
+                      reqs().requiresApiKey
+                        ? 'Select an API Key'
+                        : 'None — the endpoint needs no key'
+                    }}
+                  </option>
                   @for (key of keysForProvider(); track key.id) {
                     <option [value]="key.id" [selected]="form().apiKeyId === key.id">
                       {{ key.label }}
@@ -682,7 +696,8 @@ export class ProfileModal implements OnInit {
   protected readonly reqs = computed<ProviderRequirements>(() => {
     const p = this.providers().find((x) => x.name === this.form().provider);
     return {
-      requiresApiKey: p?.configRequirements?.requiresApiKey ?? true,
+      requiresApiKey: providerRequiresApiKey(p?.configRequirements),
+      acceptsApiKey: providerAcceptsApiKey(p?.configRequirements),
       requiresBaseUrl: p?.configRequirements?.requiresBaseUrl ?? false,
       supportsWebSearch: p?.capabilities?.webSearch ?? false,
       supportsToolUse: p?.capabilities?.toolUse ?? false,
@@ -992,7 +1007,7 @@ export class ProfileModal implements OnInit {
     // does not take, and probing a keyless endpoint with one is how the
     // mismatch stays invisible. NOTE the default is `?? true` where the base-URL
     // twin defaults `?? false` — keys are the common case.
-    const savedTakesApiKey = !saved || (saved.configRequirements?.requiresApiKey ?? true);
+    const savedTakesApiKey = !saved || providerAcceptsApiKey(saved.configRequirements);
     try {
       const resp = await this.core.dispatchExpect(
         {

@@ -163,3 +163,65 @@ describe('ApiKeyModal auto-association toasts', () => {
     ]);
   });
 });
+
+/**
+ * v4 bug 81 (`__tests__/unit/components/settings/api-key-modal.test.tsx`'s added
+ * case) — the list is filtered on whether a provider *may* hold a key, not
+ * whether it demands one. OpenAI-Compatible requires none (a local llama.cpp has
+ * nowhere to put one) and accepts one (a hosted endpoint demands a bearer
+ * token); the stricter reading left no way to create such a key at all.
+ */
+describe('ApiKeyModal — the provider list is filtered on "may", not "must" (bug 81)', () => {
+  const SPLIT_PROVIDERS = [
+    {
+      name: 'OPENAI_COMPATIBLE',
+      displayName: 'OpenAI-Compatible',
+      type: 'llm',
+      configRequirements: { requiresApiKey: false, acceptsApiKey: true },
+    },
+    {
+      name: 'OLLAMA',
+      displayName: 'Ollama',
+      type: 'llm',
+      configRequirements: { requiresApiKey: false },
+    },
+    {
+      name: 'ANTHROPIC',
+      displayName: 'Anthropic',
+      type: 'llm',
+      configRequirements: { requiresApiKey: true },
+    },
+  ];
+
+  it('offers a provider that accepts a key without requiring one, and still hides one that takes none', async () => {
+    TestBed.configureTestingModule({
+      imports: [ApiKeyModal],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchExpect: (async () => ({
+              type: 'providers',
+              data: { providers: SPLIT_PROVIDERS, count: SPLIT_PROVIDERS.length },
+            })) as unknown as CoreClient['dispatchExpect'],
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ApiKeyModal);
+    fixture.detectChanges();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const select = fixture.nativeElement.querySelector('#qt-key-provider') as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toContain('OPENAI_COMPATIBLE');
+    expect(values).toContain('ANTHROPIC');
+    // Ollama declares no `acceptsApiKey`, so the fallback is its `requiresApiKey:
+    // false` — never a bare `true`.
+    expect(values).not.toContain('OLLAMA');
+  });
+});

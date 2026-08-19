@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(settings): the OpenAI-Compatible key field, offered and optional (v4 bug 81, SPA)
+
+_Versions: SPA 0.5.521._
+
+The client half of v4 `9125f492`. A new `api-key-support.ts` holds the two
+predicates as a pure module with no other imports, the v5 twin of v4's
+`lib/llm/api-key-support.ts`, so the Add-New-API-Key filter, the profile form's
+key field, and the form's outbound gate all read the same question through the
+same function rather than each testing `requiresApiKey` by hand.
+
+The Add-New-API-Key provider list is filtered on whether a provider *may* hold a
+key; OpenAI-Compatible now appears in it and Ollama still does not. The profile
+modal shows the key field whenever the provider takes one, starred only when it
+demands one, with the placeholder option reading `None — the endpoint needs no
+key` in the optional case. `outboundApiKeyId` — the one gate every outbound site
+reads — now refuses on "accepts no key" rather than "requires none", which is
+what actually let the attached key leave the form.
+
+The Fetch Models gate and the Connect guard stay on `requiresApiKey`
+deliberately, as v4's do: a provider that merely accepts a key must not be
+blocked for lacking one. The wizard and the embedding-profile modal are
+untouched — their question is requires-shaped and v4 left them alone.
+
+Seven specs mirror v4's added cases: its one api-key-modal case and its five
+`profile-modal-optional-api-key` cases, plus the starred-label counterpart.
+
 #### 2026-08-19 — fix(providers): fold the leading system run for local endpoints (v4 bug 82)
 
 _Versions: core 0.0.587._
