@@ -112,7 +112,7 @@ test.describe('Settings vertical (fresh instance → wizard → configured profi
     await expect(page.getByRole('heading', { name: 'Choose Your Providers' })).toBeVisible();
   }
 
-  test('setup → wizard → validated key + model → save → profile in the Providers tab', async ({
+  test('setup → wizard → validated key + model → save → profile in the Providers tab → an OAC key attached (bug 81)', async ({
     page,
   }) => {
     await completeSetup(page);
@@ -151,6 +151,55 @@ test.describe('Settings vertical (fresh instance → wizard → configured profi
     await expect(
       page.getByRole('heading', { name: 'OpenAI-Compatible - mock-model' }),
     ).toBeVisible();
+
+    // -----------------------------------------------------------------------
+    // P4.D93 (v4 bug 81) — that same OpenAI-Compatible profile can now hold an
+    // API key.
+    //
+    // `requiresApiKey: false` used to remove the provider from the
+    // Add-New-API-Key list AND the key field from the profile form, so a hosted
+    // OpenAI-compatible endpoint behind a bearer token could not be configured
+    // at all. Continues in this beat rather than standing alone because it needs
+    // exactly what the wizard just produced: a saved OAC profile to attach to.
+    //
+    // The wire-level proof — a real hosted endpoint answering 200 instead of 401
+    // — is a dogfood item, not a beat.
+    // -----------------------------------------------------------------------
+    await page.goto(`${SETTINGS_URL}/settings?tab=providers&section=api-keys`);
+    await page.getByRole('button', { name: '+ Add API Key' }).click();
+
+    // The provider list is filtered on "may hold a key", so OAC is offered.
+    const provider = page.locator('#qt-key-provider');
+    await expect(provider).toBeVisible();
+    await expect(provider.locator('option[value="OPENAI_COMPATIBLE"]')).toHaveCount(1);
+    // …and Ollama, which takes no key at all, still is not.
+    await expect(provider.locator('option[value="OLLAMA"]')).toHaveCount(0);
+
+    await page.locator('#qt-key-label').fill('Hosted OAC key');
+    await provider.selectOption('OPENAI_COMPATIBLE');
+    await page.locator('#qt-key-value').fill('sk-e2e-not-a-real-secret');
+    await page.getByRole('button', { name: 'Create API Key' }).click();
+    await expect(page.getByText('Hosted OAC key')).toBeVisible();
+
+    // The profile form now offers the key field — UNSTARRED, with the optional
+    // placeholder — and holds what is chosen.
+    await page.goto(`${SETTINGS_URL}/settings?tab=providers&section=connection-profiles`);
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    const keySelect = page.locator('#qt-pf-key');
+    await expect(keySelect).toBeVisible();
+    await expect(page.locator('label[for="qt-pf-key"]')).toHaveText('API Key');
+    await expect(keySelect.locator('option').first()).toHaveText(
+      'None — the endpoint needs no key',
+    );
+
+    await keySelect.selectOption({ label: 'Hosted OAC key' });
+    await page.getByRole('button', { name: 'Update Profile' }).click();
+    await expect(keySelect).toBeHidden();
+
+    // Re-open: the attachment survived the round trip to the server.
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    await expect(page.locator('#qt-pf-key')).toBeVisible();
+    await expect(page.locator('#qt-pf-key option:checked')).toHaveText('Hosted OAC key');
   });
 });
 
@@ -311,30 +360,28 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
     await nameInput.fill('Walk Template Renamed');
     await editDialog.getByRole('button', { name: 'Save Changes' }).click();
     await expect(editDialog).toBeHidden({ timeout: 10_000 });
-    await expect(
-      page.locator('div.qt-card', { hasText: 'Walk Template Renamed' }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('div.qt-card', { hasText: 'Walk Template Renamed' })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Delete (inline confirm).
     const renamed = page.locator('div.qt-card', { hasText: 'Walk Template Renamed' });
     await renamed.getByRole('button', { name: 'Delete', exact: true }).click();
     await renamed.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await expect(page.locator('div.qt-card', { hasText: 'Walk Template Renamed' })).toHaveCount(
-      0,
-      { timeout: 10_000 },
-    );
+    await expect(page.locator('div.qt-card', { hasText: 'Walk Template Renamed' })).toHaveCount(0, {
+      timeout: 10_000,
+    });
   });
 
   test('Images tab: the Image Profiles card lists the fixture profiles', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${TMPL_BASE_URL}/settings?tab=images`);
-    await unlockIfLocked(
-      page,
-      page.getByRole('heading', { name: /Image Generation Profiles/ }),
-    );
+    await unlockIfLocked(page, page.getByRole('heading', { name: /Image Generation Profiles/ }));
     // The card fetched the image-profiles listing (proves the lane-A variant is
     // live) and rendered the New Profile affordance.
-    await expect(page.getByRole('button', { name: 'New Profile' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: 'New Profile' })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('Images tab: the Default Aesthetics card loads both fields and saves the lantern one', async ({
@@ -478,7 +525,9 @@ test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
       if (res.status !== 0) {
         const out = `${res.stdout}${res.stderr}`;
         if (!out.includes('no such table') && !out.includes('no such column: userId')) {
-          throw new Error(`memories fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`);
+          throw new Error(
+            `memories fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`,
+          );
         }
       }
     }

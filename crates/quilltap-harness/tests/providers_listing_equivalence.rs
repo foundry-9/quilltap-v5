@@ -33,6 +33,12 @@ fn env_or_skip(key: &str) -> Option<String> {
 /// plugin icons the manifest does not carry) so the diff is over the
 /// manifest-covered surface only.
 ///
+/// **`configRequirements` is the plugin's WHOLE `config` object since P4.D93**
+/// (v4 bug 81's `acceptsApiKey`): v4's route spreads it verbatim, and the oracle
+/// used to hand-pick the six fields the manifest models — a comparand blind to
+/// any config key v4 adds. A key the v5 manifest does not carry is now a RED
+/// diff, which is the tripwire this family is for.
+///
 /// **`optionsSchema` is NO LONGER normalized away (P4.D83, shared contract B).**
 /// It was a documented absence; the manifests now carry it, extracted by the
 /// generator from each plugin's `getProviderOptionsSchema()`, so all eight

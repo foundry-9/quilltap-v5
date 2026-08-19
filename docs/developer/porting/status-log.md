@@ -75191,3 +75191,56 @@ across both spec files.
 validates only non-empty provider/label/key; the profile-save `apiKeyId`
 check is a provider-MATCH only. The block was client-only in v5 as it was in
 v4, so this unit is the whole of it.
+
+**Unit 6 (tier 2) — the live beat.** The bug-81 walk was folded into the
+EXISTING `settings-flow` wizard beat rather than standing alone: it needs
+exactly what that beat has just produced (a saved OPENAI_COMPATIBLE profile
+to attach a key to), and an isolated `--grep` run of a stand-alone test
+would land on the un-set-up instance and hang — measured, then restructured.
+The walk: open Add API Key → the provider `<select>` OFFERS
+`OPENAI_COMPATIBLE` and still omits `OLLAMA` → create a key of that provider
+→ edit the wizard's profile → the key `<select>` is present, its label reads
+exactly `API Key` (unstarred) and its first option `None — the endpoint needs
+no key` → attach the key → Update Profile → re-open and the selected option
+is the attached key (the round trip through the server, not form state). The
+wire-level proof (a real hosted OAC endpoint answering 200 instead of 401) is
+a 💸 dogfood item, not a beat.
+
+**Tier-3 deferrals, loud:**
+
+- **(9) HelpChat — the FOURTH v4 call site, NO v5 TARGET.** Banked verbatim
+  into the `p4.9i2` bank (`m6-screen-parity.md` row 11, "P4.D93 bank note"):
+  the resolver call shape, the v5 twin's signature, and v4's SHORTER
+  `No API key configured` sentence — which differs from BOTH Brahma sites, so
+  the note says explicitly not to normalize the casing when the help family
+  lands.
+- **(10) v4's two registry export shims** (`abstract-provider-registry.ts:274`,
+  `provider-registry.ts:359`) still hand-pick `configRequirements` and were
+  left without `acceptsApiKey` — **a known v4 gap, recorded and NOT
+  "improved" on the v5 side**. v5's `provider_list` mirrors the ROUTE (which
+  spreads the whole config), which is the surface the client reads; nothing in
+  v5 corresponds to those shims.
+- **(11) 💸 The live proofs, queued for the next dogfood pass:** a real
+  bearer-token OpenAI-Compatible endpoint end to end (the 401 that started
+  bug 81), and a real Qwen-template local model surviving a second turn
+  (finding #95's acceptance — the request half is byte-proven by the corpus,
+  but no local model has answered a folded three-block turn on either side).
+
+**Recipe rot found and repaired (the driver caught it, not inspection).**
+Running `brahma_console_tier3_equivalence` through
+`harness/tools/recipe_sweep.py --run` from this worktree went RED — and NOT
+because of the port. Both brahma headers opened with
+`W=${V5W:-$HOME/source/quilltap-v5}`, and the driver injects the worktree
+path as `W` BEFORE that line: with `V5W` unset, the header's own assignment
+clobbered the injection and the recipe rebuilt the fixture from **main's**
+spec file, which of course lacks this lane's three new cases. Every family
+using the documented `V5W=${V5W:-…}` spelling is immune (the injected `V5W`
+wins the `:-` default); only the `W=` alias self-clobbers. Both brahma
+headers converted to `V5W` and re-run through the driver end-to-end, green.
+**Two more families carry the same broken spelling and are OUTSIDE this
+lane's ownership — `carina_memory_extraction_tier3_equivalence` and
+`carina_query_tier3_equivalence` — recorded here for a maintenance pass, not
+touched.** All six families this lane moves
+(`providers_listing`, `provider_registry`, `request_builder`,
+`request_prefix_hashes`, both brahma tier-3s) now run end-to-end through the
+sanctioned driver.

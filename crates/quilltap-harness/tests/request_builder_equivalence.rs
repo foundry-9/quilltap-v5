@@ -27,6 +27,13 @@
 //! grok). Google's genai-SDK wire framing is deferred to the transport; its request
 //! LOGIC is verified in `request_builder_google_equivalence`.
 //!
+//! **The leading-system fold (P4.D93, v4 bug 82).** `three-leading-system` rows
+//! for ollama and openai-compatible (both modes) show the three-block turn head
+//! folded into one system message; `three-leading-system-unfolded` for deepseek —
+//! a hosted subclass of the SAME v4 base class — shows all three still on the
+//! wire. That last row is the regression guard: folding there would cost the
+//! cache prefix the three blocks exist to protect.
+//!
 //! **Headers (P4.44 item 3).** Each row also carries the outbound `headers` the
 //! v4 plugin/SDK put on the wire. The differential compares them at the
 //! POST-`apply_auth` point — v5's REAL header set is driven through

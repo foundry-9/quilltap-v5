@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — test(e2e): walk the optional OpenAI-Compatible key, and repair two self-clobbering recipe headers
+
+_Versions: harness 0.0.506, SPA 0.5.522._
+
+The bug-81 live walk joins the existing settings wizard beat rather than
+standing alone: it needs exactly what that beat has just produced, a saved
+OpenAI-Compatible profile to attach a key to. Open Add API Key — the provider
+list now offers OpenAI-Compatible and still omits Ollama — create a key of that
+provider, edit the wizard's profile, find the key field present with an
+unstarred label and the `None — the endpoint needs no key` placeholder, attach
+the key, save, and re-open to see it held.
+
+Running the Brahma one-shot family through `recipe_sweep.py --run` went red for
+a reason unrelated to the port: both Brahma headers opened with
+`W=${V5W:-$HOME/source/quilltap-v5}`, and the driver injects the worktree path
+as `W` before that line, so with `V5W` unset the header clobbered the injection
+and rebuilt the fixture from main's spec file. Converted to the documented
+`V5W` spelling, where the injected value survives the `:-` default. Two more
+families carry the same broken spelling and are recorded for a maintenance pass.
+
 #### 2026-08-19 — fix(settings): the OpenAI-Compatible key field, offered and optional (v4 bug 81, SPA)
 
 _Versions: SPA 0.5.521._
