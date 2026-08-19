@@ -19,7 +19,9 @@
  *      a provisioned Lantern Backgrounds store + a project P (backgroundDisplayMode
  *      latest_chat) whose official store carries its OWN lantern/aurora-aesthetics.md.
  *   6. One chat per case (recent messages seeded via addMessages; one carries a
- *      fresh scene state; one belongs to project P).
+ *      fresh scene state; one belongs to project P; [decd8ef9] some are marked
+ *      `isDangerousChat` — their per-case danger settings are patched onto the
+ *      copy by each side, not baked here).
  *
  * Minted vault / project-store ids are echoed to a JSON sidecar for reference.
  *
@@ -52,6 +54,14 @@ interface ChatSpec {
   recentMessages?: string[];
   sceneState?: Record<string, unknown>;
   projectId?: string;
+  /** [decd8ef9] Seeds the chat's Concierge classification label. */
+  isDangerousChat?: boolean;
+  /**
+   * [decd8ef9] The per-case `chat_settings.dangerousContentSettings` bag. NOT
+   * baked in here (one row, one user): both sides UPDATE it on their own fresh
+   * copy before the case runs. Declared so the shape lives in one place.
+   */
+  dangerousContentSettings?: Record<string, unknown>;
   expectWrite: boolean;
   expectDerive: boolean;
 }
@@ -293,6 +303,7 @@ async function main(): Promise<void> {
   for (const [, chat] of Object.entries(spec.chats)) {
     const extra: Record<string, unknown> = {};
     if (chat.projectId) extra.projectId = chat.projectId;
+    if (chat.isDangerousChat) extra.isDangerousChat = true;
     if (chat.sceneState) extra.sceneState = chat.sceneState;
     // Equip Fern's Green Cloak so the appearance-resolution wardrobe path is
     // exercised (all four slots present — v4 requires the full slot map).

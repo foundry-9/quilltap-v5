@@ -657,6 +657,51 @@ pub struct StoryBackgroundPromptContext {
     pub scene_aesthetic: Option<String>,
     pub character_aesthetic: Option<String>,
     pub depiction_guidelines: Vec<DepictionGuideline>,
+    /// [decd8ef9] True when the crafted prompt is bound for a Concierge
+    /// uncensored image provider — a dangerous-marked chat with one configured,
+    /// or a post-hoc moderation reroute onto one. Swaps the crafter's intimacy
+    /// guidance from cinematic concealment to a candid depiction. Defaults to
+    /// false: a prompt headed for a moderated provider still gets the
+    /// concealment treatment. (v4 `StoryBackgroundPromptContext.
+    /// uncensoredImageTarget?: boolean`, whose default is enforced at the call
+    /// site as `context.uncensoredImageTarget === true` — `bool` here, since a
+    /// missing key and an explicit `false` are the same prompt.)
+    pub uncensored_image_target: bool,
+}
+
+/// v4 `buildStoryBackgroundPrompt`: assemble the story-background crafter's
+/// system prompt from the shared head/tail plus ONE of the two intimacy blocks
+/// and ONE of the two worked examples.
+///
+/// The concealment guidance exists to clear moderation the uncensored target
+/// does not perform, so an uncensored target gets candid depiction instead;
+/// both variants keep every BACKGROUND framing rule and both still refuse to
+/// re-dress a character the narrative undressed.
+///
+/// The five-element order + the `"\n\n"` join reproduce the pre-split
+/// `STORY_BACKGROUND_PROMPT` constant byte-for-byte on the concealed path
+/// (pinned below at 5114 UTF-16 units — v4's own refactor claims the same
+/// identity, and this port verified it against the previously generated
+/// constant's exact bytes).
+pub fn build_story_background_prompt(uncensored_image_target: bool) -> String {
+    let intimacy = if uncensored_image_target {
+        prompt_text::STORY_BACKGROUND_CANDID_INTIMACY
+    } else {
+        prompt_text::STORY_BACKGROUND_CONCEALED_INTIMACY
+    };
+    let example = if uncensored_image_target {
+        prompt_text::STORY_BACKGROUND_CANDID_EXAMPLE
+    } else {
+        prompt_text::STORY_BACKGROUND_CONCEALED_EXAMPLE
+    };
+    [
+        prompt_text::STORY_BACKGROUND_PROMPT_HEAD,
+        intimacy,
+        prompt_text::STORY_BACKGROUND_PROMPT_TAIL,
+        example,
+        prompt_text::STORY_BACKGROUND_PROMPT_CLOSING,
+    ]
+    .join("\n\n")
 }
 
 /// v4 `craftStoryBackgroundPrompt`: build the character section + the aesthetic
@@ -706,7 +751,7 @@ pub async fn craft_story_background_prompt<C: CompletionProvider>(
     );
 
     let messages = vec![
-        CompletionMessage::system(prompt_text::STORY_BACKGROUND_PROMPT),
+        CompletionMessage::system(build_story_background_prompt(ctx.uncensored_image_target)),
         CompletionMessage::user(user_content),
     ];
 
@@ -830,6 +875,84 @@ fn is_js_falsy(v: &serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// [decd8ef9] The concealed (default) assembly is byte-identical to the
+    /// pre-split `STORY_BACKGROUND_PROMPT` constant. The length pin is the one
+    /// this file has always carried (5114 UTF-16 code units); the port ALSO
+    /// diffed the assembly against the previously generated constant's exact
+    /// bytes when the split landed.
+    #[test]
+    fn concealed_assembly_matches_the_pre_split_constant_length() {
+        let concealed = build_story_background_prompt(false);
+        assert_eq!(concealed.encode_utf16().count(), 5114);
+        assert!(concealed.starts_with(
+            "You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds."
+        ));
+        assert!(concealed.ends_with(
+            "Respond with ONLY the final prompt - no explanations, no markdown formatting, no quotes."
+        ));
+        // The assembly is exactly the five pieces joined by a blank line.
+        assert_eq!(
+            concealed,
+            [
+                prompt_text::STORY_BACKGROUND_PROMPT_HEAD,
+                prompt_text::STORY_BACKGROUND_CONCEALED_INTIMACY,
+                prompt_text::STORY_BACKGROUND_PROMPT_TAIL,
+                prompt_text::STORY_BACKGROUND_CONCEALED_EXAMPLE,
+                prompt_text::STORY_BACKGROUND_PROMPT_CLOSING,
+            ]
+            .join("\n\n")
+        );
+    }
+
+    /// v4 `story-background-intimacy.test.ts` case 1 + 2: the default and an
+    /// explicit `false` both keep cinematic concealment. The assertion
+    /// substrings are v4's, verbatim.
+    #[test]
+    fn defaults_to_cinematic_concealment() {
+        for target in [
+            build_story_background_prompt(false),
+            // The context default (v4: an absent `uncensoredImageTarget` key).
+            build_story_background_prompt(
+                StoryBackgroundPromptContext::default().uncensored_image_target,
+            ),
+        ] {
+            assert!(target.contains("do NOT render explicit nudity"));
+            assert!(target.contains("cinematic concealment"));
+            assert!(target.contains("Drapery:"));
+            assert!(target.contains("BAD (too explicit, will be rejected)"));
+            assert!(!target.contains("The target image provider accepts adult content"));
+        }
+    }
+
+    /// v4 `story-background-intimacy.test.ts` case 3: an uncensored image
+    /// target swaps in candid depiction and NONE of the concealment machinery
+    /// survives.
+    #[test]
+    fn swaps_in_candid_depiction_for_an_uncensored_image_target() {
+        let system = build_story_background_prompt(true);
+        assert!(system.contains("The target image provider accepts adult content"));
+        assert!(system.contains("BAD (needlessly coy"));
+        assert!(!system.contains("cinematic concealment"));
+        assert!(!system.contains("Drapery:"));
+        assert!(!system.contains("Foreground occlusion:"));
+        assert!(!system.contains("tasteful concealment"));
+    }
+
+    /// v4 `story-background-intimacy.test.ts` cases 4 + 5: neither variant
+    /// re-dresses the scene, and both keep the shared background-framing rules.
+    #[test]
+    fn both_variants_refuse_re_dressing_and_keep_the_framing_rules() {
+        for uncensored in [false, true] {
+            let system = build_story_background_prompt(uncensored);
+            assert!(system.contains("\"wearing pajamas\""));
+            assert!(system.contains("This is for a BACKGROUND image, not a portrait"));
+            assert!(system.contains("Characters should be toward the left and right of the frame"));
+            assert!(system.contains("AESTHETIC & DEPICTION GUIDELINES"));
+            assert!(system.contains("MANDATORY, binding constraints"));
+            assert!(system.contains("Respond with ONLY the final prompt"));
+        }
+    }
 
     #[test]
     fn craft_parse_strips_quotes_and_truncates() {

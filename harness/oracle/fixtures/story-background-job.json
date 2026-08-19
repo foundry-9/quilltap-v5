@@ -36,12 +36,21 @@
     "uncensored retry) and '' on the cheap provider for empty_craft_retry (silent refusal →",
     "uncensored retry).",
     "",
-    "SCOPE: danger mode is OFF for the whole corpus, so no classify/sanitize LLM calls fire",
-    "and the appearance/craft retries are driven purely by the imagePromptProfileId",
-    "uncensored selection (which needs no danger mode). The Concierge sanitize gate + the",
-    "post-hoc image-moderation reroute are a tracked deferral proven byte-for-byte by the",
-    "W4.2 danger differentials + avatar_job_tier3 (which composes the identical",
-    "generate_with_reroute machinery in the job context).",
+    "SCOPE: the first eight cases run with danger mode OFF, so no classify/sanitize LLM",
+    "calls fire and the appearance/craft retries are driven purely by the",
+    "imagePromptProfileId uncensored selection (which needs no danger mode).",
+    "",
+    "[decd8ef9] The last two cases cover the uncensored image TARGET branch. A chat",
+    "settings row is per-user and the corpus has one user, so a case may carry its own",
+    "`dangerousContentSettings` bag: BOTH sides UPDATE the chat_settings row on their",
+    "fresh copy with exactly that JSON before the handler runs (the case's danger",
+    "settings are as much fixture state as its chat row is).",
+    "  - danger_candid: a dangerous chat WITH an uncensored image profile -> the crafter",
+    "    gets the CANDID intimacy guidance (and the appearance sanitizer's rule 2 already",
+    "    steps aside, which is the agreement the commit is about).",
+    "  - danger_no_uncensored_image: a dangerous chat WITHOUT one -> still concealed. The",
+    "    `&&` pin: it is the only case that catches dropping the second conjunct, and it",
+    "    carries no characters so the sanitizer's rule-3 classify never fires.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key. NOT the real Friday pepper."
   ],
@@ -100,7 +109,8 @@
 
   "imageProfiles": [
     { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
-    { "id": "e5000000-0000-4000-8000-000000000002", "name": "Grok Images", "provider": "GROK", "modelName": "grok-2-image", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] }
+    { "id": "e5000000-0000-4000-8000-000000000002", "name": "Grok Images", "provider": "GROK", "modelName": "grok-2-image", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
+    { "id": "e5000000-0000-4000-8000-000000000004", "name": "Uncensored Images", "provider": "OPENAI", "modelName": "uncensored-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
   ],
 
   "connectionProfiles": [
@@ -178,6 +188,26 @@
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
       "recentMessages": ["Silence."],
       "expectWrite": false,
+      "expectDerive": true
+    },
+    "danger_candid": {
+      "id": "5c000009-0000-4000-8000-000000000009",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["The bath had gone cold hours ago."],
+      "isDangerousChat": true,
+      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "danger_no_uncensored_image": {
+      "id": "5c00000a-0000-4000-8000-00000000000a",
+      "characterIds": [],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["Steam clouded the mirror."],
+      "isDangerousChat": true,
+      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
+      "expectWrite": true,
       "expectDerive": true
     }
   }

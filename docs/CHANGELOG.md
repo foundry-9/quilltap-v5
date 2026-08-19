@@ -154,6 +154,43 @@ after `requiresApiKey` and only when the manifest carries it — v4's route pass
 declares it. The providers-listing oracle now spreads that whole config object
 instead of hand-picking six fields: the hand-picked comparand was blind to any
 config key v4 adds, which is exactly how `acceptsApiKey` would have passed green.
+#### 2026-08-19 — port(lantern): the story-background crafter picks its intimacy guidance per call
+
+_Versions: core 0.0.585, harness 0.0.506._
+
+v4 `decd8ef9`, first half. The story-background crafter's "DEPICTING INTIMATE
+OR UNCLOTHED STATES" section translates narrative nudity into cinematic
+concealment (drapery, silhouette, foreground occlusion). That exists to clear
+image-provider moderation, but it was baked into the system-prompt constant and
+applied unconditionally — so a dangerous-marked chat with a Concierge
+uncensored image profile got accurate appearance text (the appearance sanitizer
+already steps aside for exactly that case) fed into a crafter that then draped a
+sheet over it, to clear moderation the target provider does not perform.
+
+The prompt is now assembled per call. `gen-image-scene-prompts.mjs` learned
+v4's seven-constant shape (a shared head and tail, two intimacy blocks, two
+worked examples, the closing line) and `prompt_text.rs` was regenerated from it;
+`build_story_background_prompt(uncensored_image_target)` performs v4's
+five-element `"\n\n"` join. The concealed (default) path is byte-identical to
+the pre-split constant — checked against the previously generated constant's
+exact bytes, and pinned at its old 5114 UTF-16 code units. Four Rust unit tests
+mirror v4's five prompt-content cases, assertion substrings verbatim.
+
+`StoryBackgroundPromptContext` gains `uncensored_image_target` (the
+`generate_image` crafter and the avatar builder take no flag, as in v4), and the
+story-background handler computes `is_dangerous_chat &&
+has_uncensored_image_provider` — the same pair the appearance sanitizer reads,
+so the two layers agree. The empty-response retry carries the flag unchanged:
+swapping in the uncensored TEXT profile does not change the IMAGE target.
+
+The tier-3 corpus grew two cases: a dangerous chat WITH an uncensored image
+profile (candid) and a dangerous chat WITHOUT one (still concealed — the `&&`
+pin). A chat-settings row is per-user and the corpus has one user, so a case can
+carry its own `dangerousContentSettings` bag, which both sides apply to their
+fresh copy before the run. The oracle's completion mock now branches on the
+candid marker in the system message, so the selected variant reaches the image
+key and both `llm_logs` projections. Three mutations proven red: dropping either
+conjunct of the signal, and hard-coding the retry's flag to `true`.
 
 #### 2026-08-19 — docs(porting): plan the `9125f492` drift round — orders P4.D93, P4.D94, P4.50
 

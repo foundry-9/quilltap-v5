@@ -132,8 +132,8 @@ Discussion about space exploration:
 
 Respond with ONLY the scene description - no explanations, no quotes, no formatting."##;
 
-/// v4 `STORY_BACKGROUND_PROMPT` (5114 UTF-16 code units, no trailing newline).
-pub const STORY_BACKGROUND_PROMPT: &str = r##"You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds.
+/// v4 `STORY_BACKGROUND_PROMPT_HEAD` — the shared opening (both variants) (1379 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_PROMPT_HEAD: &str = r##"You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds.
 
 You will receive:
 - A scene context (typically a chat title or summary describing the story)
@@ -154,9 +154,10 @@ CRITICAL GUIDELINES:
 - Focus on atmospheric qualities: lighting, weather, time of day, mood
 - Include environmental details: location type, architectural elements, nature
 - Avoid cluttered compositions - keep it visually calm for use as a background
-- Write in a flowing, descriptive style suitable for image generation
+- Write in a flowing, descriptive style suitable for image generation"##;
 
-DEPICTING INTIMATE OR UNCLOTHED STATES:
+/// v4 `STORY_BACKGROUND_CONCEALED_INTIMACY` — the intimacy block for a MODERATED image provider (the default) (1968 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_CONCEALED_INTIMACY: &str = r##"DEPICTING INTIMATE OR UNCLOTHED STATES:
 When the scene context or a character description implies someone is undressed, partially clothed, or in an intimate state, do NOT render explicit nudity. Instead, use cinematic concealment to preserve the narrative truth while keeping the image renderable. The figure is still nude in the story — the camera is just polite about it. Choose whichever technique fits the scene most naturally, and you may combine them:
 - Drapery: a sheet, blanket, towel, or robe carelessly arranged, falling just where it needs to fall; a quilt pulled up to the collarbone; a towel knotted at the chest
 - Composition & framing: crop from the shoulders up, shoot from behind, use a side silhouette, or frame so the figure is partly off-canvas
@@ -166,9 +167,18 @@ When the scene context or a character description implies someone is undressed, 
 - Environment: water (bath, pool, sea, hot spring) at a discreet level; tall grass; deep snow; a steamed-over mirror
 - Implied context: tousled bedding, discarded clothing on the floor, a robe thrown over a chair — let the surroundings tell the story while the figure itself is shown with tasteful concealment
 
-The intent of the scene MUST come through. Use evocative mood language — "intimate", "tender", "vulnerable", "private moment", "morning after", "candlelit", "bare-shouldered", "barefoot", "freshly bathed" — to preserve the meaning. Do NOT erase the narrative by substituting fully-clothed alternatives ("wearing pajamas", "in casual clothes"); that destroys the scene. The reader of the final image should understand exactly what is happening; only the explicit anatomy is held back.
+The intent of the scene MUST come through. Use evocative mood language — "intimate", "tender", "vulnerable", "private moment", "morning after", "candlelit", "bare-shouldered", "barefoot", "freshly bathed" — to preserve the meaning. Do NOT erase the narrative by substituting fully-clothed alternatives ("wearing pajamas", "in casual clothes"); that destroys the scene. The reader of the final image should understand exactly what is happening; only the explicit anatomy is held back."##;
 
-AESTHETIC & DEPICTION GUIDELINES:
+/// v4 `STORY_BACKGROUND_CANDID_INTIMACY` — the intimacy block for a Concierge UNCENSORED image provider (1025 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_CANDID_INTIMACY: &str = r##"DEPICTING INTIMATE OR UNCLOTHED STATES:
+The target image provider accepts adult content, so depict the scene as the narrative actually has it. When the scene context or a character description implies someone is undressed, partially clothed, or in an intimate state, say so plainly — "nude", "naked", "bare", "undressed" — and describe pose, skin, and light honestly.
+
+Do NOT reach for coy substitutes you were not asked for: no sheet draped precisely where it is needed, no steam or convenient furniture parked over a body, no silhouette-only framing, unless the scene itself genuinely calls for them. Equally, do NOT erase the narrative by re-dressing a character the story undressed ("wearing pajamas", "in casual clothes"); that destroys the scene.
+
+The BACKGROUND framing rules still apply in full: figures toward the left and right of the frame, the environment primary, the composition visually calm. Nudity is a plain fact of the scene, not its subject — this is a wide atmospheric shot, never an anatomical close-up."##;
+
+/// v4 `STORY_BACKGROUND_PROMPT_TAIL` — the shared aesthetic guidance + framing examples (both variants) (1004 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_PROMPT_TAIL: &str = r##"AESTHETIC & DEPICTION GUIDELINES:
 - You may receive an overall image aesthetic and/or a character depiction aesthetic. Apply these as the consistent visual style (medium, era, palette, rendering) across the whole scene and its figures.
 - You may also receive per-character depiction guidelines. These are MANDATORY, binding constraints for the named character and OVERRIDE the general aesthetic wherever they conflict. Never omit, soften, or contradict them.
 
@@ -176,12 +186,22 @@ GOOD EXAMPLE OUTPUT:
 "A misty forest clearing at twilight. A woman with flowing dark hair in a simple dress stands near a weathered stone bridge at the left of the frame, a man in traveler's clothes paused at the right edge. Soft golden light filters through ancient oaks; fog drifts across the mossy ground; fireflies just beginning to glow. Painterly, calm, atmospheric."
 
 BAD EXAMPLE OUTPUT:
-"Close-up of two people talking face-to-face in the center of the frame, the woman's smile filling most of the image, fine detail on her green eyes."
+"Close-up of two people talking face-to-face in the center of the frame, the woman's smile filling most of the image, fine detail on her green eyes.""##;
 
-INTIMATE-SCENE EXAMPLE:
+/// v4 `STORY_BACKGROUND_CONCEALED_EXAMPLE` — the worked intimate-scene example matching the concealed guidance (667 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_CONCEALED_EXAMPLE: &str = r##"INTIMATE-SCENE EXAMPLE:
 SCENE INPUT: "After their first night together, she lies in bed, nude and half-asleep, while he watches her from the window."
 GOOD: "A woman half-asleep in a tousled bed, a white sheet draped loosely across her hips and trailing off the mattress, bare shoulders catching the soft dawn light. A man stands silhouetted at the window in a half-buttoned shirt, watching her. Clothing scattered across the floor. Intimate, candlelit-into-morning mood."
 BAD (too explicit, will be rejected): "A nude woman naked in bed..."
-BAD (sanitized into a different scene): "A woman in pajamas sitting up in bed while a fully-dressed man stands at the window."
+BAD (sanitized into a different scene): "A woman in pajamas sitting up in bed while a fully-dressed man stands at the window.""##;
 
-Respond with ONLY the final prompt - no explanations, no markdown formatting, no quotes."##;
+/// v4 `STORY_BACKGROUND_CANDID_EXAMPLE` — the worked intimate-scene example matching the candid guidance (751 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_CANDID_EXAMPLE: &str = r##"INTIMATE-SCENE EXAMPLE:
+SCENE INPUT: "After their first night together, she lies in bed, nude and half-asleep, while he watches her from the window."
+GOOD: "A bedroom at dawn, wide and quiet. At the left of the frame a woman lies nude on her side in tousled sheets, half-asleep, soft morning light across her bare skin. At the right a man stands at the window in a half-buttoned shirt, watching her. Clothing scattered across the floorboards. Warm, still, morning-after mood."
+BAD (needlessly coy — the provider did not ask for this): "A woman with a sheet draped carefully across her hips, only her bare shoulders showing."
+BAD (sanitized into a different scene): "A woman in pajamas sitting up in bed while a fully-dressed man stands at the window.""##;
+
+/// v4 `STORY_BACKGROUND_PROMPT_CLOSING` — the shared closing line (both variants) (88 UTF-16 code units, no trailing newline).
+pub const STORY_BACKGROUND_PROMPT_CLOSING: &str =
+    r"Respond with ONLY the final prompt - no explanations, no markdown formatting, no quotes.";

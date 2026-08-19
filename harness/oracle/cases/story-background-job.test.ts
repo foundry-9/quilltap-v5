@@ -10,7 +10,9 @@
  *   - `createLLMProvider` (`@/lib/llm`) → the recording-completion pattern; branches
  *     on a STORYCASE:<label> marker (carried by the chat title, echoed by the derive
  *     result / scene-state location) + the provider (cheap OPENAI vs uncensored
- *     OLLAMA) to drive derive / resolve / craft and the retry cases; RECORDS the
+ *     OLLAMA) to drive derive / resolve / craft and the retry cases; [decd8ef9]
+ *     ALSO on the crafter's SYSTEM message (candid vs concealed intimacy
+ *     guidance), so the selected variant reaches the writes; RECORDS the
  *     exact `provider|model|temperature|messages` key the Rust CannedCompletionProvider
  *     replays.
  *   - `createImageProvider` (`@/lib/llm/plugin-factory`) → keyed by the recorded key
@@ -74,6 +76,13 @@ interface ChatSpec {
   characterIds: string[];
   imageProfileId: string;
   projectId?: string;
+  /**
+   * [decd8ef9] The case's own `chat_settings.dangerousContentSettings` bag,
+   * patched onto the fresh copy before the handler runs (one chat-settings row,
+   * one user — so a per-case danger bag has to be fixture state applied here,
+   * identically on both sides).
+   */
+  dangerousContentSettings?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -177,6 +186,7 @@ async function main(): Promise<void> {
           sendMessage: async (params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number }, _apiKey: string) => {
             const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
             const user = messages.find((m) => m.role === 'user')?.content ?? '';
+            const system = messages.find((m) => m.role === 'system')?.content ?? '';
             const model = params.model;
             const temp = params.temperature ?? null;
             const lm = user.match(/STORYCASE:(\w+)/);
@@ -194,8 +204,17 @@ async function main(): Promise<void> {
                 );
               }
             } else if (user.endsWith('Create the atmospheric background prompt:')) {
+              // [decd8ef9] The crafter's intimacy guidance now swaps on
+              // `uncensoredImageTarget`, so BRANCH ON THE SYSTEM MESSAGE: the
+              // candid variant answers with different text, which then flows
+              // into the image key and both llm_logs projections. A concealed
+              // prompt where v4 sent a candid one (or the reverse) cannot
+              // survive that.
+              const candid = system.includes('The target image provider accepts adult content');
               if (caseLabel === 'empty_craft_retry' && provider !== 'OLLAMA') {
                 response = '';
+              } else if (candid) {
+                response = `A candid ${caseLabel} bedroom at dawn, Zelda bare by the window, nothing draped.`;
               } else if (caseLabel === 'missing_char_enum') {
                 response = 'A grand hall at midnight where Zelda waits by the great doors, lanterns glowing warmly.';
               } else {
@@ -291,6 +310,14 @@ async function main(): Promise<void> {
       if (!key) return null;
       return { id, userId, label: 'canned', provider: 'OPENAI', key_value: key, isActive: true, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z' };
     };
+
+    // [decd8ef9] The case's own danger settings, onto this copy only.
+    if (chat.dangerousContentSettings) {
+      await rawQuery('UPDATE chat_settings SET dangerousContentSettings = ? WHERE userId = ?', [
+        JSON.stringify(chat.dangerousContentSettings),
+        spec.userId,
+      ]);
+    }
 
     const frozen = spec.frozenNowMs;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

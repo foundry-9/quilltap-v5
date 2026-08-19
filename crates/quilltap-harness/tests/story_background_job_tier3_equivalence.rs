@@ -17,6 +17,14 @@
 //! orientation registry (OPENAI + GROK), the project FsSeam ([`RecordingProjectUpload`],
 //! deterministic like the oracle), and `now_ms` = the frozen `Date.now()`.
 //!
+//! [decd8ef9] The last two cases cover the uncensored image TARGET: the crafter's
+//! intimacy guidance swaps on `uncensoredImageTarget`. A chat-settings row is
+//! per-user and the corpus has one user, so those cases carry their own
+//! `dangerousContentSettings` bag, applied to each side's fresh copy before the
+//! run (see `patch_danger_settings`; the oracle runs the identical `UPDATE`). The
+//! oracle's completion mock branches on the CANDID MARKER in the system message,
+//! so the selected variant reaches the image key and both `llm_logs` projections.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). See the oracle
 //! header. Run:
 //!   QT_ORACLE_STORY=/tmp/oracle-story-background-job.ndjson \
@@ -78,6 +86,11 @@ struct ChatSpec {
     image_profile_id: String,
     #[serde(default, rename = "projectId")]
     project_id: Option<String>,
+    /// [decd8ef9] The case's own `chat_settings.dangerousContentSettings` bag,
+    /// patched onto this side's fresh copy before the handler runs (see
+    /// [`patch_danger_settings`]).
+    #[serde(default, rename = "dangerousContentSettings")]
+    dangerous_content_settings: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -259,6 +272,24 @@ fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, P
     std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
     (main_work, mount_work)
+}
+
+/// [decd8ef9] Apply the case's own `dangerousContentSettings` to the fresh copy
+/// — the oracle runs the identical `UPDATE` on its copy. A chat-settings row is
+/// per-user and the corpus has one user, so a per-case danger bag (a dangerous
+/// chat WITH vs WITHOUT an uncensored image profile; AUTO_ROUTE for the post-hoc
+/// reroute) cannot be baked into the shared fixture — it is case state, applied
+/// identically on both sides through a throwaway writable open.
+fn patch_danger_settings(main_work: &Path, pepper: &str, user_id: &str, settings: &Value) {
+    let writer = quilltap_core::db::Writer::open_writable(main_work, pepper)
+        .expect("open fixture copy for the danger-settings patch");
+    writer
+        .connection()
+        .execute(
+            "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+            rusqlite::params![settings.to_string(), user_id],
+        )
+        .expect("patch chat_settings.dangerousContentSettings");
 }
 
 fn cleanup(main: &Path, mount: &Path) {
@@ -598,6 +629,10 @@ fn story_background_job_matches_oracle() {
         let ll_work = main_work.with_file_name(format!("story-ll-{label}.db"));
         let _ = std::fs::remove_file(&ll_work);
         common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+
+        if let Some(danger) = case.dangerous_content_settings.as_ref() {
+            patch_danger_settings(&main_work, &spec.test_pepper_base64, &spec.user_id, danger);
+        }
 
         let db = Db::open(
             DbPaths {

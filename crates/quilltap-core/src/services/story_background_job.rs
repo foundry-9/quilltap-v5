@@ -285,6 +285,12 @@ where
         .as_deref()
         .map(|s| !s.is_empty())
         .unwrap_or(false);
+    // [decd8ef9] A dangerous-marked chat with an uncensored image profile
+    // configured is already headed for a provider that accepts adult content —
+    // appearance sanitization steps aside for exactly this case (see
+    // `sanitize_appearances_if_needed` rule 2), so the prompt crafter should too
+    // rather than draping a sheet over a scene nobody asked to have covered.
+    let uncensored_image_target = is_dangerous_chat && has_uncensored_image_provider;
 
     // Dangerous chats: upgrade the cheap selection for all cheap tasks.
     if is_dangerous_chat {
@@ -545,6 +551,7 @@ where
         scene_aesthetic: scene_aesthetic.clone(),
         character_aesthetic: character_aesthetic.clone(),
         depiction_guidelines: depiction_for_task.clone(),
+        uncensored_image_target,
     };
     let craft_result = craft_story_background_prompt(
         deps.executor,
@@ -567,6 +574,12 @@ where
             let Some(uncensored) = &uncensored_selection else {
                 return Ok(());
             };
+            // v4 rebuilds the retry context and passes `uncensoredImageTarget`
+            // UNCHANGED (not `true`): swapping in the uncensored TEXT profile
+            // does not change the IMAGE target, so a non-dangerous chat still
+            // gets concealment on the retry. v5 reuses the one `craft_ctx`, so
+            // the carry is structural — asserted below.
+            debug_assert_eq!(craft_ctx.uncensored_image_target, uncensored_image_target);
             let retry = craft_story_background_prompt(
                 deps.executor,
                 deps.completion,

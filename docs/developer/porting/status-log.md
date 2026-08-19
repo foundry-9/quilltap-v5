@@ -75271,3 +75271,97 @@ unchanged.
 `c9f8913c` substrate · `fe2a1126` resolver + Brahma + the spine measurement ·
 `4d95d739` the bug-82 fold · `3d141e6b` the SPA half · `f17c5682` the e2e beat
 + the recipe-header repair.
+---
+
+## P4.D94 unit 1 — the story-background crafter selects its intimacy guidance per call (v4 `decd8ef9`)
+
+**Lane:** P4.D94 (`work-orders/p4.d94-lantern-uncensored-target.md`), branch
+`claude/p4-lantern-uncensored-target-e0b16b`. **v4 pin `9125f492`**
+(drift-checked at lane start: `git log 9125f492..main` EMPTY, checkout on
+`main`, tree clean — no pinned worktree needed).
+
+**The port.** v4 split `STORY_BACKGROUND_PROMPT` into seven constants plus
+`buildStoryBackgroundPrompt(uncensoredImageTarget)`: a shared head and tail,
+one of two intimacy blocks (cinematic concealment vs candid depiction), one
+of two worked examples, and the closing line, joined with `'\n\n'`.
+
+- **The generator, not the file.** `harness/oracle/cases/
+  gen-image-scene-prompts.mjs` learned the seven-constant shape (a table
+  driving `extract`/`emit`, with the builder's own arithmetic reproduced so
+  the emitted doc comments carry each piece's UTF-16 length and the log line
+  carries both assembled lengths); `prompt_text.rs` was REGENERATED, never
+  hand-edited. Emitted lengths: HEAD 1379, CONCEALED_INTIMACY 1968,
+  CANDID_INTIMACY 1025, TAIL 1004, CONCEALED_EXAMPLE 667, CANDID_EXAMPLE 751,
+  CLOSING 88; assembled **concealed 5114**, candid 4255.
+- **The byte-identity proof.** Before regenerating, the OLD generated
+  `STORY_BACKGROUND_PROMPT` value was extracted from `prompt_text.rs` and
+  diffed against the new five-piece concealed assembly: **identical, 5114 ==
+  5114**. v4's claim ("the concealed path stays byte-identical") therefore
+  holds through this port's own constants, not merely upstream. The permanent
+  pin is the pre-existing 5114 UTF-16 length assertion, now asserted against
+  `build_story_background_prompt(false)`, plus an equality against the
+  five-element join itself.
+- **The Rust surface.** `build_story_background_prompt(bool)` in
+  `image_scene_tasks.rs` (NOT generated — the join is code);
+  `StoryBackgroundPromptContext.uncensored_image_target: bool` (v4's optional
+  key with a call-site `=== true` default collapses to `bool` — a missing key
+  and an explicit `false` are the same prompt); the crafter's system message
+  now selects. The construction-site sweep found exactly ONE site (the story
+  handler); `generate_image`'s crafter and the avatar builder take no flag, as
+  in v4. Four unit tests mirror v4's five `story-background-intimacy.test.ts`
+  cases with the assertion substrings verbatim.
+- **The handler.** `uncensored_image_target = is_dangerous_chat &&
+  has_uncensored_image_provider` — both booleans were ALREADY computed on
+  adjacent lines, and they are literally the pair `sanitize_appearances_if_
+  needed` reads (its rule 2 returns appearances untouched on exactly this
+  conjunction), which is the agreement the commit is about. Threaded into the
+  one craft context. **The empty-response retry:** v4 rebuilds the retry
+  context and passes the flag UNCHANGED (not `true`) — v5 reuses the one
+  `craft_ctx`, so the carry is structural; a `debug_assert_eq!` pins it in
+  place so a future edit cannot quietly diverge.
+
+**The differential.** `story_background_job_tier3_equivalence`, regenerated
+fresh at `9125f492` through the sweep driver.
+
+- **The existing eight cases first.** Before the corpus grew, the family was
+  regenerated and re-run against v4's REAL split crafter: **green, zero
+  change**. That is the concealed path's end-to-end byte proof — the tier-3
+  harness keys canned completions on `provider|model|temperature|messages`,
+  so the whole 5114-unit system prompt is a comparand, and a single byte would
+  have missed the key.
+- **Two new cases.** `danger_candid` (a dangerous chat WITH an uncensored
+  image profile → the 4255-unit candid prompt) and
+  `danger_no_uncensored_image` (a dangerous chat WITHOUT one → still
+  concealed). The second is the **`&&` pin** — the only shape that catches
+  dropping the has-profile conjunct.
+- **The per-case danger bag.** A `chat_settings` row is per-user and the
+  corpus has ONE user, so a per-case danger setting cannot be baked into the
+  shared fixture. Both sides now UPDATE `chat_settings.dangerousContent
+  Settings` on their own fresh copy with the case's JSON before the handler
+  runs (oracle: `rawQuery`; Rust: a throwaway `Writer::open_writable`). A
+  second USER was considered and rejected: v5 reads connection profiles with
+  `find_all` where v4 uses `findByUserId`, so a second user would have
+  reddened the family on a pre-existing single-user assumption unrelated to
+  this lane.
+- **The mock branches on the SYSTEM message.** The oracle's completion mock
+  answers a craft call differently when the prompt carries `The target image
+  provider accepts adult content`, so the SELECTED VARIANT reaches the crafted
+  text, the image key, and both `llm_logs` projections. A concealed prompt
+  where v4 sent a candid one cannot survive that.
+- `danger_no_uncensored_image` deliberately carries NO characters: with mode
+  `AUTO_ROUTE` and no uncensored image provider, `sanitize_appearances_if_
+  needed` would reach its rule-3 classify, and an empty appearance list skips
+  the sanitizer entirely — the case stays about the flag.
+
+**Mutation proofs (this unit's three, all RED).** `= is_dangerous_chat`
+(drops the has-profile conjunct) → `danger_no_uncensored_image` diverges;
+`= has_uncensored_image_provider` → the ordinary cases diverge; the retry
+hard-coding `uncensored_image_target = true` → `empty_craft_retry` diverges
+(its retry system prompt goes candid and misses the canned key).
+
+**Gate.** `cargo fmt --all --check`; clippy `-D warnings` both feature sets;
+`cargo test --workspace` with the lane env block; the family by name over a
+pin-fresh oracle, zero SKIP. No SPA surface — the SPA gate is **N/A** for
+this lane.
+
+**Versions:** core 0.0.584 → **0.0.585**, harness 0.0.505 → **0.0.506**.
