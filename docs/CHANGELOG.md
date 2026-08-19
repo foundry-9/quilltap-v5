@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+Gave the README a real front page. It had been a short banner carrying v4's
+badges — v4's GitHub release, v4's Docker Hub tag, v4's npm package — none of
+which this repository produces. Those three are replaced by a port-status
+badge, a stack badge, and one badge that names v4 as the version you can
+actually install, and the page now says in its first paragraph what it is:
+the unfinished native port, with the Quilltap you can run today living in
+quilltap-server.
+
+The rest states the terms. v5 is feature-identical and API-identical to v4 at
+release, an existing instance directory opens as it stands with no export or
+conversion step, and this repository becomes the project when v4 makes its
+last release. Two exceptions are called out rather than left to be discovered
+later: v4's plugins will not run in v5 and no compatibility shim is planned,
+because a Rust binary has no Node process to load an npm package into — a
+replacement extension system is being designed and it will not be JavaScript
+— and the v3/v4 virtual-machine appliance is retired, with a locked-down
+Docker deployment as the sandbox and the reasoning given in full. The page
+also explains how each ported unit is checked against v4's running code
+rather than against a description of it, names the four ways in at first
+release (macOS, Windows, Linux, Docker) and mobile as unpromised but
+deliberately unblocked, credits the libraries the new stack is built on, and
+points readers at quilltap.ai, the Folio, and the porting docs. It answers
+"should you use this today" with "no."
+
 Settled how v5 will be versioned and scheduled the work. The first real
 release is 5.0.0; until then the product version is the semver prerelease
 5.0.0-dev.N, one canonical string in the workspace manifest with every
