@@ -71,6 +71,27 @@ first regeneration, as designed, and is now a plain equality: v4 completes
 the avatar job and writes the avatar, as this port always did. New unit
 tests diff the normalizer against v4's `normalizeEquippedSlots` case for
 case, including the malformed-bag salvage and the non-object shapes.
+#### 2026-08-18 — test(e2e): walk a project's story background onto the workspace backdrop
+
+_Versions: SPA 0.5.517._
+
+A live browser beat for v4 bug 80's fix. It deep-links straight onto a
+project — the case v4's two competing reporters used to lose — sets "Latest
+chat background", and checks that the arbitrated backdrop paints the image
+resolved from the project's own chat, over the real dispatch and the real
+byte route. It then confirms the per-view background layer really is
+suppressed inside the workspace, so the pixels came from the reporter and
+not from a surviving `::before`. Finally it switches the project to "Theme"
+and asserts the backdrop is absent — Quilltap-v5's honest shape, since it has
+no subsystem image to fall back to.
+
+The display mode is driven through the UI rather than seeded in SQL. The
+first run of this beat found out why: `backgroundDisplayMode` is a
+document-store overlay property, so the `projects` column is shadowed by the
+project's `properties.json` and a direct table UPDATE is invisible to every
+reader. Driving the select exercises the real write path and leaves the
+shared test instance in the mode it shipped with.
+
 #### 2026-08-18 — fix(prospero): a project's story background reaches the workspace backdrop (v4 bug 80)
 
 _Versions: SPA 0.5.516._

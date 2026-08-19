@@ -74674,3 +74674,48 @@ no `WORKSPACE_TAB_ID` (routed mode). Plus four gate cases.
   isolation precisely because the first masks the second.
 
 `ng test --filter "backdrop reporter"`: 4 passed. Versions: SPA 0.5.516.
+
+## P4.D92 unit 3 — the live backdrop beat, and the fixture trap its first run found (2026-08-18)
+
+`apps/web/e2e/workspace-project-backdrop-flow.spec.ts` — one beat, both arms,
+run LIVE in-lane (the gated-beat-first-run rot class: never land a beat dark).
+It rides the SHARED global-setup server and imports the BASE
+`@playwright/test`, NOT `./support/fixtures`, so the workspace flag stays ON
+and the arbitrated backdrop is real; it sorts between `workspace-flow` and
+`workspace-tab-refresh`.
+
+- **Arm 1** — DEEP-LINK onto `/prospero/<id>` (the redirect guard opens the
+  Projects tab drilled in) with the mode at `latest_chat`: exactly one
+  `.qt-workspace-backdrop-layer` exists and its computed `background-image`
+  carries `/api/v1/files/bg-e2e-file` — resolved live through
+  `projectBackgroundGet`'s latest_chat scan of the project's own chat. This is
+  the case v4's two racing reporters LOST.
+- **The negative control that makes arm 1 mean something:** the beat then reads
+  `getComputedStyle(el, '::before').display` on the in-workspace
+  `.qt-page-container` and asserts `none`. The pixels came from the REPORTER,
+  not from a surviving per-view layer — bug 80's whole point.
+- **Arm 2** — `theme`: NO backdrop layer at all. v4 would paint the Prospero
+  subsystem image; v5 has no such machinery (unit 2's recorded divergence), and
+  the beat asserts the honest v5 shape rather than papering over it.
+- Both writes are AWAITED via `waitForRequest(projectUpdate)` — never a
+  timeout (`e2e-playwright-traps` §the-unawaited-refetch).
+
+**⚠ The trap the first live run found — worth a memory note.** The beat was
+first written with the mode SEEDED in `global-setup.ts`
+(`UPDATE projects SET backgroundDisplayMode = 'latest_chat' …`, the idiom every
+other seed in that file uses). It ran RED: no layer, and the page snapshot
+showed the select still on "Use theme background". The cause is not the
+reporter — **`backgroundDisplayMode` is a document-store OVERLAY property**
+(`db/projects.rs` `ProjectEntity::property_keys()`), so the `projects` table is
+the slim table and every reader takes the value from the project's
+`properties.json` in its official mount. A `runCliWrite` UPDATE against the
+column is invisible: it does not fail, it does not warn, it simply does not
+matter. **Any store-backed entity property — projects and groups, all sixteen
+keys — must be seeded through the API, never with SQL.** The beat now drives
+the Story Backgrounds select instead, which exercises the real write path AND
+leaves the shared instance in the mode the fixture ships (`theme`), so
+global-setup is UNCHANGED and **no fixture was touched by this lane** — nothing
+else is invalidated, and no oracle regenerates.
+
+Result: `npx playwright test workspace-project-backdrop-flow` → **1 passed**
+(43.4 s incl. global setup; the beat itself 1.4 s). Versions: SPA 0.5.517.
