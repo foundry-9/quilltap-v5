@@ -61,8 +61,15 @@ cargo build --release
 ```
 
 ```bash
-cd apps/web && npx ng build
+cd apps/web && npm run build
 ```
+
+⚠ **Always `npm run build`, never a bare `ng build`/`npx ng build`.** Raw `ng`
+finishes the work and then never exits (its esbuild service child stays ref'd —
+`@angular/build` 21.x, fixed upstream only in 22.0.4, which needs a major
+Angular + TypeScript bump). `npm run build` goes through `apps/web/tools/
+ng-run.mjs`, which waits for `Application bundle generation complete./failed.`,
+reclaims the shell, and exits with the real status.
 
 Data refresh — a fresh copy of Friday into the standing dogfood instance
 (`~/qt-dogfood-friday` — the instance dir itself: it holds `data/`, `files/`,
@@ -117,7 +124,8 @@ never batch the recording to the end**.
   a wire or a flow is fine — watch them in `llm_logs` or the wire. Long
   loops, batch jobs, image batches, or anything that would rack up real cost
   → mark the step `DEFERRED-TO-HUMAN` with a one-line reason instead.
-- **After an SPA fix mid-walk:** rebuild (`npx ng build`), restart the
+- **After an SPA fix mid-walk:** rebuild (`npm run build` — never bare `ng`,
+  which never exits), restart the
   server, and **hard-reload the tab (`Cmd+Shift+R`)** — a server restart
   alone does nothing; the tab keeps its loaded chunks. If a fix "isn't
   taking", rule the tab out FIRST: curl a chunk from the running server, grep
@@ -144,7 +152,8 @@ never batch the recording to the end**.
    **gesture that was actually broken**, not the one that already worked; a
    numbered row in `dogfood-findings.md` (finding, class, status, commit).
 4. **Commit per `.claude/commands/commit.md`** (changelog, version bumps, the
-   relevant gate: SPA `ng test` + `ng build` + Playwright for SPA fixes; the
+   relevant gate: SPA `npm test` + `npm run build` + Playwright for SPA fixes
+   (both npm scripts wrap `ng` so they actually exit); the
    workspace + differential gate for Rust fixes) and push to main — dogfood
    fixes are small and land directly, no lane ceremony.
 5. Rebuild/restart/hard-reload as above, re-run the failed step to PASS, and

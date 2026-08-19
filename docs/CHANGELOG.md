@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — build(spa): `npm run build` / `npm test` actually return the shell
+
+_SPA 0.5.519._
+
+`ng build` and `ng test` complete their work, print their summary, and then
+never exit, so anything chained behind one silently never starts — the failure
+mode `.claude/commands` and the memory notes have been working around for
+months. Measured this time rather than worked around: after the completion
+line `process.getActiveResourcesInfo()` reports exactly
+`["PipeWrap","PipeWrap","ProcessWrap"]` and nothing else — the
+`esbuild --service=... --ping` child and its two stdio pipes, still ref'd — and
+killing that one child makes `ng build` exit instantly with code 0. It is not
+esbuild's bug (its shim unrefs the service child at spawn and re-refs it only
+during an in-flight operation); `@angular/build` 21.x defers `result.dispose()`
+into a generator `finally` on the non-watch path. Fixed upstream in
+`@angular/build` **22.0.4**, which disposes eagerly before yielding, and never
+backported — 21.2.21's `src/` tree is byte-identical to 21.2.19's, and taking
+22.x means Angular 21 -> 22 plus TypeScript 5.9 -> 6.0. That upgrade is tabled
+as its own lane.
+
+New `apps/web/tools/ng-run.mjs` (Node, zero dependencies, so it works in the
+Docker image too) runs ng as a detached child, streams its output through
+untouched, waits for the command's terminal marker — Angular's own
+`Application bundle generation complete./failed.`, or vitest's `Duration` line
+plus the `Test Files` verdict — then reclaims the shell and exits with the real
+status, killing the process group so the esbuild grandchild goes with it. All
+four paths measured: successful build -> 0, broken build -> 1, passing tests ->
+0, failing tests -> 1, zero stray processes each time. `--watch` and `serve`
+pass straight through untouched. `npm run build` and `npm test` now route
+through it (`build:raw` / `test:raw` remain as escape hatches), which also
+removes a latent hang from the Dockerfile's `RUN npm run build`. `/dogfood`,
+`/unify`, `/carryout`, the SPA README and `docs/developer/running.md` all point
+at the npm scripts and say plainly never to invoke `ng` directly.
+
 #### 2026-08-19 — docs(dogfood): the /dogfood skill drives the walk itself, pausing only for the human build + unlock
 
 _Docs-only change._

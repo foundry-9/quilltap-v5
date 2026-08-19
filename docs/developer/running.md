@@ -137,6 +137,11 @@ the binds are yours to write.
 cd apps/web && npm ci && npm run build
 ```
 
+> Use `npm run build`, not `ng build`: raw `ng` finishes the bundle and then
+> never exits (`@angular/build` 21.x holds its esbuild service child open). The
+> npm script wraps it via `tools/ng-run.mjs` and returns the real exit code.
+
+
 ```bash
 cargo build --release -p quilltap-web
 ```

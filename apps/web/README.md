@@ -50,8 +50,18 @@ SPA-index fallback.
 ## Unit / component tests
 
 ```bash
-npm test        # ng test — Vitest + jsdom, single run
+npm test        # Vitest + jsdom, single run
 ```
+
+> ⚠ **Use the npm scripts, not `ng` directly.** `ng build` and `ng test`
+> (`@angular/build` 21.x) complete their work, print their summary, and then
+> **never exit** — their esbuild service child stays ref'd in the event loop,
+> so anything chained behind them never starts. `npm run build` / `npm test`
+> go through `tools/ng-run.mjs`, which waits for the terminal marker, reclaims
+> the shell, and exits with the real status. `build:raw` / `test:raw` are the
+> escape hatches. Fixed upstream in `@angular/build` 22.0.4 — taking it means
+> an Angular 21 → 22 + TypeScript 5.9 → 6.0 upgrade, tabled for now; delete
+> the wrapper when that lands.
 
 Covers the stream reducer (against the committed frame-trace fixture),
 `CoreClient` parsing (dispatch envelope, error, Locked-503 body, SSE frame

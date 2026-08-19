@@ -1,12 +1,14 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.518",
+  "version": "0.5.519",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "node tools/ng-run.mjs build",
+    "build:raw": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
+    "test": "node tools/ng-run.mjs test --watch=false",
+    "test:raw": "ng test",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium"
   },

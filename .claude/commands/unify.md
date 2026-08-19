@@ -104,8 +104,11 @@ work is a commit of its own.
   `cargo test --workspace` with all differential env vars set — and re-run
   the new differentials by name so you SEE them pass rather than silently
   skip.
-- SPA: `ng test`, `ng build`, then the FULL Playwright suite against the
-  fresh build. Fix the port (or the spec's gesture), never the assertion.
+- SPA: `npm test`, `npm run build` (from `apps/web`), then the FULL Playwright
+  suite against the fresh build. Fix the port (or the spec's gesture), never the
+  assertion. ⚠ **Never invoke `ng` directly** — a bare `ng test`/`ng build`
+  finishes and then hangs forever, so anything chained behind it never starts.
+  The npm scripts wrap it (`tools/ng-run.mjs`) and exit with the real status.
 
 ## 6. Docs, then fast-forward
 

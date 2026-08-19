@@ -68,7 +68,10 @@ Run the order's verification gate yourself: `cargo fmt --all --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` (AND with
 `--features quilltap-core/native-transport`), `cargo test --workspace` with
 your differential env vars set (confirm your tests RAN, not skipped), plus
-the SPA gate (`ng test`, `ng build`) if the order touches `apps/web`.
+the SPA gate (`npm test`, `npm run build`, from `apps/web`) if the order
+touches `apps/web`. ⚠ **Never a bare `ng test`/`ng build`** — raw `ng` never
+exits, so a chained step silently never runs; the npm scripts wrap it and
+return the real exit code.
 
 ## After the last commit: clean up your binaries
 
