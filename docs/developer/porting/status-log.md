@@ -74603,3 +74603,74 @@ full body read verbatim with the dispatch envelope asserted, and the `theme`
 arm's null/absent shape. `ng test --filter fetchProjectBackground`: 2 passed.
 
 Versions: SPA 0.5.515.
+
+## P4.D92 unit 2 — the detail tab's backdrop reporter (v4 bug 80's fix), 2026-08-18
+
+**The port.** `ProjectDetailScreen` now mirrors v4's fixed block
+(`app/prospero/[id]/ProjectDetailView.tsx:87-99`) line for line:
+
+| v4 | v5 |
+|---|---|
+| `useStoryBackground(null, projectId, mode !== 'theme')` | `backgroundQuery` over `projectBackgroundGet`, `refetchInterval` gated by `shouldPassivePollBackground(mode)` |
+| `useSubsystemInfo('prospero').backgroundImage` | **absent** — recorded divergence, below |
+| `useReportWorkspaceBackdrop(storyBackgroundUrl \|\| prosperoBackgroundImage \|\| null, false)` | an `effect` reporting `{url, isSalon:false}` under `WORKSPACE_TAB_ID`, clearing on a null url AND on destroy |
+
+The gate is v4's expression `project?.backgroundDisplayMode !== 'theme'`
+extracted to `shouldPassivePollBackground` so its QUIRK is pinnable: while
+the project is still loading the mode is `undefined`, and `undefined !==
+'theme'` is TRUE, so v4 polls during the load. Carried, and pinned by a case.
+The gate is on POLLING only — the fetch always runs, because the SERVER
+resolves `theme` to a null URL (v4's `enabled` is likewise just `!!projectId`).
+
+**Two structural differences from v4's fix, both recorded in the component
+docstring:**
+
+1. **The `'theme'` fallback arm is ABSENT (the order's Tier 2, measured and
+   NOT landed).** v4 falls back to the Prospero subsystem image. Landing that
+   in v5 needs the whole subsystem-background machinery — a
+   `subsystem-defaults` transcription (v4's is 173 lines, 12 ids), a theme
+   `subsystems.<id>` override read, AND the eight `/images/*.webp` binaries
+   its defaults name. v5 ships **none** of it: `public/images/` holds only
+   `avatars/` and `icons/`, so the fallback would resolve to a URL that 404s.
+   Cost measured at lane start and declined; this EXTENDS the standing
+   deferred-loud divergence (first recorded at the My Photos lane,
+   `status-log.md` §"Recorded divergences") to name **bug 80's fallback arm**
+   explicitly. `'theme'` mode reports NOTHING and the backdrop is absent —
+   asserted as the honest v5 shape in both the spec and the e2e beat, never
+   papered over.
+2. **No list-shell split is needed.** v4's fix has two halves: the detail
+   starts reporting, AND the list's subsystem reporter moves into a
+   `ProsperoListShell` that unmounts while a detail is shown — because the
+   registry keys on the TAB, and two live reporters raced (the subsystem won
+   on a deep-linked project tab, which is the case users reported). v5's
+   `ProsperoList` reports nothing at all (grep-verified: outside `workspace/`,
+   the only `WORKSPACE_BACKDROP_REGISTRY` consumers were
+   `salon-conversation.ts:764,893`), so the detail is already the single
+   reporter per key and the deep-link case cannot lose. **v5's gap was WIDER
+   than v4's bug** — v4's project background was mispainted; v5's was never
+   wired at all — but the fix lands directly in v4's fixed one-reporter shape.
+
+**A v4-faithful staleness, carried deliberately.** Nothing invalidates the
+background query key when the display mode is saved — v4 never invalidates
+`queryKeys.projects.background` ANYWHERE (grep of the whole v4 tree at the
+pin: one reference, the hook's own `queryKey`). So a mode change reaches the
+backdrop on the next fetch — a remount, a focus, or the 30s poll — not
+instantly. Recorded in the component and in the Image Generation card, whose
+docstring also lost a now-false line ("the background RENDER defers with the
+Salon-side story-background work").
+
+**Specs (`projects.spec.ts`), driven through the component's real
+lifecycle** — render → data → `fixture.destroy()`, never a private method
+(the `979652a9` round's §3 WIRING class): reports under its own tab id with
+`isSalon:false`; clears on destroy; reports NOTHING for `'theme'`; inert with
+no `WORKSPACE_TAB_ID` (routed mode). Plus four gate cases.
+
+**Mutation-proven, both directions, separately:**
+- report suppressed (`effect` only ever clears) → "reports the resolved
+  background…" RED (`expected [] to deeply equal [{op:'report',…}]`).
+- `destroyRef.onDestroy` clear removed, report intact → "clears the entry when
+  the detail goes away" RED (`expected {op:'report'…} to deeply equal
+  {op:'clear'…}`), the other three GREEN. The two mutations were run in
+  isolation precisely because the first masks the second.
+
+`ng test --filter "backdrop reporter"`: 4 passed. Versions: SPA 0.5.516.

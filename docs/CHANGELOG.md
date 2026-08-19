@@ -71,6 +71,33 @@ first regeneration, as designed, and is now a plain equality: v4 completes
 the avatar job and writes the avatar, as this port always did. New unit
 tests diff the normalizer against v4's `normalizeEquippedSlots` case for
 case, including the malformed-bag salvage and the non-object shapes.
+#### 2026-08-18 — fix(prospero): a project's story background reaches the workspace backdrop (v4 bug 80)
+
+_Versions: SPA 0.5.516._
+
+A project set to "Latest chat background" (or "Project background", or a
+static upload) showed nothing. The setting saved and the server returned the
+right image — the page simply never painted it.
+
+The tabbed workspace replaced each view's own background layer with one
+arbitrated backdrop that views must report to, and suppressed the per-view
+`::before` layer inside `.qt-workspace`. The project detail was never
+converted, so its background reached the screen by neither route. It now
+reports the resolved image to the backdrop registry under its own tab id and
+clears the entry when the view goes away, with v4's passive-poll gate
+(poll only when the mode is not "Theme"; the fetch itself always runs,
+because the server is what resolves "Theme" to no image).
+
+Two deliberate differences from v4's fix, both recorded in the component.
+v4 falls back to the theme's Prospero subsystem image for "Theme" mode;
+Quilltap-v5 has no subsystem-background machinery at all, so that mode
+reports nothing and the backdrop is absent — the standing divergence, whose
+newest instance this is. And v4 had to move the projects list's own
+subsystem reporter into a shell that unmounts while a detail is shown,
+because two live reporters raced over one tab key; the v5 list reports
+nothing, so the detail is already the only reporter and the deep-link case
+cannot lose.
+
 #### 2026-08-18 — fix(prospero): read a project's resolved story background (bug 80, part 1)
 
 _Versions: SPA 0.5.515._

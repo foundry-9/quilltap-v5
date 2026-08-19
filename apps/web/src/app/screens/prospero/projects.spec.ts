@@ -8,12 +8,13 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { RichEditor } from '../../editor/rich-editor';
 import type { ProjectDetail, ProjectFileDto, RoleplayTemplateDto } from '../../core/core-contract';
-import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
+import { WORKSPACE_BACKDROP_REGISTRY, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
+import type { WorkspaceBackdropEntry } from '../../workspace/workspace-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
 import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
-import { fetchProjectBackground, projectKeys } from './projects.api';
+import { fetchProjectBackground, projectKeys, shouldPassivePollBackground } from './projects.api';
 import { ProjectDetailScreen } from './project-detail';
 import { ProsperoList } from './prospero-list';
 import { ToastService } from '../../ui/toast.service';
@@ -1006,5 +1007,139 @@ describe('fetchProjectBackground', () => {
       displayMode: 'theme',
       sourceChatId: null,
     });
+  });
+});
+
+/**
+ * P4.D92 — bug 80's fix (v4 `c6ff8051`): the project detail REPORTS its story
+ * background to the workspace backdrop. v4's own regression test
+ * (`__tests__/unit/components/workspace/workspace-backdrop.test.tsx`, "lets a
+ * drilled-into detail replace its list view background") pins the LIST→DETAIL
+ * reporter swap, because v4 had two reporters racing over one tab key. v5's
+ * Prospero list reports nothing (no subsystem-background machinery exists —
+ * the standing divergence), so the measurable v5 mirror is the other half of
+ * that same guarantee: exactly one entry lives under the tab key while the
+ * detail is mounted, and it is GONE the moment the detail is not.
+ *
+ * The wiring is driven through the component's real lifecycle — render, data
+ * arrival, `fixture.destroy()` — never a private method (the `979652a9` round's
+ * §3 class: a spec that calls the method cannot see a reporter that was never
+ * wired to the view at all).
+ */
+describe('ProjectDetailScreen — the workspace backdrop reporter (bug 80)', () => {
+  interface RegistryCall {
+    op: 'report' | 'clear';
+    tabId: string;
+    entry?: WorkspaceBackdropEntry;
+  }
+
+  function fakeRegistry(calls: RegistryCall[]) {
+    return {
+      report: (tabId: string, entry: WorkspaceBackdropEntry) =>
+        calls.push({ op: 'report', tabId, entry }),
+      clear: (tabId: string) => calls.push({ op: 'clear', tabId }),
+    };
+  }
+
+  async function render(opts: {
+    backgroundUrl: string | null;
+    mode?: ProjectDetail['backgroundDisplayMode'];
+    tabId?: string | null;
+    calls: RegistryCall[];
+  }): Promise<ComponentFixture<ProjectDetailScreen>> {
+    const client = stubClient((r: DispatchReq) => {
+      switch (r.type) {
+        case 'projectGet':
+          return { project: project({ backgroundDisplayMode: opts.mode ?? 'latest_chat' }) };
+        case 'projectBackgroundGet':
+          return {
+            backgroundUrl: opts.backgroundUrl,
+            displayMode: opts.mode ?? 'latest_chat',
+            ...(opts.backgroundUrl ? { sourceChatId: 'c1' } : {}),
+          };
+        case 'projectMountPointList':
+          return { mountPoints: [] };
+        case 'projectChatList':
+          return { chats: [], total: 0 };
+        default:
+          return {};
+      }
+    });
+    TestBed.configureTestingModule({
+      imports: [ProjectDetailScreen],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(convertToParamMap({ id: 'p1' })),
+            snapshot: { paramMap: convertToParamMap({ id: 'p1' }) },
+          },
+        },
+        ...(opts.tabId === null
+          ? []
+          : [
+              { provide: WORKSPACE_TAB_ID, useValue: opts.tabId ?? 'tab-7' },
+              { provide: WORKSPACE_BACKDROP_REGISTRY, useValue: fakeRegistry(opts.calls) },
+            ]),
+      ],
+    });
+    const fixture = TestBed.createComponent(ProjectDetailScreen);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('reports the resolved background under its own tab id, isSalon false', async () => {
+    const calls: RegistryCall[] = [];
+    const fixture = await render({ backgroundUrl: '/api/v1/files/bg-1', calls });
+    expect(calls.filter((c) => c.op === 'report')).toEqual([
+      {
+        op: 'report',
+        tabId: 'tab-7',
+        entry: { url: '/api/v1/files/bg-1', isSalon: false },
+      },
+    ]);
+    fixture.destroy();
+  });
+
+  it('clears the entry when the detail goes away (drill-back / tab close)', async () => {
+    const calls: RegistryCall[] = [];
+    const fixture = await render({ backgroundUrl: '/api/v1/files/bg-1', calls });
+    expect(calls.at(-1)?.op).toBe('report');
+    fixture.destroy();
+    expect(calls.at(-1)).toEqual({ op: 'clear', tabId: 'tab-7' });
+  });
+
+  it("reports NOTHING for 'theme' mode — v5 has no Prospero subsystem fallback", async () => {
+    const calls: RegistryCall[] = [];
+    const fixture = await render({ backgroundUrl: null, mode: 'theme', calls });
+    expect(calls.some((c) => c.op === 'report')).toBe(false);
+    expect(calls.some((c) => c.op === 'clear')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('is inert outside the workspace (routed mode reports nothing)', async () => {
+    const calls: RegistryCall[] = [];
+    const fixture = await render({ backgroundUrl: '/api/v1/files/bg-1', tabId: null, calls });
+    expect(calls).toEqual([]);
+    fixture.destroy();
+  });
+});
+
+/** v4's passive-poll gate (`ProjectDetailView.tsx:90`), quirk included. */
+describe('shouldPassivePollBackground', () => {
+  it("polls for every mode except 'theme'", () => {
+    expect(shouldPassivePollBackground('latest_chat')).toBe(true);
+    expect(shouldPassivePollBackground('project')).toBe(true);
+    expect(shouldPassivePollBackground('static')).toBe(true);
+    expect(shouldPassivePollBackground('theme')).toBe(false);
+  });
+
+  it('polls while the project is still loading (v4 `project?.…` is undefined)', () => {
+    expect(shouldPassivePollBackground(undefined)).toBe(true);
+    expect(shouldPassivePollBackground(null)).toBe(true);
   });
 });

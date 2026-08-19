@@ -16,8 +16,12 @@ import { ProjectAestheticField } from './project-aesthetic-field';
  * LIVE: Avatar Generation, Announce Lantern Images, Story-Background display
  * mode, and the Default Image Profile picker (over the P4.6p image-profiles
  * listing, binding the project's `defaultImageProfileId`) — each PUTs one field.
- * The background RENDER defers with the Salon-side story-background work; the
- * display-mode select still saves.
+ *
+ * The background RENDER landed with P4.D92 (v4 bug 80): the project detail
+ * reports the resolved image to the workspace backdrop. Saving a mode here does
+ * NOT invalidate that query — v4 never invalidates its background key either, so
+ * the new mode reaches the backdrop on the next fetch (remount, focus, or the
+ * 30s poll). See `project-detail.ts`.
  */
 @Component({
   selector: 'qt-project-image-generation-card',

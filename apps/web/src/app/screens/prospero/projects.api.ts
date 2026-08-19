@@ -184,6 +184,21 @@ export async function resetProjectState(
 // --- Story background (display-mode resolution) ---
 
 /**
+ * v4's passive-poll gate, verbatim: `project?.backgroundDisplayMode !== 'theme'`
+ * (`app/prospero/[id]/ProjectDetailView.tsx:90`, the third argument to
+ * `useStoryBackground`). Extracted so the QUIRK is pinnable — while the project
+ * is still loading the mode is `undefined`, and `undefined !== 'theme'` is TRUE,
+ * so v4 polls during the load and stops only once a `theme` project has landed.
+ * That is carried, not tidied.
+ *
+ * It gates POLLING ONLY. The fetch itself always runs (v4's `enabled` is
+ * `!!projectId`), because the SERVER is what resolves `theme` to a null URL.
+ */
+export function shouldPassivePollBackground(mode: string | null | undefined): boolean {
+  return mode !== 'theme';
+}
+
+/**
  * Resolve the project's story background (v4 `useStoryBackground(null, projectId,
  * …)` over `?action=get-background`, `hooks/useStoryBackground.ts:56-70`).
  *
