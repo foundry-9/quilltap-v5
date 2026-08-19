@@ -110,7 +110,8 @@ work is a commit of its own.
 ## 6. Docs, then fast-forward
 
 - CHANGELOG: one unification entry (scope, wires, gate results, final
-  versions). Status-log: the round record. Each order's **status header**:
+  versions), in the standard header format from `commit.md` §7 — the H4
+  date + subject header and the `_Versions: …_` line, no commit hash. Status-log: the round record. Each order's **status header**:
   move landed items to Done, enumerate exactly what stays OPEN.
 - **Keep the phase plan current** (the `phase-*.md` decomposition): mark
   this round's items done and make sure what's next is legible — the next

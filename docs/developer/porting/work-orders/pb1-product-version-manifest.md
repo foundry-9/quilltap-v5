@@ -35,9 +35,12 @@ touches no ported behavior, and needs no v4 regen.
    (`src/main.rs:141`). `crates/quilltap-web/tests/profile_web_routes.rs:200`
    already documents this and asserts only the *shape*, because there is no
    single right value to assert.
-3. **`docs/CHANGELOG.md` is ~19,400 lines under one flat
-   `## Recent Changes` heading** — no version anchors, because there are no
-   versions to anchor to.
+3. **`docs/CHANGELOG.md` has no version anchors**, because there are no
+   versions to anchor to. (It was one flat ~19,400-line `## Recent Changes`
+   body when this order was written; on 2026-08-19, by human ruling, it was
+   restructured into per-commit H4 headers — hash + date + subject + bumped
+   crate versions — split by month with older months archived under
+   `docs/changelog/`. The version-anchor gap stands.)
 
 ## The human rulings this order implements (2026-08-18)
 
@@ -130,9 +133,15 @@ and the crate version agree** rather than trusting hands.
 
 ### 6. Changelog anchoring
 
-Give `docs/CHANGELOG.md` version headings going forward. Do **not**
-retroactively slice the existing ~19,400-line `## Recent Changes` body —
-anchor from this order onward and leave the historical block whole.
+**Partially superseded (2026-08-19, human ruling):** the historical body
+HAS now been sliced retroactively — per-commit H4 headers (date + subject
++ bumped crate versions; historical entries also carry the short hash),
+monthly sections, older months archived under `docs/changelog/`. The
+going-forward per-commit format lives in `.claude/commands/commit.md` §7.
+
+What remains for this order: layer **product-version anchors** on top —
+when the canonical `5.0.0-dev.N` bumps, a version heading (above the
+per-commit entries it covers) so the changelog can be read release-wise.
 
 ### 7. The commit-skill amendment
 

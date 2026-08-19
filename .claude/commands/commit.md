@@ -98,9 +98,32 @@ for docs-only or scaffolding-only commits that don't touch crate source.
 
 ## 7. Changelog — every commit, no exceptions
 
-Update [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) for **every** commit. A
-bugfix belongs in the next release section; anything else goes in the current
-`-dev` section (e.g. `5.0-dev`).
+Update [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) for **every** commit. New
+entries go at the **top** of the current month's `##` section (newest first);
+start a new `## <Month> <Year>` section when the month rolls over. When a
+month's section has grown large (roughly 400+ entries), archive it to
+`docs/changelog/YYYY-MM.md` and link it from the "Archived months" line.
+
+**Every entry gets an H4 header + a versions line**, in exactly this shape:
+
+```markdown
+#### 2026-08-19 — fix(import): remap composite componentItemIds on .qtap import
+
+_Versions: core 0.0.582, harness 0.0.504._
+
+One or more paragraphs describing the change...
+```
+
+- The header is the commit **date** and the commit message's **subject line**
+  (the same first line you're about to commit with). **No commit hash** — the
+  hash doesn't exist yet at write time and amending would invalidate it.
+  (Historical entries, restructured mechanically in 2026-08, do carry their
+  hashes; new entries never do.)
+- The versions line lists every crate whose `version` this commit bumps, using
+  the short names `core`, `harness`, `host`, `web`, `cli`, `tauri`,
+  `fixture-sanitizer`, `sqlite3mc-sys`, and `SPA` (the `apps/web`
+  `package.json` version). If nothing was bumped, write `_Docs-only change._`
+  for docs commits or `_No crate versions bumped._` otherwise.
 
 **The changelog is the exception to the Quilltap writing voice.** Write entries
 terse and direct in plain American English — the steampunk / Roaring-Twenties /
