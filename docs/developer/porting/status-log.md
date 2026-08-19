@@ -74286,3 +74286,21 @@ SPA 0.5.505 → **0.5.514**; host/sys unchanged.
 - Banked: the split-query-key-spelling consolidation (D90's module doc names
   every file); the generators-lane rider bank grew the `4423ad10`
   hair edits; the wardrobe `help/*.md` drift rides `p4.9i2`.
+
+## Follow-up — the round's two v4-side filings DISCHARGED (2026-08-18)
+
+The `979652a9` round record listed two v4 filings owed; both are now filed
+in v4's catalogue (v4 commit `a60fac7c`, docs-only — **the next drift check
+will land on it; it owes nothing**, the `8fe63c4f` class):
+
+- **v4 Bug 78** (`bugs/bug-78-avatar-crash-pre-hair-outfit-rows.md`) — the
+  avatar crash on pre-hair four-key `equippedOutfit` rows with items
+  equipped (this round's P4.D87 find; the `legacy_four_key_equipped`
+  convergence tripwire is armed and named in the filing).
+- **v4 Bug 79** (`bugs/bug-79-import-swallows-read-errors.md`) — the
+  `.qtap` import's swallowed destination read errors (the P4.48 find,
+  owed since the `aa464abf` round; v5's deliberate divergence and its
+  both-direction pins are named in the filing).
+
+The v4 commit is LOCAL — pushing v4 is the human's call. No v5 source
+changed; nothing regenerates.
