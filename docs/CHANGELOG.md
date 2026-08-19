@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Planned the `c6ff8051` drift catch-up round and wrote its two work orders.
+v4 moved three commits past the `979652a9` baseline: a docs-only commit
+filing bugs 78/79 (the port's own findings), the fix for both (v4 converging
+onto behavior v5 already pinned — the equipped-slot normalization and strict
+import reads, plus new named import warnings v5 must adopt), and the bug-80
+fix (a project's story background reaching the workspace backdrop — a
+display half v5 never ported). P4.D91 (`work-orders/
+p4.d91-import-wardrobe-convergence-server.md`) owns the crates side:
+retiring the fired convergence pins, the five import warning arms plus the
+preflight warning byte-for-byte, and the healed-reader sweep. P4.D92
+(`work-orders/p4.d92-project-backdrop-spa.md`) owns the SPA side: the
+project background query, the detail-tab backdrop reporter in v4's fixed
+one-reporter shape, and a live e2e beat, with the theme-mode subsystem
+fallback as a measured tier-2. The bugfix branch gained only the 4.8.4
+version marker (no port).
+
 Gave the README a real front page. It had been a short banner carrying v4's
 badges — v4's GitHub release, v4's Docker Hub tag, v4's npm package — none of
 which this repository produces. Those three are replaced by a port-status
