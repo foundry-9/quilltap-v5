@@ -5148,6 +5148,40 @@ fixed by v4):
    `encodeDebugInfo`, the `40d507cc` taxonomy + `4423ad10` hair edits for
    wizard/optimizer/ai-import/image-analysis).
 
+**The `9125f492` drift round (P4.D93 ∥ P4.D94, then P4.50 stacked) —
+PLANNED 2026-08-19.** Candidate 1 above (the owed dogfood pass) RAN on
+2026-08-19 and is discharged (two v5 findings, v4 bugs 81/82 filed — and
+v4 fixed both the same day, which with the Lantern commit is this round's
+drift). Three v4 commits past `c6ff8051`: `decd8ef9` (the story-background
+candid/concealment selection — behavior change on ported surfaces),
+`93bd3e7c` (the bug filings, docs, NO-PORT), `9125f492` (the bugs-81/82
+fix — v4 converging onto this port's own filings; `acceptsApiKey`
+end-to-end + the leading-system-message fold). The round:
+
+- **P4.D93** (`work-orders/p4.d93-oac-api-key-and-system-fold.md`) —
+  bugs 81/82: the manifest `acceptsApiKey` flag + predicate pair, the
+  shared key resolver at the two Brahma sites (help-chat leg banked to
+  `p4.9i2`; the spine site measured, not assumed), the leading-system
+  fold in the Ollama + OAC builders only, the settings SPA half, the
+  request-envelopes corpus grown (incl. the DeepSeek no-fold regression
+  guard).
+- **P4.D94** (`work-orders/p4.d94-lantern-uncensored-target.md`) —
+  `decd8ef9`: the seven-constant prompt split through the generator with
+  the concealed path byte-identity-pinned, the handler flag + retry
+  carry, the reroute candid re-craft as a story-only hook on the shared
+  reroute machinery (avatar differential as the guard), the story
+  fixture grown dangerous-chat coverage + full corpus re-record.
+- **P4.50** (`work-orders/p4.50-db-error-kind-split.md`) — dogfood
+  finding #96: the `DbError::Key` catch-all (246 construction sites)
+  split to a bare-message `Internal` variant with a census, an inverted
+  differential obligation (no v4-pinned byte moves), and a regrowth
+  guard. ⚠ Runs STACKED after the two drift lanes unify — it touches
+  their files.
+
+The two drift lanes are disjoint (ownership tables identical in both
+orders; no shared contract). At unification the baseline moves to
+`9125f492`.
+
 **Standing pre-beta gate (not a candidate — do not value-order it against
 drift lanes).** One item is parked deliberately *outside* the candidate list
 above, to run when parity work is winding down and **before the first build
@@ -5168,13 +5202,18 @@ anyone outside this repo installs**:
   deferred and unordered.
 
 **Standing regen note (supersedes the one above):** the oracle baseline is
-**`979652a9`** (2026-08-18, v4 main — "feat(workspace): refresh a tab's
-data when it is navigated back to"), adopted at this round's unification;
-the drift debt is CLEARED at the pin. Pin a detached worktree at
-`979652a9` for every regen if v4's checkout moves
-(`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes).
-Drift-check BOTH branches every round (bugfix measured by `diff`, never
-the commit list — its only unabsorbed content today is the test-only
-`009c49b2`). The sweep driver remains the sanctioned per-family regen
+**`c6ff8051`** (2026-08-18, v4 main — "fix(prospero, workspace): a
+project's story background follows its display mode again (bug 80)"),
+adopted at the `c6ff8051`-round unification (2026-08-19); the drift debt
+is CLEARED at the pin. (This note was stale at `979652a9` for a day — the
+`c6ff8051` unify updated the candidate list above but missed this
+paragraph; corrected 2026-08-19 while planning the `9125f492` round.) Pin
+a detached worktree at the round's pin for every regen if v4's checkout
+moves (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes) —
+the checkout is back on `main` and clean as of 2026-08-19, but VERIFY
+before every regen. Drift-check all THREE branches every round (main,
+bugfix measured by `diff` never the commit list — its only unabsorbed
+content today is the test-only `009c49b2` — and `release` for checkout
+occupancy only). The sweep driver remains the sanctioned per-family regen
 path — never run two sweeps concurrently. The distill-transitive TZ pins,
 the committed-fixture rule, and the venue/staging rules stand unchanged.

@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — docs(porting): plan the `9125f492` drift round — orders P4.D93, P4.D94, P4.50
+
+_Docs-only change._
+
+v4 shipped three commits past the `c6ff8051` baseline, two of them fixing the
+bugs this port filed from its own 2026-08-19 dogfood walk. The round is
+planned as two parallel drift lanes plus one stacked maintenance lane, each
+with a fresh survey (both sides, dated, file:line):
+
+- **P4.D93** (`docs/developer/porting/work-orders/p4.d93-oac-api-key-and-system-fold.md`)
+  — v4 `9125f492`, bugs 81/82: the `acceptsApiKey` manifest flag and
+  predicate pair, the shared connection-profile key resolver at the two
+  Brahma sites (the help-chat leg banked to `p4.9i2`; the chat spine's
+  divergent key seam measured, not assumed), the leading-system-message
+  fold in the Ollama and OpenAI-Compatible request builders only (with a
+  DeepSeek no-fold regression row in the request-envelopes corpus), and
+  the settings SPA half.
+- **P4.D94** (`.../p4.d94-lantern-uncensored-target.md`) — v4 `decd8ef9`:
+  the story-background crafter's candid-vs-concealment intimacy selection
+  through the prompt-text generator (concealed path pinned byte-identical),
+  the handler flag + retry carry, and the moderation-reroute candid
+  re-craft as a story-only hook on the shared reroute machinery, with the
+  story fixture grown its first dangerous-chat coverage.
+- **P4.50** (`.../p4.50-db-error-kind-split.md`) — dogfood finding #96:
+  split the `DbError::Key` catch-all (246 construction sites) to a
+  bare-message variant with a per-site census and a regrowth guard; runs
+  stacked after the drift lanes unify because it touches their files.
+
+Also fixed in passing: `phase-4.md`'s standing regen note was stale at
+`979652a9` (the `c6ff8051` unification updated the candidate list but
+missed that paragraph), and the phase plan now records the round.
+
 #### 2026-08-19 — build(spa): `npm run build` / `npm test` actually return the shell
 
 _SPA 0.5.519._
