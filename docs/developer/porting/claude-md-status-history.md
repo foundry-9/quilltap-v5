@@ -2029,3 +2029,20 @@ Contents:
   node_modules, `packages/quilltap/node_modules`, the
   `plugins/dist/*/node_modules` dirs). [...] (tail unchanged — see the live
   paragraph in CLAUDE.md, which carries the same standing rules.)
+
+## Superseded baseline paragraph — `979652a9` (replaced 2026-08-19 at the c6ff8051-round unification)
+
+- **Oracle baseline: `979652a9` (2026-08-18, v4 main — "feat(workspace):
+  refresh a tab's data when it is navigated back to"), adopted at the
+  979652a9-round unification; the drift debt is CLEARED at the pin, and
+  the `bugfix` branch's only unabsorbed content is the test-only
+  `009c49b2` deflake (NO-PORT).** Pin a detached worktree at
+  `979652a9` for every regen whenever the v4 checkout isn't cleanly on it
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
+  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
+  app/ packages/` — measure bugfix with `diff`, never the commit list).
+  The sweep driver remains the sanctioned per-family regen path — never
+  run two sweeps concurrently. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.

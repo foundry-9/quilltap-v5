@@ -74777,3 +74777,88 @@ seven v4 subsystem-background sites (`AuroraView`, `SettingsView`,
 deferred-loud divergence; and `help/story-backgrounds.md` (+6 lines at the pin),
 which rides the `p4.9i2` help bank per the standing rule. Tier 2 was measured
 and declined (unit 2's record); Tier 3 item 7 was measured and LANDED (unit 4).
+
+## Round record — the `c6ff8051` drift catch-up (P4.D91 ∥ P4.D92), UNIFIED 2026-08-19
+
+**Both lanes CLOSED; the oracle baseline MOVES to `c6ff8051` and the drift
+debt is CLEARED.** v4's three commits past `979652a9` absorbed: `b9569f08`
+(the bug-78/79 filings, docs, NO-PORT), `275cd7bc` (the fixes — v4
+converging onto this port's pinned divergences, plus the five named import
+warnings and the preflight refusal, which v5 ported byte-for-byte), and
+`c6ff8051` (bug 80 — the project story background through the workspace
+backdrop, where v5's gap was WIDER than v4's bug: the display half had
+never been wired at all, and the client resolver was dead and read a key
+the wire never carries). The bugfix branch's only new commit was the 4.8.4
+branch-start marker (NO-PORT).
+
+**Reconciliation.** Six commits cherry-picked (D91's two, then D92's four);
+conflicts confined to `docs/CHANGELOG.md` / `status-log.md`, both resolved
+as both-sides unions. One process slip during the doc unions left conflict
+markers inside two intermediate cherry-picks; caught by a per-commit marker
+audit, repaired by rewinding to the last clean commit and re-picking the
+final two with the markers verified at zero before each commit. No shared
+contract existed between the lanes (different layers); no wire commit was
+needed.
+
+**The §3 unification review — one finding, fixed on the unify branch
+(`46bda229a`):** the five new warning arms quote the item's `name` read off
+the RAW payload, and the arm fires exactly when the typed parse failed — so
+the field can be any JSON shape, or absent. v4 renders it through a JS
+template literal (`undefined` / `null` / `7` / `a,b` / `[object Object]`);
+v5 read it `as_str` and rendered every non-string as empty, in two
+duplicated private helpers. Now one shared `warning_display_name` over
+`pascal::js_value::to_js_string` (absent → `"undefined"`), unit-pinned; the
+create-path name fallbacks (projects/groups) deliberately keep their
+string-only read — they feed WRITTEN data, not a sentence. Everything else
+survived the read-through: the D91 normalize equivalence argument was
+re-verified against v4's actual `z.array(UUIDSchema)` schema, the D92
+component against v4's fixed `ProjectDetailView` block and the real
+`useStoryBackground` (30 s poll, `enabled: !!projectId`,
+`refetchOnReconnect: false` — all carried).
+
+**⚠ The gate's own incident — the v4 checkout moved MID-UNIFY, and the
+first regen was poisoned.** Between the survey (checkout on `main`, clean,
+at the pin) and the gate's oracle regen, the v4 working tree was switched
+to the `release` branch and the 4.8.4 release was cut (`8736d704` — whose
+CONTENT is 2026-08-13 vintage: it contains NEITHER the bug-78/79 fixes nor
+bug 80). The first sweep run against that checkout went red on
+`system_import_state` (v4 named no warnings) and
+`chats_outfits_tier2_equivalence` (four-key alphabetical bags — pre-fix
+v4), while `avatar_job` and `system_import_equivalence` passed from what
+must have been mixed staging — a reminder that a green from an unpinned
+regen proves nothing. Remedy per the standing recipe: a detached worktree
+pinned at `c6ff8051` (`/tmp/qt-v4-pin-unify-c6ff8051`, all three symlink
+classes), sweep re-run with `--v4` — all four families ok, and the fresh
+NDJSONs carry positive freshness markers (the five `Broken *` warnings; the
+`hair` key in the choutfit oracle). The wrong-tree red is itself the proof
+the regens are live. **Until the v4 checkout returns to `main`, EVERY regen
+must go through a pinned worktree.**
+
+**Gate.** `cargo fmt --check`; clippy both feature sets clean; release
+build; `cargo test --workspace` with the round's env block: **439 test
+binaries / 2,208 passed / 0 failed** (the two `FAILED`-pattern greps are a
+boot WARN sentence, not failures). The four affected families regenerated
+FRESH from the pinned worktree via the sweep driver and re-run by name,
+zero SKIP — note the workspace-suite runs of `avatar_job` and
+`chats_outfits` SKIP silently without their `QT_FIXTURE_*` vars (0.00 s is
+the tell); the by-name runs with full env are the proof (0.21 s / 12 cases
+live). SPA: `ng test` **331 files / 4,908 / 0**; `ng build` clean; full
+Playwright:
+**229 passed / 0 failed / 0 skipped (5.8 m)** against the fresh release
+binaries and build — the suite grew 228 → 229 with the new
+`workspace-project-backdrop-flow` beat.
+
+**Versions:** core 0.0.582 → **0.0.584**, harness 0.0.503 → **0.0.505**,
+SPA 0.5.514 → **0.5.518**; host/web/cli/tauri/sys unchanged.
+
+**Standing after the round:**
+
+- The owed dogfood pass (Parts C/D + the 💸 queue) gains: the bug-78
+  read-repair on Friday-vintage rows, a failed import naming its dropped
+  items, and the project backdrop on real data.
+- `help/story-backgrounds.md` rides the `p4.9i2` bank; the other seven v4
+  subsystem-background sites stay under the standing deferred-loud
+  divergence (bug 80's fallback arm is its newest named instance).
+- v4's `release` branch now carries the 4.8.4 release; drift-check all
+  THREE branches' movement next round (main, bugfix, release — release is
+  release-history only, but its checkout occupancy is what poisons regens).

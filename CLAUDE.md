@@ -1330,21 +1330,63 @@ records THERE. Update this summary only when a phase or round completes.
   re-activation freshness. **The owed dogfood pass (Parts C/D + the
   standing 💸 queue) remains the top next candidate.** Round record:
   `status-log.md`.
-- **Oracle baseline: `979652a9` (2026-08-18, v4 main — "feat(workspace):
-  refresh a tab's data when it is navigated back to"), adopted at the
-  979652a9-round unification; the drift debt is CLEARED at the pin, and
-  the `bugfix` branch's only unabsorbed content is the test-only
-  `009c49b2` deflake (NO-PORT).** Pin a detached worktree at
-  `979652a9` for every regen whenever the v4 checkout isn't cleanly on it
+- **The `c6ff8051` drift catch-up round (P4.D91 ∥ P4.D92): UNIFIED on main
+  (2026-08-19) — BOTH CLOSED; the oracle baseline MOVES to `c6ff8051` and
+  the drift debt is CLEARED.** v4's bugs-78/79 fix (converging onto this
+  port's own filings) absorbed: the bug-78 tripwire fired and retired to a
+  plain equality (v5 was never affected — its slot reader always defaulted
+  a missing key; the coercion moved to the repository so `get/set` and the
+  tool handler share ONE home, with `Object.entries`-faithful non-object
+  shapes), the five silent import arms + the preflight refusal now push
+  v4's exact sentences (measured via a built-to-fail five-item corpus case
+  — no committed archive can express an import failure), the
+  unvalidatable-row plant is a RECORDED warnings-only divergence (v4 names
+  the validation failure, v5 the collision; neither writes), and a P4.48
+  finding was CORRECTED by measurement (the "swallowed read" was really
+  v4's `ensureCollection` rebuilding the dropped table — now a `plantProbe`
+  comparand). Bug 80 landed as the WIDER v5 gap it exposed: the project
+  story background had never been wired (dead client resolver reading a
+  key the wire never carries), now reported to the workspace backdrop in
+  v4's fixed one-reporter shape + the legacy per-view layer for the routed
+  path; the `'theme'` subsystem fallback stays under the standing
+  no-subsystem-background divergence, now naming bug 80's arm. **The §3
+  review's catch:** the warning arms' quoted name is a JS template-literal
+  interpolation in v4 — v5 rendered non-string names empty; one shared
+  helper over `to_js_string` now carries it, unit-pinned. **The gate's own
+  incident: the v4 checkout was switched to the `release` branch (4.8.4,
+  2026-08-13 content) MID-UNIFY — the first, unpinned regen went red on two
+  families and was discarded; the pinned-worktree re-run is the gate of
+  record, and until the checkout returns to main EVERY regen needs the
+  pin.** The e2e beat's first run also proved SQL-seeding a store-overlay
+  property is invisible — seed through the API/UI. Gate: 439 test binaries
+  / 2,208 / 0 with the round's env block; the four affected families fresh
+  from the pinned worktree, re-run by name zero SKIP (the workspace-suite
+  copies of two of them SKIP silently without their `QT_FIXTURE_*` vars —
+  0.00 s is the tell); clippy both feature sets; release build; ng 331
+  files / 4,908; full Playwright **229/229 zero skips** (the suite grew
+  with the backdrop beat). Versions: core 0.0.584, harness 0.0.505, SPA
+  0.5.518; host/web/cli/tauri unchanged. **💸 the dogfood queue gains:**
+  the bug-78 read-repair on Friday-vintage rows, a failed import naming
+  its dropped items, the project backdrop on real data. **The owed dogfood
+  pass (Parts C/D + the standing 💸 queue) remains the top next
+  candidate.** Round record: `status-log.md`.
+- **Oracle baseline: `c6ff8051` (2026-08-18, v4 main — "fix(prospero,
+  workspace): a project's story background follows its display mode again
+  (bug 80)"), adopted at the c6ff8051-round unification; the drift debt is
+  CLEARED at the pin.** ⚠ The v4 checkout currently sits on the `release`
+  branch (the 4.8.4 release) — **pin a detached worktree at `c6ff8051` for
+  EVERY regen until the checkout is back on main**
   (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
   node_modules, `packages/quilltap/node_modules`, the
-  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH branches every
-  round** (`git log <baseline>..main` AND `git diff main bugfix -- lib/
-  app/ packages/` — measure bugfix with `diff`, never the commit list).
-  The sweep driver remains the sanctioned per-family regen path — never
-  run two sweeps concurrently. The distill-transitive TZ pins, the
-  committed-fixture rule, and the venue/staging rules stand unchanged.
-  (The superseded baseline paragraphs formerly kept here "for history" are
-  archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH development
+  branches every round** (`git log <baseline>..main` AND `git diff main
+  bugfix -- lib/ app/ packages/` — measure bugfix with `diff`, never the
+  commit list; `release` is release-history only, but note WHICH branch
+  the checkout occupies before any regen). The sweep driver remains the
+  sanctioned per-family regen path — never run two sweeps concurrently.
+  The distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged. (The superseded baseline paragraphs
+  formerly kept here "for history" are archived verbatim in
+  `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

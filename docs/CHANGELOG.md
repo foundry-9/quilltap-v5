@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — docs(porting): the c6ff8051 round record — unified, baseline moved, both lanes closed
+
+_Docs only._
+
+The `c6ff8051` drift round (P4.D91 ∥ P4.D92) unified onto main: v4's
+bugs-78/79 convergence absorbed (pin retirements, the five named import
+warnings, the preflight refusal, the equipped-slot coercion point) and the
+bug-80 project story background landed through the workspace backdrop with
+a live e2e beat. The unification review added the JS template-literal
+interpolation fix. Gate: clippy both feature sets; release build; 439 test
+binaries / 2,208 / 0 with the round's env block; the four affected families
+regenerated fresh from a PINNED `c6ff8051` worktree (the v4 checkout moved
+to the `release` branch mid-unify — the first, unpinned regen went red and
+was discarded); ng test 331 files / 4,908; ng build clean; full Playwright
+229/229 zero skips. The oracle baseline moves to `c6ff8051`.
+
 #### 2026-08-19 — fix(import): interpolate a malformed item's name the way v4's template literal does
 
 _Versions: core 0.0.584._

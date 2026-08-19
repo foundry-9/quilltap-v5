@@ -5120,26 +5120,31 @@ displayability filter still applies once keys have loaded). Gate: the round
 record in `status-log.md`. TWO v4-side filings owed: the avatar-crash bug
 on pre-hair `equippedOutfit` rows (D87's convergence tripwire armed).
 
-**Next candidates, in rough value order:**
+**Next candidates, in rough value order** (updated at the `c6ff8051`-round
+unification, 2026-08-19 — that round closed P4.D91 + P4.D92, absorbing v4's
+bugs-78/79 convergence and the bug-80 project backdrop; the two v4-side
+filings from candidate 2 of the previous list are DISCHARGED — filed AND
+fixed by v4):
 
 1. **The owed dogfood pass** — Parts C/D of the paused walk + the standing
-   💸 queue, now further grown by THIS round's surfaces: the P4.49
-   acceptance run (the bug-70 warning grepped out of `combined.log`), the
-   bug-76 poisoned-row heal, the notice lifecycle on a real image turn,
-   the hair slot end-to-end (worn hairdo, rose badge, avatar regen), and
-   tab re-activation freshness on the Friday copy.
-2. **The two v4-side filings**: the avatar-crash bug (pre-hair four-key
-   `equippedOutfit` + equipped items → "rootIds is not iterable"), plus
-   the still-owed P4.48 import-preflight filing.
-3. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
+   💸 queue: the P4.49 acceptance run (the bug-70 warning grepped out of
+   `combined.log`), the bug-76 poisoned-row heal, the notice lifecycle on
+   a real image turn, the hair slot end-to-end (worn hairdo, rose badge,
+   avatar regen), tab re-activation freshness — and from the `c6ff8051`
+   round: a real pre-hair chat row's outfit surviving a wardrobe write
+   (the bug-78 read-repair on Friday-vintage data), a failed import
+   naming its dropped items, and a project's story background painting on
+   the workspace backdrop (`latest_chat` mode) on the Friday copy.
+2. **`p4.9l2`** (DocumentPane formatting toolbar), **`p4.9i2`** (the
    HelpChat/Guide vertical + its enriched bank, now incl. the wardrobe
-   help drift from `4423ad10`/`dd3616a1`).
-4. Banked smalls: the split-query-key-spelling consolidation (D90's map
+   help drift from `4423ad10`/`dd3616a1` and `help/story-backgrounds.md`
+   from `c6ff8051`).
+3. Banked smalls: the split-query-key-spelling consolidation (D90's map
    doc names every file both sides); the settings repo-validate sibling
    fields; the stale `docs/v4` API.md mirror sweep; the reroute
    LOOKUP-half residue; the P4.D85 cleared-null LEAD on other update
    surfaces.
-5. Carried riders: the generators lane bank (external-prompt-generator,
+4. Carried riders: the generators lane bank (external-prompt-generator,
    `encodeDebugInfo`, the `40d507cc` taxonomy + `4423ad10` hair edits for
    wizard/optimizer/ai-import/image-analysis).
 
