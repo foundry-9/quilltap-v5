@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(import): interpolate a malformed item's name the way v4's template literal does
+
+_Versions: core 0.0.584._
+
+The five named import warnings quote the item's `name` read off the raw
+payload, and the arm fires exactly when the item failed to parse — so the
+field can be any JSON shape, or absent. v4 renders it through a JS template
+literal (`undefined`, `null`, `7`, `a,b`, `[object Object]`); the port read
+it as a string and rendered anything else as empty. The five warning arms
+now share one helper with the JS interpolation semantics, pinned by a unit
+test. The create-path name fallbacks are untouched — they feed written
+data, not a sentence. Caught at the unification review.
+
 #### 2026-08-19 — fix(import): name the five silent per-item failures and the preflight refusal (bug 79)
 
 _Versions: core 0.0.583, harness 0.0.505._

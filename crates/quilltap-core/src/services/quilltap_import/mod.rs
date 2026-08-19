@@ -366,6 +366,27 @@ pub(crate) fn get_preserve_ids_create_options(
     Some(source_id.to_string())
 }
 
+/// The `<name>` v4 interpolates into `Failed to import <kind> "<name>": …`
+/// (`275cd7bc`, bug 79) — read off the RAW payload item, since the arm fires
+/// when the typed parse itself failed, so the field can be any JSON shape or
+/// absent. v4's sentence is a template literal over that raw value, so the
+/// rendering is JS `${…}`: an absent key is `undefined` → `"undefined"`, and
+/// everything else follows `String(value)` ([`to_js_string`] — `null` →
+/// `"null"`, `7` → `"7"`, an array joins with commas, an object is
+/// `"[object Object]"`).
+///
+/// Only for the warning sentences. The create-path name fallbacks (projects /
+/// groups `display_name`) keep their own string-only read — they feed WRITTEN
+/// data, not a sentence.
+///
+/// [`to_js_string`]: crate::pascal::js_value::to_js_string
+pub(super) fn warning_display_name(raw: &Value) -> String {
+    match raw.get("name") {
+        None => "undefined".to_string(),
+        Some(v) => crate::pascal::js_value::to_js_string(v),
+    }
+}
+
 /// `item.id` as a string (v4 reads it untyped; absent → `""`).
 pub(crate) fn id_of(item: &Value) -> String {
     item.get("id")
@@ -1647,6 +1668,24 @@ mod tests {
 
     fn refuses_parse(s: &str) -> ImportError {
         parse_export_file(s).expect_err("should refuse")
+    }
+
+    /// [P4.D91 §3] The warning's quoted `<name>` is a JS template-literal
+    /// interpolation of the RAW item's `name` in v4 (`` `…"${tag.name}"…` ``),
+    /// and the arm fires exactly when the typed parse failed — so the field can
+    /// be any JSON shape, or absent. Transcribed `${…}` semantics, backed by
+    /// `pascal::js_value::to_js_string`'s own pins for `String(value)`.
+    #[test]
+    fn warning_display_name_follows_js_interpolation() {
+        assert_eq!(warning_display_name(&json!({})), "undefined");
+        assert_eq!(warning_display_name(&json!({ "name": null })), "null");
+        assert_eq!(warning_display_name(&json!({ "name": "A Tag" })), "A Tag");
+        assert_eq!(warning_display_name(&json!({ "name": 7 })), "7");
+        assert_eq!(warning_display_name(&json!({ "name": ["a", "b"] })), "a,b");
+        assert_eq!(
+            warning_display_name(&json!({ "name": { "x": 1 } })),
+            "[object Object]"
+        );
     }
 
     #[test]

@@ -105,7 +105,7 @@ pub(super) fn import_tags(
 
     for raw in items {
         let source_id = super::id_of(raw);
-        let name = display_name(raw);
+        let name = super::warning_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = tags::find_full_by_id(main, &source_id)?;
             if existing.is_some() {
@@ -327,7 +327,7 @@ pub(super) fn import_roleplay_templates(
 
     for raw in items {
         let source_id = super::id_of(raw);
-        let name = display_name(raw);
+        let name = super::warning_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let migrated = migrate_template_legacy_fields(raw);
             let existing = roleplay_templates::find_full_json_by_id(main, &source_id)?;

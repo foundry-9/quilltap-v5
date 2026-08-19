@@ -31,16 +31,6 @@ pub(super) struct Counts {
     pub skipped: u32,
 }
 
-/// The item name v4 interpolates into `Failed to import <kind> "<name>": …` —
-/// read off the RAW payload item, since the arm fires when the typed parse
-/// itself failed.
-fn profile_display_name(raw: &Value) -> String {
-    raw.get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
 /// v4 `LEGACY_IMAGE_CAPABLE_PROVIDERS` — seeds `supportsImageUpload` for exports
 /// that predate the per-profile flag.
 const LEGACY_IMAGE_CAPABLE_PROVIDERS: &[&str] = &["OPENAI", "ANTHROPIC", "GOOGLE", "GROK"];
@@ -148,7 +138,7 @@ pub(super) fn import_connection_profiles(
 
     for raw_profile in profiles {
         let source_id = super::id_of(raw_profile);
-        let name = profile_display_name(raw_profile);
+        let name = super::warning_display_name(raw_profile);
         let out: Result<(), DbError> = (|| {
             let existing = connection_profiles::find_by_id(main, &source_id)?;
 
@@ -345,7 +335,7 @@ pub(super) fn import_image_profiles(
 
     for raw in profiles {
         let source_id = super::id_of(raw);
-        let name = profile_display_name(raw);
+        let name = super::warning_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = image_profiles::find_by_id(main, &source_id)?;
             if existing.is_some() {
@@ -460,7 +450,7 @@ pub(super) fn import_embedding_profiles(
 
     for raw in profiles {
         let source_id = super::id_of(raw);
-        let name = profile_display_name(raw);
+        let name = super::warning_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = embedding_profiles::find_by_id(main, &source_id)?;
             if existing.is_some() {
