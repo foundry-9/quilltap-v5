@@ -1367,15 +1367,54 @@ records THERE. Update this summary only when a phase or round completes.
   with the backdrop beat). Versions: core 0.0.584, harness 0.0.505, SPA
   0.5.518; host/web/cli/tauri unchanged. **💸 the dogfood queue gains:**
   the bug-78 read-repair on Friday-vintage rows, a failed import naming
-  its dropped items, the project backdrop on real data. **The owed dogfood
-  pass (Parts C/D + the standing 💸 queue) remains the top next
-  candidate.** Round record: `status-log.md`.
+  its dropped items, the project backdrop on real data. **That pass RAN on
+  2026-08-19** — see the dogfood bullet below. Round record:
+  `status-log.md`.
+- **The owed dogfood pass RAN (2026-08-19, agent-driven, on the Friday
+  copy) — two v5 findings, TWO v4 filings, nine live proofs discharged, and
+  one 💸 item retired as unmeasurable.** Walk doc:
+  `docs/developer/porting/dogfood-walks/2026-08-19-owed-pass.md`; record in
+  `status-log.md`. **Discharged:** P4.49 file logging (both halves — v4's
+  JSON line shape, all three stray shapes swept, protected families
+  intact), the arm-(C) embedding burst, LLM-log retention (237 rows), the
+  bug-78 legacy-outfit read repair (on rows *with items equipped* — the
+  exact shape v4 crashes on), the hair slot end to end incl. a regenerated
+  portrait carrying it, the live Taboo section (16 real phrases, after the
+  math note), tri-tier dressing, P4.D49 durations + attribution, the
+  project backdrop (verified by computed URL), tab re-activation freshness,
+  and P4.41's chaining fallback. **v4 bug 71's OAC arm advanced as far as
+  it can go:** the request half is PROVEN at the byte level (wire-tap shows
+  a native `tools[]` array, settling what `pseudoToolMode: "auto"`
+  resolves to); the parse-back stays unexercised because no local model
+  returned `tool_calls` — the loop end to end IS proven on DeepSeek.
+  **FILED UPSTREAM: v4 bug 82** (three leading system messages break strict
+  local chat templates — v5 faithful, fix scoped to the Ollama/OAC builders
+  so hosted requests stay byte-identical) and **v4 bug 81** (an
+  OpenAI-Compatible profile can never hold an API key; the ordered shape is
+  an OPTIONAL key via splitting `requiresApiKey` into requires/accepts).
+  **OPEN on the v5 side: finding #96** — a provider failure logs as `key
+  derivation failed` (`DbError::Key`'s `Display` prefix, that variant used
+  as a catch-all at 10+ non-key sites); the fix is an error-kind split
+  wider than a dogfood patch, and it matters because P4.49 made
+  `combined.log` where an operator looks. **RETIRED from the 💸 queue: the
+  orphan-reaper heal** — 0/0/0 orphans on data byte-identical to live
+  Friday, because v4 landed its own reaper on 2026-08-06, three days after
+  P4.31 measured 43+118. **Still owed:** the failed-import warnings, both
+  notice surfaces (now unblocked — DeepSeek tool-calls reliably), the
+  vision send, the Serper live-key smoke, whispered announcements, Pascal
+  side effects, the roleplay-template quote delimiter, and the
+  dedup/summaries first run (deferred by cost). Two open questions before
+  anything is called a defect: the connection-profile list not refreshing
+  on tab activation, and a twice-failed `STORY_BACKGROUND_GENERATION`
+  against the Grok Images API.
 - **Oracle baseline: `c6ff8051` (2026-08-18, v4 main — "fix(prospero,
   workspace): a project's story background follows its display mode again
   (bug 80)"), adopted at the c6ff8051-round unification; the drift debt is
-  CLEARED at the pin.** ⚠ The v4 checkout currently sits on the `release`
-  branch (the 4.8.4 release) — **pin a detached worktree at `c6ff8051` for
-  EVERY regen until the checkout is back on main**
+  CLEARED at the pin.** ⚠ The v4 checkout was on the `release` branch during
+  that round; **as of 2026-08-19 it is back on `main` and clean** (verified
+  while filing bugs 81/82), so the standing pin requirement is lifted —
+  but VERIFY the branch before any regen, and pin a detached worktree if it
+  has moved again
   (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
   node_modules, `packages/quilltap/node_modules`, the
   `plugins/dist/*/node_modules` dirs). **Drift-check BOTH development

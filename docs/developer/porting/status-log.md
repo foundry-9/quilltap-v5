@@ -68551,6 +68551,107 @@ sibling settings arms' Zod-collapse seam, the `p4.9l` composer toolbar
 — the pickers' composer entrance, the stale `docs/v4` API.md mirror).
 The full candidate list lives in `phase-4.md`.
 
+## Dogfood pass — the owed pass on the Friday copy (2026-08-19)
+
+The pass every recent round record named as the top standing candidate, walked
+agent-driven against a COPY of Friday at `~/qt-dogfood-friday`. Plan and
+per-step status: `docs/developer/porting/dogfood-walks/2026-08-19-owed-pass.md`.
+**Two v5 findings, two v4 filings, nine live proofs discharged, one 💸 item
+retired as unmeasurable.**
+
+**No unlock was needed** — `unlockState` returned
+`{"state":"resolved","hasUserPassphrase":false}`, so the walk started without
+the human.
+
+### The findings
+
+- **#95 — an Ollama chat template refuses every non-initial turn.** Qwen3.5-9B
+  answers `HTTP 500 … Jinja Exception: System message must be at the beginning`.
+  The greeting works (one system message); every later turn sends **three**.
+  **Not fixed — v4 emits the same three blocks** (`context-manager.ts:1902/
+  1915/1926`), and the split deliberately serves the prompt-cache prefix design.
+  **FILED as v4 bug 82** with the fix scoped to the Ollama + OAC request
+  builders so hosted requests stay byte-identical.
+- **#96 — a provider failure is logged as `key derivation failed`.**
+  `DbError::Key`'s `Display` prepends that phrase (`db/mod.rs:161`) and the
+  variant is used as a generic catch-all at 10+ non-key sites. v5-invented, no
+  v4 analog. **OPEN** — the fix is an error-kind split wider than a dogfood
+  patch, and it matters because P4.49 just made `combined.log` where an operator
+  looks after a failed turn. Reproduced twice (a 500 and a 400).
+- **v4 bug 81 — an OpenAI-Compatible profile can never hold an API key.** One
+  boolean (`requiresApiKey`) answers two questions, so OAC is absent from the
+  key dialog AND from the profile form's key field, while the data model already
+  carries `apiKeyId` and validates the pairing. **v5 is faithful — measured, not
+  assumed** (v4's `ApiKeyModal.tsx:68` filters on that flag; its OAC plugin
+  declares `false`). Filed at the human's direction with the key made OPTIONAL.
+
+### Discharged
+
+At boot, before any gesture: **P4.49 file logging** (v4's exact JSON line shape;
+all three stray shapes swept — iCloud conflict, Finder duplicate, old rotation —
+with all four protected families intact), the **arm-(C) embedding burst**
+(`incomplete_chats=707`, real chunks at `dimensions=1024`), and **LLM-log
+retention** (237 rows at `retention_days=7`). Then by gesture: the **bug-78
+legacy-outfit read repair** (four real four-key bags read back five-key *with
+items equipped* — the exact shape v4 crashes on; the vintage proven, since the
+released v4 predates the hair commit), the **hair slot end to end** (created,
+worn, persisted, and carried into a regenerated portrait as `- **hair:**
+Victory Rolls`), the **live Taboo section** (16 real phrases on the wire, after
+the math note), **tri-tier dressing** via "Let character choose", **P4.D49**
+durations + profile attribution, the **project story backdrop** (verified by
+computed URL, not by eye), **tab re-activation freshness**, and **P4.41's
+chaining fallback** firing live (finding #69's fix).
+
+### D6 — v4 bug 71's OAC arm, taken as far as it can go
+
+`llama-server` on the human's existing ollama blobs. **The request half is now
+PROVEN at the byte level for the first time on either side:** with
+`harness/tools/wire-tap.py` in front, an `OPENAI_COMPATIBLE` profile sends a
+**native OpenAI-style `tools[]` array** (real function names, no pseudo-tool
+prose, no `tool_choice`) — which settles what `pseudoToolMode: "auto"` resolves
+to. The **parse-back stays unexercised and that is not a v5 defect**: neither
+local model returned `tool_calls` (`finishReason: None` both times), so nothing
+came back to parse. The **tool loop end to end IS proven** on DeepSeek —
+`toolCount: 24`, `finishReason: "tool_calls"`, `self_inventory` executed, the
+follow-up turn answering from the result. Per bug 81 there can be no
+authenticated hosted OAC endpoint in either app, so an unauthenticated server is
+the only stage this arm has.
+
+### Retired from the 💸 queue
+
+**The orphan-reaper heal is unmeasurable and should be dropped.** The copy shows
+0/0/0 orphans on data byte-identical to live Friday, because **v4 landed its own
+reaper on 2026-08-06** (`3bb664f0`), three days after P4.31 measured 43+118. The
+second 💸 item to expire because real data healed underneath it.
+
+### Corrections made during the pass
+
+Two claims of mine were wrong and were struck rather than left standing: the
+"SPA clobbers a server-side participant change" note (the real cause was my own
+invented `updates` envelope — `ChatUpdateParticipant` takes the field at the top
+level, and a dispatch verb ignoring an unknown field answers 200 with the
+unchanged entity, which reads exactly like a race), and a suspected timezone bug
+in the Green Room activity log (the timestamps were 9:16 AM misread at 0.55
+scale). Also checked and dismissed: plain Enter not sending (document mode —
+Shift+Enter sends).
+
+### Left for the next pass
+
+A2 (failed-import warnings), B3/C1 (both notices — now unblocked, since DeepSeek
+tool-calls reliably), D3 (vision), D7 (Serper), D8 (whispered announcements),
+D9 (Pascal side effects), E1 (roleplay-template quote delimiter), D11 (dedup +
+summaries, deferred by cost). **Two open questions worth a look before they are
+called defects:** the connection-profile list does not refresh on tab
+activation the way Home's chat list does, and a `STORY_BACKGROUND_GENERATION`
+job failed twice against the Grok Images API.
+
+⚠ **Spend note:** the scratch chat auto-chained before it was noticed and
+paused, and auto-avatar-regen fired on the outfit change — 3 Grok images, ~10
+chat turns, 12 memory extractions. The human's guess for the chaining, recorded
+for the next pass: a chat with only ONE character may confuse the turn manager.
+
+---
+
 ## Dogfood pass — the 4.8.2/4.8.3 round on the Friday copy (2026-08-14)
 
 The pass the round record named as the top standing candidate, walked by
