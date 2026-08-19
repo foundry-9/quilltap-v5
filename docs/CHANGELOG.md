@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — docs(dogfood): the /dogfood skill drives the walk itself, pausing only for the human build + unlock
+
+_Docs-only change._
+
+The `/dogfood` command is restructured around a new division of labor: Claude
+executes the walk through the Browser pane instead of scripting it for the
+human. The research phase now emits a living checklist document under
+`docs/developer/porting/dogfood-walks/` with per-step owner
+(`CLAUDE`/`HUMAN`), status, gesture, and verification method; the skill then
+pauses with verbatim build (`cargo build --release`, `ng build`) and rsync
+instructions for the `~/qt-dogfood-friday` refresh, launches `quilltap-web`
+itself after confirmation (passphrase unlock stays the human's step), and
+drives every `CLAUDE`-owned test — deferring only expensive or
+judgment-bound steps to a short human remainder at the end. Per-step result
+recording, the diagnose-against-v4 fix loop, and the close-out trail
+(findings rows, status-log record, 💸 queue update) carry over from the old
+form.
+
 #### 2026-08-19 — docs(porting): the c6ff8051 round record — unified, baseline moved, both lanes closed
 
 _Docs only._
