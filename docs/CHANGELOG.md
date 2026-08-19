@@ -154,6 +154,45 @@ after `requiresApiKey` and only when the manifest carries it — v4's route pass
 declares it. The providers-listing oracle now spreads that whole config object
 instead of hand-picking six fields: the hand-picked comparand was blind to any
 config key v4 adds, which is exactly how `acceptsApiKey` would have passed green.
+#### 2026-08-19 — port(lantern): a moderation reroute re-crafts the story prompt candidly
+
+_Versions: core 0.0.586, harness 0.0.507._
+
+v4 `decd8ef9`, second half. When an image provider post-hoc rejects a generated
+image for content moderation, the Concierge reroutes to the configured
+uncensored image profile — and was resending the prompt verbatim, cinematic
+concealment and all, to a provider that never asked for it. It now re-crafts
+candidly for the reroute target first, re-running the step-9b
+character-enumeration pass over the replacement, and is best-effort: any failure
+keeps the prompt already in hand so the reroute still produces an image.
+
+v4 does this inline in the story handler's catch. v5 shares the reroute
+machinery between the story and avatar handlers, so it lands as a seam: a
+`RerouteRecraft` trait on `image_job_common`, invoked with the RESOLVED target's
+provider once a reroute exists and before the profile/orientation resolution —
+exactly where v4's block sits. The story handler passes `CandidRecraft`, guarded
+on `!uncensored_image_target` (an already-candid prompt is left alone), crafting
+through v4's `uncensored ?? cheap` selection into a context carrying the
+target's provider and `uncensored_image_target: true`, re-running the
+enumeration pass over the hoisted non-participant list, and logging v4's info
+and warn sentences with its fields. The avatar handler passes
+`NoRerouteRecraft`: v4's avatar path is unchanged. All three downstream
+consumers moved onto the re-crafted base prompt — the reroute prompt-hint concat
+and both `llm_logs` request projections.
+
+v5's crafter returns a result rather than throwing, so v4's two best-effort arms
+(a soft empty result and a thrown error) collapse into one `None` return.
+
+Three tier-3 cases cover it, over an image profile whose `blocked-model` throws
+a moderation error: the re-craft (two craft calls, flags false then true, the
+reroute prompt carrying the candid text AND the re-run enumeration), the
+re-craft failing (the reroute reuses the concealed prompt and still produces an
+image), and an already-candid prompt (ONE craft call, no re-craft). Four
+mutations proven red: skipping the enumeration re-run, ignoring the re-craft at
+the prompt site or in the log projections, and dropping the already-candid
+guard. `avatar_job_tier3_equivalence` was regenerated fresh at the pin and re-run
+by name — no seam leak.
+
 #### 2026-08-19 — port(lantern): the story-background crafter picks its intimacy guidance per call
 
 _Versions: core 0.0.585, harness 0.0.506._

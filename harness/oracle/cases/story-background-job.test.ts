@@ -16,7 +16,9 @@
  *     exact `provider|model|temperature|messages` key the Rust CannedCompletionProvider
  *     replays.
  *   - `createImageProvider` (`@/lib/llm/plugin-factory`) → keyed by the recorded key
- *     in Rust to_key_value order; returns [] images for the no_images case.
+ *     in Rust to_key_value order; returns [] images for the no_images case, and
+ *     [decd8ef9] THROWS a content-moderation error for `blocked-model` (recorded
+ *     kind:"cannedImageFailure") to drive the post-hoc Concierge reroute.
  *   - `getImageProviderConstraints` / `getImageGenerationModels` → OPENAI + GROK
  *     size-strategy OrientationSupport.
  *   - `convertToWebP` / `transcodeToWebP` → PASS-THROUGH.
@@ -150,6 +152,7 @@ async function main(): Promise<void> {
   const RealDate = Date;
   const recordedCompletions = new Map<string, unknown>();
   const recordedImages = new Map<string, unknown>();
+  const recordedImageFailures = new Map<string, unknown>();
 
   for (const [label, chat] of Object.entries(spec.chats)) {
     const scratch = mkdtempSync(join(tmpdir(), 'qt-story-oracle-'));
@@ -213,6 +216,10 @@ async function main(): Promise<void> {
               const candid = system.includes('The target image provider accepts adult content');
               if (caseLabel === 'empty_craft_retry' && provider !== 'OLLAMA') {
                 response = '';
+              } else if (candid && caseLabel === 'moderation_recraft_fails') {
+                // The soft-failure arm: success with an empty result, so the
+                // reroute reuses the concealed prompt.
+                response = '';
               } else if (candid) {
                 response = `A candid ${caseLabel} bedroom at dawn, Zelda bare by the window, nothing draped.`;
               } else if (caseLabel === 'missing_char_enum') {
@@ -242,6 +249,14 @@ async function main(): Promise<void> {
         createImageProvider: (provider: string) => ({
           generateImage: async (params: Record<string, unknown>, _key: string) => {
             const key = canonicalImageKey(provider, params);
+            // [decd8ef9] `blocked-model` throws a content-moderation error to
+            // drive the post-hoc Concierge reroute (the avatar oracle's shape).
+            if (params.model === 'blocked-model') {
+              if (!recordedImageFailures.has(key)) {
+                recordedImageFailures.set(key, { key, message: 'content policy violation on this prompt' });
+              }
+              throw new Error('content policy violation on this prompt');
+            }
             const prompt = String(params.prompt ?? '');
             if (prompt.includes('no_images')) {
               if (!recordedImages.has(key)) recordedImages.set(key, { provider, model: String(params.model), key, images: [] });
@@ -444,6 +459,7 @@ async function main(): Promise<void> {
 
   for (const entry of recordedCompletions.values()) lines.push(JSON.stringify({ kind: 'canned', ...(entry as object) }));
   for (const entry of recordedImages.values()) lines.push(JSON.stringify({ kind: 'cannedImage', ...(entry as object) }));
+  for (const entry of recordedImageFailures.values()) lines.push(JSON.stringify({ kind: 'cannedImageFailure', ...(entry as object) }));
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`story-background-job oracle wrote ${outPath} (${lines.length} lines)\n`);

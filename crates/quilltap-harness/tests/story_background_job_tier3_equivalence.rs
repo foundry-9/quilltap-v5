@@ -17,13 +17,16 @@
 //! orientation registry (OPENAI + GROK), the project FsSeam ([`RecordingProjectUpload`],
 //! deterministic like the oracle), and `now_ms` = the frozen `Date.now()`.
 //!
-//! [decd8ef9] The last two cases cover the uncensored image TARGET: the crafter's
-//! intimacy guidance swaps on `uncensoredImageTarget`. A chat-settings row is
+//! [decd8ef9] The last five cases cover the uncensored image TARGET: the crafter's
+//! intimacy guidance swaps on `uncensoredImageTarget`, and the post-hoc moderation
+//! reroute re-crafts the prompt candidly for its target. A chat-settings row is
 //! per-user and the corpus has one user, so those cases carry their own
 //! `dangerousContentSettings` bag, applied to each side's fresh copy before the
 //! run (see `patch_danger_settings`; the oracle runs the identical `UPDATE`). The
 //! oracle's completion mock branches on the CANDID MARKER in the system message,
-//! so the selected variant reaches the image key and both `llm_logs` projections.
+//! so the selected variant reaches the image key and both `llm_logs` projections —
+//! and `blocked-model` throws a moderation error (`cannedImageFailure`) to drive
+//! the reroute.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). See the oracle
 //! header. Run:
@@ -120,6 +123,11 @@ struct CannedUsage {
 struct CannedImageRow {
     key: String,
     images: Vec<CannedImageImg>,
+}
+#[derive(Deserialize)]
+struct CannedImageFailureRow {
+    key: String,
+    message: String,
 }
 #[derive(Deserialize)]
 struct CannedImageImg {
@@ -555,6 +563,13 @@ fn load_oracle(
                     })
                     .collect();
                 image_provider = image_provider.with_raw_key(row.key, ImageGenResponse { images });
+            }
+            // [decd8ef9] The `blocked-model` content-moderation throw that drives
+            // the post-hoc Concierge reroute.
+            Some("cannedImageFailure") => {
+                let row: CannedImageFailureRow =
+                    serde_json::from_value(v).expect("parse cannedImageFailure row");
+                image_provider = image_provider.with_raw_failure(row.key, row.message);
             }
             Some("result") => {
                 let row: ResultRow = serde_json::from_value(v).expect("parse result row");

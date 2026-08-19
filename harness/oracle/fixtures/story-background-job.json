@@ -40,7 +40,7 @@
     "calls fire and the appearance/craft retries are driven purely by the",
     "imagePromptProfileId uncensored selection (which needs no danger mode).",
     "",
-    "[decd8ef9] The last two cases cover the uncensored image TARGET branch. A chat",
+    "[decd8ef9] The last five cases cover the uncensored image TARGET branch. A chat",
     "settings row is per-user and the corpus has one user, so a case may carry its own",
     "`dangerousContentSettings` bag: BOTH sides UPDATE the chat_settings row on their",
     "fresh copy with exactly that JSON before the handler runs (the case's danger",
@@ -51,6 +51,17 @@
     "  - danger_no_uncensored_image: a dangerous chat WITHOUT one -> still concealed. The",
     "    `&&` pin: it is the only case that catches dropping the second conjunct, and it",
     "    carries no characters so the sanitizer's rule-3 classify never fires.",
+    "  - moderation_recraft: an ordinary chat whose image profile is `blocked-model`",
+    "    (the provider throws a moderation error) -> the post-hoc reroute re-crafts the",
+    "    prompt CANDIDLY for the target and re-runs the step-9b enumeration pass over the",
+    "    replacement. The oracle's completion mock branches on the candid marker in the",
+    "    SYSTEM message, so the re-crafted text names Zelda and the enumeration append is",
+    "    visible in the reroute's image key + both llm_logs projections.",
+    "  - moderation_recraft_fails: the same, with the re-craft returning nothing -> the",
+    "    reroute reuses the concealed prompt and still produces an image.",
+    "  - moderation_already_candid: a dangerous chat with an uncensored image profile ->",
+    "    the prompt is candid already, so the reroute does NOT re-craft (ONE",
+    "    IMAGE_PROMPT_CRAFTING row in llm_logs, not two).",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key. NOT the real Friday pepper."
   ],
@@ -110,6 +121,7 @@
   "imageProfiles": [
     { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
     { "id": "e5000000-0000-4000-8000-000000000002", "name": "Grok Images", "provider": "GROK", "modelName": "grok-2-image", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
+    { "id": "e5000000-0000-4000-8000-000000000003", "name": "Blocked Images", "provider": "OPENAI", "modelName": "blocked-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
     { "id": "e5000000-0000-4000-8000-000000000004", "name": "Uncensored Images", "provider": "OPENAI", "modelName": "uncensored-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
   ],
 
@@ -207,6 +219,34 @@
       "recentMessages": ["Steam clouded the mirror."],
       "isDangerousChat": true,
       "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "moderation_recraft": {
+      "id": "5c00000b-0000-4000-8000-00000000000b",
+      "characterIds": [],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "recentMessages": ["The great doors stood open all night."],
+      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "moderation_recraft_fails": {
+      "id": "5c00000c-0000-4000-8000-00000000000c",
+      "characterIds": [],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "recentMessages": ["Rain drummed on the conservatory glass."],
+      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "moderation_already_candid": {
+      "id": "5c00000d-0000-4000-8000-00000000000d",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "recentMessages": ["She let the robe fall by the hearth."],
+      "isDangerousChat": true,
+      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
       "expectWrite": true,
       "expectDerive": true
     }

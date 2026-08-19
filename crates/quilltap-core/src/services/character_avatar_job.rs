@@ -317,6 +317,9 @@ where
         Some(&payload.chat_id),
         Some(&payload.character_id),
         "Avatar image generation failed",
+        // [decd8ef9] The candid re-craft is the STORY path's; v4's avatar
+        // builder is unchanged, so the reroute resends the prompt it has.
+        &common::NoRerouteRecraft,
     )
     .await?;
 

@@ -274,6 +274,37 @@ fn job_success_content(response: &ImageGenResponse, suffix: &str) -> String {
         .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
 }
 
+/// [decd8ef9] The post-hoc reroute's optional prompt re-craft seam.
+///
+/// v4 does this inline in the story handler's catch: the prompt the moderated
+/// provider just rejected was crafted WITH the cinematic-concealment guidance,
+/// and the reroute target accepts adult content, so it is re-crafted candidly
+/// before being resent. v5 shares the reroute machinery between the story and
+/// avatar handlers, so the re-craft arrives as a seam — the story handler
+/// passes its candid re-craft, the avatar handler passes [`NoRerouteRecraft`]
+/// (v4's avatar path is unchanged by that commit).
+///
+/// Best-effort by contract: `None` keeps the prompt already in hand, so the
+/// reroute still produces an image.
+pub(crate) trait RerouteRecraft {
+    /// `reroute_provider` is the RESOLVED reroute target's provider label (v4
+    /// passes `reroute.profile.provider` into the re-craft context).
+    fn recraft(
+        &self,
+        reroute_provider: &str,
+    ) -> impl std::future::Future<Output = Option<String>> + Send;
+}
+
+/// The no-op re-craft: the reroute resends the prompt it already has. The
+/// avatar handler's answer (v4 re-crafts only on the story path).
+pub(crate) struct NoRerouteRecraft;
+
+impl RerouteRecraft for NoRerouteRecraft {
+    async fn recraft(&self, _reroute_provider: &str) -> Option<String> {
+        None
+    }
+}
+
 /// The generate + post-hoc Concierge reroute flow shared by both handlers.
 /// `fail_prefix` is the handler's error prefix (`"Avatar image generation failed"`
 /// / `"Image generation failed"`); the after-reroute message is
@@ -281,7 +312,11 @@ fn job_success_content(response: &ImageGenResponse, suffix: &str) -> String {
 /// the injected registry seam. Each provider attempt writes an `IMAGE_GENERATION`
 /// `llm_logs` row (v4 `logLLMCall`) via [`log_image_gen_job`].
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
+pub(crate) async fn generate_with_reroute<
+    I: ImageProvider,
+    A: ApiKeyResolver,
+    R: RerouteRecraft,
+>(
     db: &Db,
     image_provider: &I,
     api_keys: &A,
@@ -299,6 +334,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     chat_id: Option<&str>,
     character_id: Option<&str>,
     fail_prefix: &str,
+    recraft: &R,
 ) -> Result<GenOutcome, String> {
     // Resolve orientation + build the merged params.
     let (models, support) = orientation_data_for(provider);
@@ -382,6 +418,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
                 chat_id,
                 character_id,
                 fail_prefix,
+                recraft,
             )
             .await
         }
@@ -390,7 +427,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
 
 /// The post-hoc moderation reroute half of [`generate_with_reroute`].
 #[allow(clippy::too_many_arguments)]
-async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
+async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>(
     db: &Db,
     image_provider: &I,
     api_keys: &A,
@@ -405,6 +442,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     chat_id: Option<&str>,
     character_id: Option<&str>,
     fail_prefix: &str,
+    recraft: &R,
 ) -> Result<GenOutcome, String> {
     let reroute = if is_image_moderation_error(&error.message) {
         let uid = user_id.to_string();
@@ -431,6 +469,19 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
         return Err(format!("{fail_prefix}: {}", error.message));
     };
 
+    // [decd8ef9] The rejected prompt was crafted for a MODERATED provider, so
+    // unless the chat was already flagged it carries the cinematic-concealment
+    // guidance. The reroute target accepts adult content, so give the handler
+    // its chance to re-craft candidly rather than sending a needlessly draped
+    // scene to a provider that never asked for one. Best-effort: `None` keeps
+    // the prompt we already have, so the reroute still happens. Sits before the
+    // profile/orientation resolution exactly as v4's block sits before
+    // `createImageProvider`.
+    let reroute_base_prompt = recraft
+        .recraft(&reroute.profile.provider)
+        .await
+        .unwrap_or_else(|| final_prompt.to_string());
+
     // Re-resolve for the reroute provider/model; load its `parameters`.
     let reroute_params = load_profile_parameters(db, &reroute.profile.id).await;
     let (models, support) = orientation_data_for(&reroute.profile.provider);
@@ -441,9 +492,9 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
         orientation,
     );
     let reroute_prompt = if resolved.prompt_hint.is_empty() {
-        final_prompt.to_string()
+        reroute_base_prompt.clone()
     } else {
-        format!("{final_prompt}\n\n{}", resolved.prompt_hint)
+        format!("{reroute_base_prompt}\n\n{}", resolved.prompt_hint)
     };
     let params = build_job_gen_params(
         &reroute_prompt,
@@ -470,7 +521,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 &reroute.profile.provider,
                 &reroute.profile.model_name,
                 &reroute.profile.id,
-                final_prompt,
+                &reroute_base_prompt,
                 job_success_content(&response, " (Concierge reroute)"),
                 None,
                 reroute_duration_ms,
@@ -492,7 +543,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 &reroute.profile.provider,
                 &reroute.profile.model_name,
                 &reroute.profile.id,
-                final_prompt,
+                &reroute_base_prompt,
                 String::new(),
                 Some(reroute_error.message.clone()),
                 reroute_duration_ms,
@@ -727,6 +778,7 @@ mod tests {
             None,
             None,
             "Image generation failed",
+            &NoRerouteRecraft,
         )
         .await
     }

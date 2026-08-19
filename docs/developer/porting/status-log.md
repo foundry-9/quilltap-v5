@@ -75365,3 +75365,112 @@ pin-fresh oracle, zero SKIP. No SPA surface — the SPA gate is **N/A** for
 this lane.
 
 **Versions:** core 0.0.584 → **0.0.585**, harness 0.0.505 → **0.0.506**.
+
+---
+
+## P4.D94 unit 2 — the moderation reroute re-crafts the story prompt candidly (v4 `decd8ef9`)
+
+**Lane:** P4.D94, branch `claude/p4-lantern-uncensored-target-e0b16b`, v4 pin
+`9125f492`. Unit 1's record is directly above.
+
+**The v4 shape.** Inside the story handler's `catch`, AFTER the reroute target
+resolves (v4 throws first when none does) and BEFORE `createImageProvider`:
+guard `if (!uncensoredImageTarget && cheapLLMSelection)`, re-craft with
+`provider: reroute.profile.provider` and `uncensoredImageTarget: true` through
+`uncensoredLLMSelection ?? cheapLLMSelection`, and on success set
+`rerouteBasePrompt = appendMissingCharacterEnumerations(result,
+nonParticipantCharacters).prompt` — the step-9b pass RE-RUN, because the one
+applied earlier belongs to the prompt being replaced. Two best-effort arms (a
+soft empty result, a thrown error) both leave `rerouteBasePrompt` at
+`finalPrompt`. Three downstream consumers switch to it: the prompt-hint concat
+and both reroute `logLLMCall` request projections.
+
+**The v5 seam.** v5 factored the reroute into `image_job_common::
+generate_with_reroute` → `reroute_or_fail`, SHARED with the avatar handler, so
+the re-craft could not simply be inlined. It lands as a trait:
+
+- `pub(crate) trait RerouteRecraft { fn recraft(&self, reroute_provider: &str)
+  -> impl Future<Output = Option<String>> + Send; }` — `None` means "keep the
+  prompt in hand", which is the best-effort contract stated in the type.
+  `NoRerouteRecraft` is the avatar handler's answer (v4's avatar path is
+  UNCHANGED by the commit; the avatar family is the guard).
+- Called in `reroute_or_fail` immediately after `let Some(reroute) = reroute
+  else { return Err(...) }` and before `load_profile_parameters` /
+  `resolve_orientation` — v4's exact position.
+- The story handler's `CandidRecraft` holds the executor, completion seam, the
+  re-craft context (complete but for `provider`, filled from the resolved
+  target), `uncensored ?? cheap` selection, the hoisted non-participant slice,
+  `enabled: !uncensored_image_target`, and the pre-recraft prompt length.
+- **`C: CompletionProvider + Sync`** was added to
+  `handle_story_background_generation`: the borrowed `&C` has to cross the
+  seam's `Send` future bound. The `JobHandler` impl already required it, so no
+  caller moved.
+- **A structural collapse, recorded:** v5's `craft_story_background_prompt`
+  returns a `CheapLlmTaskResult` and cannot throw, so v4's two best-effort arms
+  are ONE `None` return here. v4's soft-arm truthiness (`success && result`) is
+  reproduced exactly — an empty string takes the failure arm.
+- v4's info/warn sentences are logged verbatim through `tracing` with its
+  fields (`promptLengthBefore`/`After` as UTF-16 counts, `usedUncensored
+  Crafter`). **`jobId` is absent**: v5 does not thread the job id into this
+  handler, and the file's other ~20 v4 logger calls remain unported (the
+  standing shape) — these three are here because the order asked for them and
+  because P4.49 made `combined.log` where an operator looks.
+- The `non_participant` hoist is structural in v5 (the read already falls back
+  to an empty list); v4's `= []` initializer + "Held for the moderation-reroute
+  path below" comment carried over.
+
+**The differential.** Three new `story_background_job_tier3_equivalence` cases,
+all over a `Blocked Images` profile whose `blocked-model` makes the oracle's
+image mock throw `content policy violation on this prompt` (recorded as
+`cannedImageFailure`, replayed in Rust through `CannedImageProvider::
+with_raw_failure` — the avatar family's shape), with AUTO_ROUTE + an
+`Uncensored Images` reroute target in the case's danger bag:
+
+- `moderation_recraft` — TWO craft calls recorded (OPENAI concealed 5114-unit
+  prompt, then OLLAMA candid 4255-unit prompt: v4's flags false → true), the
+  blocked call keyed on the concealed prompt and the reroute call keyed on
+  `A candid moderation_recraft bedroom at dawn, Zelda bare by the window,
+  nothing draped. Zelda: A woman. a tall woman with dark braided hair.` — the
+  trailing enumeration IS the step-9b re-run, visible because the case carries
+  no participants and the candid mock response names Zelda.
+- `moderation_recraft_fails` — the candid re-craft returns `''`; the reroute
+  call is keyed on the CONCEALED prompt and the image still lands.
+- `moderation_already_candid` — a dangerous chat with an uncensored image
+  profile: ONE craft row in `llm_logs`, both provider calls carrying the same
+  candid prompt. The `craft called once` observation v4's unit test makes is a
+  `llm_logs` ROW COUNT here.
+
+**Mutation proofs (this unit's four, all RED).** Skipping the step-9b re-run on
+the replacement; `reroute_prompt` built from `final_prompt` instead of the
+re-crafted base; the reroute-success `llm_logs` projection keeping
+`final_prompt`; and `enabled: true` (re-crafting an already-candid prompt).
+Unit 1's three are in its record — **seven mutations across the lane, every one
+red.**
+
+**`avatar_job_tier3_equivalence`** regenerated fresh at `9125f492` through the
+sweep driver and re-run by name: green. The shared reroute machinery moved and
+the avatar path did not — which is exactly what the `NoRerouteRecraft` arm
+claims.
+
+**Gate.** `cargo fmt --all --check`; clippy `-D warnings` both feature sets;
+`cargo test --workspace` with the lane env block (`QT_ORACLE_STORY` /
+`QT_FIXTURE_STORY_{MAIN,MOUNT}` / `QT_ORACLE_AVATAR` /
+`QT_FIXTURE_AVATAR_{MAIN,MOUNT}`), both differential families positively
+confirmed to have RUN inside it. SPA gate **N/A** — this lane touches no
+`apps/web` file. `harness/tools/check_spelling.py` exit 0.
+
+**Deferred loud (tier 3 of the order).**
+
+- `help/dangerous-content.md` + `help/story-backgrounds.md` (+10 lines each at
+  `decd8ef9`) ride the **`p4.9i2`** help bank per the standing rule — NOT
+  ported here. `help/story-backgrounds.md` already carried the `c6ff8051`
+  rider; this is its second.
+- 💸 **The live proof is owed to the next dogfood pass:** a real
+  dangerous-marked chat with a Concierge uncensored image profile producing a
+  candid story-background prompt, and — if reachable — a moderation rejection
+  rerouting and re-crafting. The lane's survey of the handler found nothing
+  bearing on the 2026-08-19 walk's twice-failed
+  `STORY_BACKGROUND_GENERATION` against the Grok Images API: this commit is
+  prompt SELECTION, not transport, and no code on the failure path moved.
+
+**Versions:** core 0.0.585 → **0.0.586**, harness 0.0.506 → **0.0.507**.
