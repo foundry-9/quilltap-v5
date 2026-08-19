@@ -234,7 +234,7 @@ pub enum TemplateDelimiter {
 /// `prepareForStorage` (`JSON.stringify` of the Zod-parsed array) produces.
 fn serialize_delimiters(delimiters: &[TemplateDelimiter]) -> Result<String, DbError> {
     serde_json::to_string(delimiters)
-        .map_err(|e| DbError::Key(format!("delimiters serialize: {e}")))
+        .map_err(|e| DbError::Internal(format!("delimiters serialize: {e}")))
 }
 
 /// Parse the stored `delimiters` JSON array text into typed delimiters, applying
@@ -246,7 +246,7 @@ fn serialize_delimiters(delimiters: &[TemplateDelimiter]) -> Result<String, DbEr
 /// next update).
 fn parse_delimiters(json_text: &str) -> Result<Vec<TemplateDelimiter>, DbError> {
     let raw: Vec<serde_json::Value> = serde_json::from_str(json_text)
-        .map_err(|e| DbError::Key(format!("delimiters parse: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("delimiters parse: {e}")))?;
     let mut out = Vec::with_capacity(raw.len());
     for mut value in raw {
         if let serde_json::Value::Object(map) = &mut value {
@@ -254,7 +254,7 @@ fn parse_delimiters(json_text: &str) -> Result<Vec<TemplateDelimiter>, DbError> 
                 .or_insert_with(|| serde_json::Value::String("wrap".to_string()));
         }
         let delim: TemplateDelimiter = serde_json::from_value(value)
-            .map_err(|e| DbError::Key(format!("delimiters element: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("delimiters element: {e}")))?;
         out.push(delim);
     }
     Ok(out)
@@ -268,7 +268,7 @@ fn narration_storage(nd: &StringOrPair) -> Result<String, DbError> {
     match nd {
         StringOrPair::Single(s) => Ok(s.clone()),
         StringOrPair::Pair(pair) => serde_json::to_string(pair)
-            .map_err(|e| DbError::Key(format!("narration serialize: {e}"))),
+            .map_err(|e| DbError::Internal(format!("narration serialize: {e}"))),
     }
 }
 
@@ -336,15 +336,15 @@ impl<'c> RoleplayTemplatesRepository<'c> {
     /// an empty array (held empty across the corpus).
     pub fn create(&self, data: &RtCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
         let rendering_patterns_json = serde_json::to_string(&data.rendering_patterns)
-            .map_err(|e| DbError::Key(format!("renderingPatterns serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("renderingPatterns serialize: {e}")))?;
         let delimiters_json = serialize_delimiters(&data.delimiters)?;
         let narration_delimiters = narration_storage(&data.narration_delimiters)?;
         let dialogue_detection_json: Option<String> = match &data.dialogue_detection {
             Some(dd) => Some(
                 serde_json::to_string(dd)
-                    .map_err(|e| DbError::Key(format!("dialogueDetection serialize: {e}")))?,
+                    .map_err(|e| DbError::Internal(format!("dialogueDetection serialize: {e}")))?,
             ),
             None => None,
         };
@@ -429,19 +429,19 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }
         if let Some(rendering_patterns) = &patch.rendering_patterns {
             let json = serde_json::to_string(rendering_patterns)
-                .map_err(|e| DbError::Key(format!("renderingPatterns serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("renderingPatterns serialize: {e}")))?;
             assignments.push(format!("renderingPatterns = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(dialogue_detection) = &patch.dialogue_detection {
             let json = serde_json::to_string(dialogue_detection)
-                .map_err(|e| DbError::Key(format!("dialogueDetection serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("dialogueDetection serialize: {e}")))?;
             assignments.push(format!("dialogueDetection = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }

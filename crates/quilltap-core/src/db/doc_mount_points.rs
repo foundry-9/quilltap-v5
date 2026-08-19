@@ -164,9 +164,9 @@ impl<'c> DocMountPointsRepository<'c> {
     /// bound in schema/Zod field order (= on-disk order on a fresh fixture).
     pub fn create(&self, data: &DmpCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let include_json = serde_json::to_string(&data.include_patterns)
-            .map_err(|e| DbError::Key(format!("includePatterns serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("includePatterns serialize: {e}")))?;
         let exclude_json = serde_json::to_string(&data.exclude_patterns)
-            .map_err(|e| DbError::Key(format!("excludePatterns serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("excludePatterns serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO doc_mount_points \
@@ -229,13 +229,13 @@ impl<'c> DocMountPointsRepository<'c> {
         }
         if let Some(include_patterns) = &patch.include_patterns {
             let include_json = serde_json::to_string(include_patterns)
-                .map_err(|e| DbError::Key(format!("includePatterns serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("includePatterns serialize: {e}")))?;
             assignments.push(format!("includePatterns = ?{}", values.len() + 1));
             values.push(Box::new(include_json));
         }
         if let Some(exclude_patterns) = &patch.exclude_patterns {
             let exclude_json = serde_json::to_string(exclude_patterns)
-                .map_err(|e| DbError::Key(format!("excludePatterns serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("excludePatterns serialize: {e}")))?;
             assignments.push(format!("excludePatterns = ?{}", values.len() + 1));
             values.push(Box::new(exclude_json));
         }
@@ -322,7 +322,7 @@ impl<'c> DocMountPointsRepository<'c> {
             )?
         };
         if affected == 0 {
-            return Err(DbError::Key(format!(
+            return Err(DbError::Internal(format!(
                 "Mount point not found for status update: {id}"
             )));
         }
@@ -346,7 +346,7 @@ impl<'c> DocMountPointsRepository<'c> {
             params![now, file_count, chunk_count, total_size_bytes, now, id],
         )?;
         if affected == 0 {
-            return Err(DbError::Key(format!(
+            return Err(DbError::Internal(format!(
                 "Mount point not found for scan update: {id}"
             )));
         }

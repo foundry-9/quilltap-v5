@@ -212,7 +212,7 @@ pub fn compile_all_identity_stacks(
     let chat_id = chat
         .get("id")
         .and_then(Value::as_str)
-        .ok_or_else(|| DbError::Key("chat has no id".to_string()))?;
+        .ok_or_else(|| DbError::Internal("chat has no id".to_string()))?;
 
     let mut stacks = Map::new();
     if let Some(participants) = chat.get("participants").and_then(Value::as_array) {
@@ -257,7 +257,7 @@ pub fn compile_identity_stack_for_participant(
     let chat_id = chat
         .get("id")
         .and_then(Value::as_str)
-        .ok_or_else(|| DbError::Key("chat has no id".to_string()))?;
+        .ok_or_else(|| DbError::Internal("chat has no id".to_string()))?;
 
     let Some(participant) = chat
         .get("participants")

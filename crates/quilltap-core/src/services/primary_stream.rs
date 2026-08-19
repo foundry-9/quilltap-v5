@@ -589,7 +589,7 @@ pub fn save_assistant_message(
 
     let event: crate::db::chats_messages::ChatEventInput =
         serde_json::from_value(Value::Object(msg))
-            .map_err(|e| DbError::Key(format!("saveAssistantMessage marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("saveAssistantMessage marshal: {e}")))?;
     writer.chat_messages().add_message(chat_id, &event)?;
 
     // Save tool messages (v4 message-finalizer.service.ts:635, `if

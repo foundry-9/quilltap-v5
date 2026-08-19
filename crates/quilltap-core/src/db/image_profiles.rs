@@ -120,9 +120,9 @@ impl<'c> ImageProfilesRepository<'c> {
     /// `apiKeyId`/`baseUrl` as `Option<String>` (`None` → SQL NULL).
     pub fn create(&self, data: &IpCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let parameters_json = serde_json::to_string(&data.parameters)
-            .map_err(|e| DbError::Key(format!("parameters serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO image_profiles \
@@ -194,7 +194,7 @@ impl<'c> ImageProfilesRepository<'c> {
         }
         if let Some(parameters) = &patch.parameters {
             let parameters_json = serde_json::to_string(parameters)
-                .map_err(|e| DbError::Key(format!("parameters serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
             assignments.push(format!("parameters = ?{}", values.len() + 1));
             values.push(Box::new(parameters_json));
         }
@@ -208,7 +208,7 @@ impl<'c> ImageProfilesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }

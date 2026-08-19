@@ -107,8 +107,22 @@ pub mod wardrobe_read;
 /// Errors from the DB layer.
 #[derive(Debug)]
 pub enum DbError {
-    /// Deriving the raw-hex key from the pepper failed.
+    /// Deriving the raw-hex key from the pepper failed. Constructed at exactly
+    /// two sites ([`runtime::Db::open`] and [`Writer::open_writable`], both
+    /// wrapping [`crate::dbkey::pepper_b64_to_key_hex`]) — the `Display` prefix
+    /// below is a claim about the cause, so nothing else may carry it (P4.50,
+    /// dogfood finding #96; the `db_error_key_variant_is_key_only` guard in
+    /// `quilltap-harness` holds the line).
     Key(String),
+    /// A general-purpose failure whose message is already a whole sentence: a
+    /// serialize/parse failure, an unavailable overlay, a missing partition, a
+    /// provider/stream failure, a panicked worker thread. Its `Display` is the
+    /// bare message — these sites composed their own sentences assuming they
+    /// would be read as-is (the same shape [`DbError::StoreUnavailable`] uses).
+    ///
+    /// This is deliberately ONE catch-all, not a taxonomy: it exists so the
+    /// error text stops lying about key derivation (P4.50), nothing more.
+    Internal(String),
     /// A SQLite operation failed.
     Sqlite(rusqlite::Error),
     /// Spawning the dedicated writer thread failed (see [`runtime`]).
@@ -159,6 +173,7 @@ impl std::fmt::Display for DbError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DbError::Key(msg) => write!(f, "key derivation failed: {msg}"),
+            DbError::Internal(msg) => write!(f, "{msg}"),
             DbError::Sqlite(e) => write!(f, "sqlite error: {e}"),
             DbError::WriterSpawn(msg) => write!(f, "failed to spawn writer thread: {msg}"),
             DbError::WriterGone => write!(f, "writer thread is gone"),
@@ -736,5 +751,41 @@ mod tolerant_write_tests {
             .query_row("SELECT timezone FROM t WHERE id = 's1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(got, "America/Chicago");
+    }
+}
+
+#[cfg(test)]
+mod db_error_display_tests {
+    use super::DbError;
+
+    /// P4.50 / dogfood finding #96. A provider failure surfaced through the
+    /// `DbError`-typed plumbing must read as itself — the operator's first
+    /// sentence in `combined.log` after a failed turn (P4.49 made that the
+    /// place they look) may not claim a cipher fault that did not happen.
+    #[test]
+    fn internal_display_is_the_bare_message_with_no_key_prefix() {
+        let e =
+            DbError::Internal("primary stream failed: HTTP 500: Internal Server Error".to_string());
+        assert_eq!(
+            e.to_string(),
+            "primary stream failed: HTTP 500: Internal Server Error"
+        );
+        assert!(
+            !e.to_string().contains("key derivation"),
+            "the catch-all variant must not carry a key-derivation claim: {e}"
+        );
+    }
+
+    /// The other half of the split: the two genuine construction sites
+    /// (`runtime::Db::open` / `Writer::open_writable`, both wrapping
+    /// `dbkey::pepper_b64_to_key_hex`) still say what actually failed, so the
+    /// prefix keeps its diagnostic value instead of becoming noise.
+    #[test]
+    fn key_display_still_names_key_derivation() {
+        let e = DbError::Key("invalid base64 pepper".to_string());
+        assert_eq!(
+            e.to_string(),
+            "key derivation failed: invalid base64 pepper"
+        );
     }
 }

@@ -131,7 +131,7 @@ impl<'c> PluginConfigRepository<'c> {
     /// → compact JSON text; `enabled` as `Option<i64>` (`None` → SQL NULL).
     pub fn create(&self, data: &PcCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let config_json = serde_json::to_string(&data.config)
-            .map_err(|e| DbError::Key(format!("config serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("config serialize: {e}")))?;
         let enabled: Option<i64> = data.enabled.map(i64::from);
 
         self.conn.execute(
@@ -181,7 +181,7 @@ impl<'c> PluginConfigRepository<'c> {
         }
         if let Some(config) = &patch.config {
             let config_json = serde_json::to_string(config)
-                .map_err(|e| DbError::Key(format!("config serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("config serialize: {e}")))?;
             assignments.push(format!("config = ?{}", values.len() + 1));
             values.push(Box::new(config_json));
         }
@@ -273,7 +273,7 @@ impl<'c> PluginConfigRepository<'c> {
             // `preserve_order` this matches the JS spread key-for-key — an
             // overwrite holds its position, a new key appends.
             let existing_config: serde_json::Value = serde_json::from_str(&existing_config_json)
-                .map_err(|e| DbError::Key(format!("existing config parse: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("existing config parse: {e}")))?;
             let mut merged: serde_json::Map<String, serde_json::Value> =
                 existing_config.as_object().cloned().unwrap_or_default();
             if let Some(new_obj) = config.as_object() {

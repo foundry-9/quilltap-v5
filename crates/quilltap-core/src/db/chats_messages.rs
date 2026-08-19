@@ -459,7 +459,7 @@ impl<'c> ChatMessagesRepository<'c> {
         }
 
         let event: ChatEventInput = serde_json::from_value(merged)
-            .map_err(|e| DbError::Key(format!("updateMessage parse: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("updateMessage parse: {e}")))?;
 
         self.conn.execute(
             "DELETE FROM chat_messages WHERE id = ?1",
@@ -805,7 +805,7 @@ fn is_silent_stored(v: Option<bool>) -> Option<f64> {
 
 /// Compact JSON text for a JSON column.
 fn json_text<T: Serialize>(v: &T) -> Result<String, DbError> {
-    serde_json::to_string(v).map_err(|e| DbError::Key(format!("json serialize: {e}")))
+    serde_json::to_string(v).map_err(|e| DbError::Internal(format!("json serialize: {e}")))
 }
 
 /// Optional fixed-shape JSON column: `None` → SQL NULL, `Some` → compact JSON.

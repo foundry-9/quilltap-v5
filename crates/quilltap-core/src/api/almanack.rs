@@ -275,7 +275,7 @@ pub async fn almanack_generate(
         let stored = db
             .write(move |writers| {
                 let Some(mount) = writers.mount_index() else {
-                    return Err(DbError::Key(
+                    return Err(DbError::Internal(
                         "Quilltap Uploads mount has not been provisioned".to_string(),
                     ));
                 };

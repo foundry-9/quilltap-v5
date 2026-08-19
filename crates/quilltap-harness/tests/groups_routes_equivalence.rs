@@ -449,7 +449,7 @@ fn groups_routes_match_oracle() {
     // deliberate contextful 503. Status AND body byte-compare against v4's
     // REAL route (the middleware envelope, context.ts:176-205) — the body via
     // raw to_string so KEY ORDER is pinned too (preserve_order both sides).
-    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Key`
+    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Internal`
     // reds this arm on kind AND body.
     {
         let db = fresh_db(&spec, "corrupt");

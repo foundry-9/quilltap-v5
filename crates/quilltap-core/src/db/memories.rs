@@ -666,7 +666,8 @@ impl<'c> MemoriesRepository<'c> {
 
 /// Serialize a string list to compact JSON array text (`["a","b"]`, `[]`).
 fn json_array(items: &[String]) -> Result<String, DbError> {
-    serde_json::to_string(items).map_err(|e| DbError::Key(format!("json array serialize: {e}")))
+    serde_json::to_string(items)
+        .map_err(|e| DbError::Internal(format!("json array serialize: {e}")))
 }
 
 /// v4's `parseRelatedIds` (`memory-gate.ts`) — parse a `relatedMemoryIds` cell to

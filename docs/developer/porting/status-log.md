@@ -75570,3 +75570,173 @@ unchanged.
 - Banked: the help-chat resolver call site (v4's fourth) in
   `m6-screen-parity.md` row 11 for `p4.9i2`; the two help docs ride the
   same bank.
+
+---
+
+## P4.50 — the `DbError::Key` catch-all split (dogfood finding #96)
+
+**Solo lane, branch `claude/p4-50-db-error-split-1059f5`, stacked behind the
+`9125f492` round exactly as the order required.** Not a v4 port: `DbError` is
+a v5-invented taxonomy with no v4 analog and no oracle driving it, so the
+differential obligation was **inverted** — prove that no v4-comparable byte
+moved, rather than that new bytes match v4.
+
+**Drift-check at lane start.** v4 `main` is still at the `9125f492` baseline
+(`git log 9125f492..main` empty; checkout on `main`, clean working tree).
+`bugfix` carries only the known 4.8.x lineage, nothing new on a ported
+surface. No regen was blocked, and no oracle was regenerated for the port
+itself.
+
+### The census — the order's "order of a dozen" premise REFUTED downward
+
+`DbError::Key(` appeared **246 times across 95 files** workspace-wide. The
+order expected the key-genuine set to be "order of a dozen". Measured, it is
+**two**:
+
+| site | why it keeps `Key` |
+| --- | --- |
+| `db/runtime.rs:131` (`Db::open`) | wraps `dbkey::pepper_b64_to_key_hex` — a real derivation failure |
+| `db/mod.rs:200` (`Writer::open_writable`) | the same wrap on the writable open |
+
+Plus `db/mod.rs`'s `Display` arm, which is what gives those two their prefix.
+Nothing else in the tree mentions the pepper, a passphrase, or a derivation:
+grepping every construction site (and its continuation lines) for
+`pepper|passphrase|derive|derivation|dbkey` returns exactly those two plus the
+`Display` arm. **243 sites migrated** to the new `DbError::Internal(String)`.
+
+Rough shape of what migrated (classified mechanically over each site plus
+three continuation lines — a taxonomy note, NOT a build; see the deferral
+below):
+
+| n | kind |
+| --- | --- |
+| 100 | serialize / parse (serde, JSON, encode/decode) |
+| 72 | other composed sentences |
+| 31 | missing partition / unprovisioned mount |
+| 20 | overlay / vault unavailable shim |
+| 11 | not found / unknown / invalid input |
+| 6 | provider / stream / embedding failure |
+| 3 | panicked worker thread / runtime |
+
+By module: `db` 111, `services` 91, `api` 19, `tools` 12, harness tests 4,
+`quilltap-web` 3, `quilltap-host` 2, `enclave` 2, `post_office` 1, `pascal` 1.
+
+The census is not prose only — it lives as the allow-list in the regrowth
+guard, so it is executable and cannot drift from the tree.
+
+### Unit 1 — the variant, the migration, the pins, the guard
+
+`DbError::Internal(String)`, `Display` = `write!(f, "{msg}")` (the shape
+`StoreUnavailable` already uses). No prefix: these sites composed whole
+sentences assuming they would be read as-is.
+
+**The From-shim survey answered a question the order left open.** The order
+listed ~10 `impl From<DbError>` shims to give an `Internal` arm; the tree has
+**27**, and *none of them* needed one — most do not match on variants at all,
+they either carry the whole `DbError` (`StoreError::Db(e)`) or stringify it
+(`DocError::Store(e.to_string())`), which is precisely why the split is
+structurally invisible everywhere except in the dropped prefix. Only five places in the whole workspace
+pattern-match `DbError::Key(…)` at all: the `Display` arm, two constructions
+(`api/mount_files.rs`, `services/cascade_delete.rs`, both migrated), and two
+prefix-stripping helpers. Every `From` shim reaches `Key` through a catch-all
+`other =>`, so `Internal` inherits its mapping *by construction* — which is
+also why the whole 243-site migration compiled on the first build. Same for
+`api/types.rs::db_error_response`: `Internal` lands on `ErrorKind::Internal`
+exactly where `Key` did.
+
+**The two prefix-stripping helpers are retired, not retargeted.**
+`services/quilltap_import/files.rs::err_msg` and the project-upload arm in
+`services/file_storage.rs` existed only to unwrap `Key` so v4's
+`error.message` would not gain the prefix. With `Internal`'s `Display` bare,
+`to_string()` is already the verbatim sentence, so both collapse to it. Their
+comments now record what they used to work around (the order's two named
+stale comments — both discharged here).
+
+**Pins:**
+
+- `quilltap-core::db::db_error_display_tests` — `Internal`'s `Display` is the
+  bare message and carries no `key derivation` claim; `Key`'s still says
+  `key derivation failed: …`.
+- `quilltap-core::api::types::db_error_surface_tests` — the finding's own
+  value through `db_error_response`: bare message, `ErrorKind::Internal`
+  (**unchanged by the split** — the wire promise), no `entity`; plus the
+  companion arm proving `StoreUnavailable` still outranks the catch-all so
+  P4.23's contextful 503 keeps answering first.
+- `quilltap-harness/tests/db_error_key_guard.rs` — walks `crates/**/*.rs` and
+  holds every `DbError::Key(` against the census, per file and per count. A
+  new one anywhere fails; a new one inside a key-genuine file fails too (the
+  count is exact). The guard skips its own file, which names the needle.
+
+**Mutation proof of the migration itself.** Reverting one migrated site
+(`services/primary_stream.rs`) to `Key` reds the guard by name and path;
+restoring it greens. The guard is the thing that catches the class — the unit
+pins test the variant, not the call sites, and would not have.
+
+### Unit 2 (tier 2) — the acceptance, on a v4-comparable surface
+
+The strongest available evidence turned out to be one that already existed.
+`system_restore_state` carried a `LEAKED_PREFIX = "key derivation failed: "`
+strip with a comment saying a future fix would need no change here. That was
+half right: the strip does become a no-op — but leaving it means a regrowth
+onto a user-visible restore warning would be absorbed silently. **It is
+retired**, and those warnings now byte-compare against v4's whole sentence.
+
+The arm is not vacuous, and this is the finding's shape on a surface v4 also
+writes: v4's oracle warning is
+`Failed to restore file "portrait.png": Quilltap Uploads mount has not been
+provisioned`, and reverting the site that raises it
+(`services/file_storage.rs:1181`) to `Key` reds **four** cases with exactly
+`Failed to restore file "portrait.png": key derivation failed: Quilltap
+Uploads mount has not been provisioned`. Restored, the family is green with
+the strip gone: 13 cases, 44 tables diffed row-for-row across three
+partitions each.
+
+The finding's *own* path (`quilltap-host::spine`, `process_message` → three
+renderings of one `Display`: `tracing::error!(error = %e)` into P4.49's
+`combined.log`, the SSE `chatError` frame's `details`, and `CoreError.message`)
+is pinned at composition level by `db_error_surface_tests`, which uses the
+literal value `services/orchestrator.rs` composes.
+
+### The string census (the order's step 1) — resolved
+
+`key derivation failed` across the whole repo (crates, `apps/web`, e2e specs,
+harness fixtures, committed NDJSON corpora) reached only: the `Display` arm,
+the two stale comments, the `system_restore_state` guard, and docs. **No
+fixture row, no corpus vector, no SPA string, no CLI snapshot** pins it — so
+no oracle needed regenerating and the SPA gate is **N/A** (no `apps/web` file
+was touched, deliberately and confirmed by grep).
+
+### Deferred loudly
+
+- **Per-domain taxonomies are NAMED, not built** (order tier 3, YAGNI). The
+  census suggests three candidates if a future lane ever wants them: the ~100
+  serialize/parse sites (a `Serde`/`Encoding` variant), the ~31
+  missing-partition / unprovisioned-mount refusals (which are arguably
+  `PartitionUnavailable`'s neighbours, not internal errors at all), and the
+  ~20 overlay shims (which already have a structured sibling in
+  `StoreUnavailable`). None is built here: the finding demands the sentence
+  stop lying, nothing more, and every additional variant is a new mapping
+  obligation at 27 `From` shims.
+- **💸 the live look joins the dogfood queue:** a real failed turn's
+  `combined.log` line on the Friday copy, read after P4.49's file logging —
+  the acceptance for #96 at the surface the finding was found on. The
+  composition-level pin covers the value; only a live run covers the
+  operator's actual first sentence.
+
+### Gate
+
+`cargo fmt --all --check` clean; clippy `-D warnings` clean in BOTH feature
+configurations (`--all-targets`, and again with
+`--features quilltap-core/native-transport`); `cargo test --workspace` with
+`QT_ORACLE_SYSTEM_RESTORE` set: **440 test binaries / 2,236 passed / 0
+failed** (exit 0), **zero SKIP**. The baseline was 439 / 2,231; the delta is
+exactly this lane's — one new binary (`db_error_key_guard`) and five new
+tests (its one plus the four unit pins), all five positively confirmed in the
+log by name.
+`system_restore_state` re-run BY NAME through the sweep driver over an oracle
+regenerated fresh from the v4 checkout at the baseline (`OK: … recipe ran
+end-to-end`), zero SKIP. `harness/tools/check_spelling.py` exit 0. SPA gate
+N/A (no `apps/web` file touched).
+
+**Versions:** core 0.0.589 → **0.0.590**, harness 0.0.508 → **0.0.509**, host
+0.0.73 → **0.0.74**, web 0.0.76 → **0.0.77**; cli/tauri/sys unchanged.

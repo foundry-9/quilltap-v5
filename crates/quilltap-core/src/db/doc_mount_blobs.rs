@@ -225,7 +225,7 @@ impl<'c> DocMountBlobsRepository<'c> {
         };
 
         self.find_by_id(&id)?
-            .ok_or_else(|| DbError::Key(format!("blob disappeared after upsert: {id}")))
+            .ok_or_else(|| DbError::Internal(format!("blob disappeared after upsert: {id}")))
     }
 
     /// Metadata by blob id (v4 `findById`) — never hydrates the `data` bytes.
@@ -327,7 +327,7 @@ impl<'c> DocMountBlobsRepository<'c> {
 
         self.find_by_mount_point_and_path(&input.mount_point_id, &input.relative_path)?
             .ok_or_else(|| {
-                DbError::Key(format!(
+                DbError::Internal(format!(
                     "Blob row not visible after upsert: {}/{} (link {})",
                     input.mount_point_id, input.relative_path, result.link_id
                 ))

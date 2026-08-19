@@ -269,9 +269,9 @@ impl<'c> FilesRepository<'c> {
     /// strings pass through (`None` → SQL NULL).
     pub fn create(&self, data: &FileCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let linked_to_json = serde_json::to_string(&data.linked_to)
-            .map_err(|e| DbError::Key(format!("linkedTo serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("linkedTo serialize: {e}")))?;
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
         let is_plain_text = data.is_plain_text.map(i64::from);
 
         self.conn.execute(
@@ -353,7 +353,7 @@ impl<'c> FilesRepository<'c> {
         }
         if let Some(linked_to) = &patch.linked_to {
             let linked_to_json = serde_json::to_string(linked_to)
-                .map_err(|e| DbError::Key(format!("linkedTo serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("linkedTo serialize: {e}")))?;
             assignments.push(format!("linkedTo = ?{}", values.len() + 1));
             values.push(Box::new(linked_to_json));
         }
@@ -383,7 +383,7 @@ impl<'c> FilesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }

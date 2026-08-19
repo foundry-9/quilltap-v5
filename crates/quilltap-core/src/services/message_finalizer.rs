@@ -1102,7 +1102,7 @@ where
                 },
                 anchor_offset: rng_anchor,
             })
-            .map_err(|e| DbError::Key(format!("response rng tool content marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("response rng tool content marshal: {e}")))?;
 
             let tool_id = uuid::Uuid::new_v4().to_string();
             let now = crate::clock::now_iso();
@@ -1115,8 +1115,9 @@ where
             msg.insert("attachments".into(), json!([]));
             let write_chat_id = chat_id.clone();
             let event: crate::db::chats_messages::ChatEventInput =
-                serde_json::from_value(Value::Object(msg))
-                    .map_err(|e| DbError::Key(format!("response rng tool message marshal: {e}")))?;
+                serde_json::from_value(Value::Object(msg)).map_err(|e| {
+                    DbError::Internal(format!("response rng tool message marshal: {e}"))
+                })?;
             db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
                 .await?;
 

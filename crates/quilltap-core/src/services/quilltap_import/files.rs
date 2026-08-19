@@ -41,13 +41,12 @@ fn os(v: &Value, key: &str) -> Option<String> {
 }
 
 /// A user-facing message off a `DbError` — the bridges' own sentences ride in
-/// `DbError::Key`, whose `Display` prepends a "key derivation failed:" prefix
-/// v4's `error.message` never carries.
+/// `DbError::Internal`, whose `Display` is the bare message, so v4's
+/// `error.message` is carried verbatim with no error-type prefix in front of
+/// it. (Before P4.50 these sentences rode in `DbError::Key`, whose `Display`
+/// prepended "key derivation failed:"; this function existed to strip it.)
 fn err_msg(e: DbError) -> String {
-    match e {
-        DbError::Key(m) => m,
-        other => other.to_string(),
-    }
+    e.to_string()
 }
 
 fn sa(v: &Value, key: &str) -> Vec<String> {

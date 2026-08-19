@@ -1518,7 +1518,7 @@ fn build_prompt_section(
             local_offset_minutes: 0,
         },
     )
-    .map_err(|e| DbError::Key(format!("buildSystemPrompt: invalid timezone {}", e.0)))?;
+    .map_err(|e| DbError::Internal(format!("buildSystemPrompt: invalid timezone {}", e.0)))?;
 
     // characterCount = systemPrompt.length (UTF-16); approxTokens = round(count/4).
     let character_count = crate::jsstr::utf16_len(&system_prompt) as i64;
@@ -2320,13 +2320,13 @@ fn db_err_message(e: &DbError) -> String {
 }
 
 /// Collapse a store-backed `OverlayError` to `DbError` so it flows through the
-/// `read_*` closures (a vault-unavailable overlay error is a plain `DbError::Key`
-/// the outer skip/`.catch` handles).
+/// `read_*` closures (a vault-unavailable overlay error is a plain
+/// `DbError::Internal` the outer skip/`.catch` handles).
 fn overlay_to_db_err(e: crate::db::document_store_overlay::OverlayError) -> DbError {
     use crate::db::document_store_overlay::OverlayError;
     match e {
         OverlayError::Db(db_err) => db_err,
-        other => DbError::Key(format!("store overlay: {other}")),
+        other => DbError::Internal(format!("store overlay: {other}")),
     }
 }
 

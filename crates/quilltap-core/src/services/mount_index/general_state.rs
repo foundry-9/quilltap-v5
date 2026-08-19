@@ -76,7 +76,7 @@ pub fn ensure_general_state_file(main: &Connection, mount: &Connection) -> Resul
     write_database_document(mount, &mount_point_id, GENERAL_STATE_JSON_PATH, "{}").map_err(
         |e| match e {
             StoreError::Db(db) => db,
-            StoreError::Store(s) => DbError::Key(s.message),
+            StoreError::Store(s) => DbError::Internal(s.message),
         },
     )?;
     Ok(true)
@@ -150,7 +150,7 @@ pub fn write_general_state(
         "{}".to_string()
     } else {
         serde_json::to_string_pretty(state).map_err(|e| {
-            GeneralStateWriteError::Db(DbError::Key(format!("general state serialize: {e}")))
+            GeneralStateWriteError::Db(DbError::Internal(format!("general state serialize: {e}")))
         })?
     };
     write_database_document(mount, &mount_point_id, GENERAL_STATE_JSON_PATH, &body)

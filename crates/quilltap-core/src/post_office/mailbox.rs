@@ -77,7 +77,7 @@ pub struct DeliverLetterParams<'a> {
 fn store_to_db(e: StoreError) -> DbError {
     match e {
         StoreError::Db(db) => db,
-        StoreError::Store(s) => DbError::Key(s.message),
+        StoreError::Store(s) => DbError::Internal(s.message),
     }
 }
 

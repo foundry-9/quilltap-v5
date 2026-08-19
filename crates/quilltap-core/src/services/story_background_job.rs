@@ -864,7 +864,7 @@ where
             let repo = crate::db::projects::ProjectsRepository::new(main, mount);
             if let Some(project) = repo
                 .find_by_id(&pid)
-                .map_err(|e| DbError::Key(e.to_string()))?
+                .map_err(|e| DbError::Internal(e.to_string()))?
             {
                 if project.get("backgroundDisplayMode").and_then(Value::as_str)
                     == Some("latest_chat")
@@ -875,7 +875,7 @@ where
                         Value::String(file_id_proj.clone()),
                     );
                     repo.update(&pid, &patch)
-                        .map_err(|e| DbError::Key(e.to_string()))?;
+                        .map_err(|e| DbError::Internal(e.to_string()))?;
                 }
             }
             Ok(())
@@ -1015,7 +1015,7 @@ fn write_story_file(
             )
         }
         (Some(_), None) => {
-            return Err(DbError::Key(
+            return Err(DbError::Internal(
                 "project upload result missing for project-scoped background".to_string(),
             ))
         }
@@ -1024,7 +1024,7 @@ fn write_story_file(
             if crate::services::image_job_storage::resolve_lantern_backgrounds_mount(main, mount)
                 .is_none()
             {
-                return Err(DbError::Key(
+                return Err(DbError::Internal(
                         "Lantern Backgrounds mount is not provisioned; cannot persist project-less story background.".to_string(),
                     ));
             }

@@ -666,14 +666,14 @@ pub(crate) fn write_project_state(
 ) -> Result<(), crate::db::DbError> {
     let mount = writers
         .mount_index()
-        .ok_or_else(|| crate::db::DbError::Key("project state requires mount-index".into()))?
+        .ok_or_else(|| crate::db::DbError::Internal("project state requires mount-index".into()))?
         .connection();
     let main = writers.main().connection();
     let repo = ProjectsRepository::new(main, mount);
     let mut patch = Map::new();
     patch.insert("state".to_string(), new_state.clone());
     repo.update(project_id, &patch)
-        .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
+        .map_err(|e| crate::db::DbError::Internal(e.to_string()))?;
     Ok(())
 }
 
@@ -685,14 +685,14 @@ pub(crate) fn write_group_state(
 ) -> Result<(), crate::db::DbError> {
     let mount = writers
         .mount_index()
-        .ok_or_else(|| crate::db::DbError::Key("group state requires mount-index".into()))?
+        .ok_or_else(|| crate::db::DbError::Internal("group state requires mount-index".into()))?
         .connection();
     let main = writers.main().connection();
     let repo = crate::db::groups::GroupsRepository::new(main, mount);
     let mut patch = Map::new();
     patch.insert("state".to_string(), new_state.clone());
     repo.update(group_id, &patch)
-        .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
+        .map_err(|e| crate::db::DbError::Internal(e.to_string()))?;
     Ok(())
 }
 

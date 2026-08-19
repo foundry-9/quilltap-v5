@@ -664,7 +664,7 @@ pub async fn handle_turn_action(
 ) -> Result<TurnActionResult, DbError> {
     let chat_id_owned = chat_id.to_string();
     let chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))?;
-    let chat = chat.ok_or_else(|| DbError::Key(format!("chat not found: {chat_id}")))?;
+    let chat = chat.ok_or_else(|| DbError::Internal(format!("chat not found: {chat_id}")))?;
 
     let participants = participants_array(&chat);
     let filter_participants: Vec<FilterParticipant> =

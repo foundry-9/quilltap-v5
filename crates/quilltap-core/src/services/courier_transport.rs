@@ -245,7 +245,7 @@ pub async fn dispatch_courier_transport<S: EventSink>(
         ),
     });
     let event: crate::db::chats_messages::ChatEventInput = serde_json::from_value(placeholder)
-        .map_err(|e| DbError::Key(format!("courier placeholder parse: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("courier placeholder parse: {e}")))?;
 
     let write_chat_id = opts.chat_id.clone();
     let now_iso_write = now_iso.clone();

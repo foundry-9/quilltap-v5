@@ -265,7 +265,7 @@ pub fn build_chat_context(
     selected_system_prompt_id: Option<&str>,
 ) -> Result<ChatContext, DbError> {
     let character = characters_read::find_by_id(main, mount, character_id)?
-        .ok_or_else(|| DbError::Key("Character not found".to_string()))?;
+        .ok_or_else(|| DbError::Internal("Character not found".to_string()))?;
 
     // Resolve the user-controlled character (explicit id, else defaultPartnerId).
     let mut user_character: Option<UserCharacter> = None;

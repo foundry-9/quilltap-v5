@@ -171,7 +171,7 @@ fn fetch_category_settings(db: &Db, category: &str, user_id: &str) -> Result<Val
         "overview" => fetch_overview(db, user_id),
         // Unreachable — validation constrained the category — but mirror v4's
         // UNKNOWN_CATEGORY throw as a DB-layer error (never exercised).
-        other => Err(DbError::Key(format!("Unknown category: {other}"))),
+        other => Err(DbError::Internal(format!("Unknown category: {other}"))),
     }
 }
 

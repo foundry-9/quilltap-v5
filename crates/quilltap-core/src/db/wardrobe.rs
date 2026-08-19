@@ -135,9 +135,9 @@ impl<'c> WardrobeRepository<'c> {
     /// `Option` columns as themselves (`None` → SQL NULL).
     pub fn create(&self, data: &WardrobeCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let types_json = serde_json::to_string(&data.types)
-            .map_err(|e| DbError::Key(format!("types serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("types serialize: {e}")))?;
         let component_item_ids_json = serde_json::to_string(&data.component_item_ids)
-            .map_err(|e| DbError::Key(format!("componentItemIds serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("componentItemIds serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO wardrobe_items \
@@ -203,13 +203,13 @@ impl<'c> WardrobeRepository<'c> {
         }
         if let Some(types) = &patch.types {
             let types_json = serde_json::to_string(types)
-                .map_err(|e| DbError::Key(format!("types serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("types serialize: {e}")))?;
             assignments.push(format!("types = ?{}", values.len() + 1));
             values.push(Box::new(types_json));
         }
         if let Some(component_item_ids) = &patch.component_item_ids {
             let component_item_ids_json = serde_json::to_string(component_item_ids)
-                .map_err(|e| DbError::Key(format!("componentItemIds serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("componentItemIds serialize: {e}")))?;
             assignments.push(format!("componentItemIds = ?{}", values.len() + 1));
             values.push(Box::new(component_item_ids_json));
         }

@@ -335,7 +335,7 @@ async fn run_mail(
                     if read_content && out.success {
                         if let Some(path) = &out.path {
                             let doc = read_database_document(mount_c, &recipient_vault, path)
-                                .map_err(|e| DbError::Key(e.to_string()))?;
+                                .map_err(|e| DbError::Internal(e.to_string()))?;
                             content = Some(doc.content);
                         }
                     }

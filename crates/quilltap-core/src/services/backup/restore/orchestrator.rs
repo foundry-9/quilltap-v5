@@ -1924,7 +1924,7 @@ fn restore_one_character(
     };
     let vault: crate::db::vault_character_write::CharacterVaultWriteInput =
         serde_json::from_value(ch.clone())
-            .map_err(|e| DbError::Key(format!("character vault fields: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("character vault fields: {e}")))?;
     crate::db::character_vault::create_character_with_options(
         main,
         mount,

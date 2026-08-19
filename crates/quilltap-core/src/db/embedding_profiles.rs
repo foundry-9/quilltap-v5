@@ -280,7 +280,7 @@ impl<'c> EmbeddingProfilesRepository<'c> {
     /// (`None` → SQL NULL).
     pub fn create(&self, data: &EpCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO embedding_profiles \
@@ -358,7 +358,7 @@ impl<'c> EmbeddingProfilesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }

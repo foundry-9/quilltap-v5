@@ -73,7 +73,9 @@ pub(crate) fn mount_conn(
 ) -> Result<&rusqlite::Connection, DbError> {
     Ok(ws
         .mount_index()
-        .ok_or_else(|| DbError::Key("mount files require the mount-index database".to_string()))?
+        .ok_or_else(|| {
+            DbError::Internal("mount files require the mount-index database".to_string())
+        })?
         .connection())
 }
 
@@ -523,7 +525,7 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
                 Err(CreateFolderError::BasePathUnavailable(e)) => {
                     Ok(Err(FolderCreateRefusal::BasePathUnavailable(e)))
                 }
-                Err(CreateFolderError::Io(msg)) => Err(crate::db::DbError::Key(msg)),
+                Err(CreateFolderError::Io(msg)) => Err(crate::db::DbError::Internal(msg)),
             }
         })
         .await;

@@ -338,7 +338,7 @@ mod tests {
     fn a_failing_store_is_skipped_and_the_others_survive() {
         let out = merge_mounts(&ids(&["grp-broken", "mp-ok"]), |mp| {
             if mp == "grp-broken" {
-                return Err(DbError::Key("store offline".into()));
+                return Err(DbError::Internal("store offline".into()));
             }
             Ok(vec![item("p-only", "project")])
         });

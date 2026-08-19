@@ -677,7 +677,7 @@ async fn dissociate_file_from_all(db: &Db, user_id: &str, file: &FileFull) -> Re
 
         // 2. Characters using the file as their default image → clear it.
         let mount = ws.mount_index().ok_or_else(|| {
-            DbError::Key("dissociate requires the mount-index database".to_string())
+            DbError::Internal("dissociate requires the mount-index database".to_string())
         })?;
         let default_chars =
             characters_read::find_by_default_image_id(main, mount.connection(), &file_id)?;
@@ -713,7 +713,7 @@ async fn dissociate_file_from_all(db: &Db, user_id: &str, file: &FileFull) -> Re
             overrides
                 .retain(|o| o.get("imageId").and_then(Value::as_str) != Some(file_id.as_str()));
             let json_text = serde_json::to_string(&overrides)
-                .map_err(|e| DbError::Key(format!("avatarOverrides serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("avatarOverrides serialize: {e}")))?;
             main.execute(
                 "UPDATE characters SET avatarOverrides = ?1, updatedAt = ?2 WHERE id = ?3",
                 rusqlite::params![json_text, crate::clock::now_iso(), cid],
@@ -747,7 +747,8 @@ pub fn get_file_associations(
     linked_to: &[String],
 ) -> Result<Value, DbError> {
     let assoc = compute_associations(db, user_id, file_id, linked_to)?;
-    serde_json::to_value(&assoc).map_err(|e| DbError::Key(format!("associations serialize: {e}")))
+    serde_json::to_value(&assoc)
+        .map_err(|e| DbError::Internal(format!("associations serialize: {e}")))
 }
 
 fn compute_associations(
@@ -1135,7 +1136,7 @@ pub async fn file_upload(
                 let mount = ws
                     .mount_index()
                     .ok_or_else(|| {
-                        DbError::Key("file upload requires the mount-index database".into())
+                        DbError::Internal("file upload requires the mount-index database".into())
                     })?
                     .connection();
                 save_file_entry(
@@ -1299,7 +1300,7 @@ fn save_file_entry(
 
     let entry = files
         .find_full_by_id(&file_id)?
-        .ok_or_else(|| DbError::Key("uploaded file vanished after write".to_string()))?;
+        .ok_or_else(|| DbError::Internal("uploaded file vanished after write".to_string()))?;
     Ok((
         Response::Files(json!({ "data": serialize_uploaded_file_entry(&entry) })),
         overwritten,

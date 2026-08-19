@@ -571,7 +571,7 @@ pub async fn get_roleplay_template(
                         .find_by_id(&project_id)
                         .map_err(|e| match e {
                             OverlayError::Db(db_err) => db_err,
-                            other => DbError::Key(format!("projects.findById: {other}")),
+                            other => DbError::Internal(format!("projects.findById: {other}")),
                         })
                 })
             })?;

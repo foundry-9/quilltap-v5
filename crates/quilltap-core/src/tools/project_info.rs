@@ -264,7 +264,7 @@ fn count_by_project(rows: &[Value], project_id: &str) -> i64 {
 /// Map the projects overlay error into a [`DbError`] for the shared read path (an
 /// overlay failure surfaces to v4's outer catch → failure result).
 fn overlay_to_db(e: crate::db::document_store_overlay::OverlayError) -> DbError {
-    DbError::Key(format!("projects overlay: {e:?}"))
+    DbError::Internal(format!("projects overlay: {e:?}"))
 }
 
 /// v4 `formatProjectInfoResults`.

@@ -190,14 +190,14 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
         let (id, name) = self.create_slim(name, opts)?;
         let ensured =
             ensure_official_store::<E>(self.main, self.mount, &id, &name)?.ok_or_else(|| {
-                OverlayError::Db(DbError::Key(format!(
+                OverlayError::Db(DbError::Internal(format!(
                     "{} {id} disappeared during store provisioning",
                     E::entity_label()
                 )))
             })?;
         overlay::write_managed_fields::<E>(self.mount, &ensured.mount_point_id, fields)?;
         self.find_by_id(&id)?.ok_or_else(|| {
-            OverlayError::Db(DbError::Key(format!(
+            OverlayError::Db(DbError::Internal(format!(
                 "{} {id} disappeared immediately after creation",
                 E::entity_label()
             )))

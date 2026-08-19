@@ -478,7 +478,7 @@ pub fn enrich_participant(
 ) -> Result<EnrichedParticipant, DbError> {
     let kind = s(participant, "type").unwrap_or_default();
     if kind != "CHARACTER" {
-        return Err(DbError::Key(
+        return Err(DbError::Internal(
             "Only CHARACTER participants are supported".to_string(),
         ));
     }

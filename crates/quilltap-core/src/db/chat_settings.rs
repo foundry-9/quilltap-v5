@@ -498,9 +498,9 @@ pub struct ChatSettingsRepository<'c> {
 }
 
 /// Serialize a nested JSON-object value to compact JSON text (schema field order
-/// via serde struct declaration order). Errors map to [`DbError::Key`].
+/// via serde struct declaration order). Errors map to [`DbError::Internal`].
 fn to_json<T: Serialize>(label: &str, value: &T) -> Result<String, DbError> {
-    serde_json::to_string(value).map_err(|e| DbError::Key(format!("{label} serialize: {e}")))
+    serde_json::to_string(value).map_err(|e| DbError::Internal(format!("{label} serialize: {e}")))
 }
 
 impl<'c> ChatSettingsRepository<'c> {
@@ -1203,7 +1203,7 @@ struct SeedRow {
 /// (a string cell → `Text`, a number → `Int`, JSON `null` → `Null`).
 fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> {
     let seed: SeedRow = serde_json::from_str(CHAT_SETTINGS_SEED_JSON)
-        .map_err(|e| DbError::Key(format!("chat_settings_seed.json: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("chat_settings_seed.json: {e}")))?;
     let mut out = Vec::with_capacity(seed.columns.len());
     for col in &seed.columns {
         let v = seed
@@ -1215,11 +1215,11 @@ fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> 
             serde_json::Value::String(s) => SettingsColVal::Text(s),
             serde_json::Value::Number(n) => SettingsColVal::Int(
                 n.as_i64()
-                    .ok_or_else(|| DbError::Key(format!("seed {col} not an integer")))?,
+                    .ok_or_else(|| DbError::Internal(format!("seed {col} not an integer")))?,
             ),
             serde_json::Value::Null => SettingsColVal::Null,
             other => {
-                return Err(DbError::Key(format!(
+                return Err(DbError::Internal(format!(
                     "seed {col} unexpected shape: {other}"
                 )));
             }

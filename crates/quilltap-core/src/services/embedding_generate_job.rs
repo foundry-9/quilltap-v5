@@ -828,7 +828,7 @@ async fn mount_chunk_try<E: EmbeddingProvider>(
             let mount = ws
                 .mount_index()
                 .ok_or_else(|| {
-                    crate::db::DbError::Key(
+                    crate::db::DbError::Internal(
                         "mount-chunk embedding requires the mount-index database".to_string(),
                     )
                 })?

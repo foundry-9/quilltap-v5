@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(core): a failed provider call stops claiming key derivation (P4.50, finding #96)
+
+_Versions: core 0.0.590, harness 0.0.509, host 0.0.74, web 0.0.77._
+
+`DbError::Key`'s `Display` prepends `"key derivation failed: "`, which is a
+claim about the cause of the failure. The variant was also the crate's
+general-purpose message carrier: of 246 construction sites workspace-wide,
+exactly two derived a key. Every other one printed a cipher-flavoured lie in
+front of its real sentence — including the one an operator meets after a
+failed turn, which read `key derivation failed: primary stream failed:
+HTTP 500 …` in `combined.log`.
+
+Adds `DbError::Internal(String)`, whose `Display` is the bare message (the
+shape `StoreUnavailable` already uses), and migrates all 243 non-key
+construction sites onto it. The two genuine sites — `runtime::Db::open` and
+`Writer::open_writable`, both wrapping `dbkey::pepper_b64_to_key_hex` — keep
+`Key`, so the prefix keeps its diagnostic value instead of becoming noise.
+
+Nothing observable moves on any v4-pinned surface: no `impl From<DbError>`
+shim matched `Key` explicitly, so `Internal` inherits every catch-all arm,
+and `db_error_response` maps it to `ErrorKind::Internal` exactly as before.
+The one place the prefix reached a v4-comparable string was the restore
+warning — `system_restore_state` carried a `LEAKED_PREFIX` strip so the rest
+of the sentence could be compared. That strip is retired: those warnings now
+byte-compare against v4's whole sentence, which is strictly stronger.
+
+A new harness guard (`db_error_key_guard`) walks `crates/**/*.rs` and holds
+every `DbError::Key(` occurrence against a census, so the catch-all cannot
+silently regrow; the allow-list is the census. Two unit pins cover both
+variants' `Display` bytes and two more cover the api-body surface.
+
 #### 2026-08-19 — port(unify): the 9125f492 drift round lands — bugs 81/82 + the Lantern uncensored target (P4.D93 ∥ P4.D94)
 
 _Versions: core 0.0.589, harness 0.0.508, host 0.0.73, SPA 0.5.522._

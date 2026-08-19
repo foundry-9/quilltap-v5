@@ -204,7 +204,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// as `Option<_>` (`None` → SQL NULL). `status` defaults to PENDING.
     pub fn create(&self, data: &BjCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let payload_json = serde_json::to_string(&data.payload)
-            .map_err(|e| DbError::Key(format!("payload serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("payload serialize: {e}")))?;
         let status = data
             .status
             .clone()
@@ -306,7 +306,7 @@ impl<'c> BackgroundJobsRepository<'c> {
         }
         if let Some(payload) = &patch.payload {
             let payload_json = serde_json::to_string(payload)
-                .map_err(|e| DbError::Key(format!("payload serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("payload serialize: {e}")))?;
             push_set(
                 &mut assignments,
                 &mut values,
@@ -995,7 +995,7 @@ fn merge_result_into_payload(
             .unwrap_or_default();
     payload.insert("result".to_string(), result.clone());
     serde_json::to_string(&serde_json::Value::Object(payload))
-        .map_err(|e| DbError::Key(format!("payload serialize: {e}")))
+        .map_err(|e| DbError::Internal(format!("payload serialize: {e}")))
 }
 
 #[cfg(test)]

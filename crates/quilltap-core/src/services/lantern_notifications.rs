@@ -185,8 +185,9 @@ pub async fn post_lantern_image_notification(db: &Db, params: LanternPostParams)
             db.read_main(|main| {
                 db.read_mount_index(|mount| {
                     let repo = crate::db::projects::ProjectsRepository::new(main, mount);
-                    repo.find_by_id(&pid)
-                        .map_err(|e| crate::db::DbError::Key(format!("project read failed: {e:?}")))
+                    repo.find_by_id(&pid).map_err(|e| {
+                        crate::db::DbError::Internal(format!("project read failed: {e:?}"))
+                    })
                 })
             })
             .ok()

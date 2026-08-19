@@ -201,7 +201,7 @@ impl<'c> CharacterPluginDataRepository<'c> {
             serde_json::Value::String(s) => Ok(s.clone()),
             serde_json::Value::Number(n) => Ok(n.to_string()),
             other => serde_json::to_string(other)
-                .map_err(|e| DbError::Key(format!("data serialize: {e}"))),
+                .map_err(|e| DbError::Internal(format!("data serialize: {e}"))),
         }
     }
 

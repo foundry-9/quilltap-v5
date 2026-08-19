@@ -118,7 +118,7 @@ impl<'c> PromptTemplatesRepository<'c> {
     /// on create (only `update`/`delete` reject built-ins).
     pub fn create(&self, data: &PtCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO prompt_templates \
@@ -175,7 +175,7 @@ impl<'c> PromptTemplatesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }

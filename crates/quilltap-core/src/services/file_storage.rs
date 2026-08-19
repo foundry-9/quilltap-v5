@@ -922,7 +922,9 @@ pub async fn delete_file(
         return db
             .write(move |ws| {
                 let mount = ws.mount_index().ok_or_else(|| {
-                    DbError::Key("mount-blob delete requires the mount-index database".to_string())
+                    DbError::Internal(
+                        "mount-blob delete requires the mount-index database".to_string(),
+                    )
                 })?;
                 delete_mount_blob_conn(mount.connection(), &key)
             })
@@ -1178,7 +1180,7 @@ pub fn write_user_upload_to_mount_store(
     description: Option<&str>,
 ) -> Result<StoredBlob, DbError> {
     let Some(mount_point_id) = get_user_uploads_store(main, mount) else {
-        return Err(DbError::Key(
+        return Err(DbError::Internal(
             "Quilltap Uploads mount has not been provisioned".to_string(),
         ));
     };
@@ -1269,7 +1271,7 @@ pub fn write_project_file_to_mount_store(
 ) -> Result<StoredBlob, DbError> {
     let Some(mount_point_id) = get_project_document_store(mount, project_id) else {
         // v4 manager.ts uploadFile's store-less throw, byte-for-byte.
-        return Err(DbError::Key(format!(
+        return Err(DbError::Internal(format!(
             "Project {project_id} has no linked database-backed document store. Run convert-project-files-to-document-stores-v1 to provision one before uploading."
         )));
     };
@@ -1331,7 +1333,7 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
                 let mount = ws
                     .mount_index()
                     .ok_or_else(|| {
-                        DbError::Key(
+                        DbError::Internal(
                             "project image upload requires the mount-index database".to_string(),
                         )
                     })?
@@ -1354,16 +1356,12 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
                 stored_mime_type: stored.stored_mime_type,
                 size_bytes: stored.size_bytes,
             }),
-            // v4 wraps the inner message without any error-type prefix
-            // (DbError::Key's Display would add a misleading
-            // "key derivation failed:").
-            Err(e) => {
-                let msg = match e {
-                    DbError::Key(msg) => msg,
-                    other => other.to_string(),
-                };
-                Err(format!("Failed to upload file '{filename_for_err}': {msg}"))
-            }
+            // v4 wraps the inner message without any error-type prefix, and
+            // `DbError::Internal`'s Display is the bare message, so `to_string`
+            // carries it verbatim (P4.50; before the split these sentences rode
+            // in `DbError::Key`, whose Display prepended the misleading
+            // "key derivation failed:" this arm had to strip).
+            Err(e) => Err(format!("Failed to upload file '{filename_for_err}': {e}")),
         }
     }
 }
@@ -1621,7 +1619,7 @@ pub fn create_file_conns(
 
     let entry = files
         .find_by_id(&file_id)?
-        .ok_or_else(|| DbError::Key("createFile: created row not found".to_string()))?;
+        .ok_or_else(|| DbError::Internal("createFile: created row not found".to_string()))?;
     Ok((entry, CreateFileOutcome::Created { orphan_cleaned }))
 }
 
@@ -1706,7 +1704,9 @@ impl crate::photos::save_image_to_album::FileBytesStore for ProductionFileBytes 
                 let mount = ws
                     .mount_index()
                     .ok_or_else(|| {
-                        DbError::Key("image ingest requires the mount-index database".to_string())
+                        DbError::Internal(
+                            "image ingest requires the mount-index database".to_string(),
+                        )
                     })?
                     .connection();
                 let main = ws.main().connection();

@@ -652,7 +652,9 @@ where
         let mount = writers
             .mount_index()
             .ok_or_else(|| {
-                crate::db::DbError::Key("image job requires the mount-index database".to_string())
+                crate::db::DbError::Internal(
+                    "image job requires the mount-index database".to_string(),
+                )
             })?
             .connection();
         let main = writers.main().connection();

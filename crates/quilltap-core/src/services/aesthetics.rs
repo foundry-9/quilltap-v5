@@ -201,7 +201,7 @@ pub fn write_aesthetic_file(
             filename,
             content,
         )
-        .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
+        .map_err(|e| crate::db::DbError::Internal(e.to_string()))?;
     }
     Ok(())
 }

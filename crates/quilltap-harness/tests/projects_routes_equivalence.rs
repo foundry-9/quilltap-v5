@@ -677,7 +677,7 @@ fn projects_routes_match_oracle() {
     // (the middleware envelope, context.ts:176-205) — the body via raw
     // to_string so KEY ORDER is pinned too. The PUT arm proves the WRITE
     // route refuses on the same read-path throw (it hydrates before writing).
-    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Key`
+    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Internal`
     // reds these arms on kind AND body.
     let plant_corrupt = |db: &Db| {
         let mp = db

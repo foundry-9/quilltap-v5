@@ -221,9 +221,9 @@ fn insert_mount_row(
 ) -> Result<(), DbError> {
     let now = clock::now_iso();
     let include_patterns = serde_json::to_string(&Vec::<String>::new())
-        .map_err(|e| DbError::Key(format!("includePatterns serialize: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("includePatterns serialize: {e}")))?;
     let exclude_patterns = serde_json::to_string(&[".git", "node_modules", ".obsidian", ".trash"])
-        .map_err(|e| DbError::Key(format!("excludePatterns serialize: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("excludePatterns serialize: {e}")))?;
 
     mount_index.execute(
         "INSERT INTO \"doc_mount_points\" \

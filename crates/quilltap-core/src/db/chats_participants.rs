@@ -73,7 +73,7 @@ impl From<DbError> for ParticipantOpError {
 /// optionals dropped — round-trips byte-for-byte on re-serialize).
 fn read_participants(chat: &Value) -> Result<Vec<ChatParticipant>, DbError> {
     let arr = chat.get("participants").cloned().unwrap_or(Value::Null);
-    serde_json::from_value(arr).map_err(|e| DbError::Key(format!("participants parse: {e}")))
+    serde_json::from_value(arr).map_err(|e| DbError::Internal(format!("participants parse: {e}")))
 }
 
 /// The chat's `impersonatingParticipantIds` (always present in the marshaled
@@ -122,12 +122,12 @@ impl<'c> ChatParticipantsRepository<'c> {
         let mut input = participant.clone();
         let obj = input
             .as_object_mut()
-            .ok_or_else(|| DbError::Key("addParticipant: participant not an object".into()))?;
+            .ok_or_else(|| DbError::Internal("addParticipant: participant not an object".into()))?;
         obj.insert("id".into(), Value::String(new_id.clone()));
         obj.insert("createdAt".into(), Value::String(now.clone()));
         obj.insert("updatedAt".into(), Value::String(now));
         let new_participant: ChatParticipant = serde_json::from_value(input)
-            .map_err(|e| DbError::Key(format!("addParticipant parse: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("addParticipant parse: {e}")))?;
         let is_user_controlled = new_participant.controlled_by == "user";
 
         let mut participants = read_participants(&chat)?;
@@ -177,7 +177,7 @@ impl<'c> ChatParticipantsRepository<'c> {
         // {...existing, ...data, id, createdAt, updatedAt: now} — the spread,
         // re-validated through the participant schema (schema field order).
         let mut merged = serde_json::to_value(existing)
-            .map_err(|e| DbError::Key(format!("updateParticipant ser: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("updateParticipant ser: {e}")))?;
         if let (Some(dst), Some(src)) = (merged.as_object_mut(), data.as_object()) {
             for (k, v) in src {
                 dst.insert(k.clone(), v.clone());
@@ -190,7 +190,7 @@ impl<'c> ChatParticipantsRepository<'c> {
         obj.insert("createdAt".into(), Value::String(existing_created));
         obj.insert("updatedAt".into(), Value::String(now));
         participants[idx] = serde_json::from_value(merged)
-            .map_err(|e| DbError::Key(format!("updateParticipant parse: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("updateParticipant parse: {e}")))?;
 
         let update = ChatUpdate {
             participants: Some(participants),

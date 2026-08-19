@@ -285,9 +285,9 @@ impl<'c> ConversationChunksRepository<'c> {
             _ => None,
         };
         let participant_names_json = serde_json::to_string(&data.participant_names)
-            .map_err(|e| DbError::Key(format!("participantNames serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("participantNames serialize: {e}")))?;
         let message_ids_json = serde_json::to_string(&data.message_ids)
-            .map_err(|e| DbError::Key(format!("messageIds serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("messageIds serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO conversation_chunks \
@@ -338,13 +338,13 @@ impl<'c> ConversationChunksRepository<'c> {
         }
         if let Some(participant_names) = &patch.participant_names {
             let participant_names_json = serde_json::to_string(participant_names)
-                .map_err(|e| DbError::Key(format!("participantNames serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("participantNames serialize: {e}")))?;
             assignments.push(format!("participantNames = ?{}", values.len() + 1));
             values.push(Box::new(participant_names_json));
         }
         if let Some(message_ids) = &patch.message_ids {
             let message_ids_json = serde_json::to_string(message_ids)
-                .map_err(|e| DbError::Key(format!("messageIds serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("messageIds serialize: {e}")))?;
             assignments.push(format!("messageIds = ?{}", values.len() + 1));
             values.push(Box::new(message_ids_json));
         }

@@ -826,7 +826,7 @@ where
     let write_chat_id = chat_id.to_string();
     let event: crate::db::chats_messages::ChatEventInput =
         serde_json::from_value(Value::Object(msg))
-            .map_err(|e| DbError::Key(format!("paused user message marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("paused user message marshal: {e}")))?;
     db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
         .await?;
 
@@ -925,7 +925,7 @@ where
     let chat_id_owned = chat_id.clone();
     let chat = db
         .read_main(move |c| chats_read::find_by_id(c, &chat_id_owned))?
-        .ok_or_else(|| DbError::Key("Chat not found".into()))?;
+        .ok_or_else(|| DbError::Internal("Chat not found".into()))?;
 
     // --- Resolve responding participant (orchestrator.service.ts:269–297) ---
     // respondingId = respondingParticipantId || targetParticipantIds[0].
@@ -1001,7 +1001,7 @@ where
         input.clock.random01,
     )
     .await
-    .map_err(|e| DbError::Key(format!("participant resolution failed: {e:?}")))?;
+    .map_err(|e| DbError::Internal(format!("participant resolution failed: {e:?}")))?;
 
     let character_participant = resolution.character_participant.clone();
     let character = resolution.character.clone();
@@ -1110,7 +1110,7 @@ where
                     let repo = crate::db::projects::ProjectsRepository::new(main, mount);
                     Ok(repo
                         .find_by_id(&pid)
-                        .map_err(|e| DbError::Key(format!("project read failed: {e:?}")))?
+                        .map_err(|e| DbError::Internal(format!("project read failed: {e:?}")))?
                         .and_then(|p| p.get("defaultAgentModeEnabled").and_then(Value::as_bool)))
                 })
             })?
@@ -1341,7 +1341,7 @@ where
     // reaches the context assembler).
     let roleplay_template = super::participant_resolver::get_roleplay_template(db, &chat, None)
         .await
-        .map_err(|e| DbError::Key(format!("roleplay template resolution failed: {e:?}")))?
+        .map_err(|e| DbError::Internal(format!("roleplay template resolution failed: {e:?}")))?
         .map(|r| r.system_prompt);
 
     // --- Multi-character participant data (orchestrator.service.ts:466–476) ---
@@ -1505,7 +1505,7 @@ where
                 "prompt": tr.prompt,
                 "arguments": tr.arguments,
             }))
-            .map_err(|e| DbError::Key(format!("pending tool result marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("pending tool result marshal: {e}")))?;
             let tool_id = uuid::Uuid::new_v4().to_string();
             let mut msg = serde_json::Map::new();
             msg.insert("id".into(), json!(tool_id));
@@ -1518,7 +1518,7 @@ where
             let write_chat_id = chat_id.clone();
             let event: crate::db::chats_messages::ChatEventInput =
                 serde_json::from_value(msg_value.clone())
-                    .map_err(|e| DbError::Key(format!("pending tool message marshal: {e}")))?;
+                    .map_err(|e| DbError::Internal(format!("pending tool message marshal: {e}")))?;
             db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
                 .await?;
             existing_messages.push(msg_value);
@@ -1562,7 +1562,7 @@ where
                     modifier: call_modifier,
                 },
             })
-            .map_err(|e| DbError::Key(format!("rng tool content marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("rng tool content marshal: {e}")))?;
 
             let tool_id = uuid::Uuid::new_v4().to_string();
             let now = crate::clock::iso_from_unix_ms(input.clock.now_ms);
@@ -1578,7 +1578,7 @@ where
             let write_chat_id = chat_id.clone();
             let event: crate::db::chats_messages::ChatEventInput =
                 serde_json::from_value(msg_value.clone())
-                    .map_err(|e| DbError::Key(format!("rng tool message marshal: {e}")))?;
+                    .map_err(|e| DbError::Internal(format!("rng tool message marshal: {e}")))?;
             db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
                 .await?;
             // Include in context building (existing_messages was loaded above).
@@ -1610,7 +1610,7 @@ where
         let write_chat_id = chat_id.clone();
         let msg_value = Value::Object(msg);
         let event: crate::db::chats_messages::ChatEventInput = serde_json::from_value(msg_value)
-            .map_err(|e| DbError::Key(format!("user message marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("user message marshal: {e}")))?;
         db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
             .await?;
 
@@ -2622,7 +2622,7 @@ where
         },
     )
     .await
-    .map_err(|e| DbError::Key(format!("primary stream failed: {}", e.message)))?;
+    .map_err(|e| DbError::Internal(format!("primary stream failed: {}", e.message)))?;
 
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.
@@ -2739,7 +2739,7 @@ where
         },
     )
     .await
-    .map_err(|e| DbError::Key(format!("native tool loop failed: {}", e.message)))?;
+    .map_err(|e| DbError::Internal(format!("native tool loop failed: {}", e.message)))?;
 
     // --- Text-tool passes (orchestrator.service.ts:1282–1378, W4.1f) ---
     // After the native loop, v4 runs the provider-text-markers pass (gated on the
@@ -2821,7 +2821,7 @@ where
             },
         )
         .await
-        .map_err(|e| DbError::Key(format!("provider text-tool pass failed: {}", e.message)))?;
+        .map_err(|e| DbError::Internal(format!("provider text-tool pass failed: {}", e.message)))?;
     }
 
     // Phase 20: text-format tool calls — simple-json when the resolved mode calls
@@ -2864,7 +2864,7 @@ where
             },
         )
         .await
-        .map_err(|e| DbError::Key(format!("text-block tool pass failed: {}", e.message)))?;
+        .map_err(|e| DbError::Internal(format!("text-block tool pass failed: {}", e.message)))?;
     }
 
     let tool_messages_len = tool_messages.len();
@@ -4198,7 +4198,7 @@ pub(crate) fn build_context_err_to_db(e: build_context::BuildContextError) -> Db
     match e {
         build_context::BuildContextError::Db(d) => d,
         build_context::BuildContextError::InvalidTimezone(tz) => {
-            DbError::Key(format!("invalid timezone: {tz}"))
+            DbError::Internal(format!("invalid timezone: {tz}"))
         }
     }
 }

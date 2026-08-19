@@ -81,7 +81,7 @@ pub async fn handle_embedding_refit(
             let mount = writers
                 .mount_index()
                 .ok_or_else(|| {
-                    crate::db::DbError::Key(
+                    crate::db::DbError::Internal(
                         "embedding refit requires the mount-index database".to_string(),
                     )
                 })?

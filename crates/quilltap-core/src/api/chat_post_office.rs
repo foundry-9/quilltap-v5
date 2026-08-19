@@ -544,7 +544,7 @@ pub async fn chat_send_mail(
     let delivered = db
         .write(move |writers| {
             let Some(mount_w) = writers.mount_index() else {
-                return Err(crate::db::DbError::Key(
+                return Err(crate::db::DbError::Internal(
                     "the Post Office requires the mount-index database".to_string(),
                 ));
             };
@@ -616,7 +616,7 @@ pub async fn chat_mailbox_list(db: &Db, chat_id: &str, character_id: &str) -> Re
     let letters = db
         .write(move |writers| {
             let Some(mount_w) = writers.mount_index() else {
-                return Err(crate::db::DbError::Key(
+                return Err(crate::db::DbError::Internal(
                     "the Post Office requires the mount-index database".to_string(),
                 ));
             };

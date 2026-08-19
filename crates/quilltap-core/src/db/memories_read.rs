@@ -328,7 +328,7 @@ pub fn find_by_character_id_in_batches(
     batch_size: i64,
 ) -> Result<Vec<Vec<Value>>, DbError> {
     if batch_size <= 0 {
-        return Err(DbError::Key("batchSize must be positive".to_string()));
+        return Err(DbError::Internal("batchSize must be positive".to_string()));
     }
     let mut batches = Vec::new();
     let mut skip = 0i64;

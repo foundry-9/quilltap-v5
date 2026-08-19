@@ -637,7 +637,7 @@ pub fn enrich_chat_for_list(
     let project = match s(chat, "projectId") {
         Some(pid) => ProjectsRepository::new(main, mount)
             .find_by_id(&pid)
-            .map_err(|e| DbError::Key(format!("project overlay: {e}")))?
+            .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?
             .map(|p| EnrichedProject {
                 id: s(&p, "id").unwrap_or_default(),
                 name: s(&p, "name").unwrap_or_default(),

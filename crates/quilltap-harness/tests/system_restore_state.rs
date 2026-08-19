@@ -1314,37 +1314,34 @@ fn read_state(dir: &Path) -> BTreeMap<String, BTreeMap<String, Vec<Value>>> {
 /// sentence — that is the strongest single statement this differential makes
 /// about bug 3.
 ///
-/// ## The one masked substring, and the v5 bug behind it
+/// ## The one masked substring — MASK RETIRED (P4.50, 2026-08-19)
 ///
-/// v5's warning reads `Failed to restore file "portrait.png": key derivation
-/// failed: Quilltap Uploads mount has not been provisioned` where v4's reads
-/// `…: Quilltap Uploads mount has not been provisioned`. The extra clause is not
-/// a different failure — it is `DbError::Key`'s Display prefix leaking into
-/// user-visible text. `DbError::Key`'s doc comment says "Deriving the raw-hex key
-/// from the pepper failed", but roughly twenty call sites across the crate use it
-/// as a general-purpose message carrier (`tools/state.rs`, `tools/help.rs`,
-/// `enclave/lifecycle.rs`, the two file-storage bridges, …), so every one of them
-/// prints a cipher-flavoured lie in front of its real message.
+/// v5's warning used to read `Failed to restore file "portrait.png": key
+/// derivation failed: Quilltap Uploads mount has not been provisioned` where
+/// v4's read `…: Quilltap Uploads mount has not been provisioned`. The extra
+/// clause was never a different failure — it was `DbError::Key`'s Display prefix
+/// leaking into user-visible text, from 244 call sites that used the variant as
+/// a general-purpose message carrier while its `Display` claimed a cipher fault.
+/// This file carried a `LEAKED_PREFIX` strip so the rest of the sentence could be
+/// compared verbatim, and recorded that a future fix would need no change here.
 ///
-/// That is a pre-existing, crate-wide naming problem, **not restore's and not
-/// this lane's** — fixing it means either a new additive variant or a Display
-/// change that moves strings other differentials pin. Recorded in the lane
-/// record; the prefix is stripped here so the rest of the sentence is compared
-/// verbatim. Once the prefix is gone the strip is simply a no-op, so a future fix
-/// needs no change here.
+/// P4.50 landed that fix (`DbError::Internal`, whose `Display` is the bare
+/// message — dogfood finding #96). The strip is therefore gone rather than left
+/// as a no-op: with it removed these warnings byte-compare against v4's whole
+/// sentence, which is strictly stronger, and any regrowth of the prefix onto a
+/// user-visible restore warning reds this family instead of being absorbed.
 fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<String>) {
-    const LEAKED_PREFIX: &str = "key derivation failed: ";
-    let strip = |v: &Value| -> Vec<String> {
+    let strings = |v: &Value| -> Vec<String> {
         v.as_array()
             .map(|a| {
                 a.iter()
                     .filter_map(Value::as_str)
-                    .map(|s| s.replace(LEAKED_PREFIX, ""))
+                    .map(str::to_string)
                     .collect()
             })
             .unwrap_or_default()
     };
-    let (g, w) = (strip(got), strip(want));
+    let (g, w) = (strings(got), strings(want));
     if g != w {
         failures.push(format!(
             "[{name}] summary.warnings differ\n  rust:   {g:?}\n  oracle: {w:?}"

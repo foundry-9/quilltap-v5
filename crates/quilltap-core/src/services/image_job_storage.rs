@@ -104,7 +104,7 @@ pub fn write_character_avatar_to_vault(
     description: Option<&str>,
 ) -> Result<WrittenImage, DbError> {
     let Some(mount_point_id) = resolve_character_vault_mount(main, mount, character_id) else {
-        return Err(DbError::Key(format!(
+        return Err(DbError::Internal(format!(
             "Character {character_id} has no linked database-backed vault"
         )));
     };
@@ -155,7 +155,7 @@ pub fn write_main_avatar_to_vault(
     description: Option<&str>,
 ) -> Result<AvatarWrite, DbError> {
     let Some(mount_point_id) = resolve_character_vault_mount(main, mount, character_id) else {
-        return Err(DbError::Key(format!(
+        return Err(DbError::Internal(format!(
             "Character {character_id} has no linked database-backed vault"
         )));
     };
@@ -216,7 +216,7 @@ pub fn write_lantern_background_to_mount_store(
     description: Option<&str>,
 ) -> Result<WrittenImage, DbError> {
     let Some(mount_point_id) = resolve_lantern_backgrounds_mount(main, mount) else {
-        return Err(DbError::Key(
+        return Err(DbError::Internal(
             "Lantern Backgrounds mount has not been provisioned".to_string(),
         ));
     };

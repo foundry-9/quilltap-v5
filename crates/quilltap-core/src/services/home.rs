@@ -194,7 +194,7 @@ pub fn get_home_data(
     let all_chats_raw = chats_read::find_by_user_id(main, user_id)?;
     let all_projects = ProjectsRepository::new(main, mount)
         .find_all()
-        .map_err(|e| DbError::Key(format!("project overlay: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?;
     let all_characters = characters_read::find_by_user_id(main, mount, user_id)?;
     let all_files = FilesRepository::new(main).find_all()?;
 

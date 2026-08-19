@@ -571,7 +571,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     // The read goes through `find_by_id_raw` + the overlay rather than
     // `characters_read::find_by_id` so the sentence in the bubble is v4's own
     // `CharacterVaultUnavailableError` message (`find_by_id` erases it into a
-    // generic `DbError::Key`); `api::custom_tools::resolve_metadata` reaches for
+    // generic `DbError::Internal`); `api::custom_tools::resolve_metadata` reaches for
     // the same pair, for the same reason.
     let mut metadata: Map<String, Value> = Map::new();
     if let Some(character_id) = &ctx.character_id {

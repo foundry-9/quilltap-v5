@@ -463,7 +463,7 @@ fn build_recovery_message_event(
         "recoveryType": recovery_type,
     });
     serde_json::from_value(value)
-        .map_err(|e| crate::db::DbError::Key(format!("recovery message marshal: {e}")))
+        .map_err(|e| crate::db::DbError::Internal(format!("recovery message marshal: {e}")))
 }
 
 /// `s` split into successive `n`-UTF-16-unit slices (v4's

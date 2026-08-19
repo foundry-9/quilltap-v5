@@ -121,7 +121,7 @@ pub fn group_list(db: &Db) -> Response {
 }
 
 /// Bridge `OverlayError` into a `DbError` inside a read closure (the closures are
-/// `-> Result<_, DbError>`); an unavailable store becomes a `DbError::Key`.
+/// `-> Result<_, DbError>`); an unavailable store becomes a `DbError::Internal`.
 fn overlay_to_db(e: OverlayError) -> DbError {
     // Structure-preserving (P4.23): the `Unavailable` refusal survives as
     // `DbError::StoreUnavailable` so the terminal arm can answer v4's

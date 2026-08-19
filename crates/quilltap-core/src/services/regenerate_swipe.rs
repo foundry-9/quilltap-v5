@@ -173,7 +173,7 @@ where
         random01,
     )
     .await
-    .map_err(|e| DbError::Key(format!("participant resolution failed: {e:?}")))?;
+    .map_err(|e| DbError::Internal(format!("participant resolution failed: {e:?}")))?;
 
     let character_participant = resolution.character_participant.clone();
     let character = resolution.character.clone();
@@ -220,7 +220,7 @@ where
         default_roleplay_template_id.as_deref(),
     )
     .await
-    .map_err(|e| DbError::Key(format!("roleplay template resolution failed: {e:?}")))?
+    .map_err(|e| DbError::Internal(format!("roleplay template resolution failed: {e:?}")))?
     .map(|r| r.system_prompt);
 
     // --- Context = everything strictly BEFORE the target (v4 100–106) ---
@@ -365,7 +365,7 @@ where
         &no_attachments,
     )
     .await
-    .map_err(|e| DbError::Key(format!("buildMessageContext failed: {e:?}")))?;
+    .map_err(|e| DbError::Internal(format!("buildMessageContext failed: {e:?}")))?;
 
     // --- Single non-streaming generation (v4 132–153) ---
     // v4 `d9c5a1c7`: `const params = profileParams(connectionProfile) ?? {}`,
@@ -449,7 +449,7 @@ where
             },
         )
         .await
-        .map_err(|e| DbError::Key(format!("swipe generation failed: {}", e.message)))?;
+        .map_err(|e| DbError::Internal(format!("swipe generation failed: {}", e.message)))?;
 
     // --- Persist the grouping (v4 155–194) ---
     let target_swipe_group_id = json_str(&target_message, "swipeGroupId");
@@ -529,7 +529,7 @@ where
     let write_chat_id = chat_id.clone();
     let event: crate::db::chats_messages::ChatEventInput =
         serde_json::from_value(new_swipe.clone())
-            .map_err(|e| DbError::Key(format!("swipe message marshal: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("swipe message marshal: {e}")))?;
     db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
         .await?;
     // v4 calls `repos.chats.update(chat.id, {})` (an empty patch — a no-op SET; the

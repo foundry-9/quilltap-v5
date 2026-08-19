@@ -176,7 +176,7 @@ fn reindex_inner(
     } else {
         let meta = match std::fs::metadata(absolute_path) {
             Ok(m) => m,
-            Err(e) => return Err(crate::db::DbError::Key(e.to_string())),
+            Err(e) => return Err(crate::db::DbError::Internal(e.to_string())),
         };
         let converted = convert_to_plain_text(absolute_path, file_type, extractor);
         if crate::jsstr::js_trim(&converted).is_empty() {
@@ -240,7 +240,7 @@ fn reindex_inner(
         }
         let sha256 = match std::fs::read(absolute_path) {
             Ok(bytes) => super::scanner::sha256_hex(&bytes),
-            Err(e) => return Err(crate::db::DbError::Key(e.to_string())),
+            Err(e) => return Err(crate::db::DbError::Internal(e.to_string())),
         };
         let file_size = std::fs::metadata(absolute_path)
             .map(|m| m.len() as f64)

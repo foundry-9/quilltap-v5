@@ -123,7 +123,7 @@ fn host_character(character: &Value) -> HostCharacter {
 fn enrich(db: &Db, participant: &Value) -> Result<Value, DbError> {
     let p = participant.clone();
     let enriched = read_main_mount(db, |main, mount| enrich_participant(main, mount, &p))?;
-    serde_json::to_value(enriched).map_err(|e| DbError::Key(e.to_string()))
+    serde_json::to_value(enriched).map_err(|e| DbError::Internal(e.to_string()))
 }
 
 // ===========================================================================

@@ -164,7 +164,7 @@ pub fn process_mount_file(
         return Ok(ProcessFileOutcome::Unsupported);
     };
 
-    let bytes = std::fs::read(absolute_path).map_err(|e| DbError::Key(e.to_string()))?;
+    let bytes = std::fs::read(absolute_path).map_err(|e| DbError::Internal(e.to_string()))?;
     let sha256 = sha256_hex(&bytes);
 
     let links = DocMountFileLinksRepository::new(conn);
@@ -176,7 +176,7 @@ pub fn process_mount_file(
         }
     }
 
-    let meta = std::fs::metadata(absolute_path).map_err(|e| DbError::Key(e.to_string()))?;
+    let meta = std::fs::metadata(absolute_path).map_err(|e| DbError::Internal(e.to_string()))?;
 
     let plain_text = convert_to_plain_text(absolute_path, file_type, extractor);
     if crate::jsstr::js_trim(&plain_text).is_empty() {
@@ -410,7 +410,7 @@ pub fn rescan_database_mount_point(
     extractor: &dyn DocumentTextExtractor,
 ) -> Result<i64, DbError> {
     if mount_point.mount_type != "database" {
-        return Err(DbError::Key(
+        return Err(DbError::Internal(
             "rescanDatabaseMountPoint called on non-database mount point".to_string(),
         ));
     }

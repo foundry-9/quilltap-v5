@@ -757,7 +757,7 @@ impl<'c> ChatsRepository<'c> {
         let normalized_timestamp_config = match &data.timestamp_config {
             Some(v) => Some(
                 crate::chat_timestamp::parse_timestamp_config(v).map_err(|e| {
-                    DbError::Key(format!("Data validation failed: timestampConfig: {e}"))
+                    DbError::Internal(format!("Data validation failed: timestampConfig: {e}"))
                 })?,
             ),
             None => None,
@@ -1005,7 +1005,7 @@ impl<'c> ChatsRepository<'c> {
         if let Some(v) = &patch.timestamp_config {
             let normalized = match v {
                 Some(cfg) => Some(crate::chat_timestamp::parse_timestamp_config(cfg).map_err(
-                    |e| DbError::Key(format!("Data validation failed: timestampConfig: {e}")),
+                    |e| DbError::Internal(format!("Data validation failed: timestampConfig: {e}")),
                 )?),
                 None => None,
             };
@@ -1348,7 +1348,7 @@ impl<'c> ChatsRepository<'c> {
 
 /// Serialize a value to compact JSON text (for a JSON column).
 fn json_text<T: Serialize>(v: &T) -> Result<String, DbError> {
-    serde_json::to_string(v).map_err(|e| DbError::Key(format!("json serialize: {e}")))
+    serde_json::to_string(v).map_err(|e| DbError::Internal(format!("json serialize: {e}")))
 }
 
 /// Serialize an optional JSON object column: `None` → SQL NULL.

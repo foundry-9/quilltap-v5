@@ -532,9 +532,9 @@ impl<'c> LLMLogsRepository<'c> {
         omit_columns_the_table_lacks: bool,
     ) -> Result<(), DbError> {
         let request_json = serde_json::to_string(&data.request)
-            .map_err(|e| DbError::Key(format!("request serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("request serialize: {e}")))?;
         let response_json = serde_json::to_string(&data.response)
-            .map_err(|e| DbError::Key(format!("response serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("response serialize: {e}")))?;
         let usage_json = opt_json(&data.usage, "usage")?;
         let cache_usage_json = opt_json(&data.cache_usage, "cacheUsage")?;
         let raw_provider_usage_json = opt_json(&data.raw_provider_usage, "rawProviderUsage")?;
@@ -826,7 +826,7 @@ impl<'c> LLMLogsRepository<'c> {
         let usage = match usage_json {
             Some(s) => serde_json::from_str::<LlmLogTokenUsage>(&s)
                 .map(Some)
-                .map_err(|e| DbError::Key(format!("usage parse: {e}")))?,
+                .map_err(|e| DbError::Internal(format!("usage parse: {e}")))?,
             None => None,
         };
 
@@ -899,37 +899,37 @@ impl<'c> LLMLogsRepository<'c> {
         }
         if let Some(request) = &patch.request {
             let json = serde_json::to_string(request)
-                .map_err(|e| DbError::Key(format!("request serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("request serialize: {e}")))?;
             assignments.push(format!("request = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(response) = &patch.response {
             let json = serde_json::to_string(response)
-                .map_err(|e| DbError::Key(format!("response serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("response serialize: {e}")))?;
             assignments.push(format!("response = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(usage) = &patch.usage {
             let json = serde_json::to_string(usage)
-                .map_err(|e| DbError::Key(format!("usage serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("usage serialize: {e}")))?;
             assignments.push(format!("usage = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(cache_usage) = &patch.cache_usage {
             let json = serde_json::to_string(cache_usage)
-                .map_err(|e| DbError::Key(format!("cacheUsage serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("cacheUsage serialize: {e}")))?;
             assignments.push(format!("cacheUsage = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(raw_provider_usage) = &patch.raw_provider_usage {
             let json = serde_json::to_string(raw_provider_usage)
-                .map_err(|e| DbError::Key(format!("rawProviderUsage serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("rawProviderUsage serialize: {e}")))?;
             assignments.push(format!("rawProviderUsage = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
         if let Some(request_hashes) = &patch.request_hashes {
             let json = serde_json::to_string(request_hashes)
-                .map_err(|e| DbError::Key(format!("requestHashes serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("requestHashes serialize: {e}")))?;
             assignments.push(format!("requestHashes = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
@@ -1010,7 +1010,7 @@ impl<'c> LLMLogsRepository<'c> {
         }
 
         let Some(cutoff) = llm_log_retention_cutoff_iso(now_ms, retention_days, tz) else {
-            return Err(DbError::Key("Invalid time value".to_string()));
+            return Err(DbError::Internal("Invalid time value".to_string()));
         };
 
         let deleted = self.conn.execute(
@@ -1163,7 +1163,7 @@ pub struct TokenUsageTotals {
 /// drop-the-row / null-the-read behavior.
 fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
     fn parse<T: for<'de> Deserialize<'de>>(json: &str, label: &str) -> Result<T, DbError> {
-        serde_json::from_str(json).map_err(|e| DbError::Key(format!("{label} parse: {e}")))
+        serde_json::from_str(json).map_err(|e| DbError::Internal(format!("{label} parse: {e}")))
     }
     fn parse_opt<T: for<'de> Deserialize<'de>>(
         json: Option<String>,
@@ -1299,7 +1299,7 @@ fn opt_json<T: Serialize>(value: &Option<T>, label: &str) -> Result<Option<Strin
     match value {
         Some(v) => {
             Ok(Some(serde_json::to_string(v).map_err(|e| {
-                DbError::Key(format!("{label} serialize: {e}"))
+                DbError::Internal(format!("{label} serialize: {e}"))
             })?))
         }
         None => Ok(None),

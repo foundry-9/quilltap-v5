@@ -407,8 +407,11 @@ pub async fn start_autonomous_room_manually(
         // chat existence/type were validated above, so the only reachable
         // failure is an enqueue error — the core already rolled the row to
         // `error`. Re-throw the original cause (v4 maps the throw to a 500).
-        BeginAutonomousRunResult::Failed { message, cause, .. } => Err(cause
-            .unwrap_or_else(|| DbError::Key(format!("Autonomous-room start failed: {message}")))),
+        BeginAutonomousRunResult::Failed { message, cause, .. } => {
+            Err(cause.unwrap_or_else(|| {
+                DbError::Internal(format!("Autonomous-room start failed: {message}"))
+            }))
+        }
     }
 }
 

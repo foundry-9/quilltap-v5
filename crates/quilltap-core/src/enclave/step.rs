@@ -1786,7 +1786,7 @@ mod tests {
                 });
                 match handle.join() {
                     Ok(r) => r,
-                    Err(_) => Err(DbError::Key("step thread panicked".into())),
+                    Err(_) => Err(DbError::Internal("step thread panicked".into())),
                 }
             })
         }

@@ -287,7 +287,7 @@ fn assemble_chat_get(
     let project = match s(chat, "projectId") {
         Some(pid) => ProjectsRepository::new(main, mount)
             .find_by_id(&pid)
-            .map_err(|e| DbError::Key(format!("project overlay: {e}")))?,
+            .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?,
         None => None,
     };
     let project_name = project.as_ref().and_then(|p| s(p, "name"));
@@ -326,7 +326,7 @@ fn assemble_chat_get(
 
     // Assemble the top-level chat object (v4 get.ts:517–556).
     let enriched_participants_v = serde_json::to_value(&enriched_participants)
-        .map_err(|e| DbError::Key(format!("participants marshal: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("participants marshal: {e}")))?;
     let get_v = |k: &str| chat.get(k).cloned();
     let bool_or = |k: &str, d: bool| get_v(k).and_then(|v| v.as_bool()).unwrap_or(d);
     let arr_or_empty = |k: &str| {
@@ -1517,7 +1517,7 @@ pub async fn chat_update(
         let mut obj = chat.as_object().cloned().unwrap_or_default();
         obj.insert(
             "participants".into(),
-            serde_json::to_value(&enriched).map_err(|e| DbError::Key(e.to_string()))?,
+            serde_json::to_value(&enriched).map_err(|e| DbError::Internal(e.to_string()))?,
         );
         Ok(Value::Object(obj))
     });
@@ -1930,7 +1930,7 @@ pub async fn chat_state_get(db: &Db, chat_id: &str) -> Response {
             body.insert(
                 "groupTier".into(),
                 serde_json::to_value(&cascade.group_tier)
-                    .map_err(|e| DbError::Key(e.to_string()))?,
+                    .map_err(|e| DbError::Internal(e.to_string()))?,
             );
             if let Some(pid) = cascade.project_id {
                 body.insert("projectId".into(), Value::String(pid));

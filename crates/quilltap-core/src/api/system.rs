@@ -55,7 +55,7 @@ pub fn system_home(db: &Db, user_id: &str, fallback_name: Option<&str>) -> Respo
         })
     });
     match result.and_then(|data| {
-        serde_json::to_value(&data).map_err(|e| DbError::Key(format!("home payload: {e}")))
+        serde_json::to_value(&data).map_err(|e| DbError::Internal(format!("home payload: {e}")))
     }) {
         Ok(v) => Response::SystemHome(v),
         // v4's catch-all: the route logs the error and answers this fixed

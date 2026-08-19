@@ -666,7 +666,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
     ) -> Result<LinkDocumentResult, DbError> {
         let rel = normalise_relative_path(relative_path)?;
         let file_type = detect_database_file_type(&rel).ok_or_else(|| {
-            DbError::Key(format!(
+            DbError::Internal(format!(
                 "database-backed stores only accept text documents; got path: {rel}"
             ))
         })?;
@@ -2033,7 +2033,7 @@ fn ensure_link_folder_id(
 pub fn normalise_relative_path(relative_path: &str) -> Result<String, DbError> {
     let normalised = collapse_slashes(&relative_path.replace('\\', "/"));
     if normalised.split('/').any(|s| s == "..") {
-        return Err(DbError::Key(format!(
+        return Err(DbError::Internal(format!(
             "invalid relative path (traversal): {relative_path}"
         )));
     }

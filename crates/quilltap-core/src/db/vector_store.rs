@@ -187,7 +187,7 @@ impl CharacterVectorStore {
     pub fn add_vector(&mut self, id: &str, embedding: Vec<f32>) -> Result<(), DbError> {
         if let Some(dims) = self.dimensions {
             if embedding.len() != dims {
-                return Err(DbError::Key(format!(
+                return Err(DbError::Internal(format!(
                     "Vector dimension mismatch: expected {dims}, got {}",
                     embedding.len()
                 )));
@@ -242,7 +242,7 @@ impl CharacterVectorStore {
             return Ok(false);
         };
         if Some(embedding.len()) != self.dimensions {
-            return Err(DbError::Key(format!(
+            return Err(DbError::Internal(format!(
                 "Vector dimension mismatch: expected {:?}, got {}",
                 self.dimensions,
                 embedding.len()

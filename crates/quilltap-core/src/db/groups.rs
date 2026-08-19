@@ -118,7 +118,7 @@ impl<'c> GroupsRepository<'c> {
             color: input.color.clone(),
             icon: input.icon.clone(),
         })
-        .map_err(|e| OverlayError::Db(DbError::Key(format!("properties build: {e}"))))?;
+        .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties build: {e}"))))?;
         self.inner.create(
             &input.name,
             &ManagedFields {

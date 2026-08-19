@@ -589,7 +589,7 @@ fn read_project_story_image(db: &Db, project_id: &str) -> Option<String> {
             let repo = quilltap_core::db::projects::ProjectsRepository::new(main, mount);
             let img = repo
                 .find_by_id(&pid)
-                .map_err(|e| quilltap_core::db::DbError::Key(format!("project read: {e:?}")))?
+                .map_err(|e| quilltap_core::db::DbError::Internal(format!("project read: {e:?}")))?
                 .and_then(|p| {
                     p.get("storyBackgroundImageId")
                         .and_then(Value::as_str)

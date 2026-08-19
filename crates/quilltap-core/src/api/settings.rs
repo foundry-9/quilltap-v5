@@ -1467,7 +1467,7 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
     let id_owned = id.clone();
     let out = db.read_main(move |conn| {
         let profile = connection_profiles::find_by_id(conn, &id_owned)?
-            .ok_or_else(|| DbError::Key("created profile vanished".into()))?;
+            .ok_or_else(|| DbError::Internal("created profile vanished".into()))?;
         let shaped = connection_profiles::create_return_shape(&profile);
         enrich_profile(conn, &shaped, false)
     });
@@ -1796,7 +1796,7 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
     let id_owned = id.to_string();
     let out = db.read_main(move |conn| {
         let profile = connection_profiles::find_by_id(conn, &id_owned)?
-            .ok_or_else(|| DbError::Key("updated profile vanished".into()))?;
+            .ok_or_else(|| DbError::Internal("updated profile vanished".into()))?;
         enrich_profile(conn, &profile, true)
     });
     match out {

@@ -214,7 +214,7 @@ fn opt_str_field(v: &Value, key: &str) -> Option<String> {
 fn flatten_overlay(e: OverlayError) -> DbError {
     match e {
         OverlayError::Db(d) => d,
-        OverlayError::Unavailable { detail, .. } => DbError::Key(detail),
+        OverlayError::Unavailable { detail, .. } => DbError::Internal(detail),
     }
 }
 

@@ -273,7 +273,7 @@ impl From<DbError> for HandleCreateError {
 impl From<OverlayError> for HandleCreateError {
     fn from(e: OverlayError) -> Self {
         // A degraded store on `projects.findById`/`update` is v4's throw → 500.
-        HandleCreateError::Db(DbError::Key(e.to_string()))
+        HandleCreateError::Db(DbError::Internal(e.to_string()))
     }
 }
 
@@ -691,8 +691,9 @@ where
         obj.insert("runTokensConsumed".into(), json!(0));
     }
 
-    let create_data: ChatCreate = serde_json::from_value(create_obj)
-        .map_err(|e| HandleCreateError::Db(DbError::Key(format!("chat create marshal: {e}"))))?;
+    let create_data: ChatCreate = serde_json::from_value(create_obj).map_err(|e| {
+        HandleCreateError::Db(DbError::Internal(format!("chat create marshal: {e}")))
+    })?;
     ChatsRepository::new(main).create(
         &create_data,
         &CreateOptions {
@@ -704,7 +705,9 @@ where
 
     // Re-read the hydrated chat (v4's `chat` object).
     let chat = chats_read::find_by_id(main, &chat_id)?.ok_or_else(|| {
-        HandleCreateError::Db(DbError::Key("created chat vanished on re-read".to_string()))
+        HandleCreateError::Db(DbError::Internal(
+            "created chat vanished on re-read".to_string(),
+        ))
     })?;
 
     // 9. Outfit selections (never fatal — v4's create-handler try/catch).
@@ -1022,7 +1025,7 @@ fn write_system_prompt_message(
         "attachments": [],
         "createdAt": now_iso(),
     }))
-    .map_err(|e| DbError::Key(format!("system message marshal: {e}")))?;
+    .map_err(|e| DbError::Internal(format!("system message marshal: {e}")))?;
     ChatMessagesRepository::new(main).add_message(chat_id, &event)
 }
 

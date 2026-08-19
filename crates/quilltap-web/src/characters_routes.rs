@@ -281,7 +281,7 @@ where
             let mount = writers
                 .mount_index()
                 .ok_or_else(|| {
-                    quilltap_core::db::DbError::Key(
+                    quilltap_core::db::DbError::Internal(
                         "the photo gallery requires the mount-index database".to_string(),
                     )
                 })?
@@ -630,7 +630,9 @@ async fn write_avatar(
         .write(move |writers| {
             let mount = writers
                 .mount_index()
-                .ok_or_else(|| quilltap_core::db::DbError::Key("no mount-index database".into()))?
+                .ok_or_else(|| {
+                    quilltap_core::db::DbError::Internal("no mount-index database".into())
+                })?
                 .connection();
             let main = writers.main().connection();
             Ok(write_main_avatar_to_vault(
@@ -662,7 +664,9 @@ async fn characters_reset_builtins(db: &Db) -> AxumResponse {
         .write(move |writers| {
             let mount = writers
                 .mount_index()
-                .ok_or_else(|| quilltap_core::db::DbError::Key("no mount-index database".into()))?
+                .ok_or_else(|| {
+                    quilltap_core::db::DbError::Internal("no mount-index database".into())
+                })?
                 .connection();
             let main = writers.main().connection();
             Ok(reset_builtins(main, mount, &HostImageCodec, uid))

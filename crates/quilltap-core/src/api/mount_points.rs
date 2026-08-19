@@ -626,7 +626,9 @@ pub(crate) fn cascade_delete(conn: &Connection, mount_point_id: &str) -> Result<
 fn mount_conn(ws: &crate::db::runtime::WriterSet) -> Result<&Connection, DbError> {
     Ok(ws
         .mount_index()
-        .ok_or_else(|| DbError::Key("mount-points require the mount-index database".to_string()))?
+        .ok_or_else(|| {
+            DbError::Internal("mount-points require the mount-index database".to_string())
+        })?
         .connection())
 }
 

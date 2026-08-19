@@ -84,7 +84,7 @@ pub fn seed_built_in_templates(main: &Connection) -> Result<(), DbError> {
     }
 
     let templates: Vec<BuiltInTemplate> = serde_json::from_str(BUILTIN_TEMPLATES_JSON)
-        .map_err(|e| DbError::Key(format!("builtin_templates.json: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("builtin_templates.json: {e}")))?;
     let repo = RoleplayTemplatesRepository::new(main);
 
     for template in &templates {
@@ -115,14 +115,14 @@ impl BuiltInTemplate {
     fn to_create(&self) -> Result<RtCreate, DbError> {
         let delimiters: Vec<TemplateDelimiter> =
             serde_json::from_value(serde_json::Value::Array(self.delimiters.clone()))
-                .map_err(|e| DbError::Key(format!("builtin delimiters: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("builtin delimiters: {e}")))?;
         let rendering_patterns: Vec<RenderingPattern> =
             serde_json::from_value(serde_json::Value::Array(self.rendering_patterns.clone()))
-                .map_err(|e| DbError::Key(format!("builtin renderingPatterns: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("builtin renderingPatterns: {e}")))?;
         let dialogue_detection: Option<DialogueDetection> = match &self.dialogue_detection {
             Some(v) => Some(
                 serde_json::from_value(v.clone())
-                    .map_err(|e| DbError::Key(format!("builtin dialogueDetection: {e}")))?,
+                    .map_err(|e| DbError::Internal(format!("builtin dialogueDetection: {e}")))?,
             ),
             None => None,
         };
@@ -145,16 +145,15 @@ impl BuiltInTemplate {
     /// the stored bytes equal v4's `JSON.stringify(template.<col>)`.
     fn to_seed_update(&self, now: &str) -> Result<SeedUpdate, DbError> {
         let delimiters_json = serde_json::to_string(&self.delimiters)
-            .map_err(|e| DbError::Key(format!("builtin delimiters serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("builtin delimiters serialize: {e}")))?;
         let rendering_patterns_json = serde_json::to_string(&self.rendering_patterns)
-            .map_err(|e| DbError::Key(format!("builtin renderingPatterns serialize: {e}")))?;
-        let dialogue_detection_json =
-            match &self.dialogue_detection {
-                Some(v) => Some(serde_json::to_string(v).map_err(|e| {
-                    DbError::Key(format!("builtin dialogueDetection serialize: {e}"))
-                })?),
-                None => None,
-            };
+            .map_err(|e| DbError::Internal(format!("builtin renderingPatterns serialize: {e}")))?;
+        let dialogue_detection_json = match &self.dialogue_detection {
+            Some(v) => Some(serde_json::to_string(v).map_err(|e| {
+                DbError::Internal(format!("builtin dialogueDetection serialize: {e}"))
+            })?),
+            None => None,
+        };
         Ok(SeedUpdate {
             system_prompt: self.system_prompt.clone(),
             description: self.description.clone(),

@@ -579,7 +579,7 @@ async fn run_state_cases(
                 let repo = ProjectsRepository::new(main_c, mount_w);
                 let p = repo
                     .find_by_id(&pid)
-                    .map_err(|e| quilltap_core::db::DbError::Key(e.to_string()))?;
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.to_string()))?;
                 Ok(p.and_then(|p| p.get("state").cloned())
                     .unwrap_or(Value::Null))
             })
@@ -604,7 +604,7 @@ async fn run_state_cases(
                 let main_c = writers.main().connection();
                 let alpha = quilltap_core::db::groups::GroupsRepository::new(main_c, mount_c)
                     .find_by_id(&alpha_id)
-                    .map_err(|e| quilltap_core::db::DbError::Key(e.to_string()))?;
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.to_string()))?;
                 let alpha_state = alpha
                     .and_then(|g| match g.get("state") {
                         Some(Value::Null) | None => None,

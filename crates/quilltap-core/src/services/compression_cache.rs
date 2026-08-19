@@ -181,7 +181,7 @@ async fn persist_to_database(
     entry: &PersistedCompressionCache,
 ) -> Result<(), DbError> {
     let entry_value = serde_json::to_value(entry)
-        .map_err(|e| DbError::Key(format!("cache entry marshal: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("cache entry marshal: {e}")))?;
     match participant_id {
         Some(pid) => {
             let existing = read_column(db, chat_id)?;

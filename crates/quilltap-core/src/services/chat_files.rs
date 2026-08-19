@@ -636,7 +636,7 @@ pub async fn upload_chat_file(
         let mount = ws
             .mount_index()
             .ok_or_else(|| {
-                crate::db::DbError::Key("chat upload requires the mount-index database".into())
+                crate::db::DbError::Internal("chat upload requires the mount-index database".into())
             })?
             .connection();
         upload_chat_file_conn(

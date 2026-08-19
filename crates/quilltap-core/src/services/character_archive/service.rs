@@ -693,7 +693,7 @@ async fn restore_archive_bundle(
             )
             .map_err(|e| match e {
                 crate::services::quilltap_import::ImportError::Db(d) => d,
-                other => DbError::Key(other.to_string()),
+                other => DbError::Internal(other.to_string()),
             })
         })
         .await?;
@@ -845,7 +845,7 @@ fn create_archive_bundle(
                 &created_at,
                 &app_version,
             )
-            .map_err(|e| DbError::Key(e.to_string()))
+            .map_err(|e| DbError::Internal(e.to_string()))
         })
     })?;
 
@@ -1386,7 +1386,9 @@ async fn prune_vault(db: &Db, character_id: &str) -> bool {
                     remaining = undead,
                     "Vault prune left doomed links behind",
                 );
-                return Err(DbError::Key("prune left doomed links behind".to_string()));
+                return Err(DbError::Internal(
+                    "prune left doomed links behind".to_string(),
+                ));
             }
 
             prune_empty_folders(mount, &mount_point_id, &survivors, &wardrobe_prefix)?;
@@ -1505,7 +1507,7 @@ async fn update_character_patch(
         vault_character_update::update_character(main, mi.connection(), &cid, &patch).map_err(
             |e| match e {
                 crate::db::document_store_overlay::OverlayError::Db(d) => d,
-                other => DbError::Key(other.to_string()),
+                other => DbError::Internal(other.to_string()),
             },
         )?;
         Ok(())

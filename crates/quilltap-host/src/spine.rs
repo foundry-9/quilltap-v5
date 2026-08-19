@@ -2274,12 +2274,12 @@ where
                                 user_id,
                                 payload,
                             )),
-                            Err(e) => Err(DbError::Key(format!("step runtime: {e}"))),
+                            Err(e) => Err(DbError::Internal(format!("step runtime: {e}"))),
                         };
                         let _ = tx.send(result);
                     });
                     rx.await
-                        .unwrap_or_else(|_| Err(DbError::Key("step thread panicked".into())))
+                        .unwrap_or_else(|_| Err(DbError::Internal("step thread panicked".into())))
                 }) as StepFuture<'_>
             },
         ),

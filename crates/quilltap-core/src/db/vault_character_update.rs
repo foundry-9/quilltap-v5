@@ -246,7 +246,7 @@ pub fn apply_document_store_write_overlay(
     if let Some(incoming) = patch.get("physicalDescription") {
         if !incoming.is_null() {
             let phys: PhysicalDescriptionWrite = serde_json::from_value(incoming.clone())
-                .map_err(|e| DbError::Key(format!("physicalDescription parse: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("physicalDescription parse: {e}")))?;
             links.write_database_document(
                 &mount_point_id,
                 PHYSICAL_DESCRIPTION_MD_PATH,
@@ -471,7 +471,7 @@ fn provision_vault_on_the_fly(
     character_id: &str,
 ) -> Result<String, DbError> {
     let raw = super::characters_read::find_by_id_raw(main, character_id)?.ok_or_else(|| {
-        DbError::Key(format!(
+        DbError::Internal(format!(
             "applyDocumentStoreWriteOverlay: character {character_id} not found while \
              provisioning a vault on the fly"
         ))
@@ -480,7 +480,7 @@ fn provision_vault_on_the_fly(
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| {
-            DbError::Key(format!(
+            DbError::Internal(format!(
                 "applyDocumentStoreWriteOverlay: character {character_id} row has no name"
             ))
         })?
@@ -489,13 +489,13 @@ fn provision_vault_on_the_fly(
     // field deserializes to its default (`None` markdown → `""`, talkativeness →
     // 0.5, …), matching v4's `?? <default>` coalescing off `findByIdRaw`.
     let vault: CharacterVaultWriteInput = serde_json::from_value(raw.clone())
-        .map_err(|e| DbError::Key(format!("raw character → vault input: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("raw character → vault input: {e}")))?;
 
     super::character_vault::ensure_character_vault(main, mount, character_id, &name, &vault, None)?;
 
     // Reload — ensureCharacterVault set characterDocumentMountPointId. Confirm.
     read_vault_fk(main, character_id)?.ok_or_else(|| {
-        DbError::Key(format!(
+        DbError::Internal(format!(
             "applyDocumentStoreWriteOverlay: failed to provision vault for {character_id}"
         ))
     })
@@ -609,7 +609,7 @@ fn parse_array<T: serde::de::DeserializeOwned>(v: &Value, label: &str) -> Result
     if v.is_null() {
         return Ok(Vec::new());
     }
-    serde_json::from_value(v.clone()).map_err(|e| DbError::Key(format!("{label} parse: {e}")))
+    serde_json::from_value(v.clone()).map_err(|e| DbError::Internal(format!("{label} parse: {e}")))
 }
 
 /// Build the slim-row update patch from the DB-bound remainder. Only the slim
@@ -682,7 +682,7 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
     }
 
     let p: SlimPatch = serde_json::from_value(Value::Object(db_patch.clone()))
-        .map_err(|e| DbError::Key(format!("slim patch parse: {e}")))?;
+        .map_err(|e| DbError::Internal(format!("slim patch parse: {e}")))?;
 
     Ok(CharacterUpdate {
         user_id: p.user_id,

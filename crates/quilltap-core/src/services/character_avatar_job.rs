@@ -586,7 +586,7 @@ fn write_avatar_file(
             )
             .is_none()
             {
-                return Err(DbError::Key(format!(
+                return Err(DbError::Internal(format!(
                         "Character {} has no linked database-backed vault; cannot persist wardrobe avatar.",
                         input.character_id
                     )));
@@ -627,7 +627,7 @@ fn write_avatar_file(
             )
         }
         (Some(_), None) => {
-            return Err(DbError::Key(
+            return Err(DbError::Internal(
                 "project upload result missing for project-scoped avatar".to_string(),
             ))
         }

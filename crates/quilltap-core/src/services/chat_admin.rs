@@ -291,7 +291,7 @@ pub async fn chat_toggle_agent_mode(
                 db.read_mount_index(|mount| {
                     let repo = projects::ProjectsRepository::new(main, mount);
                     repo.find_by_id(pid)
-                        .map_err(|e| DbError::Key(format!("project read failed: {e:?}")))
+                        .map_err(|e| DbError::Internal(format!("project read failed: {e:?}")))
                 })
             })
             .ok()
@@ -635,7 +635,9 @@ pub async fn chat_bulk_reattribute(
         }
         match serde_json::from_value::<ChatEventInput>(event) {
             Ok(e) => rewritten.push(e),
-            Err(e) => return internal(DbError::Key(format!("bulk re-attribute marshal: {e}"))),
+            Err(e) => {
+                return internal(DbError::Internal(format!("bulk re-attribute marshal: {e}")))
+            }
         }
     }
 

@@ -374,7 +374,7 @@ fn gallery_db_err(e: crate::photos::character_gallery_service::GalleryError) -> 
     use crate::photos::character_gallery_service::GalleryError;
     match e {
         GalleryError::Db(err) => err,
-        GalleryError::CharacterNotFound => DbError::Key("character not found".into()),
-        GalleryError::BadRequest(msg) => DbError::Key(msg),
+        GalleryError::CharacterNotFound => DbError::Internal("character not found".into()),
+        GalleryError::BadRequest(msg) => DbError::Internal(msg),
     }
 }

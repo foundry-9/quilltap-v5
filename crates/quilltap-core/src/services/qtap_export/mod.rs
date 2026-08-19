@@ -152,7 +152,7 @@ impl From<OverlayError> for ExportError {
     fn from(e: OverlayError) -> Self {
         ExportError::Db(match e {
             OverlayError::Db(d) => d,
-            other => DbError::Key(other.to_string()),
+            other => DbError::Internal(other.to_string()),
         })
     }
 }

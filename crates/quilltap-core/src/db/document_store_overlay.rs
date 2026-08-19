@@ -353,7 +353,7 @@ fn hydrate_one<E: StoreEntity>(
     let mut out = row.clone();
     // Spread the typed property bag over the row.
     if let Value::Object(prop_map) = serde_json::to_value(&properties)
-        .map_err(|e| OverlayError::Db(DbError::Key(format!("properties serialize: {e}"))))?
+        .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties serialize: {e}"))))?
     {
         for (k, v) in prop_map {
             out.insert(k, v);
@@ -509,9 +509,9 @@ pub fn read_properties<E: StoreEntity>(
 /// — re-parse through the typed struct (key order + strip extras), 2-space pretty.
 fn serialize_properties<E: StoreEntity>(value: &Value) -> Result<String, OverlayError> {
     let props = E::parse_properties(value)
-        .map_err(|d| OverlayError::Db(DbError::Key(format!("properties parse: {d}"))))?;
+        .map_err(|d| OverlayError::Db(DbError::Internal(format!("properties parse: {d}"))))?;
     serde_json::to_string_pretty(&props)
-        .map_err(|e| OverlayError::Db(DbError::Key(format!("properties serialize: {e}"))))
+        .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties serialize: {e}"))))
 }
 
 /// `JSON.stringify(state ?? {}, null, 2)` — `null` → `{}`, else 2-space pretty.
@@ -520,7 +520,7 @@ fn serialize_state(state: &Value) -> Result<String, OverlayError> {
         return Ok("{}".to_string());
     }
     serde_json::to_string_pretty(state)
-        .map_err(|e| OverlayError::Db(DbError::Key(format!("state serialize: {e}"))))
+        .map_err(|e| OverlayError::Db(DbError::Internal(format!("state serialize: {e}"))))
 }
 
 /// Write all four overlay files from an in-memory entity (v4 `writeManagedFields`)
@@ -618,14 +618,15 @@ pub fn apply_write_overlay<E: StoreEntity>(
             // settings bag to defaults — v4 `dcd9440a`.)
             let seed: Value = match read_properties::<E>(mount, mount_point_id, id)? {
                 Some(p) => serde_json::to_value(&p)
-                    .map_err(|e| OverlayError::Db(DbError::Key(format!("props seed: {e}"))))?,
+                    .map_err(|e| OverlayError::Db(DbError::Internal(format!("props seed: {e}"))))?,
                 None => {
                     let entity_value = Value::Object(entity.clone());
                     let parsed = E::parse_properties(&entity_value).map_err(|d| {
-                        OverlayError::Db(DbError::Key(format!("props seed parse: {d}")))
+                        OverlayError::Db(DbError::Internal(format!("props seed parse: {d}")))
                     })?;
-                    serde_json::to_value(&parsed)
-                        .map_err(|e| OverlayError::Db(DbError::Key(format!("props seed: {e}"))))?
+                    serde_json::to_value(&parsed).map_err(|e| {
+                        OverlayError::Db(DbError::Internal(format!("props seed: {e}")))
+                    })?
                 }
             };
             let mut next = seed.as_object().cloned().unwrap_or_default();

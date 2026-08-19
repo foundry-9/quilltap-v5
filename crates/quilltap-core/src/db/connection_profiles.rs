@@ -218,9 +218,9 @@ impl<'c> ConnectionProfilesRepository<'c> {
     /// JSON columns bind compact JSON text, the enums bind plain `String`.
     pub fn create(&self, data: &CpCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let parameters_json = serde_json::to_string(&data.parameters)
-            .map_err(|e| DbError::Key(format!("parameters serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
         let tags_json = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
 
         // v4 names only the columns the parsed document actually carries, so an
         // absent `multiCharacterPrefill` must be OMITTED (letting the DDL
@@ -323,7 +323,7 @@ impl<'c> ConnectionProfilesRepository<'c> {
         }
         if let Some(parameters) = &patch.parameters {
             let json = serde_json::to_string(parameters)
-                .map_err(|e| DbError::Key(format!("parameters serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
             assignments.push(format!("parameters = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
@@ -385,7 +385,7 @@ impl<'c> ConnectionProfilesRepository<'c> {
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             assignments.push(format!("tags = ?{}", values.len() + 1));
             values.push(Box::new(tags_json));
         }

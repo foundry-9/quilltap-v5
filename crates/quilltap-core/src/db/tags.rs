@@ -420,7 +420,7 @@ pub fn remove_tag_from_table(
         if current.iter().any(|t| t == tag_id) {
             let filtered: Vec<String> = current.into_iter().filter(|t| t != tag_id).collect();
             let json = serde_json::to_string(&filtered)
-                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
             updates.push((id, json));
         }
     }
@@ -446,7 +446,7 @@ impl<'c> TagsRepository<'c> {
         let visual_style: Option<String> = match &data.visual_style {
             Some(style) => Some(
                 serde_json::to_string(style)
-                    .map_err(|e| DbError::Key(format!("visualStyle serialize: {e}")))?,
+                    .map_err(|e| DbError::Internal(format!("visualStyle serialize: {e}")))?,
             ),
             None => None,
         };
@@ -494,7 +494,7 @@ impl<'c> TagsRepository<'c> {
             let text: Option<String> = match visual_style {
                 Some(vs) => Some(
                     serde_json::to_string(vs)
-                        .map_err(|e| DbError::Key(format!("visualStyle serialize: {e}")))?,
+                        .map_err(|e| DbError::Internal(format!("visualStyle serialize: {e}")))?,
                 ),
                 None => None,
             };

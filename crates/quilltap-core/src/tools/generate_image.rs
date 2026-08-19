@@ -1763,7 +1763,7 @@ async fn gather_db_context_via_db(
     let input = input.clone();
     db.write(move |writers| {
         let Some(mount_w) = writers.mount_index() else {
-            return Err(DbError::Key(
+            return Err(DbError::Internal(
                 "generate_image requires the mount-index database".to_string(),
             ));
         };
@@ -2055,7 +2055,7 @@ async fn resolve_placeholders_via_db(
     let cpid = ctx.calling_participant_id.clone();
     db.write(move |writers| {
         let Some(mount_w) = writers.mount_index() else {
-            return Err(DbError::Key(
+            return Err(DbError::Internal(
                 "generate_image requires the mount-index database".to_string(),
             ));
         };
@@ -2378,7 +2378,7 @@ where
         let result = db
             .write(move |writers| {
                 let Some(mount_w) = writers.mount_index() else {
-                    return Err(DbError::Key(
+                    return Err(DbError::Internal(
                         "generate_image requires the mount-index database".to_string(),
                     ));
                 };

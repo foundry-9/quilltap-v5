@@ -419,7 +419,7 @@ fn link_character_to_vault(
             other => Err(other),
         })?;
     if stuck.as_deref() != Some(mount_point_id) {
-        return Err(DbError::Key(format!(
+        return Err(DbError::Internal(format!(
             "Failed to persist characterDocumentMountPointId for {character_id}: wrote \
              {mount_point_id} but re-read {}. The character row write did not stick.",
             stuck.as_deref().unwrap_or("null")

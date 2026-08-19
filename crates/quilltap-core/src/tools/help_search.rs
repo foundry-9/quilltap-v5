@@ -170,7 +170,7 @@ pub async fn execute_help_search<P: EmbeddingProvider>(
         .await
     {
         Ok(emb) => db.read_main(|c| semantic_search(c, &emb.embedding, limit, Some(query))),
-        Err(_) => Err(crate::db::DbError::Key("embedding failed".to_string())),
+        Err(_) => Err(crate::db::DbError::Internal("embedding failed".to_string())),
     };
 
     let results: Vec<HelpSearchResult> = match semantic {

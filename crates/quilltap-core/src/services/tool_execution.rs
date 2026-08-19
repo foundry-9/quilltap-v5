@@ -676,7 +676,7 @@ fn build_tool_message_content(tool_msg: &ToolMessage) -> Result<String, DbError>
             .and_then(|m| m.expanded_prompt.as_deref()),
     };
     serde_json::to_string(&content)
-        .map_err(|e| DbError::Key(format!("tool message content serialize: {e}")))
+        .map_err(|e| DbError::Internal(format!("tool message content serialize: {e}")))
 }
 
 /// Persist a tool-message slate and link/tag generated images (v4
@@ -736,7 +736,7 @@ pub fn save_tool_messages(
 
         let event: crate::db::chats_messages::ChatEventInput =
             serde_json::from_value(Value::Object(msg))
-                .map_err(|e| DbError::Key(format!("saveToolMessages marshal: {e}")))?;
+                .map_err(|e| DbError::Internal(format!("saveToolMessages marshal: {e}")))?;
         writer.chat_messages().add_message(chat_id, &event)?;
 
         if first_tool_message_id.is_none() {

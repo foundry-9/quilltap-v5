@@ -276,7 +276,7 @@ pub async fn chat_run_tool(
 
     let event: ChatEventInput = match serde_json::from_value(message.clone()) {
         Ok(e) => e,
-        Err(e) => return internal(DbError::Key(format!("run-tool message marshal: {e}"))),
+        Err(e) => return internal(DbError::Internal(format!("run-tool message marshal: {e}"))),
     };
     let cid = chat_id.to_string();
     if let Err(e) = db

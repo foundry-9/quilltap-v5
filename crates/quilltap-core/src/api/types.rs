@@ -3956,3 +3956,71 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod db_error_surface_tests {
+    use super::{db_error_response, ErrorKind, Response};
+    use crate::db::DbError;
+
+    /// The finding's own value: what `services::orchestrator` composes when the
+    /// primary stream fails (`orchestrator.rs`, `"primary stream failed: {…}"`).
+    fn the_finding() -> DbError {
+        DbError::Internal("primary stream failed: HTTP 500: Internal Server Error".to_string())
+    }
+
+    /// P4.50 tier 2 — dogfood finding #96's acceptance on the API-body surface.
+    ///
+    /// A failed provider call reaches the operator through three renderings of
+    /// this one value, all of them `Display`: `db_error_response` → the api
+    /// error body; `tracing::error!(error = %e, …)` in `quilltap-host`'s spine →
+    /// P4.49's `combined.log`; and the SSE `chatError` frame's `details` beside
+    /// it. Before the split every one of them opened with
+    /// `key derivation failed: `, naming a cipher fault that never happened —
+    /// and P4.49 had just made `combined.log` the first place an operator looks
+    /// after a failed turn.
+    ///
+    /// The `kind` assertion is the other half: the split had to be observably
+    /// invisible on the wire, so `Internal` must map exactly where the `Key`
+    /// catch-all mapped (`ErrorKind::Internal`, a 500).
+    #[test]
+    fn a_failed_provider_call_reports_itself_not_key_derivation() {
+        let rendered = the_finding().to_string();
+        assert_eq!(
+            rendered, "primary stream failed: HTTP 500: Internal Server Error",
+            "the log line, the SSE details and the api body all render this"
+        );
+
+        let Response::Error(err) = db_error_response(the_finding()) else {
+            panic!("a DbError must map to Response::Error");
+        };
+        assert_eq!(err.kind, ErrorKind::Internal, "unchanged by the split");
+        assert_eq!(err.message, rendered);
+        assert!(!err.message.contains("key derivation"));
+        assert!(
+            err.entity.is_none(),
+            "only StoreUnavailable carries the contextful entity (P4.23)"
+        );
+    }
+
+    /// The other side of the same wire promise: the structured refusals the api
+    /// layer must still recognise are untouched by the new variant, so the
+    /// P4.23 contextful 503 keeps answering ahead of the catch-all.
+    #[test]
+    fn the_store_unavailable_arm_still_outranks_the_catch_all() {
+        let e = DbError::StoreUnavailable {
+            entity_label: "project",
+            id: "p1".to_string(),
+            message: "Project document store unavailable: broken".to_string(),
+        };
+        let Response::Error(err) = db_error_response(e) else {
+            panic!("a DbError must map to Response::Error");
+        };
+        assert_eq!(err.kind, ErrorKind::Unavailable);
+        assert_eq!(
+            err.entity
+                .as_deref()
+                .map(|e| (e.label.as_str(), e.id.as_str())),
+            Some(("project", "p1"))
+        );
+    }
+}

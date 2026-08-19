@@ -281,11 +281,11 @@ impl<'c> CharactersRepository<'c> {
             "defaultTimestampConfig",
         )?;
         let partner_links = serde_json::to_string(&data.partner_links)
-            .map_err(|e| DbError::Key(format!("partnerLinks serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("partnerLinks serialize: {e}")))?;
         let tags = serde_json::to_string(&data.tags)
-            .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
         let avatar_overrides = serde_json::to_string(&data.avatar_overrides)
-            .map_err(|e| DbError::Key(format!("avatarOverrides serialize: {e}")))?;
+            .map_err(|e| DbError::Internal(format!("avatarOverrides serialize: {e}")))?;
 
         self.conn.execute(
             "INSERT INTO characters \
@@ -363,7 +363,7 @@ impl<'c> CharactersRepository<'c> {
             ($field:expr, $col:literal, $label:literal) => {
                 if let Some(v) = &$field {
                     let text = serde_json::to_string(v)
-                        .map_err(|e| DbError::Key(format!("{} serialize: {e}", $label)))?;
+                        .map_err(|e| DbError::Internal(format!("{} serialize: {e}", $label)))?;
                     assignments.push(format!("{} = ?{}", $col, values.len() + 1));
                     values.push(Box::new(text));
                 }
@@ -470,5 +470,5 @@ fn json_opt<T: Serialize>(value: Option<&T>, label: &str) -> Result<Option<Strin
     value
         .map(|v| serde_json::to_string(v))
         .transpose()
-        .map_err(|e| DbError::Key(format!("{label} serialize: {e}")))
+        .map_err(|e| DbError::Internal(format!("{label} serialize: {e}")))
 }
