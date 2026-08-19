@@ -23,6 +23,15 @@ export const projectKeys = {
   chats: (id: string) => ['projects', 'chats', id] as const,
   files: (id: string) => ['projects', 'files', id] as const,
   stores: (id: string) => ['projects', 'stores', id] as const,
+  /**
+   * The project's resolved story background (v4 `queryKeys.projects.background`,
+   * `['projects', id, 'background']`). Spelled in THIS file's own idiom
+   * (`['projects', <kind>, id]`) like every sibling above — the segment order is
+   * client-local naming, and matching the siblings is what keeps the
+   * `projectKeys.all` prefix invalidation meaningful. The salon's twin is
+   * `['chat', id, 'background']` (`screens/salon/story-background.api.ts`).
+   */
+  background: (id: string) => ['projects', 'background', id] as const,
 };
 
 /** A project as the list card consumes it: the row plus the mapped counts. */
@@ -174,14 +183,28 @@ export async function resetProjectState(
 
 // --- Story background (display-mode resolution) ---
 
+/**
+ * Resolve the project's story background (v4 `useStoryBackground(null, projectId,
+ * …)` over `?action=get-background`, `hooks/useStoryBackground.ts:56-70`).
+ *
+ * The verb answers a BARE `{backgroundUrl, displayMode, sourceChatId?}` and
+ * `backgroundUrl` is ALREADY `/api/v1/files/{id}` (the server's `file_path`), so
+ * the value is reported to the workspace backdrop raw — the salon resolver's
+ * fileId→`fileUrl()` mapping has no counterpart to make here (its body carries a
+ * `fileId`; this one does not).
+ *
+ * `theme` mode — and any mode whose image is missing — resolves to `null`
+ * SERVER-side; the client never re-derives it from the mode.
+ */
 export async function fetchProjectBackground(
   core: CoreClient,
   projectId: string,
 ): Promise<ProjectBackgroundDto> {
   const data = await core.dispatchData({ type: 'projectBackgroundGet', projectId });
   return {
-    url: (data['url'] as string | null) ?? null,
-    sourceChatId: data['sourceChatId'] as string,
+    backgroundUrl: (data['backgroundUrl'] as string | null) ?? null,
+    displayMode: (data['displayMode'] as string | undefined) ?? 'theme',
+    sourceChatId: (data['sourceChatId'] as string | null | undefined) ?? null,
   };
 }
 

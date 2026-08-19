@@ -74549,3 +74549,57 @@ predicted none and the prediction held.
 jest worker on one run, mid-corpus, and regenerated clean on an immediate
 retry. It is a native-driver flake in a case file that opens and closes ~36
 encrypted instances, not recipe rot — retry once before diagnosing.
+## P4.D92 unit 1 — the project story-background read (v4 `c6ff8051`, bug 80), 2026-08-18
+
+**Lane:** P4.D92 (`apps/web/**` only; sibling P4.D91 owns `crates/**`).
+**Oracle:** v4's CLIENT source at the pin `c6ff8051` — this is a client
+vertical, so the differential is file:line citation against v4's real
+components/hooks (`impersonation-overlay-spa-gaps`), not an NDJSON regen.
+This lane runs no oracle regen and moves no Rust.
+
+**Drift check at lane start:** `git log c6ff8051..main --oneline` in
+`~/source/quilltap-server` is EMPTY (v4 main HEAD *is* `c6ff8051`, tree
+clean); `git log main..bugfix` carries only the branch-start markers the
+order already dispositioned. No drift; the port runs against the pinned
+oracle.
+
+**The order's STOP condition, checked first.** The order required verifying
+that `project_background_get` is actually reachable over HTTP before
+assuming the SPA can call it (the P4.D66 lesson: a verb existing in core
+does not prove a URL is wired). It is: `Request::ProjectBackgroundGet` is an
+arm of the internally-tagged dispatch enum (`api/types.rs:1184`), handled at
+`api/engine.rs:2848`, and `quilltap-web`'s generic `POST /api/dispatch`
+(`dispatch.rs`) deserializes the whole enum — so the SPA's
+`core.dispatchData({type:'projectBackgroundGet'})` reaches it with no REST
+edge and no crate change. **No escalation.**
+
+**What this unit landed.** The read half, and it was BROKEN — a dead-and-wrong
+client type nobody had exercised:
+
+- `ProjectBackgroundDto` claimed `{url, sourceChatId}`. The verb answers v4
+  `handleGetBackground`'s BARE `{backgroundUrl, displayMode, sourceChatId?}`
+  (`api/projects.rs:760-848`). `fetchProjectBackground` read `data['url']`,
+  which is never present, so it resolved every project's background to
+  `null` — silently, since the function had ZERO consumers (grep-verified at
+  lane start: the only references were its own definition and the type
+  import). The type now matches the wire and the resolver maps all three
+  fields.
+- **The P4.6ac blob idiom arrives pre-applied here.** The order asked for the
+  salon file's "prefer `fileId` mapped through `/api/v1/files/{id}` over v4's
+  `backgroundUrl` path string" idiom. It does not apply: the core verb's
+  `file_path` helper (`api/projects.rs:107-110`) already emits
+  `/api/v1/files/{id}`, and the body carries no `fileId` at all. The URL is
+  reported raw. Recorded so a later reader does not "fix" a mapping that has
+  nothing to map.
+- `projectKeys.background(id)` = `['projects', 'background', id]`. v4's key is
+  `['projects', id, 'background']` (`lib/query/keys.ts:75`); the segment ORDER
+  is client-local naming, and every sibling key in this file is
+  `['projects', <kind>, id]` — matching them is what keeps the
+  `projectKeys.all` prefix invalidation covering this key. A deliberate,
+  recorded spelling divergence with no behavioral surface.
+
+**Specs:** two cases in `projects.spec.ts` (`fetchProjectBackground`) — the
+full body read verbatim with the dispatch envelope asserted, and the `theme`
+arm's null/absent shape. `ng test --filter fetchProjectBackground`: 2 passed.
+
+Versions: SPA 0.5.515.

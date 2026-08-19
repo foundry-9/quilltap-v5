@@ -3405,9 +3405,19 @@ export interface WardrobeItemDto {
   updatedAt: string;
 }
 
-/** The story-background resolution (v4 `?action=background`). */
+/**
+ * The story-background resolution (v4 `?action=get-background`,
+ * `handleGetBackground`). The BARE body the core verb answers
+ * (`api/projects.rs:760` — `{backgroundUrl, displayMode, sourceChatId?}`):
+ * `backgroundUrl` is already the id-keyed byte route (`/api/v1/files/{id}`, the
+ * server's own `file_path`), so unlike the chat resolver there is no
+ * path-vs-fileId choice to make here — the P4.6ac idiom arrives pre-applied.
+ * `theme` (and any unresolvable mode) answers `backgroundUrl: null`.
+ */
 export interface ProjectBackgroundDto {
-  url: string | null;
+  backgroundUrl: string | null;
+  displayMode: string;
+  /** Only present on the `latest_chat` arm that resolved a chat. */
   sourceChatId?: string | null;
 }
 

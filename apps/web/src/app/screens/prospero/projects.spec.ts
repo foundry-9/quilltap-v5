@@ -13,7 +13,7 @@ import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
 import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
-import { projectKeys } from './projects.api';
+import { fetchProjectBackground, projectKeys } from './projects.api';
 import { ProjectDetailScreen } from './project-detail';
 import { ProsperoList } from './prospero-list';
 import { ToastService } from '../../ui/toast.service';
@@ -973,5 +973,38 @@ describe('ProjectFilesCard', () => {
       (b: HTMLButtonElement) => b.textContent?.trim() === 'Browse All Files',
     ) as HTMLButtonElement;
     expect(browse.disabled).toBe(true);
+  });
+});
+
+/**
+ * The project story-background resolver (P4.D92, v4 bug 80's read half —
+ * `useStoryBackground(null, projectId, …)` over `?action=get-background`).
+ */
+describe('fetchProjectBackground', () => {
+  it('reads the BARE body verbatim — the url is already the byte route', async () => {
+    const seen: DispatchReq[] = [];
+    const client = stubClient((r) => {
+      seen.push(r);
+      return {
+        backgroundUrl: '/api/v1/files/bg-1',
+        displayMode: 'latest_chat',
+        sourceChatId: 'c1',
+      };
+    }) as CoreClient;
+    expect(await fetchProjectBackground(client, 'p1')).toEqual({
+      backgroundUrl: '/api/v1/files/bg-1',
+      displayMode: 'latest_chat',
+      sourceChatId: 'c1',
+    });
+    expect(seen).toEqual([{ type: 'projectBackgroundGet', projectId: 'p1' }]);
+  });
+
+  it("the 'theme' arm carries a null url and no source chat", async () => {
+    const client = stubClient(() => ({ backgroundUrl: null, displayMode: 'theme' })) as CoreClient;
+    expect(await fetchProjectBackground(client, 'p1')).toEqual({
+      backgroundUrl: null,
+      displayMode: 'theme',
+      sourceChatId: null,
+    });
   });
 });

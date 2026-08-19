@@ -71,6 +71,23 @@ first regeneration, as designed, and is now a plain equality: v4 completes
 the avatar job and writes the avatar, as this port always did. New unit
 tests diff the normalizer against v4's `normalizeEquippedSlots` case for
 case, including the malformed-bag salvage and the non-object shapes.
+#### 2026-08-18 — fix(prospero): read a project's resolved story background (bug 80, part 1)
+
+_Versions: SPA 0.5.515._
+
+`ProjectBackgroundDto` described a body the server does not send. The core
+verb `project_background_get` answers v4 `handleGetBackground`'s bare
+`{backgroundUrl, displayMode, sourceChatId?}`, and `backgroundUrl` is
+already the id-keyed byte route (`/api/v1/files/{id}`) — the client type
+declared `{url, sourceChatId}` instead, so `fetchProjectBackground` read a
+key that is never present and resolved every project's background to null.
+Nothing consumed it yet, which is why it went unnoticed.
+
+The DTO now matches the wire, the resolver maps all three fields, and
+`projectKeys` gains a `background(id)` sibling of the detail key (spelled in
+this file's own `['projects', <kind>, id]` idiom, so the `projectKeys.all`
+prefix still covers it). This is the read half of bug 80's port; the
+reporter that puts the value on screen follows.
 
 #### 2026-08-19 — docs(changelog): restructure into per-commit headers, split by month
 
