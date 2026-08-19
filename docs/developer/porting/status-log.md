@@ -75020,3 +75020,83 @@ non-empty provider/label/key; the profile-save `apiKeyId` check
 (`settings.rs:1319`, `:1610`) is a provider-MATCH only; `validate_provider_config`
 stays requires-shaped exactly as v4's does. The block was client-only in v5
 as it was in v4, so the SPA half is the whole of it.
+
+**Unit 2 — the `resolveConnectionProfileApiKey` twin + the two Brahma sites
+(core 0.0.586).** `services::api_key_service` gains
+`resolve_connection_profile_api_key` with v4's four outcomes
+(`ProfileApiKeyResolution::Ok(key)` / `Failed(NoApiKeyConfigured)` /
+`Failed(ApiKeyNotFound)`), and its module header now names it as a THIRD
+thing beside the two lookup styles the W4.7d survey said never to unify: it
+is the gate+lookup composite a caller about to make a request has to take.
+The two capability predicates moved in with it —
+`provider_requires_api_key` / `provider_accepts_api_key`, v4's
+`lib/plugins/provider-validation.ts` pair — which **closed tier-2 item 8 on
+the way**: v5 had TWO copies of one v4 function (`api/settings.rs:119` and
+`brahma_console/mod.rs:191`) and was about to acquire a third. The import
+graph allowed it cheaply; `api::settings::requires_api_key` stays as a
+one-line `pub(super)` delegate so `provider_actions.rs` and the existing
+tests read unchanged, and the Brahma copy is deleted.
+
+*The gate order is the port.* (1) a provider that accepts no key returns
+`Ok("")` and is NEVER looked up; (2) no `apiKeyId` refuses only where a key
+is required; (3) a present `apiKeyId` is ALWAYS followed and a missing row
+always refuses. A DB read error collapses to `ApiKeyNotFound` — the
+pre-existing `_ =>` arm of both Brahma sites, kept so the semantics change
+and the error mapping do not move together.
+
+*Both Brahma sites route through it*, byte-per-site: the one-shot service
+keeps v4's LOWER-CASE `no API key configured for this connection profile`,
+the orchestrator its capitalised `No API key configured for this connection
+profile`; both share `API key not found`. The casing asymmetry is
+pre-existing in v4 and ported verbatim, not normalized.
+
+*Differentials.* The one-shot fixture builder gained three users/profiles
+(the `/tmp`-built fixture is not committed, so nothing else is invalidated)
+and `brahma_console_tier3_equivalence` gained three cases, **recorded from
+v4's real `runBrahmaQuery` at the pin**: `oac_dangling_key`
+(OPENAI_COMPATIBLE + a dangling id → `API key not found`),
+`oac_keyless_proceeds` (OPENAI_COMPATIBLE + no key → answers), and
+`local_ignores_stale_key` (OLLAMA + a dangling id → answers, proving the
+accepts-gate short-circuits before the lookup). `brahma_orchestrator_tier3`
+regenerated at the pin and green unchanged — its committed fixture carries
+one hosted keyed profile, so the three new shapes are proven there by
+**composition-level tests** in `brahma_console/orchestrator/tests.rs`, which
+repoint the temp copy's default profile per case and drive the real dispatch
+arm for the exact sentences. The resolver's own six-row truth table mirrors
+v4's `__tests__/unit/lib/services/api-key-service.test.ts` row for row, with
+the REAL manifests answering where v4 mocks the predicates.
+
+*Two mutations, both behaving as designed.* Spelling gate 1 as
+`!provider_requires_api_key` (the pre-bug-81 shape) reddens exactly
+`dangling_id_refuses_even_where_the_key_is_optional`,
+`accepting_provider_forwards_the_attached_key`, the orchestrator's
+`dangling_key_refuses_even_on_a_provider_that_requires_none`, and the tier-3
+`oac_dangling_key` arm (`empty response` where v4 says `API key not found`).
+Removing the short-circuit entirely reddens exactly the two stale-row arms.
+
+**Unit 3 — the spine measurement: v5 NEVER HAD bug 81's spine half (no code,
+host 0.0.73 for the seam record).** The order asked for (a) or (b) by
+measurement; the answer is **(a)**, with three independent readings:
+`participant_resolver` deliberately returns `api_key: None` (:480),
+`orchestrator.rs:1245` starts `effective_api_key` empty, and the host's
+`DbProviderKeys::key_for` (`spine.rs`) is
+`find_active_api_key_for_provider` — a provider SCAN with **no capability
+gate anywhere on it**. So a stored OAC key has always been forwarded; what
+keeps a genuinely keyless endpoint bare is the manifest `auth` scheme
+(`ollama` = `none`, injecting nothing), not a lookup gate. The
+dangerous-reroute overwrite was checked as the order asked and is the same
+shape: `dangerous_content::provider_routing::decrypt_profile_api_key`
+follows the rerouted profile's `apiKeyId` ungated, so bug 81 never touched
+it in either direction (that file is P4.D94's — read only). Recorded on the
+`spine.rs` documented-seam block and pinned by
+`api_key_service::tests::provider_scan_is_capability_blind`, because the
+*reason* v5 needs no port is the absence of the gate: adding one would bring
+bug 81 to v5 for the first time. v4 deliberately does NOT unify its own
+chat-message site onto the resolver either (the key is decrypted upstream by
+the participant resolver), so the two trees stay structurally aligned.
+
+**Measured, not swept:** v5's settings/validation tier stays on
+`requiresApiKey` exactly as v4's does — `validate_provider_config`,
+`api/settings.rs:2276` (connection test), `provider_actions.rs:229`,
+`embedding_provider.rs:274`, the Almanack readers. v4's commit touched none
+of them.

@@ -299,3 +299,111 @@ async fn stale_guard_forces_a_final_when_results_repeat() {
         Some("HALTED BY STALE GUARD")
     );
 }
+
+// ---------------------------------------------------------------------------
+// v4 bug 81 — the api-key gate, at composition level.
+//
+// The tier-3 differential (`brahma_orchestrator_tier3_equivalence`) runs over a
+// COMMITTED fixture whose one profile is hosted and keyed, so it can say nothing
+// about the three shapes `requiresApiKey` alone could not express. These drive
+// the REAL dispatch arm (`handle_brahma_console_message` → `process_brahma_response`)
+// over a temp copy whose default profile is repointed per case, and assert the
+// per-site sentences — which are Capitalised here and lower-case in the one-shot
+// service, a pre-existing v4 asymmetry ported verbatim.
+//
+// The one-shot twin of these arms is proven against v4's real code in the
+// `brahma_console_tier3_equivalence` corpus (`oac_dangling_key`,
+// `oac_keyless_proceeds`, `local_ignores_stale_key`), and the resolver's own
+// six-row truth table lives in `services::api_key_service`.
+// ---------------------------------------------------------------------------
+
+/// Repoint the user's default connection profile at `provider` with `api_key_id`.
+async fn repoint_default_profile(db: &Db, provider: &str, api_key_id: Option<&str>) {
+    let provider = provider.to_string();
+    let api_key_id = api_key_id.map(str::to_string);
+    db.write(move |ws| {
+        ws.main().connection().execute(
+            "UPDATE connection_profiles SET provider = ?1, apiKeyId = ?2 \
+             WHERE userId = ?3 AND isDefault = 1",
+            rusqlite::params![provider, api_key_id, USER],
+        )?;
+        Ok::<(), crate::db::DbError>(())
+    })
+    .await
+    .unwrap();
+}
+
+async fn send_with_default_profile(db: &Db, chat_id: &str) -> Result<(), String> {
+    let streaming = ScriptedStream::new(vec![text_stream("ANSWERED")]);
+    let detector = MarkerDetector {
+        by_marker: HashMap::new(),
+    };
+    let runner = EchoRunner;
+    let sink = RecordingSink::new();
+    let mut cost = NoCostTracking;
+    let mut deps = BrahmaSendDeps {
+        db,
+        streaming: &streaming,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        cost: &mut cost,
+        model_supports_native_tools: true,
+    };
+    let opts = BrahmaConsoleSendOptions {
+        content: "say something".into(),
+        file_ids: Vec::new(),
+    };
+    handle_brahma_console_message(&mut deps, &sink, USER, chat_id, &opts)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// An OpenAI-Compatible profile requires no key but ACCEPTS one, so a dangling
+/// `apiKeyId` is followed and refused loudly. Before bug 81 the whole lookup was
+/// skipped here and the turn went out bare.
+#[tokio::test]
+async fn dangling_key_refuses_even_on_a_provider_that_requires_none() {
+    let (_dir, db) = fixture_copy();
+    repoint_default_profile(
+        &db,
+        "OPENAI_COMPATIBLE",
+        Some("deadbeef-0000-4000-8000-000000000000"),
+    )
+    .await;
+    assert_eq!(
+        send_with_default_profile(&db, CHAT_B).await,
+        Err("API key not found".to_string())
+    );
+}
+
+/// The same provider with no key attached proceeds keyless — only
+/// `requiresApiKey` may refuse.
+#[tokio::test]
+async fn accepting_provider_with_no_key_proceeds() {
+    let (_dir, db) = fixture_copy();
+    repoint_default_profile(&db, "OPENAI_COMPATIBLE", None).await;
+    assert_eq!(send_with_default_profile(&db, CHAT_B).await, Ok(()));
+}
+
+/// Ollama takes no key at all, so a stale dangling `apiKeyId` on its profile is
+/// ignored rather than followed: the accepts-gate short-circuits BEFORE the
+/// lookup. A resolver that looked the id up first would refuse here.
+#[tokio::test]
+async fn keyless_provider_ignores_a_dangling_stale_key() {
+    let (_dir, db) = fixture_copy();
+    repoint_default_profile(&db, "OLLAMA", Some("deadbeef-0000-4000-8000-000000000000")).await;
+    assert_eq!(send_with_default_profile(&db, CHAT_C).await, Ok(()));
+}
+
+/// A hosted provider with no key still refuses, with its own sentence — the arm
+/// that must not have moved.
+#[tokio::test]
+async fn requiring_provider_with_no_key_still_refuses() {
+    let (_dir, db) = fixture_copy();
+    repoint_default_profile(&db, "ANTHROPIC", None).await;
+    assert_eq!(
+        send_with_default_profile(&db, CHAT_B).await,
+        Err("No API key configured for this connection profile".to_string())
+    );
+}

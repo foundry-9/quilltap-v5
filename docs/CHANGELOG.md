@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(providers): forward the key a profile attached, and refuse a dangling one (v4 bug 81, server)
+
+_Versions: core 0.0.586, host 0.0.73._
+
+Ports v4's `resolveConnectionProfileApiKey`. Four v4 paths gated the key
+*lookup* on `requiresApiKey`, so an OpenAI-Compatible profile's attached key
+would never have reached the wire even once the form could hold it. The v5 twin
+lives in `services::api_key_service` beside the two capability predicates, which
+moved there from their two duplicate homes (`api::settings` and the Brahma
+console) — one v4 function had become three copies.
+
+The order of its three gates is load-bearing: a provider that accepts no key is
+never looked up, so a stale row cannot fail its turn; a missing `apiKeyId`
+refuses only where a key is required; and a present `apiKeyId` is always
+followed, so a dangling one refuses even where the key is optional — the user
+attached it on purpose, and going out unauthenticated instead is the
+silent-wrong-answer kind of failure.
+
+Both Brahma sites route through it, keeping their byte-different sentences (the
+one-shot service's are lower-case, the orchestrator's are not — a pre-existing
+v4 asymmetry). The one-shot tier-3 corpus gained three arms recorded from v4's
+real code: a dangling key on an accepting provider refuses, an accepting
+provider with no key proceeds, and a keyless provider ignores a dangling stale
+id. The orchestrator's are composition-level tests over its committed fixture.
+
+The chat-message spine needed no port: v5 resolves keys host-side through a
+provider scan with no capability gate on it, so a stored OAC key has always been
+forwarded, and the manifest's `auth` scheme is what keeps a keyless endpoint
+bare. That reading is now pinned and recorded on the seam.
+
 #### 2026-08-19 — feat(providers): a provider may accept an API key without requiring one (v4 bug 81, substrate)
 
 _Versions: core 0.0.585, SPA 0.5.520._

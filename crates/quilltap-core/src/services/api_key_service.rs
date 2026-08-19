@@ -19,11 +19,25 @@
 //!     [`crate::db::api_keys::get_api_keys_by_user_id`] for `provider === X &&
 //!     isActive` — that scan lives at each call site (it takes a provider filter),
 //!     not here.
+//!
+//! ## The gate+lookup composite (v4 bug 81) — a THIRD thing
+//!
+//! [`resolve_connection_profile_api_key`] is neither of the two above: it is the
+//! *decision* a caller about to make a provider request has to take, folding the
+//! two capability questions ("must this provider hold a key?", "may it?") over
+//! the profile's own `apiKeyId`. v4 added it (`resolveConnectionProfileApiKey`)
+//! when `requiresApiKey` alone was found to be answering both, which left an
+//! OpenAI-Compatible profile's key sitting in the database while the request went
+//! out bare and the endpoint answered 401. The two capability predicates
+//! ([`provider_requires_api_key`] / [`provider_accepts_api_key`], v4's
+//! `lib/plugins/provider-validation.ts` pair) live here with it, so the whole
+//! question has one home rather than a copy per service.
 
 use rusqlite::Connection;
 
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::{api_keys, connection_profiles, DbError};
+use crate::provider_manifest::Registry;
 
 /// v4 `getApiKeyForConnectionProfile` — resolve the (plaintext) key for a
 /// connection profile by id. `None` when the profile, its `apiKeyId`, or the key
@@ -77,6 +91,106 @@ pub fn get_api_key_for_cheap_llm_selection(
         return Ok(None);
     };
     get_api_key_for_connection_profile(conn, profile_id, user_id)
+}
+
+// ============================================================================
+// The two capability predicates + the gate+lookup composite (v4 bug 81)
+// ============================================================================
+
+/// v4 `requiresApiKey(provider)` (`lib/plugins/provider-validation.ts`) —
+/// `getConfigRequirements(provider)?.requiresApiKey ?? true`. Exact-case lookup;
+/// an unknown provider is **required** (fail-safe, and asymmetric with
+/// `requiresBaseUrl`'s `?? false`).
+pub fn provider_requires_api_key(provider: &str) -> bool {
+    Registry::built_in()
+        .get_provider(provider)
+        .map(|m| m.config_requirements.requires_api_key)
+        .unwrap_or(true)
+}
+
+/// v4 `acceptsApiKey(provider)` (`lib/plugins/provider-validation.ts`, bug 81) —
+/// whether a key *may* be attached and forwarded at all.
+///
+/// The companion question to [`provider_requires_api_key`]: OpenAI-Compatible
+/// requires no key (a local llama.cpp has nowhere to put one) but accepts one (a
+/// hosted endpoint demands a bearer token). Ask this before deciding whether a
+/// stored key may reach the wire; ask the other before refusing to send without
+/// one. An unknown provider inherits the fail-safe `true` from the fallback.
+pub fn provider_accepts_api_key(provider: &str) -> bool {
+    Registry::built_in()
+        .get_provider(provider)
+        .map(|m| m.config_requirements.accepts_api_key())
+        .unwrap_or(true)
+}
+
+/// Why a profile could not produce the API key its provider needs (v4
+/// `ProfileApiKeyFailure`). The two variants carry different sentences at every
+/// call site, so they stay distinct rather than collapsing to one error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProfileApiKeyFailure {
+    /// v4 `'no-api-key-configured'` — the provider demands a key and the profile
+    /// names none.
+    NoApiKeyConfigured,
+    /// v4 `'api-key-not-found'` — the profile names one and the row is gone. A
+    /// dangling `apiKeyId` fails loudly **even on a provider that merely accepts
+    /// a key**, because the user attached it on purpose and going out
+    /// unauthenticated instead is the silent-wrong-answer kind of failure.
+    ApiKeyNotFound,
+}
+
+/// v4 `ProfileApiKeyResolution`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProfileApiKeyResolution {
+    /// v4 `{ ok: true, apiKey }` — `""` for a provider that takes no key.
+    Ok(String),
+    /// v4 `{ ok: false, reason }`.
+    Failed(ProfileApiKeyFailure),
+}
+
+/// v4 `resolveConnectionProfileApiKey` (`lib/services/api-key.service.ts`, bug
+/// 81) — the decrypted key a connection profile should send.
+///
+/// Asks both questions rather than one: a provider that *requires* a key must
+/// have one before the call goes out, and a provider that merely *accepts* one —
+/// OpenAI-Compatible, whose hosted endpoints want a bearer token and whose local
+/// ones do not — must still forward the key the user attached. Reading only
+/// `requiresApiKey`, as every caller here once did, left an OpenAI-Compatible
+/// profile's key sitting in the database while the request went out bare and the
+/// endpoint answered 401.
+///
+/// The order of the three gates is load-bearing:
+///   1. a provider that accepts no key returns `Ok("")` and is **never looked
+///      up**, so a stale row on such a profile cannot fail the turn;
+///   2. no `apiKeyId` refuses only where a key is *required*;
+///   3. an `apiKeyId` that is present is ALWAYS followed, and a missing row
+///      always refuses.
+///
+/// The lookup is v4's UNSCOPED `findApiKeyById`, matching the two Brahma sites
+/// this replaces. A read error collapses to [`ProfileApiKeyFailure::ApiKeyNotFound`]
+/// — the pre-existing behavior of both of those sites (their `_ =>` arms), kept
+/// so the ported semantics change and the error mapping do not change together.
+pub fn resolve_connection_profile_api_key(
+    conn: &Connection,
+    provider: &str,
+    api_key_id: Option<&str>,
+) -> ProfileApiKeyResolution {
+    if !provider_accepts_api_key(provider) {
+        return ProfileApiKeyResolution::Ok(String::new());
+    }
+
+    // v4 `if (!profile.apiKeyId)` — a falsy (missing/empty) id counts as none.
+    let Some(id) = api_key_id.filter(|s| !s.is_empty()) else {
+        return if provider_requires_api_key(provider) {
+            ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::NoApiKeyConfigured)
+        } else {
+            ProfileApiKeyResolution::Ok(String::new())
+        };
+    };
+
+    match api_keys::find_by_id(conn, id) {
+        Ok(Some(key)) => ProfileApiKeyResolution::Ok(key.key_value),
+        _ => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
+    }
 }
 
 // ============================================================================
@@ -299,5 +413,148 @@ mod tests {
         assert!(find_api_key_by_id_scoped(&conn, &id, owner)
             .unwrap()
             .is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // v4 bug 81 — `resolveConnectionProfileApiKey`'s truth table, the six rows of
+    // v4's own `__tests__/unit/lib/services/api-key-service.test.ts`. v4 mocks the
+    // two predicates; here they come from the REAL manifests, so each row names
+    // the provider that actually answers that way.
+    // -----------------------------------------------------------------------
+
+    fn seed_key_for(conn: &Connection, provider: &str, value: &str) -> String {
+        let repo = ApiKeysRepository::new(conn);
+        repo.create(&AkCreate {
+            user_id: "u".to_string(),
+            label: "k".to_string(),
+            provider: provider.to_string(),
+            key_value: value.to_string(),
+            is_active: None,
+            last_used: None,
+        })
+        .unwrap()
+        .id
+    }
+
+    /// Row 1 — "sends nothing for a provider that takes no key (Ollama)", and the
+    /// stale row is **not even looked up**: the id below names a key that exists,
+    /// and the empty answer proves the accepts-gate short-circuited before the
+    /// lookup could find it.
+    #[test]
+    fn keyless_provider_never_looks_up_its_stale_row() {
+        let conn = mem_db();
+        let id = seed_key_for(&conn, "OLLAMA", "sk-stale");
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "OLLAMA", Some(&id)),
+            ProfileApiKeyResolution::Ok(String::new())
+        );
+    }
+
+    /// Row 2 — the attached key is forwarded for a provider that accepts but does
+    /// not require one. This is the row bug 81 was: before it, an
+    /// OpenAI-Compatible profile's key stayed in the database and the request went
+    /// out bare.
+    #[test]
+    fn accepting_provider_forwards_the_attached_key() {
+        let conn = mem_db();
+        let id = seed_key_for(&conn, "OPENAI_COMPATIBLE", "sk-together");
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "OPENAI_COMPATIBLE", Some(&id)),
+            ProfileApiKeyResolution::Ok("sk-together".to_string())
+        );
+    }
+
+    /// Row 3 — an accepting provider with none attached proceeds keyless (only
+    /// `requiresApiKey` may refuse). The empty-string id is v4's falsy `apiKeyId`.
+    #[test]
+    fn accepting_provider_with_no_key_proceeds() {
+        let conn = mem_db();
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "OPENAI_COMPATIBLE", None),
+            ProfileApiKeyResolution::Ok(String::new())
+        );
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "OPENAI_COMPATIBLE", Some("")),
+            ProfileApiKeyResolution::Ok(String::new())
+        );
+    }
+
+    /// Row 4 — a requiring provider with none attached refuses.
+    #[test]
+    fn requiring_provider_with_no_key_refuses() {
+        let conn = mem_db();
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "ANTHROPIC", None),
+            ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::NoApiKeyConfigured)
+        );
+    }
+
+    /// Row 5 — a dangling id refuses **even where the key is optional**. The user
+    /// attached it on purpose; going out unauthenticated instead is the
+    /// silent-wrong-answer failure this whole bug is made of.
+    #[test]
+    fn dangling_id_refuses_even_where_the_key_is_optional() {
+        let conn = mem_db();
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "OPENAI_COMPATIBLE", Some("key-deleted")),
+            ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound)
+        );
+    }
+
+    /// Row 6 — the ordinary hosted happy path.
+    #[test]
+    fn hosted_provider_forwards_its_key() {
+        let conn = mem_db();
+        let id = seed_key_for(&conn, "ANTHROPIC", "sk-ant");
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "ANTHROPIC", Some(&id)),
+            ProfileApiKeyResolution::Ok("sk-ant".to_string())
+        );
+    }
+
+    /// An unknown provider inherits the fail-safe `true` from BOTH predicates, so
+    /// it behaves exactly like a hosted one.
+    #[test]
+    fn unknown_provider_is_treated_as_requiring() {
+        let conn = mem_db();
+        assert_eq!(
+            resolve_connection_profile_api_key(&conn, "NOT_A_PROVIDER", None),
+            ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::NoApiKeyConfigured)
+        );
+    }
+
+    /// **The spine half of v4 bug 81, which v5 never had** (P4.D93's measurement).
+    ///
+    /// v4's chat-message spine gated the key it already held on `requiresApiKey`,
+    /// so an OpenAI-Compatible profile's key was dropped on the way to the wire.
+    /// v5 resolves the key host-side instead, through [`find_active_api_key_for_provider`]
+    /// (`quilltap-host`'s `DbProviderKeys::key_for`) — a provider SCAN with no
+    /// capability gate anywhere on it, so an OAC key has always reached
+    /// `apply_auth`. What keeps a genuinely keyless endpoint bare is the manifest
+    /// `auth` scheme, not a lookup gate: OLLAMA declares `auth: none` and injects
+    /// nothing whatever the scan returns.
+    ///
+    /// This pins that reading, because the *reason* v5 needs no spine port is the
+    /// absence of the gate — if one were ever added here, bug 81 would arrive in
+    /// v5 for the first time.
+    #[test]
+    fn provider_scan_is_capability_blind() {
+        let conn = mem_db();
+        seed_key_for(&conn, "OPENAI_COMPATIBLE", "sk-hosted-oac");
+        seed_key_for(&conn, "OLLAMA", "sk-pointless-but-stored");
+        assert_eq!(
+            find_active_api_key_for_provider(&conn, "u", "OPENAI_COMPATIBLE")
+                .unwrap()
+                .map(|k| k.key_value),
+            Some("sk-hosted-oac".to_string()),
+            "the host key source must forward an OAC key — v5's non-bug"
+        );
+        assert!(
+            find_active_api_key_for_provider(&conn, "u", "OLLAMA")
+                .unwrap()
+                .is_some(),
+            "the scan does not gate on capability; `auth: none` is what keeps \
+             an Ollama request bare"
+        );
     }
 }

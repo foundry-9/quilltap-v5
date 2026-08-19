@@ -41,7 +41,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use crate::db::runtime::Db;
-use crate::db::{api_keys, connection_profiles};
+use crate::db::{connection_profiles, DbError};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
 use crate::provider_manifest::Registry;
@@ -49,6 +49,7 @@ use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
 };
+use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
 use crate::services::carina_query::{BrahmaConsoleResult, RunBrahmaConsole};
 use crate::services::chat_events::{ChatEvent, EventSink};
 use crate::services::native_tool_loop::ToolCallDetector;
@@ -184,15 +185,6 @@ fn is_js_whitespace(ch: char) -> bool {
                 | '\u{3000}'
                 | '\u{feff}'
     )
-}
-
-/// v4 `requiresApiKey(provider)`: the manifest's `config.requiresApiKey`, DEFAULT
-/// TRUE when the provider is unknown (v4's `?? true`).
-pub(super) fn requires_api_key(provider: &str) -> bool {
-    Registry::built_in()
-        .get_provider(provider)
-        .map(|m| m.config_requirements.requires_api_key)
-        .unwrap_or(true)
 }
 
 // ===========================================================================
@@ -342,17 +334,32 @@ where
     let model = s(&profile, "modelName").unwrap_or_default();
     let base_url = s(&profile, "baseUrl");
 
-    // 2. API key: v4's UNSCOPED findApiKeyById; the plaintext value is off the
-    //    diffed surface (the stream is canned).
-    if requires_api_key(&provider) {
-        let Some(key_id) = s(&profile, "apiKeyId").filter(|k| !k.is_empty()) else {
-            return fail("no API key configured for this connection profile");
-        };
-        let kid = key_id.clone();
-        match deps.db.read_main(move |c| api_keys::find_by_id(c, &kid)) {
-            Ok(Some(_key)) => {} // apiKey = key.key_value — unused (canned stream).
-            _ => return fail("API key not found"),
-        }
+    // 2. API key: v4's `resolveConnectionProfileApiKey` (bug 81) — required where
+    //    required, forwarded where merely accepted, and loud on a dangling id
+    //    even there. UNSCOPED `findApiKeyById`, as v4's is. The resolved plaintext
+    //    is off the diffed surface (the stream is canned) and unused here, as it
+    //    was before: the host streaming provider resolves keys internally.
+    //    ⚠ v4's sentences here are LOWER-CASE where the orchestrator's are not;
+    //    the difference is pre-existing and deliberate — ported verbatim.
+    let key_id = s(&profile, "apiKeyId");
+    let provider_for_key = provider.clone();
+    let resolution = match deps.db.read_main(move |c| {
+        Ok::<_, DbError>(api_key_service::resolve_connection_profile_api_key(
+            c,
+            &provider_for_key,
+            key_id.as_deref(),
+        ))
+    }) {
+        Ok(r) => r,
+        Err(_) => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
+    };
+    if let ProfileApiKeyResolution::Failed(reason) = resolution {
+        return fail(match reason {
+            ProfileApiKeyFailure::NoApiKeyConfigured => {
+                "no API key configured for this connection profile"
+            }
+            ProfileApiKeyFailure::ApiKeyNotFound => "API key not found",
+        });
     }
 
     // 3. Tools — the console slate: agent mode, doc read/write, read-only run_sql,

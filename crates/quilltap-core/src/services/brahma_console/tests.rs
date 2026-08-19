@@ -56,12 +56,24 @@ async fn resolver_reads_the_operator_budget_or_defaults() {
     assert_eq!(turn_budget::resolve_brahma_max_agent_turns(&db), 7);
 }
 
+/// The two capability predicates moved to `services::api_key_service` when the
+/// bug-81 resolver landed (they were duplicated here and in `api::settings`);
+/// this keeps the Brahma-side reading of them pinned where it always was.
 #[test]
 fn requires_api_key_defaults_true_for_unknown() {
-    assert!(requires_api_key("ANTHROPIC"));
-    assert!(requires_api_key("OPENAI"));
-    assert!(!requires_api_key("OLLAMA")); // manifest requiresApiKey: false
-    assert!(requires_api_key("NOT_A_PROVIDER")); // v4 `?? true`
+    use crate::services::api_key_service::{provider_accepts_api_key, provider_requires_api_key};
+    assert!(provider_requires_api_key("ANTHROPIC"));
+    assert!(provider_requires_api_key("OPENAI"));
+    assert!(!provider_requires_api_key("OLLAMA")); // manifest requiresApiKey: false
+    assert!(provider_requires_api_key("NOT_A_PROVIDER")); // v4 `?? true`
+
+    // The bug-81 companion: OpenAI-Compatible is the one provider whose answers
+    // differ, and Ollama refuses a key it is not required to hold.
+    assert!(!provider_requires_api_key("OPENAI_COMPATIBLE"));
+    assert!(provider_accepts_api_key("OPENAI_COMPATIBLE"));
+    assert!(!provider_accepts_api_key("OLLAMA"));
+    assert!(provider_accepts_api_key("ANTHROPIC"));
+    assert!(provider_accepts_api_key("NOT_A_PROVIDER")); // inherits the fail-safe
 }
 
 #[test]

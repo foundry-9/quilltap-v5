@@ -39,6 +39,23 @@
 //!   (`api_key_service::find_active_api_key_for_provider`, the
 //!   web-search/moderation style). Divergence is possible only when one user
 //!   holds several keys for the same provider.
+//!
+//!   **This seam is why v5 never had the spine half of v4 bug 81** (measured by
+//!   P4.D93). v4's `chat-message/orchestrator.service.ts` held the decrypted key
+//!   already and gated *forwarding* it on `requiresApiKey`, so an
+//!   OpenAI-Compatible profile's key never reached the wire and the endpoint
+//!   answered 401. v5 has no such gate anywhere on this path: the participant
+//!   resolver deliberately returns `api_key: None`, the orchestrator's
+//!   `effective_api_key` starts empty, and [`DbProviderKeys`] scans by provider
+//!   with no capability question asked — so a stored OAC key has always been
+//!   forwarded. What keeps a genuinely keyless endpoint bare is the manifest's
+//!   `auth` scheme (`ollama` declares `none` and injects nothing), not a lookup
+//!   gate. The danger reroute is the same shape: `dangerous_content::provider_routing`
+//!   follows the rerouted profile's `apiKeyId` ungated, so the overwrite at
+//!   `orchestrator.rs` is unaffected by bug 81 in either direction. Pinned by
+//!   `api_key_service::tests::provider_scan_is_capability_blind`; v4's site is
+//!   deliberately NOT unified onto `resolveConnectionProfileApiKey` on v4's side
+//!   either.
 //! - **Chat-settings mapping** ([`orchestrator_chat_settings_from_value`]) and
 //!   **timestamp config** ([`timestamp_config_from_value`]): NEW
 //!   (differential-less) projections of the verified `chat_settings` net-read,

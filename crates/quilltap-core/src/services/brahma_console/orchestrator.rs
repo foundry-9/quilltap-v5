@@ -50,13 +50,14 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{api_keys, chats_messages_read, chats_read};
+use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
 use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
 };
+use crate::services::api_key_service::{self, ProfileApiKeyFailure, ProfileApiKeyResolution};
 use crate::services::chat_events::{ChatEvent, DonePayload, DoneUsage, EventSink};
 use crate::services::message_context::{build_conversation_messages, WhisperMessage};
 use crate::services::message_finalizer::{CostTrackArgs, CostTracker};
@@ -79,7 +80,7 @@ use crate::tools::pseudo_tool_support::ToolMode;
 
 use super::turn_budget::resolve_brahma_max_agent_turns;
 use super::{
-    b, build_brahma_system_prompt, normalize_tool_call_signature, plain_message, requires_api_key,
+    b, build_brahma_system_prompt, normalize_tool_call_signature, plain_message,
     resolve_brahma_connection_profile, s, MAX_DUPLICATE_TOOL_CALLS,
 };
 
@@ -263,20 +264,31 @@ where
     let base_url = s(profile, "baseUrl");
     let profile_id = s(profile, "id").unwrap_or_default();
 
-    // Resolve the api key (providers that require one) — the early-failure
-    // behavior; the resolved value is unused (the host streaming provider resolves
-    // keys internally). v4's UNSCOPED `findApiKeyById`.
-    if requires_api_key(&provider) {
-        let key_id = s(profile, "apiKeyId")
-            .filter(|k| !k.is_empty())
-            .ok_or_else(|| {
-                BrahmaSendError::new("No API key configured for this connection profile")
-            })?;
-        let kid = key_id.clone();
-        match db.read_main(move |c| api_keys::find_by_id(c, &kid)) {
-            Ok(Some(_)) => {}
-            _ => return Err(BrahmaSendError::new("API key not found")),
-        }
+    // Resolve the api key through v4's `resolveConnectionProfileApiKey` (bug 81):
+    // required where required, forwarded where merely accepted, and loud on a
+    // dangling id even there. The resolved value is unused (the host streaming
+    // provider resolves keys internally); this is the early-failure gate.
+    // v4's UNSCOPED `findApiKeyById`.
+    let key_id = s(profile, "apiKeyId");
+    let provider_for_key = provider.clone();
+    let resolution = db
+        .read_main(move |c| {
+            Ok::<_, DbError>(api_key_service::resolve_connection_profile_api_key(
+                c,
+                &provider_for_key,
+                key_id.as_deref(),
+            ))
+        })
+        .unwrap_or(ProfileApiKeyResolution::Failed(
+            ProfileApiKeyFailure::ApiKeyNotFound,
+        ));
+    if let ProfileApiKeyResolution::Failed(reason) = resolution {
+        return Err(BrahmaSendError::new(match reason {
+            ProfileApiKeyFailure::NoApiKeyConfigured => {
+                "No API key configured for this connection profile"
+            }
+            ProfileApiKeyFailure::ApiKeyNotFound => "API key not found",
+        }));
     }
 
     // Build tools — the Brahma flag vector (agent ON, help OFF, doc read/write ON,

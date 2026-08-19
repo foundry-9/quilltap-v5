@@ -116,11 +116,13 @@ fn requires_base_url(provider: &str) -> bool {
 /// v4 `requiresApiKey`: `getConfigRequirements(provider)?.requiresApiKey ?? true` —
 /// exact-case, unknown → **true** (fail-safe, asymmetric with `requiresBaseUrl`).
 /// `pub(super)` — the live provider-actions validator reuses the guard.
+///
+/// The implementation moved to [`crate::services::api_key_service`] when v4's
+/// bug-81 resolver landed beside it (this helper and the Brahma console's were
+/// two copies of one v4 function); this stays as the settings-module spelling so
+/// the call sites read the same as they always did.
 pub(super) fn requires_api_key(provider: &str) -> bool {
-    Registry::built_in()
-        .get_provider(provider)
-        .map(|m| m.config_requirements.requires_api_key)
-        .unwrap_or(true)
+    crate::services::api_key_service::provider_requires_api_key(provider)
 }
 
 /// v4 `validateProviderConfig` — `{valid, errors}`. Provider-not-found (exact-case)

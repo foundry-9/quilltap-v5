@@ -6,6 +6,9 @@
   "userB": "b2222222-2222-4222-8222-222222222222",
   "userC": "c3333333-3333-4333-8333-333333333333",
   "userD": "d4444444-4444-4444-8444-444444444444",
+  "userE": "e5555555-5555-4555-8555-555555555555",
+  "userF": "f6666666-6666-4666-8666-666666666666",
+  "userG": "07777777-7777-4777-8777-777777777777",
   "provider": "ANTHROPIC",
   "modelName": "claude-brahma-test",
   "syntheticKey": "synthetic-brahma-key-not-a-real-secret",
@@ -17,6 +20,11 @@
   ],
   "profileC": { "id": "cccccc01-0000-4000-8000-000000000001", "name": "NoKey", "isDefault": true },
   "profileD": { "id": "dddddd01-0000-4000-8000-000000000001", "name": "BadKey", "isDefault": true },
+  "oacProvider": "OPENAI_COMPATIBLE",
+  "localProvider": "OLLAMA",
+  "profileE": { "id": "eeeeee01-0000-4000-8000-000000000001", "name": "OacDangling", "isDefault": true },
+  "profileF": { "id": "ffffff01-0000-4000-8000-000000000001", "name": "OacKeyless", "isDefault": true },
+  "profileG": { "id": "00777701-0000-4000-8000-000000000001", "name": "LocalStaleKey", "isDefault": true },
   "detection": {
     "submit1": [
       { "name": "submit_final_response", "arguments": { "response": "The final answer, submitted via tool args." }, "callId": "s1" }
@@ -54,6 +62,31 @@
       "question": "List my projects.",
       "streams": [],
       "expect": { "ok": false, "detail": "API key not found" }
+    },
+    {
+      "name": "oac_dangling_key",
+      "userId": "e5555555-5555-4555-8555-555555555555",
+      "question": "What does a dangling key do?",
+      "streams": [],
+      "expect": { "ok": false, "detail": "API key not found" }
+    },
+    {
+      "name": "oac_keyless_proceeds",
+      "userId": "f6666666-6666-4666-8666-666666666666",
+      "question": "Say hello from a keyless endpoint.",
+      "streams": [
+        [ { "content": "Hello from a keyless local endpoint." }, { "done": true } ]
+      ],
+      "expect": { "ok": true, "answer": "Hello from a keyless local endpoint." }
+    },
+    {
+      "name": "local_ignores_stale_key",
+      "userId": "07777777-7777-4777-8777-777777777777",
+      "question": "Say hello from a provider that takes no key.",
+      "streams": [
+        [ { "content": "Hello from a provider that takes no key." }, { "done": true } ]
+      ],
+      "expect": { "ok": true, "answer": "Hello from a provider that takes no key." }
     },
     {
       "name": "plain",

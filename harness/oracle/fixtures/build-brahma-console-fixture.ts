@@ -40,6 +40,9 @@ interface Spec {
   userB: string;
   userC: string;
   userD: string;
+  userE: string;
+  userF: string;
+  userG: string;
   provider: string;
   modelName: string;
   syntheticKey: string;
@@ -47,6 +50,12 @@ interface Spec {
   profilesA: ProfileSpec[];
   profileC: ProfileSpec;
   profileD: ProfileSpec;
+  /** v4 bug 81: the two providers whose `requiresApiKey`/`acceptsApiKey` split. */
+  oacProvider: string;
+  localProvider: string;
+  profileE: ProfileSpec;
+  profileF: ProfileSpec;
+  profileG: ProfileSpec;
 }
 
 async function main(): Promise<void> {
@@ -134,10 +143,54 @@ async function main(): Promise<void> {
     { id: spec.profileD.id }
   );
 
+  // v4 bug 81 — the three arms `requiresApiKey` alone could not express.
+  //
+  // userE: an OpenAI-Compatible profile (requires no key, ACCEPTS one) whose
+  //   apiKeyId points at a row that is gone. The resolver looks it up anyway and
+  //   fails loudly — a key attached on purpose must not become a bare request.
+  // userF: the same provider with NO key attached — it proceeds keyless, because
+  //   only `requiresApiKey` may refuse.
+  // userG: Ollama (takes no key at all) carrying a stale, dangling apiKeyId — the
+  //   accepts-gate short-circuits BEFORE the lookup, so it proceeds. A resolver
+  //   that looked the id up first would refuse here.
+  await repos.connections.create(
+    {
+      userId: spec.userE,
+      name: spec.profileE.name,
+      provider: spec.oacProvider,
+      modelName: spec.modelName,
+      isDefault: spec.profileE.isDefault,
+      apiKeyId: spec.missingApiKeyId,
+    } as never,
+    { id: spec.profileE.id }
+  );
+  await repos.connections.create(
+    {
+      userId: spec.userF,
+      name: spec.profileF.name,
+      provider: spec.oacProvider,
+      modelName: spec.modelName,
+      isDefault: spec.profileF.isDefault,
+      apiKeyId: null,
+    } as never,
+    { id: spec.profileF.id }
+  );
+  await repos.connections.create(
+    {
+      userId: spec.userG,
+      name: spec.profileG.name,
+      provider: spec.localProvider,
+      modelName: spec.modelName,
+      isDefault: spec.profileG.isDefault,
+      apiKeyId: spec.missingApiKeyId,
+    } as never,
+    { id: spec.profileG.id }
+  );
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
-    `built brahma-console fixture: ${outMain} (${spec.profilesA.length + 2} profiles, 1 api key)\n`
+    `built brahma-console fixture: ${outMain} (${spec.profilesA.length + 5} profiles, 1 api key)\n`
   );
   process.exit(0);
 }
