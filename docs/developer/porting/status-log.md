@@ -74719,3 +74719,61 @@ else is invalidated, and no oracle regenerates.
 
 Result: `npx playwright test workspace-project-backdrop-flow` → **1 passed**
 (43.4 s incl. global setup; the beat itself 1.4 s). Versions: SPA 0.5.517.
+
+## P4.D92 unit 4 — the legacy per-view layer (the order's Tier-3 item 7, LANDED not deferred), 2026-08-18
+
+The order listed v4's line 151 — the per-view `--story-background-url` — as a
+Tier-3 loud deferral, conditioned: *"v5's screens live in the workspace; if
+survey finds no v5 render path outside it, record that and skip."* **Survey
+found one, so the condition failed and the item LANDED instead.**
+`app.routes.ts:141` still serves the routed `/prospero/:id` component whenever
+the workspace-tabs flag is off (`workspace-flag.ts` — v5's per-browser
+localStorage opt-out standing in for v4's build-time env var), and out there
+the `.qt-page-container::before` layer (`_content.css:37-46`) is the ONLY route
+to the screen.
+
+So `project-detail.ts` binds `[style.--story-background-url]` on its page
+container, matching v4 byte-for-byte: `url('<resolved>')` when a background
+resolves, and the variable ABSENT when none does — v4 passes `undefined` for
+the whole style object, which is what makes
+`.qt-page-container:not([style*="--story-background-url"])::before` hide the
+layer. v4 keeps this UNCONDITIONALLY alongside the backdrop report and so does
+v5: inside `.qt-workspace` the layer is `display:none` and the report wins.
+Two specs pin both directions (split into two `it`s — TestBed cannot be
+configured twice in one case).
+
+`ng test --filter "backdrop reporter"`: 6 passed. Versions: SPA 0.5.518.
+
+## P4.D92 — LANE GATE (2026-08-19)
+
+Crate-free lane (`apps/web/**` only), so the gate is the SPA half; the Rust
+gate is untouched and unaffected (`git diff main --stat` names no `crates/`
+path). The lane borrowed main's release `quilltap-web` / `quilltap` binaries by
+symlink for the e2e, per the order's allowance
+(`p4.d86-profile-editor-spa-lane` precedent).
+
+- `ng test --watch=false` (full): **331 test files / 4,908 tests, 0 failed.**
+- `ng build`: clean (`dist/quilltap/browser`).
+- `npx prettier --check` on every touched file: clean. (The lane's one prettier
+  casualty was caught and REVERTED — a `--write` on `global-setup.ts`
+  reformatted two unrelated pre-existing blocks; that file ended the lane
+  unchanged anyway.)
+- **Full Playwright: 229 passed / 0 failed / 0 skipped (5.8 m)** — including the
+  new beat at #222,
+  `workspace-project-backdrop-flow.spec.ts` (727 ms).
+- `harness/tools/check_spelling.py`: exit 0.
+- `git log c6ff8051..main` in the v4 checkout: still EMPTY at lane end — the
+  oracle did not move under the lane.
+
+**Fixtures: NONE changed.** `global-setup.ts` is byte-identical to main, no
+committed `.db` fixture was touched, and no oracle NDJSON exists for this lane
+(a client vertical — the oracle is v4's client source at the pin). **Nothing
+regenerates and nothing else is invalidated.**
+
+**What remains OPEN under the order:** only Tier-3 items 6 and 8 — the other
+seven v4 subsystem-background sites (`AuroraView`, `SettingsView`,
+`SalonListView`, `FilesView`, `ScriptoriumView`,
+`DocumentStoreDetailPageClient`, `PhotosView`), which stay under the standing
+deferred-loud divergence; and `help/story-backgrounds.md` (+6 lines at the pin),
+which rides the `p4.9i2` help bank per the standing rule. Tier 2 was measured
+and declined (unit 2's record); Tier 3 item 7 was measured and LANDED (unit 4).

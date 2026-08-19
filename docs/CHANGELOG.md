@@ -71,6 +71,21 @@ first regeneration, as designed, and is now a plain equality: v4 completes
 the avatar job and writes the avatar, as this port always did. New unit
 tests diff the normalizer against v4's `normalizeEquippedSlots` case for
 case, including the malformed-bag salvage and the non-object shapes.
+#### 2026-08-18 — fix(prospero): keep v4's legacy per-view background layer on the routed project page
+
+_Versions: SPA 0.5.518._
+
+v4's fix for bug 80 added the backdrop report without removing the older
+per-view CSS variable, because the project page still renders outside the
+workspace on its own route, where the `::before` layer is the only thing that
+paints. Quilltap-v5 serves that route too whenever the workspace-tabs flag is
+off, so it carries the variable as well: set when a background resolves,
+absent when none does, so the `:not([style*=…])::before` rule keeps the layer
+hidden.
+
+Inside the workspace this is inert by design — the layer is suppressed there
+in favor of the single arbitrated backdrop, exactly as in v4.
+
 #### 2026-08-18 — test(e2e): walk a project's story background onto the workspace backdrop
 
 _Versions: SPA 0.5.517._

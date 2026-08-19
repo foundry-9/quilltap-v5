@@ -114,7 +114,10 @@ import {
         </div>
       </div>
     } @else {
-      <div class="qt-page-container text-foreground">
+      <div
+        class="qt-page-container text-foreground"
+        [style.--story-background-url]="storyBackgroundVar()"
+      >
         <qt-project-header
           [project]="project()!"
           [editing]="isEditing()"
@@ -165,8 +168,9 @@ export class ProjectDetailScreen {
   /**
    * The workspace backdrop seams (v4 `useReportWorkspaceBackdrop` /
    * `useWorkspaceTabId`). Both null ⇒ routed mode, where the per-view
-   * `.qt-page-container::before` layer is the (unported) painting route and
-   * reporting is inert — v4's hook is a no-op outside the workspace too.
+   * `.qt-page-container::before` layer ({@link storyBackgroundVar}) does the
+   * painting and reporting is inert — v4's hook is a no-op outside the
+   * workspace too.
    */
   private readonly backdropRegistry = inject(WORKSPACE_BACKDROP_REGISTRY, { optional: true });
   private readonly workspaceTabId = inject(WORKSPACE_TAB_ID, { optional: true });
@@ -244,6 +248,25 @@ export class ProjectDetailScreen {
   protected readonly storyBackgroundUrl = computed<string | null>(
     () => this.backgroundQuery.data()?.backgroundUrl ?? null,
   );
+
+  /**
+   * The LEGACY per-view layer's CSS value (v4 `ProjectDetailView.tsx:148-151` —
+   * `style={storyBackgroundUrl ? {'--story-background-url': `url('…')`} :
+   * undefined}`). v4 keeps this UNCONDITIONALLY alongside the backdrop report,
+   * and so does v5: inside `.qt-workspace` the `::before` layer it feeds is
+   * `display:none` (`_workspace.css:108`) and the backdrop wins, while on the
+   * routed `/prospero/:id` path — which v5 still serves whenever the
+   * workspace-tabs flag is off — it is the only route to the screen.
+   *
+   * Null when there is no background, so the
+   * `.qt-page-container:not([style*="--story-background-url"])::before` rule
+   * (`_content.css:46`) keeps the layer hidden, exactly as v4's `undefined`
+   * style object does.
+   */
+  protected readonly storyBackgroundVar = computed<string | null>(() => {
+    const url = this.storyBackgroundUrl();
+    return url ? `url('${url}')` : null;
+  });
 
   constructor() {
     // Resolve first-visit from the real id, exactly once. Routed mode has the

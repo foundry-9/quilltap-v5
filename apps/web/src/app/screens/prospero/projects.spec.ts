@@ -1127,6 +1127,32 @@ describe('ProjectDetailScreen — the workspace backdrop reporter (bug 80)', () 
     expect(calls).toEqual([]);
     fixture.destroy();
   });
+
+  /**
+   * v4 keeps the legacy per-view CSS variable alongside the backdrop report
+   * (`ProjectDetailView.tsx:148-151`), because the routed page renders outside
+   * `.qt-workspace` where the `::before` layer still works. v5 serves that route
+   * whenever the workspace-tabs flag is off, so the variable is carried too.
+   */
+  it("sets v4's legacy --story-background-url on the page container", async () => {
+    const fixture = await render({ backgroundUrl: '/api/v1/files/bg-1', tabId: null, calls: [] });
+    const container = fixture.nativeElement.querySelector('.qt-page-container') as HTMLElement;
+    expect(container.getAttribute('style') ?? '').toContain(
+      "--story-background-url: url('/api/v1/files/bg-1')",
+    );
+    fixture.destroy();
+  });
+
+  // No background → the variable is absent, so the
+  // `:not([style*="--story-background-url"])::before` rule keeps the layer
+  // hidden (v4 passes `undefined` for the whole style object). Its own `it`:
+  // TestBed cannot be configured twice in one case.
+  it('omits the legacy variable when there is no background', async () => {
+    const fixture = await render({ backgroundUrl: null, mode: 'theme', tabId: null, calls: [] });
+    const container = fixture.nativeElement.querySelector('.qt-page-container') as HTMLElement;
+    expect(container.getAttribute('style') ?? '').not.toContain('--story-background-url');
+    fixture.destroy();
+  });
 });
 
 /** v4's passive-poll gate (`ProjectDetailView.tsx:90`), quirk included. */
