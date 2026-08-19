@@ -476,9 +476,11 @@ fn validate_export_format(data: &Value) -> Result<(), ImportError> {
 ///   untouched. v5 now matches that byte for byte — this leg was a plain port
 ///   bug, no divergence owed.
 ///
-/// The refusal message is never on the wire: `execute_import` logs it and
-/// answers `success:false` with whatever `warnings` already held, which is
-/// precisely v4's shape at `execute.ts:483`.
+/// The refusal message reaches the caller since v4 `275cd7bc` (bug 79):
+/// `execute_import` logs it and answers `success:false` with `warnings`
+/// carrying `Import refused before anything was written: <message>` — so a
+/// collision is named twice (by the loop below, then wrapped) and a refusal
+/// for any other reason is named at all, where both used to be silent.
 fn preflight_preserve_ids(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
@@ -975,6 +977,15 @@ pub fn execute_import(
         preflight_preserve_ids(main, mount, data, options, &mut warnings, &mut id_maps)
     {
         tracing::warn!(error = %message, "Preserve IDs preflight failed");
+        // `warnings` is the only channel the result carries to the user, and
+        // this refusal aborts the whole import — saying nothing here is exactly
+        // the silence bug 79 is about, whether the preflight refused a real
+        // collision or gave up because the destination would not answer a read
+        // (v4 `275cd7bc`). A collision therefore lands TWICE: once named by the
+        // preflight, once wrapped by this line.
+        warnings.push(format!(
+            "Import refused before anything was written: {message}"
+        ));
         return Ok(ImportResult {
             success: false,
             imported,
@@ -1239,7 +1250,7 @@ fn import_body(
 ) -> Result<(), DbError> {
     // 1. Tags (no dependencies).
     if let Some(items) = non_empty_array(data, "tags") {
-        let c = entities::import_tags(main, user_id, items, options, &mut id_maps.tags)?;
+        let c = entities::import_tags(main, user_id, items, options, &mut id_maps.tags, warnings)?;
         imported.tags = c.imported;
         skipped.tags = c.skipped;
     }
@@ -1252,6 +1263,7 @@ fn import_body(
             items,
             options,
             &mut id_maps.connection_profiles,
+            warnings,
         )?;
         imported.connection_profiles = c.imported;
         skipped.connection_profiles = c.skipped;
@@ -1265,6 +1277,7 @@ fn import_body(
             items,
             options,
             &mut id_maps.image_profiles,
+            warnings,
         )?;
         imported.image_profiles = c.imported;
         skipped.image_profiles = c.skipped;
@@ -1278,6 +1291,7 @@ fn import_body(
             items,
             options,
             &mut id_maps.embedding_profiles,
+            warnings,
         )?;
         imported.embedding_profiles = c.imported;
         skipped.embedding_profiles = c.skipped;
@@ -1291,6 +1305,7 @@ fn import_body(
             items,
             options,
             &mut id_maps.roleplay_templates,
+            warnings,
         )?;
         imported.roleplay_templates = c.imported;
         skipped.roleplay_templates = c.skipped;
@@ -1879,10 +1894,20 @@ mod tests {
             )
             .expect("a refused preflight is still Ok(success:false)");
             assert!(!result.success, "{key}: unreadable instance must refuse");
+            // [P4.D91] The preflight's refusal used to leave `warnings` empty;
+            // since v4 `275cd7bc` it names itself. That still tells the two
+            // refusals apart — a BODY failure answers `Import failed: …`, and
+            // it is one line either way, so nothing ran past the preflight.
+            assert_eq!(
+                result.warnings.len(),
+                1,
+                "{key}: exactly one refusal line — got {:?}",
+                result.warnings
+            );
             assert!(
-                result.warnings.is_empty(),
-                "{key}: the refusal must come from the preflight (warnings \
-                 untouched), not from a body failure — got {:?}",
+                result.warnings[0].starts_with("Import refused before anything was written: "),
+                "{key}: the refusal must come from the preflight, not from a \
+                 body failure — got {:?}",
                 result.warnings
             );
             assert_eq!(
@@ -1928,8 +1953,14 @@ mod tests {
             )
             .expect("a refused preflight is still Ok(success:false)");
             assert!(!result.success, "{label}: unreadable vault must refuse");
+            assert_eq!(
+                result.warnings.len(),
+                1,
+                "{label}: exactly one refusal line — got {:?}",
+                result.warnings
+            );
             assert!(
-                result.warnings.is_empty(),
+                result.warnings[0].starts_with("Import refused before anything was written: "),
                 "{label}: refusal must be the preflight's — got {:?}",
                 result.warnings
             );
@@ -1952,11 +1983,15 @@ mod tests {
         )
         .expect("a refused preflight is still Ok(success:false)");
         assert!(!result.success);
-        assert!(
-            result.warnings.is_empty(),
-            "the overlay throw must land in the preflight's catch, which leaves \
-             warnings alone (v4 `execute.ts:483`) — got {:?}",
-            result.warnings
+        assert_eq!(
+            result.warnings,
+            vec![
+                "Import refused before anything was written: Project pr1 has no usable \
+                 document store (officialMountPointId=null): officialMountPointId is null"
+                    .to_string()
+            ],
+            "the overlay throw must land in the preflight's catch, which names the \
+             refusal and stops (v4 `execute.ts:483` + `275cd7bc`)"
         );
     }
 

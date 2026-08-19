@@ -62,14 +62,31 @@
 //! `safeQuery(…, null)`.
 //!
 //! Measured on v4 at `aa464abf`: `success:false`, `warnings: []` (the catch at
-//! `execute.ts:483` swallows the message; only the collision path pushes one),
-//! and every partition byte-identical to the baseline. v5 now matches all
-//! three, which is what proves the fix — v5 used to read the failure as "the id
-//! is free" and march on to attempt id-carrying INSERTs into a store it could
-//! not read. An EQUALITY arm, not a divergence.
+//! `execute.ts:483` swallowed the message; only the collision path pushed one),
+//! and every partition byte-identical to the baseline. v5 matched all three,
+//! which is what proved the fix — v5 used to read the failure as "the id is
+//! free" and march on to attempt id-carrying INSERTs into a store it could not
+//! read. An EQUALITY arm, not a divergence.
+//!
+//! **[P4.D91, v4 `275cd7bc`] The silence closed.** v4's bug-79 fix pushes
+//! `Import refused before anything was written: <message>` from that same
+//! catch, so the arm's `warnings` is no longer empty — it carries the store's
+//! unavailability sentence, byte for byte, and a refused-by-collision import
+//! now names the collision TWICE (once by the preflight, once wrapped).
 //!
 //! Mutation-proven: reverting the preflight's Project site to `.ok().flatten()`
 //! reddens it on the result body.
+//!
+//! ## [P4.D91 → bug 79] `execute_named_item_failures`
+//!
+//! Five items, one per importer that only LOGGED a per-item failure before v4
+//! `275cd7bc` gave it a `warnings` entry: a tag, a roleplay template, and the
+//! three profile kinds, each with one field of the wrong type so both engines'
+//! validation refuses it. No committed archive can express this — every archive
+//! is a real export, and a real export imports — so the payload is built to
+//! fail. The five sentences are compared through `mask_warning`'s quoted
+//! families (the quoted item NAME is verbatim; only the validator's own
+//! sentence is masked, since Zod's wording is not v5's).
 //!
 //! Generate the oracle (see `system-import-execute.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
@@ -501,6 +518,12 @@ const QUOTED_FAMILIES: &[&str] = &[
     "Failed to import wardrobe item \"",
     "Failed to import plugin data for \"",
     "Failed to import message in chat \"",
+    // [P4.D91 → bug 79] The five arms that only logged before v4 `275cd7bc`.
+    "Failed to import tag \"",
+    "Failed to import roleplay template \"",
+    "Failed to import connection profile \"",
+    "Failed to import image profile \"",
+    "Failed to import embedding profile \"",
 ];
 
 /// Colon-delimited families: keep the prefix, mask the rest.
@@ -521,6 +544,16 @@ fn mask_warning(w: &str) -> String {
     // Fully deterministic warnings stay verbatim.
     if w.starts_with("Memory references non-existent character ") {
         return w.to_string();
+    }
+    // [P4.D91 → bug 79] The preflight's refusal wrapper. Its tail is the
+    // preflight's own message, which is deterministic for a collision and for
+    // the store-unavailable sentence — both are compared VERBATIM. Anything
+    // else is an engine sentence and masks like the families below.
+    if let Some(rest) = w.strip_prefix("Import refused before anything was written: ") {
+        if rest.starts_with("Preserve IDs collision for ") || rest.contains("has no usable") {
+            return w.to_string();
+        }
+        return "Import refused before anything was written: <ENGINE>".to_string();
     }
     if w.starts_with("Import failed: Cannot read properties") {
         return w.to_string();
@@ -1014,8 +1047,38 @@ fn system_import_execute_state_equivalence() {
     // the carried ids, the same payload under `duplicate` behaving identically
     // because names alone do not conflict, and the id collision that refuses at
     // the preflight — which is WHY the duplicate fork is unreachable there).
-    // …+ P4.48's planted preflight-refusal arm.
-    assert_eq!(ran, 34, "expected 34 cases, ran {ran}");
+    // …+ P4.48's planted preflight-refusal arm + P4.D91's named-item-failure
+    // arm.
+    assert_eq!(ran, 36, "expected 36 cases, ran {ran}");
+    // [P4.D91 → bug 79] The five per-item arms v4 `275cd7bc` gave named
+    // warnings must be MEASURED, not merely ported: no committed archive
+    // contains an item that fails to import, so the corpus carries a payload
+    // built to fail one item per arm. Assert the case is present AND that it
+    // still names all five — a payload edit that made an item importable would
+    // otherwise leave the whole family silently unmeasured.
+    let named = cases
+        .iter()
+        .find(|c| c["name"] == "execute_named_item_failures")
+        .expect("the oracle is missing `execute_named_item_failures` — regenerate it");
+    for family in [
+        "Failed to import tag \"Broken Tag\": ",
+        "Failed to import connection profile \"Broken Connection\": ",
+        "Failed to import image profile \"Broken Image\": ",
+        "Failed to import embedding profile \"Broken Embedding\": ",
+        "Failed to import roleplay template \"Broken Template\": ",
+    ] {
+        assert!(
+            named["result"]["warnings"]
+                .as_array()
+                .map(|a| a
+                    .iter()
+                    .any(|w| w.as_str().is_some_and(|s| s.starts_with(family))))
+                .unwrap_or(false),
+            "v4 no longer names the `{family}` failure — the arm has stopped \
+             measuring what it exists for.\n  oracle: {}",
+            named["result"]["warnings"]
+        );
+    }
     // …and the preserveIds family asserted by SHAPE, not just by the total, so a
     // truncated oracle cannot pass by arithmetic (the corpus-shape lesson). Each
     // arm is the only one covering its behaviour: the two refusal SENTENCES, the
@@ -1034,6 +1097,9 @@ fn system_import_execute_state_equivalence() {
         "execute_preserve_ids_duplicate_existing_id_refuses",
         // [P4.48] the refusal when the existence read FAILS rather than misses
         "execute_preserve_ids_unavailable_store_refuses",
+        // [P4.D91 → bug 79] the refusal when the destination row is READABLE
+        // but unvalidatable — the one plant that reaches v4's strict scope
+        "execute_preserve_ids_unvalidatable_row_refuses",
     ] {
         assert!(
             cases.iter().any(|c| c["name"] == arm),
@@ -1224,6 +1290,82 @@ fn second_payload_folder_paths(export_data: &Value) -> Vec<String> {
     out
 }
 
+/// [P4.D91 → bug 79] The two engines refuse the same import for different
+/// reasons, because they fail at different depths.
+///
+/// The destination's `tags` row has a `createdAt` its schema rejects. v4 cannot
+/// read the row at all — `_findById` validates, the validation throws, and
+/// (since `275cd7bc` wrapped the import in a strict scope) the throw reaches the
+/// preflight's catch instead of degrading to `null`. So v4 refuses naming the
+/// VALIDATION failure, and never learns that the id is taken.
+///
+/// v5 marshals rows without re-validating them, so it reads the row, sees the
+/// claimed id is taken, and refuses naming the COLLISION — the more useful
+/// sentence, and the one v4 itself emits for every readable collision.
+///
+/// Both refuse before a single write, which is bug 79's whole guarantee and is
+/// asserted as a plain equality on the state dumps. Only the sentences differ,
+/// so they are asserted here and then replaced with one placeholder on both
+/// sides. Two-directional: if v4 stops refusing (its swallow returning), or v5
+/// stops naming the collision, this fires.
+///
+/// What this arm does NOT prove: v5's own P4.48 propagation. The plant is a
+/// read failure on the v4 side only — v5 does not re-validate rows on read, so
+/// it never sees an error to propagate here. Reverting this preflight site to
+/// `.ok().flatten()` leaves the arm green, by design; the sites that DO
+/// exercise it are `execute_preserve_ids_unavailable_store_refuses` and the
+/// preview family's planted arms.
+fn classify_unvalidatable_row(
+    name: &str,
+    got_body: &Value,
+    want_body: &Value,
+    failures: &mut Vec<String>,
+) -> (Value, Value) {
+    let warnings_of = |b: &Value| -> Vec<String> {
+        b["warnings"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|w| w.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    const REFUSED: &str = "Import refused before anything was written: ";
+    const COLLISION: &str = "Preserve IDs collision for tag a5000000-0000-4000-8000-000000000002";
+
+    let v4 = warnings_of(want_body);
+    let v4_ok = v4.len() == 1
+        && v4[0].starts_with(REFUSED)
+        && !v4[0].starts_with(&format!("{REFUSED}Preserve IDs collision"));
+    if !v4_ok {
+        failures.push(format!(
+            "[{name}] v4 no longer refuses on the unreadable destination row with a \
+             single non-collision refusal — either the bug-79 strict scope stopped \
+             propagating (v4 is swallowing again) or it learned to read the row. \
+             Re-measure.\n  oracle warnings: {v4:?}"
+        ));
+    }
+
+    let v5 = warnings_of(got_body);
+    let v5_ok = v5.len() == 2 && v5[0] == COLLISION && v5[1] == format!("{REFUSED}{COLLISION}");
+    if !v5_ok {
+        failures.push(format!(
+            "[{name}] v5 must refuse naming the COLLISION (it can read the row) and \
+             wrap it with the refusal line.\n  rust warnings: {v5:?}"
+        ));
+    }
+
+    let blank = |b: &Value| {
+        let mut out = b.clone();
+        out["warnings"] = Value::Array(vec![Value::String(
+            "<REFUSAL SENTENCES: recorded divergence, asserted above>".to_string(),
+        )]);
+        out
+    };
+    (blank(got_body), blank(want_body))
+}
+
 fn run_execute_case(
     name: &str,
     case: &Value,
@@ -1264,6 +1406,25 @@ fn run_execute_case(
                 assert_eq!(
                     touched, 1,
                     "[{name}] the fixture no longer carries PROJECT_1 — the prep \
+                     would be a no-op and the arm vacuous"
+                );
+            }
+            // [P4.D91] A row SQLite hands back happily and v4's schema
+            // refuses (`createdAt` is `z.iso.datetime()`). Unlike a dropped
+            // table — which v4's `ensureCollection` silently rebuilds — nothing
+            // heals this, so it is the one plant that reaches bug 79's strict
+            // scope on the v4 side.
+            "unvalidatable-tag" => {
+                let touched = conn
+                    .connection()
+                    .execute(
+                        "UPDATE tags SET \"createdAt\" = 'not-a-date' WHERE id = ?1",
+                        ["a5000000-0000-4000-8000-000000000002"],
+                    )
+                    .expect("prep: unvalidatable tag");
+                assert_eq!(
+                    touched, 1,
+                    "[{name}] the fixture no longer carries TAG_2 — the prep \
                      would be a no-op and the arm vacuous"
                 );
             }
@@ -1329,6 +1490,16 @@ fn run_execute_case(
     let want_labels: BTreeMap<String, String> = BTreeMap::new();
 
     // ⚠ bug 10's per-chat annotation sweep is P4.D53's — carve it out until then.
+
+    // [P4.D91 → bug 79] The unvalidatable-row arm's warnings are a RECORDED
+    // DIVERGENCE, pinned in both directions; everything else about the case —
+    // `success`, the counts, all three partitions — is a plain equality, which
+    // is the claim that matters: neither engine writes anything.
+    let (got_body, want_body) = if name == "execute_preserve_ids_unvalidatable_row_refuses" {
+        classify_unvalidatable_row(name, &got_body, &want_body, failures)
+    } else {
+        (got_body, want_body)
+    };
 
     compare_execute(
         name,

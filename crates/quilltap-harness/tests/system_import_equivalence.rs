@@ -54,13 +54,25 @@
 //!   document store (officialMountPointId=null): officialMountPointId is
 //!   null`), which also keeps P4.D51's per-entity wording convergence honest.
 //! - `preview_planted_unreadable_tags_table` — **DIVERGENCE**, pinned in BOTH
-//!   directions. `DROP TABLE tags`, then a tags payload. v4's `_findById` is a
-//!   `safeQuery(…, null)` — FALLBACK mode — so v4 SWALLOWS the read error and
-//!   reports a confident `exists: false` its instance cannot support. v5
-//!   refuses, under the standing 2026-08-03 ruling that this family fixes v4's
-//!   bugs rather than reproducing them. Both tripwires are live: if v4 stops
-//!   answering `exists:false` the arm says re-measure, and if v5 stops refusing
-//!   it says either P4.48 regressed or v4 converged.
+//!   directions. `DROP TABLE tags`, then a tags payload. v4 reports a confident
+//!   `exists: false`; v5 refuses, under the standing 2026-08-03 ruling that this
+//!   family fixes v4's bugs rather than reproducing them.
+//!
+//!   **[P4.D91] The mechanism, re-measured — the P4.48 reading was wrong.** It
+//!   is not `safeQuery`'s fallback swallowing a read error: v4's
+//!   `getCollection()` calls `ensureCollection` on first access, whose
+//!   `CREATE TABLE IF NOT EXISTS` puts the dropped table straight back, so the
+//!   read succeeds against a table v4 has just built. That is why v4's bug-79
+//!   strict scope (`275cd7bc`), which was supposed to stop exactly this class
+//!   of silence, left the arm unchanged — there is no error here to propagate.
+//!   The oracle now emits `plantProbe.tags` (does the table exist after the
+//!   preview?) so the claim is a comparand rather than prose, and the arm
+//!   asserts the asymmetry on BOTH engines: v4 ends with the table back, v5
+//!   ends without it, having provisioned nothing on a read path.
+//!
+//!   Both tripwires stay live: if v4 stops answering `exists:false` the arm says
+//!   re-measure, and if v5 stops refusing it says either P4.48 regressed or v4
+//!   converged.
 //!
 //! Mutation-proven: reverting the preview's projects site reddens the first,
 //! reverting its tags site reddens the second.
@@ -354,17 +366,51 @@ fn system_import_read_matches_oracle() {
                     // instead, under the standing 2026-08-03 ruling that this
                     // family FIXES v4's bugs rather than reproducing them.
                     (None, Err(_)) => {
-                        // v5 refuses (correct) and v4 still swallows — the
-                        // recorded divergence. Assert v4's swallow is still
+                        // v5 refuses (correct) and v4 answers anyway — the
+                        // recorded divergence. Assert v4's answer is still
                         // exactly what we recorded, so a partial upstream fix
                         // cannot pass unnoticed.
                         let v4_exists = exp["preview"]["entities"]["tags"][0]["exists"].as_bool();
                         if v4_exists != Some(false) {
                             failed.push(format!(
-                                "{name}: v4's swallow no longer reports `exists:false` \
-                                 — re-measure before trusting this divergence.\n  \
-                                 oracle: {}",
+                                "{name}: v4 no longer reports `exists:false` for a \
+                                 dropped table — re-measure before trusting this \
+                                 divergence.\n  oracle: {}",
                                 exp["preview"]
+                            ));
+                            continue;
+                        }
+                        // [P4.D91] …and assert WHY, on both engines. v4 answers
+                        // because `ensureCollection` rebuilt the table under it;
+                        // v5 provisions nothing on a read, so its copy is still
+                        // missing the table it refused over. If either half
+                        // moves, the divergence needs re-measuring rather than
+                        // re-asserting.
+                        if exp["plantProbe"]["tags"].as_bool() != Some(true) {
+                            failed.push(format!(
+                                "{name}: v4 no longer re-creates the dropped table on \
+                                 first repository access — the recorded mechanism for \
+                                 this divergence has changed; re-measure.\n  \
+                                 oracle plantProbe: {}",
+                                exp["plantProbe"]
+                            ));
+                            continue;
+                        }
+                        let v5_has_tags = planted
+                            .read_main(|c| {
+                                Ok(c.query_row(
+                                    "SELECT COUNT(*) FROM sqlite_master \
+                                     WHERE type = 'table' AND name = 'tags'",
+                                    [],
+                                    |r| r.get::<_, i64>(0),
+                                )?)
+                            })
+                            .expect("probe v5 sqlite_master");
+                        if v5_has_tags != 0 {
+                            failed.push(format!(
+                                "{name}: v5 put the dropped table BACK — a read path \
+                                 must provision nothing (that is what makes the \
+                                 refusal meaningful)."
                             ));
                             continue;
                         }

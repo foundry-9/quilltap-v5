@@ -2,9 +2,13 @@
 //! All three share the same conflict-strategy shape and never restore API keys
 //! (`apiKeyId` is forced to null on insert).
 //!
-//! Per v4, a per-item failure (bad shape, DB error) is logged and the item is
-//! dropped WITHOUT a warnings entry — only the loop preambles (the `findAll`
-//! that seeds the taken-name set) throw into `executeImport`'s outer catch.
+//! Per v4, a per-item failure (bad shape, DB error) is logged, named in
+//! `warnings` as `Failed to import <kind> "<name>": <error>`, and the item is
+//! dropped — only the loop preambles (the `findAll` that seeds the taken-name
+//! set) throw into `executeImport`'s outer catch. The three arms only LOGGED
+//! until v4 `275cd7bc` (bug 79): the import had just stopped swallowing
+//! destination read errors, and strictness alone would have traded a silently
+//! wrong branch for a silent skip.
 //!
 //! The `duplicate` arm reproduces v4's phantom-id quirk verbatim: a
 //! `randomUUID()` goes INTO the id map, and the row is created under a
@@ -25,6 +29,16 @@ use crate::services::profile_names::{make_unique_profile_name, normalize_profile
 pub(super) struct Counts {
     pub imported: u32,
     pub skipped: u32,
+}
+
+/// The item name v4 interpolates into `Failed to import <kind> "<name>": …` —
+/// read off the RAW payload item, since the arm fires when the typed parse
+/// itself failed.
+fn profile_display_name(raw: &Value) -> String {
+    raw.get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// v4 `LEGACY_IMAGE_CAPABLE_PROVIDERS` — seeds `supportsImageUpload` for exports
@@ -115,6 +129,7 @@ pub(super) fn import_connection_profiles(
     profiles: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
@@ -133,6 +148,7 @@ pub(super) fn import_connection_profiles(
 
     for raw_profile in profiles {
         let source_id = super::id_of(raw_profile);
+        let name = profile_display_name(raw_profile);
         let out: Result<(), DbError> = (|| {
             let existing = connection_profiles::find_by_id(main, &source_id)?;
 
@@ -155,8 +171,14 @@ pub(super) fn import_connection_profiles(
                         // row's id (see the module header).
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let Some(p) = parse_connection_profile(raw_profile) else {
-                            return Ok(());
+                        let p = match parse_connection_profile(raw_profile) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                warnings.push(format!(
+                                    "Failed to import connection profile \"{name}\": {e}"
+                                ));
+                                return Ok(());
+                            }
                         };
                         let unique = make_unique_profile_name(
                             &format!("{} (imported)", p.name),
@@ -178,8 +200,14 @@ pub(super) fn import_connection_profiles(
                 }
             }
 
-            let Some(p) = parse_connection_profile(raw_profile) else {
-                return Ok(());
+            let p = match parse_connection_profile(raw_profile) {
+                Ok(p) => p,
+                Err(e) => {
+                    warnings.push(format!(
+                        "Failed to import connection profile \"{name}\": {e}"
+                    ));
+                    return Ok(());
+                }
             };
             let unique = make_unique_profile_name(&p.name, &taken_names);
             taken_names.insert(normalize_profile_name(&unique));
@@ -197,8 +225,9 @@ pub(super) fn import_connection_profiles(
             Ok(())
         })();
         if let Err(e) = out {
-            // v4 `moduleLogger.warn('Failed to import connection profile', …)` —
-            // logged, dropped, NO warnings entry.
+            warnings.push(format!(
+                "Failed to import connection profile \"{name}\": {e}"
+            ));
             tracing::warn!(profile_id = %source_id, error = %e, "Failed to import connection profile");
         }
     }
@@ -206,16 +235,16 @@ pub(super) fn import_connection_profiles(
     Ok(Counts { imported, skipped })
 }
 
-/// Deserialize with the pre-validation shape checks; `None` mirrors v4's Zod
-/// throw → per-item catch (logged, no warning, item dropped).
-fn parse_connection_profile(raw: &Value) -> Option<ImportedConnectionProfile> {
-    match serde_json::from_value::<ImportedConnectionProfile>(raw.clone()) {
-        Ok(p) => Some(p),
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to import connection profile");
-            None
-        }
+/// Deserialize with the pre-validation shape checks. An `Err` mirrors v4's Zod
+/// throw landing in the per-item catch — which since `275cd7bc` (bug 79) names
+/// the item in `warnings` as well as logging it, so the error text comes back
+/// out rather than being swallowed here.
+fn parse_connection_profile(raw: &Value) -> Result<ImportedConnectionProfile, serde_json::Error> {
+    let parsed = serde_json::from_value::<ImportedConnectionProfile>(raw.clone());
+    if let Err(e) = &parsed {
+        tracing::warn!(error = %e, "Failed to import connection profile");
     }
+    parsed
 }
 
 fn create_connection_profile(
@@ -308,6 +337,7 @@ pub(super) fn import_image_profiles(
     profiles: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
@@ -315,6 +345,7 @@ pub(super) fn import_image_profiles(
 
     for raw in profiles {
         let source_id = super::id_of(raw);
+        let name = profile_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = image_profiles::find_by_id(main, &source_id)?;
             if existing.is_some() {
@@ -341,8 +372,12 @@ pub(super) fn import_image_profiles(
                     }
                 }
             }
-            let Ok(p) = serde_json::from_value::<ImportedImageProfile>(raw.clone()) else {
-                return Ok(());
+            let p = match serde_json::from_value::<ImportedImageProfile>(raw.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    warnings.push(format!("Failed to import image profile \"{name}\": {e}"));
+                    return Ok(());
+                }
             };
             let name = p.name.clone();
             let new_id = create_image_profile(options, &source_id, &repo, user_id, p, name)?;
@@ -351,6 +386,7 @@ pub(super) fn import_image_profiles(
             Ok(())
         })();
         if let Err(e) = out {
+            warnings.push(format!("Failed to import image profile \"{name}\": {e}"));
             tracing::warn!(profile_id = %source_id, error = %e, "Failed to import image profile");
         }
     }
@@ -416,6 +452,7 @@ pub(super) fn import_embedding_profiles(
     profiles: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
@@ -423,6 +460,7 @@ pub(super) fn import_embedding_profiles(
 
     for raw in profiles {
         let source_id = super::id_of(raw);
+        let name = profile_display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = embedding_profiles::find_by_id(main, &source_id)?;
             if existing.is_some() {
@@ -449,8 +487,14 @@ pub(super) fn import_embedding_profiles(
                     }
                 }
             }
-            let Ok(p) = serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone()) else {
-                return Ok(());
+            let p = match serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    warnings.push(format!(
+                        "Failed to import embedding profile \"{name}\": {e}"
+                    ));
+                    return Ok(());
+                }
             };
             let name = p.name.clone();
             let new_id = create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
@@ -459,6 +503,9 @@ pub(super) fn import_embedding_profiles(
             Ok(())
         })();
         if let Err(e) = out {
+            warnings.push(format!(
+                "Failed to import embedding profile \"{name}\": {e}"
+            ));
             tracing::warn!(profile_id = %source_id, error = %e, "Failed to import embedding profile");
         }
     }
@@ -566,15 +613,21 @@ mod tests {
             record("a0000000-0000-4000-8000-000000000003", "Silent", None),
         ];
         let mut id_map = IdMap::default();
+        let mut warnings: Vec<String> = Vec::new();
         let counts = import_connection_profiles(
             &conn,
             "user",
             &profiles,
             &ImportOptions::seed_defaults(),
             &mut id_map,
+            &mut warnings,
         )
         .unwrap();
         assert_eq!(counts.imported, 3);
+        assert!(
+            warnings.is_empty(),
+            "clean imports name nothing: {warnings:?}"
+        );
         // The stored choice round-trips (the pre-unify code imported ALL THREE
         // as "never chosen" — this is the arm that reddens on a regression)...
         assert_eq!(stored_prefill(&conn, "Off"), Some(0));

@@ -2,9 +2,11 @@
 //! templates, projects, groups, and chats (with messages). (Memories are the
 //! sibling `memories.rs`; characters are `characters.rs`.)
 //!
-//! Failure discipline per v4: tags and roleplay templates log per-item failures
-//! WITHOUT a warnings entry; projects, groups and chats push a
-//! `Failed to import <kind> "<name>": <error>` warning. Loop preambles have no
+//! Failure discipline per v4: EVERY per-item catch here pushes a
+//! `Failed to import <kind> "<name>": <error>` warning and logs. Tags and
+//! roleplay templates only logged until v4 `275cd7bc` (bug 79) — the import had
+//! just stopped swallowing destination read errors, and strictness alone would
+//! have traded a silently wrong branch for a silent skip. Loop preambles have no
 //! reads here, so nothing in this module reaches `executeImport`'s outer catch
 //! except through the repositories' own errors at non-per-item points.
 //!
@@ -95,6 +97,7 @@ pub(super) fn import_tags(
     items: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
@@ -102,6 +105,7 @@ pub(super) fn import_tags(
 
     for raw in items {
         let source_id = super::id_of(raw);
+        let name = display_name(raw);
         let out: Result<(), DbError> = (|| {
             let existing = tags::find_full_by_id(main, &source_id)?;
             if existing.is_some() {
@@ -115,8 +119,15 @@ pub(super) fn import_tags(
                         repo.delete(&source_id)?;
                     }
                     ConflictStrategy::Duplicate => {
-                        let Ok(t) = serde_json::from_value::<ImportedTag>(raw.clone()) else {
-                            return Ok(());
+                        // v4's create Zod-validates inside the per-item `try`,
+                        // so a malformed tag lands in the same catch the write
+                        // failures do — which `275cd7bc` gave a named warning.
+                        let t = match serde_json::from_value::<ImportedTag>(raw.clone()) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                warnings.push(format!("Failed to import tag \"{name}\": {e}"));
+                                return Ok(());
+                            }
                         };
                         // v4: name `${name} (imported)`, nameLower
                         // `${nameLower || name.toLowerCase()} (imported)` — the
@@ -152,8 +163,12 @@ pub(super) fn import_tags(
                     }
                 }
             }
-            let Ok(t) = serde_json::from_value::<ImportedTag>(raw.clone()) else {
-                return Ok(());
+            let t = match serde_json::from_value::<ImportedTag>(raw.clone()) {
+                Ok(t) => t,
+                Err(e) => {
+                    warnings.push(format!("Failed to import tag \"{name}\": {e}"));
+                    return Ok(());
+                }
             };
             let (id, now) = mint_or_preserve(options, &source_id);
             repo.create(
@@ -175,7 +190,7 @@ pub(super) fn import_tags(
             Ok(())
         })();
         if let Err(e) = out {
-            // v4: logged, dropped, NO warnings entry.
+            warnings.push(format!("Failed to import tag \"{name}\": {e}"));
             tracing::warn!(tag_id = %source_id, error = %e, "Failed to import tag");
         }
     }
@@ -304,6 +319,7 @@ pub(super) fn import_roleplay_templates(
     items: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
@@ -311,6 +327,7 @@ pub(super) fn import_roleplay_templates(
 
     for raw in items {
         let source_id = super::id_of(raw);
+        let name = display_name(raw);
         let out: Result<(), DbError> = (|| {
             let migrated = migrate_template_legacy_fields(raw);
             let existing = roleplay_templates::find_full_json_by_id(main, &source_id)?;
@@ -328,9 +345,14 @@ pub(super) fn import_roleplay_templates(
                         // Phantom-map quirk (see the module header).
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let Ok(t) = serde_json::from_value::<ImportedTemplate>(migrated.clone())
-                        else {
-                            return Ok(());
+                        let t = match serde_json::from_value::<ImportedTemplate>(migrated.clone()) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                warnings.push(format!(
+                                    "Failed to import roleplay template \"{name}\": {e}"
+                                ));
+                                return Ok(());
+                            }
                         };
                         let name = format!("{} (imported)", t.name);
                         create_template(&repo, user_id, t, name, options, DUPLICATE_MINTS)?;
@@ -339,8 +361,14 @@ pub(super) fn import_roleplay_templates(
                     }
                 }
             }
-            let Ok(t) = serde_json::from_value::<ImportedTemplate>(migrated) else {
-                return Ok(());
+            let t = match serde_json::from_value::<ImportedTemplate>(migrated) {
+                Ok(t) => t,
+                Err(e) => {
+                    warnings.push(format!(
+                        "Failed to import roleplay template \"{name}\": {e}"
+                    ));
+                    return Ok(());
+                }
             };
             let name = t.name.clone();
             let new_id = create_template(&repo, user_id, t, name, options, &source_id)?;
@@ -349,6 +377,9 @@ pub(super) fn import_roleplay_templates(
             Ok(())
         })();
         if let Err(e) = out {
+            warnings.push(format!(
+                "Failed to import roleplay template \"{name}\": {e}"
+            ));
             tracing::warn!(template_id = %source_id, error = %e, "Failed to import roleplay template");
         }
     }

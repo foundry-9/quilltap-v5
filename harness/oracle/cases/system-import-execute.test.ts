@@ -1120,6 +1120,75 @@ async function runCase(
 }
 
 /** kind 'execute': run v4's real `executeImport` and dump before/after. */
+/**
+ * [P4.D91 → bug 79] Five items that FAIL to import, one per arm that only
+ * logged before v4 `275cd7bc` gave it a named warning: `importTags`,
+ * `importRoleplayTemplates`, and the three profile importers.
+ *
+ * Each item carries a legible `name` (the warning interpolates it, so it must
+ * be a real string on both sides) and exactly one field of the wrong TYPE, so
+ * v4's create-time Zod validation and the port's typed deserialization both
+ * refuse it. Nothing is written, which is the point: the ONLY evidence the user
+ * gets that five items vanished is the five `warnings` entries.
+ *
+ * The ids are fresh, so no conflict strategy diverts the item before the
+ * failure, and the arm measures the same path under any of them.
+ */
+function malformedItemsPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      tags: [
+        {
+          id: 'dd000000-0000-4000-8000-000000000001',
+          name: 'Broken Tag',
+          // A visual style must be an object; a string fails both validators.
+          visualStyle: 'not-an-object',
+        },
+      ],
+      connectionProfiles: [
+        {
+          id: 'dd000000-0000-4000-8000-000000000002',
+          name: 'Broken Connection',
+          provider: 42,
+          modelName: 'a-model',
+        },
+      ],
+      imageProfiles: [
+        {
+          id: 'dd000000-0000-4000-8000-000000000003',
+          name: 'Broken Image',
+          provider: 42,
+          modelName: 'an-image-model',
+        },
+      ],
+      embeddingProfiles: [
+        {
+          id: 'dd000000-0000-4000-8000-000000000004',
+          name: 'Broken Embedding',
+          provider: 42,
+          modelName: 'an-embedding-model',
+        },
+      ],
+      roleplayTemplates: [
+        {
+          id: 'dd000000-0000-4000-8000-000000000005',
+          name: 'Broken Template',
+          systemPrompt: 42,
+        },
+      ],
+    },
+  };
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -1338,7 +1407,11 @@ function routeCase(
  */
 function executePreppedCase(
   name: string,
-  prep: 'drop-embedding-profiles' | 'builtin-default-profile' | 'orphan-project-store',
+  prep:
+    | 'drop-embedding-profiles'
+    | 'builtin-default-profile'
+    | 'orphan-project-store'
+    | 'unvalidatable-tag',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
 ) {
@@ -1363,6 +1436,23 @@ function executePreppedCase(
           throw new Error(
             'orphan-project-store prep touched no row — the fixture no longer ' +
               'carries PROJECT_1 and the arm would be vacuous',
+          );
+        }
+      } else if (prep === 'unvalidatable-tag') {
+        // [P4.D91 → bug 79] A destination row SQLite is happy to hand back and
+        // the schema refuses: `createdAt` is `z.iso.datetime()`, so a garbage
+        // stamp makes `_findById`'s `validate(result)` throw INSIDE
+        // `safeQuery`'s fallback arm. That is the read failure bug 79 is about,
+        // and — unlike a dropped table, which `ensureCollection` silently
+        // rebuilds — nothing heals it, so it is the one plant that reaches the
+        // strict scope.
+        const touched = db
+          .prepare(`UPDATE tags SET "createdAt" = 'not-a-date' WHERE id = ?`)
+          .run('a5000000-0000-4000-8000-000000000002');
+        if (touched.changes !== 1) {
+          throw new Error(
+            'unvalidatable-tag prep touched no row — the fixture no longer carries ' +
+              'TAG_2 and the arm would be vacuous',
           );
         }
       } else {
@@ -1768,6 +1858,51 @@ async function main(): Promise<void> {
         data: {
           projects: [
             { id: 'a3000000-0000-4000-8000-000000000001', name: 'The Voyage', state: {} },
+          ],
+        },
+      }),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: false,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+    ),
+    // [P4.D91 → bug 79] The five per-item arms that only LOGGED until v4
+    // `275cd7bc`. Every item fails; the result must name each one.
+    executeCase('execute_named_item_failures', () => malformedItemsPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.D91 → bug 79] The read failure that survives `ensureCollection`: a
+    // destination row that reads fine and VALIDATES badly. A preserveIds import
+    // claiming that very tag id had, before `275cd7bc`, consumed the swallowed
+    // read as "the id is free" and marched on into an id-carrying INSERT. Now
+    // the preflight refuses before a single write, and says why.
+    executePreppedCase(
+      'execute_preserve_ids_unvalidatable_row_refuses',
+      'unvalidatable-tag',
+      () => ({
+        manifest: {
+          format: 'quilltap-export',
+          version: '1.0',
+          exportType: 'tags',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          appVersion: '4.0.0',
+          settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+          counts: {},
+        },
+        data: {
+          tags: [
+            {
+              id: 'a5000000-0000-4000-8000-000000000002',
+              name: 'Rival',
+              nameLower: 'rival',
+              quickHide: false,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
           ],
         },
       }),

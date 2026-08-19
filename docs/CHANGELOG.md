@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(import): name the five silent per-item failures and the preflight refusal (bug 79)
+
+_Versions: core 0.0.583, harness 0.0.505._
+
+Ports v4 `275cd7bc`'s second half. Five import arms — tags, roleplay
+templates, and the three profile kinds — logged a per-item failure and
+dropped the item without putting anything in the result's `warnings`, so a
+user whose items vanished had no way to know. They now push v4's exact
+`Failed to import <kind> "<name>": <error>` sentence, from both the
+per-item catch and the typed-deserialization refusal that stands in for
+v4's create-time validation. The preserve-ids preflight, which aborts the
+whole import, likewise answered `success: false` with an empty warnings
+array; it now pushes `Import refused before anything was written:
+<message>`, so a refused import always says why.
+
+v4's mechanism for the other half of its fix — an AsyncLocalStorage scope
+that suspends the repository layer's degrade-to-fallback behavior for the
+duration of an import — has no counterpart here and needs none: this port's
+reads are typed results that propagate by construction, which P4.48 already
+made the import honor at every site.
+
+Two new differential arms carry the change. `execute_named_item_failures`
+imports five deliberately malformed items, one per newly-named arm, since
+no committed archive can express an item that fails to import — a real
+export imports. `execute_preserve_ids_unvalidatable_row_refuses` plants a
+destination row that SQLite returns happily and v4's schema rejects, which
+is the one plant that reaches v4's strict scope: v4 refuses naming the
+validation failure, this port refuses naming the collision it can still
+see, and neither writes a row.
+
+The P4.48 `preview_planted_unreadable_tags_table` divergence was
+re-measured and its recorded mechanism corrected. It is not `safeQuery`
+swallowing a read error: v4's `ensureCollection` rebuilds a dropped table on
+first repository access, so the read succeeds against a table v4 has just
+created. The oracle now emits whether the table came back, and the arm
+asserts the asymmetry on both engines, so the claim is a comparand rather
+than a comment.
+
 #### 2026-08-19 — fix(wardrobe): normalize equipped slots on the way out of the column (bug 78)
 
 _Versions: core 0.0.582, harness 0.0.504._

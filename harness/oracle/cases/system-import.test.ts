@@ -321,9 +321,16 @@ function buildCases(): CaseSpec[] {
   // record what v4 really does, because the escalation's premise — that v4
   // propagates — is wrong, and only measurement settles which leg is which.
   //
-  //   * DROP TABLE tags  → v4's `_findById` is a `safeQuery(…, null)`, so the
-  //     read error is SWALLOWED and the preview answers `exists: false`. v5 now
-  //     refuses. Recorded as a DIVERGENCE, pinned in both directions.
+  //   * DROP TABLE tags  → the preview answers `exists: false`. [P4.D91]
+  //     RE-MEASURED, and the earlier reading was wrong: this is NOT `safeQuery`
+  //     swallowing a read error. v4's `getCollection()` calls `ensureCollection`
+  //     on first access, which CREATE-TABLE-IF-NOT-EXISTS puts the table back,
+  //     so the read succeeds against a table v4 has just built and honestly
+  //     finds nothing. (Proven, not argued: `plantProbe` below records whether
+  //     the table is back afterwards, and v4's own bug-79 strict scope —
+  //     `275cd7bc` — could not converge this arm precisely because there is no
+  //     error here to propagate.) v5 provisions nothing on a read and refuses.
+  //     Recorded as a DIVERGENCE, pinned in both directions.
   //   * a project row with a NULL officialMountPointId → the slim read succeeds
   //     and `applyOverlayOne` THROWS, un-wrapped by any safeQuery, sinking v4's
   //     whole preview. v5 matches. Recorded as an EQUALITY.
@@ -340,15 +347,35 @@ function buildCases(): CaseSpec[] {
       const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
       plant(getRawDatabase()!);
       const { previewImport } = await import('@/lib/import/quilltap-import-service');
+      // [P4.D91] The tables the plants removed, AFTER the preview ran. This is
+      // the arm's mechanism made measurable: v4 re-provisions a missing table
+      // on first repository access, so a dropped table is back and the preview's
+      // `exists:false` is a fact about a fresh table rather than a swallowed
+      // error. Recording it means a change in that behaviour reddens the diff
+      // instead of quietly invalidating the prose.
+      const tablesPresent = () => {
+        const db = getRawDatabase()!;
+        const rows = db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tags'")
+          .all() as Array<{ name: string }>;
+        return { tags: rows.length > 0 };
+      };
       try {
         const preview = await previewImport(spec.userId, payload as never);
-        return { kind: 'preview_planted', payload, preview, error: null };
+        return {
+          kind: 'preview_planted',
+          payload,
+          preview,
+          error: null,
+          plantProbe: tablesPresent(),
+        };
       } catch (err) {
         return {
           kind: 'preview_planted',
           payload,
           preview: null,
           error: err instanceof Error ? err.message : String(err),
+          plantProbe: tablesPresent(),
         };
       }
     },

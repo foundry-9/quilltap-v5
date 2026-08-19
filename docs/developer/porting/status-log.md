@@ -74430,3 +74430,122 @@ assumed: `build_context_tier3_equivalence`,
 `characters_wardrobe_route`, and the six `vault_wardrobe_*` /
 `wardrobe_public_read` families all ran green at the pin.
 
+## P4.D91 unit 2 — bug 79: the named import warnings and the refusal line (v4 `275cd7bc`), 2026-08-19
+
+**The mechanism is NOT ported; the behavior is.** v4's fix carries "who is
+asking" through an `AsyncLocalStorage` scope so `safeQuery`'s fallback mode
+stops answering a thrown read with `null` for the duration of an import.
+v5 has no such seam and needs none — its reads are typed `Result`s that
+propagate by construction, and P4.48 already made every one of the import's
+23 sites honor that. What this lane ports is the observable half.
+
+**The five silent arms.** `importTags`, `importRoleplayTemplates` and the
+three profile importers logged a per-item failure and dropped the item with
+nothing in `warnings`; v4 gave all five the standard
+`Failed to import <kind> "<name>": <error>` sentence. Ported at both drop
+sites per arm — the per-item catch AND the typed-deserialization refusal
+that stands in for v4's create-time Zod throw (the connection-profile arm's
+two v5 sites map to v4's one catch, because v4's parse happens inside the
+same `try`). The quoted name is read off the RAW payload item, since the
+arm fires exactly when the typed parse failed.
+
+**The preflight refusal.** v4's preserve-ids preflight aborts the whole
+import and had been returning `success:false` with an empty `warnings`,
+which also broke rehydrate's "unknown import error". It now pushes
+`Import refused before anything was written: <message>`; a collision
+therefore lands twice, once named by the preflight and once wrapped.
+Reproduced byte for byte, including the store-unavailable sentence.
+
+**Measured, not just ported.** No committed archive can express an item
+that fails to import — a real export imports — so the corpus grew
+`execute_named_item_failures`: five items, one per newly-named arm, each
+with one field of the wrong type so both engines' validation refuses it and
+nothing is written. All five sentences match through `mask_warning`'s
+quoted families (the item NAME verbatim, only the validator's own wording
+masked). Mutation-proven both ways: dropping v5's tag push reddens the arm,
+and dropping the preflight refusal push reddens seven arms.
+
+**The one plant that reaches v4's strict scope.**
+`execute_preserve_ids_unvalidatable_row_refuses` sets a destination tag's
+`createdAt` to `not-a-date`. SQLite hands the row back; v4's `TagSchema`
+refuses it, so `_findById`'s `validate(result)` throws inside `safeQuery`'s
+fallback arm — the read failure bug 79 is actually about. v4 now refuses
+before a single write, naming the validation failure. v5 refuses too, but
+names the COLLISION, because it marshals rows without re-validating them
+and can still see that the id is taken. Recorded as a warnings-only
+divergence with both-directions assertions; `success`, the counts and all
+three partitions are plain equalities, which is the guarantee that matters:
+neither engine writes anything. Noted in the arm's own doc comment: this
+plant does NOT exercise v5's propagation (there is no error on the v5 side
+to propagate), so reverting that preflight site to `.ok().flatten()` leaves
+it green by design.
+
+**A P4.48 finding corrected by measurement.** The
+`preview_planted_unreadable_tags_table` divergence recorded its cause as
+"v4's `_findById` is a `safeQuery(…, null)`, so v4 SWALLOWS the read
+error". That is wrong, and it is why v4's strict scope left the arm
+unchanged: `getCollection()` calls `ensureCollection` on first access, whose
+`CREATE TABLE IF NOT EXISTS` puts the dropped table straight back, so the
+read succeeds against a table v4 has just built and honestly finds nothing.
+Proven with a standalone jest probe (`findById` inside a strict scope
+returned `null`, and `sqlite_master` showed `tags` back as a table), then
+turned into a comparand: the oracle emits `plantProbe.tags`, and the arm
+asserts the asymmetry on both engines — v4 ends with the table back, v5
+ends without it, having provisioned nothing on a read path. The divergence
+itself stands under the standing 2026-08-03 ruling, with its reason now
+accurate.
+
+**Two committed oracle CASES changed, no fixture bytes.**
+`harness/oracle/cases/system-import-execute.test.ts` gained
+`malformedItemsPayload` + two cases and the `unvalidatable-tag` prep;
+`harness/oracle/cases/system-import.test.ts` gained the `plantProbe` field.
+Both families' NDJSON must be regenerated; no `.db` fixture was rebuilt, so
+no sibling family is invalidated.
+
+**Three P4.48 unit tests had to move with the behavior.**
+`preflight_refuses_when_the_existence_read_fails`,
+`preflight_refuses_for_the_document_store_kinds` and
+`preflight_refuses_when_a_colliding_projects_store_is_unavailable` proved
+"the refusal came from the preflight, not from the body" by asserting
+`warnings.is_empty()` — an invariant v4 has just deleted. They now assert
+exactly one line starting `Import refused before anything was written: `,
+which separates the two refusals just as well (a body failure answers
+`Import failed: …`) and additionally pins the new sentence; the overlay arm
+pins its whole message. The full-workspace gate caught this, not the
+differential — worth remembering that a behavior change lands in the unit
+tier as well as the corpus.
+
+**Tier 2 (v4's `strict-failures.test.ts` guarantees) — PARTIAL, by
+measurement.** v4's four pins are fallback / rethrow / nested-opt-out /
+no-leak, and three of them are properties of the AsyncLocalStorage
+mechanism this port does not have: there is no scope to leak out of, no
+fallback mode to suspend, and no entry point whose unwrapping could go
+unnoticed (v5's reads are typed `Result`s, so "propagates" is the compiler's
+job, and P4.48 already pinned the 23 sites). The one guarantee with a real
+v5 seam is the NESTED OPT-OUT — v4 wraps `enqueueImportedMemoryEmbeddings`
+back out with `withRepositoryFallbacks` so follow-up job scheduling degrades
+instead of sinking the import — and v5's counterpart is structural: the
+function returns `()`, logs its own failures, and cannot fail the import at
+all. Its degrade path is differential-pinned by the two `execute_prepped`
+arms (`execute_memories_no_profile` / `execute_memories_builtin_profile`).
+Nothing is stubbed and nothing is owed; recorded here so the next lane does
+not go looking for a scope.
+
+**The sweep — 30 families at the pin, every one green.** Run through
+`harness/tools/recipe_sweep.py --run-all` in two batches (results committed
+to nothing — the artifacts are `/tmp/p4d91-logs/sweep-{wardrobe,import}.json`
+from this lane's session). Batch 1 (the healed-reader + wardrobe surface,
+17 families) is listed in unit 1. Batch 2 (13): `wardrobe_routes_equivalence`,
+`wardrobe_tier2_equivalence`, `wardrobe_tools_equivalence`,
+`wardrobe_transfers_tier2_equivalence`, `avatar_job_tier3_equivalence`,
+`qtap_import_equivalence`, `character_archive_tier2_equivalence`,
+`characters_action_route`, `characters_reset_builtins_route`,
+`reset_builtins_equivalence`, `system_restore_equivalence`,
+`restore_vintage_state`, `system_backup_equivalence`. No red outside the two
+this lane fixed, which is what "measure, don't assume" bought: the order
+predicted none and the prediction held.
+
+**Gotcha worth carrying.** The `system-import-execute` oracle SIGSEGV'd a
+jest worker on one run, mid-corpus, and regenerated clean on an immediate
+retry. It is a native-driver flake in a case file that opens and closes ~36
+encrypted instances, not recipe rot — retry once before diagnosing.
