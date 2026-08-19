@@ -75244,3 +75244,30 @@ touched.** All six families this lane moves
 (`providers_listing`, `provider_registry`, `request_builder`,
 `request_prefix_hashes`, both brahma tier-3s) now run end-to-end through the
 sanctioned driver.
+
+**P4.D93 lane gate (2026-08-19).** `cargo fmt --all --check` clean; clippy
+`--workspace --all-targets -D warnings` clean in BOTH feature configurations
+(plain and `--features quilltap-core/native-transport`); `cargo test
+--workspace` with the lane's env block: **439 test binaries / 2,227 passed /
+0 failed** (exit 0). The six families this lane moves were then re-run BY
+NAME with `--nocapture` over oracles regenerated fresh from the v4 checkout
+at `9125f492` (verified clean and on `main` before every regen, and again at
+lane close), **zero SKIP, every one printing its own OK line**:
+`providers_listing_equivalence` (8 optionsSchemas byte-for-byte + 1 null),
+`provider_registry_equivalence` (253 rows), `brahma_console_tier3_equivalence`
+(13 cases incl. the three new arms), `brahma_orchestrator_tier3_equivalence`,
+`request_builder_equivalence` (263 envelopes, 1 recorded refusal, headers
+pinned for 8 providers), `request_prefix_hashes_equivalence` (17 rows). All
+six also run end-to-end through `recipe_sweep.py --run`. SPA: `npm test`
+**331 files / 4,915 passed**, `npm run build` clean. Full Playwright:
+**229 passed / 0 failed / 0 skipped (5.2 m)** against fresh release binaries,
+with the bug-81 walk live inside the settings wizard beat.
+
+**Versions:** core 0.0.584 → **0.0.587**, harness 0.0.505 → **0.0.506**,
+host 0.0.72 → **0.0.73**, SPA 0.5.519 → **0.5.522**; web/cli/tauri/sys
+unchanged.
+
+**Commits (branch `claude/p4-oac-api-key-system-folder-2855ff`):**
+`c9f8913c` substrate · `fe2a1126` resolver + Brahma + the spine measurement ·
+`4d95d739` the bug-82 fold · `3d141e6b` the SPA half · `f17c5682` the e2e beat
++ the recipe-header repair.

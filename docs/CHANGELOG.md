@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — docs(porting): the P4.D93 lane gate record
+
+_No crate versions bumped._
+
+Gate numbers for the bug-81/82 lane: 439 test binaries / 2,227 passed / 0
+failed with the lane's env block, clippy clean in both feature configurations,
+the six moved differential families re-run by name over oracles regenerated
+fresh at `9125f492` with zero skips, SPA 331 files / 4,915 tests, and the full
+Playwright suite 229 passed / 0 failed / 0 skipped with the bug-81 walk live.
+
 #### 2026-08-19 — test(e2e): walk the optional OpenAI-Compatible key, and repair two self-clobbering recipe headers
 
 _Versions: harness 0.0.506, SPA 0.5.522._
