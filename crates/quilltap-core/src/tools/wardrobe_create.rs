@@ -355,13 +355,16 @@ fn run(
             WardrobeEffect::Layered
         });
 
-        // v4: chat.equippedOutfit?.[targetCharacterId] || {...EMPTY_EQUIPPED_SLOTS}.
-        let chat = chats_read::find_by_id(main, chat_id)?;
-        let stored = chat
-            .as_ref()
-            .and_then(|c| c.get("equippedOutfit"))
-            .and_then(|eo| eo.get(&target_character_id));
-        current_state = Some(Slots::from_value(stored).to_value());
+        // v4 `275cd7bc` (bug 78): read through the repository so the stored bag
+        // is normalized to all five slots — a chat row written before a slot
+        // existed omits its key, and the `current_state` handed to the model
+        // was short one. (v5 already normalized this by hand; the read moved to
+        // the repository with v4's, so the coercion has ONE home.)
+        current_state = Some(
+            crate::db::chats_outfits::ChatOutfitsRepository::new(main)
+                .get_equipped_outfit_for_character(chat_id, &target_character_id)?
+                .unwrap_or_else(|| Slots::fresh().to_value()),
+        );
 
         // triggerAvatarGenerationIfEnabled — image subsystem seam (out of scope).
     }

@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — fix(wardrobe): normalize equipped slots on the way out of the column (bug 78)
+
+_Versions: core 0.0.582, harness 0.0.504._
+
+Ports v4 `275cd7bc`'s first half. `chats.equippedOutfit` is unconstrained
+JSON and slots were added over time, so a chat row written before the hair
+slot carries four keys. `get_equipped_outfit` now maps every character's
+entry through the slot normalizer, which makes it the single coercion point
+out of the column: the chat-outfit API, the previous-chat outfit carry, and
+`set_equipped_outfit`'s read-modify-write all see five slots, and a write
+that re-reads the state repairs its siblings' bags on the way through.
+`wardrobe_create`'s hand-rolled read of the column moved to the repository
+for the same reason.
+
+This port was never exposed to the crash v4 fixed — its slot reader
+defaulted a missing key to empty from the start, which is what the retired
+`legacy_four_key_equipped` divergence pin recorded. That pin fired on the
+first regeneration, as designed, and is now a plain equality: v4 completes
+the avatar job and writes the avatar, as this port always did. New unit
+tests diff the normalizer against v4's `normalizeEquippedSlots` case for
+case, including the malformed-bag salvage and the non-object shapes.
+
 #### 2026-08-19 — docs(changelog): restructure into per-commit headers, split by month
 
 _Docs-only change._

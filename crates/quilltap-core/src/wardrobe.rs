@@ -614,6 +614,58 @@ fn to_str_array(v: &[String]) -> Value {
     Value::Array(v.iter().map(|s| Value::String(s.clone())).collect())
 }
 
+/// v4 `normalizeEquippedSlots` (`lib/schemas/wardrobe.types.ts`, `275cd7bc`) —
+/// coerce a raw stored slot bag into a full five-slot outfit.
+///
+/// `chats.equippedOutfit` is unconstrained JSON and slots were added over time
+/// (hair arrived after real instances were already writing four-key rows), so
+/// anything read back off a chat row may be missing keys entirely. v4 parses
+/// through `EquippedSlotsSchema` — every slot `.default([])` — and on a failed
+/// parse salvages key by key, keeping each slot's string elements and reading a
+/// non-array slot as empty. [`Slots::from_value`] already IS that salvage, and
+/// the two agree case for case: the schema only parses when every element is a
+/// UUID, in which case the parse and the salvage produce the same arrays.
+///
+/// Returned as the serialized [`Slots::to_value`] form — five keys in canonical
+/// order, which is exactly what v4's Zod parse and its salvage both emit.
+pub fn normalize_equipped_slots(raw: Option<&Value>) -> Value {
+    Slots::from_value(raw).to_value()
+}
+
+/// The `EquippedOutfitState` map with every character's entry normalized (v4's
+/// `getEquippedOutfit` maps `Object.entries(stored)` through
+/// [`normalize_equipped_slots`]).
+///
+/// `Object.entries` is mirrored for the non-object shapes too — an array or a
+/// string yields index-keyed entries, any other primitive yields none. No v5
+/// writer stores anything but an object there, but the column is raw JSON and a
+/// foreign archive is not obliged to agree.
+pub fn normalize_equipped_outfit_state(stored: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    match stored {
+        Value::Object(m) => {
+            for (character_id, slots) in m {
+                out.insert(character_id.clone(), normalize_equipped_slots(Some(slots)));
+            }
+        }
+        Value::Array(a) => {
+            for (i, slots) in a.iter().enumerate() {
+                out.insert(i.to_string(), normalize_equipped_slots(Some(slots)));
+            }
+        }
+        // Every entry of a string is a one-character string, which normalizes
+        // to empty slots — so only the COUNT matters, and JS counts UTF-16
+        // code units.
+        Value::String(s) => {
+            for i in 0..s.encode_utf16().count() {
+                out.insert(i.to_string(), normalize_equipped_slots(None));
+            }
+        }
+        _ => {}
+    }
+    Value::Object(out)
+}
+
 /// v4 `wearItemIntoSlots` — for each slot in `types`, replace with `[id]` when
 /// `replace`, else append `id` (no-op if already present).
 ///
@@ -1056,6 +1108,102 @@ mod tests {
             .cloned()
             .collect();
         assert_eq!(keys, WARDROBE_SLOT_TYPES.map(String::from).to_vec());
+    }
+
+    /// v4's `normalizeEquippedSlots` describe block (`275cd7bc`), case for
+    /// case. v4 parses through Zod first and salvages key by key only when the
+    /// parse fails; [`Slots::from_value`] always salvages. The two agree
+    /// everywhere, because the schema's `z.array(UUIDSchema)` only parses when
+    /// every element is a UUID — and in that case the salvage keeps exactly the
+    /// same strings.
+    #[test]
+    fn normalize_equipped_slots_matches_v4() {
+        const UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+        const UUID_B: &str = "550e8400-e29b-41d4-a716-446655440001";
+        let empty = json!({
+            "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": []
+        });
+
+        // "fills in a slot a legacy row never had"
+        let normalized = normalize_equipped_slots(Some(&json!({
+            "top": [UUID_A], "bottom": [], "footwear": [], "accessories": []
+        })));
+        assert_eq!(normalized["hair"], json!([]));
+        assert_eq!(normalized["top"], json!([UUID_A]));
+
+        // "returns all-empty slots for null, undefined, and an empty object"
+        assert_eq!(normalize_equipped_slots(Some(&Value::Null)), empty);
+        assert_eq!(normalize_equipped_slots(None), empty);
+        assert_eq!(normalize_equipped_slots(Some(&json!({}))), empty);
+
+        // "salvages the legible slots of a malformed bag rather than discarding
+        // it" — `bottom` is a non-UUID string, so v4's whole-object parse fails
+        // and the salvage runs; a non-array slot and a non-string element both
+        // degrade to their legible remainder.
+        let normalized = normalize_equipped_slots(Some(&json!({
+            "top": [UUID_A],
+            "bottom": ["not-a-uuid"],
+            "footwear": "nonsense",
+            "accessories": [7, UUID_B],
+        })));
+        assert_eq!(normalized["top"], json!([UUID_A]));
+        assert_eq!(normalized["bottom"], json!(["not-a-uuid"]));
+        assert_eq!(normalized["footwear"], json!([]));
+        assert_eq!(normalized["accessories"], json!([UUID_B]));
+        assert_eq!(normalized["hair"], json!([]));
+
+        // "always answers with the full canonical slot list" — an extra key is
+        // dropped on both of v4's paths (the parse strips it, the salvage never
+        // looks for it).
+        let normalized = normalize_equipped_slots(Some(&json!({
+            "top": [UUID_A], "stowaway": ["x"]
+        })));
+        let keys: Vec<&String> = normalized.as_object().unwrap().keys().collect();
+        assert_eq!(keys, WARDROBE_SLOT_TYPES.iter().collect::<Vec<_>>());
+
+        // A bag that is not an object at all: v4's parse fails and the salvage
+        // indexes a primitive, so every slot reads empty.
+        for shape in [json!("nonsense"), json!(7), json!([UUID_A])] {
+            assert_eq!(normalize_equipped_slots(Some(&shape)), empty, "{shape}");
+        }
+    }
+
+    /// The state-level map v4's `getEquippedOutfit` performs
+    /// (`Object.entries(stored).map(normalizeEquippedSlots)`).
+    #[test]
+    fn normalize_equipped_outfit_state_matches_v4() {
+        const UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+        let empty = json!({
+            "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": []
+        });
+
+        // Character keys survive in INSERTION order; only the values change.
+        let state = normalize_equipped_outfit_state(&json!({
+            "zeta": { "top": [UUID_A], "bottom": [], "footwear": [], "accessories": [] },
+            "alpha": {},
+        }));
+        let keys: Vec<&String> = state.as_object().unwrap().keys().collect();
+        assert_eq!(keys, vec!["zeta", "alpha"]);
+        assert_eq!(
+            state["zeta"],
+            json!({
+                "top": [UUID_A], "bottom": [], "footwear": [],
+                "accessories": [], "hair": []
+            })
+        );
+        assert_eq!(state["alpha"], empty);
+
+        // `Object.entries` of the non-object shapes: index keys for an array or
+        // a string, nothing for any other primitive.
+        assert_eq!(
+            normalize_equipped_outfit_state(&json!([{ "top": [UUID_A] }])),
+            json!({ "0": { "top": [UUID_A], "bottom": [], "footwear": [], "accessories": [], "hair": [] } })
+        );
+        assert_eq!(
+            normalize_equipped_outfit_state(&json!("ab")),
+            json!({ "0": empty, "1": empty })
+        );
+        assert_eq!(normalize_equipped_outfit_state(&json!(7)), json!({}));
     }
 
     #[test]

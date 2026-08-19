@@ -74362,3 +74362,71 @@ real 5.0.0 as a downgrade. The `.deb` projection is a deliberate `-` → `~`
 substitution.
 
 No v5 source changed; nothing regenerates.
+
+## P4.D91 unit 1 — bug 78: the equipped-slot coercion point (v4 `275cd7bc`), 2026-08-19
+
+**v4 baseline `c6ff8051`** (v4 main, HEAD at lane start, tree clean, on
+`main`; `bugfix`'s only newer commit is `3a76b17d`, the 4.8.4 branch-start
+marker, NO-PORT). The checkout sat exactly on the pin, so every regen ran
+from `~/source/quilltap-server` with no detached worktree, and the sha was
+re-verified before each batch.
+
+**The tripwire fired, exactly as designed.** `avatar_job_tier3_equivalence`
+carried `legacy_four_key_equipped` as a both-directions divergence pin
+(P4.D87): v4 at `979652a9` read `chat.equippedOutfit[cid]` raw and threw
+`rootIds is not iterable` on a chat row written before the hair slot, where
+v5's `Slots::from_value` defaulted the absent key to `[]` and completed.
+The pin panicked on the first regeneration at the new baseline — "v4 no
+longer crashes … the divergence CONVERGED" — and is now a plain equality
+diffed like every other case. What survives of it is an anti-vacuity check:
+the case exists to prove a legacy four-key row still dresses its character,
+so the arm asserts the oracle recorded a non-empty `characterAvatars`
+rather than passing by agreeing about a no-op.
+
+**The port is the coercion POINT, not the coercion.** v4's new
+`normalizeEquippedSlots` and v5's existing `Slots::from_value` agree case
+for case, and the diff proves it rather than asserting it: v4 parses through
+`EquippedSlotsSchema` first and salvages key by key only when the parse
+fails, but `equippedSlotArray()` is `z.array(UUIDSchema)`, so the parse
+only succeeds when every element is a UUID — in which case the parse and
+the salvage produce identical arrays. `normalize_equipped_slots_matches_v4`
+mirrors v4's whole `normalizeEquippedSlots` describe block (the legacy
+four-key fill, null/undefined/`{}`, the mixed-type salvage, the extra-key
+drop) plus the non-object shapes v4's test does not cover.
+
+What DID have to move is where the coercion runs. v4 put it inside
+`getEquippedOutfit`, which has three consequences v5 did not have:
+
+- the chat-outfit GET answers five slots per character;
+- `setEquippedOutfit` reads `existing` through it, so a write repairs every
+  OTHER character's bag in that chat on its way to disk;
+- the previous-chat outfit carry and `chat_create` see repaired bags.
+
+`chats_outfits_tier2_equivalence` measured all of it: v4's oracle now
+stores `{"top":[…],"bottom":[],"footwear":[],"accessories":[],"hair":[]}`
+in canonical order for the character a write re-read, while an untouched
+sibling keeps its four-key alphabetical bag verbatim. v5 reproduced both
+after `get_equipped_outfit` gained `normalize_equipped_outfit_state` and
+`set_equipped_outfit` stopped reading the raw column.
+
+The state-level map mirrors `Object.entries` for the non-object shapes too
+(an array or string yields index keys, any other primitive yields none). No
+v5 writer stores anything but an object there; the column is raw JSON and a
+foreign archive is not obliged to agree.
+
+**v4's third site — `wardrobe-create-handler` — was already correct in v5**
+(it normalized by hand). It now reads through the repository anyway, so the
+coercion has one home rather than two spellings of it; the output is
+unchanged, which `wardrobe_tools_equivalence` holds.
+
+**The healed-reader sweep found nothing.** v4's change also repairs what its
+scene-state tracker and context manager see on legacy rows; v5's
+counterparts already read through `Slots::from_value`. Measured, not
+assumed: `build_context_tier3_equivalence`,
+`story_background_job_tier3_equivalence`, `chat_create_capstone_equivalence`,
+`chat_create_end_to_end`, `outfit_llm_choose_tier3_equivalence`,
+`outfit_hash_equivalence`, `character_avatar_write_tier2_equivalence`,
+`seed_avatars_equivalence`, `state_sql_tools_equivalence`,
+`characters_wardrobe_route`, and the six `vault_wardrobe_*` /
+`wardrobe_public_read` families all ran green at the pin.
+

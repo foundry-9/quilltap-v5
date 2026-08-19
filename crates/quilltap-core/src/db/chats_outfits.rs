@@ -6,20 +6,34 @@
 //! ## The shape
 //!
 //! The two reads (`get_equipped_outfit` / `get_equipped_outfit_for_character`) are
-//! plain marshaled-row reads through [`chats_read::find_by_id`] — `chats` has no
-//! vault overlay. The two writes are the familiar RMW: read the chat, mutate the
-//! `equippedOutfit` JSON object in memory, and route the rewrite back through
+//! marshaled-row reads through [`chats_read::find_by_id`] — `chats` has no vault
+//! overlay — passed through the slot normalizer on the way out (below). The two
+//! writes are the familiar RMW: read the chat, mutate the `equippedOutfit` JSON
+//! object in memory, and route the rewrite back through
 //! [`ChatsRepository::update`], which PRESERVES the chat's `updatedAt` (these ops
 //! never pass one — only a new message bumps a chat's `updatedAt`).
 //!
-//! v4 treats the `equippedOutfit` value as **raw, un-validated JSON** — neither
-//! write re-parses it through `EquippedSlotsSchema`. So the port stores it the same
-//! way (as a [`serde_json::Value`], never a typed struct), which is what keeps it
-//! faithful to v4's exact bytes:
+//! ## Normalization on the way OUT (bug 78, v4 `275cd7bc`)
+//!
+//! The column is unconstrained JSON and slots were added over time, so a chat row
+//! written before the hair slot existed carries four keys. v4 used to hand that
+//! bag to its readers raw — which crashed avatar generation on
+//! `slots['hair'] === undefined` — and now maps every character's entry through
+//! `normalizeEquippedSlots` inside `getEquippedOutfit`. This port does the same
+//! with [`normalize_equipped_outfit_state`]. It is a READ-side repair: the value
+//! still goes to disk exactly as its writer shaped it (below), and the repair
+//! reaches disk only where a write re-reads the state first.
+//!
+//! v4 otherwise treats the `equippedOutfit` value as **raw, un-validated JSON** —
+//! neither write re-parses the incoming slots through `EquippedSlotsSchema`. So
+//! the port stores it the same way (as a [`serde_json::Value`], never a typed
+//! struct), which is what keeps it faithful to v4's exact bytes:
 //!
 //! - `set_equipped_outfit` is `existing ?? {}`, then `state[characterId] = slots`
 //!   (the raw `slots` object the caller passed — partial / extra keys preserved
-//!   verbatim, NOT materialized to the four-slot default), then write.
+//!   verbatim, NOT materialized to the default), then write. `existing` comes
+//!   through `get_equipped_outfit`, so every OTHER character's bag in the chat
+//!   is repaired to all five slots on the way (see the normalization note).
 //! - `remove_equipped_item_from_all_chats` iterates every chat with an
 //!   `equippedOutfit`, and for each character walks the closed slot set
 //!   [`WARDROBE_SLOT_TYPES`] dropping the deleted `item_id` **in place** — reading
@@ -45,6 +59,7 @@ use serde_json::Value;
 
 use super::chats::{ChatUpdate, ChatsRepository};
 use super::{chats_read, DbError};
+use crate::wardrobe::normalize_equipped_outfit_state;
 
 /// The closed slot set v4 walks when removing an item — read from the ONE
 /// registry (`4423ad10`'s consolidation).
@@ -88,12 +103,18 @@ impl<'c> ChatOutfitsRepository<'c> {
     /// when the chat is absent OR has no `equippedOutfit` (v4: `!chat ||
     /// !chat.equippedOutfit`). The marshaler omits a NULL `equippedOutfit` cell, so
     /// "absent key" is the no-outfit case.
+    ///
+    /// **The coercion point** (v4 `275cd7bc`, bug 78): the stored value is raw
+    /// JSON, and a row written before a slot existed carries fewer keys than the
+    /// slot list declares. Every character's entry is normalized on the way out
+    /// ([`normalize_equipped_outfit_state`]), so no consumer — this repository's
+    /// own `setEquippedOutfit` included — ever sees a short bag.
     pub fn get_equipped_outfit(&self, chat_id: &str) -> Result<Option<Value>, DbError> {
         let Some(chat) = chats_read::find_by_id(self.conn, chat_id)? else {
             return Ok(None);
         };
         match chat.get("equippedOutfit") {
-            Some(v) if !v.is_null() => Ok(Some(v.clone())),
+            Some(v) if !v.is_null() => Ok(Some(normalize_equipped_outfit_state(v))),
             _ => Ok(None),
         }
     }
@@ -133,9 +154,15 @@ impl<'c> ChatOutfitsRepository<'c> {
             return Ok(false);
         };
 
-        // existing ?? {}  — the marshaler omits a NULL cell, so absent = {}.
+        // existing ?? {} — v4 reads it through `getEquippedOutfit`, so every
+        // OTHER character's bag in this chat is normalized on the way in and
+        // written back repaired (`275cd7bc`). Only the character being set
+        // keeps the caller's raw `slots` object.
         let mut state = match chat.get("equippedOutfit") {
-            Some(Value::Object(m)) => m.clone(),
+            Some(v) if !v.is_null() => match normalize_equipped_outfit_state(v) {
+                Value::Object(m) => m,
+                _ => serde_json::Map::new(),
+            },
             _ => serde_json::Map::new(),
         };
 
