@@ -74963,3 +74963,60 @@ SPA 0.5.514 → **0.5.518**; host/web/cli/tauri/sys unchanged.
 - v4's `release` branch now carries the 4.8.4 release; drift-check all
   THREE branches' movement next round (main, bugfix, release — release is
   release-history only, but its checkout occupancy is what poisons regens).
+
+## Lane record — P4.D93 (v4 bugs 81/82: `acceptsApiKey` end-to-end + the leading-system-message fold) — v4 `9125f492`
+
+Baseline **`9125f492`**, drift-checked clean at lane start: `git log
+9125f492..main --oneline` empty, the v4 tree CLEAN and the checkout on
+`main`; `git diff main bugfix -- lib/ app/ packages/` is one-directional
+(160 files, 887 insertions / 4,591 deletions — every hunk removes what main
+added, so `bugfix` is behind and carries nothing portable; its HEAD is still
+the 2026-08-13 `3a76b17d` 4.8.4 branch-start). Oracles therefore regenerate
+straight from the checkout — no pinned worktree needed this round, but the
+branch was verified before every regen.
+
+**Unit 1 — `acceptsApiKey` on the manifest substrate + the listing payload
+(core 0.0.585, SPA 0.5.520).** `ConfigRequirements` gains
+`accepts_api_key: Option<bool>` (`#[serde(default)]`, renamed, positioned
+directly after `requires_api_key` so the serialized order matches v4's
+config-literal order) plus the accessor `ConfigRequirements::accepts_api_key()`
+— the v5 twin of v4's `providerAcceptsApiKey` and the ONE home for the
+fallback rule (`unwrap_or(self.requires_api_key)`, never a bare `true`: an
+Ollama endpoint has nowhere to put a bearer token). The generator learned the
+field as **extraction, not augmentation** — one conditional line emitting
+`acceptsApiKey` only when `plugin.config` declares it, mirroring v4's own
+`manifest.json` — and regenerating all nine manifests moved exactly one line
+(`openai_compatible.json` +`"acceptsApiKey": true`; the other eight
+byte-identical, as the order predicted). `provider_list()` inserts the key
+immediately after `requiresApiKey` and only when the manifest carries `Some`,
+because v4's route passes `plugin.config` through whole and so omits it for
+the eight non-declaring providers.
+
+*The comparand was blind, and is no longer.* `providers-listing.ts`
+hand-picked six `configRequirements` fields where v4's route spreads
+`plugin.config` verbatim — a shape that could never have seen a new config
+key ([[blinded-comparand-hides-the-new-arm]]). Measured first: all nine
+plugin configs carry ONLY manifest-covered keys today (anthropic/openai/
+google/grok/deepseek/z-ai/openrouter: `requiresApiKey`/`requiresBaseUrl`/
+`apiKeyLabel`; ollama swaps in the two baseUrl fields; OAC carries all seven
+including the new one), so the oracle now emits `configRequirements: cfg`
+whole. A future v4 config key the v5 manifest does not model is now a RED
+diff instead of a silent pass.
+
+*Differentials.* `providers_listing_equivalence` and
+`provider_registry_equivalence` regenerated fresh at the pin and green
+(listing: 8 optionsSchemas byte-for-byte + 1 null; registry: 253 rows).
+The listing arm is **mutation-proven**: suppressing the `acceptsApiKey`
+insertion in `provider_list()` fails on `provider mismatch for id
+Some("OPENAI_COMPATIBLE")`. Two new `provider_manifest` unit tests pin the
+truth table (`{req:true}`→T, `{req:false}`→F, `{req:false,acc:true}`→T, and
+the unshipped `{req:true,acc:false}`→F) and the shipped shape (exactly one
+manifest declares the field, and exactly one manifest's two answers differ —
+both OPENAI_COMPATIBLE, asserted as a shape rather than a hand count).
+
+*Measurement banked for the SPA half:* v5 invented **no** server-side gate
+refusing to create or attach an OAC key. `api_key_create` validates only
+non-empty provider/label/key; the profile-save `apiKeyId` check
+(`settings.rs:1319`, `:1610`) is a provider-MATCH only; `validate_provider_config`
+stays requires-shaped exactly as v4's does. The block was client-only in v5
+as it was in v4, so the SPA half is the whole of it.

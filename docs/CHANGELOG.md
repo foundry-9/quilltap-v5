@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — feat(providers): a provider may accept an API key without requiring one (v4 bug 81, substrate)
+
+_Versions: core 0.0.585, SPA 0.5.520._
+
+`ProviderConfigRequirements` gains an optional `acceptsApiKey`, ported from v4
+`9125f492`. `requiresApiKey` was answering two questions — "must this provider
+hold a key?" and "may it?" — which are the same question for a wholly hosted or
+wholly local provider and genuinely different for OpenAI-Compatible, whose one
+plugin serves an unauthenticated llama.cpp on localhost and a hosted endpoint
+behind a bearer token.
+
+`ConfigRequirements::accepts_api_key` is the single home for the fallback rule:
+omitted means "the same answer as `requiresApiKey`", so the eight manifests that
+do not declare it keep exactly their present behavior. The manifest generator
+extracts the field from the plugin config only when the plugin declares it,
+mirroring v4's own `manifest.json`; regenerating all nine manifests changes
+exactly one line, in `openai_compatible.json`.
+
+`provider_list()` emits `acceptsApiKey` into `configRequirements` immediately
+after `requiresApiKey` and only when the manifest carries it — v4's route passes
+`plugin.config` through whole, so the key is present exactly where the plugin
+declares it. The providers-listing oracle now spreads that whole config object
+instead of hand-picking six fields: the hand-picked comparand was blind to any
+config key v4 adds, which is exactly how `acceptsApiKey` would have passed green.
+
 #### 2026-08-19 — docs(porting): plan the `9125f492` drift round — orders P4.D93, P4.D94, P4.50
 
 _Docs-only change._

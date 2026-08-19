@@ -160,6 +160,22 @@ pub struct Capabilities {
 pub struct ConfigRequirements {
     #[serde(rename = "requiresApiKey")]
     pub requires_api_key: bool,
+    /// v4 `acceptsApiKey` (bug 81) — whether a key *may* be attached at all, as
+    /// against `requiresApiKey`'s "must it be?". **Optional by design:** omitted
+    /// means "the same answer as `requiresApiKey`", which is correct for every
+    /// provider that is wholly hosted or wholly local, so no manifest that
+    /// predates the field changes behavior. OpenAI-Compatible is the one that
+    /// spans both — an unauthenticated llama.cpp on localhost and a hosted
+    /// endpoint behind a bearer token — and declares `false`/`true`.
+    ///
+    /// Read it through [`ConfigRequirements::accepts_api_key`], never by hand:
+    /// the fallback rule has exactly one home.
+    #[serde(
+        default,
+        rename = "acceptsApiKey",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub accepts_api_key: Option<bool>,
     #[serde(rename = "requiresBaseUrl")]
     pub requires_base_url: bool,
     #[serde(default, rename = "apiKeyLabel")]
@@ -170,6 +186,20 @@ pub struct ConfigRequirements {
     pub base_url_placeholder: Option<String>,
     #[serde(default, rename = "baseUrlDefault")]
     pub base_url_default: Option<String>,
+}
+
+impl ConfigRequirements {
+    /// v4 `providerAcceptsApiKey` (`lib/llm/api-key-support.ts`) — whether a
+    /// provider *may* hold an API key at all.
+    ///
+    /// The fallback is [`Self::requires_api_key`] rather than a bare `true`: a
+    /// provider that requires a key necessarily accepts one, and an Ollama
+    /// endpoint has nowhere to put a bearer token and should not be offered the
+    /// field. Truth table (v4's): `{req:true}` → accepts; `{req:false}` →
+    /// refuses; `{req:false, acc:true}` → accepts (OpenAI-Compatible).
+    pub fn accepts_api_key(&self) -> bool {
+        self.accepts_api_key.unwrap_or(self.requires_api_key)
+    }
 }
 
 /// Message-format support (`MessageFormatSupport`).
@@ -658,5 +688,67 @@ mod tests {
             }
             other => panic!("expected Invalid for bad enum, got {other:?}"),
         }
+    }
+
+    /// v4 `providerAcceptsApiKey`'s truth table
+    /// (`__tests__/unit/lib/services/api-key-service.test.ts`'s premise, and the
+    /// pure predicate's own contract): `{req:true}` → T; `{req:false}` → F;
+    /// `{req:false, acc:true}` → T. The fallback is the OTHER flag, never a
+    /// bare `true` — an Ollama endpoint has nowhere to put a bearer token.
+    #[test]
+    fn accepts_api_key_falls_back_to_requires() {
+        fn reqs(requires: bool, accepts: Option<bool>) -> ConfigRequirements {
+            ConfigRequirements {
+                requires_api_key: requires,
+                accepts_api_key: accepts,
+                requires_base_url: false,
+                api_key_label: None,
+                base_url_label: None,
+                base_url_placeholder: None,
+                base_url_default: None,
+            }
+        }
+        assert!(reqs(true, None).accepts_api_key(), "hosted: must → may");
+        assert!(
+            !reqs(false, None).accepts_api_key(),
+            "local: must not → may not"
+        );
+        assert!(
+            reqs(false, Some(true)).accepts_api_key(),
+            "OAC: need not, but may"
+        );
+        // The declared value wins in the other direction too, though no shipped
+        // plugin declares it: a provider could refuse a key it is not required
+        // to hold.
+        assert!(!reqs(true, Some(false)).accepts_api_key());
+    }
+
+    /// The nine committed manifests, as the field actually ships: OpenAI-Compatible
+    /// is the ONE that declares `acceptsApiKey`, and it is the ONE whose two
+    /// answers differ. Shape, not a hand count — a generator that started
+    /// emitting the key everywhere (or dropped it) fails here.
+    #[test]
+    fn only_openai_compatible_declares_accepts_api_key() {
+        let registry = Registry::built_in();
+        let declaring: Vec<&str> = registry
+            .all_providers()
+            .iter()
+            .filter(|m| m.config_requirements.accepts_api_key.is_some())
+            .map(|m| m.id.as_str())
+            .collect();
+        assert_eq!(declaring, vec!["OPENAI_COMPATIBLE"]);
+
+        let split: Vec<&str> = registry
+            .all_providers()
+            .iter()
+            .filter(|m| {
+                m.config_requirements.accepts_api_key() != m.config_requirements.requires_api_key
+            })
+            .map(|m| m.id.as_str())
+            .collect();
+        assert_eq!(split, vec!["OPENAI_COMPATIBLE"]);
+        let oac = registry.get_provider("OPENAI_COMPATIBLE").unwrap();
+        assert!(!oac.config_requirements.requires_api_key);
+        assert!(oac.config_requirements.accepts_api_key());
     }
 }

@@ -118,6 +118,7 @@
   },
   "configRequirements": {
     "requiresApiKey": false,
+    "acceptsApiKey": true,
     "requiresBaseUrl": true,
     "apiKeyLabel": "API Key (optional)",
     "baseUrlLabel": "Base URL",

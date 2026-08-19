@@ -2165,6 +2165,13 @@ pub fn provider_list() -> Response {
             let req = &m.config_requirements;
             let mut config = Map::new();
             config.insert("requiresApiKey".into(), json!(req.requires_api_key));
+            // v4 bug 81: the route passes `plugin.config` through whole, so the
+            // key is present exactly where the plugin declares it — OAC only.
+            // v5 hand-builds this map, so mirror both the omission and the
+            // position (insertion order is wire-visible under `preserve_order`).
+            if let Some(accepts) = req.accepts_api_key {
+                config.insert("acceptsApiKey".into(), json!(accepts));
+            }
             config.insert("requiresBaseUrl".into(), json!(req.requires_base_url));
             if let Some(l) = &req.api_key_label {
                 config.insert("apiKeyLabel".into(), json!(l));

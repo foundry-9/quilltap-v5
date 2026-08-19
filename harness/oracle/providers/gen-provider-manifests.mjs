@@ -365,6 +365,12 @@ function buildManifest(provider) {
     optionsSchema: resolveOptionsSchema(plugin, provider.dir),
     configRequirements: {
       requiresApiKey: !!cfg.requiresApiKey,
+      // v4 bug 81: `acceptsApiKey` is OPTIONAL — omitted means "the same answer
+      // as `requiresApiKey`", and v4's own manifest.json omits it for every
+      // plugin but OpenAI-Compatible. Emitted only when the plugin config
+      // declares it, so the eight non-declaring manifests stay byte-identical
+      // and the Rust `Option<bool>` keeps the fallback in one place.
+      ...(cfg.acceptsApiKey !== undefined ? { acceptsApiKey: !!cfg.acceptsApiKey } : {}),
       requiresBaseUrl: !!cfg.requiresBaseUrl,
       apiKeyLabel: cfg.apiKeyLabel ?? null,
       baseUrlLabel: cfg.baseUrlLabel ?? null,
