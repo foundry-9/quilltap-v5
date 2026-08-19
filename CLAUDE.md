@@ -1407,10 +1407,43 @@ records THERE. Update this summary only when a phase or round completes.
   anything is called a defect: the connection-profile list not refreshing
   on tab activation, and a twice-failed `STORY_BACKGROUND_GENERATION`
   against the Grok Images API.
-- **Oracle baseline: `c6ff8051` (2026-08-18, v4 main — "fix(prospero,
-  workspace): a project's story background follows its display mode again
-  (bug 80)"), adopted at the c6ff8051-round unification; the drift debt is
-  CLEARED at the pin.** ⚠ The v4 checkout was on the `release` branch during
+- **The `9125f492` drift catch-up round (P4.D93 ∥ P4.D94): UNIFIED on main
+  (2026-08-19) — BOTH CLOSED; the oracle baseline MOVES to `9125f492` and
+  the drift debt is CLEARED.** v4's three commits past `c6ff8051` absorbed
+  — v4 fixing bugs 81/82, the two this port filed from its own 2026-08-19
+  dogfood walk, plus the Lantern uncensored-target change. P4.D93: a
+  provider may ACCEPT a key without requiring one (`acceptsApiKey` through
+  the manifest substrate + generator, one predicate home, the
+  `resolve_connection_profile_api_key` gate+lookup composite at both
+  Brahma sites — dangling id refuses loudly even where optional — and the
+  SPA's unstarred optional OAC key field; the help-chat fourth site banked
+  to `p4.9i2`); the spine measurement answered **v5 NEVER had bug 81's
+  spine half** (the host key scan is capability-blind — pinned); the
+  leading-system fold lands in the Ollama + OAC builders only (corpus 257
+  → 263, all old rows byte-identical, DeepSeek's three surviving blocks
+  the recorded regression guard; tier-2 closed the duplicate-predicate
+  consolidation on the way). P4.D94: the story-background crafter selects
+  candid vs concealment per call (seven generated constants; the concealed
+  path proven BYTE-IDENTICAL at 5114 UTF-16 units), the flag carries
+  through the empty-response retry unchanged, and the moderation reroute
+  re-crafts candidly via a new `RerouteRecraft` seam on the shared
+  machinery (avatar passes the no-op; its family the guard) — five new
+  dangerous-chat fixture cases, seven red mutation proofs. **The §3 review
+  read the whole combined diff: NO blocking findings** (the unifier's own
+  conflict-marker slip was caught by the per-commit audit and amended).
+  Gate: 439 test binaries / 2,231 / 0 over fresh `9125f492` oracles; the
+  eight moved families by name zero SKIP; clippy both feature sets;
+  release build; ng 331 files / 4,915; full Playwright **229/229 zero
+  skips**. Versions: core 0.0.589, harness 0.0.508, host 0.0.73, SPA
+  0.5.522. **Next: P4.50 (the finding-#96 `DbError::Key` split,
+  `work-orders/p4.50-db-error-kind-split.md`) was ordered STACKED behind
+  this round and is now runnable**; 💸 the dogfood queue gains the
+  bearer-token OAC endpoint, the Qwen second-turn acceptance, and the
+  candid story-background prompt. Round record: `status-log.md`.
+- **Oracle baseline: `9125f492` (2026-08-19, v4 main — "fix(providers,
+  plugins): an OAC profile can hold an API key, and local models survive
+  past the first turn (bugs 81, 82)"), adopted at the 9125f492-round
+  unification; the drift debt is CLEARED at the pin.** ⚠ The v4 checkout was on the `release` branch during
   that round; **as of 2026-08-19 it is back on `main` and clean** (verified
   while filing bugs 81/82), so the standing pin requirement is lifted —
   but VERIFY the branch before any regen, and pin a detached worktree if it

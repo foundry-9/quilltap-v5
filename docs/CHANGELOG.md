@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — port(unify): the 9125f492 drift round lands — bugs 81/82 + the Lantern uncensored target (P4.D93 ∥ P4.D94)
+
+_Versions: core 0.0.589, harness 0.0.508, host 0.0.73, SPA 0.5.522._
+
+Both drift lanes unified onto main; the oracle baseline moves to `9125f492`
+and the drift debt is cleared. P4.D93 absorbs v4's fix for the two bugs this
+port filed from its own 2026-08-19 dogfood walk: a provider may now accept an
+API key without requiring one (`acceptsApiKey` on the manifest substrate, the
+predicate pair with one fallback home, the `resolve_connection_profile_api_key`
+gate+lookup composite at both Brahma sites with a dangling id refusing loudly
+even where the key is optional, and the settings SPA offering the
+OpenAI-Compatible key unstarred and optional), and local endpoints fold their
+leading system-message run at request-build time (Ollama + OAC builders only;
+DeepSeek's three blocks survive on the wire as the recorded regression guard;
+request-envelopes corpus 257 → 263 rows, all pre-existing rows byte-identical).
+The spine measurement answered that v5 never had bug 81's server-spine half —
+the host key scan is capability-blind — and that reading is pinned. P4.D94
+absorbs the Lantern change: the story-background crafter selects candid vs
+concealment intimacy guidance per call (the prompt split into seven generated
+constants with the concealed path proven byte-identical at 5114 UTF-16 units),
+the flag threads through the empty-response retry unchanged, and a post-hoc
+moderation reroute re-crafts the prompt candidly for its target through a new
+seam on the shared reroute machinery (the avatar handler passes the no-op; its
+family regenerated green as the guard), with five new dangerous-chat fixture
+cases and seven red mutation proofs across the lane.
+
+Gate: fmt/clippy clean both feature sets; release build; 439 test binaries /
+2,231 / 0 with the round's env block over oracles regenerated fresh at the
+pin; the eight moved families re-run by name, zero SKIP; SPA 331 files /
+4,915 / 0; full Playwright 229/229 zero skips. The §3 unification review read
+the whole combined diff and found no blocking issues; the round record in
+`status-log.md` carries the details, including the unifier's own
+caught-and-amended conflict-marker incident.
+
 #### 2026-08-19 — docs(porting): the P4.D93 lane gate record
 
 _No crate versions bumped._

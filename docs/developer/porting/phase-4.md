@@ -5148,6 +5148,22 @@ fixed by v4):
    `encodeDebugInfo`, the `40d507cc` taxonomy + `4423ad10` hair edits for
    wizard/optimizer/ai-import/image-analysis).
 
+**The `9125f492` drift round (P4.D93 ∥ P4.D94) — UNIFIED on main
+2026-08-19; BOTH LANES CLOSED; the oracle baseline MOVES to `9125f492`
+and the drift debt is CLEARED.** Gate: 439 test binaries / 2,231 / 0 with
+fresh oracles at the pin; the eight moved families by name zero SKIP;
+clippy both feature sets; release build; ng 331 files / 4,915; full
+Playwright 229/229 zero skips. The §3 review read the whole combined diff
+and found no blocking issues. **P4.50 (the `DbError::Key` split,
+`work-orders/p4.50-db-error-kind-split.md`) was ordered STACKED behind
+this unification by design and is now runnable — the top next candidate
+alongside the owed dogfood items** (the round adds: a real bearer-token
+OAC endpoint, a Qwen-template model surviving turn 2, a candid
+story-background prompt on a dangerous chat). Maintenance riders: the two
+`W=` self-clobbering recipe headers (`carina_memory_extraction` /
+`carina_query`), the sweep driver's exit-0-on-unknown-family wart. The
+original plan paragraph follows for the record.
+
 **The `9125f492` drift round (P4.D93 ∥ P4.D94, then P4.50 stacked) —
 PLANNED 2026-08-19.** Candidate 1 above (the owed dogfood pass) RAN on
 2026-08-19 and is discharged (two v5 findings, v4 bugs 81/82 filed — and
@@ -5202,12 +5218,10 @@ anyone outside this repo installs**:
   deferred and unordered.
 
 **Standing regen note (supersedes the one above):** the oracle baseline is
-**`c6ff8051`** (2026-08-18, v4 main — "fix(prospero, workspace): a
-project's story background follows its display mode again (bug 80)"),
-adopted at the `c6ff8051`-round unification (2026-08-19); the drift debt
-is CLEARED at the pin. (This note was stale at `979652a9` for a day — the
-`c6ff8051` unify updated the candidate list above but missed this
-paragraph; corrected 2026-08-19 while planning the `9125f492` round.) Pin
+**`9125f492`** (2026-08-19, v4 main — "fix(providers,plugins): an OAC
+profile can hold an API key, and local models survive past the first turn
+(bugs 81, 82)"), adopted at the `9125f492`-round unification (2026-08-19);
+the drift debt is CLEARED at the pin. Pin
 a detached worktree at the round's pin for every regen if v4's checkout
 moves (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes) —
 the checkout is back on `main` and clean as of 2026-08-19, but VERIFY

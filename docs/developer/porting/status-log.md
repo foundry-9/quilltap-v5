@@ -75474,3 +75474,99 @@ confirmed to have RUN inside it. SPA gate **N/A** — this lane touches no
   prompt SELECTION, not transport, and no code on the failure path moved.
 
 **Versions:** core 0.0.585 → **0.0.586**, harness 0.0.506 → **0.0.507**.
+
+## Round record — the `9125f492` drift catch-up (P4.D93 ∥ P4.D94), UNIFIED 2026-08-19
+
+**Both lanes CLOSED; the oracle baseline MOVES to `9125f492` and the drift
+debt is CLEARED.** v4's three commits past `c6ff8051` absorbed: `decd8ef9`
+(the Lantern story-background candid/concealment selection — P4.D94),
+`93bd3e7c` (the bug-81/82 filings, docs, NO-PORT), and `9125f492` (the
+bugs-81/82 fix — v4 fixing the two bugs this port filed from its own
+2026-08-19 dogfood walk — P4.D93). The bugfix branch is unchanged since
+2026-08-13; the v4 checkout stayed clean on `main` at the pin for every
+regen (verified before and after — no pinned worktree needed this round).
+
+**Reconciliation.** Eight commits cherry-picked (D93's six, then D94's
+two) onto `unify/9125f492-round` with union-merge attributes on the two
+doc files. Version files recounted as base + total bumps: core 0.0.584 +
+5 → **0.0.589**, harness 0.0.505 + 3 → **0.0.508** (the identical-bump
+silent merge ate one — recounted per the playbook), host → **0.0.73**,
+SPA → **0.5.522** (the lane left `package-lock.json` at 0.5.519; synced
+version-only at the wire). **The unifier's own incident, recorded
+honestly: the second D94 pick's version conflict was staged and committed
+WITH its conflict markers** — the exact playbook failure — caught by the
+immediately-following marker audit while it was still the top commit, and
+repaired by amend before anything stacked on it; the per-commit audit
+over all eight picks then read zero markers everywhere. No source-level
+conflict appeared (Ownership held); no shared contract existed between
+the lanes.
+
+**The §3 unification review — the whole combined diff read, NO blocking
+findings.** Judged against both orders unit by unit and against v4's real
+code at the pin: the substrate/accessor/generator line, the resolver's
+six-row truth table + gate order, both Brahma sites' byte-per-site
+sentences (the casing asymmetry preserved), the spine measurement's (a)
+answer with its capability-blind pin, the fold's exact semantics (leading
+run only, `< 2` un-reallocated, empty blocks dropped pre-join, first
+block's keys kept — all mirrored from v4's test), the six corpus rows'
+shapes verified by direct NDJSON inspection (folded 1-system for
+ollama/OAC, three survive for DeepSeek), the SPA template checked against
+v4's actual `showBoth`/label/placeholder JSX (the grid-class flip IS
+v4's), the save/connect gates confirmed requires-only in BOTH trees, the
+seven-constant prompt split diffed against v4's source text (em-dashes,
+straight quotes, paragraphing), the reroute seam's position matched to
+v4's catch-block ordering, and the recorded divergences (the two
+best-effort arms collapsing to one `None`; the re-craft logs carrying no
+`jobId`) confirmed as recorded rather than silent. Two small
+non-blocking notes for the record: `recipe_sweep.py --run` exits 0 on an
+unknown family (it cost this unification one wasted invocation — a
+driver wart for the next maintenance pass), and the D93 e2e commit
+carries a handful of prettier-only reflows in untouched beats (verified
+cosmetic).
+
+**Wires.** No cross-lane contract to diff (disjoint layers). The
+unification-only obligations run: the SPA lockfile sync; both lanes'
+families re-run over ONE unified tree with fresh oracles (D94's story
+family now runs over a core that carries D93's resolver, and D93's
+families over D94's `Sync`-bounded handler — the union compiles and both
+prove out).
+
+**Gate.** `cargo fmt --all --check` clean; clippy `-D warnings` clean in
+BOTH feature configurations; release build clean. Oracles for all seven
+env-var families regenerated FRESH from the v4 checkout at `9125f492`
+through the sweep driver (each `OK: … recipe ran end-to-end`).
+`cargo test --workspace` with the round's 13-variable env block: **439
+test binaries / 2,231 passed / 0 failed** (exit 0). The eight families
+re-run BY NAME with `--nocapture`, zero SKIP, positive markers read:
+providers-listing (8 optionsSchemas byte-for-byte + 1 null),
+provider-registry (253 rows), request-envelopes (**263** incl. the six
+new rows, headers pinned for 8 providers), request-prefix-hashes (17
+rows), both brahma tier-3s, story-background + avatar ("matched the
+oracle across all cases"). SPA: `npm test` **331 files / 4,915 / 0**;
+`npm run build` clean; full Playwright **229 passed / 0 failed / 0
+skipped (5.3 m)** against the fresh release binaries — the bug-81 walk
+lives inside the settings-wizard beat, so the count holds at 229.
+
+**Versions:** core 0.0.584 → **0.0.589**, harness 0.0.505 → **0.0.508**,
+host 0.0.72 → **0.0.73**, SPA 0.5.519 → **0.5.522**; web/cli/tauri/sys
+unchanged.
+
+**Standing after the round:**
+
+- **P4.50 (the `DbError::Key` split) is now runnable** — it was ordered
+  stacked behind this unification by design and is the top next
+  candidate alongside the dogfood queue.
+- 💸 the dogfood queue gains: a real bearer-token OpenAI-Compatible
+  endpoint end-to-end (bug 81's 401), a real Qwen-template local model
+  surviving a second turn (finding #95's acceptance — the request half
+  is corpus-proven, but no local model has answered a folded three-block
+  turn on either side), and a dangerous-marked chat producing a candid
+  story-background prompt (+ the moderation-reroute re-craft if
+  reachable).
+- Maintenance riders recorded: the two `W=` self-clobbering recipe
+  headers outside D93's ownership (`carina_memory_extraction` /
+  `carina_query` tier-3s), and the sweep driver's exit-0-on-unknown-
+  family wart.
+- Banked: the help-chat resolver call site (v4's fourth) in
+  `m6-screen-parity.md` row 11 for `p4.9i2`; the two help docs ride the
+  same bank.
