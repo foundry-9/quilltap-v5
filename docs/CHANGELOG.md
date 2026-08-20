@@ -153,6 +153,27 @@ it was added when this pane had no toolbar — and is recorded as a divergence.
 `document-pane.toolbar.spec.ts` (12 cases) pins the mount shape, the no-Nar
 shape against the recorded corpus, the shared signal from both controls, the
 flush direction, and both routing branches. Six mutations red.
+#### 2026-08-20 — fix(harness): the sweep driver refuses an unknown family name loudly, before any stage runs (P4.51 unit 2)
+
+_No crate versions bumped._
+
+`recipe_sweep.py` used to leave an unrecognized family name with a bare
+`unknown family: x` on stderr and exit 1 — the same code an ordinary recipe
+failure carries, so a typo in a gate script could not be told apart from a real
+red. Inside `--run-all` it was worse: the death came AFTER the family banner had
+printed, so the results artifact carried no record for the name it died on, and
+an unknown `--exclude` name was silently ignored, running the family you meant
+to skip.
+
+An unknown family is now an operator error in the driver's own refusal class:
+every family name — `--show`, `--run`, and both of `--run-all`'s
+`--families`/`--exclude` lists — is validated BEFORE any stage executes, and an
+unrecognized one exits 2 naming the family, the closest known spellings
+(`difflib`), and the checkout that was scanned (a wrong `--v5w` being the other
+way to get here). `--self-test` grew four end-to-end arms that drive the driver
+as a subprocess plus two unit arms; both a swallowed exit code and a removed
+validation redden them.
+
 #### 2026-08-20 — fix(harness): the two carina recipe headers stop clobbering the sweep driver's worktree injection (P4.51 unit 1)
 
 _Versions: harness 0.0.510._

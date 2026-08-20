@@ -76262,3 +76262,79 @@ neutralize the alias assignment itself (a one-line rewrite of any
 `^(V5W|V5|W)=` line the driver has already injected would make the whole class
 unforgeable). Named, not built.
 
+## P4.51 unit 2 — the sweep driver's unknown-family wart, measured and closed (2026-08-20)
+
+**The order's Tier-1 item 2.** First, the measurement, because the recorded
+symptom did not reproduce as written. The `9125f492` unification recorded
+"`recipe_sweep.py --run` exits 0 on an unknown family". Measured today at
+`7acc03bb`, an unknown NAME exits **1**, printing `unknown family: <name>` on
+stderr from a bare `sys.exit(...)` inside `find_family` — nonzero, but:
+
+- exit 1 is the code an ordinary `regen_failed`/`run_failed` carries, so a
+  gate script cannot tell a typo from a real red;
+- nothing suggests a correction, and a wrong `--v5w` produces the identical
+  line (the other, likelier way to arrive here);
+- inside `--run-all` the `sys.exit` fires INSIDE the loop, after the
+  `######## [i/n] <family> ########` banner has printed and after `flush()`
+  has written the artifact — so the durable artifact P4.34 built carries no
+  record for the name that killed the batch;
+- `--exclude` was never validated at all: an unknown name there is silently
+  dropped and the family you meant to skip runs anyway. That one really does
+  "exit 0 on a name the driver does not know".
+
+**And the exit-0 the unification most likely met is a SECOND, adjacent class,
+recorded here and NOT fixed** (the order's Tier-3 rule): `--run <family>` on a
+family whose recipe extracts to EMPTY stages — every `no_oracle` family and
+every `exempt` compile-time pin — skips both stages and prints
+`OK: <family> recipe ran end-to-end`, exit 0, having run nothing. Measured
+directly: `--run p4_6ao_wire_contract` → `totals: {'ok': 1}`. That is a
+vacuous green with a cheerful sentence attached, and it is the strongest
+candidate for the next maintenance pass (the honest answer is a distinct
+`nothing_to_run` status, refused like the others).
+
+**The fix.** `find_family` now raises a typed `UnknownFamily` instead of
+`sys.exit`, and every subcommand that takes family names validates through one
+`check_families(v5w, names)` **before any stage executes** — `--show`, `--run`,
+and both of `--run-all`'s `--families` / `--exclude` lists. `main()` catches it
+once and returns `EXIT_UNKNOWN_FAMILY = 2`, the code the driver already uses for
+`refused_repo_write` / `refused_non_extractable`. The message names the family,
+the closest known spellings (`difflib.get_close_matches`, n=3), the count of
+known families, the checkout scanned, and how to list them:
+
+```
+ERROR: unknown family: carina_query_tier3_equivalanc
+  the driver knows 412 families — one per test file under crates/*/tests in <path>
+  did you mean: carina_query_tier3_equivalence, carina_runner_tier3_equivalence, announcer_tier3_equivalence
+  (`--list` prints every family; `--v5w PATH` picks the checkout scanned)
+```
+
+**The self-test arms (the order's "per the driver's existing self-test
+convention").** Two unit arms (the raise names the family and says how to list;
+a one-character typo of a real family suggests it back) and **four end-to-end
+arms that drive the driver as a subprocess** — `--run`, `--show`, `--run-all
+--families`, and `--run-all --families <exempt> --exclude <bogus>` — each
+asserting exit 2, the named error on stderr, and that NO work began (no banner,
+no `==== stage ====` line) before the refusal. The end-to-end shape is
+load-bearing: the wart was about what `main()` does with the failure, which no
+pure-function assertion can see. The `--exclude` arm passes an EXEMPT family as
+`--families` so that a regression in the validation cannot start real work from
+the self-test, and every arm carries a 120 s timeout whose expiry is itself a
+failure ("it started working").
+
+**Mutation-proven, both directions.** With `main()`'s handler returning 0
+instead of `EXIT_UNKNOWN_FAMILY`, all four end-to-end arms go red on the exit
+code. With `check_families` short-circuited to a no-op, the two `--run-all` arms
+go red on "began executing before validating" — and the `--exclude` arm's output
+shows the exact damage (`######## [1/1] p4_6ao_wire_contract ########` …
+`totals: {'ok': 1}`: the sweep ran, the refusal never happened).
+
+**No protection weakened** (the order's explicit constraint). The repo-write
+refusal, the non-extractable refusal, the venue refusal, the SKIP detector, the
+committed-corpus recording skip, and the tracked-fixture tripwire all keep their
+statuses and exit codes; the only new code path is reached before any of them.
+`--self-test`: 0 failures.
+
+Docs synced with the change: the driver's module docstring gained an
+UNKNOWN FAMILY NAMES paragraph next to the venue/attribution rules, and
+`harness/tools/README.md` an "Unknown family names (P4.51)" section with the
+message shape (the README is the driver's own doc, owned by no other lane).

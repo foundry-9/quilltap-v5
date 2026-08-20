@@ -62,7 +62,30 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   (the two real F3 prose-leak lines, the five real P4.45 leak lines in BOTH
   margins, the F5 `_SKIP` false positive, the F6 pin paths, the venue and
   external-/tmp classes, the policy-2 suffix). Run it after ANY change to the
-  extraction machinery.
+  extraction machinery. Its P4.51 arms drive the driver as a SUBPROCESS —
+  what the wart was about is what `main()` does with a failure, which a
+  pure-function assertion cannot see.
+
+## Unknown family names (P4.51)
+
+A family name the driver does not know is an **operator error**, not a run.
+Every name — `--show`, `--run`, and both of `--run-all`'s `--families` /
+`--exclude` lists — is validated BEFORE any stage executes, and an
+unrecognized one exits **2** (the driver's refusal code) naming the family,
+the closest known spellings, and the checkout that was scanned:
+
+```
+ERROR: unknown family: carina_query_tier3_equivalanc
+  the driver knows 412 families — one per test file under crates/*/tests in …
+  did you mean: carina_query_tier3_equivalence, carina_runner_tier3_equivalence, …
+  (`--list` prints every family; `--v5w PATH` picks the checkout scanned)
+```
+
+Before P4.51 a typo left with a bare `unknown family: x` on exit 1 —
+indistinguishable from a recipe failure — and inside `--run-all` it died
+only AFTER the batch banner had printed, so the results artifact carried no
+record of the name it died on. `--exclude` was worse: an unknown name there
+was silently ignored, and the family you meant to skip ran anyway.
 
 ## The venue rule (P4.34's F1)
 

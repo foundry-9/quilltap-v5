@@ -91,11 +91,21 @@ staged-mirror convention, and (b) refuses to `--run` an unstaged family from a
 into its own `/tmp` mirror and runs correctly from any venue.
 
 Exempt by design (compile-time pins, no oracle): see EXEMPT_FAMILIES.
+
+UNKNOWN FAMILY NAMES (P4.51) are an operator error, not a run. Every family name
+— `--show`, `--run`, and both of `--run-all`'s `--families` / `--exclude` lists —
+is validated BEFORE any stage executes, and an unrecognized one exits
+`EXIT_UNKNOWN_FAMILY` with the name, the closest known spellings, and the
+checkout that was scanned. A typo used to leave with a bare `unknown family: x`
+on exit 1 — indistinguishable from a recipe failure, and inside `--run-all` only
+AFTER the batch banner had printed, so the results artifact carried no record of
+the name it died on.
 """
 
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -126,6 +136,10 @@ NODE_BIN_DEFAULT = "~/.nvm/versions/node/v24.13.1/bin"
 # the pin belongs on the driver's command line instead: `--v4 <pin>`.
 V4_CHECKOUT_DEFAULT = "~/source/quilltap-server"
 V4_CHECKOUT = V4_CHECKOUT_DEFAULT
+
+# The driver's refusal exit code (`refused_repo_write` / `refused_non_extractable`
+# already use 2). P4.51 puts an unknown family name here too.
+EXIT_UNKNOWN_FAMILY = 2
 
 # Families whose recipe writes into the repo BY DESIGN, with the safeguard that
 # makes it sound. These are not policy-1 violations; `--run` still refuses them
@@ -1162,11 +1176,61 @@ def classify_one(v5w: Path, family: str) -> str:
     return "runnable"
 
 
+class UnknownFamily(Exception):
+    """A family name no test file under `crates/*/tests` carries.
+
+    P4.51: this used to be a bare `sys.exit("unknown family: …")` — one
+    unadorned line on stderr, no suggestion, an exit code (1) shared with
+    "the recipe failed", and — inside `--run-all` — a death mid-batch AFTER
+    the family banner had printed, leaving the results artifact with no
+    record for the name it died on. A typo'd family name in a gate script
+    therefore read as "the driver ran and found nothing to say" (recorded as
+    a driver wart at the `9125f492` unification, where it cost one wasted
+    invocation). An unknown family is an OPERATOR error, so it now joins the
+    driver's refusal class (`EXIT_UNKNOWN_FAMILY`), is raised BEFORE any
+    stage executes, and names both the family and the closest known spellings.
+    """
+
+
+def known_families(v5w: Path) -> list[str]:
+    return [fam for fam, _ in family_files(v5w)]
+
+
+def unknown_family_error(v5w: Path, family: str) -> UnknownFamily:
+    known = known_families(v5w)
+    near = difflib.get_close_matches(family, known, n=3, cutoff=0.4)
+    lines = [
+        f"unknown family: {family}",
+        f"  the driver knows {len(known)} families — one per test file under "
+        f"crates/*/tests in {v5w}",
+    ]
+    if near:
+        lines.append(f"  did you mean: {', '.join(near)}")
+    lines.append(
+        "  (`--list` prints every family; `--v5w PATH` picks the checkout scanned)"
+    )
+    return UnknownFamily("\n".join(lines))
+
+
+def check_families(v5w: Path, names: list[str]) -> None:
+    """Validate family names BEFORE any stage runs.
+
+    Every subcommand that takes family names goes through here — `--run`,
+    `--show`, and both of `--run-all`'s lists. `--exclude` matters as much as
+    the others: a typo there is silently ignored, and the family you meant to
+    skip runs anyway.
+    """
+    known = set(known_families(v5w))
+    for name in names:
+        if name not in known:
+            raise unknown_family_error(v5w, name)
+
+
 def find_family(v5w: Path, family: str) -> Path:
     for fam, path in family_files(v5w):
         if fam == family:
             return path
-    sys.exit(f"unknown family: {family}")
+    raise unknown_family_error(v5w, family)
 
 
 SELF_TEST_PROSE = [
@@ -1497,6 +1561,67 @@ def cmd_self_test() -> int:
         f"a jest line's own NDJSON output warned as an input: {r9.warnings}",
     )
 
+    # P4.51: an unknown family name is an operator error in the driver's own
+    # refusal class — named, suggestive, and raised BEFORE any stage runs. The
+    # end-to-end arms matter more than the unit one: the wart being fixed was
+    # about what `main()` does with the failure, not about detecting it.
+    v5w = Path(__file__).resolve().parents[2]
+    known = known_families(v5w)
+    check(bool(known), f"no families found under {v5w} — the self-test cannot judge")
+    try:
+        find_family(v5w, "no_such_family_at_all")
+        check(False, "find_family accepted a family that does not exist")
+    except UnknownFamily as exc:
+        check(
+            "unknown family: no_such_family_at_all" in str(exc),
+            f"the error must name the family: {exc}",
+        )
+        check("--list" in str(exc), f"the error must say how to see the list: {exc}")
+    if known:
+        typo = known[0][:-1]
+        check(
+            known[0] in str(unknown_family_error(v5w, typo)),
+            f"a one-character typo must suggest {known[0]}",
+        )
+    driver = str(Path(__file__).resolve())
+    exempt_here = sorted(f for f in known if f in EXEMPT_FAMILIES)
+    argv_arms = [
+        ["--run", "no_such_family_at_all"],
+        ["--show", "no_such_family_at_all"],
+        ["--run-all", "--families", "no_such_family_at_all"],
+    ]
+    if exempt_here:
+        # `--exclude` takes family names too, and a typo there is the quiet one:
+        # the family you meant to skip runs anyway. The `--families` value is an
+        # EXEMPT family (no oracle, no stages) so that a regression in the
+        # validation cannot start real work from the self-test.
+        argv_arms.append(
+            ["--run-all", "--families", exempt_here[0], "--exclude", "no_such_family_at_all"]
+        )
+    for argv in argv_arms:
+        try:
+            proc = subprocess.run(
+                [sys.executable, driver, "--v5w", str(v5w), *argv],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            check(False, f"{' '.join(argv)} did not validate up front (it started working)")
+            continue
+        check(
+            proc.returncode == EXIT_UNKNOWN_FAMILY,
+            f"{' '.join(argv)} exited {proc.returncode}, want {EXIT_UNKNOWN_FAMILY}",
+        )
+        check(
+            "unknown family: no_such_family_at_all" in proc.stderr,
+            f"{' '.join(argv)} printed no named error: {proc.stderr!r}",
+        )
+        check(
+            "########" not in proc.stdout and "====" not in proc.stdout,
+            f"{' '.join(argv)} began executing before validating: {proc.stdout!r}",
+        )
+
     for f in failures:
         print(f"SELF-TEST FAIL: {f}", file=sys.stderr)
     print(f"self-test: {len(failures)} failure(s)")
@@ -1545,19 +1670,30 @@ def main() -> int:
         return cmd_list(args.v5w, args.json)
     if args.collisions:
         return cmd_collisions(args.v5w)
-    if args.show:
-        return cmd_show(args.v5w, args.show)
-    if args.run:
-        return cmd_run(args.v5w, args.run, args.force)
-    if args.run_all:
-        return cmd_run_all(
-            args.v5w,
-            [f for f in (args.families or "").split(",") if f] or None,
-            {f for f in args.exclude.split(",") if f},
-            args.results,
-            args.force,
-            args.label,
-        )
+    # Every family name is validated BEFORE any stage runs (P4.51): a typo must
+    # never look like a run, and `--run-all` must never die mid-batch on one.
+    try:
+        if args.show:
+            check_families(args.v5w, [args.show])
+            return cmd_show(args.v5w, args.show)
+        if args.run:
+            check_families(args.v5w, [args.run])
+            return cmd_run(args.v5w, args.run, args.force)
+        if args.run_all:
+            families = [f for f in (args.families or "").split(",") if f] or None
+            exclude = {f for f in args.exclude.split(",") if f}
+            check_families(args.v5w, (families or []) + sorted(exclude))
+            return cmd_run_all(
+                args.v5w,
+                families,
+                exclude,
+                args.results,
+                args.force,
+                args.label,
+            )
+    except UnknownFamily as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return EXIT_UNKNOWN_FAMILY
     ap.error("pick one of --list / --show / --run / --run-all / --collisions / --self-test")
 
 
