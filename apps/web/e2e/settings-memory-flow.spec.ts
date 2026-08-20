@@ -109,6 +109,38 @@ test.describe('P4.9H2B — the Commonplace Book management cards', () => {
     await expect(page.locator('.qt-card', { hasText: RENAMED })).toHaveCount(0, { timeout: 10_000 });
   });
 
+  // P4.D95 (v4 `870a57fa`): the third Recall Relevance toggle. Walked LIVE
+  // against the `memoryRecallConfigSet` merge-patch — toggled on, read back
+  // across a full reload (so the value came from the instance settings row, not
+  // the card's local echo), then toggled off so the shared instance is left as
+  // found.
+  test('recall relevance: the per-turn conversation-summary toggle round-trips', async ({
+    page,
+  }) => {
+    const card = await openMemoryCard(page, 'memory-recall');
+    const toggle = card.getByRole('checkbox').nth(1);
+    await expect(card.getByText('Consult past conversations every turn')).toBeVisible();
+    await expect(toggle).not.toBeChecked();
+
+    const saved = nextDispatch(page);
+    await toggle.check();
+    await saved;
+    await expect(page.getByText('Recall settings saved')).toBeVisible({ timeout: 10_000 });
+
+    // Reload: the checked state must come back from the server.
+    const reloaded = await openMemoryCard(page, 'memory-recall');
+    const reloadedToggle = reloaded.getByRole('checkbox').nth(1);
+    await expect(reloadedToggle).toBeChecked({ timeout: 15_000 });
+    // The sibling toggle is untouched — the patch is per-field.
+    await expect(reloaded.getByRole('checkbox').first()).not.toBeChecked();
+
+    // Put it back.
+    const cleared = nextDispatch(page);
+    await reloadedToggle.uncheck();
+    await cleared;
+    await expect(reloadedToggle).not.toBeChecked({ timeout: 10_000 });
+  });
+
   test('memory deduplication: preview renders and Run is disabled at zero removable', async ({
     page,
   }) => {

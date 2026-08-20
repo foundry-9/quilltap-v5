@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-20 — feat(settings): the per-turn conversation-summary toggle on the Recall Relevance card (P4.D95)
+
+_Versions: SPA 0.5.523._
+
+The client half of the per-turn conversation-summary cadence. `RecallConfig`
+grows `perTurnConversationSummaries`, and Settings → Memory → Recall Relevance
+grows v4's third checkbox ("Consult past conversations every turn") with its
+body copy carried byte-for-byte. Only the toggled field travels on save — the
+server merges over what it stores. Two specs cover it, and a live e2e beat
+toggles it on, reloads the page to prove the value came back from the instance
+settings row rather than the card's local echo, checks the sibling toggle is
+untouched, and toggles it back off.
+
+The new help-doc section v4 wrote alongside this
+(`help/memory-recall-relevance.md`) is banked to `p4.9i2` with the rest of the
+help family; the bank note is on `m6-screen-parity.md` row 11.
 #### 2026-08-20 — feat(memory): per-turn conversation summaries riding the turn's one embedding (P4.D95)
 
 _Versions: core 0.0.591, harness 0.0.510._

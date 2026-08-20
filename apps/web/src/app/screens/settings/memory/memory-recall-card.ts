@@ -11,6 +11,7 @@ type ScopePolicy = 'down-weight' | 'exclude';
 const DEFAULT_CONFIG: RecallConfig = {
   scopePolicy: 'down-weight',
   expandRelated: false,
+  perTurnConversationSummaries: false,
 };
 
 const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
@@ -34,8 +35,9 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
 
 /**
  * The Recall Relevance card (v4 `components/tools/memory-recall-card.tsx`): the
- * cross-project scope policy (`down-weight` | `exclude`) and the expand-related
- * toggle, each saved on change via `memoryRecallConfigSet` (merge-patch).
+ * cross-project scope policy (`down-weight` | `exclude`), the expand-related
+ * toggle, and the per-turn conversation-summary toggle (v4 `870a57fa`), each
+ * saved on change via `memoryRecallConfigSet` (merge-patch).
  */
 @Component({
   selector: 'qt-memory-recall-card',
@@ -91,6 +93,30 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
           </div>
         </label>
 
+        <label
+          class="flex items-start gap-3 p-4 border qt-border-default rounded qt-hover-accent cursor-pointer"
+        >
+          <input
+            type="checkbox"
+            class="mt-1 h-4 w-4 rounded"
+            [checked]="perTurnConversationSummaries()"
+            [disabled]="saving()"
+            (change)="onPerTurnConversationsChange($any($event.target).checked)"
+          />
+          <div class="flex-1">
+            <div class="font-medium text-foreground">Consult past conversations every turn</div>
+            <div class="qt-text-small mt-1">
+              Ordinarily the Book re-reads its shelf of past conversations only at the opening of a
+              chat, whenever it takes down a fresh summary, and when somebody speaks of days gone by.
+              Switch this on and it consults that shelf on <em>every</em> turn, so the list of
+              pertinent past dialogues never lags behind the talk at hand. It rides along on the
+              reckoning already made for the memory search, so it asks nothing further of your
+              embedding provider — merely a little more reading, and a few more lines in each
+              whisper. Off unless you ask for it, and it applies to every conversation alike.
+            </div>
+          </div>
+        </label>
+
         @if (error(); as msg) {
           <p class="qt-text-small qt-text-error">{{ msg }}</p>
         }
@@ -123,6 +149,9 @@ export class MemoryRecallCard {
 
   protected readonly scopePolicy = computed(() => this.config().scopePolicy);
   protected readonly expandRelated = computed(() => this.config().expandRelated);
+  protected readonly perTurnConversationSummaries = computed(
+    () => this.config().perTurnConversationSummaries,
+  );
   protected readonly activePolicy = computed(() =>
     SCOPE_POLICY_OPTIONS.find((o) => o.value === this.scopePolicy()),
   );
@@ -135,6 +164,11 @@ export class MemoryRecallCard {
   protected onExpandRelatedChange(value: boolean): void {
     this.local.set({ ...this.config(), expandRelated: value });
     void this.save({ expandRelated: value });
+  }
+
+  protected onPerTurnConversationsChange(value: boolean): void {
+    this.local.set({ ...this.config(), perTurnConversationSummaries: value });
+    void this.save({ perTurnConversationSummaries: value });
   }
 
   private async save(patch: Partial<RecallConfig>): Promise<void> {

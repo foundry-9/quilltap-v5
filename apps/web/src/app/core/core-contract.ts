@@ -4496,6 +4496,13 @@ export interface MemoryBackfillStartRequest {
 export interface RecallConfig {
   scopePolicy: 'down-weight' | 'exclude';
   expandRelated: boolean;
+  /**
+   * Re-run the responding character's vault conversation-summary search on
+   * EVERY turn and fold the result into the consolidated Commonplace Book
+   * whisper (v4 `870a57fa`). Instance-wide by design — no chat, project, or
+   * character override.
+   */
+  perTurnConversationSummaries: boolean;
 }
 
 export interface MemoryExtractionLimitsGetRequest {

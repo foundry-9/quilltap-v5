@@ -81,6 +81,47 @@ describe('MemoryRecallCard', () => {
     expect(setReq?.config).toEqual({ expandRelated: true });
   });
 
+  // P4.D95 (v4 `870a57fa`): the third recall field. The checkboxes are read by
+  // INDEX — `expandRelated` first, `perTurnConversationSummaries` second, the
+  // order v4's card renders them in.
+  it('reflects perTurnConversationSummaries from the loaded config', async () => {
+    const fixture = render(async (req) =>
+      req.type === 'memoryRecallConfigGet'
+        ? { settings: { expandRelated: false, perTurnConversationSummaries: true } }
+        : {},
+    );
+    await settle(fixture);
+    const boxes = fixture.nativeElement.querySelectorAll(
+      'input[type="checkbox"]',
+    ) as NodeListOf<HTMLInputElement>;
+    expect(boxes.length).toBe(2);
+    expect(boxes[0].checked).toBe(false);
+    expect(boxes[1].checked).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Consult past conversations every turn');
+  });
+
+  it('saves perTurnConversationSummaries alone (merge-patch)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = render(async (req) => {
+      seen.push(req);
+      if (req.type === 'memoryRecallConfigGet') {
+        return { settings: { scopePolicy: 'exclude', expandRelated: true } };
+      }
+      if (req.type === 'memoryRecallConfigSet') return { settings: req.config };
+      return {};
+    });
+    await settle(fixture);
+    const boxes = fixture.nativeElement.querySelectorAll(
+      'input[type="checkbox"]',
+    ) as NodeListOf<HTMLInputElement>;
+    boxes[1].checked = true;
+    boxes[1].dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const setReq = seen.find((r) => r.type === 'memoryRecallConfigSet');
+    // Only the toggled field travels — the server merges over what it stores.
+    expect(setReq?.config).toEqual({ perTurnConversationSummaries: true });
+  });
+
   it('surfaces a save error', async () => {
     const fixture = render(async (req) => {
       if (req.type === 'memoryRecallConfigGet') return { settings: {} };
