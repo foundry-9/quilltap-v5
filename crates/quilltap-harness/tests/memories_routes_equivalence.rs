@@ -753,13 +753,58 @@ fn memories_routes_match_oracle() {
         );
     }
     {
+        // RULED VINTAGE ROW (P4.D95 diagnosis → pinned at the c8a3cf77
+        // unification). v4's `handleWriteHousekeepingConfig` writes through
+        // `chatSettings.updateForUser`, whose UPDATE names EVERY
+        // `chat_settings` column; the committed `memories-{main,mount}.db`
+        // fixture predates the three 4.8.2/4.8.3 columns (`composerEmoji` …),
+        // so AT THIS FIXTURE VINTAGE v4 dies (`no such column`) and answers
+        // its bare 500. Production v4 (migrated) answers 200 — the 500 is a
+        // fixture artifact, not behavior, so pinning v5 to it would port a
+        // wound. v5's `update_for_user` writes only the one column and
+        // survives. The arm asserts BOTH sides explicitly; when the fixture
+        // is widened (the named maintenance order — the `.db` pair is shared,
+        // so the repair is its own lane), the oracle flips to 200, the
+        // tripwire below fires, and this row retires to a plain `check_body`.
         let db = fresh_db(&spec, "hcs");
         let resp = rt.block_on(memories::memory_housekeeping_config_set(
             &db,
             &uid,
             json!({ "enabled": true, "perCharacterCap": 1500 }),
         ));
-        check_body("housekeeping_config_set", &resp, &mut failed);
+        let name = "housekeeping_config_set";
+        let rec = &oracle[name];
+        let vintage_artifact = rec["status"].as_u64() == Some(500)
+            && rec["body"]["error"].as_str() == Some("Internal server error");
+        if !vintage_artifact {
+            eprintln!(
+                "[{name}] the fixture-vintage ruling has EXPIRED (oracle answers {}): \
+                 the memories fixture was repaired — retire this ruled row to a plain \
+                 check_body",
+                rec["status"]
+            );
+            failed.push(name.to_string());
+        } else {
+            match &resp {
+                Response::Memory(body)
+                    if body["success"] == json!(true)
+                        && body["settings"]["enabled"] == json!(true)
+                        && body["settings"]["perCharacterCap"] == json!(1500)
+                        && body["settings"].get("perCharacterCapOverrides").is_some()
+                        && body["settings"].get("autoMergeSimilarThreshold").is_some()
+                        && body["settings"].get("mergeSimilar").is_some() =>
+                {
+                    eprintln!("[{name}] OK (ruled vintage row: v4 fixture-artifact 500, v5 200).");
+                }
+                other => {
+                    eprintln!(
+                        "[{name}] v5 side MISMATCH under the vintage ruling: {:?}",
+                        response_data(other)
+                    );
+                    failed.push(name.to_string());
+                }
+            }
+        }
     }
     {
         let db = fresh_db(&spec, "rcg");

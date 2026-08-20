@@ -148,7 +148,7 @@ interface CaseSpec {
   name: string;
   /** Pin `new Date()`/`Date.now()` to FIXED_NOW (search recency determinism). */
   clock?: boolean;
-  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown; storedAfter?: unknown }>;
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -273,6 +273,7 @@ async function runCase(
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      ...(out.storedAfter !== undefined ? { storedAfter: out.storedAfter } : {}),
     };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
