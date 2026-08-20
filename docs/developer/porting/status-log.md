@@ -75740,3 +75740,45 @@ N/A (no `apps/web` file touched).
 
 **Versions:** core 0.0.589 → **0.0.590**, harness 0.0.508 → **0.0.509**, host
 0.0.73 → **0.0.74**, web 0.0.76 → **0.0.77**; cli/tauri/sys unchanged.
+
+## Round record — P4.50, the `DbError::Key` split (solo, stacked), UNIFIED 2026-08-19
+
+**The lane CLOSED; dogfood finding #96 is FIXED; the baseline STAYS
+`9125f492`** (drift-checked at unification: `git log 9125f492..main` empty,
+checkout clean on `main`; bugfix unchanged). A solo lane already stacked on
+main's head, so reconciliation was a branch-off — no conflicts, no version
+recount beyond confirming the lane's own (core 0.0.590, harness 0.0.509,
+host 0.0.74, web 0.0.77, `Cargo.lock` in step).
+
+**The §3 unification review — the whole diff read, NO blocking findings.**
+The mass migration was audited MECHANICALLY, not by eye: all ±767 non-doc
+diff lines paired up as pure `Key(`→`Internal(` renames after
+normalization (the residue was rustfmt re-wrapping), and the string-literal
+multiset across the whole migration moved by exactly ONE literal — the
+retired `file_storage` prefix-strip helper, whose rendered bytes are
+identical by construction (`Internal`'s bare `Display` IS what the unwrap
+used to produce; a genuine `Key` reaching that arm now honestly keeps its
+prefix, which is more truthful, not less). The guard's executable census,
+the retired `system_restore_state` mask (strictly stronger: warnings now
+byte-compare whole), the `db_error_response` kind-unchanged pin, and the
+27-shim catch-all inheritance argument all verified against the code. One
+prose nit left as-is: the migrated-count is quoted as 243/244 in two
+places (the executable census's exact per-file counts are the truth).
+
+**Gate.** fmt clean; clippy `-D warnings` clean BOTH feature sets; release
+build; `system_restore_state`'s oracle regenerated fresh from the v4
+checkout at `9125f492` through the sweep driver (`OK: … recipe ran
+end-to-end`); `cargo test --workspace`: **440 test binaries / 2,236 passed
+/ 0 failed** — exactly the lane's claimed delta over 439/2,231 (+1 binary =
+`db_error_key_guard`, +5 tests). Both moved families re-run BY NAME, zero
+SKIP. SPA (quilltap-web's three migrated sites warrant the full pass
+despite zero `apps/web` changes): `npm test` **331 files / 4,915 / 0**;
+`npm run build` clean; full Playwright **229 passed / 0 failed / 0 skipped
+(5.9 m)** against the fresh release binaries.
+
+**Standing after the round:** 💸 the dogfood queue gains the live
+`combined.log` look at a real failed turn (the finding's own surface); the
+three per-domain taxonomy candidates stay NAMED not built (the lane
+record); the two `W=` recipe headers + the sweep driver's
+exit-0-on-unknown-family wart remain the standing maintenance riders from
+the `9125f492` round.

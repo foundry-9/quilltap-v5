@@ -5154,12 +5154,21 @@ and the drift debt is CLEARED.** Gate: 439 test binaries / 2,231 / 0 with
 fresh oracles at the pin; the eight moved families by name zero SKIP;
 clippy both feature sets; release build; ng 331 files / 4,915; full
 Playwright 229/229 zero skips. The §3 review read the whole combined diff
-and found no blocking issues. **P4.50 (the `DbError::Key` split,
-`work-orders/p4.50-db-error-kind-split.md`) was ordered STACKED behind
-this unification by design and is now runnable — the top next candidate
-alongside the owed dogfood items** (the round adds: a real bearer-token
+and found no blocking issues. **P4.50 (the `DbError::Key` split) ran
+stacked as ordered and UNIFIED same day (2026-08-19): finding #96 FIXED —
+`DbError::Internal` at 243 of 246 sites, the two genuine key wraps held by
+the executable `db_error_key_guard` census, the restore-family
+leaked-prefix mask retired (warnings byte-compare whole), no observable
+byte moved (27 From-shims all reach the variant through catch-alls). Gate:
+440 binaries / 2,236 / 0; both moved families by name zero SKIP; Playwright
+229/229. §3: no blocking findings (the migration audited mechanically —
+every hunk a pure rename; the literal multiset moved by exactly one, the
+retired strip helper, bytes identical). Round record: `status-log.md`.**
+**Next candidates: the owed 💸 dogfood items** (a real bearer-token
 OAC endpoint, a Qwen-template model surviving turn 2, a candid
-story-background prompt on a dangerous chat). Maintenance riders: the two
+story-background prompt on a dangerous chat, the failed-turn
+`combined.log` look), then `p4.9l2`/`p4.9i2` and the banked smalls per
+the standing list above. Maintenance riders: the two
 `W=` self-clobbering recipe headers (`carina_memory_extraction` /
 `carina_query`), the sweep driver's exit-0-on-unknown-family wart. The
 original plan paragraph follows for the record.

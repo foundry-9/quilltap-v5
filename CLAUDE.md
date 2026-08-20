@@ -1435,11 +1435,33 @@ records THERE. Update this summary only when a phase or round completes.
   eight moved families by name zero SKIP; clippy both feature sets;
   release build; ng 331 files / 4,915; full Playwright **229/229 zero
   skips**. Versions: core 0.0.589, harness 0.0.508, host 0.0.73, SPA
-  0.5.522. **Next: P4.50 (the finding-#96 `DbError::Key` split,
-  `work-orders/p4.50-db-error-kind-split.md`) was ordered STACKED behind
-  this round and is now runnable**; 💸 the dogfood queue gains the
-  bearer-token OAC endpoint, the Qwen second-turn acceptance, and the
-  candid story-background prompt. Round record: `status-log.md`.
+  0.5.522. 💸 the dogfood queue gains the bearer-token OAC endpoint, the
+  Qwen second-turn acceptance, and the candid story-background prompt.
+  Round record: `status-log.md`.
+- **P4.50 — the `DbError::Key` catch-all split (dogfood finding #96):
+  CLOSED, UNIFIED on main (2026-08-19, solo stacked lane) — finding #96
+  FIXED; the baseline STAYS `9125f492`.** `DbError::Internal(String)`
+  (bare-message Display) at **243 of 246** construction sites; the census
+  refuted the order's "dozen" premise downward — exactly TWO genuine
+  key-derivation wraps (`Db::open`/`Writer::open_writable`) keep the
+  prefix, held by the executable `db_error_key_guard` census (per-file
+  exact counts, mutation-proven). Nothing observable moved: all 27
+  `From<DbError>` shims reach the variant through catch-alls (the mapping
+  inherited by construction), `db_error_response` still answers
+  `ErrorKind::Internal`, and the `system_restore_state` leaked-prefix
+  mask is RETIRED — restore warnings now byte-compare against v4's whole
+  sentences. The two prefix-strip helpers retired, not retargeted. §3
+  review: no blocking findings (the migration audited mechanically —
+  every hunk a pure rename; the string-literal multiset moved by exactly
+  one, the retired strip helper, rendered bytes identical). Gate: 440
+  test binaries / 2,236 / 0 (+1 binary +5 tests, exactly the lane's
+  delta) over a pin-fresh restore oracle; clippy both feature sets;
+  release build; ng 331 / 4,915; full Playwright 229/229 zero skips.
+  Versions: core 0.0.590, harness 0.0.509, host 0.0.74, web 0.0.77.
+  Deferred loud: the three per-domain taxonomy candidates NAMED not
+  built; 💸 the live `combined.log` look at a real failed turn joins the
+  dogfood queue — **the owed dogfood pass over the round's surfaces is
+  the top next candidate.** Round record: `status-log.md`.
 - **Oracle baseline: `9125f492` (2026-08-19, v4 main — "fix(providers,
   plugins): an OAC profile can hold an API key, and local models survive
   past the first turn (bugs 81, 82)"), adopted at the 9125f492-round

@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-19 — port(unify): P4.50 lands — the DbError::Key catch-all split (finding #96 FIXED)
+
+_Versions: core 0.0.590, harness 0.0.509, host 0.0.74, web 0.0.77._
+
+The solo stacked lane unified onto main; the oracle baseline stays `9125f492`.
+`DbError::Internal(String)` (bare-message Display) replaces the catch-all use
+of `DbError::Key` at 243 of its 246 construction sites — the two genuine
+key-derivation wraps and the Display arm keep the prefix, held there by an
+executable census guard (`db_error_key_guard`). No observable byte moved: no
+`From<DbError>` shim matched `Key` explicitly, so the new variant inherits
+every mapping, and `db_error_response` still answers `ErrorKind::Internal`.
+The `system_restore_state` leaked-prefix mask is retired, so restore warnings
+now byte-compare against v4's whole sentences. The §3 review audited the
+migration mechanically (every hunk a pure variant rename; the string-literal
+multiset moved by exactly one literal, the retired prefix-strip helper whose
+rendered bytes are identical) and found no blocking issues.
+
+Gate: fmt/clippy clean both feature sets; release build; 440 test binaries /
+2,236 / 0 with the restore oracle regenerated fresh at the pin; both moved
+families by name zero SKIP; SPA 331 files / 4,915 / 0; full Playwright
+229/229 zero skips. Deferred loud: the three per-domain taxonomy candidates
+named not built; the live combined.log look on a real failed turn joins the
+dogfood queue.
+
 #### 2026-08-19 — fix(core): a failed provider call stops claiming key derivation (P4.50, finding #96)
 
 _Versions: core 0.0.590, harness 0.0.509, host 0.0.74, web 0.0.77._
