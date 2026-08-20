@@ -809,6 +809,52 @@ fn memories_routes_match_oracle() {
         ));
         check_body("recall_config_merge_over_stored", &resp, &mut failed);
     }
+    // §3 of the c8a3cf77 unification: a present-but-invalid value 400s (v4
+    // `recallConfigSchema.safeParse` → `validationError`) and stores NOTHING —
+    // never silently dropped in favour of the stored value. Status + `error`
+    // message compared; the `details` issues array is the recorded no-details
+    // divergence class.
+    {
+        let db = fresh_db(&spec, "rcie");
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "scopePolicy": "both" }),
+        ));
+        check_error("recall_config_set_invalid_enum", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "rcib");
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "perTurnConversationSummaries": 1 }),
+        ));
+        check_error("recall_config_set_invalid_bool", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "rciw");
+        rt.block_on(seed_recall(&db, true));
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "expandRelated": "yes" }),
+        ));
+        let name = "recall_config_invalid_writes_nothing";
+        check_error(name, &resp, &mut failed);
+        // The refusal wrote nothing: the stored bag survives, compared against
+        // v4's real getter read after ITS refusal (`storedAfter`).
+        let stored = db
+            .read_main(quilltap_core::db::instance_settings::get_memory_recall_settings)
+            .expect("read recall settings after refused set");
+        let want = &oracle[name]["storedAfter"];
+        if norm(&stored.to_json()) != norm(want) {
+            eprintln!(
+                "[{name}] storedAfter MISMATCH:\n{}",
+                first_diff(&norm(&stored.to_json()), &norm(want))
+            );
+            failed.push(format!("{name}:storedAfter"));
+        } else {
+            eprintln!("[{name}] storedAfter OK.");
+        }
+    }
     {
         let db = fresh_db(&spec, "elg");
         check_body(

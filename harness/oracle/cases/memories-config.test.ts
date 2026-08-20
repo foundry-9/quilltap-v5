@@ -439,6 +439,53 @@ async function main(): Promise<void> {
         );
       },
     },
+    // §3 of the c8a3cf77 unification: a present-but-INVALID value must 400
+    // (v4 `recallConfigSchema.safeParse` → `validationError`), never be
+    // silently dropped in favour of the stored value. v5 compares status +
+    // `error` message only (the `details` issues array is the recorded
+    // no-details divergence class).
+    {
+      name: 'recall_config_set_invalid_enum',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { scopePolicy: 'both' }),
+          ),
+        ),
+    },
+    {
+      name: 'recall_config_set_invalid_bool',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { perTurnConversationSummaries: 1 }),
+          ),
+        ),
+    },
+    // The refusal writes NOTHING: seed a non-default bag, refuse an invalid
+    // patch, then read the stored bag back through v4's REAL getter (a direct
+    // call, not a second route request — the venue's one-request-per-case
+    // rule) and emit it as `storedAfter`.
+    {
+      name: 'recall_config_invalid_writes_nothing',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { setMemoryRecallSettings, getMemoryRecallSettings } = await import(
+          '@/lib/instance-settings'
+        );
+        await setMemoryRecallSettings({
+          scopePolicy: 'exclude',
+          expandRelated: true,
+          perTurnConversationSummaries: true,
+        });
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { expandRelated: 'yes' }),
+          ),
+        );
+        return { ...r, storedAfter: await getMemoryRecallSettings() };
+      },
+    },
     { name: 'extraction_limits_get', run: () => listGet(`action=extraction-limits-config`) },
     {
       name: 'extraction_limits_set',

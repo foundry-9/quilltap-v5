@@ -1040,9 +1040,30 @@ pub fn memory_recall_config_get(db: &Db) -> Response {
 /// v4 POST `?action=recall-config` — merge-patch, store, `{success, settings}`.
 /// Each field is independently patchable (`parsed.data.X ?? currentSettings.X`);
 /// an absent field keeps what is stored.
+///
+/// Validation FIRST, before any read or write (v4 `recallConfigSchema.safeParse`
+/// → `validationError` at 400): a present-but-invalid value refuses and stores
+/// nothing — it must never be silently dropped in favour of the stored value.
+/// v5 answers the message only, no `details` issues array — the recorded
+/// divergence class (see `quilltap-web`'s `validation_error`).
 pub async fn memory_recall_config_set(db: &Db, bag: Value) -> Response {
-    if !bag.is_object() {
-        return bad_request("Invalid recall config body");
+    let Some(obj) = bag.as_object() else {
+        // Zod's root arm: a non-object body is its own invalid_type issue.
+        return bad_request("Validation error");
+    };
+    if let Some(v) = obj.get("scopePolicy") {
+        // Zod `invalid_value` — any non-member (wrong type included) fails.
+        if !matches!(v.as_str(), Some("down-weight") | Some("exclude")) {
+            return bad_request("Validation error");
+        }
+    }
+    for key in ["expandRelated", "perTurnConversationSummaries"] {
+        if let Some(v) = obj.get(key) {
+            // Zod `invalid_type` — present must be a boolean (null included fails).
+            if !v.is_boolean() {
+                return bad_request("Validation error");
+            }
+        }
     }
     let current = match db.read_main(instance_settings::get_memory_recall_settings) {
         Ok(c) => c,
