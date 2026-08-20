@@ -76094,3 +76094,37 @@ below the editor (1), and dropping the markdown gate (1).
 Gate: `npm test --filter DocumentPane` 3 files / 25 / 0. SPA 0.5.523; no crate
 touched.
 
+
+## P4.9L2 unit 2 — the template reaching the pane, and the host that withholds it
+
+The Salon host (`screens/salon/salon-conversation.ts`) passes
+`[delimiters]="templateDelimiters()"` into `qt-document-pane` — ONE line, kept
+surgical because the Salon files churn hundreds of unrelated lines under
+prettier (the P4.D89 lesson; the repo is not prettier-clean on this file at HEAD
+either, verified before and after).
+
+That signal is the template row the Salon already fetches for its rendering
+patterns, so v4's `chat?.roleplayTemplateId` (`SalonView.tsx:1577`, `:1630`,
+`:1847` → `DocumentPaneBinding.tsx:23/27/48`) arrives here already resolved —
+the P4.9L divergence, unchanged: v4's toolbar fetches
+`/api/v1/roleplay-templates/{id}` itself, and a second fetch of one row would be
+a second source of truth for it. v4's `loadingTemplate` gate arrives the same
+way it does for the composer: while the fetch is in flight the input is empty,
+so no delimiter rail renders.
+
+`documents/standalone-document-view.ts` passes NOTHING, and now says so at the
+mount site: v4's `StandaloneDocumentView.tsx:381` mounts `DocumentPane` with no
+`roleplayTemplateId`, and there is no chat there to carry a template. The pane's
+`delimiters` input defaults to `[]`, so the standalone toolbar is the recorded
+`an empty template and no narration shows no delimiter section at all` vector —
+markdown buttons, two dividers, no rail. Pinned by the pane spec's
+"a host that passes no delimiters gets no delimiter section" case and, live, by
+unit 3's standalone beat.
+
+No salon-side unit spec was added: `screens/salon/**` beyond the single pass
+site is outside this lane's ownership row, and the Salon path's real proof is
+the live beat in unit 3, which drives a template onto a chat and reads the
+buttons off the pane.
+
+SPA 0.5.524; no crate touched.
+

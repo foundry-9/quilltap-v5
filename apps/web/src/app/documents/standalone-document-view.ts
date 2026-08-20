@@ -62,6 +62,11 @@ const AUTOSAVE_DEBOUNCE_MS = 30000;
         </button>
       </div>
     } @else if (entry(); as e) {
+      <!-- No \`delimiters\` binding, deliberately: v4's
+           \`StandaloneDocumentView.tsx:381\` mounts \`DocumentPane\` with no
+           \`roleplayTemplateId\`, so the chat-less pane's toolbar shows the
+           markdown buttons and no delimiter rail. There is no chat here to
+           carry a template in the first place. -->
       <qt-document-pane
         [entry]="e"
         [mode]="'split'"

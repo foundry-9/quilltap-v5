@@ -439,6 +439,7 @@ interface CascadePrompt {
       <qt-document-pane
         [entry]="entry"
         [mode]="documentMode.documentMode()"
+        [delimiters]="templateDelimiters()"
         (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
         (blur)="documentMode.flushSave(entry.document.id)"
         (rename)="documentMode.renameDocument(entry.document.id, $event)"

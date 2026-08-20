@@ -82,6 +82,22 @@ columns v4 added in the 4.8.2/4.8.3 round, so it dies on `no such column:
 composerEmoji`. Reproduced against an unmodified oracle case at `c8a3cf77`. The
 repair is a fixture-vintage one and belongs to a maintenance order — that `.db`
 pair is also read by two e2e specs.
+#### 2026-08-20 — feat(salon): thread the chat's roleplay delimiters into the document pane
+
+_Versions: SPA 0.5.524._
+
+`salon-conversation.ts` passes the template delimiters it already fetches into
+`qt-document-pane`, so a Salon-hosted document shows the template's delimiter
+buttons — v4's `SalonView.tsx:1577/1630/1847` passing `chat?.roleplayTemplateId`
+down through `DocumentPaneBinding`, in v5's resolved-delimiters spelling (the
+toolbar takes the resolved entries rather than fetching the row a second time —
+the P4.9L mechanism divergence).
+
+`standalone-document-view.ts` deliberately passes nothing, matching v4's
+`StandaloneDocumentView.tsx:381`, which mounts `DocumentPane` with no
+`roleplayTemplateId`: the chat-less pane's toolbar shows the markdown buttons
+and no delimiter rail. The omission is now named at the mount site.
+
 #### 2026-08-20 — feat(documents): the Document-Mode pane wears v4's formatting toolbar
 
 _Versions: SPA 0.5.523._
