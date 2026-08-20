@@ -82,6 +82,35 @@ columns v4 added in the 4.8.2/4.8.3 round, so it dies on `no such column:
 composerEmoji`. Reproduced against an unmodified oracle case at `c8a3cf77`. The
 repair is a fixture-vintage one and belongs to a maintenance order — that `.db`
 pair is also read by two e2e specs.
+#### 2026-08-20 — feat(documents): the Document-Mode pane wears v4's formatting toolbar
+
+_Versions: SPA 0.5.523._
+
+The pane (`documents/document-pane.ts`) mounts `qt-formatting-toolbar` in a
+`.qt-doc-toolbar` row above the editor, where v4's `DocumentPane` mounts its own
+`FormattingToolbar` (`DocumentPane.tsx:323-355, :686-693`): the markdown
+buttons, the indent controls, the code-block toggle, both character pickers, the
+source toggle, and the active roleplay template's delimiter buttons. v4's
+`DocToolbar` passes no `narrationDelimiters`, so this toolbar shows no
+synthesized "Nar" button — the binding is deliberately absent, and the omission
+is pinned against the two recorded v4 vectors.
+
+Wiring: format buttons through `formatCommand`, delimiters through
+`applyDelimiterCommand`, both falling to their source-mode transforms when the
+raw textarea is showing; pickers insert into the editor, or at the textarea
+caret in source mode. Source-mode transforms run through the pane's own
+`onEditorInput` seam, so a markdown file's frontmatter block is still recombined
+onto the saved bytes.
+
+The toolbar's source toggle and the pane's header button now share one
+`showSource` signal through one `toggleSourceMode()` handler, which flushes on
+the way out as v4's does (`DocumentPane.tsx:487-494`; v4's `onFlushSave` is its
+`onBlur` at both call sites). The header control itself has no v4 counterpart —
+it was added when this pane had no toolbar — and is recorded as a divergence.
+
+`document-pane.toolbar.spec.ts` (12 cases) pins the mount shape, the no-Nar
+shape against the recorded corpus, the shared signal from both controls, the
+flush direction, and both routing branches. Six mutations red.
 
 #### 2026-08-20 — docs(porting): plan the c8a3cf77 round — P4.D95 ∥ P4.9L2 ∥ P4.51
 

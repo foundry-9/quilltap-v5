@@ -12,8 +12,18 @@ import {
 } from '@angular/core';
 
 import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
+import { recordRecent } from '../editor/char-insert/recents-storage';
+import { applyDelimiterCommand, applySourceDelimiter } from '../editor/delimiter-transforms';
+import { formatCommand } from '../editor/format-commands';
+import {
+  FormattingToolbar,
+  type CharInsert,
+  type FormatAction,
+} from '../editor/formatting-toolbar';
 import { RichEditor } from '../editor/rich-editor';
+import { applySourceFormat, type TextResult, type TextState } from '../editor/source-transforms';
 import { SmartTypographySettings } from '../smart-typography/settings';
+import type { TemplateDelimiter } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import { USES_RICH_MARKDOWN_EDITOR, type DocumentMode, type OpenDocEntry } from './document-mode';
 import {
@@ -45,31 +55,38 @@ import { ToastService } from '../ui/toast.service';
  * A stretch host class keeps the pane bounded inside the split's flex height
  * cascade (the standing P4.6u #4 lesson).
  *
- * GAP (named, P4.9L 2026-08-14) — **this pane has no formatting toolbar.** v4's
- * `DocumentPane` mounts the very same `FormattingToolbar` the composer does,
- * inside a `.qt-doc-toolbar` row above the editor (`DocumentPane.tsx:44,
- * :343-355`): the markdown buttons, the indent controls, the code-block toggle,
- * both character pickers, the source toggle, and — since it is passed a
- * `roleplayTemplateId` — the template's delimiter buttons. It passes NO
- * `narrationDelimiters`, so unlike the composer it shows no synthesized "Nar"
- * button.
+ * The FORMATTING TOOLBAR (P4.9L2, closing the gap P4.9L named) sits in a
+ * `.qt-doc-toolbar` row above the editor, exactly where v4 mounts its own
+ * `FormattingToolbar` (`DocumentPane.tsx:44, :323-355, :686-693`): the markdown
+ * buttons, the indent controls, the code-block toggle, both character pickers,
+ * the source toggle, and the active roleplay template's delimiter buttons. v4's
+ * `DocToolbar` passes NO `narrationDelimiters`, so — unlike the composer — this
+ * toolbar shows no synthesized "Nar" button; the binding is deliberately absent
+ * here for that reason. Every branch it drives is shared with the composer
+ * (`formatCommand`, `applyDelimiterCommand`, `applySourceFormat`,
+ * `applySourceDelimiter`), so the two hosts of one toolbar cannot disagree.
  *
- * P4.9L surveyed this mount and did NOT port it: the components all exist now
- * (`qt-formatting-toolbar`, `formatCommand`, `applyDelimiterCommand`,
- * `applySourceDelimiter`), so what remains is this pane's own wiring — the
- * source branch has to act on THIS textarea, the toolbar's source toggle has to
- * share the header button's `showSource` signal rather than open a second one,
- * and `roleplayTemplateId` has to reach the pane from the Salon, which today
- * hands it nothing of the sort. That is a slice with its own live beats
- * (`salon-documents-flow`, `workspace-document-standalone-flow`), not a rider
- * on the composer lane. Recorded in the P4.9L lane record and in
- * `m6-screen-parity.md`.
+ * Two shapes are worth naming:
+ *
+ * - **The template arrives RESOLVED, not as an id.** v4 hands the toolbar a
+ *   `roleplayTemplateId` and the toolbar fetches the row itself; v5 takes the
+ *   resolved `delimiters` because the Salon already fetches that same row for
+ *   its rendering patterns (the P4.9L divergence, recorded on the toolbar). The
+ *   standalone view passes nothing — v4's `StandaloneDocumentView.tsx:381`
+ *   passes no `roleplayTemplateId` either, so neither shows delimiter buttons.
+ * - **DIVERGENCE (v5-invented, kept): the header source button.** v4's document
+ *   header carries three buttons (focus/split, delete, close) and its ONLY
+ *   source toggle is the one inside the toolbar. v5 grew a header toggle in
+ *   P4.6ag, when this pane had no toolbar to hold one. Both now drive the SAME
+ *   `showSource` signal through the same `toggleSourceMode()` — one signal, two
+ *   controls, never out of step — but the header control has no v4 counterpart
+ *   and is a candidate for retirement.
  */
 @Component({
   selector: 'qt-document-pane',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' },
-  imports: [Icon, RichEditor],
+  imports: [FormattingToolbar, Icon, RichEditor],
   template: `
     <div class="flex flex-col h-full">
       <div class="qt-doc-header">
@@ -99,7 +116,7 @@ import { ToastService } from '../ui/toast.service';
               [title]="showSource() ? 'Show the formatted editor' : 'Show the Markdown source'"
               [attr.aria-label]="showSource() ? 'Show formatted editor' : 'Show markdown source'"
               [attr.aria-pressed]="showSource()"
-              (click)="showSource.set(!showSource())"
+              (click)="toggleSourceMode()"
             >
               <qt-icon name="code" class="w-4 h-4" />
             </button>
@@ -151,6 +168,27 @@ import { ToastService } from '../ui/toast.service';
         </button>
       </div>
 
+      <!-- v4 \`DocumentToolbarWrapper\` (\`DocumentPane.tsx:323-355\`): the same
+           toolbar the composer wears, in its own row above the editor, and
+           rendered for the very files v4 wraps in a Lexical composer (markdown).
+           NO \`narrationDelimiters\` binding — v4's \`DocToolbar\` passes none, so
+           this toolbar shows no synthesized "Nar" button. -->
+      @if (usesRichEditor()) {
+        <div class="qt-doc-toolbar">
+          <qt-formatting-toolbar
+            [disabled]="entry().isLLMEditing"
+            [inCodeBlock]="inCodeBlock()"
+            [showSource]="showSource()"
+            [showSourceToggle]="true"
+            [delimiters]="delimiters()"
+            (action)="onFormatAction($event)"
+            (applyDelimiter)="onApplyDelimiter($event)"
+            (insertChar)="onInsertChar($event)"
+            (toggleSource)="toggleSourceMode()"
+          />
+        </div>
+      }
+
       @if (hasFrontmatter()) {
         <div class="qt-frontmatter">
           <div class="qt-frontmatter-title">Document Info</div>
@@ -197,6 +235,7 @@ import { ToastService } from '../ui/toast.service';
           />
         } @else {
           <textarea
+            #sourceArea
             class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
             [attr.aria-label]="'Document editor'"
             [value]="editorValue()"
@@ -242,6 +281,12 @@ export class DocumentPane {
   protected readonly charInsert = injectCharInsertSettings();
   readonly entry = input.required<OpenDocEntry>();
   readonly mode = input.required<DocumentMode>();
+  /**
+   * The active roleplay template's delimiter entries — v4's `roleplayTemplateId`
+   * prop, already resolved (see the class doc). The Salon host passes what it
+   * fetched; the standalone view passes nothing, exactly as v4 does.
+   */
+  readonly delimiters = input<readonly TemplateDelimiter[]>([]);
 
   readonly contentChange = output<string>();
   readonly blur = output<void>();
@@ -251,6 +296,16 @@ export class DocumentPane {
   readonly toggleFocus = output<void>();
 
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
+  /**
+   * Optional rather than required: the toolbar binds `inCodeBlock` in the
+   * TEMPLATE, and a required query read during the first change-detection pass
+   * throws before the view exists (the composer's lesson).
+   */
+  private readonly editorView = viewChild(RichEditor);
+  private readonly sourceArea = viewChild<ElementRef<HTMLTextAreaElement>>('sourceArea');
+
+  /** Flips the toolbar's code-block button (v4 tracks Lexical's selection). */
+  protected readonly inCodeBlock = computed(() => this.editorView()?.inCodeBlock() ?? false);
 
   protected readonly document = computed(() => this.entry().document);
   protected readonly isMarkdown = computed(() => isMarkdownFile(this.document().filePath));
@@ -329,6 +384,94 @@ export class DocumentPane {
       return;
     }
     this.contentChange.emit(value);
+  }
+
+  // --- the formatting toolbar (v4 `DocumentToolbarWrapper`) -----------------
+
+  /**
+   * Enter/leave raw-source mode — the ONE handler behind both controls (the
+   * header button and the toolbar's toggle), so the shared `showSource` signal
+   * can never be driven two different ways.
+   *
+   * Leaving source mode flushes first, v4's `toggleSourceMode`
+   * (`DocumentPane.tsx:487-494`): "flush any pending edits before Lexical
+   * re-parses the markdown, so raw source bytes are persisted before
+   * serialization." v5 flushes by emitting `blur` — v4's `onFlushSave` IS its
+   * `onBlur` at both call sites (`DocumentPaneBinding.tsx:54-55`,
+   * `StandaloneDocumentView.tsx:392-393`), so a second output would be the same
+   * callback under a second name.
+   */
+  protected toggleSourceMode(): void {
+    if (this.showSource()) this.blur.emit();
+    this.showSource.set(!this.showSource());
+  }
+
+  /** A markdown/indent/code-block button (v4 `handleMarkdownClick` & friends). */
+  protected onFormatAction(action: FormatAction): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => applySourceFormat(state, action));
+      return;
+    }
+    this.editorView()?.runCommand(formatCommand(action, this.inCodeBlock()));
+  }
+
+  /** A roleplay-delimiter button (v4 `handleDelimiterClick`, both branches). */
+  protected onApplyDelimiter(delimiter: TemplateDelimiter): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => applySourceDelimiter(state, delimiter));
+      return;
+    }
+    this.editorView()?.runCommand(applyDelimiterCommand(delimiter));
+  }
+
+  /**
+   * A character picked from a toolbar picker. In source mode it lands at the
+   * textarea's caret rather than in the unmounted editor — the P4.D75 ruled
+   * divergence the composer and the markdown-field already carry, for the same
+   * reason: v4 hands the picker its Lexical instance unconditionally, so the
+   * pick is silently lost.
+   */
+  protected onInsertChar({ profile, char }: CharInsert): void {
+    if (this.showSource()) {
+      this.applyToSource((state) => ({
+        value: state.value.slice(0, state.start) + char + state.value.slice(state.end),
+        cursor: state.start + char.length,
+      }));
+      recordRecent(profile, char);
+      return;
+    }
+    this.editorView()?.insertChar(profile, char);
+  }
+
+  /**
+   * Run a source-mode transform over THIS pane's textarea and restore the caret
+   * after the re-render — v4 does the same inside a `requestAnimationFrame`
+   * (`sourceApply`, `FormattingToolbar.tsx:123-134`).
+   *
+   * Unlike the composer and the markdown-field, this pane keeps no local
+   * `sourceText` signal: the document's content IS the source of truth and the
+   * textarea is bound straight to it. So the new bytes are written onto the
+   * element the way a keystroke would write them, and then emitted through
+   * `onEditorInput` — the very seam the textarea's own `(input)` uses, which is
+   * what recombines the frontmatter block for a markdown file. The host's echo
+   * then re-affirms the same string (v4 relies on exactly that echo, its
+   * `setInput` being the pane's `onContentChange`).
+   */
+  private applyToSource(transform: (state: TextState) => TextResult): void {
+    const textarea = this.sourceArea()?.nativeElement;
+    if (!textarea) return;
+
+    const result = transform({
+      value: textarea.value,
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    });
+    textarea.value = result.value;
+    this.onEditorInput(result.value);
+    requestAnimationFrame(() => {
+      textarea.selectionStart = textarea.selectionEnd = result.cursor;
+      textarea.focus();
+    });
   }
 
   protected startTitleEdit(): void {

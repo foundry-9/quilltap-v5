@@ -76026,3 +76026,71 @@ QT_ORACLE_OUT=… npx jest -- memories-routes`) that produced only ONE of the tw
 NDJSONs the test needs — so the run stage skipped silently on the missing
 `QT_ORACLE_MEMORIES_CONFIG`. The header now carries both regen stages and both
 env vars, and runs verbatim through `recipe_sweep.py --run`.
+
+## P4.9L2 unit 1 — the toolbar mounted in the Document-Mode pane (v4 pin `c8a3cf77`)
+
+**Lane** `claude/document-pane-toolbar-port-0b3088` (P4.9L2). Drift-checked at
+start: v4 `main` HEAD **is** the pin `c8a3cf77`, tree clean, checkout on `main`;
+`git diff main bugfix -- <this lane's four v4 files>` is EMPTY, so nothing in
+this lane's surface has moved on either branch. Not a drift lane — it closes the
+gap P4.9L named (`m6-screen-parity.md` §4 row 14b).
+
+**What landed.** `documents/document-pane.ts` mounts `qt-formatting-toolbar` in
+a `.qt-doc-toolbar` row between the URL row and the editor — v4's
+`DocumentToolbarWrapper` (`DocumentPane.tsx:323-355`, mounted at `:686-693`),
+gated on the files v4 wraps in a `LexicalComposer` (markdown). Props mirror v4's
+`DocToolbar` 1:1: `disabled` = `isLLMEditing`, `showSource`, the source toggle
+shown (v4 renders it whenever `onToggleSource` is passed, and `DocToolbar`
+passes one), the resolved delimiters — and **no `narrationDelimiters` binding**,
+because v4's `DocToolbar` passes none.
+
+Every branch is the composer's: `formatCommand` / `applyDelimiterCommand` in
+rich mode, `applySourceFormat` / `applySourceDelimiter` when the raw textarea is
+showing, pickers into the editor or at the textarea caret (the P4.D75 ruled
+divergence, third host). The source branch runs over THIS pane's textarea and
+emits through the pane's own `onEditorInput`, so a markdown file's frontmatter
+`rawBlock` is still recombined onto the saved bytes — v4's `setInput` is the
+pane's `onContentChange` for the same reason.
+
+**The shared signal.** The pane's header source button and the toolbar's toggle
+now call ONE `toggleSourceMode()`, which flushes on the way out
+(`DocumentPane.tsx:487-494` — "flush any pending edits before Lexical re-parses
+the markdown"). v5 flushes by emitting `blur`: v4's `onFlushSave` IS its
+`onBlur` at both call sites (`DocumentPaneBinding.tsx:54-55`,
+`StandaloneDocumentView.tsx:392-393`), so a second output would be one callback
+under two names.
+
+**DIVERGENCE (v5-invented, kept, recorded in the class doc).** v4's document
+header carries three buttons — focus/split, delete, close — and its ONLY source
+toggle is the toolbar's. v5 grew a header toggle in P4.6ag, when this pane had
+no toolbar to hold one; the order's Tier-1 item 3 rules it stays ("one signal,
+two controls"), so it stays, sharing the signal and the handler. It has no v4
+counterpart and is a candidate for retirement — named here so §3 can rule.
+
+**The differential.** Client-only lane, so the obligation is v4-client parity.
+No new recorder was needed: the P4.9L jsdom recorder
+(`apps/web/oracle/delimiter-transforms.test.ts` section D) already records
+v4's REAL `FormattingToolbar` for both of this pane's shapes —
+`no narration: only the template delimiters, in template order`
+(`['Th','As','OOC','Rank']`, 3 dividers) is the Salon-hosted pane, and
+`an empty template and no narration shows no delimiter section at all`
+(no buttons, 2 dividers) is the standalone. `document-pane.toolbar.spec.ts`
+(12 cases) diffs the rendered labels and `title` bytes against those vectors and
+pins the wiring around them; the no-Nar shape is bracketed by the THIRD recorded
+vector (the same template WITH narration, which v4 renders `['Nar', …]`), and
+the absent binding is asserted directly on the mounted toolbar instance, since a
+`[narrationDelimiters]` added to the mount would be invisible to a label
+assertion alone.
+
+**Mutation-proven** (each reverted after): binding `narrationDelimiters` on the
+mount (4 red), the header button wired straight to the signal instead of the
+shared handler (1 red — this one went GREEN on its first run and exposed a real
+blind spot: the flush case only exercised the toolbar control, so a header
+bypass kept both views in agreement while silently dropping the flush; the case
+now drives BOTH controls in both directions), dropping the flush entirely (1),
+routing the source-mode format branch to the editor (1), moving the toolbar row
+below the editor (1), and dropping the markdown gate (1).
+
+Gate: `npm test --filter DocumentPane` 3 files / 25 / 0. SPA 0.5.523; no crate
+touched.
+
