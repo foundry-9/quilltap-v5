@@ -5308,3 +5308,59 @@ unabsorbed content today is the test-only `009c49b2` — and `release` for
 checkout occupancy only). The sweep driver remains the sanctioned per-family regen
 path — never run two sweeps concurrently. The distill-transitive TZ pins,
 the committed-fixture rule, and the venue/staging rules stand unchanged.
+
+**The `b8449b3e` anti-chorus + maintenance round (P4.D96 ∥ P4.52 ∥ P4.53)
+— PLANNED 2026-08-20.** Drift-checked at planning: v4 moved two commits
+past `c8a3cf77` — `e22f7b36` ("feat(salon): anti-chorus discipline for
+multi-character scenes", a behavior change on three ported surfaces: the
+`isRecentlyAddressed` direct-address rewrite in the client-safe
+skip-signal module, the turn-skip note's restate-is-not-substantive
+paragraph + reworded caution, and the `applyMultiCharacterTurnAnchor`
+restructure appending the new `GROUP_SCENE_DISCIPLINE` block on BOTH
+anchor routes — no schema change, no D23 re-dump) and `b8449b3e`
+("fix(tests): disable V8 Sparkplug for jest", bug 83 — jest launch infra,
+NO-PORT, though every oracle regen at the pin now inherits
+`--no-sparkplug`, which only reduces worker-SIGSEGV flakes). `bugfix`
+measured by `diff`: HEAD still the 2026-08-13 `3a76b17d`, nothing
+unabsorbed beyond the test-only `009c49b2`; checkout on `main`, clean.
+The round (all three lanes pin `b8449b3e`; the baseline MOVES to
+`b8449b3e` at unification; the lanes meet nowhere — no shared contracts,
+no gated beats):
+
+- **P4.D96** (`work-orders/p4.d96-anti-chorus-drift.md`) — the whole
+  `e22f7b36` drift: the direct-address rewrite in BOTH the Rust core
+  (`skip_signal.rs`) and the SPA client twin (with the parity spec grown
+  1:1 from v4's eight new cases), the turn-skip note bytes
+  (`build_turn_skip_instruction`), the turn-anchor restructure +
+  byte-exact `GROUP_SCENE_DISCIPLINE` (`message_context.rs`) with a NEW
+  tier-1 turn-anchor oracle family (none drives that function today),
+  red-first regen of the skip-signal family, the JS-regex fidelity traps
+  pre-surveyed (`(?-u:\b)` per `mentioned_characters.rs:80`, UTF-16
+  longest-first sort, the `im` flags), help docs → the `p4.9i2` bank, and
+  the `b8449b3e` NO-PORT disposition.
+- **P4.52** (`work-orders/p4.52-memories-fixture-vintage.md`) — the
+  `c8a3cf77` round's named maintenance order: widen the committed
+  `memories-{main,mount}.db` pair to the current v4 schema vintage
+  (measured against `generateDDL` at the pin, seeded rows
+  byte-preserved), retire the `housekeeping_config_set` RULED VINTAGE ROW
+  to a plain equality (its tripwire fires by design), regen every
+  consumer family fresh, and resolve by measurement whether the pair's
+  consumer set is the three surveyed files or the round record's wider
+  "memories/memory families" wording.
+- **P4.53** (`work-orders/p4.53-sweep-driver-followups.md`) — P4.51's
+  three recorded driver follow-ups: the LIVE `brahma_console_routes`
+  restored-recipe `W=` self-clobber (+ four cosmetic twins, exact lines
+  surveyed), the `nothing_to_run` refusal for empty-stage `--run`s (no
+  more vacuous "OK" greens; the exposed rows are the next maintenance
+  inventory), and `normalize()` neutralizing any `^(V5W|V5|W)=` header
+  alias so the class is unforgeable — each with `--self-test` arms and
+  marker-probe mutation proofs.
+
+Deliberately left out of the round: the merge-verb silent-keep-on-invalid
+sweep (the `c8a3cf77` LEAD — its arms would land in the memories/brahma/
+settings case files both maintenance lanes own pieces of; run it NEXT
+round over the widened fixture), the owed 💸 dogfood queue (a `/dogfood`
+pass, not an order — and it should run soon: the queue now spans Almanack,
+Taboo, vision, Serper, whispers, Pascal side effects, dedup/summaries,
+per-turn cadence, and the D96 group-scene walk), `p4.9i2` (the bank grows
+again this round), and PB1 (parked by standing rule).

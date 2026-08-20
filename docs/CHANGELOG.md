@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-20 — docs(porting): plan the b8449b3e round — the anti-chorus drift catch-up + two maintenance lanes
+
+_Docs-only change._
+
+Work orders for the next round, planned against v4 `b8449b3e` (two commits
+past the `c8a3cf77` baseline; drift-checked at planning — `bugfix` carries
+nothing new). P4.D96 ports the `e22f7b36` anti-chorus commit (the
+direct-address `isRecentlyAddressed` rewrite in core + the SPA twin, the
+turn-skip note bytes, the turn-anchor restructure with the
+GROUP_SCENE_DISCIPLINE block, plus a new tier-1 turn-anchor oracle family)
+and dispositions `b8449b3e` (jest Sparkplug, bug 83) as NO-PORT. P4.52
+widens the committed memories-{main,mount}.db fixture pair to the current
+schema vintage and retires the housekeeping_config_set ruled vintage row.
+P4.53 closes the three recorded sweep-driver follow-ups (the live `W=`
+header self-clobber, the `nothing_to_run` refusal, the `normalize()` alias
+neutralization). The three lanes meet nowhere; the baseline moves to
+`b8449b3e` at unification. The merge-verb silent-keep sweep is deliberately
+deferred a round (its case-file footprint collides with both maintenance
+lanes).
+
 #### 2026-08-20 — port(unify): the c8a3cf77 round lands — per-turn summaries, the document-pane toolbar, the sweep smalls
 
 _Versions: core 0.0.591, harness 0.0.511, SPA 0.5.526._
