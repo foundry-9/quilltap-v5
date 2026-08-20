@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-20 — docs(porting): plan the c8a3cf77 round — P4.D95 ∥ P4.9L2 ∥ P4.51
+
+_Docs-only change._
+
+Drift-checked v4 at planning: two commits past the `9125f492` baseline —
+`870a57fa` (per-turn conversation summaries with embedded vector reuse, a
+behavior change on the ported memory/context spine; no schema change) and the
+version-only `c8a3cf77` (NO-PORT). Three work orders written, all disjoint:
+P4.D95 (the whole drift — the new `memoryRecall.perTurnConversationSummaries`
+setting end-to-end, the `captureQueryEmbedding` hook, `precomputedEmbedding`
+on the vault summary search, the proactive vector thread, and the
+build-context per-turn cadence with its dedup/stand-down rules; six harness
+families named), P4.9L2 (the DocumentPane formatting toolbar — the m6 §4
+row-14b named gap, SPA-only, two live beats), and P4.51 (the two `W=`
+self-clobbering carina recipe headers + the sweep driver's
+exit-0-on-unknown-family wart). Round-plan paragraph added to phase-4.md; the
+oracle baseline moves to `c8a3cf77` at unification.
+
 #### 2026-08-19 — port(unify): P4.50 lands — the DbError::Key catch-all split (finding #96 FIXED)
 
 _Versions: core 0.0.590, harness 0.0.509, host 0.0.74, web 0.0.77._

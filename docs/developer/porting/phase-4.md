@@ -5207,6 +5207,51 @@ The two drift lanes are disjoint (ownership tables identical in both
 orders; no shared contract). At unification the baseline moves to
 `9125f492`.
 
+**The `c8a3cf77` per-turn-summaries round (P4.D95 ∥ P4.9L2 ∥ P4.51) —
+PLANNED 2026-08-20.** Drift-checked at planning: v4 moved two commits past
+`9125f492` — `870a57fa` ("Per-turn conversation summaries with embedded
+vector reuse (#38)", a behavior change squarely on the ported memory/context
+spine: `searchMemoriesSemantic`, the vault conversation-summary search,
+`runPreContextPreCompute` → `buildMessageContext` → `buildContext`, the
+consolidated whisper, the retro mini-recap, the fold refresh, instance
+settings, the memories API — no schema change, so no D23 re-dump) and
+`c8a3cf77` (version-bump-only, NO-PORT). `bugfix` measured by `diff`:
+nothing new beyond the test-only `009c49b2`; checkout on `main`, clean.
+The round:
+
+- **P4.D95** (`work-orders/p4.d95-per-turn-conversation-summaries.md`) —
+  the whole `870a57fa` drift: the `memoryRecall.perTurnConversationSummaries`
+  setting end-to-end (defaults, reader/writer, the recall-config verbs,
+  the SPA recall card with v4's strings), the `captureQueryEmbedding`
+  hook with its exact firing semantics, `precomputedEmbedding` on the
+  vault search + the ramp-constant consolidation, the proactive vector
+  thread (both return paths), and the build-context cadence whole
+  (fold-whisper dedup via the backwards stop-at-first scan, the shared
+  whisper target scope, recap stand-down, no-vector sit-out, the retro
+  mini-recap's both-lists filter, `debugRelevantConversations`). Six
+  named families grow or re-run; v4's three new test files are the
+  oracle models.
+- **P4.9L2** (`work-orders/p4.9l2-document-pane-toolbar.md`) — the
+  m6 §4 row-14b named gap: the DocumentPane formatting toolbar (the
+  `.qt-doc-toolbar` mount mirroring v4's `DocToolbar` 1:1, no Nar
+  button, source branch on THIS pane's textarea, the shared
+  `showSource` signal, `roleplayTemplateId` from the Salon only), with
+  the two document-flow beats extended live. SPA-only.
+- **P4.51** (`work-orders/p4.51-sweep-maintenance-smalls.md`) — the two
+  standing maintenance riders: the `W=` self-clobbering recipe headers
+  (`carina_memory_extraction` / `carina_query` tier-3s, proven by
+  end-to-end driver runs) and the sweep driver's
+  exit-0-on-unknown-family wart (nonzero + named error + self-test arm).
+
+All three lanes are disjoint (ownership tables identical in the three
+orders; no shared contract). Harness and the SPA are each bumped by two
+lanes — the unifier accumulates. At unification the oracle baseline moves
+to `c8a3cf77`. Deliberately left out: the owed 💸 dogfood items (run via
+`/dogfood`, not a work order), `p4.9i2` (queued; gains the
+`help/memory-recall-relevance.md` bank from P4.D95), and the candidate-3
+banked smalls (the split-query-key spelling sweep and the cleared-null
+LEAD would collide with P4.D95's SPA/settings surfaces — next round).
+
 **Standing pre-beta gate (not a candidate — do not value-order it against
 drift lanes).** One item is parked deliberately *outside* the candidate list
 above, to run when parity work is winding down and **before the first build
