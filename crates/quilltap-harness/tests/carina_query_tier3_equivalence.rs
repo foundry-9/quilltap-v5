@@ -22,13 +22,13 @@
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
-//!     $N/npx tsx $W/harness/oracle/fixtures/build-carina-query-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-carina-query-fixture.ts
 //!   mkdir -p /tmp/carina-oracle/cases /tmp/carina-oracle/fixtures
-//!   cp $W/harness/oracle/cases/carina-query-tier3.test.ts /tmp/carina-oracle/cases/
-//!   cp $W/harness/oracle/fixtures/carina-query-tier3.json /tmp/carina-oracle/fixtures/
+//!   cp $V5W/harness/oracle/cases/carina-query-tier3.test.ts /tmp/carina-oracle/cases/
+//!   cp $V5W/harness/oracle/fixtures/carina-query-tier3.json /tmp/carina-oracle/fixtures/
 //!   QT_FIXTURE_CARINA_MAIN=/tmp/qt-carina-query-main.db QT_FIXTURE_CARINA_MOUNT=/tmp/qt-carina-query-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-carina-query.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "/tmp/carina-oracle/cases" -- carina-query-tier3

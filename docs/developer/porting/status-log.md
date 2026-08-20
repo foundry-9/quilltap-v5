@@ -76195,3 +76195,70 @@ mount. Named in the pane's class doc alongside the header-button divergence.
 
 SPA 0.5.525; no crate touched.
 
+## P4.51 unit 1 — the two `W=` recipe headers converted, and the clobber proven both directions (2026-08-20)
+
+**The order's Tier-1 item 1.** The last two self-clobbering recipe headers —
+`crates/quilltap-harness/tests/carina_query_tier3_equivalence.rs:25` and
+`carina_memory_extraction_tier3_equivalence.rs:31` — now carry the documented
+immune spelling. Only the variable name moved: `W=${V5W:-$HOME/source/
+quilltap-v5}` → `V5W=${V5W:-…}`, and the three/four `$W/harness/…` references
+in each header → `$V5W/…`. Every other byte of both headers is untouched
+(comment text, ordering, env words, the TZ-free shape).
+
+**The mechanism, re-measured here.** `normalize()` prepends `<VAR>="<--v5w>"`
+for each of `V5W` / `V5` / `W` it finds REFERENCED in the script. In the broken
+spelling the reference is `$W/…`, so the driver prepended `W="<worktree>"` — and
+the header's own `W=${V5W:-$HOME/source/quilltap-v5}` then ran and overwrote it,
+because `$V5W` is NOT prepended (the prepend regex matches `$V5W` / `${V5W}`,
+never `${V5W:-…}`) and is unset in the subprocess environment. In the fixed
+spelling the reference is `$V5W/…`, so `V5W="<worktree>"` IS prepended and the
+header's own `:-` default finds it set and keeps it.
+
+**The proof (both directions, on the real driver).** A unique marker comment was
+appended to the WORKTREE's copy of `harness/oracle/cases/carina-query-tier3.
+test.ts`, then the family run through `recipe_sweep.py --run` twice:
+
+- old `W=` spelling → the staged mirror `/tmp/carina-oracle/cases/carina-query-
+  tier3.test.ts` contains the marker **0** times — the recipe copied MAIN's
+  file — and the driver still exited **0**. That is the invisible failure the
+  P4.D93 lane recorded: a green line proving main's code, not the worktree's.
+- new `V5W=` spelling → the marker is present **1** time; the staged case came
+  from the worktree.
+
+The probe edit was reverted; `git status` after the probe showed only the two
+intended header edits.
+
+**Both families end-to-end through the driver from the lane worktree, green.**
+`python3 harness/tools/recipe_sweep.py --run carina_query_tier3_equivalence` and
+`--run carina_memory_extraction_tier3_equivalence`, each in its own clean
+invocation, both `OK: … recipe ran end-to-end` (exit 0). Fixtures rebuilt and
+oracles regenerated fresh in the same invocation (`/tmp/qt-carina-query-main.db`,
+`/tmp/qt-carina-mem-main.db`, `/tmp/oracle-carina-query.ndjson` 46 rows,
+`/tmp/oracle-carina-mem.ndjson` 12 rows — all mtimes inside the run window), and
+both cargo runs reported `test result: ok. 1 passed` with `--nocapture`, zero
+SKIP. No tracked fixture bytes were modified by either family (the driver's
+committed-bytes tripwire stayed silent; `git status` clean of everything but the
+two headers).
+
+**Tier-2 census (the order's item 3) — the grep, and what it found.**
+`grep -rn 'W=\${V5W' crates/ harness/ | grep -v 'V5W=\${V5W'` now reports **no
+`.rs` family header** carrying the alias. It does report **five oracle CASE
+headers** under `harness/oracle/cases/` that still do:
+`brahma-orchestrator-tier3.test.ts:38`, `brahma-console-tier3.test.ts:33`,
+`brahma-console-routes.test.ts:25`, `carina-query-tier3.test.ts:42`,
+`carina-memory-extraction-tier3.test.ts:36`. Four of those five are
+human-copy-paste text only (their `.rs` families extract from the `.rs` header,
+which is correct in all four). **The fifth is live:**
+`brahma_console_routes_equivalence` is an `ok_restored` family — the driver
+restores its recipe FROM `brahma-console-routes.test.ts`, so its executed regen
+carries the clobbering `W=` line today, and `--show` confirms it stages its case
+file and BOTH `QT_FIXTURE_BRAHMA_*` DBs from `$W`, i.e. from main whenever the
+sweep runs from a worktree. Out of this lane's ownership (the order scopes P4.51
+to the two carina `.rs` headers + the driver) — **recorded here for the next
+maintenance pass**, along with the four cosmetic twins.
+
+**Not done here, by the order's Tier-3 rule:** teaching `normalize()` to
+neutralize the alias assignment itself (a one-line rewrite of any
+`^(V5W|V5|W)=` line the driver has already injected would make the whole class
+unforgeable). Named, not built.
+

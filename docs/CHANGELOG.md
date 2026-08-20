@@ -153,6 +153,25 @@ it was added when this pane had no toolbar — and is recorded as a divergence.
 `document-pane.toolbar.spec.ts` (12 cases) pins the mount shape, the no-Nar
 shape against the recorded corpus, the shared signal from both controls, the
 flush direction, and both routing branches. Six mutations red.
+#### 2026-08-20 — fix(harness): the two carina recipe headers stop clobbering the sweep driver's worktree injection (P4.51 unit 1)
+
+_Versions: harness 0.0.510._
+
+`carina_query_tier3_equivalence` and `carina_memory_extraction_tier3_equivalence`
+declared their v5 checkout as `W=${V5W:-$HOME/source/quilltap-v5}`. The sweep
+driver injects the checkout it was asked to test by PREPENDING `W="<path>"` to
+the script, so the header's own assignment ran second and overwrote it — with
+`$HOME/source/quilltap-v5`, i.e. main — every time the driver ran either family
+from a worktree. The run still went green, against main's case file and main's
+fixture builder: the failure mode is invisible. Both headers now use the
+documented immune spelling (`V5W=${V5W:-…}`, where the injected `V5W` wins the
+`:-` default) and reference `$V5W`; nothing else in either header moved.
+
+Proven by running both families end-to-end through the driver from the lane
+worktree (fresh fixtures, fresh oracles, both diffs green), and by a
+both-directions provenance probe: a marker appended to the worktree's copy of
+`carina-query-tier3.test.ts` is ABSENT from the staged `/tmp` mirror under the
+old spelling and PRESENT under the new one.
 
 #### 2026-08-20 — docs(porting): plan the c8a3cf77 round — P4.D95 ∥ P4.9L2 ∥ P4.51
 
