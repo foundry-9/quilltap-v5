@@ -76338,3 +76338,61 @@ Docs synced with the change: the driver's module docstring gained an
 UNKNOWN FAMILY NAMES paragraph next to the venue/attribution rules, and
 `harness/tools/README.md` an "Unknown family names (P4.51)" section with the
 message shape (the README is the driver's own doc, owned by no other lane).
+
+## P4.51 — LANE GATE (2026-08-20)
+
+**Drift check at lane start and again at the gate:** `git log c8a3cf77..main`
+in `~/source/quilltap-server` is EMPTY — v4 has not moved past the round's
+baseline; the checkout is on `main` and CLEAN (verified before every regen, so
+no pinned worktree was needed). `git diff main bugfix -- lib/ app/ packages/`
+shows only main's newer work missing from `bugfix` (the 4.8.x branch lagging,
+nothing to absorb). This lane ports nothing from v4 in any case.
+
+**The order's gate, run from the lane worktree:**
+
+- `cargo fmt --all --check` — exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0.
+- the same **with `--features quilltap-core/native-transport`** — exit 0.
+- `cargo test -p quilltap-harness` with NO oracle env (the standalone
+  self-tests) — **389 test binaries / 433 passed / 0 failed**, exit 0, zero
+  `SKIP:` lines.
+- `cargo test --workspace` (`CARGO_INCREMENTAL=0`, no oracle env) — **440 test
+  binaries / 2,236 passed / 0 failed**, exit 0, zero `SKIP:` lines. Identical
+  to the P4.50 baseline (440 / 2,236), as it must be: this lane adds no Rust
+  test and changes no Rust code — only doc comments and a Python tool.
+- `harness/tools/check_spelling.py` — exit 0.
+- `python3 harness/tools/recipe_sweep.py --self-test` — **0 failures**,
+  including the six new unknown-family arms.
+- **Both carina families end-to-end through the driver from this worktree, on
+  the FINAL tree (both commits in):** `--run carina_query_tier3_equivalence`
+  and `--run carina_memory_extraction_tier3_equivalence`, each its own clean
+  invocation, both `OK: … recipe ran end-to-end` (exit 0), each rebuilding its
+  fixtures and regenerating its oracle first, each `test result: ok. 1 passed`
+  under `--nocapture`, zero SKIP.
+- `git status --porcelain` after the family runs: **empty** — no tracked
+  fixture bytes moved, and the driver's committed-bytes tripwire stayed silent.
+
+**SPA gate:** N/A (no `apps/web` file touched).
+
+**Versions:** harness 0.0.509 → **0.0.510** (the two test-file headers);
+`harness/tools/recipe_sweep.py` and its README are tooling, not crate source,
+so unit 2 bumps nothing. core/host/web/cli/tauri/sys unchanged.
+
+**Left OPEN by this lane, deliberately** (the order's Tier-3 rule — recorded,
+not fixed):
+
+1. `brahma_console_routes_equivalence` is `ok_restored` from
+   `harness/oracle/cases/brahma-console-routes.test.ts`, whose header still
+   carries the clobbering `W=${V5W:-…}` alias — so its executed regen stages
+   its case file AND both `QT_FIXTURE_BRAHMA_*` DBs from MAIN whenever the
+   sweep runs from a worktree. Four other `.ts` case headers carry the alias
+   cosmetically (their `.rs` families extract from the correct `.rs` header):
+   `brahma-orchestrator-tier3`, `brahma-console-tier3`, `carina-query-tier3`,
+   `carina-memory-extraction-tier3`.
+2. `--run <family>` on a family whose recipe extracts to EMPTY stages (every
+   `no_oracle` family, every `exempt` pin) prints `OK: … recipe ran
+   end-to-end` and exits 0 having run nothing — a vacuous green wearing a
+   confident sentence. Wants a distinct `nothing_to_run` refusal.
+3. Teaching `normalize()` to neutralize an alias assignment it has already
+   injected (one rewrite of any `^(V5W|V5|W)=` line) would make the whole
+   header class unforgeable rather than convention-dependent.

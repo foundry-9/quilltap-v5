@@ -153,6 +153,19 @@ it was added when this pane had no toolbar — and is recorded as a divergence.
 `document-pane.toolbar.spec.ts` (12 cases) pins the mount shape, the no-Nar
 shape against the recorded corpus, the shared signal from both controls, the
 flush direction, and both routing branches. Six mutations red.
+#### 2026-08-20 — docs(porting): the P4.51 lane gate — both riders discharged, three follow-ups recorded
+
+_Docs-only change._
+
+The lane's gate numbers (fmt, clippy both feature sets, the harness self-tests,
+the full workspace suite at 440 / 2,236 / 0, the spelling guard, the driver
+self-test, and both carina families end-to-end through the driver from the
+worktree), the drift check at `c8a3cf77`, and the three things the lane
+deliberately left open: the fifth `.ts` header whose family really does restore
+from it (`brahma_console_routes_equivalence`), the driver's empty-stage vacuous
+`OK`, and the `normalize()` hardening that would make the header class
+unforgeable.
+
 #### 2026-08-20 — fix(harness): the sweep driver refuses an unknown family name loudly, before any stage runs (P4.51 unit 2)
 
 _No crate versions bumped._
