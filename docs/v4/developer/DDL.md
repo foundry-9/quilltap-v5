@@ -142,7 +142,8 @@ The **Brahma Console** can also query these databases from inside a running inst
 ### Embedding BLOB format (all `embedding` columns)
 
 Every `embedding BLOB` column in every database (`memories`, `vector_entries`,
-`conversation_chunks`, `help_docs` in the main DB; `doc_mount_chunks` in the
+`conversation_chunks`, `help_docs`, `help_doc_chunks` in the main DB;
+`doc_mount_chunks` in the
 mount index) holds a **self-describing quantized vector** since
 `quantize-embeddings-v1` (v4.8.0). The single-source-of-truth codec is
 `lib/embedding/float32-conversion.ts`; consumers always see a hydrated
@@ -376,7 +377,7 @@ emitted only when set; vault path lookups are case-insensitive.
 |---|---|---|
 | id | string (UUID) | Stable item id. Falls back to a deterministic UUID derived from the mount + path if absent. |
 | title | string | Display name. Falls back to a leading `# Heading` or the filename if absent. |
-| types | list | Coverage slots this item designates: any of `top`, `bottom`, `footwear`, `accessories`. For composites this **may be a superset** of the components' slot union (so a composite can designate slots beyond the garments it actually contains, in order to clear them). |
+| types | list | Coverage slots this item designates: any of `top`, `bottom`, `footwear`, `accessories`, `hair`. For composites this **may be a superset** of the components' slot union (so a composite can designate slots beyond the garments it actually contains, in order to clear them). |
 | componentItems | list (composites only) | Component refs as slugs or UUIDs; resolved to canonical UUIDs in a second pass. Omitted for leaf items. |
 | appropriateness | string | Context tags ("casual", "formal", "intimate", etc.). |
 | imagePrompt | string | Optional plain-text cue fed to image-generation pipelines (avatar + Lantern scene) **in place of** the title; falls back to the title when absent/blank. Authored for a diffusion model (e.g. a literal description of a rank glyph), unlike the human-prose `description` body, which is stripped from image prompts. Emitted only when set. |
@@ -492,7 +493,7 @@ CREATE TABLE "chats" (
   "spokenThisCycleParticipantIds" TEXT DEFAULT '[]',  -- JSON array of participantIds that have spoken in the current rotation cycle (includes user-controlled characters)
   "sceneState" TEXT DEFAULT NULL,
   "renderedMarkdown" TEXT DEFAULT NULL,
-  "equippedOutfit" TEXT DEFAULT NULL,
+  "equippedOutfit" TEXT DEFAULT NULL,  -- JSON map { [characterId]: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } }, each slot an array of wardrobe item ids (layering order significant). Unconstrained JSON: rows written before a slot existed simply lack the key and parse with an empty array.
   "pendingOutfitNotifications" TEXT DEFAULT NULL,
   "characterAvatars" TEXT DEFAULT NULL,  -- JSON map { [characterId]: { imageId, generatedAt, afterMessageCount } } where imageId is a vault link id (post-photos-Phase-3); pre-cutover values were legacy files.id and are translated by the migration.
   "avatarGenerationEnabled" INTEGER DEFAULT NULL,
@@ -761,6 +762,8 @@ CREATE TABLE "chat_settings" (
   "autoLockSettings" TEXT DEFAULT '{"enabled":false,"idleMinutes":15}',
   "compositionModeDefault" INTEGER DEFAULT 0,
   "composerSpellcheck" INTEGER DEFAULT 1, -- added in 4.6 (add-composer-spellcheck-field-v1): governs browser spellcheck on Salon composer + Document Mode rich editor
+  "composerEmoji" INTEGER DEFAULT 1, -- added in 4.8.2 (add-composer-emoji-field-v1): governs the `:` emoji typeahead on Salon composer + Document Mode rich editor; the toolbar's emoji picker is NOT gated by it
+  "composerUnicode" INTEGER DEFAULT 1, -- added in 4.8.2 (add-composer-unicode-field-v1): governs the `\` Unicode typeahead on Salon composer + Document Mode rich editor; the toolbar's symbol picker is NOT gated by it
   "textReplacementsEnabled" INTEGER DEFAULT 1, -- added in 4.6 (add-text-replacements-enabled-field-v1): master switch for the Layer 1.5 text-replacement plugin; rule list lives in text_replacement_rules
   "autonomousRoomSettings" TEXT DEFAULT '{}', -- added in 4.6 (add-autonomous-rooms-fields-v1): user-level defaults for autonomous rooms { dailyTokenBudget, defaultFreshnessWindowMs, visibilityDefault, destructiveToolPolicy }
   "coreWhisper" TEXT DEFAULT '{"enabled":true,"interval":12,"silenceThreshold":3,"packetTokenBudget":4096,"fireOnContextTransition":true}', -- added in 4.6 (add-core-whisper-settings-field-v1): global defaults for Aurora's Core whisper { enabled, interval, silenceThreshold, packetTokenBudget, fireOnContextTransition }. Per-chat/per-character overrides live on chats.coreWhisper*/characters.coreWhisperEnabled. Resolution: chat → character → global.
@@ -768,6 +771,7 @@ CREATE TABLE "chat_settings" (
   "autoScrollOnResponseComplete" INTEGER DEFAULT 0, -- added in 4.6 (add-auto-scroll-on-response-complete-field-v1): when 1, the Salon scrolls to the newest message as a reply finishes / a new message arrives (only when already near the bottom). Default 0 so long replies don't yank the reader away. DISPLAY ONLY.
   "answerConfirmationSettings" TEXT DEFAULT '{"enabled":false}', -- added in 4.8 (add-answer-confirmation-columns-v2): global default for the Salon answer-confirmation check { enabled }. Per-project override in project properties.json; per-chat override on chats.answerConfirmationOverride.
   "customTools" INTEGER DEFAULT 1, -- added in 4.8 (add-custom-tools-field-v1): when 0, Pascal's run_custom pseudo-tool is never offered to models and the composer gutter button is hidden. Custom tool definitions themselves are retained.
+  "smartTypographySettings" TEXT DEFAULT '{"displayQuotes":false,"dashes":true,"ellipsis":true}', -- added in 4.8.2 (add-smart-typography-settings-field-v1): Layer 1.6 { displayQuotes, dashes, ellipsis }. `displayQuotes` curls quotes at RENDER time only — chat_messages.content is never rewritten, so model input, embeddings and exports are unaffected; suppressed for a template whose patterns claim a quote character. `dashes`/`ellipsis` are type-time and DO write real –/—/… into the composer text.
   UNIQUE("userId")
 );
 
@@ -831,7 +835,14 @@ CREATE TABLE "connection_profiles" (
   "supportsImageUpload" INTEGER DEFAULT 0,
   "transport" TEXT NOT NULL DEFAULT 'api',
   "courierDeltaMode" INTEGER DEFAULT 1,
-  "pseudoToolMode" TEXT DEFAULT 'auto'
+  "pseudoToolMode" TEXT DEFAULT 'auto',
+  -- Multi-character turn anchor. 1 = prefill an assistant "[Name]" message;
+  -- 0 = append a prose instruction to the system prompt instead. NULL means
+  -- never chosen (rows older than the migration, or imported from a pre-4.9
+  -- bundle) and resolves to the provider default — off for Anthropic, on
+  -- elsewhere. Read it only through profileUsesNamePrefill()
+  -- (lib/llm/multi-character-prefill.ts).
+  "multiCharacterPrefill" INTEGER DEFAULT 1
 );
 
 CREATE INDEX "idx_connection_profiles_createdAt" ON "connection_profiles" ("createdAt" DESC);
@@ -998,7 +1009,39 @@ CREATE INDEX "idx_help_docs_url" ON "help_docs" ("url");
 | url | TEXT | URL route this doc is associated with (e.g., `/aurora`, `/settings?tab=chat`) |
 | content | TEXT | Full document content with frontmatter stripped |
 | contentHash | TEXT | SHA-256 hash of raw file content, used for change detection during sync |
-| embedding | BLOB (nullable) | Quantized embedding vector (see "Embedding BLOB format"), generated at runtime using user's embedding profile |
+| embedding | BLOB (nullable) | Quantized embedding vector (see "Embedding BLOB format"), generated at runtime using user's embedding profile. Whole-document granularity — the coarse signal; see `help_doc_chunks` for section granularity |
+| createdAt | TEXT (ISO 8601) | Creation timestamp |
+| updatedAt | TEXT (ISO 8601) | Last update timestamp |
+
+### help_doc_chunks
+
+Section-level slices of each help document, one row per chunk, so semantic search can match a *section* rather than only a whole page. A whole-document vector for a long, topically broad page (`help/chat-settings.md` covers a dozen subsystems) is a smear that matches any specific question only weakly. Rows are rebuilt from disk by the help-doc sync whenever a document's content hash changes, and their embeddings are filled by the same `HELP_DOC` background job that embeds the parent document — so a chunk can never carry a dimension its parent doesn't. Introduced in v4.9.0 (migration: `create-help-doc-chunks-table-v1`).
+
+```sql
+CREATE TABLE "help_doc_chunks" (
+  "id" TEXT PRIMARY KEY,
+  "docId" TEXT NOT NULL,
+  "chunkIndex" INTEGER NOT NULL,
+  "heading" TEXT,
+  "content" TEXT NOT NULL,
+  "embedding" BLOB,
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL,
+  UNIQUE("docId", "chunkIndex"),
+  FOREIGN KEY ("docId") REFERENCES "help_docs"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX "idx_help_doc_chunks_docId" ON "help_doc_chunks" ("docId");
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT (UUID) | Primary key |
+| docId | TEXT (UUID) | Owning `help_docs` row; cascade-deleted with it |
+| chunkIndex | INTEGER | 0-based position within the document |
+| heading | TEXT (nullable) | Nearest Markdown heading above the chunk, used as context when embedding and shown with a search hit |
+| content | TEXT | The chunk text; consecutive chunks overlap by design |
+| embedding | BLOB (nullable) | Quantized embedding vector (see "Embedding BLOB format"). NULL between a content change and the next `HELP_DOC` embedding job |
 | createdAt | TEXT (ISO 8601) | Creation timestamp |
 | updatedAt | TEXT (ISO 8601) | Last update timestamp |
 
@@ -1332,7 +1375,7 @@ Known keys (others may be present from migrations / startup hooks):
 - `maxConcurrentJobs` (4.7+) — integer 1–32, default 4. Global cap on how many background jobs of any type the dispatcher runs at once. Read fresh each claim cycle by `lib/background-jobs/host/job-dispatcher.ts` (`getMaxConcurrentJobs`), so a change applies within ~2 s without a restart; updated by `POST /api/v1/system/tools?action=job-concurrency` (surfaced as the "Simultaneous Labours" slider in the Tasks Queue card). Accessors in `lib/instance-settings/index.ts`.
 - `memoryExtractionConcurrency` (4.4+) — integer 1–32. **DEPRECATED in 4.7**: the dispatcher unified to the global `maxConcurrentJobs` cap above; this key is no longer read at runtime (the `/api/v1/memories?action=extraction-concurrency` route still persists it for the `memory-diff` CLI). Was a per-instance MEMORY_EXTRACTION concurrency cap.
 - `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}`. Per-instance memory extraction rate limits. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
-- `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean, perTurnConversationSummaries: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. `perTurnConversationSummaries` (default `false`, added in 4.9) makes every turn's consolidated Commonplace Book whisper carry a freshly-searched relevant-past-conversations list from the character's vault `Conversation Summaries/` folder, reusing the vector the turn's memory search already embedded (no extra embedding call); off, that list refreshes only at chat start / character join, on each summary fold, and on retrospective turns. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`renderedMarkdown`, the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`), and cold-tiered `conversation_chunks.embedding`. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `taboo` (4.8+) — JSON: `{phrases: string[]}` (each 1–200 chars after trim, at most 500 entries, default `[]`). Per-instance list of phrases characters must never say. Normalized on write (trim, drop empties, case-insensitive dedupe, **user order preserved** — the rendering sits in the cacheable system-prompt prefix, so order is deliberately not sorted). Read once per turn by `buildContext()` (`lib/chat/context-manager.ts`) via `getTabooSettings` and rendered by `renderTabooSection` (`lib/chat/context/system-prompt-builder.ts`) between the universal math-formatting note and the per-turn tool instructions; an empty list renders no section at all. Updated by `PUT /api/v1/settings/taboo` (Settings → Chat → Taboo). Accessors in `lib/instance-settings`. Schema: `TabooSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `lastMaintenanceSweepAt` (4.7+) — ISO 8601 timestamp of the last completed scheduled-maintenance pass. Written/read by `lib/background-jobs/scheduled-maintenance.ts` to skip the startup tick when a sweep ran within the last 20 h (dev-restart friendliness). Internal; not exported.

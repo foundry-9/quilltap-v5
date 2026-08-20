@@ -328,6 +328,11 @@ pub struct BuiltContext {
     pub debug_knowledge: Option<Vec<DebugKnowledgeOut>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug_memory_recap: Option<String>,
+    /// Debug info: the per-turn relevant-past-conversations list, present only
+    /// when the instance-wide `memoryRecall.perTurnConversationSummaries`
+    /// setting is on and the search found something new to list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug_relevant_conversations: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug_summary: Option<String>,
     pub debug_system_prompt: String,
@@ -547,6 +552,12 @@ pub struct BuildContextInput {
     /// re-running the distillation (`context-manager.ts:1139`). `None` when the
     /// proactive path didn't run or its extraction failed.
     pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
+    /// v4 `options.preSearchedQueryEmbedding` (`870a57fa`) — the query text +
+    /// vector the proactive recall already embedded for `pre_searched_memories`.
+    /// When the pre-searched path is the one this turn uses, the per-turn
+    /// conversation-summary search reuses this vector rather than embedding the
+    /// same sentence a second time.
+    pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
 }
 
 /// v4's `turnSkip` option bag (`{ offerSkip, recentlyAddressed, characterName }`).
@@ -611,22 +622,9 @@ pub struct MountPool {
     pub global_mount_point_id: Option<String>,
 }
 
-/// Instance-wide recall settings (v4 `getMemoryRecallSettings`).
-#[derive(Clone, Debug)]
-pub struct MemoryRecallSettings {
-    pub scope_policy: String,
-    pub expand_related: bool,
-}
-
-impl Default for MemoryRecallSettings {
-    fn default() -> Self {
-        // v4 `DEFAULT_MEMORY_RECALL_SETTINGS` (`lib/instance-settings`).
-        MemoryRecallSettings {
-            scope_policy: "down-weight".to_string(),
-            expand_related: false,
-        }
-    }
-}
+/// Instance-wide recall settings (v4 `getMemoryRecallSettings`). One home, in
+/// the settings layer where the reader lives.
+pub use crate::db::instance_settings::MemoryRecallSettings;
 
 /// The injected **whisper-POSTING** half of the context feeders (W4.6b, wired live
 /// in the Round-3 unification pass). W4.6a closed every READ/COMPUTE feeder in-line
@@ -1116,13 +1114,8 @@ fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
 /// the setting is unwritten. Consumed by the per-turn recall context (P4.d13
 /// closed the search-leg re-rank deferral).
 pub(crate) fn read_memory_recall_settings(db: &Db) -> MemoryRecallSettings {
-    match db.read_main(crate::db::instance_settings::get_memory_recall_settings) {
-        Ok((scope_policy, expand_related)) => MemoryRecallSettings {
-            scope_policy,
-            expand_related,
-        },
-        Err(_) => MemoryRecallSettings::default(),
-    }
+    db.read_main(crate::db::instance_settings::get_memory_recall_settings)
+        .unwrap_or_default()
 }
 
 /// v4 `chats.update({ commonplaceSceneCache })` (W4.6a): persist the per-target
@@ -1560,6 +1553,66 @@ static FOLD_WHISPER_UUID_RE: std::sync::LazyLock<regex::Regex> = std::sync::Lazy
         .expect("fold-whisper uuid regex")
 });
 
+/// v4 `collectFoldWhisperConversationIds` (`870a57fa`) — the conversation UUIDs
+/// already listed in the standing fold-posted `relevant-conversations` whisper
+/// for one target.
+///
+/// That whisper persists across turns and is exempt from the LLM-context strip,
+/// so anything it already names is in front of the character; both turn-scoped
+/// conversation lists (the per-turn list and the retrospective mini-recap) filter
+/// against it rather than printing the same UUID twice.
+///
+/// Walks the transcript BACKWARDS and stops at the first match: the fold refresh
+/// sweeps a target's prior whispers of this kind as soon as it posts a fresh one,
+/// so at most one is standing, and the newest is the only one worth reading.
+///
+/// Best-effort: an unreadable transcript yields an empty set — a duplicate
+/// listing is harmless, a thrown turn is not.
+fn collect_fold_whisper_conversation_ids(
+    db: &Db,
+    chat_id: &str,
+    target_participant_id: Option<&str>,
+) -> HashSet<String> {
+    let cid = chat_id.to_string();
+    let messages = db
+        .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
+        .unwrap_or_default();
+    let mut ids = HashSet::new();
+    for m in messages.iter().rev() {
+        if m.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        if m.get("systemSender").and_then(Value::as_str) != Some("commonplaceBook")
+            || m.get("systemKind").and_then(Value::as_str) != Some("relevant-conversations")
+        {
+            continue;
+        }
+        if !target_ids_include(m, target_participant_id) {
+            continue;
+        }
+        let content = m.get("content").and_then(Value::as_str).unwrap_or("");
+        for cap in FOLD_WHISPER_UUID_RE.captures_iter(content) {
+            ids.insert(cap[1].to_string());
+        }
+        break;
+    }
+    ids
+}
+
+/// The standing fold whisper's UUIDs, read at most once per turn and only when a
+/// conversation list is actually being built (v4's lazily-cached
+/// `foldWhisperConversationIds()` closure).
+fn fold_whisper_conversation_ids<'a>(
+    db: &Db,
+    chat_id: &str,
+    target_participant_id: Option<&str>,
+    cache: &'a mut Option<HashSet<String>>,
+) -> &'a HashSet<String> {
+    cache.get_or_insert_with(|| {
+        collect_fold_whisper_conversation_ids(db, chat_id, target_participant_id)
+    })
+}
+
 /// Recall-on-reference (fourth cadence, **part 2**) — v4 `buildContext`
 /// context-manager.ts:1944–2030.
 ///
@@ -1578,13 +1631,16 @@ static FOLD_WHISPER_UUID_RE: std::sync::LazyLock<regex::Regex> = std::sync::Lazy
 /// every fallible step here degrades in place (`search_vault_conversation_-
 /// summaries` already returns `[]` on any failure; the dedup read has its own
 /// swallowing catch, since "a duplicate UUID listing is harmless").
+#[allow(clippy::too_many_arguments)]
 async fn resolve_retrospective_mini_recap<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
     input: &BuildContextInput,
     signals: &crate::services::memory_recap::distill::DistilledSearch,
     memory_search_query: &str,
-    is_multi_character: bool,
+    commonplace_target_participant_id: Option<&str>,
+    fold_whisper_ids_cache: &mut Option<HashSet<String>>,
+    per_turn_conversation_ids: &HashSet<String>,
 ) -> Option<(String, String)> {
     // The signature: the window (or `∅`) plus the lowercased entities in JS
     // default-`sort()` order (code-unit lexicographic, which Rust's `str: Ord`
@@ -1639,46 +1695,29 @@ async fn resolve_retrospective_mini_recap<E: EmbeddingProvider>(
         Some(&input.chat.id),
         // The round-2 `time_range` gets its first production caller here.
         signals.time_range.as_ref(),
+        // The mini-recap embeds its own composed query (paraphrase + entities) —
+        // not the turn's memory-search sentence, so there is nothing to reuse.
+        None,
     )
     .await;
 
-    // Dedup against the standing on-fold `relevant-conversations` whisper for the
-    // same target — no point listing the same UUID twice. Best-effort: a read
-    // failure just means a possible duplicate.
-    let fold_whisper_ids: HashSet<String> = {
-        let chat_id = input.chat.id.clone();
-        let target_id: Option<&str> = if is_multi_character {
-            input.responding_participant.as_ref().map(|p| p.id.as_str())
-        } else {
-            None
-        };
-        let messages = db
-            .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &chat_id))
-            .unwrap_or_default();
-        let mut ids = HashSet::new();
-        for m in &messages {
-            if m.get("type").and_then(Value::as_str) != Some("message") {
-                continue;
-            }
-            if m.get("systemSender").and_then(Value::as_str) != Some("commonplaceBook")
-                || m.get("systemKind").and_then(Value::as_str) != Some("relevant-conversations")
-            {
-                continue;
-            }
-            if !target_ids_include(m, target_id) {
-                continue;
-            }
-            let content = m.get("content").and_then(Value::as_str).unwrap_or("");
-            for cap in FOLD_WHISPER_UUID_RE.captures_iter(content) {
-                ids.insert(cap[1].to_string());
-            }
-        }
-        ids
-    };
+    // Dedup against every conversation list already going to this target this
+    // turn — the standing on-fold whisper and, when the per-turn cadence is on,
+    // the list built just before this one. No point listing the same UUID twice.
+    // Best-effort: a read failure just means a possible duplicate.
+    let fold_whisper_ids = fold_whisper_conversation_ids(
+        db,
+        &input.chat.id,
+        commonplace_target_participant_id,
+        fold_whisper_ids_cache,
+    );
 
     let mut filtered: Vec<_> = matches
         .into_iter()
-        .filter(|m| !fold_whisper_ids.contains(&m.conversation_id))
+        .filter(|m| {
+            !fold_whisper_ids.contains(&m.conversation_id)
+                && !per_turn_conversation_ids.contains(&m.conversation_id)
+        })
         .collect();
     filtered.truncate(RETRO_MINI_RECAP_MAX_ENTRIES);
     if filtered.is_empty() {
@@ -2142,6 +2181,12 @@ where
     // ---------------------------------------------------------------------
     // 2. Memory retrieval (two-pool).
     // ---------------------------------------------------------------------
+    //
+    // Instance-wide recall settings, read once for the turn (v4 `870a57fa`
+    // hoists this out of the two-pool branch): the dynamic head's scope/expand
+    // policy below, and the per-turn conversation-summary cadence after the
+    // whisper's memory sections are assembled.
+    let recall_settings = read_memory_recall_settings(db);
     let mut memory_content = String::new();
     let mut memory_tokens = 0i64;
     let mut memories_included = 0usize;
@@ -2150,6 +2195,13 @@ where
     let memory_search_query =
         build_recent_window_query(&input.existing_messages, input.new_user_message.as_deref());
     let mut whispered_memory_ids: Vec<String> = Vec::new();
+    // The query text + vector this turn's memory search embedded, captured so the
+    // per-turn conversation-summary search can reuse it (one embedding, two
+    // searches). `None` when memories were skipped or the embedding failed — in
+    // which case the conversation-summary cadence simply sits this turn out
+    // rather than paying for a call of its own.
+    let mut turn_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding> =
+        None;
     // Turn-level recall signals (retrospective / timeRange / entities). The
     // proactive pre-compute path hands them in via `input.recall_signals` (v4
     // `turnRecallSignals = options.recallSignals ?? null`, context-manager.ts:1139);
@@ -2196,6 +2248,8 @@ where
             // entirely. `turn_recall_signals` is already seeded from
             // `input.recall_signals` above, so the retrospective head sizing +
             // mini-recap fire identically on this path.
+            // The proactive path did the embedding; take its vector as this turn's.
+            turn_query_embedding = input.pre_searched_query_embedding.clone();
             dynamic_head_results = pre_searched
                 .iter()
                 .filter(|r| json_str(&r.memory, "id").is_none_or(|id| !archive_ids.contains(&id)))
@@ -2286,11 +2340,10 @@ where
                 }
             }
 
-            // Read the instance-wide recall settings and assemble the full
-            // per-turn recall context so the dynamic head reads the targeting
-            // tags back (see recall_tags). chat.projectId is the rename-proof
-            // comparand for scope: narrow gating.
-            let recall_settings = read_memory_recall_settings(db);
+            // Assemble the full per-turn recall context so the dynamic head
+            // reads the targeting tags back (see recall_tags). chat.projectId is
+            // the rename-proof comparand for scope: narrow gating. (The settings
+            // themselves were read once at the top of step 2.)
             let fallback_retro = turn_recall_signals
                 .as_ref()
                 .is_some_and(|s| s.retrospective);
@@ -2374,6 +2427,7 @@ where
                     now_ms: now_ms_f,
                     ..Default::default()
                 },
+                Some(&mut turn_query_embedding),
             )
             .await?;
             dynamic_head_results = results
@@ -2541,6 +2595,9 @@ where
                             now_ms: now_ms_f,
                             ..Default::default()
                         },
+                        // v4 passes no capture here — the inter-character pool
+                        // is a companion search, not the turn's main query.
+                        None,
                     )
                     .await
                     .unwrap_or_default();
@@ -2955,13 +3012,115 @@ where
         _ => String::new(),
     };
 
+    // The scope every Commonplace Book whisper for this turn is addressed to: the
+    // responding participant in a multi-character chat, untargeted (public)
+    // otherwise. Computed ONCE (v4 `870a57fa`) and shared by the conversation-list
+    // dedup below and the whisper posting further down, so a list can never be
+    // filtered against one scope and then whispered to another.
+    let commonplace_target_participant_id: Option<String> = if is_multi_character {
+        input.responding_participant.as_ref().map(|p| p.id.clone())
+    } else {
+        None
+    };
+
+    // The standing fold whisper's UUIDs, read at most once per turn and only when
+    // a conversation list is actually being built.
+    let mut fold_whisper_ids_cache: Option<HashSet<String>> = None;
+
+    // Per-turn conversation summaries (instance-wide setting
+    // `memoryRecall.perTurnConversationSummaries`, off by default): re-run the
+    // relevant-past-conversations search over the character's vault
+    // `Conversation Summaries/` folder EVERY turn and fold the list into the
+    // consolidated whisper, instead of letting it refresh only at chat start /
+    // character join (the recap), on each summary fold (the standing
+    // `relevant-conversations` whisper), and on retrospective turns.
+    //
+    // The search rides the vector this turn's memory search already embedded —
+    // one embedding, two searches — so the extra cost is the vault chunk scan and
+    // a few frontmatter reads, not another provider call. No vector (memories
+    // skipped, no embedding profile, a failed embedding, or the text-search
+    // fallback) means no list this turn rather than an embedding of our own.
+    // Best-effort throughout: it never blocks or fails a turn.
+    //
+    // Skipped on the turn the recap itself runs: `generate_memory_recap` already
+    // searched the same shelf and its list is riding in `recap`, so a second one
+    // would say the same thing twice in a single whisper.
+    //
+    // v4 wraps the block in a warn-only try/catch. Every fallible step here
+    // degrades in place instead: `search_vault_conversation_summaries` returns an
+    // empty list on any failure, and the fold-whisper read swallows its own.
+    let mut per_turn_conversations_content = String::new();
+    let mut per_turn_conversation_ids: HashSet<String> = HashSet::new();
+    //
+    // v4's four conjuncts: the setting, a character, a vector to ride, and NOT
+    // the turn the recap runs. The vector is the fourth, so binding it here
+    // keeps the gate and the value in one place (rather than testing
+    // `is_some()` and unwrapping below, which would leave a panic on a path
+    // only a later edit could reach).
+    let per_turn_captured = if recall_settings.per_turn_conversation_summaries
+        && !input.character.id.is_empty()
+        && memory_recap_content.is_empty()
+    {
+        turn_query_embedding.clone()
+    } else {
+        None
+    };
+    if let Some(captured) = per_turn_captured {
+        let limit = crate::services::memory_recap::ramp_limit(
+            budget_info.as_ref().map(|b| b.max_context),
+            crate::services::memory_recap::RELEVANT_CONVERSATIONS_MIN,
+            crate::services::memory_recap::RELEVANT_CONVERSATIONS_MAX,
+            crate::services::memory_recap::RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS,
+            crate::services::memory_recap::RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS,
+        );
+        let matches = crate::services::memory_recap::search_vault_conversation_summaries(
+            db,
+            embedding,
+            &input.character.id,
+            input.character.character_document_mount_point_id.as_deref(),
+            &captured.query,
+            &input.user_id,
+            input.embedding_profile_id.as_deref(),
+            limit.max(0) as usize,
+            Some(&input.chat.id),
+            // A resolved window is worth honouring whichever way the retrospective
+            // classifier went — the search's window staging falls back to the full
+            // pool when too few conversations overlap, so it cannot starve the list.
+            turn_recall_signals
+                .as_ref()
+                .and_then(|s| s.time_range.as_ref()),
+            Some(&captured.embedding),
+        )
+        .await;
+        let fold_ids = fold_whisper_conversation_ids(
+            db,
+            &input.chat.id,
+            commonplace_target_participant_id.as_deref(),
+            &mut fold_whisper_ids_cache,
+        );
+        let filtered: Vec<_> = matches
+            .into_iter()
+            .filter(|m| !fold_ids.contains(&m.conversation_id))
+            .collect();
+        if !filtered.is_empty() {
+            for m in &filtered {
+                per_turn_conversation_ids.insert(m.conversation_id.clone());
+            }
+            per_turn_conversations_content = format!(
+                "{}\n\n{}",
+                crate::services::memory_recap::render_relevant_conversations_block(&filtered),
+                crate::services::memory_recap::READ_CONVERSATION_CALL_NOTE
+            );
+        }
+    }
+
     // Recall-on-reference (fourth cadence, part 2): on a retrospective turn, build
     // the scoped mini-recap — a dated, drillable Relevant Past Conversations list
     // from the vault summaries, scoped by the turn's timeRange/entities and closed
     // by the read_conversation call note. Spam guard: skip when a block with the
     // same signature was emitted within the last few turns (piggybacking the
-    // recall-history ring buffer), and dedup conversation IDs against the current
-    // on-fold relevant-conversations whisper. Best-effort — never blocks the turn.
+    // recall-history ring buffer), and dedup conversation IDs against BOTH lists
+    // already going to this target. Best-effort — never blocks the turn.
     let (retrospective_recall_content, emitted_retro_signature) = match &turn_recall_signals {
         Some(signals) if signals.retrospective && !input.character.id.is_empty() => {
             match resolve_retrospective_mini_recap(
@@ -2970,7 +3129,9 @@ where
                 input,
                 signals,
                 &memory_search_query,
-                is_multi_character,
+                commonplace_target_participant_id.as_deref(),
+                &mut fold_whisper_ids_cache,
+                &per_turn_conversation_ids,
             )
             .await
             {
@@ -2982,19 +3143,19 @@ where
     };
 
     // Commonplace whisper post + scene-cache + recall-history persistence (seams).
-    // Reuse the canonical builders from `commonplace_notifications` (Group 5 dedup);
-    // the per-turn consolidated whisper leaves `relevant_conversations` empty (only
-    // the fold-refresh whisper sets it), so the output is identical to the removed
-    // private copies. The retrospective mini-recap rides the LLM recall text here
-    // but is posted as its OWN `retrospective-recall` whisper below — NEVER inside
-    // the consolidated body.
+    // Reuse the canonical builders from `commonplace_notifications` (Group 5 dedup).
+    // `relevant_conversations` is empty unless the per-turn conversation-summary
+    // cadence is switched on; the fold-posted whisper carries that section
+    // otherwise. The retrospective mini-recap rides the LLM recall text here but is
+    // posted as its OWN `retrospective-recall` whisper below — NEVER inside the
+    // consolidated body.
     let cmpb_parts = crate::services::commonplace_notifications::CommonplaceParts {
         current_state: opt(&current_state_content),
         recap: opt(&memory_recap_content),
         relevant: opt(&memory_content),
         inter_char: opt(&inter_character_memory_content),
         knowledge: opt(&knowledge_content),
-        relevant_conversations: None,
+        relevant_conversations: opt(&per_turn_conversations_content),
         retrospective_recall: None,
     };
     let persona_whisper =
@@ -3008,11 +3169,7 @@ where
 
     if !persona_whisper.is_empty() {
         let persona = &persona_whisper;
-        let target = if is_multi_character {
-            input.responding_participant.as_ref().map(|p| p.id.as_str())
-        } else {
-            None
-        };
+        let target = commonplace_target_participant_id.as_deref();
         // The Commonplace whisper POST is W4.6b (the recorded seam). The two
         // persist writes are W4.6a — gated on `posted`, exactly as v4's
         // `if (posted)`. The seam returns whether a whisper was durably posted.
@@ -3050,11 +3207,7 @@ where
     // the `if (personaWhisper)` block: a turn with no ordinary recall still gets
     // its mini-recap.
     if !retrospective_recall_content.is_empty() {
-        let target = if is_multi_character {
-            input.responding_participant.as_ref().map(|p| p.id.as_str())
-        } else {
-            None
-        };
+        let target = commonplace_target_participant_id.as_deref();
         let content = crate::services::commonplace_notifications::build_commonplace_persona_whisper(
             &crate::services::commonplace_notifications::CommonplaceParts {
                 retrospective_recall: Some(retrospective_recall_content.clone()),
@@ -3230,6 +3383,7 @@ where
             Some(debug_knowledge)
         },
         debug_memory_recap: opt(&memory_recap_content),
+        debug_relevant_conversations: opt(&per_turn_conversations_content),
         debug_summary: input.chat.context_summary.clone().filter(|s| !s.is_empty()),
         debug_system_prompt,
         original_system_prompt: final_system_prompt,

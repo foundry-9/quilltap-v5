@@ -12,6 +12,61 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-20 — feat(memory): per-turn conversation summaries riding the turn's one embedding (P4.D95)
+
+_Versions: core 0.0.591, harness 0.0.510._
+
+Ports v4 `870a57fa`. A new instance-wide setting,
+`memoryRecall.perTurnConversationSummaries` (Settings → Memory → Recall
+Relevance, off by default, no chat/project/character override), re-runs the
+relevant-past-conversations search over the responding character's vault
+`Conversation Summaries/` folder on every turn and folds the result into the
+consolidated Commonplace Book whisper's `relevantConversations` part. Until now
+that list refreshed on three cadences only — the chat-start / character-join
+recap, each summary fold, and retrospective turns — so between folds it stood
+still while the conversation moved on.
+
+It costs no extra embedding call. `search_memories_semantic` now reports the
+vector it embedded through a capture out-param (fired the moment the embedding
+lands — before the dimension guard, never for the extra probes, never on the
+text-search fallback), and `search_vault_conversation_summaries` accepts it as
+`precomputed_embedding`. The proactive pre-compute path threads its vector
+through `proactive_recall_task` → the orchestrator → `build_context`, so the
+reuse holds on both memory paths; with no vector available the cadence sits the
+turn out rather than embedding on its own.
+
+Dedup: the per-turn list filters against the standing fold-posted
+`relevant-conversations` whisper (read backwards, stopping at the first match —
+the fold refresh sweeps a target's prior whispers when it posts a fresh one),
+the retrospective mini-recap now filters against both lists, and the cadence
+stands down entirely on the turn the recap runs. The whisper target scope is
+computed once and shared, so a list can never be filtered against one scope and
+whispered to another. The four list-length ramp constants moved next to the
+search so both cadences read the same numbers.
+
+Also here: `get_memory_recall_settings` returns a struct rather than a
+`(scope_policy, expand_related)` tuple (a tuple that grows a third field
+silently re-orders every destructuring that reads it), and the recall-config
+GET/POST verbs carry the third field with v4's byte-exact merge and response
+bodies.
+
+Two venue repairs ride along, neither of them a port. `memories-config.test.ts`
+now mocks the background-job processor host: under jest the fork of
+`child-entry.ts` dies instantly and its crash-and-respawn loop disturbed
+whichever case happened to be writing. Each case also gets its own
+`QUILLTAP_DATA_DIR`, because one shared `data/quilltap.lock` raced a case's
+close against the next case's open. The `memories_routes_equivalence` recipe
+header, which produced only one of the two NDJSONs the test needs, now carries
+both regen stages and both env vars.
+
+Not fixed here, diagnosed and documented in the family header:
+`housekeeping_config_set` is a pre-existing red. v4's `chat_settings` UPDATE
+names every column, and the committed `memories-*.db` fixture predates the three
+columns v4 added in the 4.8.2/4.8.3 round, so it dies on `no such column:
+composerEmoji`. Reproduced against an unmodified oracle case at `c8a3cf77`. The
+repair is a fixture-vintage one and belongs to a maintenance order — that `.db`
+pair is also read by two e2e specs.
+
 #### 2026-08-20 — docs(porting): plan the c8a3cf77 round — P4.D95 ∥ P4.9L2 ∥ P4.51
 
 _Docs-only change._

@@ -342,7 +342,7 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                         ..Default::default()
                     };
                     if let Ok(mems) =
-                        search_memories_semantic(db, provider, cid, query, &opts).await
+                        search_memories_semantic(db, provider, cid, query, &opts, None).await
                     {
                         for mr in mems {
                             results.push((

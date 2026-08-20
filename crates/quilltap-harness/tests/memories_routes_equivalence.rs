@@ -5,10 +5,48 @@
 //! (the kind→status recipe). Mutation / job-enqueue arms are added by the later
 //! P4.6s commits.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
-//!   … QT_ORACLE_OUT=/tmp/oracle-memories-routes.ndjson npx jest -- memories-routes
+//! ⚠ **PRE-EXISTING RED — `housekeeping_config_set` (diagnosed 2026-08-20,
+//! P4.D95).** Not this family's port, and not fixable from inside it. v4's
+//! `handleWriteHousekeepingConfig` writes through `chatSettings.updateForUser`,
+//! whose UPDATE names every `chat_settings` column; the committed
+//! `memories-{main,mount}.db` fixture predates the three columns v4 added in
+//! the 4.8.2/4.8.3 round (`48396682`), so the statement dies on
+//! `SqliteError: no such column: composerEmoji`, v4 answers a bare 500, and
+//! `check_body` refuses the row with "expected an error arm". Reproduced
+//! against an UNMODIFIED oracle case at v4 `c8a3cf77`, so it long predates
+//! P4.D95. The repair is a fixture-vintage one — widen the committed
+//! `chat_settings` table to the current DDL (or rebuild via
+//! `build-memories-web-fixture.ts` with the ids re-pinned) — and it belongs to
+//! a maintenance order, because that `.db` pair is SHARED with the other
+//! `memories-*` / `memory-*` families and rebuilding it invalidates them all.
+//! Every other case in this family, including P4.D95's five recall-config arms,
+//! is green.
+//!
+//! TWO oracle NDJSONs feed this family (the route surface and the config
+//! surface); the run stage needs BOTH env vars or the test skips silently.
+//!
+//! Generate (Node 24, from the v4 checkout; the cases are staged in a /tmp
+//! mirror because v4's jest ignores `.claude/` paths):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-mem-routes-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/memories-routes.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/cases/memories-config.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/memories-web.json" "$TMPO/fixtures/"
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
+//!   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-memories-routes.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- memories-routes
+//!   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
+//!   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-memories-config.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- memories-config
 //! Run:
 //!   QT_ORACLE_MEMORIES_ROUTES=/tmp/oracle-memories-routes.ndjson \
+//!   QT_ORACLE_MEMORIES_CONFIG=/tmp/oracle-memories-config.ndjson \
 //!     cargo test -p quilltap-harness --test memories_routes_equivalence
 
 use std::collections::HashMap;
@@ -209,6 +247,20 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         &spec.test_pepper_base64,
     )
     .expect("open db")
+}
+
+/// P4.D95: seed `instance_settings['memoryRecall']` through the REAL writer —
+/// the Rust twin of the oracle case's `setMemoryRecallSettings` call.
+async fn seed_recall(db: &Db, per_turn: bool) {
+    use quilltap_core::db::instance_settings::{set_memory_recall_settings, MemoryRecallSettings};
+    let settings = MemoryRecallSettings {
+        scope_policy: "exclude".to_string(),
+        expand_related: true,
+        per_turn_conversation_summaries: per_turn,
+    };
+    db.write(move |w| set_memory_recall_settings(w.main().connection(), &settings))
+        .await
+        .expect("seed recall settings");
 }
 
 #[test]
@@ -724,6 +776,38 @@ fn memories_routes_match_oracle() {
             json!({ "scopePolicy": "exclude" }),
         ));
         check_body("recall_config_set", &resp, &mut failed);
+    }
+    // P4.D95 (v4 `870a57fa`): the third recall field — a lone patch leaves the
+    // other two at their stored values.
+    {
+        let db = fresh_db(&spec, "rcp");
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "perTurnConversationSummaries": true }),
+        ));
+        check_body("recall_config_set_per_turn", &resp, &mut failed);
+    }
+    // P4.D95: the READ path over a NON-DEFAULT stored bag (a row left at the
+    // default measures nothing about the reader).
+    {
+        let db = fresh_db(&spec, "rcgs");
+        rt.block_on(seed_recall(&db, true));
+        check_body(
+            "recall_config_get_seeded",
+            &memories::memory_recall_config_get(&db),
+            &mut failed,
+        );
+    }
+    // P4.D95: the merge OVER a stored non-default bag — clearing the new field
+    // must not disturb the other two (the true → false direction).
+    {
+        let db = fresh_db(&spec, "rcms");
+        rt.block_on(seed_recall(&db, true));
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "perTurnConversationSummaries": false }),
+        ));
+        check_body("recall_config_merge_over_stored", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "elg");

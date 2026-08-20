@@ -2108,7 +2108,7 @@ where
         mode: danger_settings.mode.clone(),
         uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
     };
-    let (pre_searched_memories, recall_signals) = {
+    let (pre_searched_memories, recall_signals, pre_searched_query_embedding) = {
         // The two status frames (`recalling_keywords`, `recalling_memories`) v4 emits
         // from inside `proactiveRecallTask`; the closure stamps the character name/id.
         let mut emit_status = |stage: &str, message: String| {
@@ -2147,8 +2147,8 @@ where
         )
         .await
         {
-            Some(outcome) => (outcome.memories, outcome.signals),
-            None => (None, None),
+            Some(outcome) => (outcome.memories, outcome.signals, outcome.query_embedding),
+            None => (None, None, None),
         }
     };
 
@@ -2225,6 +2225,9 @@ where
         // `preSearchedMemories` / `recallSignals` into `buildMessageContext`, P4.19).
         pre_searched_memories,
         recall_signals,
+        // v4 `870a57fa` threads the proactive search's vector on to buildContext
+        // so the per-turn conversation-summary list can reuse it.
+        pre_searched_query_embedding,
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -3826,6 +3829,11 @@ pub(crate) struct BuildContextArgs<'a> {
     /// `recallSignals`, P4.19), seeding the retrospective cadence on both memory
     /// paths. `None` for the sibling entry points.
     pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
+    /// The query text + vector the proactive memory search embedded (v4
+    /// `preSearchedQueryEmbedding`, `870a57fa`). Reused — never re-embedded — by
+    /// the per-turn conversation-summary list when the pre-searched memories are
+    /// the ones this turn uses. `None` for the sibling entry points.
+    pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
 }
 
 /// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
@@ -3950,6 +3958,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         turn_skip: args.turn_skip,
         pre_searched_memories: args.pre_searched_memories,
         recall_signals: args.recall_signals,
+        pre_searched_query_embedding: args.pre_searched_query_embedding,
     }
 }
 

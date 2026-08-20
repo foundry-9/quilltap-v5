@@ -27,6 +27,14 @@
 //! the window, v4's `recentMessages.slice(-20)` cap, the 500-UTF-16-unit
 //! per-message truncation and the TODAY line in one comparand.
 //!
+//! **P4.D95 (v4 `870a57fa`)** adds `queryEmbedding` to the diffed outcome: the
+//! query text + vector `searchMemoriesSemantic` handed back through
+//! `captureQueryEmbedding`. It pins the hook's firing semantics through real
+//! code rather than a mock — captured on the MAIN query's embed (the retro
+//! multi-probe case has two extra probes and must still report the main one),
+//! carried on BOTH return paths (the `search-empty` case has `memories: null`
+//! and a vector), and absent wherever the task never embedded at all.
+//!
 //! Cases: never-spoke / continue-mode-empty-window / extraction-fail → both
 //! `null`; spoke-then-window / dangerous-reroute / retrospective-multi-probe /
 //! multi-character → memories + signals; search-empty → `null` memories + signals
@@ -137,6 +145,13 @@ struct OracleRow {
     pre_searched_memories: Value,
     #[serde(rename = "recallSignals")]
     recall_signals: Value,
+    /// P4.D95 (v4 `870a57fa`): `{query, embedding}` the proactive search
+    /// embedded, or `null`. A stale (pre-`870a57fa`) NDJSON has no such key —
+    /// `#[serde(default)]` would then silently compare `null` against the Rust
+    /// side's real vector, so the field is REQUIRED and a stale oracle fails to
+    /// parse by name.
+    #[serde(rename = "queryEmbedding")]
+    query_embedding: Value,
 }
 
 /// A completion provider that always answers the canned distill text or always
@@ -395,9 +410,9 @@ async fn precompute_matches_oracle() {
 
         // Reparse the memories through serde so both sides share the same
         // float-parse canonicalization (the build-context precedent).
-        let (mems, sigs) = match outcome {
-            Some(o) => (o.memories, o.signals),
-            None => (None, None),
+        let (mems, sigs, qemb) = match outcome {
+            Some(o) => (o.memories, o.signals, o.query_embedding),
+            None => (None, None, None),
         };
         let mut got = Map::new();
         got.insert(
@@ -429,12 +444,21 @@ async fn precompute_matches_oracle() {
                 None => Value::Null,
             },
         );
+        // P4.D95: the captured query vector (v4 `preSearchedQueryEmbedding`).
+        got.insert(
+            "queryEmbedding".to_string(),
+            match &qemb {
+                Some(q) => json!({ "query": q.query, "embedding": q.embedding }),
+                None => Value::Null,
+            },
+        );
         let got = Value::Object(got);
 
         let want = json!({
             "distillPrompt": oracle.distill_prompt,
             "preSearchedMemories": oracle.pre_searched_memories,
             "recallSignals": oracle.recall_signals,
+            "queryEmbedding": oracle.query_embedding,
         });
 
         assert_value_eq(&got, &want, "", name);

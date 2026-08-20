@@ -12,6 +12,18 @@
 //! zero normalization (the timestamp whisper's wall clock is frozen on both
 //! sides via the injected `now_ms` / the oracle's `FIXED_NOW_MS`).
 //!
+//! P4.D95 (v4 `870a57fa`) adds the per-turn conversation-summary cadence: the
+//! instance-wide `memoryRecall` bag is seeded through the REAL setter before
+//! EVERY op (so a setting cannot leak forward — the Taboo precedent), the REAL
+//! memory recap and `preSearchedQueryEmbedding` become per-op inputs, and an op
+//! may post a standing `relevant-conversations` whisper for the list to dedup
+//! against. Six ops cover the cadence: on over the internal two-pool path, on
+//! over the pre-searched path, a retrospective turn (the capture must report the
+//! MAIN query's vector, never an extra probe's, and the mini-recap must filter
+//! against the per-turn list too), no vector (memories skipped → it sits the
+//! turn out), the recap stand-down, and the fold-whisper dedup. The nineteen
+//! older ops run with the setting off and must stay byte-identical.
+//!
 //! P4.d15 adds the WRITE side per op: the Commonplace-Book whisper rows left in
 //! `chat_messages` (systemKind / role / body / opaqueContent / target scope) and
 //! the persisted `commonplaceRecallHistory`. That is what pins the
@@ -127,6 +139,30 @@ struct SpecOp {
     pre_searched_memories: Vec<SpecPreSearched>,
     #[serde(default)]
     recall_signals: Option<SpecRecallSignals>,
+    /// P4.D95 (v4 `870a57fa`): the instance-wide recall setting this op runs
+    /// under. Written through the REAL setter before EVERY op (absent = `false`)
+    /// so the row can never leak between ops — they share one database copy.
+    #[serde(default)]
+    per_turn_conversation_summaries: bool,
+    /// P4.D95: `options.preSearchedQueryEmbedding` — the vector the proactive
+    /// recall already embedded, for the pre-searched memory path.
+    #[serde(default)]
+    pre_searched_query_embedding: Option<SpecQueryEmbedding>,
+    /// P4.D95: run the REAL memory recap (the cadence's stand-down arm).
+    #[serde(default)]
+    generate_memory_recap: bool,
+    /// P4.D95: post a standing `relevant-conversations` whisper carrying this
+    /// rendered block before the op runs, so the per-turn list has something to
+    /// dedup against.
+    #[serde(default)]
+    seed_fold_whisper_conversations: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecQueryEmbedding {
+    query: String,
+    embedding: Vec<f32>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -703,7 +739,7 @@ async fn build_context_tier3_matches_oracle() {
             bypass_compression: false,
             cached_compression_result: cached_compression.clone(),
             cached_compression_message_count: cached_compression_count,
-            generate_memory_recap: false,
+            generate_memory_recap: op.generate_memory_recap,
             uncensored_fallback: None,
             is_continue_mode: false,
             now_ms: FIXED_NOW_MS,
@@ -746,6 +782,12 @@ async fn build_context_tier3_matches_oracle() {
                         .collect(),
                 )
             },
+            pre_searched_query_embedding: op.pre_searched_query_embedding.as_ref().map(|q| {
+                quilltap_core::services::memory_service::SearchQueryEmbedding {
+                    query: q.query.clone(),
+                    embedding: q.embedding.clone(),
+                }
+            }),
             recall_signals: op.recall_signals.as_ref().map(|s| DistilledSearch {
                 keywords: s.keywords.clone(),
                 retrospective: s.retrospective,
@@ -771,6 +813,47 @@ async fn build_context_tier3_matches_oracle() {
         })
         .await
         .unwrap_or_else(|e| panic!("{}: seed taboo failed: {e}", op.name));
+
+        // P4.D95: the instance-wide recall bag for THIS op — written
+        // unconditionally for the same reason the Taboo list is (one shared
+        // database copy; a setting must never leak forward). The other two
+        // fields stay at the defaults the ops have always run under.
+        let seed_recall = quilltap_core::db::instance_settings::MemoryRecallSettings {
+            scope_policy: "down-weight".to_string(),
+            expand_related: false,
+            per_turn_conversation_summaries: op.per_turn_conversation_summaries,
+        };
+        db.write(move |w| {
+            quilltap_core::db::instance_settings::set_memory_recall_settings(
+                w.main().connection(),
+                &seed_recall,
+            )
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: seed recall settings failed: {e}", op.name));
+
+        // P4.D95: a standing fold-posted `relevant-conversations` whisper for the
+        // per-turn list to dedup against — through the REAL writer, so its row
+        // shape is production's rather than the harness's invention.
+        if let Some(block) = &op.seed_fold_whisper_conversations {
+            use quilltap_core::services::commonplace_notifications as cmpb;
+            let content = cmpb::build_commonplace_persona_whisper(&cmpb::CommonplaceParts {
+                relevant_conversations: Some(block.clone()),
+                ..Default::default()
+            });
+            cmpb::post_commonplace_whisper(
+                &db,
+                cmpb::PostCommonplaceParams {
+                    chat_id: spec.chat.id.clone(),
+                    target_participant_id: op.responding_participant_id.clone(),
+                    content,
+                    opaque_content: None,
+                    kind: cmpb::CommonplaceWhisperKind::RelevantConversations,
+                },
+            )
+            .await
+            .unwrap_or_else(|| panic!("{}: seed fold whisper failed", op.name));
+        }
 
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
             .await

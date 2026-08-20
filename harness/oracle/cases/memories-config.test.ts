@@ -95,6 +95,32 @@ function applyMocks(spec: Spec, pinClock: boolean): void {
   jest.doMock('@/lib/embedding/embedding-service', () =>
     jest.requireActual('@/lib/embedding/embedding-service'),
   );
+  // The background-job PROCESSOR HOST — spawn + dispatch only, never the
+  // enqueue. Under jest the fork of `lib/background-jobs/child/child-entry.ts`
+  // dies instantly (`Cannot find package '@/lib'` — no tsx loader in the forked
+  // process), and the crash-and-respawn loop it then runs disturbs whichever
+  // case happens to be writing at the time. That has shown up as a random
+  // `Internal server error` / `no such table` on ANY config-write case after
+  // the first job enqueue. Nothing here changes what a route ANSWERS: the job
+  // ROWS are still written by the real `enqueueJob`, and the Rust side runs no
+  // job pump in the differential either, so the two sides match more closely
+  // with the child stilled than with it thrashing.
+  jest.doMock('@/lib/background-jobs/host/processor-host', () => ({
+    __esModule: true,
+    ensureProcessorRunning: () => undefined,
+    stopProcessor: () => undefined,
+    isProcessorRunning: () => false,
+    getProcessorStatus: () => ({
+      running: false,
+      processing: false,
+      inFlight: 0,
+      childCrashed: false,
+    }),
+    wakeProcessor: () => undefined,
+    notifyChild: () => undefined,
+    sendToChild: () => false,
+  }));
+
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -225,6 +251,15 @@ async function runCase(
   copyFileSync(fixtures.mount, mountWork);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+  // Each case gets its OWN data dir, and therefore its own instance-lock file.
+  // Sharing one `$QUILLTAP_DATA_DIR/data/quilltap.lock` across the whole corpus
+  // raced: a case's `closeDatabase()` releases and REMOVES the lock, and its
+  // tail could land just after the next case's open had created it — the open
+  // then died on `ENOENT … quilltap.lock`, the route answered a bare 500, and
+  // whichever case happened to be running that moment went red. (Reproduced on
+  // an unmodified corpus at v4 `c8a3cf77`; it moved between cases run to run.)
+  mkdirSync(join(work, 'data'), { recursive: true });
+  process.env.QUILLTAP_DATA_DIR = work;
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
@@ -351,6 +386,58 @@ async function main(): Promise<void> {
             mockRequest(`${B}?action=recall-config`, { scopePolicy: 'exclude' }),
           ),
         ),
+    },
+    // P4.D95 (v4 `870a57fa`): the third recall field. A lone
+    // `perTurnConversationSummaries` patch must leave the other two at their
+    // stored values — the merge is per-field, not whole-object.
+    {
+      name: 'recall_config_set_per_turn',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { perTurnConversationSummaries: true }),
+          ),
+        ),
+    },
+    // P4.D95: the READ path over a NON-DEFAULT stored bag — a case whose row is
+    // left at the default measures nothing about the reader. Seeded through v4's
+    // REAL `setMemoryRecallSettings` (the Rust side seeds through its port), one
+    // write per case so this never trips the venue's single-writer settle.
+    {
+      name: 'recall_config_get_seeded',
+      run: async () => {
+        // Load the route module BEFORE the direct write: it drags in the
+        // startup/DB graph the request path always has loaded, so the seed runs
+        // against exactly the state a route write would.
+        await loadRoute('@/app/api/v1/memories/route');
+        const { setMemoryRecallSettings } = await import('@/lib/instance-settings');
+        await setMemoryRecallSettings({
+          scopePolicy: 'exclude',
+          expandRelated: true,
+          perTurnConversationSummaries: true,
+        });
+        return listGet(`action=recall-config`);
+      },
+    },
+    // P4.D95: the merge OVER a stored non-default bag — clearing the new field
+    // must not disturb the other two, in the direction the lone-patch case above
+    // cannot reach (true → false).
+    {
+      name: 'recall_config_merge_over_stored',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { setMemoryRecallSettings } = await import('@/lib/instance-settings');
+        await setMemoryRecallSettings({
+          scopePolicy: 'exclude',
+          expandRelated: true,
+          perTurnConversationSummaries: true,
+        });
+        return respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { perTurnConversationSummaries: false }),
+          ),
+        );
+      },
     },
     { name: 'extraction_limits_get', run: () => listGet(`action=extraction-limits-config`) },
     {

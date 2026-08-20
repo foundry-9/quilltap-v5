@@ -289,6 +289,7 @@ where
         // its rebuild falls through to buildContext's own fallback path, as before.
         pre_searched_memories: None,
         recall_signals: None,
+        pre_searched_query_embedding: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

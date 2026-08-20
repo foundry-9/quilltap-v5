@@ -367,6 +367,7 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
             now_ms: input.now_ms,
             ..Default::default()
         },
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -414,6 +415,7 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
             now_ms: input.now_ms,
             ..Default::default()
         },
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;

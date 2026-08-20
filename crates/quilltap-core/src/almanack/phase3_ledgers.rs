@@ -784,8 +784,8 @@ pub fn collect_instance_settings(
 ) -> Result<InstanceSettingsInfo, DbError> {
     let stale_chat_days = db.read_main(|c| Ok(resolve_stale_chat_days_conn(c)))?;
     let max_concurrent_jobs = db.read_main(instance_settings::get_max_concurrent_jobs)?;
-    let (scope_policy, expand_related) =
-        db.read_main(instance_settings::get_memory_recall_settings)?;
+    let recall = db.read_main(instance_settings::get_memory_recall_settings)?;
+    let (scope_policy, expand_related) = (recall.scope_policy, recall.expand_related);
     let extraction = db.read_main(instance_settings::get_memory_extraction_limits)?;
     let last_sweep = db.read_main(instance_settings::get_last_maintenance_sweep_at)?;
     // v4 also awaits `getDataRetentionSettings()` and immediately voids it —

@@ -75782,3 +75782,247 @@ three per-domain taxonomy candidates stay NAMED not built (the lane
 record); the two `W=` recipe headers + the sweep driver's
 exit-0-on-unknown-family wart remain the standing maintenance riders from
 the `9125f492` round.
+
+## Lane record — P4.D95 (per-turn conversation summaries with embedded vector reuse) — v4 `870a57fa`
+
+Baseline **`c8a3cf77`**, drift-checked clean at lane start: `git log
+c8a3cf77..main` empty, v4 tree clean, checkout on `main`; `bugfix` still at the
+2026-08-13 `3a76b17d` 4.8.4 branch-start, measured by `diff` (strictly
+one-directional — nothing unabsorbed). Regen therefore ran straight from the
+checkout, no pinned worktree. `c8a3cf77` itself is version-file-only —
+**NO-PORT**.
+
+The feature: an instance-wide `memoryRecall.perTurnConversationSummaries`
+setting (off by default, no chat/project/character override **by design**) that
+re-runs the vault `Conversation Summaries/` relevance search EVERY turn and
+folds the result into the consolidated Commonplace Book whisper's
+`relevantConversations` part. No schema change — the field rides the existing
+`instance_settings['memoryRecall']` bag, so no D23 re-dump.
+
+**Unit 1 — the settings substrate.**
+`db::instance_settings::get_memory_recall_settings` now returns a
+`MemoryRecallSettings` STRUCT rather than a `(scope_policy, expand_related)`
+tuple. That was the deliberate shape choice: a tuple that grows a third field
+silently re-orders every destructuring that reads it, and there were three
+(`api::memories` ×2, `build_context`, `almanack::phase3_ledgers`). The struct
+carries `to_json()` in v4's Zod declaration order (`scopePolicy`,
+`expandRelated`, `perTurnConversationSummaries`) — that ONE method is both what
+`set_memory_recall_settings` writes and what both route verbs echo, so the two
+can't drift apart. The reader's third arm mirrors `expandRelated` exactly
+(absent → `false`; present-but-non-bool → the whole-object default, faithful to
+Zod `.parse` throwing on a present-but-wrong value). `build_context`'s local
+`MemoryRecallSettings` copy is retired to a `pub use` of the settings-layer one.
+The Almanack's `MemoryRecallConfig` report shape is deliberately UNCHANGED —
+v4's `870a57fa` never touched its collector, so v5's must not grow the field
+either.
+
+*Differential:* `memories_routes_equivalence` grew three arms —
+`recall_config_set_per_turn` (a lone patch from the default leaves the other two
+alone), `recall_config_get_seeded` (the READ path over a NON-DEFAULT stored bag;
+a case whose row sits at the default measures nothing about the reader) and
+`recall_config_merge_over_stored` (the true → false direction the lone-patch arm
+cannot reach). Plus a **stale-oracle SHAPE guard**: `recall_config_get`'s
+`settings` object must carry exactly the three expected keys, so a pre-`870a57fa`
+NDJSON fails by name instead of passing on the two keys it does carry.
+
+⚠ **A first draft of the merge case did three route requests in ONE case and was
+withdrawn**: v4's oracle venue answers `User not found` for the second and third
+(the route writes through the single-writer child, and the next request's auth
+user read races that write's tail — the same race the per-case teardown's 750 ms
+settle exists for). One request per case, with any starting state seeded through
+v4's REAL `setMemoryRecallSettings`, is the shape that holds.
+
+**Unit 2 — the capture hook.** `search_memories_semantic` gained a sixth
+parameter, `capture_query_embedding: Option<&mut Option<SearchQueryEmbedding>>`,
+written the moment the embedding lands. All three of v4's load-bearing semantics
+are reproduced: it fires **before the dimension guard** ("a vector that doesn't
+match THIS character's memory index may still match the vault's document index,
+which is built separately"), **never for the `extra_probes`**, and **never on the
+text-search fallback** (a failed embed leaves via `?` with nothing captured).
+Eight other call sites took a mechanical `None`
+(`tools/search`, `api/memories`, `first_message_context`,
+`announcer/character_voiced`, `recall_replay` ×2, `carina_query`,
+`build_context`'s inter-character pool) — their own families are the guard that
+their behavior did not move.
+
+**NO-PORT with evidence:** v4's `870a57fa` review pass wrapped the callback in a
+try/catch (`[Memory] captureQueryEmbedding callback threw; ignoring`) because
+"nothing enforced" the documented must-not-throw contract. The v5 seam is an
+out-param, not a caller-supplied closure, so there is no caller code that could
+throw at that point — the arm is structurally unreachable and no panic-catch was
+invented. Recorded at the call site.
+
+**Unit 3 — the reuse seam + the ramp constants.**
+`search_vault_conversation_summaries` gained `precomputed_embedding:
+Option<&[f32]>`: supplied → used verbatim, absent → the existing
+embed-with-try/catch. The four list-length ramp constants
+(`RELEVANT_CONVERSATIONS_{MIN,MAX,RAMP_MIN_TOKENS,RAMP_MAX_TOKENS}`) moved from
+`services::commonplace_notifications` to `services::memory_recap` — v5's home
+for the search, following v4's one-home INTENT rather than its module geometry —
+and the fold refresh imports them. Behavior-neutral relocation; the fold-refresh
+and context-summary families are the guard.
+
+*Differential:* `vault_conv_search_equivalence` grew three arms, each run on BOTH
+sides with a vector each side embedded through its own real builtin TF-IDF
+profile (so the vector itself is a transitive comparand):
+`precomputed_same_query` (identical to the embed-it-yourself arm),
+`precomputed_other_query` (**the sharp one** — the vector for a DIFFERENT
+sentence while `query` stays put, so a port that quietly re-embeds `query`
+scores the other ranking and goes red) and `precomputed_wrong_dimension` (a
+2-wide vector against a 3-wide corpus → an EMPTY list via the document-search
+guard, not an error). An unconsumed-oracle-rows assert closes the tail.
+
+**Unit 4 — the proactive thread.** `ProactiveRecallOutcome` gained
+`query_embedding`, carried on **BOTH** return paths — the success slice AND the
+memories-`None` fall-through, because a captured vector survives a search that
+found nothing — then threaded orchestrator → `BuildContextArgs` →
+`BuildContextInput::pre_searched_query_embedding`. `regenerate_swipe` (the
+sibling entry point that never runs the proactive task) passes `None`.
+
+*Differential:* `precompute_equivalence` now diffs `queryEmbedding` as a
+first-class comparand. That pins the hook through REAL code rather than a mock:
+captured on the MAIN query's embed (the retrospective multi-probe case carries
+two extra probes and must still report the main one), carried on both return
+paths (the `search-empty` case has `memories: null` AND a vector), and `null`
+wherever the task never embedded. The oracle field is **required, not
+`#[serde(default)]`** — a defaulted field would silently compare `null` against
+the Rust side's real vector on a stale NDJSON.
+
+**Unit 5 — the build-context cadence.** The settings read is hoisted to a single
+read at the top of step 2 (v4's "read once for the turn"), the inner read
+removed. `turn_query_embedding` is set from `options.pre_searched_query_embedding`
+on the pre-searched branch or captured on the internal two-pool search. New
+`collect_fold_whisper_conversation_ids` walks the transcript **backwards and
+stops at the first match** (the fold refresh sweeps a target's prior whispers of
+that kind when it posts a fresh one, so at most one is standing), scoped by
+target, best-effort → empty set. A `commonplace_target_participant_id` is
+computed ONCE and shared by the dedup, the consolidated whisper post and the
+retrospective-recall post — so a list can never be filtered against one scope
+and whispered to another. The per-turn block carries all four gate conjuncts
+(setting ∧ character id ∧ a vector ∧ not a recap turn), the ramped limit off
+`budget_info.max_context`, `exclude_conversation_id = chat.id`, the turn's
+`time_range`, the fold-whisper filter, and fills both the whisper's
+`relevantConversations` part and the new `BuiltContext.debug_relevant_conversations`.
+The retrospective mini-recap's inline fold-scan is deleted in favour of the
+shared lazily-cached reader, and it now filters against BOTH lists.
+
+v4 wraps the block in a warn-only try/catch; v5 needs none and says so —
+`search_vault_conversation_summaries` returns an empty list on any failure and
+the fold-whisper read swallows its own.
+
+*Differential:* `build_context_tier3_equivalence` grew **seven ops** and two new
+per-op seams. The instance-wide `memoryRecall` bag is now written through the
+REAL setter before EVERY op (the P4.D50 Taboo precedent — the ops share one
+database copy, so a setting must never leak forward), `generateMemoryRecap` and
+`preSearchedQueryEmbedding` became per-op options, and an op may post a standing
+`relevant-conversations` whisper through the REAL writer. The family's
+`normalize_oracle` strips nothing, so `debugRelevantConversations` and the
+whisper bodies are full comparands with no blinding to undo. The nineteen older
+ops run with the setting off and stayed byte-identical.
+
+The ops, and what each one alone can see:
+
+| op | pins |
+|---|---|
+| `per_turn_conversations_on` | the cadence over the INTERNAL two-pool path |
+| `per_turn_conversations_pre_searched` | the cadence over the PRE-SEARCHED path (the threaded vector) |
+| `per_turn_conversations_retro_turn` | the capture reports the MAIN query's vector, never a probe's; the mini-recap filters against the per-turn list |
+| `per_turn_conversations_no_vector` | memories skipped → it sits the turn out |
+| `per_turn_conversations_recap_turn` | the recap stand-down (the REAL recap runs on both sides) |
+| `per_turn_conversations_dimension_drift` | the capture fires BEFORE the dimension guard |
+| `per_turn_conversations_fold_whisper_dedup` | the fold filter AND the backwards/stop-at-first walk |
+
+Two of those deserve their own note.
+
+**The dimension-drift op was added only after a mutation proof failed.** Moving
+the capture below the dimension guard survived every arm the lane had at that
+point — the semantic v4 documents most emphatically was the one nothing
+measured. Reaching it needs a character whose MEMORY index is the wrong width
+for the turn's query while its VAULT index is the right one, which no existing
+fixture character had. Bea gained her first memory, embedded FOUR-wide against
+three-wide canned queries, plus a `Conversation Summaries/` entry chunked
+three-wide. Now memory recall degrades to text search while the vault list still
+appears — and the mutation is caught.
+
+**The fold-dedup op pins the backwards walk, not just the filter.** The corpus
+already seeds a standing whisper naming `…f2`; the op posts a SECOND one naming
+`…f1`. Stopping at the first match reads only the newer whisper, so the list
+drops f1 and KEEPS f2 — a forward walk, or a union over every standing whisper,
+drops both. Placed LAST of the new ops: `relevant-conversations` whispers are
+exempt from the consolidated sweep, so the seed would otherwise filter every op
+after it.
+
+**Six mutation proofs, all red-then-green:** drop the capture on the two-pool
+path (`…_on` red) · forward-walk union instead of backwards/stop-at-first
+(`…_fold_whisper_dedup` red) · drop the recap conjunct (`…_recap_turn` red) ·
+drop the mini-recap's per-turn filter (`…_retro_turn` red) · ignore the
+precomputed vector (`vault_conv_search` red) · capture after the dimension guard
+(`…_dimension_drift` red — and it survived the first five, which is why the op
+exists).
+
+**Unit 6 — the SPA half.** `RecallConfig` grew the field, `DEFAULT_CONFIG` grew
+`false`, and the Settings → Memory → Recall Relevance card grew v4's third
+checkbox with its body copy carried **byte-for-byte**. Two specs added (the
+checkboxes read by INDEX — `expandRelated` first, `perTurnConversationSummaries`
+second, v4's render order): the loaded-config reflection and the lone merge-patch
+save. `memory.api.ts` needed no change — it already passes a
+`Partial<RecallConfig>` straight through.
+
+**Tier 2 — the live beat.** `settings-memory-flow.spec.ts` gained a beat that
+opens `?section=memory-recall`, toggles the new checkbox, waits on the dispatch,
+reloads the whole page (so the checked state comes back from the instance
+settings row rather than the card's local echo), asserts the sibling toggle is
+untouched, and toggles back off so the shared instance is left as found.
+
+**Tier 2 — the `docs/v4/` mirror** refreshed for the three files this lane cites
+(`DDL.md`, `PROMPT_ARCHITECTURE.md`, the whisper-overhaul spec). The
+PROMPT_ARCHITECTURE mirror was many rounds stale; it is now current at
+`c8a3cf77`.
+
+**Tier 3 — deferred LOUD.** `help/memory-recall-relevance.md` gains a whole new
+`## Consulting the Shelf of Past Conversations` section (5 paragraphs) — banked
+to **`p4.9i2`** with a P4.D95 note on `m6-screen-parity.md` row 11, under the
+standing P4.D73/P4.D77 precedent (copy the NEW file when the help family lands).
+💸 the live proof — a real turn with the setting on, the list visibly refreshing
+between folds, and ZERO extra embedding calls in the LLM logs — joins the
+standing dogfood queue.
+
+### Two venue findings, neither this lane's port
+
+**(a) The memories oracle venue's job-child crash loop — FIXED here.** Under
+jest the fork of `lib/background-jobs/child/child-entry.ts` dies instantly
+(`Cannot find package '@/lib'` — no tsx loader in the forked process) and the
+crash-and-respawn loop it then runs disturbed whichever case happened to be
+writing. `memories-config.test.ts` now mocks
+`@/lib/background-jobs/host/processor-host` to no-ops: the job ROWS are still
+written by the real `enqueueJob`, nothing a route ANSWERS changes, and the Rust
+side runs no job pump in the differential either — so the two sides match more
+closely with the child stilled than with it thrashing. Each case also got its
+OWN `QUILLTAP_DATA_DIR`, because one shared `data/quilltap.lock` raced: a case's
+`closeDatabase()` removes the lock, and its tail could land just after the next
+case's open had created it (`ENOENT … quilltap.lock` → a bare 500 on whichever
+case was running).
+
+**(b) `housekeeping_config_set` is a PRE-EXISTING RED — diagnosed, not fixed.**
+v4's `handleWriteHousekeepingConfig` writes through
+`chatSettings.updateForUser`, whose UPDATE names every `chat_settings` column;
+the committed `memories-{main,mount}.db` fixture predates the three columns v4
+added in the 4.8.2/4.8.3 round (`48396682`), so the statement dies on
+`SqliteError: no such column: composerEmoji`, v4 answers a bare 500, and
+`check_body` refuses the row. **Reproduced against an UNMODIFIED oracle case at
+v4 `c8a3cf77`**, so it long predates this lane. The repair is a fixture-vintage
+one — widen the committed `chat_settings` to the current DDL, or rebuild via
+`build-memories-web-fixture.ts` with the ids re-pinned — and it belongs to a
+maintenance order, because that `.db` pair is SHARED with the other `memories-*`
+/ `memory-*` families and rebuilding it invalidates them all. Recorded in the
+family's own header so the next runner cannot mistake it for lane damage. Every
+other case in the family, including this lane's five recall-config arms, is
+green.
+
+### Recipe repair
+
+`memories_routes_equivalence`'s header carried an elided one-line regen (`…
+QT_ORACLE_OUT=… npx jest -- memories-routes`) that produced only ONE of the two
+NDJSONs the test needs — so the run stage skipped silently on the missing
+`QT_ORACLE_MEMORIES_CONFIG`. The header now carries both regen stages and both
+env vars, and runs verbatim through `recipe_sweep.py --run`.

@@ -35,7 +35,8 @@ use crate::db::runtime::Db;
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::memory_recap::{
     ramp_limit, render_relevant_conversations_block, search_vault_conversation_summaries,
-    READ_CONVERSATION_CALL_NOTE,
+    READ_CONVERSATION_CALL_NOTE, RELEVANT_CONVERSATIONS_MAX, RELEVANT_CONVERSATIONS_MIN,
+    RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS, RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS,
 };
 
 /// v4 `CommonplaceWhisperKind` — the `systemKind` tag of a Commonplace-Book
@@ -274,15 +275,6 @@ pub async fn post_commonplace_whisper(
 // Fold-triggered relevant-conversations refresh.
 // ---------------------------------------------------------------------------
 
-/// v4 `RELEVANT_CONVERSATIONS_MIN`.
-const RELEVANT_CONVERSATIONS_MIN: i64 = 3;
-/// v4 `RELEVANT_CONVERSATIONS_MAX`.
-const RELEVANT_CONVERSATIONS_MAX: i64 = 10;
-/// v4 `RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS`.
-const RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS: i64 = 4000;
-/// v4 `RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS`.
-const RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS: i64 = 32000;
-
 /// v4 `RefreshRelevantConversationsInput`.
 #[derive(Clone, Debug)]
 pub struct RefreshRelevantConversationsInput {
@@ -399,6 +391,9 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
             // v4's fold refresh passes no window — relevance here is "what bears
             // on the fresh summary", not "what happened in a period". (The
             // windowed caller is buildContext's retrospective mini-recap.)
+            None,
+            // The fold refresh embeds the fresh summary itself; there is no
+            // earlier vector for this query to reuse.
             None,
         )
         .await;

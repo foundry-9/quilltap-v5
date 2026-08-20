@@ -744,7 +744,8 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         ..Default::default()
     };
     let results =
-        match search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options).await
+        match search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options, None)
+            .await
         {
             Ok(r) => r,
             Err(e) => return internal(e),
@@ -1024,49 +1025,54 @@ pub async fn memory_housekeeping_config_set(db: &Db, user_id: &str, bag: Value) 
 // Config: recall / extraction-limits / extraction-concurrency (instance-wide)
 // ===========================================================================
 
-/// v4 GET `?action=recall-config` — `{success, settings: {scopePolicy, expandRelated}}`.
+/// v4 GET `?action=recall-config` — `{success, settings}`, where `settings` is
+/// the whole parsed `MemoryRecallSettings` bag in schema-declaration order.
 pub fn memory_recall_config_get(db: &Db) -> Response {
-    let r: Result<(String, bool), DbError> =
-        db.read_main(instance_settings::get_memory_recall_settings);
-    match r {
-        Ok((scope_policy, expand_related)) => Response::Memory(json!({
+    match db.read_main(instance_settings::get_memory_recall_settings) {
+        Ok(settings) => Response::Memory(json!({
             "success": true,
-            "settings": { "scopePolicy": scope_policy, "expandRelated": expand_related },
+            "settings": settings.to_json(),
         })),
         Err(e) => internal(e),
     }
 }
 
 /// v4 POST `?action=recall-config` — merge-patch, store, `{success, settings}`.
+/// Each field is independently patchable (`parsed.data.X ?? currentSettings.X`);
+/// an absent field keeps what is stored.
 pub async fn memory_recall_config_set(db: &Db, bag: Value) -> Response {
     if !bag.is_object() {
         return bad_request("Invalid recall config body");
     }
-    let current: Result<(String, bool), DbError> =
-        db.read_main(instance_settings::get_memory_recall_settings);
-    let (cur_scope, cur_expand) = match current {
+    let current = match db.read_main(instance_settings::get_memory_recall_settings) {
         Ok(c) => c,
         Err(e) => return internal(e),
     };
-    let scope = bag
-        .get("scopePolicy")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .unwrap_or(cur_scope);
-    let expand = bag
-        .get("expandRelated")
-        .and_then(Value::as_bool)
-        .unwrap_or(cur_expand);
-    let (s2, e2) = (scope.clone(), expand);
+    let merged = instance_settings::MemoryRecallSettings {
+        scope_policy: bag
+            .get("scopePolicy")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or(current.scope_policy),
+        expand_related: bag
+            .get("expandRelated")
+            .and_then(Value::as_bool)
+            .unwrap_or(current.expand_related),
+        per_turn_conversation_summaries: bag
+            .get("perTurnConversationSummaries")
+            .and_then(Value::as_bool)
+            .unwrap_or(current.per_turn_conversation_summaries),
+    };
+    let to_write = merged.clone();
     let wrote = db
         .write(move |w| {
-            instance_settings::set_memory_recall_settings(w.main().connection(), &s2, e2)
+            instance_settings::set_memory_recall_settings(w.main().connection(), &to_write)
         })
         .await;
     match wrote {
         Ok(_) => Response::Memory(json!({
             "success": true,
-            "settings": { "scopePolicy": scope, "expandRelated": expand },
+            "settings": merged.to_json(),
         })),
         Err(e) => internal(e),
     }

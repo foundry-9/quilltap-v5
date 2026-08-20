@@ -326,6 +326,18 @@ pub struct RecallContextInput {
     pub now_ms: Option<f64>,
 }
 
+/// A query and the vector actually embedded for it (v4 `SearchQueryEmbedding`).
+/// Handed back through [`search_memories_semantic`]'s capture out-param so one
+/// turn's embedding can serve more than one search (memories, then the
+/// character's vault conversation summaries).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SearchQueryEmbedding {
+    /// The exact text that was embedded — pass it verbatim to the reusing search.
+    pub query: String,
+    /// Unit-length vector for `query`, from the caller's embedding profile.
+    pub embedding: Vec<f32>,
+}
+
 /// Options for [`search_memories_semantic`] (v4 `MemoryServiceOptions & {...}`),
 /// restricted to the fields the consumers pass plus the injected clock.
 #[derive(Debug, Clone, Default)]
@@ -390,6 +402,7 @@ pub async fn search_memories_semantic<P: EmbeddingProvider>(
     character_id: &str,
     query: &str,
     options: &SemanticSearchOptions,
+    capture_query_embedding: Option<&mut Option<SearchQueryEmbedding>>,
 ) -> Result<Vec<SemanticSearchResult>, DbError> {
     let limit = options.limit.unwrap_or(20);
     let explicit_min_score = options.min_score;
@@ -404,6 +417,7 @@ pub async fn search_memories_semantic<P: EmbeddingProvider>(
         options,
         limit,
         explicit_min_score,
+        capture_query_embedding,
     )
     .await;
 
@@ -445,6 +459,7 @@ async fn try_semantic<P: EmbeddingProvider>(
     options: &SemanticSearchOptions,
     limit: usize,
     explicit_min_score: Option<f64>,
+    capture_query_embedding: Option<&mut Option<SearchQueryEmbedding>>,
 ) -> Result<Option<Vec<SemanticSearchResult>>, SemanticFail> {
     let embed = provider
         .generate_embedding_for_user(
@@ -455,6 +470,25 @@ async fn try_semantic<P: EmbeddingProvider>(
         )
         .await
         .map_err(|_| SemanticFail::Other)?;
+
+    // Hand the caller the vector we just paid for, so a companion search in the
+    // same turn (the per-turn conversation-summary list) can reuse it instead of
+    // embedding the same sentence twice. Reported BEFORE the dimension guard
+    // below: a vector that doesn't match THIS character's memory index may still
+    // match the vault's document index, which is built separately. Never fires
+    // for the `extra_probes`, and never on the text-search fallback — a failed
+    // embed leaves via the `?` above with nothing captured.
+    //
+    // v4 wraps the callback in a try/catch ("a companion search's bookkeeping
+    // must never cost the caller its memories"). NO-PORT with evidence: the
+    // Rust seam is an out-param, not a caller-supplied closure, so there is no
+    // caller code to throw here — the arm is structurally unreachable.
+    if let Some(slot) = capture_query_embedding {
+        *slot = Some(SearchQueryEmbedding {
+            query: query.to_string(),
+            embedding: embed.embedding.clone(),
+        });
+    }
 
     let min_score = explicit_min_score
         .unwrap_or_else(|| default_min_cosine_for_provider(Some(&embed.provider)));

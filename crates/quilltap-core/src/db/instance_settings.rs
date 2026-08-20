@@ -89,48 +89,97 @@ pub fn get_lantern_backgrounds_mount_point_id(
     Ok(read_setting(main, KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID))
 }
 
+/// Instance-wide Commonplace-Book recall settings (v4 `MemoryRecallSettings`,
+/// `lib/schemas/settings.types.ts`). One struct rather than a tuple since v4
+/// `870a57fa` added a third field — a tuple that grows a field silently
+/// re-orders every destructuring that reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemoryRecallSettings {
+    /// `'down-weight' | 'exclude'` — how cross-project memories are treated.
+    pub scope_policy: String,
+    /// Pull in memories related to the ones that matched.
+    pub expand_related: bool,
+    /// v4 `870a57fa`: re-run the vault conversation-summary search EVERY turn
+    /// and fold the list into the consolidated whisper. Instance-wide by design
+    /// (no chat / project / character override).
+    pub per_turn_conversation_summaries: bool,
+}
+
+impl Default for MemoryRecallSettings {
+    fn default() -> Self {
+        // v4 `DEFAULT_MEMORY_RECALL_SETTINGS` (`lib/instance-settings/index.ts`).
+        MemoryRecallSettings {
+            scope_policy: "down-weight".to_string(),
+            expand_related: false,
+            per_turn_conversation_summaries: false,
+        }
+    }
+}
+
+impl MemoryRecallSettings {
+    /// v4's stored/returned JSON shape — the Zod schema's declaration order
+    /// (`scopePolicy`, `expandRelated`, `perTurnConversationSummaries`), which is
+    /// both what `setMemoryRecallSettings` writes and what the route echoes.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "scopePolicy": self.scope_policy,
+            "expandRelated": self.expand_related,
+            "perTurnConversationSummaries": self.per_turn_conversation_summaries,
+        })
+    }
+}
+
 /// v4 `getMemoryRecallSettings()` — the per-instance Commonplace-Book recall
-/// settings, as `(scope_policy, expand_related)`. Returns the documented default
-/// (`down-weight`, `false`) when the setting is unwritten OR fails to parse (v4's
+/// settings. Returns the documented default (`down-weight`, no expand, no
+/// per-turn conversations) when the setting is unwritten OR fails to parse (v4's
 /// Zod `safeParse` → `catch` → default). The Zod schema has `scopePolicy` enum
-/// `['down-weight','exclude']` (`.default('down-weight')`) and `expandRelated`
-/// boolean (`.default(false)`); an out-of-enum / non-bool value fails the parse
-/// (both `.default`-carrying keys mean a bad *value* still fails, not defaults —
+/// `['down-weight','exclude']` (`.default('down-weight')`), `expandRelated`
+/// boolean (`.default(false)`) and `perTurnConversationSummaries` boolean
+/// (`.default(false)`); an out-of-enum / non-bool value fails the parse (a
+/// `.default`-carrying key means a bad *value* still fails, not defaults —
 /// faithful to `.parse` throwing on a present-but-wrong value).
-pub fn get_memory_recall_settings(main: &Connection) -> Result<(String, bool), DbError> {
-    const DEFAULT: (&str, bool) = ("down-weight", false);
+pub fn get_memory_recall_settings(main: &Connection) -> Result<MemoryRecallSettings, DbError> {
     let Some(raw) = read_setting(main, KEY_MEMORY_RECALL) else {
-        return Ok((DEFAULT.0.to_string(), DEFAULT.1));
+        return Ok(MemoryRecallSettings::default());
     };
     let parsed: Result<serde_json::Value, _> = serde_json::from_str(&raw);
     let Ok(obj) = parsed else {
-        return Ok((DEFAULT.0.to_string(), DEFAULT.1));
+        return Ok(MemoryRecallSettings::default());
     };
     // scopePolicy: enum, `.default('down-weight')` (absent → default; present but
     // out-of-enum → parse fails → whole-object default).
     let scope_policy = match obj.get("scopePolicy") {
-        None => DEFAULT.0.to_string(),
+        None => MemoryRecallSettings::default().scope_policy,
         Some(serde_json::Value::String(s)) if s == "down-weight" || s == "exclude" => s.clone(),
-        Some(_) => return Ok((DEFAULT.0.to_string(), DEFAULT.1)),
+        Some(_) => return Ok(MemoryRecallSettings::default()),
     };
     // expandRelated: boolean, `.default(false)`.
     let expand_related = match obj.get("expandRelated") {
         None => false,
         Some(serde_json::Value::Bool(b)) => *b,
-        Some(_) => return Ok((DEFAULT.0.to_string(), DEFAULT.1)),
+        Some(_) => return Ok(MemoryRecallSettings::default()),
     };
-    Ok((scope_policy, expand_related))
+    // perTurnConversationSummaries: boolean, `.default(false)` — same arm shape.
+    let per_turn_conversation_summaries = match obj.get("perTurnConversationSummaries") {
+        None => false,
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(_) => return Ok(MemoryRecallSettings::default()),
+    };
+    Ok(MemoryRecallSettings {
+        scope_policy,
+        expand_related,
+        per_turn_conversation_summaries,
+    })
 }
 
 /// v4 `setMemoryRecallSettings` — store the recall settings (validated object
-/// `{scopePolicy, expandRelated}`). The route merges before calling this.
+/// `{scopePolicy, expandRelated, perTurnConversationSummaries}`). The route
+/// merges before calling this.
 pub fn set_memory_recall_settings(
     main: &Connection,
-    scope_policy: &str,
-    expand_related: bool,
+    settings: &MemoryRecallSettings,
 ) -> Result<(), DbError> {
-    let value = serde_json::json!({ "scopePolicy": scope_policy, "expandRelated": expand_related });
-    write_setting(main, KEY_MEMORY_RECALL, &value.to_string())
+    write_setting(main, KEY_MEMORY_RECALL, &settings.to_json().to_string())
 }
 
 /// Validate a candidate `staleChatDays` against v4's

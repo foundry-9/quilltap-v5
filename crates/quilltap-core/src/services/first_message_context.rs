@@ -189,6 +189,7 @@ async fn load_for_participant<P: EmbeddingProvider>(
             now_ms,
             ..Default::default()
         },
+        None,
     )
     .await;
     if let Ok(results) = semantic {

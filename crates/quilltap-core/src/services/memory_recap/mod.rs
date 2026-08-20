@@ -129,6 +129,23 @@ pub fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -
 /// v4 `READ_CONVERSATION_CALL_NOTE`.
 pub(crate) const READ_CONVERSATION_CALL_NOTE: &str = "_Pass any of the conversation IDs above (in backticks) to the `read_conversation` tool to revisit the full transcript._";
 
+// How long a relevant-past-conversations list may run, ramped against the
+// connection profile's `maxContext` via [`ramp_limit`] (3 entries at 4K, 10 at
+// 32K). v4 `870a57fa` moved these next to the search itself
+// (`lib/memory/conversation-summary-search.ts`) so the fold-triggered refresh
+// and the per-turn cadence read the SAME numbers and a list cannot change
+// length depending on which cadence produced it. v5's search lives here, so
+// this module is the one home; `services::commonplace_notifications` imports
+// them rather than keeping copies.
+/// v4 `RELEVANT_CONVERSATIONS_MIN`.
+pub(crate) const RELEVANT_CONVERSATIONS_MIN: i64 = 3;
+/// v4 `RELEVANT_CONVERSATIONS_MAX`.
+pub(crate) const RELEVANT_CONVERSATIONS_MAX: i64 = 10;
+/// v4 `RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS`.
+pub(crate) const RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS: i64 = 4000;
+/// v4 `RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS`.
+pub(crate) const RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS: i64 = 32000;
+
 /// v4 `truncateGist` — cap an inlined gist so the recap block stays bounded.
 /// `text.trim()`; if ≤ `max_chars` return it, else `slice(0, max_chars-1)` +
 /// `trimEnd()` + `'…'`. UTF-16-faithful slice (JS `String.length` / `.slice`).
@@ -161,6 +178,7 @@ pub async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
     limit: usize,
     exclude_conversation_id: Option<&str>,
     time_range: Option<&crate::recall_tags::TimeWindow>,
+    precomputed_embedding: Option<&[f32]>,
 ) -> Vec<VaultConversationMatch> {
     if limit == 0 {
         return Vec::new();
@@ -194,18 +212,28 @@ pub async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
         return Vec::new();
     }
 
-    // Embed the query. A dead embedding provider simply yields no relevant list.
-    let query_embedding = match embedding
-        .generate_embedding_for_user(
-            trimmed_query,
-            user_id,
-            embedding_profile_id,
-            EmbeddingPriority::Interactive,
-        )
-        .await
-    {
-        Ok(r) => r.embedding,
-        Err(_) => return Vec::new(),
+    // Embed the query — unless the caller already did, in which case that vector
+    // is reused (v4 `precomputedEmbedding`). A dead embedding provider simply
+    // yields no relevant list.
+    //
+    // The supplied vector MUST be the one for this exact query text, from the
+    // same embedding profile the corpus was indexed with — a mismatched
+    // dimension is caught by the document-search guard and yields an empty list
+    // rather than nonsense.
+    let query_embedding = match precomputed_embedding {
+        Some(v) => v.to_vec(),
+        None => match embedding
+            .generate_embedding_for_user(
+                trimmed_query,
+                user_id,
+                embedding_profile_id,
+                EmbeddingPriority::Interactive,
+            )
+            .await
+        {
+            Ok(r) => r.embedding,
+            Err(_) => return Vec::new(),
+        },
     };
 
     // Search the vault, scoped to `Conversation Summaries/`. v4 pulls a larger
@@ -439,6 +467,9 @@ async fn build_conversation_recall_lists<E: EmbeddingProvider>(
             // v4's recap path passes no window — the recap is scoped by the chat,
             // not by a period. (The windowed caller is buildContext's
             // retrospective mini-recap.)
+            None,
+            // The recap embeds its own relevance query (v4 passes no
+            // `precomputedEmbedding` here).
             None,
         )
         .await;

@@ -9,6 +9,11 @@
  * the fitted BUILTIN profile; the chunk search, frontmatter reads, readCap,
  * overlapsWindow, and the two-stage boost staging are all v4's real code.
  *
+ * P4.D95 (v4 `870a57fa`) adds three `precomputedEmbedding` arms: the vector for
+ * this query text (identical result), the vector for a DIFFERENT sentence (the
+ * list must follow the vector, not the text), and a mismatched width (an empty
+ * list via the document-search guard, not an error).
+ *
  * Emits one NDJSON row per case:
  *   { name, matches: [{conversationId, conversationTitle, relativePath, score,
  *     firstMessageAt, lastMessageAt}] }
@@ -134,6 +139,61 @@ async function main(): Promise<void> {
     excludeConversationId: excludeId,
   });
   lines.push(JSON.stringify({ name: 'exclude_top', matches: excluded, excludeId }));
+
+  // ---- P4.D95 (v4 `870a57fa`): the precomputed-embedding arms. -------------
+  // The vector is embedded here through v4's REAL builtin TF-IDF profile — the
+  // same profile the Rust side embeds with — so passing it in exercises the
+  // reuse seam without inventing numbers.
+  const { generateEmbeddingForUser } = await import('@/lib/embedding/embedding-service');
+  const embedOf = async (text: string): Promise<Float32Array> =>
+    (await generateEmbeddingForUser(text, spec.userId)).embedding;
+
+  // (1) the vector for THIS query text — must equal the embed-it-yourself arm.
+  const sameVec = await embedOf('the quay market at dawn');
+  lines.push(
+    JSON.stringify({
+      name: 'precomputed_same_query',
+      matches: await searchVaultConversationSummaries({
+        characterId: spec.elowenId,
+        query: 'the quay market at dawn',
+        userId: spec.userId,
+        limit: 3,
+        precomputedEmbedding: sameVec,
+      }),
+    }),
+  );
+
+  // (2) the vector for a DIFFERENT sentence while `query` stays put: the list
+  //     must follow the VECTOR, so a re-embed of `query` would score the other
+  //     ranking and diverge.
+  const otherVec = await embedOf('mending the sail lockers');
+  lines.push(
+    JSON.stringify({
+      name: 'precomputed_other_query',
+      matches: await searchVaultConversationSummaries({
+        characterId: spec.elowenId,
+        query: 'the quay market at dawn',
+        userId: spec.userId,
+        limit: 3,
+        precomputedEmbedding: otherVec,
+      }),
+    }),
+  );
+
+  // (3) a mismatched width — the document-search guard yields an EMPTY list
+  //     rather than nonsense (and never throws).
+  lines.push(
+    JSON.stringify({
+      name: 'precomputed_wrong_dimension',
+      matches: await searchVaultConversationSummaries({
+        characterId: spec.elowenId,
+        query: 'the quay market at dawn',
+        userId: spec.userId,
+        limit: 3,
+        precomputedEmbedding: new Float32Array([0.1, 0.2]),
+      }),
+    }),
+  );
 
   await closeDatabase();
   for (const l of lines) process.stdout.write(l + '\n');

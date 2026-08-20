@@ -357,6 +357,7 @@ where
             now_ms: params.now_ms,
             ..Default::default()
         },
+        None,
     )
     .await;
     match memory_results {

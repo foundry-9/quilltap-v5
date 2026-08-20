@@ -227,6 +227,16 @@ async function main(): Promise<void> {
         distillPrompt,
         preSearchedMemories: normalizeMemories(result.preSearchedMemories),
         recallSignals: result.recallSignals ?? null,
+        // P4.D95 (v4 `870a57fa`): the vector the proactive search embedded,
+        // handed out through `captureQueryEmbedding`. It must survive BOTH
+        // return paths — the success slice AND the memories-`undefined`
+        // fall-through — and be absent when the task never embedded at all.
+        queryEmbedding: result.preSearchedQueryEmbedding
+          ? {
+              query: result.preSearchedQueryEmbedding.query,
+              embedding: Array.from(result.preSearchedQueryEmbedding.embedding),
+            }
+          : null,
       }),
     );
   }

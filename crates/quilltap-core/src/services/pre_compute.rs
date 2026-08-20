@@ -56,7 +56,8 @@ use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
 };
 use crate::services::memory_service::{
-    search_memories_semantic, RecallContextInput, SemanticSearchOptions, SemanticSearchResult,
+    search_memories_semantic, RecallContextInput, SearchQueryEmbedding, SemanticSearchOptions,
+    SemanticSearchResult,
 };
 
 /// The resolved orchestrator state the proactive task reads (v4
@@ -114,6 +115,13 @@ pub struct ProactiveRecallInput<'a> {
 pub struct ProactiveRecallOutcome {
     pub memories: Option<Vec<SemanticSearchResult>>,
     pub signals: Option<DistilledSearch>,
+    /// The query text + vector this task embedded for its memory search (v4
+    /// `870a57fa`). Threaded on to `buildContext` so the per-turn
+    /// conversation-summary list rides the same vector instead of paying for a
+    /// second embedding call. Carried on BOTH return paths — a captured vector
+    /// survives a search that found nothing — and `None` when the search never
+    /// embedded (a failed embedding, or the task short-circuiting earlier).
+    pub query_embedding: Option<SearchQueryEmbedding>,
 }
 
 /// v4 `proactiveRecallTask`'s windowing (`pre-compute.service.ts:185-214`): the
@@ -368,6 +376,8 @@ where
     // `search_memories_semantic` returns `Result`; every non-(Ok non-empty) arm
     // converges on `memories: None` (v4 logs a warning on the throw arm — outside
     // the differential contract, so not reproduced).
+    // Captured by `search_memories_semantic` the moment it embeds `search_query`.
+    let mut query_embedding: Option<SearchQueryEmbedding> = None;
     let search = search_memories_semantic(
         db,
         embedding,
@@ -393,12 +403,19 @@ where
             now_ms: input.now_ms as f64,
             ..Default::default()
         },
+        Some(&mut query_embedding),
     )
     .await;
 
     // v4: on non-empty results → `{ memories: results.slice(0, 10), signals }`; on
     // empty OR a throw → `{ memories: undefined, signals }` (signals STILL flow).
-    Some(finish_outcome(search.unwrap_or_default(), signals))
+    // The captured vector rides BOTH arms (v4 `870a57fa` returns `queryEmbedding`
+    // on the success slice AND the memories-`undefined` fall-through).
+    Some(finish_outcome(
+        search.unwrap_or_default(),
+        signals,
+        query_embedding,
+    ))
 }
 
 /// v4's search-outcome shaping (`pre-compute.service.ts:328-339`): non-empty
@@ -410,6 +427,7 @@ where
 fn finish_outcome(
     results: Vec<SemanticSearchResult>,
     signals: DistilledSearch,
+    query_embedding: Option<SearchQueryEmbedding>,
 ) -> ProactiveRecallOutcome {
     let memories = if results.is_empty() {
         None
@@ -419,6 +437,7 @@ fn finish_outcome(
     ProactiveRecallOutcome {
         memories,
         signals: Some(signals),
+        query_embedding,
     }
 }
 
@@ -455,7 +474,7 @@ mod tests {
     fn caps_memories_at_ten() {
         let many: Vec<SemanticSearchResult> =
             (0..15).map(|i| fake_result(&format!("m{i}"))).collect();
-        let out = finish_outcome(many, DistilledSearch::default());
+        let out = finish_outcome(many, DistilledSearch::default(), None);
         assert_eq!(out.memories.expect("memories").len(), 10);
     }
 
@@ -463,7 +482,7 @@ mod tests {
     /// search-empty arm; the retrospective cadence still fires downstream).
     #[test]
     fn empty_results_drop_memories_keep_signals() {
-        let out = finish_outcome(Vec::new(), DistilledSearch::default());
+        let out = finish_outcome(Vec::new(), DistilledSearch::default(), None);
         assert!(out.memories.is_none());
         assert!(out.signals.is_some());
     }

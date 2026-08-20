@@ -9,6 +9,20 @@
 //! (the boost VISIBLY reorders/rescores), unparsable/inverted windows (plain
 //! slice), limit 0, and the exclude filter.
 //!
+//! P4.D95 (v4 `870a57fa`) adds the **precomputed-embedding** arms — the reuse
+//! seam that makes the per-turn conversation-summary cadence affordable. Three
+//! shapes, each run on BOTH sides with the SAME vector (each side embeds it
+//! through its own real builtin TF-IDF profile first, so the vector itself is a
+//! transitive comparand):
+//!   * `precomputed_same_query` — the vector for THIS query text: the result
+//!     must equal the embed-it-yourself arm byte for byte.
+//!   * `precomputed_other_query` — the vector for a DIFFERENT sentence while
+//!     the `query` string stays put. The list must follow the VECTOR, not the
+//!     text; a port that quietly re-embeds `query` scores the other ranking and
+//!     the arm goes red.
+//!   * `precomputed_wrong_dimension` — a 2-wide vector against a 3-wide corpus:
+//!     the document-search guard yields an EMPTY list, not an error.
+//!
 //! Generate (Node 24, from the v4 checkout), against /tmp COPIES of the
 //! COMMITTED episodic-recall fixture — never point a regen at the committed
 //! `.db` files themselves, and never rebuild them: a rebuild mints fresh
@@ -30,7 +44,9 @@ use std::path::PathBuf;
 
 use quilltap_core::db::characters_read;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::embedding::ErasedEmbeddingProvider;
+use quilltap_core::model::embedding::{
+    EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider,
+};
 use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::recall_tags::TimeWindow;
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
@@ -163,28 +179,36 @@ async fn vault_conv_search_matches_oracle() {
             .expect("elowen vault mount id")
     };
 
+    let run_with = |query: &'static str,
+                    limit: usize,
+                    exclude: Option<String>,
+                    window: Option<TimeWindow>,
+                    precomputed: Option<Vec<f32>>| {
+        let db = db.clone();
+        let embedding = embedding.clone();
+        let mount_id = mount_id.clone();
+        let user_id = fixture_spec.user_id.clone();
+        let elowen = fixture_spec.elowen_id.clone();
+        async move {
+            search_vault_conversation_summaries(
+                &db,
+                &embedding,
+                &elowen,
+                Some(&mount_id),
+                query,
+                &user_id,
+                None,
+                limit,
+                exclude.as_deref(),
+                window.as_ref(),
+                precomputed.as_deref(),
+            )
+            .await
+        }
+    };
     let run =
         |query: &'static str, limit: usize, exclude: Option<String>, window: Option<TimeWindow>| {
-            let db = db.clone();
-            let embedding = embedding.clone();
-            let mount_id = mount_id.clone();
-            let user_id = fixture_spec.user_id.clone();
-            let elowen = fixture_spec.elowen_id.clone();
-            async move {
-                search_vault_conversation_summaries(
-                    &db,
-                    &embedding,
-                    &elowen,
-                    Some(&mount_id),
-                    query,
-                    &user_id,
-                    None,
-                    limit,
-                    exclude.as_deref(),
-                    window.as_ref(),
-                )
-                .await
-            }
+            run_with(query, limit, exclude, window, None)
         };
 
     let to_value = |matches: &[quilltap_core::services::memory_recap::VaultConversationMatch]| {
@@ -248,11 +272,83 @@ async fn vault_conv_search_matches_oracle() {
     assert_eq!(oracle.name, "exclude_top");
     assert_matches("exclude_top", &to_value(&got), &oracle.matches);
 
+    // ---------------------------------------------------------------------
+    // P4.D95: the precomputed-embedding arms.
+    // ---------------------------------------------------------------------
+    let embed = |text: &'static str| {
+        let embedding = embedding.clone();
+        let user_id = fixture_spec.user_id.clone();
+        async move {
+            embedding
+                .generate_embedding_for_user(text, &user_id, None, EmbeddingPriority::Interactive)
+                .await
+                .expect("embed the precomputed query")
+                .embedding
+        }
+    };
+
+    // (1) the vector for THIS query — identical to embedding it inside.
+    let same_vec = embed("the quay market at dawn").await;
+    let got = run_with(
+        "the quay market at dawn",
+        3,
+        None,
+        None,
+        Some(same_vec.clone()),
+    )
+    .await;
+    let oracle = oracle_iter
+        .next()
+        .expect("precomputed_same_query oracle row missing");
+    assert_eq!(oracle.name, "precomputed_same_query");
+    assert_matches("precomputed_same_query", &to_value(&got), &oracle.matches);
+
+    // (2) the vector for a DIFFERENT sentence: the list follows the VECTOR.
+    let other_vec = embed("mending the sail lockers").await;
+    assert_ne!(
+        same_vec, other_vec,
+        "the two probe sentences must embed differently or the arm proves nothing"
+    );
+    let got = run_with("the quay market at dawn", 3, None, None, Some(other_vec)).await;
+    let oracle = oracle_iter
+        .next()
+        .expect("precomputed_other_query oracle row missing");
+    assert_eq!(oracle.name, "precomputed_other_query");
+    assert_matches("precomputed_other_query", &to_value(&got), &oracle.matches);
+
+    // (3) a mismatched width — the document-search guard empties the list.
+    let got = run_with(
+        "the quay market at dawn",
+        3,
+        None,
+        None,
+        Some(vec![0.1_f32, 0.2]),
+    )
+    .await;
+    let oracle = oracle_iter
+        .next()
+        .expect("precomputed_wrong_dimension oracle row missing");
+    assert_eq!(oracle.name, "precomputed_wrong_dimension");
+    assert_matches(
+        "precomputed_wrong_dimension",
+        &to_value(&got),
+        &oracle.matches,
+    );
+    assert!(
+        got.is_empty(),
+        "a mismatched-width vector must yield an EMPTY list (v4's document-search guard)"
+    );
+
+    assert!(
+        oracle_iter.next().is_none(),
+        "unconsumed oracle rows — the NDJSON is newer than this case table"
+    );
+
     drop(db);
     let _ = std::fs::remove_file(&main);
     let _ = std::fs::remove_file(&mount);
     println!(
         "vault_conv_search_equivalence: {} cases green",
-        cases.len() + 1
+        cases.len() + 4
     );
 }

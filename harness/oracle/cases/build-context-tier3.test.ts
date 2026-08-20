@@ -17,12 +17,15 @@
  *   - `getApiKeyForCheapLLMSelection` → constant; `logLLMCall` → no-op.
  *   - `resolveTieredMountPool` → the responding character's own vault only (no
  *     group / project / global tier) = the Rust `resolve_mount_pool` default.
- *   - `generateMemoryRecap` → `{ content: '' }` (no recap).
  *   - `extractMemorySearchKeywords` runs REAL (W4.6a); its cheap-LLM call rides
  *     the mocked `createLLMProvider` (an op without a matching completion rule
  *     fails the task → the raw-query fallback, identically on both sides).
  *   - `getOrComputeFrozenArchive` → `[]` (no archive).
- *   - `getMemoryRecallSettings` → BALANCED / no expand.
+ * P4.D95 (v4 `870a57fa`) adds the per-turn conversation-summary cadence: the
+ * instance-wide `memoryRecall` bag is written through the REAL setter before
+ * EVERY op (so it cannot leak forward), `generateMemoryRecap` and
+ * `preSearchedQueryEmbedding` become per-op options, and an op may seed a
+ * standing `relevant-conversations` whisper for the list to dedup against.
  *   - `getCompiledIdentityStack` → null (fresh build).
  *   - the wardrobe live-clothing resolution + the post-office writers
  *     (`postCoreWhisper`/`postCommonplaceWhisper`/`postSuparnaMailWhisper`/
@@ -121,6 +124,29 @@ interface Op {
     messageCount: number;
     warnings?: string[];
   };
+  /** P4.19: the proactive pre-compute outcome. */
+  preSearchedMemories?: Array<{
+    id: string;
+    score: number;
+    effectiveWeight: number;
+    rawWeight: number;
+  }>;
+  recallSignals?: unknown;
+  /** P4.D95 (v4 `870a57fa`): the instance-wide recall setting this op runs
+   *  under. Written through the REAL `setMemoryRecallSettings` before EVERY op
+   *  (an absent field writes `false`) so the row can never leak from one op to
+   *  the next — the ops share one working database copy. */
+  perTurnConversationSummaries?: boolean;
+  /** P4.D95: `options.preSearchedQueryEmbedding` — the query text + vector the
+   *  proactive recall already embedded, for the pre-searched memory path. */
+  preSearchedQueryEmbedding?: { query: string; embedding: number[] };
+  /** P4.D95: run the REAL memory recap for this op, so the per-turn cadence's
+   *  recap stand-down is reachable. */
+  generateMemoryRecap?: boolean;
+  /** P4.D95: post a standing `relevant-conversations` whisper (this rendered
+   *  block) through the REAL writer before the op runs, so the per-turn list has
+   *  something to dedup against. */
+  seedFoldWhisperConversations?: string;
 }
 interface CompletionRule {
   op: string;
@@ -380,6 +406,19 @@ async function main(): Promise<void> {
     if (op.distillEnabled) {
       options.cheapLLMSelection = cheapLLMSelection;
     }
+    // P4.D95: the REAL memory recap for this op (the per-turn cadence's
+    // stand-down arm). Needs a cheap-LLM selection, which `distillEnabled`
+    // supplies above.
+    if (op.generateMemoryRecap) {
+      options.generateMemoryRecap = true;
+    }
+    // P4.D95: the vector the proactive recall already embedded.
+    if (op.preSearchedQueryEmbedding) {
+      options.preSearchedQueryEmbedding = {
+        query: op.preSearchedQueryEmbedding.query,
+        embedding: new Float32Array(op.preSearchedQueryEmbedding.embedding),
+      };
+    }
     // P4.D82: a profile-only op (no compression) — the budget window comes from
     // the profile's Max Context (v4 `f933ba9c`).
     if (op.profileMaxContext != null) {
@@ -442,6 +481,34 @@ async function main(): Promise<void> {
     // that predate the feature — which is byte-identical to never having
     // written the row, and is what keeps their prompts unchanged).
     await setTabooSettings({ phrases: op.tabooPhrases ?? [] });
+
+    // P4.D95: the instance-wide recall bag for THIS op. Written unconditionally
+    // (absent field = `false`) for the same reason the Taboo list is — the ops
+    // share one database copy, so a setting must never leak forward. The other
+    // two fields stay at the documented defaults the ops have always run under.
+    const { setMemoryRecallSettings } = await import('@/lib/instance-settings');
+    await setMemoryRecallSettings({
+      scopePolicy: 'down-weight',
+      expandRelated: false,
+      perTurnConversationSummaries: op.perTurnConversationSummaries === true,
+    });
+
+    // P4.D95: a standing fold-posted `relevant-conversations` whisper for the
+    // per-turn list to dedup against — posted through the REAL writer so its
+    // row shape is production's, not the harness's invention.
+    if (op.seedFoldWhisperConversations) {
+      const { postCommonplaceWhisper, buildCommonplacePersonaWhisper } = await import(
+        '@/lib/services/commonplace-notifications/writer'
+      );
+      await postCommonplaceWhisper({
+        chatId: spec.chat.id,
+        targetParticipantId: op.respondingParticipantId ?? null,
+        content: buildCommonplacePersonaWhisper({
+          relevantConversations: op.seedFoldWhisperConversations,
+        }),
+        kind: 'relevant-conversations',
+      } as never);
+    }
 
     const result = await buildContext(options as never);
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));

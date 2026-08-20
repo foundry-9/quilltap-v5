@@ -1,6 +1,6 @@
 {
   "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads. P4.d15: the corpus also carries dated vault conversation summaries in Ada's vault (the retrospective mini-recap's substrate) plus one seeded on-fold relevant-conversations whisper (the mini-recap's conversation-id dedup source).",
-  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures \u2014 never a real pepper.",
+  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures — never a real pepper.",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "b0000000-0000-4000-8000-0000000000e1",
   "seedTimestamp": "2024-01-01T00:00:00.000Z",
@@ -334,6 +334,20 @@
       "summary": "Pantry crate 24.",
       "importance": 0.95,
       "vector": null
+    },
+    {
+      "_comment": "P4.D95: Bea's ONLY memory, embedded FOUR-wide while every canned query vector is three-wide. That makes her memory index the wrong dimensionality for the turn's query, which is the one shape that can tell 'capture before the dimension guard' from 'capture after it': the memory search degrades to text, but the vault's document index is a separate corpus at the query's own width and still matches.",
+      "id": "ce000000-0000-4000-8000-0000000000eb",
+      "characterId": "ca000000-0000-4000-8000-0000000000a2",
+      "content": "Bea keeps the hive ledger in a copperplate hand.",
+      "summary": "Keeps the hive ledger.",
+      "importance": 0.8,
+      "vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
     }
   ],
   "cannedEmbeddings": {
@@ -377,7 +391,7 @@
       0.05,
       0.0
     ],
-    "They recall sketching the analytical engine loops at Lighthouse Point. \u2014 Lighthouse Point": [
+    "They recall sketching the analytical engine loops at Lighthouse Point. — Lighthouse Point": [
       1.0,
       0.0,
       0.0
@@ -385,6 +399,11 @@
     "They recall sketching the analytical engine loops at Lighthouse Point. (around 2024-06-15 to 2024-06-15)": [
       0.95,
       0.05,
+      0.0
+    ],
+    "Bea, a moment.\nWhat did we settle on?": [
+      1.0,
+      0.0,
       0.0
     ]
   },
@@ -423,6 +442,16 @@
       "op": "window_forwarded_when_not_retrospective_turn",
       "kind": "distill",
       "response": "{\"keywords\": [\"sketching\", \"Lighthouse Point\"], \"temporal\": \"present\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\"]}"
+    },
+    {
+      "op": "per_turn_conversations_retro_turn",
+      "kind": "distill",
+      "response": "{\"keywords\": [\"analytical engine\", \"Lighthouse Point\", \"sketching\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\"]}"
+    },
+    {
+      "op": "per_turn_conversations_recap_turn",
+      "kind": "recap",
+      "response": "Ada remembers the Lighthouse Point sketches and the card loops that followed."
     }
   ],
   "chat": {
@@ -535,7 +564,7 @@
         {
           "id": "d0000000-0000-4000-8000-0000000000d2",
           "role": "user",
-          "content": "The Librarian deposits a pr\u00e9cis of the conversation to date upon the table \u2014 file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
+          "content": "The Librarian deposits a précis of the conversation to date upon the table — file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
         },
         {
           "id": "d0000000-0000-4000-8000-0000000000d3",
@@ -843,7 +872,7 @@
     {
       "name": "day_reference_flips_retro_turn",
       "characterId": "ca000000-0000-4000-8000-0000000000a1",
-      "newUserMessage": "And the sketching we did earlier today \u2014 how far did we get?",
+      "newUserMessage": "And the sketching we did earlier today — how far did we get?",
       "existingMessages": [
         {
           "role": "user",
@@ -932,6 +961,161 @@
       "profileMaxContext": 8000,
       "reservedOutgoingTokens": 8000,
       "timestampMode": null
+    },
+    {
+      "_comment": "P4.D95 (v4 870a57fa): the per-turn conversation-summary cadence, ON, over the INTERNAL two-pool memory path. The vector searchMemoriesSemantic embedded is captured and reused by the vault summary search, so the consolidated whisper grows a Relevant Past Conversations part and debugRelevantConversations appears. Nothing here is reachable unless the capture hook fires.",
+      "name": "per_turn_conversations_on",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true
+    },
+    {
+      "_comment": "P4.D95: the OTHER memory path — the proactive pre-searched head. The vector arrives as options.preSearchedQueryEmbedding rather than from a search of our own; a port that drops the thread lists nothing.",
+      "name": "per_turn_conversations_pre_searched",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true,
+      "preSearchedMemories": [
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e1",
+          "score": 0.99,
+          "effectiveWeight": 0.99,
+          "rawWeight": 0.99
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e2",
+          "score": 0.88,
+          "effectiveWeight": 0.88,
+          "rawWeight": 0.88
+        }
+      ],
+      "recallSignals": {
+        "keywords": [
+          "analytical engine"
+        ],
+        "retrospective": false,
+        "entities": []
+      },
+      "preSearchedQueryEmbedding": {
+        "query": "How does the analytical engine work?",
+        "embedding": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "_comment": "P4.D95: a RETROSPECTIVE turn with the cadence on. Two things at once — the capture must report the MAIN query's vector and never an extra probe's (the probes embed to different vectors here, so a stolen capture reorders the list), and the retrospective mini-recap must now filter against the per-turn list as well as the fold whisper.",
+      "name": "per_turn_conversations_retro_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Remember when we sketched the analytical engine at Lighthouse Point last week?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "chatOverrides": {
+        "commonplaceRecallHistory": {
+          "turns": [
+            [
+              "ce000000-0000-4000-8000-0000000000e3"
+            ]
+          ]
+        }
+      },
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true
+    },
+    {
+      "_comment": "P4.D95: the cadence ON but no vector to ride — memories skipped, so nothing embedded this turn. It sits the turn out rather than paying for an embedding of its own.",
+      "name": "per_turn_conversations_no_vector",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true
+    },
+    {
+      "_comment": "P4.D95: the recap stand-down. generateMemoryRecap runs for REAL on both sides (its list already searched the same shelf), so the per-turn cadence must produce nothing even though the setting is on and a vector exists.",
+      "name": "per_turn_conversations_recap_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true,
+      "generateMemoryRecap": true
+    },
+    {
+      "_comment": "P4.D95: the capture fires BEFORE the dimension guard. Bea's memory index is four-wide and the turn's query embeds three-wide, so memory recall degrades to text search — but the vault's `Conversation Summaries/` index is built separately, at the query's own width, so the per-turn list still appears. Move the capture below the guard and this op lists nothing.",
+      "name": "per_turn_conversations_dimension_drift",
+      "characterId": "ca000000-0000-4000-8000-0000000000a2",
+      "newUserMessage": "What did we settle on?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Bea, a moment."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true
+    },
+    {
+      "_comment": "P4.D95: the fold-whisper dedup AND v4's new BACKWARDS, stop-at-first scan. The corpus already seeds a standing relevant-conversations whisper naming `…f2`; this op posts a SECOND one (through the REAL writer) naming `…f1`. Walking backwards and stopping at the first match reads only the newer whisper, so the list drops f1 and KEEPS f2 — a forward walk, or a union of every standing whisper, would drop both and the arm goes red. LAST of the new ops: relevant-conversations whispers are exempt from the consolidated sweep, so the seed would otherwise filter every op after it.",
+      "name": "per_turn_conversations_fold_whisper_dedup",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true,
+      "seedFoldWhisperConversations": "### Relevant Past Conversations\n\n- **The Lighthouse Point Sketches** (`cf000000-0000-4000-8000-0000000000f1`) — 5 June 2024"
     }
   ],
   "vaultConversationSummaries": [
@@ -989,7 +1173,7 @@
     {
       "chatId": "cc000000-0000-4000-8000-0000000000c1",
       "chatTitle": "Analytical Engine",
-      "summary": "This very conversation's own summary \u2014 excluded by excludeConversationId.",
+      "summary": "This very conversation's own summary — excluded by excludeConversationId.",
       "participantCharacterIds": [
         "ca000000-0000-4000-8000-0000000000a1"
       ],
@@ -1000,6 +1184,23 @@
       "chunkVector": [
         9.0,
         2.0,
+        0.0
+      ]
+    },
+    {
+      "chatId": "cf000000-0000-4000-8000-0000000000f5",
+      "chatTitle": "The Hive Ledger",
+      "summary": "Bea and the user went over the hive ledger and settled the season's counts.",
+      "participantCharacterIds": [
+        "ca000000-0000-4000-8000-0000000000a2"
+      ],
+      "messageCount": 3,
+      "firstMessageAt": "2024-06-20T09:00:00.000Z",
+      "lastMessageAt": "2024-06-20T10:00:00.000Z",
+      "chunkId": "cf000000-0000-4000-8000-00000000d005",
+      "chunkVector": [
+        1.0,
+        0.0,
         0.0
       ]
     }
