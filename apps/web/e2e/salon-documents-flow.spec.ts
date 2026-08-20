@@ -1,4 +1,10 @@
-import { expect, request as pwRequest, test, type Page } from './support/fixtures';
+import {
+  expect,
+  request as pwRequest,
+  test,
+  type APIRequestContext,
+  type Page,
+} from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
@@ -26,6 +32,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  */
 
 let docBackendReady = false;
+const isMac = process.platform === 'darwin';
 
 test.beforeAll(async () => {
   // Probe the shared server: is the document dispatch handled? In-lane the Rust
@@ -48,6 +55,13 @@ test.beforeAll(async () => {
     docBackendReady = false;
   }
 });
+
+/** Raw dispatch against the real axum server (mirrors new-chat-flow). */
+async function dispatch(ctx: APIRequestContext, req: unknown): Promise<Record<string, unknown>> {
+  const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: req });
+  const body = (await res.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
+  return body?.data ?? {};
+}
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -252,5 +266,121 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
       .click();
     await expect(page.locator('qt-document-pane')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open terminal' })).toBeVisible();
+  });
+
+  /**
+   * P4.9L2 — the pane's formatting toolbar, live.
+   *
+   * The transforms and the button inventory are already byte-diffed against
+   * v4's own code (`editor/delimiter-transforms.spec.ts`,
+   * `documents/document-pane.toolbar.spec.ts`, both over the P4.9L recorded
+   * corpus). What only a browser can prove is that the CHAT'S template reaches
+   * THIS pane — v4 threads `chat?.roleplayTemplateId` from `SalonView` down
+   * through `DocumentPaneBinding` — and that a button press lands in the
+   * document's own bytes.
+   *
+   * The bytes are read through the toolbar's source toggle, which shows exactly
+   * what the pane would save; nothing is sent, and the chat is put back on "No
+   * Template" and the template deleted, so every later spec finds the instance
+   * as it was.
+   */
+  test('the document toolbar carries the chat’s template delimiters, and a press reaches the bytes (p4.9l2)', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+
+    const ctx = await pwRequest.newContext();
+    let templateId = '';
+    let chatId = '';
+    try {
+      // A template whose ONE delimiter is the recorder's `~` wrap — the shape
+      // whose exported bytes the corpus pins (`~hello~ world`, unescaped).
+      const created = await dispatch(ctx, {
+        type: 'roleplayTemplateCreate',
+        template: {
+          name: `P4.9L2 Tilde ${Date.now()}`,
+          description: null,
+          systemPrompt: 'Wrap private thought in tildes.',
+          narrationDelimiters: '*',
+          delimiters: [
+            {
+              kind: 'wrap',
+              name: 'Thoughts',
+              buttonName: 'Th',
+              style: 'qt-rp-thoughts',
+              delimiters: '~',
+            },
+          ],
+        },
+      });
+      templateId = ((created['template'] as { id?: string } | undefined)?.id ??
+        (created as { id?: string }).id ??
+        '') as string;
+      expect(templateId).toBeTruthy();
+
+      await openSoloChat(page);
+      chatId = (page.url().match(/\/salon\/([0-9a-f-]{16,})/) ?? [])[1] ?? '';
+      expect(chatId).toBeTruthy();
+
+      // Hang the template on the chat, then READ IT BACK: a dispatch verb
+      // ignores unknown fields and answers 200 with the unchanged entity, so
+      // the round trip is the only proof the write landed.
+      await dispatch(ctx, { type: 'chatUpdate', chatId, chat: { roleplayTemplateId: templateId } });
+      const fetched = await dispatch(ctx, { type: 'chatGet', chatId });
+      expect(((fetched['chat'] ?? fetched) as { roleplayTemplateId?: string }).roleplayTemplateId).toBe(
+        templateId,
+      );
+
+      // Reload so the Salon re-fetches the chat and, with it, the template.
+      await page.reload();
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+      const pane = await openBlankDocument(page);
+
+      // The toolbar is there, in v4's row, with the whole markdown inventory…
+      const toolbar = pane.locator('.qt-doc-toolbar .qt-formatting-toolbar');
+      await expect(toolbar).toBeVisible({ timeout: 15_000 });
+      await expect(toolbar.locator('.qt-formatting-button-bold')).toBeVisible();
+
+      // …and the chat's template delimiter, with v4's `getDelimiterTooltip`
+      // string byte for byte. Exactly ONE button: v4's `DocToolbar` passes no
+      // `narrationDelimiters`, so the synthesized "Nar" the composer shows for
+      // this same template is absent here.
+      const delimiters = toolbar.locator('.qt-rp-annotation-button');
+      await expect(delimiters).toHaveCount(1, { timeout: 20_000 });
+      await expect(delimiters.first()).toHaveAttribute('title', 'Thoughts (~...~)');
+      await expect(delimiters.first()).toHaveText('Th');
+
+      // Write a line, select it, press the delimiter.
+      const editor = pane.locator('.qt-rich-editor-content');
+      await editor.click();
+      await page.keyboard.type('she smiled');
+      await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+      await delimiters.first().click();
+
+      // The document's own bytes, read through the TOOLBAR's source toggle
+      // (the second control on the pane's one `showSource` signal).
+      await toolbar.locator('.qt-formatting-button-source').click();
+      await expect(pane.locator('textarea')).toHaveValue('~she smiled~');
+
+      // A markdown button acts on the raw textarea while source mode is on.
+      await pane.locator('textarea').click();
+      await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+      await toolbar.locator('.qt-formatting-button-bold').click();
+      await expect(pane.locator('textarea')).toHaveValue('**~she smiled~**');
+
+      // Back to rich text through the same toggle, then leave.
+      await toolbar.locator('.qt-formatting-button-source').click();
+      await expect(pane.locator('textarea')).toHaveCount(0);
+      await pane.getByRole('button', { name: 'Exit document mode' }).click();
+      await expect(page.locator('qt-document-pane')).toHaveCount(0);
+    } finally {
+      if (chatId) {
+        await dispatch(ctx, { type: 'chatUpdate', chatId, chat: { roleplayTemplateId: null } });
+      }
+      if (templateId) {
+        await dispatch(ctx, { type: 'roleplayTemplateDelete', templateId });
+      }
+      await ctx.dispose();
+    }
   });
 });

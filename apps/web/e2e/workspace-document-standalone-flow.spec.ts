@@ -197,3 +197,54 @@ test('reopen-focuses-same-tab: a recents reopen focuses rather than duplicates (
   await picker.getByRole('button', { name: /Ledger/ }).click();
   await expect(tabLabel(page, 'Ledger')).toHaveCount(1);
 });
+
+/**
+ * P4.9L2 — the chat-less pane's toolbar, live: present, and WITHOUT a delimiter
+ * rail.
+ *
+ * v4's `StandaloneDocumentView.tsx:381` mounts `DocumentPane` with no
+ * `roleplayTemplateId`, so the standalone toolbar shows the markdown inventory
+ * and nothing else — the recorded "an empty template and no narration shows no
+ * delimiter section at all" shape. There is no chat here to carry a template,
+ * which is exactly why the absence is worth a beat: the Salon-hosted pane in
+ * `salon-documents-flow` grows a delimiter rail on the same build.
+ *
+ * Runs LAST in the file and deletes what it created, so the reopen-recents beat
+ * above keeps the desk it expects.
+ */
+test('the standalone toolbar is present and carries NO delimiter buttons (p4.9l2)', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  test.skip(!(await isWired(page)), 'the rail Document-Mode entry mounts at the p4.9j unification');
+
+  await createBlankInStore(page, 'Project Files: Skyhaven');
+  const pane = page.locator('qt-document-pane');
+  await expect(pane).toBeVisible({ timeout: 15_000 });
+
+  const toolbar = pane.locator('.qt-doc-toolbar .qt-formatting-toolbar');
+  await expect(toolbar).toBeVisible({ timeout: 15_000 });
+  await expect(toolbar.locator('.qt-formatting-button-bold')).toBeVisible();
+  await expect(toolbar.locator('.qt-formatting-button-code-block')).toBeVisible();
+  await expect(toolbar.locator('button[aria-label="Insert emoji"]')).toBeVisible();
+  await expect(toolbar.locator('.qt-rp-annotation-button')).toHaveCount(0);
+
+  // The buttons are live here too — proven through the toolbar's own source
+  // toggle, which shows the bytes the pane would save.
+  const editor = pane.locator('.qt-rich-editor-content');
+  await editor.click();
+  await page.keyboard.type('shout');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+  await toolbar.locator('.qt-formatting-button-bold').click();
+
+  await toolbar.locator('.qt-formatting-button-source').click();
+  await expect(pane.locator('textarea')).toHaveValue('**shout**');
+
+  // Delete what this beat created (two-step: the pane confirms through the
+  // browser dialog), leaving the store as it was found.
+  await toolbar.locator('.qt-formatting-button-source').click();
+  await expect(pane.locator('textarea')).toHaveCount(0);
+  page.once('dialog', (d) => void d.accept());
+  await pane.getByRole('button', { name: 'Delete document' }).click();
+  await expect(page.locator('qt-document-pane')).toHaveCount(0, { timeout: 15_000 });
+});

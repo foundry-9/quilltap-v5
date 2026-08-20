@@ -76128,3 +76128,70 @@ buttons off the pane.
 
 SPA 0.5.524; no crate touched.
 
+
+## P4.9L2 unit 3 — the two live beats, and the paper trail
+
+**`salon-documents-flow`** gains `the document toolbar carries the chat's
+template delimiters, and a press reaches the bytes (p4.9l2)`. It seeds a
+template through `roleplayTemplateCreate` whose ONE delimiter is the recorder's
+`~` wrap — the shape whose exported bytes the P4.9L corpus pins (`~hello~ world`,
+unescaped, so the assertion is not a guess about the bridge's escape pass) — and
+whose `narrationDelimiters` is `*`, which is what makes the missing "Nar" button
+measurable in the browser rather than only in a spec.
+
+`chatUpdate` hangs it on Solo Voyage and `chatGet` reads it BACK: a dispatch verb
+ignores unknown fields and answers 200 with the unchanged entity
+([[dispatch-verb-ignores-unknown-fields]]), so the round trip is the only proof
+the write landed. Then: reload, open a blank document, assert the toolbar row +
+the markdown inventory, assert EXACTLY ONE `.qt-rp-annotation-button` titled
+`Thoughts (~...~)` and labelled `Th`, select the typed line, press it, and read
+`~she smiled~` out of the raw textarea through the TOOLBAR's source toggle — the
+second control on the pane's one `showSource` signal. A Bold press then acts on
+that textarea (`**~she smiled~**`), which is the source branch reaching THIS
+pane's element. The chat goes back to no template and the template is deleted in
+a `finally`, so the shared instance is left as found; nothing is sent (trap 5b —
+Solo Voyage carries the token baselines).
+
+**`workspace-document-standalone-flow`** gains the mirror,
+`the standalone toolbar is present and carries NO delimiter buttons (p4.9l2)`:
+create a blank in the `Project Files: Skyhaven` store (the DB-backed scope its
+sibling beats use), assert the toolbar with the markdown buttons, the code-block
+toggle and both pickers, assert `.qt-rp-annotation-button` count ZERO, then prove
+the buttons are live anyway — Bold on a selected word reads back `**shout**`
+through the source toggle. It deletes the document it created and runs LAST in
+the file, so the reopen-recents beat above keeps the desk it expects.
+
+The pair is the point: the same build grows a delimiter rail in the Salon and
+none in the chat-less desk, which is v4's split
+(`SalonView.tsx:1577/1630/1847` vs `StandaloneDocumentView.tsx:381`).
+
+**Paper trail closed.** `m6-screen-parity.md` row 14b is struck with what
+landed, the three wirings it named, and the one recorded divergence; the
+`GAP (named, P4.9L 2026-08-14)` paragraph in `document-pane.ts` was retired in
+unit 1 and replaced by the mount's own class-doc note.
+
+**e2e mechanics.** No crate diverges from `main`
+(`git diff main -- crates/ Cargo.toml Cargo.lock harness/` empty), so the lane
+built only `quilltap-web` + `quilltap-cli` `--release` into its own worktree
+target (2m 47s) rather than borrowing another tree's — main has no `target/` at
+all this round, so the P4.D86 borrow had nothing to borrow. Both sibling lanes
+were live, so the run moved `PORT` → 4419 and `MOCK_LLM_PORT` → 45401 in
+`e2e/support/env.ts` for the duration and reverted it uncommitted
+([[e2e-playwright-traps]] trap 6); `env.ts` is shared infra, not this lane's
+file.
+
+**A SECOND divergence found by the survey and recorded, not fixed.** v4's
+raw-source branch renders `document.content` — the frontmatter block INCLUDED —
+and hides the frontmatter table while source mode is showing
+(`DocumentPane.tsx:695-720`). v5 has split the frontmatter off since P4.6ag, so
+the table stays up and the textarea holds the BODY alone. The saved bytes are
+unaffected (the recombine seam puts `rawBlock` back, and this lane's source
+transforms go through that same seam — proven by the unit-1 spec's
+`---\ntitle: Deep\n---\n**old** body`), but a toolbar transform at offset 0 now
+lands at the body's start where v4's would land inside the `---` fence. Changing
+the shape means moving the word count, the table's visibility and the recombine
+seam together — its own slice with its own beats, not a rider on the toolbar
+mount. Named in the pane's class doc alongside the header-button divergence.
+
+SPA 0.5.525; no crate touched.
+

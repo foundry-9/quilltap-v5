@@ -82,6 +82,32 @@ columns v4 added in the 4.8.2/4.8.3 round, so it dies on `no such column:
 composerEmoji`. Reproduced against an unmodified oracle case at `c8a3cf77`. The
 repair is a fixture-vintage one and belongs to a maintenance order — that `.db`
 pair is also read by two e2e specs.
+#### 2026-08-20 — test(e2e): walk the document toolbar in both of its hosts
+
+_Versions: SPA 0.5.525._
+
+`salon-documents-flow` gains a beat that seeds a roleplay template carrying one
+`wrap` delimiter, hangs it on the chat through `chatUpdate` (reading the chat
+back, since a dispatch verb answers 200 on an ignored field), opens a document,
+and asserts the pane's toolbar carries exactly ONE delimiter button with v4's
+`getDelimiterTooltip` string — no synthesized "Nar", which the composer shows
+for the same template. It then presses the delimiter on a selected line, reads
+the document's bytes through the toolbar's own source toggle, and presses a
+markdown button against the raw textarea. The chat is put back on no template
+and the template deleted.
+
+`workspace-document-standalone-flow` gains the mirror: the chat-less pane's
+toolbar is present with the markdown inventory and both pickers, carries NO
+delimiter buttons, and its Bold reaches the saved bytes. It deletes the document
+it created.
+
+Row 14b of `m6-screen-parity.md` is struck, and the `GAP (named, P4.9L)`
+paragraph in `document-pane.ts` was retired when the mount landed. One further
+divergence the survey turned up is recorded, not fixed: v4's source mode shows
+the whole file and hides the frontmatter table, where v5 shows the body and
+keeps the table — the saved bytes are unaffected, but a transform at offset 0
+lands in a different place.
+
 #### 2026-08-20 — feat(salon): thread the chat's roleplay delimiters into the document pane
 
 _Versions: SPA 0.5.524._

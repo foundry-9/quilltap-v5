@@ -74,6 +74,17 @@ import { ToastService } from '../ui/toast.service';
  *   its rendering patterns (the P4.9L divergence, recorded on the toolbar). The
  *   standalone view passes nothing — v4's `StandaloneDocumentView.tsx:381`
  *   passes no `roleplayTemplateId` either, so neither shows delimiter buttons.
+ * - **DIVERGENCE (pre-existing, named here because the toolbar makes it
+ *   reachable): source mode shows the BODY, not the whole file.** v4's
+ *   raw-source branch renders `document.content` — frontmatter block included —
+ *   and hides the frontmatter table while it is showing
+ *   (`DocumentPane.tsx:695-720`). v5 has split the frontmatter off since P4.6ag,
+ *   so the table stays up and the textarea holds the body alone. Nothing about
+ *   the saved bytes moves (the recombine seam puts `rawBlock` back), but a
+ *   toolbar transform at offset 0 now lands at the body's start where v4's
+ *   would land inside the `---` fence. Changing the shape is its own slice with
+ *   its own beats (word count, the table's visibility, the recombine seam), not
+ *   a rider on the toolbar mount.
  * - **DIVERGENCE (v5-invented, kept): the header source button.** v4's document
  *   header carries three buttons (focus/split, delete, close) and its ONLY
  *   source toggle is the one inside the toolbar. v5 grew a header toggle in
