@@ -76396,3 +76396,106 @@ not fixed):
 3. Teaching `normalize()` to neutralize an alias assignment it has already
    injected (one rewrite of any `^(V5W|V5|W)=` line) would make the whole
    header class unforgeable rather than convention-dependent.
+
+## Round record — the `c8a3cf77` per-turn-summaries round (P4.D95 ∥ P4.9L2 ∥ P4.51) — UNIFIED (2026-08-20)
+
+All three lanes closed; the oracle baseline MOVES to `c8a3cf77`.
+⚠ v4 moved AGAIN mid-round: `e22f7b36` ("feat(salon): anti-chorus discipline
+for multi-character scenes") is one commit past the pin — the next round's
+drift. Every gate regen therefore ran against a detached worktree pinned at
+`c8a3cf77` (`/tmp/qt-v4-pin-c8a3cf77`, all three symlink classes), per the
+standing rule.
+
+Cherry-picked in dependency order (D95's two commits, 9L2's three, P4.51's
+three) onto `unify/c8a3cf77-round`; the only conflicts were the append-only
+pair (CHANGELOG / status-log, union-merged) — and the predicted
+identical-bump swallowing hit BOTH shared version files (harness bumped
+509→510 by two lanes → accumulated 0.0.511; the SPA bumped 522→523 by two
+lanes → accumulated 0.5.526), fixed in its own commit with locks synced. The
+per-commit conflict-marker audit: clean.
+
+**The §3 review (the whole combined diff read hunk-by-hunk against v4's
+`870a57fa`, `DocumentPane.tsx`, and the driver):**
+
+- **The finding that would have shipped — fixed on the unify branch:**
+  `memory_recall_config_set` silently KEPT the stored value on a
+  present-but-invalid field where v4 400s (`recallConfigSchema.safeParse`
+  runs FIRST → `validationError`) — `{scopePolicy: "both"}` or
+  `{perTurnConversationSummaries: 1}` answered 200 with the unchanged bag.
+  Pre-existing on the two old fields (since the verb landed), extended
+  corpus-blind to the new field by D95 (all four of its arms drove valid
+  values). Caught by opening v4's route beside the port. Fixed
+  validation-first (before any read or write); the 400 carries the message
+  only, no `details` issues array — the RECORDED divergence class
+  (`quilltap-web`'s `validation_error`). Pinned by three new oracle arms
+  driving v4's REAL route: `recall_config_set_invalid_enum`,
+  `recall_config_set_invalid_bool`, and
+  `recall_config_invalid_writes_nothing` (a composite that seeds a
+  non-default bag through v4's real setter, refuses, then reads
+  `storedAfter` through v4's real getter — one route request per case, per
+  the venue rule).
+- **Ruled, no code change:** 9L2's v5-invented header source toggle (named
+  in the pane's class doc for §3) STAYS — the order's item 3 mandated "one
+  signal, two controls" and the lane wired exactly that; retirement remains
+  a recorded candidate.
+- Nothing else blocking: the capture-before-dimension-guard /
+  never-for-probes / never-on-text-fallback semantics, the backwards
+  stop-at-first fold-whisper walk, the shared whisper target scope, the
+  mini-recap's both-lists filter, the ramp-constant one-home, the 9L2
+  source-branch seam (frontmatter recombine held), and the P4.51
+  validation-before-any-stage placement all check out against their v4
+  sides.
+
+**The gate's own catches (fixed in their own commit):** the first by-name
+run of `memories_routes_equivalence` went red twice. (1) The
+`housekeeping_config_set` red the D95 lane diagnosed reddens the WHOLE
+family when run end-to-end — it has been a silent standing red since v4
+4.8.2 (the committed `memories-{main,mount}.db` fixture predates the three
+`chat_settings` columns; v4's whole-row `updateForUser` dies on
+`no such column: composerEmoji` and answers a bare 500 — a FIXTURE
+ARTIFACT, not behavior: production v4 answers 200, and v5's one-column
+`update_for_user` survives the vintage). Pinned as a RULED VINTAGE ROW
+asserting both sides explicitly (v4's artifact 500 + v5's success body),
+with a tripwire that fires the moment the fixture is widened — the widening
+is the named maintenance order (the `.db` pair is shared across the
+memories/memory families, so the repair is its own lane). (2) The new
+invalid-writes-nothing composite arm's `storedAfter` never reached the
+NDJSON — `runCase` shapes each record to `{name, status, body, tables?}`
+and silently dropped the key (the arm compared against `null`); the shaper
+now passes it through, typed on `CaseSpec`.
+
+**The wires:** none owed — the three orders' Shared-contract sections
+declared the lanes meet nowhere, and the survey confirmed it (no gated
+beats, no ACTIVATE-AT-UNIFY constants). The unification's own work was the
+version accumulation + the §3/gate repairs above.
+
+**Gate (all green):**
+
+- `cargo fmt --all --check`; `cargo clippy --workspace --all-targets`
+  plain AND with `--features quilltap-core/native-transport` (rechecked
+  scoped to the harness after the gate repairs); release build.
+- The round's seven families by name through the sweep driver against the
+  pinned worktree, each regen fresh, zero SKIP: `memories_routes`,
+  `vault_conv_search`, `precompute`, `build_context_tier3`,
+  `context_summary_service_tier3`, `carina_query_tier3`,
+  `carina_memory_extraction_tier3` — all `OK … recipe ran end-to-end`.
+- `cargo test --workspace`: **440 test binaries / 2,236 passed / 0
+  failed**, zero SKIP (identical to the P4.50 baseline, as expected — the
+  round's Rust deltas live inside existing test fns).
+- SPA: **332 files / 4,929 tests / 0**; `npm run build` clean.
+- Full Playwright: **232 passed / 0 failed / 0 skipped (5.7 m)** — the
+  suite grew 229 → 232 with the recall-toggle beat and the two document-
+  toolbar beats.
+
+Versions: core 0.0.591, harness 0.0.511, SPA 0.5.526;
+host/web/cli/tauri unchanged.
+
+**Standing after the round:** the `e22f7b36` anti-chorus drift catch-up is
+the TOP next candidate (pin `c8a3cf77` for every regen until it runs); the
+`memories-{main,mount}.db` fixture-vintage widening (the ruled row's
+tripwire) and P4.51's three driver follow-ups (the live
+`brahma_console_routes` restored-recipe `W=`, the four cosmetic `W=` twins,
+the `nothing_to_run` vacuous-green class) join the maintenance bank; the
+owed 💸 dogfood queue gains D95's live proof (a real turn with the setting
+on — the list refreshing between folds, zero extra embedding calls in the
+LLM logs).

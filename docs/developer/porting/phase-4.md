@@ -5207,6 +5207,29 @@ The two drift lanes are disjoint (ownership tables identical in both
 orders; no shared contract). At unification the baseline moves to
 `9125f492`.
 
+**The `c8a3cf77` per-turn-summaries round (P4.D95 ∥ P4.9L2 ∥ P4.51):
+UNIFIED on main (2026-08-20) — ALL THREE CLOSED; the oracle baseline MOVES
+to `c8a3cf77`.** ⚠ v4 moved AGAIN mid-round: `e22f7b36` ("feat(salon):
+anti-chorus discipline for multi-character scenes") is one commit past the
+pin — **the drift catch-up is the top next candidate; pin `c8a3cf77` for
+every regen until it runs.** The §3 review fixed the recall-config
+invalid-value divergence (200-silent-keep → v4's 400, three oracle arms
+incl. a writes-nothing composite); the gate's first by-name family run
+caught the `housekeeping_config_set` fixture-vintage standing red (now a
+RULED VINTAGE ROW with a repair tripwire — the `memories-{main,mount}.db`
+widening is a named maintenance item, the pair being shared) and the oracle
+runner's record shaper dropping the composite's `storedAfter`. Gate: seven
+families by name over fresh pinned oracles zero SKIP; 440 binaries / 2,236
+/ 0; clippy both feature sets; release build; ng 332 / 4,929; full
+Playwright **232/232 zero skips**. Versions: core 0.0.591, harness 0.0.511,
+SPA 0.5.526. **Next candidates:** the `e22f7b36` anti-chorus drift
+catch-up; the owed 💸 dogfood queue (now + D95's live proof — the per-turn
+list refreshing between folds with zero extra embedding calls);
+`p4.9i2` (its bank grew the `memory-recall-relevance` help section); the
+maintenance bank (the memories fixture widening, P4.51's three driver
+follow-ups, the banked smalls per the standing list). Round record:
+`status-log.md`. The original plan paragraph follows for the record.
+
 **The `c8a3cf77` per-turn-summaries round (P4.D95 ∥ P4.9L2 ∥ P4.51) —
 PLANNED 2026-08-20.** Drift-checked at planning: v4 moved two commits past
 `9125f492` — `870a57fa` ("Per-turn conversation summaries with embedded
@@ -5272,16 +5295,16 @@ anyone outside this repo installs**:
   deferred and unordered.
 
 **Standing regen note (supersedes the one above):** the oracle baseline is
-**`9125f492`** (2026-08-19, v4 main — "fix(providers,plugins): an OAC
-profile can hold an API key, and local models survive past the first turn
-(bugs 81, 82)"), adopted at the `9125f492`-round unification (2026-08-19);
-the drift debt is CLEARED at the pin. Pin
-a detached worktree at the round's pin for every regen if v4's checkout
-moves (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes) —
-the checkout is back on `main` and clean as of 2026-08-19, but VERIFY
-before every regen. Drift-check all THREE branches every round (main,
-bugfix measured by `diff` never the commit list — its only unabsorbed
-content today is the test-only `009c49b2` — and `release` for checkout
-occupancy only). The sweep driver remains the sanctioned per-family regen
+**`c8a3cf77`** (2026-08-20, v4 main — the version bump atop `870a57fa`,
+"Per-turn conversation summaries with embedded vector reuse (#38)"),
+adopted at the `c8a3cf77`-round unification (2026-08-20). ⚠ **v4 is
+ALREADY PAST it** (`e22f7b36`, the anti-chorus salon commit — the next
+drift): pin a detached worktree at `c8a3cf77` for EVERY regen until that
+catch-up runs (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink
+classes — root `node_modules`, `packages/quilltap/node_modules`, the
+`plugins/dist/*/node_modules` dirs). Drift-check all THREE branches every
+round (main, bugfix measured by `diff` never the commit list — its only
+unabsorbed content today is the test-only `009c49b2` — and `release` for
+checkout occupancy only). The sweep driver remains the sanctioned per-family regen
 path — never run two sweeps concurrently. The distill-transitive TZ pins,
 the committed-fixture rule, and the venue/staging rules stand unchanged.

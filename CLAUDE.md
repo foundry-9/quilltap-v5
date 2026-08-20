@@ -1462,14 +1462,54 @@ records THERE. Update this summary only when a phase or round completes.
   built; 💸 the live `combined.log` look at a real failed turn joins the
   dogfood queue — **the owed dogfood pass over the round's surfaces is
   the top next candidate.** Round record: `status-log.md`.
-- **Oracle baseline: `9125f492` (2026-08-19, v4 main — "fix(providers,
-  plugins): an OAC profile can hold an API key, and local models survive
-  past the first turn (bugs 81, 82)"), adopted at the 9125f492-round
-  unification; the drift debt is CLEARED at the pin.** ⚠ The v4 checkout was on the `release` branch during
-  that round; **as of 2026-08-19 it is back on `main` and clean** (verified
-  while filing bugs 81/82), so the standing pin requirement is lifted —
-  but VERIFY the branch before any regen, and pin a detached worktree if it
-  has moved again
+- **The `c8a3cf77` per-turn-summaries round (P4.D95 ∥ P4.9L2 ∥ P4.51):
+  UNIFIED on main (2026-08-20) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `c8a3cf77`.** The whole `870a57fa` drift absorbed (P4.D95):
+  the instance-wide `memoryRecall.perTurnConversationSummaries` setting
+  end-to-end (the recall bag now a STRUCT with one `to_json()` home; the
+  SPA card with v4's strings byte-for-byte + a live round-trip beat), the
+  `captureQueryEmbedding` hook as an out-param with v4's three firing
+  semantics (before the dimension guard / never for probes / never on the
+  text fallback; the try/catch arm a NO-PORT with evidence),
+  `precomputed_embedding` on the vault summary search + the ramp-constant
+  one-home, the proactive vector thread on BOTH return paths, and the
+  build-context cadence whole (four gate conjuncts, the backwards
+  stop-at-first fold-whisper dedup, the shared whisper target scope, the
+  recap stand-down, the mini-recap's both-lists filter) — seven
+  build-context ops + six red-then-green mutation proofs (the
+  dimension-drift op exists BECAUSE a mutation survived the first five) ∥
+  P4.9L2: the DocumentPane formatting toolbar (m6 row 14b CLOSED — v4's
+  `DocToolbar` 1:1, no Nar button, the source branch on THIS pane's
+  textarea through the frontmatter-recombine seam, ONE `toggleSourceMode()`
+  behind both controls, the Salon threads its resolved template while the
+  standalone view passes nothing; two live beats; two divergences recorded
+  in the class doc) ∥ P4.51: both sweep riders discharged (the `W=`
+  clobber proven both directions with a marker probe; the driver refuses
+  unknown family names BEFORE any stage, exit 2 + suggestions, six
+  self-test arms; three follow-ups recorded incl. the LIVE
+  `brahma_console_routes` restored-recipe `W=` and the `nothing_to_run`
+  vacuous-green class). **The §3 review fixed the would-have-shipped
+  divergence** (an invalid recall-config value answered 200 and silently
+  kept the stored bag where v4 400s "Validation error" — validation now
+  runs first, pinned by three oracle arms incl. a writes-nothing
+  composite), **and the gate's first by-name run caught two more**: the
+  `housekeeping_config_set` silent standing red since v4 4.8.2 (a
+  FIXTURE-VINTAGE artifact — now a RULED VINTAGE ROW with a repair
+  tripwire; widening the shared `memories-{main,mount}.db` pair is a named
+  maintenance item) and the oracle runner's record shaper dropping the
+  composite's `storedAfter`. Gate: seven families by name over fresh
+  PINNED oracles zero SKIP; 440 test binaries / 2,236 / 0; clippy both
+  feature sets; release build; ng 332 files / 4,929; full Playwright
+  **232/232 zero skips**. Versions: core 0.0.591, harness 0.0.511, SPA
+  0.5.526; host/web/cli/tauri unchanged. 💸 the dogfood queue gains the
+  per-turn cadence's live proof. Round record: `status-log.md`.
+- **Oracle baseline: `c8a3cf77` (2026-08-20, v4 main — the version bump
+  atop `870a57fa`, "Per-turn conversation summaries with embedded vector
+  reuse (#38)"), adopted at the c8a3cf77-round unification.** ⚠ **v4 is
+  ALREADY PAST the baseline** (`e22f7b36`, "feat(salon): anti-chorus
+  discipline for multi-character scenes" — the next round's drift, and the
+  TOP next candidate): pin a detached worktree at `c8a3cf77` for EVERY
+  regen until that catch-up runs
   (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
   node_modules, `packages/quilltap/node_modules`, the
   `plugins/dist/*/node_modules` dirs). **Drift-check BOTH development

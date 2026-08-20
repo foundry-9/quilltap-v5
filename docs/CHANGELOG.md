@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-20 — port(unify): the c8a3cf77 round lands — per-turn summaries, the document-pane toolbar, the sweep smalls
+
+_Versions: core 0.0.591, harness 0.0.511, SPA 0.5.526._
+
+All three lanes unified: P4.D95 (the whole `870a57fa` drift — the per-turn
+conversation-summary cadence riding the turn's one embedding), P4.9L2 (the
+Document-Mode pane's formatting toolbar, closing m6 row 14b), and P4.51 (the
+two `W=` recipe headers + the sweep driver's unknown-family refusal). The
+oracle baseline moves to `c8a3cf77`; v4 moved again mid-round (`e22f7b36`,
+anti-chorus discipline — the next round's drift), so every gate regen ran
+from a detached worktree pinned at `c8a3cf77`.
+
+The §3 review fixed one would-have-shipped divergence: an invalid
+recall-config value (wrong enum, non-boolean) now answers v4's 400
+"Validation error" instead of silently keeping the stored value — pinned by
+three new oracle arms including a writes-nothing composite. The gate's first
+by-name family run then caught two more: `housekeeping_config_set` has been
+a silent standing red since v4 4.8.2 (a fixture-vintage artifact — v4's
+whole-row UPDATE dies on the pre-4.8.2 committed fixture; now a ruled
+vintage row with a repair tripwire, the fixture widening being a named
+maintenance item), and the composite arm's `storedAfter` was being dropped
+by the oracle runner's record shaper (now passed through).
+
+Gate: seven families by name over fresh pinned oracles, zero SKIP; 440 test
+binaries / 2,236 / 0; clippy both feature sets; release build; ng 332 files
+/ 4,929; full Playwright 232/232 zero skips (the suite grew by the round's
+three beats). Both shared version files accumulated (the identical-bump trap
+hit harness AND the SPA).
+
 #### 2026-08-20 — feat(settings): the per-turn conversation-summary toggle on the Recall Relevance card (P4.D95)
 
 _Versions: SPA 0.5.523._
