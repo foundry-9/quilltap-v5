@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(salon): a group-scene discipline block rides every multi-character turn
+
+_Versions: core 0.0.593, harness 0.0.513._
+
+Ports the anchor half of v4 `e22f7b36`. `applyMultiCharacterTurnAnchor` is
+restructured: it finds the system message first, builds a list of system
+additions (the prose route contributes its identity instruction first; the
+prefill route contributes none), always appends the new byte-exact
+`GROUP_SCENE_DISCIPLINE` block, joins the list with a blank line and appends it
+to the system message when one exists, and only then — prefill route — pushes
+the assistant `[Name]` message. Two behavior deltas: the prefill route now
+edits the system message too (it used to return before reading one), and a
+prose turn appends two blocks where a prefill turn appends one.
+
+The discipline block is the anti-chorus content rule set: no recap openings, no
+agree-then-add, no reusing another character's coined phrases, no restating the
+plan, speak only to change something, vary length. The identity anchor keeps a
+turn attributed to one character but says nothing about its content, and with
+the previous turns as the strongest style examples in context, models converge
+into exactly the chorus the block forbids.
+
+New tier-1 differential `multi_character_turn_anchor_equivalence` over v4's real
+exports — no oracle drove this function before. Both routes × system message
+present/absent, system-message placement (not first; two systems, the first
+wins), empty system content, an empty message array, and four interpolated-name
+shapes, each row diffed as the full post-call message array, plus the constant
+on its own. Mutation-proven on the join separator, the prefill-route system
+append, the prose identity instruction, the additions order, and one byte of
+the constant.
+
 #### 2026-08-21 — feat(salon): the turn-skip signal requires direct address, and the note calls restating a pass
 
 _Versions: core 0.0.592, harness 0.0.512._

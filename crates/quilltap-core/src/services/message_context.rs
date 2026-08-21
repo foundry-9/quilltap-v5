@@ -527,16 +527,37 @@ pub struct MessageContextParams<'a> {
 /// The multi-character scene-block instruction appended to the system prompt on
 /// the PROSE route (v4 verbatim incl. the em-dash and the `[Name]`/`Name:`
 /// literals). Byte-unchanged by v4 `23af7146`, which only moved it out of the
-/// Anthropic-only branch — so this text is the same bytes it has always been.
+/// Anthropic-only branch, and byte-unchanged again by `e22f7b36`, which only
+/// moved it into the `systemAdditions` list — the leading `\n\n` that used to
+/// live in these bytes is now contributed once by the append below.
 fn multi_character_prose_instruction(name: &str) -> String {
     format!(
-        "\n\nIMPORTANT — this is a multi-character scene. Respond as {name} and ONLY {name}: \
+        "IMPORTANT — this is a multi-character scene. Respond as {name} and ONLY {name}: \
 write only {name}'s own dialogue, actions, and thoughts for this single turn, then stop. \
 Never write, narrate, quote, or continue another participant's turn, and never label any text \
 with another participant's name (no \"[Name]\" or \"Name:\" speaker tags for anyone but {name}). \
 Output only {name}'s contribution."
     )
 }
+
+/// Anti-chorus content rules for multi-character turns, appended to the system
+/// message on BOTH anchor routes (the discipline is about what a turn contains,
+/// not who speaks it). v4 `GROUP_SCENE_DISCIPLINE` (`e22f7b36`), transcribed
+/// byte-for-byte from its source.
+///
+/// Motivated by the "committee meeting" failure mode observed with weaker
+/// models: every character opens with a roll-call recap of the prior speakers,
+/// endorses all of it, claims "the one thing nobody has named," parrots the
+/// cast's coined phrases verbatim, and closes by restating the group's action
+/// list. The rules target the *shape* of the chorus rather than specific
+/// wording — phrase blocklists alone have proven too weak to hold.
+pub const GROUP_SCENE_DISCIPLINE: &str = "GROUP-SCENE DISCIPLINE — the failure mode of a group scene is the chorus: each character recaps what the others said, agrees with all of it, and adds one small item shaped like everyone else's. Never join a chorus:\n\
+     - Do not open by summarizing or listing what other characters just said. Everyone present heard it. React to at most one specific thing, or simply act.\n\
+     - Do not agree-then-add (\"X is right — but there's one thing nobody has named\"). If all you have is agreement plus a small addendum, give the addendum alone in a sentence or two — or pass the turn if passing is offered.\n\
+     - Never reuse another character's metaphors, images, or coined phrases. A striking phrase someone else used in this scene is spent; repeating it is a defect, not a callback. If several characters have already said much the same thing, saying it again in your own accent adds nothing.\n\
+     - Do not restate the plan, the task list, or the group's conclusions. They are already on the record; a speech re-affirming what is decided adds nothing.\n\
+     - Speak to change something: new information, a genuine objection or disagreement, a question, an action actually taken, a joke, a refusal. Re-pledging your commitment is not a turn.\n\
+     - Vary register and length. Most real conversational turns are one to three sentences. A long speech is an event, not a default — and never the second one in a row.";
 
 /// v4 `applyMultiCharacterTurnAnchor` (`23af7146`). In multi-character chats,
 /// anchor each reply to the responding character and forbid it from writing
@@ -557,13 +578,39 @@ Output only {name}'s contribution."
 /// `finalize_message_response` truncates a response at the first foreign
 /// `[Name]`/`Name:` tag as a structural backstop either way.
 ///
-/// The prose route is a no-op when there is no system message (v4's
-/// `if (systemIdx < 0) return`). Mutates in place, as v4 does.
+/// Both routes ALSO append [`GROUP_SCENE_DISCIPLINE`] to the system message
+/// (v4 `e22f7b36`): the identity anchor keeps a turn attributed to one
+/// character, but says nothing about content, and with the previous turns as
+/// the strongest style examples in context, models converge into the
+/// recap-endorse-echo chorus the discipline block forbids.
+///
+/// The system append is a no-op when there is no system message (v4's
+/// `if (systemIdx >= 0)`); the prefill push happens either way. A PROSE turn
+/// therefore appends TWO blocks (identity, then discipline) separated by
+/// `\n\n`, a PREFILL turn exactly ONE. Mutates in place, as v4 does.
 pub fn apply_multi_character_turn_anchor(
     formatted_messages: &mut Vec<FormattedMsg>,
     character_name: &str,
     use_prefill: bool,
 ) {
+    let sys_idx = formatted_messages.iter().position(|m| m.role == "system");
+
+    // v4's `systemAdditions: string[]`, joined with `\n\n` and appended after a
+    // leading `\n\n`. The prose route contributes the identity instruction
+    // FIRST; the prefill route contributes only the discipline block (identity
+    // is anchored structurally by the `[Name]` message pushed below).
+    let mut system_additions: Vec<String> = Vec::new();
+    if !use_prefill {
+        system_additions.push(multi_character_prose_instruction(character_name));
+    }
+    system_additions.push(GROUP_SCENE_DISCIPLINE.to_string());
+
+    if let Some(sys_idx) = sys_idx {
+        formatted_messages[sys_idx]
+            .content
+            .push_str(&format!("\n\n{}", system_additions.join("\n\n")));
+    }
+
     if use_prefill {
         formatted_messages.push(FormattedMsg {
             role: "assistant".to_string(),
@@ -573,14 +620,7 @@ pub fn apply_multi_character_turn_anchor(
             thought_signature: None,
             attachments: None,
         });
-        return;
     }
-
-    let Some(sys_idx) = formatted_messages.iter().position(|m| m.role == "system") else {
-        return;
-    };
-    let extra = multi_character_prose_instruction(character_name);
-    formatted_messages[sys_idx].content.push_str(&extra);
 }
 
 /// Whether the responding participant is a party to `m` — v4's section-B whisper

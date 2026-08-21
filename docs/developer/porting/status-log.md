@@ -76583,3 +76583,29 @@ the new base paragraph → red on `base`; reverting the caution's reword → red
 Family: **138 rows green** (`[42, 10, 9, 11, 7, 43, 12, 4]`), zero SKIP,
 through `recipe_sweep.py --run skip_signal_equivalence --v4 <pin>`.
 
+### Unit 2 — the turn anchor + `GROUP_SCENE_DISCIPLINE`
+
+`apply_multi_character_turn_anchor` takes v4's restructure whole: `sys_idx`
+first, a `system_additions` list (prose route pushes the identity instruction
+FIRST, prefill route pushes nothing), `GROUP_SCENE_DISCIPLINE` always, the
+`"\n\n" + join("\n\n")` append when a system message exists, and THEN the
+prefill `[Name]` push. The leading `\n\n` moved OUT of
+`multi_character_prose_instruction`'s bytes (v4 moved it too) — the identity
+instruction's own bytes are unchanged, which the corpus proves by diffing the
+whole post-call array rather than a substring. The constant was transcribed
+from v4's source by dumping the real export (1,380 UTF-8 bytes / 1,372 UTF-16
+units), never retyped.
+
+**NEW tier-1 family `multi_character_turn_anchor_equivalence`** — no oracle
+drove `applyMultiCharacterTurnAnchor` before this round (surveyed: no harness
+test, no oracle case; coverage was `message_context.rs` unit tests, which turn
+out not to touch it either). Fixture-free tsx case over v4's REAL exports:
+1 discipline-constant row + 13 anchor rows covering both routes × {system
+present, absent}, a system message that is not first, two system messages (the
+first wins), empty system content, an empty message array on both routes, and
+four interpolated-name shapes (apostrophes, brackets, non-ASCII, empty).
+
+Mutation proofs, all red then restored: join separator `\n\n` → `\n`; the
+prefill route skipping the system append; the prose route dropping the identity
+instruction; the additions order swapped; one byte of the constant.
+
