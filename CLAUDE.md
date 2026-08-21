@@ -1503,24 +1503,67 @@ records THERE. Update this summary only when a phase or round completes.
   **232/232 zero skips**. Versions: core 0.0.591, harness 0.0.511, SPA
   0.5.526; host/web/cli/tauri unchanged. 💸 the dogfood queue gains the
   per-turn cadence's live proof. Round record: `status-log.md`.
-- **Oracle baseline: `c8a3cf77` (2026-08-20, v4 main — the version bump
-  atop `870a57fa`, "Per-turn conversation summaries with embedded vector
-  reuse (#38)"), adopted at the c8a3cf77-round unification.** ⚠ **v4 is
-  ALREADY PAST the baseline** (`e22f7b36`, "feat(salon): anti-chorus
-  discipline for multi-character scenes" — the next round's drift, and the
-  TOP next candidate): pin a detached worktree at `c8a3cf77` for EVERY
-  regen until that catch-up runs
-  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
-  node_modules, `packages/quilltap/node_modules`, the
-  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH development
-  branches every round** (`git log <baseline>..main` AND `git diff main
-  bugfix -- lib/ app/ packages/` — measure bugfix with `diff`, never the
-  commit list; `release` is release-history only, but note WHICH branch
-  the checkout occupies before any regen). The sweep driver remains the
-  sanctioned per-family regen path — never run two sweeps concurrently.
-  The distill-transitive TZ pins, the committed-fixture rule, and the
-  venue/staging rules stand unchanged. (The superseded baseline paragraphs
-  formerly kept here "for history" are archived verbatim in
+- **The `b8449b3e` anti-chorus + maintenance round (P4.D96 ∥ P4.52 ∥
+  P4.53): UNIFIED on main (2026-08-21) — ALL THREE CLOSED; the oracle
+  baseline MOVES to `b8449b3e` and the drift debt is CLEARED.** v4's
+  `e22f7b36` absorbed whole: `isRecentlyAddressed` requires DIRECT address
+  (the new vocative regex in core with the three JS-regex fidelity
+  questions DECIDED BY MEASUREMENT — `JS_SPACE` spelled out, the `m`-flag
+  gap closed by consuming JS-only line terminators, and **case folding a
+  RECORDED DIVERGENCE in the safe direction, awaiting ratification**; the
+  SPA client twin a character-for-character transcription, parity spec
+  grown 1:1), the turn-skip note's restate-is-a-pass paragraph + reworded
+  caution byte-exact, and the turn-anchor restructure with the byte-exact
+  `GROUP_SCENE_DISCIPLINE` on BOTH routes — pinned by the NEW
+  `multi_character_turn_anchor_equivalence` tier-1 family (no oracle drove
+  that function before), `skip_signal_equivalence` red-first 15 → 43
+  `recentlyAddressed` rows + the new `turnSkipNote` kind (an order premise
+  REFUTED: `build_context_tier3` never carried the note — every op passes
+  `turn_skip: None`; `orchestrator_tier3` is the one spine family carrying
+  all three changed surfaces, measured 56/25/49 rows), and the `b8449b3e`
+  jest-Sparkplug NO-PORT (our zone globalsetup CHAINS v4's, so the guard
+  survives) ∥ P4.52: the committed `memories-{main,mount}.db` pair widened
+  to the `b8449b3e` schema vintage (seven columns, measured not guessed;
+  mount needed NOTHING; seeded rows byte-preserved cell-by-cell; TWO
+  generateDDL columns deliberately absent — MANAGED_FIELDS no migration
+  adds), the `housekeeping_config_set` RULED VINTAGE ROW retired to a
+  plain equality (tripwire fired as designed, mutation-proven), and the
+  round record's "pair is SHARED" claim REFUTED by measurement ∥ P4.53:
+  sweep-recipe checkout aliases are UNFORGEABLE (`normalize()` rewrites
+  every alias assignment; the five clobbering headers repaired — the live
+  one had staged case + fixtures from MAIN during worktree sweeps;
+  `--self-test` gained a tree-wide cross-alias-default header pin) and
+  empty-stage `--run`s are a named REFUSAL (exit 2; the vacuous-green debt
+  measured at 39 families, the committed artifact is the next maintenance
+  inventory). **The §3 review: NO blocking findings** (the regex verified
+  arm-by-arm incl. the asymmetric lone-CR pre-arm; the unifier's own
+  mid-pick Cargo.lock slip caught by the next build and repaired
+  pre-gate). Gate: 441 test binaries / 2,237 / 0 with the round's env
+  block; the seven affected families fresh at a pinned `b8449b3e`
+  worktree, zero SKIP, NDJSONs grepped for the changed bytes (56/25/49
+  confirmed); driver self-test 0 failures; clippy both feature sets;
+  release build; ng 332 files / 4,936; full Playwright green (numbers in
+  the round record). Versions: core 0.0.593, harness 0.0.517, SPA
+  0.5.527; host/web/cli/tauri unchanged. **💸 the dogfood queue gains the
+  live group-scene walk** (does the discipline block break the chorus on a
+  weak model — no oracle can judge that). Round record: `status-log.md`.
+- **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
+  disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
+  b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at
+  unification — verify before the next round starts. **Drift-check BOTH
+  development branches every round** (`git log <baseline>..main` AND
+  `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
+  `diff`, never the commit list; note WHICH branch the checkout occupies
+  before any regen, and pin a detached worktree whenever v4 HEAD is past
+  the baseline — ALL THREE symlink classes: root node_modules,
+  `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
+  dirs). The sweep driver remains the sanctioned per-family regen path —
+  never run two sweeps concurrently; since P4.53 it refuses empty-stage
+  families by name and `--self-test` guards recipe headers against
+  cross-alias defaults. The distill-transitive TZ pins, the
+  committed-fixture rule, and the venue/staging rules stand unchanged.
+  (The superseded baseline paragraphs formerly kept here "for history"
+  are archived verbatim in
   `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -5364,3 +5364,39 @@ pass, not an order — and it should run soon: the queue now spans Almanack,
 Taboo, vision, Serper, whispers, Pascal side effects, dedup/summaries,
 per-turn cadence, and the D96 group-scene walk), `p4.9i2` (the bank grows
 again this round), and PB1 (parked by standing rule).
+
+**The `b8449b3e` round — UNIFIED on main (2026-08-21). All three lanes
+CLOSED; the oracle baseline MOVES to `b8449b3e` and the drift debt is
+CLEARED.** P4.D96 landed whole (the case-folding recorded divergence awaits
+human ratification — v5 can only over-detect "directly addressed", the safe
+direction, same class as `crate::mentioned_characters`); P4.52 landed whole
+(the widened pair is stamped `SCHEMA VINTAGE: v4 b8449b3e`; the sibling
+memories/memory families build their own /tmp fixtures, so the committed
+pair's consumers are exactly `memories_routes_equivalence` + two Playwright
+specs); P4.53 landed whole (checkout aliases unforgeable; `nothing_to_run`
+a named refusal). **Next candidates:** the next v4 drift catch-up (check
+both branches first, as always); the merge-verb silent-keep sweep (the
+`c8a3cf77` LEAD — now UNBLOCKED, both colliding maintenance lanes closed;
+run its arms over the WIDENED memories fixture); the owed 💸 dogfood queue
+(+ D96's live group-scene walk); the maintenance bank (P4.53's 39-family
+`nothing_to_run` inventory — ~34 want a scoped `cargo test` run line; the
+latent fixture-vintage class — any committed pair whose `characters` table
+predates the vault fold-in trips `canChooseOutfit`, and P4.52's measurement
+tooling generalizes); `p4.9i2` (its bank grew `help/chat-multi-character.md`
++ `help/turn-skipping.md`). PB1 stays parked by the standing rule. Round
+record: `status-log.md`.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`b8449b3e`** (2026-08-20, v4 main — "fix(tests): disable V8 Sparkplug for
+jest", atop `e22f7b36`, the anti-chorus commit), adopted at the
+`b8449b3e`-round unification (2026-08-21). v4 had NOT moved past it at
+unification. Drift-check BOTH development branches every round (`git log
+b8449b3e..main` AND `git diff main bugfix -- lib/ app/ packages/` — measure
+bugfix by `diff`, never the commit list; note WHICH branch the checkout
+occupies before any regen, and pin a detached worktree for regens whenever
+v4 HEAD is past the baseline — all three symlink classes). The sweep driver
+remains the sanctioned per-family regen path — never run two sweeps
+concurrently; since P4.53 its `--self-test` also guards recipe headers
+against cross-alias defaults, and `--run` refuses empty-stage families by
+name. The distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.

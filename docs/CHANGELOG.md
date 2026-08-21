@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — port(unify): the b8449b3e round lands — the anti-chorus drift, the memories fixture vintage, the sweep-driver follow-ups
+
+_Versions: core 0.0.593, harness 0.0.517, SPA 0.5.527._
+
+The three-lane `b8449b3e` round unifies onto main and the oracle baseline
+moves to `b8449b3e`. P4.D96 ports v4's anti-chorus commit whole (the
+direct-address `isRecentlyAddressed` rewrite in core and the SPA twin, the
+grown turn-skip note, the turn-anchor restructure with the
+GROUP_SCENE_DISCIPLINE block, a new tier-1 turn-anchor family; the
+case-folding divergence is recorded and awaits ratification). P4.52 widens
+the committed memories fixture pair to the current schema vintage and
+retires the housekeeping ruled vintage row to a plain equality. P4.53 makes
+sweep-recipe checkout aliases unforgeable, turns empty-stage runs into a
+named refusal (39 families measured), and repairs the five clobbering
+headers. Unification work: version accumulation (harness took six lane
+bumps), a mid-pick Cargo.lock repair, and the round docs. Gate: fmt, clippy
+both feature sets, release build, driver self-test 0 failures, the seven
+affected families regenerated fresh at a pinned b8449b3e worktree (zero
+SKIP), cargo test --workspace 441 binaries / 2,237 / 0, SPA 332 files /
+4,936 / 0 with a clean build, and the full Playwright suite green.
+
 #### 2026-08-21 — docs(porting): record the P4.D96 gate
 
 _Docs-only change._

@@ -2046,3 +2046,25 @@ Contents:
   The sweep driver remains the sanctioned per-family regen path — never
   run two sweeps concurrently. The distill-transitive TZ pins, the
   committed-fixture rule, and the venue/staging rules stand unchanged.
+
+## Superseded baseline paragraph (replaced at the b8449b3e-round unification, 2026-08-21)
+
+- **Oracle baseline: `c8a3cf77` (2026-08-20, v4 main — the version bump
+  atop `870a57fa`, "Per-turn conversation summaries with embedded vector
+  reuse (#38)"), adopted at the c8a3cf77-round unification.** ⚠ **v4 is
+  ALREADY PAST the baseline** (`e22f7b36`, "feat(salon): anti-chorus
+  discipline for multi-character scenes" — the next round's drift, and the
+  TOP next candidate): pin a detached worktree at `c8a3cf77` for EVERY
+  regen until that catch-up runs
+  (`recipe_sweep.py --v4 <pin-path>`; ALL THREE symlink classes: root
+  node_modules, `packages/quilltap/node_modules`, the
+  `plugins/dist/*/node_modules` dirs). **Drift-check BOTH development
+  branches every round** (`git log <baseline>..main` AND `git diff main
+  bugfix -- lib/ app/ packages/` — measure bugfix with `diff`, never the
+  commit list; `release` is release-history only, but note WHICH branch
+  the checkout occupies before any regen). The sweep driver remains the
+  sanctioned per-family regen path — never run two sweeps concurrently.
+  The distill-transitive TZ pins, the committed-fixture rule, and the
+  venue/staging rules stand unchanged. (The superseded baseline paragraphs
+  formerly kept here "for history" are archived verbatim in
+  `docs/developer/porting/claude-md-status-history.md`.)

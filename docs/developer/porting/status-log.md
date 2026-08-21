@@ -77319,3 +77319,117 @@ No other crate touched. Baseline STAYS `b8449b3e`.
 
 The pinned v4 worktree `/tmp/qt-v4-pin-p453-b8449b3e` was lane-unique (the
 two sibling lanes carried their own) and is removed at lane close.
+
+---
+
+## Round record — the `b8449b3e` anti-chorus + maintenance round (P4.D96 ∥ P4.52 ∥ P4.53) — UNIFIED (2026-08-21)
+
+All three lanes closed; the oracle baseline MOVES to `b8449b3e`. v4 did NOT
+move during the round (checked at unification: `git log b8449b3e..origin/main`
+empty; `bugfix` tip still the 2026-08-13 `3a76b17d`).
+
+Cherry-picked in order (D96's five commits, P4.52's one, P4.53's three) onto
+`unify/b8449b3e-round`; conflicts were confined to the version/append-only
+class (harness `Cargo.toml` ×3 rounds, `Cargo.lock`, CHANGELOG, status-log —
+union-merged, versions accumulated: harness took SIX lane bumps from 0.0.511
+→ **0.0.517**). **The unifier's own incident, recorded:** on the P4.52 pick a
+still-conflicted `Cargo.lock` was `git add`-ed and the pick continued —
+caught within seconds by the lock's parse failure on the next `cargo` run,
+repaired by restoring main's lock + `cargo update --precise` + amending the
+pick before any gate ran. The per-commit conflict-marker audit over all nine
+commits afterward: clean. (The lesson is already in the memory notes: resolve
+the LOCK before `--continue`, and audit every pick.)
+
+**The §3 review (the whole combined diff read hunk-by-hunk, the port sides
+against v4's `e22f7b36` source): NO blocking findings.** What was verified by
+hand, beyond the lanes' own proofs:
+
+- The direct-address regex arm-by-arm against v4's source — including the
+  deliberately ASYMMETRIC lone-CR pre-arm (v5's `JS_ONLY_LINE_TERMINATOR`
+  alternative correctly takes NO trailing `\s*`, mirroring v4's
+  `^`-immediacy after a line terminator, while the `\n`-in-class arm keeps
+  its `\s*`), the spelled-out `JS_SPACE` class against ECMAScript's list,
+  and the `is_match`-only use making alternation-preference moot.
+- The `GROUP_SCENE_DISCIPLINE` transcription's Rust `\n\` line-continuation
+  semantics (leading whitespace elided — the constant's bytes match v4's
+  template literal; the oracle's discipline-constant row pins it anyway).
+- The anchor restructure's ordering (system append BEFORE the prefill push;
+  two blocks on prose, one on prefill; no-system no-op) against v4's
+  restructured function.
+- The client twin as a character-for-character transcription (its regex is
+  v4's source, so none of the Rust fidelity divergences apply client-side).
+- The ruled-vintage-row retirement (plain `check_body`, tripwire gone) and
+  the migrate script's DDL against v4's migration files' shapes.
+- The driver's `ALIAS_ASSIGN` statement-end anchoring (env prefixes like
+  `V5W=/p cargo test …` provably unmatchable) and the settled-shape notice
+  predicate.
+- The lanes' "no committed corpus carries the old bytes" claim re-grepped on
+  the union tree: confirmed (hits only in docs and the lane worktrees).
+
+**Standing for human ratification (recorded, not blocking):** P4.D96's
+case-folding divergence — v4's `i`-without-`u` (ECMAScript Canonicalize) vs
+Rust's `(?i)` Unicode simple folding, a superset on a handful of exotic code
+points (U+212A, U+1E9E, U+017F probed) — v5 can only over-detect "directly
+addressed", whose sole effect is showing the answer-rather-than-pass
+caution; same divergence class `crate::mentioned_characters` already ships.
+
+**The gate's own diligence catches (no code changed):** the new
+`multi_character_turn_anchor_equivalence` family finishes in 0.00 s — the
+silent-QT_FIXTURE-skip tell — so it was re-run by hand with `--nocapture`
+and positively confirmed to RUN (prints "1 discipline + 13 anchor rows"; the
+0.00 s is an honest pure-string diff). Every fresh NDJSON was grepped for
+the changed bytes: `oracle-orchestrator` carries discipline/note/identity at
+exactly the lane's measured 56/25/49; skip-signal carries the new paragraph
+×4 and the reworded caution ×3; regenerate-swipe 3 and salon-swipe 1
+discipline rows.
+
+**The wires:** none owed — all three orders' Shared-contract sections
+declared the lanes meet nowhere, and the survey confirmed it. The
+unification's own work was the version accumulation, the lock repair above,
+and the round-close docs (incl. the `p4.9i2` bank gaining
+`help/chat-multi-character.md` + `help/turn-skipping.md` from P4.D96).
+
+**Gate (all green):**
+
+- `cargo fmt --all --check`; `cargo clippy --workspace --all-targets
+  -- -D warnings` plain AND with `--features
+  quilltap-core/native-transport`; `cargo build --release --workspace`.
+- `recipe_sweep.py --self-test` on the union tree: **0 failures** (P4.53's
+  new arms running over the round's union, incl. the tree-wide
+  cross-alias-default header scan covering D96's and P4.52's new files).
+- The round's seven families by name through the NEW driver against a fresh
+  detached pin worktree at `b8449b3e` (`/tmp/qt-v4-pin-unify-b8449b3e`, all
+  three symlink classes), one `--run-all` batch, every regen fresh, zero
+  SKIP: `skip_signal_equivalence` (138 rows),
+  `multi_character_turn_anchor_equivalence` (14 rows),
+  `memories_routes_equivalence` (24 + 23 records, the formerly ruled row
+  now a plain equality), `brahma_console_routes_equivalence` (staged from
+  the checkout under the repaired header), `orchestrator_tier3_equivalence`,
+  `regenerate_swipe_tier3_equivalence`, `salon_swipe_generate_equivalence`
+  — totals `{'ok': 7}`, exit 0.
+- `cargo test --workspace` with the round's env block (five oracle NDJSONs +
+  the tier-3 fixture vars): **441 test binaries / 2,237 passed / 0 failed**
+  (exit 0) — +1 binary +1 test vs the `c8a3cf77` baseline, exactly D96's
+  delta.
+- SPA: `npm test` **332 files / 4,936 tests / 0** (+7, the parity spec);
+  `npm run build` clean.
+- Full Playwright: **232 passed / 0 failed / 0 skipped (5.8 m)** — the suite
+  size unchanged from the c8a3cf77 round (this round added no beats); the
+  two memories-fixture consumer specs green over the widened pair.
+
+Versions: core 0.0.593, harness 0.0.517, SPA 0.5.527;
+host/web/cli/tauri unchanged.
+
+**Standing after the round:** the oracle baseline is `b8449b3e` and the
+drift debt is CLEARED — drift-check both v4 branches before the next round
+as always. The maintenance bank gains P4.53's measured 39-family
+`nothing_to_run` inventory (~34 could take a scoped `cargo test` run line)
+and P4.52's latent fixture-vintage class (any committed pair whose
+`characters` table predates the vault fold-in trips v4's whole-row update
+on `canChooseOutfit` — the measurement tooling now exists). The merge-verb
+silent-keep sweep (the `c8a3cf77` LEAD) is now unblocked — both maintenance
+lanes it collided with are closed. The owed 💸 dogfood queue gains D96's
+live group-scene walk (does the discipline block actually break the chorus
+on a weak model — a judgement no oracle can make). The case-folding
+divergence above awaits ratification. `p4.9i2`'s bank grew the two help
+files.
