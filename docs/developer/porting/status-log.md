@@ -77454,10 +77454,11 @@ the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
 
 Walk doc: `docs/developer/porting/dogfood-walks/2026-08-21-anti-chorus-pass.md`.
 Agent-driven end to end (the human synced the data copy and built; the instance
-carries no user passphrase, so no unlock step was needed). 23 rows: **20 PASS,
+carries no user passphrase, so no unlock step was needed). 23 rows: **21 PASS,
 one FAIL fixed on main (#97), one FAIL recorded whose wire was then proven anyway
-(#98), one FAIL left open (#99).** Three findings; **eleven** 💸 items
-discharged; only the batch maintenance run is left to the human, on cost.
+(#98).** Three findings; **eleven** 💸 items discharged; only the batch
+maintenance run is left to the human, on cost. #99 resolved to a v4-side filing
+with no v5 change — see below, including how it was mis-filed first.
 
 **Scope.** The two rounds that had never met real data — `c8a3cf77` (P4.D95
 per-turn conversation summaries, P4.9L2 the Document-Mode toolbar) and
@@ -77614,50 +77615,51 @@ probe**` then the outcome message. ⚠ Scope: this is the **character-vault
 metadata** target; the other three of P4.D35's four heterogeneous write paths
 remain unit-proven only.
 
-### Finding #99 — the tool-execution notice never appears (OPEN)
+### Finding #99 — the tool-execution notice, and a lesson about instruments
 
-C3 took three attempts, and the first two were wrong in the same way: stopping at
-a negative instead of reading the data. First the model declined to call
-`generate_image` and the row was written off as *"the seats carry no
-`imageProfileId`, so the tool is not on the slate"* — asserted, never checked,
-and false (it is on the slate; the refusal comes from the **executor**,
-`tools/executor.rs:1505`). Then a call did fire and refuse, and the record gained
-*"which confirms the diagnosis"* — the opposite of what it shows — at a moment
-when no poller was even armed.
+**The first version of this section was wrong, and the way it was wrong matters
+more than the bug.** C3 was filed as "the tool-execution notice never appears on
+a real `generate_image` call," on the strength of three browser runs that showed
+no notice and no toast. Every one of those runs was measured with a **dead
+observer**: the injected `setInterval` pollers stopped after about six ticks —
+`window.__ticks` sat frozen at 6 across an entire turn while the interval id
+still looked live — so they measured nothing at all. The notice works.
 
-Re-tested properly: three real `generate_image` calls, a correctly-scoped
-120–150 ms poller over both the composer's `[role=status]` and
-`qt-toast-container`, and the raw `/api/events` stream recorded alongside.
-**The server's frames are exactly right and the UI is silent.** The stream
-carries `{chatId, toolsDetected: 1, toolNames: ["generate_image"],
-toolArguments: […]}`, then `{chatId, status: {stage: "tool_executing"}}`, then
-`{chatId, toolResult: {name: "generate_image", success: false}}` — every frame
-with the matching `chatId`, so the salon's `filter` (`:2732`) passes them — and
-no notice and no toast render at any point.
+**What is actually wrong**, from the one run whose interval demonstrably survived
+29 s and logged five real transitions: on a failed `generate_image` the notice
+reads the generic `Failed to generate image` and the toast reads `Image
+generation failed: Unknown error`, while the server sent
+`Error: Image generation is not enabled for this chat`.
 
-v4 raises the notice from two callbacks: `trackToolsDetected` publishes
-`Generating image...` the moment `toolNames` includes it
-(`useSSEStreaming.ts:380-387`, **before** execution, so the outcome is
-irrelevant), and `trackToolResult` publishes success/error plus a toast
-(`:414-435`). v5 ports both into `reportStreamTransitions` (`:2907`), wired on
-exactly the send path used (`:2737`). ⚠ **The dropping layer is not isolated** —
-one unchased probe: `qt-streaming-message` stayed at 0 elements for the whole
-turn, which would explain `toolBatches` rendering nothing, but the overlay may
-mount elsewhere and the non-streaming path wants ruling out first.
+**And that is a faithfully ported v4 bug.** The recorded wire is
+`{toolResult: {index: 0, name: "generate_image", success: false, result: null,
+error: "Error: Image generation is not enabled for this chat"}}` — the sentence
+sits in `error`, a **sibling** of the null `result`. v4's emitter hoists it
+identically and explains why in its own comment: *"On failure, carry the
+human-readable error text … so live UIs can show a useful message instead of a
+generic 'failed' — the result field itself is often null on error"*
+(`tool-execution.service.ts:156-168`). Then v4's own client destructures
+`const { index, name, success, result } = data.toolResult` and renders
+`result?.error || 'Failed to generate image'` (`useSSEStreaming.ts:414-435`),
+dropping the sibling. v5 reproduces it exactly — `applyToolResult` stores
+`result: result.result` (`chat-stream.reducer.ts:379`) and the notice reads
+`(call.result ?? {}).error` (`salon-conversation.ts:2947`). v4 built the field
+for the UI and no UI reads it.
 
-Why coverage missed it: the bug-77 specs drive `reportStreamTransitions`
-directly with hand-built states (`salon-conversation.spec.ts:1963-1965`), so they
-prove the method, not the pipeline into it — the same "the production call could
-vanish unseen" gap the P4.D87 §3 review flagged on the teardown side, reappearing
-on the entry side. Reproduction is free: any chat whose seats resolve no image
-profile refuses at the executor without spending anything, and the frames still
-fly.
+**Disposition: no v5 change; file upstream.** v5 stays faithful under the
+standing rule and follows when v4 moves.
+
+**Left deliberately unproven:** whether the notice behaves differently on a
+non-streaming provider path. The three Grok runs that suggested so are void, and
+the one trustworthy run was DeepSeek. Whoever wants that answer should use
+screenshots or a `MutationObserver`, not an injected `setInterval`.
+
 
 ### Left owed
 
-Finding #99 (a focused session, not a dogfood patch); the other three P4.D35
-write paths, which C8 did not reach; and the memory-dedup /
-conversation-summaries first run, deferred by cost.
+The other three P4.D35 write paths, which C8 did not reach; and the memory-dedup
+/ conversation-summaries first run, deferred by cost. (#99 is a v4-side filing,
+not v5 work.)
 
 Two loose threads recorded rather than chased: a `STORY_BACKGROUND_GENERATION`
 that failed its first attempt against the OpenAI Images API and succeeded on

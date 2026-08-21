@@ -1586,16 +1586,17 @@ records THERE. Update this summary only when a phase or round completes.
   re-arms the very caution the anti-chorus fix withholds (**candidate upstream
   filing**); and the caution can never see the message that just addressed the
   responder (the user message is persisted AFTER the eligibility read, in v4
-  as in v5). **OPEN: finding #99** — on a real `generate_image` call the
-  server's frames are provably right (`toolsDetected` + `toolNames`,
-  `tool_executing`, `toolResult`, all carrying `chatId`) and **no notice and no
-  toast render**, measured over three turns; bug 77's whole surface is dark.
-  The dropping layer is NOT isolated — it needs a focused session, and the
-  reproduction is free (any chat with no resolved image profile refuses at the
-  executor while the frames still fly). The bug-77 specs drive
-  `reportStreamTransitions` directly, so they prove the method and not the
-  pipeline into it. **Still owed:** #99, P4.D35's other three write paths, and
-  the dedup/summaries first run.
+  as in v5). **#99 — a v4 bug, no v5 change:** on a failed `generate_image` the
+  notice fires correctly but reads the generic `Failed to generate image` while
+  the server sent the real sentence in `toolResult.error`, a **sibling** of the
+  null `result`; v4 hoists it identically *and says the field exists so live UIs
+  can show a useful message*, then v4's own client reads `result?.error` and
+  drops it. v5 reproduces exactly, so it stays — filed upstream. ⚠ **#99 was
+  first mis-filed as "the notice never appears," on three runs whose injected
+  `setInterval` observers had silently died (`__ticks` frozen at 6).** The
+  standing lesson is in `dogfood-findings.md`: verify a browser instrument is
+  ticking before trusting any negative from it. **Still owed:** P4.D35's other
+  three write paths, and the dedup/summaries first run.
 - **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
   disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
   b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at

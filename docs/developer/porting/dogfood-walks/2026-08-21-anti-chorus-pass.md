@@ -86,7 +86,7 @@ prompt-byte proofs are read with
 |---|---|---|---|---|---|
 | C1 | CLAUDE | A failed import names its dropped items (was A2) | `systemImportExecute` with five connection profiles whose typed parse must fail (`provider: 12345`), each carrying a differently-shaped `name`: absent / `null` / `7` / `["a","b"]` / `{"x":1}` | **PASS.** All five warnings fired with v4's sentence and the JS template-literal interpolation exactly as the P4.D91 §3 fix intends — `Failed to import connection profile "undefined"…` / `"null"` / `"7"` / `"a,b"` / `"[object Object]"`. Nothing written: `connection_profiles` 41 → 41, every `imported`/`skipped` counter 0. ⚠ Observation, not a defect: the `: {e}` tail is the Rust serde message (`invalid type: integer \`12345\`, expected a string`) where v4's is Zod's — the prefix and the quoted name are v4's bytes, and the tail cannot be byte-identical across the two runtimes | PASS |
 | C2 | CLAUDE | Bug-76 poisoned `outboundApiKeyId` heal (was B2) | The API refuses the poison outright (`API key provider does not match profile provider`, correctly), so the poison was made **the way the bug made it** — opened `Claude Haiku 4.5` in the profile modal, switched Provider Anthropic → Ollama, saved | **PASS.** The save succeeded and the row reads `provider: OLLAMA, apiKeyId: null` — the stale anthropic id cleared by the `\|\| null` always-send instead of the bug-76 400. The `outboundBaseUrl` chokepoint filled `http://localhost:11434` in the same gesture, the API Key select hid itself for Ollama, and the banked `Non-image attachments: No file attachments supported` line read correctly. Card now shows `OLLAMA · Base URL: …` with no API Key row | PASS |
-| C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Four ordinary tool turns first (`search` ×3, `read_conversation`, `rng` ×2), then **three turns that really did call `generate_image`**, each watched by a correctly-scoped 120–150 ms poller over the composer's `[role=status]` AND `qt-toast-container`, with the raw `/api/events` stream recorded alongside | **FAIL(#99).** The notice is `generate_image`-only in both apps (`salon-conversation.ts:2933` ports v4's filter), so the ordinary tool turns raising nothing is correct. But on a real `generate_image` call **the server's frames are right and the UI shows nothing**: `{toolsDetected: 1, toolNames: ["generate_image"]}` → `{status: tool_executing}` → `{toolResult: {name: "generate_image", success: false}}`, every frame carrying the matching `chatId`, and no notice and no toast across three turns. v4 would show `Generating image…` at detection and the error notice + toast at the result. The publisher is wired on exactly the send path used (`:2737`). **The layer that drops it is NOT isolated** — see #99 | FAIL(#99) |
+| C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Four ordinary tool turns first (`search` ×3, `read_conversation`, `rng` ×2), then **three turns that really did call `generate_image`**, each watched by a correctly-scoped 120–150 ms poller over the composer's `[role=status]` AND `qt-toast-container`, with the raw `/api/events` stream recorded alongside | **PASS, with finding #99 (a v4 bug, no v5 change).** The notice is `generate_image`-only in both apps, so the ordinary tool turns raising nothing is correct. On a real `generate_image` call the notice and toast **do** fire and self-clear. What is wrong is only the text: the notice reads the generic `Failed to generate image` and the toast `Image generation failed: Unknown error`, while the server sent `Error: Image generation is not enabled for this chat` in `toolResult.error` — a **sibling** of the null `result`. v4's emitter hoists it identically *and says it is for exactly this purpose*, then v4's own client reads `result?.error` and drops it. v5 reproduces v4 exactly, so it stays. ⚠ An earlier version of this row claimed the notice never appears at all; that was a **dead observer**, not a defect — see the note below | PASS (+#99 upstream) |
 | C4 | CLAUDE | The tool-change notice splices ONCE (was C1) | Chat sidebar → Chat → **Tools…** → unticked **Ask Carina** → Save, then sent two ordinary turns | **PASS.** Turn 1 (`16:08:54`) carries `[System Notice] Your available tools have been updated. You now have access to the following 24 tool(s): …` with `toolCount: 24`; turn 2 (`16:09:26`) carries **no notice** and `toolCount: 23` — the notice spliced exactly once and `forceToolsOnNextMessage` cleared, which is the P4.D82 deferral closed on real data. Bonus corroboration of #98 from the same dialog: with the Ollama profile selected, Search Web read `unavailable — Web search must be enabled in the connection profile`; after switching to the tool-capable DeepSeek profile it read `No search provider configured. Please add a search provider API key in Settings > API Keys.` — the two-arm gate order in `tools_inventory.rs:330-336`, in the right order | PASS |
 | C5 | CLAUDE | The vision send (was D3) | Generated a 240×160 PNG with deliberately unguessable content — solid deep-teal ground, one large white triangle point-up, three black dots in a row along the bottom — uploaded it through `POST /api/v1/files`, attached it with the composer's **Attach file from library**, and asked for a literal description on `Grok 4 Fast Non-Reasoning` (`supportsImageUpload = 1`, cheap) | **PASS — 💸 discharged.** The reply: *"Three black circles in a straight horizontal line at the bottom. One large white triangle sitting directly on top of them, point upward. The background is a solid deep teal, almost forest green."* — correct on every count, so the bytes genuinely reached the Grok wire. The `llm_logs` `CHAT_MESSAGE` projection carries `hasAttachments: true` on the user message (v4's `summarizeRequest` shape — a flag, not the bag) | PASS |
 | C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch. **Then done, same session:** the instance's own `api_keys` row holds the raw secret, so the server was relaunched with that value read straight into the child's environment (never echoed, never written to disk, never off-host) — and `search_web` ran **live** from a real turn, `success: true`, five current results (*"At a height of 828 meters, the Burj Khalifa is currently the undisputed tallest skyscraper in the world"*, plus `skyscrapercenter.com`'s 2026 table) for the model's own query `tallest building in the world current record holder name and height`. **💸 discharged; the P4.42 invariant holds — advertised and executed agree the moment the provider exists.** The gap in #98 is unchanged: it is the *configured* path v5 cannot see | FAIL(#98) → PASS (wire proven) |
@@ -101,11 +101,32 @@ prompt-byte proofs are read with
 
 ## Result
 
-**23 rows: 20 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
-(#98), 1 FAIL-open (#99).** Three findings, one fix shipped, eleven 💸 items
-discharged. Only C11 (the batch maintenance run) is left to the human, on cost.
+**23 rows: 21 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
+(#98).** Three findings, one fix shipped, eleven 💸 items discharged. Only C11
+(the batch maintenance run) is left to the human, on cost. #99 resolved to a
+v4-side filing with no v5 change.
 
-### C3 was wrong twice before it was right
+### The instrument lesson — read this before trusting any browser observation
+
+Three "the notice never fires" results in this pass were **measurement failure,
+not behaviour**. The observers were injected `setInterval` pollers, and they
+stopped after ~6 ticks: `window.__ticks` sat frozen at 6 across an entire turn,
+while `window.__obs` still held a live-looking interval id. Every conclusion
+drawn from those runs was worthless, and one of them was written up as an open
+v5 defect before being caught.
+
+**Rules for the next walk:**
+
+- **Prove the instrument before trusting a negative.** Arm the observer, then
+  immediately read a tick counter. If it isn't advancing, nothing it reports
+  means anything. A negative from an unverified observer is not a result.
+- Prefer instruments that don't depend on injected state surviving: repeated
+  `screenshot` calls, or reading persisted rows / the raw SSE afterwards.
+- The one observation in this pass that *was* trustworthy is the one where the
+  interval demonstrably ran for 29 s and logged five real transitions. That is
+  the shape of evidence to insist on.
+
+### C3 was wrong three times before it was right
 
 Worth recording, because both errors were mine and both were the same shape —
 stopping at the first negative instead of reading the data.
@@ -117,14 +138,19 @@ stopping at the first negative instead of reading the data.
 2. Then a `generate_image` call did fire and refuse, and I appended *"which
    confirms the diagnosis"* — when it does the opposite. And no poller was armed
    at that moment, so "the notice didn't fire" was not even observed.
-3. Only on re-testing — three real calls, a correctly-scoped poller over both the
-   notice and the toast, and the raw `/api/events` stream recorded alongside —
-   did the actual result appear: **the frames are right and the UI is silent**.
-   That is finding #99, and it is a genuine v5 defect, not a scope note.
+3. Re-tested with real calls and a poller over the notice and the toast, saw
+   nothing, and filed **#99 as an open v5 defect: "the notice never appears."**
+   Wrong again — the poller was dead (see above).
+4. Only after verifying the instrument did the real answer appear: the notice
+   fires correctly; the *message* is generic because both apps read
+   `result.error` while the server puts the sentence in a sibling `error`. That
+   is a v4 bug, filed upstream, no v5 change.
 
-The general lesson for a walk: a row that reads BLOCKED because *the trigger
-never fired* is not a result. Either make the trigger fire or mark it untested —
-never let the reason it didn't fire harden into a claim about the feature.
+Two lessons, both earned the hard way. **A row that reads BLOCKED because the
+trigger never fired is not a result** — make the trigger fire or mark it
+untested; never let the reason it didn't fire harden into a claim about the
+feature. And **a negative from an unverified instrument is not a finding** —
+filing #99 the first time cost more than the bug was worth.
 
 ### A correction worth keeping: `effects`, not `sideEffects`
 
@@ -184,9 +210,9 @@ whispered announcements (C7), the roleplay quote delimiter (C9), the failed-impo
 warnings (C1), the Serper live-key smoke (C6), **and Pascal side effects end to
 end (C8)** — eleven in all.
 
-**Still owed:** the tool-execution notice — no longer a 💸 item but **finding
-#99**, an open v5 defect with a free reproduction; the other three P4.D35 write
-paths; and the memory-dedup / conversation-summaries first run (cost).
+**Still owed:** the other three P4.D35 write paths, and the memory-dedup /
+conversation-summaries first run (cost). The tool-execution notice came off the
+list — it works; #99 is a v4-side filing.
 
 ### Two things worth a look that this pass did not chase
 
