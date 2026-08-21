@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): record the P4.D96 gate
+
+_Docs-only change._
+
+The lane's verification gate, all green: fmt; clippy plain and with
+`quilltap-core/native-transport`; `cargo test --workspace` at 441 binaries /
+2,237 passed / 0 failed with both lane oracle env vars set; both lane families
+by name through the sweep driver against the `b8449b3e` pin, zero SKIP; the
+fourteen-family spine batch at 14 ok; SPA 332 files / 4,936 tests and a clean
+build. Playwright was not run — no e2e spec changed.
+
 #### 2026-08-21 — docs(porting): the P4.D96 spine regen, the b8449b3e NO-PORT, and two corrections
 
 _Docs-only change._

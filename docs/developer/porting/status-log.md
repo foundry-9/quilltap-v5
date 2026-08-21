@@ -76715,3 +76715,25 @@ from `b8449b3e`; no correctness exposure either way.
   whether the discipline block actually changes model behavior on a weak model,
   which is a judgement no oracle can make.
 
+### P4.D96 gate (all green)
+
+- `cargo fmt --all --check` = 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` = 0, **and** with
+  `--features quilltap-core/native-transport` = 0.
+- `cargo test --workspace` with `QT_ORACLE_SKIP_SIGNAL` +
+  `QT_ORACLE_TURN_ANCHOR`: **441 test binaries / 2,237 passed / 0 failed**
+  (+2 binaries, +1 test vs the `c8a3cf77` baseline's 440 / 2,236 — the new
+  turn-anchor binary, plus the harness self-test binary count shift; the
+  skip-signal family's growth lives inside one existing test fn).
+- The lane's families by name through `recipe_sweep.py --run … --v4
+  /tmp/qt-v4-pin-p4d96-b8449b3e`, zero SKIP, fresh oracles:
+  `skip_signal_equivalence` (138 rows, `[42, 10, 9, 11, 7, 43, 12, 4]`) and
+  `multi_character_turn_anchor_equivalence` (1 + 13 rows). Unit 4's fourteen
+  spine families through one `--run-all` batch: 14 ok, exit 0.
+- SPA: `npm test` **332 files / 4,936 tests / 0** (+7 — exactly the parity
+  spec's seven new cases); `npm run build` clean.
+- **Full Playwright NOT run: no e2e spec changed** (the order's gate makes it
+  conditional, and tier-2 item 8 found no assertion slot to add).
+
+No release build was run — this order's gate does not call for one.
+
