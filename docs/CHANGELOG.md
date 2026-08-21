@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — fix(documents): Document Mode fills its workspace tab, so source mode is more than three lines
+
+_Versions: SPA 0.5.528._
+
+Dogfood finding #97. Opening a store document through the rail's Document Mode
+entry and switching to markdown source rendered the textarea 77px tall inside a
+788px pane — three visible lines of a 52,000-character document, with 700px of
+empty pane below it. The WYSIWYG branch masked it: ProseMirror grows to its own
+content and the pane scrolls, so nothing looked wrong until the toggle.
+
+`StandaloneDocumentView` declared `host: { class: 'flex flex-col flex-1 …' }`,
+but the workspace mounts it inside `qt-tab-view` — an Angular custom element
+with no host styling, i.e. `display: inline`. `flex-1` in a non-flex parent is
+inert, so the view collapsed to content height and every `h-full` beneath it
+measured against that. v4 has no such element: its `TabView` renders context
+providers only, so `DocumentPane`'s `flex flex-col h-full` root is a direct
+child of `.qt-tab-pane` and measures the grid cell. The host class is now
+`h-full`, which resolves against `.qt-tab-pane` the same way — and the same way
+the Salon's `block h-full` host already did. Re-measured on the same document:
+77px to 612px.
+
+`standalone-document-view` was the only `flex-1` host mounted directly by the
+tab registry; the other five all sit inside real flex parents.
+
+Pinned by a spec asserting the rendered host class carries `h-full` and not
+`flex-1` (jsdom computes no layout, so a height assertion there would be
+vacuous), and by extending the existing p4.9l2 standalone-toolbar beat to
+*measure* the textarea against its pane. That beat already toggled source mode
+and asserted the markdown bytes, and passed throughout — which is why the bug
+shipped.
+
 #### 2026-08-21 — docs(porting): the case-folding divergence ratified
 
 _Versions: core 0.0.594._

@@ -50,7 +50,17 @@ const AUTOSAVE_DEBOUNCE_MS = 30000;
 @Component({
   selector: 'qt-standalone-document-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' },
+  // `h-full`, NOT `flex-1`. v4 renders `DocumentPane`'s `flex flex-col h-full`
+  // root as a DIRECT child of `.qt-tab-pane` — `TabView` is context providers
+  // only, no DOM box (`components/workspace/TabView.tsx:177-186`). Angular's
+  // `qt-tab-view` element IS a box, and an unstyled custom element is
+  // `display: inline`, so a `flex-1` host has no flex parent to grow in and
+  // collapses to content height. `h-full` resolves against the nearest block
+  // container — `.qt-tab-pane`, which is the grid cell v4 measures against too
+  // — which is why the Salon's `block h-full` host fills correctly and this one
+  // did not. Symptom when it was `flex-1`: source mode's `h-full` textarea got
+  // 77px inside a 788px pane (dogfood #97).
+  host: { class: 'flex flex-col h-full min-h-0 min-w-0' },
   imports: [DocumentPane],
   template: `
     @if (loadError(); as message) {

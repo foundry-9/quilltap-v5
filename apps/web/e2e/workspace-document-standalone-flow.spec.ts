@@ -240,6 +240,18 @@ test('the standalone toolbar is present and carries NO delimiter buttons (p4.9l2
   await toolbar.locator('.qt-formatting-button-source').click();
   await expect(pane.locator('textarea')).toHaveValue('**shout**');
 
+  // Dogfood #97: source mode's textarea is `h-full`, so it is only as tall as
+  // the chain above it. When this view's host was `flex-1` — inert under
+  // `qt-tab-view`, an unstyled custom element and therefore `display: inline` —
+  // the box collapsed to content height and a 52 KB document got a ~77px
+  // editing window inside a ~790px pane. The value assertion above passed
+  // throughout, which is why this beat is measured, not just read.
+  const paneBox = await pane.boundingBox();
+  const areaBox = await pane.locator('textarea').boundingBox();
+  expect(paneBox).not.toBeNull();
+  expect(areaBox).not.toBeNull();
+  expect(areaBox!.height).toBeGreaterThan(paneBox!.height * 0.6);
+
   // Delete what this beat created (two-step: the pane confirms through the
   // browser dialog), leaving the store as it was found.
   await toolbar.locator('.qt-formatting-button-source').click();

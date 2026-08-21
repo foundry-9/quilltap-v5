@@ -91,6 +91,22 @@ function fakeHandle() {
 }
 
 describe('StandaloneDocumentView', () => {
+  // Dogfood #97. The workspace mounts this view inside `qt-tab-view`, an
+  // unstyled custom element — i.e. `display: inline`, with no flex context.
+  // A `flex-1` host therefore collapses to content height and source mode's
+  // `h-full` textarea rendered 77px tall inside a 788px pane. v4 has no
+  // intervening box at all (`TabView.tsx` renders providers only), so its
+  // `flex flex-col h-full` pane measures against `.qt-tab-pane` directly;
+  // `h-full` here reproduces that, the way the Salon's `block h-full` already
+  // does. Guarding the host class is the only reachable pin — jsdom computes
+  // no layout, so a height assertion would be vacuous.
+  it('fills the tab pane by height, not by flex-grow (the inline tab host has no flex context)', () => {
+    const { fixture } = render(new FakeApi(), fakeHandle());
+    const hostClass = (fixture.nativeElement as HTMLElement).className;
+    expect(hostClass).toContain('h-full');
+    expect(hostClass).not.toContain('flex-1');
+  });
+
   it('opens the document on mount and refreshes the tab with the server filePath', async () => {
     const api = new FakeApi();
     const handle = fakeHandle();
