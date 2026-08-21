@@ -76988,3 +76988,64 @@ $N/node --import tsx <worktree>/harness/oracle/fixtures/migrate-memories-fixture
 
 Versions: harness 0.0.512. `quilltap-web` NOT bumped — no web-side test or
 reference moved (nothing in that crate reads the pair).
+---
+
+## P4.53 — the sweep driver's three recorded follow-ups (v4 `b8449b3e`)
+
+Lane branch `claude/p4-53-sweep-driver-followups-3ad7b1`. Drift-checked at
+lane start: `git log b8449b3e..main` in `~/source/quilltap-server` is EMPTY
+(v4 main HEAD **is** the baseline, tree clean, checkout on `main`); the
+`bugfix` branch carries only the historical 4.8.x lineage already absorbed.
+No v4 commit is ported here — the lane discharges the three driver defects
+the P4.51 lane recorded at the `c8a3cf77` unification. Every executed regen
+ran against a detached pin at `/tmp/qt-v4-pin-p453-b8449b3e` (all three
+symlink classes wired: root `node_modules`,
+`packages/quilltap/node_modules`, the eleven `plugins/dist/*/node_modules`).
+
+### Unit 1 — the five case headers stop clobbering the injected alias
+
+**The defect, measured before the fix.** Five oracle-case headers opened
+their regen with `W=${V5W:-$HOME/source/quilltap-v5}` and referenced
+`$W/…`. `normalize()` PREPENDS `W="<--v5w>"` (because `$W/` occurs in the
+body); the header's own assignment then overwrites it, and because the
+prepend regex matches `$VAR` / `${VAR}` but never `${VAR:-…}`, `V5W` was
+never injected either, so the `:-` default fired and `W` became main's
+path. `brahma_console_routes_equivalence` is the one header where the alias
+is LIVE (its `.rs` header elides the regen, so anchored restoration pulls
+THIS header's shell block).
+
+**Red probe (pre-fix), from the lane worktree at the pin.** A marker
+appended to the WORKTREE's `brahma-console-routes.test.ts`:
+
+```
+python3.13 harness/tools/recipe_sweep.py --run brahma_console_routes_equivalence \
+  --v4 /tmp/qt-v4-pin-p453-b8449b3e
+```
+
+The generated script carried BOTH assignments — the driver's injected
+`W="…/.claude/worktrees/p4-53-…"` and, two lines later, the header's
+`W=${V5W:-$HOME/source/quilltap-v5}`. The staged
+`/tmp/brahma-routes/cases/brahma-console-routes.test.ts` did **not** carry
+the marker (staged from MAIN), `shield_fixture_envs` copied MAIN's
+`brahma-{main,mount}.db`, and the run printed
+`OK: … recipe ran end-to-end` and **exited 0**.
+
+**The fix.** All five headers now use the sanctioned convention —
+`V5W=${V5W:-$HOME/source/quilltap-v5}` with `$V5W/…` references — so the
+`:-` default finds the value the driver injected. HEADER LINES ONLY (1
+assignment + 4/4/3/2/3 references); no case body touched. The four twins
+(`brahma-orchestrator-tier3`, `brahma-console-tier3`, `carina-query-tier3`,
+`carina-memory-extraction-tier3`) are dormant today only because their
+`.rs` headers are authoritative — repaired anyway, as the order directs.
+
+**Green probe (post-fix), same invocation.** The staged case file carries
+the worktree marker; the shield copies the WORKTREE's
+`crates/quilltap-web/tests/fixtures/brahma-{main,mount}.db`; the family
+regenerated end-to-end with **zero SKIP** (`brahma_console_routes_match_oracle
+… ok`). `--list` over all 412 families is byte-identical before and after
+(303 ok / 69 ok_restored / 12 committed_corpus / 6 exempt / 22 no_oracle) —
+the repair is a RUNTIME fix, invisible to the classifier, which is exactly
+why nothing had caught it.
+
+The driver's tracked-fixture write warning stayed silent through every
+probe, as the order requires.

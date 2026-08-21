@@ -39,13 +39,13 @@
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
- *     $N/npx tsx $W/harness/oracle/fixtures/build-carina-query-fixture.ts
+ *     $N/npx tsx $V5W/harness/oracle/fixtures/build-carina-query-fixture.ts
  *   QT_FIXTURE_CARINA_MAIN=/tmp/qt-carina-query-main.db QT_FIXTURE_CARINA_MOUNT=/tmp/qt-carina-query-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-carina-query.ndjson \
- *     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$W/harness/oracle/cases" -- carina-query-tier3
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$V5W/harness/oracle/cases" -- carina-query-tier3
  */
 
 import * as fs from 'fs';

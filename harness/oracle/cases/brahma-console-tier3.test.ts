@@ -30,13 +30,13 @@
  * Run from the v4 server checkout under Node 24 (jest ignores `.claude/` worktree
  * paths, so mirror the oracle + spec to /tmp — see header of the Rust test):
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-brahma-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-brahma-mount.db \
- *     $N/npx tsx $W/harness/oracle/fixtures/build-brahma-console-fixture.ts
+ *     $N/npx tsx $V5W/harness/oracle/fixtures/build-brahma-console-fixture.ts
  *   mkdir -p /tmp/brahma-oracle/cases /tmp/brahma-oracle/fixtures
- *   cp $W/harness/oracle/cases/brahma-console-tier3.test.ts /tmp/brahma-oracle/cases/
- *   cp $W/harness/oracle/fixtures/brahma-console-tier3.json /tmp/brahma-oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/brahma-console-tier3.test.ts /tmp/brahma-oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/brahma-console-tier3.json /tmp/brahma-oracle/fixtures/
  *   QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-brahma-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-brahma.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "/tmp/brahma-oracle/cases" -- brahma-console-tier3

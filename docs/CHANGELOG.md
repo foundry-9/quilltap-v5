@@ -164,6 +164,31 @@ designed; the ruled row retires to a plain `check_body`. Mutation-proven:
 dropping `composerEmoji` from a scratch copy puts v4 back on the bare 500 and
 reddens the family with the same "expected an error arm" refusal the ruling
 documented.
+#### 2026-08-20 — fix(harness): five oracle-case headers stop clobbering the driver's injected checkout alias (P4.53)
+
+_Versions: harness 0.0.512._
+
+Five case headers opened their regen recipe with
+`W=${V5W:-$HOME/source/quilltap-v5}` and referenced `$W/...`. That reads as a
+courtesy default and is a live clobber. The sweep driver injects the checkout
+under test by PREPENDING `W="<--v5w>"` (it does so because `$W/` appears in the
+body), and the header's own assignment then overwrites it — with
+`${V5W:-...}` rather than `$V5W`, because the driver's prepend regex matches
+`$VAR` and `${VAR}` but never `${VAR:-...}`, so `V5W` was never injected and the
+`:-` default fired.
+
+Measured on `brahma-console-routes.test.ts`, the only header where the alias is
+live (its `.rs` family restores its regen from this header): a sweep run from a
+lane worktree staged that family's case file AND both `QT_FIXTURE_BRAHMA_*`
+databases from MAIN, then exited 0. A marker planted in the worktree's copy of
+the case never reached the staged `/tmp` mirror. The other four are dormant
+today only because their `.rs` headers are authoritative; they are the same
+landmine and are repaired with it.
+
+All five now use the sanctioned convention — `V5W=${V5W:-$HOME/source/quilltap-v5}`
+with `$V5W/...` references — so the `:-` default finds the value the driver
+injected. Header lines only; no case bodies changed, and the classifier's
+report over all 412 families is byte-identical before and after.
 
 #### 2026-08-20 — docs(porting): plan the b8449b3e round — the anti-chorus drift catch-up + two maintenance lanes
 

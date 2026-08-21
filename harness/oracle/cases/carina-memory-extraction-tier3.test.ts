@@ -33,13 +33,13 @@
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-carina-mem-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-mem-mount.db \
- *     $N/npx tsx $W/harness/oracle/fixtures/build-carina-memory-extraction-fixture.ts
+ *     $N/npx tsx $V5W/harness/oracle/fixtures/build-carina-memory-extraction-fixture.ts
  *   mkdir -p /tmp/carina-mem-oracle/cases /tmp/carina-mem-oracle/fixtures
- *   cp $W/harness/oracle/cases/carina-memory-extraction-tier3.test.ts /tmp/carina-mem-oracle/cases/
- *   cp $W/harness/oracle/fixtures/carina-memory-extraction-tier3.json /tmp/carina-mem-oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/carina-memory-extraction-tier3.test.ts /tmp/carina-mem-oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/carina-memory-extraction-tier3.json /tmp/carina-mem-oracle/fixtures/
  *   QT_FIXTURE_CARINA_MEM_MAIN=/tmp/qt-carina-mem-main.db QT_FIXTURE_CARINA_MEM_MOUNT=/tmp/qt-carina-mem-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-carina-mem.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "/tmp/carina-mem-oracle/cases" -- carina-memory-extraction-tier3

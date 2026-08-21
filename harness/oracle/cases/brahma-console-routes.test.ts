@@ -22,13 +22,13 @@
  *
  * Run (Node 24, from the v4 checkout — mirror to /tmp; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
  *   cd ~/source/quilltap-server
  *   mkdir -p /tmp/brahma-routes/cases /tmp/brahma-routes/fixtures
- *   cp $W/harness/oracle/cases/brahma-console-routes.test.ts /tmp/brahma-routes/cases/
- *   cp $W/harness/oracle/fixtures/brahma-console-web.json /tmp/brahma-routes/fixtures/
- *   QT_FIXTURE_BRAHMA_MAIN=$W/crates/quilltap-web/tests/fixtures/brahma-main.db \
- *   QT_FIXTURE_BRAHMA_MOUNT=$W/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+ *   cp $V5W/harness/oracle/cases/brahma-console-routes.test.ts /tmp/brahma-routes/cases/
+ *   cp $V5W/harness/oracle/fixtures/brahma-console-web.json /tmp/brahma-routes/fixtures/
+ *   QT_FIXTURE_BRAHMA_MAIN=$V5W/crates/quilltap-web/tests/fixtures/brahma-main.db \
+ *   QT_FIXTURE_BRAHMA_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/brahma-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-brahma-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
  *       --roots "$PWD" --roots /tmp/brahma-routes/cases -- brahma-console-routes
