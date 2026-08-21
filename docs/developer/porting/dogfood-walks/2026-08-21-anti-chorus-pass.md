@@ -89,7 +89,7 @@ prompt-byte proofs are read with
 | C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Drove four real tool turns (`search` ×3, `read_conversation`, `rng` ×2) with a 200 ms DOM poll recording every `[role=status]` in the composer | **BLOCKED — the step as written cannot fire it, and that is v4's scope, not a v5 gap.** The notice is **`generate_image`-only** in both apps: `salon-conversation.ts:2933` (`if (call.name !== 'generate_image') continue`) ports v4's `trackToolsDetected`/`trackToolResult` filter. Ordinary tool calls raise nothing, correctly. Asked the cast to call `generate_image` outright and the model answered in prose instead — the seats here carry no `imageProfileId`, so the tool is not on the slate. **Re-word the queue item: it needs a seat with an image profile.** What the poll DID catch is the P4.D84 §3 pre-send validation sequence live — `Sending to Amy..` → `Amy is responding...` | BLOCKED(needs an image-profile seat) |
 | C4 | CLAUDE | The tool-change notice splices ONCE (was C1) | Chat sidebar → Chat → **Tools…** → unticked **Ask Carina** → Save, then sent two ordinary turns | **PASS.** Turn 1 (`16:08:54`) carries `[System Notice] Your available tools have been updated. You now have access to the following 24 tool(s): …` with `toolCount: 24`; turn 2 (`16:09:26`) carries **no notice** and `toolCount: 23` — the notice spliced exactly once and `forceToolsOnNextMessage` cleared, which is the P4.D82 deferral closed on real data. Bonus corroboration of #98 from the same dialog: with the Ollama profile selected, Search Web read `unavailable — Web search must be enabled in the connection profile`; after switching to the tool-capable DeepSeek profile it read `No search provider configured. Please add a search provider API key in Settings > API Keys.` — the two-arm gate order in `tools_inventory.rs:330-336`, in the right order | PASS |
 | C5 | CLAUDE | The vision send (was D3) | Generated a 240×160 PNG with deliberately unguessable content — solid deep-teal ground, one large white triangle point-up, three black dots in a row along the bottom — uploaded it through `POST /api/v1/files`, attached it with the composer's **Attach file from library**, and asked for a literal description on `Grok 4 Fast Non-Reasoning` (`supportsImageUpload = 1`, cheap) | **PASS — 💸 discharged.** The reply: *"Three black circles in a straight horizontal line at the bottom. One large white triangle sitting directly on top of them, point upward. The background is a solid deep teal, almost forest green."* — correct on every count, so the bytes genuinely reached the Grok wire. The `llm_logs` `CHAT_MESSAGE` projection carries `hasAttachments: true` on the user message (v4's `summarizeRequest` shape — a flag, not the bag) | PASS |
-| C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch — the human's call, since it is their paid key | FAIL(#98) → DEFERRED-TO-HUMAN |
+| C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch. **Then done, same session:** the instance's own `api_keys` row holds the raw secret, so the server was relaunched with that value read straight into the child's environment (never echoed, never written to disk, never off-host) — and `search_web` ran **live** from a real turn, `success: true`, five current results (*"At a height of 828 meters, the Burj Khalifa is currently the undisputed tallest skyscraper in the world"*, plus `skyscrapercenter.com`'s 2026 table) for the model's own query `tallest building in the world current record holder name and height`. **💸 discharged; the P4.42 invariant holds — advertised and executed agree the moment the provider exists.** The gap in #98 is unchanged: it is the *configured* path v5 cannot see | FAIL(#98) → PASS (wire proven) |
 | C7 | CLAUDE | Whispered announcements (was D8) | Composer → **Insert announcement** → sender The Host → ticked Amy + Abigail under **Who hears it** → posted | **PASS.** The dialog re-labels itself live as the audience narrows: heading `Announcement` → `Whisper`, hint `Everyone present hears this…` → `Whispered to Amy, Abigail. No other character receives it in their context. Make it public.`, button `Post Announcement` → `Post Whisper` — v4's audience-replaces-roster shape. The row stored `systemSender: host, systemKind: announcement, targetParticipantIds: ["39441710…","ba1a44e7…"]` — the two ticked seats and no one else. **Both render sites carry the tag**: the collapsed chip reads `The Host · announcement · whispered to Amy, Abigail`, expanded it reads `The Host · announcement · to Amy, Abigail` with the body in a plain `qt-chat-message-content` prose block (no v5-invented system slab — the P4.25 fix holding). Not exercised: the All Whispers toggle against a Prospero `group-context` whisper | PASS |
 | C8 | CLAUDE | Pascal cross-tier side-effect writes (was D9) | Confirmed the library is live on real data — `customToolsLibrary` returns real tools (`scan_hawking_radiation`, `force_adjustment`, `root_access`, …) from `Quilltap General/Tools/`, all `valid: true, gate: available` | **DEFERRED-TO-HUMAN.** Whether any of these definitions carries a `sideEffects` block needs the `.tool.json` bodies read, and authoring one to order is a larger setup than the rest of this pass. The substrate is demonstrably healthy; what is unproven is the P4.D35 effect applier on a real cross-tier write | DEFERRED-TO-HUMAN |
 | C9 | CLAUDE | A roleplay template delimited by a quote character (was E1) | The chat runs the built-in **Standard** template, whose `dialogueDetection` opens/closes on `"` and `“`/`”`. Sent `*I set the mug down.* "It's the plumb line -- that's what I meant," I say.` with `smartTypographySettings = {displayQuotes: true, dashes: true, ellipsis: true}` | **PASS on all three axes.** (a) **Stored bytes untouched** — pure ASCII, straight `"` and `'`; smart quotes are render-time, exactly as P4.D71 landed them. (b) **Rendered** as `“It’s the plumb line -- that’s what I meant,”` — quotes and apostrophes curled. (c) **The delimiter still matched the curled text**: the whole run came back inside `<span class="qt-chat-dialogue">`, narration as `<em>` — which is the question the step was really asking. The dash ladder was verified separately with real keystrokes: three `-` presses → `—` (U+2014). ⚠ Test artifact worth remembering: the browser `type` action bulk-inserts, so `--` typed that way never fires the per-keystroke rule — not a defect, but a dash test must use `key` presses | PASS |
@@ -101,8 +101,20 @@ prompt-byte proofs are read with
 
 ## Result
 
-**23 rows: 18 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded (#98), 2
-DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix shipped.
+**23 rows: 19 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
+(#98), 1 DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix
+shipped, ten 💸 items discharged.
+
+### A note on how the Serper key was handled (C6)
+
+The key is stored raw in the copy's `api_keys` table (`db/api_keys.rs:11` — the
+old AES-GCM columns were dropped by migration and nothing decrypts at read
+time). To run the smoke, a scratch launcher read that one column in a subshell
+and `exec`'d the server with the value in its environment. The value was never
+printed, never written to a file, never placed in an argv, and never left the
+host — the launcher's only output is `serper key resolved: 40 chars`. Anyone
+repeating this should keep those properties; the script is
+`scratchpad/launch-with-serper.sh` and is deliberately not committed.
 
 ### Fixed on main this pass
 
@@ -117,8 +129,10 @@ DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix shipped.
 - **#98 — web search is dark on a real instance.** The `SERPER` key configured
   through v4's Settings → API Keys is invisible to v5, which reads only
   `SERPER_API_KEY` from the environment: the search-provider plugin registry is
-  the standing P4.42 deferral. The refusal path itself is v4-faithful. The 💸
-  Serper smoke needs the key exported at launch — the human's to do.
+  the standing P4.42 deferral. The refusal path itself is v4-faithful.
+  **The wire underneath is nonetheless proven** — relaunching with the
+  instance's own key in the environment made `search_web` return five live
+  results on a real turn (C6). Only the *configured* path is missing.
 
 ### Two v4-heuristic observations from Part A (neither a v5 defect)
 
@@ -135,12 +149,13 @@ DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix shipped.
 summaries cadence (B3), the vision send (C5), the P4.50 `combined.log` look at
 a real failure (C10), the bug-76 key heal (C2), the tool-change splice (C4),
 whispered announcements (C7), the roleplay quote delimiter (C9), the failed-import
-warnings (C1).
+warnings (C1), **and the Serper live-key smoke (C6)** — ten in all.
 
-**Still owed:** the Serper live-key smoke (now #98-blocked), the tool-execution
-notice (needs a seat with an image profile — re-word the item), Pascal
-cross-tier side effects, and the memory-dedup / conversation-summaries first run
-(cost).
+**Still owed:** the tool-execution notice (needs a seat with an image profile —
+re-word the item; a `generate_image` call did finally fire late in the pass and
+refused cleanly with `Image generation is not enabled for this chat`, which
+confirms the diagnosis), Pascal cross-tier side effects, and the memory-dedup /
+conversation-summaries first run (cost).
 
 ### Two things worth a look that this pass did not chase
 

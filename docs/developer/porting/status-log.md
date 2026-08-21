@@ -77454,9 +77454,10 @@ the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
 
 Walk doc: `docs/developer/porting/dogfood-walks/2026-08-21-anti-chorus-pass.md`.
 Agent-driven end to end (the human synced the data copy and built; the instance
-carries no user passphrase, so no unlock step was needed). 23 rows: **18 PASS,
-one FAIL fixed on main, one FAIL recorded, two deferred to the human, one
-blocked with a diagnosis.** Two findings (#97, #98).
+carries no user passphrase, so no unlock step was needed). 23 rows: **19 PASS,
+one FAIL fixed on main, one FAIL recorded whose wire was then proven anyway, one
+deferred to the human, one blocked with a diagnosis.** Two findings (#97, #98);
+ten 💸 items discharged.
 
 **Scope.** The two rounds that had never met real data — `c8a3cf77` (P4.D95
 per-turn conversation summaries, P4.9L2 the Document-Mode toolbar) and
@@ -77536,8 +77537,21 @@ its own deprecated fallback; v5 builds its provider from `SERPER_API_KEY`
 refusal path itself is faithful — `search_web` is advertised off the profile's
 `allowWebSearch` in both apps, and `web_search_configured` gates only the
 `/api/v1/tools` inventory. The consequence is new: the deferral is not
-invisible on a real instance, it silently disables a tool the user configured,
-and the 💸 Serper smoke cannot be discharged as the queue words it.
+invisible on a real instance — it silently disables a tool the user configured.
+
+**The 💸 smoke was then discharged anyway, by the one route that exists today.**
+`api_keys.key_value` holds the **raw** secret (`db/api_keys.rs:11` — the AES-GCM
+columns were dropped by migration and nothing decrypts at read time), so the
+server was relaunched with that single column read in a subshell and `exec`'d
+into the child's environment as `SERPER_API_KEY`: never printed, never written
+to a file, never in an argv, never off-host (the launcher's only output is
+`serper key resolved: 40 chars`). `search_web` then ran **live** from a real
+chat turn — `success: true`, five current results for the model's own query
+`tallest building in the world current record holder name and height`, including
+`skyscrapercenter.com`'s 2026 table. So the P4.42 invariant holds where it can
+be tested: **the assembly carried the provider, the inventory offered the tool,
+and the runner ran it — advertised and executed agree the moment the provider
+exists.** What stays unproven is only the path the user actually configures.
 
 ### The `c8a3cf77` round
 
@@ -77573,10 +77587,10 @@ shapes, their arrangement, and the ground colour.
 
 ### Left owed
 
-The Serper smoke (#98-blocked — needs the stored key exported as
-`SERPER_API_KEY` at launch, the human's call since it is their paid key); the
-tool-execution notice, which is `generate_image`-scoped in BOTH apps and so
-needs a seat carrying an image profile — **the queue item wants re-wording**;
+The tool-execution notice, which is `generate_image`-scoped in BOTH apps and so
+needs a seat carrying an image profile — **the queue item wants re-wording**; a
+`generate_image` call did finally fire late in the pass and refused cleanly with
+`Image generation is not enabled for this chat`, which confirms the diagnosis;
 Pascal cross-tier side effects (the library is live with real tools, but whether
 any definition carries a `sideEffects` block is unread); and the memory-dedup /
 conversation-summaries first run, deferred by cost.

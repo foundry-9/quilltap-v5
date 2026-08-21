@@ -1551,6 +1551,7 @@ records THERE. Update this summary only when a phase or round completes.
   agent-driven, on the Friday copy) — 23 rows, 18 PASS, ONE FIX SHIPPED,
   two findings, nine 💸 items discharged.** Walk doc:
   `dogfood-walks/2026-08-21-anti-chorus-pass.md`; record in `status-log.md`.
+  (23 rows, 19 PASS; **ten** 💸 items once the Serper smoke came off the list.)
   **Discharged:** the live group-scene walk (both anchor routes proven at the
   byte level on a real three-character chat; a character actually passed with
   the skip sentinel), the P4.D95 per-turn cadence (mutation-proven ON vs OFF
@@ -1566,17 +1567,20 @@ records THERE. Update this summary only when a phase or round completes.
   (ng 332/4,937; Playwright 232/232). **RECORDED: finding #98** — the `SERPER`
   key configured through v4's Settings → API Keys is invisible to v5, which
   reads only `SERPER_API_KEY`, because the search-provider plugin registry is
-  the standing P4.42 deferral: web search is dark on a real instance, and the
-  💸 Serper smoke needs the key exported at launch (the human's call). **Two
+  the standing P4.42 deferral: web search is dark on a real instance. **The
+  wire itself is PROVEN** — `api_keys.key_value` holds the raw secret, so the
+  server was relaunched with that column read straight into the child's
+  environment (never printed, never on disk, never off-host) and `search_web`
+  returned five live results on a real turn, so advertised and executed agree
+  the moment the provider exists. Only the *configured* path is missing. **Two
   v4-heuristic observations, both v4-faithful:** `and` sits in v4's
   `VOCATIVE_LEAD_INS`, so `…X and Y.` reads as addressing Y — a roll-call recap
   re-arms the very caution the anti-chorus fix withholds (**candidate upstream
   filing**); and the caution can never see the message that just addressed the
   responder (the user message is persisted AFTER the eligibility read, in v4
-  as in v5). **Still owed:** the Serper smoke, the tool-execution notice
-  (`generate_image`-scoped in BOTH apps — the queue item wants re-wording; it
-  needs a seat with an image profile), Pascal cross-tier side effects, and the
-  dedup/summaries first run.
+  as in v5). **Still owed:** the tool-execution notice (`generate_image`-scoped
+  in BOTH apps — the queue item wants re-wording; it needs a seat with an image
+  profile), Pascal cross-tier side effects, and the dedup/summaries first run.
 - **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
   disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
   b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at
