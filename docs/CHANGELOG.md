@@ -127,6 +127,43 @@ fidelity vectors, and gains a `turnSkipNote` kind driving v4's real
 `buildTurnSkipInstruction` — the note bytes had no *direct* differential before
 this round (every `build_context_tier3` op passes `turnSkip: None`); the spine
 carried them only transitively, through 25 `orchestrator_tier3` rows.
+#### 2026-08-20 — test(harness): widen the memories fixture pair to v4's schema vintage; retire the ruled vintage row (P4.52)
+
+_Versions: harness 0.0.512._
+
+The committed `memories-{main,mount}.db` pair predated seven columns v4 has
+added since it was baked, and v4's `BaseRepository._update` writes
+`$set: validated` — the whole validated entity — so every schema field with a
+Zod default is named in the UPDATE and a column the fixture lacks is fatal.
+That is why `chatSettings.updateForUser` died on `no such column:
+composerEmoji` and why `housekeeping_config_set` has been pinned in
+`memories_routes_equivalence` as a RULED VINTAGE ROW (v4's fixture-artifact
+500 asserted alongside v5's 200) since the `c8a3cf77` unification.
+
+Measured the gap table by table against v4's live `generateDDL` at
+`b8449b3e` (the dump matches the committed `fresh_schema.json` exactly, so no
+D23 drift rides along): three tables in the main partition, zero in the mount
+partition. New script
+`harness/oracle/fixtures/migrate-memories-fixture-columns.ts` applies v4's own
+migration ALTERs, verbatim and idempotently, for `characters.archivedAt` /
+`archiveFileId` / `archivedAvatarFileId`,
+`connection_profiles.multiCharacterPrefill`, and `chat_settings.composerEmoji`
+/ `composerUnicode` / `smartTypographySettings` — the migration shape a real
+instance carries, per the `migrate-fixtures-pascal-columns` precedent. Every
+pre-existing cell in both partitions is byte-identical after the widening
+(pre/post row dumps of all 21 tables compared); the only delta is the seven
+new columns reading v4's defaults.
+
+Two `generateDDL` columns are deliberately still absent:
+`characters.metadata` and `canChooseOutfit` are MANAGED_FIELDS that v4
+`delete`s from every DB row on create and update, no v4 migration adds them,
+and a real migrated instance does not carry them either.
+
+With the fixture widened, v4 answers 200 and the tripwire fired exactly as
+designed; the ruled row retires to a plain `check_body`. Mutation-proven:
+dropping `composerEmoji` from a scratch copy puts v4 back on the bare 500 and
+reddens the family with the same "expected an error arm" refusal the ruling
+documented.
 
 #### 2026-08-20 — docs(porting): plan the b8449b3e round — the anti-chorus drift catch-up + two maintenance lanes
 

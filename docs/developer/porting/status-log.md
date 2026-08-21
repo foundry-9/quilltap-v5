@@ -76737,3 +76737,254 @@ from `b8449b3e`; no correctness exposure either way.
 
 No release build was run — this order's gate does not call for one.
 
+---
+
+## P4.52 — the memories fixture vintage (2026-08-20, lane `claude/memories-fixture-vintage-port-1a0a09`)
+
+**Order:** `work-orders/p4.52-memories-fixture-vintage.md`. **CLOSED** — all
+Tier-1 and Tier-2 deliverables landed; the Tier-3 deferral is recorded loud
+below. **v4 baseline `b8449b3e`** (drift-checked at lane start: v4 HEAD was
+exactly the pin, tree clean, checkout on `main`; `git diff main bugfix --
+lib/ app/ packages/` showed bugfix carrying NOTHING main lacks — every file
+in that diff is main being ahead, and no file exists only on `bugfix`).
+Every regen ran from a lane-unique detached pin worktree,
+`/tmp/qt-v4-pin-p452-b8449b3e`, with all three symlink classes.
+
+This lane ports no v4 commit. It discharges the maintenance order the
+`c8a3cf77` round recorded: widen the committed `memories-{main,mount}.db`
+pair to v4's current schema vintage, and retire the
+`housekeeping_config_set` RULED VINTAGE ROW to a plain equality.
+
+### The root cause, stated once
+
+v4's `BaseRepository._update` (`lib/database/repositories/base.repository.ts:342`)
+writes `$set: validated` — the WHOLE validated entity, not the caller's
+patch. So every schema field carrying a Zod `.default()` is always present in
+`validated` and is therefore named in the UPDATE; a column the fixture
+predates is fatal. `.nullable().optional()` fields are absent from a parse
+that never saw them, so they are NOT named. That single fact explains the
+whole shape of this lane: which columns were fatal, which were merely
+missing, and which v4 never writes at all.
+
+### Deliverable 1 — the measured schema diff (not a guess)
+
+Method: dump the fixture pair's real schema (a scratch reader opening the
+test-pepper DBs through v4's aliased sqleet driver) and diff it, table by
+table, against v4's LIVE `generateDDL` at the pin
+(`harness/oracle/provision/dump-fresh-schema.ts`, run fresh from the pin
+worktree). Cross-check first: that fresh dump is **byte-identical to the
+committed `provisioning/fresh_schema.json`** in all three partitions
+(main 81 / mountIndex 30 / llmLogs 3 statements), so no D23 drift rode
+along and the committed artifact was a valid comparand.
+
+Columns present in `generateDDL` and missing from the fixture, for the
+tables the fixture carries:
+
+| partition | table | missing columns |
+|---|---|---|
+| main | `characters` | `metadata`, `archivedAt`, `archiveFileId`, `archivedAvatarFileId`, `canChooseOutfit` |
+| main | `chat_settings` | `composerEmoji`, `composerUnicode`, `smartTypographySettings` |
+| main | `connection_profiles` | `multiCharacterPrefill` |
+| mountIndex | — | **none** |
+
+Every other table the pair carries (`memories`, `chats`, `chat_messages`,
+`users`, `tags`, `api_keys`, `background_jobs`, `embedding_profiles`,
+`instance_settings`, `tfidf_vocabularies`, `vector_entries`,
+`vector_indices`, and all six `doc_mount_*` tables) is already at the
+current column set — including `doc_mount_file_links.linkGroupId`, which an
+earlier fixture-migration pass had covered.
+
+**Tables `generateDDL` emits that the pair does not have at all** (18 in
+main, 4 in mount-index) are NOT a vintage gap: v4 creates a collection's
+table lazily on first repository access, so the pair simply never touched
+them. Neither side needs them for these families.
+
+**Index deltas are not a gap either, and were measured rather than
+assumed.** The fixture carries `idx_memories_occurredAt` (from v4's real
+episodic migration — a migration-shape index `generateDDL` does not emit)
+and the legacy case-sensitive `idx_doc_mount_file_links_mp_path` /
+`idx_doc_mount_folders_mp_parent_name` where the pin emits the `_nocase`
+pair. v4's own repositories create these `IF NOT EXISTS` at collection
+init, and the folder/link repos explicitly run a repair scan every init
+"swapping out the legacy case-sensitive index on older databases"
+(`doc-mount-folders.repository.ts:60`, `doc-mount-file-links.repository.ts:386`).
+Both sides therefore heal that shape on access. The order made route 2
+(full migration replay) conditional on index/table-shape changes; the
+measurement says the only durable gap is columns, so **route 1 (v4's real
+ALTERs) was adequate** — and it is the one that leaves the seeded rows
+untouched.
+
+### Deliverable 2 — the widened pair, seeded rows byte-preserved
+
+New script `harness/oracle/fixtures/migrate-memories-fixture-columns.ts`
+(the `migrate-fixtures-pascal-columns` idiom: v4's own migration SQL,
+verbatim, behind v4's own "only if the column is missing" guard,
+idempotent, run from the v4 checkout for the aliased sqleet driver). It
+takes the .db files EXPLICITLY rather than a fixtures directory, because
+this lane widens the memories pair only.
+
+Seven ALTERs applied, all to `memories-main.db` (the mount partition needed
+nothing and is byte-unchanged in the commit):
+
+| column | v4 source |
+|---|---|
+| `characters.archivedAt` TEXT | `add-character-archive-fields.ts:50` |
+| `characters.archiveFileId` TEXT | `add-character-archive-fields.ts:55` |
+| `characters.archivedAvatarFileId` TEXT | `add-character-archive-fields.ts:60` |
+| `connection_profiles.multiCharacterPrefill` INTEGER DEFAULT 1 | `add-profile-multi-character-prefill-field.ts:65` |
+| `chat_settings.composerEmoji` INTEGER DEFAULT 1 | `add-composer-emoji-field.ts:54` |
+| `chat_settings.composerUnicode` INTEGER DEFAULT 1 | `add-composer-unicode-field.ts:55` |
+| `chat_settings.smartTypographySettings` TEXT DEFAULT `'{"displayQuotes":false,"dashes":true,"ellipsis":true}'` | `add-smart-typography-settings-field.ts:71` |
+
+One recorded disagreement between the two D23 shapes, the same column
+P4.D79 flagged: `generateDDL` emits `multiCharacterPrefill` as a bare
+`INTEGER`, v4's migration adds it `INTEGER DEFAULT 1`. The migration wins
+here (it is the shape a real instance carries), so the fixture's one
+connection-profile row now reads 1 rather than NULL. No oracle row moved
+because of it.
+
+**Byte-preservation proof.** Every row of every table in both partitions
+was dumped before and after (BLOBs as hex, rows canonically sorted) and
+compared cell by cell: 15 tables / 121 rows in main, 6 tables / 71 rows in
+mount; **table set identical, row counts identical, and every pre-existing
+cell unchanged**. The only delta is the seven new columns, reading exactly
+v4's declared defaults (`archived*` → NULL, `composerEmoji`/
+`composerUnicode`/`multiCharacterPrefill` → 1, `smartTypographySettings` →
+the JSON default). The dozens of row UUIDs the case files bake are
+therefore untouched, which is what let every other arm stay green.
+
+**Two `generateDDL` columns were deliberately NOT added, on evidence:**
+`characters.metadata` and `characters.canChooseOutfit`. Both are
+MANAGED_FIELDS (`lib/database/repositories/vault-overlay/schema.ts:197`) —
+v4 `delete`s them from the DB row on create (`characters.repository.ts:366`)
+and again on update (`:418`), the vault files are their sole source of
+truth, and a search of every `ALTER TABLE "characters"` in v4's migrations
+finds **no migration that ever adds them**. A real migrated instance does
+not carry them; only a freshly `generateDDL`-provisioned one does. Adding a
+column v4 never writes could only move a `SELECT *` projection, so the
+fixture stays on the production shape. Residual gap after the widening is
+exactly those two columns and nothing else, in either partition.
+
+### Deliverable 3 — the ruled vintage row retired
+
+`memories_routes_equivalence.rs`: the `housekeeping_config_set` branch is
+back to a plain `check_body` like its siblings; the tripwire and the ruling
+comment are gone, and the file header now carries the fixture's vintage
+stamp and the reason the two managed columns stay absent. The order's
+prediction held exactly — the first run over the widened fixture failed on
+**one row and one row only**, with the tripwire's own sentence ("the
+fixture-vintage ruling has EXPIRED (oracle answers 200)"), which is the
+signal, not a regression. v4 now answers
+`200 {"success":true,"settings":{"enabled":true,"perCharacterCap":1500,
+"perCharacterCapOverrides":{},"autoMergeSimilarThreshold":0.9,
+"mergeSimilar":false}}` and v5 matches it byte for byte.
+
+**Mutation proof of the retirement.** A scratch copy of the widened
+main fixture with `chat_settings.composerEmoji` dropped, the config oracle
+regenerated against it: v4 is back on `500 {"error":"Internal server
+error"}` and the family reddens with the very refusal the ruling documented
+(`[housekeeping_config_set] expected an error arm; use check_error`).
+Restored to the committed pair: green.
+
+### Deliverable 4 + Tier-2 item 6 — the consumer set, resolved by measurement
+
+The round record's wording ("that `.db` pair is SHARED with the other
+`memories-*` / `memory-*` families") is **WRONG**, and the order's
+planning-time grep was right. Measured: the three sibling families build
+their OWN fixtures into /tmp at regen time from v4's real repositories
+(`build-memories-fixture.ts` → `QT_FIXTURE_OUT`, `build-memories-read-fixture.ts`
+→ `QT_FIXTURE_MEMREAD`, `build-carina-memory-extraction-fixture.ts` →
+`/tmp/qt-carina-mem-*.db`), so they carry the current schema automatically
+and this lane cannot touch them. The committed pair's consumer set is
+closed at:
+
+1. `crates/quilltap-harness/tests/memories_routes_equivalence.rs` (two
+   oracle NDJSONs: `memories-routes`, `memories-config`) — regenerated
+   fresh at the pin through the unchanged sweep driver, zero SKIP, and
+   green including the formerly ruled row.
+2. `apps/web/e2e/characters-flow.spec.ts` (the Memories tab beats) and
+   `apps/web/e2e/settings-flow.spec.ts` (the Settings Memory tab beats),
+   which copy the pair into a live instance and boot `quilltap-web`.
+
+No `quilltap-web` Rust test reads the pair (no filename reference and no
+path-constant indirection), so no `quilltap-web` bump was owed.
+
+### Deliverable 5 — the vintage stamp
+
+`build-memories-web-fixture.ts` (the pair's provenance home) now carries a
+`SCHEMA VINTAGE: v4 b8449b3e (P4.52, 2026-08-20)` block naming the pin the
+schema matches and the in-place widening path, so the NEXT vintage gap is
+datable. The harness family header repeats it.
+
+### Tier-3 — the loud deferral
+
+**Widening any OTHER committed fixture is OUT OF SCOPE and was not done.**
+The measurement tooling generalizes trivially (dump each fixture's schema,
+diff against `fresh_schema.json`, apply the missing columns' v4 migration
+ALTERs), and the same latent class is likely present in the other committed
+pairs: any fixture whose `characters` table predates 4.9 will fail v4's
+whole-row update the same way, and `canChooseOutfit` is the one
+`.default()`-carrying column in that table that no migration supplies —
+a fixture minted before the vault fold-in would trip it. **Candidate
+maintenance sweep, not run here.** Nothing else was banked; no stubs, no
+TODOs, and no v5 source changed (the Mandate's constraint held — the
+widened fixture surfaced no v5 divergence to escalate).
+
+### The v5-side acceptance check (the order's "boot ensure must accept it")
+
+Two proofs, both over the committed widened pair:
+
+1. **The harness family's v5 side** — every arm, including the mutating
+   create / update / housekeep / config-set arms, runs against a fresh copy
+   of the widened pair and is green. No v5 refusal, no divergence the wider
+   fixture newly exposes.
+2. **A real `quilltap-web` boot**, mirroring exactly what the two Playwright
+   specs do (copy the pair into a data dir, write a `.dbkey`, rewrite the
+   user ids through the debug CLI, boot the server): `/health` → 423, the
+   `unlock` dispatch → `{"state":"resolved"}` (so all three partitions opened
+   and the boot ensure passes ran), `memoryList` → the baked rows
+   (`totalCount: 51`, first id `b2000000-…-0000000000a0`), and — the point
+   of the lane — `memoryHousekeepingConfigSet` through the production spine
+   answers `{"success":true,"settings":{"enabled":true,"perCharacterCap":1500,
+   "perCharacterCapOverrides":{},"autoMergeSimilarThreshold":0.9,
+   "mergeSimilar":false}}`, v4's body exactly. The only boot warnings are the
+   fixture's long-standing absent-table fail-softs (`conversation_chunks`,
+   `doc_mount_blobs`, the `llmLogs` partition) — unchanged by this lane, and
+   present before it.
+
+### Regen recipe (unchanged from the family header; run at the pin)
+
+```
+python3 harness/tools/recipe_sweep.py --run memories_routes_equivalence \
+  --v4 /tmp/qt-v4-pin-p452-b8449b3e --v5w <worktree>
+```
+
+which stages both cases into their own /tmp mirror and runs
+`QT_ORACLE_MEMORIES_ROUTES=/tmp/oracle-memories-routes.ndjson
+QT_ORACLE_MEMORIES_CONFIG=/tmp/oracle-memories-config.ndjson cargo test -p
+quilltap-harness --test memories_routes_equivalence`. Row counts at the pin:
+24 routes records, 23 config records. To re-apply the widening to a
+regenerated pair (or to a future vintage), from the v4 checkout under Node 24:
+
+```
+$N/node --import tsx <worktree>/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+  <worktree>/crates/quilltap-web/tests/fixtures/memories-main.db \
+  <worktree>/crates/quilltap-web/tests/fixtures/memories-mount.db
+```
+
+### Gate
+
+- `cargo fmt --all --check` ✓; `cargo clippy --workspace --all-targets`
+  plain ✓ AND with `--features quilltap-core/native-transport` ✓.
+- `cargo test --workspace` (with the family's two oracle env vars set, and
+  `CARGO_INCREMENTAL=0`): **440 test binaries / 2,236 passed / 0 failed** —
+  identical to the `c8a3cf77` baseline, as expected: this lane adds no test,
+  it retires an arm's ruling inside an existing one. `memories_routes_equivalence`
+  positively confirmed to have RUN (not skipped) — its by-name run through
+  the sweep driver reports `OK … recipe ran end-to-end` with both NDJSONs
+  freshly regenerated at the pin.
+- SPA untouched → no `ng` run. The two Playwright consumers were covered by
+  the real-server boot proof above rather than by a suite run.
+
+Versions: harness 0.0.512. `quilltap-web` NOT bumped — no web-side test or
+reference moved (nothing in that crate reads the pair).

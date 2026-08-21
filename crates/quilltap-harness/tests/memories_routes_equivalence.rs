@@ -5,22 +5,23 @@
 //! (the kind→status recipe). Mutation / job-enqueue arms are added by the later
 //! P4.6s commits.
 //!
-//! ⚠ **PRE-EXISTING RED — `housekeeping_config_set` (diagnosed 2026-08-20,
-//! P4.D95).** Not this family's port, and not fixable from inside it. v4's
+//! **Fixture vintage: v4 `b8449b3e`** (P4.52, 2026-08-20). The committed pair
+//! was widened to v4's current schema by
+//! `harness/oracle/fixtures/migrate-memories-fixture-columns.ts` — v4's own
+//! migration ALTERs for the seven columns it predated (`characters.archivedAt`
+//! / `archiveFileId` / `archivedAvatarFileId`,
+//! `connection_profiles.multiCharacterPrefill`, `chat_settings.composerEmoji` /
+//! `composerUnicode` / `smartTypographySettings`). That retired the
+//! `housekeeping_config_set` RULED VINTAGE ROW: v4's
 //! `handleWriteHousekeepingConfig` writes through `chatSettings.updateForUser`,
-//! whose UPDATE names every `chat_settings` column; the committed
-//! `memories-{main,mount}.db` fixture predates the three columns v4 added in
-//! the 4.8.2/4.8.3 round (`48396682`), so the statement dies on
-//! `SqliteError: no such column: composerEmoji`, v4 answers a bare 500, and
-//! `check_body` refuses the row with "expected an error arm". Reproduced
-//! against an UNMODIFIED oracle case at v4 `c8a3cf77`, so it long predates
-//! P4.D95. The repair is a fixture-vintage one — widen the committed
-//! `chat_settings` table to the current DDL (or rebuild via
-//! `build-memories-web-fixture.ts` with the ids re-pinned) — and it belongs to
-//! a maintenance order, because that `.db` pair is SHARED with the other
-//! `memories-*` / `memory-*` families and rebuilding it invalidates them all.
-//! Every other case in this family, including P4.D95's five recall-config arms,
-//! is green.
+//! whose `$set: validated` names every `chat_settings` column with a Zod
+//! default, so at the old vintage it died on `no such column: composerEmoji`
+//! and answered a bare 500. It now answers 200 and the row is a plain
+//! `check_body` like its siblings. Two `generateDDL` columns are DELIBERATELY
+//! still absent (`characters.metadata`, `canChooseOutfit`): both are
+//! MANAGED_FIELDS v4 strips from every DB write, no v4 migration adds them, and
+//! a real migrated instance does not carry them either — see the migrate
+//! script's header for the measured diff and the reasoning.
 //!
 //! TWO oracle NDJSONs feed this family (the route surface and the config
 //! surface); the run stage needs BOTH env vars or the test skips silently.
@@ -753,58 +754,16 @@ fn memories_routes_match_oracle() {
         );
     }
     {
-        // RULED VINTAGE ROW (P4.D95 diagnosis → pinned at the c8a3cf77
-        // unification). v4's `handleWriteHousekeepingConfig` writes through
-        // `chatSettings.updateForUser`, whose UPDATE names EVERY
-        // `chat_settings` column; the committed `memories-{main,mount}.db`
-        // fixture predates the three 4.8.2/4.8.3 columns (`composerEmoji` …),
-        // so AT THIS FIXTURE VINTAGE v4 dies (`no such column`) and answers
-        // its bare 500. Production v4 (migrated) answers 200 — the 500 is a
-        // fixture artifact, not behavior, so pinning v5 to it would port a
-        // wound. v5's `update_for_user` writes only the one column and
-        // survives. The arm asserts BOTH sides explicitly; when the fixture
-        // is widened (the named maintenance order — the `.db` pair is shared,
-        // so the repair is its own lane), the oracle flips to 200, the
-        // tripwire below fires, and this row retires to a plain `check_body`.
+        // P4.52 retired this row's fixture-vintage ruling: v4's whole-row
+        // `chatSettings.updateForUser` now survives the widened fixture and
+        // answers 200 with the settings bag, so both sides compare plainly.
         let db = fresh_db(&spec, "hcs");
         let resp = rt.block_on(memories::memory_housekeeping_config_set(
             &db,
             &uid,
             json!({ "enabled": true, "perCharacterCap": 1500 }),
         ));
-        let name = "housekeeping_config_set";
-        let rec = &oracle[name];
-        let vintage_artifact = rec["status"].as_u64() == Some(500)
-            && rec["body"]["error"].as_str() == Some("Internal server error");
-        if !vintage_artifact {
-            eprintln!(
-                "[{name}] the fixture-vintage ruling has EXPIRED (oracle answers {}): \
-                 the memories fixture was repaired — retire this ruled row to a plain \
-                 check_body",
-                rec["status"]
-            );
-            failed.push(name.to_string());
-        } else {
-            match &resp {
-                Response::Memory(body)
-                    if body["success"] == json!(true)
-                        && body["settings"]["enabled"] == json!(true)
-                        && body["settings"]["perCharacterCap"] == json!(1500)
-                        && body["settings"].get("perCharacterCapOverrides").is_some()
-                        && body["settings"].get("autoMergeSimilarThreshold").is_some()
-                        && body["settings"].get("mergeSimilar").is_some() =>
-                {
-                    eprintln!("[{name}] OK (ruled vintage row: v4 fixture-artifact 500, v5 200).");
-                }
-                other => {
-                    eprintln!(
-                        "[{name}] v5 side MISMATCH under the vintage ruling: {:?}",
-                        response_data(other)
-                    );
-                    failed.push(name.to_string());
-                }
-            }
-        }
+        check_body("housekeeping_config_set", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "rcg");

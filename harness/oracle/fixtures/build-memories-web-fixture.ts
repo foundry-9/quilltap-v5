@@ -28,6 +28,12 @@
  *       CHAT_AUTO  — autonomous type, two non-silent ASSISTANT messages
  *                    (queue-memories autonomous branch), no USER messages.
  *
+ * SCHEMA VINTAGE: v4 `b8449b3e` (P4.52, 2026-08-20). The committed pair is not
+ * re-baked on every v4 schema move — it is widened in place by
+ * `migrate-memories-fixture-columns.ts` (v4's own migration ALTERs), which is
+ * how a real instance gets those columns too. Datable: the next vintage gap is
+ * measured against this pin.
+ *
  * Regenerate (Node 24, from the v4 checkout) + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   W=<this worktree>
