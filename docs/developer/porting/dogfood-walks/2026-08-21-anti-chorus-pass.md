@@ -86,7 +86,7 @@ prompt-byte proofs are read with
 |---|---|---|---|---|---|
 | C1 | CLAUDE | A failed import names its dropped items (was A2) | `systemImportExecute` with five connection profiles whose typed parse must fail (`provider: 12345`), each carrying a differently-shaped `name`: absent / `null` / `7` / `["a","b"]` / `{"x":1}` | **PASS.** All five warnings fired with v4's sentence and the JS template-literal interpolation exactly as the P4.D91 §3 fix intends — `Failed to import connection profile "undefined"…` / `"null"` / `"7"` / `"a,b"` / `"[object Object]"`. Nothing written: `connection_profiles` 41 → 41, every `imported`/`skipped` counter 0. ⚠ Observation, not a defect: the `: {e}` tail is the Rust serde message (`invalid type: integer \`12345\`, expected a string`) where v4's is Zod's — the prefix and the quoted name are v4's bytes, and the tail cannot be byte-identical across the two runtimes | PASS |
 | C2 | CLAUDE | Bug-76 poisoned `outboundApiKeyId` heal (was B2) | The API refuses the poison outright (`API key provider does not match profile provider`, correctly), so the poison was made **the way the bug made it** — opened `Claude Haiku 4.5` in the profile modal, switched Provider Anthropic → Ollama, saved | **PASS.** The save succeeded and the row reads `provider: OLLAMA, apiKeyId: null` — the stale anthropic id cleared by the `\|\| null` always-send instead of the bug-76 400. The `outboundBaseUrl` chokepoint filled `http://localhost:11434` in the same gesture, the API Key select hid itself for Ollama, and the banked `Non-image attachments: No file attachments supported` line read correctly. Card now shows `OLLAMA · Base URL: …` with no API Key row | PASS |
-| C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Drove four real tool turns (`search` ×3, `read_conversation`, `rng` ×2) with a 200 ms DOM poll recording every `[role=status]` in the composer | **BLOCKED — the step as written cannot fire it, and that is v4's scope, not a v5 gap.** The notice is **`generate_image`-only** in both apps: `salon-conversation.ts:2933` (`if (call.name !== 'generate_image') continue`) ports v4's `trackToolsDetected`/`trackToolResult` filter. Ordinary tool calls raise nothing, correctly. Asked the cast to call `generate_image` outright and the model answered in prose instead — the seats here carry no `imageProfileId`, so the tool is not on the slate. **Re-word the queue item: it needs a seat with an image profile.** What the poll DID catch is the P4.D84 §3 pre-send validation sequence live — `Sending to Amy..` → `Amy is responding...` | BLOCKED(needs an image-profile seat) |
+| C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Four ordinary tool turns first (`search` ×3, `read_conversation`, `rng` ×2), then **three turns that really did call `generate_image`**, each watched by a correctly-scoped 120–150 ms poller over the composer's `[role=status]` AND `qt-toast-container`, with the raw `/api/events` stream recorded alongside | **FAIL(#99).** The notice is `generate_image`-only in both apps (`salon-conversation.ts:2933` ports v4's filter), so the ordinary tool turns raising nothing is correct. But on a real `generate_image` call **the server's frames are right and the UI shows nothing**: `{toolsDetected: 1, toolNames: ["generate_image"]}` → `{status: tool_executing}` → `{toolResult: {name: "generate_image", success: false}}`, every frame carrying the matching `chatId`, and no notice and no toast across three turns. v4 would show `Generating image…` at detection and the error notice + toast at the result. The publisher is wired on exactly the send path used (`:2737`). **The layer that drops it is NOT isolated** — see #99 | FAIL(#99) |
 | C4 | CLAUDE | The tool-change notice splices ONCE (was C1) | Chat sidebar → Chat → **Tools…** → unticked **Ask Carina** → Save, then sent two ordinary turns | **PASS.** Turn 1 (`16:08:54`) carries `[System Notice] Your available tools have been updated. You now have access to the following 24 tool(s): …` with `toolCount: 24`; turn 2 (`16:09:26`) carries **no notice** and `toolCount: 23` — the notice spliced exactly once and `forceToolsOnNextMessage` cleared, which is the P4.D82 deferral closed on real data. Bonus corroboration of #98 from the same dialog: with the Ollama profile selected, Search Web read `unavailable — Web search must be enabled in the connection profile`; after switching to the tool-capable DeepSeek profile it read `No search provider configured. Please add a search provider API key in Settings > API Keys.` — the two-arm gate order in `tools_inventory.rs:330-336`, in the right order | PASS |
 | C5 | CLAUDE | The vision send (was D3) | Generated a 240×160 PNG with deliberately unguessable content — solid deep-teal ground, one large white triangle point-up, three black dots in a row along the bottom — uploaded it through `POST /api/v1/files`, attached it with the composer's **Attach file from library**, and asked for a literal description on `Grok 4 Fast Non-Reasoning` (`supportsImageUpload = 1`, cheap) | **PASS — 💸 discharged.** The reply: *"Three black circles in a straight horizontal line at the bottom. One large white triangle sitting directly on top of them, point upward. The background is a solid deep teal, almost forest green."* — correct on every count, so the bytes genuinely reached the Grok wire. The `llm_logs` `CHAT_MESSAGE` projection carries `hasAttachments: true` on the user message (v4's `summarizeRequest` shape — a flag, not the bag) | PASS |
 | C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch. **Then done, same session:** the instance's own `api_keys` row holds the raw secret, so the server was relaunched with that value read straight into the child's environment (never echoed, never written to disk, never off-host) — and `search_web` ran **live** from a real turn, `success: true`, five current results (*"At a height of 828 meters, the Burj Khalifa is currently the undisputed tallest skyscraper in the world"*, plus `skyscrapercenter.com`'s 2026 table) for the model's own query `tallest building in the world current record holder name and height`. **💸 discharged; the P4.42 invariant holds — advertised and executed agree the moment the provider exists.** The gap in #98 is unchanged: it is the *configured* path v5 cannot see | FAIL(#98) → PASS (wire proven) |
@@ -102,9 +102,29 @@ prompt-byte proofs are read with
 ## Result
 
 **23 rows: 20 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
-(#98), 1 BLOCKED-with-diagnosis (C3).** Two findings, one fix shipped, eleven 💸
-items discharged. Only C11 (the batch maintenance run) is left to the human, on
-cost.
+(#98), 1 FAIL-open (#99).** Three findings, one fix shipped, eleven 💸 items
+discharged. Only C11 (the batch maintenance run) is left to the human, on cost.
+
+### C3 was wrong twice before it was right
+
+Worth recording, because both errors were mine and both were the same shape —
+stopping at the first negative instead of reading the data.
+
+1. First pass: the model declined to call `generate_image`, and I wrote the row
+   off as *"the seats carry no `imageProfileId`, so the tool is not on the
+   slate"* — asserted, never checked. It is on the slate; the refusal comes from
+   the **executor** (`tools/executor.rs:1505`), not from the inventory.
+2. Then a `generate_image` call did fire and refuse, and I appended *"which
+   confirms the diagnosis"* — when it does the opposite. And no poller was armed
+   at that moment, so "the notice didn't fire" was not even observed.
+3. Only on re-testing — three real calls, a correctly-scoped poller over both the
+   notice and the toast, and the raw `/api/events` stream recorded alongside —
+   did the actual result appear: **the frames are right and the UI is silent**.
+   That is finding #99, and it is a genuine v5 defect, not a scope note.
+
+The general lesson for a walk: a row that reads BLOCKED because *the trigger
+never fired* is not a result. Either make the trigger fire or mark it untested —
+never let the reason it didn't fire harden into a claim about the feature.
 
 ### A correction worth keeping: `effects`, not `sideEffects`
 
@@ -164,11 +184,9 @@ whispered announcements (C7), the roleplay quote delimiter (C9), the failed-impo
 warnings (C1), the Serper live-key smoke (C6), **and Pascal side effects end to
 end (C8)** — eleven in all.
 
-**Still owed:** the tool-execution notice (needs a seat with an image profile —
-re-word the item; a `generate_image` call did finally fire late in the pass and
-refused cleanly with `Image generation is not enabled for this chat`, which
-confirms the diagnosis), the other three P4.D35 write paths, and the
-memory-dedup / conversation-summaries first run (cost).
+**Still owed:** the tool-execution notice — no longer a 💸 item but **finding
+#99**, an open v5 defect with a free reproduction; the other three P4.D35 write
+paths; and the memory-dedup / conversation-summaries first run (cost).
 
 ### Two things worth a look that this pass did not chase
 

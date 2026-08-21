@@ -77455,8 +77455,8 @@ the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
 Walk doc: `docs/developer/porting/dogfood-walks/2026-08-21-anti-chorus-pass.md`.
 Agent-driven end to end (the human synced the data copy and built; the instance
 carries no user passphrase, so no unlock step was needed). 23 rows: **20 PASS,
-one FAIL fixed on main, one FAIL recorded whose wire was then proven anyway, one
-blocked with a diagnosis.** Two findings (#97, #98); **eleven** 💸 items
+one FAIL fixed on main (#97), one FAIL recorded whose wire was then proven anyway
+(#98), one FAIL left open (#99).** Three findings; **eleven** 💸 items
 discharged; only the batch maintenance run is left to the human, on cost.
 
 **Scope.** The two rounds that had never met real data — `c8a3cf77` (P4.D95
@@ -77614,14 +77614,50 @@ probe**` then the outcome message. ⚠ Scope: this is the **character-vault
 metadata** target; the other three of P4.D35's four heterogeneous write paths
 remain unit-proven only.
 
+### Finding #99 — the tool-execution notice never appears (OPEN)
+
+C3 took three attempts, and the first two were wrong in the same way: stopping at
+a negative instead of reading the data. First the model declined to call
+`generate_image` and the row was written off as *"the seats carry no
+`imageProfileId`, so the tool is not on the slate"* — asserted, never checked,
+and false (it is on the slate; the refusal comes from the **executor**,
+`tools/executor.rs:1505`). Then a call did fire and refuse, and the record gained
+*"which confirms the diagnosis"* — the opposite of what it shows — at a moment
+when no poller was even armed.
+
+Re-tested properly: three real `generate_image` calls, a correctly-scoped
+120–150 ms poller over both the composer's `[role=status]` and
+`qt-toast-container`, and the raw `/api/events` stream recorded alongside.
+**The server's frames are exactly right and the UI is silent.** The stream
+carries `{chatId, toolsDetected: 1, toolNames: ["generate_image"],
+toolArguments: […]}`, then `{chatId, status: {stage: "tool_executing"}}`, then
+`{chatId, toolResult: {name: "generate_image", success: false}}` — every frame
+with the matching `chatId`, so the salon's `filter` (`:2732`) passes them — and
+no notice and no toast render at any point.
+
+v4 raises the notice from two callbacks: `trackToolsDetected` publishes
+`Generating image...` the moment `toolNames` includes it
+(`useSSEStreaming.ts:380-387`, **before** execution, so the outcome is
+irrelevant), and `trackToolResult` publishes success/error plus a toast
+(`:414-435`). v5 ports both into `reportStreamTransitions` (`:2907`), wired on
+exactly the send path used (`:2737`). ⚠ **The dropping layer is not isolated** —
+one unchased probe: `qt-streaming-message` stayed at 0 elements for the whole
+turn, which would explain `toolBatches` rendering nothing, but the overlay may
+mount elsewhere and the non-streaming path wants ruling out first.
+
+Why coverage missed it: the bug-77 specs drive `reportStreamTransitions`
+directly with hand-built states (`salon-conversation.spec.ts:1963-1965`), so they
+prove the method, not the pipeline into it — the same "the production call could
+vanish unseen" gap the P4.D87 §3 review flagged on the teardown side, reappearing
+on the entry side. Reproduction is free: any chat whose seats resolve no image
+profile refuses at the executor without spending anything, and the frames still
+fly.
+
 ### Left owed
 
-The tool-execution notice, which is `generate_image`-scoped in BOTH apps and so
-needs a seat carrying an image profile — **the queue item wants re-wording**; a
-`generate_image` call did finally fire late in the pass and refused cleanly with
-`Image generation is not enabled for this chat`, which confirms the diagnosis;
-the other three P4.D35 write paths, which C8 did not reach; and the memory-dedup
-/ conversation-summaries first run, deferred by cost.
+Finding #99 (a focused session, not a dogfood patch); the other three P4.D35
+write paths, which C8 did not reach; and the memory-dedup /
+conversation-summaries first run, deferred by cost.
 
 Two loose threads recorded rather than chased: a `STORY_BACKGROUND_GENERATION`
 that failed its first attempt against the OpenAI Images API and succeeded on

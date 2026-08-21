@@ -1586,9 +1586,16 @@ records THERE. Update this summary only when a phase or round completes.
   re-arms the very caution the anti-chorus fix withholds (**candidate upstream
   filing**); and the caution can never see the message that just addressed the
   responder (the user message is persisted AFTER the eligibility read, in v4
-  as in v5). **Still owed:** the tool-execution notice (`generate_image`-scoped
-  in BOTH apps — the queue item wants re-wording; it needs a seat with an image
-  profile), P4.D35's other three write paths, and the dedup/summaries first run.
+  as in v5). **OPEN: finding #99** — on a real `generate_image` call the
+  server's frames are provably right (`toolsDetected` + `toolNames`,
+  `tool_executing`, `toolResult`, all carrying `chatId`) and **no notice and no
+  toast render**, measured over three turns; bug 77's whole surface is dark.
+  The dropping layer is NOT isolated — it needs a focused session, and the
+  reproduction is free (any chat with no resolved image profile refuses at the
+  executor while the frames still fly). The bug-77 specs drive
+  `reportStreamTransitions` directly, so they prove the method and not the
+  pipeline into it. **Still owed:** #99, P4.D35's other three write paths, and
+  the dedup/summaries first run.
 - **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
   disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
   b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at
