@@ -76609,3 +76609,23 @@ Mutation proofs, all red then restored: join separator `\n\n` → `\n`; the
 prefill route skipping the system append; the prose route dropping the identity
 instruction; the additions order swapped; one byte of the constant.
 
+### Unit 3 — the SPA client twin
+
+`apps/web/src/app/chat/skip-signal.ts` takes v4's new code as a near-verbatim TS
+transcription (the two constants + `buildDirectAddressRegex`, `escapeRegex`
+imported from `skip-signal-helpers` where v4 imports it from
+`lib/utils/regex`) — the client twin is a JS runtime, so none of the Rust-side
+fidelity work applies: the regex source is v4's, character for character.
+
+The parity spec (the P4.D58-era v4-client oracle) grows v4's own eight new cases
+1:1 plus the no-usable-name null return and its whisper-still-wins twin: 40
+tests green. Mutation-proven — dropping the trailing address-punctuation group
+(making the regex mention-like again) reddens `does NOT flag a possessive
+roll-call recap`.
+
+`findMentionedCharacterIds` is left in `skip-signal-helpers.ts` with **zero
+consumers**, documented as such: v4 still ships `mentioned-characters.ts` (its
+Rust twin keeps a live consumer in `services::off_scene`), and deleting the
+mirror would make a future client port re-derive it. Recorded as a deliberate
+call, not an oversight.
+

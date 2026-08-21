@@ -1,7 +1,8 @@
 /**
  * "Nothing to add" turn-skipping — shared pure logic, ported near-verbatim from
- * v4 `lib/chat/turn-manager/skip-signal.ts` (HEAD a7b1398d). The Rust port
- * `crate::skip_signal` is the second reference.
+ * v4 `lib/chat/turn-manager/skip-signal.ts` (HEAD b8449b3e, incl. `e22f7b36`'s
+ * direct-address rewrite). The Rust port `crate::skip_signal` is the second
+ * reference.
  *
  * Client-safe: only pure string helpers (imported from `./skip-signal-helpers`)
  * and type-level shapes. The Salon uses `computeSkipEligibility` for the human
@@ -17,7 +18,7 @@
  */
 
 import {
-  findMentionedCharacterIds,
+  escapeRegex,
   isParticipantPresent,
   normalizeContentBlockFormat,
   stripCharacterNamePrefix,
@@ -214,9 +215,60 @@ function isVisibleConversationalTurn(m: SkipEvent, respondingParticipantId: stri
 const RECENTLY_ADDRESSED_LOOKBACK = 10;
 
 /**
- * Has the responding character been addressed or mentioned since they last
- * spoke? A hit is the responder's name/alias in the recent corpus, or a whisper
- * targeted at the responder.
+ * Short interjections that commonly lead into a vocative ("Hey Marion, ...").
+ * Deliberately small — the goal is catching real address openers, not every
+ * word that could precede a name.
+ */
+const VOCATIVE_LEAD_INS =
+  '(?:hey|hi|hello|oh|no|yes|well|so|and|but|now|listen|please|right|ok|okay|thanks|sorry|merci)';
+
+/**
+ * Characters that can end the clause *before* a vocative: sentence punctuation,
+ * quotes, brackets, markdown emphasis, newlines, dashes. `-` sits last so the
+ * class needs no escaping.
+ */
+const VOCATIVE_PRE_BOUNDARY = '[.!?;:…"“”\'()\\[\\]*_~\\n—–-]';
+
+/**
+ * Build a regex matching the character's name or an alias in a direct-address
+ * (vocative) position: preceded by the start of the text, a clause boundary, a
+ * comma, an `@`, or a lead-in interjection — and followed by address
+ * punctuation (`Marion,` / `Greg?` / `Amy —` / `Al.`) or the end of a line. A
+ * name flowing mid-sentence ("if Greg is ready", "Friday's block", "I glance at
+ * Amy over the bench") deliberately does NOT match: narrating or citing someone
+ * is not speaking *to* them.
+ *
+ * Returns null when the character has no usable name tokens.
+ */
+function buildDirectAddressRegex(character: SkipCharacter): RegExp | null {
+  const tokens = [character.name, ...(character.aliases ?? [])]
+    .map((t) => t?.trim())
+    .filter((t): t is string => !!t && t.length > 0);
+  if (tokens.length === 0) return null;
+
+  // Longer tokens first so "John Smith" wins over "John".
+  const names = tokens
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegex)
+    .join('|');
+
+  return new RegExp(
+    `(?:^|${VOCATIVE_PRE_BOUNDARY}\\s*|,\\s+|@|\\b${VOCATIVE_LEAD_INS},?\\s+)` +
+      `(?:${names})\\s*(?:[,.!?…—–:;]|$)`,
+    'im',
+  );
+}
+
+/**
+ * Has the responding character been DIRECTLY addressed since they last spoke?
+ * A hit is the responder's name/alias in a vocative position
+ * ({@link buildDirectAddressRegex}), or a whisper targeted at the responder.
+ *
+ * Direct address, not mere mention, on purpose (v4 `e22f7b36`): in a
+ * chorus-prone group scene every turn's roll-call recap names most of the cast,
+ * so a mention-based signal marked everyone as addressed forever and the
+ * "answer rather than pass" caution fired for every character on every turn —
+ * nobody ever passed.
  */
 export function isRecentlyAddressed(
   events: ReadonlyArray<SkipEvent>,
@@ -255,8 +307,10 @@ export function isRecentlyAddressed(
     }
   }
 
+  const regex = buildDirectAddressRegex(respondingCharacter);
+  if (!regex) return false;
   const corpus = window.map((m) => m.content ?? '').join('\n');
-  return findMentionedCharacterIds(corpus, [respondingCharacter]).size > 0;
+  return regex.test(corpus);
 }
 
 export type MustSpeakReason =

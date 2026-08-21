@@ -6,7 +6,8 @@
  *   - `normalizeContentBlockFormat` / `stripCharacterNamePrefix`
  *       (`lib/llm/response-normalizer.ts`)
  *   - `findMentionedCharacterIds` (`lib/chat/context/mentioned-characters.ts`)
- *   - `escapeRegex` (`lib/utils/regex.ts`)
+ *   - `escapeRegex` (`lib/utils/regex.ts`) — the direct-address regex builder's
+ *       token escape since v4 `e22f7b36`
  *   - `isParticipantPresent` (`lib/schemas/chat.types.ts`)
  *
  * Kept apart from `skip-signal.ts` so that module stays a faithful mirror of
@@ -161,6 +162,11 @@ function buildCandidateNameRegex(candidates: MentionCharacter[]): RegExp | null 
  * Scan a corpus for whole-word, case-insensitive mentions of any candidate's
  * name or alias, returning the set of matched character IDs (v4
  * `findMentionedCharacterIds`).
+ *
+ * No client consumer since v4 `e22f7b36` moved `isRecentlyAddressed` onto
+ * direct address; kept as the faithful mirror of v4's still-shipping
+ * `lib/chat/context/mentioned-characters.ts` (whose Rust twin
+ * `crate::mentioned_characters` keeps its own consumer in `services::off_scene`).
  */
 export function findMentionedCharacterIds(
   scanCorpus: string,

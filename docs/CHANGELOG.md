@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(salon): the client skip-signal twin follows the direct-address rewrite
+
+_Versions: SPA 0.5.527._
+
+The Salon's client-side `isRecentlyAddressed` — which guards the human Skip
+button and the turn banner — takes v4 `e22f7b36`'s rewrite as a near-verbatim
+transcription: the two vocative constants and `buildDirectAddressRegex`, with
+`escapeRegex` replacing the mention scan as the module's regex import. The
+parity spec grows v4's own eight new cases 1:1, plus the no-usable-name null
+return and its whisper-still-wins twin, which the server family also pins.
+
+`findMentionedCharacterIds` stays in the client helpers with no consumer, as the
+faithful mirror of v4's still-shipping `mentioned-characters.ts` (whose Rust
+twin keeps its own consumer in `services::off_scene`); its doc comment now says
+so.
+
 #### 2026-08-21 — feat(salon): a group-scene discipline block rides every multi-character turn
 
 _Versions: core 0.0.593, harness 0.0.513._
