@@ -77454,10 +77454,10 @@ the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
 
 Walk doc: `docs/developer/porting/dogfood-walks/2026-08-21-anti-chorus-pass.md`.
 Agent-driven end to end (the human synced the data copy and built; the instance
-carries no user passphrase, so no unlock step was needed). 23 rows: **19 PASS,
+carries no user passphrase, so no unlock step was needed). 23 rows: **20 PASS,
 one FAIL fixed on main, one FAIL recorded whose wire was then proven anyway, one
-deferred to the human, one blocked with a diagnosis.** Two findings (#97, #98);
-ten 💸 items discharged.
+blocked with a diagnosis.** Two findings (#97, #98); **eleven** 💸 items
+discharged; only the batch maintenance run is left to the human, on cost.
 
 **Scope.** The two rounds that had never met real data — `c8a3cf77` (P4.D95
 per-turn conversation summaries, P4.9L2 the Document-Mode toolbar) and
@@ -77585,15 +77585,43 @@ API` — v4's winston Error shape, no `key derivation failed:` prefix, and
 purpose-drawn PNG whose content could not be guessed — the reply named all three
 shapes, their arrangement, and the ground colour.
 
+### Pascal side effects, end to end (C8)
+
+First written off on a grep for `sideEffects`; the schema field is **`effects`**,
+and reading all nine real `.tool.json` definitions out of the mount index found
+one on `agent_lambda` — `{target: "metadata.lastLambdaOutput", value: "{{llm}}"}`
+alongside `chipLabel: "{{params.visible_request}}"`. Both halves of P4.D35 then
+proved out on real data.
+
+*The dry run.* The Workbench's **Side effects** card renders the definition as a
+form row (`When: every run` / `Target: metadata.lastLambdaOutput` / `Value:
+expression → {{llm}}`, header `Add effect (1/16)`). With a scripted oracle the
+bench reported `raw 0.2098 → value 1.21 · matched row 1 (success)` and then
+`→ metadata.lastLambdaOutput = "ANSIBLE-OK: lambda returned 42" (would write)`,
+under its own stated contract: **"The bench computes effects; it never applies
+them."** That is the pure-plan half, visibly not committing.
+
+*The live run.* Run in the chat as Charlie, whose vault passes the tool's
+`hasAnsibleTool` + `toolAbilities contains "programmable"` gate. Charlie's
+`metadata.json` went from a **v4-written** multi-line ansible-node report to
+`DOGFOOD-EFFECT-PROBE-2026-08-21`, `updatedAt` 2026-08-20T21:57 →
+2026-08-21T19:03 — and **every other key survived** (`hasAnsibleTool`,
+`ansibleTool`, `toolAbilities`, `toolVersion`, `latticeVersion`,
+`ansiblePassport`), so the applier merges into the existing JSON rather than
+replacing it. The chip rendered `Pascal · Ping the ansible probe` from
+`chipLabel`, and the bubble came out in v4's two blocks: `🎲 **Ping the ansible
+probe**` then the outcome message. ⚠ Scope: this is the **character-vault
+metadata** target; the other three of P4.D35's four heterogeneous write paths
+remain unit-proven only.
+
 ### Left owed
 
 The tool-execution notice, which is `generate_image`-scoped in BOTH apps and so
 needs a seat carrying an image profile — **the queue item wants re-wording**; a
 `generate_image` call did finally fire late in the pass and refused cleanly with
 `Image generation is not enabled for this chat`, which confirms the diagnosis;
-Pascal cross-tier side effects (the library is live with real tools, but whether
-any definition carries a `sideEffects` block is unread); and the memory-dedup /
-conversation-summaries first run, deferred by cost.
+the other three P4.D35 write paths, which C8 did not reach; and the memory-dedup
+/ conversation-summaries first run, deferred by cost.
 
 Two loose threads recorded rather than chased: a `STORY_BACKGROUND_GENERATION`
 that failed its first attempt against the OpenAI Images API and succeeded on

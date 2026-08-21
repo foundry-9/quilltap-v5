@@ -1551,7 +1551,8 @@ records THERE. Update this summary only when a phase or round completes.
   agent-driven, on the Friday copy) — 23 rows, 18 PASS, ONE FIX SHIPPED,
   two findings, nine 💸 items discharged.** Walk doc:
   `dogfood-walks/2026-08-21-anti-chorus-pass.md`; record in `status-log.md`.
-  (23 rows, 19 PASS; **ten** 💸 items once the Serper smoke came off the list.)
+  (23 rows, 20 PASS; **eleven** 💸 items once the Serper smoke and Pascal side
+  effects came off the list.)
   **Discharged:** the live group-scene walk (both anchor routes proven at the
   byte level on a real three-character chat; a character actually passed with
   the skip sentinel), the P4.D95 per-turn cadence (mutation-proven ON vs OFF
@@ -1572,7 +1573,14 @@ records THERE. Update this summary only when a phase or round completes.
   server was relaunched with that column read straight into the child's
   environment (never printed, never on disk, never off-host) and `search_web`
   returned five live results on a real turn, so advertised and executed agree
-  the moment the provider exists. Only the *configured* path is missing. **Two
+  the moment the provider exists. Only the *configured* path is missing.
+  **P4.D35's Pascal side effects also closed end to end**: `agent_lambda` (the
+  schema field is **`effects`**, not `sideEffects` — a grep for the wrong key
+  is what first wrote this off) dry-ran in the Workbench under its own stated
+  contract *"the bench computes effects; it never applies them"*, then committed
+  live — a v4-written `metadata.lastLambdaOutput` overwritten in the character
+  vault with every sibling key intact, `chipLabel` and the two-block bubble both
+  rendering; the other three write paths stay unit-proven only. **Two
   v4-heuristic observations, both v4-faithful:** `and` sits in v4's
   `VOCATIVE_LEAD_INS`, so `…X and Y.` reads as addressing Y — a roll-call recap
   re-arms the very caution the anti-chorus fix withholds (**candidate upstream
@@ -1580,7 +1588,7 @@ records THERE. Update this summary only when a phase or round completes.
   responder (the user message is persisted AFTER the eligibility read, in v4
   as in v5). **Still owed:** the tool-execution notice (`generate_image`-scoped
   in BOTH apps — the queue item wants re-wording; it needs a seat with an image
-  profile), Pascal cross-tier side effects, and the dedup/summaries first run.
+  profile), P4.D35's other three write paths, and the dedup/summaries first run.
 - **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
   disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
   b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at

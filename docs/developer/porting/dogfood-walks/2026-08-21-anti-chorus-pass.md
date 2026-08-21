@@ -91,7 +91,7 @@ prompt-byte proofs are read with
 | C5 | CLAUDE | The vision send (was D3) | Generated a 240×160 PNG with deliberately unguessable content — solid deep-teal ground, one large white triangle point-up, three black dots in a row along the bottom — uploaded it through `POST /api/v1/files`, attached it with the composer's **Attach file from library**, and asked for a literal description on `Grok 4 Fast Non-Reasoning` (`supportsImageUpload = 1`, cheap) | **PASS — 💸 discharged.** The reply: *"Three black circles in a straight horizontal line at the bottom. One large white triangle sitting directly on top of them, point upward. The background is a solid deep teal, almost forest green."* — correct on every count, so the bytes genuinely reached the Grok wire. The `llm_logs` `CHAT_MESSAGE` projection carries `hasAttachments: true` on the user message (v4's `summarizeRequest` shape — a flag, not the bag) | PASS |
 | C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch. **Then done, same session:** the instance's own `api_keys` row holds the raw secret, so the server was relaunched with that value read straight into the child's environment (never echoed, never written to disk, never off-host) — and `search_web` ran **live** from a real turn, `success: true`, five current results (*"At a height of 828 meters, the Burj Khalifa is currently the undisputed tallest skyscraper in the world"*, plus `skyscrapercenter.com`'s 2026 table) for the model's own query `tallest building in the world current record holder name and height`. **💸 discharged; the P4.42 invariant holds — advertised and executed agree the moment the provider exists.** The gap in #98 is unchanged: it is the *configured* path v5 cannot see | FAIL(#98) → PASS (wire proven) |
 | C7 | CLAUDE | Whispered announcements (was D8) | Composer → **Insert announcement** → sender The Host → ticked Amy + Abigail under **Who hears it** → posted | **PASS.** The dialog re-labels itself live as the audience narrows: heading `Announcement` → `Whisper`, hint `Everyone present hears this…` → `Whispered to Amy, Abigail. No other character receives it in their context. Make it public.`, button `Post Announcement` → `Post Whisper` — v4's audience-replaces-roster shape. The row stored `systemSender: host, systemKind: announcement, targetParticipantIds: ["39441710…","ba1a44e7…"]` — the two ticked seats and no one else. **Both render sites carry the tag**: the collapsed chip reads `The Host · announcement · whispered to Amy, Abigail`, expanded it reads `The Host · announcement · to Amy, Abigail` with the body in a plain `qt-chat-message-content` prose block (no v5-invented system slab — the P4.25 fix holding). Not exercised: the All Whispers toggle against a Prospero `group-context` whisper | PASS |
-| C8 | CLAUDE | Pascal cross-tier side-effect writes (was D9) | Confirmed the library is live on real data — `customToolsLibrary` returns real tools (`scan_hawking_radiation`, `force_adjustment`, `root_access`, …) from `Quilltap General/Tools/`, all `valid: true, gate: available` | **DEFERRED-TO-HUMAN.** Whether any of these definitions carries a `sideEffects` block needs the `.tool.json` bodies read, and authoring one to order is a larger setup than the rest of this pass. The substrate is demonstrably healthy; what is unproven is the P4.D35 effect applier on a real cross-tier write | DEFERRED-TO-HUMAN |
+| C8 | CLAUDE | Pascal cross-tier side-effect writes (was D9) | Read all nine `.tool.json` definitions out of the mount index (`doc_mount_file_links` → `doc_mount_documents`). **`agent_lambda` carries one effect** — `{target: "metadata.lastLambdaOutput", value: "{{llm}}"}` — plus `chipLabel: "{{params.visible_request}}"`. Ran it both ways: the Workbench dry run with a scripted oracle (free), then live in the chat as Charlie, whose vault passes the `hasAnsibleTool` + `toolAbilities contains "programmable"` gate | **PASS, end to end.** *Dry run:* the **Side effects** card renders the real definition as a form row (`When: every run` / `Target: metadata.lastLambdaOutput` / `Value: expression → {{llm}}`, header `Add effect (1/16)`), and the bench reports `raw 0.2098 → value 1.21 · matched row 1 (success)` then `→ metadata.lastLambdaOutput = "ANSIBLE-OK: lambda returned 42" (would write)` under the explicit contract **“The bench computes effects; it never applies them.”** *Live run:* Charlie's vault `metadata.json` went from a v4-written multi-line ansible report to `DOGFOOD-EFFECT-PROBE-2026-08-21`, `updatedAt` 2026-08-20T21:57 → 2026-08-21T19:03, and **every other key survived** (`hasAnsibleTool`, `ansibleTool`, `toolAbilities`, `toolVersion`, `latticeVersion`, `ansiblePassport`) — a merge, not a clobber. The chip rendered `Pascal · Ping the ansible probe`, and the bubble came out in v4's two blocks: `🎲 **Ping the ansible probe**` then the outcome. ⚠ Scope: this proves the **character-vault metadata** target; the other three of P4.D35's four write paths are still only unit-proven | PASS |
 | C9 | CLAUDE | A roleplay template delimited by a quote character (was E1) | The chat runs the built-in **Standard** template, whose `dialogueDetection` opens/closes on `"` and `“`/`”`. Sent `*I set the mug down.* "It's the plumb line -- that's what I meant," I say.` with `smartTypographySettings = {displayQuotes: true, dashes: true, ellipsis: true}` | **PASS on all three axes.** (a) **Stored bytes untouched** — pure ASCII, straight `"` and `'`; smart quotes are render-time, exactly as P4.D71 landed them. (b) **Rendered** as `“It’s the plumb line -- that’s what I meant,”` — quotes and apostrophes curled. (c) **The delimiter still matched the curled text**: the whole run came back inside `<span class="qt-chat-dialogue">`, narration as `<em>` — which is the question the step was really asking. The dash ladder was verified separately with real keystrokes: three `-` presses → `—` (U+2014). ⚠ Test artifact worth remembering: the browser `type` action bulk-inserts, so `--` typed that way never fires the per-keystroke rule — not a defect, but a dash test must use `key` presses | PASS |
 | C10 | CLAUDE | The P4.50 `combined.log` look at a real failed turn (💸) | A real failure arrived unprompted: `STORY_BACKGROUND_GENERATION` failed its first attempt against the OpenAI Images API | **PASS — 💸 discharged.** `combined.log` carries `{"level":"warn","message":"Job failed","context":{module,job_id,job_type,attempts},"error":{"name":"Error","message":"Image generation failed: Invalid response from OpenAI Images API"}}` — v4's winston Error shape, the real sentence, and **no `key derivation failed:` prefix**, which is exactly the P4.50 acceptance. `grep -c 'key derivation failed' combined.log` → 0. (The job then succeeded on attempt 2 — related to the previous walk's open question about a twice-failed story background, and worth its own look) | PASS |
 | C11 | HUMAN | Memory dedup + conversation-summaries first run (P4.43) | The two maintenance cards on a real corpus | Batch LLM spend over Friday's whole memory graph — deferred by cost | DEFERRED-TO-HUMAN |
@@ -101,9 +101,21 @@ prompt-byte proofs are read with
 
 ## Result
 
-**23 rows: 19 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
-(#98), 1 DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix
-shipped, ten 💸 items discharged.
+**23 rows: 20 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded-but-wire-proven
+(#98), 1 BLOCKED-with-diagnosis (C3).** Two findings, one fix shipped, eleven 💸
+items discharged. Only C11 (the batch maintenance run) is left to the human, on
+cost.
+
+### A correction worth keeping: `effects`, not `sideEffects`
+
+C8 was first written off as "no definition carries a `sideEffects` block" on the
+strength of a grep — for the wrong key. The schema field is **`effects`**, and
+`agent_lambda` had one all along. The lesson is the ordinary one: grep for the
+field name the *schema* uses (`$schema` → `/schemas/qtap-custom-tool.schema.json`,
+whose top-level keys across the nine real definitions are `$schema`,
+`availableWhen`, `chipLabel`, `description`, `effects`, `llm`, `name`,
+`outcomes`, `parameters`, `revealOdds`, `roll`, `title`), never the name the
+prose happens to use for the feature.
 
 ### A note on how the Serper key was handled (C6)
 
@@ -149,13 +161,14 @@ repeating this should keep those properties; the script is
 summaries cadence (B3), the vision send (C5), the P4.50 `combined.log` look at
 a real failure (C10), the bug-76 key heal (C2), the tool-change splice (C4),
 whispered announcements (C7), the roleplay quote delimiter (C9), the failed-import
-warnings (C1), **and the Serper live-key smoke (C6)** — ten in all.
+warnings (C1), the Serper live-key smoke (C6), **and Pascal side effects end to
+end (C8)** — eleven in all.
 
 **Still owed:** the tool-execution notice (needs a seat with an image profile —
 re-word the item; a `generate_image` call did finally fire late in the pass and
 refused cleanly with `Image generation is not enabled for this chat`, which
-confirms the diagnosis), Pascal cross-tier side effects, and the memory-dedup /
-conversation-summaries first run (cost).
+confirms the diagnosis), the other three P4.D35 write paths, and the
+memory-dedup / conversation-summaries first run (cost).
 
 ### Two things worth a look that this pass did not chase
 
