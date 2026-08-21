@@ -76570,15 +76570,21 @@ alternation's remaining arms, the longest-first overlap pair, the
 no-usable-name null return + its whisper-still-wins twin, and the fidelity
 vectors above: 15 → **43** `recentlyAddressed` rows.
 
-**The note bytes had NO differential before this round — the order's premise
-that `build_context_tier3` carries turn-skip ops is REFUTED:** every one of the
-26 corpus ops passes `turnSkip` unset and the Rust side hardcodes
-`turn_skip: None`, so the Turn note never appeared in a single comparand. Closed
-with a new `turnSkipNote` kind in the same tier-1 family driving v4's REAL
-exported `buildTurnSkipInstruction` (4 rows: base, caution, an interpolated
-`Dr. $1 Strange` name, an empty name). Mutation-proven both ways (one byte in
-the new base paragraph → red on `base`; reverting the caution's reword → red on
-`with-caution`).
+**The order's premise that `build_context_tier3` carries turn-skip ops is
+REFUTED:** every one of its 26 corpus ops passes `turnSkip` unset and the Rust
+side hardcodes `turn_skip: None`, so the Turn note never appeared in a single
+comparand of that family. Closed with a new `turnSkipNote` kind in the same
+tier-1 family driving v4's REAL exported `buildTurnSkipInstruction` (4 rows:
+base, caution, an interpolated `Dr. $1 Strange` name, an empty name).
+Mutation-proven both ways (one byte in the new base paragraph → red on `base`;
+reverting the caution's reword → red on `with-caution`).
+
+> **Correction (unit 4, after measuring).** An earlier draft of this record and
+> its changelog entry said the note bytes had NO differential at all. That is
+> wrong: `build_context_tier3` has none, but `orchestrator_tier3` carries the
+> note through the production spine in **25** regenerated rows. The tier-1 rows
+> are still the byte-exact, mutation-proven pin; the spine coverage was
+> transitive and unnamed. Corrected in place rather than left standing.
 
 Family: **138 rows green** (`[42, 10, 9, 11, 7, 43, 12, 4]`), zero SKIP,
 through `recipe_sweep.py --run skip_signal_equivalence --v4 <pin>`.
@@ -76597,9 +76603,11 @@ from v4's source by dumping the real export (1,380 UTF-8 bytes / 1,372 UTF-16
 units), never retyped.
 
 **NEW tier-1 family `multi_character_turn_anchor_equivalence`** — no oracle
-drove `applyMultiCharacterTurnAnchor` before this round (surveyed: no harness
-test, no oracle case; coverage was `message_context.rs` unit tests, which turn
-out not to touch it either). Fixture-free tsx case over v4's REAL exports:
+drove `applyMultiCharacterTurnAnchor` DIRECTLY before this round (surveyed: no
+harness test, no oracle case; `message_context.rs`'s own unit tests turn out not
+to touch it either). Unit 4 then measured the transitive coverage: the anchor's
+bytes reach **49** `orchestrator_tier3` rows through the spine. Fixture-free tsx
+case over v4's REAL exports:
 1 discipline-constant row + 13 anchor rows covering both routes × {system
 present, absent}, a system message that is not first, two system messages (the
 first wins), empty system content, an empty message array on both routes, and
@@ -76628,4 +76636,82 @@ consumers**, documented as such: v4 still ships `mentioned-characters.ts` (its
 Rust twin keeps a live consumer in `services::off_scene`), and deleting the
 mirror would make a future client port re-derive it. Recorded as a deliberate
 call, not an oversight.
+
+### Unit 4 — the spine regen, and what actually carries the new bytes
+
+Fourteen candidate families regenerated at the pin through the sweep driver in
+one `--run-all` batch (`--label "P4.D96 spine regen at b8449b3e"`, artifact
+`/tmp/p4d96-sweep-results.json`): `orchestrator_tier3`, `primary_stream_tier3`,
+`regenerate_swipe_tier3`, `build_context_tier3`, `salon_skip`,
+`salon_swipe_generate`, `answer_confirmation_tier3`, `native_tool_loop_tier3`,
+`text_tool_loop_tier3`, `message_finalizer_tier3`, `brahma_orchestrator_tier3`,
+`carina_query_tier3`, `turn_orchestrator_tier2`, `system_prompt`. **All 14 OK,
+exit 0, zero SKIP.**
+
+Green alone proves nothing about coverage, so each regenerated NDJSON was
+grepped for the three changed byte sequences. The measurement (and it corrects
+the order's guess about which families matter):
+
+| family | discipline block | turn note | identity instruction |
+| --- | --- | --- | --- |
+| `orchestrator_tier3` | 56 | 25 | 49 |
+| `regenerate_swipe_tier3` | 3 | 0 | 3 |
+| `salon_swipe_generate` | 1 | 0 | 0 |
+| the other eleven | 0 | 0 | 0 |
+
+So `orchestrator_tier3` is the one family that carries **all three** changed
+surfaces through the production spine, and its green is the end-to-end proof
+that v5's chat spine now emits v4's exact new prompt bytes.
+`primary_stream_tier3`, `salon_skip`, `build_context_tier3`,
+`answer_confirmation_tier3`, the two tool loops, `message_finalizer_tier3`,
+`turn_orchestrator_tier2`, `system_prompt` and the brahma/carina pair reach none
+of them — named here so a later round does not re-guess. No committed corpus
+anywhere in the tree carries the old bytes (grepped), so no fixture moved.
+
+### Unit 5 — the `b8449b3e` NO-PORT disposition
+
+`b8449b3e` ("fix(tests): disable V8 Sparkplug for jest to stop the worker
+SIGSEGV flake", v4 bug 83) is jest launch infrastructure: five `package.json`
+scripts now launch `node --no-sparkplug node_modules/jest/bin/jest.js`,
+`jest.global-setup.js` grows `armSparkplugGuard()` pushing `--no-sparkplug` onto
+`process.execArgv` before any worker forks, `jest.integration.config.ts` adopts
+the same `globalSetup`, and one v4 test closes its per-test database. **v5 has
+no jest — NO-PORT, nothing to mirror.**
+
+**The order's flake-risk question, answered by reading the file:** our own
+`harness/oracle/lib/jest-zone-globalsetup.cjs` (the TZ pin the two zone-legged
+families pass via `--globalSetup`) **CHAINS** v4's `jest.global-setup.js` rather
+than replacing it — it resolves `<cwd>/jest.global-setup.js`, requires it, and
+awaits it. So `armSparkplugGuard()` still runs for those families, and there is
+no bypass. Our recipes invoke `npx jest` directly rather than through v4's npm
+scripts, which means the main jest process itself is not under `--no-sparkplug`
+— exactly the ad-hoc case v4's `execArgv` push exists to cover, so the workers
+(where the crash happens) are protected. Net: the regen venue strictly gains
+from `b8449b3e`; no correctness exposure either way.
+
+### Tier-2 / tier-3 dispositions
+
+- **`docs/v4` mirror (tier 2, item 7):** `docs/v4/developer/features/complete/
+  nothing-to-add.md` refreshed from v4 (it gains the 2026-08-20 amendment note).
+  The two help files are NOT mirrored — `docs/v4/help/` carries exactly one file
+  (`database-protection.md`) against v4's 120, so there is nothing to refresh
+  there.
+- **The e2e assertion slot (tier 2, item 8): NONE EXISTS.** Surveyed: no
+  Playwright beat inspects outgoing prompt content, and `llm-inspector-flow`
+  reads the three rows `global-setup.ts` seeds rather than a live request. Per
+  the order, no new beat machinery was built. No e2e spec changed this lane.
+- **DEFERRED LOUD — help docs → the `p4.9i2` bank (tier 3, item 9):**
+  `help/chat-multi-character.md` (a new "Keeping the Company Out of Chorus"
+  section) and `help/turn-skipping.md` (the restate-is-not-substantive sentence
+  + the rewritten "When a character is expected to speak" section, which now
+  says mere mention no longer counts). No v5 action — the Guide client half is
+  deferred whole. **`docs/developer/porting/phase-4.md` was NOT edited: it is
+  the unifier's file and both sibling lanes could conflict on it. The bank entry
+  belongs in the round-close candidate list.**
+- **DEFERRED LOUD — 💸 the live group-scene walk (tier 3, item 10):** a real
+  multi-character chat with the chorus visibly breaking joins the standing
+  dogfood queue. Nothing in this lane is provable by a live run that the
+  differentials do not already pin at the byte level; what a walk adds is
+  whether the discipline block actually changes model behavior on a weak model,
+  which is a judgement no oracle can make.
 

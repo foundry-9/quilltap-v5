@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): the P4.D96 spine regen, the b8449b3e NO-PORT, and two corrections
+
+_Docs-only change._
+
+Records unit 4 (fourteen spine families regenerated at the `b8449b3e` pin
+through the sweep driver — all green, exit 0, zero SKIP) with the coverage
+measurement that green alone does not give: `orchestrator_tier3` is the one
+family carrying all three changed byte sequences through the production spine
+(56 discipline blocks, 25 turn notes, 49 identity instructions),
+`regenerate_swipe_tier3` and `salon_swipe_generate` carry the discipline block
+only, and the other eleven carry none. No committed corpus in the tree carries
+the old bytes, so no fixture moved.
+
+Records unit 5: v4 `b8449b3e` (the jest `--no-sparkplug` guard for bug 83) is
+NO-PORT — v5 has no jest — and our own zone-legged `jest-zone-globalsetup.cjs`
+chains v4's `globalSetup` rather than replacing it, so the guard still arms for
+the two families that pass it. The regen venue gains from the commit; nothing is
+bypassed.
+
+Corrects two claims in this round's earlier entries, which the unit-4
+measurement disproved: the turn-skip note and the turn anchor each had no
+*direct* differential before this round, but both were covered transitively by
+`orchestrator_tier3`. Also refreshes the `docs/v4` mirror of the nothing-to-add
+spec, and records the deferrals: the two help docs to the `p4.9i2` bank, and a
+live group-scene walk to the dogfood queue.
+
 #### 2026-08-21 — feat(salon): the client skip-signal twin follows the direct-address rewrite
 
 _Versions: SPA 0.5.527._
@@ -50,7 +76,8 @@ the previous turns as the strongest style examples in context, models converge
 into exactly the chorus the block forbids.
 
 New tier-1 differential `multi_character_turn_anchor_equivalence` over v4's real
-exports — no oracle drove this function before. Both routes × system message
+exports — no oracle drove this function *directly* before; the spine covered it
+transitively through `orchestrator_tier3`. Both routes × system message
 present/absent, system-message placement (not first; two systems, the first
 wins), empty system content, an empty message array, and four interpolated-name
 shapes, each row diffed as the full post-call message array, plus the constant
@@ -86,8 +113,9 @@ erring toward "addressed", as `crate::mentioned_characters` already does.
 
 The skip-signal differential grows v4's own eight new suite shapes 1:1 plus the
 fidelity vectors, and gains a `turnSkipNote` kind driving v4's real
-`buildTurnSkipInstruction` — the note bytes had no differential at all before
-this round, since every `build_context_tier3` op passes `turnSkip: None`.
+`buildTurnSkipInstruction` — the note bytes had no *direct* differential before
+this round (every `build_context_tier3` op passes `turnSkip: None`); the spine
+carried them only transitively, through 25 `orchestrator_tier3` rows.
 
 #### 2026-08-20 — docs(porting): plan the b8449b3e round — the anti-chorus drift catch-up + two maintenance lanes
 
