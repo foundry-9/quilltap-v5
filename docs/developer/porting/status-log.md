@@ -77449,3 +77449,141 @@ built. The doc comment in `skip_signal.rs` now carries the ratification
 date; the same standing class in `crate::mentioned_characters` is covered by
 the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
 (`Zoë`/`ZOË` both ways) as the pin that ordinary accented names stay exact.
+
+## Dogfood pass — the anti-chorus + per-turn-summaries rounds on the Friday copy (2026-08-21)
+
+Walk doc: `docs/developer/porting/dogfood-walks/2026-08-21-anti-chorus-pass.md`.
+Agent-driven end to end (the human synced the data copy and built; the instance
+carries no user passphrase, so no unlock step was needed). 23 rows: **18 PASS,
+one FAIL fixed on main, one FAIL recorded, two deferred to the human, one
+blocked with a diagnosis.** Two findings (#97, #98).
+
+**Scope.** The two rounds that had never met real data — `c8a3cf77` (P4.D95
+per-turn conversation summaries, P4.9L2 the Document-Mode toolbar) and
+`b8449b3e` (P4.D96 the anti-chorus discipline) — plus as much of the 2026-08-19
+PENDING carry-over and the standing 💸 queue as the pass could reach.
+
+### The anti-chorus round, proven on a purpose-built real-character group chat
+
+A three-character chat (Friday / Amy / Abigail, Charlie as the user seat) was
+created from real characters and driven through nine turns.
+
+- **`GROUP_SCENE_DISCIPLINE` reaches the wire on both routes.** The prose route
+  (`multiCharacterPrefill = 0`) appends exactly TWO blocks in v4's order —
+  identity instruction first, then the 1,372-character discipline block
+  byte-identical to `message_context.rs:554` — and the discipline block is the
+  LAST thing in the system message. The prefill route (`= 1`) appends exactly
+  ONE (identity absent, verified by its absence, not by eye) and the last wire
+  message is `{role: "assistant", content: "[Friday]"}`.
+- **The direct-address rewrite behaves.** A third-person mention of the
+  responder (`I keep wondering what Abigail makes of the brass plaque…`) does
+  NOT arm the caution — v4's own `mention-hit` red row, now green in
+  production. A vocative (`Abigail, did you ever settle…`) does. The Turn note
+  carries the reworded restate-is-a-pass paragraph verbatim.
+- **A character actually passed.** `The Host · nothing to add` appeared in the
+  transcript unprompted — the skip sentinel round-tripping end to end on real
+  data, which no fixture proves.
+
+**Two v4-heuristic observations, both v4-faithful and neither a v5 defect.**
+(1) `and` is in v4's `VOCATIVE_LEAD_INS`, so `…watching Friday and Amy.` armed
+Amy's caution on the following turn — a roll-call recap ending `X and Y.` is
+exactly the chorus shape `e22f7b36` exists to break, and it re-arms the caution
+that shape was meant to withhold. A second instance the same session: `—
+Abigail, then Amy, then …`. **Candidate upstream filing.** (2) The caution can
+never see the message that just addressed the responder: `get_messages` +
+`compute_skip_eligibility` run at `orchestrator.rs:1357`/`:1366`, the user
+message is persisted at `:1589`, and v4's order is identical
+(`orchestrator.service.ts` 552 / 564 / 627–685). Only a *backlog* address arms
+it. Measured, not inferred — `Friday, would you close the doors…` produced a
+Turn note with no caution, and the same vocative armed Abigail's caution two
+turns later. Both diagnoses were reached by transcribing v4's regex and
+replaying it over the exact visible window, after a first, wrong transcription
+(a collapsed ` - ` range) produced false hits.
+
+### Finding #97 — Document Mode's source view was three lines tall (FIXED)
+
+Opening a real 52 KB store document through the rail's Document Mode entry and
+switching to markdown source rendered the textarea **77 px** inside a **788 px**
+pane, with ~700 px of empty pane below. The WYSIWYG branch masked it entirely:
+ProseMirror grows to its content and the pane scrolls.
+
+Cause: v4's `TabView` renders context providers and **no DOM element**, so
+`DocumentPane`'s `flex flex-col h-full` root is a direct child of
+`.qt-tab-pane` — the grid cell, definite height. Angular's `qt-tab-view` **is**
+an element, and an unstyled custom element is `display: inline`;
+`StandaloneDocumentView`'s `flex-1` host was therefore inert and the view
+collapsed to content height (253 px). Same family as the `qt-entity-tabs`
+inline-host bug the Almanack walk caught. A survey found it the **only**
+`flex-1` host mounted directly by the tab registry.
+
+Fixed by `flex-1` → `h-full`, which resolves against `.qt-tab-pane` exactly as
+v4's does and as the Salon's `block h-full` host already did. Re-measured live:
+**77 px → 612 px**. Pins: a spec on the rendered host class (jsdom computes no
+layout, so a height assertion would be vacuous) and the existing `p4.9l2`
+standalone-toolbar beat extended to *measure* the textarea against its pane —
+that beat already toggled source mode and asserted the markdown bytes, and
+passed throughout, which is why the bug shipped. Commit `a42638e7`; gate: ng
+332 files / 4,937, ng build clean, Playwright **232/232 zero skips**.
+
+### Finding #98 — web search is dark on a real instance (RECORDED)
+
+The instance carries an active `SERPER` key configured through v4's Settings →
+API Keys; a model duly called `search_web` and got `Error: Web search is not
+configured…`. v4 resolves that key through its **search-provider plugin
+registry** (`qtap-plugin-search-serper` ships in the tree), with the env var as
+its own deprecated fallback; v5 builds its provider from `SERPER_API_KEY`
+**alone**, because the plugin registry is the standing P4.42 deferral. The
+refusal path itself is faithful — `search_web` is advertised off the profile's
+`allowWebSearch` in both apps, and `web_search_configured` gates only the
+`/api/v1/tools` inventory. The consequence is new: the deferral is not
+invisible on a real instance, it silently disables a tool the user configured,
+and the 💸 Serper smoke cannot be discharged as the queue words it.
+
+### The `c8a3cf77` round
+
+- **Per-turn conversation summaries** — real Friday data already carried the
+  setting ON (v4-written). Mutation-proven on live data by comparing the
+  PERSISTED `commonplaceBook` whispers: ON, the per-turn whisper carries the
+  relevant-past-conversations block (13–15 KB); OFF, the same whisper (13.6 KB)
+  does not, and the only carrier left is the separate 699-byte standing
+  fold/days-gone-by whisper. ⚠ Reading the LLM *request* alone is not a
+  discriminator — the standing whisper is replayed from the transcript either
+  way. The §3 validation fix also holds: an invalid `scopePolicy` answers
+  `Validation error` and the valid half of the same patch is NOT written.
+- **The Document-Mode toolbar in both hosts** — the standalone host carries the
+  markdown inventory with **no `Nar`/`OOC`**, the Salon-hosted pane (portalled
+  through `qt-tab-portal-host`) carries both, which is the P4.9L2 contract and
+  the discriminator between them.
+
+### Carry-over discharged
+
+Failed-import warnings with v4's JS template-literal interpolation
+(`undefined`/`null`/`7`/`a,b`/`[object Object]`, nothing written); the bug-76
+poisoned-key heal through the modal gesture that produced the bug; the
+tool-change notice splicing **once** (turn 1 `toolCount: 24` with the notice,
+turn 2 `toolCount: 23` without); whispered announcements with the audience tag
+on **both** render sites and the dialog re-labelling itself live; the roleplay
+quote delimiter surviving smart typography (stored bytes ASCII, rendered curled,
+`qt-chat-dialogue` still matching the curled run); the P4.50 `combined.log` look
+at a real failure (`Image generation failed: Invalid response from OpenAI Images
+API` — v4's winston Error shape, no `key derivation failed:` prefix, and
+`grep -c` on the whole file returns 0); and the **vision send** on a
+purpose-drawn PNG whose content could not be guessed — the reply named all three
+shapes, their arrangement, and the ground colour.
+
+### Left owed
+
+The Serper smoke (#98-blocked — needs the stored key exported as
+`SERPER_API_KEY` at launch, the human's call since it is their paid key); the
+tool-execution notice, which is `generate_image`-scoped in BOTH apps and so
+needs a seat carrying an image profile — **the queue item wants re-wording**;
+Pascal cross-tier side effects (the library is live with real tools, but whether
+any definition carries a `sideEffects` block is unread); and the memory-dedup /
+conversation-summaries first run, deferred by cost.
+
+Two loose threads recorded rather than chased: a `STORY_BACKGROUND_GENERATION`
+that failed its first attempt against the OpenAI Images API and succeeded on
+retry (the same shape as the 2026-08-19 walk's open question, now with a
+sentence attached), and `POST /api/v1/files` classifying a PNG as
+`category: "DOCUMENT"` (it behaved correctly as an image attachment afterwards;
+whether v4 does the same is unverified).

@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): the anti-chorus dogfood pass — 18 pass, two findings, nine live proofs discharged
+
+_Docs-only change._
+
+The `c8a3cf77` and `b8449b3e` rounds met real data. Both multi-character anchor
+routes proven at the byte level on a purpose-built three-character chat; the
+direct-address rewrite behaves in production (a third-person mention no longer
+arms the caution, a vocative does), and a character passed with the skip
+sentinel unprompted. Per-turn conversation summaries mutation-proven ON vs OFF
+over the persisted whispers. The vision send, the P4.50 log line, the bug-76
+key heal, the tool-change splice-once, whispered announcements, the roleplay
+quote delimiter, and the failed-import warnings all discharged.
+
+Two v4-heuristic observations recorded, both v4-faithful: `and` is a vocative
+lead-in, so a roll-call recap ending `X and Y.` re-arms the caution the
+anti-chorus fix withholds; and the caution can never see the message that just
+addressed the responder, because the user message is persisted after the
+eligibility read in both apps.
+
+Finding #98: the Serper key configured through v4's Settings → API Keys is
+invisible to v5, which reads only `SERPER_API_KEY` — the search-provider plugin
+registry is the standing P4.42 deferral, so web search is dark on a real
+instance. No v5 code changed; the refusal path itself is faithful.
+
 #### 2026-08-21 — fix(documents): Document Mode fills its workspace tab, so source mode is more than three lines
 
 _Versions: SPA 0.5.528._

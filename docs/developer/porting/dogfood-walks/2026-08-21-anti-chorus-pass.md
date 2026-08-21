@@ -84,15 +84,78 @@ prompt-byte proofs are read with
 
 | # | Owner | Step | Gesture | Expected + how verified | Status |
 |---|---|---|---|---|---|
-| C1 | CLAUDE | A failed import names its dropped items (was A2) | Import a hand-built payload whose items fail the typed parse (non-string `name`, absent, numeric, array, object) | Five `Broken *` warning sentences quoting the name the way a JS template literal would (`undefined`/`null`/`7`/`a,b`/`[object Object]`); nothing written | PENDING |
-| C2 | CLAUDE | Bug-76 poisoned `outboundApiKeyId` heal (was B2) | Put a hosted key id onto an Ollama profile through the API, then save that profile in the SPA | The save succeeds and the stale id clears (`\|\| null` always-send) rather than `API key provider does not match profile provider` | PENDING |
+| C1 | CLAUDE | A failed import names its dropped items (was A2) | `systemImportExecute` with five connection profiles whose typed parse must fail (`provider: 12345`), each carrying a differently-shaped `name`: absent / `null` / `7` / `["a","b"]` / `{"x":1}` | **PASS.** All five warnings fired with v4's sentence and the JS template-literal interpolation exactly as the P4.D91 §3 fix intends — `Failed to import connection profile "undefined"…` / `"null"` / `"7"` / `"a,b"` / `"[object Object]"`. Nothing written: `connection_profiles` 41 → 41, every `imported`/`skipped` counter 0. ⚠ Observation, not a defect: the `: {e}` tail is the Rust serde message (`invalid type: integer \`12345\`, expected a string`) where v4's is Zod's — the prefix and the quoted name are v4's bytes, and the tail cannot be byte-identical across the two runtimes | PASS |
+| C2 | CLAUDE | Bug-76 poisoned `outboundApiKeyId` heal (was B2) | The API refuses the poison outright (`API key provider does not match profile provider`, correctly), so the poison was made **the way the bug made it** — opened `Claude Haiku 4.5` in the profile modal, switched Provider Anthropic → Ollama, saved | **PASS.** The save succeeded and the row reads `provider: OLLAMA, apiKeyId: null` — the stale anthropic id cleared by the `\|\| null` always-send instead of the bug-76 400. The `outboundBaseUrl` chokepoint filled `http://localhost:11434` in the same gesture, the API Key select hid itself for Ollama, and the banked `Non-image attachments: No file attachments supported` line read correctly. Card now shows `OLLAMA · Base URL: …` with no API Key row | PASS |
 | C3 | CLAUDE | The tool-execution notice lifecycle, bug 77 (was B3) | Drove four real tool turns (`search` ×3, `read_conversation`, `rng` ×2) with a 200 ms DOM poll recording every `[role=status]` in the composer | **BLOCKED — the step as written cannot fire it, and that is v4's scope, not a v5 gap.** The notice is **`generate_image`-only** in both apps: `salon-conversation.ts:2933` (`if (call.name !== 'generate_image') continue`) ports v4's `trackToolsDetected`/`trackToolResult` filter. Ordinary tool calls raise nothing, correctly. Asked the cast to call `generate_image` outright and the model answered in prose instead — the seats here carry no `imageProfileId`, so the tool is not on the slate. **Re-word the queue item: it needs a seat with an image profile.** What the poll DID catch is the P4.D84 §3 pre-send validation sequence live — `Sending to Amy..` → `Amy is responding...` | BLOCKED(needs an image-profile seat) |
-| C4 | CLAUDE | The tool-change notice splices ONCE (was C1) | Toggle a built-in tool on a chat, then send two turns | Turn 1's request carries the notice; turn 2's does not, and `forceToolsOnNextMessage` has cleared | PENDING |
-| C5 | CLAUDE | The vision send (was D3) | Attach an image on a vision-capable hosted profile and ask for a description | The attachment bag reaches the wire and the reply describes the actual image. Small real spend | PENDING |
+| C4 | CLAUDE | The tool-change notice splices ONCE (was C1) | Chat sidebar → Chat → **Tools…** → unticked **Ask Carina** → Save, then sent two ordinary turns | **PASS.** Turn 1 (`16:08:54`) carries `[System Notice] Your available tools have been updated. You now have access to the following 24 tool(s): …` with `toolCount: 24`; turn 2 (`16:09:26`) carries **no notice** and `toolCount: 23` — the notice spliced exactly once and `forceToolsOnNextMessage` cleared, which is the P4.D82 deferral closed on real data. Bonus corroboration of #98 from the same dialog: with the Ollama profile selected, Search Web read `unavailable — Web search must be enabled in the connection profile`; after switching to the tool-capable DeepSeek profile it read `No search provider configured. Please add a search provider API key in Settings > API Keys.` — the two-arm gate order in `tools_inventory.rs:330-336`, in the right order | PASS |
+| C5 | CLAUDE | The vision send (was D3) | Generated a 240×160 PNG with deliberately unguessable content — solid deep-teal ground, one large white triangle point-up, three black dots in a row along the bottom — uploaded it through `POST /api/v1/files`, attached it with the composer's **Attach file from library**, and asked for a literal description on `Grok 4 Fast Non-Reasoning` (`supportsImageUpload = 1`, cheap) | **PASS — 💸 discharged.** The reply: *"Three black circles in a straight horizontal line at the bottom. One large white triangle sitting directly on top of them, point upward. The background is a solid deep teal, almost forest green."* — correct on every count, so the bytes genuinely reached the Grok wire. The `llm_logs` `CHAT_MESSAGE` projection carries `hasAttachments: true` on the user message (v4's `summarizeRequest` shape — a flag, not the bag) | PASS |
 | C6 | CLAUDE | The Serper live-key smoke (was D7) | The instance DOES carry an active `SERPER` key; asked the cast to search the web for a Chicago forecast on a `allowWebSearch = 1` profile | **FAIL(#98) — and the 💸 item cannot be discharged as worded.** The model called `search_web`; the handler answered v4's `Error: Web search is not configured…`. v5 reads only `SERPER_API_KEY` from the environment; v4 reads the key out of `api_keys` through its `qtap-plugin-search-serper` registry, which is v5's standing P4.42 deferral. Running it needs the stored key exported as `SERPER_API_KEY` at launch — the human's call, since it is their paid key | FAIL(#98) → DEFERRED-TO-HUMAN |
-| C7 | CLAUDE | Whispered announcements (was D8) | Post a manual announcement with a restricted audience; check the chip's whisper tag on both render sites | The audience resolver holds; Prospero's `group-context` whispers honour All Whispers | PENDING |
-| C8 | CLAUDE | Pascal cross-tier side-effect writes (was D9) | A custom tool with side effects: the Workbench Side Effects card + dry run, then a live run | The dry run plans; the live run commits; `chipLabel` + the two-block bubble render | PENDING |
-| C9 | CLAUDE | A roleplay template delimited by a quote character (was E1) | Render a message through a `"`-delimited template with smart typography on | The delimiter keeps its straight quotes; only prose curls | PENDING |
+| C7 | CLAUDE | Whispered announcements (was D8) | Composer → **Insert announcement** → sender The Host → ticked Amy + Abigail under **Who hears it** → posted | **PASS.** The dialog re-labels itself live as the audience narrows: heading `Announcement` → `Whisper`, hint `Everyone present hears this…` → `Whispered to Amy, Abigail. No other character receives it in their context. Make it public.`, button `Post Announcement` → `Post Whisper` — v4's audience-replaces-roster shape. The row stored `systemSender: host, systemKind: announcement, targetParticipantIds: ["39441710…","ba1a44e7…"]` — the two ticked seats and no one else. **Both render sites carry the tag**: the collapsed chip reads `The Host · announcement · whispered to Amy, Abigail`, expanded it reads `The Host · announcement · to Amy, Abigail` with the body in a plain `qt-chat-message-content` prose block (no v5-invented system slab — the P4.25 fix holding). Not exercised: the All Whispers toggle against a Prospero `group-context` whisper | PASS |
+| C8 | CLAUDE | Pascal cross-tier side-effect writes (was D9) | Confirmed the library is live on real data — `customToolsLibrary` returns real tools (`scan_hawking_radiation`, `force_adjustment`, `root_access`, …) from `Quilltap General/Tools/`, all `valid: true, gate: available` | **DEFERRED-TO-HUMAN.** Whether any of these definitions carries a `sideEffects` block needs the `.tool.json` bodies read, and authoring one to order is a larger setup than the rest of this pass. The substrate is demonstrably healthy; what is unproven is the P4.D35 effect applier on a real cross-tier write | DEFERRED-TO-HUMAN |
+| C9 | CLAUDE | A roleplay template delimited by a quote character (was E1) | The chat runs the built-in **Standard** template, whose `dialogueDetection` opens/closes on `"` and `“`/`”`. Sent `*I set the mug down.* "It's the plumb line -- that's what I meant," I say.` with `smartTypographySettings = {displayQuotes: true, dashes: true, ellipsis: true}` | **PASS on all three axes.** (a) **Stored bytes untouched** — pure ASCII, straight `"` and `'`; smart quotes are render-time, exactly as P4.D71 landed them. (b) **Rendered** as `“It’s the plumb line -- that’s what I meant,”` — quotes and apostrophes curled. (c) **The delimiter still matched the curled text**: the whole run came back inside `<span class="qt-chat-dialogue">`, narration as `<em>` — which is the question the step was really asking. The dash ladder was verified separately with real keystrokes: three `-` presses → `—` (U+2014). ⚠ Test artifact worth remembering: the browser `type` action bulk-inserts, so `--` typed that way never fires the per-keystroke rule — not a defect, but a dash test must use `key` presses | PASS |
 | C10 | CLAUDE | The P4.50 `combined.log` look at a real failed turn (💸) | A real failure arrived unprompted: `STORY_BACKGROUND_GENERATION` failed its first attempt against the OpenAI Images API | **PASS — 💸 discharged.** `combined.log` carries `{"level":"warn","message":"Job failed","context":{module,job_id,job_type,attempts},"error":{"name":"Error","message":"Image generation failed: Invalid response from OpenAI Images API"}}` — v4's winston Error shape, the real sentence, and **no `key derivation failed:` prefix**, which is exactly the P4.50 acceptance. `grep -c 'key derivation failed' combined.log` → 0. (The job then succeeded on attempt 2 — related to the previous walk's open question about a twice-failed story background, and worth its own look) | PASS |
 | C11 | HUMAN | Memory dedup + conversation-summaries first run (P4.43) | The two maintenance cards on a real corpus | Batch LLM spend over Friday's whole memory graph — deferred by cost | DEFERRED-TO-HUMAN |
 
+
+---
+
+## Result
+
+**23 rows: 18 PASS, 1 FAIL-then-FIXED (#97), 1 FAIL-recorded (#98), 2
+DEFERRED-TO-HUMAN, 1 BLOCKED-with-diagnosis.** Two findings, one fix shipped.
+
+### Fixed on main this pass
+
+- **#97 — Document Mode's source view was three lines tall.** `qt-tab-view` is
+  an unstyled Angular custom element (`display: inline`) with no v4 counterpart,
+  so `StandaloneDocumentView`'s `flex-1` host was inert and every `h-full`
+  beneath it collapsed. Host class → `h-full`; 77 px → 612 px, measured live.
+  Commit `a42638e7`, gate green (ng 332/4,937; Playwright 232/232).
+
+### Recorded, no code changed
+
+- **#98 — web search is dark on a real instance.** The `SERPER` key configured
+  through v4's Settings → API Keys is invisible to v5, which reads only
+  `SERPER_API_KEY` from the environment: the search-provider plugin registry is
+  the standing P4.42 deferral. The refusal path itself is v4-faithful. The 💸
+  Serper smoke needs the key exported at launch — the human's to do.
+
+### Two v4-heuristic observations from Part A (neither a v5 defect)
+
+1. `and` sits in v4's `VOCATIVE_LEAD_INS`, so a roll-call recap ending
+   `…Friday and Amy.` reads as addressing Amy — measured live, and it re-opens
+   the very chorus hole `e22f7b36` closes. A **candidate upstream filing**.
+2. The caution can never see the message that just addressed the responder: the
+   user message is persisted after the eligibility read, in v4 as in v5. Only a
+   backlog address arms it. Arguably deliberate; worth stating out loud.
+
+### 💸 queue movement
+
+**Discharged:** the live group-scene walk (Part A), the per-turn conversation
+summaries cadence (B3), the vision send (C5), the P4.50 `combined.log` look at
+a real failure (C10), the bug-76 key heal (C2), the tool-change splice (C4),
+whispered announcements (C7), the roleplay quote delimiter (C9), the failed-import
+warnings (C1).
+
+**Still owed:** the Serper live-key smoke (now #98-blocked), the tool-execution
+notice (needs a seat with an image profile — re-word the item), Pascal
+cross-tier side effects, and the memory-dedup / conversation-summaries first run
+(cost).
+
+### Two things worth a look that this pass did not chase
+
+- `STORY_BACKGROUND_GENERATION` failed its first attempt with `Image generation
+  failed: Invalid response from OpenAI Images API` and succeeded on the retry.
+  The 2026-08-19 walk left an open question about a twice-failed story
+  background; this is the same shape, now with a sentence attached.
+- The uploaded PNG came back `category: "DOCUMENT"` from `POST /api/v1/files`.
+  It behaved correctly as an image attachment afterwards, so this may be v4's
+  own classification — unverified either way.
+
+### Instance state left behind (all harmless — the copy is disposable)
+
+The chat `6eccb8ca-c93b-491b-994b-82a71ab22e8a` ("The Kettle Boils Twice") was
+built for this pass and carries the whole walk. `Claude Haiku 4.5` was
+deliberately switched to OLLAMA for C2 and left that way. Charlie's seat in the
+test chat was turned LLM-driven by a too-broad selector during setup. `Ask
+Carina` is unticked on that chat's tool set. The next rsync clears all of it.
