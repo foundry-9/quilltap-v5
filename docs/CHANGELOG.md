@@ -164,6 +164,47 @@ designed; the ruled row retires to a plain `check_body`. Mutation-proven:
 dropping `composerEmoji` from a scratch copy puts v4 back on the bare 500 and
 reddens the family with the same "expected an error arm" refusal the ruling
 documented.
+#### 2026-08-20 — fix(harness): normalize() neutralizes any checkout-alias assignment (P4.53)
+
+_Versions: harness 0.0.514._
+
+Repairing the five clobbering headers made the committed recipes read true; it
+did not make the class unrepeatable, because the next header written
+`W=${V5W:-$HOME/source/quilltap-v5}` brings the bug straight back and nothing
+in the driver would notice. So the assignment no longer decides anything:
+`normalize()` rewrites every `V5W=` / `WT=` / `V5=` / `W=` assignment statement
+to the driver's `--v5w`, and announces the rewrite once per family — a silent
+one would hide exactly the rot it neutralizes.
+
+The notice is quiet for a rewrite that changes nothing: a value that already IS
+the checkout, and the SELF-referential `V5W=${V5W:-...}` (the sanctioned
+convention — the driver injects `V5W`, so the `:-` fallback never fires and the
+rewrite substitutes the value it would have produced anyway). 173 families'
+normalized scripts change under this rewrite and every one of them is settled,
+so the notice fires zero times across the tree today. The CROSS-referential
+form is not settled, and that is the whole point: the one line that fires is
+the one worth reading.
+
+The match shape is deliberately narrow. `V5W=/some/path cargo test ...` is an
+ENV PREFIX, not an assignment, and rewriting it would swallow the command, so
+the statement must end after its value (or its trailing `#` comment). A
+`;`-joined assignment is caught; a non-alias variable, and one that merely ends
+in an alias name, is not. A header that already assigns the checkout under test
+is rewritten to the identical value and is not announced.
+
+The alias INJECTION regex is widened in the same pass: it matched `$VAR` and
+`${VAR}` but never `${VAR:-...}`, which is the other half of why the clobber
+survived — `V5W` was never injected, so the `:-` default fired.
+
+`--self-test` gains the mutation pins: the live defect verbatim (rewritten, and
+main's path gone from the whole script), the announcement, the reference form,
+two env prefixes that must survive untouched, the `;` form, the no-op silence —
+and a durable regression pin that reads every `.rs` and `.ts` header in the tree
+and refuses any that defaults one checkout alias from a DIFFERENT one. The
+self-referential `V5W=${V5W:-...}` is the sanctioned convention and stays
+allowed; the cross form is the clobber, and the backstop above hides it from
+every other symptom.
+
 #### 2026-08-20 — fix(harness): the sweep driver refuses a family with nothing to run (P4.53)
 
 _Versions: harness 0.0.513._

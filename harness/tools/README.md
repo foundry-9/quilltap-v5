@@ -57,12 +57,14 @@ covers `crates/{quilltap-harness,quilltap-web,quilltap-cli}/tests/*.rs`.
   had to recover D42's from a session transcript. Committed results live in
   `harness/tools/sweep-results/`; each row is
   `family → status (ok / regen_failed / run_failed / skipped /
-  refused_*) → cause`.
+  nothing_to_run / refused_*) → cause`. Its `nothing_to_run` key lists every
+  family the refusal fires on across the WHOLE checkout, not just the batch.
 - `--self-test` runs the driver's own classifier and detector assertions
   (the two real F3 prose-leak lines, the five real P4.45 leak lines in BOTH
   margins, the F5 `_SKIP` false positive, the F6 pin paths, the venue and
-  external-/tmp classes, the policy-2 suffix). Run it after ANY change to the
-  extraction machinery. Its P4.51 arms drive the driver as a SUBPROCESS —
+  external-/tmp classes, the policy-2 suffix, and P4.53's alias-neutralization
+  and `nothing_to_run` arms). Run it after ANY change to the extraction
+  machinery. Its P4.51 arms drive the driver as a SUBPROCESS —
   what the wart was about is what `main()` does with a failure, which a
   pure-function assertion cannot see.
 
@@ -291,3 +293,30 @@ Two cautions. It is HTTP-only and binds `127.0.0.1` — it cannot tap a
 hosted provider, by design. And a base URL pointed at the tap **persists
 on the profile**: clear it when you are done, or the profile silently
 stops working the moment the tap is not running (v4 bug 73's territory).
+
+## Checkout aliases and `nothing_to_run` (P4.53)
+
+**A header never decides which checkout it is tested against.** `normalize()`
+rewrites every `V5W=` / `WT=` / `V5=` / `W=` assignment STATEMENT to the
+driver's `--v5w` and announces the rewrite once per family — quietly when the
+rewrite changes nothing (a value that already is the checkout, or the
+self-referential `V5W=${V5W:-…}`), loudly otherwise. Five case headers
+had written `W=${V5W:-$HOME/source/quilltap-v5}`, which overwrote the driver's
+injected alias with main's path — the family staged its case file and its
+fixtures from MAIN during a worktree sweep and exited 0 regardless. Those five
+are repaired to the sanctioned convention; the rewrite is the backstop that
+makes the class unrepeatable, and `--self-test` carries a regression pin that
+reads every `.rs` and `.ts` header in the tree and refuses any that defaults
+one checkout alias from a DIFFERENT one.
+
+When you write a header: use `V5W=${V5W:-$HOME/source/quilltap-v5}` and
+reference `$V5W/…`. The self-referential form is copy-paste-safe for a human
+AND overridable by the driver, which is the whole point.
+
+**A family with nothing to run is refused, not passed.** `--run` on a family
+whose recipe extracts to EMPTY stages used to print
+`OK: … recipe ran end-to-end` and exit 0 having run nothing. It now exits 2
+with a named reason, before any stage. 39 families answer that way today (5
+exempt pins, 12 committed corpora, 22 no_oracle integration arms); none is
+hard rot, but most could gain an explicit scoped `cargo test --test <family>`
+run line so `--run` can prove them.

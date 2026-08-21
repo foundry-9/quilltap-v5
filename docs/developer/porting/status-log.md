@@ -77139,3 +77139,183 @@ state they need in process. What roughly 34 of them COULD gain is an
 explicit scoped `cargo test --test <family>` run line, which would turn
 `--run` on them from a refusal into a real proof. That inventory is the
 next maintenance pass's, deferred loudly by the order's Tier 3.
+
+### Unit 3 — alias assignments are unforgeable
+
+Unit 1 makes the committed recipes read true. It does NOT make the class
+unrepeatable: the next header written `W=${V5W:-$HOME/source/quilltap-v5}`
+brings the bug straight back, silently, and nothing in the driver would
+notice. So the assignment stops deciding anything.
+
+`normalize()` now rewrites every `V5W=` / `WT=` / `V5=` / `W=` assignment
+STATEMENT to the driver's `--v5w`, and announces it once per family (a
+silent rewrite would hide exactly the rot it neutralizes). The alias set is
+one constant, `CHECKOUT_ALIASES`, shared by the neutralizer and the
+injection — `WT` joins it because `V5_REF` already treated it as a checkout
+alias while the injection did not.
+
+The match shape is deliberately narrow, because the one way this backstop
+could do real damage is by eating a command: `V5W=/some/path cargo test …`
+is an ENV PREFIX, not an assignment, so the statement must END after its
+value (or after its trailing `#` comment). A `;`-joined assignment IS
+caught; `TMPO=` / `STAGE=` / `NEWW=` / `QT_W=` are not.
+
+The injection regex is widened in the same pass. It matched `$VAR` and
+`${VAR}` but never `${VAR:-…}` — that is the OTHER half of why the clobber
+survived: `V5W` was never injected, so the `:-` default fired.
+
+**The notice is signal, not noise.** A tree-wide before/after diff of every
+family's normalized script (all 412, old driver vs new) measured **173
+families changed and ZERO changed in any way other than an alias-assignment
+line** — the rewrite touches nothing else. But all 173 were being ANNOUNCED,
+which would have trained the operator to scroll past the one line that
+matters. So `alias_value_is_settled` keeps the notice quiet for the two
+shapes where the rewrite changes nothing: a value that already IS the
+checkout, and the SELF-referential `V5W=${V5W:-…}` (the driver injects
+`V5W`, so the `:-` fallback never fires and the rewrite substitutes the
+value it would have produced anyway — 38 families are written that way).
+The CROSS-referential form is NOT settled, by the same predicate the
+regression pin uses. Measured after the refinement: **zero of 412 families
+announce a rewrite**, and the mutation replant still announces.
+
+**Mutation proof (the backstop alone catches a planted clobber).** With
+unit 1 landed, the clobber was RE-PLANTED in the worktree's
+`brahma-console-routes.test.ts` (`V5W=` → `W=`, `$V5W/` → `$W/`) together
+with a fresh marker, and the family run at the pin:
+
+```
+python3.13 harness/tools/recipe_sweep.py --run brahma_console_routes_equivalence \
+  --v4 /tmp/qt-v4-pin-p453-b8449b3e
+```
+
+- the driver printed
+  `[brahma_console_routes_equivalence] alias assignment neutralized to
+  --v5w (…/.claude/worktrees/p4-53-…): W=${V5W:-$HOME/source/quilltap-v5}`
+- `W=` resolved to the WORKTREE in the generated script
+- the staged `/tmp/brahma-routes/cases/brahma-console-routes.test.ts`
+  carried the marker — staged from the worktree despite the planted clobber
+- the family regenerated end-to-end, zero SKIP
+
+The header was then restored byte-for-byte from a pre-mutation copy and
+`git status` re-checked clean (the standing lesson: a `git checkout`
+restore can clobber an uncommitted mutation, so the restore is from a copy
+and is verified).
+
+**The durable regression pin.** `--self-test` grew a `CROSS_ALIAS_DEFAULT`
+arm that reads EVERY `.rs` header under `crates/*/tests` and every `.ts` /
+`.tsx` header under `harness/oracle/cases` and refuses any that defaults
+one checkout alias from a DIFFERENT one. The self-referential
+`V5W=${V5W:-…}` is the sanctioned convention and stays allowed; the cross
+form is the clobber. It was mutation-proven by the same replant:
+
+```
+SELF-TEST FAIL: a header defaults one checkout alias from another (the
+P4.53 clobber spelling …): ['brahma-console-routes.test.ts: W=${V5W:-…}']
+self-test: 1 failure(s)
+```
+
+This arm matters precisely BECAUSE the backstop works: with the rewrite
+live, a re-clobbered header produces no wrong staging, no failing
+differential, and no red gate — the notice line and this pin are the only
+things that would ever say so.
+
+**The other new arms** (all green): the live defect rewritten with main's
+path gone from the whole normalized script; the announcement emitted
+verbatim; the `${V5W:-…}` REFERENCE form reaching the injected alias; two
+env prefixes surviving untouched; the `;`-joined form caught; four
+non-alias assignments untouched; a no-op rewrite staying silent. Unit 2's
+arms cover the pure predicate in all four shapes (empty / has-run /
+committed-corpus-regen-only / committed-corpus-with-run) plus the exempt
+naming, and then drive the driver as a SUBPROCESS against REAL families of
+each class — exit 2, no `OK:`, the named REFUSED line, and no `====` stage
+banner (i.e. it refused before executing) — and a `--run-all` batch whose
+row carries the status, whose totals show `'nothing_to_run': 1`, whose exit
+is nonzero, and whose artifact enumerates the whole 39-family debt.
+
+### Tier 2 — the durable artifact
+
+`harness/tools/sweep-results/2026-08-20-b8449b3e-p4.53-nothing-to-run.json`,
+run from the LANE WORKTREE against the pinned v4 worktree, requesting all
+39 `nothing_to_run` families plus the repaired
+`brahma_console_routes_equivalence`:
+
+```
+python3.13 harness/tools/recipe_sweep.py --run-all \
+  --families "<the 39>,brahma_console_routes_equivalence" \
+  --v4 /tmp/qt-v4-pin-p453-b8449b3e \
+  --results harness/tools/sweep-results/2026-08-20-b8449b3e-p4.53-nothing-to-run.json
+→ totals: {'nothing_to_run': 39, 'ok': 1}     exit 1
+```
+
+Every one of the 39 formerly answered `OK … recipe ran end-to-end`, exit 0.
+The artifact also carries the new `nothing_to_run` key (the same 39,
+computed over the whole checkout rather than the batch), `venue_is_worktree:
+true`, and the `ok` row's shielded fixtures resolving to the WORKTREE's
+`crates/quilltap-web/tests/fixtures/`. The tracked-fixture write warning
+stayed silent for all 40.
+
+A full `--run-all` over the ~373 runnable families was NOT attempted: at this
+tree's measured gate cost that is many hours of regen for a driver-only
+change, and the statuses it would add are the ones this artifact already
+demonstrates. Recorded as a deliberate scope choice, not an omission.
+
+### Tier 3 — deferred loudly
+
+The 39-family list above is the next maintenance pass's inventory and is
+NOT repaired here, per the order. The judgement recorded with it: none is
+hard rot; roughly 34 could gain an explicit scoped `cargo test --test
+<family>` run line, which would convert `--run` on them from a refusal into
+a real proof. Two smaller notes for that pass: the default `--run-all`
+family list still excludes committed-corpus families outright (widening it
+to run their cargo halves is a different decision than this order's), and
+`--show` on a `nothing_to_run` family prints two empty stages without
+comment — visibly empty, so not a false green, but it could name the class
+the way `--run` now does.
+
+### Ownership, and one edit outside the order's literal list
+
+The lane touched `harness/tools/recipe_sweep.py`, the HEADER lines of the
+five named case files, `harness/tools/sweep-results/` (the Tier-2 artifact
+the order requires), and — flagged for the unifier — **`harness/tools/README.md`**,
+which documents the driver and named the run statuses and the `--self-test`
+coverage this lane changed. Leaving it stale would have been the exact rot
+this lane exists to remove. No sibling lane owns it. No case body, no
+fixture, no harness `.rs`, no v5 source, and none of the P4.D96 or P4.52
+files were touched.
+
+### P4.53 gate
+
+- `recipe_sweep.py --self-test`: **0 failures**, with the lane's new arms —
+  the alias rewrite in both directions, the two env-prefix negatives, the
+  `;` form, the four non-alias negatives, the three settled-and-silent
+  shapes, the tree-wide `CROSS_ALIAS_DEFAULT` header pin, the four
+  `stages_to_run` shapes, and the subprocess arms driving `--run` and
+  `--run-all` against REAL families of each refusal class.
+- The three mutation proofs, each red-first, with the exact commands in the
+  unit records above: the pre-fix clobber reproduced from the lane worktree
+  (staged from MAIN, exit 0 green); the pre-change driver's two vacuous
+  greens; the re-planted clobber caught by the backstop AND by the
+  self-test's header pin.
+- `brahma_console_routes_equivalence` regenerated end-to-end from the lane
+  worktree against the `b8449b3e` pin, **zero SKIP**, three times over (the
+  red probe, the item-1-alone probe, the backstop probe) plus once inside
+  the Tier-2 batch.
+- Tree-wide `normalize()` regression diff over all 412 families, old driver
+  vs new: 173 scripts changed, **0 changed in any way other than an
+  alias-assignment line**.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo test --workspace`: **440 test binaries / 2,236 passed / 0 failed**
+  (exit 0), identical to the `c8a3cf77` baseline — as it must be, since the
+  lane changes no Rust source. `spelling_guard`, which shells to
+  `check_spelling.py`, is the one workspace test the lane's new prose
+  actually exercises; it passes, as does the script run directly.
+- No SPA gate: the lane touches nothing under `apps/web`.
+
+Versions: harness 0.0.512 → 0.0.513 → 0.0.514 (one patch bump per commit,
+per the order's direction that the driver rides the harness's version).
+No other crate touched. Baseline STAYS `b8449b3e`.
+
+The pinned v4 worktree `/tmp/qt-v4-pin-p453-b8449b3e` was lane-unique (the
+two sibling lanes carried their own) and is removed at lane close.

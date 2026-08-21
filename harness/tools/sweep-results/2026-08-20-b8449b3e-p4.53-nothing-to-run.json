@@ -1,0 +1,375 @@
+{
+  "label": "P4.53 \u2014 the nothing_to_run refusal over every family it fires on (39), plus the repaired brahma_console_routes_equivalence end-to-end; run from the lane worktree against a v4 worktree pinned at b8449b3e",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/p4-53-sweep-driver-followups-3ad7b1",
+  "venue_is_worktree": true,
+  "requested": [
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "web_search_runner_wire",
+    "binary_routes",
+    "change_passphrase_archive_sweep",
+    "characters_action_route",
+    "characters_export_route",
+    "characters_import_route",
+    "characters_photos_routes",
+    "characters_reset_builtins_route",
+    "characters_wardrobe_route",
+    "chat_create_end_to_end",
+    "chat_send_smoke",
+    "chat_settings_composer_web_routes",
+    "contract",
+    "file_content_missing_404",
+    "files_write_routes",
+    "mount_multipart_routes",
+    "photos_web_routes",
+    "profile_web_routes",
+    "terminal_ws",
+    "text_replacements_web_routes",
+    "cli_differential",
+    "image_dialects_equivalence",
+    "moderation_wire_equivalence",
+    "request_builder_equivalence",
+    "request_builder_google_equivalence",
+    "request_builder_google_wire_equivalence",
+    "response_parse_equivalence",
+    "restore_vintage_state",
+    "stream_decoders_equivalence",
+    "streaming_composer_equivalence",
+    "tool_wire_call_site",
+    "tool_wire_equivalence",
+    "web_search_wire_equivalence",
+    "brahma_console_routes_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "image_dialects_equivalence",
+    "moderation_wire_equivalence",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "request_builder_equivalence",
+    "request_builder_google_equivalence",
+    "request_builder_google_wire_equivalence",
+    "response_parse_equivalence",
+    "restore_vintage_state",
+    "stream_decoders_equivalence",
+    "streaming_composer_equivalence",
+    "tool_wire_call_site",
+    "tool_wire_equivalence",
+    "web_search_runner_wire",
+    "web_search_wire_equivalence",
+    "binary_routes",
+    "change_passphrase_archive_sweep",
+    "characters_action_route",
+    "characters_export_route",
+    "characters_import_route",
+    "characters_photos_routes",
+    "characters_reset_builtins_route",
+    "characters_wardrobe_route",
+    "chat_create_end_to_end",
+    "chat_send_smoke",
+    "chat_settings_composer_web_routes",
+    "contract",
+    "file_content_missing_404",
+    "files_write_routes",
+    "mount_multipart_routes",
+    "photos_web_routes",
+    "profile_web_routes",
+    "terminal_ws",
+    "text_replacements_web_routes",
+    "cli_differential"
+  ],
+  "families": [
+    {
+      "family": "p4_6ao_wire_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_6ao_wire_contract has nothing to run \u2014 it is a compile-time pin with no oracle by design (EXEMPT_FAMILIES) \u2014 there is nothing to regenerate. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_6ao_wire_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "p4_6ar_wire_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_6ar_wire_contract has nothing to run \u2014 it is a compile-time pin with no oracle by design (EXEMPT_FAMILIES) \u2014 there is nothing to regenerate. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_6ar_wire_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "p4_9g1_wire_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_9g1_wire_contract has nothing to run \u2014 it is a compile-time pin with no oracle by design (EXEMPT_FAMILIES) \u2014 there is nothing to regenerate. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_9g1_wire_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "p4_9g6_seam_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_9g6_seam_contract has nothing to run \u2014 it is a compile-time pin with no oracle by design (EXEMPT_FAMILIES) \u2014 there is nothing to regenerate. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_9g6_seam_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "p4_d10_wire_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_d10_wire_contract has nothing to run \u2014 it is a compile-time pin with no oracle by design (EXEMPT_FAMILIES) \u2014 there is nothing to regenerate. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_d10_wire_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "p4_6ay_workbench_wire_contract",
+      "status": "nothing_to_run",
+      "cause": "p4_6ay_workbench_wire_contract has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show p4_6ay_workbench_wire_contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "web_search_runner_wire",
+      "status": "nothing_to_run",
+      "cause": "web_search_runner_wire has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show web_search_runner_wire` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "binary_routes",
+      "status": "nothing_to_run",
+      "cause": "binary_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show binary_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "change_passphrase_archive_sweep",
+      "status": "nothing_to_run",
+      "cause": "change_passphrase_archive_sweep has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show change_passphrase_archive_sweep` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_action_route",
+      "status": "nothing_to_run",
+      "cause": "characters_action_route has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_action_route` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_export_route",
+      "status": "nothing_to_run",
+      "cause": "characters_export_route has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_export_route` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_import_route",
+      "status": "nothing_to_run",
+      "cause": "characters_import_route has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_import_route` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_photos_routes",
+      "status": "nothing_to_run",
+      "cause": "characters_photos_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_photos_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_reset_builtins_route",
+      "status": "nothing_to_run",
+      "cause": "characters_reset_builtins_route has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_reset_builtins_route` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "characters_wardrobe_route",
+      "status": "nothing_to_run",
+      "cause": "characters_wardrobe_route has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show characters_wardrobe_route` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "chat_create_end_to_end",
+      "status": "nothing_to_run",
+      "cause": "chat_create_end_to_end has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show chat_create_end_to_end` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "chat_send_smoke",
+      "status": "nothing_to_run",
+      "cause": "chat_send_smoke has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show chat_send_smoke` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "chat_settings_composer_web_routes",
+      "status": "nothing_to_run",
+      "cause": "chat_settings_composer_web_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show chat_settings_composer_web_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "contract",
+      "status": "nothing_to_run",
+      "cause": "contract has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show contract` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "file_content_missing_404",
+      "status": "nothing_to_run",
+      "cause": "file_content_missing_404 has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show file_content_missing_404` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "files_write_routes",
+      "status": "nothing_to_run",
+      "cause": "files_write_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show files_write_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "mount_multipart_routes",
+      "status": "nothing_to_run",
+      "cause": "mount_multipart_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show mount_multipart_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "photos_web_routes",
+      "status": "nothing_to_run",
+      "cause": "photos_web_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show photos_web_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "profile_web_routes",
+      "status": "nothing_to_run",
+      "cause": "profile_web_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show profile_web_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "terminal_ws",
+      "status": "nothing_to_run",
+      "cause": "terminal_ws has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show terminal_ws` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "text_replacements_web_routes",
+      "status": "nothing_to_run",
+      "cause": "text_replacements_web_routes has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show text_replacements_web_routes` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "cli_differential",
+      "status": "nothing_to_run",
+      "cause": "cli_differential has nothing to run \u2014 its header describes no oracle at all (no_oracle) \u2014 an integration arm that builds whatever state it needs in-process. Exiting 0 here would print a green sentence for a run that never happened. `--show cli_differential` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "image_dialects_equivalence",
+      "status": "nothing_to_run",
+      "cause": "image_dialects_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show image_dialects_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "moderation_wire_equivalence",
+      "status": "nothing_to_run",
+      "cause": "moderation_wire_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show moderation_wire_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "request_builder_equivalence",
+      "status": "nothing_to_run",
+      "cause": "request_builder_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show request_builder_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "request_builder_google_equivalence",
+      "status": "nothing_to_run",
+      "cause": "request_builder_google_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show request_builder_google_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "request_builder_google_wire_equivalence",
+      "status": "nothing_to_run",
+      "cause": "request_builder_google_wire_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show request_builder_google_wire_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "response_parse_equivalence",
+      "status": "nothing_to_run",
+      "cause": "response_parse_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show response_parse_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "restore_vintage_state",
+      "status": "nothing_to_run",
+      "cause": "restore_vintage_state has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show restore_vintage_state` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "stream_decoders_equivalence",
+      "status": "nothing_to_run",
+      "cause": "stream_decoders_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show stream_decoders_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "streaming_composer_equivalence",
+      "status": "nothing_to_run",
+      "cause": "streaming_composer_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show streaming_composer_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "tool_wire_call_site",
+      "status": "nothing_to_run",
+      "cause": "tool_wire_call_site has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show tool_wire_call_site` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "tool_wire_equivalence",
+      "status": "nothing_to_run",
+      "cause": "tool_wire_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show tool_wire_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "web_search_wire_equivalence",
+      "status": "nothing_to_run",
+      "cause": "web_search_wire_equivalence has nothing to run \u2014 its regen is a by-hand RECORDING a sweep never runs, and its header carries no `cargo test` run line either. Exiting 0 here would print a green sentence for a run that never happened. `--show web_search_wire_equivalence` prints the empty extraction; if this family SHOULD have a runnable recipe, that is recipe rot to repair in its header.",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "brahma_console_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "nothing_to_run": 39,
+    "ok": 1
+  }
+}

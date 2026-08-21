@@ -60,8 +60,18 @@ Variable conventions the driver understands (and headers should use):
         `V5W=${V5W:-$HOME/source/quilltap-v5}` so they are copy-paste-safe;
         the driver overrides it to `--v5w`, default: the repo containing
         this script, so a worktree sweep tests the worktree's own cases).
-  Legacy single-letter aliases (`V5`, `W`) and the literal
-  `~/source/quilltap-v5` are rewritten to the driver's `--v5w` at run time.
+  Legacy aliases (`V5`, `W`, `WT`) and the literal `~/source/quilltap-v5`
+  are rewritten to the driver's `--v5w` at run time.
+
+ALIAS ASSIGNMENTS ARE UNFORGEABLE (P4.53). `normalize()` rewrites ANY
+`V5W=`/`WT=`/`V5=`/`W=` assignment statement to `--v5w` and says so once per
+family, so a header cannot decide which checkout it is tested against. Five
+case headers had written `W=${V5W:-$HOME/source/quilltap-v5}`, which overwrote
+the driver's injected alias with MAIN's path — the family staged its case file
+and its fixtures from main during a worktree sweep and exited 0 regardless. The
+committed headers are repaired to the sanctioned self-referential convention
+(`V5W=${V5W:-…}` + `$V5W/…`); this rewrite is the backstop that makes the class
+unrepeatable. See `ALIAS_ASSIGN`.
 
 NOTHING TO RUN IS A REFUSAL (P4.53). `--run` on a family whose recipe extracts
 to EMPTY stages used to print `OK: … recipe ran end-to-end` and exit 0 having
@@ -805,6 +815,97 @@ def is_repo_path(dest: str) -> bool:
     )
 
 
+# The variable names a header may use for "the v5 checkout under test". The
+# alternation ORDER is load-bearing: the longer names first, so `V5W=` is never
+# read as `V5` followed by a stray `W`. `V5_REF` above knows the same four.
+CHECKOUT_ALIASES = ("V5W", "WT", "V5", "W")
+
+# An alias ASSIGNMENT occupying a whole statement — start of line or after `;`,
+# a single value token, optionally trailed by a `#` comment.
+#
+# P4.53's item 3, the backstop for the class item 1 repairs by hand. Five
+# brahma/carina case headers wrote `W=${V5W:-$HOME/source/quilltap-v5}`, which
+# reads as a courtesy default and is a live clobber: `normalize()` prepends
+# `W="<--v5w>"` (because `$W/` appears in the body), the header's own assignment
+# then overwrites it, and the `:-` default fires because the prepend regex never
+# matched `${V5W:-…}` either — so the family staged its case file AND its
+# fixtures from MAIN while a worktree sweep believed it was testing the
+# worktree, and exited 0 either way. Repairing the headers makes the committed
+# recipes read true; it does NOT make the class unforgeable, because the next
+# header written that way brings the bug straight back. So the driver stops
+# letting the assignment decide at all: whatever an alias is assigned, `--v5w`
+# wins, and the rewrite is ANNOUNCED — a silent one would hide the very rot it
+# neutralizes.
+#
+# The shape is deliberately narrow. `V5W=/some/path cargo test …` is an ENV
+# PREFIX, not an assignment, and rewriting it would swallow the command — hence
+# the lookahead requiring the statement to end after the value (or its comment).
+ALIAS_ASSIGN = re.compile(
+    r"(?P<lead>^|;)(?P<sp>[ \t]*)(?P<var>" + "|".join(CHECKOUT_ALIASES) + r")="
+    r"(?P<val>(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s;#])+)"
+    r"(?P<tail>[ \t]*(?:#[^\n]*)?)(?=$|;)",
+    re.M,
+)
+
+# The committed-header spelling that item 1 repairs, named exactly: an alias
+# defaulted from a DIFFERENT alias (`W=${V5W:-…}`). The self-referential form
+# (`V5W=${V5W:-…}`) is the sanctioned convention — copy-paste-safe for a human
+# AND overridden by the driver's injected value — and must stay allowed.
+CROSS_ALIAS_DEFAULT = re.compile(
+    r"\b(?P<var>" + "|".join(CHECKOUT_ALIASES) + r")=\$\{(?P<from>[A-Za-z_][A-Za-z0-9_]*):-"
+)
+
+# Announced once per (family, statement) — `normalize()` runs twice per family
+# (regen + run) and would otherwise say the same thing twice.
+_ALIAS_NOTICED: set[tuple[str, str]] = set()
+
+
+def alias_value_is_settled(var: str, val: str, want: str) -> bool:
+    """True when rewriting `var=val` to the checkout changes NOTHING.
+
+    Two shapes qualify, and the notice must stay quiet for both or it becomes
+    noise the operator learns to scroll past — which would cost exactly the one
+    line that matters when a header regresses.
+
+    1. The value already IS the checkout. `V5=~/source/quilltap-v5` and
+       `WT=<this worktree root>` are resolved before this runs, so they arrive
+       here as the literal path.
+    2. The value is the SELF-REFERENTIAL default `${var:-…}` — the sanctioned
+       convention. The driver injects `var`, so the `:-` fallback never fires
+       and the rewrite replaces the expression with the value it would have
+       produced anyway. 38 families are written this way.
+
+    The CROSS-referential form (`W=${V5W:-…}`) is NOT settled: `W` is what the
+    driver injected and this assignment overwrites it from a variable the
+    injection missed. That is the P4.53 clobber, and it is what the notice is
+    for.
+    """
+    bare = val.strip("\"'")
+    if bare == want:
+        return True
+    m = CROSS_ALIAS_DEFAULT.match(f"{var}={bare}")
+    return m is not None and m.group("from") == var
+
+
+def neutralize_aliases(text: str, v5w: Path) -> tuple[str, list[str]]:
+    """Rewrite every checkout-alias assignment statement to `--v5w`.
+
+    Returns the rewritten text and the statements whose value the rewrite
+    actually CHANGED — see `alias_value_is_settled` for the two shapes it
+    changes nothing for.
+    """
+    changed: list[str] = []
+    want = str(v5w)
+
+    def sub(m: re.Match) -> str:
+        var, val = m.group("var"), m.group("val")
+        if not alias_value_is_settled(var, val, want):
+            changed.append(f"{var}={val}")
+        return f'{m.group("lead")}{m.group("sp")}{var}="{want}"'
+
+    return ALIAS_ASSIGN.sub(sub, text), changed
+
+
 def normalize(script_lines: list[str], v5w: Path, family: str) -> str:
     """Rewrite worktree placeholders/aliases to the driver's --v5w, suffix
     recipe-local scratch dirs with the family name (policy 2), and make the
@@ -817,12 +918,24 @@ def normalize(script_lines: list[str], v5w: Path, family: str) -> str:
     # worktree here; the recipes themselves never name a pin, by policy.
     if V4_CHECKOUT != V4_CHECKOUT_DEFAULT:
         text = text.replace(V4_CHECKOUT_DEFAULT, V4_CHECKOUT)
+    # P4.53 item 3: the assignment never decides the checkout — `--v5w` does.
+    text, rewritten = neutralize_aliases(text, v5w)
+    for stmt in rewritten:
+        if (family, stmt) not in _ALIAS_NOTICED:
+            _ALIAS_NOTICED.add((family, stmt))
+            print(
+                f"[{family}] alias assignment neutralized to --v5w "
+                f"({v5w}): {stmt}"
+            )
     if re.search(r"\$N\b|\$\{N\}", text) and not re.search(r"^N=", text, re.M):
         text = f"N={NODE_BIN_DEFAULT}\n" + text
+    # The injected value must also reach a `${VAR:-…}` REFERENCE, not only the
+    # bare `$VAR` / `${VAR}` forms — missing that brace shape is half of what
+    # made the P4.53 clobber survive (the other half was the assignment, above).
     header = "\n".join(
         f'{var}="{v5w}"'
-        for var in ("V5W", "V5", "W")
-        if re.search(rf"\${var}\b|\$\{{{var}\}}", text)
+        for var in CHECKOUT_ALIASES
+        if re.search(rf"\${var}\b|\$\{{{var}[^A-Za-z0-9_}}][^}}]*\}}|\$\{{{var}\}}", text)
     )
     if header:
         text = header + "\n" + text
@@ -1717,6 +1830,92 @@ def cmd_self_test() -> int:
             "########" not in proc.stdout and "====" not in proc.stdout,
             f"{' '.join(argv)} began executing before validating: {proc.stdout!r}",
         )
+
+    # ── P4.53 item 3: alias assignments never decide the checkout ────────────
+    #
+    # The live defect, verbatim from brahma-console-routes.test.ts. Both halves
+    # matter: the assignment must be rewritten, and MAIN's path must not survive
+    # anywhere in the normalized script (that path is what the clobber staged
+    # from).
+    probe = Path("/probe/worktree")
+    clobber = [
+        "N=~/.nvm/versions/node/v24.13.1/bin",
+        "W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)",
+        "cd ~/source/quilltap-server",
+        "cp $W/harness/oracle/cases/brahma-console-routes.test.ts /tmp/x/cases/",
+    ]
+    norm = normalize(clobber, probe, "selftest_alias")
+    check(f'W="{probe}"' in norm, f"the alias assignment was not neutralized: {norm}")
+    check(
+        "$HOME/source/quilltap-v5" not in norm,
+        f"main's path survived the rewrite — the clobber is still live: {norm}",
+    )
+    _, changed = neutralize_aliases("W=${V5W:-$HOME/source/quilltap-v5}", probe)
+    check(
+        changed == ["W=${V5W:-$HOME/source/quilltap-v5}"],
+        f"the rewrite must be ANNOUNCED verbatim (a silent one hides the rot): {changed}",
+    )
+    # …and the same for the `${VAR:-…}` REFERENCE form, which the injection
+    # regex used to miss (the other half of why the clobber survived).
+    ref_only = normalize(["cp ${V5W:-$HOME/source/quilltap-v5}/x /tmp/y"], probe, "sa2")
+    check(
+        f'V5W="{probe}"' in ref_only,
+        f"a ${{V5W:-…}} reference must still get the injected alias: {ref_only}",
+    )
+    # An ENV PREFIX is not an assignment — rewriting it would swallow the
+    # command, which is the one way this backstop could do real damage.
+    for prefix in (
+        "V5W=/some/path cargo test -p quilltap-harness --test x",
+        "W=/some/path npx jest -- x",
+    ):
+        out, ch = neutralize_aliases(prefix, probe)
+        check(out == prefix and ch == [], f"an env prefix was rewritten: {out!r}")
+    # A non-alias variable is untouched, including one that merely ENDS in an
+    # alias name (`TMPO=`, `NEW=`), and the mid-line `;` form IS caught.
+    for keep in ("TMPO=/tmp/qt-oracle-x", "STAGE=/tmp/s", "NEWW=/tmp/n", "QT_W=/tmp/q"):
+        out, ch = neutralize_aliases(keep, probe)
+        check(out == keep and ch == [], f"a non-alias assignment was rewritten: {out!r}")
+    out, ch = neutralize_aliases("N=/nvm/bin ; V5=/somewhere/else", probe)
+    check(
+        out == f'N=/nvm/bin ; V5="{probe}"' and ch == ["V5=/somewhere/else"],
+        f"a `;`-joined alias assignment was missed: {out!r} {ch}",
+    )
+    # A rewrite that changes NOTHING is not announced — otherwise 173 correct
+    # families would print a notice every sweep and train the operator to
+    # scroll past the one line that matters. Both settled shapes stay quiet;
+    # the CROSS-referential form (asserted above) does not.
+    for quiet in (f"V5={probe}", "V5W=${V5W:-$HOME/source/quilltap-v5}", "W=${W:-/x}"):
+        out, quiet_ch = neutralize_aliases(quiet, probe)
+        check(quiet_ch == [], f"a settled rewrite must not be announced: {quiet!r}")
+        check(
+            out.split("=", 1)[1] == f'"{probe}"',
+            f"a settled value must still be rewritten to --v5w: {out!r}",
+        )
+
+    # The committed headers, as a durable regression pin on item 1: no header in
+    # the tree may default one checkout alias from a DIFFERENT one. The
+    # self-referential `V5W=${V5W:-…}` is the sanctioned convention (the driver
+    # injects V5W, so the `:-` default never fires); the cross form is the
+    # clobber, and the backstop above hides it from every other symptom.
+    cross: list[str] = []
+    header_files = list(family_files(v5w))
+    cases_dir = v5w / "harness" / "oracle" / "cases"
+    for f in sorted(cases_dir.glob("*.ts")) + sorted(cases_dir.glob("*.tsx")):
+        header_files.append((f.name, f))
+    for name, path in header_files:
+        try:
+            doc = rs_doc_header(path) if path.suffix == ".rs" else ts_doc_header(path)
+        except UnicodeDecodeError:
+            continue
+        for m in CROSS_ALIAS_DEFAULT.finditer("\n".join(doc)):
+            if m.group("var") != m.group("from"):
+                cross.append(f"{name}: {m.group('var')}=${{{m.group('from')}:-…}}")
+    check(
+        not cross,
+        "a header defaults one checkout alias from another (the P4.53 clobber "
+        "spelling — write `V5W=${V5W:-$HOME/source/quilltap-v5}` and reference "
+        f"`$V5W/…`): {cross}",
+    )
 
     # ── P4.53 item 2: `nothing_to_run` is a refusal, never a green sentence ──
     empty = Recipe("x", Path("x"))
