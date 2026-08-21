@@ -77646,8 +77646,11 @@ dropping the sibling. v5 reproduces it exactly — `applyToolResult` stores
 `(call.result ?? {}).error` (`salon-conversation.ts:2947`). v4 built the field
 for the UI and no UI reads it.
 
-**Disposition: no v5 change; file upstream.** v5 stays faithful under the
-standing rule and follows when v4 moves.
+**Disposition: no v5 change; FILED UPSTREAM as v4 Bug 84**
+(`docs/developer/bugs/bug-84-tool-error-sentence-never-reaches-the-ui.md`, OPEN,
+Low; v4 commit `c0984bdf`). v5 stays faithful under the standing rule and
+absorbs the fix when v4 moves — two reads on the v5 side: carry `error` through
+`applyToolResult`, and prefer it in the `generate_image` failure branch.
 
 **Left deliberately unproven:** whether the notice behaves differently on a
 non-streaming provider path. The three Grok runs that suggested so are void, and

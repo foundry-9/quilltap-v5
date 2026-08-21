@@ -1591,7 +1591,9 @@ records THERE. Update this summary only when a phase or round completes.
   the server sent the real sentence in `toolResult.error`, a **sibling** of the
   null `result`; v4 hoists it identically *and says the field exists so live UIs
   can show a useful message*, then v4's own client reads `result?.error` and
-  drops it. v5 reproduces exactly, so it stays — filed upstream. ⚠ **#99 was
+  drops it. v5 reproduces exactly, so it stays — **FILED as v4 Bug 84**
+  (`bugs/bug-84-tool-error-sentence-never-reaches-the-ui.md`, v4 commit
+  `c0984bdf`). ⚠ **#99 was
   first mis-filed as "the notice never appears," on three runs whose injected
   `setInterval` observers had silently died (`__ticks` frozen at 6).** The
   standing lesson is in `dogfood-findings.md`: verify a browser instrument is
