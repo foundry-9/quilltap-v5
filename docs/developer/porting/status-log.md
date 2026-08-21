@@ -76499,3 +76499,87 @@ the `nothing_to_run` vacuous-green class) join the maintenance bank; the
 owed 💸 dogfood queue gains D95's live proof (a real turn with the setting
 on — the list refreshing between folds, zero extra embedding calls in the
 LLM logs).
+
+
+---
+
+## P4.D96 — the anti-chorus discipline drift catch-up (v4 `e22f7b36`, baseline `b8449b3e`)
+
+Lane branch `claude/p4-anti-chorus-drift-b14d9d`. Drift-checked at lane start:
+`git log b8449b3e..main` EMPTY, checkout on `main`, tree clean; `bugfix` still
+at the 2026-08-13 `3a76b17d` branch-start (measured by `diff`). All regens run
+from the pinned detached worktree `/tmp/qt-v4-pin-p4d96-b8449b3e` with all three
+symlink classes (root `node_modules`, `packages/quilltap/node_modules`, the
+`plugins/dist/*/node_modules` dirs).
+
+### Unit 1 — the direct-address rewrite + the Turn-note bytes
+
+**RED-FIRST, recorded before any port.** `skip_signal_equivalence` regenerated
+at the pin through the sweep driver went red on exactly two rows —
+`recentlyAddressed 'mention-hit'` ("What does Ada think?") and `'alias-hit'`
+("Ask the countess about it."), v5 `true` vs v4 `false`. The eligibility rows
+did NOT move (their `Ada?` corpus is a vocative either way), which is itself
+the measurement that the withhold-precedence matrix is untouched by this drift.
+
+`is_recently_addressed` now builds `build_direct_address_regex` over the
+character's trimmed name + aliases (longest first by UTF-16 units, escaped) and
+tests it against the same corpus; the whisper arm is unchanged and still runs
+BEFORE the null-regex return, so a nameless character reached by a targeted
+whisper is still "addressed". `find_mentioned_character_ids` keeps its other
+consumer (`services::off_scene`); only this call site moved.
+`build_turn_skip_instruction` takes both string edits byte-exact.
+
+**Three JS-regex fidelity questions the order flagged, each DECIDED BY
+MEASUREMENT against v4's real regex and pinned by its own corpus vector:**
+
+- **`\s`.** JS `\s` is WhiteSpace ∪ LineTerminator (TAB/VT/FF/SP, every `Zs`,
+  U+FEFF, LF/CR/LS/PS). Rust's `\s` is `\p{White_Space}` — it **excludes
+  U+FEFF and includes U+0085**. Both are reachable from message content, and
+  both diverge: probing v4 showed `"Hey Alice\ufeff"` → true, `"Hey
+  Alice\u0085"` → false, the opposite of Rust's `\s` on each. The class is
+  written out (`JS_SPACE`). Mutation proof: `JS_SPACE` → `\s` reddens
+  `bom-after-name`.
+- **The `m` flag.** JS's `^`/`$` honour CR, U+2028 and U+2029; Rust's `(?m)`
+  anchors on `\n` alone. CRLF agrees by accident (`\s*` eats the CR, `$` sits
+  before the LF) but a **lone CR does not** — v4 answers true at both ends.
+  Fixed by *consuming* one of those three next to the token
+  (`JS_ONLY_LINE_TERMINATOR`), which is equivalent for the EXISTENCE of a match
+  — and existence is all `.test()` asks. Mutation proof: neutering the class
+  reddens `cr-only-end-of-line`.
+- **Case folding — a RECORDED DIVERGENCE, in the safe direction.** v4's `i`
+  without `u` is ECMAScript Canonicalize (simple `toUppercase` + the
+  non-ASCII→ASCII guard); Rust's `(?i)` is Unicode simple case folding, a
+  superset on a handful of exotic code points (probed: U+212A KELVIN SIGN vs
+  `k`, U+1E9E vs `ß`, U+017F vs `s` — v4 answers false, Rust true). Matching JS
+  exactly would need a per-character reverse-canonicalize table; the divergence
+  can only make v5 see "addressed" where v4 does not, i.e. show the
+  answer-rather-than-pass caution, and it is the precedent already shipped in
+  `crate::mentioned_characters`. Ordinary accented names agree (`Zoë` /
+  `ZOË` pinned both ways). **Flagged for ratification.**
+
+Also measured: `regex::escape` escapes a superset of v4's `escapeRegex` set —
+the escaped *source bytes* differ, only matching is observable, and a
+`Dr. Strange?` name vector pins it in both directions
+(`regex-metachar-name` true, `regex-metachar-name-not-literal` false).
+
+**Differential.** `skip-signal.ts` grew v4's own eight new suite shapes 1:1
+(vocative by name, alias with a lead-in interjection, mid-sentence vocative,
+bare trailing `Alice?`, vocative opening a quoted line, `@`-mention, NOT a
+third-person mid-sentence mention, NOT a possessive roll-call recap), the
+alternation's remaining arms, the longest-first overlap pair, the
+no-usable-name null return + its whisper-still-wins twin, and the fidelity
+vectors above: 15 → **43** `recentlyAddressed` rows.
+
+**The note bytes had NO differential before this round — the order's premise
+that `build_context_tier3` carries turn-skip ops is REFUTED:** every one of the
+26 corpus ops passes `turnSkip` unset and the Rust side hardcodes
+`turn_skip: None`, so the Turn note never appeared in a single comparand. Closed
+with a new `turnSkipNote` kind in the same tier-1 family driving v4's REAL
+exported `buildTurnSkipInstruction` (4 rows: base, caution, an interpolated
+`Dr. $1 Strange` name, an empty name). Mutation-proven both ways (one byte in
+the new base paragraph → red on `base`; reverting the caution's reword → red on
+`with-caution`).
+
+Family: **138 rows green** (`[42, 10, 9, 11, 7, 43, 12, 4]`), zero SKIP,
+through `recipe_sweep.py --run skip_signal_equivalence --v4 <pin>`.
+

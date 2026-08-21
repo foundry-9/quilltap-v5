@@ -11,8 +11,11 @@
 //! [`crate::message_formatter::strip_character_name_prefix`] (v4 hosts these in
 //! the extracted `lib/llm/response-normalizer.ts`, which `message-formatter`
 //! re-exports — a pure v4 refactor, so the ported `message_formatter` stays the
-//! canonical home), [`crate::mentioned_characters::find_mentioned_character_ids`],
-//! and [`crate::chat_predicates::is_participant_present`].
+//! canonical home) and [`crate::chat_predicates::is_participant_present`]. v4's
+//! remaining client-safe import is `escapeRegex` (`lib/utils/regex.ts`); the
+//! Rust side uses `regex::escape`, which escapes a superset of v4's metacharacter
+//! set — the escaped *source bytes* differ, but every escaped token matches the
+//! same literal, and only matching is observable here.
 //!
 //! A pass is recorded as a Host message (`systemSender: 'host'`,
 //! `systemKind: 'turn-pass'`, `hostEvent: { participantId }`) — no new state
@@ -26,11 +29,11 @@
 
 use std::collections::HashSet;
 
+use regex::Regex;
 use serde_json::Value;
 
 use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 use crate::jsstr::{js_trim, utf16_len};
-use crate::mentioned_characters::{find_mentioned_character_ids, MentionCandidate};
 use crate::message_formatter::{normalize_content_block_format, strip_character_name_prefix};
 
 /// The literal sentinel a character emits to pass its turn.
@@ -381,8 +384,8 @@ fn is_visible_conversational_turn(m: &Value, responding_participant_id: &str) ->
 /// How many recent visible turns to scan for a "recently addressed" signal.
 const RECENTLY_ADDRESSED_LOOKBACK: usize = 10;
 
-/// The responder's name/alias set for the mention scan (the fields v4's
-/// `findMentionedCharacterIds([respondingCharacter])` consumes).
+/// The responder's name/alias set for the direct-address scan (the fields v4's
+/// `buildDirectAddressRegex(respondingCharacter)` consumes).
 #[derive(Clone, Debug)]
 pub struct RespondingCharacter {
     pub id: String,
@@ -390,21 +393,90 @@ pub struct RespondingCharacter {
     pub aliases: Vec<String>,
 }
 
-impl RespondingCharacter {
-    fn as_candidate(&self) -> MentionCandidate {
-        MentionCandidate {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            aliases: self.aliases.clone(),
-        }
+/// Short interjections that commonly lead into a vocative ("Hey Marion, ...").
+/// Deliberately small — the goal is catching real address openers, not every
+/// word that could precede a name. (v4 `e22f7b36`, transcribed.)
+const VOCATIVE_LEAD_INS: &str =
+    "(?:hey|hi|hello|oh|no|yes|well|so|and|but|now|listen|please|right|ok|okay|thanks|sorry|merci)";
+
+/// Characters that can end the clause *before* a vocative: sentence punctuation,
+/// quotes, brackets, markdown emphasis, newlines, dashes. `-` sits last so the
+/// class needs no escaping. (v4's regex source bytes, transcribed.)
+const VOCATIVE_PRE_BOUNDARY: &str = "[.!?;:…\"“”'()\\[\\]*_~\\n—–-]";
+
+/// JS `\s`, written out. ECMAScript's `\s` is WhiteSpace ∪ LineTerminator:
+/// TAB/VT/FF/SP, every `Zs`, U+FEFF, and LF/CR/LS/PS. Rust's `\s` is
+/// `\p{White_Space}`, which **excludes U+FEFF and includes U+0085 (NEL)** —
+/// both divergences are reachable from real message content, so the class is
+/// spelled rather than borrowed. Pinned by the `bom-*` / `nel-*` oracle vectors.
+const JS_SPACE: &str = "[\\t\\n\\x0B\\x0C\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
+
+/// The line terminators JS's `m`-flag `^`/`$` honour that Rust's `(?m)` does
+/// not (Rust anchors on `\n` alone). *Consuming* one of these next to the token
+/// is equivalent — for the *existence* of a match, which is all `.test()` asks
+/// — to JS's zero-width anchor at the adjacent position. Pinned by the `cr-*`
+/// oracle vectors; without it a lone CR (no LF) diverges.
+const JS_ONLY_LINE_TERMINATOR: &str = "[\\r\\u{2028}\\u{2029}]";
+
+/// Build a regex matching the character's name or an alias in a
+/// direct-address (vocative) position: preceded by the start of the text, a
+/// clause boundary, a comma, an `@`, or a lead-in interjection — and followed
+/// by address punctuation (`Marion,` / `Greg?` / `Amy —` / `Al.`) or the end of
+/// a line. A name flowing mid-sentence ("if Greg is ready", "Friday's block",
+/// "I glance at Amy over the bench") deliberately does NOT match: narrating or
+/// citing someone is not speaking *to* them.
+///
+/// Returns `None` when the character has no usable name tokens.
+///
+/// **Case folding is a recorded divergence.** v4 uses the JS `i` flag *without*
+/// `u`, i.e. ECMAScript Canonicalize (simple `toUppercase`, with the
+/// non-ASCII→ASCII guard); Rust's `(?i)` is Unicode simple case folding, whose
+/// equivalence classes are a superset on a handful of exotic code points
+/// (U+212A KELVIN SIGN vs `k`, U+1E9E capital sharp s vs `ß`, U+017F long s vs
+/// `s`). v5 therefore may see "directly addressed" where v4 would not — the
+/// safe direction (the answer-rather-than-pass caution appears). This matches
+/// the precedent already shipped in [`crate::mentioned_characters`]; the oracle
+/// corpus pins the agreeing non-ASCII vectors.
+fn build_direct_address_regex(character: &RespondingCharacter) -> Option<Regex> {
+    let mut tokens: Vec<String> = std::iter::once(character.name.as_str())
+        .chain(character.aliases.iter().map(String::as_str))
+        .map(|t| js_trim(t).to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.is_empty() {
+        return None;
     }
+
+    // Longer tokens first so "John Smith" wins over "John". v4's comparator is
+    // `b.length - a.length` — UTF-16 code units — over V8's stable sort.
+    tokens.sort_by_key(|t| std::cmp::Reverse(utf16_len(t)));
+    let names = tokens
+        .iter()
+        .map(|t| regex::escape(t))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    // Only the compiled-size limit can reject a fully-escaped pattern; degrade
+    // to "not addressed" rather than v4's `new RegExp` throw.
+    Regex::new(&format!(
+        "(?im)\
+         (?:^|{JS_ONLY_LINE_TERMINATOR}|{VOCATIVE_PRE_BOUNDARY}{JS_SPACE}*|,{JS_SPACE}+|@|(?-u:\\b){VOCATIVE_LEAD_INS},?{JS_SPACE}+)\
+         (?:{names}){JS_SPACE}*(?:[,.!?…—–:;]|{JS_ONLY_LINE_TERMINATOR}|$)"
+    ))
+    .ok()
 }
 
-/// Has the responding character been addressed or mentioned since they last
-/// spoke? Scans the visible conversational turns after the responder's own most
-/// recent non-whisper ASSISTANT message (capped at the last
+/// Has the responding character been DIRECTLY addressed since they last spoke?
+/// Scans the visible conversational turns after the responder's own most recent
+/// non-whisper ASSISTANT message (capped at the last
 /// [`RECENTLY_ADDRESSED_LOOKBACK`]). A hit is either the responder's name/alias
-/// appearing in that corpus, or a whisper targeted at the responder.
+/// in a vocative position ([`build_direct_address_regex`]), or a whisper
+/// targeted at the responder.
+///
+/// Direct address, not mere mention, on purpose: in a chorus-prone group scene
+/// every turn's roll-call recap names most of the cast, so a mention-based
+/// signal marked everyone as addressed forever and the "answer rather than
+/// pass" caution fired for every character on every turn — nobody ever passed.
 pub fn is_recently_addressed(
     events: &[Value],
     responding_participant_id: &str,
@@ -453,12 +525,15 @@ pub fn is_recently_addressed(
         }
     }
 
+    let Some(regex) = build_direct_address_regex(responding_character) else {
+        return false;
+    };
     let corpus = window
         .iter()
         .map(|m| str_field(m, "content").unwrap_or(""))
         .collect::<Vec<_>>()
         .join("\n");
-    !find_mentioned_character_ids(&corpus, &[responding_character.as_candidate()]).is_empty()
+    regex.is_match(&corpus)
 }
 
 // ---------------------------------------------------------------------------

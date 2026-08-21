@@ -22,6 +22,7 @@ import {
   isRecentlyAddressed,
   computeSkipEligibility,
 } from '@/lib/chat/turn-manager/skip-signal';
+import { buildTurnSkipInstruction } from '@/lib/chat/context-manager';
 import type { ChatEvent, ChatParticipantBase, Character } from '@/lib/schemas/types';
 
 type Row =
@@ -31,6 +32,7 @@ type Row =
   | { kind: 'qualifies'; id: string; participants: unknown[]; out: boolean }
   | { kind: 'firstTurn'; id: string; events: unknown[]; out: boolean }
   | { kind: 'recentlyAddressed'; id: string; events: unknown[]; respondingParticipantId: string; character: { id: string; name: string; aliases?: string[] }; out: boolean }
+  | { kind: 'turnSkipNote'; id: string; characterName: string; recentlyAddressed: boolean; out: string }
   | {
       kind: 'eligibility'; id: string; events: unknown[]; participants: unknown[];
       respondingParticipantId: string; character: { id: string; name: string; aliases?: string[] };
@@ -210,6 +212,76 @@ recently('lookback-cap-miss', lookbackEvents, 'p-ada');
 const lookbackEvents2: unknown[] = [msg('USER', 'u1', { content: 'irrelevant' }), msg('USER', 'u1', { content: 'Ada, are you there?' })];
 for (let i = 0; i < 9; i++) lookbackEvents2.push(msg('USER', 'u1', { content: `filler ${i}` }));
 recently('lookback-cap-hit', lookbackEvents2, 'p-ada');
+
+// --- the direct-address rewrite (v4 e22f7b36) --------------------------------
+// v4's own eight new suite shapes, 1:1, over its `alice` character.
+const alice = { id: 'char-alice', name: 'Alice', aliases: ['Al'] };
+const said = (content: string) => [
+  msg('ASSISTANT', 'p-alice', { content: 'I spoke earlier.' }),
+  msg('USER', 'p-user', { content }),
+];
+recently('vocative-by-name', said('Alice, what do you think?'), 'p-alice', alice);
+recently('vocative-alias-lead-in', said('Hey Al, over here.'), 'p-alice', alice);
+recently('vocative-mid-sentence', said('Look at me last, Alice.'), 'p-alice', alice);
+recently('vocative-bare-trailing-question', said('Someone has to run the pod. Alice?'), 'p-alice', alice);
+recently('vocative-opens-quoted-line', said('*I turn to her.* "Alice — the three originals are clean."'), 'p-alice', alice);
+recently('at-mention', said('Let me ask @Alice: is the pod ready?'), 'p-alice', alice);
+recently('third-person-mid-sentence', said('I wonder if Alice is ready to operate the stasis pod tonight.'), 'p-alice', alice);
+recently('possessive-roll-call', said("I've been listening through the round — Alice's three joints, the pod read, the heartbeat."), 'p-alice', alice);
+
+// The vocative alternation's own arms.
+recently('vocative-after-emdash', said('She paused — Alice, are you well?'), 'p-alice', alice);
+recently('lead-in-without-comma', said('well Alice, hi'), 'p-alice', alice);
+recently('mid-sentence-no-punctuation', said('I glance at Alice over the bench'), 'p-alice', alice);
+recently('vocative-after-newline-in-corpus', [
+  msg('ASSISTANT', 'p-alice', { content: 'I spoke earlier.' }),
+  msg('USER', 'p-user', { content: 'nothing to see here' }),
+  msg('USER', 'p-user', { content: 'Alice?' }),
+], 'p-alice', alice);
+
+// Longest-first alternation: name and alias overlap at the same position.
+const alOverlap = { id: 'char-al', name: 'Al', aliases: ['Alice'] };
+recently('overlap-longer-token', said('Hey Alice.'), 'p-alice', alOverlap);
+recently('overlap-shorter-token', said('Hey Al.'), 'p-alice', alOverlap);
+
+// No usable name tokens → buildDirectAddressRegex returns null.
+const nameless = { id: 'char-nameless', name: '', aliases: [] as string[] };
+recently('no-name-tokens', said('Hey there, anyone about?'), 'p-alice', nameless);
+recently('no-name-tokens-whisper-still-hits', [
+  msg('ASSISTANT', 'p-alice', { content: 'I spoke earlier.' }),
+  msg('USER', 'p-user', { content: 'psst', targetParticipantIds: ['p-alice'] }),
+], 'p-alice', nameless);
+recently('whitespace-name-alias-carries', said('Al, hello.'), 'p-alice', { id: 'char-ws', name: '   ', aliases: ['Al'] });
+
+// JS-regex fidelity: non-ASCII case folding, regex metacharacters in the name,
+// and the `m`-flag / `\s` edges the corpus can reach through message content.
+const zoe = { id: 'char-zoe', name: 'Zoë', aliases: [] as string[] };
+recently('nonascii-uppercased', said('ZOË, hi'), 'p-alice', zoe);
+recently('nonascii-mid-sentence', said('we asked zoë about it'), 'p-alice', zoe);
+const drStrange = { id: 'char-dr', name: 'Dr. Strange?', aliases: [] as string[] };
+recently('regex-metachar-name', said('Hey Dr. Strange?, are you there?'), 'p-alice', drStrange);
+recently('regex-metachar-name-not-literal', said('Hey Dr@Strange!, are you there?'), 'p-alice', drStrange);
+recently('crlf-end-of-line', said('Hey Alice\r\nand then we left'), 'p-alice', alice);
+recently('cr-only-end-of-line', said('Hey Alice\rand then we left'), 'p-alice', alice);
+recently('cr-only-line-start', said('we waited\rAlice, are you there?'), 'p-alice', alice);
+recently('ls-end-of-line', said('Hey Alice\u2028and then we left'), 'p-alice', alice);
+recently('bom-after-name', said('Hey Alice\ufeff'), 'p-alice', alice);
+recently('nel-after-name', said('Hey Alice\u0085'), 'p-alice', alice);
+recently('nbsp-after-name', said('Hey Alice\u00a0'), 'p-alice', alice);
+
+// ---- buildTurnSkipInstruction (v4 lib/chat/context-manager.ts) --------------
+// The ephemeral Turn note's exact bytes — both the base (which e22f7b36 grew a
+// closing paragraph) and the reworded caution.
+const note = (id: string, characterName: string, recentlyAddressed: boolean) =>
+  rows.push({
+    kind: 'turnSkipNote', id, characterName, recentlyAddressed,
+    out: buildTurnSkipInstruction(characterName, recentlyAddressed),
+  });
+
+note('base', 'Ada', false);
+note('with-caution', 'Ada', true);
+note('caution-name-interpolation', 'Dr. $1 Strange', true);
+note('caution-empty-name', '', true);
 
 // ---- computeSkipEligibility -------------------------------------------------
 const elig = (

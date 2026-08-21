@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(salon): the turn-skip signal requires direct address, and the note calls restating a pass
+
+_Versions: core 0.0.592, harness 0.0.512._
+
+Ports the turn-skip half of v4 `e22f7b36`. `isRecentlyAddressed` no longer
+fires on any name mention: it now requires a direct address — the character's
+name or an alias in a vocative position, an `@`-mention, or a targeted whisper.
+A chorus-prone group scene opens every turn with a roll-call recap naming most
+of the cast, so the mention-based signal marked everyone addressed forever, the
+"answer rather than pass" caution fired for every character on every turn, and
+nobody ever passed. The Turn note's base text gains a closing paragraph (a
+reply that mostly restates or endorses what has been said is not substantive —
+pass), and the caution is reworded to "directly addressed since they last
+spoke".
+
+The regex is built from the character's trimmed name and aliases, longest
+first, escaped. Three JS-fidelity decisions were made by measurement rather
+than assumption, each pinned by its own oracle vector: JS `\s` is written out
+(Rust's `\s` excludes U+FEFF and includes U+0085, both reachable from message
+content); JS's `m`-flag `^`/`$` honour CR, U+2028 and U+2029 where Rust's
+`(?m)` anchors on `\n` alone, so those three are matched by consuming them
+next to the token, which is equivalent for the existence of a match; and
+Unicode simple case folding is a recorded divergence from ECMAScript
+Canonicalize on a handful of exotic code points (U+212A, U+1E9E, U+017F),
+erring toward "addressed", as `crate::mentioned_characters` already does.
+
+The skip-signal differential grows v4's own eight new suite shapes 1:1 plus the
+fidelity vectors, and gains a `turnSkipNote` kind driving v4's real
+`buildTurnSkipInstruction` — the note bytes had no differential at all before
+this round, since every `build_context_tier3` op passes `turnSkip: None`.
+
 #### 2026-08-20 — docs(porting): plan the b8449b3e round — the anti-chorus drift catch-up + two maintenance lanes
 
 _Docs-only change._

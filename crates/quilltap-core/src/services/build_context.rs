@@ -574,14 +574,14 @@ pub struct TurnSkip {
 /// never contains the sentinel, so history can't teach the phrase; this note is
 /// the only place it appears.
 pub fn build_turn_skip_instruction(character_name: &str, recently_addressed: bool) -> String {
-    let base = "[Turn note from the Salon — not spoken by any character]\nYou are not obliged to speak this turn. If — and only if — you genuinely have\nnothing substantive to add to the conversation right now, reply with exactly\nthis single line and nothing else:\n\n[NOTHING TO ADD]\n\nThe floor will then pass to someone else and the scene continues without you\nthis turn. Do not use it to be coy or mysterious — a brief in-character\nremark is always better than an empty pass. If you have anything worth\nsaying, write your reply as normal and ignore this note entirely.";
+    let base = "[Turn note from the Salon — not spoken by any character]\nYou are not obliged to speak this turn. If — and only if — you genuinely have\nnothing substantive to add to the conversation right now, reply with exactly\nthis single line and nothing else:\n\n[NOTHING TO ADD]\n\nThe floor will then pass to someone else and the scene continues without you\nthis turn. Do not use it to be coy or mysterious — a brief in-character\nremark is always better than an empty pass. If you have anything worth\nsaying, write your reply as normal and ignore this note entirely.\n\nIf your reply would mostly restate, endorse, or re-phrase what has already\nbeen said — even in your own voice — that is not substantive. Pass.";
 
     if !recently_addressed {
         return base.to_string();
     }
 
     format!(
-        "{base}\n\nOne caution: {character_name} appears to have been addressed or mentioned since you last spoke. If someone has spoken to you and you have not yet answered them, you should answer rather than pass."
+        "{base}\n\nOne caution: {character_name} appears to have been directly addressed since they last spoke. If someone has spoken to you and you have not yet answered them, you should answer rather than pass."
     )
 }
 

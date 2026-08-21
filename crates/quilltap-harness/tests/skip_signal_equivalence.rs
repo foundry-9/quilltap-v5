@@ -9,8 +9,16 @@
 //! `findSkippedSinceLastSubstantive` (whisper doesn't terminate; substantive
 //! does; the set compared sorted), the `qualifiesForTurnSkipping` matrix,
 //! `isFirstCharacterTurn` (greeting counts, Staff doesn't),
-//! `isRecentlyAddressed` (mention via the real matcher, targeted whisper,
-//! lookback cap, own-message boundary), and the full `computeSkipEligibility`
+//! `isRecentlyAddressed` (v4 `e22f7b36`'s DIRECT-address rewrite: v4's own
+//! eight new suite shapes 1:1, the vocative alternation's arms, the
+//! no-usable-name null return — and its whisper-arm-still-wins twin — plus the
+//! JS-regex fidelity vectors this port had to decide by measurement:
+//! non-ASCII case folding, a regex-metacharacter name, and the `m`-flag / `\s`
+//! edges reachable from message content [CRLF, lone CR at both ends, U+2028,
+//! U+FEFF, U+0085, NBSP]), `buildTurnSkipInstruction`'s exact note bytes (the
+//! grown base paragraph + the reworded caution — no differential covered them
+//! before this round; `build_context_tier3` passes `turn_skip: None` on every
+//! op), and the full `computeSkipEligibility`
 //! withhold-precedence matrix incl. `summoned` and the stall guard. (The
 //! literal vacuous-`.every()` over ZERO other active characters is unreachable
 //! through `computeSkipEligibility` with a consistent roster — qualification
@@ -25,6 +33,7 @@
 //!   QT_ORACLE_SKIP_SIGNAL=/tmp/oracle-skip-signal.ndjson \
 //!     cargo test -p quilltap-harness --test skip_signal_equivalence
 
+use quilltap_core::services::build_context::build_turn_skip_instruction;
 use quilltap_core::skip_signal::{
     compute_skip_eligibility, detect_skip_sentinel, find_skipped_since_last_substantive,
     is_first_character_turn, is_recently_addressed, is_turn_pass_message,
@@ -112,6 +121,15 @@ enum OracleRow {
         character: WireCharacter,
         out: bool,
     },
+    #[serde(rename = "turnSkipNote")]
+    TurnSkipNote {
+        id: String,
+        #[serde(rename = "characterName")]
+        character_name: String,
+        #[serde(rename = "recentlyAddressed")]
+        recently_addressed: bool,
+        out: String,
+    },
     #[serde(rename = "eligibility")]
     Eligibility {
         id: String,
@@ -134,7 +152,7 @@ fn skip_signal_equivalence() {
         return;
     };
     let data = std::fs::read_to_string(&path).expect("read oracle ndjson");
-    let mut counts = [0usize; 7];
+    let mut counts = [0usize; 8];
     for line in data.lines().filter(|l| !l.trim().is_empty()) {
         let row: OracleRow = serde_json::from_str(line).expect("parse oracle row");
         match row {
@@ -200,6 +218,19 @@ fn skip_signal_equivalence() {
                     "recentlyAddressed '{id}'"
                 );
                 counts[5] += 1;
+            }
+            OracleRow::TurnSkipNote {
+                id,
+                character_name,
+                recently_addressed,
+                out,
+            } => {
+                assert_eq!(
+                    build_turn_skip_instruction(&character_name, recently_addressed),
+                    out,
+                    "turnSkipNote '{id}'"
+                );
+                counts[7] += 1;
             }
             OracleRow::Eligibility {
                 id,
