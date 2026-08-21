@@ -164,6 +164,38 @@ designed; the ruled row retires to a plain `check_body`. Mutation-proven:
 dropping `composerEmoji` from a scratch copy puts v4 back on the bare 500 and
 reddens the family with the same "expected an error arm" refusal the ruling
 documented.
+#### 2026-08-20 — fix(harness): the sweep driver refuses a family with nothing to run (P4.53)
+
+_Versions: harness 0.0.513._
+
+`--run <family>` on a family whose recipe extracts to EMPTY stages printed
+`OK: <family> recipe ran end-to-end` and exited 0 having executed nothing at
+all — the driver's own uniform on the vacuous green it exists to prevent.
+Every `exempt` compile-time pin and every `no_oracle` integration arm answered
+that way, as did every `committed_corpus` family whose only stage is the
+by-hand recording a sweep deliberately skips: 39 families in total, each of
+which a gate script could name and collect a green line from for free.
+
+`nothing_to_run` is now a refusal in the class the P4.51 unknown-family error
+established — raised BEFORE any stage (nothing below it runs, not even the
+stale-oracle deletion), exiting 2, and naming which class the family is in and
+what to do about it. `--run-all` records the status on the row, so a batch
+containing one is not green, and its results artifact gains a `nothing_to_run`
+key enumerating the whole set over the entire checkout rather than just the
+batch — the debt was previously recorded nowhere.
+
+`stages_to_run` is now the single source of truth for "will anything execute?",
+shared by the refusal and the execution loop, so the two cannot drift apart.
+`cmd_run` also distinguishes REFUSED from FAILED: a refusal is the driver
+declining to pretend, and calling it a failure sends the operator hunting for a
+broken recipe.
+
+None of the 39 is hard recipe rot — the exempt pins and committed corpora have
+nothing to regenerate by design, and the no_oracle arms build their state in
+process. Roughly 34 of them could gain an explicit scoped `cargo test --test
+<family>` run line so `--run` can prove them; that inventory is the next
+maintenance pass's, deferred by the work order.
+
 #### 2026-08-20 — fix(harness): five oracle-case headers stop clobbering the driver's injected checkout alias (P4.53)
 
 _Versions: harness 0.0.512._

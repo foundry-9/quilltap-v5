@@ -77049,3 +77049,93 @@ why nothing had caught it.
 
 The driver's tracked-fixture write warning stayed silent through every
 probe, as the order requires.
+
+**The probe was re-run once more with unit 1 landed and unit 3's backstop
+still ABSENT** (the item-2-only driver), so unit 1 is proven on its own
+rather than by the rewrite that came after it: the generated script shows
+the injected `V5W="…/.claude/worktrees/p4-53-…"` on one line and the
+header's own `V5W=${V5W:-$HOME/source/quilltap-v5}` on the next — which now
+finds `V5W` SET and keeps the worktree. Marker present in the staged copy;
+zero SKIP.
+
+### Unit 2 — `nothing_to_run` is a refusal, not a green sentence
+
+**The defect, reproduced against the pre-change driver** (`git show
+HEAD:harness/tools/recipe_sweep.py > /tmp/p453-old-driver.py`):
+
+```
+python3.13 /tmp/p453-old-driver.py --v5w "$PWD" --run p4_6ao_wire_contract
+  → OK: p4_6ao_wire_contract recipe ran end-to-end      exit 0
+python3.13 /tmp/p453-old-driver.py --v5w "$PWD" --run p4_6ay_workbench_wire_contract
+  → OK: p4_6ay_workbench_wire_contract recipe ran end-to-end   exit 0
+```
+
+Both executed NOTHING. `run_family`'s stage loop skipped each empty stage
+and fell through to the success record.
+
+**The fix.** `stages_to_run(r)` is now the single source of truth for
+"will anything execute?" — it is what the execution loop iterates AND what
+the refusal consults, so the two cannot drift apart (a committed-corpus
+family's regen is the by-hand RECORDING a sweep deliberately skips, so it
+is not a stage). `nothing_to_run_cause` names the class and the remedy,
+and the refusal is raised in the P4.51 refuse-BEFORE-any-stage position —
+nothing below it runs, not even the stale-oracle deletion. Exit code
+`EXIT_NOTHING_TO_RUN` (2, the driver's refusal code). `cmd_run` now says
+REFUSED rather than FAILED for the refusal class: a refusal is the driver
+declining to pretend, and calling it a failure sends the operator hunting
+for a broken recipe.
+
+Same invocations, this lane's driver:
+
+```
+REFUSED [nothing_to_run]: p4_6ao_wire_contract: … it is a compile-time pin
+  with no oracle by design (EXEMPT_FAMILIES) …            exit 2
+REFUSED [nothing_to_run]: p4_6ay_workbench_wire_contract: … its header
+  describes no oracle at all (no_oracle) …                exit 2
+```
+
+`--run-all` carries the status on the row (so a batch containing one is
+not green), and its results artifact gains a `nothing_to_run` key
+enumerating the set over the WHOLE checkout, not just the batch — the debt
+had been recorded nowhere. The default batch's exclusion list is
+unchanged, deliberately: it already leaves these families out, and
+widening it to the 12 committed-corpus cargo halves is a different
+decision than this order's.
+
+**The measured debt — 39 families** (the size of the vacuous-green class
+this retires; the Tier-2 artifact is
+`harness/tools/sweep-results/2026-08-20-b8449b3e-p4.53-nothing-to-run.json`):
+
+- `exempt` (5): `p4_6ao_wire_contract`, `p4_6ar_wire_contract`,
+  `p4_9g1_wire_contract`, `p4_9g6_seam_contract`, `p4_d10_wire_contract`.
+  (`settings_wire_actions`, the sixth EXEMPT family, is NOT in the list —
+  its header does extract stages, so the refusal correctly leaves it
+  alone. Emptiness is measured, not assumed from the exempt set.)
+- `committed_corpus` (12): `image_dialects_equivalence`,
+  `moderation_wire_equivalence`, `request_builder_equivalence`,
+  `request_builder_google_equivalence`,
+  `request_builder_google_wire_equivalence`, `response_parse_equivalence`,
+  `restore_vintage_state`, `stream_decoders_equivalence`,
+  `streaming_composer_equivalence`, `tool_wire_call_site`,
+  `tool_wire_equivalence`, `web_search_wire_equivalence`.
+- `no_oracle` (22): `p4_6ay_workbench_wire_contract`,
+  `web_search_runner_wire`, `binary_routes`,
+  `change_passphrase_archive_sweep`, `characters_action_route`,
+  `characters_export_route`, `characters_import_route`,
+  `characters_photos_routes`, `characters_reset_builtins_route`,
+  `characters_wardrobe_route`, `chat_create_end_to_end`,
+  `chat_send_smoke`, `chat_settings_composer_web_routes`, `contract`,
+  `file_content_missing_404`, `files_write_routes`,
+  `mount_multipart_routes`, `photos_web_routes`, `profile_web_routes`,
+  `terminal_ws`, `text_replacements_web_routes`, `cli_differential`.
+
+**Judgement on the debt (Tier 3 — recorded, NOT repaired here).** None of
+the 39 is hard recipe rot. The exempt pins and the committed corpora have
+nothing to regenerate by design (spot-checked `stream_decoders_equivalence`,
+`tool_wire_equivalence`, `restore_vintage_state` with `--show`: all three
+extract to genuinely empty stages, their headers carrying only the prose
+"runs in every plain `cargo test`"), and the no_oracle arms build whatever
+state they need in process. What roughly 34 of them COULD gain is an
+explicit scoped `cargo test --test <family>` run line, which would turn
+`--run` on them from a refusal into a real proof. That inventory is the
+next maintenance pass's, deferred loudly by the order's Tier 3.

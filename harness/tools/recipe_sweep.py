@@ -63,6 +63,12 @@ Variable conventions the driver understands (and headers should use):
   Legacy single-letter aliases (`V5`, `W`) and the literal
   `~/source/quilltap-v5` are rewritten to the driver's `--v5w` at run time.
 
+NOTHING TO RUN IS A REFUSAL (P4.53). `--run` on a family whose recipe extracts
+to EMPTY stages used to print `OK: … recipe ran end-to-end` and exit 0 having
+run nothing — every `no_oracle` family and every `exempt` pin answered that way.
+It now exits `EXIT_NOTHING_TO_RUN` with a named reason, before any stage, and
+`--run-all` records the whole set in its artifact. See `nothing_to_run_cause`.
+
 THE INDENTATION RULE (P4.45) decides what is a recipe line at all: a command
 must be INDENTED at least two spaces past its comment marker (`//!   cd …`,
 ` *   cd …`), where prose sits at the marker's own one-space margin. It is the
@@ -138,8 +144,11 @@ V4_CHECKOUT_DEFAULT = "~/source/quilltap-server"
 V4_CHECKOUT = V4_CHECKOUT_DEFAULT
 
 # The driver's refusal exit code (`refused_repo_write` / `refused_non_extractable`
-# already use 2). P4.51 puts an unknown family name here too.
+# already use 2). P4.51 puts an unknown family name here too, and P4.53 the
+# `nothing_to_run` refusal — every one of them is an "the operator asked for
+# something the driver will not pretend to have done", never a recipe failure.
 EXIT_UNKNOWN_FAMILY = 2
+EXIT_NOTHING_TO_RUN = 2
 
 # Families whose recipe writes into the repo BY DESIGN, with the safeguard that
 # makes it sound. These are not policy-1 violations; `--run` still refuses them
@@ -971,10 +980,78 @@ def venue_is_worktree(v5w: Path) -> bool:
     return "/.claude/" in str(v5w.resolve()) + "/"
 
 
+def stages_to_run(r: Recipe) -> list[str]:
+    """The stage labels `run_family` will actually EXECUTE.
+
+    The single source of truth for "will anything happen?", so the
+    `nothing_to_run` refusal and the execution loop below cannot drift apart. A
+    committed-corpus family's regen is a by-hand RECORDING the sweep never runs
+    (it rewrites bytes checked into the repo), so it does not count as a stage.
+    """
+    labels = []
+    for label, stage in (("regen", r.regen), ("run", r.run)):
+        if not stage:
+            continue
+        if label == "regen" and "committed_corpus" in r.notes:
+            continue
+        labels.append(label)
+    return labels
+
+
+def nothing_to_run_cause(family: str, r: Recipe) -> str | None:
+    """P4.53 item 2. None when this family has at least one stage to execute.
+
+    `--run` on a family whose recipe extracts to EMPTY stages used to print
+    `OK: … recipe ran end-to-end` and exit 0 having run nothing at all — the
+    vacuous green this driver exists to prevent, wearing the driver's own
+    uniform. Every `no_oracle` family and every `exempt` pin answered that way,
+    so a gate script naming one got a green line for free.
+
+    It is an OPERATOR error rather than a recipe failure (there is nothing here
+    that COULD run), so it joins the refusal class the unknown-family error
+    established: named, reasoned, and raised BEFORE any stage executes.
+    """
+    if stages_to_run(r):
+        return None
+    if family in EXEMPT_FAMILIES:
+        why = (
+            "it is a compile-time pin with no oracle by design "
+            "(EXEMPT_FAMILIES) — there is nothing to regenerate"
+        )
+    elif "no_oracle" in r.notes:
+        why = (
+            "its header describes no oracle at all (no_oracle) — an "
+            "integration arm that builds whatever state it needs in-process"
+        )
+    elif "committed_corpus" in r.notes:
+        why = (
+            "its regen is a by-hand RECORDING a sweep never runs, and its "
+            "header carries no `cargo test` run line either"
+        )
+    else:
+        why = "its recipe extracted to no stages at all"
+    return (
+        f"{family} has nothing to run — {why}. Exiting 0 here would print a "
+        f"green sentence for a run that never happened. `--show {family}` "
+        f"prints the empty extraction; if this family SHOULD have a runnable "
+        f"recipe, that is recipe rot to repair in its header."
+    )
+
+
+def nothing_to_run_families(v5w: Path) -> list[str]:
+    """Every family the `nothing_to_run` refusal would fire on — the measured
+    size of the vacuous-green debt, recorded in the `--run-all` artifact."""
+    return [
+        fam
+        for fam, path in family_files(v5w)
+        if nothing_to_run_cause(fam, extract(v5w, fam, path))
+    ]
+
+
 def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict:
     """Execute one family's recipe end-to-end. Returns a results record:
     status ∈ ok / refused_repo_write / refused_non_extractable / refused_venue /
-    regen_failed / run_failed / skipped."""
+    nothing_to_run / regen_failed / run_failed / skipped."""
     rec: dict = {"family": family, "status": "ok", "cause": None, "exit": 0}
     path = find_family(v5w, family)
     r = extract(v5w, family, path)
@@ -1008,6 +1085,13 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
             exit=4,
         )
         return rec
+    # P4.53 item 2, in the refuse-BEFORE-any-stage position the P4.51 review
+    # pinned: nothing below this line — not even the stale-oracle deletion —
+    # may run for a family that has no stage to execute.
+    nothing = nothing_to_run_cause(family, r)
+    if nothing:
+        rec.update(status="nothing_to_run", cause=nothing, exit=EXIT_NOTHING_TO_RUN)
+        return rec
     # Clean invocation: remove this family's oracle outputs so a stale NDJSON
     # can never pass silently (`oracle-regen-silent-stale-pass`).
     #
@@ -1029,20 +1113,19 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
         except FileNotFoundError:
             pass
     env = dict(os.environ, CARGO_INCREMENTAL="0")
-    for label, stage in (("regen", r.regen), ("run", r.run)):
-        if not stage:
-            continue
-        # A committed-corpus family's "regen" is a RECORDING script that
-        # rewrites bytes checked into the repo — running it in a sweep
-        # (especially against a pinned worktree missing the recorder's
-        # runtime deps) CLOBBERS the committed corpus with refusal rows.
-        # Found at the help-drift unification, where exactly that happened
-        # to `google-wire.recorded.ndjson`. Recording is a deliberate,
-        # by-hand act; a sweep only ever runs the committed corpus's cargo
-        # half.
-        if label == "regen" and "committed_corpus" in r.notes:
-            print(f"skipping regen for committed-corpus family {family}")
-            continue
+    # A committed-corpus family's "regen" is a RECORDING script that rewrites
+    # bytes checked into the repo — running it in a sweep (especially against a
+    # pinned worktree missing the recorder's runtime deps) CLOBBERS the
+    # committed corpus with refusal rows. Found at the help-drift unification,
+    # where exactly that happened to `google-wire.recorded.ndjson`. Recording is
+    # a deliberate, by-hand act; a sweep only ever runs the committed corpus's
+    # cargo half. `stages_to_run` is where that exclusion lives, so the refusal
+    # above and this loop can never disagree about what "ran".
+    if r.regen and "committed_corpus" in r.notes:
+        print(f"skipping regen for committed-corpus family {family}")
+    staged = {"regen": r.regen, "run": r.run}
+    for label in stages_to_run(r):
+        stage = staged[label]
         script = shield_fixture_envs(normalize(stage, v5w, family), v5w, family)
         if label == "run" and "--nocapture" not in script:
             # Make skip notices observable so a family that silently SKIPs
@@ -1111,7 +1194,14 @@ def cmd_run(v5w: Path, family: str, force: bool) -> int:
     if rec["status"] == "ok":
         print(f"OK: {family} recipe ran end-to-end")
         return 0
-    print(f"FAILED [{rec['status']}]: {family}: {rec['cause']}", file=sys.stderr)
+    # A refusal is not a failure — the driver declined to pretend, and saying
+    # FAILED for it sends the operator looking for a broken recipe.
+    verb = (
+        "REFUSED"
+        if rec["status"].startswith("refused") or rec["status"] == "nothing_to_run"
+        else "FAILED"
+    )
+    print(f"{verb} [{rec['status']}]: {family}: {rec['cause']}", file=sys.stderr)
     return rec["exit"]
 
 
@@ -1143,6 +1233,12 @@ def cmd_run_all(
         "venue_is_worktree": venue_is_worktree(v5w),
         "requested": families,
         "excluded": sorted(exclude),
+        # P4.53 item 2: the families `--run` would refuse as `nothing_to_run`,
+        # enumerated over the WHOLE checkout rather than just this batch. The
+        # default batch already leaves them out (below), so without this key a
+        # full sweep's artifact recorded the vacuous-green debt nowhere at all.
+        # A family listed here that SHOULD have a runnable recipe is recipe rot.
+        "nothing_to_run": nothing_to_run_families(v5w),
         "families": [],
     }
 
@@ -1620,6 +1716,108 @@ def cmd_self_test() -> int:
         check(
             "########" not in proc.stdout and "====" not in proc.stdout,
             f"{' '.join(argv)} began executing before validating: {proc.stdout!r}",
+        )
+
+    # ── P4.53 item 2: `nothing_to_run` is a refusal, never a green sentence ──
+    empty = Recipe("x", Path("x"))
+    check(
+        stages_to_run(empty) == [] and nothing_to_run_cause("x", empty) is not None,
+        "an empty extraction must be nothing_to_run",
+    )
+    runnable = Recipe("x", Path("x"))
+    runnable.run = ["cargo test -p quilltap-harness --test x"]
+    check(
+        stages_to_run(runnable) == ["run"] and nothing_to_run_cause("x", runnable) is None,
+        "a family with a run stage must NOT be nothing_to_run",
+    )
+    # A committed-corpus family's regen is skipped, so regen ALONE is nothing.
+    cc = Recipe("x", Path("x"))
+    cc.regen = ["npx tsx record.ts"]
+    cc.notes.append("committed_corpus")
+    check(
+        stages_to_run(cc) == [] and nothing_to_run_cause("x", cc) is not None,
+        "a committed-corpus family with no run line must be nothing_to_run",
+    )
+    cc2 = Recipe("x", Path("x"))
+    cc2.regen = ["npx tsx record.ts"]
+    cc2.run = ["cargo test -p quilltap-harness --test x"]
+    cc2.notes.append("committed_corpus")
+    check(
+        stages_to_run(cc2) == ["run"],
+        "a committed-corpus family's cargo half is still a stage",
+    )
+    check(
+        "EXEMPT_FAMILIES" in (nothing_to_run_cause(sorted(EXEMPT_FAMILIES)[0], empty) or ""),
+        "the refusal must name WHY an exempt pin has nothing to run",
+    )
+
+    # End to end, against REAL families of each class — the arms that matter,
+    # because the wart was what `main()` did with the empty extraction, not
+    # whether emptiness could be detected.
+    debt = nothing_to_run_families(v5w)
+    check(bool(debt), "no nothing_to_run family found — the arm cannot judge")
+    real_exempt = next((f for f in debt if f in EXEMPT_FAMILIES), None)
+    real_no_oracle = next(
+        (
+            f
+            for f in debt
+            if f not in EXEMPT_FAMILIES
+            and "no_oracle" in extract(v5w, f, find_family(v5w, f)).notes
+        ),
+        None,
+    )
+    check(real_exempt is not None, f"no exempt pin in the debt list: {debt}")
+    check(real_no_oracle is not None, f"no no_oracle family in the debt list: {debt}")
+    for fam in [f for f in (real_exempt, real_no_oracle) if f]:
+        proc = subprocess.run(
+            [sys.executable, driver, "--v5w", str(v5w), "--run", fam],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        check(
+            proc.returncode == EXIT_NOTHING_TO_RUN,
+            f"--run {fam} exited {proc.returncode}, want {EXIT_NOTHING_TO_RUN}",
+        )
+        check(
+            "OK:" not in proc.stdout,
+            f"--run {fam} still printed a green sentence: {proc.stdout!r}",
+        )
+        check(
+            f"REFUSED [nothing_to_run]: {fam}" in proc.stderr,
+            f"--run {fam} did not name the refusal: {proc.stderr!r}",
+        )
+        check(
+            "====" not in proc.stdout,
+            f"--run {fam} executed a stage before refusing: {proc.stdout!r}",
+        )
+    # …and inside a batch: the row carries the status and the batch is not green.
+    if real_exempt:
+        proc = subprocess.run(
+            [
+                sys.executable, driver, "--v5w", str(v5w),
+                "--run-all", "--families", real_exempt,
+                "--results", f"/tmp/qt-recipe-selftest-{real_exempt}.json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        check(proc.returncode != 0, "a nothing_to_run row must not make --run-all green")
+        check(
+            "'nothing_to_run': 1" in proc.stdout,
+            f"--run-all's totals must distinguish the row: {proc.stdout!r}",
+        )
+        artifact = json.loads(
+            Path(f"/tmp/qt-recipe-selftest-{real_exempt}.json").read_text()
+        )
+        check(
+            artifact["families"][0]["status"] == "nothing_to_run",
+            f"the artifact row must carry the status: {artifact['families'][0]}",
+        )
+        check(
+            sorted(artifact["nothing_to_run"]) == sorted(debt),
+            "the artifact must enumerate the whole vacuous-green debt",
         )
 
     for f in failures:
