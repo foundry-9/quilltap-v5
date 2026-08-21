@@ -435,7 +435,9 @@ const JS_ONLY_LINE_TERMINATOR: &str = "[\\r\\u{2028}\\u{2029}]";
 /// (U+212A KELVIN SIGN vs `k`, U+1E9E capital sharp s vs `ß`, U+017F long s vs
 /// `s`). v5 therefore may see "directly addressed" where v4 would not — the
 /// safe direction (the answer-rather-than-pass caution appears). This matches
-/// the precedent already shipped in [`crate::mentioned_characters`]; the oracle
+/// the precedent already shipped in [`crate::mentioned_characters`], and the
+/// divergence was RATIFIED by the human on 2026-08-21 (round record:
+/// `status-log.md` → the `b8449b3e` round); the oracle
 /// corpus pins the agreeing non-ASCII vectors.
 fn build_direct_address_regex(character: &RespondingCharacter) -> Option<Regex> {
     let mut tokens: Vec<String> = std::iter::once(character.name.as_str())

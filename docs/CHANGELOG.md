@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): the case-folding divergence ratified
+
+_Versions: core 0.0.594._
+
+The human ratified P4.D96's recorded case-folding divergence (Rust Unicode
+simple folding vs v4's ECMAScript canonicalize — over-detection only, on a
+handful of exotic code points). The skip_signal doc comment, the order
+status header, and the CLAUDE.md round bullet now carry the ratification;
+a ruling record is appended to the status log. Comment-only source change.
+
 #### 2026-08-21 — port(unify): the b8449b3e round lands — the anti-chorus drift, the memories fixture vintage, the sweep-driver follow-ups
 
 _Versions: core 0.0.593, harness 0.0.517, SPA 0.5.527._

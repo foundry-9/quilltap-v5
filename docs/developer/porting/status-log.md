@@ -77433,3 +77433,19 @@ live group-scene walk (does the discipline block actually break the chorus
 on a weak model — a judgement no oracle can make). The case-folding
 divergence above awaits ratification. `p4.9i2`'s bank grew the two help
 files.
+
+---
+
+## Ruling — the P4.D96 case-folding divergence RATIFIED (2026-08-21, human)
+
+The recorded divergence in `build_direct_address_regex` (Rust `(?i)` Unicode
+simple case folding vs v4's ECMAScript `i`-without-`u` canonicalize — a
+superset on a handful of exotic code points: U+212A KELVIN SIGN, U+1E9E,
+U+017F) is **ratified as acceptable**: v5 may see "directly addressed" where
+v4 would not, whose only effect is showing the answer-rather-than-pass
+caution, and the exceptions won't change anything substantial for the vast
+majority of users (the human's words). No reverse-canonicalize table will be
+built. The doc comment in `skip_signal.rs` now carries the ratification
+date; the same standing class in `crate::mentioned_characters` is covered by
+the same reasoning. The oracle corpus keeps its agreeing non-ASCII vectors
+(`Zoë`/`ZOË` both ways) as the pin that ordinary accented names stay exact.

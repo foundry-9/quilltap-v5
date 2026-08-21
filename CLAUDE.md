@@ -1510,7 +1510,7 @@ records THERE. Update this summary only when a phase or round completes.
   (the new vocative regex in core with the three JS-regex fidelity
   questions DECIDED BY MEASUREMENT — `JS_SPACE` spelled out, the `m`-flag
   gap closed by consuming JS-only line terminators, and **case folding a
-  RECORDED DIVERGENCE in the safe direction, awaiting ratification**; the
+  RECORDED DIVERGENCE in the safe direction, RATIFIED 2026-08-21**; the
   SPA client twin a character-for-character transcription, parity spec
   grown 1:1), the turn-skip note's restate-is-a-pass paragraph + reworded
   caution byte-exact, and the turn-anchor restructure with the byte-exact
