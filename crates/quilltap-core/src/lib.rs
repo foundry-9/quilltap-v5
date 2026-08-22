@@ -222,6 +222,7 @@ pub mod services;
 pub mod skip_signal;
 pub mod stable_sort;
 pub mod staff_display_names;
+pub mod standing_instructions;
 pub mod state;
 pub mod system_prompt;
 pub mod tag_style;

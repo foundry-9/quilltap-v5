@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(prompts): the standing-instructions module (project + group `instructions`)
+
+_Versions: core 0.0.609, harness 0.0.532._
+
+Ports v4 `lib/chat/context/standing-instructions.ts` (`8f868109`) as
+`quilltap_core::standing_instructions`: `resolve_standing_instructions`
+(project by `chat.projectId`, groups by the RESPONDING character's
+memberships — never the chat), `render_standing_instructions_section`
+(byte-exact `[STANDING INSTRUCTIONS]` preamble, `## Project Instructions —
+<name>` / `## Group Instructions — <name>` headings, `\n\n` block joins),
+and the `resolve_standing_instructions_section` one-shot. Nothing is
+injected yet — the builder slot and the call sites land in the next units.
+
+Group sources sort by `localeCompare(name)` then `localeCompare(instructions)`
+— v4's doc comment says the tie-break is "(then id)", but its code tie-breaks
+on `instructions`; the CODE is what is ported. Empty/whitespace instructions
+contribute nothing at both layers, so an instance that never touches the
+feature builds a byte-identical prompt (the Taboo contract). Every lookup
+fails soft per v4's three try/catch sites.
+
+New differential `standing_instructions_equivalence` (14 resolve + 8 render
+rows) over a new `/tmp`-built fixture pair whose membership INSERT order
+deliberately fights every sort. Five mutations proven red-first: byte order
+instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
+`instructions` tie-break (two groups both named `Mirror`), the dropped
+resolver trim, and groups-before-project.
+
 #### 2026-08-22 — docs(porting): work orders for the prompts-trio drift round (P4.D103 ∥ P4.D104 ∥ P4.55)
 
 _Docs-only change._

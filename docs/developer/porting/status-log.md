@@ -79517,3 +79517,82 @@ finding-2 redesign (and mutation-proven red-first).
   unchanged.
 - The `p4.9i2` bank grew the four NanoGPT help docs + v4's
   `help/image-generation-profiles.md` rewrite.
+
+---
+
+## P4.D103 — the prompts trio, server half (v4 `a6870c5a`)
+
+Lane branch `claude/p4-d103-prompts-trio-server-4da1cf`. **Drift-check at lane
+start (2026-08-22):** v4 HEAD is `a6870c5a` on `main`, tree clean;
+`git log a6870c5a..main` empty; `bugfix` carries only `3a76b17d` (branch
+marker) and `009c49b2` (test-only deflake) past what main already has — both
+NO-PORT, exactly as planned. No pinned worktree needed; every regen in this
+lane ran against the live checkout at `a6870c5a` on `main`.
+
+### Unit 1 — the `standing_instructions` module
+
+v4 `lib/chat/context/standing-instructions.ts` (new at `8f868109`, 162 lines)
+ported whole as `crates/quilltap-core/src/standing_instructions.rs`:
+`resolve_standing_instructions` / `render_standing_instructions_section` /
+`resolve_standing_instructions_section`, plus the
+`StandingInstructionsSource` + `StandingInstructionsKind` carrying types.
+Nothing consumes it yet — the builder slot and the four call sites are later
+units, so this commit changes no assembled prompt.
+
+Ported exactly:
+
+- **Project leg** only when `projectId` is truthy (an empty string is skipped,
+  v4's `if (projectId)`); `repos.projects.findById` → `instructions.trim()` →
+  push only when non-empty; a read failure warns and continues.
+- **Group leg** only when `characterId` is truthy;
+  `groupCharacterMembers.findByCharacterId` → per-membership
+  `groups.findById` with its own inner try/catch (skip THAT group) inside an
+  outer try/catch (continue without groups at all).
+  **Membership follows the responding character, never the chat.**
+- **The sort** is `a.name.localeCompare(b.name) || a.instructions.localeCompare(b.instructions)`
+  over the group sources only, project always first. v4's doc comment above
+  the sort says the tie-break is "(then id)" — **the code tie-breaks on
+  `instructions`**, and the code is what is ported (noted in the module's
+  doc comment so the next reader does not "fix" it back). v5 uses the Phase-1
+  ICU4X en-US `collation::locale_compare` twin, never byte order.
+- **The bytes**: the `[STANDING INSTRUCTIONS]` preamble verbatim (bracketed
+  tag, `\n`, one paragraph, no trailing newline); `## Project Instructions — `
+  / `## Group Instructions — ` (em dash U+2014, spaced); heading and body
+  joined by a SINGLE `\n`; blocks joined `\n\n`; final shape
+  `{PREAMBLE}\n\n{blocks}`.
+- **The empty contract**: absent / `''` / all-whitespace contribute nothing at
+  BOTH layers, and an empty result renders `None` — no header, no blank
+  block, byte-identical to the pre-feature prompt (the Taboo contract).
+
+**Differential — `standing_instructions_equivalence` (NEW family).** A
+`/tmp`-built fixture pair (`build-standing-instructions-fixture.ts` +
+`standing-instructions.json`) baked through v4's REAL repositories, and an
+oracle case (`standing-instructions.ts`) driving v4's REAL module. 14
+`resolve` rows emit BOTH the resolved source list (kind/name/instructions, in
+order) and the rendered section, so a port that renders correctly from a
+wrongly-ordered resolve still reddens; 8 pure `render` rows cover shapes the
+resolver can never produce (untrimmed bodies, all-whitespace entries, an em
+dash + markdown in a name, `{{...}}` passed through untouched).
+
+The fixture's membership INSERT order deliberately fights every sort — Aria's
+memberships go in Zephyr → Gamma → Beacon → Delta (no instructions) → Echo
+(whitespace) → a DANGLING membership whose group row does not exist; Bram
+belongs to two groups BOTH named `Mirror` (inserted B-then-A); Dane belongs to
+`Banana` and `apple`, where byte order puts `B` (0x42) first and ICU en-US
+puts `apple` first.
+
+**Five mutations proven red-first:**
+
+1. `a.name.cmp(&b.name)` instead of `locale_compare` → `groups-icu-collation-case`
+   reds (`Banana, apple` vs `apple, Banana`).
+2. Reversed name comparison → `groups-only-sorted-against-insert-order` reds
+   (the answer becomes the raw insert order — which is exactly the failure a
+   port that forgets to sort would produce).
+3. The `instructions` tie-break dropped →
+   `groups-same-name-instructions-tiebreak` reds (`Mirror B, Mirror A`).
+4. The resolver's `.trim()` dropped → `project-only-whitespace-instructions`
+   reds (Lambda's `"   \n\t  "` becomes a source).
+5. Groups before project → `project-and-groups` reds.
+
+Recipe verified end-to-end through `harness/tools/recipe_sweep.py --run
+standing_instructions_equivalence`.
