@@ -79319,3 +79319,58 @@ Both were confirmed to REGISTER with Playwright (`--list` shows them) rather
 than being silently absent.
 
 Gate: `npm test` 338 files / 5,016 tests, `npm run build` clean. SPA 0.5.539.
+
+### P4.D102 — lane close
+
+All four Tier-1 items landed, Tier 2 landed rather than deferring, Tier 3's two
+beats are in place gated. Four commits on
+`claude/p4-d102-images-nanogpt-spa-033d01`; `apps/web/**` only — no crate, no
+manifest, no harness, no `core-contract.ts` type added (the list-models types
+already existed, as the order predicted).
+
+**Two order items REFUTED by measurement** (detail in the Unit 3 record): v4 has
+no NanoGPT row in the connection-profile fallback provider list, and the client
+attachment fall-through is achieved by ABSENCE. Landing either as written would
+have invented a divergence.
+
+**One addition beyond the order's enumerated list** (detail in Unit 2): v4's
+legacy provider-normalize effect, which v5's modal had never ported. The
+enumerated item — v4's option list — reads the RAW provider value, so without
+the effect a `GOOGLE_IMAGEN` profile renders an empty Model select. Taken
+because the ordered item is wrong without it, and recorded rather than folded in
+silently.
+
+**Still deferred, loudly** (all named in `image-profile-modal.ts`'s class
+comment with v4 line numbers): the `Validate` key button, unchanged by v4 this
+round and still refusal-armed server-side; v4's four other structured parameter
+cases (`OPENAI` `:28-83`, `GOOGLE`/`GOOGLE_IMAGEN` `:84-125`, `GROK`
+`:183-192`); and — recorded in `provider-icon.ts` — the `ProviderBadge` export
+with the two `PROVIDER_BADGES` rows this round added, which have no v5 home
+because the badge surface itself is unported.
+
+**⚠ Unabsorbed v4 drift, for the unifier.** v4 `main` is one commit past the
+pinned baseline at `4cb1035e` (bug 87, the NanoGPT gateway reasoning echo). It
+touches the NanoGPT plugin's streaming path, its version, its jest test and the
+bug docs — no client file. Re-measured at lane close: of every oracle file this
+lane read, only `__tests__/unit/plugins/nanogpt-reasoning.test.ts` moved, and
+its `NanoGPT thinkingTurnRule` partition block — the one this lane mirrors — is
+BYTE-IDENTICAL across the drift (`gawk`-extracted block sha `193b8f551efc` on
+both sides); the commit's two hunks are an import and an append to the separate
+wire describe. So this lane's pins are unaffected. But the drift is real and
+sits on a ported surface (the provider stream), so the baseline cannot advance
+to `4cb1035e` without a port — it belongs to whoever next takes the NanoGPT
+provider lane. `bugfix` measured `3a76b17d`, nothing unabsorbed.
+
+**A process note worth keeping.** Two commits were rebuilt mid-lane after
+`prettier --write` over a directory glob reformatted seven files the lane never
+touched (99 changed lines in one file where 3 were intended). The SPA gate has
+no format check and main is not prettier-clean, so that reformatting was pure
+noise and prime unify-conflict material. The lane was reset to the last clean
+commit and both units re-applied surgically: 37 insertions where there had been
+300+. Never run a formatter over a glob in a lane — format only the files the
+lane actually authored.
+
+Gate at lane close, on HEAD: `npm test` **338 files / 5,016 tests**,
+`npm run build` clean, and `playwright test settings-flow --list` registers both
+gated beats (skipped-by-gate, not silently absent). SPA 0.5.539; no crate
+touched, so no crate version moved.
