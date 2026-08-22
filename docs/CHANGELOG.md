@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): work orders for the prompts-trio drift round (P4.D103 ∥ P4.D104 ∥ P4.55)
+
+_Docs-only change._
+
+Three work orders for the next round, planned against v4 `a6870c5a` (the
+prompts trio — the drift the `4cb1035e` unification predicted).
+`p4.d103-prompts-trio-server.md`: the standing-instructions module and its
+system-prompt slot (project/group `instructions` between the Taboo section
+and tool instructions, `PROMPT_CACHE_STRUCTURE_VERSION` 3 → 4), the bug-88
+second-person tool reinforcement, the identity-stack person-consistency
+wording, and the `compiledIdentityStacks` version-stamped envelope with the
+golden-table guard — plus the groups verbs' `instructions` acceptance with
+v4's validators ported whole. `p4.d104-prompts-trio-spa.md`: the
+group-instructions editor, the shared prompt-field label component + the
+transcribed field-hints table, the migration sweep across every v5 prompt
+editor, and the gated round-trip beat. `p4.55-merge-verb-silent-keep.md`:
+the `c8a3cf77` LEAD resolved to a measured site table — two unfixed
+memories merge-verbs that persist garbage, the autonomous-rooms
+settings patch's self-documented leniency, the projects update's missing
+schema parse, the three missing-`else` `apiKeyId` sites, and the
+store_backed cleared-null echo question — each fix red-first with
+invalid-payload oracle arms. The data-retention present-null divergence is
+recorded but deferred by file ownership. Shared contract (the group
+`instructions` wire field + the `P4D103_SERVER_LANDED` beat gate) pinned
+verbatim in both drift orders.
+
 #### 2026-08-22 — unify: the `4cb1035e` image + NanoGPT drift round (P4.D100 → P4.D101 stacked ∥ P4.D102)
 
 _Versions: core 0.0.608, harness 0.0.531, host 0.0.77, SPA 0.5.539._
