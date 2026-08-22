@@ -78199,3 +78199,153 @@ dialog/page surfaces are untouched — different surfaces, not bug 84.
 Gate: SPA `npm test` 333 files / 4,947 passed (was 332 / 4,937 at lane start —
 +1 file, +10 cases: 6 resolver parity, 2 reducer, 2 salon); `npm run build`
 clean. No e2e spec changed, so no Playwright run. SPA 0.5.528 → **0.5.531**.
+## P4.54 — run lines for the `nothing_to_run` families (maintenance) — CLOSED
+
+**Lane:** `claude/recipe-run-lines-porting-e2e17c`. **v4 baseline `12fe3e6f`.**
+Drift-checked at lane start: v4 `main` HEAD **is** `12fe3e6f` — it had not moved
+— so the driver's default `~/source/quilltap-server` checkout IS the pin and no
+detached worktree was needed; the `bugfix` branch carries only its standing diff
+against main. **This lane ports no v4 behavior.** Its proof obligation is
+EXECUTION, not equivalence: every added run line demonstrably runs its family's
+real diff.
+
+### The debt: measured 39 → 10
+
+P4.53 left 39 families whose recipe extracts to ZERO stages, so
+`recipe_sweep.py --run <fam>` refuses them (`nothing_to_run`, exit 2) instead of
+printing a free green — 5 exempt pins, 12 committed corpora, 22 `no_oracle`
+integration arms. This lane classified the 35 in scope (P4.D97 owns the four
+request/response envelope families this round) and gave a scoped, self-contained
+run line to every one that should have had one.
+
+**After: 10.** The residual is exactly the six contract pins ruled
+correctly-headerless plus P4.D97's four.
+
+### Classification — 29 run-line-added, 6 correctly-headerless
+
+Every added line uses the sanctioned indented block (`//! Run:` at the prose
+margin, the command indented past it — the P4.45 INDENTATION rule), scoped with
+`--test <family>` so a SKIP in that run can be attributed to the family whose
+recipe it is (the P4.45 ATTRIBUTION rule), modeled on `settings_wire_actions`'s
+existing header.
+
+**Run-line-added (29).**
+
+- **19 `quilltap-web` integration arms** — `binary_routes`,
+  `change_passphrase_archive_sweep`, `characters_action_route`,
+  `characters_export_route`, `characters_import_route`,
+  `characters_photos_routes`, `characters_reset_builtins_route`,
+  `characters_wardrobe_route`, `chat_create_end_to_end`, `chat_send_smoke`,
+  `chat_settings_composer_web_routes`, `contract`, `file_content_missing_404`,
+  `files_write_routes`, `mount_multipart_routes`, `photos_web_routes`,
+  `profile_web_routes`, `terminal_ws`, `text_replacements_web_routes`.
+  **None of the nineteen reads a `QT_FIXTURE_*` variable** — measured, not
+  assumed: they resolve their committed fixtures through `CARGO_MANIFEST_DIR`.
+  So the bare scoped line is genuinely self-contained, and the silent-skip
+  hazard the order warned about does not exist for this set.
+  Four of them (`change_passphrase_archive_sweep`, `characters_action_route`,
+  `characters_wardrobe_route`, `file_content_missing_404`) already carried a
+  `Run:` line with the command in backticks — written at the PROSE margin, so
+  the driver had always read it as a sentence. Those were rewritten into the
+  indented form rather than duplicated.
+- **`web_search_runner_wire`** — the P4.42 wiring proof; no oracle, no env var.
+- **`cli_differential`** — the Tier R runner, and the ONE family in the set that
+  can run vacuously: it is env-gated on `QT_V4_CHECKOUT` and prints
+  `skipping CLI differential: …` when it is absent, which the driver's
+  `SKIP_PROSE` detector catches (status `skipped`, exit 3). Its line therefore
+  carries the gate itself —
+  `QT_V4_CHECKOUT=~/source/quilltap-server QT_NODE=$N/node` — which is what makes
+  it self-contained rather than dependent on the operator's shell: `normalize()`
+  rewrites the v4 path to the driver's `--v4` pin and prepends the Node-24 `N=`
+  assignment.
+- **8 committed-corpus differentials** — `image_dialects_equivalence`,
+  `moderation_wire_equivalence`, `restore_vintage_state`,
+  `stream_decoders_equivalence`, `streaming_composer_equivalence`,
+  `tool_wire_call_site`, `tool_wire_equivalence`, `web_search_wire_equivalence`.
+  Their by-hand RECORDING stage stays non-runnable by the driver's own design
+  (`stages_to_run` excludes a committed-corpus regen so a sweep can never clobber
+  bytes checked into the repo); the line adds only the cargo half. **Verified
+  after the edit that all eight still classify as `committed_corpus`** — a run
+  line carrying a `QT_ORACLE*=` variable would have flipped them out of that
+  class and re-armed the recording stage, so none does.
+
+**Correctly-headerless (6), with the reason.** The wire/seam contract pins:
+`p4_6ao_wire_contract`, `p4_6ar_wire_contract`, `p4_9g1_wire_contract`,
+`p4_9g6_seam_contract`, `p4_d10_wire_contract`, `p4_6ay_workbench_wire_contract`.
+Each is name-for-name serde asserts with no oracle, no fixture and nothing to
+regenerate — the `nothing_to_run` refusal is the CORRECT answer for them, and
+their assertions already run in every `cargo test --workspace` gate. Five are
+named in the driver's own `EXEMPT_FAMILIES` constant, which `--run-all` also
+excludes structurally: a header run line would make `--run` execute a family
+`--run-all` still ignores, i.e. a header quietly overruling a driver constant.
+
+### The one finding, recorded as debt rather than fixed
+
+**`p4_6ay_workbench_wire_contract` is a sixth contract pin of the identical class
+that `EXEMPT_FAMILIES` simply omits.** Its own header cites the
+`p4_6ar_wire_contract` precedent by name, but the driver classifies it
+`no_oracle`, so its refusal sentence names the wrong reason ("its header
+describes no oracle at all — an integration arm that builds whatever state it
+needs in-process"). The repair is a one-line addition to the constant: driver
+logic, which this lane's Ownership forbids.
+
+**A note for whoever takes it, because it is not a one-liner in practice:**
+`--self-test`'s two end-to-end arms select a REAL exempt family and a REAL
+non-exempt `no_oracle` family out of the LIVE debt list and drive `--run` /
+`--run-all` against them, asserting the refusal end to end. So the class cannot
+be retired to zero until the self-test gets synthetic families of its own. That
+constraint is also the reason this lane could not have put run lines on all 35
+even if the classification had wanted to — it is a real property of the driver,
+not a preference.
+
+### Adjacent debt found by survey (out of scope, NOT fixed)
+
+`settings_wire_actions` — not in the 39, because it already has a run line — is
+the "a `/tmp` fixture the recipe READS, the recipe must BUILD" violation the
+header conventions warn about. Its line is
+`QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db …`, and nothing in its own
+recipe builds that file; only `settings_routes_equivalence`'s recipe invokes
+`harness/oracle/fixtures/build-settings-fixture.ts`. **Measured both ways:** with
+`/tmp/qt-settings-fixture.db` removed the family does not SKIP, it FAILS —
+`test result: FAILED. 0 passed; 4 failed` — and after rebuilding the fixture from
+the builder's own header recipe it is `4 passed`. So it is green today only
+because a sibling family happened to run first. Its recipe header is outside this
+lane's Ownership (it is not one of the 35), so it is recorded, not repaired. The
+local `/tmp` fixture was rebuilt after the measurement.
+
+### The proof
+
+All 29 lines were EXECUTED from the lane worktree through the driver itself, not
+merely extracted:
+`recipe_sweep.py --run-all --families <the 29> --results harness/tools/sweep-results/2026-08-21-12fe3e6f-p4.54-run-lines.json`
+→ **`totals: {'ok': 29}`, exit 0.** Zero SKIP lines in the whole sweep (the
+driver appends `--nocapture` and fails the run on one), and zero fires of the
+tracked-fixture tripwire.
+
+**Non-vacuity, family by family.** Five families finish in ~0.00 s, normally the
+tell for a silent skip — measured rather than assumed: each carries its own
+corpus-floor assertion, so an empty or missing corpus panics instead of passing
+(`image_dialects_equivalence` `rows >= 25`; `moderation_wire_equivalence`
+`rows >= 6`; `web_search_wire_equivalence` `searches >= 8` + `formats >= 4`;
+`tool_wire_equivalence` `rows > 100`). `stream_decoders_equivalence` and
+`streaming_composer_equivalence` print their per-decoder case counts
+(3/3/5/10/11 × 2–3 chunkings). `cli_differential` ran its 188 cases against v4's
+real launcher in 307 s. Every family's verbatim `test result:` line is recorded
+in the artifact.
+
+The artifact is the driver's own results record (same shape as P4.53's) with a
+`p4_54_classification` block folded in carrying all 35 in-scope rows plus the
+four ownership skips and the vacuity-guard evidence.
+
+**Gate:** `recipe_sweep.py --self-test` 0 failures; `cargo fmt --all --check`
+clean; clippy both feature sets; `cargo test --workspace`; the spelling guard.
+No crate versions bumped — the diff is 29 doc-comment headers plus one JSON
+artifact, no compiled behavior and no test assertion touched.
+
+**Deferred loudly (Tier 3 handoff to the unifier):** the four envelope families
+`request_builder_equivalence`, `request_builder_google_equivalence`,
+`request_builder_google_wire_equivalence`, `response_parse_equivalence` keep no
+run line — P4.D97 owns `record-request-envelopes.mjs`,
+`regenerate-request-envelopes.sh` and the request-envelopes committed corpus this
+round and its regen exercises all four. Their run lines ride a later maintenance
+pass.

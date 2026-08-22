@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): P4.54 closes — the run-line classification, executed and recorded
+
+_No crate versions bumped._
+
+The successor artifact to P4.53's inventory:
+`harness/tools/sweep-results/2026-08-21-12fe3e6f-p4.54-run-lines.json`. It is the
+sweep driver's own results record (same shape as P4.53's) for the 29 families
+this lane gave run lines, with a `p4_54_classification` block folded in carrying
+all 35 in-scope rows plus the four P4.D97 owns this round. Every run-line row
+carries its family's verbatim `test result:` line, because a bare exit code is
+not evidence that anything ran — that is what the driver's SKIP guard exists to
+say.
+
+The vacuous-green debt goes **39 → 10**. The residual is exactly the six
+wire/seam contract pins ruled correctly-headerless plus P4.D97's four envelope
+families, whose run lines ride a later maintenance pass.
+
+Recorded as new debt rather than fixed here:
+`p4_6ay_workbench_wire_contract` is a sixth contract pin of the identical class
+— its own header cites the `p4_6ar_wire_contract` precedent by name — that the
+driver's `EXEMPT_FAMILIES` constant omits, so its refusal sentence names the
+wrong reason (`no_oracle` instead of the exemption). The repair is one line of
+driver logic, which this lane's Ownership forbids. A note for whoever takes it:
+`--self-test`'s two end-to-end arms pick a real exempt family and a real
+non-exempt `no_oracle` family out of the LIVE debt list, so the class cannot be
+retired to zero until the self-test gets synthetic families of its own.
+
+Neither the driver nor any fixture, corpus or test assertion was touched.
+
 #### 2026-08-21 — test(harness): scoped run lines for the harness and CLI `nothing_to_run` families
 
 _No crate versions bumped._

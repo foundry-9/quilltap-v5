@@ -1,0 +1,623 @@
+{
+ "label": "P4.54 — the run lines added for the P4.53 nothing_to_run inventory, each executed from the lane worktree (v4 HEAD == the 12fe3e6f baseline, so the default checkout is the pin)",
+ "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/recipe-run-lines-porting-e2e17c",
+ "venue_is_worktree": true,
+ "requested": [
+  "binary_routes",
+  "change_passphrase_archive_sweep",
+  "characters_action_route",
+  "characters_export_route",
+  "characters_import_route",
+  "characters_photos_routes",
+  "characters_reset_builtins_route",
+  "characters_wardrobe_route",
+  "chat_create_end_to_end",
+  "chat_send_smoke",
+  "chat_settings_composer_web_routes",
+  "contract",
+  "file_content_missing_404",
+  "files_write_routes",
+  "mount_multipart_routes",
+  "photos_web_routes",
+  "profile_web_routes",
+  "terminal_ws",
+  "text_replacements_web_routes",
+  "web_search_runner_wire",
+  "cli_differential",
+  "image_dialects_equivalence",
+  "moderation_wire_equivalence",
+  "restore_vintage_state",
+  "stream_decoders_equivalence",
+  "streaming_composer_equivalence",
+  "tool_wire_call_site",
+  "tool_wire_equivalence",
+  "web_search_wire_equivalence"
+ ],
+ "excluded": [],
+ "nothing_to_run": [
+  "p4_6ao_wire_contract",
+  "p4_6ar_wire_contract",
+  "p4_6ay_workbench_wire_contract",
+  "p4_9g1_wire_contract",
+  "p4_9g6_seam_contract",
+  "p4_d10_wire_contract",
+  "request_builder_equivalence",
+  "request_builder_google_equivalence",
+  "request_builder_google_wire_equivalence",
+  "response_parse_equivalence"
+ ],
+ "families": [
+  {
+   "family": "binary_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "change_passphrase_archive_sweep",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_action_route",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_export_route",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_import_route",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_photos_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_reset_builtins_route",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "characters_wardrobe_route",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "chat_create_end_to_end",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "chat_send_smoke",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "chat_settings_composer_web_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "contract",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "file_content_missing_404",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "files_write_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "mount_multipart_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "photos_web_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "profile_web_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "terminal_ws",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "text_replacements_web_routes",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "web_search_runner_wire",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "cli_differential",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "image_dialects_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "moderation_wire_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "restore_vintage_state",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "stream_decoders_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "streaming_composer_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "tool_wire_call_site",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "tool_wire_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  },
+  {
+   "family": "web_search_wire_equivalence",
+   "status": "ok",
+   "cause": null,
+   "exit": 0,
+   "warnings": []
+  }
+ ],
+ "totals": {
+  "ok": 29
+ },
+ "p4_54_classification": {
+  "in_scope": 35,
+  "vacuity_guards": {
+   "why": "Five run-line families finish in ~0.00 s, which is normally the tell for a silent skip. Measured, not assumed: the sweep's whole log contains ZERO SKIP lines (the driver appends `--nocapture` and fails the run on one), and each of these families carries its own corpus-floor assertion, so an empty or missing corpus panics rather than passing.",
+   "corpus_floors": {
+    "image_dialects_equivalence": "assert!(rows >= 25) — image_dialects_equivalence.rs:231",
+    "moderation_wire_equivalence": "assert!(rows >= 6) — moderation_wire_equivalence.rs:102",
+    "web_search_wire_equivalence": "assert!(searches >= 8) + assert!(formats >= 4) — web_search_wire_equivalence.rs:138-139",
+    "tool_wire_equivalence": "assert!(rows > 100) — tool_wire_equivalence.rs:139",
+    "stream_decoders_equivalence": "prints its per-decoder case counts (3/3/5/10/11 × 2-3 chunkings)",
+    "streaming_composer_equivalence": "prints its per-decoder case counts (3/5/3/10/11 × 2-3 chunkings)",
+    "cli_differential": "188 cases against v4's real launcher, 307 s"
+   },
+   "skip_lines_in_the_whole_sweep": 0,
+   "tracked_fixture_tripwire_fired": 0
+  },
+  "counts": {
+   "run-line-added": 29,
+   "correctly-headerless": 6,
+   "skipped-for-ownership": 4
+  },
+  "debt_before": 39,
+  "debt_after": 10,
+  "rows": [
+   {
+    "family": "p4_6ao_wire_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "p4_6ar_wire_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "p4_6ay_workbench_wire_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "p4_9g1_wire_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "p4_9g6_seam_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "p4_d10_wire_contract",
+    "classification": "correctly-headerless",
+    "why": "correctly headerless — a wire/seam CONTRACT pin: name-for-name serde asserts with no oracle, no fixture and nothing to regenerate, so the driver's `nothing_to_run` refusal is the right answer and its assertions are already covered by every `cargo test --workspace` gate. Five of the six are named in the driver's own `EXEMPT_FAMILIES` constant (which `--run-all` also excludes structurally, so a header run line would make `--run` and `--run-all` disagree); `p4_6ay_workbench_wire_contract` is a sixth pin of the identical class — its own header cites the `p4_6ar_wire_contract` precedent — that the constant simply omits. Adding it is a one-line driver change, which this lane's Ownership forbids: RECORDED AS DEBT for the next driver pass. NOTE for that pass: `--self-test`'s end-to-end arms require at least one exempt and one non-exempt `no_oracle` family to remain in the debt list, so retiring this class needs synthetic fixtures in the self-test first."
+   },
+   {
+    "family": "binary_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test binary_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+    ]
+   },
+   {
+    "family": "change_passphrase_archive_sweep",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test change_passphrase_archive_sweep",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.38s"
+    ]
+   },
+   {
+    "family": "characters_action_route",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_action_route",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.37s"
+    ]
+   },
+   {
+    "family": "characters_export_route",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_export_route",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+    ]
+   },
+   {
+    "family": "characters_import_route",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_import_route",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s"
+    ]
+   },
+   {
+    "family": "characters_photos_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_photos_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+    ]
+   },
+   {
+    "family": "characters_reset_builtins_route",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_reset_builtins_route",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+    ]
+   },
+   {
+    "family": "characters_wardrobe_route",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test characters_wardrobe_route",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s"
+    ]
+   },
+   {
+    "family": "chat_create_end_to_end",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test chat_create_end_to_end",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+    ]
+   },
+   {
+    "family": "chat_send_smoke",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test chat_send_smoke",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s"
+    ]
+   },
+   {
+    "family": "chat_settings_composer_web_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test chat_settings_composer_web_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+    ]
+   },
+   {
+    "family": "cli_differential",
+    "classification": "run-line-added",
+    "run_line": "QT_V4_CHECKOUT=~/source/quilltap-server QT_NODE=$N/node cargo test -p quilltap-cli --test cli_differential",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 307.48s"
+    ]
+   },
+   {
+    "family": "contract",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test contract",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.33s"
+    ]
+   },
+   {
+    "family": "file_content_missing_404",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test file_content_missing_404",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+    ]
+   },
+   {
+    "family": "files_write_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test files_write_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s"
+    ]
+   },
+   {
+    "family": "image_dialects_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test image_dialects_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+   },
+   {
+    "family": "moderation_wire_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test moderation_wire_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+   },
+   {
+    "family": "mount_multipart_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test mount_multipart_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s"
+    ]
+   },
+   {
+    "family": "photos_web_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test photos_web_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+    ]
+   },
+   {
+    "family": "profile_web_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test profile_web_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+    ]
+   },
+   {
+    "family": "restore_vintage_state",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test restore_vintage_state",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s"
+    ]
+   },
+   {
+    "family": "stream_decoders_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test stream_decoders_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    ]
+   },
+   {
+    "family": "streaming_composer_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test streaming_composer_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+    ]
+   },
+   {
+    "family": "terminal_ws",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test terminal_ws",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+    ]
+   },
+   {
+    "family": "text_replacements_web_routes",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-web --test text_replacements_web_routes",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+    ]
+   },
+   {
+    "family": "tool_wire_call_site",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test tool_wire_call_site",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    ]
+   },
+   {
+    "family": "tool_wire_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test tool_wire_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+    ]
+   },
+   {
+    "family": "web_search_runner_wire",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test web_search_runner_wire",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    ]
+   },
+   {
+    "family": "web_search_wire_equivalence",
+    "classification": "run-line-added",
+    "run_line": "cargo test -p quilltap-harness --test web_search_wire_equivalence",
+    "run_status": "ok",
+    "exit": 0,
+    "evidence": [
+     "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+   },
+   {
+    "family": "request_builder_equivalence",
+    "classification": "skipped-for-ownership",
+    "why": "skipped for ownership — P4.D97 owns `record-request-envelopes.mjs`, `regenerate-request-envelopes.sh` and the request-envelopes committed corpus this round, and its regen exercises all four. Their run lines ride a later maintenance pass (this order's Tier-3 handoff)."
+   },
+   {
+    "family": "request_builder_google_equivalence",
+    "classification": "skipped-for-ownership",
+    "why": "skipped for ownership — P4.D97 owns `record-request-envelopes.mjs`, `regenerate-request-envelopes.sh` and the request-envelopes committed corpus this round, and its regen exercises all four. Their run lines ride a later maintenance pass (this order's Tier-3 handoff)."
+   },
+   {
+    "family": "request_builder_google_wire_equivalence",
+    "classification": "skipped-for-ownership",
+    "why": "skipped for ownership — P4.D97 owns `record-request-envelopes.mjs`, `regenerate-request-envelopes.sh` and the request-envelopes committed corpus this round, and its regen exercises all four. Their run lines ride a later maintenance pass (this order's Tier-3 handoff)."
+   },
+   {
+    "family": "response_parse_equivalence",
+    "classification": "skipped-for-ownership",
+    "why": "skipped for ownership — P4.D97 owns `record-request-envelopes.mjs`, `regenerate-request-envelopes.sh` and the request-envelopes committed corpus this round, and its regen exercises all four. Their run lines ride a later maintenance pass (this order's Tier-3 handoff)."
+   }
+  ]
+ }
+}
