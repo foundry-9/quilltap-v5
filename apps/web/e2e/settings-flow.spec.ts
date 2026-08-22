@@ -478,8 +478,8 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
   //     the server. The beat therefore asserts the LIVE registry path.
   // -------------------------------------------------------------------------
 
-  const P4D100_LIST_MODELS_LANDED = false;
-  const P4D101_NANOGPT_LANDED = false;
+  const P4D100_LIST_MODELS_LANDED = true;
+  const P4D101_NANOGPT_LANDED = true;
 
   test('Images tab: the Fetch Models control reports where the model list came from', async ({
     page,

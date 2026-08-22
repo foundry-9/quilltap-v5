@@ -1331,15 +1331,16 @@ use crate::model::wire::WireTransport;
 /// status is handled inside [`parse_image_response`].
 pub struct RealImageProvider<T: WireTransport, B: ImageBytesFetch = NoImageBytesFetch> {
     transport: T,
-    /// The `ca22ec45` image-download seam — only Z.AI reaches it, and only for
-    /// an entry that carries a `url` and no `b64_json`.
+    /// The `ca22ec45` image-download seam — Z.AI (`ca22ec45`) and NanoGPT
+    /// (P4.D101) reach it, and only for an entry that carries a `url` and no
+    /// `b64_json`.
     bytes: B,
 }
 
 impl<T: WireTransport> RealImageProvider<T, NoImageBytesFetch> {
     /// A provider with no download seam. Correct for every composition that
-    /// cannot reach the Z.AI URL path; if one ever does, the download fails
-    /// LOUDLY by name rather than yielding an empty image.
+    /// cannot reach the Z.AI / NanoGPT URL path; if one ever does, the download
+    /// fails LOUDLY by name rather than yielding an empty image.
     pub fn new(transport: T) -> Self {
         Self {
             transport,
@@ -1486,8 +1487,8 @@ impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
 }
 
 /// The no-download-seam default for [`RealImageProvider::new`]. A composition
-/// that never reaches Z.AI's URL path never calls it; one that does gets a
-/// named failure instead of a silently empty image.
+/// that never reaches the Z.AI / NanoGPT URL path never calls it; one that does
+/// gets a named failure instead of a silently empty image.
 pub struct NoImageBytesFetch;
 
 impl ImageBytesFetch for NoImageBytesFetch {
