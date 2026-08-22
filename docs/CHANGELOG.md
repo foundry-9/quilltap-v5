@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): the P4.D101 tier-2 docs — mirror refresh + the help-doc bank
+
+_Docs-only change._
+
+The `docs/v4` mirror is refreshed for what the three NanoGPT commits actually
+touched and v5 actually mirrors: `CHANGELOG.md`, `developer/bugs.md`, and the new
+`developer/bugs/fixed/bug-87-nanogpt-reasoning-echo.md`.
+
+The four help docs the order listed are banked for `p4.9i2` rather than ported.
+They live at v4's top-level `help/*.md`, not under `docs/`, so they sit outside
+the mirror entirely and no refresh applies to them; and v5 has no ported
+help-doc content surface to port them into — the P4.D77 `help_doc_chunks`
+substrate landed, but the Guide client half is the standing `p4.9i2` bank. Their
+names and NanoGPT hit counts are recorded so that lane can find them.
+
+The pricing measurement the order asked for is recorded with the unit-2 census:
+v4 has no NanoGPT pricing row anywhere in `lib/`, so the pricing fetcher and its
+fallback table are NO-PORT, and the manifest ships `"pricing": {}` — which the
+generator emitted off the plugin without being told to.
+
 #### 2026-08-22 — port(providers): the NanoGPT image arms over P4.D100's seam (v4 `781fc420`, P4.D101)
 
 _Versions: core 0.0.608, harness 0.0.531._

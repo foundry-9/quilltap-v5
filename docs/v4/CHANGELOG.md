@@ -4,6 +4,41 @@
 
 ### 4.9-dev
 
+#### NanoGPT: suppress the gateway's reasoning echo (plugin 1.0.2, bug 87)
+
+On some routed paths NanoGPT re-emits the entire answer down the reasoning channel after the content stream ends, so a turn rendered its whole reply a second time inside a thinking fold anchored at the end of the message. Intermittent and gateway-side: identical requests minutes apart streamed clean, and token accounting shows the echo was never billed as model output. The plugin now holds post-prose reasoning while it remains a verbatim prefix of the streamed prose — if it diverges it's real thinking and commits in full; if it still mirrors the prose at stream end it's the echo and is dropped (from live chunks, the final chunk, and the raw response). Non-streaming responses drop `message.reasoning` when it equals the content exactly. Genuine pre-content reasoning is untouched. Tests added to `nanogpt-reasoning.test.ts`.
+
+#### NanoGPT gains thinking options (plugin 1.0.1)
+
+- New connection-profile options schema with **Reasoning Effort** (none / minimal / low / medium / high / xhigh), forwarded as NanoGPT's `reasoning_effort` parameter. Any value other than `none` requests reasoning; blank defers to the model.
+- `thinkingTurnRule` declared on the plugin so multi-character turns on a thinking profile anchor in prose instead of the `[Name]` prefill (bug 85's rule), with `anthropic/claude-sonnet-5:thinking` catalogued as thinks-by-default; uncatalogued `:thinking` picks rely on the explicit effort setting.
+- Fixed reasoning display: NanoGPT's main endpoint carries reasoning in `delta.reasoning` / `message.reasoning`, not the legacy `reasoning_content` the plugin was reading (which is now the fallback). Without this the thinking fold stayed empty for most routed reasoning models.
+- Tests: `nanogpt-reasoning.test.ts` (rule/schema partition, catalogue habits, both wire dialects); NanoGPT joins the options-schema snapshot test.
+
+#### NanoGPT is a bundled provider (chat, images, embeddings)
+
+New bundled plugin `qtap-plugin-nanogpt` (1.0.0) adds NanoGPT (nano-gpt.com), a pay-as-you-go gateway fronting 600+ chat models, 200+ image models, and two dozen embedding models behind one OpenAI-compatible API and a single new `NANOGPT` API key type.
+
+- **Chat:** OpenAI-compatible Chat Completions at `nano-gpt.com/api/v1` with streaming, tool calling, JSON response formats, and reasoning display — routed thinking models' `reasoning_content` streams into the Salon's thinking fold. Model list merges the live `/models` endpoint with a small curated static catalog (NanoGPT's `auto-model*` routers plus current flagships).
+- **Images:** the OpenAI-compatible images route with `b64_json` pinned (plus a URL-download fallback), following the honest Fetch Models contract: without a key you get the curated list; with a key the dedicated `/image-models` listing is queried and filtered to models whose capability flags say they generate images (edit-only and upscale-only entries excluded), and transport failures throw so the route can label the fallback. Provider-level orientation constraints (832x1248 / 1248x832 / 1024x1024), a parameters panel with common sizes, and provider badge/icon/fallback entries in the image-profile UI.
+- **Embeddings:** OpenAI-compatible `/embeddings` with live model discovery via `/embedding-models`. `NANOGPT` joins the embedding profile provider enum (schema, export JSON schema, UI types/metadata/badges, first-startup seed type). New `.qt-badge-provider-nanogpt` badge class; the whole `qt-badge-provider-*` family was mirrored into theme-storybook (1.0.61), which previously lacked it.
+- Tests: NanoGPT joins the image-orientation contract's provider-level list; new `nanogpt-image-provider-models.test.ts` covers the model-listing contract, b64 passthrough, and URL-download fallback.
+
+#### Image profiles can fetch models from the provider, honestly
+
+The image-profile editor gains a "Fetch Models" button (parity with connection profiles). Before, four of the five image-capable plugins "implemented" model listing by returning their hardcoded list even when handed an API key — only OpenRouter actually asked its API — and the form auto-fetched silently with no indication of where the list came from.
+
+- Each image provider now genuinely queries its provider when given an API key, filtered to models that actually produce images: OpenAI filters `/v1/models` to the `dall-e-*`/`gpt-image-*` Images-API families; Google pages the Gemini models list and keeps imagen models exposing `predict` plus gemini models with image output (video/text/embedding models excluded); Grok uses xAI's dedicated `GET /v1/image-generation-models` endpoint; Z.AI filters its `/models` list by the image-model pattern (unioned with the documented CogView/GLM-Image set, since that endpoint under-reports). Without a key, the plugin's curated list is returned unchanged.
+- On live-fetch failure the providers now throw instead of silently substituting the static list, so `?action=list-models` can label its response `source: 'provider'` or `'builtin'` (with the fetch error attached). The form shows which one you're looking at. Only genuinely live-fetched lists are cached in `provider_models`.
+- Google's Gemini-vs-Imagen routing now treats any `gemini*` model as a generateContent model, so live-fetched IDs (e.g. preview image models) don't fall through to the Imagen predict endpoint.
+- Providers that cannot produce images (Anthropic, DeepSeek, Ollama, OpenAI-compatible) are unchanged and stay out of the image-provider list.
+
+#### Z.AI is a first-class image provider
+
+The Z.AI plugin already shipped an image provider (CogView-4, GLM-Image), but the UI never wired it up and generation was broken end-to-end: Z.AI returns image URLs, while every Quilltap consumer reads only base64, so a generated image evaporated. The provider now downloads the URL and returns base64. The image-profile UI gains a Z.AI provider badge/icon, a parameters panel with Z.AI's recommended sizes, and a fallback provider entry. Help doc updated to list the providers Quilltap actually supports (and to stop claiming Midjourney/Stable Diffusion/ComfyUI support it never had).
+
+Plugin versions: openai 1.0.59, google 1.1.47, grok 1.0.51, z-ai 1.1.23, openrouter 1.0.58.
+
 #### The DeepSeek plugin can tell when it is thinking (bug 86)
 
 `isThinkingEnabled(body)` decided whether an outgoing request was a thinking request by looking for `thinking: { type: 'enabled' }` in the body it was about to send. That answers "what did we ask for?" when the question is "what will the model do?" — the V4 models reason with `parameters: {}`, which is the default state, so a profile that had never touched the thinking option was judged not to be thinking. `stripThinkingIncompatibleParams` never ran, and `temperature`, `top_p`, `frequency_penalty`, and `presence_penalty` were sent into a request that ignores them. DeepSeek discards them silently, so nothing errored.

@@ -56,6 +56,35 @@ The discrepancy is **pre-existing and out of this lane's scope** — realigning 
 would churn every provider family. NanoGPT is therefore APPENDED on both sides,
 which is the only choice that leaves all nine pre-existing rows byte-identical.
 
+### Tier 2 — the docs, dispositioned ✅
+
+**The `docs/v4` mirror refreshed** for exactly what the three commits touched and
+v5 actually mirrors: `docs/v4/CHANGELOG.md` (36 diff lines) and
+`docs/v4/developer/bugs.md` (22), plus the new
+`docs/v4/developer/bugs/fixed/bug-87-nanogpt-reasoning-echo.md`. Both now carry
+the NanoGPT entries (11 and 4 hits).
+
+**The four help docs are BANKED for `p4.9i2`, not ported — and the order's
+filing was slightly off.** They live at v4's top-level `help/*.md`, NOT under
+`docs/`, so they are outside the `docs/v4` mirror entirely and no refresh applies
+to them. They were genuinely changed by `781fc420` (NanoGPT hits:
+`api-keys-settings` 2, `connection-profiles` 3, `embedding-profiles` 2,
+`image-generation-profiles` 5). v5 has no ported help-doc *content* surface — the
+P4.D77 `help_doc_chunks` substrate landed but the Guide client half is the
+standing `p4.9i2` bank — so there is nothing here to port INTO. Banked with the
+four names and their hit counts so the `p4.9i2` lane can find them.
+
+**The pricing-fallback measurement the order requested is recorded** in unit 2's
+census table: v4 has NO NanoGPT pricing row in `FALLBACK_PRICING` or anywhere
+else in `lib/`, so `services/pricing_fetcher/{mod,fallback_data}.rs` are NO-PORT.
+NanoGPT's manifest ships `"pricing": {}` accordingly, which is what the generator
+emitted from the plugin without being told to.
+
+**Tier 3 (deferred loudly, unchanged):** 💸 a live NanoGPT-key smoke — chat +
+image + embeddings against the real gateway — joins the dogfood queue; the
+embedding `fetch-models` live verb stays refused, with its note widened by unit 6
+to name NanoGPT and record the fallback-not-throw shape it owes.
+
 ### Unit 5 — the image arms, over P4.D100's seam ✅
 
 Generation, discovery, orientation and auth, built on the download seam P4.D100
