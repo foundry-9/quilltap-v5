@@ -405,6 +405,25 @@ recording in this commit — v4's Z.AI URL→base64 download (the same drift
 commit) lands with the bytes seam in a later unit of this lane, and the
 recorder needs a distinct download response before that row can be
 regenerated honestly.
+#### 2026-08-22 — port(embeddings): the NanoGPT embedding-provider surface (v4 `781fc420`, P4.D102)
+
+_Versions: SPA 0.5.538._
+
+NANOGPT joins the embedding-provider union, the metadata map (display name,
+requires-a-key, description — verbatim), the badge-class map, and the
+needs-an-API-key list, so a NanoGPT embedding profile without a key now shows
+the missing-key badge. The `qt-badge-provider-nanogpt` CSS rule lands with it,
+including v4's quirk that `--qt-badge-primary-border` has no definition at all —
+the same shape as ollama's secondary border, and deliberately left unpainted.
+
+Two order items were refuted by measurement and NOT landed. v4 has no NanoGPT
+row in the connection-profile fallback provider list at this baseline — its list
+is the same seven v5 already carries, and none of the round's three drift
+commits touch that file — so adding one would have been a v5-invented
+divergence. And NanoGPT's client attachment fall-through is achieved by ABSENCE:
+v4's static table has no row for NANOGPT (nor for Z_AI or DEEPSEEK), so the
+correct port is no entry, with the known-stale note updated to name it.
+
 #### 2026-08-22 — port(images): the honest Fetch Models flow in the image-profile modal (v4 `ca22ec45`, P4.D102)
 
 _Versions: SPA 0.5.537._

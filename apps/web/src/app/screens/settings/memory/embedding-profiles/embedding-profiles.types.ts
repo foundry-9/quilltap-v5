@@ -11,8 +11,8 @@ import type {
  * client-side hardcodes in v4, flagged there and kept here.
  */
 
-/** v4's four known embedding providers (the open set is wider — see below). */
-export type EmbeddingProvider = 'OPENAI' | 'OLLAMA' | 'OPENROUTER' | 'BUILTIN';
+/** v4's five known embedding providers (the open set is wider — see below). */
+export type EmbeddingProvider = 'OPENAI' | 'OLLAMA' | 'OPENROUTER' | 'NANOGPT' | 'BUILTIN';
 
 /**
  * Static provider metadata (v4 `useEmbeddingProfiles.ts:40-65`). A CLIENT-SIDE
@@ -40,6 +40,12 @@ export const PROVIDER_METADATA: Record<string, Omit<EmbeddingProviderInfoDto, 'n
     requiresBaseUrl: false,
     description: 'Access multiple embedding models through OpenRouter',
   },
+  NANOGPT: {
+    displayName: 'NanoGPT',
+    requiresApiKey: true,
+    requiresBaseUrl: false,
+    description: 'OpenAI, BGE, Jina, Qwen, and Gemini embedding models through NanoGPT',
+  },
   OLLAMA: {
     displayName: 'Ollama (Local)',
     requiresApiKey: false,
@@ -53,6 +59,7 @@ export const PROVIDER_BADGE_CLASSES: Record<string, string> = {
   OPENAI: 'qt-badge-provider-openai',
   OLLAMA: 'qt-badge-provider-ollama',
   OPENROUTER: 'qt-badge-provider-openrouter',
+  NANOGPT: 'qt-badge-provider-nanogpt',
   BUILTIN: 'qt-badge-provider-builtin',
 };
 

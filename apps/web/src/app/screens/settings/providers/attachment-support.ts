@@ -12,8 +12,10 @@
  *
  * ⚠ It is KNOWN STALE in v4 and faithfully stale here (recorded at P4.21):
  * each entry is a hand-kept mirror of its plugin's `supportedMimeTypes`, and
- * providers added since — Z_AI, DEEPSEEK — have no entry at all, so they fall
- * through the unknown-provider branch to "no attachments". A provider whose
+ * providers added since — Z_AI, DEEPSEEK, and now NANOGPT (P4.D102, measured at
+ * v4 `d5830439`: `lib/llm/attachment-support.ts` has no row for any of the
+ * three) — have no entry at all, so they fall through the unknown-provider
+ * branch to "no attachments". A provider whose
  * plugin does accept images therefore starts a new profile with the vision box
  * unticked. That is v4's behaviour; the fix belongs upstream, not here.
  */

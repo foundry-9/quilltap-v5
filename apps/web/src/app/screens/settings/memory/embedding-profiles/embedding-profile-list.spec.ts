@@ -107,6 +107,14 @@ describe('EmbeddingProfileList', () => {
     expect(text(view.fixture)).not.toContain('No API Key');
   });
 
+  it('shows the missing-key badge for a NANOGPT profile (v4 ProfileList.tsx:152)', async () => {
+    const stub = stubClient();
+    const view = await mount(stub, [
+      profile({ provider: 'NANOGPT', modelName: 'text-embedding-3-small', apiKey: null }),
+    ]);
+    expect(text(view.fixture)).toContain('⚠️ No API Key');
+  });
+
   it('omits the missing-key badge for a BUILTIN profile', async () => {
     const stub = stubClient();
     const view = await mount(stub, [profile({ provider: 'BUILTIN' })]);

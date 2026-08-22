@@ -79220,3 +79220,39 @@ again while the second answer hangs now covers it), and replacing the exact
 after the fix and both now fail.
 
 Gate: `npm test` 336 files / 4,994 tests, `npm run build` clean. SPA 0.5.537.
+
+### Unit 3 — the NanoGPT embedding surface, and two order items REFUTED
+
+The embedding half landed as ordered: the union gains `NANOGPT` between
+`OPENROUTER` and `BUILTIN`, `PROVIDER_METADATA` gains v4's row verbatim (v4
+`useEmbeddingProfiles.ts:59-64`) in v4's map position, `PROVIDER_BADGE_CLASSES`
+gains `qt-badge-provider-nanogpt` (v4 `types.ts:82`), and `needsApiKey` becomes
+v4's three-name list (`ProfileList.tsx:152`) — mutation-proven: reverting it to
+the old two-name check reddens the new badge test.
+
+The badge CSS rule joins the shared geometry selector list and gets v4's own
+rule. **v5 already carried the preserved quirk** — `--qt-badge-primary-bg/fg`
+are defined in `_variables.css:437-438` while `--qt-badge-primary-border` is
+not, exactly as v4 leaves it (and exactly as v5 already leaves
+`--qt-badge-secondary-border` for ollama). No token block needed porting; the
+border simply does not paint, on both sides, and the rule now says so.
+
+**Two order items refuted by measurement, neither landed:**
+
+1. *"The profile-modal fallback option (NanoGPT)."* v4 has NO NanoGPT row in
+   the connection-profile fallback list. Measured three ways: v4's list at
+   `d5830439` (`ProfileModal.tsx:433-439`) is the same seven v5 already renders;
+   `git diff ca22ec45~1 d5830439 -- components/settings/connection-profiles/`
+   is EMPTY; and an exhaustive `git grep NanoGPT\|NANOGPT` over v4's whole
+   client tree at the baseline returns thirteen hits, none in that file. Adding
+   the row would have been a v5-invented divergence on a surface v4 has simply
+   not updated — the same class as the known-stale attachment table, and the fix
+   belongs upstream.
+
+2. *"The client attachment-support fall-through."* There is nothing to add:
+   v4's `lib/llm/attachment-support.ts` has no `NANOGPT` row (nor `Z_AI` nor
+   `DEEPSEEK`), and the fall-through IS the absence. The faithful port is
+   therefore a comment change only — the standing known-stale note now names
+   NANOGPT alongside the other two, with the measurement cited.
+
+Gate: `npm test` 338 files / 5,008 tests, `npm run build` clean. SPA 0.5.538.

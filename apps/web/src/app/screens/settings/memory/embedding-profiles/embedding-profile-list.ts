@@ -251,9 +251,9 @@ export class EmbeddingProfileList {
   protected readonly clearReapply = (): void => this.reapplySuccess.set(null);
   protected readonly clearReindexMismatched = (): void => this.reindexMismatchedSuccess.set(null);
 
-  /** v4 :152 — only OPENAI / OPENROUTER need an API key. */
+  /** v4 `ProfileList.tsx:152` — `['OPENAI', 'OPENROUTER', 'NANOGPT']`. */
   protected needsApiKey(provider: string): boolean {
-    return provider === 'OPENAI' || provider === 'OPENROUTER';
+    return provider === 'OPENAI' || provider === 'OPENROUTER' || provider === 'NANOGPT';
   }
 
   /** v4 :323-330 — the partial-reindex target dim (truncate ?? dimensions). */
