@@ -5400,3 +5400,44 @@ concurrently; since P4.53 its `--self-test` also guards recipe headers
 against cross-alias defaults, and `--run` refuses empty-stage families by
 name. The distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+**The `12fe3e6f` thinking-turn drift round (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥
+P4.54): UNIFIED on main (2026-08-22) — ALL FOUR CLOSED; the oracle baseline
+MOVES to `12fe3e6f`.** v4's bugs 84/85/86 absorbed whole (two of the three
+were this port's own dogfood filings coming back fixed): the thinking-turn
+evaluator + registry join + the manifest substrate's FIRST per-model facts,
+the prefill `runsThinkingTurn` threading (create default + both
+`use_prefill` producers), the model-aware DeepSeek strip, the retire-prefill
+heal over v4's OWN `migrations_state` ledger (cross-app once-only in both
+directions), the profile editor's three thinking-turn behaviors + the
+activated e2e beat, bug 84's TWO-LAYER client fix (reducer carry + resolver
+at both render sites; finding #99 FIXED), and run lines for 32 of the 39
+`nothing_to_run` families (29 by P4.54 + 3 by the D97 rider). **Next
+candidates:** the `ca22ec45` drift catch-up (image-profiles Fetch Models +
+Z.AI image generation — landed DURING this round; pin `12fe3e6f` for every
+regen until it runs); the merge-verb silent-keep sweep (the `c8a3cf77`
+LEAD, still unblocked); the owed 💸 dogfood queue (+ this round's five: the
+live bug-85 repro chat, the heal on a Friday-vintage copy, the editor's
+model-facts arm, the failed-generate_image sentence, the P4.D96 group-scene
+walk); the small maintenance trio (a run line for
+`response_parse_equivalence`; `p4_6ay_workbench_wire_contract` into
+`EXEMPT_FAMILIES` — needs synthetic self-test families first, see P4.54's
+lane record; `settings_wire_actions`' recipe leaning on a sibling's /tmp
+fixture — measured FAILING, not skipping, without it); `p4.9i2` (its bank
+grew `help/connection-profiles.md` + another `chat-multi-character.md`
+touch). PB1 stays parked. Round record: `status-log.md`.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`12fe3e6f`** (2026-08-21, v4 main — "fix(deepseek): decide thinking from
+the model, not the request body (bug 86)"), adopted at the
+`12fe3e6f`-round unification (2026-08-22). ⚠ v4 HAD ALREADY MOVED past it
+at unification (`ca22ec45`, image-provider Fetch Models + Z.AI image
+generation — ported surfaces) — **pin a detached worktree at `12fe3e6f`
+for EVERY regen until the `ca22ec45` catch-up runs** (all three symlink
+classes). Drift-check BOTH development branches every round (`git log
+12fe3e6f..main` AND `git diff main bugfix -- lib/ app/ packages/` —
+measure bugfix by `diff`, never the commit list; note WHICH branch the
+checkout occupies before any regen). The sweep driver remains the
+sanctioned per-family regen path — never run two sweeps concurrently. The
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.

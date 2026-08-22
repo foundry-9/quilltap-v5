@@ -78349,3 +78349,97 @@ run line — P4.D97 owns `record-request-envelopes.mjs`,
 `regenerate-request-envelopes.sh` and the request-envelopes committed corpus this
 round and its regen exercises all four. Their run lines ride a later maintenance
 pass.
+
+---
+
+## Round record — the `12fe3e6f` thinking-turn drift round (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥ P4.54), UNIFIED 2026-08-22
+
+**All four lanes closed; the oracle baseline MOVES `b8449b3e` → `12fe3e6f`.**
+v4's five-commit day absorbed: bugs 84/85/86 (two of them this port's own
+dogfood filings — #99 and the bug-85 territory bug 68 opened) plus the two
+docs-only filings (mirror refresh). Lane records above: "P4.D97", "P4.D98",
+"P4.D99", "P4.54 — run lines".
+
+**Reconciliation.** Cherry-picked in dependency order (D97 → D98 → D99 →
+P4.54) onto `unify/12fe3e6f-round`. Docs union-merged; SPA version
+accumulated 0.5.528 + 4 (D98) + 3 (D99) = **0.5.535**. One unifier
+procedure incident, recorded in the memory note: a blind both-sides
+conflict resolver briefly concatenated two `"version"` lines into
+`package.json` and left a spurious in-progress re-pick — aborted, with
+every committed pick then verified faithful by tree-equality against its
+lane tip (`git diff <picked-tip> <lane-tip> -- <owned paths>` = empty for
+all four lanes) and a per-commit conflict-marker audit (clean).
+
+**The §3 review: NO blocking findings.** The whole combined diff was read
+(evaluator vs v4 line-by-line; the heal vs v4's migration incl. the
+byte-exact ledger message; the strip predicate truth table; the editor's
+three behaviors vs v4's `ProfileModal` diff; the D99 resolver vs v4's
+helper; registry lookups confirmed exact-case on BOTH sides; the
+`parameters` column confirmed parsed-at-read via `object_or_empty` so the
+producer-site joins see objects). Recorded, not fixed:
+
+- **A documented mechanism divergence (P4.D98):** v4's stored-null
+  correction `useEffect` lists `runsThinkingTurn` in its deps, so on a
+  still-null row v4 RE-fires when a thinking parameter flips — and would
+  clobber an unsaved user tick; v5's fired-once latch cannot. The order
+  itself demanded the "CANNOT re-fire" spelling; the divergence is in the
+  user-favoring direction and spec-pinned (`user overrule survives a
+  second landing`). If v4 later reworks the effect, revisit.
+- The heal's `quilltapVersion` column: v4 stamps its package version, v5
+  stamps quilltap-core's — informational; the `id` is the key (both
+  normalized in the family diff).
+- Two D97 order premises were REFUTED by the lane's own measurement (the
+  envelope corpus's deepseek rows ride the uncatalogued `deepseek-chat`;
+  `connection_profiles_tier2` drives the repository, which never resolves
+  defaults) — both recorded in its lane record.
+
+**The unification wires.** `P4D97_THINKING_WIRE_LANDED` → true (the
+gated beat activated; green in the full suite below). The shared contract
+diffed name-for-name across sides: `optionKey`/`enabledValues`/
+`disabledValues` + `supportsThinking`/`thinksByDefault` appear exactly
+once on each side's serializer/mirror. P4.54's Tier-3 handoff reconciled
+against the D97 rider: THREE of the four envelope families got run lines
+in-lane; **`response_parse_equivalence` remains the one `nothing_to_run`
+envelope row** (7 total residual: the six correctly-headerless contract
+pins + it) — on the maintenance list with the `EXEMPT_FAMILIES` addition
+(blocked on synthetic self-test families) and `settings_wire_actions`'
+sibling-built /tmp fixture (measured FAILING 0/4 without it, not
+skipping).
+
+**The gate.** `cargo fmt` clean; clippy plain AND
+`--features quilltap-core/native-transport`, `-D warnings`, both clean;
+release build clean. Oracles for the nine affected families regenerated
+FRESH from a detached v4 worktree PINNED at `12fe3e6f` (v4 HEAD had
+already moved to `ca22ec45` — all three symlink classes linked) through
+the sweep driver: `thinking_turn_equivalence` (1,134 rows),
+`thinking_prefill_heal_equivalence`, `multi_character_prefill_equivalence`,
+`settings_routes_equivalence` (132 cases), `providers_listing_equivalence`
+(exactly-two-rules shape guard), `request_builder_equivalence` (269
+committed rows), `settings_wire_actions`, `orchestrator_tier3_equivalence`
+(no movement, as the D97 lane predicted), and
+`connection_profiles_tier2_equivalence` — **9/9 ok, zero SKIP**
+(`/tmp/unify-12fe3e6f-sweep.json`), with the changed bytes positively
+grepped in each fresh NDJSON (`thinkingTurnRule` ×9-provider row, the four
+new settings arms, the heal's byte-exact message, the two
+`thinking-default-v4-model` corpus rows). `cargo test --workspace` with
+the round's env block: **443 test binaries / 2,253 tests / 0 failed**
+(+2 binaries = the two new families). SPA: `npm test` **334 files /
+4,970 tests**, `npm run build` clean; **full Playwright: 233/233 passed
+(5.6 m), zero skips** — the suite grew 232 → 233 with exactly the
+activated thinking-turn beat, green on its first live run.
+
+**⚠ v4 drifted DURING the round:** `ca22ec45` ("feat(images): honest
+Fetch Models for image profiles; make Z.AI image generation real") — the
+image-profiles route + four image plugins, ported surfaces. It is the
+top next candidate; pin `12fe3e6f` for every regen until it lands.
+`bugfix` stays quiet (`3a76b17d`).
+
+**💸 the dogfood queue gains:** the live bug-85 repro chat (a DeepSeek
+thinking profile completing multi-character turns — also the closing
+proof for the two `use_prefill` producer joins), the heal firing once on
+a Friday-vintage copy (then surviving a second boot), the editor's
+model-facts arm (a real keyed Fetch Models un-seeding the box), and the
+failed-`generate_image` sentence reaching notice + toast.
+
+**Versions:** core 0.0.599, harness 0.0.523, host 0.0.75, SPA 0.5.535;
+web/cli/tauri unchanged.

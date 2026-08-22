@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — unify: the `12fe3e6f` thinking-turn drift round (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥ P4.54)
+
+_Versions: core 0.0.599, harness 0.0.523, host 0.0.75, SPA 0.5.535._
+
+All four lanes unified; the oracle baseline moves `b8449b3e` → `12fe3e6f`.
+v4's bugs 84/85/86 are absorbed whole — bug 84 (the tool-error sentence)
+and bug 85 (the DeepSeek thinking-prefill 400) were this port's own
+dogfood filings coming back fixed. Server: the thinking-turn evaluator +
+registry join, the manifest substrate's first per-model facts +
+`thinkingTurnRule`, the prefill `runsThinkingTurn` threading, the
+model-aware DeepSeek strip, and the retire-prefill heal keyed on v4's own
+`migrations_state` ledger. SPA: the browser evaluator twin, the profile
+editor's three thinking-turn behaviors, and bug 84's two-layer client fix
+(the reducer carried the sibling `error` nowhere before). Maintenance: run
+lines for 32 of the 39 `nothing_to_run` families.
+
+Unification wires: `P4D97_THINKING_WIRE_LANDED` flipped true (the
+thinking-turn e2e beat activated) and the contract diffed name-for-name
+across sides. The §3 review found no blocking findings; one documented
+mechanism divergence recorded (the editor's stored-null correction is a
+fired-once latch where v4's effect can re-fire — the order sanctioned the
+once-only spelling).
+
+Gate: fmt clean; clippy both feature sets; release build; 443 test
+binaries / 2,253 tests / 0 failed with the round's env block; the nine
+affected families fresh at a PINNED `12fe3e6f` worktree through the sweep
+driver, zero SKIP, changed-bytes verified in every regenerated NDJSON;
+SPA 334 files / 4,970 tests + production build; full Playwright 233/233
+zero skips (the suite grew with the activated beat). ⚠ v4 moved DURING the round (`ca22ec45`,
+image-provider Fetch Models + Z.AI image generation) — pin `12fe3e6f`
+for every regen until that catch-up runs.
+
 #### 2026-08-21 — docs(porting): P4.54 closes — the run-line classification, executed and recorded
 
 _No crate versions bumped._
