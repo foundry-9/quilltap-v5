@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(salon): the tool-result error-sentence resolver, v4's client twin (bug 84)
+
+_Versions: SPA 0.5.529._
+
+Lands `resolveToolResultErrorText` as a standalone client twin of v4
+`app/salon/[id]/hooks/useSSEStreaming.ts` (v4 `d9c98cf2`). The SSE
+`toolResult` frame carries a failing tool's human-readable text in `error`,
+a sibling of `result`, because `result` itself is null on failure; the
+resolver prefers that sibling, keeps the nested `result.error` read as a
+fallback, strips the executor's own leading `Error: ` prefix, and returns
+`undefined` for anything empty so a caller's generic string still fires.
+
+The spec is transcribed case for case from v4's own regression test
+`__tests__/unit/hooks/useSSEStreaming-tool-error.test.ts`: the real failure
+shape, the prefix strip, the unwrapped sentence, the nested fallback,
+sibling-wins precedence, and every empty case.
+
+No caller reads it yet — the reducer carry and the two render sites follow.
 #### 2026-08-21 — test(e2e): the gated thinking-turn prefill beat (P4.D98 tier 2, ACTIVATE-AT-UNIFY)
 
 _Versions: SPA 0.5.532._

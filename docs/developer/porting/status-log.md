@@ -78045,3 +78045,46 @@ the component tier (the thinking-turn describe drives both fetch sites with
   the model-facts arm end to end) joins the dogfood queue.
 
 SPA 0.5.532.
+---
+
+## P4.D99 — the tool-error sentence reaches the UI (v4 bug 84 convergence), v4 `12fe3e6f`
+
+Lane branch `claude/p4-d99-tool-error-sentence-8da0a1`. Ports v4 `d9c98cf2`
+("fix(salon): read the tool-result error sentence the emitter sends (bug 84)")
+— v4 fixing **this port's own filing**, dogfood finding #99. The sibling
+docs-only commit `c0984bdf` is the filing itself.
+
+**Drift check at lane start (2026-08-21 evening):** `git log 12fe3e6f..main`
+in `~/source/quilltap-server` is EMPTY — v4 main HEAD is `12fe3e6f`, the tree
+is clean, the checkout is on `main`. `bugfix` HEAD is still `3a76b17d` (the
+4.8.4 branch-start), unchanged from planning. No drift; the lane ran against
+the pinned oracle.
+
+**No Rust change.** v5's emitter already sends the sibling `error` —
+`crates/quilltap-core/src/services/chat_events.rs:311,529` documents the
+`{toolResult:{index, name, success, result, error?}}` shape and its own test
+at `:880` pins `"error": "Error: boom"` on a failing frame. The defect was
+entirely client-side, and (unlike v4) in TWO layers.
+
+### Unit 1 — the resolver twin
+
+`apps/web/src/app/chat/tool-result-error.ts` +
+`tool-result-error.spec.ts`. `resolveToolResultErrorText` is a standalone
+client twin of v4's newly exported hook helper (v4
+`app/salon/[id]/hooks/useSSEStreaming.ts`), following the
+`multi-character-prefill.ts` / `skip-signal.ts` convention: prefer the
+sibling `error`, fall back to the nested `result.error`, strip the
+executor's own leading `Error: ` (`/^Error:\s*/`), and resolve anything
+empty to `undefined` so the caller's generic string still fires.
+
+**The differential:** v4's client is the oracle, and the spec is transcribed
+case for case from v4's own regression test
+`__tests__/unit/hooks/useSSEStreaming-tool-error.test.ts` (56 lines, six
+`it`s): the real failure shape (`result: null` plus a sibling `error`), the
+prefix strip incl. the padded variant, the unwrapped sentence, the nested
+fallback, sibling-wins precedence, and every empty case — including
+`{ error: 'Error: ' }`, which strips to nothing and must resolve
+`undefined`. No NDJSON tier applies (no Rust unit moved).
+
+Gate: SPA 333 files / 4,943 (was 332 / 4,937 — exactly this spec's six
+cases); `npm run build` clean. SPA → 0.5.529.
