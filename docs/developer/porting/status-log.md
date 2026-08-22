@@ -79256,3 +79256,66 @@ border simply does not paint, on both sides, and the rule now says so.
    NANOGPT alongside the other two, with the measurement cited.
 
 Gate: `npm test` 338 files / 5,008 tests, `npm run build` clean. SPA 0.5.538.
+
+### Unit 4 — the NanoGPT options verify-spec, the thinking partition, Tier 2's size panels, and the gated beats
+
+**The verify-only claim held.** v4 added no bespoke editor code for NanoGPT
+(`781fc420` touches no panel file), and v5 needed none either: a spec drives the
+EXISTING `ProviderOptionsPanel` with the Shared contract's schema — transcribed
+into the spec rather than read from the server, so the two halves cannot drift
+into agreement by accident — and the group title, field label, all seven enum
+values and their labels come out in contract order, with a stored value
+selected. Zero production lines changed for it.
+
+The thinking-turn client twin gains v4's partition arms
+(`nanogpt-reasoning.test.ts:46-68`): every non-blank editor value classified by
+exactly ONE side of the rule, `''` by NEITHER, `disabledValues` exactly
+`['none']`, every enabled value evaluating true, `none` evaluating false even
+for a `thinksByDefault` model, and `''` deferring to the model both ways.
+
+**Tier 2 landed rather than deferred.** The order asked for a cost measurement
+first: v4's `ImageProfileParameters.tsx` is 196 lines across six cases, but the
+two this round added are one select and one footnote each, so the minimal switch
+the order sanctioned (two cases + textarea passthrough) was cheap. Both size
+tables are transcribed verbatim, including v4's repeated label words — Z.AI has
+two `Square`s and two `Landscape`s, both providers two `Portrait`s — because the
+labels name the aspect, not a unique row.
+
+Two traps, both mutation-proven:
+
+- **The rebuilt-bag trap** (the standing memory note). v4's `handleChange`
+  spreads (`:14-19`), so a key the panel never renders survives an edit. v5's
+  size setter parses → spreads → re-serializes; a mutation that rebuilds the bag
+  from scratch reddens the preservation spec. This matters MORE in v5 than v4,
+  because for these two providers v5 HIDES its textarea (v4 has none at all), so
+  a dropped key would be both silent and unrecoverable from the UI.
+- **The off-list select.** Same class as the model select: assigned
+  post-render, so a stored `4096x4096` leaves the control blank instead of
+  snapping to `1024x1024`. A mutation forcing `selectedIndex = 0` reddens it.
+
+Recorded, not fixed: v5's JSON textarea for the other four providers is a v5
+INVENTION — v4's `default:` case renders nothing at all, and v4 has no textarea
+anywhere in this component. The remaining unported cases are named in the
+modal's deferral note by v4 line number (`OPENAI` `:28-83`,
+`GOOGLE`/`GOOGLE_IMAGEN` `:84-125`, `GROK` `:183-192`).
+
+**Tier 3 — the two gated beats** land in `settings-flow.spec.ts`'s P4.6r
+describe, `false`-gated on `P4D100_LIST_MODELS_LANDED` and
+`P4D101_NANOGPT_LANDED`. Both are written so that the pre-landing world FAILS
+them rather than passing vacuously — the thing gating exists to prevent:
+
+- The Fetch Models beat walks keyless (v4's third sentence + the disabled button
+  and its title) → key selected (button arms, title flips) → fetched (the
+  keyless sentence must be GONE). Before P4.D100 the verb answers a typed
+  refusal, the client takes its catch branch, and the built-in label reads
+  identically in both worlds — so an ungated version could not tell a working
+  fetch from a broken one.
+- The NanoGPT picker beat asserts the LIVE registry label, not this lane's
+  `FALLBACK_PROVIDERS` label — which this lane deliberately gave a NanoGPT row,
+  so a naive assertion would pass against the fallback and prove nothing about
+  the server. It then selects NANOGPT and asserts Tier 2's size panel arrives.
+
+Both were confirmed to REGISTER with Playwright (`--list` shows them) rather
+than being silently absent.
+
+Gate: `npm test` 338 files / 5,016 tests, `npm run build` clean. SPA 0.5.539.

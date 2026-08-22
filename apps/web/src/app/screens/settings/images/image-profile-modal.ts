@@ -27,6 +27,7 @@ import {
   FALLBACK_PROVIDERS,
   imageProfileToForm,
   normalizeProviderName,
+  PROVIDER_SIZE_PANELS,
 } from './image-profile-form';
 import {
   createImageProfile,
@@ -48,10 +49,20 @@ import {
  * Fetch Models control (`ImageProfileForm.tsx:135-175,390-444`) — an auto-load
  * on provider/key change, an explicit button, and the source label beneath.
  *
+ * P4.D102 also landed the structured parameters editor's FIRST TWO cases —
+ * v4's `Z_AI` and `NANOGPT` Default Size panels
+ * (`ImageProfileParameters.tsx:126-181`), the two the round's drift commits
+ * added.
+ *
  * STILL DEFERRED LOUDLY: the `Validate` key button (its wire pair,
  * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title —
- * v4 did not move it this round. The structured per-provider parameters editor
- * is a named deferral; a JSON textarea stands in (key order preserved).
+ * v4 did not move it this round. And v4's OTHER structured cases are still
+ * unported: `OPENAI` (`:28-83` — Quality, Style, Size, Response Format),
+ * `GOOGLE`/`GOOGLE_IMAGEN` (`:84-125` — Aspect Ratio, Person Generation,
+ * Sample Count) and `GROK` (`:183-192` — a static "minimal parameters"
+ * paragraph). Those four providers still get v5's JSON textarea stand-in,
+ * which is a v5 invention: v4 has no textarea, and its `default:` case renders
+ * NOTHING. Unknown keys survive editing on both sides.
  */
 @Component({
   selector: 'qt-image-profile-modal',
@@ -149,19 +160,39 @@ import {
           }
         </div>
 
-        <div>
-          <label class="block qt-text-label mb-1">Parameters (JSON)</label>
-          <textarea
-            class="qt-input font-mono"
-            rows="4"
-            placeholder="{}"
-            [value]="parametersText()"
-            (input)="parametersText.set($any($event.target).value)"
-          ></textarea>
-          @if (parametersError()) {
-            <p class="qt-text-xs qt-text-destructive mt-1">{{ parametersError() }}</p>
-          }
-        </div>
+        @if (sizePanel(); as panel) {
+          <div class="space-y-4 border-t qt-border-default pt-4">
+            <h3 class="text-sm qt-text-primary">Image Parameters (Optional)</h3>
+            <div>
+              <label class="block qt-text-label mb-1">Default Size</label>
+              <select
+                #sizeSelect
+                class="qt-select"
+                [attr.data-qt-value]="sizeValue()"
+                (change)="setSize($any($event.target).value)"
+              >
+                @for (option of panel.options; track option.value) {
+                  <option [value]="option.value">{{ option.label }}</option>
+                }
+              </select>
+              <p class="qt-text-xs mt-1">{{ panel.footnote }}</p>
+            </div>
+          </div>
+        } @else {
+          <div>
+            <label class="block qt-text-label mb-1">Parameters (JSON)</label>
+            <textarea
+              class="qt-input font-mono"
+              rows="4"
+              placeholder="{}"
+              [value]="parametersText()"
+              (input)="parametersText.set($any($event.target).value)"
+            ></textarea>
+            @if (parametersError()) {
+              <p class="qt-text-xs qt-text-destructive mt-1">{{ parametersError() }}</p>
+            }
+          </div>
+        }
 
         <label class="flex items-center gap-2 qt-text-small">
           <input
@@ -297,6 +328,45 @@ export class ImageProfileModal implements OnInit {
   );
 
   private readonly modelSelect = viewChild<ElementRef<HTMLSelectElement>>('modelSelect');
+  private readonly sizeSelect = viewChild<ElementRef<HTMLSelectElement>>('sizeSelect');
+
+  /**
+   * The structured Default Size panel for this provider, or null to fall back
+   * to the JSON textarea (v4 `ImageProfileParameters.tsx` switches on the RAW
+   * provider, so `GOOGLE_IMAGEN` gets its own case there rather than GOOGLE's).
+   */
+  protected readonly sizePanel = computed(() => PROVIDER_SIZE_PANELS[this.provider()] ?? null);
+
+  /** v4 `:137` / `:166` — `parameters.size || '1024x1024'`. */
+  protected readonly sizeValue = computed(() => {
+    const stored = this.parametersBag()['size'];
+    return typeof stored === 'string' && stored ? stored : '1024x1024';
+  });
+
+  /**
+   * The parameters bag as an object. Lenient on purpose: the textarea can hold
+   * mid-edit garbage, and the size panel must not be the thing that reports it
+   * (submit still refuses, through `parseParameters`).
+   */
+  private parametersBag(): Record<string, unknown> {
+    try {
+      const parsed = JSON.parse(this.parametersText() || '{}') as unknown;
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * v4 `handleChange` (`:14-19`) — `{...parameters, [key]: value}`. The spread
+   * is the point: a parameter this panel does not render must survive being
+   * edited, exactly as it survives v4's structured cases.
+   */
+  protected setSize(value: string): void {
+    this.parametersText.set(JSON.stringify({ ...this.parametersBag(), size: value }, null, 2));
+  }
 
   constructor() {
     /**
@@ -343,6 +413,16 @@ export class ImageProfileModal implements OnInit {
       const select = this.modelSelect()?.nativeElement;
       if (select) {
         select.value = this.modelName();
+      }
+    });
+
+    // Same reasoning for the size select: a stored size outside the provider's
+    // list leaves the control blank rather than snapping to 1024x1024.
+    afterRenderEffect(() => {
+      this.sizePanel();
+      const select = this.sizeSelect()?.nativeElement;
+      if (select) {
+        select.value = this.sizeValue();
       }
     });
   }

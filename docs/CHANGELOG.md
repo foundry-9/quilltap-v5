@@ -405,6 +405,32 @@ recording in this commit — v4's Z.AI URL→base64 download (the same drift
 commit) lands with the bytes seam in a later unit of this lane, and the
 recorder needs a distinct download response before that row can be
 regenerated honestly.
+#### 2026-08-22 — port(images): the Z.AI and NanoGPT size panels, the NanoGPT options verify-spec, and two gated beats (v4 `ca22ec45` + `781fc420` + `d5830439`, P4.D102)
+
+_Versions: SPA 0.5.539._
+
+The image-profile modal's structured parameters editor gains its first two
+cases: v4's Z.AI and NanoGPT Default Size selects, with the eight and seven
+sizes, their labels, and both footnotes transcribed verbatim. Providers v4 has
+no size case for keep v5's JSON textarea stand-in.
+
+The size change spreads the existing bag rather than rebuilding it, so a
+parameter the panel does not render survives being edited — the one behaviour a
+structured editor most easily breaks, and mutation-proven here. The select
+assigns post-render, so an off-list stored size leaves it blank as React does.
+
+NanoGPT's options group is verified, not reimplemented: a spec drives the
+existing schema-driven panel with the contract's schema and asserts the group,
+the label, and all seven enum values in order, confirming v4's position that no
+bespoke editor code was needed. The thinking-turn client twin gains v4's
+partition arms — every non-blank value classified by exactly one side, the blank
+by neither, and the blank deferring to the model's own habit.
+
+Two e2e beats land gated on the sibling server lanes (ACTIVATE-AT-UNIFY): the
+Fetch Models control's keyless-then-keyed walk, and NanoGPT arriving in the
+image picker from the live registry. Both are written so a fallback render fails
+them rather than quietly passing.
+
 #### 2026-08-22 — port(embeddings): the NanoGPT embedding-provider surface (v4 `781fc420`, P4.D102)
 
 _Versions: SPA 0.5.538._

@@ -458,6 +458,107 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
     );
     await expect(lanternReloaded.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
+
+  // -------------------------------------------------------------------------
+  // P4.D102 — the image Fetch Models control and the NanoGPT provider entries.
+  //
+  // ACTIVATE-AT-UNIFY. Both beats need a sibling lane's server half and are
+  // gated on the constants below (the `P4D97_THINKING_WIRE_LANDED` mechanism):
+  //
+  //   P4D100_LIST_MODELS_LANDED — P4.D100's `imageProfileListModels` verb.
+  //     Until it lands the dispatch answers a typed refusal, the client falls
+  //     into its catch-branch, and the builtin label reads the same in BOTH
+  //     worlds — so the assertion could not tell a working fetch from a broken
+  //     one. That is exactly why it is gated rather than merely tolerant.
+  //
+  //   P4D101_NANOGPT_LANDED — P4.D101's NANOGPT manifest. Until it lands the
+  //     providers listing has no NanoGPT row, and the picker falls back to
+  //     `FALLBACK_PROVIDERS` (which this lane DID give a NanoGPT row), so a
+  //     naive assertion would pass against the fallback and prove nothing about
+  //     the server. The beat therefore asserts the LIVE registry path.
+  // -------------------------------------------------------------------------
+
+  const P4D100_LIST_MODELS_LANDED = false;
+  const P4D101_NANOGPT_LANDED = false;
+
+  test('Images tab: the Fetch Models control reports where the model list came from', async ({
+    page,
+  }) => {
+    test.skip(!P4D100_LIST_MODELS_LANDED, 'awaits P4.D100 `imageProfileListModels` (wired at unification)');
+    test.setTimeout(60_000);
+
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: /Image Generation Profiles/ }));
+    await page.getByRole('button', { name: 'New Profile' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+    // Keyless: v4's third built-in sentence, and the button refuses with its
+    // own title rather than querying a provider it has no credential for.
+    const fetchButton = dialog.getByRole('button', { name: 'Fetch Models' });
+    await expect(fetchButton).toBeDisabled();
+    await expect(fetchButton).toHaveAttribute('title', 'Select an API key first');
+    await expect(dialog).toContainText(
+      "Showing the plugin's built-in model list — select an API key and Fetch Models to query the provider.",
+      { timeout: 10_000 },
+    );
+
+    // Pick the fixture's key: the button arms and its title flips.
+    const keySelect = dialog.locator('select').nth(1);
+    const keyValue = await keySelect.locator('option').nth(1).getAttribute('value');
+    test.skip(!keyValue, 'fixture carries no OPENAI API key to select');
+    await keySelect.selectOption(keyValue as string);
+    await expect(fetchButton).toBeEnabled();
+    await expect(fetchButton).toHaveAttribute('title', 'Query the provider for its image models');
+
+    // Fetch against the live server. The fixture's key is not a real OpenAI
+    // credential, so the honest answer is the built-in list with the provider's
+    // refusal named — which is the arm worth proving: the sentence carries the
+    // server's reason, and the label is no longer the keyless one.
+    await fetchButton.click();
+    await expect(fetchButton).toHaveText('Fetch Models', { timeout: 30_000 });
+    await expect(dialog).not.toContainText('select an API key and Fetch Models', {
+      timeout: 10_000,
+    });
+    const sourceLine = dialog.locator('p', {
+      hasText: /fetched from the provider|built-in list/,
+    });
+    await expect(sourceLine.first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('Images tab: NanoGPT reaches the image picker from the live provider registry', async ({
+    page,
+  }) => {
+    test.skip(!P4D101_NANOGPT_LANDED, 'awaits P4.D101 NANOGPT manifest (wired at unification)');
+    test.setTimeout(60_000);
+
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: /Image Generation Profiles/ }));
+    await page.getByRole('button', { name: 'New Profile' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+    // The provider select is the FIRST one; assert the live registry answered
+    // rather than the client fallback. The registry's label is the plugin's
+    // manifest title, which is NOT this lane's `FALLBACK_PROVIDERS` label — so
+    // a fallback render fails this assertion instead of quietly passing it.
+    const providerSelect = dialog.locator('select').first();
+    await expect(providerSelect.locator('option', { hasText: /NanoGPT/ })).toHaveCount(1, {
+      timeout: 10_000,
+    });
+
+    // Selecting it brings v4's Default Size panel with it (P4.D102 Tier 2).
+    await providerSelect.selectOption('NANOGPT');
+    await expect(dialog).toContainText(
+      "Common sizes across NanoGPT's image models; each model maps to its nearest native resolution",
+      { timeout: 10_000 },
+    );
+    const sizeSelect = dialog.locator('select').nth(3);
+    await expect(sizeSelect).toHaveValue('1024x1024');
+  });
+
 });
 
 function withoutPepper(): NodeJS.ProcessEnv {

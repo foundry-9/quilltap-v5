@@ -362,3 +362,130 @@ describe('ImageProfileModal — Fetch Models', () => {
     expect(text(fixture)).toContain("Showing the plugin's built-in model list.");
   });
 });
+
+/**
+ * The structured Default Size panel — v4
+ * `components/image-profiles/ImageProfileParameters.tsx:126-181`. The two cases
+ * v4's drift commits added; the other four providers keep v5's JSON textarea
+ * stand-in.
+ */
+describe('ImageProfileModal — the Default Size panel', () => {
+  function sizeSelect(fixture: ComponentFixture<ImageProfileModal>): HTMLSelectElement | null {
+    const selects = Array.from(
+      fixture.nativeElement.querySelectorAll('select'),
+    ) as HTMLSelectElement[];
+    // Provider, API key, Model, then Size — the fourth, when it renders at all.
+    return selects[3] ?? null;
+  }
+
+  function textarea(fixture: ComponentFixture<ImageProfileModal>): HTMLTextAreaElement | null {
+    return fixture.nativeElement.querySelector('textarea');
+  }
+
+  it('renders Z.AI’s eight sizes and footnote verbatim (v4 :126-153)', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'Z_AI', models: ['glm-image'], source: 'builtin' }),
+      profile({ provider: 'Z_AI', modelName: 'glm-image' }),
+    );
+    const select = sizeSelect(fixture);
+    expect(select).not.toBeNull();
+    expect(
+      Array.from((select as HTMLSelectElement).options).map((o) => o.textContent?.trim()),
+    ).toEqual([
+      'Square (1024x1024)',
+      'Square (1280x1280)',
+      'Landscape (1568x1056)',
+      'Wide (1664x928)',
+      'Landscape (1472x1104)',
+      'Portrait (1056x1568)',
+      'Tall (928x1664)',
+      'Portrait (1104x1472)',
+    ]);
+    expect(text(fixture)).toContain("Z.AI's recommended sizes for CogView and GLM-Image");
+  });
+
+  it('renders NanoGPT’s seven sizes and footnote verbatim (v4 :155-181)', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'NANOGPT', models: ['hidream'], source: 'builtin' }),
+      profile({ provider: 'NANOGPT', modelName: 'hidream' }),
+    );
+    const select = sizeSelect(fixture);
+    expect(Array.from((select as HTMLSelectElement).options).map((o) => o.value)).toEqual([
+      '1024x1024',
+      '1248x832',
+      '1360x768',
+      '1536x1024',
+      '832x1248',
+      '768x1360',
+      '1024x1536',
+    ]);
+    expect(text(fixture)).toContain(
+      "Common sizes across NanoGPT's image models; each model maps to its nearest native resolution",
+    );
+  });
+
+  it('defaults the selection to 1024x1024 when the bag has no size (v4 :137)', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'NANOGPT', models: ['hidream'], source: 'builtin' }),
+      profile({ provider: 'NANOGPT', parameters: {} }),
+    );
+    expect((sizeSelect(fixture) as HTMLSelectElement).value).toBe('1024x1024');
+  });
+
+  it('shows a stored size as the selection', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'NANOGPT', models: ['hidream'], source: 'builtin' }),
+      profile({ provider: 'NANOGPT', parameters: { size: '1360x768' } }),
+    );
+    expect((sizeSelect(fixture) as HTMLSelectElement).value).toBe('1360x768');
+  });
+
+  /**
+   * The trap this panel exists to avoid: v4's `handleChange` spreads the bag
+   * (`:14-19`), so a key the panel never renders survives an edit. A rebuilt
+   * bag would silently drop it.
+   */
+  it('preserves parameter keys it does not render when the size changes', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'NANOGPT', models: ['hidream'], source: 'builtin' }),
+      profile({
+        provider: 'NANOGPT',
+        parameters: { size: '1024x1024', negative_prompt: 'blurry', steps: 30 },
+      }),
+    );
+    const select = sizeSelect(fixture) as HTMLSelectElement;
+    select.value = '832x1248';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const bag = JSON.parse(
+      (fixture.componentInstance as unknown as { parametersText: () => string }).parametersText(),
+    ) as Record<string, unknown>;
+    expect(bag).toEqual({ size: '832x1248', negative_prompt: 'blurry', steps: 30 });
+  });
+
+  it('leaves the size select blank for an off-list stored size (React parity)', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'Z_AI', models: ['glm-image'], source: 'builtin' }),
+      profile({ provider: 'Z_AI', parameters: { size: '4096x4096' } }),
+    );
+    expect((sizeSelect(fixture) as HTMLSelectElement).selectedIndex).toBe(-1);
+  });
+
+  it('keeps the JSON textarea for a provider v4 has no size case for', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'OPENAI', models: ['dall-e-3'], source: 'builtin' }),
+      profile({ provider: 'OPENAI' }),
+    );
+    expect(textarea(fixture)).not.toBeNull();
+    expect(sizeSelect(fixture)).toBeNull();
+  });
+
+  it('hides the textarea for a provider that HAS a size case (v4 shows only the panel)', async () => {
+    const fixture = await render(
+      stubClient({ provider: 'Z_AI', models: ['glm-image'], source: 'builtin' }),
+      profile({ provider: 'Z_AI' }),
+    );
+    expect(textarea(fixture)).toBeNull();
+  });
+});

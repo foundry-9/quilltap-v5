@@ -156,3 +156,52 @@ export function formToImageProfileBody(form: ImageProfileFormData): {
     isDangerousCompatible: form.isDangerousCompatible,
   };
 }
+
+/** One row of a provider's Default Size select. */
+export interface ImageSizeOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * The per-provider Default Size panels, transcribed from v4
+ * `components/image-profiles/ImageProfileParameters.tsx` at `d5830439` — the
+ * `Z_AI` case (`:126-153`) and the `NANOGPT` case (`:155-181`). Sizes, labels
+ * and footnotes are verbatim, including v4's repeated label words (two
+ * `Square`s and two `Landscape`s for Z.AI, two `Portrait`s for both) — the
+ * labels describe the aspect, not a unique name.
+ *
+ * v4's four other cases (`OPENAI`, `GOOGLE`/`GOOGLE_IMAGEN`, `GROK`, and the
+ * `default: return null`) are NOT here — see the modal's deferral note.
+ */
+export const PROVIDER_SIZE_PANELS: Record<
+  string,
+  { options: ImageSizeOption[]; footnote: string }
+> = {
+  Z_AI: {
+    options: [
+      { value: '1024x1024', label: 'Square (1024x1024)' },
+      { value: '1280x1280', label: 'Square (1280x1280)' },
+      { value: '1568x1056', label: 'Landscape (1568x1056)' },
+      { value: '1664x928', label: 'Wide (1664x928)' },
+      { value: '1472x1104', label: 'Landscape (1472x1104)' },
+      { value: '1056x1568', label: 'Portrait (1056x1568)' },
+      { value: '928x1664', label: 'Tall (928x1664)' },
+      { value: '1104x1472', label: 'Portrait (1104x1472)' },
+    ],
+    footnote: "Z.AI's recommended sizes for CogView and GLM-Image",
+  },
+  NANOGPT: {
+    options: [
+      { value: '1024x1024', label: 'Square (1024x1024)' },
+      { value: '1248x832', label: 'Landscape (1248x832)' },
+      { value: '1360x768', label: 'Wide (1360x768)' },
+      { value: '1536x1024', label: 'Landscape (1536x1024)' },
+      { value: '832x1248', label: 'Portrait (832x1248)' },
+      { value: '768x1360', label: 'Tall (768x1360)' },
+      { value: '1024x1536', label: 'Portrait (1024x1536)' },
+    ],
+    footnote:
+      "Common sizes across NanoGPT's image models; each model maps to its nearest native resolution",
+  },
+};
