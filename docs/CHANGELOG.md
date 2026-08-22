@@ -405,6 +405,20 @@ recording in this commit — v4's Z.AI URL→base64 download (the same drift
 commit) lands with the bytes seam in a later unit of this lane, and the
 recorder needs a distinct download response before that row can be
 regenerated honestly.
+#### 2026-08-22 — port(images): the Z.AI and NanoGPT image-provider entries (v4 `ca22ec45` + `781fc420`, P4.D102)
+
+_Versions: SPA 0.5.536._
+
+`FALLBACK_PROVIDERS` gains v4's Z.AI and NanoGPT rows — labels, default model
+lists and `apiKeyProvider` transcribed verbatim — so the image-profile modal
+offers both providers in v4's order when the `list-providers` fetch fails.
+`PROVIDER_DEFAULTS` gains their icon rows (`ZAI` / success, `NGPT` / primary);
+without them both fell through to the generic three-character abbreviation and
+rendered as `Z_A` and `NAN`.
+
+v4's matching `PROVIDER_BADGES` rows have no v5 home — `ProviderBadge` is a
+standing named deferral — so they are recorded verbatim in that deferral note
+rather than dropped, for whichever lane lands the badge surface.
 
 #### 2026-08-22 — docs(porting): work orders for the `d5830439` drift round (P4.D100 → P4.D101 stacked ∥ P4.D102)
 

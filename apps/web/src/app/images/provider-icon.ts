@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 
 /**
  * Provider defaults — v4 `components/image-profiles/ProviderIcon.tsx`
- * `PROVIDER_DEFAULTS` (`:52-62`), transcribed name-for-name. An unknown
+ * `PROVIDER_DEFAULTS` (`:52-63`), transcribed name-for-name. An unknown
  * provider falls back to the secondary colour and its first three characters
  * upper-cased (v4 `:170-173`).
  */
@@ -12,6 +12,8 @@ const PROVIDER_DEFAULTS: Record<string, { color: string; abbrev: string }> = {
   GOOGLE_IMAGEN: { color: 'qt-text-info', abbrev: 'GGL' },
   GOOGLE: { color: 'qt-text-info', abbrev: 'GGL' },
   OPENROUTER: { color: 'qt-text-warning', abbrev: 'OR' },
+  Z_AI: { color: 'qt-text-success', abbrev: 'ZAI' },
+  NANOGPT: { color: 'qt-text-primary', abbrev: 'NGPT' },
   ETERNAL_AI: { color: 'qt-text-primary', abbrev: 'EAI' },
   ANTHROPIC: { color: 'qt-text-warning', abbrev: 'ANT' },
   OLLAMA: { color: 'qt-text-secondary', abbrev: 'OLL' },
@@ -43,6 +45,13 @@ export function providerIconDefaults(provider: string): { color: string; abbrev:
  * `<ProviderIcon provider={selected.provider} />` (`ImageProfilePicker.tsx:119`)
  * with no icon data and no overrides. The plugin-icon surface belongs to
  * whichever lane ports v4's plugin icon registry; it is NOT stubbed here.
+ *
+ * **Carried for that lane (P4.D102):** `ProviderBadge`'s `PROVIDER_BADGES`
+ * table grew two rows this round that have no v5 home yet, so they are recorded
+ * here rather than silently dropped — v4 `:220-221`:
+ * `Z_AI: {bg: 'qt-bg-success/10', text: 'qt-text-success', label: 'Z.AI'}` and
+ * `NANOGPT: {bg: 'qt-bg-primary/10', text: 'qt-text-primary', label: 'NanoGPT'}`.
+ * Whoever lands `ProviderBadge` transcribes them verbatim.
  */
 @Component({
   selector: 'qt-provider-icon',

@@ -37,6 +37,27 @@ export const FALLBACK_PROVIDERS: ImageProviderInfo[] = [
     apiKeyProvider: 'GOOGLE',
     legacyNames: ['GOOGLE_IMAGEN'],
   },
+  {
+    value: 'Z_AI',
+    label: 'Z.AI (CogView / GLM-Image)',
+    defaultModels: ['cogview-4-250304', 'glm-image'],
+    apiKeyProvider: 'Z_AI',
+    legacyNames: [],
+  },
+  {
+    value: 'NANOGPT',
+    label: 'NanoGPT (Flux / HiDream / Recraft)',
+    defaultModels: [
+      'hidream',
+      'flux-2-flash',
+      'flux-2-dev',
+      'flux-2-pro',
+      'recraft-v3',
+      'gpt-image-1.5',
+    ],
+    apiKeyProvider: 'NANOGPT',
+    legacyNames: [],
+  },
 ];
 
 /**

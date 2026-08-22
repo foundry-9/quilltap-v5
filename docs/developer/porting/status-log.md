@@ -79129,3 +79129,47 @@ failed-`generate_image` sentence reaching notice + toast.
 
 **Versions:** core 0.0.599, harness 0.0.523, host 0.0.75, SPA 0.5.535;
 web/cli/tauri unchanged.
+
+---
+
+## P4.D102 — image Fetch Models + NanoGPT, the SPA client half (v4 `d5830439`)
+
+Lane branch `claude/p4-d102-images-nanogpt-spa-033d01`. The client half of the
+round's three drift commits: the image-profile Fetch Models UI + source labels
+(`ca22ec45`), the Z.AI and NanoGPT image-profile entries plus the NanoGPT
+embedding surface (`781fc420`), and the NanoGPT options group rendering through
+the existing schema-driven panel (`d5830439`). `apps/web/**` only — no crate,
+manifest, or harness edit.
+
+**⚠ v4 drift measured at lane start, and again at lane resume:** v4 `main` sits
+one commit past the pinned baseline at `4cb1035e` ("fix(nanogpt): suppress the
+gateway's reasoning echo, plugin 1.0.2, bug 87"). It touches the NanoGPT
+plugin's `provider.ts`/`index.js` streaming path, its
+`manifest.json`/`package.json` version (1.0.1 → 1.0.2), its jest test and the
+bug docs — and **zero** client files, so every oracle-of-record this lane reads
+is byte-identical at `d5830439` and `4cb1035e`. The plugin's `optionsSchema` —
+the round's binding Shared contract — is untouched by it. It is nonetheless
+UNABSORBED drift on a ported surface (the NanoGPT provider stream), so the
+baseline cannot advance to `4cb1035e` without a port; it belongs to whoever
+next takes the provider lane. `bugfix` measured `3a76b17d`, nothing unabsorbed.
+
+### Unit 1 — the Z.AI and NanoGPT image-provider entries
+
+`FALLBACK_PROVIDERS` gains v4's two new rows (`ImageProfileForm.tsx:46-47` at
+`d5830439`) in v4's order, labels/`defaultModels`/`apiKeyProvider` transcribed
+character-for-character. `PROVIDER_DEFAULTS` gains the matching icon rows in
+v4's position, after OPENROUTER (`ProviderIcon.tsx:61-62`). Both pinned
+red-first: the six new assertions failed against the pre-lane tree (measured,
+not assumed) and pass after.
+
+The icon fall-through spec is the reason these rows matter beyond tidiness —
+without them `Z_AI` and `NANOGPT` hit v4's generic `slice(0,3).toUpperCase()`
+branch and render as `Z_A` and `NAN`.
+
+**A contract item with no v5 home, recorded rather than dropped:** v4's
+`ca22ec45`/`781fc420` also grow `PROVIDER_BADGES` by two rows, but v5 has no
+badge map to land them in — `ProviderBadge` is a standing named deferral in
+`provider-icon.ts`. The two rows are transcribed verbatim into that deferral
+note so the lane that lands the badge surface carries them; nothing was stubbed.
+
+Gate: `npm test` 335 files / 4,978 tests, `npm run build` clean. SPA 0.5.536.

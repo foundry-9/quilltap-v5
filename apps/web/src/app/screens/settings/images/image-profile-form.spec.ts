@@ -4,6 +4,7 @@ import type { ApiKeyDto, ImageProviderInfo } from '../../../core/core-contract';
 import {
   availableApiKeys,
   defaultModelsFor,
+  FALLBACK_PROVIDERS,
   formToImageProfileBody,
   imageProfileToForm,
   normalizeProviderName,
@@ -122,5 +123,49 @@ describe('imageProfileToForm', () => {
     expect(form.apiKeyId).toBe('');
     expect(form.isDangerousCompatible).toBe(true);
     expect(form.parameters).toEqual({ quality: 'hd' });
+  });
+});
+
+/**
+ * The `FALLBACK_PROVIDERS` rows, asserted verbatim against v4
+ * `components/image-profiles/ImageProfileForm.tsx:41-47` (at `d5830439`). Only
+ * used when the `list-providers` fetch fails, but the strings are user-visible
+ * the moment it does, so they are pinned character-for-character.
+ */
+describe('FALLBACK_PROVIDERS', () => {
+  it('carries v4’s five providers in v4’s order', () => {
+    expect(FALLBACK_PROVIDERS.map((p) => p.value)).toEqual([
+      'OPENAI',
+      'GROK',
+      'GOOGLE',
+      'Z_AI',
+      'NANOGPT',
+    ]);
+  });
+
+  it('carries the Z.AI row verbatim (v4 `ca22ec45`)', () => {
+    const zai = FALLBACK_PROVIDERS.find((p) => p.value === 'Z_AI');
+    expect(zai?.label).toBe('Z.AI (CogView / GLM-Image)');
+    expect(zai?.defaultModels).toEqual(['cogview-4-250304', 'glm-image']);
+    expect(zai?.apiKeyProvider).toBe('Z_AI');
+  });
+
+  it('carries the NanoGPT row verbatim (v4 `781fc420`)', () => {
+    const nano = FALLBACK_PROVIDERS.find((p) => p.value === 'NANOGPT');
+    expect(nano?.label).toBe('NanoGPT (Flux / HiDream / Recraft)');
+    expect(nano?.defaultModels).toEqual([
+      'hidream',
+      'flux-2-flash',
+      'flux-2-dev',
+      'flux-2-pro',
+      'recraft-v3',
+      'gpt-image-1.5',
+    ]);
+    expect(nano?.apiKeyProvider).toBe('NANOGPT');
+  });
+
+  it('offers the new providers’ default models through defaultModelsFor', () => {
+    expect(defaultModelsFor('Z_AI', FALLBACK_PROVIDERS)[0]).toBe('cogview-4-250304');
+    expect(defaultModelsFor('NANOGPT', FALLBACK_PROVIDERS)[0]).toBe('hidream');
   });
 });
