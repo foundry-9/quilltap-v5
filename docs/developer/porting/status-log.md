@@ -80191,3 +80191,71 @@ comparands go red — the five status arms, the composite's status, and
 `update_invalid_writes_nothing_tables`. The tables red is the one that
 matters: it measures v5 writing the valid `99` while dropping the bogus
 visibility, exactly the half-applied patch v4 refuses whole.
+
+### Unit 3 — E2: `updateProjectSchema` ported whole (and the store_backed verdict)
+
+**The divergence, measured.** `api/projects.rs`'s `project_update` did nothing
+but check that the body was an object and hand the raw map to
+`ProjectsRepository::update`. v4 (`[id]/actions/project-crud.ts:95-97`) runs
+`updateProjectSchema.parse(body)` — NOT in a try/catch; the ZodError escapes the
+handler and `createContextParamsHandler`'s `handleRouteError`
+(`lib/api/middleware/context.ts:158-171`) maps it to `validationError` — and
+passes the PARSED data to the repository, so unknown keys never reach the write.
+
+**The schema, resolved.** The order flagged the export path as unchased: it is
+`app/api/v1/projects/[id]/schemas.ts:9-24`, imported by `project-crud.ts:13`.
+Fourteen fields, ported as a declaration-order table (`PROJECT_UPDATE_SCHEMA`)
+with a per-field `nullable` column, because `.nullable()` is NOT uniform:
+`backgroundDisplayMode` is `.optional()` only, so an explicit `null` refuses,
+while `description` / `instructions` / `color` / `icon` / the four
+`default*` fields / `answerConfirmationOverride` all accept a clearing null.
+`name` is the only field with a `.min()`.
+
+`is_zod_uuid` (P4.6-era, `api/chat_outfits.rs`) is reused for both spellings the
+schema mixes — `z.uuid()` on the roster items and `z.string().uuid()` on the two
+id fields. **Probed against v4's own zod 4.4.3** rather than assumed: the two
+spellings agree on every arm (v4/v5-nibble rejection, the nil and max UUIDs,
+uppercase hex), and `z.object` strips unknown keys silently. The colour regex
+`/^#(?:[0-9a-fA-F]{3}){1,2}$/` was probed the same way (`#abc` and `#abcdef`
+pass, `#abcd` and `#12345` do not).
+
+**Order of guards.** v4 checks existence FIRST (`findById` → `notFound`) and
+only then reads and parses the body, so a missing project answers 404 even for
+a garbage patch. v5's old shape refused the non-object body BEFORE the find.
+The handler now carries a three-way `ProjectUpdateOutcome` through the one
+writer round-trip so the find still precedes the parse.
+
+**The differential.** Five new arms: `update_invalid_type`
+(`{"allowAnyCharacter":"yes"}`), `update_over_max` (a 101-character `name`),
+`update_null_non_nullable` (`{"backgroundDisplayMode":null}`),
+`update_unknown_key_stripped` (200 + a table dump), and
+`update_clear_description`.
+
+**Mutation proof (red-first).** With the validator bypassed and the raw patch
+restored, three arms go red: `update_invalid_type`, `update_over_max`,
+`update_null_non_nullable`.
+
+**`update_unknown_key_stripped` is honestly NOT a proof of the validator** — it
+passed under the mutation too. v5's write overlay routes only declared property
+keys to the store and `update_slim` writes only real columns, so an unknown key
+could never land on either side; the arm pins that pre-existing agreement (echo
+AND row) rather than the new strip. Recorded so a future reader does not mistake
+it for coverage it lacks.
+
+**The P4.D85 cleared-null residue — the store_backed verdict: NOT DIVERGENT, no
+fix needed.** v4's `AbstractStoreBackedRepository.update`
+(`store-backed.repository.ts:186-201`) answers `applyOverlayOne(_update(id,
+dbPatch))` — the in-memory merge — or `applyOverlayOne(_findById(id))` when the
+patch has no DB work. v5's `db/store_backed.rs:209-221` re-reads in both cases.
+The two agree because every store-resident key comes from a store re-read on
+BOTH sides (the overlay runs after the store write either way) and
+`slim_row_to_map` emits a NULL slim column as `Value::Null`, exactly as the
+in-memory merge would.
+
+`update_clear_description` measures it: `description` is store-resident, so
+`dbPatch` is EMPTY, both sides take the no-DB-work branch, and both echo
+`"description": null` — including the un-minted `updatedAt` (no slim write, so
+no fresh timestamp on either side; the family blanks it regardless). The
+groups side inherits the same verdict by construction (one `store_backed.rs`,
+two `StoreEntity` impls); its pinning arm rides the next round, since P4.D103
+owns the groups families this round.

@@ -226,6 +226,54 @@ async function main(): Promise<void> {
       )),
     },
     { name: 'update', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Renamed', backgroundDisplayMode: 'theme' }), p(IOTA))) },
+    // P4.55 (the merge-verb silent-keep sweep): v4 runs
+    // `updateProjectSchema.parse(body)` and hands the repository the PARSED
+    // data, so an invalid field is a 400 `Validation error` (the ZodError
+    // escapes into `handleRouteError`) and an unknown key is STRIPPED, never
+    // written. v5 passed the raw body straight through with no validation.
+    // Status + `error` message compared; the `details` issues array is the
+    // recorded no-details divergence class.
+    {
+      name: 'update_invalid_type',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { allowAnyCharacter: 'yes' }), p(IOTA))),
+    },
+    {
+      // `z.string().min(1).max(100)` — the over-max leg.
+      name: 'update_over_max',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { name: 'x'.repeat(101) }), p(IOTA))),
+    },
+    {
+      // `backgroundDisplayMode` is `.optional()` but NOT `.nullable()`, so an
+      // explicit null refuses where `description: null` (below) clears.
+      name: 'update_null_non_nullable',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: null }), p(IOTA))),
+    },
+    {
+      // The unknown key is STRIPPED by `z.object`, not refused: the request
+      // succeeds and the echo must not carry it. The dump proves nothing of it
+      // reached the row either.
+      name: 'update_unknown_key_stripped',
+      run: async () => {
+        const r = await (await loadRoute(idRoute)).PUT(
+          mockRequest(`${B}/${IOTA}`, { name: 'Iota Stripped', notAField: 'should vanish' }),
+          p(IOTA),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProjectTables() };
+      },
+    },
+    {
+      // P4.55, the P4.D85 cleared-null residue: `description` is
+      // `.nullable()`, so this CLEARS it. v4's store-backed `update` answers
+      // `_update`'s in-memory merge overlaid, v5 re-reads — this arm settles
+      // whether the two echoes agree on a cleared store-resident key.
+      name: 'update_clear_description',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { description: null }), p(IOTA))),
+    },
     {
       name: 'delete',
       run: async () => {

@@ -254,6 +254,30 @@ fn projects_routes_match_oracle() {
             eprintln!("[{name}] OK.");
         }
     };
+    // P4.55: an error-arm check — HTTP status + v4's `{error}` message.
+    let check_error = |name: &str, got: &Response, failed: &mut Vec<String>| {
+        let rec = &oracle[name];
+        let want_status = rec["status"].as_i64().unwrap_or(0);
+        let want_msg = rec["body"]["error"].as_str().unwrap_or("");
+        match got {
+            Response::Error(e) => {
+                let got_status = http_for(e.kind);
+                if got_status != want_status || e.message != want_msg {
+                    eprintln!(
+                        "[{name}] MISMATCH: got {got_status} {:?} / want {want_status} {want_msg:?}",
+                        e.message
+                    );
+                    failed.push(name.to_string());
+                } else {
+                    eprintln!("[{name}] OK ({got_status}).");
+                }
+            }
+            other => {
+                eprintln!("[{name}] expected Error, got {:?}", response_data(other));
+                failed.push(name.to_string());
+            }
+        }
+    };
     let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
         let want = &oracle[name]["tables"];
         if norm(got) != norm(want) {
@@ -412,6 +436,68 @@ fn projects_routes_match_oracle() {
             json!({ "name": "Iota Renamed", "backgroundDisplayMode": "theme" }),
         ));
         check("update", &response_data(&resp), true, &mut failed);
+    }
+    // P4.55 (the merge-verb silent-keep sweep): v4 parses the body through
+    // `updateProjectSchema` and hands the repository the PARSED data, so an
+    // invalid field 400s and an unknown key is STRIPPED. v5 passed the raw body
+    // through with no validation at all.
+    for (name, tag, patch) in [
+        (
+            "update_invalid_type",
+            "uit",
+            json!({ "allowAnyCharacter": "yes" }),
+        ),
+        ("update_over_max", "uom", json!({ "name": "x".repeat(101) })),
+        (
+            // `backgroundDisplayMode` is `.optional()` but NOT `.nullable()`.
+            "update_null_non_nullable",
+            "unn",
+            json!({ "backgroundDisplayMode": null }),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(projects::project_update(&db, IOTA, patch));
+        check_error(name, &resp, &mut failed);
+    }
+    {
+        // The unknown key is stripped, not refused: 200, absent from the echo,
+        // and absent from the row.
+        let db = fresh_db(&spec, "uuk");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "name": "Iota Stripped", "notAField": "should vanish" }),
+        ));
+        check(
+            "update_unknown_key_stripped",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
+        check_tables(
+            "update_unknown_key_stripped",
+            &dump_project_tables(&db),
+            &mut failed,
+        );
+    }
+    {
+        // P4.55, the P4.D85 cleared-null residue: `description` is
+        // `.nullable()`, so this CLEARS it. v4's store-backed `update` answers
+        // `_update`'s in-memory merge overlaid; v5 re-reads. This arm is the
+        // measurement of whether the two echoes agree on a cleared
+        // store-resident key.
+        let db = fresh_db(&spec, "ucd");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "description": null }),
+        ));
+        check(
+            "update_clear_description",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
     }
     {
         let db = fresh_db(&spec, "delete");

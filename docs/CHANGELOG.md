@@ -200,6 +200,29 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — fix(projects): validate the update body through v4's updateProjectSchema
+
+_Versions: core 0.0.611, harness 0.0.534._
+
+`project_update` passed the raw request body straight to the repository with no
+validation: `{"allowAnyCharacter": "yes"}`, a 101-character `name`, an explicit
+`null` on the non-nullable `backgroundDisplayMode` — all accepted, answered 200.
+v4 runs `updateProjectSchema.parse(body)` and hands the repository the parsed
+data, so an invalid field is a 400 `Validation error` and an unknown key is
+stripped.
+
+All fourteen fields ported constraint by constraint, in schema-declaration
+order, with the `.nullable()` column carried per field so a cleared
+`description` still clears while a null `backgroundDisplayMode` refuses. The
+existence check runs first, as in v4, so a missing project still answers 404
+even for a garbage patch. Five new arms in the projects-routes differential;
+the three invalid ones proven red against the old passthrough.
+
+The same commit settles the P4.D85 cleared-null question on the store-backed
+side: v4's `update` answers `_update`'s in-memory merge overlaid, v5 re-reads,
+and the new `update_clear_description` arm measures the two echoes agreeing.
+No `store_backed.rs` change was needed.
+
 #### 2026-08-22 — fix(autonomous-rooms): refuse an invalid update-settings patch instead of dropping the field
 
 _Versions: core 0.0.610, harness 0.0.533._

@@ -301,22 +301,148 @@ pub fn project_get(db: &Db, project_id: &str) -> Response {
 // Update / delete
 // ===========================================================================
 
+/// One field of v4's `updateProjectSchema`
+/// (`app/api/v1/projects/[id]/schemas.ts:9-24`).
+enum FieldRule {
+    /// `z.boolean()`
+    Bool,
+    /// `z.string()` with an inclusive `[min, max]` length in UTF-16 code units
+    /// (Zod measures `String.length`).
+    Str(usize, usize),
+    /// `z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/)` — the hex colour.
+    Color,
+    /// `z.string().uuid()` (Zod 4's deprecated alias for `z.uuid()` — probed
+    /// against v4's zod 4.4.3, the two agree on every arm).
+    Uuid,
+    /// `z.enum([...])`
+    Enum(&'static [&'static str]),
+    /// `z.array(z.uuid())`
+    UuidArray,
+}
+
+/// v4 `updateProjectSchema` in declaration order: `(key, rule, nullable)`.
+/// `nullable` is v4's `.nullable()`; every field is additionally `.optional()`,
+/// so ABSENT is always legal and a present `null` is legal only where the third
+/// column says so.
+const PROJECT_UPDATE_SCHEMA: &[(&str, FieldRule, bool)] = &[
+    ("name", FieldRule::Str(1, 100), false),
+    ("description", FieldRule::Str(0, 2000), true),
+    ("instructions", FieldRule::Str(0, 10_000), true),
+    ("allowAnyCharacter", FieldRule::Bool, false),
+    ("characterRoster", FieldRule::UuidArray, false),
+    ("color", FieldRule::Color, true),
+    ("icon", FieldRule::Str(0, 50), true),
+    ("defaultAgentModeEnabled", FieldRule::Bool, true),
+    ("defaultAvatarGenerationEnabled", FieldRule::Bool, true),
+    ("defaultImageProfileId", FieldRule::Uuid, true),
+    ("defaultRoleplayTemplateId", FieldRule::Uuid, true),
+    (
+        "defaultAlertCharactersOfLanternImages",
+        FieldRule::Bool,
+        true,
+    ),
+    (
+        "answerConfirmationOverride",
+        FieldRule::Enum(&["ON", "OFF"]),
+        true,
+    ),
+    (
+        "backgroundDisplayMode",
+        FieldRule::Enum(&["latest_chat", "project", "static", "theme"]),
+        false,
+    ),
+];
+
+/// v4's hex-colour regex, `/^#(?:[0-9a-fA-F]{3}){1,2}$/` — `#abc` or `#abcdef`,
+/// nothing between and nothing longer.
+fn is_hex_color(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('#') else {
+        return false;
+    };
+    matches!(rest.len(), 3 | 6) && rest.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn field_value_ok(rule: &FieldRule, v: &Value) -> bool {
+    match rule {
+        FieldRule::Bool => v.is_boolean(),
+        FieldRule::Str(min, max) => v
+            .as_str()
+            .map(|s| s.encode_utf16().count())
+            .is_some_and(|n| n >= *min && n <= *max),
+        FieldRule::Color => v.as_str().is_some_and(is_hex_color),
+        FieldRule::Uuid => v.as_str().is_some_and(super::chat_outfits::is_zod_uuid),
+        FieldRule::Enum(members) => v.as_str().is_some_and(|s| members.contains(&s)),
+        FieldRule::UuidArray => v.as_array().is_some_and(|a| {
+            a.iter()
+                .all(|e| e.as_str().is_some_and(super::chat_outfits::is_zod_uuid))
+        }),
+    }
+}
+
+/// P4.55 (the merge-verb silent-keep sweep): v4 runs
+/// `updateProjectSchema.parse(body)` and hands the repository the PARSED data
+/// (`[id]/actions/project-crud.ts:95-97`), so an invalid field is a 400
+/// `Validation error` (the ZodError escapes the handler and
+/// `handleRouteError` maps it) and an unknown key is STRIPPED, never written.
+/// v5 used to pass the raw body straight through with no validation at all.
+///
+/// Returns the stripped patch in schema-declaration order (the order Zod's own
+/// parsed output carries), or `Err(())` for the 400.
+fn validate_project_patch(patch: &Value) -> Result<Map<String, Value>, ()> {
+    let Some(obj) = patch.as_object() else {
+        // Zod's root arm: a non-object body is its own `invalid_type` issue.
+        return Err(());
+    };
+    let mut out = Map::new();
+    for (key, rule, nullable) in PROJECT_UPDATE_SCHEMA {
+        let Some(v) = obj.get(*key) else { continue };
+        if v.is_null() {
+            if !nullable {
+                return Err(());
+            }
+        } else if !field_value_ok(rule, v) {
+            return Err(());
+        }
+        out.insert((*key).to_string(), v.clone());
+    }
+    Ok(out)
+}
+
+/// The three terminal shapes of `project_update`'s one writer round-trip. v4
+/// checks existence FIRST (`findById` → `notFound`) and only then reads and
+/// parses the body, so a missing project answers 404 even for a garbage patch.
+enum ProjectUpdateOutcome {
+    NotFound,
+    Invalid,
+    Updated(Value),
+}
+
 pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response {
     let pid = project_id.to_string();
-    let Some(patch_map) = patch.as_object().cloned() else {
-        return bad_request("Expected a JSON object body");
-    };
     let out = with_both_conns(db, move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
-            return Ok(None);
+            return Ok(ProjectUpdateOutcome::NotFound);
         }
-        repo.update(&pid, &patch_map).map_err(overlay_to_db)
+        let Ok(patch_map) = validate_project_patch(&patch) else {
+            return Ok(ProjectUpdateOutcome::Invalid);
+        };
+        Ok(
+            match repo.update(&pid, &patch_map).map_err(overlay_to_db)? {
+                Some(project) => ProjectUpdateOutcome::Updated(project),
+                None => ProjectUpdateOutcome::NotFound,
+            },
+        )
     })
     .await;
     match out {
-        Ok(Some(project)) => Response::Project(json!({ "project": project })),
-        Ok(None) => not_found("Project"),
+        Ok(ProjectUpdateOutcome::Updated(project)) => {
+            Response::Project(json!({ "project": project }))
+        }
+        Ok(ProjectUpdateOutcome::NotFound) => not_found("Project"),
+        // v4 `validationError(...)` — the `details` issues array is the
+        // recorded no-details divergence class.
+        Ok(ProjectUpdateOutcome::Invalid) => bad_request("Validation error"),
         Err(e) => db_error_response(e),
     }
 }
