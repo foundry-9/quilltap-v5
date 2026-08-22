@@ -77956,3 +77956,18 @@ omits it and the editor must degrade), and `ModelInfo` gains
 `supportsThinking?` / `thinksByDefault?` with v4's two doc comments.
 
 SPA 0.5.529.
+
+### Unit 2 — `defaultMultiCharacterPrefill` learns `runsThinkingTurn`
+
+The client twin gains the second parameter (`runsThinkingTurn = false`;
+`true` forces the seed off before the provider rule is consulted), with v4's
+reworded module docblock, the "Resist adding a provider here…" warning on
+`PREFILL_HOSTILE_PROVIDERS`, and the parameter's doc comment — all adapted per
+the client-half convention (v5's client still carries only the default; the
+`profileUsesNamePrefill` resolution, including its two new thinking cases, is
+server-side and P4.D97's pin). The parity spec grows v4's three new
+`defaultMultiCharacterPrefill` cases 1:1 (off-on-any-provider while thinking /
+kept-while-not-thinking / Anthropic-off-either-way); citation range updated to
+v4's `:8-52`. 8/8 green.
+
+SPA 0.5.530.

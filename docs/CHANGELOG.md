@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(spa): defaultMultiCharacterPrefill learns runsThinkingTurn (v4 bug 85, P4.D98 unit 2)
+
+_Versions: SPA 0.5.530._
+
+The client twin of v4 `lib/llm/multi-character-prefill.ts` gains the
+`runsThinkingTurn = false` second parameter from `97d2fcb5`: a profile that
+will run a thinking turn seeds the prefill box off on ANY provider, before
+the provider rule is consulted. Doc comments carried (including the "Resist
+adding a provider here" warning); the parity spec grows v4's three new
+cases 1:1. The `profileUsesNamePrefill` resolution half stays server-side
+(P4.D97).
+
 #### 2026-08-21 — feat(spa): the evaluateThinkingTurn browser twin + the thinking-turn contract fields (v4 bug 85, P4.D98 unit 1)
 
 _Versions: SPA 0.5.529._
