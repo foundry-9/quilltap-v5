@@ -80401,3 +80401,60 @@ QT_ORACLE_EP_ROUTES=/tmp/oracle-embedding-profiles-routes.ndjson
 
 Versions: **core 0.0.612, harness 0.0.535**; host / web / cli / tauri / SPA
 untouched (this lane opened no `apps/web/**` file, so no `ng` gate applies).
+## P4.D104 — the prompts trio, SPA client half (lane record, in progress)
+
+Lane branch `claude/p4-d104-prompts-trio-spa-e323b7`, from
+`afd936f1`. v4 baseline `a6870c5a` (drift-checked at lane start: v4 `main`
+HEAD **is** `a6870c5a`, tree clean; `bugfix` carries nothing main lacks).
+Client-only lane — `apps/web/**` exclusively; P4.D103 owns every server
+surface, per the order's Shared contract.
+
+### Unit 1 — the shared prompt-field label + the single-sourced hints table
+
+v4 `components/prompt-fields/PromptFieldLabel.tsx` (75 lines) and
+`field-hints.ts` (112 lines), both new at `a6870c5a`, ported as
+`apps/web/src/app/ui/prompt-field-label.ts` and
+`apps/web/src/app/ui/prompt-field-hints.ts`.
+
+**The component** mirrors v4's DOM shape exactly: `div.mb-2` → a
+`flex items-center justify-between` row (`<label class="block qt-label
+text-foreground">` + the projected actions) → the helper
+`<p class="text-xs qt-text-secondary mt-1">` → the example paragraph on the
+`Written as: <em>…</em>` convention. v4's `actions` ReactNode becomes an
+`<ng-content>` slot. Two Angular-idiom notes carried in the class doc:
+
+- The whole label LINE is one `computed` string, not three adjacent template
+  nodes. Angular's default whitespace collapsing turns the newline between
+  `{{ label }}` and a separate `(Optional)` node into a space, and v4's JSX
+  concatenates them with none — `Identity (Optional)`, one space, is pinned
+  by spec.
+- The `*` stays a real `<span class="qt-text-destructive">` because it is
+  separately styled; its leading-space text node survives collapsing (not
+  entirely whitespace, no run of two).
+
+**The hints table** is transcribed byte-for-byte — all 11 keys, 33 strings,
+typographic apostrophes included. The transcription was PROVEN against v4's
+real module, not by eye: a tsx script in the v4 checkout imported both
+`PROMPT_FIELD_HINTS` objects (v4's and this file's) and compared their
+`JSON.stringify` — `IDENTICAL`.
+
+**The durable pin** is `prompt-field-hints.spec.ts`, the v4-client-oracle
+parity spec whose expectation rows were EMITTED from v4's real module (a tsx
+script printing each entry as a quoted tuple), so the committed bytes came
+out of v4 rather than a second pass of human retyping. It asserts the key
+set and ORDER, then label/helper/example 1:1 per key, plus an
+apostrophe-class guard (zero ASCII `'` anywhere; exactly five strings carry
+the typographic `’`). Mutation-proven: swapping `not even kindly.` →
+`not even gently.` in the table reddened the `manifesto` row; restored
+green.
+
+`prompt-field-label.spec.ts` pins the component per prop: the hint bundle
+render, the no-space `" (Optional)"` suffix, the destructive `" *"` marker
+and its class, override precedence (`label ?? hint.label`,
+`helper ?? hint.helper`, `example ?? hint.example`), the empty fallback with
+neither, the omitted example paragraph for a hint that carries none, the
+`htmlFor` → `<label for>` binding, and the projected action landing in the
+label row after the label.
+
+No call site migrates in this unit — the sweep is unit 2. `npm test`
+filtered: 8 + 13 green.

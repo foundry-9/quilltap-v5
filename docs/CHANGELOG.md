@@ -310,6 +310,28 @@ root-level `invalid_type` and takes the same `Validation error` path. Six new
 arms in the memories-config differential (two invalid + one writes-nothing
 composite comparing the stored bag per verb), all eight comparands proven red
 against the old lenient behavior.
+#### 2026-08-22 — feat(prompts): the shared prompt-field label + single-sourced field hints
+
+_Versions: SPA 0.5.540._
+
+P4.D104 unit 1. Ports v4's `components/prompt-fields/` pair (commit
+`a6870c5a`): `qt-prompt-field-label`, the header-only shared component for
+prompt-bearing fields (label line, helper paragraph, `Written as: <em>`
+worked example, the `" (Optional)"` suffix and destructive `*`, an
+`ng-content` slot standing in for v4's `actions` ReactNode), and
+`PROMPT_FIELD_HINTS`, the eleven-key hint table transcribed byte-for-byte
+from v4 — typographic apostrophes included.
+
+The label component renders the header only and never wraps the editor, so
+it drops above any existing input without touching its state wiring. The
+whole label line is one computed string because Angular's default
+whitespace collapsing would otherwise insert a space where v4's JSX
+concatenates.
+
+The hints table is pinned by a v4-client-oracle parity spec whose
+expectation rows were emitted from v4's real module, so a drift edit on
+either side of any of the 33 strings goes red; a mutation on one helper was
+run red-then-green. No call site migrates yet — that is unit 2.
 
 #### 2026-08-22 — docs(porting): work orders for the prompts-trio drift round (P4.D103 ∥ P4.D104 ∥ P4.55)
 
