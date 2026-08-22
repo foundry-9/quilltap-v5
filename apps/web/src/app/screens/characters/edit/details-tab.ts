@@ -230,7 +230,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Identity -->
       <div>
-        <qt-prompt-field-label [hint]="hints.identity" optional />
+        <qt-prompt-field-label [hint]="hints.identity" optional htmlFor="identity" />
         <qt-markdown-field
           ariaLabel="Identity"
           minHeight="6rem"
@@ -241,7 +241,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Description -->
       <div>
-        <qt-prompt-field-label [hint]="hints.description" optional />
+        <qt-prompt-field-label [hint]="hints.description" optional htmlFor="description" />
         <qt-markdown-field
           ariaLabel="Description"
           minHeight="8rem"
@@ -252,7 +252,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Manifesto -->
       <div>
-        <qt-prompt-field-label [hint]="hints.manifesto" optional />
+        <qt-prompt-field-label [hint]="hints.manifesto" optional htmlFor="manifesto" />
         <qt-markdown-field
           ariaLabel="Manifesto"
           minHeight="8rem"
@@ -263,7 +263,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Personality -->
       <div>
-        <qt-prompt-field-label [hint]="hints.personality" optional />
+        <qt-prompt-field-label [hint]="hints.personality" optional htmlFor="personality" />
         <qt-markdown-field
           ariaLabel="Personality"
           minHeight="8rem"
@@ -280,7 +280,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- First Message -->
       <div>
-        <qt-prompt-field-label [hint]="hints.firstMessage" optional />
+        <qt-prompt-field-label [hint]="hints.firstMessage" optional htmlFor="firstMessage" />
         <qt-markdown-field
           ariaLabel="First Message"
           minHeight="6rem"
@@ -302,7 +302,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- System Prompt -->
       <div>
-        <qt-prompt-field-label [hint]="hints.systemPrompt" optional />
+        <qt-prompt-field-label [hint]="hints.systemPrompt" optional htmlFor="systemPrompt" />
         <qt-markdown-field
           ariaLabel="System Prompt"
           minHeight="8rem"

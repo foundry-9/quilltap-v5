@@ -356,30 +356,48 @@ pub fn group_members(db: &Db, group_id: &str) -> Response {
 // Update / delete (v4 group-crud.ts)
 // ===========================================================================
 
-/// v4 `handlePutDefault`: ownership → `updateGroupSchema.parse` (no `|| null`,
-/// so an explicit `""` is stored VERBATIM — v4's quirk, which its own client
-/// compensates for by sending `instructions || null`) → `groups.update`. Body
-/// `{ group }`.
+/// The three terminal shapes of `group_update`'s one round-trip — v4 checks
+/// existence FIRST (`findById` → `notFound`) and reads/parses the body only
+/// after, so a missing group answers 404 even for a garbage patch (the same
+/// guard order `project_update` mirrors on the P4.55 side).
+enum GroupUpdateOutcome {
+    NotFound,
+    Invalid,
+    Updated(Value),
+}
+
+/// v4 `handlePutDefault`: ownership FIRST (`findById` → 404) →
+/// `updateGroupSchema.parse` (no `|| null`, so an explicit `""` is stored
+/// VERBATIM — v4's quirk, which its own client compensates for by sending
+/// `instructions || null`) → `groups.update`. Body `{ group }`. A non-object
+/// body is Zod's own root-level `invalid_type` → the same 400 `Validation
+/// error` (v4's `req.json()` succeeded; `parse(5)` is a plain ZodError).
+///
+/// The find-before-parse order was caught by the §3 unification review — the
+/// lane's first port parsed first and answered 400 where v4 answers 404;
+/// pinned by the `update_missing_group_invalid_body_404` arm.
 pub async fn group_update(db: &Db, group_id: &str, patch: Value) -> Response {
     let gid = group_id.to_string();
-    let Some(raw_patch) = patch.as_object() else {
-        return bad_request("Expected a JSON object body");
-    };
-    let Ok(patch_map) = parse_update_group(raw_patch) else {
-        return bad_request(VALIDATION_ERROR);
-    };
     let out = with_both_conns(db, move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
-            return Ok(None);
+            return Ok(GroupUpdateOutcome::NotFound);
         }
-        let updated = repo.update(&gid, &patch_map).map_err(overlay_to_db)?;
-        Ok(updated)
+        let Some(patch_map) = patch.as_object().and_then(|p| parse_update_group(p).ok()) else {
+            return Ok(GroupUpdateOutcome::Invalid);
+        };
+        Ok(
+            match repo.update(&gid, &patch_map).map_err(overlay_to_db)? {
+                Some(group) => GroupUpdateOutcome::Updated(group),
+                None => GroupUpdateOutcome::NotFound,
+            },
+        )
     })
     .await;
     match out {
-        Ok(Some(group)) => Response::Group(json!({ "group": group })),
-        Ok(None) => not_found("Group"),
+        Ok(GroupUpdateOutcome::Updated(group)) => Response::Group(json!({ "group": group })),
+        Ok(GroupUpdateOutcome::NotFound) => not_found("Group"),
+        Ok(GroupUpdateOutcome::Invalid) => bad_request(VALIDATION_ERROR),
         Err(e) => db_error_response(e),
     }
 }

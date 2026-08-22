@@ -303,7 +303,7 @@ async function main(): Promise<void> {
     {
       // `instructions: ''` → `validatedData.instructions || null` on CREATE, so
       // the empty string normalizes to null. (The UPDATE path has no `|| null`
-      // — see `update_instructions_empty_string_stored_verbatim` below.)
+      // — see `update_instructions_empty_string_reads_back_null` below.)
       name: 'create_empty_instructions_normalizes_to_null',
       run: async () =>
         respond(
@@ -442,6 +442,22 @@ async function main(): Promise<void> {
             { params: Promise.resolve({ id: GAMMA }) },
           ),
         ),
+    },
+    {
+      // v4 checks EXISTENCE first (`findById` → `notFound('Group')`) and parses
+      // the body only after, so a missing group answers 404 even for a garbage
+      // patch. Caught by the §3 unification review: the lane's first v5 port ran
+      // the parse before the find and answered 400 here.
+      name: 'update_missing_group_invalid_body_404',
+      run: async () => {
+        const missing = '00000000-0000-4000-8000-00000000dead';
+        return respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${missing}`, { color: 'notacolor' }),
+            { params: Promise.resolve({ id: missing }) },
+          ),
+        );
+      },
     },
     {
       name: 'update',

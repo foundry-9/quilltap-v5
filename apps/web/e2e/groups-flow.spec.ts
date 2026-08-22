@@ -291,16 +291,20 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.press('Backspace');
 
-    const [request] = await Promise.all([
-      page.waitForRequest(
+    // waitForRESPONSE, not waitForRequest: the goto below aborts in-flight
+    // fetches, so waiting only for the request races the server commit — the
+    // twice-deflaked "triggered but never awaited" class (§3 unification
+    // review). The request body is still readable off the response.
+    const [response] = await Promise.all([
+      page.waitForResponse(
         (r) =>
           r.url().includes('/api/dispatch') &&
-          r.method() === 'POST' &&
-          (r.postData() ?? '').includes('groupUpdate'),
+          r.request().method() === 'POST' &&
+          (r.request().postData() ?? '').includes('groupUpdate'),
       ),
       page.getByRole('button', { name: 'Save Changes' }).click(),
     ]);
-    const sent = JSON.parse(request.postData() ?? '{}') as {
+    const sent = JSON.parse(response.request().postData() ?? '{}') as {
       group?: { instructions?: unknown };
     };
     expect(sent.group).toHaveProperty('instructions');

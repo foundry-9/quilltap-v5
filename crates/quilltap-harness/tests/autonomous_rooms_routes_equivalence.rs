@@ -622,6 +622,13 @@ fn autonomous_rooms_routes_match_oracle() {
             "update_invalid_title_too_long",
             json!({ "title": "x".repeat(400) }),
         ),
+        // Zod's `.max(300)` measures UTF-16 code units: 151 astral characters
+        // are 302 units, refused — a chars() count says 151 and accepts (§3
+        // unification review's catch on the first v5 port).
+        (
+            "update_invalid_title_astral",
+            json!({ "title": "😀".repeat(151) }),
+        ),
     ] {
         let db = fresh_db(&spec, name);
         check_error(name, &upd(&db, &uid_a, ROOM_IDLE, patch), &mut failed);

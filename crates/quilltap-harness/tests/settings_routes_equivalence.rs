@@ -536,8 +536,8 @@ fn settings_routes_match_v4() {
     // original seven. Same stale-oracle guard as the families above — the three
     // 400 arms in particular would simply be absent from a pre-P4.D79 oracle.
     assert!(
-        connection_profile_cases >= 19,
-        "expected >= 19 connection_profiles cases, got {connection_profile_cases} — regenerate the oracle (P4.D97 added the four thinking-default create arms)"
+        connection_profile_cases >= 22,
+        "expected >= 22 connection_profiles cases, got {connection_profile_cases} — regenerate the oracle (P4.D97 added the four thinking-default create arms; P4.55 added the three missing-`else` apiKeyId/baseUrl arms)"
     );
     // P4.D85: the connection-profile tag family (v4 Bug 74). Same stale-oracle
     // guard — before this lane v5 had NO profile tag verbs at all, so a

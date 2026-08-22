@@ -385,6 +385,14 @@ async function main(): Promise<void> {
       run: () => postAction(ROOM_IDLE, 'update-settings', { title: 'x'.repeat(400) }),
     },
     {
+      // Zod's `.max(300)` measures UTF-16 code units (`String.length`): 151
+      // astral characters are 302 units, so v4 refuses even though a scalar
+      // count says 151. Pins the unit the max is measured in (§3 unification
+      // review — the first v5 port counted chars and accepted this title).
+      name: 'update_invalid_title_astral',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { title: '😀'.repeat(151) }),
+    },
+    {
       // The refusal writes NOTHING: ROOM_RUNNING already carries stored caps
       // (the `update_clear_cap` arm clears one of them), so the row dump is a
       // real keep-current measurement, not a row of nulls.

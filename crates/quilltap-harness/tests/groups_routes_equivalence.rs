@@ -500,6 +500,16 @@ fn groups_routes_match_oracle() {
         } else {
             eprintln!("[create_non_string_instructions_400] OK (refused at the wire).");
         }
+        // The oracle row is recorded-only (v5 refuses at the deserializer, so
+        // there is no body to compare) — but its STATUS is still asserted so a
+        // v4-side drift of the ZodError arm (400 → 500) cannot be absorbed
+        // invisibly by a regen (§3 unification review).
+        assert_eq!(
+            oracle["create_non_string_instructions_400"]["status"].as_i64(),
+            Some(400),
+            "v4's non-string-instructions arm no longer answers 400 — \
+             the recorded-only row drifted"
+        );
     }
     {
         let db = fresh_db(&spec, "update_set_instr");
@@ -566,6 +576,18 @@ fn groups_routes_match_oracle() {
             json!({ "icon": "anchor", "state": { "planted": true } }),
         ));
         check_blanked("update_unknown_key_stripped", &resp, &mut failed);
+    }
+    {
+        // v4 checks EXISTENCE first and parses only after — a missing group
+        // answers 404 `Group not found` even for a garbage patch (the §3
+        // unification review's catch: parse-before-find answered 400 here).
+        let db = fresh_db(&spec, "update_missing");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            "00000000-0000-4000-8000-00000000dead",
+            json!({ "color": "notacolor" }),
+        ));
+        check_err("update_missing_group_invalid_body_404", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "update");

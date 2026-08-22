@@ -487,8 +487,12 @@ pub async fn image_profile_update(
             }
             // Truthy non-string: v4 assigns it VERBATIM, the repository's
             // in-memory merge validation rejects the row, and the route's outer
-            // catch answers this fixed 500 with nothing written. Measured
-            // (`{"baseUrl": 5}` → 500, the profiles table untouched).
+            // catch answers this fixed 500. Measured (`{"baseUrl": 5}` → 500,
+            // the profiles table untouched). RECORDED EDGE DIVERGENCE (§3
+            // unification review): v4's failure is TERMINAL — its isDefault
+            // sweep's writes land first, so `{"baseUrl": 5, "isDefault": true}`
+            // clears other defaults in v4 before the 500; v5 refuses here,
+            // before any write.
             _ => return internal("Failed to update image profile"),
         }
     }

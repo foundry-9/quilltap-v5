@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — fix(unify): the a6870c5a-round §3 review findings
+
+_Versions: core 0.0.620, harness 0.0.542, SPA 0.5.544._
+
+Ten §3 unification-review findings fixed on the unify branch before the
+gate. The two that would have shipped: `group_update` parsed the body
+BEFORE the existence check, answering 400 where v4's find-first order
+answers 404 for a missing group with a garbage patch (fixed to v4's
+order; pinned by the new `update_missing_group_invalid_body_404` arm) —
+and the autonomous-rooms `title` max counted Unicode scalars where Zod
+measures UTF-16 code units, silently widening the limit for astral text
+(fixed; pinned by the new `update_invalid_title_astral` arm). Also:
+the settings-routes `connection_profiles` stale-oracle floor raised
+19 → 22 for P4.55's three new arms (the row-driven family would have
+passed green with them absent); the gated group-instructions beat's
+clear-save leg moved from `waitForRequest` to `waitForResponse` (the
+twice-deflaked navigate-aborts-the-save class, fixed before its first
+live run); the recorded-only `create_non_string_instructions_400` row
+gained a status assert; the identity-compiler family gained a
+sentinel-presence tripwire (fixture-agreeing-with-itself guard); the
+three profile `baseUrl` comments now record the v4 terminal-failure
+sequencing divergence instead of overclaiming "nothing written";
+details-tab regained v4's six `htmlFor` attributes; two doc-string
+corrections (the hints spec's key count, a v4 line cite).
+
 #### 2026-08-22 — port(groups): `instructions` on the group verbs + both v4 validators, whole
 
 _Versions: core 0.0.615, harness 0.0.537._

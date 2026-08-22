@@ -145,6 +145,20 @@ fn identity_compiler_matches_oracle() {
         "expected at least 8 envelope participant rows, got {participant_rows} — \
          regenerate the oracle"
     );
+    // Sentinel-presence tripwire (§3 unification review): the envelope arms'
+    // discriminating power rests on the fixture's seeded sentinel stacks
+    // SURVIVING v4's `repos.chats.create`. If a future v4 schema change strips
+    // the seed, every arm collapses into the null-column shape on BOTH sides
+    // and stays green — a fixture agreeing with itself. At least one oracle
+    // expectation must still carry the sentinel bytes.
+    assert!(
+        rows.iter().any(|row| row["compiledIdentityStacks"]
+            .to_string()
+            .contains("<<seeded-stale-stack-for-")),
+        "no oracle row carries a seeded sentinel stack — the fixture's \
+         pre-seeded compiledIdentityStacks no longer survive v4's create; \
+         the envelope arms are measuring nothing"
+    );
     eprintln!(
         "OK: identity-compiler matched oracle ({compile_all_rows} compileAll, \
          {participant_rows} participant)."

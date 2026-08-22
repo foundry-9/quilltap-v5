@@ -3277,7 +3277,7 @@ export interface GroupSummary {
   description: string | null;
   /**
    * Standing instructions ("the group prompt") added to every member
-   * character's system prompt (v4 `aurora/types.ts:11`, `8f868109`).
+   * character's system prompt (v4 `aurora/types.ts:12`, `8f868109`).
    *
    * OPTIONAL, exactly as v4 declares it on this same shared type: one type
    * serves both the list read and the detail read, and only the detail read is

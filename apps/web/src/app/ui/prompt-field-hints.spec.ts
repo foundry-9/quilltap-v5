@@ -94,7 +94,7 @@ const V4_HINTS: Row[] = [
 ];
 
 describe('PROMPT_FIELD_HINTS — v4 parity', () => {
-  it('carries exactly v4’s eleven keys, in v4’s order', () => {
+  it('carries exactly v4’s twelve keys, in v4’s order', () => {
     expect(Object.keys(PROMPT_FIELD_HINTS)).toEqual(V4_HINTS.map(([key]) => key));
   });
 

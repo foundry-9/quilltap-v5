@@ -447,9 +447,12 @@ fn parse_settings_patch(settings: &Value) -> Result<AutonomousRoomSettingsPatch,
     };
 
     // title — `z.string().max(300).optional()`. `.optional()`, NOT `.nullish()`:
-    // a present `null` is an invalid_type failure, not a clear.
+    // a present `null` is an invalid_type failure, not a clear. The max is
+    // UTF-16 code units, as Zod measures (`String.length`) — a chars() count
+    // here under-counts astral characters and silently widens the limit (the
+    // §3 unification review's catch; pinned by `update_invalid_title_astral`).
     if let Some(v) = obj.get("title") {
-        let Some(t) = v.as_str().filter(|t| t.chars().count() <= 300) else {
+        let Some(t) = v.as_str().filter(|t| t.encode_utf16().count() <= 300) else {
             return Err(validation_error());
         };
         patch.title = Some(t.to_string());

@@ -1650,9 +1650,12 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
                 Value::Number(n) if n.as_f64() == Some(0.0) => patch.clear_base_url = true,
                 // Truthy non-string: v4 assigns it VERBATIM, and the
                 // repository's in-memory merge validation then rejects the row,
-                // so the route's outer catch answers this fixed 500 and nothing
-                // is written. Measured (`{"baseUrl": 5}` → 500, profile
-                // untouched).
+                // so the route's outer catch answers this fixed 500. Measured
+                // (`{"baseUrl": 5}` → 500, profile untouched). RECORDED EDGE
+                // DIVERGENCE (§3 unification review): v4's failure is TERMINAL
+                // — earlier fields' side effects run first, so `{"baseUrl": 5,
+                // "isDefault": true}` clears the OTHER profiles' isDefault in
+                // v4 before the 500; v5 refuses here, before any write.
                 _ => return internal("Failed to update connection profile"),
             }
         }
