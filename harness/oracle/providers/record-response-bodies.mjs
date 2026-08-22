@@ -58,6 +58,7 @@ const PROVIDERS = {
     new (await import(pathToFileURL(resolve('provider.ts')))).OpenAICompatibleProvider({
       baseUrl: 'http://localhost:8080/v1',
     }),
+  nanogpt: async () => new (await import(pathToFileURL(resolve('provider.ts')))).NanoGPTProvider(),
 };
 
 // ---- The response-body corpus (all doc-derived; synthetic: true) -----------
@@ -78,6 +79,30 @@ function bodiesFor(provider) {
         { name: 'plain', model: 'glm-4.6', body: j({ id: 'z1', object: 'chat.completion', created: 1700000000, model: 'glm-4.6', choices: [{ index: 0, message: { role: 'assistant', content: 'Hello from Z.AI.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16 } }) },
         { name: 'reasoning-toolcalls', model: 'glm-4.6', body: j({ id: 'z2', object: 'chat.completion', created: 1700000001, model: 'glm-4.6', choices: [{ index: 0, message: { role: 'assistant', content: 'On it.', reasoning_content: 'reasoning text', tool_calls: [{ id: 'call_z_1', type: 'function', function: { name: 'search', arguments: '{"query":"y"}' } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 14, completion_tokens: 7, total_tokens: 21 } }) },
         { name: 'cached-tokens', model: 'glm-4.6', body: j({ id: 'z3', object: 'chat.completion', created: 1700000002, model: 'glm-4.6', choices: [{ index: 0, message: { role: 'assistant', content: 'Cache-aware.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 } } }) },
+      ];
+    case 'nanogpt':
+      // P4.D101. The non-streaming twins of the stream dialects: `reasoning` is
+      // NanoGPT's main-endpoint field, `reasoning_content` its legacy fallback
+      // (the `??` precedence), and v4 bug 87 drops a run EQUAL to the content.
+      return [
+        { name: 'plain', model: 'openai/gpt-5-mini', body: j({ id: 'n1', object: 'chat.completion', created: 1700000000, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Hello from NanoGPT.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16 } }) },
+        // Main-endpoint dialect.
+        { name: 'reasoning-main', model: 'anthropic/claude-sonnet-5:thinking', body: j({ id: 'n2', object: 'chat.completion', created: 1700000001, model: 'anthropic/claude-sonnet-5:thinking', choices: [{ index: 0, message: { role: 'assistant', content: 'Considered reply.', reasoning: 'weighing the options' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 } }) },
+        // Legacy dialect — reached only because `reasoning` is absent.
+        { name: 'reasoning-legacy', model: 'openai/gpt-5-mini', body: j({ id: 'n3', object: 'chat.completion', created: 1700000002, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Legacy reply.', reasoning_content: 'legacy channel text' }, finish_reason: 'stop' }], usage: { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 } }) },
+        // BOTH present: `reasoning` wins outright (the `??` precedence pin).
+        { name: 'reasoning-both-precedence', model: 'openai/gpt-5-mini', body: j({ id: 'n4', object: 'chat.completion', created: 1700000003, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Both channels.', reasoning: 'MAIN wins', reasoning_content: 'legacy loses' }, finish_reason: 'stop' }], usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 } }) },
+        // v4 bug 87 — reasoning EXACTLY equal to the content is the gateway
+        // echo and is dropped entirely.
+        { name: 'reasoning-echo-dropped', model: 'openai/gpt-5-mini', body: j({ id: 'n5', object: 'chat.completion', created: 1700000004, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Same text.', reasoning: 'Same text.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 6, completion_tokens: 3, total_tokens: 9 } }) },
+        // …and the legacy channel echoes too.
+        { name: 'reasoning-echo-dropped-legacy', model: 'openai/gpt-5-mini', body: j({ id: 'n6', object: 'chat.completion', created: 1700000005, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Echoed.', reasoning_content: 'Echoed.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 6, completion_tokens: 3, total_tokens: 9 } }) },
+        // A near-miss is NOT an echo — the guard is exact equality, not a prefix.
+        { name: 'reasoning-near-miss-kept', model: 'openai/gpt-5-mini', body: j({ id: 'n7', object: 'chat.completion', created: 1700000006, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Same text.', reasoning: 'Same text' }, finish_reason: 'stop' }], usage: { prompt_tokens: 6, completion_tokens: 3, total_tokens: 9 } }) },
+        // Tool calls through the OAC base's normalizeToolCalls: a non-string
+        // `arguments` object is JSON.stringify'd, and a nameless entry drops.
+        { name: 'toolcalls-normalized', model: 'openai/gpt-5-mini', body: j({ id: 'n8', object: 'chat.completion', created: 1700000007, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Calling.', tool_calls: [{ id: 'call_n_1', type: 'function', function: { name: 'search', arguments: { query: 'z' } } }, { id: 'call_n_2', type: 'function', function: { arguments: '{}' } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 13, completion_tokens: 8, total_tokens: 21 } }) },
+        { name: 'no-usage', model: 'openai/gpt-5-mini', body: j({ id: 'n9', object: 'chat.completion', created: 1700000008, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'No usage block.' }, finish_reason: 'length' }] }) },
       ];
     case 'openai-compatible':
       return [

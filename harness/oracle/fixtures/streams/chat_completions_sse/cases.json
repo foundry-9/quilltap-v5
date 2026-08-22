@@ -166,5 +166,50 @@
         }
       }
     ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-reasoning-main",
+    "wire": "nanogpt-reasoning-main.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-reasoning-legacy",
+    "wire": "nanogpt-reasoning-legacy.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-tools",
+    "wire": "nanogpt-tools.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-echo-dropped",
+    "wire": "nanogpt-echo-dropped.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-echo-diverges",
+    "wire": "nanogpt-echo-diverges.wire",
+    "model": "openai/gpt-5-mini",
+    "temperature": 0.7
   }
 ]

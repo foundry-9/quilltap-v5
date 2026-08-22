@@ -56,6 +56,97 @@ The discrepancy is **pre-existing and out of this lane's scope** — realigning 
 would churn every provider family. NanoGPT is therefore APPENDED on both sides,
 which is the only choice that leaves all nine pre-existing rows byte-identical.
 
+### Unit 3 — the reasoning dialects + v4 bug 87's echo guard ✅
+
+`Flavor::NanoGpt` in the chat-completions SSE decoder, the non-streaming twin in
+`ChatFlavor::NanoGpt`, the `streaming_provider` selection join, and three
+corpora widened.
+
+**The dialect precedence is genuinely new.** `delta.reasoning ??
+delta.reasoning_content` — `OpenRouterRaw` reads `reasoning` only, the SDK
+flavors `reasoning_content` only; nothing had the fallback. The terminal
+`raw_response` is the OpenAI-SDK shape and STILL carries the run under the
+LEGACY `reasoning_content` key: v4's `d5830439` changed which field is READ off
+the wire and deliberately left the synthesized key alone (pinned by the
+recorded fixtures). NanoGPT emits a usage object even with no usage frame (like
+the SDK flavors), derives NO cache usage, and never sets `raw_provider_usage`.
+
+**Bug 87's echo guard, as decoder state.** Two new fields (`content_so_far`,
+`pending_reasoning`) plus `resolve_pending_reasoning()` called from `finish()`
+before `build_done()`. A run is HELD while it is still a verbatim prefix of the
+prose so far; divergence commits it whole as ONE chunk (confirmed against v4's
+own recorded output — `nanogpt-echo-diverges` yields a single live chunk, not
+two); a run still mirroring the prose at stream end is discarded from the live
+chunks, the final chunk, AND the `raw_response`. The guard arms only while
+`reasoning` is empty and prose has started, so ordinary pre-content reasoning
+never touches it.
+
+Recorded, because it looks like a discrepancy and is not: v4's stream-end
+condition omits the `reasoningContent === ''` conjunct its in-loop guard
+carries. Every in-loop commit clears the buffer, so a non-empty `pending` at
+stream end already implies nothing was committed — the two conditions agree.
+
+**The non-streaming guard is EXACT EQUALITY, not a prefix.** `reasoning-near-miss-kept`
+(`content: "Same text."` vs `reasoning: "Same text"`) is real reasoning and
+survives — v4 confirms.
+
+**A simplification on the way:** `is_openai_sdk` and the new shape predicate
+wanted the same three flavors at both call sites (the absent-usage default and
+the `raw_response` shape), so they collapsed into one `has_sdk_raw_response`
+with the per-flavor differences left in their explicit arms below it.
+
+**Corpora** — all pre-existing rows byte-identical in every one:
+
+| corpus | before | after |
+|---|---|---|
+| `streams/chat_completions_sse` cases | 11 | **16** |
+| `response-bodies` rows | 37 | **46** |
+| `thinking-turn` rows | 1,404 | **1,560** (156 nanogpt-rule) |
+
+The thinking-turn addition is NanoGPT's real rule, and it is the corpus's FIRST
+multi-value enabled list (every other rule carries exactly one enabled value) as
+well as the shape with `''` in NEITHER list. v4's evaluator confirms both halves:
+`xhigh` — the LAST enabled value — answers true, so a multi-value list does not
+stop at the first; and a blank effort falls through to the model's
+`thinksByDefault` habit (true for the two `thinksByDefault: true` model shapes,
+false for the rest), which is exactly why the rule leaves `''` unlisted.
+
+**Four mutation proofs, each reddening by case name:**
+
+| mutation | reddens |
+|---|---|
+| disarm the streaming echo guard | `nanogpt-echo-dropped [whole]: chunk count 5 != oracle 3` |
+| read only the legacy field | `nanogpt-reasoning-main [whole]: chunk count 3 != oracle 5` |
+| disarm the non-streaming guard | `NANOGPT/reasoning-echo-dropped` + `…-legacy` |
+| reverse the `??` precedence | `NANOGPT/reasoning-both-precedence` |
+
+⚠ **The full-workspace gate caught what a per-family run could not.**
+`streaming_composer_equivalence` is the stream fixtures' SECOND consumer, and
+adding NanoGPT's five cases to `cases.json` reddened it — `unknown fixture
+provider tag nanogpt` — while every family I had run by name stayed green. The
+comment directly above that panic records P4.D83 hitting the identical class the
+identical way. Fixed by the one-line tag join; the composer now runs all 16
+cases with **6 carrying reasoning end to end**, which is a real gain: the echo
+guard is now proven through the full chunk→message assembly, not just the
+decoder. **Lesson for the next provider join: grep for EVERY consumer of a
+fixture file before widening it.**
+
+**Regen recipe:**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d101-4cb1035e
+cd <worktree>
+V4=$PIN V5=$PWD bash harness/oracle/providers/regenerate-stream-fixtures.sh
+V4=$PIN V5=$PWD bash harness/oracle/providers/regenerate-response-bodies.sh
+cd $PIN && npx tsx <worktree>/harness/oracle/cases/thinking-turn.ts > /tmp/p4d101-oracle-thinking-turn.ndjson
+cd <worktree> && QT_ORACLE_THINKING_TURN=/tmp/p4d101-oracle-thinking-turn.ndjson \
+  cargo test -p quilltap-harness --test stream_decoders_equivalence \
+    --test response_parse_equivalence --test thinking_turn_equivalence
+```
+
+(The stream and response-body corpora are COMMITTED fixtures the scripts rewrite
+in place; only thinking-turn takes an env var.)
+
 ### Unit 2 — the chat wire + the switch-table census ✅
 
 `build_nanogpt_body` (v4 `buildBody`, plugin 1.0.2) + `ProviderKind::NanoGpt` +

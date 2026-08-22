@@ -1,0 +1,12 @@
+data: {"id":"n2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Legacy"}}]}
+
+data: {"id":"n2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning_content":" dialect."}}]}
+
+data: {"id":"n2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Done."}}]}
+
+data: {"id":"n2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"n2","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}
+
+data: [DONE]
+

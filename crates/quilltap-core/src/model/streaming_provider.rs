@@ -124,6 +124,7 @@ pub fn decoder_selection(provider: &str, model: &str) -> Option<DecoderSelection
                 Some(ProviderKind::DeepSeek) => ChatCompletionsFlavor::DeepSeek,
                 Some(ProviderKind::ZAi) => ChatCompletionsFlavor::ZAi,
                 Some(ProviderKind::OpenRouter) => ChatCompletionsFlavor::OpenRouterRaw,
+                Some(ProviderKind::NanoGpt) => ChatCompletionsFlavor::NanoGpt,
                 _ => ChatCompletionsFlavor::OpenAiCompatible,
             };
             DecoderSelection::ChatCompletions(flavor)

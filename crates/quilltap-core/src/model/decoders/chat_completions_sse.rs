@@ -56,13 +56,34 @@ pub enum Flavor {
     /// toolCalls? } }], usage }` (camelCase); cache from
     /// `prompt_tokens_details.cached_tokens`. `raw_provider_usage` never set.
     OpenRouterRaw,
+    /// nanogpt (P4.D101): reasoning is `delta.reasoning` with
+    /// `delta.reasoning_content` as the LEGACY fallback — the `??` precedence,
+    /// which no other flavor has. Same terminal `raw_response` shape as the
+    /// OpenAI-SDK flavors (and it carries the accumulated run under the LEGACY
+    /// `reasoning_content` key), but NO cache usage and no
+    /// `raw_provider_usage` — v4's NanoGPT reads neither. Carries v4 bug 87's
+    /// prose-echo guard (see `pending_reasoning`).
+    NanoGpt,
 }
 
 impl Flavor {
-    /// The two OpenAI-SDK-mediated flavors share reasoning/tool/rawResponse
-    /// shape (differing only on cache source + `raw_provider_usage`).
-    fn is_openai_sdk(self) -> bool {
-        matches!(self, Flavor::DeepSeek | Flavor::ZAi)
+    /// The OpenAI-SDK-mediated flavors: they synthesize the same terminal
+    /// `raw_response` (`{choices:[{index, message:{role, content:"",
+    /// tool_calls?, reasoning_content?}, finish_reason}], usage}`) and they all
+    /// emit a usage object even when no usage frame arrived (`usage?.x ?? 0`
+    /// → all-zero), where the raw openrouter path and the plain base omit it.
+    ///
+    /// They still differ BELOW this predicate, in explicit per-flavor arms: the
+    /// cache-usage source (deepseek's `prompt_cache_hit_tokens` vs z-ai's
+    /// `prompt_tokens_details`, and NanoGPT derives none at all) and
+    /// `raw_provider_usage` (z-ai alone emits it).
+    ///
+    /// NanoGPT (P4.D101) carries the accumulated run under the LEGACY
+    /// `reasoning_content` key here — v4's `d5830439` dialect fix changed which
+    /// field is READ off the wire, and deliberately left the synthesized key
+    /// alone.
+    fn has_sdk_raw_response(self) -> bool {
+        matches!(self, Flavor::DeepSeek | Flavor::ZAi | Flavor::NanoGpt)
     }
 }
 
@@ -83,6 +104,23 @@ pub struct ChatCompletionsSseDecoder {
     tools: Vec<(i64, AccTool)>,
     reasoning: String,
     saw_reasoning: bool,
+    /// v4 bug 87 (`4cb1035e`), NanoGPT only: prose accumulated so far, and the
+    /// reasoning run currently HELD because it still replays that prose
+    /// verbatim from its start.
+    ///
+    /// NanoGPT's gateway sometimes (routing-dependent) echoes the whole answer
+    /// back down the reasoning channel after the content stream ends;
+    /// committing it would repeat the reply inside a thinking fold. A held run
+    /// that DIVERGES from the prose is real thinking and commits in full,
+    /// including any interleaved post-prose reasoning; one still mirroring the
+    /// prose at stream end is the echo and is discarded from the live chunks,
+    /// the final chunk, and the synthesized `raw_response`.
+    ///
+    /// The guard only arms while nothing has been committed yet
+    /// (`reasoning.is_empty()`) AND prose has already started — so pre-content
+    /// reasoning, the ordinary shape, never touches it.
+    content_so_far: String,
+    pending_reasoning: String,
     /// Provider-shape usage sub-object captured from the last frame that had one.
     usage_raw: Option<Value>,
     finish_reason: Option<Value>,
@@ -97,6 +135,8 @@ impl ChatCompletionsSseDecoder {
             tools: Vec::new(),
             reasoning: String::new(),
             saw_reasoning: false,
+            content_so_far: String::new(),
+            pending_reasoning: String::new(),
             usage_raw: None,
             finish_reason: None,
             done_emitted: false,
@@ -125,21 +165,46 @@ impl ChatCompletionsSseDecoder {
                 .and_then(|c| c.as_str())
             {
                 if !content.is_empty() {
+                    // v4 bug 87: the echo guard tests the reasoning run against
+                    // the prose streamed SO FAR, so NanoGPT accumulates it.
+                    if self.flavor == Flavor::NanoGpt {
+                        self.content_so_far.push_str(content);
+                    }
                     out.push(StreamChunk::content(content));
                 }
             }
 
-            // reasoning delta (field name differs by flavor)
-            let reasoning_field = match self.flavor {
-                Flavor::OpenRouterRaw => "reasoning",
-                _ => "reasoning_content",
+            // reasoning delta (field name differs by flavor; NanoGPT reads the
+            // main-endpoint `reasoning` with the legacy `reasoning_content` as
+            // its `??` fallback — a precedence no other flavor has).
+            let reasoning_delta = match self.flavor {
+                Flavor::OpenAiCompatible => None,
+                Flavor::OpenRouterRaw => delta.and_then(|d| d.get("reasoning")),
+                Flavor::NanoGpt => delta
+                    .and_then(|d| d.get("reasoning"))
+                    .or_else(|| delta.and_then(|d| d.get("reasoning_content"))),
+                _ => delta.and_then(|d| d.get("reasoning_content")),
             };
-            if self.flavor != Flavor::OpenAiCompatible {
-                if let Some(r) = delta
-                    .and_then(|d| d.get(reasoning_field))
-                    .and_then(|c| c.as_str())
-                {
-                    if !r.is_empty() {
+            if let Some(r) = reasoning_delta.and_then(|c| c.as_str()) {
+                if !r.is_empty() {
+                    if self.flavor == Flavor::NanoGpt {
+                        // Hold the run while it is still a verbatim prefix of
+                        // the prose; commit it whole the moment it diverges.
+                        self.pending_reasoning.push_str(r);
+                        let looks_like_prose_echo = self.reasoning.is_empty()
+                            && !self.content_so_far.is_empty()
+                            && self.content_so_far.starts_with(&self.pending_reasoning);
+                        if !looks_like_prose_echo {
+                            self.reasoning.push_str(&self.pending_reasoning);
+                            self.pending_reasoning.clear();
+                            self.saw_reasoning = true;
+                            out.push(StreamChunk {
+                                content: String::new(),
+                                reasoning_content: Some(self.reasoning.clone()),
+                                ..Default::default()
+                            });
+                        }
+                    } else {
                         self.reasoning.push_str(r);
                         self.saw_reasoning = true;
                         out.push(StreamChunk {
@@ -212,7 +277,7 @@ impl ChatCompletionsSseDecoder {
             Some(v) => v,
             None => {
                 // OpenAiSdk still emits an all-zero usage; the others omit it.
-                return if self.flavor.is_openai_sdk() {
+                return if self.flavor.has_sdk_raw_response() {
                     (Some(StreamUsage::default()), None)
                 } else {
                     (None, None)
@@ -232,7 +297,8 @@ impl ChatCompletionsSseDecoder {
             Flavor::DeepSeek => get("prompt_cache_hit_tokens").filter(|h| *h > 0),
             // z-ai / openrouter: prompt_tokens_details.cached_tokens.
             Flavor::ZAi | Flavor::OpenRouterRaw => cached_from_details(),
-            Flavor::OpenAiCompatible => None,
+            // v4's NanoGPT `streamMessage` derives NO cacheUsage at all.
+            Flavor::OpenAiCompatible | Flavor::NanoGpt => None,
         };
         let cache_read = cached.unwrap_or(0);
         let prompt = get("prompt_tokens").unwrap_or(0);
@@ -290,7 +356,7 @@ impl ChatCompletionsSseDecoder {
                 }],
             });
         }
-        if self.flavor.is_openai_sdk() {
+        if self.flavor.has_sdk_raw_response() {
             {
                 let tool_calls: Vec<Value> = self
                     .tools
@@ -375,7 +441,7 @@ impl ChatCompletionsSseDecoder {
                     chunk.raw_response = Some(raw);
                 }
             }
-            Flavor::DeepSeek | Flavor::ZAi => {
+            Flavor::DeepSeek | Flavor::ZAi | Flavor::NanoGpt => {
                 chunk.raw_response = Some(self.build_raw_response());
                 if self.saw_reasoning {
                     chunk.reasoning_content = Some(self.reasoning.clone());
@@ -408,6 +474,30 @@ impl ChatCompletionsSseDecoder {
             }
         }
         chunk
+    }
+
+    /// v4 bug 87's stream-end arm (NanoGPT only): a held reasoning run that has
+    /// DIVERGED from the prose is real thinking and commits in full; one still
+    /// mirroring the prose is the gateway echo and is discarded.
+    ///
+    /// v4 does this AFTER the stream loop and BEFORE synthesizing the final
+    /// chunk, and — unlike the in-loop commit — it yields NO live chunk: a run
+    /// resolved here reaches the consumer only through the final chunk's
+    /// `reasoningContent` and the `raw_response`'s legacy `reasoning_content`.
+    ///
+    /// v4's condition here omits the `reasoningContent === ''` conjunct the
+    /// in-loop guard carries, and that is not a discrepancy: every in-loop
+    /// commit clears the buffer, so a non-empty `pending` at stream end implies
+    /// nothing was ever committed.
+    fn resolve_pending_reasoning(&mut self) {
+        if self.flavor != Flavor::NanoGpt || self.pending_reasoning.is_empty() {
+            return;
+        }
+        if !self.content_so_far.starts_with(&self.pending_reasoning) {
+            self.reasoning.push_str(&self.pending_reasoning);
+            self.saw_reasoning = true;
+        }
+        self.pending_reasoning.clear();
     }
 
     fn process_events(&mut self, events: Vec<super::sse::SseEvent>) -> Vec<StreamChunk> {
@@ -447,6 +537,7 @@ impl StreamDecoder for ChatCompletionsSseDecoder {
         let mut out = self.process_events(events);
         if !self.done_emitted {
             self.done_emitted = true;
+            self.resolve_pending_reasoning();
             out.push(self.build_done());
         }
         Ok(out)

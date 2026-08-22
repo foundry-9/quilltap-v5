@@ -32,6 +32,7 @@ PROVIDERS=(
   "grok:qtap-plugin-grok"
   "google:qtap-plugin-google"
   "openai-compatible:qtap-plugin-openai-compatible"
+  "nanogpt:qtap-plugin-nanogpt"
 )
 
 for entry in "${PROVIDERS[@]}"; do

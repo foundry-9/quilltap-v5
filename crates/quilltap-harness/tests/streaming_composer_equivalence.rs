@@ -112,6 +112,10 @@ fn canonical_provider(tag: &str) -> &'static str {
         // OpenAiCompatible cases, and this composer is the fixtures' SECOND
         // consumer — the full-workspace gate is what surfaced that.
         "openai-compatible" => "OPENAI_COMPATIBLE",
+        // P4.D101: the SAME class, caught the same way. Adding NanoGPT's five
+        // cases to `chat_completions_sse/cases.json` reddened this composer,
+        // not the decoder differential — a per-family run would have missed it.
+        "nanogpt" => "NANOGPT",
         other => panic!("unknown fixture provider tag {other}"),
     }
 }

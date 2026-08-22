@@ -1,0 +1,14 @@
+data: {"id":"n1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"Let me"}}]}
+
+data: {"id":"n1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":" weigh it."}}]}
+
+data: {"id":"n1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"The answer"}}]}
+
+data: {"id":"n1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":" is 42."}}]}
+
+data: {"id":"n1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"n1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":8,"total_tokens":28}}
+
+data: [DONE]
+

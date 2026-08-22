@@ -313,6 +313,7 @@ fn run_decoder_case(decoder: &str, spec: &Value, oracle: &OracleCase) {
                     "ZAi" => ChatCompletionsFlavor::ZAi,
                     "OpenRouterRaw" => ChatCompletionsFlavor::OpenRouterRaw,
                     "OpenAiCompatible" => ChatCompletionsFlavor::OpenAiCompatible,
+                    "NanoGpt" => ChatCompletionsFlavor::NanoGpt,
                     other => panic!("unknown flavor {other}"),
                 };
                 drive(ChatCompletionsSseDecoder::new(flavor), &pieces)

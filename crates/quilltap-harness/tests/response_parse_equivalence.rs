@@ -49,6 +49,7 @@ fn provider_id(name: &str) -> &'static str {
         "grok" => "GROK",
         "google" => "GOOGLE",
         "openai-compatible" => "OPENAI_COMPATIBLE",
+        "nanogpt" => "NANOGPT",
         other => panic!("unknown corpus provider {other}"),
     }
 }

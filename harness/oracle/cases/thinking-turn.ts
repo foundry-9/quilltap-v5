@@ -54,6 +54,19 @@ const RULES: Array<[string, ThinkingTurnRule | null | undefined]> = [
   // habit otherwise. `isUnset` must win: the row with `thinking: ''` skips
   // this list and answers the habit, never the list's `false`.
   ['empty-in-disabled', { optionKey: 'thinking', enabledValues: ['on'], disabledValues: [''] }],
+  // P4.D101 (v4 `d5830439`): NanoGPT's real declaration, and the corpus's
+  // FIRST multi-value enabled list — every other rule here carries exactly one
+  // enabled value. It is also the shape where the empty string is in NEITHER
+  // list, which is what makes "(model default)" fall through to the model's
+  // own `thinksByDefault` habit (the `:thinking` catalogue entries).
+  [
+    'nanogpt',
+    {
+      optionKey: 'reasoning_effort',
+      enabledValues: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      disabledValues: ['none'],
+    },
+  ],
   ['null', null],
   ['absent', undefined],
 ];
@@ -83,6 +96,15 @@ const PARAMETERS: Array<[string, Record<string, unknown> | null | undefined]> = 
   ['number-0', { thinking: 0 }],
   ['string-1', { thinking: '1' }],
   ['unrelated-key', { reasoning_effort: 'high' }],
+  // P4.D101 — the reasoning_effort scale against NanoGPT's rule: the LAST
+  // enabled value (a multi-value list must not stop at the first), the
+  // disabled value, the blank that belongs to neither list, and a value the
+  // editor cannot store but a hand-edited profile could.
+  ['effort-xhigh', { reasoning_effort: 'xhigh' }],
+  ['effort-minimal', { reasoning_effort: 'minimal' }],
+  ['effort-none', { reasoning_effort: 'none' }],
+  ['effort-blank', { reasoning_effort: '' }],
+  ['effort-unknown', { reasoning_effort: 'ludicrous' }],
   ['ollama-true', { enable_thinking: true }],
   ['ollama-false', { enable_thinking: false }],
   ['ollama-string-true', { enable_thinking: 'true' }],

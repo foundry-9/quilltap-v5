@@ -1,0 +1,10 @@
+data: {"id":"n5","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Answer first."}}]}
+
+data: {"id":"n5","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"Answer"}}]}
+
+data: {"id":"n5","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":" needs checking."},"finish_reason":"stop"}]}
+
+data: {"id":"n5","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":6,"total_tokens":13}}
+
+data: [DONE]
+

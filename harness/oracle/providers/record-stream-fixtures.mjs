@@ -64,6 +64,14 @@ const PROVIDERS = {
       return new ZAIProvider();
     },
   },
+  // P4.D101 — NanoGPT (plugin 1.0.2, v4 bug 87's echo guard included).
+  nanogpt: {
+    dir: 'plugins/dist/qtap-plugin-nanogpt',
+    async make() {
+      const { NanoGPTProvider } = await import(pathToFileURL(resolve('provider.ts')));
+      return new NanoGPTProvider();
+    },
+  },
   // P4.D83 (v4 `93ed8abf`): the OPENAI_COMPATIBLE endpoint. Instantiate the
   // SUBCLASS the plugin uses, not the re-exported base — since bug 71 the base
   // declares an empty `profileParamAllowlist` and the subclass supplies the real

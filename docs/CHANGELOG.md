@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(providers): the NanoGPT reasoning dialects + bug 87's echo guard (v4 `d5830439` + `4cb1035e`, P4.D101)
+
+_Versions: core 0.0.606, harness 0.0.529._
+
+`Flavor::NanoGpt` reads `delta.reasoning` with `delta.reasoning_content` as the
+legacy fallback — the `??` precedence, which neither `OpenRouterRaw` (reasoning
+only) nor the SDK flavors (reasoning_content only) have. Its terminal
+`raw_response` is the OpenAI-SDK shape and still carries the accumulated run
+under the LEGACY `reasoning_content` key: v4's `d5830439` changed which field is
+READ off the wire and deliberately left the synthesized key alone. NanoGPT emits
+a usage object even with no usage frame, derives no cache usage, and never sets
+`raw_provider_usage`.
+
+v4 bug 87's prose-echo guard is ported as decoder state. NanoGPT's gateway
+sometimes re-emits the whole answer down the reasoning channel after the content
+stream ends, which would repeat the reply inside a thinking fold. A reasoning run
+is HELD while it is still a verbatim prefix of the prose streamed so far;
+divergence commits it in full as a single chunk, and a run still mirroring the
+prose at stream end is discarded from the live chunks, the final chunk, and the
+`raw_response`. The guard only arms while nothing has been committed and prose
+has already started, so ordinary pre-content reasoning never touches it. The
+stream-end arm yields no live chunk, matching v4.
+
+The non-streaming twin drops a run exactly equal to `msg.content ?? ''`. Exact
+equality, not a prefix — a near-miss is real reasoning and is kept, which the
+corpus pins.
+
+`is_openai_sdk` and a new shape predicate were collapsed into one
+`has_sdk_raw_response`, since both call sites wanted the same three flavors.
+
+Five stream fixtures (both dialects, tool-fragment assembly, the split-chunk
+echo, the diverging run), nine response bodies (both dialects, the `??`
+precedence with both fields present, both echo channels, the near-miss, tool-call
+normalization, no-usage), and the thinking-turn corpus gains NanoGPT's real rule
+— the corpus's FIRST multi-value enabled list, and the shape where the empty
+string is in neither list so "(model default)" falls through to the model's
+`thinksByDefault` habit. Corpora: streams 11 → 16 cases, response bodies 37 → 46
+rows, thinking-turn → 1,560 rows; all pre-existing rows byte-identical.
+
+Four mutation proofs, each reddening by case name: disarming the streaming guard
+(`nanogpt-echo-dropped` 5 chunks vs 3), dropping the main-endpoint field
+(`nanogpt-reasoning-main` 3 vs 5), disarming the non-streaming guard (both
+`reasoning-echo-dropped` rows), and reversing the `??` precedence
+(`reasoning-both-precedence`).
+
 #### 2026-08-22 — port(providers): the NanoGPT chat wire + the switch-table census (v4 `781fc420`, P4.D101)
 
 _Versions: core 0.0.605, harness 0.0.528._

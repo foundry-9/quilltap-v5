@@ -1,0 +1,12 @@
+data: {"id":"n4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"The answer, "}}]}
+
+data: {"id":"n4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"in full."}}]}
+
+data: {"id":"n4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"The answer, "}}]}
+
+data: {"id":"n4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"in full."},"finish_reason":"stop"}]}
+
+data: {"id":"n4","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":5,"total_tokens":14}}
+
+data: [DONE]
+
