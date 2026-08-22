@@ -11,6 +11,9 @@
 //! `default` path never calls it anyway), and the embedding provider fails (the
 //! first-message-context search legs degrade per the ported fallbacks). No
 //! network.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test chat_create_end_to_end
 
 mod common;
 

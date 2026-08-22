@@ -2,6 +2,9 @@
 //! three legs (multipart upload, JSON `linkId`, JSON `fileId` in both
 //! storage-key modes) + the v4 error arms, driven with REAL HTTP bodies against
 //! the committed characters fixture (Aria + her vault).
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test characters_photos_routes
 
 mod common;
 

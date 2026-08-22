@@ -6,6 +6,9 @@
 //! bad-action), and the live wiring over the committed fixture. The exact bytes
 //! of every arm are pinned by `text_replacements_routes_equivalence`; here we
 //! pin the web-edge PLUMBING over a seeded instance so the guards actually fire.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test text_replacements_web_routes
 
 mod common;
 

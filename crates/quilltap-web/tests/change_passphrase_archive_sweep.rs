@@ -16,7 +16,8 @@
 //! bytes rather than merely rewriting them, since the bundle now opens only
 //! under the NEW passphrase and rehydration goes through the engine's cache.
 //!
-//! Run: `cargo test -p quilltap-web --test change_passphrase_archive_sweep`
+//! Run:
+//!   cargo test -p quilltap-web --test change_passphrase_archive_sweep
 
 mod common;
 

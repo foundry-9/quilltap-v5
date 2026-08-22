@@ -2,6 +2,9 @@
 //! a generated + cached thumbnail, a mount-file raw read, and a blob read
 //! (documents fallback) — asserting bytes, content-type, cache headers, and
 //! the sha headers per the v4 routes.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test binary_routes
 
 mod common;
 

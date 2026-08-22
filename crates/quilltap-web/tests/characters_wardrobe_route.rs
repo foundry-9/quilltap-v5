@@ -15,7 +15,8 @@
 //! carries Aria (a member of "The Aeronauts", whose group store's `Wardrobe/`
 //! holds the Aeronaut livery) and Bramwell (not a member).
 //!
-//! Run: `cargo test -p quilltap-web --test characters_wardrobe_route`
+//! Run:
+//!   cargo test -p quilltap-web --test characters_wardrobe_route
 
 mod common;
 

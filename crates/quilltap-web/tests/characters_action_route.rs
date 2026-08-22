@@ -20,7 +20,8 @@
 //! pinned v5 divergence when the round-2 unification found it; v4 CONVERGED in
 //! `de9f70bf` (Bug 57), so the leg is now a plain equality on both sides.
 //!
-//! Run: `cargo test -p quilltap-web --test characters_action_route`
+//! Run:
+//!   cargo test -p quilltap-web --test characters_action_route
 
 mod common;
 

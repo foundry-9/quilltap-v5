@@ -15,6 +15,9 @@
 //! - a search on an assembly with NO embedding seam is the loud named refusal,
 //!   while a plain listing on that same assembly still works — the split that
 //!   keeps `/photos` usable on a spine-less host.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test photos_web_routes
 
 mod common;
 

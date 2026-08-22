@@ -16,6 +16,9 @@
 //! - the refusal on `?action=open`;
 //! - the health `version` carry, which is what lets the SPA display a version
 //!   at all.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test profile_web_routes
 
 mod common;
 

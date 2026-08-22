@@ -20,7 +20,8 @@
 //!  3. a disk key with nothing at that path → 404 (v4's local backend's ENOENT
 //!     arm), which is the leg that proves the sentinel survives the trait.
 //!
-//! Run: `cargo test -p quilltap-web --test file_content_missing_404`
+//! Run:
+//!   cargo test -p quilltap-web --test file_content_missing_404
 
 mod common;
 

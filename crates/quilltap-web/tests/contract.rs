@@ -3,6 +3,9 @@
 //! Locked 503 setup body and BadRequest 400), the `/health` vocabulary, and
 //! an SSE round trip (publish a synthetic `Event` on the broadcast, assert
 //! the exact `data:` frame bytes + the keep-alive comment).
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test contract
 
 mod common;
 

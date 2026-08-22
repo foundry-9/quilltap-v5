@@ -4,6 +4,9 @@
 //! characters fixture ships without the built-in pair, so the first reset
 //! imports them fresh; the second reset exercises the delete + id-preserving
 //! remap round (v4 `handleResetBuiltins`).
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test characters_reset_builtins_route
 
 mod common;
 

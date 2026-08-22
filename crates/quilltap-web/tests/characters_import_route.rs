@@ -3,6 +3,9 @@
 //! defaultImageId set) and the JSON-file leg + error arms, against the
 //! characters fixture. The written avatar is verified end-to-end by exporting
 //! the created character (its WebP avatar becomes the export container).
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test characters_import_route
 
 mod common;
 

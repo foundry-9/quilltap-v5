@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — test(web): scoped run lines for the nineteen `nothing_to_run` web arms
+
+_No crate versions bumped._
+
+P4.54 item 1, first half. Nineteen `quilltap-web` integration arms extracted to
+zero stages, so `recipe_sweep.py --run <fam>` refused them as `nothing_to_run`
+rather than printing a free green. Each header gains the sanctioned indented
+block — `//! Run:` at the prose margin, `cargo test -p quilltap-web --test
+<family>` indented past it — which satisfies both P4.45 rules at once: the
+INDENTATION rule (a command sits two spaces past the marker, prose at one) and
+the ATTRIBUTION rule (`--test <family>`, so a SKIP in that run can be attributed
+to this family rather than a stranger).
+
+None of the nineteen reads a `QT_FIXTURE_*` variable — measured, not assumed:
+they resolve their committed fixtures through `CARGO_MANIFEST_DIR` — so the bare
+scoped line is genuinely self-contained and the silent-skip hazard does not
+apply to this set.
+
+Four of them (`change_passphrase_archive_sweep`, `characters_action_route`,
+`characters_wardrobe_route`, `file_content_missing_404`) already carried a
+`Run:` line with the command in backticks, written at the PROSE margin, so the
+driver had always read it as a sentence. Those are rewritten into the indented
+form rather than duplicated.
 #### 2026-08-22 — docs(porting): finding #99 is fixed — v4 at `d9c98cf2`, v5 in P4.D99
 
 _Docs-only change._

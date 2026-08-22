@@ -11,6 +11,9 @@
 //! nothing-found), and the embedding provider fails (the search legs degrade
 //! per the ported fallbacks). Production swaps in the `ProviderIo` drivers
 //! via `ProductionSpineFactory` — same type, different providers.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test chat_send_smoke
 
 mod common;
 

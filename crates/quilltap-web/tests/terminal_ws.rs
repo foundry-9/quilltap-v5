@@ -3,6 +3,9 @@
 //! attach the WebSocket (replay + meta), input → output, ping → pong, resize,
 //! exit frame on shell exit, and the unknown-session close semantics
 //! (v4 `lib/terminal/ws.ts`).
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test terminal_ws
 
 mod common;
 

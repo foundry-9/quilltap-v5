@@ -1,6 +1,9 @@
 //! Route-level integration for `GET /api/v1/characters/{id}?action=export`
 //! (P4.6m unit 3): the PNG binary leg (real-avatar embed + the placeholder leg),
 //! the JSON leg, and the error arms, against the committed characters fixture.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test characters_export_route
 
 mod common;
 

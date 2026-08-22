@@ -3,6 +3,9 @@
 //! `?action=write-file` multipart verb, and the multipart blob upload (201).
 //! Boots a bare provisioned instance, creates a database + a filesystem mount
 //! via dispatch, and drives the v4-shaped HTTP routes.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test mount_multipart_routes
 
 mod common;
 

@@ -18,6 +18,9 @@
 //!      present-and-invalid value rather than collapsing into an absent key
 //!      (the Taboo §3 lesson — that defect was invisible to a dispatch-leg-only
 //!      test). Pinned here at the wire with v4's byte-exact `ZodError.message`.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test chat_settings_composer_web_routes
 
 mod common;
 

@@ -6,6 +6,9 @@
 //! the CoreRequest layer by `files_routes_equivalence` and the SPA e2e — here we
 //! pin the web-edge PLUMBING (multipart parse, base64, dispatch wiring, status
 //! mapping) over the surfaces the fixture supports.
+//!
+//! Run:
+//!   cargo test -p quilltap-web --test files_write_routes
 
 mod common;
 
