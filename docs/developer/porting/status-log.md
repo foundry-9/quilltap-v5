@@ -79173,3 +79173,50 @@ badge map to land them in — `ProviderBadge` is a standing named deferral in
 note so the lane that lands the badge surface carries them; nothing was stubbed.
 
 Gate: `npm test` 335 files / 4,978 tests, `npm run build` clean. SPA 0.5.536.
+
+### Unit 2 — the honest Fetch Models flow
+
+v4's `fetchModels` (`ImageProfileForm.tsx:135-175`) and its Model row
+(`:390-444`) ported into `image-profile-modal.ts`, closing the modal's named
+model-list deferral. `imageProfileListModels` wired through
+`image-profiles.api.ts` — the contract type and the dispatch union member both
+already existed; only the local request union and a typed reader were missing.
+The response reader pins the Shared contract's shape, including `fetchError`
+being OMITTED rather than nulled.
+
+Four behaviours that a careless port would get wrong, each pinned:
+
+- **A hard request failure sets no `fetchError`.** v4's two fallback branches
+  (`:157-161`, `:163-168`) set only `availableModels` and `source`, so a thrown
+  request shows the PLAIN built-in sentence; the `Couldn't fetch from the
+  provider (…)` sentence is reachable only when the server answered ok and named
+  a live-fetch failure in the body.
+- **The provider is normalized before the call** (v4 `:141`). P4.D100's server
+  resolves the legacy alias internally but ECHOES the raw string, so
+  normalizing client-side is what keeps the echo canonical.
+- **`source` is compared exactly** (v4 `:154`): anything that is not the string
+  `provider` reads as built-in.
+- **The option list uses v4's RAW provider lookup** (`:404`), not the normalized
+  one — which is why v4's legacy-normalize effect (`:121-130`) had to come with
+  it. v5's modal had never ported that effect; without it a `GOOGLE_IMAGEN`
+  profile finds no registry row and renders an empty Model select. Landing it is
+  a small addition beyond the order's enumerated list, taken because the
+  enumerated item (the option list) is wrong without it; recorded here rather
+  than folded in silently.
+
+The Model select assigns its value in an `afterRenderEffect` rather than binding
+`[value]`/`[selected]`, per the standing memory note — v4's prepend keeps a
+saved model selectable, but `modelName` is empty whenever `onProviderChange`
+lands on a provider with no default models, and that case separates the three
+mechanisms. Pinned by a `selectedIndex === -1` assertion.
+
+**Mutation testing earned its keep.** Eight mutations run; six died immediately,
+**two survived** and exposed genuine holes: dropping `!isFetchingModels() &&`
+from both label guards changed nothing (during the FIRST fetch `modelsSource` is
+still null, so only a RE-fetch discriminates — a test that clicks Fetch Models
+again while the second answer hangs now covers it), and replacing the exact
+`source` comparison with a cast changed nothing (no case sent a third value —
+`source: 'cache'` and a missing `source` now do). Both mutations were re-run
+after the fix and both now fail.
+
+Gate: `npm test` 336 files / 4,994 tests, `npm run build` clean. SPA 0.5.537.

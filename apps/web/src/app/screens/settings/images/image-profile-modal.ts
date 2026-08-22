@@ -1,12 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   OnInit,
+  afterRenderEffect,
   computed,
+  effect,
   inject,
   input,
   output,
   signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -21,8 +26,14 @@ import {
   emptyImageProfileForm,
   FALLBACK_PROVIDERS,
   imageProfileToForm,
+  normalizeProviderName,
 } from './image-profile-form';
-import { createImageProfile, fetchImageProviders, updateImageProfile } from './image-profiles.api';
+import {
+  createImageProfile,
+  fetchImageModels,
+  fetchImageProviders,
+  updateImageProfile,
+} from './image-profiles.api';
 
 /**
  * The create / edit Image Profile modal (v4 `components/image-profiles/
@@ -33,12 +44,14 @@ import { createImageProfile, fetchImageProviders, updateImageProfile } from './i
  * toggles. Duplicate-name (409) and `Provider … is not available` (400) surface
  * verbatim. The server enforces the single-default (unsets the others).
  *
- * DEFERRED LOUDLY this round: the `Validate` key button (its wire pair,
- * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title; the
- * Model list is populated from the provider `defaultModels` only (live
- * `imageProfileListModels` is likewise refusal-armed). The structured
- * per-provider parameters editor is a named deferral — a JSON textarea stands in
- * (key order preserved).
+ * P4.D102 CLOSED the model-list deferral: the Model row is now v4's honest
+ * Fetch Models control (`ImageProfileForm.tsx:135-175,390-444`) — an auto-load
+ * on provider/key change, an explicit button, and the source label beneath.
+ *
+ * STILL DEFERRED LOUDLY: the `Validate` key button (its wire pair,
+ * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title —
+ * v4 did not move it this round. The structured per-provider parameters editor
+ * is a named deferral; a JSON textarea stands in (key order preserved).
  */
 @Component({
   selector: 'qt-image-profile-modal',
@@ -104,18 +117,36 @@ import { createImageProfile, fetchImageProviders, updateImageProfile } from './i
 
         <div>
           <label class="block qt-text-label mb-1">Model</label>
-          <select
-            class="qt-select"
-            [value]="modelName()"
-            (change)="modelName.set($any($event.target).value)"
-          >
-            @for (m of models(); track m) {
-              <option [value]="m" [selected]="modelName() === m">{{ m }}</option>
-            }
-            @if (models().length === 0) {
-              <option [value]="modelName()">{{ modelName() || 'No models available' }}</option>
-            }
-          </select>
+          <div class="flex gap-2">
+            <select
+              #modelSelect
+              class="qt-select flex-1"
+              [disabled]="isFetchingModels()"
+              [attr.data-qt-value]="modelName()"
+              (change)="modelName.set($any($event.target).value)"
+            >
+              @for (m of modelOptions(); track m) {
+                <option [value]="m">{{ m }}</option>
+              }
+            </select>
+            <button
+              type="button"
+              class="qt-button-primary qt-button-sm flex-shrink-0"
+              [disabled]="!apiKeyId() || isFetchingModels()"
+              [title]="
+                apiKeyId() ? 'Query the provider for its image models' : 'Select an API key first'
+              "
+              (click)="fetchModels()"
+            >
+              {{ isFetchingModels() ? 'Fetching...' : 'Fetch Models' }}
+            </button>
+          </div>
+          @if (!isFetchingModels() && modelsSource() === 'provider') {
+            <p class="qt-text-success text-sm mt-1">{{ providerSourceLabel() }}</p>
+          }
+          @if (!isFetchingModels() && modelsSource() === 'builtin') {
+            <p class="qt-text-xs mt-1">{{ builtinSourceLabel() }}</p>
+          }
         </div>
 
         <div>
@@ -180,6 +211,12 @@ export class ImageProfileModal implements OnInit {
   protected readonly isDefault = signal(false);
   protected readonly isDangerousCompatible = signal(false);
 
+  /** v4 `:92-93,90-91` — the fetched list and where it came from. */
+  protected readonly availableModels = signal<string[]>([]);
+  protected readonly modelsSource = signal<'provider' | 'builtin' | null>(null);
+  protected readonly modelsFetchError = signal<string | null>(null);
+  protected readonly isFetchingModels = signal(false);
+
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly parametersError = signal<string | null>(null);
@@ -206,7 +243,44 @@ export class ImageProfileModal implements OnInit {
     availableApiKeys(this.apiKeysQuery.data() ?? [], this.provider(), this.providers()),
   );
 
-  protected readonly models = computed(() => defaultModelsFor(this.provider(), this.providers()));
+  /**
+   * v4 `:400-413` — the option list. `listed` is the fetched list when there is
+   * one, else the provider registry's `defaultModels`; note v4 looks that up by
+   * the RAW `formData.provider` (not the normalized name), so a legacy value
+   * yields an empty list until the normalize effect below rewrites it. A saved
+   * `modelName` the list omits is PREPENDED so it stays selectable.
+   */
+  protected readonly modelOptions = computed(() => {
+    const fetched = this.availableModels();
+    const listed =
+      fetched.length > 0
+        ? fetched
+        : (this.providers().find((p) => p.value === this.provider())?.defaultModels ?? []);
+    const name = this.modelName();
+    return name && !listed.includes(name) ? [name, ...listed] : listed;
+  });
+
+  /** v4 `:427-431`, the ✓ tally — singular/plural on the FETCHED count. */
+  protected readonly providerSourceLabel = computed(() => {
+    const n = this.availableModels().length;
+    return `✓ ${n} image ${n === 1 ? 'model' : 'models'} fetched from the provider`;
+  });
+
+  /**
+   * v4 `:432-440`, the three-way built-in sentence. The `Couldn't` arm fires
+   * only when the SERVER answered ok and named a live-fetch failure; a hard
+   * request failure leaves `modelsFetchError` null and reads as one of the
+   * other two, exactly as v4's fallback branches do.
+   */
+  protected readonly builtinSourceLabel = computed(() => {
+    const err = this.modelsFetchError();
+    if (err) {
+      return `Couldn't fetch from the provider (${err}) — showing the plugin's built-in list.`;
+    }
+    return this.apiKeyId()
+      ? "Showing the plugin's built-in model list."
+      : "Showing the plugin's built-in model list — select an API key and Fetch Models to query the provider.";
+  });
 
   private readonly editingId = computed(() => this.profile()?.id ?? null);
   protected readonly title = computed(() =>
@@ -221,6 +295,86 @@ export class ImageProfileModal implements OnInit {
       this.modelName().trim().length > 0 &&
       this.apiKeyId().length > 0,
   );
+
+  private readonly modelSelect = viewChild<ElementRef<HTMLSelectElement>>('modelSelect');
+
+  constructor() {
+    /**
+     * v4 `:121-130` — once the registry has loaded, rewrite a legacy provider
+     * value to its canonical name (`GOOGLE_IMAGEN` → `GOOGLE`). Without this the
+     * raw-value option lookup above can never match and the Model select stays
+     * empty for a legacy profile.
+     */
+    effect(() => {
+      const providers = this.providers();
+      const current = this.provider();
+      if (this.providersQuery.isPending() || !current) {
+        return;
+      }
+      const normalized = normalizeProviderName(current, providers);
+      if (normalized !== current) {
+        untracked(() => this.provider.set(normalized));
+      }
+    });
+
+    /**
+     * v4 `:172-175` — the auto-load. v4's `fetchModels` useCallback closes over
+     * `[formData.provider, formData.apiKeyId, imageProviders]` and the effect
+     * depends on the callback, so the list re-fetches whenever any of the three
+     * changes; reading all three here reproduces that dependency set.
+     */
+    effect(() => {
+      this.provider();
+      this.apiKeyId();
+      this.providers();
+      untracked(() => void this.fetchModels());
+    });
+
+    /**
+     * The Model select's value is assigned POST-render, not bound. A bound
+     * `[value]` lands before `@for` fills the options and is lost, and
+     * `[selected]` makes the browser fall back to row 0 when the stored value
+     * matches nothing — where React leaves `selectedIndex === -1` and the
+     * control blank. That case is reachable here: `onProviderChange` sets an
+     * empty `modelName` when the provider has no default models.
+     */
+    afterRenderEffect(() => {
+      this.modelOptions();
+      const select = this.modelSelect()?.nativeElement;
+      if (select) {
+        select.value = this.modelName();
+      }
+    });
+  }
+
+  /**
+   * v4 `fetchModels` (`:135-171`). The provider is normalized before the call
+   * (v4 `:141`); on any failure the list falls back to the registry's
+   * `defaultModels` and the source reads `builtin` WITHOUT a `fetchError` —
+   * v4's two fallback branches set only the models and the source, so a hard
+   * failure shows the plain built-in sentence, not the `Couldn't fetch` one.
+   */
+  protected async fetchModels(): Promise<void> {
+    const providers = this.providers();
+    const raw = this.provider();
+    const keyId = this.apiKeyId();
+    const normalized = normalizeProviderName(raw, providers);
+
+    this.isFetchingModels.set(true);
+    this.modelsFetchError.set(null);
+    try {
+      const listing = await fetchImageModels(this.core, normalized, keyId || undefined);
+      this.availableModels.set(listing.models);
+      this.modelsSource.set(listing.source);
+      this.modelsFetchError.set(listing.fetchError ?? null);
+    } catch {
+      const info = providers.find((p) => p.value === normalized || p.value === raw);
+      this.availableModels.set(info?.defaultModels ?? []);
+      this.modelsSource.set('builtin');
+    } finally {
+      this.isFetchingModels.set(false);
+    }
+  }
 
   ngOnInit(): void {
     const p = this.profile();
@@ -239,6 +393,11 @@ export class ImageProfileModal implements OnInit {
   protected onProviderChange(value: string): void {
     this.provider.set(value);
     this.modelName.set(defaultModelsFor(value, this.providers())[0] ?? '');
+    // The previous provider's fetched list must not survive the switch; the
+    // auto-load effect refills it (v4 re-runs `fetchModels` for the same reason).
+    this.availableModels.set([]);
+    this.modelsSource.set(null);
+    this.modelsFetchError.set(null);
     this.apiKeyId.set('');
     this.parametersText.set('{}');
     this.parametersError.set(null);

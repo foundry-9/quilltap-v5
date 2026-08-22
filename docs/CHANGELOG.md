@@ -405,6 +405,35 @@ recording in this commit — v4's Z.AI URL→base64 download (the same drift
 commit) lands with the bytes seam in a later unit of this lane, and the
 recorder needs a distinct download response before that row can be
 regenerated honestly.
+#### 2026-08-22 — port(images): the honest Fetch Models flow in the image-profile modal (v4 `ca22ec45`, P4.D102)
+
+_Versions: SPA 0.5.537._
+
+The Model row is now v4's real control instead of a `defaultModels` listing.
+`imageProfileListModels` is wired through `image-profiles.api.ts` (the contract
+type already existed), the modal auto-loads on provider/key change, the Fetch
+Models button carries v4's disabled states and both title strings, and the
+source label beneath reproduces v4's four sentences character-for-character —
+the provider tally with its singular/plural, and the three-way built-in
+ternary.
+
+Faithful details worth naming: a hard request failure falls back to the
+registry's `defaultModels` WITHOUT a `fetchError`, so it reads as the plain
+built-in sentence rather than the "Couldn't fetch" one, matching v4's fallback
+branches; the provider is normalized before the call, since the server echoes
+the raw string it was sent; and any `source` that is not exactly `provider`
+reads as built-in.
+
+The Model select assigns its value post-render rather than binding it, so an
+off-list name leaves the control blank as React does instead of snapping to row
+zero — reachable whenever a provider has no default models.
+
+Eight pins were mutation-tested. Two initially survived and are now covered: a
+stale source label during a re-fetch (the first fetch cannot show it, so only a
+second one discriminates), and the non-`provider` source coercion.
+
+The `Validate` button stays deferred — v4 did not move it this round.
+
 #### 2026-08-22 — port(images): the Z.AI and NanoGPT image-provider entries (v4 `ca22ec45` + `781fc420`, P4.D102)
 
 _Versions: SPA 0.5.536._
