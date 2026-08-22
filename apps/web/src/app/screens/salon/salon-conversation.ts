@@ -28,6 +28,7 @@ import {
 import type { RngPendingResult } from '../../chat/rng-dropdown';
 import { customToolsKeys } from '../../chat/custom-tools.api';
 import { ConversationHeader } from '../../chat/conversation-header';
+import { resolveToolResultErrorText } from '../../chat/tool-result-error';
 import { LLMInspectorPanel } from '../../chat/llm-inspector-panel';
 import {
   deriveMessagesWithLogs,
@@ -2902,7 +2903,8 @@ export class SalonConversation {
    *  - a terminal `emptyResponse` → v4's error toast with the server's reason
    *    or its fallback (`:720-722`);
    *  - a recorded transport/stream error → v4's `:1024-1027` toast;
-   *  - a `generate_image` tool result → v4's success/failure pair (`:350-367`).
+   *  - a `generate_image` tool result → v4's success/failure pair (`:350-367`),
+ *    the failure carrying the tool's own sentence (Bug 84).
    */
   private reportStreamTransitions(before: ChatStreamState, after: ChatStreamState): void {
     if (after.status?.stage === 'retrying' && before.status?.stage !== 'retrying') {
@@ -2944,7 +2946,7 @@ export class SalonConversation {
           continue;
         }
         if (settled.has(call.id)) continue;
-        const result = (call.result ?? {}) as { images?: unknown[]; error?: string };
+        const result = (call.result ?? {}) as { images?: unknown[] };
         if (call.status === 'success') {
           const count = result.images?.length || 1;
           // v4 raises the settled NOTICE and the toast both (`:417-421`) — the
@@ -2958,13 +2960,18 @@ export class SalonConversation {
             `Image generation complete! ${count} image${count > 1 ? 's' : ''} generated.`,
           );
         } else {
-          // v4 `:424-428`.
+          // v4 `:444-453`. The failing tool's own sentence rides the frame's
+          // SIBLING `error` (carried onto the call by the reducer as
+          // `errorText`); the generic strings below survive only as the
+          // fallback for a frame that carries nothing worth showing. Reading
+          // `result.error` — one level too deep — is what Bug 84 was.
+          const detail = resolveToolResultErrorText({ result: call.result, error: call.errorText });
           this.publishToolExecutionStatus({
             tool: call.name,
             status: 'error',
-            message: result.error || 'Failed to generate image',
+            message: detail || 'Failed to generate image',
           });
-          this.toasts.showError(`Image generation failed: ${result.error || 'Unknown error'}`);
+          this.toasts.showError(`Image generation failed: ${detail || 'Unknown error'}`);
         }
       }
     }

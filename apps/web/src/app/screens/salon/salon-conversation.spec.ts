@@ -35,7 +35,11 @@ import {
   type WorkspaceBackdropEntry,
   type WorkspaceBackdropRegistry,
 } from '../../workspace/workspace-contract';
-import { initialChatStreamState, type ChatStreamState } from '../../core/chat-stream.reducer';
+import {
+  initialChatStreamState,
+  reduceChatFrame,
+  type ChatStreamState,
+} from '../../core/chat-stream.reducer';
 import type { ToolExecutionStatus } from '../../chat/chat-composer';
 import { SalonConversation } from './salon-conversation';
 import { ToastService } from '../../ui/toast.service';
@@ -1940,7 +1944,12 @@ describe('SalonConversation — the roleplay template reaches the rendered rows 
 describe('SalonConversation tool-execution notice (Bug 77)', () => {
   /** A stream state carrying exactly the given generate_image calls. */
   function state(
-    calls: { id: string; status: 'pending' | 'success' | 'error'; result?: unknown }[],
+    calls: {
+      id: string;
+      status: 'pending' | 'success' | 'error';
+      result?: unknown;
+      errorText?: string;
+    }[],
     over: Partial<ChatStreamState> = {},
   ): ChatStreamState {
     return {
@@ -2019,7 +2028,7 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
     });
   });
 
-  it('carries v4’s singular wording and its error fallback', async () => {
+  it('carries v4’s singular wording, and the generic bytes when a failure says nothing', async () => {
     const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
     report(
       fixture,
@@ -2033,8 +2042,10 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
       state([{ id: 't1', status: 'pending' }]),
       state([{ id: 't1', status: 'error', result: {} }]),
     );
-    // v4 `:424` — the notice falls back to 'Failed to generate image' where the
-    // toast beside it says 'Unknown error'; both bytes are v4's.
+    // v4 `:447,:453` — with nothing resolvable on the frame the notice falls
+    // back to 'Failed to generate image' where the toast beside it says
+    // 'Unknown error'; both bytes are v4's, and they SURVIVE the Bug 84 fix as
+    // the fallback (this used to be all a failure could ever say).
     expect(notice(fixture)).toEqual({
       tool: 'generate_image',
       status: 'error',
@@ -2043,6 +2054,63 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
     expect(toasts().at(-1)).toEqual({
       type: 'error',
       message: 'Image generation failed: Unknown error',
+    });
+  });
+
+  it("renders the failing tool's own sentence, prefix stripped (Bug 84)", async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      state([{ id: 't2', status: 'pending' }]),
+      state([
+        {
+          id: 't2',
+          status: 'error',
+          result: null,
+          // The real failure shape: `result` null, the sentence on the SIBLING
+          // `error`, which the reducer carried onto the call as `errorText`.
+          errorText: 'Error: Image generation is not enabled for this chat',
+        },
+      ]),
+    );
+    // v4 `:447,:453` — both surfaces render the SAME resolved sentence, with
+    // the executor's own `Error: ` wrapper stripped so the toast doesn't read
+    // 'Image generation failed: Error: …'.
+    expect(notice(fixture)).toEqual({
+      tool: 'generate_image',
+      status: 'error',
+      message: 'Image generation is not enabled for this chat',
+    });
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'Image generation failed: Image generation is not enabled for this chat',
+    });
+  });
+
+  it('pins the WHOLE path: frame → reducer → reporter → notice (Bug 84)', async () => {
+    // The specs above drive the reporter directly, which is exactly how a
+    // reducer-level drop stayed invisible for a whole round. This one starts
+    // from REAL frames, so reverting either layer — the reducer's `errorText`
+    // carry or the render site's resolver read — turns it red.
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const detected = reduceChatFrame(initialChatStreamState(), {
+      toolsDetected: 1,
+      toolNames: ['generate_image'],
+    });
+    const failed = reduceChatFrame(detected, {
+      toolResult: {
+        index: 0,
+        name: 'generate_image',
+        success: false,
+        result: null,
+        error: 'Error: No image profile is configured',
+      },
+    });
+    report(fixture, detected, failed);
+    expect(notice(fixture)!.message).toBe('No image profile is configured');
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'Image generation failed: No image profile is configured',
     });
   });
 

@@ -78119,3 +78119,40 @@ leaves `errorText` undefined.
 first case red (1 failed), and restoring it green.
 
 Gate: SPA 333 files / 4,945; `npm run build` clean. SPA → 0.5.530.
+
+### Unit 3 — both render sites, the retired pin, and the two-layer coverage
+
+`salon-conversation.ts`'s `reportStreamTransitions` failure branch now resolves
+through `resolveToolResultErrorText({ result: call.result, error: call.errorText
+})` and renders the SAME sentence at both surfaces v4 raises — the composer
+notice (`message: detail || 'Failed to generate image'`) and the toast
+(`Image generation failed: ${detail || 'Unknown error'}`), v4 `:444-453`. The
+one-level-too-deep `(call.result ?? {}).error` read is gone; the success
+branch's cast narrows to `{ images?: unknown[] }`. **The generic strings stay,
+byte-identical to v4's** — they are the fallback for a frame that carries
+nothing worth showing, not the retired behavior.
+
+**The pin retired (point 5 of the order):** `it('carries v4's singular wording
+and its error fallback')` asserted the generic strings with the comment "both
+bytes are v4's" — the deliberate faithful reproduction. It is rewritten as
+`carries v4's singular wording, and the generic bytes when a failure says
+nothing`: same assertions, but now standing for the FALLBACK arm, with the
+comment saying so.
+
+**Two net-new salon cases:**
+
+- `renders the failing tool's own sentence, prefix stripped (Bug 84)` — the
+  real failure shape (`result: null`, `errorText: 'Error: Image generation is
+  not enabled for this chat'`) reaching both surfaces with the wrapper stripped.
+- `pins the WHOLE path: frame → reducer → reporter → notice (Bug 84)` — the
+  order's mutation-proof equivalent. The existing notice specs drive
+  `reportStreamTransitions` directly through a cast, which is exactly how a
+  reducer-level drop could stay invisible; this case starts from REAL frames
+  folded by `reduceChatFrame`.
+
+**Both mutations run, both red:** dropping the reducer's `errorText: result
+.error` carry, and separately dropping the render site's `error: call.errorText`
+argument, each fail the wiring case with `expected 'Failed to generate image' to
+be 'No image profile is configured'`. Each layer is pinned on its own.
+
+Gate: SPA 333 files / 4,947; `npm run build` clean. SPA → 0.5.531.

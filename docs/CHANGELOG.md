@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — fix(salon): render the failing tool's own sentence in the notice and the toast (bug 84)
+
+_Versions: SPA 0.5.531._
+
+Both `generate_image` failure surfaces now resolve through
+`resolveToolResultErrorText`, so a refusal that names its own remedy —
+`Image generation is not enabled for this chat` — reaches the user instead of
+`Failed to generate image` / `Image generation failed: Unknown error`. The
+generic strings stay, byte-identical to v4's, as the fallback for a frame
+that carries nothing worth showing.
+
+The one-level-too-deep `(call.result ?? {}).error` read is gone; the success
+branch's cast narrows to `{ images?: unknown[] }`.
+
+The deliberate faithful-reproduction pin is retired: the spec that asserted
+the generic strings as all a failure could ever say now asserts the resolved
+sentence with its prefix stripped, and keeps the generic arm as the fallback.
+A third case pins the WHOLE path — real frames through `reduceChatFrame`,
+then the reporter, then the notice — because the existing notice specs drive
+the reporter directly through a cast, which is exactly how a reducer-level
+drop stayed invisible. Reverting either layer alone turns that case red
+(both mutations run).
+
 #### 2026-08-22 — port(salon): carry the tool-result error sentence through the reducer (bug 84)
 
 _Versions: SPA 0.5.530._
