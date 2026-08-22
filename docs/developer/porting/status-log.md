@@ -79921,3 +79921,97 @@ new rows carry explicit `color`/`icon` so they stay clear of it.
 **Four mutations proven red-first:** the instructions cap relaxed by one, the
 unknown-key strip replaced by a passthrough, `.min(1)` run on the trimmed name,
 and `name` made nullable on update.
+
+### Unit 8 — Tier 2: the `docs/v4/` mirror + the banked help drift
+
+`docs/v4/developer/PROMPT_ARCHITECTURE.md` and `docs/v4/developer/DDL.md`
+refreshed from the v4 checkout at `a6870c5a` (the trio's two doc edits — the
+standing-instructions section's place in block 1, and DDL's
+`compiledIdentityStacks` column comment naming the version stamp).
+
+**Banked to `p4.9i2` (help-content surface, unported):** the trio's ten help
+files — `help/groups.md` and `help/project-settings.md` from `8f868109`, plus
+the eight `a6870c5a` files (`ai-character-import.md`, `character-creation.md`,
+`character-editing.md`, `character-optimizer.md`, `character-system-prompts.md`,
+`groups.md`, `project-settings.md`, `roleplay-templates-settings.md`) — and the
+help-chat builder's TWO wording changes (`lib/help-chat/system-prompt-builder.ts`
+carries its own hand-copied set of the identity-stack strings and the tool
+reinforcement; both commits edit it, and v5 has no help-chat builder at all).
+
+### Tier 3 — the refusals, by name
+
+Nothing in this list is silent; each was measured before it was refused.
+
+1. **The generator person clauses** (`a6870c5a`): `lib/services/
+   character-field-semantics.ts`, the AI Wizard `FIELD_PROMPTS`
+   (`character-wizard.service.ts`), Summon From Lore's `CHARACTER_BASICS_PROMPT`
+   (`ai-import.service.ts`), and the optimizer's shared suggestion rules
+   (`character-optimizer.service.ts`). **NO-PORT with evidence** — re-measured at
+   this lane's start: zero hits for any of those four surfaces anywhere in
+   `crates/` or `apps/web`. The four files AND v4's new rule ("never flip a
+   field's form of address") are banked to the **generators lane** (the phase-4
+   candidate-4 riders) so the clauses ride whichever lane eventually ports those
+   surfaces.
+2. **The help-chat builder** (`lib/help-chat/system-prompt-builder.ts`): both
+   commits edit it; the surface is absent in v5 (confirmed by grep). Its two
+   wording changes ride the `p4.9i2` bank — recorded in unit 8.
+3. **The turn-time `compiledIdentityStacks` reader**
+   (`getCompiledIdentityStack`): stays UNPORTED. `orchestrator.rs` passes `None`
+   and the four tier-3 oracles stub v4's reader to null; that standing deferral
+   is UNCHANGED by this lane, which only moves the compiler's
+   write/read/merge/drop. Not "fixed" here — doing so would silently change what
+   four tier-3 families measure. v4's two new reader unit tests therefore have no
+   v5 twin; the logic they cover (`readCurrentStacks`) is exercised through the
+   merge/drop arms instead.
+4. **v4's `docs/developer/features/vault-managed-field-write-guidance.md`** is a
+   v4-side PROPOSED item (in-chat vault writes to managed fields remain
+   unguided). No v5 action.
+5. **`PROMPT_CACHE_STRUCTURE_VERSION` does NOT move for `346e855f`/`a6870c5a`** —
+   wording inside existing blocks is not a layout change, per the policy comment
+   in `lib/llm/cache-key.ts` itself. Recorded at the constant so a later reader
+   does not "correct" it upward.
+
+### Unit 9 — the prompt-carrying family sweep (Tier 1 item 11)
+
+Every family whose oracle output can carry an assembled prompt or an identity
+stack was regenerated FRESH at `a6870c5a` through
+`harness/tools/recipe_sweep.py --run` and re-run by name. The candidate list was
+derived by grep (oracle cases importing `buildSystemPrompt` /
+`buildIdentityStack` / `buildContext` / `context-manager` /
+`compileIdentityStack`, plus every harness test naming `systemPrompt`), not by
+memory.
+
+**26 families in the sweep batch, all green, zero SKIP:**
+`orchestrator_tier3`, `announcer_tier3`, `regenerate_swipe_tier3`,
+`salon_swipe_generate`, `enclave_step_tier3`, `initial_greeting`,
+`chat_context_init`, `compression_tier3`, `compression_cache_tier3`,
+`answer_confirmation_tier3`, `chat_create_capstone`, `skip_signal`,
+`post_office_commonplace`, `recall_history`, `vault_string_leaves`,
+`message_finalizer_tier3`, `title_update_tier3`, `chat_regenerate_title_tier3`,
+`context_summary_service_tier3`, `memory_processor_tier3`,
+`primary_stream_tier3`, `native_tool_loop_tier3`, `text_tool_loop_tier3`,
+`turn_orchestrator_tier2`, `groups_tier2`, `group_character_members_tier2`.
+Plus the eleven regenerated in units 1–7: `standing_instructions` (new),
+`system_prompt`, `identity_compiler`, `build_context_tier3`, `self_inventory`,
+`carina_query_tier3`, `post_office_prospero`, `post_office_writers_tier3`,
+`groups_routes`, `chat_admin_routes`, `chat_cast_routes`. **37 families total.**
+
+**[[green-regen-is-not-coverage]] — the changed bytes, grepped, not assumed.**
+`orchestrator_tier3`'s NDJSON carries the new second-person reinforcement **86
+times** and `enclave_step_tier3`'s **12**, with ZERO occurrences of the retired
+`CALLS them` in either. Neither carries the identity-stack WRAPPER changes, and
+that is honest rather than a miss: their fixture characters carry only the
+identity preamble — `## Character Personality` / `## Character Aliases` /
+`## Character Pronouns` appear **0 times** in both, so there is nothing for
+those blocks to move. The wrapper bytes are covered where they exist:
+`system_prompt` (3 manifesto / 24 personality / 4 aliases / 16 pronouns / 5
+appearance / 3 dialogue rows), `build_context_tier3` (measured through its
+mutation output), `identity_compiler`, `self_inventory`, and `carina_query_tier3`.
+
+**The two committed `groups-projects-{main,mount}.db` fixtures were NOT
+touched.** The order anticipated seeding `instructions` into them and
+regenerating every consumer; the resolve differential got its own `/tmp`-built
+fixture instead (unit 1) and the groups-routes arms mint their own groups, so
+the committed pair — and the e2e that reads it — stay byte-identical. Both
+consumers (`groups_tier2`, `group_character_members_tier2`) were re-run anyway
+and are green.
