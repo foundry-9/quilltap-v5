@@ -56,6 +56,119 @@ The discrepancy is **pre-existing and out of this lane's scope** — realigning 
 would churn every provider family. NanoGPT is therefore APPENDED on both sides,
 which is the only choice that leaves all nine pre-existing rows byte-identical.
 
+### Unit 2 — the chat wire + the switch-table census ✅
+
+`build_nanogpt_body` (v4 `buildBody`, plugin 1.0.2) + `ProviderKind::NanoGpt` +
+`ChatFlavor::NanoGpt` (the non-streaming half of the reasoning dialects) + the
+models-list shaping + the census dispositioned.
+
+**Body shape, v4's literal key order:** the five `base_body` fields, `stream`,
+`stream_options` (streaming only), `stop`, `tools` + `tool_choice`,
+`response_format`, `user`, then the profile params. Two deliberate differences
+from the sibling chat-completions builders, both corpus-pinned: the cache key
+rides **`user`** where DeepSeek uses `user_id`, and **`tool_choice` defaults to
+`"auto"`** whenever tools are present rather than being omitted when the caller
+supplied none.
+
+**The allow-list is FLAT.** NanoGPT does not override `normalizeProfileParam`,
+so `reasoning_effort` is a TOP-LEVEL key. It must not reuse the OAC normalizer,
+which folds the same key into `chat_template_kwargs` for a local llama-server.
+The `''`-omits / `'none'`-verbatim asymmetry (the shared applier's empty-string
+skip) is what lets the thinkingTurnRule leave `''` in NEITHER list, and both
+legs are corpus rows.
+
+**No system-message fold.** v4's NanoGPT keeps its own `formatMessages` and
+never calls `collapseLeadingSystemMessages` — that belongs to the local
+endpoints. `three-leading-system-unfolded` is the regression guard.
+
+**`ChatFlavor::NanoGpt`** reads `message.reasoning ?? message.reasoning_content`
+— a precedence NO existing flavor has — then drops v4 bug 87's gateway echo (a
+run exactly equal to the content). Tool calls use `normalize_oac_tool_calls`:
+**measured, not assumed** — v4's NanoGPT calls the OAC base's
+`normalizeToolCalls`, and reading that method line-by-line confirms
+`normalize_oac_tool_calls` is its port, NOT DeepSeek's
+`extract_openai_tool_calls` (which has a `type === 'function'` prefilter NanoGPT
+never applies). v4's `sendMessage` reads no cache usage, so the arm returns
+`None`.
+
+⚠ **The parse dispatch does not fail at COMPILE time.** `ProviderKind` gained a
+variant and the whole workspace still built clean, because `chat_parse_flavor`
+has a `_ => None` arm; the refusal is the load-bearing `.expect()` in
+`parse_chat_completions_for`, which fired at RUNTIME on the first differential
+run. Worth knowing for the next provider join: the compiler is not the guard
+here.
+
+**The models-list shaping** unions the manifest's `fallbackModels` and removes
+its `imageGenerationModels`, then sorts — the curated lists have ONE home
+(the manifest), not a second hardcoded copy. **MEASURED:** the plugin's
+try/catch fallback-to-statics is *unreachable for a wire failure* — the OAC
+base's own `getAvailableModels` swallows every transport error and returns
+`[]`, so v4's catch is dead code on that path; the `[]` flows through the union
+and yields exactly the catalogue the catch would have. v5 therefore needs no
+separate failure arm.
+
+**`validateApiKey` needs NO edit:** `api/provider_actions.rs`'s `_` arm already
+covers "any other manifest provider" with the OpenAI-SDK family behavior
+(`requiresApiKey && !apiKey` → false, then the models-list probe), which is
+exactly what NanoGPT inherits from the OAC base.
+
+#### The census, dispositioned — the order's list was WRONG on four sites
+
+The order directed joins at `model_context.rs`, `cheap_model.rs`,
+`message_formatter.rs`, and `files/attachment_support.rs`. **All four are
+NO-PORT.** `NANOGPT` appears in v4's whole `lib/` tree exactly once —
+`EmbeddingProfileProviderEnum` in `lib/schemas/common.types.ts`. It is in NONE
+of `DEFAULT_CONTEXT_BY_PROVIDER`, `LEGACY_RECOMMENDED_CHEAP_MODELS`,
+`PROVIDER_NAME_SUPPORT`, `PROVIDER_ATTACHMENT_CAPABILITIES`, or the pricing
+fallback data, and `Provider` is `z.infer<z.string().min(1)>` = `string`, so no
+TypeScript `Record<Provider, …>` forces an entry. Those tables are v4's
+PRE-plugin fallbacks; a plugin-era provider is served by the registry, which
+v5 consults first (`resolve_context_window` returns `registry_default` whenever
+it differs from 8192). **Adding rows would have invented a divergence.**
+`nanogpt_is_absent_from_the_legacy_table_but_served_by_the_registry` pins the
+absence and proves the registry answers 131072 anyway.
+
+| site | disposition |
+|---|---|
+| `model/provider_io.rs` | **JOINED** — kind + chat parse flavor |
+| `model/request_builder/{mod,chat_completions}.rs` | **JOINED** — builder + dispatch |
+| `model/response_parse.rs` | **JOINED** — `ChatFlavor::NanoGpt` |
+| `api/provider_actions.rs` | **JOINED** (models shaping); validate needs no edit — the `_` arm already covers it |
+| `provider_manifest/mod.rs` | **JOINED** (unit 1) |
+| `model_context.rs` | **NO-PORT** — legacy table, v4 has no row; guard test added |
+| `cheap_model.rs` | **NO-PORT** — legacy table, v4 has no row |
+| `message_formatter.rs` | **NO-PORT** — legacy table, v4 has no row |
+| `files/attachment_support.rs` | **NO-PORT** — legacy table, v4 has no row |
+| `services/pricing_fetcher/{mod,fallback_data}.rs` | **NO-PORT** — v4 has no NanoGPT pricing (the order's requested measurement, recorded) |
+| `model/completion_provider.rs` | **NO-PORT** — OpenRouter-only vision predicate; NanoGPT is text-only |
+| `model/transport.rs` | **NO-PORT** — OpenRouter-only Referer/X-Title |
+| `services/orchestrator.rs` | **NO-PORT** — OpenRouter-only live-pricing path |
+| `services/provider_failover.rs` | **NO-PORT** — test data only |
+| `services/quilltap_import/profiles.rs` | **NO-PORT** — test data only |
+| `db/embedding_profiles.rs` | doc comments only — provider is plain TEXT, no enum validation in v5 |
+| `api/embedding_profiles.rs`, `services/embedding_provider.rs`, `model/embedding_wire.rs` | unit 6 |
+| `model/streaming_provider.rs`, `model/decoders/**` | unit 3 |
+| `image_gen_data.rs`, `model/image_dialects.rs`, `api/image_profiles.rs` | unit 5 |
+
+**Differential:** `request_builder_equivalence`, corpus 269 → **307** (19 cases
+× stream + send). All 269 pre-existing rows BYTE-IDENTICAL (`diff` against the
+pre-regen file with the nanogpt rows filtered out). The differential reports
+`307 request envelopes … matched v4; headers pinned for 9 providers` (was 8).
+**Mutation-proven:** swapping the identity normalizer for
+`openai_compatible_normalize_profile_param` reddens it with
+`chat_template_kwargs:{reasoning_effort:high}` vs the expected flat
+`reasoning_effort:"high"`.
+
+**Regen recipe:**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d101-4cb1035e
+cd <worktree> && V4=$PIN V5=$PWD bash harness/oracle/providers/regenerate-request-envelopes.sh
+cargo test -p quilltap-harness --test request_builder_equivalence
+```
+
+(The corpus is a COMMITTED fixture the script rewrites in place — no env var.)
+
 ### Unit 1 — the committed manifest, through the generator ✅
 
 `crates/quilltap-core/src/provider_manifest/manifests/nanogpt.json`, generated

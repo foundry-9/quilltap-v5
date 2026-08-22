@@ -354,6 +354,34 @@ impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
                 .map(|s| s.to_string())
                 .collect();
         }
+        // P4.D101 — NanoGPT's plugin-level `getAvailableModels` shapes the base
+        // class's raw id list: union the curated catalogue in (so a flagship
+        // name appears even when the live listing omits it), then REMOVE the
+        // curated image-generation ids (belt-and-braces: they have their own
+        // listing and must never reach the chat picker), then sort.
+        //
+        // The curated lists are the manifest's `fallbackModels` /
+        // `imageGenerationModels`, not a second hardcoded copy here — same data,
+        // one home.
+        //
+        // MEASURED: the plugin wraps this in a try/catch that answers the sorted
+        // statics, but the OAC base's own `getAvailableModels` already swallows
+        // every transport error and returns `[]`, so that catch is unreachable
+        // for a wire failure. v5 needs no separate failure arm — the `[]` from
+        // the failure branch above flows through this union and produces exactly
+        // the same sorted catalogue v4's catch would have.
+        if provider == "NANOGPT" {
+            if let Some(manifest) = registry.get_provider(provider) {
+                let mut merged: std::collections::BTreeSet<String> = models.into_iter().collect();
+                for id in &manifest.fallback_models {
+                    merged.insert(id.clone());
+                }
+                for id in &manifest.image_generation_models {
+                    merged.remove(id);
+                }
+                models = merged.into_iter().collect();
+            }
+        }
         let models_with_info: Vec<Value> = models.iter().map(|id| json!({ "id": id })).collect();
         Ok((models, models_with_info))
     }

@@ -37,6 +37,8 @@ const OLLAMA_ATTACHMENT_ERROR: &str =
     "Ollama file attachment support not yet implemented (requires multimodal model detection)";
 const OPENAI_COMPATIBLE_ATTACHMENT_ERROR: &str =
     "OpenAI-compatible provider file attachment support varies by implementation (not yet implemented)";
+const NANOGPT_ATTACHMENT_ERROR: &str =
+    "NanoGPT chat requests are text-only in Quilltap. Send text-only messages.";
 
 /// v4's Z.AI supported mime types (`Z_AI_SUPPORTED_MIME_TYPES`).
 const Z_AI_SUPPORTED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -1540,6 +1542,83 @@ pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentRes
             b.set("tools", json!(t));
         }
     }
+    b.into_value()
+}
+
+// ============================================================================
+// NanoGPT (P4.D101 — v4 `781fc420` + `d5830439`)
+// ============================================================================
+
+/// Profile parameters NanoGPT forwards, in v4's declaration order
+/// (`NANOGPT_PROFILE_PARAM_ALLOWLIST`, plugin 1.0.2).
+///
+/// **Flat on the body, unlike the OpenAI-Compatible endpoint.** NanoGPT does
+/// NOT override `normalizeProfileParam`, so `reasoning_effort` is emitted
+/// verbatim as a top-level key — it must not reuse
+/// [`openai_compatible_normalize_profile_param`], which folds the same key into
+/// `chat_template_kwargs` for a local llama-server. NanoGPT passes parameters it
+/// does not itself know through to the routed upstream, so the standard OpenAI
+/// sampling extras plus `reasoning_effort` cover the useful surface.
+///
+/// The shared applier supplies the rest of v4's semantics: a blank `''` omits
+/// the key entirely (the profile editor's "use the model default"), while
+/// `'none'` is a real value and is sent verbatim — that asymmetry is what lets
+/// the thinking-turn rule leave `''` in NEITHER of its lists.
+const NANOGPT_PROFILE_ALLOWLIST: &[&str] = &[
+    "frequency_penalty",
+    "presence_penalty",
+    "logprobs",
+    "top_logprobs",
+    "reasoning_effort",
+];
+
+/// v4 NanoGPT `buildBody` (plugin 1.0.2) — ONE body function for both modes, so
+/// the streaming and non-streaming wires cannot drift apart.
+///
+/// Key order is v4's literal order: the [`base_body`] five plus `stream`
+/// (`stream_options` only when streaming), then `stop`, `tools` +
+/// `tool_choice`, `response_format`, `user`, then the allow-listed profile
+/// params.
+///
+/// Two deliberate differences from the sibling chat-completions builders:
+///   - the cache key rides `user` (DeepSeek uses `user_id`), and only when it
+///     is a non-empty string;
+///   - `tool_choice` defaults to `"auto"` whenever tools are present, rather
+///     than being omitted when the caller supplied none.
+///
+/// Reasoning is never sent back — thinking display is display-only in Quilltap,
+/// so `chat_messages` is called with `echo_reasoning: false` (v4's
+/// `formatMessages` has no `reasoning_content` arm at all). Leading system
+/// messages are NOT folded: v4's NanoGPT keeps its own `formatMessages` and
+/// never calls `collapseLeadingSystemMessages` — the fold belongs to the local
+/// endpoints (Ollama / OpenAI-Compatible), and folding here would change the
+/// bytes a hosted gateway receives.
+pub fn build_nanogpt_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    collect_drop_failures(&input.messages, NANOGPT_ATTACHMENT_ERROR, results);
+    let messages = chat_messages(&input.messages, true, false, &mut plain_user_content);
+    let mut b = base_body(input, messages);
+    b.set_opt("stop", stop_value(input));
+    if let Some(tools) = &input.tools {
+        if !tools.is_empty() {
+            b.set("tools", json!(tools));
+            b.set(
+                "tool_choice",
+                input.tool_choice.clone().unwrap_or_else(|| json!("auto")),
+            );
+        }
+    }
+    b.set_opt("response_format", response_format(input));
+    if let Some(k) = &input.cache_key {
+        if !k.is_empty() {
+            b.set("user", json!(k));
+        }
+    }
+    apply_profile_params_with(
+        &mut b,
+        input,
+        NANOGPT_PROFILE_ALLOWLIST,
+        |_, value, _, _| Some(value.clone()),
+    );
     b.into_value()
 }
 

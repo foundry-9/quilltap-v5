@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(providers): the NanoGPT chat wire + the switch-table census (v4 `781fc420`, P4.D101)
+
+_Versions: core 0.0.605, harness 0.0.528._
+
+`build_nanogpt_body` is v4's `buildBody` verbatim — one body function for both
+modes, so the streaming and non-streaming wires cannot drift. Defaults 0.7 /
+4096 / 1; `stream_options.include_usage` on the streaming path only; `stop`;
+`tools` with `tool_choice` defaulting to `"auto"` whenever tools are present;
+both `response_format` kinds; the cache key on `user` (NOT DeepSeek's
+`user_id`) and only when non-empty. The five-key profile allow-list is FLAT:
+NanoGPT does not override `normalizeProfileParam`, so `reasoning_effort` is a
+top-level key rather than folded into `chat_template_kwargs` the way the
+OpenAI-Compatible endpoint folds it. Reasoning is never echoed back, and leading
+system messages are NOT folded — NanoGPT is a hosted gateway with its own
+`formatMessages`, and folding would change the bytes it receives.
+
+`ChatFlavor::NanoGpt` carries the non-streaming reasoning read: `message.reasoning`
+with `message.reasoning_content` as the legacy fallback — a precedence no other
+flavor has — minus v4 bug 87's gateway echo, where a reasoning run exactly equal
+to the content is dropped. Tool calls go through `normalize_oac_tool_calls`,
+confirmed line-by-line to be the OAC base's `normalizeToolCalls` that v4's
+NanoGPT provider actually calls, not DeepSeek's `extract_openai_tool_calls`.
+
+The models-list fetch unions the manifest's `fallbackModels` in and removes its
+`imageGenerationModels`, then sorts — one home for the curated lists rather than
+a second hardcoded copy. Measured on the way: the plugin's try/catch fallback is
+unreachable for a wire failure, because the OAC base's own `getAvailableModels`
+swallows every transport error and returns `[]`; the union produces the same
+sorted catalogue the catch would have.
+
+The corpus grows 269 → 307 (19 cases × both modes) and all 269 pre-existing rows
+are byte-identical. Mutation-proven: folding `reasoning_effort` into
+`chat_template_kwargs` reddens `request_builder_equivalence` with the exact
+flat-vs-folded diff.
+
+**The switch-table census refutes four of the order's named sites.** `NANOGPT`
+appears in v4's entire `lib/` tree exactly ONCE — the embedding-profile enum. It
+is in none of `DEFAULT_CONTEXT_BY_PROVIDER`, `LEGACY_RECOMMENDED_CHEAP_MODELS`,
+`PROVIDER_NAME_SUPPORT`, or `PROVIDER_ATTACHMENT_CAPABILITIES`, and `Provider` is
+`z.string()` so no type forces an entry. Those are v4's pre-plugin fallbacks; a
+plugin-era provider is served by the registry, which v5 consults first. Adding
+rows would have been a v5-invented divergence, so a new guard test pins the
+absence and proves the registry still answers 131072.
+
 #### 2026-08-22 — port(providers): the NanoGPT manifest through the generator (v4 `781fc420` + `d5830439`, P4.D101)
 
 _Versions: core 0.0.604, harness 0.0.527._

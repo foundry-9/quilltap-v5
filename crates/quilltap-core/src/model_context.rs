@@ -210,3 +210,43 @@ pub fn get_safe_input_limit(
     );
     crate::context_budget::compute_safe_input_limit(total, max_response_tokens)
 }
+
+#[cfg(test)]
+mod nanogpt_legacy_table_guard {
+    use super::*;
+    use crate::provider_manifest::Registry;
+
+    /// P4.D101 — NanoGPT is deliberately ABSENT from v4's legacy per-provider
+    /// fallback tables, and must stay absent.
+    ///
+    /// MEASURED at v4 `4cb1035e`: `NANOGPT` appears in v4's entire `lib/` tree
+    /// exactly ONCE — `EmbeddingProfileProviderEnum` in
+    /// `lib/schemas/common.types.ts`. It is in NONE of
+    /// `DEFAULT_CONTEXT_BY_PROVIDER`, `LEGACY_RECOMMENDED_CHEAP_MODELS`,
+    /// `PROVIDER_NAME_SUPPORT`, `PROVIDER_ATTACHMENT_CAPABILITIES`, or the
+    /// pricing fallback data. Those tables are v4's PRE-plugin fallbacks; a
+    /// plugin-era provider is served by the registry instead, and `Provider` is
+    /// `z.string()` so no type forces an entry.
+    ///
+    /// Adding a NANOGPT row to any of them would be a v5-invented divergence.
+    /// This test is the tripwire: it pins the absence AND proves the registry
+    /// path still answers 131072, so the absence costs nothing.
+    #[test]
+    fn nanogpt_is_absent_from_the_legacy_table_but_served_by_the_registry() {
+        assert_eq!(
+            default_context_by_provider("NANOGPT"),
+            None,
+            "NANOGPT must NOT be in the legacy DEFAULT_CONTEXT_BY_PROVIDER table — \
+             v4 has no such row (measured at 4cb1035e)"
+        );
+
+        // The manifest carries the real value, and the registry is consulted
+        // first, so the legacy table is never reached for NanoGPT.
+        let manifest = Registry::built_in().get_provider("NANOGPT").unwrap();
+        assert_eq!(manifest.default_context_window, 131072);
+        assert_eq!(
+            resolve_context_window("NANOGPT", "openai/gpt-5-mini", &[], &[], 131072, None),
+            131072
+        );
+    }
+}

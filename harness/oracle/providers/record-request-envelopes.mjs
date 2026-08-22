@@ -72,6 +72,11 @@ const PROVIDERS = {
     new (await import(pathToFileURL(resolve('provider.ts')))).OpenAICompatibleEndpointProvider(
       'http://localhost:8080/v1',
     ),
+  // P4.D101. NanoGPT is a HOSTED subclass of the same OAC base: it supplies its
+  // own `profileParamAllowlist` and its own `buildBody`, and takes no base url
+  // (the plugin constructs it argument-free, so the recorded url is the
+  // plugin's own `https://nano-gpt.com/api/v1`).
+  nanogpt: async () => new (await import(pathToFileURL(resolve('provider.ts')))).NanoGPTProvider(),
 };
 
 // A minimal SSE stream body that lets each decoder's streamMessage complete
@@ -496,6 +501,55 @@ function casesFor(provider) {
     add('chat-template-kwargs-string-array', { ...base, model: 'local-model', profileParameters: { chat_template_kwargs: '[1, "two"]' } });
     // Tools and the bag together — the two halves of bug 71 on one request.
     add('tools-and-profile-params', { ...base, model: 'local-model', tools: [TOOL], stop: ['END'], cacheKey: 'char-1', profileParameters: { top_k: 20, reasoning_effort: 'high' } });
+  } else if (provider === 'nanogpt') {
+    // P4.D101 (v4 `781fc420` + `d5830439`, plugin 1.0.2). The body is one
+    // function for both modes in v4, so every row is recorded in both.
+    add('plain', { ...base, model: 'openai/gpt-5-mini' });
+    // Defaults: temperature 0.7 / max_tokens 4096 / top_p 1 when the caller
+    // supplies none — the three literals easiest to lose in a port.
+    add('defaults', { messages: [SYS, USER], model: 'openai/gpt-5-mini' });
+    add('stop', { ...base, model: 'openai/gpt-5-mini', stop: ['END', 'STOP'] });
+    // The cache key rides `user` here, NOT DeepSeek's `user_id`.
+    add('cache-key', { ...base, model: 'openai/gpt-5-mini', cacheKey: 'char-42' });
+    // …and an empty cacheKey never reaches the body at all.
+    add('cache-key-empty', { ...base, model: 'openai/gpt-5-mini', cacheKey: '' });
+    // tool_choice defaults to 'auto' whenever tools are present…
+    add('tools-default-choice', { ...base, model: 'openai/gpt-5-mini', tools: [TOOL] });
+    // …and the caller's own choice wins when supplied.
+    add('tools-explicit-choice', { ...base, model: 'openai/gpt-5-mini', tools: [TOOL], toolChoice: 'required' });
+    // Assistant tool_calls + role:'tool' survive the round trip; reasoning is
+    // NEVER echoed back (v4's formatMessages has no reasoning arm).
+    add('tool-roundtrip', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
+    add('response-format-object', { ...base, model: 'openai/gpt-5-mini', responseFormat: { type: 'json_object' } });
+    add('response-format-schema', { ...base, model: 'openai/gpt-5-mini', responseFormat: { type: 'json_schema', jsonSchema: { name: 'out', strict: true, schema: { type: 'object', properties: { a: { type: 'string' } } } } } });
+    // THE FLAT-vs-FOLDED PIN. NanoGPT does not override normalizeProfileParam,
+    // so `reasoning_effort` is a TOP-LEVEL key — folding it into
+    // `chat_template_kwargs` the way the OpenAI-Compatible endpoint does would
+    // move these bytes.
+    add('reasoning-effort-flat', { ...base, model: 'openai/gpt-5-mini', profileParameters: { reasoning_effort: 'high' } });
+    // '' is "use the model default" and is OMITTED entirely…
+    add('reasoning-effort-blank-omits', { ...base, model: 'openai/gpt-5-mini', profileParameters: { reasoning_effort: '' } });
+    // …while 'none' is a real value and ships verbatim. That asymmetry is what
+    // lets the thinkingTurnRule leave '' in NEITHER of its lists.
+    add('reasoning-effort-none-verbatim', { ...base, model: 'openai/gpt-5-mini', profileParameters: { reasoning_effort: 'none' } });
+    // The other four allow-listed params, together.
+    add('profile-params', { ...base, model: 'openai/gpt-5-mini', profileParameters: { frequency_penalty: 0.5, presence_penalty: 0.2, logprobs: true, top_logprobs: 3 } });
+    // A bag cannot retarget the request; null skips; a key off the allow-list
+    // is dropped.
+    add('profile-params-skips', { ...base, model: 'openai/gpt-5-mini', profileParameters: { frequency_penalty: null, presence_penalty: '', logprobs: false, top_logprobs: 0, thinking: 'enabled', top_k: 40, model: 'HIJACKED', messages: [], stream: false, stream_options: {}, tools: [] } });
+    // NanoGPT DROPS attachments (text-only) — the body shows plain string
+    // content and the failure rides attachmentResults.
+    add('image-attachment', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, USER_IMG] });
+    // NanoGPT is a HOSTED gateway and keeps its own formatMessages — it never
+    // calls collapseLeadingSystemMessages, so all THREE system messages stay on
+    // the wire. The regression guard against folding here.
+    add('three-leading-system-unfolded', { ...base, model: 'openai/gpt-5-mini', messages: THREE_LEADING_SYSTEM });
+    // The catalogued :thinking id — no request-side consequence (the habit is
+    // the host's turn-anchor concern), pinned so a future strip cannot appear
+    // unnoticed.
+    add('thinking-catalogue-id', { ...base, model: 'anthropic/claude-sonnet-5:thinking', profileParameters: { reasoning_effort: 'medium' } });
+    // Everything at once.
+    add('tools-and-profile-params', { ...base, model: 'openai/gpt-5-mini', tools: [TOOL], stop: ['END'], cacheKey: 'char-7', profileParameters: { reasoning_effort: 'low', frequency_penalty: 0.1 } });
   } else if (provider === 'openai') {
     add('plain', { ...base, model: 'gpt-4o' });
     add('first-call', { ...base, model: 'gpt-4o', messages: [SYS, USER] });

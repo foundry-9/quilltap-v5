@@ -30,6 +30,7 @@ PROVIDERS=(
   "openai:qtap-plugin-openai"
   "grok:qtap-plugin-grok"
   "openai-compatible:qtap-plugin-openai-compatible"
+  "nanogpt:qtap-plugin-nanogpt"
 )
 
 run() {

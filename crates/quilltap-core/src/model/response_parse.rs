@@ -95,6 +95,12 @@ pub enum ChatFlavor {
     /// — unlike the SDK path, whose `usage.cachedTokens` never exists. Same wire
     /// body, a DIFFERENT `LLMResponse` from [`ChatFlavor::OpenRouter`].
     OpenRouterVision,
+    /// NanoGPT (P4.D101): reasoning is `message.reasoning` with
+    /// `message.reasoning_content` as the LEGACY fallback — a precedence no
+    /// other flavor has — minus the gateway's prose echo (v4 bug 87). Tool
+    /// calls go through the OAC base's `normalizeToolCalls`, and v4's
+    /// `sendMessage` reads NO cache usage.
+    NanoGpt,
 }
 
 fn i64_at(v: &Value, key: &str) -> i64 {
@@ -368,6 +374,35 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                         cache_creation_input_tokens: None,
                     });
                     (reasoning, extract_openai_tool_calls(msg), cache)
+                }
+                // P4.D101. Two facts no other flavor combines:
+                //
+                //  1. `message.reasoning` is NanoGPT's main-endpoint field and
+                //     `message.reasoning_content` its legacy dialect — read in
+                //     that precedence (`??`), not one or the other.
+                //  2. v4 bug 87 (`4cb1035e`): the gateway sometimes echoes the
+                //     whole answer back down the reasoning channel, which would
+                //     repeat the reply inside a thinking fold. An echo EQUAL to
+                //     the content is dropped. v4 compares the raw run against
+                //     `msg.content ?? ''` BEFORE any truthiness filter, so an
+                //     empty reasoning against empty content also drops — which
+                //     the `!s.is_empty()` filter would have done anyway.
+                //
+                // Tool calls use the OAC base's `normalizeToolCalls`
+                // (`normalize_oac_tool_calls`), which is what v4's NanoGPT
+                // provider calls — NOT DeepSeek's `extract_openai_tool_calls`,
+                // whose `type === 'function'` prefilter it does not have. And
+                // v4's `sendMessage` returns no `cacheUsage` at all.
+                ChatFlavor::NanoGpt => {
+                    let raw_reasoning = msg
+                        .get("reasoning")
+                        .or_else(|| msg.get("reasoning_content"))
+                        .and_then(Value::as_str);
+                    let reasoning = raw_reasoning
+                        .filter(|r| *r != content)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string);
+                    (reasoning, normalize_oac_tool_calls(msg), None)
                 }
                 ChatFlavor::OpenRouter | ChatFlavor::OpenRouterVision => unreachable!(),
             };

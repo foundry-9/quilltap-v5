@@ -245,6 +245,9 @@ pub fn build_request_with_registry(
         ProviderKind::OpenAiCompatible => {
             chat_completions::build_openai_compatible_body(input, &mut attachment_results)
         }
+        ProviderKind::NanoGpt => {
+            chat_completions::build_nanogpt_body(input, &mut attachment_results)
+        }
         ProviderKind::Google => unreachable!("handled above"),
     };
 

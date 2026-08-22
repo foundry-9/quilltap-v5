@@ -26,6 +26,7 @@ pub enum ProviderKind {
     Grok,
     Google,
     OpenAiCompatible,
+    NanoGpt,
 }
 
 impl ProviderKind {
@@ -43,6 +44,7 @@ impl ProviderKind {
             "GROK" => ProviderKind::Grok,
             "GOOGLE" => ProviderKind::Google,
             "OPENAI_COMPATIBLE" => ProviderKind::OpenAiCompatible,
+            "NANOGPT" => ProviderKind::NanoGpt,
             _ => return None,
         })
     }
@@ -56,6 +58,7 @@ impl ProviderKind {
             ProviderKind::ZAi => Some(ChatFlavor::ZAi),
             ProviderKind::OpenRouter => Some(ChatFlavor::OpenRouter),
             ProviderKind::OpenAiCompatible => Some(ChatFlavor::OpenAiCompatible),
+            ProviderKind::NanoGpt => Some(ChatFlavor::NanoGpt),
             _ => None,
         }
     }
