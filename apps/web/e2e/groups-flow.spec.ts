@@ -55,7 +55,7 @@ const FIXTURE_READY = existsSync(MAIN_FIXTURE);
  * nothing — a red that says nothing about this lane. The unifier flips this
  * to `true`.
  */
-const P4D103_SERVER_LANDED = false;
+const P4D103_SERVER_LANDED = true;
 
 /** Every fixture table the groups walk reads is filtered by userId. */
 const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects'];

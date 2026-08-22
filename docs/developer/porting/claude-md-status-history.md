@@ -2077,3 +2077,16 @@ Contents:
   unification — verify before the next round starts. (The 12fe3e6f round,
   unified 2026-08-22, moved the baseline in the status log and phase plan
   but never updated this bullet — corrected at the 4cb1035e round.)
+
+## The 4cb1035e baseline paragraph (superseded at the a6870c5a round, 2026-08-22)
+
+- **Oracle baseline: `4cb1035e` (2026-08-22, v4 main — "fix(nanogpt):
+  suppress the gateway's reasoning echo (plugin 1.0.2, bug 87)"),
+  adopted at the 4cb1035e-round unification (2026-08-22).** ⚠ v4 HAD
+  ALREADY MOVED past it at unification — the prompts trio (`8f868109`
+  project/group standing instructions in the cacheable system prompt,
+  `346e855f` second-person tool reinforcement [bug 88], `a6870c5a`
+  grammatical-person consistency), on ported prompt surfaces — **pin a
+  detached worktree at `4cb1035e` for EVERY regen until that catch-up
+  runs; it is the top next candidate.** (The drift-check/pin/sweep-driver
+  boilerplate continued as in the current paragraph.)

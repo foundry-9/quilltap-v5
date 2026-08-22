@@ -5532,3 +5532,64 @@ NOT take:**
   touched. The groups side inherits that verdict by construction — one
   generic `update`, two `StoreEntity` impls — but its own pinning arm rides
   the next round, because P4.D103 owned the groups families this round.
+
+**The `a6870c5a` prompts-trio round (P4.D103 ∥ P4.D104 ∥ P4.55): UNIFIED
+on main (2026-08-22) — ALL THREE CLOSED; the oracle baseline MOVES to
+`a6870c5a` and the drift debt is CLEARED.** The prompts trio absorbed
+whole: the standing-instructions section end-to-end (module + builder
+slot + the four call sites + the Prospero whisper drop + the groups
+`instructions` verbs with BOTH v4 validators; `PROMPT_CACHE_STRUCTURE_
+VERSION` 3 → 4), bug 88's second-person tool reinforcement, the
+identity-stack person-consistency wording under the version-stamped
+`compiledIdentityStacks` envelope (v5's golden hash EQUALS v4's
+registered one), the SPA's shared prompt-field label + twelve-key hints
+table + migration sweep + Group Instructions editor (beat activated,
+first live run green), and the `c8a3cf77` merge-verb silent-keep lead
+CLOSED (A1/A2 were PERSISTING garbage; B1's ten-field leniency; E2's
+schema; the D1–D3 missing-`else` trio; store_backed measured NOT
+divergent). The §3 review fixed ten findings on the unify branch — the
+two that would have shipped: `group_update`'s parse-before-find (400
+where v4 answers 404) and the autonomous title max counted in scalars
+instead of UTF-16 units. Gate: 43-family sweep 43/43 zero SKIP fresh at
+the pin; 444 binaries / 2,266 / 0; clippy both sets; release build; ng
+341 / 5,054; full Playwright 236/236 zero skips.
+
+**Next candidates, in rough value order** (updated at the
+`a6870c5a`-round unification, 2026-08-22):
+
+1. **The next v4 drift catch-up** (check both branches first, as
+   always).
+2. **The owed 💸 dogfood queue** — now incl. this round's: standing
+   instructions on a REAL turn on the Friday copy (project + group
+   prompts reaching a live model — no oracle judges that), the Group
+   Instructions editor walk, the invalid-config 400s on live surfaces;
+   plus the standing items (the dedup/summaries first run, P4.D35's
+   other three write paths, the NanoGPT/Fetch-Models live-key smokes).
+3. **B2 — the data-retention present-`null` collapse** (CONFIRMED
+   divergent, deferred by ownership; needs the settings-routes
+   `dataRetention` edge-mapping rewire first — see "P4.55" above).
+4. Banked smalls: the groups-side cleared-null pin (no defect expected),
+   the memories float-literal echo nit, the shared-`baseUrl`-helper
+   cleanup, the P4.54-era `response_parse_equivalence` run line +
+   `settings_wire_actions` fixture leaning (unchanged).
+5. `p4.9i2` (its bank grew the trio's ten help files + the help-chat
+   builder's two wording changes) and the generators-lane bank (grew the
+   four person-clause files + the "never flip a field's form of address"
+   rule).
+
+PB1 stays parked by the standing rule. Round record: `status-log.md`.
+
+**Standing regen note (supersedes the one above):** the oracle baseline
+is **`a6870c5a`** (2026-08-22, v4 main — "feat(prompts):
+grammatical-person consistency in assembled prompts"), adopted at the
+`a6870c5a`-round unification (2026-08-22). v4 had NOT moved past it at
+unification (verified immediately before the unified regen — the first
+pin-free round in five). Drift-check BOTH development branches every
+round (`git log a6870c5a..main` AND `git diff main bugfix -- lib/ app/
+packages/` — measure bugfix by `diff`, never the commit list; its only
+unabsorbed content today is the test-only `009c49b2`; note WHICH branch
+the checkout occupies before any regen, and pin a detached worktree
+whenever v4 HEAD is past the baseline — all three symlink classes). The
+sweep driver remains the sanctioned per-family regen path — never run
+two sweeps concurrently. The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.

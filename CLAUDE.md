@@ -1651,15 +1651,60 @@ records THERE. Update this summary only when a phase or round completes.
   deserves a real key) + the NanoGPT chat/image/embeddings smoke.
   Versions: core 0.0.608, harness 0.0.531, host 0.0.77, SPA 0.5.539.
   Round record: `status-log.md`.
-- **Oracle baseline: `4cb1035e` (2026-08-22, v4 main — "fix(nanogpt):
-  suppress the gateway's reasoning echo (plugin 1.0.2, bug 87)"),
-  adopted at the 4cb1035e-round unification (2026-08-22).** ⚠ v4 HAD
-  ALREADY MOVED past it at unification — the prompts trio (`8f868109`
-  project/group standing instructions in the cacheable system prompt,
-  `346e855f` second-person tool reinforcement [bug 88], `a6870c5a`
-  grammatical-person consistency), on ported prompt surfaces — **pin a
-  detached worktree at `4cb1035e` for EVERY regen until that catch-up
-  runs; it is the top next candidate.** **Drift-check BOTH development
+- **The `a6870c5a` prompts-trio round (P4.D103 ∥ P4.D104 ∥ P4.55):
+  UNIFIED on main (2026-08-22) — ALL THREE CLOSED; the oracle baseline
+  MOVES to `a6870c5a` and the drift debt is CLEARED.** The trio absorbed
+  whole: the standing-instructions section end-to-end (the new
+  `standing_instructions` module byte-exact incl. the ICU-collated
+  name-then-instructions sort; the builder slot between Taboo and the
+  tool instructions, template-processed; threaded to the live turn +
+  Carina [the hand-built `{char, user: "User"}` context] +
+  self-inventory, with the announcer/greeting exclusions verified per
+  call site; the Prospero project-context whisper's duplicate section
+  DROPPED; `PROMPT_CACHE_STRUCTURE_VERSION` 3 → 4; the groups verbs gain
+  `instructions` + BOTH v4 validators ported whole — a premise refuted
+  on the way: an empty-string PUT reads back `null` via the overlay's
+  markdown reader) ∥ bug 88's second-person tool reinforcement (v5
+  measurably HAD the `they CALLS them` bug) + the identity-stack
+  person-consistency wording under the NEW version-stamped
+  `compiledIdentityStacks` envelope (strict-equality read both
+  directions, discard-on-merge, clear-on-drop; v4's golden table
+  byte-copied and **v5's computed hash EQUALS v4's registered golden —
+  a free cross-implementation proof**; the turn-time reader deferral
+  UNCHANGED) ∥ the SPA client half (the shared `qt-prompt-field-label` +
+  the twelve-key hints table proven byte-identical to v4's module twice
+  over; the seven-surface migration sweep converging v5's drifted
+  create/edit copy; the Group Instructions editor; the round-trip beat
+  ACTIVATED — first live run green) ∥ P4.55: the `c8a3cf77` merge-verb
+  silent-keep LEAD closed (the two memories config verbs were
+  PERSISTING garbage — validate-first now; the autonomous-rooms
+  ten-field patch leniency refused; projects update through v4's
+  schema; the three missing-`else` `apiKeyId`/`baseUrl` sites fixed
+  after measuring v4; the store_backed cleared-null echo measured NOT
+  divergent; B2 data-retention present-null stays a NAMED next-round
+  item). **The §3 review fixed TEN findings on the unify branch — the
+  two that would have shipped:** `group_update` parsed before the
+  existence check (400 where v4's find-first answers 404 — the
+  guard-order class P4.55 got right on projects, missed on groups; the
+  cross-lane blind spot), and the autonomous `title` max counted
+  Unicode scalars where Zod counts UTF-16 units (astral titles passed
+  v5, fail v4) — both fixed + arm-pinned; also the settings-routes
+  stale-oracle floor, the beat's `waitForRequest` flake-in-waiting,
+  the identity-compiler sentinel tripwire, and five smaller repairs.
+  Gate: the 43-family regen+run sweep 43/43 ok zero SKIP over oracles
+  FRESH at `a6870c5a` (the first pin-free round in five); 444 test
+  binaries / 2,266 / 0 with the 75-variable env block; clippy both
+  feature sets; release build; ng 341 files / 5,054; full Playwright
+  **236/236 zero skips** (the suite grew with the activated beat). 💸
+  the dogfood queue gains standing instructions on a REAL turn + the
+  Group Instructions walk + the invalid-config 400s. Versions: core
+  0.0.620, harness 0.0.542, SPA 0.5.544; host/web/cli/tauri unchanged.
+  Round record: `status-log.md`.
+- **Oracle baseline: `a6870c5a` (2026-08-22, v4 main — "feat(prompts):
+  grammatical-person consistency in assembled prompts"), adopted at the
+  a6870c5a-round unification (2026-08-22).** v4 had NOT moved past it at
+  unification (verified immediately before the unified regen).
+  **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
   `diff`, never the commit list; note WHICH branch the checkout occupies

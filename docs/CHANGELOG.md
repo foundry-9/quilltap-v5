@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — unify: the `a6870c5a` prompts-trio round (P4.D103 ∥ P4.D104 ∥ P4.55)
+
+_Versions: core 0.0.620, harness 0.0.542, SPA 0.5.544._
+
+All three lanes unified; the oracle baseline moves `4cb1035e` → `a6870c5a`
+and the drift debt is cleared. Server: the standing-instructions section
+(project + group `instructions`) lands in the cacheable system prompt
+between the Taboo section and the tool instructions (cache structure
+version 3 → 4), threaded to the live turn, Carina, and self-inventory,
+with the Prospero project-context whisper's duplicate section dropped;
+bug 88's second-person tool reinforcement replaces the pronoun lookup;
+the identity stack moves to person-consistent wording under the new
+version-stamped `compiledIdentityStacks` envelope, with v4's golden table
+byte-copied (v5's computed hash equals v4's registered golden — a free
+cross-implementation proof); the group verbs gain `instructions` plus
+both v4 validators, ported whole. SPA: the shared prompt-field label and
+the byte-identical twelve-key hints table, the seven-surface migration
+sweep converging the drifted create/edit copy, the Group Instructions
+editor, and the round-trip beat activated at unification (its first live
+run green). Maintenance: the `c8a3cf77` merge-verb silent-keep lead is
+closed — the two memories config verbs validate first (they had been
+persisting garbage), the autonomous-rooms settings patch refuses invalid
+fields, projects update validates through v4's schema, the three
+missing-`else` `apiKeyId`/`baseUrl` sites are fixed, and the store-backed
+cleared-null echo measured NOT divergent. The §3 review's ten findings
+were fixed on the unify branch (previous entry). Gate: the 43-family
+regen+run sweep 43/43 ok zero SKIP over oracles fresh at `a6870c5a`;
+`cargo test --workspace` 444 binaries / 2,266 / 0 with the 75-variable
+env block; clippy both feature sets; release build; `npm test` 341 files
+/ 5,054; `npm run build`; full Playwright 236/236 zero skips.
+
 #### 2026-08-22 — fix(unify): the a6870c5a-round §3 review findings
 
 _Versions: core 0.0.620, harness 0.0.542, SPA 0.5.544._

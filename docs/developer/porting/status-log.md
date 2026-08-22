@@ -80657,3 +80657,166 @@ Playwright run.
    order header and in unit 3 above; nothing on the wire depends on it.
 3. This lane changed NOTHING outside `apps/web/**` plus the two append-only
    docs and its own work-order file.
+
+---
+
+## Round record — the `a6870c5a` prompts-trio round (P4.D103 ∥ P4.D104 ∥ P4.55), UNIFIED on main 2026-08-22
+
+Unify branch `unify/a6870c5a-round` from `afd936f1`; the three lanes
+cherry-picked in dependency order (P4.D103 → P4.55 → P4.D104), version files
+recounted as base + total bumps (core 0.0.608 + 7 + 4 → 0.0.619, harness
+0.0.531 + 6 + 4 → 0.0.541 at the picks; the §3 fix commit then moved all
+three to their finals). The only cross-lane file overlaps were the version
+files and the two append-only docs — Ownership held. **The oracle baseline
+MOVES to `a6870c5a`** (v4 main HEAD, which had NOT moved during the round —
+verified at survey, at each lane's start, and again before the unified regen)
+**and the drift debt is CLEARED.**
+
+### What landed (see the three lane records above for the full detail)
+
+- **P4.D103** — the prompts trio's server half whole: the
+  `standing_instructions` module + the builder slot (cache version 3 → 4),
+  bug 88's second-person tool reinforcement, the identity-stack v2 wording,
+  the `compiledIdentityStacks` version-stamped envelope + the byte-copied
+  golden table (v5's computed hash EQUALS v4's registered
+  `1408705ab29bb3ba` — a free cross-implementation proof), the four call
+  sites threaded / excluded per-site, the Prospero whisper drop, and the
+  groups verbs' `instructions` + BOTH v4 validators.
+- **P4.D104** — the SPA client half whole: `qt-prompt-field-label` + the
+  hints table (proven byte-identical to v4's module twice over — the lane's
+  tsx JSON.stringify comparison AND the §3 reviewer's independent diff; the
+  table has TWELVE keys, not the eleven the order and lane record said), the
+  seven-surface migration sweep with the create/edit convergence and the
+  no-survivors guard, the Group Instructions editor + contract mirror, and
+  the gated round-trip beat.
+- **P4.55** — the `c8a3cf77` merge-verb silent-keep LEAD closed: A1/A2
+  validate-first (v5 was PERSISTING garbage), B1's fallible
+  `parse_settings_patch` (10 fields), E2's `updateProjectSchema` whole, the
+  D1–D3 missing-`else` trio measured against v4 then fixed, the
+  store_backed cleared-null verdict NOT DIVERGENT (measured on projects;
+  groups inherits by construction), and the embedding-profiles recipe
+  repair. B2 (data-retention present-null) stays a named next-round item by
+  ownership + the harness-rewire precondition (recorded in `phase-4.md`).
+
+### The §3 review — TEN findings, all resolved on the unify branch (`eb9265a7`)
+
+The two that would have shipped, named first:
+
+1. **`group_update` parsed before the existence check** (P4.D103): v4's
+   `handlePutDefault` is find-FIRST, so a missing group answers 404 even
+   for a garbage patch; v5 answered 400. The exact guard-order class P4.55
+   got right on projects, missed by its sibling on groups — the cross-lane
+   blind spot neither lane's arms covered. Fixed to v4's order
+   (`GroupUpdateOutcome`, mirroring projects), and the non-object body now
+   answers `Validation error` after the find (v4's `parse(5)` ZodError).
+   Pinned by the new `update_missing_group_invalid_body_404` arm — the
+   fresh oracle answers 404 `Group not found`, a value the pre-fix code
+   measurably did not produce (it answered 400).
+2. **The autonomous-rooms `title` max counted Unicode scalars** (P4.55):
+   `chars().count() <= 300` where Zod's `.max(300)` measures UTF-16 code
+   units — the lane's own `tri_state_string` helper in the SAME diff did it
+   right, and the `'x'.repeat(400)` arm is all-BMP so the corpus was blind.
+   A title of 151–300 astral characters passed v5 and fails v4 (probed on
+   v4's zod 4.4.3). Fixed; pinned by the new `update_invalid_title_astral`
+   arm (`'😀'.repeat(151)` = 302 units → 400 both sides).
+
+The rest:
+
+3. The settings-routes `connection_profiles` stale-oracle floor was not
+   raised for P4.55's three arms — the family is row-driven, so a stale
+   pre-P4.55 oracle would have passed with the three new comparands
+   silently absent (the vacuous-green class the file itself documents six
+   times over). Floor 19 → 22.
+4. The gated beat's clear-save leg used `waitForRequest` then navigated —
+   the twice-deflaked "triggered but never awaited" class (2026-08-01);
+   the navigation aborts the in-flight save and the reload assert flakes.
+   Moved to `waitForResponse` BEFORE the beat's first live run.
+5. The recorded-only `create_non_string_instructions_400` oracle row's
+   status is now asserted (a v4-side ZodError-arm drift can no longer be
+   absorbed invisibly by a regen).
+6. The identity-compiler family gained a sentinel-presence tripwire: the
+   envelope arms' power rests on the seeded sentinels surviving v4's
+   `repos.chats.create`; if a future v4 schema change strips them, all
+   eight arms collapse into the null-column shape on BOTH sides and stay
+   green. At least one oracle row must carry `<<seeded-stale-stack-for-`.
+7. The three profile `baseUrl` comments overclaimed "nothing written"
+   about v4: v4's failure is TERMINAL — earlier fields' side effects (the
+   `isDefault` sweep) land first, so `{"baseUrl": 5, "isDefault": true}`
+   clears other profiles' defaults in v4 before the 500 while v5 refuses
+   before any write. Re-recorded as the edge divergence it is at all three
+   sites (not pinned — the input is hand-crafted-API-only; the divergence
+   is in v5's favor).
+8. `details-tab.ts` had dropped v4's `htmlFor` on six of seven migrated
+   fields (dangling on both sides, but a DOM divergence from v4 AND from
+   the sibling create form) — restored.
+9. The hints spec's test name said "eleven keys" over a twelve-key table
+   (assertion was right; name corrected).
+10. A v4 line cite in `core-contract.ts` (`types.ts:11` → `:12`).
+
+Recorded, not changed: the memories float-literal nit (Zod's `.int()`
+accepts `200.0`; v5 stores/echoes the float bytes where v4 stores `200` —
+an input no test uses), and the DRY observation on the triplicated
+`apiKeyId`/`baseUrl` match blocks (consistent today; a shared helper is a
+future cleanup). The §3 reviewers also POSITIVELY verified: the hints
+table byte-identity, every projects-schema field against v4's zod
+(including `z.string().uuid()` vs `z.uuid()` probed on six arms), the
+memories validators constraint-by-constraint, the three profile fixes'
+sentence-level traces through v4's rethrow-mode `safeQuery`, and that
+every oracle case drives v4's REAL lib/route code.
+
+### The unification wires
+
+- `P4D103_SERVER_LANDED` flipped `true`; the group-instructions round-trip
+  beat's first live run happened in the unified Playwright suite.
+- The Shared contract diffed name-for-name across sides: the `instructions`
+  wire key on `GroupCreate` (Rust) / `GroupCreateRequest` +
+  `GroupUpdatePatch` + `GroupSummary` (TS), and the 10,000 cap spelled on
+  both sides. Clean.
+- P4.55's E1 hand-off CONFIRMED: P4.D103's validator port closed the
+  groups no-parse hole (and the §3 review then corrected its guard order).
+
+### The gate (all from the unify branch, `CARGO_INCREMENTAL` default)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, plain AND `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- **The 43-family regen+run sweep** through
+  `harness/tools/recipe_sweep.py --run-all` (v4 checkout verified ON main
+  AT `a6870c5a`, tree clean, immediately before — no pin needed for the
+  first time in five rounds): **43/43 ok, zero SKIP**
+  (`/tmp/unify-a6870c5a-sweep.json`) — the round's 17 directly-moved
+  families plus the 26-family prompt-carrying sweep, every oracle
+  regenerated FRESH. The two §3 arms confirmed riding the fresh NDJSONs
+  with v4's answers (404 `Group not found`; 400 `Validation error` with
+  the string-origin issue).
+- `cargo test --workspace` with the union env block (75 variables,
+  extracted mechanically from the 43 recipes' run stages via `--show`; no
+  variable collisions): **444 test binaries / 2,266 tests / 0 failed** (cargo exit 0; zero
+  `SKIP:` lines in the whole captured log; the round's differentials all
+  confirmed to have RUN by name, incl. the two new §3 arms and the
+  identity-stack golden). The count is exactly the union of the lanes'
+  deltas over the `4cb1035e` base (443/2,261 + D103's one binary and five
+  tests).
+- SPA: `npm test` **341 files / 5,054 tests / 0 failed**; `npm run build`
+  clean (re-run after every SPA edit); full Playwright
+  **236 passed / 0 failed / 0 skipped (6.1 m)** — the suite grew 235 → 236
+  with the newly-activated group-instructions round-trip beat, whose FIRST
+  live run (type → save → reload → holds; clear → save carries
+  `instructions: null` on the wire → reload empty) passed green.
+
+Versions: core 0.0.620, harness 0.0.542, SPA 0.5.544; host / web / cli /
+tauri unchanged.
+
+### Standing after the round
+
+- 💸 the dogfood queue gains: standing instructions on a REAL turn
+  (project + group prompts on the Friday copy — no oracle judges whether
+  the section lands well on a weak model), the group-instructions editor
+  walk, and the invalid-config 400s on live surfaces.
+- Named next-round items: B2 (data-retention present-null + the harness
+  edge-mapping rewire), the groups-side cleared-null pin (no defect
+  expected — the projects measurement came back faithful), the memories
+  float-literal nit, the shared-baseUrl-helper cleanup.
+- The generators-lane bank grew the four v4 files' person clauses + the
+  "never flip a field's form of address" rule; the `p4.9i2` bank grew the
+  trio's ten help files + the help-chat builder's two wording changes.
