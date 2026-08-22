@@ -2306,10 +2306,14 @@ impl CoreEngine {
             Request::GroupCreate {
                 name,
                 description,
+                instructions,
                 color,
                 icon,
             } => match self.ready_db() {
-                Ok(db) => super::groups::group_create(&db, name, description, color, icon).await,
+                Ok(db) => {
+                    super::groups::group_create(&db, name, description, instructions, color, icon)
+                        .await
+                }
                 Err(r) => r,
             },
             Request::GroupGet { group_id } => match self.ready_db() {

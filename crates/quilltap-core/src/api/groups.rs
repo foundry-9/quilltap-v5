@@ -130,6 +130,113 @@ fn overlay_to_db(e: OverlayError) -> DbError {
 }
 
 // ===========================================================================
+// v4's two group validators (`createGroupSchema` / `updateGroupSchema`)
+// ===========================================================================
+
+// P4.D103 (v4 `8f868109`) ported BOTH schemas whole. Before this, `group_create`
+// hand-checked only a trimmed non-empty name and `group_update` was a RAW
+// passthrough patch map with no validation at all (its doc comment claimed
+// `updateGroupSchema.parse`, which was stale). The drift commit lands on these
+// validators, so porting only the new `instructions` field would have been a
+// half-port.
+//
+// v4:
+//   createGroupSchema = z.object({
+//     name:         z.string().min(1, 'Name is required').max(100),
+//     description:  z.string().max(2000).nullable().optional(),
+//     instructions: z.string().max(10000).nullable().optional(),
+//     color:        z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/).nullable().optional(),
+//     icon:         z.string().max(50).nullable().optional(),
+//   })
+//   updateGroupSchema = the same five, with `name` `.min(1).max(100).optional()`
+//                       (optional but NOT nullable — an explicit null 400s).
+//
+// Three behaviors that are easy to lose:
+//  - `.min(1)` is on the RAW string. A name of `"   "` is LENGTH 3 and PASSES;
+//    v5's old `name.trim().is_empty()` check wrongly rejected it.
+//  - a ZodError surfaces through v4's middleware as the FLAT 400
+//    `{error: 'Validation error'}`; the `details` issue array is the standing
+//    project-wide deferral (the P4.6ay-unit-12 precedent, same as the wardrobe
+//    archetype routes). The top-level sentence is NOT `'Name is required'` —
+//    that string only ever appears inside `details`.
+//  - `z.object` is non-strict, so unknown keys are STRIPPED before the patch
+//    reaches `repos.groups.update`. v5's raw passthrough used to write them.
+//
+// Lengths are UTF-16 code units (Zod uses JS `.length`).
+
+/// The `error` sentence v4's middleware emits for any uncaught `ZodError`.
+const VALIDATION_ERROR: &str = "Validation error";
+
+const NAME_MAX: usize = 100;
+const DESCRIPTION_MAX: usize = 2000;
+const INSTRUCTIONS_MAX: usize = 10_000;
+const ICON_MAX: usize = 50;
+
+/// `z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/)` — `#rgb` or `#rrggbb`. The
+/// regex is unanchored-by-nothing (`^`/`$` present, no `m` flag), so it is a
+/// whole-string match; JS `\d`-free, ASCII-only classes, so a byte walk is exact.
+fn is_valid_hex_color(v: &str) -> bool {
+    let Some(rest) = v.strip_prefix('#') else {
+        return false;
+    };
+    if rest.len() != 3 && rest.len() != 6 {
+        return false;
+    }
+    rest.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// `z.string().max(N)` on a value already known to be a string.
+fn within(v: &str, max: usize) -> bool {
+    crate::jsstr::utf16_len(v) <= max
+}
+
+/// One `z.string()…nullable().optional()` field read off a raw patch map.
+/// `Ok(None)` = the key is absent (Zod omits it from the parse output);
+/// `Ok(Some(Value::Null))` = an explicit null (Zod keeps it);
+/// `Ok(Some(Value::String))` = a valid string; `Err(())` = a ZodError.
+fn parse_nullable_string(
+    patch: &Map<String, Value>,
+    key: &str,
+    check: impl Fn(&str) -> bool,
+) -> Result<Option<Value>, ()> {
+    match patch.get(key) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(Value::Null)),
+        Some(Value::String(s)) if check(s) => Ok(Some(Value::String(s.clone()))),
+        Some(_) => Err(()),
+    }
+}
+
+/// `updateGroupSchema.parse(body)` — validate, and return ONLY the recognized
+/// keys, in v4's schema-declaration order (unknown keys stripped by the
+/// non-strict `z.object`).
+fn parse_update_group(patch: &Map<String, Value>) -> Result<Map<String, Value>, ()> {
+    let mut out = Map::new();
+    // `name: z.string().min(1).max(100).optional()` — optional but NOT nullable.
+    match patch.get("name") {
+        None => {}
+        Some(Value::String(s)) if !s.is_empty() && within(s, NAME_MAX) => {
+            out.insert("name".to_string(), Value::String(s.clone()));
+        }
+        Some(_) => return Err(()),
+    }
+    for (key, check) in [
+        (
+            "description",
+            &(|v: &str| within(v, DESCRIPTION_MAX)) as &dyn Fn(&str) -> bool,
+        ),
+        ("instructions", &|v: &str| within(v, INSTRUCTIONS_MAX)),
+        ("color", &is_valid_hex_color),
+        ("icon", &|v: &str| within(v, ICON_MAX)),
+    ] {
+        if let Some(v) = parse_nullable_string(patch, key, check)? {
+            out.insert(key.to_string(), v);
+        }
+    }
+    Ok(out)
+}
+
+// ===========================================================================
 // Create (v4 POST /api/v1/groups)
 // ===========================================================================
 
@@ -140,16 +247,29 @@ pub async fn group_create(
     db: &Db,
     name: String,
     description: Option<String>,
+    instructions: Option<String>,
     color: Option<String>,
     icon: Option<String>,
 ) -> Response {
-    if name.trim().is_empty() {
-        return bad_request("Name is required");
+    // `createGroupSchema.parse(body)`. The typed verb has already done the
+    // non-strict `z.object`'s unknown-key strip and the "is it a string" checks;
+    // what remains is the length / regex half. `min(1)` is on the RAW name — a
+    // whitespace-only name is length 3 and PASSES, exactly as v4's does.
+    if name.is_empty() || !within(&name, NAME_MAX) {
+        return bad_request(VALIDATION_ERROR);
+    }
+    let bad = |v: &Option<String>, ok: &dyn Fn(&str) -> bool| matches!(v, Some(s) if !ok(s));
+    if bad(&description, &|v| within(v, DESCRIPTION_MAX))
+        || bad(&instructions, &|v| within(v, INSTRUCTIONS_MAX))
+        || bad(&color, &is_valid_hex_color)
+        || bad(&icon, &|v| within(v, ICON_MAX))
+    {
+        return bad_request(VALIDATION_ERROR);
     }
     let input = GroupCreateInput {
         name,
         description: or_null(description.as_deref()),
-        instructions: None,
+        instructions: or_null(instructions.as_deref()),
         state: json!({}),
         color: or_null(color.as_deref()),
         icon: or_null(icon.as_deref()),
@@ -236,12 +356,17 @@ pub fn group_members(db: &Db, group_id: &str) -> Response {
 // Update / delete (v4 group-crud.ts)
 // ===========================================================================
 
-/// v4 `handlePutDefault`: ownership → `updateGroupSchema.parse` (passthrough, no
-/// `|| null`) → `groups.update`. Body `{ group }`.
+/// v4 `handlePutDefault`: ownership → `updateGroupSchema.parse` (no `|| null`,
+/// so an explicit `""` is stored VERBATIM — v4's quirk, which its own client
+/// compensates for by sending `instructions || null`) → `groups.update`. Body
+/// `{ group }`.
 pub async fn group_update(db: &Db, group_id: &str, patch: Value) -> Response {
     let gid = group_id.to_string();
-    let Some(patch_map) = patch.as_object().cloned() else {
+    let Some(raw_patch) = patch.as_object() else {
         return bad_request("Expected a JSON object body");
+    };
+    let Ok(patch_map) = parse_update_group(raw_patch) else {
+        return bad_request(VALIDATION_ERROR);
     };
     let out = with_both_conns(db, move |main, mount| {
         let repo = GroupsRepository::new(main, mount);

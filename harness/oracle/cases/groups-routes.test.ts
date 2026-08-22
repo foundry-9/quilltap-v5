@@ -289,6 +289,160 @@ async function main(): Promise<void> {
         return { status, body, tables };
       },
     },
+    // ---- P4.D103 (v4 `8f868109`): the `instructions` field + BOTH validators.
+    {
+      // Create WITH instructions — the hydrated create response carries them.
+      name: 'create_with_instructions',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Zeta', description: 'z', instructions: 'Zeta rule: cite your sources.', color: '#abcdef', icon: 'gear' }),
+          ),
+        ),
+    },
+    {
+      // `instructions: ''` → `validatedData.instructions || null` on CREATE, so
+      // the empty string normalizes to null. (The UPDATE path has no `|| null`
+      // — see `update_instructions_empty_string_stored_verbatim` below.)
+      name: 'create_empty_instructions_normalizes_to_null',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Eta', description: 'e', instructions: '', color: '#abcdef', icon: 'gear' }),
+          ),
+        ),
+    },
+    {
+      // `.min(1)` is on the RAW string: a whitespace-only name is length 3 and
+      // PASSES. v5 used to reject it with a hand-rolled `trim().isEmpty()` check.
+      name: 'create_whitespace_name_passes',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: '   ', description: 'w', color: '#abcdef', icon: 'gear' }),
+          ),
+        ),
+    },
+    {
+      // An EMPTY name fails `.min(1)`. The middleware's sentence is the flat
+      // `Validation error` — `'Name is required'` only ever appears in `details`.
+      name: 'create_empty_name_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: '' }),
+          ),
+        ),
+    },
+    {
+      name: 'create_instructions_over_cap_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Theta', instructions: 'x'.repeat(10001) }),
+          ),
+        ),
+    },
+    {
+      name: 'create_instructions_at_cap_ok',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Iota', description: 'i', instructions: 'y'.repeat(10000), color: '#abcdef', icon: 'gear' }),
+          ),
+        ),
+    },
+    {
+      name: 'create_non_string_instructions_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Kappa', instructions: 42 }),
+          ),
+        ),
+    },
+    {
+      name: 'update_set_instructions',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { instructions: 'Gamma rule: no exclamation marks.' }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      name: 'update_clear_instructions_null',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { instructions: null }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      // MEASURED, not assumed: the PUT path has no `|| null` (unlike CREATE), so
+      // the empty string DOES reach the store — but `instructions` lives in a
+      // markdown FILE and the overlay's reader is
+      // `markdownToNullable(content) = content === '' ? null : content`
+      // (`lib/database/document-store-overlay.ts:98`), so the round trip answers
+      // `null` either way. The client's `instructions || null` compensation is
+      // therefore invisible on the READ path; it still decides what bytes land in
+      // the file. This row pins the observable.
+      name: 'update_instructions_empty_string_reads_back_null',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { instructions: '' }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      name: 'update_instructions_over_cap_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { instructions: 'z'.repeat(10001) }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      // `updateGroupSchema`'s `name` is `.optional()` but NOT `.nullable()`.
+      name: 'update_null_name_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { name: null }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      name: 'update_bad_color_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { color: 'rebeccapurple' }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      // The non-strict `z.object` STRIPS unknown keys before the patch reaches
+      // `repos.groups.update`, so `state` here must NOT be written. v5's PUT was
+      // a raw passthrough until P4.D103 and would have written it.
+      name: 'update_unknown_key_stripped',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { icon: 'anchor', state: { planted: true } }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
     {
       name: 'update',
       run: async () =>

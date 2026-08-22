@@ -79857,3 +79857,67 @@ exactly that row, `"Prospero opens his ledger … **Project instructions:**\n\nO
 instructions."` on the left against `""` on the right. `post_office_writers_tier3`
 regenerated too (21 rows, green); both NDJSONs grepped for the dropped bytes —
 zero occurrences.
+
+### Unit 7 — the groups verbs: `instructions` + BOTH validators, whole
+
+Per the round's Shared contract (binding on P4.D104 too): `groupCreate` gains
+an optional wire key `instructions` (`string | null`, absent allowed) and
+persists `instructions || null`; `groupUpdate`'s patch accepts it; `groupGet`
+already carried it (the overlay's managed-field hydration).
+
+**Both v4 schemas ported whole**, not just the new field — the drift commit
+lands ON the validators, so a partial port would leave a worse state than
+before. Two pre-existing v5 gaps close with it:
+
+1. `group_create` hand-checked `name.trim().is_empty()` and answered
+   `bad_request("Name is required")`. v4's `z.string().min(1, 'Name is
+   required')` runs on the RAW string, so `"   "` is length 3 and **passes**;
+   and its ZodError surfaces through the middleware as the FLAT
+   `{error: 'Validation error'}` — `'Name is required'` only ever appears inside
+   `details`. Both are fixed and pinned.
+2. `group_update` was a **raw passthrough patch map with no validation at all**
+   (its doc comment claimed `updateGroupSchema.parse`, which was stale), so it
+   wrote unknown keys that v4's non-strict `z.object` strips. This is the groups
+   half of the finding P4.55 owns on the projects side.
+
+The `details` issue array stays the standing project-wide deferral (the
+P4.6ay-unit-12 precedent, same as the wardrobe archetype routes) — the
+PASS/FAIL decision and the top-level sentence are what match.
+
+**A work-order premise REFUTED by measurement.** The order says "a PUT with
+`instructions: ''` writes `''` (the client compensates)". The empty string does
+reach the store — the PUT path genuinely has no `|| null`, unlike CREATE — but
+`instructions` lives in a markdown FILE and the overlay's reader is
+`markdownToNullable(content) = content === '' ? null : content`
+(`lib/database/document-store-overlay.ts:98`), so **the round trip answers
+`null` either way**. The client's `instructions || null` compensation is
+invisible on the read path; it only decides what bytes land in the file (and
+hence the store's dedup sha). The corpus case is named
+`update_instructions_empty_string_reads_back_null` and its comment says so.
+
+**Differential — `groups_routes_equivalence`, 14 new arms:**
+`create_with_instructions`, `create_empty_instructions_normalizes_to_null`,
+`create_whitespace_name_passes`, `create_empty_name_400`,
+`create_instructions_over_cap_400`, `create_instructions_at_cap_ok` (the
+boundary from both sides), `create_non_string_instructions_400`,
+`update_set_instructions`, `update_clear_instructions_null`,
+`update_instructions_empty_string_reads_back_null`,
+`update_instructions_over_cap_400`, `update_null_name_400` (v4's update `name`
+is `.optional()` but NOT `.nullable()`), `update_bad_color_400`, and
+`update_unknown_key_stripped` (a planted `state` key that must NOT be written).
+
+The non-string arm is asserted at the **deserializer**, not the handler: v5's
+typed verb refuses `instructions: 42` at the wire, which is where v5's
+equivalent of v4's ZodError lives. The row's comment says so, so nobody later
+"fixes" it into a handler check.
+
+**A pre-existing deferral avoided rather than tripped:** the first draft of the
+create arms passed `color: None`/`icon: None`, which lands on the
+`GroupProperties` bag's known null-vs-absent seam (v4 writes `color: null` into
+`properties.json`; v5's `skip_serializing_if` omits the key). That seam is a
+tracked deferral documented on the struct itself, and it is NOT this lane's; the
+new rows carry explicit `color`/`icon` so they stay clear of it.
+
+**Four mutations proven red-first:** the instructions cap relaxed by one, the
+unknown-key strip replaced by a passthrough, `.min(1)` run on the trimmed name,
+and `name` made nullable on update.

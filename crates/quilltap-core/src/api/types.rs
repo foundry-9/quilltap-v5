@@ -696,6 +696,10 @@ pub enum Request {
         name: String,
         #[serde(default)]
         description: Option<String>,
+        /// P4.D103 (v4 `8f868109`): standing instructions ("the group prompt"),
+        /// `z.string().max(10000).nullable().optional()`.
+        #[serde(default)]
+        instructions: Option<String>,
         #[serde(default)]
         color: Option<String>,
         #[serde(default)]

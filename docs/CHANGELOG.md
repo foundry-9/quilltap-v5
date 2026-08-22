@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(groups): `instructions` on the group verbs + both v4 validators, whole
+
+_Versions: core 0.0.615, harness 0.0.537._
+
+`groupCreate` gains an optional `instructions` (`string | null`) and persists
+`instructions || null`; `groupUpdate` accepts it too. Per the round's shared
+contract with P4.D104.
+
+Both v4 schemas are ported whole rather than just the new field, because the
+drift commit lands on the validators and a partial port would be worse than
+none. That closes two pre-existing gaps: `group_create` hand-checked a TRIMMED
+non-empty name where v4's `.min(1)` runs on the raw string (so `"   "` is a
+valid name in v4 and was rejected by v5), and answered `Name is required` where
+v4's middleware answers the flat `Validation error` — that sentence only ever
+appears inside the `details` array. And `group_update` was a RAW passthrough
+patch map with no validation at all (its doc comment claimed
+`updateGroupSchema.parse`, which was stale), so it wrote unknown keys v4's
+non-strict `z.object` strips. The `details` issue array remains the standing
+project-wide deferral.
+
+Fourteen new `groups_routes_equivalence` arms: create with/without, the
+`|| null` empty-string normalization, the whitespace name, the empty name 400,
+the cap boundary in both directions, a non-string field (refused at v5's typed
+wire, which is where v5's equivalent of the ZodError lives), update
+set/clear/empty-string, the update cap 400, the `name: null` 400 (`optional()`
+but not `nullable()`), a bad colour, and the unknown-key strip probe. Four
+mutations proven red-first.
+
+MEASURED, and it refutes the work order's premise: a PUT with `instructions:
+""` does reach the store, but `instructions` lives in a markdown file and the
+overlay reader is `content === '' ? null : content`, so the round trip answers
+`null` either way. The case is renamed to say what it measures.
+
 #### 2026-08-22 — port(prospero): drop the project-instructions whisper section
 
 _Versions: core 0.0.614, harness 0.0.536._

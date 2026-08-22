@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::groups;
-use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::api::types::{ErrorKind, Request, Response};
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
 use quilltap_core::db::groups::find_official_mount_point_id_raw;
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -258,6 +258,22 @@ fn groups_routes_match_oracle() {
             eprintln!("[{name}] OK.");
         }
     };
+    // P4.D103: the create/update arms mint ids + `updatedAt` on both sides, so
+    // they compare through `norm_blanked` like the pre-existing `create`/`update`
+    // rows do.
+    let check_blanked = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        let got = response_data(resp);
+        let want = &oracle[name]["body"];
+        if norm_blanked(&got) != norm_blanked(want) {
+            eprintln!(
+                "[{name}] MISMATCH:\n{}",
+                first_diff(&norm_blanked(&got), &norm_blanked(want))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK.");
+        }
+    };
     let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
         let want = &oracle[name]["tables"];
         if norm(got) != norm(want) {
@@ -363,6 +379,7 @@ fn groups_routes_match_oracle() {
             &db,
             "Epsilon".into(),
             Some("A new group".into()),
+            None,
             Some("#abcdef".into()),
             Some("gear".into()),
         ));
@@ -383,6 +400,172 @@ fn groups_routes_match_oracle() {
             .and_then(Value::as_str)
             .expect("created mount fk");
         check_tables("create", &dump_created_folders(&db, mp), &mut failed);
+    }
+    // ---- P4.D103 (v4 `8f868109`): `instructions` + BOTH ported validators ----
+    {
+        // Create WITH instructions.
+        let db = fresh_db(&spec, "create_instr");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "Zeta".into(),
+            Some("z".into()),
+            Some("Zeta rule: cite your sources.".into()),
+            Some("#abcdef".into()),
+            Some("gear".into()),
+        ));
+        check_blanked("create_with_instructions", &resp, &mut failed);
+    }
+    {
+        // `validatedData.instructions || null` on CREATE — `''` → null.
+        let db = fresh_db(&spec, "create_instr_empty");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "Eta".into(),
+            Some("e".into()),
+            Some(String::new()),
+            Some("#abcdef".into()),
+            Some("gear".into()),
+        ));
+        check_blanked(
+            "create_empty_instructions_normalizes_to_null",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        // `.min(1)` is on the RAW string: `"   "` is length 3 and PASSES.
+        let db = fresh_db(&spec, "create_ws_name");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "   ".into(),
+            Some("w".into()),
+            None,
+            Some("#abcdef".into()),
+            Some("gear".into()),
+        ));
+        check_blanked("create_whitespace_name_passes", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "create_empty_name");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            String::new(),
+            None,
+            None,
+            None,
+            None,
+        ));
+        check_err("create_empty_name_400", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "create_instr_over");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "Theta".into(),
+            None,
+            Some("x".repeat(10001)),
+            None,
+            None,
+        ));
+        check_err("create_instructions_over_cap_400", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "create_instr_at_cap");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "Iota".into(),
+            Some("i".into()),
+            Some("y".repeat(10000)),
+            Some("#abcdef".into()),
+            Some("gear".into()),
+        ));
+        check_blanked("create_instructions_at_cap_ok", &resp, &mut failed);
+    }
+    {
+        // A non-string `instructions` never reaches the handler on the typed
+        // wire — serde refuses the verb. The oracle's 400 is v4's ZodError arm;
+        // v5's equivalent is the deserialization failure at the boundary, so the
+        // arm is asserted at the DESERIALIZER rather than the handler.
+        let bad: Result<Request, _> = serde_json::from_value(json!({
+            "verb": "groupCreate",
+            "name": "Kappa",
+            "instructions": 42,
+        }));
+        if bad.is_ok() {
+            eprintln!(
+                "[create_non_string_instructions_400] MISMATCH: a non-string \
+                 `instructions` deserialized"
+            );
+            failed.push("create_non_string_instructions_400".into());
+        } else {
+            eprintln!("[create_non_string_instructions_400] OK (refused at the wire).");
+        }
+    }
+    {
+        let db = fresh_db(&spec, "update_set_instr");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "instructions": "Gamma rule: no exclamation marks." }),
+        ));
+        check_blanked("update_set_instructions", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "update_clear_instr");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "instructions": null }),
+        ));
+        check_blanked("update_clear_instructions_null", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "update_instr_empty");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "instructions": "" }),
+        ));
+        check_blanked(
+            "update_instructions_empty_string_reads_back_null",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "update_instr_over");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "instructions": "z".repeat(10001) }),
+        ));
+        check_err("update_instructions_over_cap_400", &resp, &mut failed);
+    }
+    {
+        // `updateGroupSchema`'s `name` is `.optional()` but NOT `.nullable()`.
+        let db = fresh_db(&spec, "update_null_name");
+        let resp = rt.block_on(groups::group_update(&db, GAMMA, json!({ "name": null })));
+        check_err("update_null_name_400", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "update_bad_color");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "color": "rebeccapurple" }),
+        ));
+        check_err("update_bad_color_400", &resp, &mut failed);
+    }
+    {
+        // The non-strict `z.object` STRIPS `state` before the patch reaches the
+        // repository. v5's PUT was a RAW passthrough until P4.D103 and wrote it.
+        let db = fresh_db(&spec, "update_unknown_key");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "icon": "anchor", "state": { "planted": true } }),
+        ));
+        check_blanked("update_unknown_key_stripped", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "update");
