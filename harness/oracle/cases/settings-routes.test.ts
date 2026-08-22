@@ -1340,6 +1340,46 @@ describe('settings-routes oracle', () => {
       body: { apiKeyId: null, modelClass: null, maxContext: null },
       after: 'connProfiles',
     },
+    // P4.55 (the merge-verb silent-keep sweep), the missing-`else` sub-family:
+    // v5 reads `apiKeyId` as `if null … else if as_str …` with NO else, so a
+    // present NON-string is silently dropped and the PUT answers 200. v4 has no
+    // Zod schema on this route either — it falls straight into
+    // `findApiKeyById(apiKeyId)`. These arms MEASURE what that does.
+    {
+      name: 'cp_update_api_key_id_number',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { apiKeyId: 5 },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_api_key_id_object',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { apiKeyId: {} },
+      after: 'connProfiles',
+    },
+    {
+      // The sibling read one line below: `baseUrl || null`. A TRUTHY non-string
+      // is stored verbatim by v4; v5's `as_str()` filter collapses it to null.
+      name: 'cp_update_base_url_number',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { baseUrl: 5 },
+      after: 'connProfiles',
+    },
     {
       // The courier gate sets apiKeyId AND baseUrl to null in one go.
       name: 'cp_update_courier_gate',

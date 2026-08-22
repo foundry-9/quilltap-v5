@@ -200,6 +200,33 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — fix(profiles): a non-string apiKeyId or baseUrl no longer vanishes on update
+
+_Versions: core 0.0.612, harness 0.0.535._
+
+All three profile-update handlers (connection, image, embedding) read `apiKeyId`
+as `if null … else if as_str …` with no else, so a present non-string was
+silently dropped and the PUT answered 200. Measured against v4: it falls into
+`findApiKeyById(<non-string>)`, which answers null for a number (no id is
+spelled that way) and null for an object or array (the driver's binder throws
+and `safeQuery` swallows it), so both cases are a 404 `API key not found`.
+
+The sibling `baseUrl` read is JS falsiness — `baseUrl || null` — not a string
+check. v5's `as_str()` filter collapsed every non-string to null, so a truthy
+non-string silently cleared the column. Measured against v4: it assigns the
+value verbatim, the row validation rejects it, and the route answers its fixed
+500 with nothing written. Both reads now match, with the falsy arms (`""`,
+`null`, `false`, `0`) still clearing as before.
+
+Nine new arms across the settings-routes, image-profiles-routes and
+embedding-profiles-routes families, each proven red against the old behavior.
+The embedding-profiles recipe is repaired on the way: its regen wrote one
+NDJSON path and its run line read another, and the .test.ts header carried a
+parenthetical that is a bash syntax error, so the family could not be
+regenerated through the sweep driver at all. The stale comment claiming the
+embedding-profile PUT echo drops cleared nulls is corrected — it echoes them
+explicitly, and has since the P4.9H2A review.
+
 #### 2026-08-22 — fix(projects): validate the update body through v4's updateProjectSchema
 
 _Versions: core 0.0.611, harness 0.0.534._

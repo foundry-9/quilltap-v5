@@ -1622,16 +1622,38 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
                     return bad_request("API key provider does not match profile provider");
                 }
                 patch.api_key_id = Some(Some(akid.to_string()));
+            } else {
+                // P4.55 (the missing-`else` sub-family): v5 used to DROP a
+                // present non-string `apiKeyId` silently and answer 200. v4 has
+                // no Zod schema on this route — it falls straight into
+                // `findApiKeyById(apiKeyId)`, which answers null for every
+                // non-string (a number can only match an id literally spelled
+                // that way, and every Quilltap id is a UUID; an object / array /
+                // boolean makes better-sqlite3's binder throw, which
+                // `safeQuery`'s `null` fallback swallows) → `notFound('API
+                // key')`. Measured on v4 for both `5` and `{}`.
+                return not_found("API key");
             }
         }
     }
 
-    // baseUrl (non-courier): `baseUrl || null`.
+    // baseUrl (non-courier): `baseUrl || null` — JS falsiness, not a string
+    // check. P4.55: v5's old `as_str()` filter collapsed EVERY non-string to
+    // null, so a truthy non-string silently cleared the column instead of
+    // reaching v4's failure.
     if !is_courier {
         if let Some(v) = bag.get("baseUrl") {
-            match v.as_str().filter(|s| !s.is_empty()) {
-                Some(b) => patch.base_url = Some(b.to_string()),
-                None => patch.clear_base_url = true,
+            match v {
+                Value::String(b) if !b.is_empty() => patch.base_url = Some(b.clone()),
+                // The falsy arms `||` turns into null: "", null, false, 0/-0.
+                Value::String(_) | Value::Null | Value::Bool(false) => patch.clear_base_url = true,
+                Value::Number(n) if n.as_f64() == Some(0.0) => patch.clear_base_url = true,
+                // Truthy non-string: v4 assigns it VERBATIM, and the
+                // repository's in-memory merge validation then rejects the row,
+                // so the route's outer catch answers this fixed 500 and nothing
+                // is written. Measured (`{"baseUrl": 5}` → 500, profile
+                // untouched).
+                _ => return internal("Failed to update connection profile"),
             }
         }
     }

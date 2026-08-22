@@ -80259,3 +80259,71 @@ no fresh timestamp on either side; the family blanks it regardless). The
 groups side inherits the same verdict by construction (one `store_backed.rs`,
 two `StoreEntity` impls); its pinning arm rides the next round, since P4.D103
 owns the groups families this round.
+
+### Unit 4 (Tier 2) — D1/D2/D3: the missing-`else` sub-family, measured then fixed
+
+**The shared shape.** All three profile-update handlers
+(`api/settings.rs` `connection_profile_update`, `api/image_profiles.rs`
+`image_profile_update`, `api/embedding_profiles.rs` `embedding_profile_update`)
+read `apiKeyId` as `if v.is_null() { clear } else if let Some(s) = v.as_str() {
+lookup }` — **with no else**. A present non-string fell through to nothing: the
+key was dropped and the PUT answered 200 with the profile unchanged.
+
+**MEASURED against v4 (the order asked; the survey only predicted).** v4 has no
+Zod schema on any of these three routes. `apiKeyId` falls straight into
+`repos.connections.findApiKeyById(apiKeyId)`
+(`connection-profiles.repository.ts:251`), whose `safeQuery` carries a `null`
+fallback. Both probes answer 404 `API key not found`:
+
+| body | v4 | why |
+|---|---|---|
+| `{"apiKeyId": 5}` | 404 | the lookup misses — every Quilltap id is a UUID, so no row is spelled `5` |
+| `{"apiKeyId": {}}` | 404 | better-sqlite3's binder throws on a non-primitive; `safeQuery`'s `null` fallback swallows it |
+
+v5 now answers `not_found("API key")` for any present non-null non-string. The
+one theoretical gap — a number that matches an id literally spelled that way —
+cannot occur while ids are UUIDs, and is recorded in each site's comment rather
+than papered over.
+
+**The `baseUrl` sibling, found by reading one line further.** v4 writes
+`updateData.baseUrl = baseUrl || null` — JS falsiness, not a string check. v5
+used `v.as_str().filter(|s| !s.is_empty())`, which collapses EVERY non-string to
+null, so a truthy non-string silently CLEARED the column. Measured:
+`{"baseUrl": 5}` answers **500** on all three routes with the route's own fixed
+sentence (`Failed to update connection profile` / `… image profile` / `…
+embedding profile`) and writes nothing — v4 assigns the number verbatim and the
+repository's in-memory merge validation rejects the row. All three v5 sites now
+match, with the falsy arms `""` / `null` / `false` / `0` still clearing (v5's
+old code got those right by accident, not by intent).
+
+**The differential.** Nine new arms:
+- settings-routes: `cp_update_api_key_id_number`, `cp_update_api_key_id_object`,
+  `cp_update_base_url_number` (each with the family's `after` refetch).
+- image-profiles-routes: `update_apikey_non_string`, `update_apikey_object`,
+  `update_baseurl_non_string` (the last with a `dumpProfiles` table check).
+- embedding-profiles-routes: the same three names, each with the family's
+  `dump_state` check, so "wrote nothing" is a comparand and not an inference.
+
+**Red-first.** D1 was genuinely red-first: the settings family was regenerated
+and RAN before the fix, failing on `cp_update_api_key_id_number` with the full
+200-profile echo against v4's `{"error":"API key not found"}`. D2 and D3 were
+mutation-proven after the fact by restoring the old reads — three arms red in
+each family.
+
+**Recipe repair (`embedding_profiles_routes_equivalence`).** The family could
+not be regenerated through the sweep driver at all, for two independent reasons
+found by running it: (1) the `.rs` header's regen line was the ellipsis form, so
+the driver fell back to the `.test.ts` header, which carries
+`cd ~/source/quilltap-server   (or a pinned worktree)` — a bare parenthetical
+that is a bash syntax error (`syntax error near unexpected token '('`); and
+(2) the regen writes `/tmp/oracle-embedding-profiles-routes.ndjson` while the
+run line read `/tmp/oracle-ep-routes.ndjson`, so even with the syntax fixed the
+run would have read a stale or absent file. The `.rs` header now spells the
+regen out self-contained on ONE path and the parenthetical is gone;
+`--show` and `--run` both come out clean.
+
+**The stale comment (`embedding_profiles.rs`).** The echo comment read "enrich
+the in-memory merged (nulls dropped when cleared)" — false since the P4.9H2A §3
+review made the cleared keys echo as explicit `null` in schema position. The
+comment now says what the code does and names the two arms that pin it
+(`update_clear_apikey`, `update_clear_truncate_dims_null`).

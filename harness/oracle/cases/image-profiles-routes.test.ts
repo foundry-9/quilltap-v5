@@ -461,6 +461,39 @@ async function main(): Promise<void> {
           await (await idRoute()).PUT(mockRequest(`${B}/${IP_1}`, { baseUrl: '' }), params(IP_1)),
         ),
     },
+    // P4.55 (the merge-verb silent-keep sweep), the missing-`else` sub-family:
+    // v5 read `apiKeyId` as `if null … else if as_str …` with NO else, so a
+    // present non-string was silently dropped and the PUT answered 200. v4 has
+    // no Zod schema here either — it falls into `findApiKeyById(apiKeyId)`,
+    // which answers null for any non-string. These arms MEASURE that.
+    {
+      name: 'update_apikey_non_string',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(mockRequest(`${B}/${IP_1}`, { apiKeyId: 5 }), params(IP_1)),
+        ),
+    },
+    {
+      name: 'update_apikey_object',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(mockRequest(`${B}/${IP_1}`, { apiKeyId: {} }), params(IP_1)),
+        ),
+    },
+    {
+      // The sibling read: `baseUrl || null`. A TRUTHY non-string is assigned
+      // verbatim by v4; v5's `as_str()` filter collapsed it to null, silently
+      // CLEARING the column. The table dump proves what (if anything) landed.
+      name: 'update_baseurl_non_string',
+      run: async () => {
+        const r = await (await idRoute()).PUT(
+          mockRequest(`${B}/${IP_1}`, { baseUrl: 5 }),
+          params(IP_1),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProfiles() };
+      },
+    },
     {
       name: 'update_isdefault',
       run: async () => {

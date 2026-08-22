@@ -5,10 +5,28 @@
 //! cases diff the post-op `background_jobs` types + `embedding_status` counts — the
 //! matrix claim is STATE, not prose.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
-//!   … QT_ORACLE_OUT=/tmp/oracle-ep-routes.ndjson npx jest -- embedding-profiles-routes
+//! P4.55 repaired this recipe: the regen wrote
+//! `/tmp/oracle-embedding-profiles-routes.ndjson` while the run line read
+//! `/tmp/oracle-ep-routes.ndjson`, and the .test.ts header carried a bare
+//! `(or a pinned worktree)` parenthetical that is a bash syntax error — so
+//! `recipe_sweep.py --run embedding_profiles_routes_equivalence` could never
+//! complete. One path now, and the regen is spelled out here rather than
+//! delegated.
+//!
+//! Generate the oracle (Node 24, from the v4 checkout; the case is staged in a
+//! /tmp mirror because v4's jest ignores `.claude/` paths):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-ep-routes-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+//!   cp "$V5W/harness/oracle/cases/embedding-profiles-routes.test.ts" "$TMPO/cases/"
+//!   cd ~/source/quilltap-server
+//!   QT_EP_MGMT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-main.db \
+//!   QT_EP_MGMT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-mount.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-embedding-profiles-routes.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- embedding-profiles-routes
 //! Run:
-//!   QT_ORACLE_EP_ROUTES=/tmp/oracle-ep-routes.ndjson \
+//!   QT_ORACLE_EP_ROUTES=/tmp/oracle-embedding-profiles-routes.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_profiles_routes_equivalence
 
 use std::collections::HashMap;
@@ -398,6 +416,23 @@ fn embedding_profiles_routes_match_oracle() {
         json!({ "truncateToDimensions": null, "dimensions": null }),
         &mut failed,
     );
+    // P4.55 (the missing-`else` sub-family): a present non-string `apiKeyId`
+    // used to be dropped silently for a 200; v4 falls into
+    // `findApiKeyById(<non-string>)` and answers 404. The `baseUrl` sibling
+    // (`baseUrl || null`) assigned a TRUTHY non-string verbatim in v4, whose row
+    // validation then rejects it → the route's fixed 500 with nothing written;
+    // v5 used to collapse it to null and silently CLEAR the column. Each arm
+    // dumps the state, so "wrote nothing" is a comparand too.
+    for (name, body) in [
+        ("update_apikey_non_string", json!({ "apiKeyId": 5 })),
+        ("update_apikey_object", json!({ "apiKeyId": {} })),
+        ("update_baseurl_non_string", json!({ "baseUrl": 5 })),
+    ] {
+        let db = fresh_db(&spec, name);
+        let r = rt.block_on(ep::embedding_profile_update(&db, &uid, EP_DEFAULT, body));
+        err(name, &r, &mut failed);
+        check_tables(name, &dump_state(&db), &mut failed);
+    }
     err(
         "update_dup_409",
         &rt.block_on(ep::embedding_profile_update(

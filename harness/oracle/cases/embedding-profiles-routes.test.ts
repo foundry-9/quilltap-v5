@@ -16,7 +16,7 @@
  *   TMPO=/tmp/qt-ep-routes-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
  *   cp $V5W/harness/oracle/cases/embedding-profiles-routes.test.ts "$TMPO/cases/"
- *   cd ~/source/quilltap-server   (or a pinned worktree)
+ *   cd ~/source/quilltap-server
  *   QT_EP_MGMT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-main.db \
  *   QT_EP_MGMT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-embedding-profiles-routes.ndjson \
@@ -304,6 +304,18 @@ async function main(): Promise<void> {
     // present-as-null in the PUT echo (the §3 unify review's blind spot — v5
     // dropped the keys). EP_TRUNC is non-default, so no matrix branch fires.
     { name: 'update_clear_truncate_dims_null', run: () => putProfile(EP_TRUNC, { truncateToDimensions: null, dimensions: null }) },
+    // P4.55 (the merge-verb silent-keep sweep), the missing-`else` sub-family:
+    // v5 read `apiKeyId` as `if null … else if as_str …` with NO else, so a
+    // present non-string was silently dropped and the PUT answered 200. v4 has
+    // no Zod schema here either — it falls into `findApiKeyById(apiKeyId)`,
+    // which answers null for any non-string. These arms MEASURE that; the
+    // `tables` dump proves nothing landed either way.
+    { name: 'update_apikey_non_string', run: () => putProfile(EP_DEFAULT, { apiKeyId: 5 }) },
+    { name: 'update_apikey_object', run: () => putProfile(EP_DEFAULT, { apiKeyId: {} }) },
+    // The sibling read: `baseUrl || null`. A TRUTHY non-string is assigned
+    // verbatim by v4; v5's `as_str()` filter collapsed it to null, silently
+    // CLEARING the column.
+    { name: 'update_baseurl_non_string', run: () => putProfile(EP_DEFAULT, { baseUrl: 5 }) },
     {
       name: 'update_dup_409',
       run: async () => respond(await (await idRoute()).PUT(mockRequest(`${B}/${EP_TRUNC}`, { name: 'OpenAI Default' }), params(EP_TRUNC))),

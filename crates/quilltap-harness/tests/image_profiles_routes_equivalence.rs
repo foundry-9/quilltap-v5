@@ -610,6 +610,52 @@ fn image_profiles_routes_match_oracle() {
         UPDATED,
         &mut failed,
     );
+    // P4.55 (the missing-`else` sub-family): a present non-string `apiKeyId`
+    // used to be dropped silently for a 200; v4 falls into
+    // `findApiKeyById(<non-string>)` and answers 404. Measured on v4 for both
+    // `5` and `{}`.
+    err(
+        "update_apikey_non_string",
+        &rt.block_on(ip::image_profile_update(
+            &fresh_db(&spec, "uans"),
+            &uid,
+            IP_1,
+            json!({ "apiKeyId": 5 }),
+        )),
+        &mut failed,
+    );
+    err(
+        "update_apikey_object",
+        &rt.block_on(ip::image_profile_update(
+            &fresh_db(&spec, "uao"),
+            &uid,
+            IP_1,
+            json!({ "apiKeyId": {} }),
+        )),
+        &mut failed,
+    );
+    {
+        // The `baseUrl || null` sibling: a TRUTHY non-string is assigned
+        // verbatim by v4 and the row validation then rejects it → the route's
+        // fixed 500, nothing written. v5 used to collapse it to null and
+        // silently CLEAR the column.
+        let db = fresh_db(&spec, "ubns");
+        err(
+            "update_baseurl_non_string",
+            &rt.block_on(ip::image_profile_update(
+                &db,
+                &uid,
+                IP_1,
+                json!({ "baseUrl": 5 }),
+            )),
+            &mut failed,
+        );
+        check_tables(
+            "update_baseurl_non_string",
+            &dump_profiles(&db),
+            &mut failed,
+        );
+    }
     {
         let db = fresh_db(&spec, "uid");
         ok(
