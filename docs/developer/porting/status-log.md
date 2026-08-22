@@ -80601,3 +80601,25 @@ future lane ports them inherits the copy for free.
 
 Also per v4: the group CREATE dialog gains nothing. v4 did not touch its
 own, so `group-create-dialog.ts` stays name + description.
+
+### Unit 4 — the label host is a block (caught in lane review, not by a gate)
+
+`qt-prompt-field-label` shipped with the default Angular custom-element host
+display, `inline`. The component it ports is React and has NO host element:
+v4's markup puts the `div.mb-2` straight into the parent's flow. In five of
+the six migrated surfaces that difference is invisible (the host is the only
+child of a wrapper `div`), but in the appearance tab the header is a DIRECT
+child of a `space-y-4` stack — and `space-y-*` is `> * + *  { margin-top }`,
+which an inline box ignores. The header would have lost its gap silently, in
+a surface no spec measures for spacing. Same class as dogfood finding #97's
+`qt-tab-view` ([[angular-custom-element-host-is-inline]]).
+
+`host: { class: 'block' }` (the `ui/progress-bar.ts` idiom) fixes every call
+site at once. **`block`, not `contents`,** deliberately: `display: contents`
+is the closer analogue of a zero-host React render, but it makes the host
+generate no box, so the very `space-y-*` margin this is about lands on a
+boxless element and vanishes — the fix would have been indistinguishable
+from the bug. Pinned by a spec case and mutation-proven (removing the host
+line reddens it).
+
+Nothing else moved: `npm test` 341 files / **5,054**, `npm run build` clean.

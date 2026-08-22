@@ -310,6 +310,19 @@ root-level `invalid_type` and takes the same `Validation error` path. Six new
 arms in the memories-config differential (two invalid + one writes-nothing
 composite comparing the stored bag per verb), all eight comparands proven red
 against the old lenient behavior.
+#### 2026-08-22 — fix(prompts): the shared prompt-field label host is a block
+
+_Versions: SPA 0.5.543._
+
+An Angular custom-element host is `display: inline` by default, and the React
+component this ports has no host element at all. In the appearance tab the
+header is a DIRECT child of a `space-y-4` stack, so an inline host silently
+loses its gap — `margin-top` does not apply to an inline box. `host: { class:
+'block' }` fixes it everywhere at once; `display: contents` would read like
+v4's zero-host render but makes `space-y-*`'s `> * + *` margin land on a
+boxless element and vanish. Same class of defect as dogfood finding #97's
+`qt-tab-view`. Spec-pinned and mutation-proven.
+
 #### 2026-08-22 — feat(groups): the Group Instructions editor in the group detail view
 
 _Versions: SPA 0.5.542._

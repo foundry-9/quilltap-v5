@@ -177,6 +177,16 @@ describe('PromptFieldLabel', () => {
     expect(rendered).toEqual(['Identity (Optional)', 'Content *']);
   });
 
+  it('is a BLOCK host, so it takes part in a `space-y-*` stack', async () => {
+    const fixture = await render(Host);
+    fixture.componentInstance.hint.set(PROMPT_FIELD_HINTS.physicalDescription);
+    fixture.detectChanges();
+    const host = fixture.nativeElement.querySelector('qt-prompt-field-label') as HTMLElement;
+    // An Angular custom element is `display: inline` unless told otherwise, and
+    // the appearance tab drops this header straight into a `space-y-4` stack.
+    expect(host.classList.contains('block')).toBe(true);
+  });
+
   it('projects actions into the label row (v4 `actions`)', async () => {
     const fixture = await render(ActionsHost);
     const row = fixture.nativeElement.querySelector('div.flex') as HTMLElement;

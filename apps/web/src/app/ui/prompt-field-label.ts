@@ -15,7 +15,7 @@ import type { PromptFieldHint } from './prompt-field-hints';
  * (commit `a6870c5a`).
  *
  * It renders the header ONLY — it deliberately does not wrap the editor, so it
- * drops above any existing input ({@link MarkdownField}, `<textarea>`,
+ * drops above any existing input (a `qt-markdown-field`, a `<textarea>`, an
  * `<input>`) without touching its state wiring. Hint copy comes from
  * `./prompt-field-hints` (`PROMPT_FIELD_HINTS`) — pass a `hint` to use it, or
  * override individual pieces via `label`/`helper`/`example`.
@@ -34,6 +34,15 @@ import type { PromptFieldHint } from './prompt-field-hints';
 @Component({
   selector: 'qt-prompt-field-label',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // An Angular custom-element host is `display: inline` by default, and a React
+  // component has no host element at all — so without this the appearance tab,
+  // where the header is a DIRECT child of a `space-y-4` stack, would silently
+  // drop its gap (margin-top does not apply to an inline box). Same class of
+  // bug as the `qt-tab-view` one dogfood finding #97 caught. `block`, not
+  // `contents`: `contents` makes the host generate no box at all, which reads
+  // like v4's zero-host React render but ALSO makes `space-y-*`'s
+  // `> * + *` margin land on a boxless element and vanish.
+  host: { class: 'block' },
   template: `
     <div class="mb-2">
       <div class="flex items-center justify-between">
