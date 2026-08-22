@@ -35,7 +35,7 @@
 
 mod rewrite;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -248,6 +248,86 @@ pub struct Pricing {
     pub output: f64,
 }
 
+/// How the host can tell whether a connection profile on this provider will
+/// run a reasoning ("thinking") turn (v4 `ThinkingTurnRule`,
+/// `@quilltap/plugin-types` 2.5.8, `97d2fcb5`).
+///
+/// Thinking changes what a request may look like. Two providers are already on
+/// record refusing an assistant `[Name]` prefill *only* while thinking: Ollama
+/// never opens the reasoning block behind a prefilled turn, and DeepSeek 400s
+/// on continuing a thinking turn whose `reasoning_content` it never saw. The
+/// host needs a per-profile answer to seed the right multi-character turn
+/// anchor, and only the plugin knows which option key it reads.
+///
+/// Deliberately declarative rather than a predicate function: the same answer
+/// is needed in the connection-profile editor, which runs in the browser and
+/// cannot call into a server-side plugin. A rule serialises; a closure does
+/// not.
+///
+/// The rule answers only the *explicit* half — "has this profile switched
+/// thinking on or off?". When the profile says nothing, the host falls back to
+/// the selected model's `thinksByDefault` flag. The value lists are carried as
+/// opaque JSON scalars (v4's type is `(string | number | boolean)[]`) so the
+/// wire re-serializes them byte-for-byte; the evaluator in
+/// [`crate::services::thinking_turn`] compares them with JS `===` semantics.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ThinkingTurnRule {
+    /// The `parameters` key on the connection profile that switches thinking
+    /// on or off. Matches a field key from the provider's options schema.
+    #[serde(rename = "optionKey")]
+    pub option_key: String,
+    /// Values of that key meaning thinking is ON.
+    #[serde(
+        default,
+        rename = "enabledValues",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enabled_values: Option<Vec<serde_json::Value>>,
+    /// Values of that key meaning thinking is OFF.
+    #[serde(
+        default,
+        rename = "disabledValues",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub disabled_values: Option<Vec<serde_json::Value>>,
+}
+
+/// The two model facts the thinking-turn question cares about, as the wire
+/// carries them (v4 `ThinkingModelFacts` — the `ModelInfo` subset that
+/// `evaluateThinkingTurn` and the models-fetch echo read).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+pub struct ThinkingModelFacts {
+    /// Whether this model is capable of a reasoning ("thinking") turn at all.
+    /// Distinct from `thinksByDefault`: a model may be capable of thinking yet
+    /// only do so when the profile asks for it.
+    #[serde(
+        default,
+        rename = "supportsThinking",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub supports_thinking: Option<bool>,
+    /// Whether this model runs a thinking turn **without being asked** — i.e.
+    /// with no thinking option set on the connection profile. The host uses
+    /// this as the fallback answer when the profile sets no thinking option of
+    /// its own.
+    #[serde(
+        default,
+        rename = "thinksByDefault",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thinks_by_default: Option<bool>,
+}
+
+/// One model-catalogue row's thinking facts (the `models` manifest field —
+/// v4's `getModelInfo()` rows narrowed to what the wire and the evaluator
+/// read).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ModelThinkingEntry {
+    pub id: String,
+    #[serde(flatten)]
+    pub facts: ThinkingModelFacts,
+}
+
 /// A single provider manifest — the declarative data layer. Field order mirrors
 /// the generator's emission order (documentation only; serde deserialization is
 /// order-independent). Deserialization IS the validation: a missing required
@@ -296,6 +376,14 @@ pub struct Manifest {
     /// cannot. P4.D84 narrows its own client-side type from the contract text.
     #[serde(default, rename = "optionsSchema")]
     pub options_schema: Option<serde_json::Value>,
+    /// The plugin's declared thinking-turn rule (v4 `plugin.thinkingTurnRule`,
+    /// bug 85) — which `parameters` key switches reasoning on or off, and
+    /// which values mean which. `None` where the plugin declares none (every
+    /// built-in but deepseek and ollama at `12fe3e6f`); the providers listing
+    /// serves `?? null`. Positioned after `optionsSchema` to mirror both the
+    /// generator's emission order and v4's wire.
+    #[serde(default, rename = "thinkingTurnRule")]
+    pub thinking_turn_rule: Option<ThinkingTurnRule>,
     #[serde(rename = "messageFormat")]
     pub message_format: MessageFormat,
     /// `null` when the provider declares no cheap-model config.
@@ -309,6 +397,16 @@ pub struct Manifest {
     /// The provider's declared model ids (`getModelInfo().map(m => m.id)`).
     #[serde(default, rename = "fallbackModels")]
     pub fallback_models: Vec<String>,
+    /// The thinking facts from the plugin's model catalogue (v4 bug 85 —
+    /// `getModelInfo()` rows carrying `supportsThinking` / `thinksByDefault`).
+    /// The generator emits only fact-bearing entries and omits the key when
+    /// none exist (deepseek's two V4 models are the only rows at `12fe3e6f`):
+    /// a fact-less entry is observably identical to no entry on every consumer
+    /// — the evaluator tests `thinksByDefault == Some(true)` and the
+    /// models-fetch echo drops absent keys exactly as v4's
+    /// `staticInfo?.…` spread does.
+    #[serde(default)]
+    pub models: Vec<ModelThinkingEntry>,
     /// The provider's declared image-generation model ids — v4's
     /// `getImageGenerationModels().map(m => m.id)` (else the image provider's
     /// `supportedModels`). Backs the `imageProfileList` `list-providers`
@@ -509,6 +607,25 @@ impl Registry {
     pub fn model_pricing(&self, provider_name: &str, model_id: &str) -> Option<Pricing> {
         self.get_provider(provider_name)
             .and_then(|p| p.model_pricing(model_id))
+    }
+
+    /// The provider's declared thinking-turn rule (v4 `plugin.thinkingTurnRule`,
+    /// bug 85), or `None` for an unknown provider or one declaring no rule.
+    pub fn thinking_turn_rule(&self, name: &str) -> Option<&ThinkingTurnRule> {
+        self.get_provider(name)
+            .and_then(|p| p.thinking_turn_rule.as_ref())
+    }
+
+    /// The thinking facts for a model, by EXACT id match against the provider's
+    /// catalogue (v4 `plugin.getModelInfo?.().find(m => m.id === modelName)`,
+    /// narrowed to the two facts). `None` for an unknown provider or an
+    /// uncatalogued id — which v4 also answers for a catalogued model carrying
+    /// neither fact, since the manifest omits fact-less entries and both
+    /// shapes evaluate identically.
+    pub fn model_thinking_facts(&self, name: &str, model_id: &str) -> Option<ThinkingModelFacts> {
+        self.get_provider(name)
+            .and_then(|p| p.models.iter().find(|m| m.id == model_id))
+            .map(|m| m.facts)
     }
 }
 

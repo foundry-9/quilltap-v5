@@ -77670,3 +77670,72 @@ retry (the same shape as the 2026-08-19 walk's open question, now with a
 sentence attached), and `POST /api/v1/files` classifying a PNG as
 `category: "DOCUMENT"` (it behaved correctly as an image attachment afterwards;
 whether v4 does the same is unverified).
+
+## P4.D97 — thinking-turn prefill scoping + the DeepSeek strip, server half (v4 bugs 85+86, `12fe3e6f`) — lane records
+
+### Unit 1 — the thinking-turn evaluator (v4 `97d2fcb5`, `lib/llm/thinking-turn.ts`)
+
+**Lane start drift check (2026-08-21):** `git log 12fe3e6f..main` empty; `bugfix`
+HEAD `3a76b17d` unchanged; the v4 checkout on `main`, tree clean. Pin worktree
+`/tmp/qt-v4-pin-p4d97-12fe3e6f` created with all three symlink classes; every
+regen in this lane runs from it.
+
+- **Ported:** `crates/quilltap-core/src/services/thinking_turn.rs` —
+  `evaluate_thinking_turn(rule, parameters, model)`, transcribing v4's
+  `evaluateThinkingTurn` with its why-comments. `is_unset` = absent / null /
+  `''` (the options-schema "(model default)" spelling); rule-keyed explicit
+  choice wins with `disabledValues` checked BEFORE `enabledValues`; else
+  `model.thinksByDefault === true`; else false. Value matching is a
+  `js_strict_eq` helper (JS `===` over the scalar domain: numbers compare as
+  f64 — `1 === 1.0` — never across types; a naive `serde_json::Value` equality
+  would split integer/float representations).
+- **Types:** `ThinkingTurnRule` + `ThinkingModelFacts` land in
+  `provider_manifest/mod.rs` (v4 keeps them in `@quilltap/plugin-types` 2.5.8;
+  the manifest substrate is v5's analog — unit 2 wires them into `Manifest`).
+  Value lists carried as opaque `Vec<serde_json::Value>` so the providers wire
+  re-serializes byte-for-byte; `Serialize` skips absent optionals exactly as
+  v4's `undefined` drops keys.
+- **Differential:** NEW tier-1 family `thinking_turn_equivalence`
+  (`QT_ORACLE_THINKING_TURN`; oracle case
+  `harness/oracle/cases/thinking-turn.ts` importing v4's REAL
+  `evaluateThinkingTurn`). Corpus 1,134 rows = 9 rules × 21 parameter shapes ×
+  6 model-facts shapes, full-product shape-asserted (no hand counts).
+  **Mutation-proven:** (A) enabled-before-disabled flip → red at
+  `both-lists/both/absent`; (B) `''`-counts-as-set → survived the first corpus
+  (a set-but-unmatched value falls through to the habit identically), so the
+  corpus gained the `empty-in-disabled` rule — `''` planted INSIDE a rule's
+  disabled list is the only discriminating shape — and the mutant now reds at
+  `empty-in-disabled/empty-string/thinks`. Restored green.
+- **Regen recipe:** from `/tmp/qt-v4-pin-p4d97-12fe3e6f`,
+  `~/.nvm/versions/node/v24.13.1/bin/npx tsx <worktree>/harness/oracle/cases/thinking-turn.ts > /tmp/oracle-thinking-turn.ndjson`.
+- Versions: core 0.0.595, harness 0.0.518.
+
+### Unit 2 — the manifest substrate + generator + registry join (committed with unit 1)
+
+- **Manifest fields (additive optionals; `SUPPORTED_SCHEMA_VERSION` stays 1
+  because a manifest without them parses identically and one with them is
+  ignored-at-worst by an older reader — nothing structural moved):**
+  `thinkingTurnRule` (typed `Option<ThinkingTurnRule>`, positioned after
+  `optionsSchema` mirroring both the generator emission and v4's providers
+  wire) and `models: Vec<ModelThinkingEntry>` (`{id, supportsThinking?,
+  thinksByDefault?}`, after `fallbackModels`).
+- **The generator** (`gen-provider-manifests.mjs`) learned both fields —
+  emitted ONLY where the plugin declares them (the `acceptsApiKey` precedent),
+  and model entries filtered to fact-bearing rows: a fact-less entry
+  serializes identically to no entry on every consumer (the evaluator tests
+  `thinksByDefault === true`; the models-fetch echo drops absent keys), so the
+  eight fact-less manifests stay byte-identical. All nine regenerated from the
+  pin worktree; byte-diff review confirmed movement in exactly deepseek
+  (helpText rewrite from v4's `getProviderOptionsSchema` change + the rule +
+  the two V4 model entries) and ollama (the rule only) — the other seven
+  byte-identical, as the order predicted.
+- **Registry accessors:** `thinking_turn_rule(name)`,
+  `model_thinking_facts(name, model_id)` (exact-id; `None` for uncatalogued —
+  which v4 also answers for a catalogued fact-less model, both shapes
+  evaluating identically). **The join** `profile_runs_thinking_turn(registry,
+  provider, model_name, parameters)` lives in `services::thinking_turn` as a
+  free function over `&Registry` (keeping `provider_manifest` free of service
+  deps); v4's `!providerName` / falsy-modelName guards are JS falsiness, so
+  `Some("")` rides the `None` branch — unit-pinned along with the
+  default-state-DeepSeek-V4-thinks / explicit-disabled / uncatalogued /
+  Ollama-opt-in matrix over the real built-in registry.

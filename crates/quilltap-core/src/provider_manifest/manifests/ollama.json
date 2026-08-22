@@ -165,6 +165,15 @@
       }
     ]
   },
+  "thinkingTurnRule": {
+    "optionKey": "enable_thinking",
+    "enabledValues": [
+      true
+    ],
+    "disabledValues": [
+      false
+    ]
+  },
   "configRequirements": {
     "requiresApiKey": false,
     "requiresBaseUrl": true,

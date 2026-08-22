@@ -363,6 +363,13 @@ function buildManifest(provider) {
       toolUse: !!plugin.capabilities.toolUse,
     },
     optionsSchema: resolveOptionsSchema(plugin, provider.dir),
+    // v4 bug 85: the plugin's declared thinking-turn rule (which `parameters`
+    // key switches reasoning on or off). Positioned after `optionsSchema` to
+    // mirror v4's `/api/v1/providers` emission order. Emitted only where the
+    // plugin declares one (deepseek + ollama at `12fe3e6f`), so the other
+    // seven manifests stay byte-identical; the providers listing serves
+    // `?? null` from the Rust `Option`.
+    ...(plugin.thinkingTurnRule !== undefined ? { thinkingTurnRule: plugin.thinkingTurnRule } : {}),
     configRequirements: {
       requiresApiKey: !!cfg.requiresApiKey,
       // v4 bug 81: `acceptsApiKey` is OPTIONAL — omitted means "the same answer
@@ -401,6 +408,23 @@ function buildManifest(provider) {
     defaultContextWindow: plugin.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
     imageGenerationModels: resolveImageGenerationModels(plugin, provider.dir),
     fallbackModels: models.map((m) => m.id),
+    ...(() => {
+      // v4 bug 85: the thinking facts from the plugin's model catalogue
+      // (`getModelInfo()` → `supportsThinking` / `thinksByDefault`). Emitted
+      // only for models carrying at least one fact, and the key omitted when
+      // none do — a fact-less entry serializes identically to no entry on
+      // every consumer (the evaluator tests `thinksByDefault === true`; the
+      // models-fetch echo spreads `staticInfo?.…`, and undefined drops the
+      // key), so the eight fact-less manifests stay byte-identical.
+      const thinkingModels = models
+        .filter((m) => m.supportsThinking !== undefined || m.thinksByDefault !== undefined)
+        .map((m) => ({
+          id: m.id,
+          ...(m.supportsThinking !== undefined ? { supportsThinking: m.supportsThinking } : {}),
+          ...(m.thinksByDefault !== undefined ? { thinksByDefault: m.thinksByDefault } : {}),
+        }));
+      return thinkingModels.length > 0 ? { models: thinkingModels } : {};
+    })(),
     pricing,
   };
 }

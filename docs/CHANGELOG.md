@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(llm): port the thinking-turn evaluator + manifest substrate (v4 bug 85, P4.D97 units 1–2)
+
+_Versions: core 0.0.595, harness 0.0.518._
+
+The pure evaluator from v4's `lib/llm/thinking-turn.ts` (`97d2fcb5`):
+`evaluate_thinking_turn(rule, parameters, model)` answers "will this profile
+run a thinking turn?" — an explicit rule-keyed choice in the profile's
+parameters wins (unset = absent/null/empty string; `disabledValues` checked
+before `enabledValues`), else the model's `thinksByDefault` habit, else false.
+The `ThinkingTurnRule` and `ThinkingModelFacts` types land in the
+provider-manifest substrate (v5's analog of `@quilltap/plugin-types`), carried
+as opaque JSON scalars so the wire re-serializes them byte-for-byte; value
+matching uses JS `===` semantics (numbers compare as f64, never across
+types).
+
+The manifest substrate grows two optional fields (`schemaVersion` stays 1 —
+additive optionals): `thinkingTurnRule` after `optionsSchema`, and `models`
+(fact-bearing model-catalogue entries) after `fallbackModels`. The generator
+learned both and all nine manifests were regenerated at the `12fe3e6f` pin —
+only deepseek (rule + two V4 model entries + the bug-86 helpText rewrite,
+which rides the same regen) and ollama (rule only) moved, byte-reviewed. The
+generator emits the fields only where the plugin declares them, so the other
+seven manifests stay byte-identical; a fact-less model entry is observably
+identical to no entry on every consumer, so only fact-bearing entries are
+emitted. Registry accessors `thinking_turn_rule` / `model_thinking_facts`
+plus the join `profile_runs_thinking_turn(registry, provider, model, params)`
+(v4's `providerRegistry.profileRunsThinkingTurn` — JS-falsy guards, exact-id
+model lookup) round out the substrate.
+
+New tier-1 differential `thinking_turn_equivalence`
+(`QT_ORACLE_THINKING_TURN`, 1,134 cases over rules x parameter shapes x model
+facts), with the disabled-before-enabled order and the empty-string-is-unset
+arm both mutation-proven (the latter needed `''` planted inside a rule's own
+disabled list — a set-but-unmatched value falls through identically
+otherwise). The prefill threading, wire serializations, strip predicate, and
+the heal arrive in the following units.
+
 #### 2026-08-21 — docs(porting): plan the `12fe3e6f` drift round — four work orders (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥ P4.54)
 
 _Docs-only change._
