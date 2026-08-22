@@ -5501,3 +5501,34 @@ checkout occupies before any regen). The sweep driver remains the
 sanctioned per-family regen path — never run two sweeps concurrently. The
 distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+## P4.55 — the merge-verb silent-keep sweep (lane closed 2026-08-22)
+
+Tier 1 and Tier 2 both landed whole; the lane record with the measurements
+is in `status-log.md`. **Named next-round items this lane deliberately did
+NOT take:**
+
+- **B2 — the data-retention present-`null` state collapse (CONFIRMED
+  divergent, DEFERRED by ownership).** `Request::DataRetentionSettingsUpdate`
+  carries `#[serde(default)] stale_chat_days: Option<serde_json::Value>`
+  (`api/types.rs`), so serde maps an explicit `null` to `None`
+  indistinguishably from an absent key; `engine.rs` then builds `{}` and the
+  handler keeps the current value at 200, where v4's Zod `.default()` fires
+  only for `undefined` and answers 400. The fix is the known `double_option`
+  pattern in `types.rs` plus the three-arm match in `engine.rs` — **both
+  files belong to other lanes** (`api/types.rs` was P4.D103's this round),
+  which is why P4.55 left it.
+  It also needs a harness rewire before it can be pinned honestly: the
+  settings-routes differential calls
+  `settings::data_retention_settings_update(db, body)` DIRECTLY
+  (`settings_routes_equivalence.rs:219-221`), bypassing the `Request` enum's
+  serde entirely, and there is no REST edge for data-retention in
+  `quilltap-web` at all — so a null arm added today would pass green against
+  the broken wire. The rewire is a `dataRetention` edge mapping mirroring
+  taboo/brahma's, a `seedDataRetention`, and an `after` refetch map entry.
+- **The groups-side cleared-null pin.** P4.55 measured the store-backed
+  echo on the PROJECTS side and found it NOT divergent (see the lane
+  record's `update_clear_description` arm); `db/store_backed.rs` was not
+  touched. The groups side inherits that verdict by construction — one
+  generic `update`, two `StoreEntity` impls — but its own pinning arm rides
+  the next round, because P4.D103 owned the groups families this round.

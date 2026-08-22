@@ -80327,3 +80327,41 @@ the in-memory merged (nulls dropped when cleared)" — false since the P4.9H2A �
 review made the cleared keys echo as explicit `null` in schema position. The
 comment now says what the code does and names the two arms that pin it
 (`update_clear_apikey`, `update_clear_truncate_dims_null`).
+
+### Tier 3 — the deferrals, loud
+
+Both recorded in `phase-4.md` under "P4.55 — the merge-verb silent-keep sweep"
+as named next-round items, and re-stated here so the lane record stands alone.
+
+**B2 — the data-retention present-`null` state collapse: CONFIRMED divergent,
+NOT taken.** Re-verified this lane rather than trusted from the order:
+`Request::DataRetentionSettingsUpdate` carries `#[serde(default)]
+stale_chat_days: Option<serde_json::Value>` (`api/types.rs:1888-1898`), so serde
+maps an explicit `null` to `None` indistinguishably from an absent key;
+`engine.rs:3930-3937` then builds `{}` and `data_retention_settings_update`
+keeps the current value at 200. v4's Zod `.default()` fires only for
+`undefined`, so an explicit `null` is a 400. Two reasons this lane left it:
+
+1. **Ownership.** The fix is the known `double_option` pattern in
+   `api/types.rs` plus the three-arm match in `engine.rs` — neither file is
+   P4.55's, and `api/types.rs` was P4.D103's this round.
+2. **The harness leg cannot pin it yet.** `settings_routes_equivalence.rs:218-221`
+   calls `settings::data_retention_settings_get/update(db, body)` DIRECTLY,
+   bypassing the `Request` enum's serde entirely — and `quilltap-web` has NO
+   data-retention REST edge at all (grepped: zero hits). A null arm added today
+   would pass green against the broken wire, which is exactly the vacuous-green
+   class this lane exists to close. The rewire wanted: a `dataRetention` edge
+   mapping mirroring taboo's / brahma's, a `seedDataRetention`, and an `after`
+   refetch map entry.
+
+**The groups-side cleared-null pin: NOT taken (no defect found).** The
+store_backed measurement came back NOT divergent on the projects side (unit 3),
+so `db/store_backed.rs` was never touched and there is nothing for a groups pin
+to catch today. The groups side inherits that verdict by construction — one
+generic `update`, two `StoreEntity` impls — but its own arm rides the next
+round, since P4.D103 owned the groups families this round.
+
+**E1 (`api/groups.rs` `groupUpdate`) was NOT this lane's** and was not touched;
+P4.55 never opened `api/groups.rs`, `api/types.rs`, `system_prompt.rs`,
+`engine.rs`, or `apps/web/**`. Whether P4.D103's validator port actually closed
+E1 is for the unifier to confirm — this lane has no evidence either way.

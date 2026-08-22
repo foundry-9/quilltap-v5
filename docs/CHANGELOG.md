@@ -200,6 +200,18 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — docs(porting): P4.55 closes — the Tier 3 deferrals recorded by name
+
+_Docs-only change._
+
+The work order's status header flips to CLOSED (Tier 1 and Tier 2 both landed
+whole), and the two items the lane deliberately did not take get their own
+phase-4 section: the data-retention present-`null` state collapse, which is
+confirmed divergent but whose fix lives in files another lane owned and whose
+harness leg bypasses the wire it would need to pin; and the groups-side
+cleared-null pin, which inherits the projects-side verdict by construction but
+rides the next round.
+
 #### 2026-08-22 — fix(profiles): a non-string apiKeyId or baseUrl no longer vanishes on update
 
 _Versions: core 0.0.612, harness 0.0.535._
