@@ -77835,3 +77835,46 @@ regen in this lane runs from it.
   (`/tmp/p4d97-gate-c.log`) — the pre-fix red the discipline asks for; green
   with the fix, all 269 rows.
 - Versions: core 0.0.598, harness 0.0.521.
+
+### Unit 6 — the heal + the migrations_state ledger interop (v4 `97d2fcb5` migration, coverage `12fe3e6f`)
+
+- `crates/quilltap-core/src/db/thinking_prefill_retire_heal.rs`, wired in
+  `seed_built_ins` AFTER the P4.D79 prefill-column ensure (a pre-4.9 instance
+  has no column until that call). The frozen rule tables + the WHERE
+  selection + the per-row `evaluate_thinking_turn` transcribed verbatim
+  from v4's migration (frozen copies stay frozen — v4's "describes the
+  world it ran in" comment carried; they deliberately do NOT read the
+  manifests).
+- **The once-only mechanism, MEASURED as ordered:** v4's ledger semantics
+  confirmed by reading `migrations/index.ts` — the completed check runs
+  BEFORE `shouldRun`; a false `shouldRun` skips WITHOUT recording (retried
+  next boot); a successful `run()` stamps the ledger even at 0 items (so
+  fresh v4 instances DO gain the row on first runner pass). v5 mirrors all
+  three arms: `AlreadyCompleted` (row exists — including one v4 wrote) /
+  `NotApplicable` (table or column absent, nothing stamped) / `Ran`
+  (heal + ledger row + the two metadata upserts, v4's exact DDL, both
+  tables created lazily under the migrations_state absence check).
+  `quilltapVersion`: v4 stamps its package version (`4.9.0-dev.43` at the
+  pin), v5 stamps quilltap-core's crate version — recorded decision; the
+  id is the key, the column informational. Fresh v5 instances match v4's
+  observable outcome (no `migrations_state` at provisioning per D23;
+  the row appears on the first boot exactly as v4's runner stamps it).
+- **Differential (NEW family `thinking_prefill_heal_equivalence`,
+  `QT_ORACLE_THINKING_HEAL`):** both sides build the migration-vintage
+  reduced table (v4's own integration-test schema) from the committed
+  `harness/oracle/fixtures/thinking-prefill-heal.json` (17 rows — v4's
+  full leave-alone matrix + modelName-NULL, parameters-NULL,
+  Ollama-string-"true", `''`-option). The oracle
+  (`harness/oracle/cases/thinking-prefill-heal.test.ts`, jest real-driver
+  per the jest-real-db-oracle recipe with `executeSQLite`/`querySQLite`
+  added to the database-utils mock so v4's REAL `state.ts` runs against the
+  same DB) drives `loadMigrationState → run() → recordCompletedMigration` —
+  the runner's exact sequence — and additionally proves
+  `isMigrationCompleted` answers true on reload (`skippedOnRerun`,
+  asserted by the harness). Diffed: all 17 profile rows cell-for-cell
+  (13 examined / 6 cleared), the ledger row (`completedAt`→`<ts>`,
+  `quilltapVersion`→`<version>`), the metadata rows, the result message
+  byte-exact. The harness also re-runs the heal over the healed DB with a
+  re-ticked `true` — `AlreadyCompleted`, the true survives (the
+  non-idempotency hazard the ledger exists for, proven at family tier and
+  again in the module tests incl. the v4-written-row arm).

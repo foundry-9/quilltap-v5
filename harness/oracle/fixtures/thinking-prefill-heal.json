@@ -1,0 +1,22 @@
+{
+  "comment": "P4.D97 heal family — the shared row spec both sides build the migration-vintage table from. Columns mirror v4's own retire-prefill integration test schema (the heal reads only id/provider/modelName/parameters and writes only multiCharacterPrefill, so the reduced table is the surface). `parameters` is the RAW TEXT cell (unparseable rows are the point of ds-bad); `prefill` is the stored tri-state (null = SQL NULL). `expect` documents the intended post-heal value for the reader — the DIFF against v4's real migration is the authority, never this column.",
+  "rows": [
+    { "id": "ds-default",   "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash",            "parameters": "{}",                            "prefill": 1,    "expect": 0 },
+    { "id": "ds-on",        "provider": "DEEPSEEK",  "modelName": "deepseek-v4-pro",              "parameters": "{\"thinking\":\"enabled\"}",    "prefill": 1,    "expect": 0 },
+    { "id": "ds-empty",     "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash",            "parameters": "{\"thinking\":\"\"}",           "prefill": 1,    "expect": 0 },
+    { "id": "ds-lower",     "provider": "deepseek",  "modelName": "deepseek-v4-flash",            "parameters": "{}",                            "prefill": 1,    "expect": 0 },
+    { "id": "ds-params-null", "provider": "DEEPSEEK", "modelName": "deepseek-v4-flash",           "parameters": null,                            "prefill": 1,    "expect": 0 },
+    { "id": "ol-on",        "provider": "OLLAMA",    "modelName": "qwen3:8b",                     "parameters": "{\"enable_thinking\":true}",    "prefill": 1,    "expect": 0 },
+    { "id": "ds-off",       "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash",            "parameters": "{\"thinking\":\"disabled\"}",   "prefill": 1,    "expect": 1 },
+    { "id": "ol-off",       "provider": "OLLAMA",    "modelName": "llama3.1:8b",                  "parameters": "{\"enable_thinking\":false}",   "prefill": 1,    "expect": 1 },
+    { "id": "ol-unset",     "provider": "OLLAMA",    "modelName": "llama3.1:8b",                  "parameters": "{}",                            "prefill": 1,    "expect": 1 },
+    { "id": "ol-string-true", "provider": "OLLAMA",  "modelName": "qwen3:8b",                     "parameters": "{\"enable_thinking\":\"true\"}", "prefill": 1,   "expect": 1 },
+    { "id": "ds-unknown",   "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash-vision-exp", "parameters": "{}",                            "prefill": 1,    "expect": 1 },
+    { "id": "ds-no-model",  "provider": "DEEPSEEK",  "modelName": null,                           "parameters": "{}",                            "prefill": 1,    "expect": 1 },
+    { "id": "ds-bad",       "provider": "DEEPSEEK",  "modelName": "llama-guess",                  "parameters": "not json at all",               "prefill": 1,    "expect": 1 },
+    { "id": "openai-1",     "provider": "OPENAI",    "modelName": "gpt-5",                        "parameters": "{}",                            "prefill": 1,    "expect": 1 },
+    { "id": "anthropic-1",  "provider": "ANTHROPIC", "modelName": "claude-opus-5",                "parameters": "{}",                            "prefill": 1,    "expect": 1 },
+    { "id": "ds-already",   "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash",            "parameters": "{}",                            "prefill": 0,    "expect": 0 },
+    { "id": "ds-null",      "provider": "DEEPSEEK",  "modelName": "deepseek-v4-flash",            "parameters": "{}",                            "prefill": null, "expect": null }
+  ]
+}

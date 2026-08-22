@@ -903,6 +903,32 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             quilltap_core::db::connection_profiles_prefill_repair::
                 ensure_connection_profiles_prefill_column(main)?;
             // === end P4.D79 ===
+            // === P4.D97 (v4 `97d2fcb5`, migration
+            // `retire-prefill-on-thinking-profiles-v1`) ===
+            // The data pass that turns the multi-character [Name] prefill off
+            // on existing DeepSeek/Ollama rows running a thinking turn (v4
+            // bugs 68/85) — those rows got their 1 from the old provider
+            // default, not a user choice, and a stored boolean outranks every
+            // later default. Unlike the column ensures above, this pass is
+            // DATA-only, so its once-only guard is v4's own migrations_state
+            // ledger (cross-app in both directions — see the module header);
+            // it must run AFTER the P4.D79 ensure, because on a pre-4.9
+            // instance the column does not exist until that call.
+            if let quilltap_core::db::thinking_prefill_retire_heal::RetireOutcome::Ran {
+                examined,
+                cleared,
+            } = quilltap_core::db::thinking_prefill_retire_heal::retire_prefill_on_thinking_profiles(
+                main,
+                &quilltap_core::clock::now_iso(),
+            )? {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    examined,
+                    cleared,
+                    "Retired the [Name] prefill on thinking connection profiles"
+                );
+            }
+            // === end P4.D97 ===
             // === P4.D77 (v4 `24633026`, migration
             // `create-help-doc-chunks-table-v1`) ===
             // The `help_doc_chunks` table itself, re-homed from v4's migration

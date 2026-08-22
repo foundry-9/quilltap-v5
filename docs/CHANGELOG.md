@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(db): the retire-prefill-on-thinking-profiles boot heal over v4's migration ledger (P4.D97 unit 6)
+
+_Versions: core 0.0.599, harness 0.0.522, host 0.0.75._
+
+v4's `retire-prefill-on-thinking-profiles-v1` data migration (`97d2fcb5`),
+re-homed as a boot heal — with a NEW once-only mechanism for this repo: the
+pass is data-only (no column absence to key off, the P4.D79-class guard
+does not transfer), and re-running it would clobber a user's re-ticked
+`true`. The guard is v4's OWN `migrations_state` ledger, interoperated in
+both directions: the heal skips when the row
+`retire-prefill-on-thinking-profiles-v1` exists (v4 migrated first), and
+after healing writes the row with v4's exact `migrations/state.ts` shapes
+(lazy CREATE of both tables under the migrations_state absence check, the
+row's five columns, the two `migrations_metadata` upserts) so v4's runner
+skips thereafter (`isMigrationCompleted`). `quilltapVersion` records which
+app stamped the row — v4 writes its package version (`4.9.0-dev.43` at the
+pin), v5 stamps quilltap-core's; the id is the key. Table/column-absent
+skips stamp NOTHING (v4's `shouldRun` false arm — retried next boot).
+Fresh instances match v4's observable outcome: no `migrations_state` at
+provisioning (D23 — nothing invented), the row appearing on the first boot
+exactly as v4's runner stamps every migration on its first run.
+
+The heal transcribes v4's FROZEN rule tables + selection + per-row
+evaluation verbatim ("a migration describes the world it ran in" — the
+frozen copies deliberately do NOT follow the manifests), runs after
+`ensure_connection_profiles_prefill_column` in `seed_built_ins` (the column
+must exist first on a pre-4.9 instance), and logs the examined/cleared
+counts. New differential `thinking_prefill_heal_equivalence`
+(`QT_ORACLE_THINKING_HEAL`): both sides build the same migration-vintage
+table from the committed `thinking-prefill-heal.json` spec (v4's own
+integration-test matrix plus modelName-NULL / parameters-NULL /
+string-"true" / `''`-option rows — 17 rows, 13 examined, 6 cleared); the
+oracle drives v4's REAL migration `run()` + `recordCompletedMigration()`
+and proves `isMigrationCompleted` skips a re-run; the diff covers every
+profile row, the ledger row (ts/version normalized), the metadata upserts,
+and the result message byte-exact. The second-boot no-op and the
+re-ticked-true survival are pinned in both the module tests and the family.
+
 #### 2026-08-21 — fix(deepseek): decide the thinking strip from the model, not the request body (v4 bug 86, P4.D97 unit 5)
 
 _Versions: core 0.0.598, harness 0.0.521._
