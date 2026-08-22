@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(spa): the profile editor's three thinking-turn behaviors (v4 bug 85, P4.D98 unit 3)
+
+_Versions: SPA 0.5.531._
+
+The connection-profile editor now answers "will this profile run a thinking
+turn?" and seeds the multi-character prefill box accordingly (client half of
+v4 `97d2fcb5`): a model pick on a NEW profile re-seeds from the model's
+static facts (a seed, never a clamp); a stored row that never chose (null)
+is corrected ONCE when the model list lands, through both fetch sites, with
+a fired-once latch so it can never fight the checkbox; and ticking the box
+on a thinking profile draws v4's warning paragraph byte-for-byte. The
+`fetchedModelsWithInfo` plumbing carries the wire's `modelsWithInfo` rows
+the editor needs. All behaviors degrade to the provider-rule-only seed when
+the wire omits the rule and facts (the pre-P4.D97 state), spec-pinned; the
+correction wirings and the latch are mutation-proven red-first.
+
 #### 2026-08-21 — feat(spa): defaultMultiCharacterPrefill learns runsThinkingTurn (v4 bug 85, P4.D98 unit 2)
 
 _Versions: SPA 0.5.530._

@@ -77971,3 +77971,47 @@ kept-while-not-thinking / Anthropic-off-either-way); citation range updated to
 v4's `:8-52`. 8/8 green.
 
 SPA 0.5.530.
+
+### Unit 3 — the editor's three thinking-turn behaviors
+
+`profile-modal.ts` (all v4 sites read side by side before writing either, as
+the order directs):
+
+- **The plumbing**: the new `fetchedModelsWithInfo` signal (v4's own name)
+  stores the dispatch response's `modelsWithInfo` at BOTH fetch sites
+  (`fetchModels`, `autoFetchModelsForEdit`; the error path clears it), and the
+  `selectedModelInfo` / `runsThinkingTurn` computeds mirror v4's
+  `getSelectedModelInfo` + render-scope evaluator call.
+- **Model-change re-seed** (`onModelChange`, new-profile-only guard
+  `!this.profile()?.id` exactly as v4 guards its): re-seeds
+  `defaultMultiCharacterPrefill(provider, evaluateThinkingTurn(…))` with the
+  newly picked model's facts — a seed, never a clamp. `onProviderChange` keeps
+  its provider-rule-only seed, gaining v4's comment.
+- **Stored-null ONCE-correction**: v4's `useEffect` keyed on the model list
+  landing becomes an explicit `correctStoredNullPrefill()` call at the two
+  model-list-landing sites plus a fired-once latch — the spelling that CANNOT
+  re-fire on keystrokes (v4's comment is the requirement, per the order).
+  Guards: stored row present, `(multiCharacterPrefill ?? null) === null`,
+  non-empty list. v4's why-comment carried.
+- **The warning paragraph** transcribed byte-for-byte in v4's slot (after the
+  Anthropic against-default warning): ticked ∧ provider-default-on ∧
+  `runsThinkingTurn`.
+
+`profile-form.ts`: the load-seed comment grows v4's expanded wording (the
+provider rule is all that is knowable at load; the modal corrects a null row
+once the list lands).
+
+Specs (profile-modal.spec.ts +10, all through the REAL fetch paths, not
+signal pokes): re-seed off-and-back-on; explicit thinking-off keeps the seed
+(bug 68 preserved); no re-seed on an existing profile; seed-never-clamp; the
+byte-for-byte warning (whitespace-normalized as HTML renders it) appearing
+and clearing; the correction through the edit-time fetch AND through a manual
+Fetch Models after a failed auto-fetch; the at-most-once latch (user overrule
+survives a second landing); never-fires-on-a-boolean-row (both stored true
+and stored false); and the graceful-absence proof (no rule + no facts =
+today's behavior, on a new profile and on a stored-null row). **Mutation
+proofs run red-first**: latch removed → 1 red; the autoFetch wiring call
+removed → 2 red; the fetchModels wiring call removed → 1 red; restored 64/64
+green.
+
+SPA 0.5.531.

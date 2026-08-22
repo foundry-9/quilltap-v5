@@ -10,7 +10,12 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
-import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
+import type {
+  ApiKeyDto,
+  ConnectionProfileDto,
+  ModelInfo,
+  ProviderInfo,
+} from '../../../core/core-contract';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { ModelSelector } from '../../../ui/model-selector';
@@ -35,6 +40,7 @@ import {
 import { ProfileTagEditor } from './profile-tag-editor';
 import { ProviderOptionsPanel } from './provider-options-panel';
 import type { ProviderOptionsSchema } from './provider-options-schema';
+import { evaluateThinkingTurn } from './thinking-turn';
 
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
   OPENAI: ['gpt-4', 'gpt-3.5-turbo', 'gpt-4-turbo'],
@@ -551,6 +557,15 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                   know your model tolerates it.
                 </p>
               }
+              @if (prefillOnThinkingProfile()) {
+                <p class="qt-text-xs qt-text-warning ml-6">
+                  This model reasons before it answers, and a turn handed over already opened sits
+                  badly with that: some providers refuse the request outright, others quietly
+                  swallow the reasoning altogether. A model that deliberates over whose turn it is
+                  rarely needs the name put in its mouth — leave this unticked unless you have
+                  watched yours cope.
+                </p>
+              }
             </div>
             <label class="flex items-center gap-2">
               <input
@@ -679,6 +694,13 @@ export class ProfileModal implements OnInit {
   protected readonly connectionMessage = signal<string | null>(null);
   protected readonly connectError = signal<string | null>(null);
   protected readonly fetchedModels = signal<string[]>([]);
+  /**
+   * The same fetch's per-model info rows (v4's `fetchedModelsWithInfo`,
+   * `ProfileModal.tsx:66`): the selected model's static facts feed
+   * {@link runsThinkingTurn}, and the list landing is the one event that can
+   * correct a stored-null prefill row ({@link correctStoredNullPrefill}).
+   */
+  protected readonly fetchedModelsWithInfo = signal<ModelInfo[]>([]);
   protected readonly modelsMessage = signal<string | null>(null);
   protected readonly testMessageResult = signal<string | null>(null);
   protected readonly connecting = signal(false);
@@ -762,6 +784,44 @@ export class ProfileModal implements OnInit {
     () => this.form().multiCharacterPrefill && !defaultMultiCharacterPrefill(this.form().provider),
   );
 
+  /** v4 `getSelectedModelInfo` (`ProfileModal.tsx:203-206`). */
+  protected readonly selectedModelInfo = computed<ModelInfo | null>(() => {
+    if (!this.form().modelName || this.fetchedModelsWithInfo().length === 0) return null;
+    return this.fetchedModelsWithInfo().find((m) => m.id === this.form().modelName) ?? null;
+  });
+
+  /**
+   * Will this profile run a thinking turn? Same evaluator the server runs, fed
+   * the plugin's declared rule and the selected model's static facts — which
+   * is why the rule is declarative rather than a plugin closure (bug 85). It
+   * decides the multi-character prefill default and the warning that goes with
+   * it. On a wire that omits the rule and the facts it answers `false` and
+   * every seed degrades to the provider rule alone, exactly as v4's client
+   * does.
+   */
+  protected readonly runsThinkingTurn = computed(() => {
+    const cfg = this.providers().find((p) => p.name === this.form().provider);
+    return evaluateThinkingTurn({
+      rule: cfg?.thinkingTurnRule ?? null,
+      parameters: this.form().parameters,
+      model: this.selectedModelInfo(),
+    });
+  });
+
+  /**
+   * The thinking-turn warning (v4 `ProfileModal.tsx:900-910`): the box is
+   * TICKED, the provider's own default is prefill-ON (a default-off provider
+   * already gets the Anthropic warning above), and the profile will run a
+   * thinking turn. Warned about, never vetoed — the tri-state exists so the
+   * user may overrule us.
+   */
+  protected readonly prefillOnThinkingProfile = computed(
+    () =>
+      this.form().multiCharacterPrefill &&
+      defaultMultiCharacterPrefill(this.form().provider) &&
+      this.runsThinkingTurn(),
+  );
+
   /** v4 `ProfileModal.tsx:379-381` — the line under the provider select. */
   protected readonly attachmentSupport = computed(() =>
     getAttachmentSupportDescription(this.form().provider),
@@ -788,6 +848,36 @@ export class ProfileModal implements OnInit {
 
   protected setField<K extends keyof ProfileFormData>(key: K, value: ProfileFormData[K]): void {
     this.form.update((f) => ({ ...f, [key]: value }));
+  }
+
+  /** {@link correctStoredNullPrefill} has fired; it never fires twice. */
+  private storedPrefillCorrected = false;
+
+  /**
+   * A stored row that never chose (null — pre-4.9, or an import) shows the
+   * provider default until the model list arrives, because the thinking half
+   * of the answer needs the model's static facts. Correct it once, so the box
+   * matches what the server will actually do and a save cannot freeze the
+   * wrong answer into the column (bug 85). Only ever fires for a null row, so
+   * it can never overwrite a choice the user made.
+   *
+   * v4 spells this as a `useEffect` keyed on the model list landing
+   * (`ProfileModal.tsx:237-254` — "Re-running on every keystroke would fight
+   * the checkbox; the model list landing is the one event that changes the
+   * answer"). v5 spells the same requirement as an explicit call from the two
+   * model-list-landing sites plus a fired-once latch — a spelling that CANNOT
+   * re-fire on keystrokes, or at all after the one correction.
+   */
+  private correctStoredNullPrefill(): void {
+    if (this.storedPrefillCorrected) return;
+    const p = this.profile();
+    if (p?.id === undefined || (p.multiCharacterPrefill ?? null) !== null) return;
+    if (this.fetchedModelsWithInfo().length === 0) return;
+    this.storedPrefillCorrected = true;
+    this.setField(
+      'multiCharacterPrefill',
+      defaultMultiCharacterPrefill(this.form().provider, this.runsThinkingTurn()),
+    );
   }
 
   /**
@@ -839,12 +929,36 @@ export class ProfileModal implements OnInit {
       // it (the table is static), so the argument is dropped rather than
       // faked.
       this.setField('supportsImageUpload', supportsMimeType(provider, 'image/jpeg'));
+      // No model is chosen yet at this point, so only the provider rule can
+      // speak; `onModelChange` re-seeds once the model is known and its
+      // thinking habit can be read.
       this.setField('multiCharacterPrefill', defaultMultiCharacterPrefill(provider));
     }
   }
 
   protected onModelChange(modelName: string): void {
     this.setField('modelName', modelName);
+
+    // Re-seed the multi-character turn anchor now the model is known: a model
+    // that reasons unasked (deepseek-v4-flash) breaks on a `[Name]` prefill,
+    // and the user never opted into thinking so nothing else would warn them
+    // (bug 85). A seed, never a clamp — the box stays editable.
+    if (!this.profile()?.id) {
+      const cfg = this.providers().find((p) => p.name === this.form().provider);
+      const modelInfo = this.fetchedModelsWithInfo().find((m) => m.id === modelName) || null;
+      this.setField(
+        'multiCharacterPrefill',
+        defaultMultiCharacterPrefill(
+          this.form().provider,
+          evaluateThinkingTurn({
+            rule: cfg?.thinkingTurnRule ?? null,
+            parameters: this.form().parameters,
+            model: modelInfo,
+          }),
+        ),
+      );
+    }
+
     // Auto-fill the name for a NEW profile when it's empty (suffixed until unique).
     if (!this.profile()?.id && !this.form().name.trim() && modelName.trim()) {
       const suggested = makeUniqueProfileName(
@@ -945,9 +1059,12 @@ export class ProfileModal implements OnInit {
         'models',
       );
       this.fetchedModels.set(resp.data.models ?? []);
+      this.fetchedModelsWithInfo.set(resp.data.modelsWithInfo ?? []);
       this.modelsMessage.set(`Found ${resp.data.models?.length ?? 0} models`);
+      this.correctStoredNullPrefill();
     } catch (err) {
       this.fetchedModels.set([]);
+      this.fetchedModelsWithInfo.set([]);
       this.modelsMessage.set(null);
       this.connectError.set(err instanceof Error ? err.message : 'Failed to fetch models');
     } finally {
@@ -1019,7 +1136,9 @@ export class ProfileModal implements OnInit {
         'models',
       );
       this.fetchedModels.set(resp.data.models ?? []);
+      this.fetchedModelsWithInfo.set(resp.data.modelsWithInfo ?? []);
       this.modelsMessage.set(`Found ${resp.data.models?.length ?? 0} models`);
+      this.correctStoredNullPrefill();
     } catch {
       // silently ignore — the free-text model input still works
     }

@@ -247,6 +247,274 @@ describe('ProfileModal (multi-character prefill)', () => {
 });
 
 /**
+ * The thinking-turn half of the prefill seed (v4 bug 85, `97d2fcb5`): the
+ * model-change re-seed, the stored-null ONCE-correction on model-list-landing,
+ * and the thinking warning — v4 `ProfileModal.tsx:226-254`, `:316-334`,
+ * `:900-910`. Everything below also proves the graceful-absence contract: a
+ * wire that omits `thinkingTurnRule` and the model facts must behave exactly
+ * like the pre-thinking editor (the state this worktree's own server serves
+ * until P4.D97 unifies).
+ */
+describe('ProfileModal (thinking-turn seeds and warning, bug 85)', () => {
+  // v4's paragraph byte-for-byte, whitespace-normalized the way HTML renders
+  // it (JSX and Angular templates collapse the same way).
+  const THINKING_WARNING =
+    'This model reasons before it answers, and a turn handed over already opened sits badly ' +
+    'with that: some providers refuse the request outright, others quietly swallow the ' +
+    'reasoning altogether. A model that deliberates over whose turn it is rarely needs the ' +
+    'name put in its mouth — leave this unticked unless you have watched yours cope.';
+
+  /** The rule the DeepSeek plugin declares at `12fe3e6f`. */
+  const DEEPSEEK = provider({
+    id: 'DEEPSEEK',
+    name: 'DEEPSEEK',
+    displayName: 'DeepSeek',
+    thinkingTurnRule: {
+      optionKey: 'thinking',
+      enabledValues: ['enabled'],
+      disabledValues: ['disabled'],
+    },
+  });
+
+  /** The same provider as a rule-less wire serves it (pre-P4.D97). */
+  const DEEPSEEK_NO_RULE = provider({ id: 'DEEPSEEK', name: 'DEEPSEEK', displayName: 'DeepSeek' });
+
+  const THINKING_MODELS = {
+    models: ['deepseek-v4-flash', 'deepseek-chat'],
+    modelsWithInfo: [
+      { id: 'deepseek-v4-flash', supportsThinking: true, thinksByDefault: true },
+      { id: 'deepseek-chat' },
+    ],
+  };
+
+  /** Facts-less info rows, as a wire that has not learned them serves. */
+  const FACTLESS_MODELS = {
+    models: ['deepseek-v4-flash', 'deepseek-chat'],
+    modelsWithInfo: [{ id: 'deepseek-v4-flash' }, { id: 'deepseek-chat' }],
+  };
+
+  function modelsClient(payload: unknown = THINKING_MODELS): {
+    client: Partial<CoreClient>;
+    dispatchExpect: ReturnType<typeof vi.fn>;
+  } {
+    const dispatchExpect = vi.fn(async (req: CoreRequest) => {
+      if ((req as { type: string }).type === 'modelFetch') {
+        return { type: 'models', data: payload };
+      }
+      return { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+    });
+    return {
+      client: stubClient({
+        dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'],
+      }),
+      dispatchExpect,
+    };
+  }
+
+  function prefillBox(fixture: ComponentFixture<ProfileModal>): HTMLInputElement {
+    const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+      (l) =>
+        l.textContent?.includes('Announce the speaker in multi-character scenes ([Name] prefill)'),
+    );
+    return label!.querySelector('input')!;
+  }
+
+  function normalizedText(fixture: ComponentFixture<ProfileModal>): string {
+    return ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  async function landModels(fixture: ComponentFixture<ProfileModal>): Promise<void> {
+    await fixture.componentInstance['fetchModels']();
+    fixture.detectChanges();
+  }
+
+  const NULL_ROW: ConnectionProfileDto = {
+    id: 'cp-null',
+    name: 'Never chose',
+    provider: 'DEEPSEEK',
+    modelName: 'deepseek-v4-flash',
+    parameters: {},
+    isDefault: false,
+    multiCharacterPrefill: null,
+  };
+
+  it('a model pick re-seeds a NEW profile off for a model that reasons unasked — and back on', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ providers: [DEEPSEEK] }, client);
+    fixture.componentInstance['onProviderChange']('DEEPSEEK');
+    await landModels(fixture);
+    expect(prefillBox(fixture).checked).toBe(true);
+
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(false);
+
+    // A seed, never a one-way latch: a model with no stated habit seeds it
+    // back on.
+    fixture.componentInstance['onModelChange']('deepseek-chat');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('an explicit thinking-off profile choice keeps the seed on (bug 68 preserved)', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ providers: [DEEPSEEK] }, client);
+    fixture.componentInstance['onProviderChange']('DEEPSEEK');
+    await landModels(fixture);
+    fixture.componentInstance['setParameter']('thinking', 'disabled');
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('does NOT re-seed on an EXISTING profile (v4 guards its re-seed `!profile?.id`)', async () => {
+    const { client } = modelsClient();
+    const fixture = await render(
+      {
+        profile: { ...NULL_ROW, multiCharacterPrefill: true },
+        providers: [DEEPSEEK],
+      },
+      client,
+    );
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('the seed is never a clamp — the box can be ticked straight back', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ providers: [DEEPSEEK] }, client);
+    fixture.componentInstance['onProviderChange']('DEEPSEEK');
+    await landModels(fixture);
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(false);
+
+    const box = prefillBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('warns, byte for byte, when the box is ticked on a thinking profile', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ providers: [DEEPSEEK] }, client);
+    fixture.componentInstance['onProviderChange']('DEEPSEEK');
+    await landModels(fixture);
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(normalizedText(fixture)).not.toContain(THINKING_WARNING);
+
+    const box = prefillBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(normalizedText(fixture)).toContain(THINKING_WARNING);
+
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(normalizedText(fixture)).not.toContain(THINKING_WARNING);
+  });
+
+  it('corrects a stored-null row once the model list lands, through the edit-time fetch', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ profile: NULL_ROW, providers: [DEEPSEEK] }, client);
+    // ngOnInit's autoFetchModelsForEdit landed during render's whenStable —
+    // the provider-default seed (on) has been corrected to the thinking
+    // answer (off).
+    expect(prefillBox(fixture).checked).toBe(false);
+  });
+
+  it('corrects through the MANUAL Fetch Models landing when the edit-time fetch failed', async () => {
+    // Both model-list-landing sites carry the correction: a null row whose
+    // auto-fetch died still corrects the moment the user fetches by hand.
+    let calls = 0;
+    const dispatchExpect = vi.fn(async (req: CoreRequest) => {
+      if ((req as { type: string }).type === 'modelFetch') {
+        calls += 1;
+        if (calls === 1) throw new Error('endpoint asleep');
+        return { type: 'models', data: THINKING_MODELS };
+      }
+      return { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+    });
+    const fixture = await render(
+      { profile: NULL_ROW, providers: [DEEPSEEK] },
+      stubClient({ dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'] }),
+    );
+    // The auto-fetch failed silently; the seed is still the provider default.
+    expect(prefillBox(fixture).checked).toBe(true);
+
+    await landModels(fixture);
+    expect(prefillBox(fixture).checked).toBe(false);
+  });
+
+  it('the correction fires AT MOST ONCE — a later landing cannot fight the checkbox', async () => {
+    const { client } = modelsClient();
+    const fixture = await render({ profile: NULL_ROW, providers: [DEEPSEEK] }, client);
+    expect(prefillBox(fixture).checked).toBe(false);
+
+    // The user overrules the correction...
+    const box = prefillBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    // ...and a second model-list landing (Fetch Models) must NOT re-correct.
+    await landModels(fixture);
+    expect(prefillBox(fixture).checked).toBe(true);
+  });
+
+  it('can NEVER fire on a row whose stored value is a boolean', async () => {
+    const { client } = modelsClient();
+    // A stored true on a thinking model is the user's own overrule — the
+    // tri-state exists so they may. The landing must leave it alone (and the
+    // warning, not a veto, is what they get).
+    const fixture = await render(
+      { profile: { ...NULL_ROW, multiCharacterPrefill: true }, providers: [DEEPSEEK] },
+      client,
+    );
+    expect(prefillBox(fixture).checked).toBe(true);
+    expect(normalizedText(fixture)).toContain(THINKING_WARNING);
+
+    const { client: falseClient } = modelsClient();
+    const fixture2 = await render(
+      { profile: { ...NULL_ROW, multiCharacterPrefill: false }, providers: [DEEPSEEK] },
+      falseClient,
+    );
+    expect(prefillBox(fixture2).checked).toBe(false);
+  });
+
+  it('degrades to the provider-rule-only seed when the wire omits rule and facts', async () => {
+    // The pre-P4.D97 state on this worktree's own server: no thinkingTurnRule
+    // on the provider, no facts on the models. Behavior must equal the
+    // pre-thinking editor exactly — seed on, no correction, no warning.
+    const { client } = modelsClient(FACTLESS_MODELS);
+    const fixture = await render({ providers: [DEEPSEEK_NO_RULE] }, client);
+    fixture.componentInstance['onProviderChange']('DEEPSEEK');
+    await landModels(fixture);
+    fixture.componentInstance['onModelChange']('deepseek-v4-flash');
+    fixture.detectChanges();
+    expect(prefillBox(fixture).checked).toBe(true);
+
+    const box = prefillBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(normalizedText(fixture)).not.toContain(THINKING_WARNING);
+
+    // And a stored-null row is left at the provider default, as today.
+    const { client: nullClient } = modelsClient(FACTLESS_MODELS);
+    const fixture2 = await render(
+      { profile: NULL_ROW, providers: [DEEPSEEK_NO_RULE] },
+      nullClient,
+    );
+    expect(prefillBox(fixture2).checked).toBe(true);
+  });
+});
+
+/**
  * The tool-use seed hint and the two capability seeds on provider change
  * (Contract C + v4 `ProfileModal.tsx:228-243`, `:742-748`, bug 71).
  */
