@@ -264,6 +264,53 @@ async fn seed_recall(db: &Db, per_turn: bool) {
         .expect("seed recall settings");
 }
 
+/// P4.55: seed `chat_settings.autoHousekeepingSettings` through the REAL writer
+/// — the Rust twin of the oracle case's `repos.chatSettings.updateForUser` call.
+async fn seed_housekeeping(db: &Db, user_id: &str) {
+    let bag = json!({
+        "enabled": true,
+        "perCharacterCap": 1234,
+        "perCharacterCapOverrides": {},
+        "autoMergeSimilarThreshold": 0.5,
+        "mergeSimilar": true,
+    })
+    .to_string();
+    let uid = user_id.to_string();
+    let now = quilltap_core::clock::now_iso();
+    db.write(move |w| {
+        quilltap_core::db::chat_settings::update_for_user(
+            w.main().connection(),
+            &uid,
+            &[(
+                "autoHousekeepingSettings",
+                quilltap_core::db::chat_settings::SettingsColVal::Text(bag),
+            )],
+            &now,
+        )
+    })
+    .await
+    .expect("seed housekeeping settings");
+}
+
+/// P4.55: seed `instance_settings['memoryExtractionLimits']` through the REAL
+/// writer — the twin of the oracle's `setMemoryExtractionLimits`.
+async fn seed_extraction_limits(db: &Db) {
+    let bag = json!({
+        "enabled": true,
+        "maxPerHour": 77,
+        "softStartFraction": 0.25,
+        "softFloor": 0.75,
+    });
+    db.write(move |w| {
+        quilltap_core::db::instance_settings::set_memory_extraction_limits(
+            w.main().connection(),
+            &bag,
+        )
+    })
+    .await
+    .expect("seed extraction limits");
+}
+
 #[test]
 fn memories_routes_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_MEMORIES_ROUTES") else {
@@ -765,6 +812,57 @@ fn memories_routes_match_oracle() {
         ));
         check_body("housekeeping_config_set", &resp, &mut failed);
     }
+    // P4.55 (the merge-verb silent-keep sweep): `housekeepingConfigSchema`
+    // safeParses BEFORE the read/merge/write — a present-but-invalid value 400s
+    // and stores NOTHING. v5 used to merge and PERSIST the garbage.
+    {
+        let db = fresh_db(&spec, "hcib");
+        let resp = rt.block_on(memories::memory_housekeeping_config_set(
+            &db,
+            &uid,
+            json!({ "enabled": "yes" }),
+        ));
+        check_error("housekeeping_config_set_invalid_bool", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "hcir");
+        let resp = rt.block_on(memories::memory_housekeeping_config_set(
+            &db,
+            &uid,
+            json!({ "perCharacterCap": -5 }),
+        ));
+        check_error("housekeeping_config_set_out_of_range", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "hciw");
+        rt.block_on(seed_housekeeping(&db, &uid));
+        let resp = rt.block_on(memories::memory_housekeeping_config_set(
+            &db,
+            &uid,
+            json!({ "perCharacterCap": "lots" }),
+        ));
+        let name = "housekeeping_config_invalid_writes_nothing";
+        check_error(name, &resp, &mut failed);
+        let uid2 = uid.clone();
+        let stored = db
+            .read_main(move |main| {
+                quilltap_core::db::chat_settings::find_auto_housekeeping_settings_by_user_id(
+                    main, &uid2,
+                )
+            })
+            .expect("read housekeeping settings after refused set")
+            .unwrap_or(Value::Null);
+        let want = &oracle[name]["storedAfter"];
+        if norm(&stored) != norm(want) {
+            eprintln!(
+                "[{name}] storedAfter MISMATCH:\n{}",
+                first_diff(&norm(&stored), &norm(want))
+            );
+            failed.push(format!("{name}:storedAfter"));
+        } else {
+            eprintln!("[{name}] storedAfter OK.");
+        }
+    }
     {
         let db = fresh_db(&spec, "rcg");
         check_body(
@@ -874,6 +972,46 @@ fn memories_routes_match_oracle() {
             json!({ "maxPerHour": 50 }),
         ));
         check_body("extraction_limits_set", &resp, &mut failed);
+    }
+    // P4.55: the `extractionLimitsConfigSchema` sibling of the housekeeping arms.
+    {
+        let db = fresh_db(&spec, "elit");
+        let resp = rt.block_on(memories::memory_extraction_limits_set(
+            &db,
+            json!({ "maxPerHour": "many" }),
+        ));
+        check_error("extraction_limits_set_invalid_type", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "elir");
+        let resp = rt.block_on(memories::memory_extraction_limits_set(
+            &db,
+            json!({ "softFloor": 1.5 }),
+        ));
+        check_error("extraction_limits_set_out_of_range", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "eliw");
+        rt.block_on(seed_extraction_limits(&db));
+        let resp = rt.block_on(memories::memory_extraction_limits_set(
+            &db,
+            json!({ "enabled": 1 }),
+        ));
+        let name = "extraction_limits_invalid_writes_nothing";
+        check_error(name, &resp, &mut failed);
+        let stored = db
+            .read_main(quilltap_core::db::instance_settings::get_memory_extraction_limits)
+            .expect("read extraction limits after refused set");
+        let want = &oracle[name]["storedAfter"];
+        if norm(&stored) != norm(want) {
+            eprintln!(
+                "[{name}] storedAfter MISMATCH:\n{}",
+                first_diff(&norm(&stored), &norm(want))
+            );
+            failed.push(format!("{name}:storedAfter"));
+        } else {
+            eprintln!("[{name}] storedAfter OK.");
+        }
     }
     {
         let db = fresh_db(&spec, "ecg");

@@ -378,6 +378,58 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // P4.55 (the merge-verb silent-keep sweep): `housekeepingConfigSchema`
+    // safeParses BEFORE the read/merge/write, so a present-but-invalid value
+    // 400s and stores NOTHING — v5 used to merge and PERSIST the garbage.
+    // Status + `error` message compared; the `details` issues array is the
+    // recorded no-details divergence class.
+    {
+      name: 'housekeeping_config_set_invalid_bool',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeeping-config`, { enabled: 'yes' }),
+          ),
+        ),
+    },
+    {
+      // Below `.min(100)` — the range legs, not just the type leg.
+      name: 'housekeeping_config_set_out_of_range',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeeping-config`, { perCharacterCap: -5 }),
+          ),
+        ),
+    },
+    {
+      // The refusal writes NOTHING: seed a non-default bag through v4's REAL
+      // repo, refuse an invalid patch, then read the stored bag back with the
+      // same repo (a direct call, not a second route request — the venue's
+      // one-request-per-case rule) and emit it as `storedAfter`.
+      name: 'housekeeping_config_invalid_writes_nothing',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        const repos = getRepositories();
+        await repos.chatSettings.updateForUser(spec.userId, {
+          autoHousekeepingSettings: {
+            enabled: true,
+            perCharacterCap: 1234,
+            perCharacterCapOverrides: {},
+            autoMergeSimilarThreshold: 0.5,
+            mergeSimilar: true,
+          },
+        });
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeeping-config`, { perCharacterCap: 'lots' }),
+          ),
+        );
+        const row = await repos.chatSettings.findByUserId(spec.userId);
+        return { ...r, storedAfter: row?.autoHousekeepingSettings ?? null };
+      },
+    },
     { name: 'recall_config_get', run: () => listGet(`action=recall-config`) },
     {
       name: 'recall_config_set',
@@ -496,6 +548,48 @@ async function main(): Promise<void> {
             mockRequest(`${B}?action=extraction-limits-config`, { maxPerHour: 50 }),
           ),
         ),
+    },
+    // P4.55: the `extractionLimitsConfigSchema` sibling of the housekeeping arms.
+    {
+      name: 'extraction_limits_set_invalid_type',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { maxPerHour: 'many' }),
+          ),
+        ),
+    },
+    {
+      // `softFloor` is `.min(0).max(1)` — above the max, and a non-integer that
+      // the cap field would reject but this one must not.
+      name: 'extraction_limits_set_out_of_range',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { softFloor: 1.5 }),
+          ),
+        ),
+    },
+    {
+      name: 'extraction_limits_invalid_writes_nothing',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { setMemoryExtractionLimits, getMemoryExtractionLimits } = await import(
+          '@/lib/instance-settings'
+        );
+        await setMemoryExtractionLimits({
+          enabled: true,
+          maxPerHour: 77,
+          softStartFraction: 0.25,
+          softFloor: 0.75,
+        });
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { enabled: 1 }),
+          ),
+        );
+        return { ...r, storedAfter: await getMemoryExtractionLimits() };
+      },
     },
     { name: 'extraction_concurrency_get', run: () => listGet(`action=extraction-concurrency`) },
     {

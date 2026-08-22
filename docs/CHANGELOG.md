@@ -200,6 +200,24 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — fix(memories): validate the housekeeping + extraction-limits config bodies before writing
+
+_Versions: core 0.0.609, harness 0.0.532._
+
+The `memoryHousekeepingConfigSet` and `memoryExtractionLimitsSet` verbs merged
+whatever the body carried into the stored settings bag and persisted it: a
+`"yes"` for a boolean, a negative `perCharacterCap`, a string where a number
+belongs — all merged, written, answered 200. v4 `safeParse`s
+`housekeepingConfigSchema` / `extractionLimitsConfigSchema` before it reads
+anything and answers 400 `Validation error`, writing nothing.
+
+Both verbs now validate first, on the template the recall verb already used.
+The bespoke non-object sentences ("Invalid housekeeping config body" /
+"Invalid extraction limits body") are gone — a non-object body is Zod's own
+root-level `invalid_type` and takes the same `Validation error` path. Six new
+arms in the memories-config differential (two invalid + one writes-nothing
+composite comparing the stored bag per verb), all eight comparands proven red
+against the old lenient behavior.
 
 #### 2026-08-22 — docs(porting): work orders for the prompts-trio drift round (P4.D103 ∥ P4.D104 ∥ P4.55)
 

@@ -80060,3 +80060,81 @@ forced by an owned change and none owned by a sibling lane:**
 verified-per-call-site comment), and `services/chat_initialize.rs` (a comment
 only, recording the greeting head's structural exclusion). Flagged for the
 unifier.
+## P4.55 — the merge-verb silent-keep sweep (lane record, baseline `a6870c5a`)
+
+Drift-checked at lane start: v4 `main` HEAD == `a6870c5a` (the lane's
+baseline), tree clean; `bugfix` is the 4.8.x release branch, strictly behind
+main on `lib/`/`app/`/`packages/`. Every oracle in this lane was regenerated
+against that unmoved checkout through `harness/tools/recipe_sweep.py`, so no
+pinned worktree was needed.
+
+### Unit 1 — A1 + A2: the memories config verbs validate FIRST
+
+**The divergence, measured.** `memoryHousekeepingConfigSet`
+(`api/memories.rs`) and `memoryExtractionLimitsSet` did no validation at all.
+They checked `bag.is_object()`, then merged every present key `?? current` and
+WROTE the result: `{"enabled": "yes"}` persisted the string `"yes"` into
+`chat_settings.autoHousekeepingSettings`; `{"perCharacterCap": -5}` persisted
+`-5`. Both answered 200 with the garbage echoed back. This was worse than the
+recall verb's pre-P4.D95 state — that one dropped the bad value silently, these
+two stored it.
+
+v4 (`app/api/v1/memories/route.ts:737-739` / `:785-787`) `safeParse`s
+`housekeepingConfigSchema` (:107-113) / `extractionLimitsConfigSchema`
+(:115-120) as the FIRST statement after reading the body, before any DB read,
+and answers `validationError(...)` — 400 `{"error":"Validation error",
+"details":[…]}` — writing nothing.
+
+**The port.** Two validators (`validate_housekeeping_config`,
+`validate_extraction_limits_config`) built constraint by constraint from the
+Zod schemas, called before the current-settings read, on exactly the template
+`memory_recall_config_set` has carried since P4.D95:
+
+- `.optional()` (not `.nullish()`) everywhere, so a present `null` is an
+  `invalid_type` failure, not an absence — which is also why keeping the
+  existing `?? current` merge below is faithful: nothing invalid can reach it.
+- `z.number().int()` = `Number.isSafeInteger` (`zod_safe_int`); the
+  `perCharacterCap` range is `[100, 100000]`, `maxPerHour` `[1, 10000]`, the
+  two fractions + `autoMergeSimilarThreshold` `[0, 1]` inclusive.
+  `autoMergeSimilarThreshold` deliberately has NO `.int()` — a mutation that
+  adds one is caught by the `softFloor: 1.5` arm's sibling reasoning.
+- `perCharacterCapOverrides` is `z.record(z.string(), z.number().int()
+  .positive())`: a plain object whose every value is a positive safe integer.
+- Unknown keys are STRIPPED by `z.object`, never refused — so no unknown-key
+  arm exists on either side.
+
+The two bespoke sentences ("Invalid housekeeping config body" / "Invalid
+extraction limits body") are RETIRED: a non-object body is Zod's own root-level
+`invalid_type` and goes through the same `validationError`, so v4 answers
+`Validation error` there too. v5 answers the message only — the recorded
+no-details divergence class.
+
+**The differential.** Six new arms in `memories-config.test.ts` /
+`memories_routes_equivalence.rs`, two invalid + one writes-nothing composite
+per verb:
+
+- `housekeeping_config_set_invalid_bool` (`{"enabled":"yes"}`),
+  `housekeeping_config_set_out_of_range` (`{"perCharacterCap":-5}`),
+  `housekeeping_config_invalid_writes_nothing` — seeds a non-default bag
+  through v4's REAL `repos.chatSettings.updateForUser` (Rust: the ported
+  `chat_settings::update_for_user`), refuses `{"perCharacterCap":"lots"}`, and
+  emits the re-read bag as `storedAfter`.
+- `extraction_limits_set_invalid_type` (`{"maxPerHour":"many"}`),
+  `extraction_limits_set_out_of_range` (`{"softFloor":1.5}` — the `.max(1)`
+  leg on a field with no `.int()`), `extraction_limits_invalid_writes_nothing`
+  — seeded through `setMemoryExtractionLimits` / the ported writer.
+
+The oracle's `runCase` shaper already forwarded `storedAfter` (P4.D95), so no
+record-shaper change was needed.
+
+**Mutation proof (red-first, run after the fact by reverting the guard).**
+With the old lenient behavior restored, all EIGHT comparands go red:
+`housekeeping_config_set_invalid_bool`, `..._out_of_range`,
+`housekeeping_config_invalid_writes_nothing` **and its `:storedAfter`**,
+`extraction_limits_set_invalid_type`, `..._out_of_range`,
+`extraction_limits_invalid_writes_nothing` **and its `:storedAfter`**. The two
+`storedAfter` reds are the ones that matter — they are the direct measurement
+that v5 was persisting the garbage, not merely mis-answering.
+
+Family green end-to-end through the sweep driver
+(`--run memories_routes_equivalence`), oracles fresh at `a6870c5a`.

@@ -970,11 +970,106 @@ pub fn memory_housekeeping_config_get(db: &Db, user_id: &str) -> Response {
     }
 }
 
-/// v4 POST `?action=housekeeping-config` — merge-patch each field `?? current`,
+/// Zod `z.number()` over a JSON value — JSON cannot express `NaN`, so any
+/// number literal passes the base check.
+fn zod_number(v: &Value) -> Option<f64> {
+    v.as_f64().filter(|f| !f.is_nan())
+}
+
+/// Zod `.int()` — `Number.isSafeInteger`. (`f.fract()` of an infinity is `NaN`,
+/// so the non-finite arm falls out here too.)
+fn zod_safe_int(f: f64) -> bool {
+    f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0
+}
+
+/// v4 `housekeepingConfigSchema` (`app/api/v1/memories/route.ts:107-113`),
+/// `safeParse`d BEFORE any read or write — a present-but-invalid value refuses
+/// and stores nothing rather than being silently dropped in favour of the
+/// stored value (the P4.55 merge-verb silent-keep class; the recall verb is the
+/// template). Every field is `.optional()`, so a present `null` is an
+/// `invalid_type` failure, not an absence; unknown keys are STRIPPED by
+/// `z.object`, never refused. A non-object body is Zod's own root-level
+/// `invalid_type` and goes through the same `validationError` — which is why
+/// v5's older bespoke "Invalid housekeeping config body" sentence is gone.
+/// v5 answers the message only, no `details` issues array (the recorded
+/// no-details divergence class — see `quilltap-web`'s `validation_error`).
+fn validate_housekeeping_config(bag: &Value) -> Result<(), Response> {
+    let Some(obj) = bag.as_object() else {
+        return Err(bad_request("Validation error"));
+    };
+    for key in ["enabled", "mergeSimilar"] {
+        if let Some(v) = obj.get(key) {
+            if !v.is_boolean() {
+                return Err(bad_request("Validation error"));
+            }
+        }
+    }
+    // `z.number().int().min(100).max(100000)`
+    if let Some(v) = obj.get("perCharacterCap") {
+        match zod_number(v) {
+            Some(f) if zod_safe_int(f) && (100.0..=100_000.0).contains(&f) => {}
+            _ => return Err(bad_request("Validation error")),
+        }
+    }
+    // `z.number().min(0).max(1)` — no `.int()` here.
+    if let Some(v) = obj.get("autoMergeSimilarThreshold") {
+        match zod_number(v) {
+            Some(f) if (0.0..=1.0).contains(&f) => {}
+            _ => return Err(bad_request("Validation error")),
+        }
+    }
+    // `z.record(z.string(), z.number().int().positive())` — a plain object whose
+    // every value is a positive safe integer. Keys are unconstrained strings.
+    if let Some(v) = obj.get("perCharacterCapOverrides") {
+        let Some(map) = v.as_object() else {
+            return Err(bad_request("Validation error"));
+        };
+        for entry in map.values() {
+            match zod_number(entry) {
+                Some(f) if zod_safe_int(f) && f > 0.0 => {}
+                _ => return Err(bad_request("Validation error")),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// v4 `extractionLimitsConfigSchema` (`route.ts:115-120`) — the housekeeping
+/// sibling; see [`validate_housekeeping_config`] for the shared semantics.
+fn validate_extraction_limits_config(bag: &Value) -> Result<(), Response> {
+    let Some(obj) = bag.as_object() else {
+        return Err(bad_request("Validation error"));
+    };
+    if let Some(v) = obj.get("enabled") {
+        if !v.is_boolean() {
+            return Err(bad_request("Validation error"));
+        }
+    }
+    // `z.number().int().min(1).max(10000)`
+    if let Some(v) = obj.get("maxPerHour") {
+        match zod_number(v) {
+            Some(f) if zod_safe_int(f) && (1.0..=10_000.0).contains(&f) => {}
+            _ => return Err(bad_request("Validation error")),
+        }
+    }
+    // `z.number().min(0).max(1)` for both fractions.
+    for key in ["softStartFraction", "softFloor"] {
+        if let Some(v) = obj.get(key) {
+            match zod_number(v) {
+                Some(f) if (0.0..=1.0).contains(&f) => {}
+                _ => return Err(bad_request("Validation error")),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// v4 POST `?action=housekeeping-config` — validate FIRST
+/// ([`validate_housekeeping_config`]), then merge-patch each field `?? current`,
 /// store via `updateForUser`, `{success, settings: merged}`.
 pub async fn memory_housekeeping_config_set(db: &Db, user_id: &str, bag: Value) -> Response {
-    if !bag.is_object() {
-        return bad_request("Invalid housekeeping config body");
+    if let Err(resp) = validate_housekeeping_config(&bag) {
+        return resp;
     }
     let uid = user_id.to_string();
     let current: Result<Value, DbError> = db.read_main(move |main| {
@@ -1107,10 +1202,12 @@ pub fn memory_extraction_limits_get(db: &Db) -> Response {
     }
 }
 
-/// v4 POST `?action=extraction-limits-config` — merge-patch, store, `{success, settings}`.
+/// v4 POST `?action=extraction-limits-config` — validate FIRST
+/// ([`validate_extraction_limits_config`]), then merge-patch, store,
+/// `{success, settings}`.
 pub async fn memory_extraction_limits_set(db: &Db, bag: Value) -> Response {
-    if !bag.is_object() {
-        return bad_request("Invalid extraction limits body");
+    if let Err(resp) = validate_extraction_limits_config(&bag) {
+        return resp;
     }
     let current = match db.read_main(instance_settings::get_memory_extraction_limits) {
         Ok(c) => c,
