@@ -504,27 +504,32 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
       { timeout: 10_000 },
     );
 
-    // Pick the fixture's key: the button arms and its title flips.
-    const keySelect = dialog.locator('select').nth(1);
-    const keyValue = await keySelect.locator('option').nth(1).getAttribute('value');
-    test.skip(!keyValue, 'fixture carries no OPENAI API key to select');
-    await keySelect.selectOption(keyValue as string);
-    await expect(fetchButton).toBeEnabled();
-    await expect(fetchButton).toHaveAttribute('title', 'Query the provider for its image models');
-
-    // Fetch against the live server. The fixture's key is not a real OpenAI
-    // credential, so the honest answer is the built-in list with the provider's
-    // refusal named — which is the arm worth proving: the sentence carries the
-    // server's reason, and the label is no longer the keyless one.
-    await fetchButton.click();
-    await expect(fetchButton).toHaveText('Fetch Models', { timeout: 30_000 });
-    await expect(dialog).not.toContainText('select an API key and Fetch Models', {
+    // The OFFLINE discriminator: switch the provider to Google and read the
+    // model list's ORDER. The keyless auto-load still calls the live verb, and
+    // the server's built-in answer is the PLUGIN's `supportedModels` — imagen
+    // first (`imagen-4, imagen-4-fast, gemini-…`) — while the client's
+    // catch-branch fallback is the registry's `defaultModels`, which for
+    // Google orders gemini first. So in the pre-P4.D100 refusal world this
+    // select's first option reads `gemini-2.5-flash-image`, and only the
+    // landed verb can put `imagen-4` there. (The original draft of this beat
+    // selected the fixture's API key and fetched live — but the fixture's one
+    // key is OPENAI_COMPATIBLE, which no image provider accepts, and a keyed
+    // fetch is an outbound call to a real provider host, which has no place
+    // in the offline suite. The keyed arms are label-pinned at component tier
+    // and the real-key smoke is the round's 💸 dogfood item.)
+    const providerSelect = dialog.locator('select').first();
+    await providerSelect.selectOption('GOOGLE');
+    await expect(dialog).toContainText(
+      "Showing the plugin's built-in model list — select an API key and Fetch Models to query the provider.",
+      { timeout: 10_000 },
+    );
+    const modelSelect = dialog.locator('select').nth(2);
+    await expect(modelSelect.locator('option').first()).toHaveText('imagen-4', {
       timeout: 10_000,
     });
-    const sourceLine = dialog.locator('p', {
-      hasText: /fetched from the provider|built-in list/,
-    });
-    await expect(sourceLine.first()).toBeVisible({ timeout: 10_000 });
+    await expect(modelSelect.locator('option')).toHaveCount(4);
+    // And the fetched-list state is labeled builtin, never provider.
+    await expect(dialog).not.toContainText('fetched from the provider');
   });
 
   test('Images tab: NanoGPT reaches the image picker from the live provider registry', async ({
