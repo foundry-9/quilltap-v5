@@ -65,6 +65,16 @@ function applyMocks(spec: Spec): void {
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // `jest.setup.ts` globally mocks the plugin factory with a bare `jest.fn()`,
+  // so `createImageProvider` answers `undefined` for EVERY provider — the
+  // registry probe becomes a no-op and `?action=list-models` 500s on the
+  // `undefined.supportedModels` read. Un-mock it (the same class as the
+  // empty-provider-registry trap) so v4's real factory, filter, labelling and
+  // caching code all run.
+  jest.doMock('@/lib/llm/plugin-factory', () => jest.requireActual('@/lib/llm/plugin-factory'));
+  jest.doMock('@/lib/plugins/provider-registry', () =>
+    jest.requireActual('@/lib/plugins/provider-registry'),
+  );
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
@@ -112,6 +122,78 @@ async function dumpProfiles(): Promise<unknown> {
   const main = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown } };
   return { profiles: main.prepare('SELECT name, isDefault FROM image_profiles ORDER BY name').all() };
 }
+
+/**
+ * The `provider_models` cache side-effect of `?action=list-models`. Only
+ * genuinely live-fetched lists may be cached — a built-in list would masquerade
+ * as provider-confirmed on later reads — so this dump is what makes the
+ * cache-only-live rule a measured comparand rather than a claim.
+ */
+async function dumpProviderModels(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown } };
+  // The committed fixture predates `provider_models`; v4 creates the collection
+  // lazily on first write. A missing table is therefore "nothing cached", which
+  // is exactly what the built-in arms must show.
+  const exists = main
+    .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name='provider_models'")
+    .all() as { sql?: string }[];
+  if (exists.length === 0) return { providerModels: [], providerModelsDDL: null };
+  return {
+    // v4's own `CREATE TABLE` text, emitted so the Rust side can start each
+    // list-models case from the SAME table shape rather than from a fixture
+    // that predates the collection. Without it, "nothing cached" would be true
+    // on the v5 side for the WRONG reason (a failed write on a missing table),
+    // and the cache-only-live rule would be vacuously green.
+    providerModelsDDL: exists[0].sql ?? null,
+    providerModels: main
+      .prepare(
+        'SELECT provider, modelId, modelType, displayName, baseUrl FROM provider_models ORDER BY provider, modelType, modelId',
+      )
+      .all(),
+  };
+}
+
+/**
+ * Run `body` with `global.fetch` answering every request from `responses` in
+ * order — the provider HTTP mocked BELOW the plugin, so v4's REAL filter,
+ * labelling and caching code all run. An unscripted request throws rather than
+ * repeating the last answer (a runaway page loop must fail, not hang).
+ */
+async function withMockedProviderHttp<T>(
+  responses: { status: number; body: string }[],
+  body: () => Promise<T>,
+): Promise<T> {
+  const original = globalThis.fetch;
+  let served = 0;
+  globalThis.fetch = (async () => {
+    const r = responses[served];
+    served += 1;
+    if (!r) throw new Error('oracle: provider made more requests than scripted');
+    return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  try {
+    return await body();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+/** An OpenAI `/v1/models` page carrying two image families plus noise. */
+const OPENAI_MODELS_PAGE = JSON.stringify({
+  object: 'list',
+  data: [
+    { id: 'gpt-4o' },
+    { id: 'dall-e-3' },
+    { id: 'gpt-image-1' },
+    { id: 'text-embedding-3-small' },
+  ],
+});
+
+/** A 401 that makes the SDK throw, so the route takes its fetchError arm. */
+const OPENAI_MODELS_401 = JSON.stringify({
+  error: { message: 'Incorrect API key provided: sk-****.', type: 'invalid_request_error' },
+});
 
 interface CaseSpec {
   name: string;
@@ -203,6 +285,76 @@ async function main(): Promise<void> {
     {
       name: 'list_providers',
       run: async () => respond(await (await coll()).GET(mockRequest(`${B}?action=list-providers`))),
+    },
+    // === ca22ec45: the honest list-models action ===
+    {
+      name: 'list_models_missing_provider',
+      run: async () => respond(await (await coll()).GET(mockRequest(`${B}?action=list-models`))),
+    },
+    {
+      name: 'list_models_unknown_provider',
+      run: async () =>
+        respond(await (await coll()).GET(mockRequest(`${B}?action=list-models&provider=NOPE`))),
+    },
+    {
+      // No key: the plugin's curated list, labelled builtin, and NOTHING cached.
+      name: 'list_models_no_key',
+      run: async () => {
+        const r = await (await coll()).GET(mockRequest(`${B}?action=list-models&provider=OPENAI`));
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProviderModels() };
+      },
+    },
+    {
+      // The legacy alias resolves to the GOOGLE provider, but the response and
+      // the cache key echo the RAW provider string.
+      name: 'list_models_legacy_alias',
+      run: async () => {
+        const r = await (await coll()).GET(
+          mockRequest(`${B}?action=list-models&provider=GOOGLE_IMAGEN`),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProviderModels() };
+      },
+    },
+    {
+      // Keyed live success: source `provider`, and the list cached under
+      // modelType `image` with displayName === modelId.
+      name: 'list_models_live_ok',
+      run: async () => {
+        const r = await withMockedProviderHttp([{ status: 200, body: OPENAI_MODELS_PAGE }], async () =>
+          (await coll()).GET(
+            mockRequest(`${B}?action=list-models&provider=OPENAI&apiKeyId=${APIKEY}`),
+          ),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProviderModels() };
+      },
+    },
+    {
+      // Keyed live FAILURE: fetchError present, models fall back to the built-in
+      // list, source stays builtin, and NOTHING is cached.
+      name: 'list_models_live_failure',
+      run: async () => {
+        const r = await withMockedProviderHttp([{ status: 401, body: OPENAI_MODELS_401 }], async () =>
+          (await coll()).GET(
+            mockRequest(`${B}?action=list-models&provider=OPENAI&apiKeyId=${APIKEY}`),
+          ),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProviderModels() };
+      },
+    },
+    {
+      name: 'list_models_dangling_key',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(
+              `${B}?action=list-models&provider=OPENAI&apiKeyId=00000000-0000-4000-8000-0000000000ff`,
+            ),
+          ),
+        ),
     },
     {
       name: 'get',

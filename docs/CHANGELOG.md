@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(images): the honest `list-models` verb (v4 `ca22ec45`, P4.D100)
+
+_Versions: core 0.0.603, harness 0.0.526, host 0.0.77._
+
+`imageProfileListModels` was a loud typed refusal; it is now v4's honest Fetch
+Models action. `source` is `provider` ONLY when the provider's API was actually
+queried and answered, otherwise `builtin` (the plugin's curated list) with the
+live-fetch reason in `fetchError` — omitted, never null, when there is none.
+The flow is v4's exactly: a falsy `provider` is 400 `Provider is required`; an
+unavailable one is 400 `Provider {provider} is not available`; a dangling
+`apiKeyId` is 404; and every other failure collapses into the outer catch's 500
+`Failed to fetch models`. The legacy `GOOGLE_IMAGEN` alias resolves to GOOGLE's
+plugin for the list, while the response and the cache key echo the RAW provider
+string.
+
+Only genuinely live-fetched lists are cached in `provider_models` (capability
+`image`, `displayName` equal to the id) — a built-in list would masquerade as
+provider-confirmed on later reads. The write is best-effort, warned and
+swallowed exactly as v4's is, so a cache-layer problem can never turn a
+successful fetch into an error page.
+
+The discovery crosses a new `image_discovery` engine seam, wired LIVE in
+`quilltap-host` over the W4.7f provider (it needs only the HTTP client and the
+image-download seam, so it is built independently of the spine bundle). An
+unassembled seam answers a loud not-assembled refusal — the
+`image_generation` precedent — rather than silently serving a keyless list,
+which is the very thing this drift set out to stop.
+
+The routes differential grows seven arms over the v4 oracle, with the
+`provider_models` table as a measured comparand on four of them. Two oracle
+repairs were needed to make them honest: `jest.setup.ts` globally mocks
+`@/lib/llm/plugin-factory`, so `createImageProvider` answered `undefined` for
+every provider and the action 500'd on an `undefined.supportedModels` read (the
+same class as the empty-provider-registry trap; un-mocking moved no other
+recorded row); and the committed fixture predates `provider_models`, which v4
+creates lazily and v5's boot ensure creates at startup, so the oracle now emits
+v4's own `CREATE TABLE` text and the harness applies it — otherwise "nothing
+cached" would be true on the v5 side for the wrong reason and the
+cache-only-live rule would be vacuously green. A named stale-oracle guard fails
+loudly on a pre-P4.D100 regen. Five mutations proven red: caching a built-in
+list, dropping `fetchError`, caching under the wrong capability, echoing the
+resolved rather than the raw provider, and losing the built-in fallback.
+
+The P4.D33 bank note is retired with a record of what the measurement found
+beyond it; it still stands for the `p4.9h` embedding-profiles surface.
+`docs/v4/developer/API.md` is refreshed from the pin.
+
 #### 2026-08-22 — port(images): keyed model discovery + the Z.AI image-download seam (v4 `ca22ec45`, P4.D100)
 
 _Versions: core 0.0.602, harness 0.0.525, host 0.0.76._

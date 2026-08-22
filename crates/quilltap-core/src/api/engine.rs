@@ -125,6 +125,11 @@ pub struct EngineAssembly {
     /// loud not-assembled refusal (spine-less assemblies — read-only embedders — keep
     /// the un-refusal deferred).
     pub image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
+    /// The `imageProfileListModels` discovery seam (P4.D100, wired LIVE in the
+    /// host from the W4.7f `RealImageProvider`). `None` → the arm answers the
+    /// loud not-assembled refusal; a keyless list would silently masquerade as
+    /// an honest one, which is exactly what `ca22ec45` set out to stop.
+    pub image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
     // === end P4.6ai ===
     // === P4.6bd: the custom-tool consult seam ===
     /// The custom-tool consult runner (P4.6bd, wired LIVE in the host — the
@@ -276,6 +281,7 @@ impl EngineAssembly {
             save_image_bytes: None,
             // === P4.6ai ===
             image_generation: None,
+            image_discovery: None,
             // === end P4.6ai ===
             consult: None,
             // === P4.9f1 ===
@@ -469,6 +475,7 @@ struct ReadyEngine {
     /// The `imageProfileGenerate` runner (P4.6ai; `None` for spine-less assemblies —
     /// the arm answers the loud not-assembled refusal).
     image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
+    image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
     /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
     /// the composer/bench arms answer the loud not-assembled error).
     consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
@@ -2557,10 +2564,22 @@ impl CoreEngine {
                 Ok(_) => super::image_profiles::image_profile_validate_key(),
                 Err(r) => r,
             },
-            Request::ImageProfileListModels { .. } => match self.ready_db() {
-                Ok(_) => super::image_profiles::image_profile_list_models(),
+            // === P4.D100: the honest Fetch Models un-refusal ===
+            Request::ImageProfileListModels {
+                provider,
+                api_key_id,
+            } => match self.ready_list_models() {
+                Ok((db, discovery)) => {
+                    super::image_profiles::image_profile_list_models(
+                        &db,
+                        &discovery,
+                        provider.as_deref(),
+                        api_key_id.as_deref(),
+                    )
+                    .await
+                }
                 Err(r) => r,
-            },
+            }, // === end P4.D100 ===
 
             // --- Embedding profiles management (P4.9H2A) --------------------
             Request::EmbeddingProfileList => match self.ready_db() {
@@ -4828,6 +4847,23 @@ impl CoreEngine {
     /// engine without the runner (spine-less host — read-only embedders) answers the
     /// loud not-assembled refusal (the courier-resolve precedent — the host wires it
     /// LIVE at unification), keeping the `imageProfileGenerate` un-refusal deferred.
+    /// The DB + the `ca22ec45` model-discovery seam, or the loud not-assembled
+    /// refusal (the `ready_generate_image` precedent).
+    fn ready_list_models(
+        &self,
+    ) -> Result<(Db, crate::model::image::ErasedImageDiscovery), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.image_discovery {
+                Some(d) => Ok((r.db.clone(), d.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "image model discovery not assembled (image-generation seam deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     fn ready_generate_image(
         &self,
     ) -> Result<(Db, crate::tools::generate_image::ErasedImageGeneration), Response> {
@@ -5566,6 +5602,7 @@ fn open_ready(
         courier_resolve: assembly.courier_resolve,
         save_image_bytes: assembly.save_image_bytes,
         image_generation: assembly.image_generation,
+        image_discovery: assembly.image_discovery,
         consult: assembly.consult,
         avatar_preview: assembly.avatar_preview,
         brahma_console_send: assembly.brahma_console_send,

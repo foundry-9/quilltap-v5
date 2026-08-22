@@ -1,4 +1,4 @@
-//! P4.6p IMAGE-PROFILES route-surface differential: `api::image_profiles::*` vs
+//! P4.6p IMAGE-PROFILES route-surface differential (+ P4.D100's `list-models`): `api::image_profiles::*` vs
 //! v4's REAL image-profile route handlers, over a FRESH copy of the committed
 //! groups-projects fixture per case. Create mints id + timestamps (blanked);
 //! update mints updatedAt (blanked); the isDefault side effect is verified via a
@@ -17,6 +17,9 @@ use std::path::PathBuf;
 use quilltap_core::api::image_profiles as ip;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::image::ErasedImageDiscovery;
+use quilltap_core::model::image_dialects::RealImageProvider;
+use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -145,6 +148,58 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// The `provider_models` cache dump the list-models arms compare, mirroring the
+/// oracle's projection and ordering.
+fn dump_provider_models(db: &Db) -> Value {
+    db.read_main(|conn| {
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='provider_models'",
+            [],
+            |r| r.get(0),
+        )?;
+        if exists == 0 {
+            return Ok(json!({ "providerModels": [] }));
+        }
+        let mut stmt = conn.prepare(
+            "SELECT provider, modelId, modelType, displayName, baseUrl FROM provider_models \
+             ORDER BY provider, modelType, modelId",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "provider": r.get::<_, String>(0)?,
+                    "modelId": r.get::<_, String>(1)?,
+                    "modelType": r.get::<_, String>(2)?,
+                    "displayName": r.get::<_, String>(3)?,
+                    "baseUrl": r.get::<_, Option<String>>(4)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(json!({ "providerModels": rows }))
+    })
+    .unwrap()
+}
+
+/// Apply v4's OWN `CREATE TABLE provider_models` text (recorded by the oracle)
+/// to a fresh fixture copy.
+///
+/// The committed `groups-projects` fixture predates the collection; v4 creates
+/// it lazily on first write, v5's boot ensure creates it at startup and the
+/// harness opens the file directly. Starting both sides from the same table
+/// shape is what keeps "nothing cached" an OBSERVATION rather than a failed
+/// write on a missing table — otherwise the cache-only-live rule would be
+/// vacuously green on every built-in arm.
+fn ensure_provider_models(db: &Db, ddl: &str) {
+    let sql = ddl.to_string();
+    db.write_blocking(move |ws| {
+        ws.main()
+            .connection()
+            .execute_batch(&sql)
+            .map_err(quilltap_core::db::DbError::from)
+    })
+    .expect("create provider_models");
+}
+
 fn dump_profiles(db: &Db) -> Value {
     db.read_main(|conn| {
         let mut stmt = conn.prepare("SELECT name, isDefault FROM image_profiles ORDER BY name")?;
@@ -176,6 +231,24 @@ fn image_profiles_routes_match_oracle() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
+    // A STALE-oracle guard: a regen from before P4.D100 carries none of the
+    // list-models arms, and every one of them would otherwise surface as an
+    // opaque index panic. Name them.
+    for required in [
+        "list_models_missing_provider",
+        "list_models_unknown_provider",
+        "list_models_no_key",
+        "list_models_legacy_alias",
+        "list_models_live_ok",
+        "list_models_live_failure",
+        "list_models_dangling_key",
+    ] {
+        assert!(
+            oracle.contains_key(required),
+            "the oracle NDJSON is stale: no `{required}` case (regenerate it — see the test header)"
+        );
+    }
+
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -198,6 +271,18 @@ fn image_profiles_routes_match_oracle() {
             failed.push(name.to_string());
         } else {
             eprintln!("[{name}] OK.");
+        }
+    };
+    let check_tables_at = |name: &str, key: &str, got: &Value, failed: &mut Vec<String>| {
+        let want = json!({ key: oracle[name]["tables"][key].clone() });
+        if norm(got, &[]) != norm(&want, &[]) {
+            eprintln!(
+                "[{name} {key}] MISMATCH:\n{}",
+                first_diff(&norm(got, &[]), &norm(&want, &[]))
+            );
+            failed.push(format!("{name}_{key}"));
+        } else {
+            eprintln!("[{name} {key}] OK.");
         }
     };
     let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
@@ -270,6 +355,152 @@ fn image_profiles_routes_match_oracle() {
         &ip::image_profile_get(&fresh_db(&spec, "g4"), BOGUS),
         &mut failed,
     );
+
+    // --- list-models (P4.D100 / v4 `ca22ec45`) ---
+    {
+        // v4's own `CREATE TABLE provider_models` text, recorded by the oracle.
+        let ddl = oracle["list_models_live_ok"]["tables"]["providerModelsDDL"]
+            .as_str()
+            .expect("the oracle must record v4's provider_models DDL")
+            .to_string();
+
+        // A canned model list, byte-identical to the page the oracle fed v4's
+        // plugin. The transport keys on the exact request signature, so a
+        // request-building divergence surfaces here as a canned miss.
+        let openai_models_url = "https://api.openai.com/v1/models";
+        let live_page = r#"{"object":"list","data":[{"id":"gpt-4o"},{"id":"dall-e-3"},{"id":"gpt-image-1"},{"id":"text-embedding-3-small"}]}"#;
+        let live_401 = r#"{"error":{"message":"Incorrect API key provided: sk-****.","type":"invalid_request_error"}}"#;
+        let discovery = |status: u16, body: &str| {
+            ErasedImageDiscovery::new(RealImageProvider::new(
+                CannedWireTransport::new().with_response(
+                    "GET",
+                    openai_models_url,
+                    "",
+                    WireResponse::new(status, body),
+                ),
+            ))
+        };
+        // A discovery seam that must never be reached (the no-key arms).
+        let unreachable =
+            || ErasedImageDiscovery::new(RealImageProvider::new(CannedWireTransport::new()));
+
+        err(
+            "list_models_missing_provider",
+            &rt.block_on(ip::image_profile_list_models(
+                &fresh_db(&spec, "lm_np"),
+                &unreachable(),
+                None,
+                None,
+            )),
+            &mut failed,
+        );
+        err(
+            "list_models_unknown_provider",
+            &rt.block_on(ip::image_profile_list_models(
+                &fresh_db(&spec, "lm_up"),
+                &unreachable(),
+                Some("NOPE"),
+                None,
+            )),
+            &mut failed,
+        );
+        {
+            let db = fresh_db(&spec, "lm_nk");
+            ensure_provider_models(&db, &ddl);
+            ok(
+                "list_models_no_key",
+                &rt.block_on(ip::image_profile_list_models(
+                    &db,
+                    &unreachable(),
+                    Some("OPENAI"),
+                    None,
+                )),
+                &[],
+                &mut failed,
+            );
+            check_tables_at(
+                "list_models_no_key",
+                "providerModels",
+                &dump_provider_models(&db),
+                &mut failed,
+            );
+        }
+        {
+            // The legacy alias resolves to GOOGLE's plugin list, but the
+            // response echoes the RAW provider string.
+            let db = fresh_db(&spec, "lm_alias");
+            ensure_provider_models(&db, &ddl);
+            ok(
+                "list_models_legacy_alias",
+                &rt.block_on(ip::image_profile_list_models(
+                    &db,
+                    &unreachable(),
+                    Some("GOOGLE_IMAGEN"),
+                    None,
+                )),
+                &[],
+                &mut failed,
+            );
+            check_tables_at(
+                "list_models_legacy_alias",
+                "providerModels",
+                &dump_provider_models(&db),
+                &mut failed,
+            );
+        }
+        {
+            let db = fresh_db(&spec, "lm_ok");
+            ensure_provider_models(&db, &ddl);
+            ok(
+                "list_models_live_ok",
+                &rt.block_on(ip::image_profile_list_models(
+                    &db,
+                    &discovery(200, live_page),
+                    Some("OPENAI"),
+                    Some(APIKEY),
+                )),
+                &[],
+                &mut failed,
+            );
+            check_tables_at(
+                "list_models_live_ok",
+                "providerModels",
+                &dump_provider_models(&db),
+                &mut failed,
+            );
+        }
+        {
+            let db = fresh_db(&spec, "lm_fail");
+            ensure_provider_models(&db, &ddl);
+            ok(
+                "list_models_live_failure",
+                &rt.block_on(ip::image_profile_list_models(
+                    &db,
+                    &discovery(401, live_401),
+                    Some("OPENAI"),
+                    Some(APIKEY),
+                )),
+                &[],
+                &mut failed,
+            );
+            check_tables_at(
+                "list_models_live_failure",
+                "providerModels",
+                &dump_provider_models(&db),
+                &mut failed,
+            );
+        }
+        err(
+            "list_models_dangling_key",
+            &rt.block_on(ip::image_profile_list_models(
+                &fresh_db(&spec, "lm_dk"),
+                &unreachable(),
+                Some("OPENAI"),
+                Some("00000000-0000-4000-8000-0000000000ff"),
+            )),
+            &mut failed,
+        );
+    }
 
     // --- Create ---
     {
@@ -414,16 +645,13 @@ fn image_profiles_routes_match_oracle() {
     );
 }
 
-/// The remaining LLM/IO-coupled actions are loud typed refusals this round.
-/// `imageProfileGenerate` was un-refused in P4.6ai (its loud not-assembled refusal
-/// now lives at the engine's `image_generation` seam gate, not this handler — see
-/// `image_generate_route_equivalence`); `validate-key` / `list-models` stay armed.
+/// `validate-key` is the one remaining loud typed refusal. `imageProfileGenerate`
+/// was un-refused in P4.6ai (its not-assembled refusal now lives at the engine's
+/// `image_generation` seam gate); `list-models` was un-refused in P4.D100, and
+/// its own not-assembled refusal likewise moved to the engine's discovery gate.
 #[test]
 fn image_refusal_arms_are_loud() {
-    for resp in [
-        ip::image_profile_validate_key(),
-        ip::image_profile_list_models(),
-    ] {
+    for resp in [ip::image_profile_validate_key()] {
         match resp {
             Response::Error(e) => {
                 assert_eq!(e.kind, ErrorKind::Internal);

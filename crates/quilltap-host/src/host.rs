@@ -743,6 +743,15 @@ impl EngineAssembler for HostAssembler {
             // the spine's W4.7f Real*Providers. Spine-less assemblies (read-only
             // embedders) keep `None` → the loud not-assembled refusal. ===
             image_generation,
+            // P4.D100: the honest Fetch Models discovery seam. Independent of
+            // the spine bundle — it needs only the host's HTTP client and the
+            // `ca22ec45` image-download seam, so it is built here directly.
+            image_discovery: Some(quilltap_core::model::image::ErasedImageDiscovery::new(
+                quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
+                    crate::wire::ReqwestWireTransport::new(),
+                    crate::wire::ReqwestImageBytes::new(),
+                ),
+            )),
             // === end P4.6ai ===
             // === P4.6bd: the custom-tool consult seam, wired LIVE from the
             // spine's wire-config runner (60 s timeout decorated). Spine-less

@@ -4,8 +4,9 @@
 //! `unset_all_defaults`, and the nullable-clearing `IpUpdate` tri-state), the
 //! api-key + tag enrichment reads, and the manifest [`Registry`] (list-providers).
 //!
-//! The three LLM/IO-coupled actions (`generate` / `validate-key` / `list-models`)
-//! are loud refusal arms this round.
+//! `generate` was un-refused in P4.6ai and `list-models` in P4.D100 (v4
+//! `ca22ec45` — the honest Fetch Models action, over the injected
+//! [`ErasedImageDiscovery`] seam). `validate-key` remains a loud refusal arm.
 
 use std::collections::HashSet;
 
@@ -13,7 +14,9 @@ use rusqlite::{Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{api_keys, image_profiles as ip, tags};
+use crate::db::{api_keys, image_profiles as ip, provider_models, tags};
+use crate::model::image::ErasedImageDiscovery;
+use crate::model::image_dialects::supported_image_models;
 use crate::provider_manifest::Registry;
 use crate::tools::generate_image::{
     self, ErasedImageGeneration, ImageGenerationToolInput, ImageToolExecutionContext,
@@ -37,6 +40,11 @@ fn bad_request(msg: impl Into<String>) -> Response {
 fn conflict(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::Conflict, msg)
 }
+/// v4 `serverError('Failed to fetch models')` — the list-models outer catch,
+/// which swallows every unexpected failure into one fixed sentence.
+fn server_error() -> Response {
+    Response::error(ErrorKind::Internal, "Failed to fetch models")
+}
 fn not_available(action: &str) -> Response {
     Response::error(
         ErrorKind::Internal,
@@ -49,15 +57,22 @@ fn not_available(action: &str) -> Response {
 /// EXACT-CASE provider that declares image generation (all such built-ins carry a
 /// `createImageProvider` impl). Unknown / non-image / wrong-case → not available.
 fn create_image_provider_ok(provider: &str) -> bool {
-    let mapped = if provider.to_uppercase() == "GOOGLE_IMAGEN" {
+    Registry::built_in()
+        .get_provider(resolve_image_provider_id(provider))
+        .map(|m| m.capabilities.image_generation)
+        .unwrap_or(false)
+}
+
+/// v4 `createImageProvider`'s legacy-name map (`provider.toUpperCase() ===
+/// 'GOOGLE_IMAGEN' ? 'GOOGLE' : provider`). The RESOLVED id names the plugin
+/// whose `supportedModels` and discovery run; the RAW id is what the response
+/// echoes and what the model cache is keyed on.
+fn resolve_image_provider_id(provider: &str) -> &str {
+    if provider.to_uppercase() == "GOOGLE_IMAGEN" {
         "GOOGLE"
     } else {
         provider
-    };
-    Registry::built_in()
-        .get_provider(mapped)
-        .map(|m| m.capabilities.image_generation)
-        .unwrap_or(false)
+    }
 }
 
 // ===========================================================================
@@ -657,27 +672,141 @@ pub async fn image_profile_generate(
 }
 
 // ===========================================================================
-// Refusal arms (the LLM/IO-coupled actions — deferred this round)
+// The one remaining refusal arm (validate-key)
 // ===========================================================================
 //
-// P4.D33 bank — when these land, the port target is v4 AT OR AFTER `13f0ebd7`.
-// `@openrouter/sdk` 0.13 turned `models.list()` / `embeddings.listModels()` into
-// paginated async-iterables whose rows live at `page.result.data`; three v4 call
-// sites (incl. `plugins/dist/qtap-plugin-openrouter/image-provider.ts` and
-// `embedding-provider.ts`, the two these arms would port) were left reading the
-// pre-0.13 `response.data`, so discovery silently returned NOTHING and always
-// fell through to `FALLBACK_IMAGE_MODELS`. Port the PAGE-LOOPED behavior, not
-// the shipped-for-a-year broken read. The equivalent seam on the pricing path is
-// already reproduced — see `services::pricing_fetcher::openrouter_next_page_offset`
-// and `remap_openrouter_sdk_models`, and the `openrouter_sdk_pricing_equivalence`
-// differential. The same bank applies to the `p4.9h` embedding-profiles
-// management surface.
+// `validate-key` remains a loud typed refusal: v4's handler was NOT touched by
+// the `ca22ec45` drift, and porting it needs the live per-provider key probes.
+//
+// The P4.D33 bank note that stood here is RETIRED. It warned that
+// `@openrouter/sdk` 0.13 turned `models.list()` into a paginated async-iterable
+// whose rows live at `page.result.data`, and that v4's image / embedding call
+// sites still read the pre-0.13 `response.data`. The image half is now ported,
+// and the measurement went further than the note: at `d5830439` v4's OpenRouter
+// image discovery finds nothing under ANY payload, because the SDK's zod strips
+// the keys its acceptance arms read. See `image_dialects::openrouter_sdk_project`
+// for the reproduction and the convergence tripwire. The note still stands for
+// the `p4.9h` embedding-profiles management surface.
 
 pub fn image_profile_validate_key() -> Response {
     not_available("validate-key")
 }
-pub fn image_profile_list_models() -> Response {
-    not_available("list-models")
+/// v4 `GET /api/v1/image-profiles?action=list-models` — the honest Fetch Models
+/// action (`ca22ec45`).
+///
+/// `source` is honest: `provider` ONLY when the provider's API was actually
+/// queried and answered; otherwise `builtin` (the plugin's curated list), with
+/// the live-fetch error surfaced as `fetchError`. The flow is v4's exactly —
+/// missing provider → 400, unknown provider → 400, dangling `apiKeyId` → 404,
+/// and any other failure collapses into the outer catch's
+/// `serverError('Failed to fetch models')`.
+///
+/// **Cache only genuinely live-fetched lists.** A built-in list written to
+/// `provider_models` would masquerade as provider-confirmed on later reads. The
+/// write is best-effort: v4 catches and warns, never failing the request.
+pub async fn image_profile_list_models(
+    db: &Db,
+    discovery: &ErasedImageDiscovery,
+    provider: Option<&str>,
+    api_key_id: Option<&str>,
+) -> Response {
+    // v4 `searchParams.get('provider')` then `if (!provider)` — a JS falsy test,
+    // so an EMPTY `provider=` is "required", not "not available".
+    let Some(provider) = provider.filter(|p| !p.is_empty()) else {
+        return bad_request("Provider is required");
+    };
+    // v4 `createImageProvider(provider)`; a throw is the 400 below.
+    if !create_image_provider_ok(provider) {
+        return bad_request(format!("Provider {provider} is not available"));
+    }
+    let resolved = resolve_image_provider_id(provider);
+    let supported: Vec<String> = match supported_image_models(resolved) {
+        Ok(list) => list.iter().map(|s| (*s).to_string()).collect(),
+        // Unreachable behind the probe above (every image-capable built-in has a
+        // curated list); v4's outer catch is the honest answer if it ever is.
+        Err(_) => return server_error(),
+    };
+
+    let mut models = supported.clone();
+    let mut source = "builtin";
+    let mut fetch_error: Option<String> = None;
+
+    // v4 `if (apiKeyId)` — falsy (absent or empty) takes the built-in path.
+    if let Some(api_key_id) = api_key_id.filter(|s| !s.is_empty()) {
+        let key = match db.read_main(|conn| api_keys::find_by_id(conn, api_key_id)) {
+            Ok(k) => k,
+            Err(_) => return server_error(),
+        };
+        let Some(key) = key else {
+            return not_found("API key");
+        };
+        match discovery
+            .available_models(resolved, Some(&key.key_value))
+            .await
+        {
+            Ok(m) => {
+                models = m;
+                source = "provider";
+            }
+            Err(e) => {
+                // v4 `error instanceof Error ? error.message : String(error)`.
+                fetch_error = Some(e.message);
+                models = supported.clone();
+            }
+        }
+    }
+
+    if source == "provider" {
+        cache_image_models(db, provider, &models).await;
+    }
+
+    let mut body = Map::new();
+    body.insert("provider".into(), Value::String(provider.to_string()));
+    body.insert(
+        "models".into(),
+        Value::Array(models.into_iter().map(Value::String).collect()),
+    );
+    body.insert(
+        "supportedModels".into(),
+        Value::Array(supported.into_iter().map(Value::String).collect()),
+    );
+    body.insert("source".into(), Value::String(source.to_string()));
+    // `...(fetchError ? { fetchError } : {})` — OMITTED, never null.
+    if let Some(e) = fetch_error {
+        body.insert("fetchError".into(), Value::String(e));
+    }
+    Response::ImageProfile(Value::Object(body))
+}
+
+/// v4's `providerModels.upsertModelsForProvider(provider, models.map(modelId =>
+/// ({modelId, displayName: modelId})), 'image', undefined)` — keyed on the RAW
+/// provider string, `displayName` equal to the id, no base URL. Best-effort: a
+/// failure is warned and swallowed (v4's `try/catch → logger.warn`), so a
+/// cache-layer problem can never turn a successful fetch into an error page.
+async fn cache_image_models(db: &Db, provider: &str, models: &[String]) {
+    let rows: Vec<provider_models::PmCreate> = models
+        .iter()
+        .map(|id| provider_models::PmCreate {
+            provider: provider.to_string(),
+            model_id: id.clone(),
+            model_type: "image".to_string(),
+            display_name: id.clone(),
+            base_url: None,
+            context_window: None,
+            max_output_tokens: None,
+            deprecated: false,
+            experimental: false,
+        })
+        .collect();
+    let write = db
+        .write(move |ws| {
+            provider_models::ProviderModelsRepository::new(ws.main().connection())
+                .upsert_model_for_provider(&rows)
+        })
+        .await;
+    if let Err(e) = write {
+        tracing::warn!(provider = %provider, error = %e, "Failed to cache image models");
+    }
 }
 
 #[cfg(test)]

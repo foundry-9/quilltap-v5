@@ -156,6 +156,74 @@ unit 2; the full gate was re-run over the superset at unit 3. Do not edit crate
 source while a workspace gate is in flight.
 
 
+**Unit 4 — the honest `list-models` verb (core 0.0.603, harness 0.0.526, host
+0.0.77).** The refusal at `image_profiles.rs` is replaced by v4's flow, statuses
+and bodies: falsy provider → 400 `Provider is required`; probe failure → 400
+`Provider {provider} is not available`; dangling `apiKeyId` → 404; anything else
+→ the outer catch's 500 `Failed to fetch models`. `source` is honest, `fetchError`
+is OMITTED (never null) when absent, and only `source === "provider"` lists reach
+`provider_models` (capability `image`, `displayName` = id), best-effort with
+v4's warn-and-swallow. The `GOOGLE_IMAGEN` alias resolves for the PLUGIN but the
+response and the cache key echo the RAW string — `resolve_image_provider_id` is
+now the one home for that map (the create/update probe reads it too). The
+discovery rides a new `image_discovery` engine seam, wired LIVE in the host
+independently of the spine bundle (it needs only the HTTP client and the
+download seam); an unassembled seam refuses loudly, on the `image_generation`
+precedent, rather than silently serving a keyless list.
+
+**Two oracle repairs, both of the vacuous-green class.**
+
+1. **`jest.setup.ts` globally mocks `@/lib/llm/plugin-factory`** with a bare
+   `jest.fn()`, so `createImageProvider` answered `undefined` for EVERY
+   provider. Every list-models arm 500'd on the `undefined.supportedModels`
+   read — including `unknown_provider`, which should have been a 400 and was
+   the clue. Un-mocked (with `provider-registry`) exactly as the case already
+   un-mocks the database modules; this is the empty-provider-registry trap
+   wearing a different hat. **Verified it moved no other recorded row**: the
+   full NDJSON diff before/after is minted ids and timestamps only. It also
+   retires a named blind spot — v5's `create_image_provider_ok` unit test
+   carried a comment that the v4 probe is a no-op in the jest sandbox, and it
+   no longer is.
+2. **The committed `groups-projects` fixture predates `provider_models`.** v4
+   creates the collection lazily on first write; v5's boot ensure creates it at
+   startup and the harness opens the file directly. Left alone, "nothing
+   cached" would be TRUE on the v5 side for the wrong reason — a failed write
+   on a missing table — and the cache-only-live rule would be vacuously green
+   on every built-in arm. The oracle now emits v4's OWN `CREATE TABLE` text
+   alongside the dump and the harness applies it to each fresh copy. No
+   committed fixture changed, so no sibling oracle is invalidated.
+
+Seven new arms (missing / unknown provider, no key, the legacy alias, keyed
+live success, keyed live failure, dangling key), four of them with
+`provider_models` as a measured comparand, plus a named stale-oracle guard that
+fails loudly on a pre-P4.D100 regen instead of an opaque index panic. Five
+mutations proven red: caching a built-in list, dropping `fetchError`, caching
+under the wrong capability, echoing the resolved rather than the raw provider,
+and losing the built-in fallback. (A sixth attempt was a no-op edit rather than
+a real mutation — `models` is initialized to the supported list before the
+branch — and was re-run as `models = Vec::new()`, which is red.)
+
+The P4.D33 bank note is RETIRED at the source, with a record of what the
+measurement found beyond it (the note predicted a stale `response.data` read;
+the truth is that the SDK strips the keys outright). It still stands for the
+`p4.9h` embedding-profiles management surface.
+
+**Tier 2 + banked.** `docs/v4/developer/API.md` refreshed from the pin (the
+list-models section gained the source/fetchError/caching paragraph). v4's
+`help/image-generation-profiles.md` rewrite is **BANKED for `p4.9i2`** — the
+`docs/v4/help/` mirror carries only `database-protection.md`, so adding a
+second help file would be a new mirror convention, and v5 has no help surface
+for it yet.
+
+**Deferred loudly.** `validate-key` stays a named refusal (v4's handler was NOT
+touched by this drift). The SPA half — including the stale comment in
+`apps/web/src/app/screens/settings/images/image-profile-modal.ts:39` that still
+calls `imageProfileListModels` refusal-armed — belongs to P4.D102 and was not
+touched. 💸 A live-key Fetch Models smoke on real providers joins the dogfood
+queue: no oracle can prove a real provider's HTTP behavior, and the OpenRouter
+finding in particular deserves a look with a real key.
+
+
 ## Lane record — P4.D78 (the `aa464abf` Ollama-thinking drift, provider-wire half) — v4 `d9c5a1c7`
 
 Baseline **`aa464abf`**, drift-checked clean at lane start: `git log aa464abf..main`
