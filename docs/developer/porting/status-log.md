@@ -80015,3 +80015,48 @@ fixture instead (unit 1) and the groups-routes arms mint their own groups, so
 the committed pair — and the e2e that reads it — stay byte-identical. Both
 consumers (`groups_tier2`, `group_character_members_tier2`) were re-run anyway
 and are green.
+
+### P4.D103 — the lane gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and the lane's
+**79-variable** oracle/fixture env block (extracted mechanically from every
+affected family's committed run stage via `recipe_sweep.py --show`, so it cannot
+drift from the recipes):
+
+| step | result |
+| --- | --- |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| ditto `--features quilltap-core/native-transport` | clean |
+| `cargo test --workspace` | **444 test binaries / 2,266 tests / 0 failed** |
+| `cargo build --release` | clean |
+
+**Zero SKIP anywhere in the run** (`grep -c '^SKIP:'` = 0 over the full log — no
+`| tail`, the whole output captured). Every one of the lane's differentials
+positively CONFIRMED to have run by name in the workspace log:
+`standing_instructions_matches_oracle`, `system_prompt_matches_oracle`,
+`identity_compiler_matches_oracle`, `build_context_tier3_matches_oracle`,
+`self_inventory_matches_oracle`, `carina_query_tier3_matches_oracle`,
+`post_office_prospero_builders_match_v4`, `groups_routes_match_oracle`,
+`chat_admin_routes_match_oracle`, `chat_cast_routes_match_oracle`,
+`orchestrator_tier3_matches_oracle`, plus the two new unit pins
+(`identity_stack_golden_is_registered_for_the_current_builder_version`,
+`tool_reinforcement_is_second_person_with_no_pronoun_lookup`) and the moved
+`cache_key_shape`.
+
+The counts move 443 → 444 binaries and 2,261 → 2,266 tests: **exactly this
+lane's delta** — one new harness binary (`standing_instructions_equivalence`),
+its three module unit tests, and the identity-stack golden.
+
+Versions: core 0.0.615, harness 0.0.537. No other crate touched; `apps/web/**`
+untouched (P4.D104's), and none of P4.55's files
+(`api/{memories,autonomous_rooms,settings,image_profiles,embedding_profiles,projects}.rs`,
+`db/store_backed.rs`) touched.
+
+**Three files outside the order's explicit Ownership list were touched, all
+forced by an owned change and none owned by a sibling lane:**
+`api/engine.rs` (the `GroupCreate` arm gains the new field — one line),
+`services/announcer/character_voiced.rs` (`standing_instructions: None` plus the
+verified-per-call-site comment), and `services/chat_initialize.rs` (a comment
+only, recording the greeting head's structural exclusion). Flagged for the
+unifier.
