@@ -188,7 +188,7 @@ use crate::image_codec::HostImageCodec;
 use crate::providers::{LivePricingFetch, ProviderIo};
 use crate::terminal::scrollback::PtyScrollbackSource;
 use crate::terminal::TerminalManager;
-use crate::wire::ReqwestWireTransport;
+use crate::wire::{ReqwestImageBytes, ReqwestWireTransport};
 
 // ===========================================================================
 // Provider→key resolution (documented seam — module header)
@@ -2744,9 +2744,11 @@ impl JobHandler for AvatarJobHandler {
     fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
         Box::pin(async move {
             let inner = CharacterAvatarGenerationHandler {
-                image_provider: quilltap_core::model::image_dialects::RealImageProvider::new(
-                    ReqwestWireTransport::new(),
-                ),
+                image_provider:
+                    quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
+                        ReqwestWireTransport::new(),
+                        ReqwestImageBytes::new(),
+                    ),
                 completion: self.wire.completion(db),
                 moderation: RealModerationProvider::new(
                     db.clone(),
@@ -2782,9 +2784,11 @@ impl JobHandler for StoryBackgroundJobHandler {
                 .and_then(Value::as_str)
                 .map(String::from);
             let inner = StoryBackgroundGenerationHandler {
-                image_provider: quilltap_core::model::image_dialects::RealImageProvider::new(
-                    ReqwestWireTransport::new(),
-                ),
+                image_provider:
+                    quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
+                        ReqwestWireTransport::new(),
+                        ReqwestImageBytes::new(),
+                    ),
                 completion: self.wire.completion(db),
                 moderation: RealModerationProvider::new(
                     db.clone(),
@@ -2832,9 +2836,11 @@ impl ImageGenerationRunner for HostImageGenerationRunner {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ImageGenerationToolOutput> + Send + 'a>>
     {
         Box::pin(async move {
-            let image_provider = quilltap_core::model::image_dialects::RealImageProvider::new(
-                ReqwestWireTransport::new(),
-            );
+            let image_provider =
+                quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
+                    ReqwestWireTransport::new(),
+                    ReqwestImageBytes::new(),
+                );
             let completion = self.wire.completion(db);
             let moderation = RealModerationProvider::new(
                 db.clone(),

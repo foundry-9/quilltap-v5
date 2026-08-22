@@ -12,6 +12,106 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(images): keyed model discovery + the Z.AI image-download seam (v4 `ca22ec45`, P4.D100)
+
+_Versions: core 0.0.602, harness 0.0.525, host 0.0.76._
+
+### The five providers' keyed model discovery
+
+v4's `ca22ec45` gave (or hardened) a keyed `getAvailableModels(apiKey?)` on all
+five image plugins — openai, google, grok, z-ai, and openrouter. The contract
+is uniform in one respect and deliberately asymmetric in two: no key returns
+the plugin's curated static list and makes NO request at all; a live failure
+throws on every provider; an empty result throws on openai / google / grok /
+openrouter but cannot arise on z-ai, whose union with two static ids makes
+empty unreachable.
+
+Ported into `model/image_dialects.rs` as the same three-part split the generate
+dialects use — `build_models_request`, `parse_models_page`, `finalize_models` —
+composed by `RealImageProvider` over the injected `WireTransport` through a new
+`ImageModelDiscovery` trait (plus an object-safe `ErasedImageDiscovery` for the
+dispatch engine). `supported_image_models` transcribes the five plugins'
+`supportedModels`, which are NOT the manifests' `imageGenerationModels`: google
+orders imagen first and openrouter's entries differ outright, and the route
+reads the plugin's list.
+
+Endpoints, auth headers, filters, paging, dedup, sort and every error sentence
+are byte-faithful: OpenAI's `/v1/models` with `/^(dall-e|gpt-image)/`; Google's
+`pageSize=1000` `x-goog-api-key` page loop with the imagen-`predict` /
+gemini-with-"image"-`generateContent` pair; xAI's dedicated
+`/v1/image-generation-models` accepting both the `models` and `data` top-level
+keys with aliases riding along as selectable ids; Z.AI's
+`/^(cogview|glm-image)/i` — the exact complement of its chat filter — unioned
+with the two documented ids; and OpenRouter's paged `models.list()`. The two
+OpenAI-SDK providers' thrown messages (`{status} {error.message}`, falling back
+to the raw body) are reconstructed because the host wire hands back a status
+where v4's SDK threw; both shapes were measured against the real SDK.
+
+**A v4 bug, faithfully reproduced and pinned.** OpenRouter's discovery reads
+three WIRE key names off an object `@openrouter/sdk`'s zod has already
+rewritten. `Model$inboundSchema` is a `z.object`, so it STRIPS model-level
+`output_modalities` and `supported_generation_methods` outright, and remaps the
+architecture's genuine `output_modalities` to `outputModalities` (plural) where
+v4 reads `outputModality` (singular). All three acceptance arms therefore read
+`undefined`, and at `d5830439` every keyed OpenRouter Fetch Models call throws
+"OpenRouter listed no image-output models for this API key". Measured at the
+pin with a schema-valid payload carrying all four signals; the port reproduces
+the SDK projection so v5 answers identically, and the
+`openrouter/models_live_every_signal` corpus row is the tripwire that fires
+when v4 fixes the read. Same class as the P4.D33 bank note and dogfood #24.
+
+The committed image-dialects corpus grows 22 `kind:'models'` rows recorded from
+v4's REAL plugin methods at the pin, carrying every request (method, URL, and
+full header set) and each page's canned answer. The differential replays them
+through the whole composed path over a canned transport keyed on the exact
+request signature, header-subset-asserts what v5 builds, and additionally
+exercises `finalize_models` in isolation. The corpus floor now asserts SHAPE —
+a no-key row and a keyed row per provider, plus eleven named contract arms —
+rather than a hand count. Mutation-proven: dropping the SDK projection, grok's
+dedup, openai's sort, google's `image`-in-id conjunct, grok's endpoint, and
+google's auth header each go red.
+
+One blinded comparand is named rather than papered over: OpenRouter alone
+neither sorts nor dedupes, and the corpus cannot see it while v4's own bug
+empties every list, so that rule is pinned by a direct unit test instead.
+
+### The image-download seam and Z.AI URL→base64
+
+Z.AI's Images API answers with URLs (valid roughly 30 days) while every
+Quilltap consumer — the chat handler, the avatar and story-background jobs,
+`tools::generate_image` — reads only the base64 `data`. v5 measurably had the
+resulting bug: `parse_zai` kept both fields, and the consumer decoded
+`img.data`, so a URL-only Z.AI row produced zero bytes. v4's `ca22ec45`
+downloads each URL inside the provider; this ports that, in the same place.
+
+The download crosses a NEW narrow seam, `model::image_bytes::ImageBytesFetch`,
+rather than a widened `WireTransport`: the wire seam's response carries a
+`String` body and no headers, and an image download needs raw bytes plus the
+`content-type`. Widening the wire for one caller would have touched every
+dialect. `RealImageProvider` gained a second type parameter for it, defaulting
+to a `NoImageBytesFetch` that fails loudly by name; every host construction
+site that can reach a Z.AI profile — the avatar job, the story-background job,
+the generate-image tool runner, and the avatar-preview renderer — is wired to
+the new `ReqwestImageBytes`, a bare GET with no headers of ours (v4 issues
+`fetch(img.url)` with no init object at all, and the URL is a signed link the
+provider just handed us).
+
+v4's per-image rules are carried exactly: keep an existing `b64_json` and make
+NO request; otherwise download, treat a non-2xx as `Failed to download Z.AI
+image: HTTP {status}`, default the mime type to `image/png` and let the
+response's `content-type` override it only when it starts with `image/`,
+truncated at the first `;`; and reject an entry carrying neither field with
+`Z.AI image entry carried neither base64 data nor a URL`.
+
+The recorder now scripts a distinct binary answer for a provider's follow-up
+request, so the corpus's z-ai rows drive the whole composed `generate_image`
+against v4's real plugin: the URL-only conversion, an entry with both fields
+(no download), a non-`image/` content type, a 404 download, and an entry with
+neither field. The differential asserts v4's download is a bare GET with an
+empty header set, and a row with no scripted download that attempts one fails
+loudly. Six mutations proven red, one per rule. The pre-existing
+`zai_keeps_url_and_b64` parse pin is untouched — the conversion sits above it.
+
 #### 2026-08-22 — port(images): route any `gemini*` id to generateContent (v4 `ca22ec45`, P4.D100)
 
 _Versions: core 0.0.600._

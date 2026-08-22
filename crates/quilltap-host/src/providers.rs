@@ -54,7 +54,9 @@ use quilltap_core::services::pricing_fetcher::{
 };
 use serde_json::Value;
 
-use crate::wire::{run_off_runtime, BlockingWireTransport, ReqwestWireTransport};
+use crate::wire::{
+    run_off_runtime, BlockingWireTransport, ReqwestImageBytes, ReqwestWireTransport,
+};
 
 /// v4 `OPENROUTER_FETCH_TIMEOUT_MS` — the fail-fast pricing-fetch timeout
 /// (cost estimation sits on the message-finalization critical path).
@@ -233,7 +235,7 @@ impl ProviderIo {
     }
 
     /// The async wire for the W4.7f dialects — feed it to
-    /// `RealImageProvider::new` / `RealModerationProvider::new` (their
+    /// `RealImageProvider::with_bytes_fetch` / `RealModerationProvider::new` (their
     /// constructors take the transport plus their own DB/key seams).
     pub fn wire_transport(&self) -> ReqwestWireTransport {
         ReqwestWireTransport::new()
@@ -245,11 +247,25 @@ impl ProviderIo {
         BlockingWireTransport::new()
     }
 
-    /// The live image provider (the W4.7f dialect over the async wire).
+    /// The image-download seam for the `ca22ec45` Z.AI URL→base64 conversion —
+    /// a bare GET, no headers (see [`ReqwestImageBytes`]).
+    pub fn image_bytes_fetch(&self) -> ReqwestImageBytes {
+        ReqwestImageBytes::new()
+    }
+
+    /// The live image provider (the W4.7f dialect over the async wire), with the
+    /// `ca22ec45` download seam wired so a Z.AI URL-only answer becomes usable
+    /// base64 rather than an empty image.
     pub fn image_provider(
         &self,
-    ) -> quilltap_core::model::image_dialects::RealImageProvider<ReqwestWireTransport> {
-        quilltap_core::model::image_dialects::RealImageProvider::new(self.wire_transport())
+    ) -> quilltap_core::model::image_dialects::RealImageProvider<
+        ReqwestWireTransport,
+        ReqwestImageBytes,
+    > {
+        quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
+            self.wire_transport(),
+            self.image_bytes_fetch(),
+        )
     }
 
     /// The live OpenAI moderation provider (the W4.2/W4.7f gatekeeper seam),

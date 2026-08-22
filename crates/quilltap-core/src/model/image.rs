@@ -143,6 +143,65 @@ pub trait ImageProvider {
     ) -> impl Future<Output = Result<ImageGenResponse, ImageGenError>> + Send;
 }
 
+/// The keyed model-discovery boundary (v4 `ca22ec45`
+/// `ImageProvider.getAvailableModels(apiKey?)`). `api_key` is `None` when the
+/// caller has no key to offer, in which case the provider answers its curated
+/// static list without touching the network. A live failure is an `Err` whose
+/// message is the sentence v4 throws — the `list-models` route surfaces it as
+/// `fetchError` and falls back to `supportedModels`.
+pub trait ImageModelDiscovery {
+    fn available_models(
+        &self,
+        provider: &str,
+        api_key: Option<&str>,
+    ) -> impl Future<Output = Result<Vec<String>, ImageGenError>> + Send;
+}
+
+/// The object-safe form of [`ImageModelDiscovery`], which the dispatch engine
+/// holds behind an `Arc<dyn …>` (the [`ErasedImageGeneration`](crate::tools::generate_image::ErasedImageGeneration)
+/// precedent) so the `imageProfileListModels` arm needs none of the provider's
+/// transport generics.
+pub trait ImageModelDiscoveryDyn: Send + Sync {
+    fn available_models<'a>(
+        &'a self,
+        provider: &'a str,
+        api_key: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<Vec<String>, ImageGenError>> + Send + 'a>>;
+}
+
+impl<T: ImageModelDiscovery + Send + Sync> ImageModelDiscoveryDyn for T {
+    fn available_models<'a>(
+        &'a self,
+        provider: &'a str,
+        api_key: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<Vec<String>, ImageGenError>> + Send + 'a>>
+    {
+        Box::pin(ImageModelDiscovery::available_models(
+            self, provider, api_key,
+        ))
+    }
+}
+
+/// A type-erased [`ImageModelDiscovery`].
+#[derive(Clone)]
+pub struct ErasedImageDiscovery(std::sync::Arc<dyn ImageModelDiscoveryDyn>);
+
+impl ErasedImageDiscovery {
+    /// Wrap a concrete discovery provider.
+    pub fn new<D: ImageModelDiscoveryDyn + 'static>(inner: D) -> Self {
+        Self(std::sync::Arc::new(inner))
+    }
+
+    /// Discover `provider`'s image models, optionally with a key.
+    pub async fn available_models(
+        &self,
+        provider: &str,
+        api_key: Option<&str>,
+    ) -> Result<Vec<String>, ImageGenError> {
+        self.0.available_models(provider, api_key).await
+    }
+}
+
 /// The image → WebP transcode boundary (v4 `convertToWebP` /
 /// `transcodeToWebP`). No image-codec crate in the core (the `doc_blob`
 /// precedent). Given the decoded bytes + the provider mime type + the desired

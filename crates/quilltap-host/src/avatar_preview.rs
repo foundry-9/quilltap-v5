@@ -13,7 +13,7 @@
 //!
 //! The provider call rides the same W4.7f [`RealImageProvider`] machinery the
 //! `imageProfileGenerate` runner uses (`HostImageGenerationRunner`): the
-//! renderer rebuilds `RealImageProvider::new(ReqwestWireTransport::new())` per
+//! renderer rebuilds `RealImageProvider::with_bytes_fetch(…)` per
 //! request, exactly as that runner rebuilds its deps per run. The composition
 //! (provider → decode → transcode → filename) is factored into
 //! [`render_over_provider`] so the host integration tests can drive it over a
@@ -33,7 +33,7 @@ use quilltap_core::model::image_dialects::RealImageProvider;
 use quilltap_core::services::file_storage::convert_to_webp;
 
 use crate::image_codec::HostImageCodec;
-use crate::wire::ReqwestWireTransport;
+use crate::wire::{ReqwestImageBytes, ReqwestWireTransport};
 
 /// The production avatar-preview renderer. Stateless; share via `Arc`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -48,7 +48,10 @@ impl AvatarPreviewRenderer for HostAvatarPreviewRenderer {
         Box::pin(async move {
             // Rebuild the provider per request (the HostImageGenerationRunner
             // idiom — no shared client state to carry).
-            let provider = RealImageProvider::new(ReqwestWireTransport::new());
+            let provider = RealImageProvider::with_bytes_fetch(
+                ReqwestWireTransport::new(),
+                ReqwestImageBytes::new(),
+            );
             render_over_provider(&provider, req, now_unix_ms()).await
         })
     }

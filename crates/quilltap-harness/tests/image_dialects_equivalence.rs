@@ -22,9 +22,15 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::image_gen::{OrientationMapping, OrientationStrategy, OrientationSupport};
 use quilltap_core::image_gen_data::orientation_data_for;
-use quilltap_core::model::image::{ImageGenParams, ImageGenResponse};
-use quilltap_core::model::image_dialects::{build_image_request, parse_image_response};
-use quilltap_core::model::wire::WireResponse;
+use quilltap_core::model::image::{
+    ImageGenParams, ImageGenResponse, ImageModelDiscovery, ImageProvider,
+};
+use quilltap_core::model::image_bytes::{CannedImageBytes, FetchedImageBytes};
+use quilltap_core::model::image_dialects::{
+    build_image_request, build_models_request, finalize_models, parse_image_response,
+    parse_models_page, supported_image_models, RealImageProvider,
+};
+use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
 use quilltap_core::services::dangerous_content::provider_routing::is_image_moderation_error;
 use serde_json::{Map, Value};
 
@@ -121,6 +127,8 @@ fn project(resp: &ImageGenResponse) -> Value {
 fn image_dialects_match_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed image-dialects NDJSON");
     let mut rows = 0usize;
+    let mut models_rows = 0usize;
+    let mut models_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut providers = std::collections::HashSet::new();
 
     for line in text.lines() {
@@ -159,6 +167,15 @@ fn image_dialects_match_v4() {
                 *want_constraint,
                 "{provider} provider constraint"
             );
+            continue;
+        }
+
+        // `ca22ec45` keyed model discovery: replay the recorded page sequence
+        // through `build_models_request` / `parse_models_page` /
+        // `finalize_models`, diffing the request bytes AND the built header set
+        // against what v4's plugin (or its SDK) actually sent.
+        if row["kind"].as_str() == Some("models") {
+            check_models_row(&provider, &row, &mut models_rows, &mut models_cases);
             continue;
         }
 
@@ -205,6 +222,14 @@ fn image_dialects_match_v4() {
             wire["status"].as_u64().unwrap() as u16,
             wire["body"].as_str().unwrap().to_string(),
         );
+        // `ca22ec45`: Z.AI's URL→base64 download happens INSIDE the provider,
+        // above the pure parse — so z-ai rows are driven through the whole
+        // composed `generate_image`, with the recorded download answer canned
+        // per URL.
+        if provider == "Z_AI" {
+            check_zai_download_row(&row, &provider, model, &params, &resp, &built);
+            continue;
+        }
         let parsed = parse_image_response(&provider, model, &resp);
         match row["outcome"].as_str().unwrap() {
             "ok" => {
@@ -231,5 +256,339 @@ fn image_dialects_match_v4() {
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
     for p in ["OPENAI", "GOOGLE", "GROK", "OPENROUTER", "Z_AI"] {
         assert!(providers.contains(p), "corpus missing provider {p}");
+    }
+
+    // Shape, not a hand count: every provider must carry a no-key row AND at
+    // least one keyed row, so a silently-shrunk regen cannot pass. The
+    // named cases are the contract arms the port would otherwise lose
+    // unnoticed — the asymmetric empty-result dispositions, grok's two
+    // top-level key spellings, google's paging, and the openrouter SDK-strip
+    // tripwire.
+    assert!(
+        models_rows >= 18,
+        "expected the keyed model-discovery rows, got {models_rows}"
+    );
+    for p in ["OPENAI", "GOOGLE", "GROK", "OPENROUTER", "Z_AI"] {
+        assert!(
+            models_cases.contains(&format!("{p}/models_static")),
+            "corpus missing the no-key discovery row for {p}"
+        );
+        assert!(
+            models_cases.iter().any(|c| {
+                c.starts_with(&format!("{p}/models_")) && !c.ends_with("/models_static")
+            }),
+            "corpus missing a keyed discovery row for {p}"
+        );
+    }
+    for required in [
+        "OPENAI/models_live",
+        "OPENAI/models_live_empty",
+        "GOOGLE/models_paged",
+        "GOOGLE/models_empty",
+        "GROK/models_live_models_key",
+        "GROK/models_live_data_key",
+        "GROK/models_empty",
+        "Z_AI/models_live_union",
+        "Z_AI/models_live_none_matching",
+        "OPENROUTER/models_live_every_signal",
+        "OPENROUTER/models_empty_page",
+    ] {
+        assert!(
+            models_cases.contains(required),
+            "corpus missing the {required} contract arm"
+        );
+    }
+}
+
+/// Drive a recorded z-ai `generateImage` row through the WHOLE composed
+/// provider — build, wire, parse, and (when the entry carries only a `url`) the
+/// `ca22ec45` image download — so the URL→base64 conversion, the content-type
+/// sniff and both new error sentences are diffed against v4's real plugin.
+///
+/// The download seam is canned per URL from the recorded `download` block; a
+/// row with NO download block registers nothing, so an unexpected download
+/// attempt fails loudly rather than yielding empty bytes.
+fn check_zai_download_row(
+    row: &Value,
+    provider: &str,
+    model: &str,
+    params: &ImageGenParams,
+    resp: &WireResponse,
+    built: &quilltap_core::model::request_builder::BuiltRequest,
+) {
+    let case = row["case"].as_str().unwrap();
+    let label = format!("{provider}/{case}");
+
+    // The pure parse still has to agree (the pre-download shape).
+    let pure = parse_image_response(provider, model, resp);
+
+    let mut bytes = CannedImageBytes::new();
+    let recorded_downloads = row["downloadRequests"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if let Some(dl) = row.get("download").filter(|d| !d.is_null()) {
+        // v4's download is a BARE `fetch(url)`: a GET with no headers at all.
+        for req in &recorded_downloads {
+            assert_eq!(
+                req["method"].as_str().unwrap(),
+                "GET",
+                "{label} download method"
+            );
+            assert!(
+                req["headers"].as_object().unwrap().is_empty(),
+                "{label}: v4's image download sent headers: {}",
+                req["headers"]
+            );
+            assert!(req["body"].is_null(), "{label} download body");
+            let decoded = base64_decode(dl["bytes"].as_str().unwrap_or(""));
+            bytes = bytes.with_response(
+                req["url"].as_str().unwrap(),
+                FetchedImageBytes {
+                    status: dl["status"].as_u64().unwrap() as u16,
+                    content_type: dl["contentType"].as_str().map(str::to_string),
+                    bytes: decoded,
+                },
+            );
+        }
+    } else {
+        assert!(
+            recorded_downloads.is_empty(),
+            "{label}: v4 downloaded without a scripted answer"
+        );
+    }
+
+    let transport = CannedWireTransport::new().with_response(
+        &built.method,
+        &built.url,
+        &built.body_string(),
+        resp.clone(),
+    );
+    let p = RealImageProvider::with_bytes_fetch(transport, bytes);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let got = rt.block_on(p.generate_image(provider, "test-api-key", params));
+
+    match row["outcome"].as_str().unwrap() {
+        "ok" => {
+            let out = got.unwrap_or_else(|e| panic!("{label}: expected ok, got err {e}"));
+            assert_eq!(project(&out), row["images"], "{label} images");
+            // A row with no download must be pure-parse-identical.
+            if row.get("download").filter(|d| !d.is_null()).is_none() {
+                assert_eq!(
+                    project(&pure.unwrap()),
+                    row["images"],
+                    "{label}: no-download row diverged from the pure parse"
+                );
+            }
+        }
+        "thrown" => {
+            let err = got.expect_err(&format!("{label}: expected thrown"));
+            assert_eq!(
+                err.message,
+                row["thrown"].as_str().unwrap(),
+                "{label} thrown"
+            );
+        }
+        other => panic!("{label}: unknown outcome {other}"),
+    }
+    assert_eq!(
+        is_image_moderation_error(row["thrown"].as_str().unwrap_or("")),
+        row["isModeration"].as_bool().unwrap(),
+        "{label} moderation verdict"
+    );
+}
+
+/// Standard base64 → bytes (the recorder writes the download payload as base64
+/// so the committed fixture stays a diffable text file).
+fn base64_decode(s: &str) -> Vec<u8> {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut acc: u32 = 0;
+    let mut bits = 0u32;
+    let mut out = Vec::new();
+    for ch in s.bytes().filter(|b| *b != b'=' && !b.is_ascii_whitespace()) {
+        let v = T
+            .iter()
+            .position(|c| *c == ch)
+            .unwrap_or_else(|| panic!("non-base64 byte {ch:?} in a recorded download payload"))
+            as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
+}
+
+/// Replay one recorded `kind:'models'` row through the Rust discovery path.
+///
+/// The no-key rows must make ZERO requests (v4 returns the static list without
+/// touching the network), so those are checked against
+/// `supported_image_models` directly. Keyed rows drive the whole composed
+/// path through a canned transport, which ALSO proves the request bytes: an
+/// unregistered `METHOD\nURL\nBODY` signature is a hard miss.
+fn check_models_row(
+    provider: &str,
+    row: &Value,
+    rows: &mut usize,
+    cases: &mut std::collections::HashSet<String>,
+) {
+    let case = row["case"].as_str().unwrap();
+    let label = format!("{provider}/{case}");
+    *rows += 1;
+    cases.insert(label.clone());
+
+    // The plugin's `supportedModels`, recorded off the live instance.
+    let want_supported: Vec<String> = row["supportedModels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    let got_supported: Vec<String> = supported_image_models(provider)
+        .unwrap_or_else(|e| panic!("{label}: {e}"))
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    assert_eq!(got_supported, want_supported, "{label} supportedModels");
+
+    let requests = row["requests"].as_array().unwrap();
+    let wire = row["wire"].as_array().unwrap();
+    let with_key = row["withKey"].as_bool().unwrap();
+    let api_key = if with_key { Some("test-api-key") } else { None };
+
+    if !with_key {
+        assert!(
+            requests.is_empty(),
+            "{label}: v4 made {} request(s) without a key",
+            requests.len()
+        );
+    }
+
+    // 1. Request bytes + headers, page by page.
+    let mut transport = CannedWireTransport::new();
+    let mut page_token: Option<String> = None;
+    for (i, want_req) in requests.iter().enumerate() {
+        let built = build_models_request(provider, api_key.unwrap(), page_token.as_deref())
+            .unwrap_or_else(|e| panic!("{label}: build page {i} failed: {e}"));
+        assert_eq!(
+            built.method,
+            want_req["method"].as_str().unwrap(),
+            "{label} page {i} method"
+        );
+        assert_eq!(
+            built.url,
+            want_req["url"].as_str().unwrap(),
+            "{label} page {i} url"
+        );
+        assert!(
+            want_req["body"].is_null(),
+            "{label} page {i}: v4 sent a body on a model-list GET"
+        );
+        assert!(
+            built.body.is_null(),
+            "{label} page {i}: v5 built a body on a model-list GET"
+        );
+        // Header SUBSET: every header v5 builds must appear in what v4 sent,
+        // with the same value (the P4.44 post-`apply_auth` precedent). The
+        // transport's own `User-Agent` — a version string — is not compared.
+        let want_headers = want_req["headers"].as_object().unwrap();
+        for (k, v) in &built.headers {
+            let got = want_headers
+                .get(&k.to_lowercase())
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("{label} page {i}: v4 sent no `{k}` header"));
+            assert_eq!(got, v, "{label} page {i} header {k}");
+        }
+        // Register the recorded wire answer under the exact request signature.
+        let w = &wire[i];
+        transport = transport.with_response(
+            &built.method,
+            &built.url,
+            "",
+            WireResponse::new(
+                w["status"].as_u64().unwrap() as u16,
+                w["body"].as_str().unwrap(),
+            ),
+        );
+        // Advance the page token the way the composer will.
+        let resp = WireResponse::new(
+            w["status"].as_u64().unwrap() as u16,
+            w["body"].as_str().unwrap(),
+        );
+        page_token = parse_models_page(provider, &resp)
+            .ok()
+            .and_then(|p| p.next_page_token);
+    }
+
+    // 2. The composed answer (or the exact thrown sentence).
+    let provider_impl = RealImageProvider::new(transport);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let got = rt.block_on(provider_impl.available_models(provider, api_key));
+    match row["outcome"].as_str().unwrap() {
+        "ok" => {
+            let ids = got.unwrap_or_else(|e| panic!("{label}: expected ok, got err {e}"));
+            let want: Vec<String> = row["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(ids, want, "{label} models");
+        }
+        "thrown" => {
+            let err = got.expect_err(&format!("{label}: expected thrown"));
+            assert_eq!(
+                err.message,
+                row["thrown"].as_str().unwrap(),
+                "{label} thrown"
+            );
+        }
+        other => panic!("{label}: unknown outcome {other}"),
+    }
+
+    // 3. `finalize_models` in isolation over the collected page ids, so the
+    //    dedup / union / sort / empty semantics are pinned even where the
+    //    composed answer would hide them.
+    if with_key {
+        let mut collected = Vec::new();
+        let mut ok_pages = true;
+        for w in wire {
+            let resp = WireResponse::new(
+                w["status"].as_u64().unwrap() as u16,
+                w["body"].as_str().unwrap(),
+            );
+            match parse_models_page(provider, &resp) {
+                Ok(page) => collected.extend(page.ids),
+                Err(_) => ok_pages = false,
+            }
+        }
+        if ok_pages {
+            let finalized = finalize_models(provider, collected);
+            match row["outcome"].as_str().unwrap() {
+                "ok" => assert_eq!(
+                    finalized.unwrap(),
+                    row["models"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect::<Vec<_>>(),
+                    "{label} finalize_models"
+                ),
+                _ => assert_eq!(
+                    finalized.unwrap_err().message,
+                    row["thrown"].as_str().unwrap(),
+                    "{label} finalize_models thrown"
+                ),
+            }
+        }
     }
 }

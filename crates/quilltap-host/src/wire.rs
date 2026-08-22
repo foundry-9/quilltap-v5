@@ -27,6 +27,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use quilltap_core::model::image_bytes::{FetchedImageBytes, ImageBytesFetch};
 use quilltap_core::model::wire::{SyncWireTransport, WireResponse, WireTransport};
 
 /// Build a `WireResponse` from a completed `reqwest` response (any status).
@@ -96,6 +97,62 @@ impl WireTransport for ReqwestWireTransport {
             .to_string();
         let text = resp.text().await.map_err(|e| e.to_string())?;
         Ok(wire_response(status, status_text, text))
+    }
+}
+
+/// The host image-download seam (v4 `ca22ec45`): a bare GET for a provider's
+/// short-lived image URL, over the same pooled client as the async wire.
+///
+/// v4 issues `fetch(img.url)` with **no init object at all** — no auth header,
+/// no user agent, no accept. The URL is a signed link the provider just handed
+/// us, so nothing is added here either. As with the wire seam, a completed
+/// exchange is `Ok` at ANY status (the caller checks `response.ok` itself) and
+/// only a transport-level failure is `Err`.
+pub struct ReqwestImageBytes {
+    client: reqwest::Client,
+    timeout: Option<Duration>,
+}
+
+impl ReqwestImageBytes {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            timeout: None,
+        }
+    }
+
+    /// Set a per-request timeout (host policy; v4's raw `fetch` has none).
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+}
+
+impl Default for ReqwestImageBytes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageBytesFetch for ReqwestImageBytes {
+    async fn fetch(&self, url: &str) -> Result<FetchedImageBytes, String> {
+        let mut rb = self.client.get(url);
+        if let Some(t) = self.timeout {
+            rb = rb.timeout(t);
+        }
+        let resp = rb.send().await.map_err(|e| e.to_string())?;
+        let status = resp.status().as_u16();
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+        Ok(FetchedImageBytes {
+            status,
+            content_type,
+            bytes: bytes.to_vec(),
+        })
     }
 }
 
@@ -208,6 +265,29 @@ mod tests {
         (format!("http://{addr}"), handle)
     }
 
+    /// A one-shot canned responder that also sets a `content-type`.
+    fn spawn_responder_ct(
+        status_line: &str,
+        content_type: &str,
+        body: &str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let response = format!(
+            "HTTP/1.1 {status_line}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let seen = String::from_utf8_lossy(&buf[..n]).to_string();
+            stream.write_all(response.as_bytes()).unwrap();
+            seen
+        });
+        (format!("http://{addr}"), handle)
+    }
+
     #[tokio::test]
     async fn async_wire_returns_non_2xx_as_ok() {
         let (base, handle) = spawn_responder("429 Too Many Requests", "{\"err\":true}");
@@ -239,6 +319,44 @@ mod tests {
         let resp = t.send("GET", &base, &[], "").expect("loopback GET");
         assert_eq!(resp.status, 200);
         assert_eq!(resp.body, "{\"ok\":true}");
+    }
+
+    /// The image-download seam: a completed exchange at ANY status is `Ok`, the
+    /// content type comes back raw, and the request carries NO headers of ours.
+    #[tokio::test]
+    async fn image_bytes_seam_is_a_bare_get() {
+        let (base, handle) = spawn_responder_ct("200 OK", "image/webp; charset=binary", "PNGBYTES");
+        let f = ReqwestImageBytes::new();
+        let got = f.fetch(&format!("{base}/x.png")).await.expect("download");
+        assert_eq!(got.status, 200);
+        assert_eq!(
+            got.content_type.as_deref(),
+            Some("image/webp; charset=binary")
+        );
+        assert_eq!(got.bytes, b"PNGBYTES".to_vec());
+        let seen = handle.join().unwrap();
+        assert!(
+            seen.starts_with("GET /x.png"),
+            "a bare fetch is a GET: {seen}"
+        );
+        for banned in ["authorization:", "Authorization:", "x-goog-api-key"] {
+            assert!(
+                !seen.contains(banned),
+                "the download must send no auth: {seen}"
+            );
+        }
+    }
+
+    /// A non-2xx download is still `Ok` — the Z.AI dialect turns it into v4's
+    /// `Failed to download Z.AI image: HTTP {status}` itself.
+    #[tokio::test]
+    async fn image_bytes_seam_returns_non_2xx_as_ok() {
+        let (base, _h) = spawn_responder_ct("404 Not Found", "text/plain", "nope");
+        let got = ReqwestImageBytes::new()
+            .fetch(&format!("{base}/missing.png"))
+            .await
+            .expect("a completed exchange is Ok even at 404");
+        assert_eq!(got.status, 404);
     }
 
     #[tokio::test]

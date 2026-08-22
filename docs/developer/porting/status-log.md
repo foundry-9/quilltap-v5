@@ -50,6 +50,112 @@ distinct download response in the bytes-seam unit. Every other row in the
 corpus regenerated **byte-identical**, which independently re-proves the
 pin.
 
+**Unit 2 — the five providers' keyed model discovery (core 0.0.601, harness
+0.0.524).** `build_models_request` / `parse_models_page` / `finalize_models` in
+`image_dialects.rs`, composed by `RealImageProvider` through the new
+`ImageModelDiscovery` trait (+ `ErasedImageDiscovery` for the engine).
+`supported_image_models` transcribes the five plugins' `supportedModels` —
+**not** the manifests' `imageGenerationModels`, which genuinely differ (google
+orders imagen first; openrouter's entries are a different set) and which the
+route does not read. The corpus carries the recorded `supportedModels` on every
+`kind:'models'` row, so the transcription is oracle-verified rather than
+eyeballed.
+
+The asymmetries are contractual and all three are pinned: no key → static list
+with ZERO requests; live failure → throw (all five); empty → throw for openai /
+google / grok / openrouter, unreachable for z-ai (the union with two static ids
+is the reason, and it has no empty arm at all).
+
+**The round's real find: v4's OpenRouter image discovery cannot work.** Its
+three acceptance arms read WIRE key names off an object `@openrouter/sdk`'s zod
+has already rewritten. `Model$inboundSchema` is a `z.object`, so model-level
+`output_modalities` and `supported_generation_methods` are STRIPPED as unknown
+keys, and the architecture's genuine `output_modalities` is REMAPPED to
+`outputModalities` — plural — where v4 reads `outputModality`, singular. All
+three read `undefined`. Measured at the pin with a schema-valid
+`ModelsListResponse` carrying all four signals: v4 throws "OpenRouter listed no
+image-output models for this API key". **v5 reproduces the SDK projection so it
+answers identically**, and `openrouter/models_live_every_signal` is the
+convergence tripwire. This is the P4.D33 bank note's class and dogfood #24's:
+an SDK-synthesized shape is not the wire shape. **To file upstream.**
+
+Two seams recorded rather than guessed. The OpenAI SDK's thrown message —
+which v4 surfaces verbatim as `fetchError` — is `{status} {error.message}`
+falling back to the raw body text; the host wire hands back a status where the
+SDK threw, so the message is reconstructed, and both shapes were measured
+against the real SDK (`401 Incorrect API key provided: …`, `400 service
+unavailable`). The speakeasy SDK's is `API error occurred: Status {n}. Body:
+{raw}`. Note for future corpus work: the OpenAI SDK RETRIES 5xx and 429, so an
+error arm scripted on a 5xx measures the retry policy (and hangs a
+single-response recorder) — use a 4xx.
+
+**Corpus + mutation record.** 22 `kind:'models'` rows across the five
+providers, each carrying every request (method, URL, full header set) and its
+canned answer. The differential replays the whole composed path over a
+`CannedWireTransport` keyed on the exact request signature — so a
+request-byte divergence surfaces as a canned miss — header-subset-asserts every
+header v5 builds (User-Agent excluded: a version string), and separately
+exercises `finalize_models`. The floor assertion is now SHAPE (a no-key row and
+a keyed row per provider plus eleven named contract arms), not a hand count.
+Six mutations proven red: the SDK projection, grok's dedup, openai's sort,
+google's `image`-in-id conjunct, grok's endpoint, google's auth header.
+
+**One blinded comparand, named.** OpenRouter alone neither sorts nor dedupes —
+and the corpus CANNOT see it, because v4's own bug empties every keyed list, so
+`finalize_models` never receives a non-empty list to order. The mutation
+"openrouter sorts" survived the corpus; the rule is pinned by a direct unit
+test transcribed from v4's source instead, and it becomes oracle-observable the
+moment the tripwire above fires. The grok payload WAS strengthened where the
+same class was fixable — its ids now repeat across rows and aliases, so the
+Set's dedup is measured rather than accidental.
+
+
+**Unit 3 — the image-download seam + Z.AI URL→base64 (core 0.0.602, harness
+0.0.525, host 0.0.76).** v5 measurably HAD the bug v4 fixed: `parse_zai` kept
+both `b64_json` and `url`, the consumer decoded only `img.data`, so a URL-only
+Z.AI row decoded an empty string into zero bytes.
+
+**The seam decision, by measurement of blast radius.** A bytes variant on
+`WireTransport` would touch every dialect (its `WireResponse` carries a
+`String` body and no headers; a download needs raw bytes AND the
+`content-type`). A narrow new trait touches none, so `model/image_bytes.rs`
+holds `ImageBytesFetch` + `FetchedImageBytes` + a `CannedImageBytes` fake, with
+the same two dispositions as the wire (any completed status is `Ok`; only a
+transport throw is `Err`). `RealImageProvider` gained a second type parameter
+defaulting to a `NoImageBytesFetch` that fails LOUDLY by name — so a
+composition that cannot reach the Z.AI URL path costs nothing, and one that
+unexpectedly does gets a sentence rather than an empty image. All four host
+production sites that CAN reach a Z.AI profile (avatar job, story-background
+job, the generate-image tool runner, the avatar-preview renderer) are wired to
+the live `ReqwestImageBytes`.
+
+v4's rules carried exactly, each mutation-proven red: keep an existing
+`b64_json` and make NO request; non-2xx → `Failed to download Z.AI image: HTTP
+{status}`; mime default `image/png`, overridden ONLY by an `image/`-prefixed
+content type truncated at the first `;`; neither field → `Z.AI image entry
+carried neither base64 data nor a URL`. The download is a BARE GET — v4 passes
+no init object at all, so no auth, no user agent, no accept — and the
+differential asserts the recorded header set is EMPTY, which is the contract
+worth pinning (the URL is a signed link the provider just handed us; "hardening"
+it with headers would be a divergence).
+
+The recorder gained follow-up-request scripting (a distinct binary answer, given
+as base64 so the fixture stays diffable), and the five z-ai rows now drive the
+WHOLE composed `generate_image` rather than the pure parse. A row with no
+scripted download that attempts one fails loudly rather than reading empty
+bytes. The unit-1 corpus hold is retired here: `z-ai/url_only` is regenerated
+honestly. The pre-existing `zai_keeps_url_and_b64` parse pin is untouched — the
+conversion sits ABOVE it.
+
+**Gate note (a trap worth naming).** Unit 2's workspace gate reported 439 test
+binaries ok / 0 FAILED but exited 1, on a `quilltap-host` DOCTEST that failed to
+resolve `quilltap_core::model::image_bytes`. The cause was editing unit 3's
+source while unit 2's gate was still running: the doctest stage compiles FRESH
+source against the rlibs the test stage already built. Nothing was wrong with
+unit 2; the full gate was re-run over the superset at unit 3. Do not edit crate
+source while a workspace gate is in flight.
+
+
 ## Lane record — P4.D78 (the `aa464abf` Ollama-thinking drift, provider-wire half) — v4 `d9c5a1c7`
 
 Baseline **`aa464abf`**, drift-checked clean at lane start: `git log aa464abf..main`

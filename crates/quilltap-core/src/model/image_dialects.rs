@@ -648,10 +648,557 @@ fn parse_openrouter(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenErr
 }
 
 // ===========================================================================
+// Keyed model discovery (v4 `ca22ec45` — `getAvailableModels(apiKey?)`)
+// ===========================================================================
+//
+// Every image plugin gained (or hardened) a keyed `getAvailableModels(apiKey?)`.
+// The contract is the same five ways and the asymmetries are deliberate:
+//
+//   - **No key → the curated static list**, with NO request made at all.
+//   - **A live failure THROWS** (all five). The route catches, labels the answer
+//     `builtin`, and surfaces the message as `fetchError`.
+//   - **An empty result THROWS** for openai / google / grok / openrouter, but
+//     NOT for z-ai, whose union with two static ids makes empty unreachable.
+//
+// The discovery is split the same way as the generate dialects: a pure request
+// builder, a pure per-page parser, and a pure finalizer; [`RealImageProvider`]
+// composes them over the injected [`WireTransport`], looping while a page token
+// remains.
+
+/// One parsed page of a provider's model list.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ModelsPage {
+    /// The ids from THIS page that passed the provider's image filter, in wire
+    /// order (dedup / sort happen in [`finalize_models`]).
+    pub ids: Vec<String>,
+    /// The token for the next page, when the provider pages (google only).
+    pub next_page_token: Option<String>,
+}
+
+/// The plugin's `supportedModels` — v4's curated per-provider list, the answer
+/// when no key is supplied and the fallback the route labels `builtin`.
+///
+/// **Not** the manifest's `imageGenerationModels`: those two lists genuinely
+/// differ (google's ordering, openrouter's entries), and the route reads the
+/// PLUGIN's. Transcribed from the five `image-provider.ts` files and verified
+/// against v4's live instances by the `kind:'models'` corpus rows, every one of
+/// which carries the recorded `supportedModels`.
+pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str], ImageGenError> {
+    Ok(match provider {
+        "OPENAI" => &[
+            "gpt-image-2",
+            "gpt-image-1.5",
+            "gpt-image-1",
+            "gpt-image-1-mini",
+            "dall-e-3",
+            "dall-e-2",
+        ],
+        // `[...IMAGEN_MODELS, ...GEMINI_IMAGE_MODELS]` — imagen FIRST.
+        "GOOGLE" => &[
+            "imagen-4",
+            "imagen-4-fast",
+            "gemini-2.5-flash-image",
+            "gemini-3-pro-image-preview",
+        ],
+        "GROK" => &[
+            "grok-imagine-image",
+            "grok-imagine-image-pro",
+            "grok-2-image",
+        ],
+        "Z_AI" => &ZAI_STATIC_IMAGE_MODELS,
+        // `FALLBACK_IMAGE_MODELS`.
+        "OPENROUTER" => &[
+            "google/gemini-2.5-flash-preview-native-image",
+            "google/gemini-3-pro-image-preview",
+            "openai/gpt-5-image",
+            "openai/gpt-5-image-mini",
+        ],
+        other => {
+            return Err(ImageGenError::new(format!(
+                "Unknown image provider: {other}"
+            )))
+        }
+    })
+}
+
+/// v4 z-ai `SUPPORTED_MODELS` — also the union floor in [`finalize_models`].
+const ZAI_STATIC_IMAGE_MODELS: [&str; 2] = ["cogview-4-250304", "glm-image"];
+
+/// Build the model-list request for `provider`. `page_token` is `Some` only on
+/// google's second and later pages. Headers are COMPLETE here (including auth):
+/// discovery's whole point is that the key reaches the provider, so the header
+/// set is part of the contract the corpus pins. The transport still adds its own
+/// `User-Agent` (a version string, deliberately not diffed).
+pub fn build_models_request(
+    provider: &str,
+    api_key: &str,
+    page_token: Option<&str>,
+) -> Result<BuiltRequest, ImageGenError> {
+    let bearer = || ("Authorization".to_string(), format!("Bearer {api_key}"));
+    let (url, headers) = match provider {
+        // OpenAI SDK `client.models.list()` → GET {baseURL}/models.
+        "OPENAI" => (
+            "https://api.openai.com/v1/models".to_string(),
+            vec![bearer()],
+        ),
+        // The same SDK against Z.AI's OpenAI-compatible base URL.
+        "Z_AI" => (
+            "https://api.z.ai/api/paas/v4/models".to_string(),
+            vec![bearer()],
+        ),
+        // xAI's dedicated image-only endpoint (no name filtering needed).
+        "GROK" => (
+            "https://api.x.ai/v1/image-generation-models".to_string(),
+            vec![bearer()],
+        ),
+        // A raw fetch with `pageSize=1000` and the page token appended in that
+        // order (v4 sets `pageSize` first, then `pageToken`, on one `URL`).
+        "GOOGLE" => {
+            let mut url =
+                "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000".to_string();
+            if let Some(token) = page_token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoded_component(token));
+            }
+            (
+                url,
+                vec![("x-goog-api-key".to_string(), api_key.to_string())],
+            )
+        }
+        // `@openrouter/sdk` `models.list()` → GET /api/v1/models, with the SDK's
+        // `httpReferer` header (v4 passes `process.env.BASE_URL ||
+        // 'http://localhost:3000'`, the same read `build_image_request` makes).
+        "OPENROUTER" => (
+            "https://openrouter.ai/api/v1/models".to_string(),
+            vec![
+                bearer(),
+                (
+                    "HTTP-Referer".to_string(),
+                    std::env::var("BASE_URL")
+                        .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+                ),
+            ],
+        ),
+        other => {
+            return Err(ImageGenError::new(format!(
+                "Unknown image provider: {other}"
+            )))
+        }
+    };
+    Ok(BuiltRequest {
+        method: "GET".to_string(),
+        url,
+        headers,
+        body: Value::Null,
+        attachment_results: Default::default(),
+    })
+}
+
+/// The OpenAI SDK's `APIError` message, which v4 surfaces verbatim as
+/// `fetchError`: `${status} ${body.error.message}`, falling back to the raw body
+/// text when the body carries no `error.message`. v5's host wire hands back the
+/// status and body where v4's SDK threw, so the message is reconstructed here.
+/// Measured at the pin against the real SDK (`401 Incorrect API key provided: …`
+/// and `400 service unavailable`).
+fn openai_sdk_error(resp: &WireResponse) -> ImageGenError {
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+    let message = parsed
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| resp.body.clone());
+    ImageGenError::new(format!("{} {message}", resp.status))
+}
+
+/// Parse ONE page of `provider`'s model list into the ids that passed its image
+/// filter, plus the next page token when it pages.
+pub fn parse_models_page(provider: &str, resp: &WireResponse) -> Result<ModelsPage, ImageGenError> {
+    match provider {
+        "OPENAI" => {
+            if !resp.ok() {
+                return Err(openai_sdk_error(resp));
+            }
+            // `/^(dall-e|gpt-image)/.test(id)` — an anchored alternation.
+            Ok(ModelsPage {
+                ids: openai_like_ids(&resp.body, |id| {
+                    id.starts_with("dall-e") || id.starts_with("gpt-image")
+                }),
+                next_page_token: None,
+            })
+        }
+        "Z_AI" => {
+            if !resp.ok() {
+                return Err(openai_sdk_error(resp));
+            }
+            // `IMAGE_GEN_MODEL_PATTERN = /^(cogview|glm-image)/i` — the EXACT
+            // negation of the chat list's filter (`STATIC_CHAT_MODEL_IDS`), so
+            // the chat and image catalogues are exact complements and an id can
+            // never appear in both pickers. Case-insensitive.
+            Ok(ModelsPage {
+                ids: openai_like_ids(&resp.body, |id| {
+                    let lower = id.to_lowercase();
+                    lower.starts_with("cogview") || lower.starts_with("glm-image")
+                }),
+                next_page_token: None,
+            })
+        }
+        "GROK" => {
+            if !resp.ok() {
+                return Err(ImageGenError::new(format!(
+                    "xAI image-generation-models list failed: HTTP {}",
+                    resp.status
+                )));
+            }
+            let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+            // `payload.models ?? payload.data ?? []` — NULLISH coalescing, so an
+            // explicitly EMPTY `models` array wins and does not fall through to
+            // `data` (that path is what makes the empty-list throw reachable).
+            let entries = v
+                .get("models")
+                .filter(|x| !x.is_null())
+                .or_else(|| v.get("data").filter(|x| !x.is_null()))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut ids = Vec::new();
+            for entry in &entries {
+                // `if (entry.id) ids.add(entry.id)` — falsy (absent / empty) skips.
+                if let Some(id) = truthy_str(entry.get("id")) {
+                    ids.push(id.to_string());
+                }
+                // Every non-empty alias is a selectable id in its own right.
+                for alias in entry
+                    .get("aliases")
+                    .and_then(Value::as_array)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+                {
+                    if let Some(a) = truthy_str(Some(alias)) {
+                        ids.push(a.to_string());
+                    }
+                }
+            }
+            Ok(ModelsPage {
+                ids,
+                next_page_token: None,
+            })
+        }
+        "GOOGLE" => {
+            if !resp.ok() {
+                return Err(ImageGenError::new(format!(
+                    "Google models list failed: HTTP {}",
+                    resp.status
+                )));
+            }
+            let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+            let mut ids = Vec::new();
+            for model in v
+                .get("models")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                // `(model.name ?? '').replace(/^models\//, '')` — a non-global
+                // anchored replace, so only the leading prefix goes.
+                let name = model.get("name").and_then(Value::as_str).unwrap_or("");
+                let id = name.strip_prefix("models/").unwrap_or(name);
+                if id.is_empty() {
+                    continue;
+                }
+                let methods: Vec<&str> = model
+                    .get("supportedGenerationMethods")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).collect())
+                    .unwrap_or_default();
+                // Imagen exposes `predict`; image-output Gemini variants carry
+                // "image" in the id AND expose `generateContent`. veo-* (video),
+                // text and embedding models match neither — there is no explicit
+                // exclusion list, and none is needed.
+                let is_imagen = id.starts_with("imagen-") && methods.contains(&"predict");
+                let is_gemini_image = id.starts_with("gemini")
+                    && id.contains("image")
+                    && methods.contains(&"generateContent");
+                if is_imagen || is_gemini_image {
+                    ids.push(id.to_string());
+                }
+            }
+            Ok(ModelsPage {
+                ids,
+                next_page_token: v
+                    .get("nextPageToken")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            })
+        }
+        "OPENROUTER" => {
+            if !resp.ok() {
+                // The speakeasy-generated SDK's error message shape, measured at
+                // the pin: `API error occurred: Status {n}. Body: {raw}`.
+                return Err(ImageGenError::new(format!(
+                    "API error occurred: Status {}. Body: {}",
+                    resp.status, resp.body
+                )));
+            }
+            let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+            let mut ids = Vec::new();
+            for model in v
+                .get("data")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                // v4 reads WIRE key names off an object the SDK's zod has already
+                // rewritten — see `openrouter_sdk_project`.
+                let model = openrouter_sdk_project(model);
+                let id = match model.get("id").and_then(Value::as_str) {
+                    Some(id) => id.to_string(),
+                    None => continue,
+                };
+                // Arm 1: `output_modalities || outputModalities` (model level).
+                let output_modalities = model
+                    .get("output_modalities")
+                    .or_else(|| model.get("outputModalities"));
+                if let Some(arr) = output_modalities.and_then(Value::as_array) {
+                    if arr.iter().any(|m| m.as_str() == Some("image")) {
+                        ids.push(id);
+                        continue;
+                    }
+                }
+                // Arm 2: `architecture.outputModality` (a string containing "image").
+                if let Some(s) = model
+                    .get("architecture")
+                    .and_then(|a| a.get("outputModality"))
+                    .and_then(Value::as_str)
+                {
+                    if s.contains("image") {
+                        ids.push(id);
+                        continue;
+                    }
+                }
+                // Arm 3: `supported_generation_methods` includes "image".
+                if let Some(arr) = model
+                    .get("supported_generation_methods")
+                    .and_then(Value::as_array)
+                {
+                    if arr.iter().any(|m| m.as_str() == Some("image")) {
+                        ids.push(id);
+                        continue;
+                    }
+                }
+            }
+            Ok(ModelsPage {
+                ids,
+                // The SDK's page loop stops on a short page; v4's catalogue rows
+                // arrive well under the 500-row limit and the recorded corpus
+                // pins the one-request shape. Paging here would need the SDK's
+                // offset arithmetic (`pricing_fetcher::openrouter_next_page_offset`).
+                next_page_token: None,
+            })
+        }
+        other => Err(ImageGenError::new(format!(
+            "Unknown image provider: {other}"
+        ))),
+    }
+}
+
+/// `response.data.map(m => m.id).filter(pred)` for the two OpenAI-SDK providers.
+fn openai_like_ids(body: &str, pred: impl Fn(&str) -> bool) -> Vec<String> {
+    let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    v.get("data")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str))
+        .filter(|id| pred(id))
+        .map(str::to_string)
+        .collect()
+}
+
+/// `@openrouter/sdk`'s `Model$inboundSchema` as a projection: a zod `z.object`
+/// **STRIPS** every key it does not declare, then `.transform(remap$)` renames
+/// the snake_case survivors to camelCase.
+///
+/// **This is a v4 bug, faithfully reproduced.** `OpenRouterImageProvider.
+/// getAvailableModels` reads three WIRE key names off the already-transformed
+/// object: model-level `output_modalities` / `outputModalities`,
+/// `architecture.outputModality` (SINGULAR), and
+/// `supported_generation_methods`. None of the three survives: the first and
+/// third are not in the schema at all, and the architecture's genuine
+/// `output_modalities` is remapped to `outputModalities` (PLURAL), which v4
+/// never reads. So at `d5830439` v4's OpenRouter image discovery answers
+/// **nothing** — every keyed call throws "OpenRouter listed no image-output
+/// models for this API key" and the route falls back to `builtin`. Measured at
+/// the pin with a payload carrying all four signals; the
+/// `openrouter/models_live_every_signal` corpus row is the tripwire, and it goes
+/// red the moment v4 fixes the read.
+///
+/// This is the same class as the P4.D33 bank note and dogfood #24 — an
+/// SDK-synthesized shape is not the wire shape. `pricing_fetcher::
+/// remap_openrouter_sdk_models` reproduces the rename for the pricing path but
+/// deliberately PRESERVES unknown keys (nothing downstream reads them there);
+/// here the stripping is exactly what decides the answer, so it is reproduced.
+fn openrouter_sdk_project(model: &Value) -> Value {
+    /// The declared keys of `Model$inboundSchema` (everything else is stripped).
+    const MODEL_KEYS: &[(&str, &str)] = &[
+        ("alias_target", "aliasTarget"),
+        ("architecture", "architecture"),
+        ("benchmarks", "benchmarks"),
+        ("canonical_slug", "canonicalSlug"),
+        ("context_length", "contextLength"),
+        ("created", "created"),
+        ("default_parameters", "defaultParameters"),
+        ("description", "description"),
+        ("expiration_date", "expirationDate"),
+        ("hugging_face_id", "huggingFaceId"),
+        ("id", "id"),
+        ("knowledge_cutoff", "knowledgeCutoff"),
+        ("links", "links"),
+        ("name", "name"),
+        ("per_request_limits", "perRequestLimits"),
+        ("pricing", "pricing"),
+        ("reasoning", "reasoning"),
+        ("supported_parameters", "supportedParameters"),
+        ("supported_voices", "supportedVoices"),
+        ("top_provider", "topProvider"),
+    ];
+    /// The declared keys of `ModelArchitecture$inboundSchema`.
+    const ARCH_KEYS: &[(&str, &str)] = &[
+        ("input_modalities", "inputModalities"),
+        ("instruct_type", "instructType"),
+        ("modality", "modality"),
+        ("output_modalities", "outputModalities"),
+        ("tokenizer", "tokenizer"),
+    ];
+    fn project(v: &Value, keys: &[(&str, &str)]) -> Value {
+        let Some(map) = v.as_object() else {
+            return v.clone();
+        };
+        let mut out = Map::new();
+        for (wire, sdk) in keys {
+            if let Some(val) = map.get(*wire) {
+                out.insert((*sdk).to_string(), val.clone());
+            }
+        }
+        Value::Object(out)
+    }
+    let mut projected = project(model, MODEL_KEYS);
+    if let Some(arch) = projected.get("architecture").cloned() {
+        projected
+            .as_object_mut()
+            .unwrap()
+            .insert("architecture".into(), project(&arch, ARCH_KEYS));
+    }
+    projected
+}
+
+/// JS `Array.prototype.sort()` — a UTF-16 code-unit comparison over the default
+/// string coercion. Identical to Rust's byte order for every id in the corpus
+/// (all ASCII), but spelled out so a non-BMP id could not diverge silently.
+fn js_sort(ids: &mut [String]) {
+    ids.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+}
+
+/// Turn the ids collected across every page into the provider's final answer:
+/// its dedup / union / sort semantics, and its empty-result disposition.
+///
+/// The asymmetries are v4's and are contractual — openrouter alone neither
+/// sorts nor dedupes, and z-ai alone cannot come back empty.
+pub fn finalize_models(provider: &str, mut ids: Vec<String>) -> Result<Vec<String>, ImageGenError> {
+    match provider {
+        "OPENAI" => {
+            if ids.is_empty() {
+                return Err(ImageGenError::new(
+                    "OpenAI /v1/models listed no image-generation models for this API key",
+                ));
+            }
+            js_sort(&mut ids);
+            Ok(ids)
+        }
+        "GOOGLE" => {
+            if ids.is_empty() {
+                return Err(ImageGenError::new(
+                    "Google models list contained no image-generation models for this API key",
+                ));
+            }
+            js_sort(&mut ids);
+            Ok(ids)
+        }
+        "GROK" => {
+            // v4 accumulates into a `Set`, so `ids.size === 0` is the empty test
+            // and `Array.from(set).sort()` the answer.
+            let mut seen = Vec::new();
+            for id in ids {
+                if !seen.contains(&id) {
+                    seen.push(id);
+                }
+            }
+            if seen.is_empty() {
+                return Err(ImageGenError::new(
+                    "xAI listed no image-generation models for this API key",
+                ));
+            }
+            js_sort(&mut seen);
+            Ok(seen)
+        }
+        "Z_AI" => {
+            // The endpoint under-reports, so the two documented ids are UNIONED
+            // in rather than trusted to appear — which is also why this arm has
+            // no empty-throw: the union guarantees at least two entries.
+            let mut merged = Vec::new();
+            for id in ids
+                .into_iter()
+                .chain(ZAI_STATIC_IMAGE_MODELS.iter().map(|s| (*s).to_string()))
+            {
+                if !merged.contains(&id) {
+                    merged.push(id);
+                }
+            }
+            js_sort(&mut merged);
+            Ok(merged)
+        }
+        "OPENROUTER" => {
+            if ids.is_empty() {
+                return Err(ImageGenError::new(
+                    "OpenRouter listed no image-output models for this API key",
+                ));
+            }
+            // NO sort and NO dedup: v4 returns the accumulated push order.
+            Ok(ids)
+        }
+        other => Err(ImageGenError::new(format!(
+            "Unknown image provider: {other}"
+        ))),
+    }
+}
+
+/// `URLSearchParams` value serialization (v4 builds the google page URL with
+/// `url.searchParams.set`, whose `toString()` is
+/// application/x-www-form-urlencoded): unreserved characters pass, a space
+/// becomes `+`, everything else is percent-encoded from its UTF-8 bytes.
+fn urlencoded_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+// ===========================================================================
 // The real ImageProvider (composes build + transport + parse)
 // ===========================================================================
 
-use crate::model::image::ImageProvider;
+use crate::model::image::{ImageModelDiscovery, ImageProvider};
+use crate::model::image_bytes::{FetchedImageBytes, ImageBytesFetch};
 use crate::model::wire::WireTransport;
 
 /// The real [`ImageProvider`] — builds the wire request, sends it over the
@@ -660,13 +1207,29 @@ use crate::model::wire::WireTransport;
 /// converting a non-2xx to a throw, or a network error) surfaces verbatim as the
 /// [`ImageGenError`] the Concierge reroute inspects; a raw-fetch provider's HTTP
 /// status is handled inside [`parse_image_response`].
-pub struct RealImageProvider<T: WireTransport> {
+pub struct RealImageProvider<T: WireTransport, B: ImageBytesFetch = NoImageBytesFetch> {
     transport: T,
+    /// The `ca22ec45` image-download seam — only Z.AI reaches it, and only for
+    /// an entry that carries a `url` and no `b64_json`.
+    bytes: B,
 }
 
-impl<T: WireTransport> RealImageProvider<T> {
+impl<T: WireTransport> RealImageProvider<T, NoImageBytesFetch> {
+    /// A provider with no download seam. Correct for every composition that
+    /// cannot reach the Z.AI URL path; if one ever does, the download fails
+    /// LOUDLY by name rather than yielding an empty image.
     pub fn new(transport: T) -> Self {
-        Self { transport }
+        Self {
+            transport,
+            bytes: NoImageBytesFetch,
+        }
+    }
+}
+
+impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
+    /// A provider with a live image-download seam (the host's HTTP client).
+    pub fn with_bytes_fetch(transport: T, bytes: B) -> Self {
+        Self { transport, bytes }
     }
 
     /// The per-provider auth header (v4's SDK `Authorization` / the raw-fetch
@@ -695,7 +1258,7 @@ impl<T: WireTransport> RealImageProvider<T> {
     }
 }
 
-impl<T: WireTransport> ImageProvider for RealImageProvider<T> {
+impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T, B> {
     async fn generate_image(
         &self,
         provider: &str,
@@ -708,7 +1271,7 @@ impl<T: WireTransport> ImageProvider for RealImageProvider<T> {
         // The Google dialect is selected by model on the parse side too.
         let model = params.model.clone();
         let body = request.body_string();
-        match self
+        let parsed = match self
             .transport
             .send(&request.method, &request.url, &request.headers, &body)
             .await
@@ -716,7 +1279,129 @@ impl<T: WireTransport> ImageProvider for RealImageProvider<T> {
             Ok(resp) => parse_image_response(provider, &model, &resp),
             // The SDK/transport throw (moderation, network) surfaces verbatim.
             Err(message) => Err(ImageGenError::new(message)),
+        }?;
+        // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
+        // Quilltap consumer (chat handler, avatar/background jobs) reads only
+        // base64 `data`. Download each image here so the response is usable.
+        if provider == "Z_AI" {
+            return self.download_zai_images(parsed).await;
         }
+        Ok(parsed)
+    }
+}
+
+impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
+    /// v4's per-image loop inside the Z.AI provider's `generateImage`: keep the
+    /// base64 when it is already there; otherwise download the URL and encode
+    /// the bytes; reject an entry that carries neither.
+    ///
+    /// The mime-type rule is v4's exactly: the default is `image/png`, and the
+    /// response's `content-type` overrides it ONLY when it starts with
+    /// `image/`, truncated at the first `;`.
+    async fn download_zai_images(
+        &self,
+        parsed: ImageGenResponse,
+    ) -> Result<ImageGenResponse, ImageGenError> {
+        use base64::Engine as _;
+        let mut images = Vec::with_capacity(parsed.images.len());
+        for img in parsed.images {
+            // `let data = img.b64_json; let mimeType = 'image/png';`
+            let mut data = img.data.filter(|d| !d.is_empty());
+            let mut mime_type = "image/png".to_string();
+            if data.is_none() {
+                if let Some(url) = img.url.as_deref().filter(|u| !u.is_empty()) {
+                    let resp = self.bytes.fetch(url).await.map_err(ImageGenError::new)?;
+                    if !resp.ok() {
+                        return Err(ImageGenError::new(format!(
+                            "Failed to download Z.AI image: HTTP {}",
+                            resp.status
+                        )));
+                    }
+                    if let Some(ct) = resp.content_type.as_deref() {
+                        if ct.starts_with("image/") {
+                            // `contentType.split(';')[0]` — no trimming: v4
+                            // takes the raw first segment.
+                            mime_type = ct.split(';').next().unwrap_or(ct).to_string();
+                        }
+                    }
+                    data = Some(base64::engine::general_purpose::STANDARD.encode(&resp.bytes));
+                }
+            }
+            let Some(data) = data else {
+                return Err(ImageGenError::new(
+                    "Z.AI image entry carried neither base64 data nor a URL",
+                ));
+            };
+            images.push(GeneratedImageData {
+                data: Some(data),
+                url: img.url,
+                mime_type: Some(mime_type),
+                revised_prompt: img.revised_prompt,
+            });
+        }
+        Ok(ImageGenResponse { images })
+    }
+}
+
+/// The no-download-seam default for [`RealImageProvider::new`]. A composition
+/// that never reaches Z.AI's URL path never calls it; one that does gets a
+/// named failure instead of a silently empty image.
+pub struct NoImageBytesFetch;
+
+impl ImageBytesFetch for NoImageBytesFetch {
+    async fn fetch(&self, _url: &str) -> Result<FetchedImageBytes, String> {
+        Err("no image-download seam is wired on this host".to_string())
+    }
+}
+
+/// The maximum number of model-list pages a single discovery call will request.
+/// Only google pages at all, and its `pageSize=1000` means one page covers the
+/// whole catalogue several times over; the bound exists so a provider echoing
+/// its own `nextPageToken` cannot spin forever.
+const MODEL_PAGE_LIMIT: usize = 32;
+
+impl<T: WireTransport, B: ImageBytesFetch> ImageModelDiscovery for RealImageProvider<T, B> {
+    /// v4 `getAvailableModels(apiKey?)`, composed: no key → the curated static
+    /// list with NO request; otherwise page through the provider's model list,
+    /// then apply its dedup / union / sort / empty-throw semantics.
+    async fn available_models(
+        &self,
+        provider: &str,
+        api_key: Option<&str>,
+    ) -> Result<Vec<String>, ImageGenError> {
+        let Some(api_key) = api_key.filter(|k| !k.is_empty()) else {
+            // `return [...this.supportedModels]` — v4 makes no call at all.
+            return Ok(supported_image_models(provider)?
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect());
+        };
+        let mut collected: Vec<String> = Vec::new();
+        let mut page_token: Option<String> = None;
+        for _ in 0..MODEL_PAGE_LIMIT {
+            let request = build_models_request(provider, api_key, page_token.as_deref())?;
+            // A GET carries no body; `Value::Null` must not become the literal
+            // four bytes `null` on the wire.
+            let body = if request.body.is_null() {
+                String::new()
+            } else {
+                request.body_string()
+            };
+            let resp = self
+                .transport
+                .send(&request.method, &request.url, &request.headers, &body)
+                .await
+                .map_err(ImageGenError::new)?;
+            let page = parse_models_page(provider, &resp)?;
+            collected.extend(page.ids);
+            match page.next_page_token {
+                Some(token) => page_token = Some(token),
+                None => return finalize_models(provider, collected),
+            }
+        }
+        Err(ImageGenError::new(format!(
+            "{provider} model list did not terminate after {MODEL_PAGE_LIMIT} pages"
+        )))
     }
 }
 
@@ -835,6 +1520,120 @@ mod tests {
             "veo-3",
         ] {
             assert!(!is_gemini_image_model(m), "{m} should route to imagen");
+        }
+    }
+
+    /// **A blinded comparand, named.** OpenRouter alone neither sorts nor dedupes
+    /// its discovered ids — but the corpus cannot see that, because the SDK's
+    /// zod strips every key v4's discovery reads (see `openrouter_sdk_project`),
+    /// so every keyed OpenRouter row throws and `finalize_models` never gets a
+    /// non-empty list to order. The rule is transcribed from v4's source and
+    /// pinned here directly; the `openrouter/models_live_every_signal` corpus
+    /// row is the tripwire that fires when v4 fixes the read, at which point
+    /// this arm becomes oracle-observable and this test becomes redundant.
+    #[test]
+    fn openrouter_finalize_neither_sorts_nor_dedupes() {
+        let ids = vec![
+            "z/last".to_string(),
+            "a/first".to_string(),
+            "z/last".to_string(),
+        ];
+        assert_eq!(
+            finalize_models("OPENROUTER", ids.clone()).unwrap(),
+            ids,
+            "v4 returns the accumulated push order verbatim"
+        );
+        assert_eq!(
+            finalize_models("OPENROUTER", vec![]).unwrap_err().message,
+            "OpenRouter listed no image-output models for this API key"
+        );
+    }
+
+    /// The SDK projection: unknown model-level keys are STRIPPED, declared
+    /// snake_case keys are RENAMED, and the architecture's `output_modalities`
+    /// becomes `outputModalities` (plural) — which is exactly why v4's
+    /// `architecture?.outputModality` (singular) read never fires.
+    #[test]
+    fn openrouter_sdk_projection_strips_and_renames() {
+        let raw = serde_json::json!({
+            "id": "x/y",
+            "context_length": 8192,
+            "output_modalities": ["image"],
+            "supported_generation_methods": ["image"],
+            "architecture": {
+                "modality": "text->image",
+                "output_modalities": ["image"],
+                "outputModality": "text+image"
+            }
+        });
+        let p = super::openrouter_sdk_project(&raw);
+        // Survives, renamed.
+        assert_eq!(p["id"], serde_json::json!("x/y"));
+        assert_eq!(p["contextLength"], serde_json::json!(8192));
+        assert_eq!(
+            p["architecture"]["outputModalities"],
+            serde_json::json!(["image"])
+        );
+        // Stripped — the three reads v4's discovery makes.
+        assert!(p.get("output_modalities").is_none());
+        assert!(p.get("outputModalities").is_none());
+        assert!(p.get("supported_generation_methods").is_none());
+        assert!(p["architecture"].get("outputModality").is_none());
+        assert!(p["architecture"].get("output_modalities").is_none());
+    }
+
+    /// A model-list GET carries no body and pages only for google, whose page
+    /// token is form-urlencoded onto the existing `pageSize` query.
+    #[test]
+    fn model_list_requests_are_bodyless_and_google_pages() {
+        for p in ["OPENAI", "GOOGLE", "GROK", "Z_AI", "OPENROUTER"] {
+            let r = build_models_request(p, "k", None).unwrap();
+            assert_eq!(r.method, "GET", "{p} method");
+            assert!(r.body.is_null(), "{p} built a body");
+        }
+        let paged = build_models_request("GOOGLE", "k", Some("tok en/=")).unwrap();
+        assert_eq!(
+            paged.url,
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&pageToken=tok+en%2F%3D"
+        );
+        // A page token is google's alone; nothing else appends one.
+        assert_eq!(
+            build_models_request("OPENAI", "k", Some("tok"))
+                .unwrap()
+                .url,
+            "https://api.openai.com/v1/models"
+        );
+        assert!(build_models_request("NOPE", "k", None).is_err());
+        assert!(supported_image_models("NOPE").is_err());
+    }
+
+    #[test]
+    fn zai_alone_cannot_come_back_empty() {
+        // Union with the two static ids; no empty-throw arm exists.
+        assert_eq!(
+            finalize_models("Z_AI", vec![]).unwrap(),
+            vec!["cogview-4-250304".to_string(), "glm-image".to_string()]
+        );
+        // The other four DO throw on empty, each with its own sentence.
+        for (p, want) in [
+            (
+                "OPENAI",
+                "OpenAI /v1/models listed no image-generation models for this API key",
+            ),
+            (
+                "GOOGLE",
+                "Google models list contained no image-generation models for this API key",
+            ),
+            (
+                "GROK",
+                "xAI listed no image-generation models for this API key",
+            ),
+            (
+                "OPENROUTER",
+                "OpenRouter listed no image-output models for this API key",
+            ),
+        ] {
+            assert_eq!(finalize_models(p, vec![]).unwrap_err().message, want, "{p}");
         }
     }
 
