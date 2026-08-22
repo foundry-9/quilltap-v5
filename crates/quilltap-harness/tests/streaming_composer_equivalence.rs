@@ -33,6 +33,9 @@
 //! No env vars needed — the fixtures + recordings are committed; regenerate
 //! with `harness/oracle/providers/regenerate-stream-fixtures.sh` after a v4
 //! provider drift.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test streaming_composer_equivalence
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -36,6 +36,9 @@
 //! it runs in every plain `cargo test`. That corpus regenerates (Node 24, only
 //! after a v4 provider drift) with
 //! `harness/oracle/providers/regenerate-request-envelopes.sh`.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test tool_wire_call_site
 
 use std::sync::Mutex;
 

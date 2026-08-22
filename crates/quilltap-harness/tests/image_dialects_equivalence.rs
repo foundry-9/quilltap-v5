@@ -14,6 +14,9 @@
 //!
 //! The fixture is committed (no env var); regenerate with
 //! `harness/oracle/providers/regenerate-image-fixtures.sh`.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test image_dialects_equivalence
 
 use std::path::{Path, PathBuf};
 

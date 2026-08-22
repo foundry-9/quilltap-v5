@@ -8,6 +8,9 @@
 //!
 //! The fixture is committed (no env var); regenerate by driving
 //! `record-moderation-wire.mjs` from the openai plugin dir.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test moderation_wire_equivalence
 
 use std::path::{Path, PathBuf};
 

@@ -37,6 +37,9 @@
 //! orphan-skip half is still v5's to guarantee.
 //!
 //! Runs unconditionally — no env var, so it can never silently skip.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test restore_vintage_state
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — test(harness): scoped run lines for the harness and CLI `nothing_to_run` families
+
+_No crate versions bumped._
+
+P4.54 item 1, second half — the ten remaining in-scope families outside
+`quilltap-web`.
+
+Eight are committed-corpus differentials (`image_dialects_equivalence`,
+`moderation_wire_equivalence`, `restore_vintage_state`,
+`stream_decoders_equivalence`, `streaming_composer_equivalence`,
+`tool_wire_call_site`, `tool_wire_equivalence`, `web_search_wire_equivalence`).
+Their by-hand RECORDING stage stays non-runnable by the driver's own design —
+`stages_to_run` excludes a committed-corpus regen so a sweep can never clobber
+bytes checked into the repo — and the new line adds only the cargo half.
+Verified after the edit that all eight still classify as `committed_corpus`: a
+run line carrying a `QT_ORACLE*=` variable would have flipped them out of that
+class and re-armed the recording stage, so none does.
+
+`web_search_runner_wire` is the P4.42 wiring proof: no oracle, no env var, a
+bare scoped line.
+
+`cli_differential` is the one family in the set that can run vacuously. It is
+env-gated on `QT_V4_CHECKOUT` and prints `skipping CLI differential: …` when it
+is absent, which the driver's `SKIP_PROSE` detector catches and reports as
+`skipped`, exit 3. Its run line therefore carries the gate itself —
+`QT_V4_CHECKOUT=~/source/quilltap-server QT_NODE=$N/node` — which is what makes
+the line self-contained rather than dependent on the operator's shell:
+`normalize()` rewrites the v4 path to the driver's `--v4` pin and prepends the
+Node 24 `N=` assignment.
+
 #### 2026-08-21 — test(web): scoped run lines for the nineteen `nothing_to_run` web arms
 
 _No crate versions bumped._

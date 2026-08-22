@@ -18,6 +18,9 @@
 //! is needed to run — the family runs in every plain `cargo test`. Regenerate
 //! the corpus (Node 24, only after a v4 provider drift) with
 //! `harness/oracle/providers/regenerate-tool-wire.sh`.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test tool_wire_equivalence
 
 use quilltap_core::model::tool_wire::{
     detect_native_tool_calls, format_tools_for_provider, provider_has_text_markers,

@@ -10,6 +10,9 @@
 //! regen (it lives in the main-app handler, not the plugin). The fixture is
 //! committed; regenerate with `record-web-search-wire.mjs` from the serper plugin
 //! dir under `TZ=UTC`.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test web_search_wire_equivalence
 
 use std::path::{Path, PathBuf};
 

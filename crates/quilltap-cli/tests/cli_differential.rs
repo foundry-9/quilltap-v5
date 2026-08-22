@@ -12,6 +12,10 @@
 //! `TZ=UTC`. Documented normalizations only: the elapsed-seconds heartbeat
 //! display (`heartbeat <N>s ago`) — environment truth that legitimately
 //! differs between the two runs.
+//!
+//! Run:
+//!   QT_V4_CHECKOUT=~/source/quilltap-server QT_NODE=$N/node \
+//!     cargo test -p quilltap-cli --test cli_differential
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

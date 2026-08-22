@@ -18,6 +18,9 @@
 //!      outcome agree in each.
 //!
 //! No oracle, no env var — pure Rust wiring proof.
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test web_search_runner_wire
 
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -28,6 +28,9 @@
 //! now joins the full three-chunking equivalence — whole, per-line, AND
 //! byte-at-a-time — like every other decoder. The old whole-+-per-line-only
 //! exclusion for the ported no-buffer bug is gone.)
+//!
+//! Run:
+//!   cargo test -p quilltap-harness --test stream_decoders_equivalence
 
 use std::path::{Path, PathBuf};
 
