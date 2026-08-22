@@ -1599,11 +1599,68 @@ records THERE. Update this summary only when a phase or round completes.
   standing lesson is in `dogfood-findings.md`: verify a browser instrument is
   ticking before trusting any negative from it. **Still owed:** P4.D35's other
   three write paths, and the dedup/summaries first run.
-- **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
-  disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
-  b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at
-  unification — verify before the next round starts. **Drift-check BOTH
-  development branches every round** (`git log <baseline>..main` AND
+- **The `12fe3e6f` thinking-turn drift round (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥
+  P4.54): UNIFIED on main (2026-08-22) — ALL FOUR CLOSED; the oracle
+  baseline MOVED to `12fe3e6f`.** v4's bugs 84/85/86 absorbed whole (two
+  were this port's own dogfood filings coming back fixed): the
+  thinking-turn evaluator + registry join + the manifest substrate's
+  first per-model facts + `thinkingTurnRule`, the prefill
+  `runsThinkingTurn` threading, the model-aware DeepSeek strip, the
+  retire-prefill heal over v4's own `migrations_state` ledger, the
+  profile editor's three thinking-turn behaviors + the activated e2e
+  beat, bug 84's two-layer client fix (finding #99 FIXED), and run lines
+  for 32 of the 39 `nothing_to_run` families. §3: no blocking findings.
+  Gate: 443 binaries / 2,253 / 0; ng 334 / 4,970; Playwright 233/233.
+  Versions: core 0.0.599, harness 0.0.523, host 0.0.75, SPA 0.5.535.
+  Round record: `status-log.md`. (This bullet was added a round late —
+  the 12fe3e6f unification updated the status log but not this summary.)
+- **The `4cb1035e` image + NanoGPT drift round (P4.D100 → P4.D101
+  stacked ∥ P4.D102): UNIFIED on main (2026-08-22) — ALL THREE CLOSED;
+  the oracle baseline MOVES to `4cb1035e`.** The `ca22ec45` catch-up +
+  the two NanoGPT commits + v4 bug 87 (ruled IN mid-lane) absorbed
+  whole: the honest image `list-models` verb end-to-end over a new
+  `ErasedImageDiscovery` seam (the P4.D33 bank note retired at source;
+  wired LIVE in the host), keyed model discovery for all five image
+  plugins (**a real v4 bug found, TO FILE UPSTREAM: OpenRouter image
+  discovery reads wire keys its own SDK's zod strips — every keyed
+  listing throws; v5 reproduces with the
+  `openrouter/models_live_every_signal` convergence tripwire**), the
+  image-download seam + Z.AI URL→base64 (v5 measurably HAD the
+  zero-byte bug), the gemini routing widening, and NanoGPT whole as the
+  TENTH provider (manifest through the generator; `ProviderKind` +
+  builder with the FLAT `reasoning_effort` allowlist; the dual
+  `delta.reasoning ?? reasoning_content` dialect + bug 87's prose-echo
+  guard as decoder state; images over the shared seam; embeddings with
+  the catalogue pinned against v4's real plugin — the differential
+  caught a doubled-error-prefix defect inspection missed; the thinking
+  rule through the P4.D97 machinery, the exactly-two-rules guard moved
+  2 → 3 by design; the census REFUTED four ordered legacy-table joins,
+  guard-pinned) ∥ the SPA client half (the Fetch Models flow with v4's
+  four label strings, the Z.AI/NanoGPT entries + Default Size panels,
+  the embedding surface + badge CSS quirk preserved; two order items
+  refuted by measurement; both gated beats FLIPPED LIVE). **The §3 read
+  found no blocking findings; the unified gate caught two** — the
+  routes oracle's `PLUGIN_DIRS` missing the nanogpt append (only the
+  union could red), and the Fetch Models beat's first live run exposing
+  an unreachable skip-guard (redesigned around an offline list-order
+  discriminator, mutation-proven red-first). Gate: ten families fresh
+  at the `4cb1035e` pin zero SKIP; manifests byte-identical; 443
+  binaries / 2,261 / 0; clippy both sets; release build; ng 338 /
+  5,016; full Playwright 235/235 zero skips. 💸 the dogfood queue
+  gains the live-key Fetch Models smoke (the OpenRouter finding
+  deserves a real key) + the NanoGPT chat/image/embeddings smoke.
+  Versions: core 0.0.608, harness 0.0.531, host 0.0.77, SPA 0.5.539.
+  Round record: `status-log.md`.
+- **Oracle baseline: `4cb1035e` (2026-08-22, v4 main — "fix(nanogpt):
+  suppress the gateway's reasoning echo (plugin 1.0.2, bug 87)"),
+  adopted at the 4cb1035e-round unification (2026-08-22).** ⚠ v4 HAD
+  ALREADY MOVED past it at unification — the prompts trio (`8f868109`
+  project/group standing instructions in the cacheable system prompt,
+  `346e855f` second-person tool reinforcement [bug 88], `a6870c5a`
+  grammatical-person consistency), on ported prompt surfaces — **pin a
+  detached worktree at `4cb1035e` for EVERY regen until that catch-up
+  runs; it is the top next candidate.** **Drift-check BOTH development
+  branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
   `diff`, never the commit list; note WHICH branch the checkout occupies
   before any regen, and pin a detached worktree whenever v4 HEAD is past

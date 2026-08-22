@@ -79374,3 +79374,146 @@ Gate at lane close, on HEAD: `npm test` **338 files / 5,016 tests**,
 `npm run build` clean, and `playwright test settings-flow --list` registers both
 gated beats (skipped-by-gate, not silently absent). SPA 0.5.539; no crate
 touched, so no crate version moved.
+
+
+---
+
+## Round record — the `4cb1035e` image + NanoGPT drift round (P4.D100 → P4.D101 stacked ∥ P4.D102), UNIFIED 2026-08-22
+
+**All three lanes closed; the oracle baseline MOVES `12fe3e6f` → `4cb1035e`.**
+v4's `ca22ec45` (honest image Fetch Models + Z.AI image generation made real),
+`781fc420` (the NanoGPT bundled provider), and `d5830439` (NanoGPT thinking
+options) absorbed whole, plus `4cb1035e` (v4 bug 87, the NanoGPT gateway
+reasoning echo) — **ruled IN by the human at the D101 lane's start**: the fix
+landed on that lane's own surface hours after the baseline, and porting the
+pre-fix shape would have meant deliberately importing a bug to re-port next
+round. The widening was measured safe for every other family (`4cb1035e`
+touches lib/app/packages only through one version bump). Lane records above:
+"Lane record — P4.D100", "Lane record — P4.D101", "P4.D102".
+
+**Reconciliation.** The server stack (D100's four commits + D101's six) was
+linear from main, so `unify/4cb1035e-round` branched from D101's tip and
+cherry-picked D102's five commits. Conflicts: `docs/CHANGELOG.md` only (both
+lanes prepended under August) — pure union each time; `status-log.md`
+auto-merged (the lanes appended at different ends). Fidelity audited by
+tree-equality against both lane tips over their owned paths (`git diff
+<lane-tip> HEAD -- <paths>` empty for `apps/web`, `crates`, `harness`,
+`docs/v4`) and a tree-wide conflict-marker sweep (clean). Versions
+accumulated by construction (stacked server bumps + the SPA's own): core
+0.0.608, harness 0.0.531, host 0.0.77, SPA 0.5.539; web/cli/tauri unchanged.
+
+**The §3 review: the whole combined diff read; NO blocking findings in the
+read itself.** Verified against v4's real code: the five discovery
+builders/parsers/finalizers (endpoints, auth headers, filters, union/sort
+asymmetries, every error sentence), the bug-87 echo guard arm-by-arm against
+`4cb1035e`'s actual diff (the in-loop prefix hold, the stream-end commit
+condition, the non-streaming exact-equality drop), the list-models verb's
+raw-echo/resolved-plugin split and cache-only-live gate, the manifest against
+the binding Shared contract (name-for-name, incl. all seven enumValues), and
+the SPA modal's four label strings + fallback semantics. Recorded, not fixed:
+
+- **A transient-state micro-divergence (P4.D102):** the modal's
+  `fetchModels` catch-branch fallback looks up the provider by
+  `normalized || raw` where v4 reads only the raw value — on a legacy
+  (`GOOGLE_IMAGEN`) profile BEFORE the normalize effect rewrites it, v5
+  falls back to GOOGLE's `defaultModels` where v4 falls back to `[]`. The
+  normalize effect + auto-load converge both worlds within a tick; noted
+  so a future reader does not mistake it for the ordered behavior.
+- The `MODEL_PAGE_LIMIT = 32` bound on discovery paging is a v5 invention
+  (v4's `do…while` is unbounded); documented inline as a spin guard.
+
+**The unified gate caught TWO findings no lane could see, both fixed on the
+unify branch as their own commits:**
+
+1. **The cross-lane blind spot (the sweep's first run):** the
+   image-profiles-routes oracle's hardcoded `PLUGIN_DIRS` was missing the
+   nanogpt append — P4.D100 authored the case before the NANOGPT manifest
+   existed, P4.D101 appended the OTHER two oracle cases' lists
+   (`provider-registry.ts`, `providers-listing.ts`) and missed this one, and
+   each lane's own gate was green (D100's tree had no manifest; D101 never
+   re-ran a D100 family its units did not touch). Only the union could red:
+   `list_providers` answered five providers against v5's six. The same class
+   as the P4.D85/D86 cross-lane staleness finding. Fixed with the append
+   convention (pre-existing rows byte-identical), regenerated fresh at the
+   pin, green.
+2. **The activated Fetch Models beat failed its FIRST live run** — the
+   activation discipline doing its job. The gesture selected "the fixture's
+   API key", but the fixture's one key is `OPENAI_COMPATIBLE`, which no image
+   provider accepts, so the key select never grew a second option — and the
+   beat's own skip-guard was UNREACHABLE, because Playwright's `getAttribute`
+   waits for the element rather than answering null (a gesture-authoring trap
+   worth remembering: a skip-guard behind a waiting locator is no guard). A
+   keyed fetch would also have been an outbound call to a real provider host
+   — no place in the offline suite. Redesigned around a deterministic OFFLINE
+   discriminator: keyless GOOGLE auto-load — the landed verb answers the
+   PLUGIN's `supportedModels` (imagen first) where the pre-P4.D100 refusal
+   world falls back client-side to the manifest `defaultModels` (gemini
+   first), so the first option's text tells the two worlds apart.
+   **Mutation-proven red-first** (forcing the client's catch branch reds the
+   beat), then green. The keyed label arms stay pinned at component tier; the
+   real-key smoke is the round's 💸 dogfood item.
+
+**The unification wires** (their own commit): `P4D100_LIST_MODELS_LANDED` and
+`P4D101_NANOGPT_LANDED` flipped true (both beats active; green in the full
+suite below — the suite grew 233 → 235 with exactly the two activated beats),
+and the three download-seam doc comments that still said "only Z.AI" learned
+the NanoGPT path. The Shared contracts diffed name-for-name across sides: the
+list-models envelope keys (`provider`/`models`/`supportedModels`/`source`/
+`fetchError`-omitted) appear once on each side's builder/reader, and the
+NANOGPT identity (all seven `reasoning_effort` enumValues + labels, the rule's
+two lists, the six image ids, the embedding metadata strings) is byte-equal
+between the committed manifest and the SPA's transcribed spec.
+
+**The gate.** `cargo fmt` clean; clippy plain AND
+`--features quilltap-core/native-transport`, `-D warnings`, both clean;
+`cargo build --release` clean. The v4 checkout had moved THREE commits past
+the round baseline (the prompts trio), so EVERY regen ran from a detached
+worktree pinned at `4cb1035e` (all three symlink classes) through the sweep
+driver: ten families by name — `image_dialects_equivalence` (82 rows, 17
+nanogpt + the gemini live-id row), `image_profiles_routes_equivalence` (25
+cases incl. all seven list-models arms — red on the first run, the PLUGIN_DIRS
+find above, then green), `request_builder_equivalence` (307 envelopes, 38
+nanogpt rows, headers pinned for 9 providers),
+`response_parse_equivalence` (46 rows; run by hand — its recipe header still
+has no run line, the standing P4.54 maintenance item),
+`stream_decoders_equivalence` + `streaming_composer_equivalence` (16 cases,
+5 nanogpt wires), `thinking_turn_equivalence` (1,560 rows),
+`provider_registry_equivalence`, `providers_listing_equivalence` (the
+exactly-THREE-rules guard), `embedding_wire_equivalence` (23 rows) — **10/10
+ok, zero SKIP** (`/tmp/unify-4cb1035e-sweep.json`), with the changed bytes
+positively grepped in each fresh corpus/NDJSON. The manifest generator re-run
+at the pin reproduced all ten committed manifests **byte-identical**
+(`git diff --exit-code`). `cargo test --workspace` with the round's
+five-variable env block: **443 test binaries / 2,261 tests / 0 failed**
+(cargo exit 0). SPA: `npm test` **338 files / 5,016 tests**, `npm run build`
+clean; **full Playwright: 235 passed / 0 failed / 0 skipped (5.8 m)** — the
+suite grew 233 → 235 with exactly the two activated beats: the NanoGPT picker
+beat green on its first live run, the Fetch Models beat green after the
+finding-2 redesign (and mutation-proven red-first).
+
+**Standing after this round:**
+
+- ⚠ **v4 drift already owed:** `8f868109` (project/group standing
+  instructions in the cacheable system prompt), `346e855f` (second-person
+  tool reinforcement, bug 88), `a6870c5a` (grammatical-person consistency) —
+  the prompts trio, on ported prompt surfaces
+  (`PROMPT_CACHE_STRUCTURE_VERSION` territory). Top next candidate; pin
+  `4cb1035e` for every regen until it runs. `bugfix` stays quiet
+  (`3a76b17d`).
+- **TO FILE UPSTREAM (v4-side):** the P4.D100 find — v4's OpenRouter image
+  discovery reads wire key names its own `@openrouter/sdk` zod strips or
+  renames (`output_modalities` / `supported_generation_methods` stripped;
+  `architecture.output_modalities` remapped to the plural camelCase v4 never
+  reads), so at `d5830439` every keyed OpenRouter image listing throws and
+  falls back to builtin. v5 reproduces the SDK projection faithfully; the
+  `openrouter/models_live_every_signal` corpus row is the convergence
+  tripwire that reds when v4 fixes the read.
+- 💸 **the dogfood queue gains:** the live-key Fetch Models smoke across
+  real providers (the OpenRouter finding deserves a real-key look), and the
+  NanoGPT end-to-end smoke — chat with `reasoning_effort`, an image
+  generation, an embedding — which needs a NanoGPT key.
+- `response_parse_equivalence`'s missing run line, `EXEMPT_FAMILIES`, and
+  `settings_wire_actions`' sibling fixture: the P4.54 maintenance trio,
+  unchanged.
+- The `p4.9i2` bank grew the four NanoGPT help docs + v4's
+  `help/image-generation-profiles.md` rewrite.

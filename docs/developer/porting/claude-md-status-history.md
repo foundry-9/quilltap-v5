@@ -2068,3 +2068,12 @@ Contents:
   venue/staging rules stand unchanged. (The superseded baseline paragraphs
   formerly kept here "for history" are archived verbatim in
   `docs/developer/porting/claude-md-status-history.md`.)
+
+## Superseded baseline paragraph (removed from CLAUDE.md 2026-08-22, at the 4cb1035e-round unification)
+
+- **Oracle baseline: `b8449b3e` (2026-08-20, v4 main — "fix(tests):
+  disable V8 Sparkplug for jest", atop `e22f7b36`), adopted at the
+  b8449b3e-round unification (2026-08-21).** v4 had NOT moved past it at
+  unification — verify before the next round starts. (The 12fe3e6f round,
+  unified 2026-08-22, moved the baseline in the status log and phase plan
+  but never updated this bullet — corrected at the 4cb1035e round.)

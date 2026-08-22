@@ -5441,3 +5441,63 @@ checkout occupies before any regen). The sweep driver remains the
 sanctioned per-family regen path — never run two sweeps concurrently. The
 distill-transitive TZ pins, the committed-fixture rule, and the
 venue/staging rules stand unchanged.
+
+**The `4cb1035e` image + NanoGPT drift round (P4.D100 → P4.D101 stacked ∥
+P4.D102): UNIFIED on main (2026-08-22) — ALL THREE CLOSED; the oracle
+baseline MOVES to `4cb1035e`.** The `ca22ec45` catch-up plus the two
+NanoGPT commits absorbed whole: the honest image `list-models` verb
+end-to-end (the P4.D33 bank note retired at source; the refusal replaced
+by v4's source/fetchError/cache-only-live flow over a new
+`ErasedImageDiscovery` engine seam, wired LIVE in the host), the five
+image plugins' keyed model discovery (**a real v4 bug found, TO FILE
+UPSTREAM: at `d5830439` v4's OpenRouter image discovery reads wire keys
+its own SDK's zod strips/renames, so every keyed list throws and falls
+back — v5 reproduces the SDK projection with the
+`openrouter/models_live_every_signal` convergence tripwire**), the
+image-download seam + the Z.AI URL→base64 conversion (v5 measurably HAD
+the bug), the gemini `startsWith('gemini')` routing widening, the whole
+NanoGPT provider (manifest through the generator, `ProviderKind` +
+builder with the FLAT `reasoning_effort` allowlist, the dual
+`delta.reasoning ?? reasoning_content` dialect + v4 bug 87's prose-echo
+guard as decoder state — **the D101 lane's effective pin is `4cb1035e`,
+ruled IN by the human at lane start** — images over the shared download
+seam, embeddings with the catalogue pinned against v4's real
+`getEmbeddingModels()`, the thinking rule through the P4.D97 machinery
+with the exactly-two-rules guard moved 2 → 3 by design, and the census
+that REFUTED four ordered joins as legacy-table NO-PORTs with a guard
+test), and the SPA client half (the Fetch Models flow with v4's four
+label strings, the Z.AI/NanoGPT provider entries + size panels, the
+NanoGPT embedding surface + badge CSS with the undefined-border quirk
+preserved, two order items refuted by measurement, both gated beats
+FLIPPED LIVE at unification). **The §3 review found no blocking findings
+in the read; the unified sweep's first run caught the round's cross-lane
+blind spot** — the image-profiles-routes oracle's `PLUGIN_DIRS` missed
+the nanogpt append (D100 authored it pre-manifest, D101 appended the
+other two lists; only the union could red) — fixed on the unify branch.
+**Next candidates:** the next v4 drift catch-up (three prompts commits
+already sit past the baseline — `8f868109` project/group standing
+instructions in the cacheable system prompt, `346e855f` second-person
+tool reinforcement [bug 88], `a6870c5a` grammatical-person consistency —
+ported prompt surfaces, PROMPT_CACHE_STRUCTURE_VERSION territory); the
+merge-verb silent-keep sweep (still unblocked, now that this round's
+settings-case collisions are landed); the owed 💸 dogfood queue (+ this
+round's: the live-key Fetch Models smoke incl. the OpenRouter finding
+with a real key, and the NanoGPT chat/image/embeddings smoke — needs a
+NanoGPT key); the small maintenance trio (unchanged); `p4.9i2` (its bank
+grew the four NanoGPT help docs + the image-generation-profiles
+rewrite). PB1 stays parked. Round record: `status-log.md`.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`4cb1035e`** (2026-08-22, v4 main — "fix(nanogpt): suppress the
+gateway's reasoning echo (plugin 1.0.2, bug 87)"), adopted at the
+`4cb1035e`-round unification (2026-08-22). ⚠ v4 HAD ALREADY MOVED past it
+at unification (`8f868109` + `346e855f` + `a6870c5a`, the prompts trio —
+ported surfaces) — **pin a detached worktree at `4cb1035e` for EVERY
+regen until the prompts catch-up runs** (all three symlink classes).
+Drift-check BOTH development branches every round (`git log
+4cb1035e..main` AND `git diff main bugfix -- lib/ app/ packages/` —
+measure bugfix by `diff`, never the commit list; note WHICH branch the
+checkout occupies before any regen). The sweep driver remains the
+sanctioned per-family regen path — never run two sweeps concurrently. The
+distill-transitive TZ pins, the committed-fixture rule, and the
+venue/staging rules stand unchanged.
