@@ -77764,3 +77764,42 @@ regen in this lane runs from it.
   reds the family at the first provider (the recorded red for the
   land-then-green sequence); restored green.
 - Versions: core 0.0.596, harness 0.0.519.
+
+### Unit 4 — the prefill runsThinkingTurn threading (v4 `97d2fcb5`)
+
+- The three `multi_character_prefill` functions gain `runs_thinking_turn:
+  bool` — v4 defaults the arg; Rust call sites pass it explicitly. The check
+  sits FIRST in `default_multi_character_prefill` (v4's order); a stored
+  boolean still outranks every default (v4's comments carried).
+- **Call sites (census: exactly three):** the create route resolves the
+  absent-field default via the join over the bag's provider/modelName/
+  parameters (absent `parameters` ≡ v4's Zod `{}` — no key either way); the
+  two `use_prefill` producers (orchestrator `:2288`, regenerate_swipe `:344`)
+  join over the net-read profile row (whose `parameters` is already a parsed
+  object via `object_or_empty`). The PUT arm verified UNTOUCHED, matching v4.
+- **Differentials:** `multi_character_prefill_equivalence` corpus doubled
+  with the runs axis (32 defaults + 256 resolves, product-shape-asserted);
+  removing the thinking arm reds at `anthropic-leading-space/thinking`
+  (mutation proof). `settings_routes_equivalence` 128 → 132 with the four
+  create arms; **the first regen exposed an ORACLE HARNESS GAP** — the jest
+  environment's provider registry is EMPTY, so v4's route join answered
+  false for every profile and the new DeepSeek arm recorded `true` (the OLD
+  default). The case now runs `initializeProviderRegistry` with the two
+  declaring dist plugins (deepseek + ollama) before driving cases — for
+  every non-declaring provider an absent plugin and a rule-less plugin
+  evaluate identically, so the other 128 arms are unaffected (verified: the
+  regen moved only the four new arms). The v5 create-join mutation-proven
+  red at `cp_create_prefill_absent_deepseek_thinking`.
+- `connection_profiles_tier2_equivalence`: the order's `:295` question
+  resolved by INSPECTION — the family drives the REPOSITORY, which never
+  resolves defaults (the route does), so no op can observe the new default
+  there regardless of provider. No change.
+- `orchestrator_tier3_equivalence` regenerated fresh at the pin: NO
+  movement, as the order predicted (fixture profiles carry stored
+  booleans). **Recorded residual:** the two producer sites' thinking-join is
+  compile-proven + tier-1-proven at the function level but has no
+  discriminating spine op — the family's comparands (SSE frames + persisted
+  dumps) cannot see the anchor route, and v4 carries NO wiring test for its
+  context-builder call either (its proof was the live V4test repro). The 💸
+  live bug-85 repro chat is the closing proof, on the dogfood queue.
+- Versions: core 0.0.597, harness 0.0.520.

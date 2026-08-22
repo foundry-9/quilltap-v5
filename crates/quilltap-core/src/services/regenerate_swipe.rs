@@ -340,9 +340,16 @@ where
         character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
         // v4 `23af7146` — the anchor route lives inside `buildMessageContext`,
         // so the swipe path resolves it from the same profile the send path
-        // does.
+        // does — including the thinking answer (`97d2fcb5`, bug 85), which
+        // only matters for a profile that never chose.
         use_prefill: crate::services::multi_character_prefill::profile_uses_name_prefill_value(
             &connection_profile,
+            crate::services::thinking_turn::profile_runs_thinking_turn(
+                crate::provider_manifest::Registry::built_in(),
+                connection_profile.get("provider").and_then(Value::as_str),
+                connection_profile.get("modelName").and_then(Value::as_str),
+                connection_profile.get("parameters"),
+            ),
         ),
         participants: chat
             .get("participants")

@@ -6,15 +6,20 @@
  *   defaultMultiCharacterPrefill, profileUsesNamePrefill
  *     (lib/llm/multi-character-prefill.ts)
  *
- * The corpus is providers × {true, false, null, absent, non-boolean}. It pins
- * three things a hand-read would miss:
+ * The corpus is providers × runsThinkingTurn {false, true} × {true, false,
+ * null, absent, non-boolean} (the second axis is P4.D97 / v4 `97d2fcb5` —
+ * bug 85's `runsThinkingTurn` second argument). It pins four things a
+ * hand-read would miss:
  *
  *   - `!provider` is JS falsiness, so the EMPTY STRING takes the "true" branch
  *     alongside null/undefined;
  *   - the hostile-provider test is `provider.toUpperCase()`, so casing and
  *     whitespace both matter (`' ANTHROPIC'` is NOT hostile);
  *   - the stored-choice test is `typeof … === 'boolean'`, so `0`/`1`/`'true'`
- *     fall THROUGH to the provider default rather than coercing.
+ *     fall THROUGH to the provider default rather than coercing;
+ *   - `runsThinkingTurn` is checked FIRST in the default (false for EVERY
+ *     provider, the null/empty ones included), but a stored boolean still
+ *     outranks it — the tri-state exists so the user may overrule us.
  *
  * Run from inside the pinned v4 worktree:
  *   cd /tmp/qt-v4-pin-p4d79-aa464abf
@@ -51,13 +56,22 @@ const PROVIDERS: Array<[string, string | null | undefined]> = [
   ['undefined', undefined],
 ];
 
+/** Bug 85's second axis: the thinking answer the caller supplies. */
+const RUNS: Array<[string, boolean]> = [
+  ['plain', false],
+  ['thinking', true],
+];
+
 for (const [id, provider] of PROVIDERS) {
-  rows.push({
-    kind: 'default',
-    id,
-    provider: provider === undefined ? '<undefined>' : provider,
-    out: defaultMultiCharacterPrefill(provider),
-  });
+  for (const [rid, runs] of RUNS) {
+    rows.push({
+      kind: 'default',
+      id: `${id}/${rid}`,
+      provider: provider === undefined ? '<undefined>' : provider,
+      runs,
+      out: defaultMultiCharacterPrefill(provider, runs),
+    });
+  }
 }
 
 /** The stored column's states, including the non-boolean fall-throughs. */
@@ -73,19 +87,23 @@ const STORED: Array<[string, unknown]> = [
 ];
 
 for (const [pid, provider] of PROVIDERS) {
-  for (const [sid, stored] of STORED) {
-    const profile: Record<string, unknown> = {};
-    if (provider !== undefined) profile.provider = provider;
-    if (stored !== '<absent>') profile.multiCharacterPrefill = stored;
-    rows.push({
-      kind: 'resolve',
-      id: `${pid}/${sid}`,
-      provider: provider === undefined ? '<undefined>' : provider,
-      stored: stored === '<absent>' ? '<absent>' : stored,
-      out: profileUsesNamePrefill(
-        profile as { provider?: string | null; multiCharacterPrefill?: boolean | null }
-      ),
-    });
+  for (const [rid, runs] of RUNS) {
+    for (const [sid, stored] of STORED) {
+      const profile: Record<string, unknown> = {};
+      if (provider !== undefined) profile.provider = provider;
+      if (stored !== '<absent>') profile.multiCharacterPrefill = stored;
+      rows.push({
+        kind: 'resolve',
+        id: `${pid}/${rid}/${sid}`,
+        provider: provider === undefined ? '<undefined>' : provider,
+        runs,
+        stored: stored === '<absent>' ? '<absent>' : stored,
+        out: profileUsesNamePrefill(
+          profile as { provider?: string | null; multiCharacterPrefill?: boolean | null },
+          runs
+        ),
+      });
+    }
   }
 }
 

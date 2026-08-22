@@ -156,6 +156,24 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   await initializeDatabase();
 
+  // P4.D97 (v4 bug 85): the create route now resolves the prefill default
+  // through `providerRegistry.profileRunsThinkingTurn`, so the registry must
+  // hold the plugins that declare a thinking rule exactly as production
+  // startup registers them — an EMPTY registry answers false for every
+  // profile and silently records the OLD provider-shaped default (which is
+  // how this gap was found: the new DeepSeek arm recorded `true`). Only the
+  // two declaring plugins are registered: for every non-declaring provider an
+  // absent plugin and a rule-less plugin evaluate identically (rule null, no
+  // model facts → false), so the other arms are unaffected.
+  const { initializeProviderRegistry } = await import('@/lib/plugins/provider-registry');
+  const { createRequire } = await import('node:module');
+  const distRequire = createRequire(join(process.cwd(), 'noop.js'));
+  const thinkingPlugins = ['qtap-plugin-deepseek', 'qtap-plugin-ollama'].map((dir) => {
+    const m = distRequire(join(process.cwd(), 'plugins', 'dist', dir, 'index.js'));
+    return m.plugin || m.default?.plugin || m.default;
+  });
+  await initializeProviderRegistry(thinkingPlugins);
+
   try {
     if (c.seedTaboo) {
       const { setTabooSettings } = await import('@/lib/instance-settings');
@@ -920,6 +938,80 @@ describe('settings-routes oracle', () => {
         modelName: 'qwen3',
         baseUrl: 'http://localhost:11434',
         multiCharacterPrefill: false,
+      },
+      after: 'connProfiles',
+    },
+    {
+      // P4.D97 (v4 bug 85): field ABSENT on a DeepSeek profile whose model
+      // thinks by default — the resolved default is now FALSE (the join:
+      // rule unset in `parameters`, `thinksByDefault` true). Before bug 85
+      // this stored 1; the refetch pins the 0.
+      name: 'cp_create_prefill_absent_deepseek_thinking',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Prefill Absent DeepSeek',
+        provider: 'DEEPSEEK',
+        modelName: 'deepseek-v4-flash',
+      },
+      after: 'connProfiles',
+    },
+    {
+      // P4.D97: same model, but the profile explicitly turns thinking OFF in
+      // its parameters — the rule wins over the model habit and the prefill
+      // default stays TRUE (bug 68's objection preserved: a non-thinking
+      // DeepSeek profile keeps the stronger anchor).
+      name: 'cp_create_prefill_absent_deepseek_thinking_disabled',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Prefill Absent DeepSeek Off',
+        provider: 'DEEPSEEK',
+        modelName: 'deepseek-v4-flash',
+        parameters: { thinking: 'disabled' },
+      },
+      after: 'connProfiles',
+    },
+    {
+      // P4.D97: an Ollama profile with Enable Thinking ticked — the rule
+      // answers true (Ollama contributes no thinksByDefault models), so the
+      // default resolves FALSE.
+      name: 'cp_create_prefill_absent_ollama_thinking',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Prefill Absent Ollama Thinking',
+        provider: 'OLLAMA',
+        modelName: 'qwen3',
+        baseUrl: 'http://localhost:11434',
+        parameters: { enable_thinking: true },
+      },
+      after: 'connProfiles',
+    },
+    {
+      // P4.D97: an explicit TRUE on a thinking profile survives — the
+      // tri-state exists so the user may overrule us (the editor warns,
+      // never vetoes).
+      name: 'cp_create_prefill_true_deepseek_thinking',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Prefill On DeepSeek Thinking',
+        provider: 'DEEPSEEK',
+        modelName: 'deepseek-v4-flash',
+        multiCharacterPrefill: true,
       },
       after: 'connProfiles',
     },

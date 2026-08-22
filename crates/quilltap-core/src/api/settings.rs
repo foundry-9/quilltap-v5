@@ -1247,15 +1247,25 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
     let is_courier = transport == "courier";
 
     let provider = get_str("provider").unwrap_or("").to_string();
-    // v4 `route.ts:176-184`, checked right after the transport gate. Present but
+    // v4 `route.ts:176-188`, checked right after the transport gate. Present but
     // not a boolean — INCLUDING an explicit `null` — is a 400; absent takes the
-    // provider default, which is then STORED (create never writes the tri-state
+    // RESOLVED default — off for Anthropic (4.6+ rejects an assistant tail) and
+    // off for a profile that will run a thinking turn (v4 bug 85), on
+    // everywhere else — which is then STORED (create never writes the tri-state
     // NULL). Not gated on `isCourier`: v4's comment is that this is not a tool
-    // flag, and the Courier renders the same assembled context.
+    // flag, and the Courier renders the same assembled context. v4 passes
+    // `profileRunsThinkingTurn(provider, modelName, parameters)`; an absent
+    // `parameters` bag reads as v4's Zod-defaulted `{}` (no key either way).
     let multi_character_prefill = match bag.get("multiCharacterPrefill") {
-        None => crate::services::multi_character_prefill::default_multi_character_prefill(Some(
-            &provider,
-        )),
+        None => crate::services::multi_character_prefill::default_multi_character_prefill(
+            Some(&provider),
+            crate::services::thinking_turn::profile_runs_thinking_turn(
+                Registry::built_in(),
+                Some(&provider),
+                bag.get("modelName").and_then(Value::as_str),
+                bag.get("parameters"),
+            ),
+        ),
         Some(Value::Bool(b)) => *b,
         Some(_) => return bad_request("multiCharacterPrefill must be a boolean"),
     };

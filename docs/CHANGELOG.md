@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(llm): thread runsThinkingTurn through the prefill default (v4 bug 85, P4.D97 unit 4)
+
+_Versions: core 0.0.597, harness 0.0.520._
+
+The prefill second-arg from v4 `97d2fcb5`: all three
+`multi_character_prefill` functions gain `runs_thinking_turn` (checked FIRST
+in the default; a stored boolean still outranks it — the tri-state is
+intact), and the three call sites thread the registry join: the create
+route's absent-field default now resolves
+`profile_runs_thinking_turn(provider, modelName, parameters)` (the PUT arm
+verified untouched, as v4 left it), and both `use_prefill` producers
+(orchestrator + regenerate-swipe) join over the profile row. The prefill
+oracle corpus doubled with the runsThinkingTurn axis (288 rows, full-product
+shape-asserted; deleting the thinking arm reds the family). Four new
+settings-routes create arms (absent-field DeepSeek-V4 default now false;
+explicit thinking-disabled keeps true; Ollama enable_thinking true; a stored
+true surviving) — regenerating them exposed an ORACLE HARNESS GAP: the jest
+environment's provider registry was EMPTY, so v4's join silently answered
+the old provider default; the case now registers the two declaring dist
+plugins exactly as production startup does (a rule-less plugin and an absent
+one evaluate identically, so the other arms are unaffected). Family at 132
+cases; the create join mutation-proven. `orchestrator_tier3` regenerated
+fresh at the pin: no movement (its profiles carry stored booleans), as the
+order predicted; the producer-site wiring matches v4's own coverage level
+(v4 tests the functions, not the context-builder call) — the live DeepSeek
+repro rides the dogfood queue. The `connection_profiles_tier2` question
+resolved by inspection: that family drives the REPOSITORY, which never
+resolves defaults, so no op can observe the route default there.
+
 #### 2026-08-21 — feat(api): serve thinkingTurnRule + model thinking facts on the wire (v4 bug 85, P4.D97 unit 3)
 
 _Versions: core 0.0.596, harness 0.0.519._

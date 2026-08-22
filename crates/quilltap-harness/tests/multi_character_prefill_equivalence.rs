@@ -1,6 +1,8 @@
 //! P4.D79 unit 2 — the multi-character `[Name]` prefill resolver (v4
-//! `23af7146`, `lib/llm/multi-character-prefill.ts`). Tier-1 exact: both
-//! functions over providers × {true, false, null, absent, non-boolean}.
+//! `23af7146`, `lib/llm/multi-character-prefill.ts`; the `runsThinkingTurn`
+//! second argument is P4.D97 / v4 `97d2fcb5`, bug 85). Tier-1 exact: both
+//! functions over providers × runsThinkingTurn {false, true} × {true, false,
+//! null, absent, non-boolean}.
 //!
 //! What the corpus is really pinning, beyond the obvious Anthropic split:
 //!
@@ -43,12 +45,14 @@ enum Row {
     Default {
         id: String,
         provider: Value,
+        runs: bool,
         out: bool,
     },
     #[serde(rename = "resolve")]
     Resolve {
         id: String,
         provider: Value,
+        runs: bool,
         stored: Value,
         out: bool,
     },
@@ -81,9 +85,14 @@ fn multi_character_prefill_matches_oracle() {
     let mut resolves = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
-            Row::Default { id, provider, out } => {
+            Row::Default {
+                id,
+                provider,
+                runs,
+                out,
+            } => {
                 assert_eq!(
-                    default_multi_character_prefill(provider_arg(&provider)),
+                    default_multi_character_prefill(provider_arg(&provider), runs),
                     out,
                     "default '{id}'"
                 );
@@ -92,6 +101,7 @@ fn multi_character_prefill_matches_oracle() {
             Row::Resolve {
                 id,
                 provider,
+                runs,
                 stored,
                 out,
             } => {
@@ -106,7 +116,7 @@ fn multi_character_prefill_matches_oracle() {
                     profile.insert("multiCharacterPrefill".into(), stored.clone());
                 }
                 assert_eq!(
-                    profile_uses_name_prefill_value(&Value::Object(profile)),
+                    profile_uses_name_prefill_value(&Value::Object(profile), runs),
                     out,
                     "resolve '{id}'"
                 );
@@ -116,16 +126,16 @@ fn multi_character_prefill_matches_oracle() {
     }
 
     // Shape assertions, not hand counts (`harness-corpus-shape-constants-rot`):
-    // every provider row must appear once per `default`, and the resolve grid
-    // must be a clean product of the two axes.
+    // every provider appears once per runs-leg in `default` (P4.D97 doubled
+    // the axis), and the resolve grid must be a clean product of the axes.
     assert!(
-        defaults >= 16,
-        "expected the full provider table, got {defaults}"
+        defaults >= 32,
+        "expected the full provider × runs table, got {defaults}"
     );
     assert_eq!(
         resolves,
         defaults * 8,
-        "the resolve grid must be providers × the 8 stored states"
+        "the resolve grid must be providers × runs × the 8 stored states"
     );
     eprintln!("multi-character prefill: {defaults} default + {resolves} resolve cases matched");
 }

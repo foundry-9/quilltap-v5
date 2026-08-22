@@ -2282,11 +2282,24 @@ where
             .unwrap_or(false),
         character_participant_created_at: cp_created_at.as_deref(),
         character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
-        // v4 `profileUsesNamePrefill(connectionProfile)` at the call site
-        // (`23af7146`). The profile is the same object the old hardcoded
-        // `connectionProfile.provider === 'ANTHROPIC'` test read.
+        // v4 `profileUsesNamePrefill(connectionProfile, profileRunsThinkingTurn(…))`
+        // at the call site (`23af7146`, thinking arg `97d2fcb5`). The profile is
+        // the same object the old hardcoded `provider === 'ANTHROPIC'` test read.
+        // The thinking answer only matters for a profile that never chose —
+        // `profile_uses_name_prefill_value` honours a stored boolean over any
+        // default.
         use_prefill: crate::services::multi_character_prefill::profile_uses_name_prefill_value(
             &effective_profile_row,
+            crate::services::thinking_turn::profile_runs_thinking_turn(
+                crate::provider_manifest::Registry::built_in(),
+                effective_profile_row
+                    .get("provider")
+                    .and_then(Value::as_str),
+                effective_profile_row
+                    .get("modelName")
+                    .and_then(Value::as_str),
+                effective_profile_row.get("parameters"),
+            ),
         ),
         participants: chat
             .get("participants")
