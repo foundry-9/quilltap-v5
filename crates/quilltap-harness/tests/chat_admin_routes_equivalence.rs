@@ -260,10 +260,19 @@ fn blank_minted(v: &mut Value) {
                     );
                 }
             }
-            if let Some(stacks) = o.get("compiledIdentityStacks").and_then(Value::as_object) {
-                let mut vals: Vec<Value> = stacks.values().cloned().collect();
-                vals.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
-                o.insert("compiledIdentityStacks".to_string(), Value::Array(vals));
+            // P4.D103 (v4 `a6870c5a`): the column is now the version-stamped
+            // envelope `{version, stacks}`. Only the INNER map's keys are minted,
+            // so `version` stays a full comparand and the flattening moves one
+            // level down.
+            if let Some(env) = o
+                .get_mut("compiledIdentityStacks")
+                .and_then(Value::as_object_mut)
+            {
+                if let Some(stacks) = env.get("stacks").and_then(Value::as_object) {
+                    let mut vals: Vec<Value> = stacks.values().cloned().collect();
+                    vals.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
+                    env.insert("stacks".to_string(), Value::Array(vals));
+                }
             }
             o.iter_mut().for_each(|(_, x)| blank_minted(x));
         }

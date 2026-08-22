@@ -23,11 +23,30 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
-    "aliases": ["The Silver Knight"],
-    "physicalDescription": { "id": "5d000000-0000-4000-8000-000000000001", "name": "Aria portrait", "shortPrompt": "A tall knight in gleaming silver plate.", "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z" },
+    "pronouns": {
+      "subject": "she",
+      "object": "her",
+      "possessive": "hers"
+    },
+    "aliases": [
+      "The Silver Knight"
+    ],
+    "physicalDescription": {
+      "id": "5d000000-0000-4000-8000-000000000001",
+      "name": "Aria portrait",
+      "shortPrompt": "A tall knight in gleaming silver plate.",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    },
     "systemPrompts": [
-      { "id": "5b000000-0000-4000-8000-000000000001", "name": "Default", "content": "You embody {{char}}, protector of {{user}}.", "isDefault": true, "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z" }
+      {
+        "id": "5b000000-0000-4000-8000-000000000001",
+        "name": "Default",
+        "content": "You embody {{char}}, protector of {{user}}.",
+        "isDefault": true,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
     ],
     "scenarios": [],
     "controlledBy": "llm",
@@ -62,7 +81,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+    "pronouns": {
+      "subject": "he",
+      "object": "him",
+      "possessive": "his"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -99,7 +122,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "they", "object": "them", "possessive": "their" },
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "their"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -136,7 +163,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "it", "object": "it", "possessive": "its" },
+    "pronouns": {
+      "subject": "it",
+      "object": "it",
+      "possessive": "its"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],
@@ -160,5 +191,15 @@
     "canCreateOutfits": null,
     "systemTransparency": null,
     "coreWhisperEnabled": null
+  },
+  "envelopeChats": {
+    "mergeIntoCurrent": "a1000000-0000-4000-8000-000000000011",
+    "mergeIntoLegacy": "a1000000-0000-4000-8000-000000000012",
+    "mergeIntoOlder": "a1000000-0000-4000-8000-000000000013",
+    "mergeIntoNewer": "a1000000-0000-4000-8000-000000000014",
+    "dropFromCurrent": "a1000000-0000-4000-8000-000000000015",
+    "dropKeyAbsent": "a1000000-0000-4000-8000-000000000016",
+    "dropFromLegacy": "a1000000-0000-4000-8000-000000000017",
+    "dropFromNullColumn": "a1000000-0000-4000-8000-000000000018"
   }
 }

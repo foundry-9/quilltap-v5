@@ -1,15 +1,23 @@
 //! Tier-2 differential (P4.4 unit 2, sub-unit 3): the identity-stack compiler
-//! (`services::system_prompt_compiler::compile_all_identity_stacks`) vs v4's REAL
-//! `compileAllIdentityStacks`. Both sides read a COPY of the SAME baked fixture (a
-//! chat with four participants — Aria/llm, Bob/llm, Sam/user, Ghost/llm-removed —
-//! and a `scenarioText`), run the compiler, and compare the persisted
-//! `chats.compiledIdentityStacks` map EXACTLY (all ids pinned — zero
-//! normalization; the compile mints no clock/id and does not bump `updatedAt`).
+//! (`services::system_prompt_compiler`) vs v4's REAL compiler. Both sides read a
+//! COPY of the SAME baked fixture (chats with four participants — Aria/llm,
+//! Bob/llm, Sam/user, Ghost/llm-removed — and a `scenarioText`), run the
+//! compiler, and compare the persisted `chats.compiledIdentityStacks` value
+//! EXACTLY (all ids pinned — zero normalization; the compile mints no clock/id
+//! and does not bump `updatedAt`).
 //!
 //! Banks: only the two active LLM participants get a stack (Sam is user-controlled
 //! → skipped; Ghost is removed → skipped); the chat-level `{{user}}`/`{{persona}}`/
 //! `{{scenario}}` variables resolve into each stack; a `physicalDescription` on
 //! Aria surfaces.
+//!
+//! **P4.D103 (v4 `a6870c5a`) — the version-stamped envelope.** Eight
+//! `participant` rows drive `compile_identity_stack_for_participant` over chats
+//! pre-seeded with a current / legacy-bare / older / newer
+//! `compiledIdentityStacks`, and over both drop-path shapes. The seeded stacks
+//! are SENTINEL strings no builder emits, so a port that merges into or rewrites
+//! a stale map shows the sentinel in its output. The key ORDER inside `stacks`
+//! is a comparand too (insertion order: existing siblings, then the new entry).
 //!
 //! Build the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -27,7 +35,9 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chats_read;
 use quilltap_core::db::Writer;
-use quilltap_core::services::system_prompt_compiler::compile_all_identity_stacks;
+use quilltap_core::services::system_prompt_compiler::{
+    compile_all_identity_stacks, compile_identity_stack_for_participant,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -35,8 +45,6 @@ use serde_json::Value;
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
-    #[serde(rename = "chatId")]
-    chat_id: String,
 }
 
 fn spec_path() -> PathBuf {
@@ -69,10 +77,13 @@ fn identity_compiler_matches_oracle() {
     )
     .expect("parse spec");
 
-    let oracle_line =
+    let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
-    let oracle: Value = serde_json::from_str(oracle_line.trim()).expect("oracle line parses");
-    let want = &oracle["compiledIdentityStacks"];
+    let rows: Vec<Value> = oracle_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).expect("oracle line parses"))
+        .collect();
 
     let pid = std::process::id();
     let main_work = std::env::temp_dir().join(format!("qt-idc-main-rust-{pid}.db"));
@@ -89,20 +100,53 @@ fn identity_compiler_matches_oracle() {
     let main = main_w.connection();
     let mount = mount_w.connection();
 
-    let chat = chats_read::find_by_id(main, &spec.chat_id)
-        .expect("read chat")
-        .expect("chat present");
+    let read_compiled = |chat_id: &str| -> Value {
+        chats_read::find_by_id(main, chat_id)
+            .expect("re-read chat")
+            .expect("chat present")
+            // v4 hydrates the column to an object; a null column reads as absent
+            // → null.
+            .get("compiledIdentityStacks")
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
 
-    compile_all_identity_stacks(main, mount, &chat).expect("compile");
+    let mut compile_all_rows = 0usize;
+    let mut participant_rows = 0usize;
+    for row in &rows {
+        let id = row["id"].as_str().expect("row id");
+        let chat_id = row["chatId"].as_str().expect("row chatId");
+        let chat = chats_read::find_by_id(main, chat_id)
+            .expect("read chat")
+            .expect("chat present");
+        match row["kind"].as_str().expect("row kind") {
+            "compileAll" => {
+                compile_all_identity_stacks(main, mount, &chat).expect("compile");
+                compile_all_rows += 1;
+            }
+            "participant" => {
+                let participant_id = row["participantId"].as_str().expect("row participantId");
+                compile_identity_stack_for_participant(main, mount, &chat, participant_id)
+                    .expect("compile participant");
+                participant_rows += 1;
+            }
+            other => panic!("unknown row kind: {other}"),
+        }
+        assert_eq!(
+            read_compiled(chat_id),
+            row["compiledIdentityStacks"],
+            "compiledIdentityStacks after '{id}': rust != oracle"
+        );
+    }
 
-    let after = chats_read::find_by_id(main, &spec.chat_id)
-        .expect("re-read chat")
-        .expect("chat present");
-    // v4 hydrates the column to an object; a null column reads as absent → null.
-    let got = after
-        .get("compiledIdentityStacks")
-        .cloned()
-        .unwrap_or(Value::Null);
-
-    assert_eq!(&got, want, "compiledIdentityStacks: rust != oracle");
+    assert_eq!(compile_all_rows, 1, "expected the base compileAll row");
+    assert!(
+        participant_rows >= 8,
+        "expected at least 8 envelope participant rows, got {participant_rows} — \
+         regenerate the oracle"
+    );
+    eprintln!(
+        "OK: identity-compiler matched oracle ({compile_all_rows} compileAll, \
+         {participant_rows} participant)."
+    );
 }

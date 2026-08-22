@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(prompts): the version-stamped `compiledIdentityStacks` envelope
+
+_Versions: core 0.0.611, harness 0.0.534._
+
+Ports the compiler half of v4 `a6870c5a`. `chats.compiledIdentityStacks`
+becomes `{version, stacks}` keyed to `IDENTITY_STACK_BUILDER_VERSION`: every
+write is stamped, reads require STRICT equality (older, newer, and the legacy
+bare map all read as "nothing cached", so the read-through path rebuilds with
+current wording — newer matters on a downgrade, where a rolled-back build must
+not consume stacks a later build wrote), a stale map is DISCARDED on merge
+rather than blended into and re-stamped, the drop path CLEARS a stale map
+instead of rewriting it back, and an empty map still writes `null` (the null
+column is the "nothing cached" state and needs no version). No migration.
+
+`identity_compiler_equivalence` gains eight `participant` rows over eight new
+pre-seeded chats — current / legacy-bare / older / newer stamps on the merge
+path, and all four drop-path shapes. The seeded stacks are sentinel strings no
+builder emits, so a port that merges into or rewrites a stale map shows the
+sentinel rather than being inferred. Five mutations proven red-first.
+
+`chat_admin_routes_equivalence`'s minted-id normalizer moves one level down —
+only the inner `stacks` keys are minted, so `version` is now a full comparand.
+`chat_cast_routes_equivalence` needed nothing (it tokenizes every object key
+generically). Both regenerated at `a6870c5a` and confirmed to carry the
+envelope.
+
 #### 2026-08-22 — fix(prompts): second-person tool reinforcement + identity-stack person consistency (v4 bug 88)
 
 _Versions: core 0.0.610, harness 0.0.533._

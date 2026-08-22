@@ -2,12 +2,19 @@
  * Tier-2 differential ORACLE for the identity-stack compiler (P4.4 unit 2,
  * sub-unit 3).
  *
- * Opens a COPY of the pre-seeded fixtures, reads the chat, drives v4's REAL
- * `compileAllIdentityStacks` (lib/services/system-prompt-compiler/compiler.ts),
- * and emits the persisted `compiledIdentityStacks` map. The Rust port
- * (services::system_prompt_compiler::compile_all_identity_stacks) runs the same
- * over its own copy and must persist the same map exactly (all ids pinned — zero
- * normalization).
+ * Opens a COPY of the pre-seeded fixtures, reads each chat, drives v4's REAL
+ * compiler (lib/services/system-prompt-compiler/compiler.ts), and emits the
+ * persisted `compiledIdentityStacks` value. The Rust port
+ * (services::system_prompt_compiler) runs the same over its own copy and must
+ * persist the same value exactly (all ids pinned — zero normalization).
+ *
+ * Row kinds:
+ *   compileAll — `compileAllIdentityStacks` over the base chat.
+ *   participant — `compileIdentityStackForParticipant` over one of the eight
+ *     P4.D103 envelope chats, whose pre-seeded `compiledIdentityStacks` carries
+ *     a current / legacy / older / newer stamp (v4 `a6870c5a`). The seeded
+ *     stacks are SENTINEL strings, so a port that merges into or rewrites a
+ *     stale map shows the sentinel in its output rather than being inferred.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -24,6 +31,9 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   chatId: string;
+  ariaP: string;
+  samP: string;
+  envelopeChats: Record<string, string>;
 }
 
 async function main(): Promise<void> {
@@ -54,23 +64,58 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { compileAllIdentityStacks } = await import(
+  const { compileAllIdentityStacks, compileIdentityStackForParticipant } = await import(
     '@/lib/services/system-prompt-compiler/compiler'
   );
 
   await initializeDatabase();
   const repos = getRepositories();
 
+  const rows: unknown[] = [];
+
+  const readCompiled = async (chatId: string): Promise<unknown> => {
+    const after = await repos.chats.findById(chatId);
+    return (after?.compiledIdentityStacks as unknown) ?? null;
+  };
+
   const chat = await repos.chats.findById(spec.chatId);
   if (!chat) throw new Error('chat not found in fixture');
   await compileAllIdentityStacks(chat);
+  rows.push({
+    kind: 'compileAll',
+    id: 'base-chat',
+    chatId: spec.chatId,
+    compiledIdentityStacks: await readCompiled(spec.chatId),
+  });
 
-  const after = await repos.chats.findById(spec.chatId);
-  const compiled = (after?.compiledIdentityStacks as Record<string, string> | null | undefined) ?? null;
+  // P4.D103: the envelope arms. Aria is LLM-controlled (the merge path); Sam is
+  // user-controlled, so building a stack for Sam returns null (the drop path).
+  const arms: Array<[string, string, string]> = [
+    ['merge-into-version-current', spec.envelopeChats.mergeIntoCurrent, spec.ariaP],
+    ['merge-discards-legacy-bare-map', spec.envelopeChats.mergeIntoLegacy, spec.ariaP],
+    ['merge-discards-older-stamp', spec.envelopeChats.mergeIntoOlder, spec.ariaP],
+    ['merge-discards-newer-stamp', spec.envelopeChats.mergeIntoNewer, spec.ariaP],
+    ['drop-removes-key-from-current', spec.envelopeChats.dropFromCurrent, spec.samP],
+    ['drop-writes-nothing-when-key-absent', spec.envelopeChats.dropKeyAbsent, spec.samP],
+    ['drop-clears-a-legacy-map', spec.envelopeChats.dropFromLegacy, spec.samP],
+    ['drop-writes-nothing-on-a-null-column', spec.envelopeChats.dropFromNullColumn, spec.samP],
+  ];
+  for (const [id, chatId, participantId] of arms) {
+    const target = await repos.chats.findById(chatId);
+    if (!target) throw new Error(`envelope chat not found: ${chatId}`);
+    await compileIdentityStackForParticipant(target, participantId);
+    rows.push({
+      kind: 'participant',
+      id,
+      chatId,
+      participantId,
+      compiledIdentityStacks: await readCompiled(chatId),
+    });
+  }
 
   await closeDatabase();
 
-  process.stdout.write(JSON.stringify({ compiledIdentityStacks: compiled }) + '\n');
+  for (const row of rows) process.stdout.write(JSON.stringify(row) + '\n');
   process.exit(0);
 }
 

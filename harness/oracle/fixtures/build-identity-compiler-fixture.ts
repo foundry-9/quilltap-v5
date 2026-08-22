@@ -8,6 +8,20 @@
  * Ghost(llm REMOVED), with a scenarioText carrying a {{char}} template. All ids
  * pinned; compiledIdentityStacks is left null (both sides compile then diff it).
  *
+ * P4.D103 (v4 `a6870c5a`) adds EIGHT more chats with the same participant set,
+ * each pre-seeded with a different `compiledIdentityStacks` VALUE, so the
+ * version-stamped envelope's read/merge/drop arms are measurable:
+ *   mergeIntoCurrent   — `{version: CURRENT, stacks:{bob: sentinel}}` (merge keeps the sibling)
+ *   mergeIntoLegacy    — a bare `{participantId: stack}` map, no version key
+ *   mergeIntoOlder     — `{version: 1, ...}`   (older stamp)
+ *   mergeIntoNewer     — `{version: 999, ...}` (newer stamp — the downgrade guard)
+ *   dropFromCurrent    — current envelope CONTAINING the ineligible participant's key
+ *   dropKeyAbsent      — current envelope NOT containing it (v4 writes nothing)
+ *   dropFromLegacy     — a legacy map present on the drop path (v4 CLEARS to null)
+ *   dropFromNullColumn — the column already null (v4 writes nothing)
+ * The seeded stacks are SENTINEL strings no builder would ever emit, so a port
+ * that rewrites a stale map back is visible in the output rather than inferred.
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
@@ -33,6 +47,7 @@ interface Spec {
   samId: string;
   ghostId: string;
   scenarioText: string;
+  envelopeChats: Record<string, string>;
   aria: Record<string, unknown>;
   bob: Record<string, unknown>;
   sam: Record<string, unknown>;
@@ -150,6 +165,50 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.chatId, createdAt: TS, updatedAt: TS },
   );
+
+  // --- P4.D103: the envelope-arm chats -------------------------------------
+  // Same participant set; only the pre-seeded `compiledIdentityStacks` differs.
+  const { IDENTITY_STACK_BUILDER_VERSION } = await import(
+    '@/lib/chat/context/system-prompt-builder'
+  );
+  const SENTINEL_ARIA = '<<seeded-stale-stack-for-aria>>';
+  const SENTINEL_BOB = '<<seeded-stale-stack-for-bob>>';
+  const SENTINEL_SAM = '<<seeded-stale-stack-for-sam>>';
+  const seeds: Array<[string, unknown]> = [
+    [
+      spec.envelopeChats.mergeIntoCurrent,
+      { version: IDENTITY_STACK_BUILDER_VERSION, stacks: { [spec.bobP]: SENTINEL_BOB } },
+    ],
+    [spec.envelopeChats.mergeIntoLegacy, { [spec.ariaP]: SENTINEL_ARIA, [spec.bobP]: SENTINEL_BOB }],
+    [spec.envelopeChats.mergeIntoOlder, { version: 1, stacks: { [spec.bobP]: SENTINEL_BOB } }],
+    [spec.envelopeChats.mergeIntoNewer, { version: 999, stacks: { [spec.bobP]: SENTINEL_BOB } }],
+    [
+      spec.envelopeChats.dropFromCurrent,
+      {
+        version: IDENTITY_STACK_BUILDER_VERSION,
+        stacks: { [spec.samP]: SENTINEL_SAM, [spec.bobP]: SENTINEL_BOB },
+      },
+    ],
+    [
+      spec.envelopeChats.dropKeyAbsent,
+      { version: IDENTITY_STACK_BUILDER_VERSION, stacks: { [spec.bobP]: SENTINEL_BOB } },
+    ],
+    [spec.envelopeChats.dropFromLegacy, { [spec.samP]: SENTINEL_SAM, [spec.bobP]: SENTINEL_BOB }],
+    [spec.envelopeChats.dropFromNullColumn, null],
+  ];
+  for (const [chatId, compiled] of seeds) {
+    await repos.chats.create(
+      {
+        userId: spec.userId,
+        title: `Envelope fixture ${chatId.slice(-2)}`,
+        participants,
+        chatType: 'salon',
+        scenarioText: spec.scenarioText,
+        compiledIdentityStacks: compiled,
+      } as never,
+      { id: chatId, createdAt: TS, updatedAt: TS },
+    );
+  }
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

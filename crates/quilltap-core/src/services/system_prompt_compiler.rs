@@ -15,6 +15,12 @@
 //! `compileIdentityStackForParticipant` (participant add / prompt change) is a
 //! participant-`?action=` deferral (P4.6).
 //!
+//! Edits to the BUILDER (the wording [`build_identity_stack`] emits) ARE
+//! invalidated, via [`crate::system_prompt::IDENTITY_STACK_BUILDER_VERSION`]
+//! (v4 `a6870c5a`): every write is stamped with the version, reads require
+//! strict equality, and a mismatch reads as "nothing cached" so the read-through
+//! path rebuilds with current wording.
+//!
 //! Errors never propagate past the create handler: v4 wraps the whole call in a
 //! try/catch, `writeStacks` swallows its own update error, and
 //! `resolveUserCharacter` swallows read errors. This port keeps that shape — the
@@ -29,7 +35,7 @@ use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::{characters_read, DbError};
 use crate::system_prompt::{
     build_identity_stack, BuildIdentityStackOptions, Character, PhysicalDescription, Pronouns,
-    ScenarioEntry, SystemPromptEntry, UserCharacter,
+    ScenarioEntry, SystemPromptEntry, UserCharacter, IDENTITY_STACK_BUILDER_VERSION,
 };
 
 fn s(v: &Value, key: &str) -> Option<String> {
@@ -178,14 +184,43 @@ fn build_stack_for(
     Ok(if stack.is_empty() { None } else { Some(stack) })
 }
 
-/// Persist the compiled map (v4 `writeStacks`): `chats.update({
-/// compiledIdentityStacks: keys > 0 ? stacks : null })`. Swallows its own update
-/// error (the read-through fallback covers any miss). Does not bump `updatedAt`.
+/// Parse the stored `compiledIdentityStacks` value, returning the stack map only
+/// when its version stamp STRICTLY equals the current builder version — v4
+/// `readCurrentStacks` (`a6870c5a`).
+///
+/// Absent, legacy (a bare `participantId → stack` map with no `version` key,
+/// written before the stamp existed), older, or newer ALL return `None`. Newer
+/// matters on a downgrade, where a rolled-back build must not consume stacks a
+/// later build wrote. Participant ids are UUIDs, so `version` can never collide
+/// with a real entry.
+fn read_current_stacks(chat: &Value) -> Option<Map<String, Value>> {
+    let raw = chat.get("compiledIdentityStacks")?;
+    let obj = raw.as_object()?;
+    // v4: `typeof raw.version !== 'number' || raw.version !== VERSION` — a
+    // non-numeric or absent stamp is the legacy shape.
+    let version = obj.get("version").and_then(Value::as_u64)?;
+    if version != u64::from(IDENTITY_STACK_BUILDER_VERSION) {
+        return None;
+    }
+    Some(obj.get("stacks")?.as_object()?.clone())
+}
+
+/// Persist the compiled map (v4 `writeStacks`), stamped with the current builder
+/// version: `chats.update({ compiledIdentityStacks: keys > 0 ? {version, stacks}
+/// : null })`. An EMPTY map still writes `null` — the null column is the
+/// "nothing cached" state and needs no version. Swallows its own update error
+/// (the read-through fallback covers any miss). Does not bump `updatedAt`.
 fn write_stacks(main: &Connection, chat_id: &str, stacks: Map<String, Value>) {
     let value = if stacks.is_empty() {
         Value::Null
     } else {
-        Value::Object(stacks)
+        let mut envelope = Map::new();
+        envelope.insert(
+            "version".to_string(),
+            Value::from(IDENTITY_STACK_BUILDER_VERSION),
+        );
+        envelope.insert("stacks".to_string(), Value::Object(stacks));
+        Value::Object(envelope)
     };
     let repo = ChatsRepository::new(main);
     let _ = repo.update(
@@ -270,22 +305,38 @@ pub fn compile_identity_stack_for_participant(
         return Ok(());
     };
 
-    let existing = chat
-        .get("compiledIdentityStacks")
-        .and_then(Value::as_object)
-        .cloned();
+    let existing = read_current_stacks(chat);
 
     match build_stack_for(main, mount, chat, participant)? {
         None => {
             // v4 drops a stale entry only when there IS one; otherwise it writes
-            // nothing at all (no `compiledIdentityStacks` update).
-            if let Some(mut map) = existing {
-                if map.remove(participant_id).is_some() {
-                    write_stacks(main, chat_id, map);
+            // nothing at all (no `compiledIdentityStacks` update). On a VERSION
+            // MISMATCH there is nothing meaningful to drop — write the cleared
+            // value rather than rewriting the stale map back.
+            match existing {
+                Some(mut map) => {
+                    if map.remove(participant_id).is_some() {
+                        write_stacks(main, chat_id, map);
+                    }
+                }
+                None => {
+                    // `else if (chat.compiledIdentityStacks)` — JS truthiness, so
+                    // an absent column or a JSON `null` writes nothing.
+                    let present = matches!(
+                        chat.get("compiledIdentityStacks"),
+                        Some(v) if !v.is_null()
+                    );
+                    if present {
+                        write_stacks(main, chat_id, Map::new());
+                    }
                 }
             }
         }
         Some(stack) => {
+            // Merge only into a version-current map. A stale or legacy map must
+            // be DISCARDED entirely, never merged into: blending a fresh stack
+            // into stale siblings and then stamping the result current would make
+            // the stamp lie, silently defeating the whole mechanism.
             let mut map = existing.unwrap_or_default();
             map.insert(participant_id.to_string(), Value::String(stack));
             write_stacks(main, chat_id, map);

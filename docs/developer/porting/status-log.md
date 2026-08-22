@@ -79658,3 +79658,74 @@ now says so.
 A tree-wide grep confirms these strings live in exactly ONE place in v5 (v4
 carries a second hand-copied set in `lib/help-chat/system-prompt-builder.ts`;
 that surface is unported and its wording rides the `p4.9i2` bank).
+
+### Unit 3 — the `compiledIdentityStacks` version-stamped envelope
+
+The compiler half of v4 `a6870c5a`, in
+`services/system_prompt_compiler.rs`. `chats.compiledIdentityStacks` is now
+`{version, stacks}` (that key order — serde_json's `preserve_order` matches
+v4's object-literal order byte for byte).
+
+- **`read_current_stacks`** (v4 `readCurrentStacks`): returns the inner map only
+  when the stamp STRICTLY equals `IDENTITY_STACK_BUILDER_VERSION`. Absent,
+  legacy (a bare `participantId → stack` map with no `version` key), older, AND
+  newer all return `None`. Newer is not paranoia — a rolled-back build must not
+  consume stacks a later build wrote. Participant ids are UUIDs, so `version`
+  can never collide with a real entry.
+- **`write_stacks`** stamps every write; an EMPTY map still writes `null` — the
+  null column is the "nothing cached" state and needs no version.
+- **Merge** takes `read_current_stacks(chat) ?? {}`, carrying v4's locked
+  comment: *a stale or legacy map must be DISCARDED entirely, never merged
+  into: blending a fresh stack into stale siblings and then stamping the result
+  current would make the stamp lie.*
+- **Drop**: version-current → delete the key and rewrite; stale/legacy PRESENT →
+  `write_stacks({})`, which clears the column to `null`; already-null → write
+  nothing (v4's `else if (chat.compiledIdentityStacks)` JS truthiness).
+
+No migration and no `PROMPT_CACHE_STRUCTURE_VERSION` bump (v4 bumped neither).
+The turn-time reader (`getCompiledIdentityStack`) **stays unported** — the
+standing deferral (`orchestrator.rs` passes `None`; the tier-3 oracles stub v4's
+reader to null) is UNCHANGED by this lane, so v4's two new reader unit tests
+have no v5 twin; the same `read_current_stacks` logic they exercise is covered
+by the merge/drop arms below. `api/chat_cast.rs`'s force-rebuild verb needed no
+edit — it routes through `compile_identity_stack_for_participant`.
+
+**Differential.** `identity_compiler_equivalence` grew from one line to nine
+rows. The fixture builder bakes EIGHT more chats with the same participant set,
+each pre-seeded with a different `compiledIdentityStacks` value; the oracle
+drives v4's REAL `compileIdentityStackForParticipant` over each and emits the
+persisted value. The seeded stacks are SENTINEL strings no builder would emit
+(`<<seeded-stale-stack-for-bob>>`), so a port that merges into or rewrites a
+stale map SHOWS the sentinel in its output instead of being inferred from a
+count. The eight arms mirror v4's five new compiler tests plus the three
+drop-path shapes they imply:
+
+| row | seeded value | v4's answer |
+| --- | --- | --- |
+| `merge-into-version-current` | `{version: 2, stacks:{bob}}` | aria merged, bob KEPT |
+| `merge-discards-legacy-bare-map` | bare `{aria, bob}` | aria only |
+| `merge-discards-older-stamp` | `{version: 1, …}` | aria only |
+| `merge-discards-newer-stamp` | `{version: 999, …}` | aria only |
+| `drop-removes-key-from-current` | current, contains sam | sam removed, bob kept |
+| `drop-writes-nothing-when-key-absent` | current, no sam | unchanged |
+| `drop-clears-a-legacy-map` | bare map containing sam | `null` |
+| `drop-writes-nothing-on-a-null-column` | `null` | `null` |
+
+Key ORDER inside `stacks` is a comparand too (`merge-into-version-current`
+answers bob-then-aria — existing siblings first, then the new entry).
+
+**Five mutations proven red-first:** merging into the raw map without the
+version check (`merge-discards-legacy-bare-map` reds), `>=` instead of `==` on
+the stamp (`merge-discards-newer-stamp` reds), the drop path not clearing a
+stale map (`drop-clears-a-legacy-map` reds), an empty map writing the envelope
+instead of `null` (same row reds), and writing a bare map with no stamp at all
+(`base-chat` reds).
+
+**The two harness normalizers that see the column**, checked rather than
+assumed: `chat_admin_routes_equivalence`'s `blank_minted` flattened the map's
+VALUES because its keys are minted participant ids — it now reaches one level
+down into `stacks`, which makes `version` a full comparand it never had before.
+`chat_cast_routes_equivalence` needed NOTHING: it tokenizes every object key
+generically, so `version`/`stacks` pass through and the inner ids still
+tokenize. Both regenerated at `a6870c5a`, green, and grepped to confirm all
+three column-carrying rows actually carry `"stacks"`.
