@@ -149,6 +149,12 @@ function casesFor(provider) {
       ok(200, { candidates: [{ content: { parts: [] } }] }));
     add('gemini_http_error', { prompt: 'x', model: 'gemini-2.5-flash-image', n: 1 },
       ok(400, { error: { message: 'bad request to gemini' } }));
+    // The `ca22ec45` routing widening: a live-fetched `gemini*` id that is NOT in
+    // GEMINI_IMAGE_MODELS. The pre-widening predicate routed it to the Imagen
+    // `predict` endpoint (which serves only imagen-*); it must now build a
+    // `:generateContent` request and parse the Gemini candidates shape.
+    add('gemini_live_fetched_id', { prompt: 'a cat', model: 'gemini-2.0-flash-preview-image-generation', n: 1 },
+      ok(200, { candidates: [{ content: { parts: [{ inlineData: { data: 'QUJD', mimeType: 'image/png' } }] } }] }));
   } else if (provider === 'openrouter') {
     add('happy_data_uri', { prompt: 'a cat', model: 'google/gemini-2.5-flash-preview-native-image', n: 1 },
       ok(200, { choices: [{ message: { images: [{ image_url: { url: 'data:image/png;base64,QUJD' } }] } }] }));

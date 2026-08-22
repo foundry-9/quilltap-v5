@@ -232,10 +232,18 @@ fn build_zai(params: &ImageGenParams) -> (String, Value) {
 const GEMINI_IMAGE_MODELS: [&str; 2] = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"];
 
 /// v4 `isGeminiImageModel`.
+///
+/// Any `gemini*` model routes to `generateContent` — live-fetched IDs (e.g.
+/// `gemini-2.0-flash-preview-image-generation`, which the honest Fetch Models
+/// list now surfaces) must not fall through to the Imagen `predict` endpoint,
+/// which only serves `imagen-*` models. The prefix arm is FIRST; the original
+/// exact / prefixed / substring arms over [`GEMINI_IMAGE_MODELS`] are preserved
+/// behind it (they still catch a non-`gemini`-prefixed alias).
 fn is_gemini_image_model(model: &str) -> bool {
-    GEMINI_IMAGE_MODELS
-        .iter()
-        .any(|m| model == *m || model.starts_with(&format!("{m}-")) || model.contains(m))
+    model.starts_with("gemini")
+        || GEMINI_IMAGE_MODELS
+            .iter()
+            .any(|m| model == *m || model.starts_with(&format!("{m}-")) || model.contains(m))
 }
 
 /// v4 `IMAGEN_MODEL_MAP` (user-friendly → API id).
@@ -801,6 +809,33 @@ mod tests {
                 &err.message
             )
         );
+    }
+
+    /// The `ca22ec45` routing widening: ANY `gemini*` id reaches generateContent,
+    /// while the pre-existing exact / prefixed / substring arms still catch the
+    /// curated ids. `imagen-*` (and anything else) still routes to `predict`.
+    #[test]
+    fn gemini_routing_covers_live_fetched_ids() {
+        for m in [
+            "gemini",
+            "gemini-2.0-flash-preview-image-generation",
+            "gemini-2.5-flash-image",
+            "gemini-3-pro-image-preview",
+        ] {
+            assert!(is_gemini_image_model(m), "{m} should route to gemini");
+        }
+        // The preserved non-`gemini`-prefixed arms (substring / suffixed).
+        assert!(is_gemini_image_model("models/gemini-2.5-flash-image"));
+        assert!(is_gemini_image_model("gemini-2.5-flash-image-001"));
+        // Imagen and unrelated ids keep the predict route.
+        for m in [
+            "imagen-4",
+            "imagen-4-fast",
+            "imagen-4.0-generate-001",
+            "veo-3",
+        ] {
+            assert!(!is_gemini_image_model(m), "{m} should route to imagen");
+        }
     }
 
     #[test]

@@ -9,6 +9,47 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D100 (honest image Fetch Models + Z.AI image generation made real, server half) — v4 `d5830439`
+
+Baseline **`d5830439`**. **Drift at lane start: v4 HEAD had moved ONE commit
+past the baseline** — `4cb1035e` "fix(nanogpt): suppress the gateway's
+reasoning echo (plugin 1.0.2, bug 87)". Its file list is entirely
+`plugins/dist/qtap-plugin-nanogpt/**` plus docs/tests/version files: it is
+**P4.D101's surface** (the stacked sibling lane), and touches nothing this
+lane ports — not the image-profiles route, not any of the five image
+plugins, not `image-dialects`. `bugfix` unmoved at `3a76b17d`. Per the
+order's own drift paragraph, every regen in this lane runs from a **pinned
+detached worktree at `d5830439`** (`/tmp/v4-pin-d5830439`, all three symlink
+classes wired). The pin was validated before any port work: a baseline
+recorder run of the openai block reproduced the committed corpus rows
+**byte-for-byte**.
+
+**Unit 1 — the gemini routing widening (core 0.0.600).** v4's
+`isGeminiImageModel` gained a `model.startsWith('gemini')` arm FIRST, the
+original exact / `${m}-`-prefixed / substring arms over
+`GEMINI_IMAGE_MODELS` preserved behind it. The reason is this same drift
+commit: the honest Fetch Models list surfaces live ids like
+`gemini-2.0-flash-preview-image-generation`, which the old predicate routed
+to the Imagen `:predict` endpoint that serves only `imagen-*`. One
+predicate drives both sides of the Google dialect (`build_google` and
+`parse_google`), so the single change covers the order's `:252` and `:433`.
+
+Pinned by a NEW committed-corpus row, `google/gemini_live_fetched_id`,
+recorded from v4's REAL `GoogleImagenProvider` at the pin, plus a direct
+unit test enumerating both routes. **Red-first proven by mutation**: with
+the pre-widening predicate restored, the row fails on the built URL —
+`…:predict` where v4 sends `…:generateContent`.
+
+**One deliberate corpus hold in this commit.** Regenerating the corpus at
+the pin also moved the `z-ai/url_only` row, because v4's Z.AI URL→base64
+download ships in the SAME drift commit and the recorder currently answers
+every mocked `fetch` with the one canned wire body — so the recorded `data`
+became base64 of the JSON body rather than of a downloaded image. That row
+is held at its pre-drift recording here and regenerated honestly with a
+distinct download response in the bytes-seam unit. Every other row in the
+corpus regenerated **byte-identical**, which independently re-proves the
+pin.
+
 ## Lane record — P4.D78 (the `aa464abf` Ollama-thinking drift, provider-wire half) — v4 `d9c5a1c7`
 
 Baseline **`aa464abf`**, drift-checked clean at lane start: `git log aa464abf..main`

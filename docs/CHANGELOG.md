@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(images): route any `gemini*` id to generateContent (v4 `ca22ec45`, P4.D100)
+
+_Versions: core 0.0.600._
+
+v4's `ca22ec45` widened `isGeminiImageModel` so ANY id beginning `gemini`
+routes to the Gemini `:generateContent` endpoint, with the original exact /
+prefixed / substring arms over `GEMINI_IMAGE_MODELS` preserved behind it.
+Live-fetched ids the honest Fetch Models list now surfaces (e.g.
+`gemini-2.0-flash-preview-image-generation`) must not fall through to the
+Imagen `:predict` endpoint, which serves only `imagen-*` models. The
+predicate drives both the build and the parse side of the Google dialect.
+
+Pinned by a new `google/gemini_live_fetched_id` row in the committed
+image-dialects corpus, recorded from v4's REAL `GoogleImagenProvider` at
+the `d5830439` pin, plus a direct unit test over the predicate. Red-first
+proven: with the pre-widening predicate the row builds
+`…/gemini-2.0-flash-preview-image-generation:predict` where v4 builds
+`:generateContent`.
+
+The z-ai `url_only` corpus row is deliberately held at its pre-drift
+recording in this commit — v4's Z.AI URL→base64 download (the same drift
+commit) lands with the bytes seam in a later unit of this lane, and the
+recorder needs a distinct download response before that row can be
+regenerated honestly.
+
 #### 2026-08-22 — docs(porting): work orders for the `d5830439` drift round (P4.D100 → P4.D101 stacked ∥ P4.D102)
 
 _Docs-only change._
