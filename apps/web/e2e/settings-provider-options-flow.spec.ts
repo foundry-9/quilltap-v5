@@ -54,6 +54,24 @@ const P4D83_OPTIONS_SCHEMA_LANDED = true;
  */
 const P4D85_PROFILE_TAGS_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (lane P4.D97 — the server half of the `12fe3e6f` bug-85
+ * round).
+ *
+ * The beat below needs the providers listing to carry DeepSeek's
+ * `thinkingTurnRule` (and its `thinking` options-schema field, which rides the
+ * same manifest regeneration). Until P4.D97 lands, the listing omits the rule,
+ * `evaluateThinkingTurn` correctly answers false everywhere, and the beat
+ * would fail on a checkbox that never un-seeds. Flip this to `true` at
+ * unification.
+ *
+ * A NAMED constant, deliberately, not a capability probe: a probe cannot tell
+ * a provider that legitimately declares no rule (OpenAI) from a listing that
+ * has not learned to serve rules yet, and would silently activate the beat
+ * into guaranteed failure (the standing e2e rule).
+ */
+const P4D97_THINKING_WIRE_LANDED = false;
+
 const PROFILE_NAME = 'P4.D84 options walk';
 const BASE_URL_PROFILE = 'P4.D86 base-url walk';
 const TAG_PROFILE = 'P4.D86 tag walk';
@@ -377,5 +395,73 @@ test.describe('P4.D86 — the profile editor’s three fixed seams', () => {
     await expect(page.locator('.qt-card').filter({ hasText: TAG_PROFILE })).toHaveCount(0, {
       timeout: 15_000,
     });
+  });
+});
+
+/**
+ * P4.D98 — the thinking-turn prefill seed (v4 bug 85, client half).
+ *
+ * Drives the PROFILE-CHOICE arm of `evaluateThinkingTurn` end to end: DeepSeek
+ * declares `thinkingTurnRule: { optionKey: 'thinking', … }`, the schema panel
+ * writes that key, and a model pick re-seeds the multi-character prefill box
+ * off. The MODEL-FACTS arm (`thinksByDefault` riding `modelsWithInfo`) cannot
+ * be driven keylessly here — DeepSeek requires an API key and the models route
+ * refuses a keyless fetch (v4 `models/route.ts:92`), in v4 exactly as in v5 —
+ * so that arm is pinned by the component specs
+ * (`profile-modal.spec.ts`, "thinking-turn seeds and warning") and by the 💸
+ * dogfood item (a real DeepSeek profile un-seeding on model pick).
+ *
+ * SELF-CLEANING: the beat saves nothing — it cancels out of the modal.
+ */
+test.describe('P4.D98 — the thinking-turn prefill seed', () => {
+  test('a thinking profile un-seeds the prefill box and warns when re-ticked', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D97_THINKING_WIRE_LANDED,
+      'the providers listing serves no thinkingTurnRule until P4.D97 lands — flip P4D97_THINKING_WIRE_LANDED when it does',
+    );
+
+    await openProfilesCard(page);
+    await page.getByRole('button', { name: '+ Add Profile' }).click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+
+    await providerSelect(page).selectOption('DEEPSEEK');
+    const prefillBox = page
+      .locator('label')
+      .filter({ hasText: 'Announce the speaker in multi-character scenes' })
+      .locator('input[type=checkbox]');
+    // DeepSeek's provider default is prefill-ON — only the model or the
+    // profile's own thinking choice turns it off.
+    await expect(prefillBox).toBeChecked();
+
+    // The profile opts into thinking through the schema panel's own control
+    // (the rule's optionKey)...
+    await page.locator('#pof-thinking').selectOption('enabled');
+    // ...and the model pick re-seeds the anchor off (bug 85). The parameter
+    // alone does not — v4 re-seeds on MODEL change, never on a keystroke.
+    await expect(prefillBox).toBeChecked();
+    await page.locator('#qt-pf-model').fill('deepseek-v4-flash');
+    await expect(prefillBox).not.toBeChecked();
+
+    // A seed, never a veto: tick it back and the editor warns instead.
+    await prefillBox.check();
+    await expect(
+      page.getByText('This model reasons before it answers, and a turn handed over already'),
+    ).toBeVisible();
+    await expect(
+      page.getByText('leave this unticked unless you have watched yours cope'),
+    ).toBeVisible();
+
+    // An explicit thinking-off makes the warning stand down — and does NOT
+    // touch the box (no re-seed on a parameter change).
+    await page.locator('#pof-thinking').selectOption('disabled');
+    await expect(
+      page.getByText('This model reasons before it answers, and a turn handed over already'),
+    ).toHaveCount(0);
+    await expect(prefillBox).toBeChecked();
+
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
   });
 });

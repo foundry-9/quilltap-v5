@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — test(e2e): the gated thinking-turn prefill beat (P4.D98 tier 2, ACTIVATE-AT-UNIFY)
+
+_Versions: SPA 0.5.532._
+
+One gated beat in the provider-options flow: a DeepSeek profile that opts
+into thinking through the schema panel un-seeds the multi-character prefill
+box on model pick, warns when re-ticked, and stands the warning down on an
+explicit thinking-off — gated `P4D97_THINKING_WIRE_LANDED = false` until the
+server half (P4.D97) serves the rule. The beat drives the profile-choice arm;
+the model-facts arm cannot run keylessly (v4 refuses a keyless model fetch
+for a key-requiring provider) and is pinned at the component tier instead.
+
 #### 2026-08-21 — feat(spa): the profile editor's three thinking-turn behaviors (v4 bug 85, P4.D98 unit 3)
 
 _Versions: SPA 0.5.531._

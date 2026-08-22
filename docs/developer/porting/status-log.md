@@ -78015,3 +78015,33 @@ removed → 2 red; the fetchModels wiring call removed → 1 red; restored 64/64
 green.
 
 SPA 0.5.531.
+
+### Tier 2 — the gated e2e beat (ACTIVATE-AT-UNIFY)
+
+`settings-provider-options-flow.spec.ts` gains
+`P4D97_THINKING_WIRE_LANDED = false` (the established named-constant pattern,
+with the standing no-capability-probe rationale) and one beat: DeepSeek
+profile → `#pof-thinking` = enabled → model pick un-seeds the prefill box →
+re-tick draws the warning → thinking = disabled stands the warning down
+WITHOUT touching the box (no re-seed on a parameter change). Cancels out —
+saves nothing.
+
+**A measured deviation from the order's literal phrasing** ("pick a
+`thinksByDefault` model"): the beat drives the PROFILE-CHOICE arm of the
+evaluator, not the model-facts arm, because the facts arm cannot be driven
+keylessly — DeepSeek `requiresApiKey: true` gates Fetch Models behind a
+connect, and v4's own models route refuses a keyless fetch for a
+key-requiring provider (`app/api/v1/models/route.ts:92`), so the edit-time
+auto-fetch fails silently in v4 exactly as in v5. The facts arm is pinned at
+the component tier (the thinking-turn describe drives both fetch sites with
+`modelsWithInfo` payloads) and by the 💸 dogfood item (Tier 3 below).
+
+### Tier 3 — the loud deferrals
+
+- Help-doc rewrites (`help/connection-profiles.md` "Quilltap unticks it for
+  you in two cases" + the `help/chat-multi-character.md` touch) → the
+  `p4.9i2` bank, per the order.
+- 💸 the live editor look (a real DeepSeek profile un-seeding on model pick,
+  the model-facts arm end to end) joins the dogfood queue.
+
+SPA 0.5.532.
