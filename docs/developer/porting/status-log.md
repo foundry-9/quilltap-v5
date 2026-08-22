@@ -77739,3 +77739,28 @@ regen in this lane runs from it.
   `Some("")` rides the `None` branch — unit-pinned along with the
   default-state-DeepSeek-V4-thinks / explicit-disabled / uncatalogued /
   Ollama-opt-in matrix over the real built-in registry.
+
+### Unit 3 — the two wire serializations (v4 `97d2fcb5` routes)
+
+- **`provider_list`** serves `thinkingTurnRule` per provider (`?? null`, the
+  key ALWAYS present), positioned immediately after `optionsSchema` exactly as
+  v4's route emits it; the rule's inner key order (optionKey → enabledValues →
+  disabledValues) rides the typed struct's field order under `preserve_order`.
+- **`model_fetch`** (v4 `POST /api/v1/models`): the echo's `modelsWithInfo`
+  rows gain `supportsThinking` / `thinksByDefault` per exact-id match against
+  the manifest catalogue, keys omitted where the catalogue has no entry —
+  v4's `staticInfo?.…` spread semantics. The merge lives at the ROUTE (as
+  v4's does), so it covers every injected fetcher including the bare-id live
+  one. **Measured at the pin: v4's GET leg is untouched** — the cache write
+  (`upsertModelsForProvider`) carries no thinking facts, so `model_list`
+  stays as it was; a new `settings_wire_actions` test pins both the echo
+  enrichment (catalogued + uncatalogued rows) and the fact-blind cache read.
+- **Differential:** `providers_listing_equivalence` — oracle case grew the
+  `thinkingTurnRule: plugin.thinkingTurnRule ?? null` row field; regenerated
+  fresh at the pin (the NDJSON greps 9× `thinkingTurnRule`, 1×
+  `enable_thinking`); the harness now byte-compares the rule (key ORDER
+  included, the optionsSchema precedent) and asserts EXACTLY TWO non-null
+  rules at this pin. **Mutation-proven:** deleting the v5 serializer line
+  reds the family at the first provider (the recorded red for the
+  land-then-green sequence); restored green.
+- Versions: core 0.0.596, harness 0.0.519.

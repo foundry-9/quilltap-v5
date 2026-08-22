@@ -75,6 +75,10 @@ function main() {
       // carry now shows up as a RED diff, which is the tripwire this family is for.
       configRequirements: cfg,
       optionsSchema,
+      // v4 bug 85 (`97d2fcb5`): the declared thinking-turn rule, exactly as
+      // the route serves it — `plugin.thinkingTurnRule ?? null`, so the key is
+      // ALWAYS present and `null` where the plugin declares none.
+      thinkingTurnRule: plugin.thinkingTurnRule ?? null,
     });
   }
   process.stdout.write(JSON.stringify({ providers: rows, count: rows.length }) + '\n');

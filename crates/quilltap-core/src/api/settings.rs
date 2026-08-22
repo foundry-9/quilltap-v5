@@ -2205,6 +2205,16 @@ pub fn provider_list() -> Response {
                 },
                 "configRequirements": Value::Object(config),
                 "optionsSchema": m.options_schema.clone().unwrap_or(Value::Null),
+                // v4 bug 85 (`97d2fcb5`): how the profile editor tells whether
+                // the profile in front of the user will run a thinking turn,
+                // which decides the multi-character prefill default.
+                // Declarative precisely so it can cross the wire — the browser
+                // cannot call a server-side plugin. `?? null`, positioned
+                // after `optionsSchema`, exactly as v4's route emits it; the
+                // typed struct's field order carries the rule's key order.
+                "thinkingTurnRule": m.thinking_turn_rule.as_ref()
+                    .map(|r| serde_json::to_value(r).expect("rule serializes"))
+                    .unwrap_or(Value::Null),
             })
         })
         .collect();
@@ -2290,6 +2300,36 @@ pub async fn model_fetch<F: ModelsFetcher>(
         Ok(v) => v,
         Err(e) => return internal(e),
     };
+
+    // v4 bug 85 (`97d2fcb5`): the thinking facts travel with the model so the
+    // connection-profile editor can seed the multi-character prefill box the
+    // way the server would. `thinksByDefault` is the load-bearing one: a model
+    // that reasons unasked is one the user never opted into. v4's route
+    // spreads `staticInfo?.supportsThinking` / `staticInfo?.thinksByDefault`
+    // per exact-id match onto each `modelsWithInfo` row and `undefined` drops
+    // the key — mirrored here from the manifest's model catalogue (the merge
+    // lives at the ROUTE in v4, not the fetcher, so it covers every fetcher).
+    // The GET leg is untouched: v4's cache write carries no thinking facts,
+    // so the cached-models read never serves them.
+    let registry = Registry::built_in();
+    let models_with_info: Vec<Value> = models_with_info
+        .into_iter()
+        .map(|mut m| {
+            let facts = m
+                .get("id")
+                .and_then(Value::as_str)
+                .and_then(|id| registry.model_thinking_facts(provider, id));
+            if let (Some(facts), Some(obj)) = (facts, m.as_object_mut()) {
+                if let Some(st) = facts.supports_thinking {
+                    obj.insert("supportsThinking".into(), json!(st));
+                }
+                if let Some(tbd) = facts.thinks_by_default {
+                    obj.insert("thinksByDefault".into(), json!(tbd));
+                }
+            }
+            m
+        })
+        .collect();
 
     let cache_rows: Vec<provider_models::PmCreate> = models_with_info
         .iter()

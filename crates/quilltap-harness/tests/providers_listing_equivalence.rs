@@ -81,9 +81,25 @@ fn providers_listing_matches_v4() {
     // Registration order matches (the manifest set is in v4's registration order).
     let mut with_schema = 0usize;
     let mut without_schema = 0usize;
+    let mut with_rule = 0usize;
     for (o, g) in oracle_providers.iter().zip(got_providers.iter()) {
         let g_norm = normalize(g.clone());
         assert_eq!(o, &g_norm, "provider mismatch for id {:?}", o.get("id"));
+
+        // P4.D97 (v4 bug 85): `thinkingTurnRule` byte-for-byte, key ORDER
+        // included — the profile editor evaluates the rule it receives, and
+        // the wire's key order comes from the typed struct's field order, so
+        // pin it the same way `optionsSchema` is pinned below.
+        let (o_rule, g_rule) = (&o["thinkingTurnRule"], &g["thinkingTurnRule"]);
+        assert_eq!(
+            serde_json::to_string(o_rule).unwrap(),
+            serde_json::to_string(g_rule).unwrap(),
+            "thinkingTurnRule bytes (key ORDER included) differ for id {:?}",
+            o.get("id")
+        );
+        if !o_rule.is_null() {
+            with_rule += 1;
+        }
 
         // P4.D83, shared contract B: `optionsSchema` byte-for-byte, ORDER
         // included. `Value` equality above is order-INDEPENDENT (preserve_order
@@ -116,7 +132,15 @@ fn providers_listing_matches_v4() {
         with_schema >= 8,
         "expected every other built-in to declare an options schema, got {with_schema}"
     );
+    // Shape: at the `12fe3e6f` pin exactly TWO built-ins declare a
+    // thinking-turn rule (deepseek + ollama, v4 bug 85). An oracle regenerated
+    // from a pre-bug-85 tree — or a generator that dropped the field — would
+    // otherwise pass green with the whole field untested.
+    assert_eq!(
+        with_rule, 2,
+        "expected exactly two providers with a thinkingTurnRule (deepseek + ollama)"
+    );
     eprintln!(
-        "OK: providers listing matched v4 ({with_schema} options schemas byte-for-byte,          {without_schema} null)"
+        "OK: providers listing matched v4 ({with_schema} options schemas byte-for-byte,          {without_schema} null, {with_rule} thinking-turn rules)"
     );
 }

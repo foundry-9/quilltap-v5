@@ -239,3 +239,49 @@ fn model_fetch_caches_rows() {
     );
     assert_eq!(cached.len(), 3, "2 seeded + 1 fetched");
 }
+
+/// P4.D97 (v4 bug 85): the POST echo's `modelsWithInfo` rows gain
+/// `supportsThinking` / `thinksByDefault` from the manifest's model catalogue
+/// per exact id — and an uncatalogued id gains NOTHING (v4's
+/// `staticInfo?.…` spread drops the keys with `undefined`). The GET leg is
+/// untouched because the cache write never carries the facts — pinned here by
+/// reading the cache back after the fetch.
+#[test]
+fn model_fetch_enriches_thinking_facts() {
+    let Some((db, _t)) = open_db() else {
+        return;
+    };
+    let rt = rt();
+    let fetched = vec![
+        json!({ "id": "deepseek-v4-flash", "displayName": "DeepSeek V4 Flash" }),
+        json!({ "id": "deepseek-experimental", "displayName": "DeepSeek Experimental" }),
+    ];
+    let v = body(rt.block_on(settings::model_fetch(
+        &db,
+        USER_A,
+        "DEEPSEEK",
+        Some(OPENAI_KEY),
+        None,
+        &CannedFetcher(fetched),
+    )));
+    let rows = v["modelsWithInfo"].as_array().expect("modelsWithInfo");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["supportsThinking"], json!(true));
+    assert_eq!(rows[0]["thinksByDefault"], json!(true));
+    assert!(
+        rows[1].get("supportsThinking").is_none() && rows[1].get("thinksByDefault").is_none(),
+        "an uncatalogued id must gain no thinking keys, got {:?}",
+        rows[1]
+    );
+
+    // The cache is fact-blind on both legs, exactly as v4's is.
+    let cached = db
+        .read_main(|c| quilltap_core::db::provider_models::find_by_provider(c, "DEEPSEEK"))
+        .unwrap();
+    assert!(
+        cached
+            .iter()
+            .all(|m| m.get("supportsThinking").is_none() && m.get("thinksByDefault").is_none()),
+        "the models cache must not carry thinking facts"
+    );
+}

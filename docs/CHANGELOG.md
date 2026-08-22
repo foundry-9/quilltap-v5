@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(api): serve thinkingTurnRule + model thinking facts on the wire (v4 bug 85, P4.D97 unit 3)
+
+_Versions: core 0.0.596, harness 0.0.519._
+
+The two wire serializations from v4 `97d2fcb5`. `provider_list` (v4
+`GET /api/v1/providers`) serves `thinkingTurnRule` per provider — `?? null`,
+positioned after `optionsSchema`, key order carried by the typed struct's
+field order. `model_fetch` (v4 `POST /api/v1/models`) spreads
+`supportsThinking` / `thinksByDefault` onto each `modelsWithInfo` echo row per
+exact-id match against the manifest's model catalogue, keys omitted when the
+catalogue has no entry — the merge lives at the route as v4's does, so it
+covers every fetcher. Measured at the pin: the GET leg is untouched in v4 (the
+cache write carries no thinking facts), so `model_list` stays as it was —
+pinned by a new wire-actions test asserting the cache read stays fact-blind.
+`providers_listing_equivalence` regenerated at the pin now compares
+`thinkingTurnRule` byte-for-byte (key order included, the optionsSchema
+precedent) with an exactly-two-rules shape assertion; removing the serializer
+line reds the family (mutation-proven).
+
 #### 2026-08-21 — feat(llm): port the thinking-turn evaluator + manifest substrate (v4 bug 85, P4.D97 units 1–2)
 
 _Versions: core 0.0.595, harness 0.0.518._
