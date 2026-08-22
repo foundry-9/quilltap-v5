@@ -40,8 +40,16 @@ const IP_2 = 'a6000000-0000-4000-8000-000000000002'; // Scenic
 const IP_3 = 'a6000000-0000-4000-8000-000000000003'; // Bare
 const BOGUS = 'a6000000-0000-4000-8000-0000000000ff';
 
+// NanoGPT is APPENDED, not slotted alphabetically — the same convention as
+// `provider-registry.ts` / `providers-listing.ts` (P4.D101): the hardcoded list
+// predates v4's alphabetical `fs.readdir` order, and appending keeps every
+// pre-existing row byte-identical on both sides. (The unify gate caught this
+// list missing the append: P4.D100 authored the case before the NANOGPT
+// manifest existed, P4.D101 appended the OTHER two cases' lists, and only the
+// union could red — `list_providers` answered five providers against v5's six.)
 const PLUGIN_DIRS = [
   'anthropic', 'openai', 'google', 'grok', 'deepseek', 'z-ai', 'openrouter', 'ollama', 'openai-compatible',
+  'nanogpt',
 ];
 
 function mockRequest(url: string, body?: unknown): unknown {
