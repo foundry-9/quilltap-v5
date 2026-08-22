@@ -77878,3 +77878,38 @@ regen in this lane runs from it.
   re-ticked `true` — `AlreadyCompleted`, the true survives (the
   non-idempotency hazard the ledger exists for, proven at family tier and
   again in the module tests incl. the v4-written-row arm).
+
+### Unit 7 — mirror refresh + dispositions + deferrals (the lane's tier-2/3 close-out)
+
+- **`docs/v4` mirror refreshed at the pin:** `developer/API.md`,
+  `developer/PROVIDER_PLUGIN_DEVELOPMENT.md`, `CHANGELOG.md`, and — new to
+  the mirror — `developer/bugs.md` (whose table also carries the two
+  docs-only commits' rows: `e04405a5` filed bug 85, `c0984bdf` filed bug 84)
+  plus the two fixed filings
+  `developer/bugs/fixed/bug-85-deepseek-thinking-prefill-400.md` /
+  `bug-86-deepseek-thinking-detection.md`. The v4 root README's model-table
+  delta has NO mirror slot (the mirror never carried the root README or
+  plugin READMEs) — recorded, not invented.
+- **`lib/startup/prettify.ts` (+1 migration pretty-label): NO-PORT with
+  evidence** — v5 surfaces no migration labels anywhere (no migration-runner
+  UI exists; the same disposition the P4.D79/D63/D73 ensures recorded for
+  their labels). The label text ("Excusing the doorman where the guest
+  prefers to announce themselves") is preserved in the mirror's history via
+  v4's own tree; nothing v5-side reads it.
+- **Package/lock churn (`package.json`, `package-lock.json`,
+  `packages/plugin-types` 2.5.8, plugin manifest version bumps): NO-PORT** —
+  Node packaging, no v5 analog; the plugin-types TYPE additions were ported
+  as the manifest substrate (units 1–2).
+- **Tier-3 loud deferrals:**
+  - `help/connection-profiles.md` + `help/chat-multi-character.md` deltas →
+    **the `p4.9i2` bank** (P4.D98 banks the same two — append-only,
+    duplicates harmless per the order).
+  - 💸 **the dogfood queue gains:** a real DeepSeek thinking turn completing
+    multi-character turns (the bug-85 repro chat shape — also the closing
+    proof for the two `use_prefill` producer joins, which have no
+    discriminating spine op; see unit 4's residual), and the heal firing
+    once on a Friday-vintage copy with a stored-1 thinking row (then
+    surviving a second boot).
+- **The lane's sibling-coordination note:** the shared contract (the wire
+  shapes above) is verbatim in P4.D98's order; `P4D97_THINKING_WIRE_LANDED`
+  (the e2e gate constant, P4.D98-owned) flips at unification.

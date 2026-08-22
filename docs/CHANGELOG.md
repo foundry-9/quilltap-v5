@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): the P4.D97 mirror refresh + dispositions (v4 bugs 84–86 docs)
+
+_Docs-only change._
+
+The `docs/v4` mirror refreshed at the `12fe3e6f` pin: `developer/API.md`,
+`developer/PROVIDER_PLUGIN_DEVELOPMENT.md`, `CHANGELOG.md`, and — new to the
+mirror — `developer/bugs.md` (whose table carries the two docs-only commits'
+rows: `e04405a5` filed bug 85, `c0984bdf` filed bug 84) plus the two fixed
+filings under `developer/bugs/fixed/`. The v4 root README's model-table
+delta has no mirror slot (the mirror never carried the root README or plugin
+READMEs) — recorded, not invented. Dispositions: `lib/startup/prettify.ts`'s
+migration pretty-label is NO-PORT (v5 surfaces no migration labels anywhere
+— the P4.D79/D63/D73 precedent); package/lock + plugin-types version churn
+is NO-PORT (the type additions were ported as the manifest substrate). Loud
+deferrals recorded in the lane record: the two help-file deltas → the
+`p4.9i2` bank, and the two 💸 live proofs → the dogfood queue.
+
 #### 2026-08-21 — feat(db): the retire-prefill-on-thinking-profiles boot heal over v4's migration ledger (P4.D97 unit 6)
 
 _Versions: core 0.0.599, harness 0.0.522, host 0.0.75._

@@ -141,6 +141,26 @@ Create `tsconfig.json`:
 }
 ```
 
+> **Plugins bundled in this repo** (`plugins/dist/*`) use a shorter form instead —
+> they extend the shared bar in `plugins/tsconfig.base.json`:
+>
+> ```json
+> {
+>   "extends": "../../tsconfig.base.json",
+>   "include": ["*.ts"],
+>   "exclude": ["node_modules"]
+> }
+> ```
+>
+> Pair it with a `"typecheck": "tsc -p tsconfig.json"` script. `npm run build:plugins`
+> runs that before esbuild and fails the build on any type error. This matters because
+> the root `tsconfig.json` excludes `plugins/` and esbuild strips types without checking
+> them, so without it a plugin's TypeScript is never verified anywhere.
+>
+> Note `include`/`exclude` stay in the per-plugin file: TypeScript resolves them
+> relative to whichever config declares them, so inheriting them from the base would
+> point every plugin at the wrong directory.
+
 ### Step 6: Create Build Configuration
 
 Create `esbuild.config.mjs`:
@@ -278,7 +298,8 @@ Create `manifest.json` - this tells Quilltap about your provider:
 |-------|-------------|
 | `capabilities` | Must include `"LLM_PROVIDER"` |
 | `providerConfig.providerName` | Unique identifier (uppercase, used in API key storage) |
-| `providerConfig.requiresApiKey` | Whether users need to provide an API key |
+| `providerConfig.requiresApiKey` | Whether users **must** provide an API key |
+| `providerConfig.acceptsApiKey` | Optional. Whether users **may** provide one — it gates the Add-New-API-Key dropdown and the profile form's key field. Omitted, it follows `requiresApiKey`; set it only for an endpoint that spans authenticated and unauthenticated services, as `OPENAI_COMPATIBLE` does |
 | `providerConfig.requiresBaseUrl` | For self-hosted/custom endpoints (e.g., Ollama) |
 | `providerConfig.capabilities` | Which features your provider supports |
 | `providerConfig.attachmentSupport` | File attachment capabilities |
@@ -372,6 +393,11 @@ export const plugin: LLMProviderPlugin = {
       maxOutputTokens: 4096,
       supportsImages: true,
       supportsTools: true,
+      // Two separate facts. `supportsThinking` is a capability;
+      // `thinksByDefault` says the model reasons even when the profile never
+      // asked it to, which is what tells the host to skip the `[Name]` prefill.
+      supportsThinking: true,
+      thinksByDefault: false,
       pricing: { input: 5.0, output: 15.0 }, // per 1M tokens
     },
     {
@@ -1156,7 +1182,39 @@ interface LLMProviderPlugin {
   toolFormat?: 'openai' | 'anthropic' | 'google';
   cheapModels?: CheapModelConfig;
   defaultContextWindow?: number;
+  thinkingTurnRule?: ThinkingTurnRule;
 }
 ```
 
 See `@quilltap/plugin-types` for complete type definitions.
+
+### Declaring how thinking is switched on
+
+If your provider has a profile option that turns reasoning on or off, declare
+`thinkingTurnRule` so the host can tell whether a given profile will run a
+thinking turn:
+
+```typescript
+thinkingTurnRule: {
+  optionKey: 'thinking',            // a field key from getProviderOptionsSchema()
+  enabledValues: ['enabled'],
+  disabledValues: ['disabled'],
+},
+```
+
+It matters because a thinking turn changes what a request may look like. Quilltap
+anchors a multi-character reply either by appending an assistant message
+containing `[Character Name]` or by appending a prose instruction to the system
+prompt, and the prefill route goes badly wrong on a reasoning model: DeepSeek
+rejects the request outright (it wants the `reasoning_content` that produced the
+assistant turn, which a synthetic prefill has none of), and Ollama's chat
+template never opens the reasoning block behind a prefilled turn, so the
+reasoning is lost entirely. A profile Quilltap knows to be thinking gets the
+prose anchor by default; the user may still tick the box back on.
+
+The rule is declarative rather than a predicate function because the
+connection-profile editor runs in the browser and needs the same answer, so the
+rule has to cross the wire. It answers only the explicit half — "has this
+profile switched thinking on or off?". When the profile says nothing, the host
+falls back to the selected model's `thinksByDefault` flag (see below). Omit the
+rule entirely and only the model flag speaks.
