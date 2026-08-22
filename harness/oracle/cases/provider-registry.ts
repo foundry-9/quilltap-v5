@@ -37,7 +37,12 @@ import {
 
 const nodeRequire = createRequire(join(process.cwd(), 'noop.js'));
 
-/** The nine built-in plugin dirs, in registry-registration order. */
+/**
+ * The ten built-in plugin dirs, in registry-registration order. NanoGPT
+ * (P4.D101) is APPENDED, matching the Rust `BUILT_IN_MANIFEST_JSON` order —
+ * both this list and that array are compared positionally, so appending
+ * leaves all nine pre-existing rows byte-identical.
+ */
 const PLUGIN_DIRS = [
   'anthropic',
   'openai',
@@ -48,6 +53,7 @@ const PLUGIN_DIRS = [
   'openrouter',
   'ollama',
   'openai-compatible',
+  'nanogpt',
 ];
 
 /** Capabilities the getter accepts (`keyof DEFAULT_CAPABILITIES`). */

@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(providers): the NanoGPT manifest through the generator (v4 `781fc420` + `d5830439`, P4.D101)
+
+_Versions: core 0.0.604, harness 0.0.527._
+
+NanoGPT joins the built-in provider registry as a tenth manifest, generated
+rather than hand-written. The generator's `PROVIDERS` table gains the
+`qtap-plugin-nanogpt` row with its wire augmentation (base URL
+`https://nano-gpt.com/api/v1`, `/chat/completions` + `/models`, bearer auth,
+the chat-completions SSE decoder, no request transform); everything else —
+capabilities, config requirements, the `reasoning_effort` options schema, the
+`thinkingTurnRule`, the ten catalogue rows, the `:thinking` thinking facts,
+message format, cheap models, chars-per-token, and the 131072 default context
+window — is read off the built plugin, so the committed `nanogpt.json` is a
+transcription that cannot rot away from v4.
+
+`resolveImageGenerationModels` needed a real extension to reach NanoGPT's six
+image ids. Grok and Z.AI declare `supportedModels` inside `image-provider.ts`,
+where the existing reader looks; NanoGPT imports the list from `models.ts`, so
+the reader now follows a same-dir relative import when the const is not
+module-local, and still exits loudly and by name on any shape it does not
+recognize. Hand-copying the six ids into the augmentation table would have been
+the `imageGenerationModels` rot of P4.39 and the google-auth rot of P4.D78 for a
+third time.
+
+The manifest is APPENDED to `BUILT_IN_MANIFEST_JSON` rather than slotted
+alphabetically. Both `provider_registry_equivalence` (the `names` row) and
+`providers_listing_equivalence` (a positional zip) compare registration order,
+so appending leaves all nine pre-existing rows byte-identical on both sides; the
+two oracle cases' `PLUGIN_DIRS` lists carry the same append. The nine committed
+manifests regenerate byte-for-byte at the pin, which is the proof the generator
+change is additive.
+
+`providers_listing_equivalence`'s exactly-two-thinking-rules shape guard moves
+to three (deepseek + ollama + nanogpt) — a designed tripwire firing as designed,
+not a weakened assertion — and the options-schema floor moves 8 → 9. The
+NanoGPT row is mutation-proven compared: perturbing one `enumValues` label in
+the committed manifest reddens the listing differential by name.
+
 #### 2026-08-22 — port(images): the honest `list-models` verb (v4 `ca22ec45`, P4.D100)
 
 _Versions: core 0.0.603, harness 0.0.526, host 0.0.77._

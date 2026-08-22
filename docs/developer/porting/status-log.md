@@ -9,6 +9,113 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D101 (the NanoGPT bundled provider, server whole) — v4 `4cb1035e`
+
+Ordered against baseline **`d5830439`**, porting v4 `781fc420` (NanoGPT as a
+bundled provider for chat, images, and embeddings) + `d5830439` (the thinking
+options). **Drift at lane start, RULED IN by the human:** v4 HEAD had moved one
+commit past the baseline to **`4cb1035e`** ("fix(nanogpt): suppress the
+gateway's reasoning echo, plugin 1.0.2, bug 87") — a fix landing on *this
+lane's own surface*, the reasoning dialects of Tier-1 item 3. Porting
+`d5830439`'s shape would have meant deliberately importing a bug v4 fixed hours
+later and re-porting it next round, so **this lane's effective pin is
+`4cb1035e`** and it ports the FIXED shape.
+
+That widening is safe for every other family: `4cb1035e` touches `lib/`,
+`app/`, and `packages/` only through a single `packages/quilltap/package.json`
+version bump, so every non-NanoGPT oracle regenerates byte-identically at either
+sha. The whole lane regenerates at one pin
+(`/tmp/qt-v4-pin-p4d101-4cb1035e`, all three symlink classes), and the round
+baseline can move to `4cb1035e` at unification without disturbing P4.D100 or
+P4.D102.
+
+**Stacked on P4.D100**, branched from its finished tip `839fd0e7`.
+
+### Banked at lane start — the switch-table census is WIDER than the order
+
+A mechanical `ggrep -rln 'OPENROUTER' crates/ --include='*.rs'` returns **23
+core/host source files**; the order enumerated 12. The ten it did not name are
+`api/image_profiles.rs`, `db/embedding_profiles.rs`,
+`model/completion_provider.rs`, `model/streaming_provider.rs`,
+`model/transport.rs`, `services/orchestrator.rs`,
+`services/pricing_fetcher/mod.rs`, `services/provider_failover.rs`,
+`services/quilltap_import/profiles.rs`, and `quilltap-host/src/providers.rs`.
+Each gets a join-or-NO-PORT disposition before this lane closes; the census is
+the Tier-1 item 7 deliverable and it is recorded here rather than left implicit.
+
+### Measured, not fixed — the registration order is a harness artifact
+
+v4's real registration order is `fs.readdir` order over `plugins/dist`, which
+measures ALPHABETICAL at the pin (`anthropic, builtin-embeddings, curl,
+deepseek, default-system-prompts, google, grok, mcp, nanogpt, ollama, openai,
+openai-compatible, openrouter, search-serper, z-ai`). The oracle cases'
+hardcoded `PLUGIN_DIRS` lists are in a DIFFERENT, non-alphabetical order
+(`anthropic, openai, google, grok, deepseek, z-ai, openrouter, ollama,
+openai-compatible`), and both differentials compare that order positionally.
+The discrepancy is **pre-existing and out of this lane's scope** — realigning it
+would churn every provider family. NanoGPT is therefore APPENDED on both sides,
+which is the only choice that leaves all nine pre-existing rows byte-identical.
+
+### Unit 1 — the committed manifest, through the generator ✅
+
+`crates/quilltap-core/src/provider_manifest/manifests/nanogpt.json`, generated
+(never hand-written) by `gen-provider-manifests.mjs` at the pin, plus its
+`include_str!` join and the two oracle cases' `PLUGIN_DIRS` append.
+
+**The generator needed a real extension.** `resolveImageGenerationModels` reads
+a plugin's image ids from `image-provider.ts`, handling two shapes: an inline
+array literal (grok) and a module-local `const` (z-ai). NanoGPT is a THIRD
+shape — `readonly supportedModels = STATIC_IMAGE_MODEL_IDS;` where the const
+lives in `models.ts` and is imported. The reader now follows a same-dir relative
+import when the const is not module-local, via a shared
+`findConstArrayLiteral` helper that also accepts `export const`; anything else
+still exits non-zero naming the provider. Hand-copying the six ids into the
+augmentation table would have been the P4.39 `imageGenerationModels` rot and the
+P4.D78 google-auth rot for a third time — the note in the generator header names
+that rule, and this is the first extension made under it.
+
+**Proof the change is additive:** the nine pre-existing manifests regenerate
+BYTE-IDENTICAL at the pin (`git status --short` on the manifests dir shows only
+the new untracked `nanogpt.json`).
+
+**Contract fields carried** (the order's Shared contract, verbatim): id
+`NANOGPT` / display `NanoGPT` / abbreviation `NGPT`; chat + imageGeneration +
+embeddings + toolUse true, webSearch false; `requiresApiKey: true`,
+`requiresBaseUrl: false`, `apiKeyLabel: 'NanoGPT API Key'`; attachments
+unsupported; the one-group/one-field `reasoning_effort` options schema with all
+seven enum values in order; the thinkingTurnRule with `''` in NEITHER list; the
+six `imageGenerationModels`; the ten `fallbackModels`; the single `models[]` row
+(`anthropic/claude-sonnet-5:thinking`, both facts); charsPerToken 3.5;
+defaultContextWindow 131072.
+
+**Differentials:** `provider_registry_equivalence` and
+`providers_listing_equivalence`, both regenerated fresh at the pin and green.
+The listing family's exactly-two-thinking-rules shape guard MOVED 2 → 3
+(deepseek + ollama + nanogpt) and its options-schema floor 8 → 9 — a designed
+tripwire firing as designed. The core registry test's count and name list moved
+9 → 10.
+
+**Mutation-proven, not vacuously green:** perturbing one `enumValues` label
+(`XHigh` → `Xhigh`) in the committed manifest reddens
+`providers_listing_equivalence` with `provider mismatch for id
+Some(String("NANOGPT"))`. Restored and re-verified green.
+
+**Regen recipe (both families, this lane's pin):**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d101-4cb1035e   # detached worktree at 4cb1035e, 3 symlink classes
+W=<this worktree>
+cd $PIN && npx tsx $W/harness/oracle/cases/provider-registry.ts  > /tmp/p4d101-oracle-provider-registry.ndjson
+cd $PIN && npx tsx $W/harness/oracle/cases/providers-listing.ts   > /tmp/p4d101-oracle-providers-listing.ndjson
+cd $W && QT_ORACLE_PROVIDER_REGISTRY=/tmp/p4d101-oracle-provider-registry.ndjson \
+         QT_ORACLE_PROVIDERS_LISTING=/tmp/p4d101-oracle-providers-listing.ndjson \
+  cargo test -p quilltap-harness --test provider_registry_equivalence --test providers_listing_equivalence
+# manifest byte-identity (the manifest's own differential):
+cd $PIN && node $W/harness/oracle/providers/gen-provider-manifests.mjs \
+  $W/crates/quilltap-core/src/provider_manifest/manifests
+git -C $W diff --exit-code crates/quilltap-core/src/provider_manifest/manifests
+```
+
 ## Lane record — P4.D100 (honest image Fetch Models + Z.AI image generation made real, server half) — v4 `d5830439`
 
 Baseline **`d5830439`**. **Drift at lane start: v4 HEAD had moved ONE commit

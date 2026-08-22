@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "id": "NANOGPT",
+  "displayName": "NanoGPT",
+  "description": "NanoGPT pay-as-you-go gateway: chat, image generation, and embeddings behind one API key",
+  "abbreviation": "NGPT",
+  "colors": {
+    "bg": "bg-violet-100",
+    "text": "text-violet-800",
+    "icon": "text-violet-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://nano-gpt.com/api/v1",
+  "endpoints": {
+    "chat": "/chat/completions",
+    "models": "/models"
+  },
+  "streamDecoder": "chat-completions-sse",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": true,
+    "webSearch": false,
+    "toolUse": true
+  },
+  "optionsSchema": {
+    "groups": [
+      {
+        "title": "NanoGPT Options",
+        "helpText": "NanoGPT routes each request to the named model's own establishment, so reasoning behaviour is ultimately the model's: `:thinking`-suffixed ids reason by default, and Reasoning Effort below asks any reasoning-capable model to think harder or not at all. Deliberations stream into the Salon's thinking fold (display only; never re-fed to the model). Reasoning tokens bill as output tokens — a generous effort on a verbose model is a generous invoice.",
+        "fields": [
+          {
+            "key": "reasoning_effort",
+            "label": "Reasoning Effort",
+            "type": "enum",
+            "default": "",
+            "helpText": "Any value other than None switches reasoning on; None switches it off; (model default) leaves the decision to the model — a `:thinking` id thinks, the rest generally do not. Not every model exposes its reasoning text even when it reasons.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "none",
+                "label": "None"
+              },
+              {
+                "value": "minimal",
+                "label": "Minimal"
+              },
+              {
+                "value": "low",
+                "label": "Low"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              },
+              {
+                "value": "xhigh",
+                "label": "XHigh"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "thinkingTurnRule": {
+    "optionKey": "reasoning_effort",
+    "enabledValues": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "disabledValues": [
+      "none"
+    ]
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "NanoGPT API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "openai/gpt-5-mini",
+    "recommendedModels": [
+      "openai/gpt-5-mini",
+      "openai/gpt-5-nano",
+      "auto-model-basic"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": false,
+    "supportedMimeTypes": [],
+    "description": "NanoGPT chat requests are text-only in Quilltap; attachments are not forwarded",
+    "notes": null,
+    "maxFileSize": null,
+    "maxBase64Size": null,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 131072,
+  "imageGenerationModels": ["hidream", "flux-2-flash", "flux-2-dev", "flux-2-pro", "recraft-v3", "gpt-image-1.5"],
+  "fallbackModels": [
+    "auto-model",
+    "auto-model-basic",
+    "auto-model-premium",
+    "openai/gpt-5.2",
+    "openai/gpt-5-mini",
+    "openai/gpt-5-nano",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-sonnet-5:thinking",
+    "google/gemini-3.1-pro-preview",
+    "moonshotai/kimi-k3"
+  ],
+  "models": [
+    {
+      "id": "anthropic/claude-sonnet-5:thinking",
+      "supportsThinking": true,
+      "thinksByDefault": true
+    }
+  ],
+  "pricing": {}
+}

@@ -1,5 +1,6 @@
 /**
- * Generator: the nine built-in provider manifests (wave 4 / W4.7a).
+ * Generator: the ten built-in provider manifests (wave 4 / W4.7a; NanoGPT
+ * joined at P4.D101).
  *
  * Transcribes v4's registered provider plugin metadata into a declarative JSON
  * manifest per provider (the 'gen-tool-catalog.mjs' precedent — transcription,
@@ -67,7 +68,7 @@ if (!outDir) {
 }
 
 /**
- * The nine built-in providers, in registry-registration order (the order the
+ * The ten built-in providers, in registry-registration order (the order the
  * plugin dirs are loaded), with their 'plugins/dist' directory name and the
  * decoder/transform/wire augmentation that does not live on the metadata object.
  */
@@ -170,6 +171,22 @@ const PROVIDERS = [
       requestTransform: 'none',
     },
   },
+  {
+    // P4.D101 (v4 `781fc420` + `d5830439`): NanoGPT's OpenAI-compatible
+    // gateway. Appended rather than slotted alphabetically so the nine
+    // existing manifests — and every differential that compares the
+    // registration order positionally — stay byte-identical.
+    dir: 'qtap-plugin-nanogpt',
+    aug: {
+      baseUrl: 'https://nano-gpt.com/api/v1',
+      endpoints: { chat: '/chat/completions', models: '/models' },
+      auth: { kind: 'bearer' },
+      streamDecoder: 'chat-completions-sse',
+      // No cross-turn request transform: the body is a plain chat-completions
+      // envelope (the reasoning-echo guard is decode-side, not request-side).
+      requestTransform: 'none',
+    },
+  },
 ];
 
 /** v4 registry defaults (provider-registry.ts convenience getters). */
@@ -211,6 +228,19 @@ function parseStringArrayLiteral(literal, where) {
 }
 
 /**
+ * The array literal of a `const NAME = [...]` (or `export const NAME = [...]`)
+ * declaration, or null when the source declares no such const. Only the flat
+ * literal form is recognized; `parseStringArrayLiteral` rejects anything else.
+ */
+function findConstArrayLiteral(src, name) {
+  const decl = new RegExp(
+    `^\\s*(?:export\\s+)?const\\s+${name}\\s*(?::[^=]*)?=\\s*(\\[[^\\]]*\\])`,
+    'm'
+  ).exec(src);
+  return decl ? decl[1] : null;
+}
+
+/**
  * Read a plugin's image model list out of the `image-provider.ts` source that
  * ships in its dist dir — the only declaration grok and z-ai have (no
  * `getImageGenerationModels` getter on either built plugin object).
@@ -234,13 +264,33 @@ function readSupportedModelsFromSource(dir) {
   let rhs = decl[1].trim();
 
   if (!rhs.startsWith('[')) {
-    // A bare identifier — resolve the one module-local `const NAME = [...]`.
+    // A bare identifier — resolve the `const NAME = [...]`, module-local first
+    // and then through a same-dir relative import (nanogpt keeps its curated
+    // ids in `models.ts` and imports them, where grok/z-ai declare them in
+    // `image-provider.ts` itself).
     if (!/^[A-Za-z_$][\w$]*$/.test(rhs)) {
       fail(`${dir}: unrecognized supportedModels shape ${JSON.stringify(rhs)}`);
     }
-    const constDecl = new RegExp(`^\\s*const\\s+${rhs}\\s*(?::[^=]*)?=\\s*(\\[[^\\]]*\\])`, 'm').exec(src);
-    if (!constDecl) fail(`${dir}: supportedModels names '${rhs}', but no 'const ${rhs} = [...]' in image-provider.ts`);
-    rhs = constDecl[1];
+    let literal = findConstArrayLiteral(src, rhs);
+    if (literal === null) {
+      const importDecl = new RegExp(
+        `^\\s*import\\s*\\{[^}]*\\b${rhs}\\b[^}]*\\}\\s*from\\s*'\\.\\/([\\w.-]+)'`,
+        'm'
+      ).exec(src);
+      if (!importDecl) {
+        fail(`${dir}: supportedModels names '${rhs}', but image-provider.ts has neither 'const ${rhs} = [...]' nor a './…' import of it`);
+      }
+      const modPath = join(process.cwd(), 'plugins', 'dist', dir, `${importDecl[1]}.ts`);
+      let modSrc;
+      try {
+        modSrc = readFileSync(modPath, 'utf-8');
+      } catch {
+        fail(`${dir}: supportedModels imports '${rhs}' from './${importDecl[1]}', but ${modPath} is unreadable`);
+      }
+      literal = findConstArrayLiteral(modSrc, rhs);
+      if (literal === null) fail(`${dir}: './${importDecl[1]}' declares no 'const ${rhs} = [...]' for supportedModels`);
+    }
+    rhs = literal;
   }
 
   return parseStringArrayLiteral(rhs, `${dir} supportedModels`);
@@ -429,7 +479,7 @@ function buildManifest(provider) {
   };
 }
 
-// Build all nine BEFORE writing any: a loud failure (an unrecognized
+// Build all ten BEFORE writing any: a loud failure (an unrecognized
 // `supportedModels` shape, say) must not leave a half-overwritten manifest dir.
 const rendered = PROVIDERS.map((provider) => {
   const manifest = buildManifest(provider);

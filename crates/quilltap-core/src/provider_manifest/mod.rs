@@ -20,7 +20,7 @@
 //!
 //! This module owns layer 1: the manifest schema (serde structs — deserialization
 //! IS the schema validation, fail-loud with a typed [`ManifestError`] naming the
-//! field, `schemaVersion` explicitly gated), the nine built-in manifests, the
+//! field, `schemaVersion` explicitly gated), the ten built-in manifests, the
 //! [`Registry`] accessors reproducing v4's `provider-registry` convenience getters
 //! (`get_provider` exact-case Map lookup — v4 does NOT resolve `legacyNames` in
 //! lookup, they are display metadata only; the capability getters with their v4
@@ -476,9 +476,15 @@ impl Manifest {
 // The built-in manifests (embedded + parsed once)
 // ============================================================================
 
-/// The nine built-in manifest JSON blobs, in v4 registration order. Embedded via
+/// The ten built-in manifest JSON blobs, in v4 registration order. Embedded via
 /// [`include_str!`] from the generated files under `manifests/` (regen with the
 /// generator — see this module's header / the generator's header).
+///
+/// NanoGPT (P4.D101) is APPENDED, not slotted alphabetically: the registration
+/// order is compared positionally by both `provider_registry_equivalence`
+/// (`names`) and `providers_listing_equivalence` (a zip over the two lists), so
+/// appending keeps all nine pre-existing rows byte-identical on both sides. The
+/// oracle cases' `PLUGIN_DIRS` lists carry the same append.
 const BUILT_IN_MANIFEST_JSON: &[&str] = &[
     include_str!("manifests/anthropic.json"),
     include_str!("manifests/openai.json"),
@@ -489,6 +495,7 @@ const BUILT_IN_MANIFEST_JSON: &[&str] = &[
     include_str!("manifests/openrouter.json"),
     include_str!("manifests/ollama.json"),
     include_str!("manifests/openai_compatible.json"),
+    include_str!("manifests/nanogpt.json"),
 ];
 
 /// The parsed built-in registry, in registration order. Parsed once. A malformed
@@ -516,7 +523,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// The nine built-in providers.
+    /// The ten built-in providers.
     pub fn built_in() -> &'static Registry {
         &BUILT_IN_REGISTRY
     }
@@ -660,7 +667,7 @@ mod tests {
     #[test]
     fn built_ins_parse_and_count() {
         let reg = Registry::built_in();
-        assert_eq!(reg.all_providers().len(), 9);
+        assert_eq!(reg.all_providers().len(), 10);
         assert_eq!(
             reg.provider_names(),
             vec![
@@ -673,6 +680,7 @@ mod tests {
                 "OPENROUTER",
                 "OLLAMA",
                 "OPENAI_COMPATIBLE",
+                "NANOGPT",
             ]
         );
     }
@@ -840,7 +848,7 @@ mod tests {
         assert!(!reqs(true, Some(false)).accepts_api_key());
     }
 
-    /// The nine committed manifests, as the field actually ships: OpenAI-Compatible
+    /// The ten committed manifests, as the field actually ships: OpenAI-Compatible
     /// is the ONE that declares `acceptsApiKey`, and it is the ONE whose two
     /// answers differ. Shape, not a hand count — a generator that started
     /// emitting the key everywhere (or dropped it) fails here.

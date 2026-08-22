@@ -129,16 +129,18 @@ fn providers_listing_matches_v4() {
         "expected exactly one provider with NO options schema (google)"
     );
     assert!(
-        with_schema >= 8,
+        with_schema >= 9,
         "expected every other built-in to declare an options schema, got {with_schema}"
     );
-    // Shape: at the `12fe3e6f` pin exactly TWO built-ins declare a
-    // thinking-turn rule (deepseek + ollama, v4 bug 85). An oracle regenerated
-    // from a pre-bug-85 tree — or a generator that dropped the field — would
-    // otherwise pass green with the whole field untested.
+    // Shape: at the `4cb1035e` pin exactly THREE built-ins declare a
+    // thinking-turn rule (deepseek + ollama from v4 bug 85; nanogpt from
+    // `d5830439`). An oracle regenerated from a pre-bug-85 tree — or a
+    // generator that dropped the field — would otherwise pass green with the
+    // whole field untested. Moved 2 → 3 by P4.D101: a designed tripwire firing
+    // as designed, not a weakened assertion.
     assert_eq!(
-        with_rule, 2,
-        "expected exactly two providers with a thinkingTurnRule (deepseek + ollama)"
+        with_rule, 3,
+        "expected exactly three providers with a thinkingTurnRule (deepseek + ollama + nanogpt)"
     );
     eprintln!(
         "OK: providers listing matched v4 ({with_schema} options schemas byte-for-byte,          {without_schema} null, {with_rule} thinking-turn rules)"
