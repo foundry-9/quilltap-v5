@@ -200,6 +200,16 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — docs(porting): the P4.55 verification gate record
+
+_Docs-only change._
+
+The lane's gate, for the unifier: fmt clean, clippy clean on both feature sets,
+443 test binaries / 2,261 passed / 0 failed with the eight-variable oracle
+env block, the six families re-run by name with zero SKIP and all 26 new arms
+green and present in their freshly regenerated NDJSONs, and a clean release
+build. No committed fixture changed, so no sibling oracle is invalidated.
+
 #### 2026-08-22 — docs(porting): P4.55 closes — the Tier 3 deferrals recorded by name
 
 _Docs-only change._

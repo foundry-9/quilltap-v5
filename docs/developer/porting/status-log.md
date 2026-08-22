@@ -80365,3 +80365,39 @@ round, since P4.D103 owned the groups families this round.
 P4.55 never opened `api/groups.rs`, `api/types.rs`, `system_prompt.rs`,
 `engine.rs`, or `apps/web/**`. Whether P4.D103's validator port actually closed
 E1 is for the unifier to confirm — this lane has no evidence either way.
+
+### The P4.55 verification gate (2026-08-22)
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0; and again
+  with `--features quilltap-core/native-transport` — exit 0.
+- `cargo test --workspace` with the lane's eight-variable oracle env block:
+  **443 test binaries / 2,261 passed / 0 failed / 0 ignored**, cargo exit 0.
+- The six lane families re-run BY NAME with `--nocapture`: **zero `SKIP:` lines
+  in the whole log**, all six green (settings-routes reports
+  "135 cases matched"), and **all 26 new arms grepped present and OK** — every
+  one also confirmed present by name in its freshly regenerated NDJSON
+  (memories-config 29 rows, autonomous-rooms 30, projects 47, settings 135,
+  image-profiles 28, embedding-profiles 37).
+- `cargo build --release`.
+- No committed fixture changed: the memories pair carried A1/A2's needs at the
+  P4.52 vintage, and the autonomous-rooms / projects / settings /
+  image-profiles / embedding-profiles families build or reuse their own. So
+  this lane invalidates NO sibling oracle.
+
+**Oracle env block for this lane** (all six regenerated at v4 `a6870c5a`,
+which was HEAD, through `harness/tools/recipe_sweep.py --run <family> --force`):
+
+```
+QT_ORACLE_MEMORIES_ROUTES=/tmp/oracle-memories-routes.ndjson
+QT_ORACLE_MEMORIES_CONFIG=/tmp/oracle-memories-config.ndjson
+QT_ORACLE_AUTONOMOUS_ROUTES=/tmp/oracle-autonomous-rooms-routes.ndjson
+QT_ORACLE_PROJECTS_ROUTES=/tmp/oracle-projects-routes.ndjson
+QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson
+QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db
+QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson
+QT_ORACLE_EP_ROUTES=/tmp/oracle-embedding-profiles-routes.ndjson
+```
+
+Versions: **core 0.0.612, harness 0.0.535**; host / web / cli / tauri / SPA
+untouched (this lane opened no `apps/web/**` file, so no `ng` gate applies).
