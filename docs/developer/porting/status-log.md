@@ -79828,3 +79828,32 @@ The group body carries `{{char}}` and `{{user}}`, and v4 renders it
 of the literal `User`; the membership leg passed `None` for the character (the
 "follows the chat" spelling); and the section moved after the reference-query
 card.
+
+### Unit 6 — the Prospero project-instructions whisper, dropped
+
+All FIVE of v4 `8f868109`'s removals in
+`services/prospero_notifications.rs`, verified individually:
+
+1. `instructions` off `ProsperoProjectContext`;
+2. the loader's `instructions:` line, REPLACED by v4's why-comment (re-whispering
+   would duplicate what the cacheable prompt now carries every turn);
+3. the whole `**Project instructions:**` block out of
+   `append_project_body_section` — including the separator condition (`if
+   description.is_some()` on the stores block loses its `|| instructions`) and the
+   return expression;
+4. the `instructions` term out of `project_has_content`;
+5. the header comment's enumeration.
+
+A tree-wide grep confirms the literal `**Project instructions:**` now appears
+NOWHERE in `crates/`, `harness/`, or `apps/web/src`.
+
+**Differential.** `post_office_prospero` regenerated at `a6870c5a`. The corpus's
+`instr-only-no-general` case KEEPS its name and becomes the retired-section
+tripwire: its project's only former content was instructions, so both the
+`combined_content` and `combined_opaque` rows must now be `""`. **Proven
+load-bearing rather than asserted** — reverting `prospero_notifications.rs` to
+its pre-commit state (with the corpus builder re-supplying the field) reddens
+exactly that row, `"Prospero opens his ledger … **Project instructions:**\n\nOnly
+instructions."` on the left against `""` on the right. `post_office_writers_tier3`
+regenerated too (21 rows, green); both NDJSONs grepped for the dropped bytes —
+zero occurrences.

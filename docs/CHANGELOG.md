@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(prospero): drop the project-instructions whisper section
+
+_Versions: core 0.0.614, harness 0.0.536._
+
+All five of v4 `8f868109`'s removals in the Prospero project-context writer:
+`instructions` leaves `ProsperoProjectContext`, the loader stops reading it (v4's
+WHY comment carried in its place), the `**Project instructions:**` block leaves
+`appendProjectBodySection` along with its separator condition and return
+expression, and the term leaves `projectHasContent`. The section is now injected
+into the cacheable system prompt every turn, so re-whispering it would only
+duplicate it in context.
+
+The `instr-only-no-general` corpus case keeps its name as the retired-section
+tripwire: a project whose only former content was instructions now has NO
+content, so the whisper must come back empty. Proven load-bearing — restoring
+v5's old block reddens that row with the whole whisper on the left and `""` on
+the right. `post_office_prospero` and `post_office_writers_tier3` regenerated at
+`a6870c5a` and grepped: the literal `**Project instructions:**` appears nowhere
+in either NDJSON, or anywhere in the tree.
+
 #### 2026-08-22 — port(prompts): Carina one-off queries carry the standing instructions
 
 _Versions: core 0.0.613._

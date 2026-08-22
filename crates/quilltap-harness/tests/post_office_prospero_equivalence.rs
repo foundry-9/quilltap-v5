@@ -67,13 +67,11 @@ fn store(
 fn proj(
     name: &str,
     description: Option<&str>,
-    instructions: Option<&str>,
     stores: Vec<ProsperoDocumentStoreInfo>,
 ) -> ProsperoProjectContext {
     ProsperoProjectContext {
         name: name.into(),
         description: description.map(str::to_string),
-        instructions: instructions.map(str::to_string),
         document_stores: stores,
     }
 }
@@ -101,7 +99,6 @@ fn proj_full() -> ProsperoProjectContext {
     proj(
         "Novel",
         Some("  A grand tale.  "),
-        Some("Keep it terse."),
         vec![
             store(
                 "mp-off",
@@ -128,22 +125,19 @@ fn combined_case(
         "full-with-general" => (Some(proj_full()), Some(general())),
         "full-no-general" => (Some(proj_full()), None),
         "desc-only-general" => (
-            Some(proj("DescOnly", Some("Only a description."), None, vec![])),
+            Some(proj("DescOnly", Some("Only a description."), vec![])),
             Some(general()),
         ),
-        "instr-only-no-general" => (
-            Some(proj(
-                "InstrOnly",
-                Some("   "),
-                Some("Only instructions."),
-                vec![],
-            )),
-            None,
-        ),
+        // P4.D103 (v4 `8f868109`): `instructions` left the whisper's context type
+        // entirely. This case keeps its name as the RETIRED-SECTION TRIPWIRE — a
+        // project whose only former content was instructions now has none at all,
+        // so the whisper must come back empty. (Proven load-bearing: restoring
+        // v5's old block reddens this row with the whole `**Project
+        // instructions:**` whisper on the left and `""` on the right.)
+        "instr-only-no-general" => (Some(proj("InstrOnly", Some("   "), vec![])), None),
         "stores-only-general" => (
             Some(proj(
                 "StoresOnly",
-                None,
                 None,
                 vec![store("mp-x", "Xeno", "database", "documents", false, true)],
             )),
@@ -153,7 +147,6 @@ fn combined_case(
             Some(proj(
                 "Ambiguous",
                 Some("x"),
-                None,
                 vec![
                     store("mp-d1", "Dup", "database", "documents", false, true),
                     store("mp-d2", "Dup", "filesystem", "documents", false, true),
@@ -161,11 +154,8 @@ fn combined_case(
             )),
             None,
         ),
-        "empty-project-with-general" => (
-            Some(proj("Empty", Some("   "), None, vec![])),
-            Some(general()),
-        ),
-        "empty-project-no-general" => (Some(proj("Empty", Some("   "), None, vec![])), None),
+        "empty-project-with-general" => (Some(proj("Empty", Some("   "), vec![])), Some(general())),
+        "empty-project-no-general" => (Some(proj("Empty", Some("   "), vec![])), None),
         other => panic!("unknown combined case {other}"),
     }
 }

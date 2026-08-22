@@ -71,7 +71,6 @@ pub struct ProsperoDocumentStoreInfo {
 pub struct ProsperoProjectContext {
     pub name: String,
     pub description: Option<String>,
-    pub instructions: Option<String>,
     /// Document stores linked to the project (official store first, then
     /// alphabetical — the loader sorts).
     pub document_stores: Vec<ProsperoDocumentStoreInfo>,
@@ -243,11 +242,10 @@ fn build_document_stores_section(stores: &[ProsperoDocumentStoreInfo]) -> Vec<St
     lines
 }
 
-/// v4 `appendProjectBodySection` — pushes description / instructions / stores in
-/// order (blank-line separated). Returns whether any body content was pushed.
+/// v4 `appendProjectBodySection` — pushes description / stores in order
+/// (blank-line separated). Returns whether any body content was pushed.
 fn append_project_body_section(lines: &mut Vec<String>, project: &ProsperoProjectContext) -> bool {
     let description = trimmed_nonempty(project.description.as_deref());
-    let instructions = trimmed_nonempty(project.instructions.as_deref());
     let stores = &project.document_stores;
 
     if let Some(description) = description {
@@ -255,22 +253,14 @@ fn append_project_body_section(lines: &mut Vec<String>, project: &ProsperoProjec
         lines.push(String::new());
         lines.push(description.to_string());
     }
-    if let Some(instructions) = instructions {
-        if description.is_some() {
-            lines.push(String::new());
-        }
-        lines.push("**Project instructions:**".to_string());
-        lines.push(String::new());
-        lines.push(instructions.to_string());
-    }
     if !stores.is_empty() {
-        if description.is_some() || instructions.is_some() {
+        if description.is_some() {
             lines.push(String::new());
         }
         lines.extend(build_document_stores_section(stores));
     }
 
-    description.is_some() || instructions.is_some() || !stores.is_empty()
+    description.is_some() || !stores.is_empty()
 }
 
 /// v4 `projectHasContent`.
@@ -278,9 +268,7 @@ fn project_has_content(project: Option<&ProsperoProjectContext>) -> bool {
     match project {
         None => false,
         Some(p) => {
-            trimmed_nonempty(p.description.as_deref()).is_some()
-                || trimmed_nonempty(p.instructions.as_deref()).is_some()
-                || !p.document_stores.is_empty()
+            trimmed_nonempty(p.description.as_deref()).is_some() || !p.document_stores.is_empty()
         }
     }
 }
@@ -896,7 +884,10 @@ pub fn load_prospero_project_context(
     Some(ProsperoProjectContext {
         name,
         description: str_field(&project, "description"),
-        instructions: str_field(&project, "instructions"),
+        // `project.instructions` is deliberately NOT part of the whisper (v4
+        // `8f868109`): it is a standing instruction injected into the cacheable
+        // system prompt every turn ([`crate::standing_instructions`]), so
+        // re-whispering it here would just duplicate it in context.
         document_stores,
     })
 }
@@ -1122,8 +1113,7 @@ mod tests {
     fn combined_empty_project_and_no_general_is_blank() {
         let empty = ProsperoProjectContext {
             name: "P".to_string(),
-            description: None,
-            instructions: Some("   ".to_string()),
+            description: Some("   ".to_string()),
             document_stores: vec![],
         };
         assert_eq!(build_combined_context_content(Some(&empty), None), "");

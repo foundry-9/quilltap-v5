@@ -81,7 +81,6 @@ const generalCases: Array<{ id: string; general: ProsperoGeneralContext }> = [
 const projFull: ProsperoProjectContext = {
   name: 'Novel',
   description: '  A grand tale.  ',
-  instructions: 'Keep it terse.',
   documentStores: [
     store('mp-off', 'Official Shelf', 'database', 'documents', true, true),
     store('mp-a', 'Alpha', 'filesystem', 'documents', false, true),
@@ -91,25 +90,26 @@ const projFull: ProsperoProjectContext = {
 const projDescOnly: ProsperoProjectContext = {
   name: 'DescOnly',
   description: 'Only a description.',
-  instructions: null,
   documentStores: [],
 };
+// P4.D103 (v4 `8f868109`): `instructions` left `ProsperoProjectContext`
+// entirely — the standing-instructions section carries it every turn now, so
+// re-whispering it here would duplicate it. This case KEEPS its name as the
+// tripwire: a project whose only former content was instructions now has NO
+// content at all, so the whisper must come back EMPTY.
 const projInstrOnly: ProsperoProjectContext = {
   name: 'InstrOnly',
   description: '   ',
-  instructions: 'Only instructions.',
   documentStores: [],
 };
 const projStoresOnly: ProsperoProjectContext = {
   name: 'StoresOnly',
   description: null,
-  instructions: null,
   documentStores: [store('mp-x', 'Xeno', 'database', 'documents', false, true)],
 };
 const projAmbiguous: ProsperoProjectContext = {
   name: 'Ambiguous',
   description: 'x',
-  instructions: null,
   documentStores: [
     store('mp-d1', 'Dup', 'database', 'documents', false, true),
     store('mp-d2', 'Dup', 'filesystem', 'documents', false, true),
@@ -118,7 +118,6 @@ const projAmbiguous: ProsperoProjectContext = {
 const projEmpty: ProsperoProjectContext = {
   name: 'Empty',
   description: '   ',
-  instructions: null,
   documentStores: [],
 };
 
