@@ -43,6 +43,12 @@ struct Row {
     dimensions: Option<i64>,
     #[serde(rename = "fetchScript")]
     fetch_script: std::collections::HashMap<String, FetchResult>,
+    #[serde(default)]
+    provider: Option<String>,
+    /// P4.D101 — the `catalogue` kind's payload: v4's real
+    /// `plugin.getEmbeddingModels()`.
+    #[serde(default)]
+    models: Option<Value>,
     #[serde(rename = "sdkResponse")]
     sdk_response: Option<Value>,
     #[serde(rename = "sdkRequestBody")]
@@ -151,6 +157,48 @@ fn embedding_wire_matches_oracle() {
                     let msg = ew::openai_error_message(&script.body, status_text(script.status));
                     assert_eq!(msg, row.error.clone().unwrap(), "{}: error", row.id);
                 }
+            }
+            // P4.D101 — NanoGPT's OpenAI-compatible /embeddings route. Same
+            // body/parse as the OpenAI path (so it reuses
+            // `parse_openai_response`), but its OWN base-url default and its
+            // own error prefix.
+            "nanogpt" => {
+                let req = ew::build_nanogpt_request(
+                    &base,
+                    &row.model,
+                    &row.input,
+                    row.dimensions,
+                    "ng-x",
+                );
+                assert_request(&req, &row.recorded[0], &row.id);
+                let script = &row.fetch_script["/embeddings"];
+                if (200..300).contains(&script.status) {
+                    let parsed = ew::parse_openai_response(&script.body).unwrap();
+                    let usage = parsed.usage.as_ref().map(openai_usage);
+                    let got = result_value(&parsed, &row.model, usage);
+                    assert_eq!(got, row.result.clone().unwrap(), "{}: result", row.id);
+                } else {
+                    let msg =
+                        ew::nanogpt_error_message(&script.body, status_text(script.status), false);
+                    assert_eq!(msg, row.error.clone().unwrap(), "{}: error", row.id);
+                }
+            }
+            // P4.D101 — v4's REAL plugin catalogue vs v5's static arm, so the
+            // transcription is pinned rather than hand-trusted. v4 emits
+            // `{id, name, dimensions, description}` per row; v5 omits
+            // `dimensions` only where the plugin leaves it undefined, which
+            // NanoGPT never does.
+            "catalogue" => {
+                let provider = row.provider.clone().unwrap();
+                let got = Value::Array(
+                    quilltap_core::api::embedding_profiles::embedding_models_for(&provider),
+                );
+                assert_eq!(
+                    got,
+                    row.models.clone().unwrap(),
+                    "{}: embedding catalogue for {provider}",
+                    row.id
+                );
             }
             "ollama" => {
                 if let Some(err) = ew::ollama_empty_input_error(&row.input) {

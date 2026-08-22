@@ -56,6 +56,72 @@ The discrepancy is **pre-existing and out of this lane's scope** — realigning 
 would churn every provider family. NanoGPT is therefore APPENDED on both sides,
 which is the only choice that leaves all nine pre-existing rows byte-identical.
 
+### Unit 6 — the embeddings arms ✅
+
+**The provider list needed NO code.** `embedding_provider_ids()` reads
+`capabilities.embeddings` off the manifest registry, so NANOGPT joined the
+moment unit 1 landed. Position matches the Shared contract (before the appended
+BUILTIN). A unit assertion pins it rather than leaving it implicit.
+
+**The wire** is the OpenAI-compatible `/embeddings` route
+(`build_nanogpt_request`) with two real differences from the OpenAI path: the
+base url defaults to `https://nano-gpt.com/api/v1`, and the request carries a
+`User-Agent` — v4's NanoGPT embedding fetches set `getQuilltapUserAgent()` on
+BOTH the single and batch routes, where v4's single-embedding OpenAI path omits
+it entirely (v5 already had the `with_ua` seam for exactly this). Body key order
+is v4's: `model`, `input`, then `dimensions` when set. The parse reuses
+`parse_openai_response` — same `data[0].embedding` read — and, like OpenAI,
+returns the REQUEST model rather than anything off the response.
+
+⚠ **The differential caught a real defect that inspection missed.** The first
+implementation wrapped `openai_error_message` to build NanoGPT's sentence, but
+that helper already carries its own prefix, so v5 produced
+`NanoGPT embedding failed: OpenAI embedding failed: Invalid API key` against
+v4's `NanoGPT embedding failed: Invalid API key`. **Fixed at the root, not the
+call site:** the bare `error.error?.message || statusText` extraction is now a
+shared `embedding_error_detail`, so neither provider's prefix can absorb the
+other's. This is the whole argument for the differential discipline in one
+finding — the code read correctly and was wrong.
+
+**The catalogue is PINNED, not hand-trusted.** The order called it a "manual
+arm", and the route-level list-models differential genuinely cannot cover it
+(v4's plugin registry is EMPTY in the jest sandbox — the documented reason those
+arms are Rust-side). So `embedding_wire_equivalence` gained a `catalogue` row
+that drives v4's REAL `plugin.getEmbeddingModels()`. `embedding_models_for` is
+now `pub` for that reason, documented at the definition.
+
+**Free retro-coverage:** the same row shape extends to the other four providers
+at no cost, so OPENAI / OLLAMA / OPENROUTER / BUILTIN are byte-pinned against v4
+too, where previously they were only asserted BY COUNT (`len() == 3`, `== 4`,
+`== 7`). All four measured correct — but they were unpinned, and a v4 wording
+change would have gone unnoticed. Now it reddens.
+
+**Mutation-proven:** a one-word description change (`with an 8K` → `with a 8K`)
+and a dropped model row each redden `nanogpt-embedding-catalogue: embedding
+catalogue for NANOGPT`.
+
+**The `fetch-models` refusal is widened, not discharged** (the order permits
+either; it is not trivially dischargeable). The note now names NanoGPT and
+records exactly what the live verb owes: `GET /api/v1/embedding-models` with
+**fallback-not-throw** on a non-ok status, an empty list, OR a thrown fetch —
+the deliberate OPPOSITE of NanoGPT's image listing, which throws. Until it
+lands, `list-models` serves precisely what v4's fallback would return, so a
+refused fetch costs freshness and nothing else.
+
+**Corpus:** embedding-wire 12 → **23** rows (6 nanogpt wire + 5 catalogue).
+
+**Regen recipe** (jest — needs the `/tmp` mirror; jest ignores `.claude/`):
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d101-4cb1035e; N=~/.nvm/versions/node/v24.13.1/bin; W=<worktree>
+TMPO=/tmp/p4d101-omirror; rm -rf $TMPO; mkdir -p $TMPO/cases
+cp $W/harness/oracle/cases/embedding-wire.test.ts $TMPO/cases/
+cd $PIN && QT_ORACLE_OUT=/tmp/p4d101-oracle-embedding-wire.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PIN" --roots "$TMPO/cases" -- embedding-wire
+cd $W && QT_ORACLE_EMBEDDING_WIRE=/tmp/p4d101-oracle-embedding-wire.ndjson \
+  cargo test -p quilltap-harness --test embedding_wire_equivalence
+```
+
 ### Unit 3 — the reasoning dialects + v4 bug 87's echo guard ✅
 
 `Flavor::NanoGpt` in the chat-completions SSE decoder, the non-streaming twin in

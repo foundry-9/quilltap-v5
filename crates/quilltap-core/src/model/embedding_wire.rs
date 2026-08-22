@@ -114,17 +114,27 @@ pub fn parse_openai_response(body: &Value) -> Result<WireEmbedding, String> {
 /// v4 OpenAI error message: `error.error?.message || statusText` (the error body
 /// JSON is passed in; `status_text` is the HTTP status text).
 pub fn openai_error_message(error_body: &Value, status_text: &str) -> String {
+    format!(
+        "OpenAI embedding failed: {}",
+        embedding_error_detail(error_body, status_text)
+    )
+}
+
+/// The bare `error.error?.message || statusText` detail every OpenAI-shaped
+/// embedding route extracts, WITHOUT any provider prefix. Factored out at
+/// P4.D101: NanoGPT wraps the same detail in its own sentence, and calling
+/// [`openai_error_message`] for it produced the doubled
+/// `NanoGPT embedding failed: OpenAI embedding failed: …` that the
+/// `embedding_wire` differential caught.
+fn embedding_error_detail<'a>(error_body: &'a Value, status_text: &'a str) -> &'a str {
     let msg = error_body
         .get("error")
         .and_then(|e| e.get("message"))
         .and_then(Value::as_str);
-    format!(
-        "OpenAI embedding failed: {}",
-        match msg {
-            Some(m) if !m.is_empty() => m,
-            _ => status_text,
-        }
-    )
+    match msg {
+        Some(m) if !m.is_empty() => m,
+        _ => status_text,
+    }
 }
 
 // ============================================================================
@@ -313,6 +323,63 @@ impl NumCtxCache {
             self.cache.insert(key, num_ctx);
         }
         num_ctx
+    }
+}
+
+// ============================================================================
+// NanoGPT (P4.D101 — v4 `781fc420`)
+// ============================================================================
+
+/// v4 NanoGPT `generateEmbedding` request: `POST {base}/embeddings`, JSON
+/// `{model, input}` (+ `dimensions` only when set) — the same OpenAI-compatible
+/// body as [`build_openai_request`], and the same key order, since v4 builds the
+/// payload `{model, input}` then conditionally adds `dimensions`.
+///
+/// Two differences from the OpenAI path, both real: the base url defaults to
+/// NanoGPT's gateway, and the request carries a `User-Agent` (v4's NanoGPT
+/// embedding fetches set `getQuilltapUserAgent()` on BOTH the single and batch
+/// routes, where v4's single-embedding OpenAI path omits it entirely). The
+/// header is appended by the driver's `send(.., with_ua = true)`, so it is not
+/// built here.
+pub fn build_nanogpt_request(
+    base_url: &str,
+    model: &str,
+    input: &str,
+    dimensions: Option<i64>,
+    api_key: &str,
+) -> BuiltRequest {
+    let base = if base_url.is_empty() {
+        "https://nano-gpt.com/api/v1"
+    } else {
+        base_url
+    };
+    let mut body = serde_json::Map::new();
+    body.insert("model".into(), json!(model));
+    body.insert("input".into(), json!(input));
+    if let Some(d) = dimensions {
+        body.insert("dimensions".into(), json!(d));
+    }
+    BuiltRequest {
+        method: "POST".into(),
+        url: format!("{base}/embeddings"),
+        headers: vec![
+            ("Content-Type".into(), "application/json".into()),
+            ("Authorization".into(), format!("Bearer {api_key}")),
+        ],
+        body: Value::Object(body),
+        attachment_results: Default::default(),
+    }
+}
+
+/// v4 NanoGPT error sentence: the same `error.error?.message || statusText`
+/// extraction the OpenAI path uses, wrapped in NanoGPT's own prefix
+/// (`NanoGPT embedding failed: …`; the batch route says `batch embedding`).
+pub fn nanogpt_error_message(error_body: &Value, status_text: &str, batch: bool) -> String {
+    let inner = embedding_error_detail(error_body, status_text);
+    if batch {
+        format!("NanoGPT batch embedding failed: {inner}")
+    } else {
+        format!("NanoGPT embedding failed: {inner}")
     }
 }
 

@@ -864,7 +864,12 @@ fn embedding_provider_ids() -> Vec<&'static str> {
 /// Each model is `{id, name, dimensions?, description?}` — `dimensions` is
 /// OMITTED where the plugin leaves it undefined (BUILTIN's sole model). Unknown
 /// provider → `[]`.
-fn embedding_models_for(provider: &str) -> Vec<Value> {
+///
+/// `pub` so `embedding_wire_equivalence` can pin it against v4's REAL
+/// `plugin.getEmbeddingModels()` (P4.D101). The route-level list-models
+/// differential cannot: v4's plugin registry is EMPTY in the jest sandbox, which
+/// is why these arms were Rust-only until now.
+pub fn embedding_models_for(provider: &str) -> Vec<Value> {
     let model = |id: &str, name: &str, dims: Option<i64>, desc: &str| -> Value {
         let mut m = Map::new();
         m.insert("id".into(), Value::String(id.into()));
@@ -964,6 +969,54 @@ fn embedding_models_for(provider: &str) -> Vec<Value> {
                 "Voyage Code 2",
                 Some(1536),
                 "Voyage AI embedding model optimized for code",
+            ),
+        ],
+        // P4.D101 (v4 `781fc420`): NanoGPT's curated embedding catalogue,
+        // byte-transcribed from `plugins/dist/qtap-plugin-nanogpt/models.ts`
+        // (`STATIC_EMBEDDING_MODELS`), mirrored from its `/embedding-models`
+        // listing. Every row carries dimensions.
+        "NANOGPT" => vec![
+            model(
+                "text-embedding-3-small",
+                "Text Embedding 3 Small",
+                Some(1536),
+                "OpenAI, routed through NanoGPT. Cost-effective default; supports dimension reduction.",
+            ),
+            model(
+                "text-embedding-3-large",
+                "Text Embedding 3 Large",
+                Some(3072),
+                "OpenAI, routed through NanoGPT. Highest accuracy; supports dimension reduction.",
+            ),
+            model(
+                "BAAI/bge-m3",
+                "BGE-M3",
+                Some(1024),
+                "Multilingual BAAI model with an 8K-token input window.",
+            ),
+            model(
+                "jina-embeddings-v3",
+                "Jina Embeddings v3",
+                Some(1024),
+                "Multilingual Jina model with an 8K-token input window.",
+            ),
+            model(
+                "Qwen/Qwen3-Embedding-0.6B",
+                "Qwen3 Embedding 0.6B",
+                Some(1024),
+                "Compact Qwen3 embedder with an 8K-token input window.",
+            ),
+            model(
+                "qwen/qwen3-embedding-8b",
+                "Qwen3 Embedding 8B",
+                Some(4096),
+                "Large Qwen3 embedder with a 32K-token input window.",
+            ),
+            model(
+                "gemini-embedding-001",
+                "Gemini Embedding 001",
+                Some(3072),
+                "Google embedding model routed through NanoGPT.",
             ),
         ],
         "BUILTIN" => vec![{
@@ -1071,6 +1124,15 @@ async fn cache_models(db: &Db, provider: &str, models: &[Value]) {
 /// (`getAvailableModels`). Refused via the family `not_available`, matching the
 /// standing `imageProfileListModels`/`ValidateKey` precedent and the P4.D33
 /// OpenRouter-SDK pagination bank.
+///
+/// **P4.D101 widens the refusal to NANOGPT.** NanoGPT's discovery is
+/// `GET /api/v1/embedding-models`, and — unlike its image listing, which THROWS
+/// on a non-ok response — it falls back to the curated static ids on a non-ok
+/// status, an empty list, OR a thrown fetch, a deliberate asymmetry in v4's own
+/// plugin. That fallback-not-throw shape is what this arm owes when the live
+/// verb lands; until then the catalogue served by `list-models` is exactly what
+/// v4's fallback would return, so a refused fetch costs the operator nothing but
+/// freshness.
 pub fn embedding_profile_fetch_models() -> Response {
     not_available("fetch-models")
 }
@@ -1086,6 +1148,9 @@ mod tests {
         assert!(ids.contains(&"OPENAI"));
         assert!(ids.contains(&"OPENROUTER"));
         assert!(ids.contains(&"OLLAMA"));
+        // P4.D101 — NANOGPT declares `embeddings`, so it joins off the manifest
+        // with no code change here; BUILTIN stays last (appended).
+        assert!(ids.contains(&"NANOGPT"));
         assert_eq!(*ids.last().unwrap(), "BUILTIN");
         // No non-embedding provider leaks in.
         assert!(!ids.contains(&"ANTHROPIC"));
@@ -1108,6 +1173,13 @@ mod tests {
         assert_eq!(builtin.len(), 1);
         assert_eq!(builtin[0]["id"], json!("tfidf-bm25-v1"));
         assert!(builtin[0].get("dimensions").is_none());
+        // NANOGPT: seven models, every one carrying dimensions. The BYTES of
+        // all five catalogues are pinned against v4's real
+        // `plugin.getEmbeddingModels()` by `embedding_wire_equivalence`'s
+        // `catalogue` rows (P4.D101); this stays a cheap shape guard.
+        let nanogpt = embedding_models_for("NANOGPT");
+        assert_eq!(nanogpt.len(), 7);
+        assert!(nanogpt.iter().all(|m| m.get("dimensions").is_some()));
         // Unknown provider → empty.
         assert!(embedding_models_for("NOPE").is_empty());
     }

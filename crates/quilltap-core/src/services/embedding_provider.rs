@@ -102,10 +102,11 @@ use crate::model::embedding::{
     EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
 };
 use crate::model::embedding_wire::{
-    build_ollama_embed_request, build_ollama_legacy_request, build_ollama_show_request,
-    build_openai_request, derive_num_ctx, ollama_empty_input_error, ollama_error_message,
-    openai_error_message, parse_ollama_embed_response, parse_ollama_legacy_response,
-    parse_openai_response, parse_openrouter_response, NumCtxCache, WireEmbedding, NUM_CTX_FALLBACK,
+    build_nanogpt_request, build_ollama_embed_request, build_ollama_legacy_request,
+    build_ollama_show_request, build_openai_request, derive_num_ctx, nanogpt_error_message,
+    ollama_empty_input_error, ollama_error_message, openai_error_message,
+    parse_ollama_embed_response, parse_ollama_legacy_response, parse_openai_response,
+    parse_openrouter_response, NumCtxCache, WireEmbedding, NUM_CTX_FALLBACK,
 };
 use crate::model::request_builder::BuiltRequest;
 use crate::model::wire::{WireResponse, WireTransport};
@@ -307,6 +308,10 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
                 self.embed_openrouter(&profile.model_name, text, dimensions, &api_key)
                     .await?
             }
+            "NANOGPT" => {
+                self.embed_nanogpt(base, &profile.model_name, text, dimensions, &api_key)
+                    .await?
+            }
             // v4: a registered embeddings-capable plugin without a
             // createEmbeddingProvider factory (unreachable for the built-in
             // manifest set — only the three above declare embeddings).
@@ -371,6 +376,38 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
             serde_json::from_str(&resp.body).map_err(|e| ApiError::Plain(e.to_string()))?;
         let mut wire = parse_openai_response(&body).map_err(ApiError::Plain)?;
         // v4 returns the REQUEST model, not anything off the response.
+        wire.model = model.to_string();
+        Ok(wire)
+    }
+
+    /// v4 NanoGPT `generateEmbedding` (P4.D101): the OpenAI-compatible
+    /// `/embeddings` route with a User-Agent, NanoGPT's own error sentence, and
+    /// v4's `data.data[0].embedding` read — the same parse as the OpenAI path,
+    /// so it reuses `parse_openai_response`.
+    ///
+    /// Like OpenAI, v4 returns the REQUEST model rather than anything off the
+    /// response body.
+    async fn embed_nanogpt(
+        &self,
+        base: &str,
+        model: &str,
+        text: &str,
+        dimensions: Option<i64>,
+        api_key: &str,
+    ) -> Result<WireEmbedding, ApiError> {
+        let req = build_nanogpt_request(base, model, text, dimensions, api_key);
+        let resp = self.send(&req, true).await.map_err(ApiError::Plain)?;
+        if !resp.ok() {
+            let error_body = parse_json_or_empty(&resp.body);
+            return Err(ApiError::Plain(nanogpt_error_message(
+                &error_body,
+                &resp.status_text,
+                false,
+            )));
+        }
+        let body: Value =
+            serde_json::from_str(&resp.body).map_err(|e| ApiError::Plain(e.to_string()))?;
+        let mut wire = parse_openai_response(&body).map_err(ApiError::Plain)?;
         wire.model = model.to_string();
         Ok(wire)
     }

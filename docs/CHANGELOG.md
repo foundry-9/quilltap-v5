@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(providers): the NanoGPT embeddings arms (v4 `781fc420`, P4.D101)
+
+_Versions: core 0.0.607, harness 0.0.530._
+
+NANOGPT joins the embedding-profile provider list with no code change — the list
+is manifest-driven off `capabilities.embeddings`, so the manifest landing was
+enough; a unit assertion pins that it is really there and that BUILTIN stays
+last.
+
+The wire is the OpenAI-compatible `/embeddings` route with two real differences:
+the base url defaults to NanoGPT's gateway, and the request carries a
+`User-Agent` on both the single and batch routes where v4's single-embedding
+OpenAI path omits it entirely. The runtime dispatch gains its `NANOGPT` branch,
+returning the REQUEST model like the OpenAI path does.
+
+**The differential caught a defect inspection would not have.** The first
+implementation built NanoGPT's error sentence by wrapping `openai_error_message`,
+which already carries its own prefix — producing `NanoGPT embedding failed:
+OpenAI embedding failed: Invalid API key`. Fixed at the root: the bare
+`error.error?.message || statusText` extraction is now a shared
+`embedding_error_detail`, and neither provider's prefix can absorb the other's.
+
+The seven-model catalogue is transcribed from `models.ts`, and — better than the
+existing pattern — it is PINNED: `embedding_wire_equivalence` gained a
+`catalogue` row driving v4's real `plugin.getEmbeddingModels()`. Extending the
+same row to the other four providers was free, so OPENAI / OLLAMA / OPENROUTER /
+BUILTIN are now byte-pinned against v4 too, where they had only been asserted by
+count. All four were already correct. Mutation-proven: a one-word description
+change or a dropped model row reddens the catalogue arm by name.
+
+The `fetch-models` refusal note widens to name NanoGPT and record what the live
+verb will owe — `GET /api/v1/embedding-models` with fallback-not-throw on a
+non-ok status, an empty list, or a thrown fetch, which is the deliberate
+opposite of NanoGPT's image listing.
+
+Corpus: embedding-wire 12 → 23 rows.
+
 #### 2026-08-22 — port(providers): the NanoGPT reasoning dialects + bug 87's echo guard (v4 `d5830439` + `4cb1035e`, P4.D101)
 
 _Versions: core 0.0.606, harness 0.0.529._

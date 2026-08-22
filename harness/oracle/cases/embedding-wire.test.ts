@@ -2,7 +2,7 @@
  * @jest-environment node
  *
  * W4.7e `embedding_wire_equivalence` ORACLE — drives v4's REAL plugin embedding
- * providers (`plugins/dist/qtap-plugin-{openai,ollama,openrouter}/
+ * providers (`plugins/dist/qtap-plugin-{openai,ollama,openrouter,nanogpt}/
  * embedding-provider.ts`) with `global.fetch` / the `@openrouter/sdk` mocked to
  * committed payloads, recording each provider's built request(s) (method/url/body)
  * and the parsed result (or thrown error message). The Rust `model::embedding_wire`
@@ -95,9 +95,22 @@ async function driveOpenRouter(c: Case) {
   }
 }
 
+async function driveNanoGPT(c: Case) {
+  const { NanoGPTEmbeddingProvider } = await import(
+    '@/plugins/dist/qtap-plugin-nanogpt/embedding-provider'
+  );
+  const p = new NanoGPTEmbeddingProvider(c.baseUrl || undefined);
+  try {
+    const r = await p.generateEmbedding(c.input, c.model, c.apiKey || 'ng-x', c.dimensions ? { dimensions: c.dimensions } : undefined);
+    return { result: r };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 type Case = {
   id: string;
-  kind: 'openai' | 'ollama' | 'openrouter';
+  kind: 'openai' | 'ollama' | 'openrouter' | 'nanogpt';
   baseUrl?: string;
   model: string;
   input: string;
@@ -215,6 +228,58 @@ const cases: Case[] = [
     input: 'x',
     sdkResponse: '__STRING__:overloaded',
   },
+  // P4.D101 — NanoGPT's OpenAI-compatible /embeddings route, driven through
+  // v4's REAL NanoGPTEmbeddingProvider.
+  {
+    id: 'nanogpt-basic',
+    kind: 'nanogpt',
+    model: 'text-embedding-3-small',
+    input: 'hello nano',
+    fetchScript: { '/embeddings': { status: 200, body: { data: [{ embedding: [0.5, -0.25, 0.125] }], usage: { prompt_tokens: 3, total_tokens: 3 } } } },
+  },
+  {
+    // `dimensions` rides the body only when set.
+    id: 'nanogpt-dimensions',
+    kind: 'nanogpt',
+    model: 'text-embedding-3-large',
+    input: 'sized',
+    dimensions: 256,
+    fetchScript: { '/embeddings': { status: 200, body: { data: [{ embedding: [1, 2] }], usage: { prompt_tokens: 1, total_tokens: 1 } } } },
+  },
+  {
+    // A custom base url replaces the gateway default.
+    id: 'nanogpt-custom-base',
+    kind: 'nanogpt',
+    baseUrl: 'https://proxy.example/v1',
+    model: 'BAAI/bge-m3',
+    input: 'proxied',
+    fetchScript: { '/embeddings': { status: 200, body: { data: [{ embedding: [0.1] }] } } },
+  },
+  {
+    // The error sentence: `NanoGPT embedding failed: <error.error.message>`.
+    id: 'nanogpt-error-message',
+    kind: 'nanogpt',
+    model: 'text-embedding-3-small',
+    input: 'boom',
+    fetchScript: { '/embeddings': { status: 401, body: { error: { message: 'Invalid API key' } } } },
+  },
+  {
+    // No `error.message` in the body → falls back to the HTTP statusText.
+    id: 'nanogpt-error-statustext',
+    kind: 'nanogpt',
+    model: 'text-embedding-3-small',
+    input: 'boom',
+    fetchScript: { '/embeddings': { status: 500, body: {} } },
+  },
+  {
+    // usage absent → the result carries no usage block.
+    id: 'nanogpt-no-usage',
+    kind: 'nanogpt',
+    model: 'gemini-embedding-001',
+    input: 'bare',
+    fetchScript: { '/embeddings': { status: 200, body: { data: [{ embedding: [0.9, 0.8] }] } } },
+  },
+
 ];
 
 async function run() {
@@ -235,6 +300,7 @@ async function run() {
     let out: { result?: unknown; error?: string };
     if (c.kind === 'openai') out = await driveOpenAI(c);
     else if (c.kind === 'ollama') out = await driveOllama(c);
+    else if (c.kind === 'nanogpt') out = await driveNanoGPT(c);
     else out = await driveOpenRouter(c);
 
     rows.push({
@@ -250,6 +316,36 @@ async function run() {
       recorded,
       ...out,
     });
+  }
+
+  // P4.D101 — the CATALOGUE row: v4's real plugin `getEmbeddingModels()`, so
+  // v5's `embedding_models_for("NANOGPT")` is a pinned transcription rather
+  // than a hand-copy that rots on v4's next model. (The route-level
+  // list-models differential cannot cover this: v4's registry is empty in the
+  // jest sandbox, which is why those arms are Rust-side today.)
+  for (const [dir, provider] of [
+    ['qtap-plugin-nanogpt', 'NANOGPT'],
+    ['qtap-plugin-openai', 'OPENAI'],
+    ['qtap-plugin-ollama', 'OLLAMA'],
+    ['qtap-plugin-openrouter', 'OPENROUTER'],
+    ['qtap-plugin-builtin-embeddings', 'BUILTIN'],
+  ] as const) {
+    const { plugin } = await import(`@/plugins/dist/${dir}/index`);
+    rows.push({
+      id: `${provider.toLowerCase()}-embedding-catalogue`,
+      kind: 'catalogue',
+      provider,
+      models: plugin.getEmbeddingModels ? plugin.getEmbeddingModels() : null,
+      // The shared row shape, so one Rust struct still parses every line.
+      baseUrl: null,
+      model: '',
+      input: '',
+      dimensions: null,
+      fetchScript: {},
+      sdkResponse: null,
+      sdkRequestBody: null,
+      recorded: [],
+    } as never);
   }
 
   const out = process.env.QT_ORACLE_OUT;
