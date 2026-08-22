@@ -78156,3 +78156,46 @@ argument, each fail the wiring case with `expected 'Failed to generate image' to
 be 'No image profile is configured'`. Each layer is pinned on its own.
 
 Gate: SPA 333 files / 4,947; `npm run build` clean. SPA → 0.5.531.
+
+### Unit 4 — the finding row, and the Tier-2 mirror measured
+
+`dogfood-findings.md` row #99 moves from "NO v5 CHANGE — FILED UPSTREAM as v4
+Bug 84" to **FIXED**, recording both halves (v4's one-site resolver; v5's
+two-layer version and why a render-site-only fix would have been inert), the
+retired pin, v4's own correction of the filing (one `imageProfileId` feeds both
+the tool slate and the executor, so the recorded "offered-but-refused" repro is
+not reachable that way — the frame shape, which is all the defect turns on, is
+identical either way), and the 💸 live look owed. The `:584-595` standing-notes
+paragraphs are left untouched per the order — they are lessons, not state.
+
+**Tier 2 (the `docs/v4/` mirror refresh) is a measured NO-OP, not a deferral.**
+`d9c98cf2` touched `docs/developer/bugs.md`, the bug-84 filing doc, and
+`help/image-generation-profiles.md`. The mirror carries none of the three:
+`docs/v4/developer/bugs/` holds only `fixed/`, there is no
+`docs/v4/developer/bugs.md`, and `docs/v4/help/` holds only
+`database-protection.md`. Nothing to refresh.
+
+### Tier 3 — the loud deferral
+
+💸 **A live failed-`generate_image` look joins the standing dogfood queue** —
+the notice AND the toast carrying the provider's real sentence, on a chat whose
+seats resolve no image profile. Deferred as the order directs: no existing e2e
+beat covers the notice at all, and forcing a live tool failure deterministically
+needs a mock seam this lane must not build. Nothing is stubbed; the two layers
+are pinned at unit level and pinned TOGETHER by the frame → reducer → reporter →
+notice case, and both mutations were run.
+
+### Lane summary
+
+**Every Tier-1 deliverable landed; Tier 2 measured a no-op; Tier 3 deferred
+loud.** No `crates/**` or `harness/**` file was touched (v5's server already
+emits the sibling `error`), `core-contract.ts` was not edited (P4.D98 owns it
+and no edit was needed — `ToolResultFrame` already declares `error?: string`),
+and `chat-composer.ts` was not touched (the notice interface did not need to
+widen). The second `toolResult` consumer at `salon-conversation.ts:833-845`
+(document tools) and the four other `'Failed to generate image'` strings on the
+dialog/page surfaces are untouched — different surfaces, not bug 84.
+
+Gate: SPA `npm test` 333 files / 4,947 passed (was 332 / 4,937 at lane start —
++1 file, +10 cases: 6 resolver parity, 2 reducer, 2 salon); `npm run build`
+clean. No e2e spec changed, so no Playwright run. SPA 0.5.528 → **0.5.531**.

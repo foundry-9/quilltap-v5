@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): finding #99 is fixed — v4 at `d9c98cf2`, v5 in P4.D99
+
+_Docs-only change._
+
+Row #99 moves from "NO v5 CHANGE — FILED UPSTREAM as v4 Bug 84" to FIXED,
+recording both halves: v4's single resolver at the render site, and v5's
+two-layer version (the reducer had to carry the sibling `error` before the
+vertical could read it, so a render-site-only fix would have been inert). It
+also carries v4's own correction of the filing — one `imageProfileId` feeds
+both the tool slate and the executor, so the recorded "offered-but-refused"
+repro is not reachable that way, though the frame shape the defect turns on
+is identical either way — and notes the live look owed to the dogfood queue.
+
+The standing-notes paragraphs the finding earned (the dead-observer lesson,
+and "a field the server carries on purpose is worth grepping for on the
+client") are left untouched: they are lessons, not state.
+
+The Tier-2 `docs/v4/` mirror refresh is a measured no-op. `d9c98cf2` touched
+`docs/developer/bugs.md`, the bug-84 filing doc, and
+`help/image-generation-profiles.md`; the mirror carries none of the three
+(`docs/v4/developer/bugs/` holds only `fixed/`, and `docs/v4/help/` holds
+only `database-protection.md`), so there is nothing to refresh.
+
 #### 2026-08-22 — fix(salon): render the failing tool's own sentence in the notice and the toast (bug 84)
 
 _Versions: SPA 0.5.531._
