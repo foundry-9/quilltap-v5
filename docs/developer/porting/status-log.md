@@ -80458,3 +80458,69 @@ label row after the label.
 
 No call site migrates in this unit — the sweep is unit 2. `npm test`
 filtered: 8 + 13 green.
+
+### Unit 2 — the migration sweep across every existing v5 prompt editor
+
+v4 `a6870c5a`'s call-site sweep, mirrored onto v5's surfaces. Migrated to
+`qt-prompt-field-label` over `PROMPT_FIELD_HINTS`:
+
+| v5 file | fields |
+|---|---|
+| `screens/characters/edit/details-tab.ts` | identity, description, manifesto, personality, firstMessage, exampleDialogues, systemPrompt (all `optional`) |
+| `screens/characters/new/new-character.ts` | the same seven plus the singular `scenario`; the disabled "Import Template" control moves into the label row's projection slot (v4's `actions`) |
+| `screens/characters/edit/prompt-modal.ts` | Content — `label="Content"` `required`, helper = the shared systemPrompt sentence + v4's Markdown/placeholder suffix |
+| `screens/settings/templates/template-form-modal.ts` | LLM Prompt — `label="LLM Prompt"` `required`, helper = the shared roleplayTemplatePrompt sentence + v4's placeholder suffix |
+| `screens/prospero/cards/project-settings-card.ts` | Project Instructions, NO `optional` (v4 `SettingsTab.tsx`) |
+| `screens/characters/edit/appearance-tab.ts` | ONE `physicalDescription` note above all five prompt variants (v4 `DescriptionsTab.tsx:216-218`, "attached once here rather than repeated per field") |
+
+Every replaced hand-rolled label/helper is DELETED, not shadowed.
+
+**The convergence is the point.** v4's commit message says so outright: the
+create and edit forms had already drifted apart in their duplicated hint
+copy. v5 had transcribed BOTH drifted copies faithfully (identity and
+description differed between `details-tab` and `new-character` in exactly
+v4's old way), so the sweep closes a real v5 divergence pair as a
+side-effect of matching v4.
+
+**The scenarios block keeps its custom header** — v4 deliberately did not put
+`PromptFieldLabel` there (the "+ Add Scenario" control and the array editor
+below it are not a labelled field). It gains only what `a6870c5a` gave it:
+"— the stage, never the actor" folded into the helper, and a `Written as:`
+line drawn from `PROMPT_FIELD_HINTS.scenario.example`. **Fixed on the way (a
+pre-existing v5 gap, unrelated to this commit):** v5's helper had dropped
+v4's "Stored in the vault's Scenarios/ folder." clause; v5 does store them
+there (`db::scenarios::SCENARIOS_FOLDER`), so the clause is restored and the
+whole sentence now matches v4 byte-for-byte.
+
+**One Angular-idiom addition:** `optional` and `required` gained
+`transform: booleanAttribute` so call sites write the BARE attribute exactly
+as v4's JSX writes the bare prop. Without it Angular types a bare attribute
+as `string` and the build fails — which it did, loudly, on the first sweep
+build. Pinned by its own spec case.
+
+**The pin** is `screens/prompt-field-migration.spec.ts`, over the real
+rendered DOM of each migrated surface rather than over source text:
+
+- every migrated header's label/helper/example equals the hints-table entry
+  (edit: seven; create: eight; the two suffixed surfaces compared against
+  `hint.helper + suffix`);
+- **CONVERGENCE**: create and edit render byte-identical headers for their
+  seven shared fields;
+- **no survivors**: none of the eleven retired sentences appears in any
+  migrated surface's rendered text;
+- the appearance tab carries EXACTLY ONE label host;
+- the scenarios block carries NO `qt-prompt-field-label` and renders v4's two
+  paragraphs.
+
+Mutation-proven: restoring one hand-rolled `manifesto` helper in
+`details-tab` reddened both the field assertion and the convergence
+assertion (2 failed / 7 passed); reverted green.
+
+**Deferred loud, unchanged:** the roleplay-template modal's "Draft
+formatting instructions" button stays a named deferral, so nothing is
+projected into that label row's actions slot where v4 puts the button; the
+create page's "Import Template" stays disabled. Both are recorded at their
+call sites.
+
+SPA gate for the unit: `npm test` **341 files / 5,048** (was 340 / 5,038),
+`npm run build` clean.

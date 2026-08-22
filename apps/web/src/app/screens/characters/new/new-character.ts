@@ -7,6 +7,8 @@ import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import { fetchConnectionProfiles } from '../characters.api';
 
 /** The CREATE page's form (v4 `NewCharacterView.tsx` `formData`). */
@@ -61,11 +63,17 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
  * use the shared `qt-markdown-field` (v4's `MarkdownLexicalEditor`); each keeps
  * the same `setField` string contract. Copy + `qt-*` classes carry over
  * verbatim.
+ *
+ * Every prompt field's label + helper is the shared `qt-prompt-field-label`
+ * over `PROMPT_FIELD_HINTS` (v4 `a6870c5a`), which is what CONVERGES this
+ * form's hint text with the edit form's — the two had drifted apart in v4 and
+ * v5 transcribed both drifted copies faithfully. The disabled "Import
+ * Template" control rides the label row's projection slot (v4's `actions`).
  */
 @Component({
   selector: 'qt-new-character',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, MarkdownField],
+  imports: [RouterLink, Icon, MarkdownField, PromptFieldLabel],
   template: `
     <div class="qt-page-container">
       <div class="mb-8">
@@ -120,11 +128,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Identity (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            What strangers know about the character on sight or by reputation &mdash; name, station,
-            occupation, public reputation. The shallow first impression.
-          </p>
+          <qt-prompt-field-label [hint]="hints.identity" optional htmlFor="identity" />
           <qt-markdown-field
             ariaLabel="Identity"
             minHeight="6rem"
@@ -134,11 +138,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Description (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            How acquaintances perceive the character &mdash; behaviour, mannerisms, frequent verbal
-            patterns. Not physical appearance (that lives in physical descriptions).
-          </p>
+          <qt-prompt-field-label [hint]="hints.description" optional htmlFor="description" />
           <qt-markdown-field
             ariaLabel="Description"
             minHeight="8rem"
@@ -148,11 +148,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Manifesto (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            The foundational tenets of this character &mdash; the basic truths that anchor
-            everything else. What this character is, at root.
-          </p>
+          <qt-prompt-field-label [hint]="hints.manifesto" optional htmlFor="manifesto" />
           <qt-markdown-field
             ariaLabel="Manifesto"
             minHeight="8rem"
@@ -162,11 +158,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Personality (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            What the character knows about themselves &mdash; inner drivers of speech and behaviour,
-            motivations, beliefs.
-          </p>
+          <qt-prompt-field-label [hint]="hints.personality" optional htmlFor="personality" />
           <qt-markdown-field
             ariaLabel="Personality"
             minHeight="8rem"
@@ -176,10 +168,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Scenario (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            Describe the setting and context for conversations.
-          </p>
+          <qt-prompt-field-label [hint]="hints.scenario" optional htmlFor="scenario" />
           <qt-markdown-field
             ariaLabel="Scenario"
             minHeight="8rem"
@@ -189,10 +178,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">First Message (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            The character&rsquo;s opening message to start conversations.
-          </p>
+          <qt-prompt-field-label [hint]="hints.firstMessage" optional htmlFor="firstMessage" />
           <qt-markdown-field
             ariaLabel="First Message"
             minHeight="6rem"
@@ -202,10 +188,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label class="block qt-label mb-2 text-foreground">Example Dialogues (Optional)</label>
-          <p class="text-xs qt-text-secondary mb-2">
-            Example conversations to guide the AI&rsquo;s responses.
-          </p>
+          <qt-prompt-field-label [hint]="hints.exampleDialogues" optional htmlFor="exampleDialogues" />
           <qt-markdown-field
             ariaLabel="Example Dialogues"
             minHeight="12rem"
@@ -215,8 +198,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <div class="flex items-center justify-between mb-2">
-            <label class="block qt-label text-foreground">System Prompt (Optional)</label>
+          <qt-prompt-field-label [hint]="hints.systemPrompt" optional htmlFor="systemPrompt">
             <button
               type="button"
               class="qt-button-secondary text-xs px-2 py-1"
@@ -225,10 +207,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
             >
               Import Template
             </button>
-          </div>
-          <p class="text-xs qt-text-secondary mb-2">
-            Custom system instructions (will be combined with auto-generated prompt).
-          </p>
+          </qt-prompt-field-label>
           <qt-markdown-field
             ariaLabel="System Prompt"
             minHeight="8rem"
@@ -303,6 +282,8 @@ export class NewCharacter {
   /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
 
   /** Both seams present ⇒ hosted; back/cancel/create close the tab (v4 `useCloseSelfTab`). */
   protected canClose(): boolean {

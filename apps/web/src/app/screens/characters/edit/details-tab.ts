@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 
 import type { CharacterScenario, Pronouns } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import type { CharacterFormData } from './character-form';
 import { getPronounPreset, PRONOUN_PRESETS } from './character-form';
 import { ScenarioEditor } from './scenario-editor';
@@ -17,12 +19,17 @@ import { TagChipEditor } from './tag-chip-editor';
  * personality / first message / example dialogues / system prompt) use the
  * shared `qt-markdown-field` (v4's `MarkdownLexicalEditor`); each keeps the
  * same emit contract — a plain markdown string riding `fieldChange`, emitted
- * only on genuine edits. Copy carries over verbatim from v4.
+ * only on genuine edits.
+ *
+ * Every prompt field's label + helper is the shared `qt-prompt-field-label`
+ * over `PROMPT_FIELD_HINTS` (v4 `a6870c5a`) — the hand-rolled copies are gone,
+ * which is the whole point of v4's commit: the create and edit forms had
+ * already drifted apart in their duplicated hint text.
  */
 @Component({
   selector: 'qt-character-details-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ScenarioEditor, TagChipEditor, MarkdownField],
+  imports: [ScenarioEditor, TagChipEditor, MarkdownField, PromptFieldLabel],
   template: `
     <div class="space-y-6">
       <!-- System Transparency Switch -->
@@ -223,11 +230,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Identity -->
       <div>
-        <label class="block qt-label mb-2">Identity (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          What strangers know about the character on sight or by reputation &mdash; name, station,
-          occupation, public reputation. The shallow first impression.
-        </p>
+        <qt-prompt-field-label [hint]="hints.identity" optional />
         <qt-markdown-field
           ariaLabel="Identity"
           minHeight="6rem"
@@ -238,11 +241,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Description -->
       <div>
-        <label class="block qt-label mb-2">Description (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          How acquaintances perceive the character &mdash; behaviour, mannerisms, frequent verbal
-          patterns. Not physical appearance (that lives in physical descriptions).
-        </p>
+        <qt-prompt-field-label [hint]="hints.description" optional />
         <qt-markdown-field
           ariaLabel="Description"
           minHeight="8rem"
@@ -253,11 +252,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Manifesto -->
       <div>
-        <label class="block qt-label mb-2">Manifesto (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          The foundational tenets of this character &mdash; the basic truths that anchor everything
-          else. What this character is, at root.
-        </p>
+        <qt-prompt-field-label [hint]="hints.manifesto" optional />
         <qt-markdown-field
           ariaLabel="Manifesto"
           minHeight="8rem"
@@ -268,11 +263,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Personality -->
       <div>
-        <label class="block qt-label mb-2">Personality (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          What the character knows about themselves &mdash; inner drivers of speech and behaviour,
-          motivations, beliefs.
-        </p>
+        <qt-prompt-field-label [hint]="hints.personality" optional />
         <qt-markdown-field
           ariaLabel="Personality"
           minHeight="8rem"
@@ -289,10 +280,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- First Message -->
       <div>
-        <label class="block qt-label mb-2">First Message (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          The character&rsquo;s opening message to start conversations.
-        </p>
+        <qt-prompt-field-label [hint]="hints.firstMessage" optional />
         <qt-markdown-field
           ariaLabel="First Message"
           minHeight="6rem"
@@ -303,12 +291,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Example Dialogues -->
       <div>
-        <label for="exampleDialogues" class="block qt-label mb-2"
-          >Example Dialogues (Optional)</label
-        >
-        <p class="text-xs qt-text-secondary mb-2">
-          Example conversations to guide the AI&rsquo;s responses.
-        </p>
+        <qt-prompt-field-label [hint]="hints.exampleDialogues" optional htmlFor="exampleDialogues" />
         <qt-markdown-field
           ariaLabel="Example Dialogues"
           minHeight="12rem"
@@ -319,10 +302,7 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- System Prompt -->
       <div>
-        <label class="block qt-label mb-2">System Prompt (Optional)</label>
-        <p class="text-xs qt-text-secondary mb-2">
-          Custom system instructions (will be combined with auto-generated prompt).
-        </p>
+        <qt-prompt-field-label [hint]="hints.systemPrompt" optional />
         <qt-markdown-field
           ariaLabel="System Prompt"
           minHeight="8rem"
@@ -345,6 +325,7 @@ export class CharacterDetailsTab {
 
   protected readonly aliasDraft = signal('');
   protected readonly pronounPresets = PRONOUN_PRESETS;
+  protected readonly hints = PROMPT_FIELD_HINTS;
 
   protected readonly pronounPreset = computed(() => getPronounPreset(this.form().pronouns));
 

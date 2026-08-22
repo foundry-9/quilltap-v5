@@ -15,6 +15,8 @@ import { MarkdownField } from '../../../editor/markdown-field';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import { TemplateDelimiterEditor } from './template-delimiter-editor';
 import {
   emptyTemplateForm,
@@ -33,14 +35,25 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
  * and built-in-guard (403) messages surface verbatim in the alert.
  *
  * The systemPrompt is a `qt-markdown-field` (v4 `:312`, its `minHeight="14rem"`
- * and `remountKey={editingTemplate?.id ?? 'new'}`). The "Draft formatting
- * instructions" helper button remains a named deferral (the
- * `generateFormattingPromptHint` transcription is out of scope).
+ * and `remountKey={editingTemplate?.id ?? 'new'}`) under the shared
+ * `qt-prompt-field-label` (v4 `a6870c5a`: `label="LLM Prompt"` `required` over
+ * the roleplayTemplatePrompt hint, this surface's placeholder sentence
+ * appended). The "Draft formatting instructions" helper button remains a named
+ * deferral (the `generateFormattingPromptHint` transcription is out of scope),
+ * so nothing is projected into the label row's actions slot here — v4 puts
+ * that button there.
  */
 @Component({
   selector: 'qt-template-form-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ErrorAlert, TemplateDelimiterEditor, MarkdownField],
+  imports: [
+    Modal,
+    FormActions,
+    ErrorAlert,
+    TemplateDelimiterEditor,
+    MarkdownField,
+    PromptFieldLabel,
+  ],
   template: `
     <qt-modal [title]="title()" maxWidth="3xl" (close)="close.emit()">
       @if (error()) {
@@ -77,13 +90,12 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
         </div>
 
         <div>
-          <label class="block qt-text-label mb-1">
-            LLM Prompt <span class="qt-text-destructive">*</span>
-          </label>
-          <p class="qt-text-xs qt-text-muted mb-1">
-            The formatting instructions prepended to the character's system prompt when this template
-            is selected. You can use placeholders like {{ '{{char}}' }} and {{ '{{user}}' }}.
-          </p>
+          <qt-prompt-field-label
+            [hint]="hints.roleplayTemplatePrompt"
+            label="LLM Prompt"
+            required
+            [helper]="promptHelper"
+          />
           <qt-markdown-field
             ariaLabel="Template LLM prompt"
             minHeight="14rem"
@@ -187,6 +199,16 @@ export class TemplateFormModal implements OnInit {
 
   readonly close = output<void>();
   readonly saved = output<void>();
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
+  /**
+   * v4 `roleplay-templates/index.tsx:296-301` — the shared
+   * roleplayTemplatePrompt helper with this surface's placeholder sentence
+   * appended. A TS constant so the `{{char}}` / `{{user}}` braces never reach
+   * Angular's interpolation.
+   */
+  protected readonly promptHelper =
+    `${PROMPT_FIELD_HINTS.roleplayTemplatePrompt.helper} You can use placeholders like {{char}} and {{user}}.`;
 
   protected readonly name = signal('');
   protected readonly description = signal('');

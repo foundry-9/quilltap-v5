@@ -4,6 +4,8 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterPhysicalDescription } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import { ToastService } from '../../../ui/toast.service';
 import { fetchCharacter, fetchDepictionGuidelines, characterKeys } from '../characters.api';
 
@@ -76,7 +78,7 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
 @Component({
   selector: 'qt-character-appearance-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownField],
+  imports: [MarkdownField, PromptFieldLabel],
   template: `
     <div class="space-y-6">
       <div class="qt-card space-y-4">
@@ -100,6 +102,11 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
               (input)="setPhysicalField('name', $any($event.target).value)"
             />
           </div>
+          <!-- Shared form-of-address note for every prompt variant below —
+               attached once here rather than repeated per field
+               (v4 DescriptionsTab.tsx:216-218). -->
+          <qt-prompt-field-label [hint]="hints.physicalDescription" />
+
           <div>
             <label class="block qt-label mb-2">Head &amp; Shoulders Prompt</label>
             <qt-markdown-field
@@ -226,6 +233,8 @@ export class CharacterAppearanceTab {
   private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
 
   protected readonly physicalForm = signal<PhysicalDescriptionForm>(EMPTY_PHYSICAL_FORM);
   protected readonly savingPhysical = signal(false);

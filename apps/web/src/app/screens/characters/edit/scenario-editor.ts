@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import type { CharacterScenario } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
 import { newScenario } from './character-form';
 
 /**
@@ -18,6 +19,15 @@ import { newScenario } from './character-form';
  * `recordKey` is the scenario id (v4 keys its remount
  * `${scenario.id}-${externalUpdateCount}`; the v5 form has no external-update
  * counter, and the id alone covers the row-identity re-key this editor can see).
+ *
+ * The block keeps its CUSTOM header — v4's `a6870c5a` sweep deliberately did
+ * not put `PromptFieldLabel` here, because the "+ Add Scenario" control and the
+ * array editor below it are not a labelled field. It gains only what that
+ * commit gave it: "— the stage, never the actor" folded into the helper, and
+ * the `Written as:` line drawn from `PROMPT_FIELD_HINTS.scenario.example`.
+ * Fixed on the way: v5's helper had dropped v4's "Stored in the vault's
+ * Scenarios/ folder." clause (a pre-existing transcription gap; v5 does store
+ * them there, `db::scenarios::SCENARIOS_FOLDER`).
  */
 @Component({
   selector: 'qt-scenario-editor',
@@ -31,10 +41,12 @@ import { newScenario } from './character-form';
           + Add Scenario
         </button>
       </div>
-      <p class="text-xs qt-text-secondary mb-3">
-        Named settings and contexts for conversations. Each scenario can be selected when starting a
-        chat.
+      <p class="text-xs qt-text-secondary mb-1">
+        Named settings and contexts for conversations &mdash; the stage, never the actor. Each
+        scenario can be selected when starting a chat. Stored in the vault&rsquo;s Scenarios/
+        folder.
       </p>
+      <p class="text-xs qt-text-secondary mb-3">Written as: <em>{{ scenarioExample }}</em></p>
 
       @if (scenarios().length === 0) {
         <div class="qt-card text-center py-6">
@@ -83,6 +95,9 @@ import { newScenario } from './character-form';
 export class ScenarioEditor {
   readonly scenarios = input.required<CharacterScenario[]>();
   readonly scenariosChange = output<CharacterScenario[]>();
+
+  /** v4 renders the shared hint's example inline here, not the whole label. */
+  protected readonly scenarioExample = PROMPT_FIELD_HINTS.scenario.example;
 
   protected add(): void {
     this.scenariosChange.emit([...this.scenarios(), newScenario()]);

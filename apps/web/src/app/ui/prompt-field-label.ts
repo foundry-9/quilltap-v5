@@ -1,4 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import {
+  booleanAttribute,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+} from '@angular/core';
 
 import type { PromptFieldHint } from './prompt-field-hints';
 
@@ -51,10 +57,13 @@ export class PromptFieldLabel {
   readonly hint = input<PromptFieldHint | undefined>(undefined);
   /** The label line. Required when no `hint` is given. */
   readonly label = input<string | undefined>(undefined);
-  /** Renders " (Optional)" after the label. */
-  readonly optional = input(false);
-  /** Renders a destructive-styled " *" after the label. */
-  readonly required = input(false);
+  /**
+   * Renders " (Optional)" after the label. `booleanAttribute` so call sites
+   * write the bare attribute, exactly as v4's JSX writes the bare prop.
+   */
+  readonly optional = input(false, { transform: booleanAttribute });
+  /** Renders a destructive-styled " *" after the label (bare attribute too). */
+  readonly required = input(false, { transform: booleanAttribute });
   /** `id` of the field this labels, for `<label for>`. */
   readonly htmlFor = input<string | undefined>(undefined);
   /** Helper paragraph under the label (house voice). */

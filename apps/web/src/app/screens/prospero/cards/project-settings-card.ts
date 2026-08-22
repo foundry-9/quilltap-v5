@@ -4,6 +4,8 @@ import type { ProjectDetail } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { StateEditorModal } from '../../../shared/state/state-editor-modal';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 import type { ProjectEditForm } from './project-header';
 
 /**
@@ -15,11 +17,16 @@ import type { ProjectEditForm } from './project-header';
  * NOTE: v4 renders this same instructions editor in TWO places — this card and
  * `SettingsTab.tsx:35`, which passes `minHeight="10rem"`. v5 has only the card,
  * so it takes the card's `14rem`.
+ *
+ * The header is the shared `qt-prompt-field-label` over
+ * `PROMPT_FIELD_HINTS.projectInstructions` (v4 `a6870c5a`, `SettingsTab.tsx`
+ * — no `optional` on this one), which replaces v5's older hand-rolled helper
+ * sentence.
  */
 @Component({
   selector: 'qt-project-settings-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, StateEditorModal, MarkdownField],
+  imports: [CollapsibleCard, StateEditorModal, MarkdownField, PromptFieldLabel],
   template: `
     <qt-collapsible-card
       title="Project Settings"
@@ -30,10 +37,7 @@ import type { ProjectEditForm } from './project-header';
     >
       <div class="space-y-4">
         <div>
-          <label class="qt-text-label block mb-2">Project Instructions</label>
-          <p class="qt-text-xs qt-text-secondary mb-2">
-            These instructions are included in system prompts for all project chats.
-          </p>
+          <qt-prompt-field-label [hint]="hints.projectInstructions" />
           <qt-markdown-field
             ariaLabel="Project instructions"
             minHeight="14rem"
@@ -83,6 +87,8 @@ export class ProjectSettingsCard {
 
   readonly formChange = output<Partial<ProjectEditForm>>();
   readonly save = output<void>();
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
 
   protected readonly stateOpen = signal(false);
 }

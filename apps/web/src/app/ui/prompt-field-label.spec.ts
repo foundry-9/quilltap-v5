@@ -49,6 +49,17 @@ class ActionsHost {
   readonly hint = PROMPT_FIELD_HINTS.systemPrompt;
 }
 
+@Component({
+  imports: [PromptFieldLabel],
+  template: `
+    <qt-prompt-field-label [hint]="hint" optional />
+    <qt-prompt-field-label [hint]="hint" label="Content" required />
+  `,
+})
+class BareAttributeHost {
+  readonly hint = PROMPT_FIELD_HINTS.identity;
+}
+
 async function render<T>(host: new () => T): Promise<ComponentFixture<T>> {
   TestBed.configureTestingModule({ imports: [host as never] });
   const fixture = TestBed.createComponent(host);
@@ -156,6 +167,14 @@ describe('PromptFieldLabel', () => {
     fixture.detectChanges();
 
     expect(labelEl(fixture).getAttribute('for')).toBe('identity');
+  });
+
+  it('reads `optional` / `required` as BARE attributes (v4 writes bare props)', async () => {
+    const fixture = await render(BareAttributeHost);
+    const rendered = Array.from(
+      fixture.nativeElement.querySelectorAll('label') as NodeListOf<HTMLLabelElement>,
+    ).map((l) => l.textContent);
+    expect(rendered).toEqual(['Identity (Optional)', 'Content *']);
   });
 
   it('projects actions into the label row (v4 `actions`)', async () => {

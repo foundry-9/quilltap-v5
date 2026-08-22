@@ -12,6 +12,8 @@ import type { CharacterSystemPrompt } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
+import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../../ui/prompt-field-label';
 
 /** The editable create/edit form for one system prompt. */
 export interface PromptFormData {
@@ -27,11 +29,15 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
  * `components/characters/system-prompts-editor/PromptModal.tsx`): name, the
  * markdown content field (v4 `:78`, its `minHeight="12rem"` and
  * `remountKey={editingPrompt?.id ?? 'new'}`), and a "set as default" checkbox.
+ *
+ * Content's header is the shared `qt-prompt-field-label` (v4 `a6870c5a`):
+ * `label="Content"` `required` over the systemPrompt hint, with this surface's
+ * Markdown/placeholder sentence appended to the shared helper.
  */
 @Component({
   selector: 'qt-prompt-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, MarkdownField],
+  imports: [Modal, FormActions, MarkdownField, PromptFieldLabel],
   template: `
     <qt-modal
       [title]="editing() ? 'Edit Prompt' : 'Create Prompt'"
@@ -51,11 +57,12 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
         </div>
 
         <div>
-          <label class="qt-label">Content *</label>
-          <p class="qt-text-xs mt-1 mb-2">
-            Supports Markdown formatting. Use {{ '{{char}}' }} and {{ '{{user}}' }} for
-            character/user name substitution.
-          </p>
+          <qt-prompt-field-label
+            [hint]="hints.systemPrompt"
+            label="Content"
+            required
+            [helper]="contentHelper"
+          />
           <qt-markdown-field
             ariaLabel="System prompt content"
             minHeight="12rem"
@@ -96,6 +103,16 @@ export class PromptModal implements OnInit {
   readonly save = output<PromptFormData>();
 
   protected readonly form = signal<PromptFormData>(INITIAL_PROMPT_FORM_DATA);
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
+  /**
+   * v4 `PromptModal.tsx:74-79` — the shared systemPrompt helper with this
+   * surface's own suffix appended. A TS constant, not a template literal in
+   * the markup, so the `{{char}}` / `{{user}}` braces never reach Angular's
+   * interpolation.
+   */
+  protected readonly contentHelper =
+    `${PROMPT_FIELD_HINTS.systemPrompt.helper} Markdown is supported, and {{char}} / {{user}} substitute the character and user names.`;
 
   protected readonly editing = computed(() => !!this.editingPrompt());
   /** v4 `remountKey={editingPrompt?.id ?? 'new'}` (`PromptModal.tsx:81`). */

@@ -310,6 +310,44 @@ root-level `invalid_type` and takes the same `Validation error` path. Six new
 arms in the memories-config differential (two invalid + one writes-nothing
 composite comparing the stored bag per verb), all eight comparands proven red
 against the old lenient behavior.
+#### 2026-08-22 — feat(prompts): migrate every prompt editor onto the shared field label
+
+_Versions: SPA 0.5.541._
+
+P4.D104 unit 2 — v4's `a6870c5a` sweep mirrored across every v5 prompt
+editor. Migrated: the character edit Details tab (seven fields), the
+character create page (eight, incl. the singular Scenario), the
+system-prompt modal's Content field (`required` plus the Markdown /
+placeholder suffix), the roleplay-template modal's LLM Prompt (`required`
+plus the placeholder suffix), the project Settings card's Project
+Instructions, and the appearance tab, which gains ONE physicalDescription
+note above all five prompt variants rather than a helper per field. The
+create page's disabled "Import Template" control moves into the label row's
+projection slot, v4's `actions`.
+
+This CONVERGES the character create and edit forms, which is the stated
+reason v4 wrote the component: the two had drifted apart in their
+hand-rolled hint copy, and v5 had transcribed both drifted versions
+faithfully. Every replaced string is deleted, not shadowed.
+
+The scenarios block keeps its custom header — v4 deliberately left that one
+hand-rolled, since the "+ Add Scenario" control and the array editor below
+are not a labelled field — and gains only what the commit gave it: "the
+stage, never the actor" folded into the helper and a `Written as:` line from
+the shared scenario example. Fixed on the way: v5's helper had dropped v4's
+"Stored in the vault's Scenarios/ folder." clause.
+
+Pinned by a new rendered-DOM spec that asserts every migrated header is
+drawn from the hints table, that create and edit render byte-identical
+headers for their seven shared fields, and that none of the eleven retired
+sentences survives anywhere in the rendered output. Mutation-proven:
+restoring one hand-rolled helper reddened both the field assertion and the
+convergence assertion.
+
+Deferred loud, unchanged: the roleplay-template modal's "Draft formatting
+instructions" button (v4 puts it in the label row's actions slot; v5 has
+never had the control), and v5's "Import Template" stays disabled.
+
 #### 2026-08-22 — feat(prompts): the shared prompt-field label + single-sourced field hints
 
 _Versions: SPA 0.5.540._
