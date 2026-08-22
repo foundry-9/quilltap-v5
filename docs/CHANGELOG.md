@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — docs(porting): plan the `12fe3e6f` drift round — four work orders (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥ P4.54)
+
+_Docs-only change._
+
+v4 moved five commits past `b8449b3e`, all dated today: bug 84 (the
+tool-result error sentence — this port's own finding-#99 filing, now fixed
+v4-side), bug 85 (prefill-hostility scoped to thinking models via a new pure
+`thinking-turn` evaluator, a declarative per-plugin `thinkingTurnRule`,
+per-model `supportsThinking`/`thinksByDefault` facts, and a data migration
+retiring the stored prefill on thinking DeepSeek/Ollama rows), and bug 86
+(DeepSeek's thinking-incompatible param strip now decided from the model,
+not the request body). The bugfix branch is quiet. Four orders written
+against the new `12fe3e6f` baseline: P4.D97 (server half — evaluator,
+manifest substrate growth including the first per-model facts, registry
+join, both wire serializations, the bug-86 predicate, and the once-only
+heal interoperating with v4's `migrations_state` ledger), P4.D98 (the
+profile-editor client half — client evaluator twin, model-change re-seed,
+stored-null correction, the warning paragraph), P4.D99 (bug 84's two-layer
+client fix — the reducer currently drops the sibling `error` before the
+vertical sees it), and P4.54 (run lines for the 35 in-scope
+`nothing_to_run` families from P4.53's committed inventory).
+
 #### 2026-08-21 — docs(porting): the anti-chorus dogfood pass — 18 pass, two findings, nine live proofs discharged
 
 _Docs-only change._
