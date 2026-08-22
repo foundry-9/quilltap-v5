@@ -180,7 +180,11 @@ fn image_dialects_match_v4() {
         }
 
         let case = row["case"].as_str().unwrap();
-        let model = row["model"].as_str().unwrap();
+        // Absent when the case deliberately supplies NO model (P4.D101's
+        // nanogpt `default_model`, which proves the plugin's own `?? 'hidream'`).
+        // `model` only selects the Google dialect downstream, so an empty string
+        // is correct for every provider that can omit it.
+        let model = row["model"].as_str().unwrap_or_default();
         let label = format!("{provider}/{case}");
         rows += 1;
 
@@ -222,12 +226,12 @@ fn image_dialects_match_v4() {
             wire["status"].as_u64().unwrap() as u16,
             wire["body"].as_str().unwrap().to_string(),
         );
-        // `ca22ec45`: Z.AI's URL→base64 download happens INSIDE the provider,
-        // above the pure parse — so z-ai rows are driven through the whole
-        // composed `generate_image`, with the recorded download answer canned
-        // per URL.
-        if provider == "Z_AI" {
-            check_zai_download_row(&row, &provider, model, &params, &resp, &built);
+        // `ca22ec45` (Z.AI) and P4.D101 (NanoGPT): the URL→base64 download
+        // happens INSIDE the provider, above the pure parse — so both
+        // providers' rows are driven through the whole composed
+        // `generate_image`, with the recorded download answer canned per URL.
+        if provider == "Z_AI" || provider == "NANOGPT" {
+            check_download_row(&row, &provider, model, &params, &resp, &built);
             continue;
         }
         let parsed = parse_image_response(&provider, model, &resp);
@@ -308,7 +312,7 @@ fn image_dialects_match_v4() {
 /// The download seam is canned per URL from the recorded `download` block; a
 /// row with NO download block registers nothing, so an unexpected download
 /// attempt fails loudly rather than yielding empty bytes.
-fn check_zai_download_row(
+fn check_download_row(
     row: &Value,
     provider: &str,
     model: &str,

@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(providers): the NanoGPT image arms over P4.D100's seam (v4 `781fc420`, P4.D101)
+
+_Versions: core 0.0.608, harness 0.0.531._
+
+Generation, discovery, orientation and auth for NanoGPT's OpenAI-compatible
+images route, built on the download seam P4.D100 landed.
+
+`response_format: "b64_json"` is PINNED on every request, carrying v4's why —
+"NanoGPT defaults to b64_json already; pin it so a future default change
+upstream cannot silently hand us URLs." Unlike the OpenAI builder there is no
+`gpt-image` exemption, which the corpus proves with a `gpt-image-1.5` row. `size`
+rides verbatim and only when supplied — v4 casts it without validating, so none
+of the OpenAI path's size coercion applies; `seed` rides only when set; an absent
+model becomes `hidream`, NanoGPT's own server-side default made explicit.
+
+P4.D100's `download_zai_images` is generalized to `download_url_images`: both
+plugins carry the identical loop and differ only in their two error sentences, so
+the provider now selects the wording and nothing else. Z.AI's bytes are unchanged,
+which its own corpus rows keep proving.
+
+Discovery is a raw fetch to `/image-models`, so a non-ok status is NanoGPT's own
+`NanoGPT image-model listing failed: HTTP <status>` rather than an SDK error. The
+filter is the capability FLAG and strictly `=== true` — the listing also carries
+edit-only and upscale-only entries — and the curated six are unioned in and
+sorted, so the arm needs no empty-throw.
+
+Corpus: image-dialects 65 → 82 rows, all 65 of P4.D100's byte-identical. Three
+mutation proofs: dropping the b64 pin reddens; swapping in Z.AI's download
+sentence reddens with the exact wording diff; and relaxing the capability filter
+from `=== true` to truthy reddens on the planted `image_generation: 1` row.
+
+Two harness generalizations were needed and both were P4.D100 shapes rather than
+new ones: the `model` column is now optional (the `default_model` case
+deliberately sends none), and the Z.AI-named download leg is provider-parameterized.
+
+⚠ The regen script's concat list is separate from its run list, so adding a `run`
+line alone produced a green regen with NanoGPT silently absent. Both are updated.
+
 #### 2026-08-22 — port(providers): the NanoGPT embeddings arms (v4 `781fc420`, P4.D101)
 
 _Versions: core 0.0.607, harness 0.0.530._

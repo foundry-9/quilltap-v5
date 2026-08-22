@@ -87,6 +87,7 @@ pub fn build_image_request(
         "Z_AI" => build_zai(params),
         "GOOGLE" => build_google(params),
         "OPENROUTER" => build_openrouter(params),
+        "NANOGPT" => build_nanogpt(params),
         other => {
             return Err(ImageGenError::new(format!(
                 "Unknown image provider: {other}"
@@ -383,6 +384,7 @@ pub fn parse_image_response(
         "Z_AI" => parse_zai(resp),
         "GOOGLE" => parse_google(model, resp),
         "OPENROUTER" => parse_openrouter(resp),
+        "NANOGPT" => parse_nanogpt(resp),
         other => Err(ImageGenError::new(format!(
             "Unknown image provider: {other}"
         ))),
@@ -424,6 +426,62 @@ fn parse_zai(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenError> {
     let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
     let Some(arr) = v.get("data").and_then(Value::as_array) else {
         return Err(ImageGenError::new("Invalid response from Z.AI Images API"));
+    };
+    let images = arr
+        .iter()
+        .map(|img| GeneratedImageData {
+            data: str_of(img, "b64_json"),
+            url: str_of(img, "url"),
+            mime_type: Some("image/png".to_string()),
+            revised_prompt: str_of(img, "revised_prompt"),
+        })
+        .collect();
+    Ok(ImageGenResponse { images })
+}
+
+/// v4 NanoGPT `generateImage` (P4.D101): the OpenAI-compatible images route.
+///
+/// Body key order is v4's literal object order — `model`, `prompt`, `n`,
+/// `response_format` — then the two conditionals.
+///
+/// **`response_format: "b64_json"` is PINNED**, carrying v4's why: "NanoGPT
+/// defaults to b64_json already; pin it so a future default change upstream
+/// cannot silently hand us URLs." Unlike the OpenAI builder there is no
+/// `is_gpt_image_model` exemption — NanoGPT always sends it.
+///
+/// `size` is passed through VERBATIM and only when supplied: v4 casts it
+/// without validating or normalizing, so none of the OpenAI path's
+/// size-coercion applies. `seed` rides only when the caller set it.
+fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
+    // `params.model ?? 'hidream'` — hidream is NanoGPT's own server-side
+    // default, made explicit.
+    let model = model_or_default(params, "hidream");
+    let mut body = obj();
+    body.insert("model".into(), Value::String(model.to_string()));
+    body.insert("prompt".into(), Value::String(params.prompt.clone()));
+    body.insert("n".into(), Value::from(params.n.unwrap_or(1)));
+    body.insert("response_format".into(), Value::String("b64_json".into()));
+    if let Some(size) = params.size.as_deref().filter(|s| !s.is_empty()) {
+        body.insert("size".into(), Value::String(size.to_string()));
+    }
+    if let Some(seed) = params.seed {
+        body.insert("seed".into(), Value::from(seed));
+    }
+    (
+        "https://nano-gpt.com/api/v1/images/generations".to_string(),
+        Value::Object(body),
+    )
+}
+
+/// v4 NanoGPT image parse (P4.D101): the OpenAI-compatible `data[]`, keeping
+/// BOTH `b64_json` and `url` — the URL→base64 download happens in
+/// [`RealImageProvider`], which is the only layer with a fetch.
+fn parse_nanogpt(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenError> {
+    let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+    let Some(arr) = v.get("data").and_then(Value::as_array) else {
+        return Err(ImageGenError::new(
+            "Invalid response from NanoGPT Images API",
+        ));
     };
     let images = arr
         .iter()
@@ -685,6 +743,16 @@ pub struct ModelsPage {
 /// which carries the recorded `supportedModels`.
 pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str], ImageGenError> {
     Ok(match provider {
+        // P4.D101 — NanoGPT's `STATIC_IMAGE_MODEL_IDS` (from `models.ts`, which
+        // `image-provider.ts` imports as its `supportedModels`).
+        "NANOGPT" => &[
+            "hidream",
+            "flux-2-flash",
+            "flux-2-dev",
+            "flux-2-pro",
+            "recraft-v3",
+            "gpt-image-1.5",
+        ],
         "OPENAI" => &[
             "gpt-image-2",
             "gpt-image-1.5",
@@ -744,6 +812,12 @@ pub fn build_models_request(
         // The same SDK against Z.AI's OpenAI-compatible base URL.
         "Z_AI" => (
             "https://api.z.ai/api/paas/v4/models".to_string(),
+            vec![bearer()],
+        ),
+        // NanoGPT's dedicated image listing, with per-model capability flags
+        // (the listing also carries edit-only and upscale-only entries).
+        "NANOGPT" => (
+            "https://nano-gpt.com/api/v1/image-models".to_string(),
             vec![bearer()],
         ),
         // xAI's dedicated image-only endpoint (no name filtering needed).
@@ -825,6 +899,36 @@ pub fn parse_models_page(provider: &str, resp: &WireResponse) -> Result<ModelsPa
                 ids: openai_like_ids(&resp.body, |id| {
                     id.starts_with("dall-e") || id.starts_with("gpt-image")
                 }),
+                next_page_token: None,
+            })
+        }
+        // P4.D101 — a RAW fetch, so a non-ok status is v4's own sentence rather
+        // than an SDK error. The filter is the capability FLAG, not the id:
+        // `capabilities?.image_generation === true`, strictly true.
+        "NANOGPT" => {
+            if !resp.ok() {
+                return Err(ImageGenError::new(format!(
+                    "NanoGPT image-model listing failed: HTTP {}",
+                    resp.status
+                )));
+            }
+            let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+            let ids = v
+                .get("data")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter(|m| {
+                            m.get("capabilities")
+                                .and_then(|c| c.get("image_generation"))
+                                == Some(&Value::Bool(true))
+                        })
+                        .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(ModelsPage {
+                ids,
                 next_page_token: None,
             })
         }
@@ -1144,6 +1248,24 @@ pub fn finalize_models(provider: &str, mut ids: Vec<String>) -> Result<Vec<Strin
             js_sort(&mut seen);
             Ok(seen)
         }
+        // P4.D101 — like Z.AI: the curated ids are UNIONED in, so the flagship
+        // names always appear and the arm needs no empty-throw (the union
+        // guarantees six entries). v4's chat listing is the deliberate mirror
+        // image — it SUBTRACTS these same ids.
+        "NANOGPT" => {
+            let mut merged = Vec::new();
+            for id in ids.into_iter().chain(
+                supported_image_models("NANOGPT")?
+                    .iter()
+                    .map(|s| (*s).to_string()),
+            ) {
+                if !merged.contains(&id) {
+                    merged.push(id);
+                }
+            }
+            js_sort(&mut merged);
+            Ok(merged)
+        }
         "Z_AI" => {
             // The endpoint under-reports, so the two documented ids are UNIONED
             // in rather than trusted to appear — which is also why this arm has
@@ -1250,6 +1372,7 @@ impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
         match provider {
             "GROK" => Err(ImageGenError::new("Grok provider requires an API key")),
             "Z_AI" => Err(ImageGenError::new("Z.AI provider requires an API key")),
+            "NANOGPT" => Err(ImageGenError::new("NanoGPT provider requires an API key")),
             "OPENROUTER" => Err(ImageGenError::new(
                 "OpenRouter provider requires an API key",
             )),
@@ -1283,25 +1406,46 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
         // Quilltap consumer (chat handler, avatar/background jobs) reads only
         // base64 `data`. Download each image here so the response is usable.
-        if provider == "Z_AI" {
-            return self.download_zai_images(parsed).await;
+        // `ca22ec45` (Z.AI) and P4.D101 (NanoGPT): both providers can answer
+        // with URLs instead of base64, and both documented the download in the
+        // plugin. Identical loop, different sentences.
+        if provider == "Z_AI" || provider == "NANOGPT" {
+            return self.download_url_images(parsed, provider).await;
         }
         Ok(parsed)
     }
 }
 
 impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
-    /// v4's per-image loop inside the Z.AI provider's `generateImage`: keep the
-    /// base64 when it is already there; otherwise download the URL and encode
-    /// the bytes; reject an entry that carries neither.
+    /// v4's per-image loop inside the Z.AI and NanoGPT providers'
+    /// `generateImage`: keep the base64 when it is already there; otherwise
+    /// download the URL and encode the bytes; reject an entry that carries
+    /// neither.
     ///
     /// The mime-type rule is v4's exactly: the default is `image/png`, and the
     /// response's `content-type` overrides it ONLY when it starts with
     /// `image/`, truncated at the first `;`.
-    async fn download_zai_images(
+    ///
+    /// P4.D101 generalized this from P4.D100's `download_zai_images`. The two
+    /// plugins carry the SAME loop and differ only in their two error
+    /// sentences, so the provider selects the wording and nothing else — the
+    /// Z.AI path is byte-for-byte what P4.D100 landed, which its own corpus
+    /// rows keep proving.
+    async fn download_url_images(
         &self,
         parsed: ImageGenResponse,
+        provider: &str,
     ) -> Result<ImageGenResponse, ImageGenError> {
+        let (download_failed, carried_neither) = match provider {
+            "NANOGPT" => (
+                "Failed to download NanoGPT image: HTTP ",
+                "NanoGPT image entry carried neither base64 data nor a URL",
+            ),
+            _ => (
+                "Failed to download Z.AI image: HTTP ",
+                "Z.AI image entry carried neither base64 data nor a URL",
+            ),
+        };
         use base64::Engine as _;
         let mut images = Vec::with_capacity(parsed.images.len());
         for img in parsed.images {
@@ -1313,7 +1457,7 @@ impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
                     let resp = self.bytes.fetch(url).await.map_err(ImageGenError::new)?;
                     if !resp.ok() {
                         return Err(ImageGenError::new(format!(
-                            "Failed to download Z.AI image: HTTP {}",
+                            "{download_failed}{}",
                             resp.status
                         )));
                     }
@@ -1328,9 +1472,7 @@ impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
                 }
             }
             let Some(data) = data else {
-                return Err(ImageGenError::new(
-                    "Z.AI image entry carried neither base64 data nor a URL",
-                ));
+                return Err(ImageGenError::new(carried_neither));
             };
             images.push(GeneratedImageData {
                 data: Some(data),

@@ -25,9 +25,10 @@ run google     qtap-plugin-google
 run grok       qtap-plugin-grok
 run openrouter qtap-plugin-openrouter
 run z-ai       qtap-plugin-z-ai
+run nanogpt    qtap-plugin-nanogpt
 
 cat "$TMP/openai.ndjson" "$TMP/google.ndjson" "$TMP/grok.ndjson" \
-    "$TMP/openrouter.ndjson" "$TMP/z-ai.ndjson" \
+    "$TMP/openrouter.ndjson" "$TMP/z-ai.ndjson" "$TMP/nanogpt.ndjson" \
   > "$OUT_DIR/image-dialects.recorded.ndjson"
 rm -rf "$TMP"
 echo "done — $OUT_DIR/image-dialects.recorded.ndjson" >&2

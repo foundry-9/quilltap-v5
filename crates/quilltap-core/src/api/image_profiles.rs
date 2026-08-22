@@ -822,7 +822,9 @@ mod tests {
     #[test]
     fn probe_matches_v4_production() {
         // Image-capable providers accepted (exact-case).
-        for p in ["OPENAI", "GOOGLE", "GROK", "Z_AI", "OPENROUTER"] {
+        // P4.D101 — NANOGPT joins off the manifest's `capabilities
+        // .imageGeneration`, with no code change at this probe.
+        for p in ["OPENAI", "GOOGLE", "GROK", "Z_AI", "OPENROUTER", "NANOGPT"] {
             assert!(create_image_provider_ok(p), "{p} should be available");
         }
         // Legacy alias resolves (v4 GOOGLE_IMAGEN → GOOGLE, uppercase compare).

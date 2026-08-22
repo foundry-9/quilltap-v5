@@ -87,10 +87,16 @@ const PROVIDERS = {
     style: 'sdk',
     make: async () => new (await import(pathToFileURL(resolve('image-provider.ts')))).ZAIImageProvider(),
   },
+  // P4.D101 — NanoGPT's OpenAI-compatible images route (the OpenAI SDK against
+  // its own baseURL, so a non-2xx becomes a thrown SDK Error).
+  nanogpt: {
+    style: 'sdk',
+    make: async () => new (await import(pathToFileURL(resolve('image-provider.ts')))).NanoGPTImageProvider(),
+  },
 };
 
 // Providers whose transport is the OpenAI SDK (a non-2xx becomes a thrown Error).
-const SDK_PROVIDERS = new Set(['openai', 'grok', 'z-ai']);
+const SDK_PROVIDERS = new Set(['openai', 'grok', 'z-ai', 'nanogpt']);
 
 function projectImages(images) {
   return (images || []).map((img) => ({
@@ -157,6 +163,42 @@ function casesFor(provider) {
       ok(200, { data: [{ revised_prompt: 'rp' }] }));
     // z-ai has NO moderation handling: a generic 400 just surfaces the SDK message.
     add('generic_error', { prompt: 'x', model: 'glm-image', n: 1 },
+      ok(400, { error: { message: 'Bad request' } }));
+  } else if (provider === 'nanogpt') {
+    // The b64 PIN: `response_format: 'b64_json'` rides EVERY request, including
+    // the gpt-image-1.5 id that the OpenAI plugin deliberately exempts.
+    add('happy_b64', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    add('b64_pin_on_gpt_image_id', { prompt: 'a cat', model: 'gpt-image-1.5', n: 1 },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // No model → hidream, NanoGPT's own server-side default made explicit.
+    add('default_model', { prompt: 'a cat', n: 1 },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // size rides VERBATIM and only when supplied; seed only when set.
+    add('size_and_seed', { prompt: 'a cat', model: 'flux-2-pro', n: 1, size: '832x1248', seed: 42 },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // A size v4 never validates — it is cast, not normalized.
+    add('unvalidated_size', { prompt: 'a cat', model: 'recraft-v3', n: 1, size: '99x1' },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // URL-only entries download into base64 (the same seam Z.AI uses).
+    addDl('url_only', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ url: 'https://nano-gpt.com/x.png' }] }),
+      { status: 200, contentType: 'image/webp; charset=binary', bytes: 'AAECA/7/' });
+    // b64 present => NO download, mimeType stays image/png.
+    add('both_b64_url', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ b64_json: 'QUJD', url: 'https://nano-gpt.com/x.png', revised_prompt: 'rp' }] }));
+    // A non-`image/` content type must NOT override the default.
+    addDl('url_only_non_image_ctype', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ url: 'https://nano-gpt.com/y.bin' }] }),
+      { status: 200, contentType: 'application/octet-stream', bytes: 'AAEC' });
+    // A failed download carries NanoGPT's own sentence + the HTTP status.
+    addDl('url_only_download_404', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ url: 'https://nano-gpt.com/missing.png' }] }),
+      { status: 404, contentType: 'text/plain', bytes: '' });
+    // Neither field → NanoGPT's own rejection sentence.
+    add('entry_without_data_or_url', { prompt: 'a cat', model: 'hidream', n: 1 },
+      ok(200, { data: [{ revised_prompt: 'rp' }] }));
+    add('generic_error', { prompt: 'x', model: 'hidream', n: 1 },
       ok(400, { error: { message: 'Bad request' } }));
   } else if (provider === 'google') {
     add('imagen_happy', { prompt: 'a cat', model: 'imagen-4', n: 1, aspectRatio: '3:4', seed: 7 },
@@ -270,6 +312,31 @@ function modelCasesFor(provider) {
     // has to reproduce because the host wire hands back the raw status + body
     // where v4 gets a thrown `APIError`.
     add('models_http_error_bare', true, [{ status: 400, body: 'service unavailable' }]);
+  } else if (provider === 'nanogpt') {
+    // The filter is the capability FLAG, strictly `=== true`, not the id — the
+    // listing also carries edit-only and upscale-only entries. The curated six
+    // are then UNIONED in and the whole thing sorted, so this arm has no
+    // empty-throw.
+    add('models_live', true, [
+      j(200, { data: [
+        { id: 'flux-2-pro', capabilities: { image_generation: true } },
+        { id: 'some-upscaler', capabilities: { image_generation: false } },
+        { id: 'edit-only-model', capabilities: { image_edit: true } },
+        { id: 'aurora-x', capabilities: { image_generation: true } },
+        { id: 'no-capabilities-block' },
+        { id: 'truthy-not-true', capabilities: { image_generation: 1 } },
+      ] }),
+    ]);
+    // Nothing passes the filter: the union still answers the curated six.
+    add('models_live_none_pass', true, [
+      j(200, { data: [{ id: 'x', capabilities: { image_generation: false } }] }),
+    ]);
+    // A malformed payload (no `data` array) behaves as an empty page.
+    add('models_live_no_data', true, [j(200, { notdata: [] })]);
+    // A raw fetch, so a non-ok status is NanoGPT's OWN sentence, not an SDK error.
+    add('models_http_error', true, [
+      j(500, { error: { message: 'upstream exploded' } }),
+    ]);
   } else if (provider === 'google') {
     add('models_live', true, [
       j(200, { models: [
@@ -406,7 +473,7 @@ async function main() {
   const provider = args.provider;
   const outPath = args.out;
   if (!provider || !outPath || !PROVIDERS[provider]) {
-    console.error('usage: --provider <openai|google|grok|openrouter|z-ai> --out <ndjson>');
+    console.error('usage: --provider <openai|google|grok|openrouter|z-ai|nanogpt> --out <ndjson>');
     process.exit(1);
   }
   const spec = PROVIDERS[provider];

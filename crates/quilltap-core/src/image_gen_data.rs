@@ -87,6 +87,19 @@ fn zai_orientation() -> OrientationSupport {
     }
 }
 
+/// P4.D101 — NanoGPT's `NANOGPT_IMAGE_CONSTRAINTS.orientationSupport`
+/// (`index.ts`): hidream's native ≈2:3 pair for portrait/landscape and a square
+/// 1024. Provider-level only, like Z.AI and Grok — NanoGPT declares no
+/// per-model orientation.
+fn nanogpt_orientation() -> OrientationSupport {
+    OrientationSupport {
+        strategy: OrientationStrategy::Size,
+        portrait: size_map("832x1248", 832.0, 1248.0),
+        landscape: size_map("1248x832", 1248.0, 832.0),
+        square: Some(size_map("1024x1024", 1024.0, 1024.0)),
+    }
+}
+
 fn model(id: &str, support: OrientationSupport) -> ModelInfo {
     ModelInfo {
         id: id.to_string(),
@@ -137,6 +150,7 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
         // Provider-level only.
         "GROK" => (Vec::new(), Some(aspect_orientation())),
         "Z_AI" => (Vec::new(), Some(zai_orientation())),
+        "NANOGPT" => (Vec::new(), Some(nanogpt_orientation())),
         _ => (Vec::new(), None),
     }
 }

@@ -56,6 +56,71 @@ The discrepancy is **pre-existing and out of this lane's scope** — realigning 
 would churn every provider family. NanoGPT is therefore APPENDED on both sides,
 which is the only choice that leaves all nine pre-existing rows byte-identical.
 
+### Unit 5 — the image arms, over P4.D100's seam ✅
+
+Generation, discovery, orientation and auth, built on the download seam P4.D100
+landed. **Stacking rule honoured:** the only change to D100's own units is the
+download seam's generalization, and Z.AI's recorded bytes are unchanged.
+
+**The b64 pin** rides EVERY request, with v4's why-comment carried. Unlike the
+OpenAI builder there is no `is_gpt_image_model` exemption — pinned by a
+deliberate `gpt-image-1.5` corpus row, the exact id where the OpenAI plugin DOES
+exempt it.
+
+**`size` is passed through verbatim and only when supplied.** v4 casts it
+without validating or normalizing, so none of the OpenAI path's size coercion
+applies; the `unvalidated_size` row (`99x1`) is the pin. `seed` rides only when
+set; an absent model becomes `hidream`.
+
+**The download seam is generalized, not duplicated.** P4.D100's
+`download_zai_images` → `download_url_images(parsed, provider)`: the two plugins
+carry the IDENTICAL loop and differ only in their two error sentences, so the
+provider selects the wording and nothing else. Both mime-type rules
+(`image/png` default, `content-type` override only when it starts with `image/`,
+truncated at the first `;`) are shared, as they are in v4.
+
+**Discovery is a RAW fetch**, so a non-ok status is NanoGPT's own sentence, not
+an SDK error — the deliberate asymmetry with the embedding listing, which falls
+back instead of throwing. The filter is the capability FLAG and strictly
+`=== true`; the curated six are unioned in and sorted, so no empty-throw (the
+Z.AI shape). v4's chat listing is the mirror image — it SUBTRACTS these same ids,
+which unit 2 already carries.
+
+**Corpus:** image-dialects 65 → **82** rows; all 65 of P4.D100's BYTE-IDENTICAL.
+
+**Three mutation proofs:**
+
+| mutation | result |
+|---|---|
+| drop the `b64_json` pin | red |
+| swap in Z.AI's download sentence | red — `left: "Failed to download Z.AI image: HTTP 404"` vs `right: "…NanoGPT…"` |
+| relax the capability filter to truthy | red on the planted `image_generation: 1` row |
+
+The third is why the corpus carries `truthy-not-true` and `no-capabilities-block`
+rows: without a value that is truthy-but-not-`true`, a relaxed filter passes
+green.
+
+**Two harness generalizations, both P4.D100 shapes rather than new ones:** the
+`model` column is now optional (`unwrap_or_default`) because the `default_model`
+case deliberately sends none, and `check_zai_download_row` →
+`check_download_row` now that two providers use it.
+
+⚠ **A trap worth the note: the regen script's CONCAT list is separate from its
+RUN list.** Adding `run nanogpt …` alone produced a script that exited 0, wrote
+a corpus, and left NanoGPT entirely absent — a green regen proving nothing (the
+`green-regen-is-not-coverage` class, in a new disguise). Caught by checking the
+row count, not by any test. Both lists are updated.
+
+**Regen recipe:**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d101-4cb1035e
+cd <worktree> && V4=$PIN V5=$PWD bash harness/oracle/providers/regenerate-image-fixtures.sh
+cargo test -p quilltap-harness --test image_dialects_equivalence
+# expect 82 rows; verify with:
+#   ggrep -c '"provider":"nanogpt"' harness/oracle/fixtures/image-dialects/image-dialects.recorded.ndjson  → 17
+```
+
 ### Unit 6 — the embeddings arms ✅
 
 **The provider list needed NO code.** `embedding_provider_ids()` reads
