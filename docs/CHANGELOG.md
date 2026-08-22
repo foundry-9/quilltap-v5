@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — feat(spa): the evaluateThinkingTurn browser twin + the thinking-turn contract fields (v4 bug 85, P4.D98 unit 1)
+
+_Versions: SPA 0.5.529._
+
+Ports the client half of v4 `97d2fcb5`'s shared evaluator:
+`settings/providers/thinking-turn.ts` answers "will this profile run a
+thinking turn?" from the provider's declared `thinkingTurnRule`, the profile's
+`parameters`, and the selected model's static facts — explicit choice wins
+(absent/null/`''` all read as unset), else `thinksByDefault`, else no. Parity
+spec transcribed 1:1 from v4's `thinking-turn.test.ts` (10 cases). The wire
+contract mirror gains `ThinkingTurnRule`, `ProviderInfo.thinkingTurnRule`,
+and the two `ModelInfo` facts (`supportsThinking` / `thinksByDefault`); the
+server half that serves them is P4.D97's, and everything here degrades to the
+provider-rule-only answer while the fields are absent, exactly as v4's client
+does.
 #### 2026-08-21 — test(harness): sweep-runnable run lines for the three envelope families (P4.D97 rider)
 
 _Versions: harness 0.0.523._

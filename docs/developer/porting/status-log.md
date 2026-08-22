@@ -77928,3 +77928,31 @@ pin (corpora untouched — verified by git status after the runs), and
 `recipe_sweep.py --self-test` stays at 0 failures. Comment-only harness
 change; the three binaries recompiled and re-ran green post-edit.
 Versions: harness 0.0.523.
+## P4.D98 — the thinking-turn profile editor (v4 bug 85, client half) — v4 `12fe3e6f`
+
+Lane branch `claude/p4-d98-thinking-turn-editor-1c30ec`. Drift-check at lane
+start: v4 checkout on `main`, HEAD exactly `12fe3e6f`, tree clean;
+`git log 12fe3e6f..main` empty; `bugfix` still `3a76b17d` (nothing unabsorbed).
+This lane ports the CLIENT half of v4 `97d2fcb5` only; the server half
+(evaluator in core, registry join, manifests, routes, the heal) is P4.D97's,
+and every behavior here is proven in the fields-absent state this worktree
+serves.
+
+### Unit 1 — the `evaluateThinkingTurn` browser twin + the contract mirror
+
+`apps/web/src/app/screens/settings/providers/thinking-turn.ts` transcribes v4
+`lib/llm/thinking-turn.ts` whole (docblock carried, adapted per the
+client-half convention beside `multi-character-prefill.ts`): `isUnset` =
+absent/null/`''`, `disabledValues` checked BEFORE `enabledValues`, model
+fallback strictly `thinksByDefault === true`. `thinking-turn.spec.ts`
+transcribes v4's new `__tests__/unit/lib/llm/thinking-turn.test.ts` 1:1 —
+10 cases, all green on first run.
+
+The contract mirror (`core-contract.ts`): new `ThinkingTurnRule` interface
+(shape verbatim from v4 plugin-types `provider.ts`, doc comments carried),
+`ProviderInfo.thinkingTurnRule?: ThinkingTurnRule | null` beside
+`optionsSchema` (optional on purpose — a server that has not learned the field
+omits it and the editor must degrade), and `ModelInfo` gains
+`supportsThinking?` / `thinksByDefault?` with v4's two doc comments.
+
+SPA 0.5.529.

@@ -3029,6 +3029,27 @@ export interface ChatSettingsDto {
 // Settings DTOs (v4 providers / connection-profiles / api-keys / models bodies)
 // ---------------------------------------------------------------------------
 
+/**
+ * The provider plugin's declared thinking-turn rule (v4 plugin-types
+ * `ThinkingTurnRule`, `97d2fcb5`): which `parameters` key on the connection
+ * profile switches reasoning on or off, and which values mean which. Feeds
+ * `evaluateThinkingTurn` (`settings/providers/thinking-turn`) so the editor
+ * can seed the multi-character prefill box the way the server would (v4 bug
+ * 85). Declarative rather than a plugin closure on purpose — a rule
+ * serialises through the providers listing; a closure cannot.
+ */
+export interface ThinkingTurnRule {
+  /**
+   * The `parameters` key on the connection profile that switches thinking on
+   * or off. Must match a field key from the provider's options schema.
+   */
+  optionKey: string;
+  /** Values of that key meaning thinking is ON. */
+  enabledValues?: (string | number | boolean)[];
+  /** Values of that key meaning thinking is OFF. */
+  disabledValues?: (string | number | boolean)[];
+}
+
 /** One provider row (v4 GET `/providers`). `icon` is `null` on the v5 manifest
  *  — a documented absent field, kept for shape faithfulness. `optionsSchema`
  *  carries the plugin's connection-profile options schema, or `null` for a
@@ -3065,6 +3086,14 @@ export interface ProviderInfo {
     baseUrlPlaceholder?: string;
   };
   optionsSchema?: unknown | null;
+  /**
+   * The plugin's declared thinking-turn rule, or `null` when it declares none
+   * (v4 serves the key on every listing entry via `?? null`; only DeepSeek and
+   * Ollama declare one at `12fe3e6f`). Optional here because a server that has
+   * not learned the field yet omits it, and the editor must degrade to the
+   * provider-rule-only seed exactly as v4's client does on an absent key.
+   */
+  thinkingTurnRule?: ThinkingTurnRule | null;
 }
 
 /** The masked API-key projection (v4 `api-keys` list — never the plaintext key). */
@@ -3170,6 +3199,10 @@ export interface ModelInfo {
   experimental?: boolean;
   maxOutputTokens?: number;
   contextWindow?: number;
+  /** Whether the model can run a reasoning turn at all. */
+  supportsThinking?: boolean;
+  /** Whether it reasons without the profile asking it to (bug 85). */
+  thinksByDefault?: boolean;
 }
 
 /** The models read/fetch body (v4 POST `/models`). */
