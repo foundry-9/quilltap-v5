@@ -77803,3 +77803,35 @@ regen in this lane runs from it.
   context-builder call either (its proof was the live V4test repro). The 💸
   live bug-85 repro chat is the closing proof, on the dogfood queue.
 - Versions: core 0.0.597, harness 0.0.520.
+
+### Unit 5 — the bug-86 strip predicate (v4 `12fe3e6f`)
+
+- `strip_thinking_incompatible`'s gate becomes
+  `deepseek_will_run_thinking_turn(body)` — explicit `thinking.type`
+  enabled/disabled FIRST (any other shape falls through, exactly as v4's two
+  `if`s do), then the model habit by exact-id match against the module-local
+  frozen copy `DEEPSEEK_THINKS_BY_DEFAULT` (v4's plugin reads its own
+  `STATIC_MODELS`, not the host registry — the const mirrors that). The
+  converged `apply_profile_params_with` applier untouched, as ordered.
+- **The consistency pin:** `deepseek_thinks_by_default_agrees_with_the_manifest`
+  asserts the const equals the committed `deepseek.json` manifest's
+  `thinksByDefault:true` model ids — the generator transcribes the manifest
+  from the same v4 STATIC_MODELS, so a v4 model-catalogue drift moves the
+  manifest first and this test names the id the const is missing. The truth
+  table itself is unit-pinned (`will_run_thinking_turn_asks_the_two_questions_in_order`).
+- **Corpus:** `request-envelopes.recorded.ndjson` regenerated at the pin via
+  `regenerate-request-envelopes.sh` (`V4=<pin>`; the recorder run
+  DELIBERATELY — the sweep driver never runs recording stages), 263 → 269
+  rows: `thinking-default-v4-model` / `thinking-model-default-empty` (strip
+  fires — temperature+top_p shed from base, the penalties never land) /
+  `thinking-disabled-v4-model` (kept), each in both modes. **All 263
+  pre-existing rows verified byte-identical** — the ORDER'S EXPECTATION that
+  `profile-params`/`profile-params-skips` would shed params was WRONG about
+  the corpus: those rows ride `deepseek-chat`, an UNCATALOGUED id, so they
+  are (and remain) the keeps-the-params leg. Measured, not assumed.
+- **The recorded red:** the commit-C workspace gate (compiled before this
+  fix, run against the regenerated corpus) failed at
+  `DEEPSEEK/thinking-default-v4-model[stream]` with the four params present
+  (`/tmp/p4d97-gate-c.log`) — the pre-fix red the discipline asks for; green
+  with the fix, all 269 rows.
+- Versions: core 0.0.598, harness 0.0.521.

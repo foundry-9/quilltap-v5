@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — fix(deepseek): decide the thinking strip from the model, not the request body (v4 bug 86, P4.D97 unit 5)
+
+_Versions: core 0.0.598, harness 0.0.521._
+
+v4 `12fe3e6f` ported: `strip_thinking_incompatible`'s predicate becomes
+`deepseek_will_run_thinking_turn(body)` — the profile's explicit
+`thinking.type` enabled/disabled first, then the model's own habit from the
+frozen catalogue copy by exact-id match (`deepseek-v4-flash` /
+`deepseek-v4-pro`, both `thinksByDefault`). Reading only the body was the
+bug: a default-state profile on a V4 model was judged not to be thinking,
+and temperature/top_p/frequency_penalty/presence_penalty went out on a
+request that ignores them. The frozen copy is pinned against the committed
+`deepseek.json` manifest's `models` field by a unit test (the two homes
+cannot rot apart — v4 carries the same duplication plugin-side), and the
+predicate's truth table (explicit both ways, habit by exact id,
+uncatalogued/no-model/unrecognized-shape fall-throughs) is unit-pinned.
+
+The request-envelopes corpus regenerated at the pin with three new DeepSeek
+rows (both modes; 263 → 269): `thinking-default-v4-model` (the strip fires —
+temperature/top_p shed from base, the two penalties never land),
+`thinking-model-default-empty` ("(model default)" — the shared applier skips
+`''`, so the habit decides), `thinking-disabled-v4-model` (everything
+stays). All 263 pre-existing rows byte-identical — the corpus's other
+DeepSeek rows ride `deepseek-chat`, an UNCATALOGUED id, so they are the
+keeps-the-params leg (the order's expectation that `profile-params` /
+`profile-params-skips` would shed params was WRONG about the corpus's model
+id — measured, not assumed). The pre-fix red is on record: the commit-C
+workspace gate ran the old predicate against the regenerated corpus and
+failed at `thinking-default-v4-model[stream]` with the params present.
+
 #### 2026-08-21 — feat(llm): thread runsThinkingTurn through the prefill default (v4 bug 85, P4.D97 unit 4)
 
 _Versions: core 0.0.597, harness 0.0.520._

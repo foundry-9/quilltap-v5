@@ -647,11 +647,58 @@ fn deepseek_normalize_profile_param(key: &str, value: &Value) -> Value {
     value.clone()
 }
 
-/// v4 DeepSeek `stripThinkingIncompatibleParams` — when thinking is enabled, drop
-/// temperature/top_p/frequency_penalty/presence_penalty.
+/// The two ids whose catalogue entry says they reason **without being asked**
+/// (v4 DeepSeek `STATIC_MODELS` rows with `thinksByDefault: true`, `12fe3e6f`).
+/// v4's plugin reads its own static table rather than the host registry, so
+/// the faithful v5 shape is this module-local frozen copy — with
+/// `deepseek_thinks_by_default_agrees_with_the_manifest` below pinning it
+/// against the committed `deepseek.json` manifest's `models` field so the two
+/// homes cannot rot apart (v4 carries the same duplication plugin-side).
+const DEEPSEEK_THINKS_BY_DEFAULT: &[&str] = &["deepseek-v4-flash", "deepseek-v4-pro"];
+
+/// v4 DeepSeek `willRunThinkingTurn` (bug 86): whether the request we are
+/// about to send will be answered by a thinking turn.
+///
+/// Two facts, in that order — the same shape the host's
+/// `evaluate_thinking_turn` uses, and for the same reason:
+///
+///   1. **The profile's explicit choice.** `thinking: { type: 'enabled' }` or
+///      `{ type: 'disabled' }`, already normalized onto the body by
+///      [`deepseek_normalize_profile_param`].
+///   2. **The model's own habit.** Absent a choice, the V4 models reason
+///      anyway — `deepseek-v4-flash` returns `reasoning_content` on a profile
+///      carrying `parameters: {}`, which is the default state.
+///
+/// Reading only the body was the bug (v4 bug 86): it answers "what did we ask
+/// for?" when the question is "what will the model do?", so a profile that
+/// had never touched the thinking option was judged not to be thinking and
+/// the params below were sent into a request that ignores them.
+///
+/// The model lookup is an exact id match against the static catalogue,
+/// matching the host. A model DeepSeek serves that the catalogue does not
+/// list (an experimental id, say) contributes no habit and falls to `false`.
+fn deepseek_will_run_thinking_turn(b: &Body) -> bool {
+    if let Some(Value::Object(o)) = b.get("thinking") {
+        match o.get("type").and_then(Value::as_str) {
+            Some("enabled") => return true,
+            Some("disabled") => return false,
+            // Any other shape falls through to the model habit, exactly as
+            // v4's two `if`s do.
+            _ => {}
+        }
+    }
+    match b.get("model").and_then(Value::as_str) {
+        Some(m) => DEEPSEEK_THINKS_BY_DEFAULT.contains(&m),
+        None => false,
+    }
+}
+
+/// v4 DeepSeek `stripThinkingIncompatibleParams` — strip the params DeepSeek
+/// ignores while thinking, so we don't send conflicting signals. Call after
+/// the profile params have been applied — it reads `body.thinking` and
+/// `body.model`.
 fn strip_thinking_incompatible(b: &mut Body) {
-    let enabled = matches!(b.get("thinking"), Some(Value::Object(o)) if o.get("type").and_then(Value::as_str) == Some("enabled"));
-    if !enabled {
+    if !deepseek_will_run_thinking_turn(b) {
         return;
     }
     for k in [
@@ -1712,5 +1759,76 @@ mod leading_system_tests {
             serde_json::to_string(&out).unwrap(),
             r#"[{"role":"system","content":"A\n\nB","name":"prefix","cache_control":{"type":"ephemeral"}}]"#
         );
+    }
+}
+
+#[cfg(test)]
+mod deepseek_thinking_turn_tests {
+    use super::*;
+
+    /// The consistency pin that keeps the two homes from rotting apart: the
+    /// module-local frozen copy above must agree with the committed
+    /// `deepseek.json` manifest's fact-bearing `models` entries (which the
+    /// generator transcribes from the same v4 `STATIC_MODELS` this const
+    /// mirrors). If v4 adds a V4-tier model, the manifest regen moves first
+    /// and this test names the missing id here.
+    #[test]
+    fn deepseek_thinks_by_default_agrees_with_the_manifest() {
+        let manifest = crate::provider_manifest::Registry::built_in()
+            .get_provider("DEEPSEEK")
+            .expect("DEEPSEEK manifest");
+        let manifest_ids: Vec<&str> = manifest
+            .models
+            .iter()
+            .filter(|e| e.facts.thinks_by_default == Some(true))
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(
+            manifest_ids, DEEPSEEK_THINKS_BY_DEFAULT,
+            "the frozen builder copy and the manifest models field disagree"
+        );
+    }
+
+    /// v4 bug 86's truth table, on the body shapes the builder produces:
+    /// explicit enabled/disabled first, then the model habit by exact id.
+    #[test]
+    fn will_run_thinking_turn_asks_the_two_questions_in_order() {
+        let body = |v: serde_json::Value| {
+            let mut b = Body::new();
+            if let Value::Object(o) = v {
+                for (k, val) in o {
+                    b.set(&k, val);
+                }
+            }
+            b
+        };
+        // Explicit choice wins over the habit, both ways.
+        assert!(deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-chat", "thinking": { "type": "enabled" } })
+        )));
+        assert!(!deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-v4-flash", "thinking": { "type": "disabled" } })
+        )));
+        // Default state on a V4 model: the habit answers.
+        assert!(deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-v4-flash" })
+        )));
+        assert!(deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-v4-pro" })
+        )));
+        // An uncatalogued id contributes no habit; so does no model at all;
+        // so does an unrecognized thinking shape on an uncatalogued model.
+        assert!(!deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-chat" })
+        )));
+        assert!(!deepseek_will_run_thinking_turn(&body(json!({}))));
+        assert!(!deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-chat", "thinking": { "type": "sideways" } })
+        )));
+        // …and an unrecognized shape on a V4 model falls THROUGH to the habit,
+        // exactly as v4's two `if`s do.
+        assert!(deepseek_will_run_thinking_turn(&body(
+            json!({ "model": "deepseek-v4-flash", "thinking": { "type": "sideways" } })
+        )));
     }
 }

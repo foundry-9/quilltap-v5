@@ -289,6 +289,19 @@ function casesFor(provider) {
     // them these bytes move.
     add('profile-params-skips', { ...base, model: 'deepseek-chat', profileParameters: { frequency_penalty: '', presence_penalty: null, logprobs: true, top_logprobs: 3, reasoning_effort: 'high', model: 'HIJACKED', messages: [], stream: false, tools: [] } });
     add('profile-params-thinking-object', { ...base, model: 'deepseek-chat', profileParameters: { thinking: { type: 'disabled' } } });
+    // P4.D97 (v4 bug 86): the strip now asks "what will the model do?" — a
+    // default-state profile on a V4 model sheds temperature/top_p/
+    // frequency_penalty/presence_penalty because the model reasons unasked
+    // (`willRunThinkingTurn` falls to STATIC_MODELS.thinksByDefault on an
+    // exact-id match). NOTE the corpus's other deepseek rows all ride
+    // `deepseek-chat`, an UNCATALOGUED id — they are the keeps-the-params leg
+    // and must stay byte-identical across this change.
+    add('thinking-default-v4-model', { ...base, model: 'deepseek-v4-flash', profileParameters: { frequency_penalty: 0.5, presence_penalty: 0.2 } });
+    // "(model default)" — the empty string never reaches the body (the shared
+    // applier skips it), so the model habit decides: stripped.
+    add('thinking-model-default-empty', { ...base, model: 'deepseek-v4-flash', profileParameters: { thinking: '', frequency_penalty: 0.5 } });
+    // An explicit disabled outranks the habit: everything stays.
+    add('thinking-disabled-v4-model', { ...base, model: 'deepseek-v4-flash', profileParameters: { thinking: 'disabled', frequency_penalty: 0.5 } });
     // P4.21 — DeepSeek DROPS attachments (body shows plain string content).
     add('image-attachment', { ...base, model: 'deepseek-chat', messages: [SYS, USER_IMG] });
     // P4.D93 (bug 82) — THE REGRESSION GUARD. DeepSeek is a hosted subclass of the
