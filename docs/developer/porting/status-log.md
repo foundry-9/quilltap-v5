@@ -78088,3 +78088,34 @@ fallback, sibling-wins precedence, and every empty case — including
 
 Gate: SPA 333 files / 4,943 (was 332 / 4,937 — exactly this spec's six
 cases); `npm run build` clean. SPA → 0.5.529.
+
+### Unit 2 — the reducer carry (the layer v4 does not have)
+
+⚠ **v5 is a TWO-LAYER fix where v4 is one.** v4's hook receives raw frames and
+renders from them in one place. v5 splits into the deliberately pure
+`chat-stream.reducer` plus the Salon vertical's `reportStreamTransitions`
+reporter — and the reducer DROPPED the sibling `error` before the vertical ever
+saw it (`applyToolResult` stored only `result: result.result`). Landing the
+resolver at the render sites alone would have been inert: the data never gets
+there.
+
+`PendingToolCall` gains `errorText?: string`
+(`apps/web/src/app/core/chat-stream.reducer.ts:43-58`) and `applyToolResult`
+stores `result.error` on the matching call. It is carried **raw** — the
+executor's `Error: ` prefix intact — so the reducer stays pure and resolution
+happens at render, mirroring v4's own separation (v4's helper is called at the
+render site, not in the frame parser).
+
+**The spec blind spot this closes:** the notice specs drive
+`reportStreamTransitions` directly through a cast, bypassing the reducer
+entirely, so a reducer-level fix is invisible to them. `chat-stream.reducer.spec
+.ts` had no `toolResult` error case at all. Two net-new cases now feed REAL
+frames through `reduceChatFrame`: a failing `generate_image` result carries
+`errorText: 'Error: Image generation is not enabled for this chat'` onto the
+call (the wire shape recorded live in the finding-#99 walk), and a success frame
+leaves `errorText` undefined.
+
+**Mutation-proven:** dropping the `errorText: result.error` line turns the
+first case red (1 failed), and restoring it green.
+
+Gate: SPA 333 files / 4,945; `npm run build` clean. SPA → 0.5.530.

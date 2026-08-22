@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(salon): carry the tool-result error sentence through the reducer (bug 84)
+
+_Versions: SPA 0.5.530._
+
+`PendingToolCall` gains `errorText`, and `applyToolResult` stores the frame's
+sibling `error` on the matching call. It is carried RAW — the executor's own
+`Error: ` prefix intact — so the reducer stays pure and the render site
+resolves it, mirroring v4's own separation.
+
+v5 is a two-layer fix where v4 is one: v4's hook receives raw frames, while
+v5 splits into a pure reducer plus a vertical reporter, and the reducer used
+to drop the sibling `error` before the vertical ever saw it. Placing the
+resolver at the render sites alone would be inert — the data never gets
+there.
+
+New reducer coverage feeds real frames through `reduceChatFrame`: a failing
+`generate_image` result carries its sentence onto the call, and a success
+frame leaves `errorText` undefined. Dropping the carry turns the first red
+(mutation-proven).
+
 #### 2026-08-22 — port(salon): the tool-result error-sentence resolver, v4's client twin (bug 84)
 
 _Versions: SPA 0.5.529._

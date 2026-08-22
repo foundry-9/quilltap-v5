@@ -82,6 +82,44 @@ describe('chat stream reducer', () => {
     expect(final.finalDone?.toolsExecuted).toBe(true);
   });
 
+  it("carries a failing tool's sibling `error` sentence onto the call (Bug 84)", () => {
+    // The emitter puts the sentence in `error`, a SIBLING of `result`, because
+    // `result` is null on failure (`chat_events.rs:529`). The reducer must carry
+    // it RAW — the executor's own `Error: ` prefix intact — so the render site
+    // can resolve it; dropping it here is half of what v4's bug 84 was.
+    const detected = reduceChatFrame(initialChatStreamState(), {
+      toolsDetected: 1,
+      toolNames: ['generate_image'],
+      toolArguments: [{ prompt: 'a cat' }],
+    });
+    const failed = reduceChatFrame(detected, {
+      toolResult: {
+        index: 0,
+        name: 'generate_image',
+        success: false,
+        result: null,
+        error: 'Error: Image generation is not enabled for this chat',
+      },
+    });
+    expect(failed.toolBatches[0].calls[0]).toMatchObject({
+      name: 'generate_image',
+      status: 'error',
+      errorText: 'Error: Image generation is not enabled for this chat',
+    });
+  });
+
+  it('leaves `errorText` undefined on a success frame, which carries no `error`', () => {
+    const detected = reduceChatFrame(initialChatStreamState(), {
+      toolsDetected: 1,
+      toolNames: ['generate_image'],
+    });
+    const ok = reduceChatFrame(detected, {
+      toolResult: { index: 0, name: 'generate_image', success: true, result: { images: [{}] } },
+    });
+    expect(ok.toolBatches[0].calls[0].status).toBe('success');
+    expect(ok.toolBatches[0].calls[0].errorText).toBeUndefined();
+  });
+
   it('handles a multi-turn chain: one bubble per turn, terminal chainComplete', () => {
     const final = foldChatFrames(framesFor(multiTurnChainTrace, FIXTURE_CHAT_ID));
     const bubbles = assistant(final.messages);

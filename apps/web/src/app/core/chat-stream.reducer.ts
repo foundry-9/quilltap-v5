@@ -14,7 +14,8 @@
  *  - `reasoning` — CUMULATIVE live-replace (each frame carries the full text).
  *  - `reasoningSegments` / `reasoningContent` — positioned blocks / full text on `done`.
  *  - `toolsDetected` — push a tool batch tagged with the prose offset (`content.length`).
- *  - `toolResult` — mark the matching call on the MOST RECENT batch.
+ *  - `toolResult` — mark the matching call on the MOST RECENT batch, carrying
+ *    the frame's sibling `error` sentence onto it.
  *  - `status` — the live status stage.
  *  - `carinaAnswer` / `hostAnnouncement` — insert a posted message, deduped by id.
  *  - `confirmationResult` — patch a bubble's confirmation state (+ revised content).
@@ -47,6 +48,15 @@ export interface PendingToolCall {
   status: 'pending' | 'success' | 'error';
   result?: unknown;
   arguments?: Record<string, unknown>;
+  /**
+   * The failing tool's human-readable sentence, carried RAW (the executor's own
+   * `Error: ` prefix intact) from the frame's `error` field — a SIBLING of
+   * `result`, since `result` is null on failure. Kept unresolved here so the
+   * reducer stays pure and the render site resolves it, mirroring v4's own
+   * separation (v4 `d9c98cf2`, Bug 84 — the field had no reader in either app
+   * until then). See `chat/tool-result-error.ts`.
+   */
+  errorText?: string;
 }
 
 /**
@@ -376,7 +386,13 @@ function applyToolResult(
   const { index, name, success } = result;
   const calls = last.calls.map((tc, idx) =>
     (index !== undefined && idx === index) || (index === undefined && tc.name === name)
-      ? { ...tc, status: success ? ('success' as const) : ('error' as const), result: result.result }
+      ? {
+          ...tc,
+          status: success ? ('success' as const) : ('error' as const),
+          result: result.result,
+          // The sibling `error`, not `result.error` — see `PendingToolCall`.
+          errorText: result.error,
+        }
       : tc,
   );
   const next = batches.slice();
