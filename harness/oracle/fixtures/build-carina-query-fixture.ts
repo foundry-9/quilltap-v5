@@ -111,7 +111,9 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+    '@/lib/database/manager'
+  );
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -125,10 +127,19 @@ async function main(): Promise<void> {
     DocMountDocumentSchema,
     DocMountFolderSchema,
     DocMountFileLinkSchema,
+    GroupCharacterMemberSchema,
+    GroupDocMountLinkSchema,
+    ProjectDocMountLinkSchema,
   } = await import('@/lib/schemas/mount-index.types');
+  // P4.D103: the standing-instructions substrate (store-backed projects/groups
+  // plus the membership join).
+  const { GroupSchema } = await import('@/lib/schemas/group.types');
+  const { ProjectSchema } = await import('@/lib/schemas/project.types');
   const { BackgroundJobSchema } = await import('@/lib/schemas/job.types');
 
   await initializeDatabase();
+  await ensureCollection('groups', GroupSchema);
+  await ensureCollection('projects', ProjectSchema);
   const repos = getRepositories();
 
   // Materialize the mount-index content tables (hand-written repos whose DDL v4
@@ -140,6 +151,9 @@ async function main(): Promise<void> {
     ['doc_mount_documents', DocMountDocumentSchema],
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
+    ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ['project_doc_mount_links', ProjectDocMountLinkSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) {
@@ -249,11 +263,29 @@ async function main(): Promise<void> {
     createdAt: spec.seedTimestamp,
     updatedAt: spec.seedTimestamp,
   }));
+  // P4.D103: the instructed project the chat belongs to + the instructed group
+  // ALICE alone belongs to. See the corpus's `standingInstructions._comment`.
+  {
+    const si = spec.standingInstructions;
+    const project = await repos.projects.create(
+      { userId: spec.userId, name: si.projectName, instructions: si.projectInstructions } as never,
+      { id: si.projectId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never
+    );
+    if (project.id !== si.projectId) throw new Error(`project id drift: ${project.id}`);
+    const group = await repos.groups.create(
+      { name: si.groupName, instructions: si.groupInstructions } as never,
+      { id: si.groupId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never
+    );
+    if (group.id !== si.groupId) throw new Error(`group id drift: ${group.id}`);
+    await repos.groupCharacterMembers.addMember(si.groupId, si.groupMemberCharacterId);
+  }
+
   await repos.chats.create(
     {
       userId: spec.userId,
       title: spec.chat.title,
       participants,
+      projectId: spec.standingInstructions.projectId,
     } as never,
     { id: spec.chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
   );

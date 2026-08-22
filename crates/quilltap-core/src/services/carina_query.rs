@@ -403,6 +403,35 @@ where
         system_prompt.push_str(&format!("\n\n## Scenario\n{sc}"));
     }
 
+    // Standing instructions (v4 `8f868109`) — the chat's project `instructions`
+    // plus the `instructions` of every group the ANSWERER belongs to. Mirrors the
+    // Salon insertion in reading order (identity → world → who's asking → what
+    // you remember), so it sits after the scenario and before the "who is
+    // consulting you" card. Template-processed like the Salon path, but with a
+    // HAND-BUILT context: v4 passes `{ char: answerer.name, user: 'User' }` — the
+    // literal string, not a resolved user character. Fails soft: a broken store
+    // never loses the query (v5's resolver cannot fail at all).
+    if let Some(standing_instructions) =
+        crate::standing_instructions::resolve_standing_instructions_section(
+            db,
+            s(&chat, "projectId").as_deref(),
+            Some(answerer_id.as_str()),
+        )
+    {
+        let mut ctx = crate::templates::TemplateContext::default();
+        ctx.set("char", s(&answerer, "name").unwrap_or_default());
+        ctx.set("user", "User");
+        system_prompt.push_str(&format!(
+            "\n\n{}",
+            crate::templates::process_template(&standing_instructions, &ctx)
+        ));
+        tracing::debug!(
+            chat_id = %chat_id,
+            answerer_id = %answerer_id,
+            "[Carina] Standing instructions applied to query prompt"
+        );
+    }
+
     // Tell the answerer who is consulting them (the surface-level card).
     let asker_card = load_asker_identity(db, &chat, opts.asker_participant_id.as_deref());
     if let Some(card) = &asker_card {

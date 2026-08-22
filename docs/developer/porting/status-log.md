@@ -79797,3 +79797,34 @@ observable silence, and that too is commented.
   section. Dropping the pass reddens it.
 
 Both threading sites mutation-proven red-first.
+
+### Unit 5 — the Carina mirror
+
+`services/carina_query.rs`: the standing-instructions section is appended AFTER
+the `## Scenario` block and BEFORE the `## Reference Query` card, so the prompt
+still reads identity → world → who's asking → what you remember (v4's own
+stated ordering rationale, carried as a comment).
+
+Two details that are easy to get wrong and are both pinned:
+
+1. The template context is **hand-built** — v4 passes
+   `{ char: answerer.name, user: 'User' }`, the LITERAL string `'User'`, never a
+   resolved user character. v5 builds a bare `TemplateContext` with exactly those
+   two keys; every other placeholder resolves to the empty string, which is what
+   v4's two-key object does too.
+2. The group leg follows the **answerer's** memberships (`characterId:
+   answerer.id`), not the chat's roster.
+
+**Differential.** `carina_query_tier3` — the fixture now seeds an instructed
+project that the CHAT belongs to (so all 17 recorded rows carry the project
+section) and an instructed group that only ALICE belongs to (so a case answered
+by anyone else carries the project section ALONE). That asymmetry is what makes
+"membership follows the answerer, not the chat" measurable rather than asserted.
+The group body carries `{{char}}` and `{{user}}`, and v4 renders it
+`Circle rule: Alice addresses User by name once per answer.` — the literal
+`User` is the discriminator for detail 1.
+
+**Three mutations proven red-first:** `user` bound to the asker's name instead
+of the literal `User`; the membership leg passed `None` for the character (the
+"follows the chat" spelling); and the section moved after the reference-query
+card.

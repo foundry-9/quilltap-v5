@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(prompts): Carina one-off queries carry the standing instructions
+
+_Versions: core 0.0.613._
+
+Mirrors v4 `8f868109`'s Carina insertion: after the scenario, before the "who
+is consulting you" card, so the prompt still reads identity → world → who's
+asking → what you remember. The template context is HAND-BUILT as
+`{char: answerer.name, user: "User"}` — the literal string, never a resolved
+user character — which is v4's own shape on this path.
+
+The group leg follows the ANSWERER's memberships, not the chat's roster. The
+carina fixture now puts the chat in an instructed project (so all 17 rows carry
+the project section) and gives ONE character an instructed group, so a case
+answered by anyone else carries the project section alone — which is what makes
+the answerer-not-chat rule measurable. Three mutations proven red-first: the
+`{{user}}` key resolved from the asker, the membership leg keyed off the chat,
+and the section moved after the reference-query card.
+
 #### 2026-08-22 — port(prompts): the standing-instructions slot in the cacheable system prompt
 
 _Versions: core 0.0.612, harness 0.0.535._

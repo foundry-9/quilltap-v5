@@ -549,5 +549,15 @@
       "expectPost": false,
       "brahma": false
     }
-  ]
+  ],
+  "standingInstructions": {
+    "_comment": "P4.D103 (v4 `8f868109`): the Carina mirror. The chat sits in an instructed project, so EVERY case's prompt carries the project section; only Alice is a member of the instructed group, so a case answered by anyone else carries the project section ALONE — which is what proves membership follows the ANSWERER, not the chat. The group body's `{{user}}` must render as the literal `User`: v4 hand-builds the template context as `{ char: answerer.name, user: 'User' }` on this path, never resolving a user character.",
+    "projectId": "00000000-0000-4000-8000-70726f6a3100",
+    "projectName": "Ledger Project",
+    "projectInstructions": "Project rule: keep every answer under three sentences.",
+    "groupId": "00000000-0000-4000-8000-677270310000",
+    "groupName": "Alice's Circle",
+    "groupInstructions": "Circle rule: {{char}} addresses {{user}} by name once per answer.",
+    "groupMemberCharacterId": "00000000-0000-4000-8000-616c69636500"
+  }
 }
