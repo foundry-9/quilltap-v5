@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): work orders for the `d5830439` drift round (P4.D100 → P4.D101 stacked ∥ P4.D102)
+
+_Docs-only change._
+
+The next round planned against new v4 baseline `d5830439` (three commits
+of drift: `ca22ec45` honest image Fetch Models + Z.AI image generation
+made real; `781fc420` the NanoGPT bundled provider; `d5830439` NanoGPT
+thinking options). Three orders written with fresh two-sided surveys:
+P4.D100 (server — the image list-models verb, five providers' keyed
+model discovery, the bytes/download seam + Z.AI URL→base64, the gemini
+routing widening), P4.D101 (server, stacked on D100 — NanoGPT end to end:
+manifest through the generator, chat wire + the dual reasoning dialect,
+images, embeddings, switch-table census, thinking options), P4.D102 (SPA
+— the whole client half, contracts pinned, beats gated). Deliberately
+left out: the merge-verb silent-keep sweep (collides again with this
+round's settings/provider case files), the maintenance trio
+(`response_parse_equivalence` is where NanoGPT's rows land), and the owed
+💸 dogfood queue (a `/dogfood` pass right after unification). Also fixed:
+P4.12's stale `STATUS: OPEN` header (closed-by-P4.13 since 2026-07-23;
+findings #22/#25 long confirmed gone).
+
 #### 2026-08-22 — unify: the `12fe3e6f` thinking-turn drift round (P4.D97 ∥ P4.D98 ∥ P4.D99 ∥ P4.54)
 
 _Versions: core 0.0.599, harness 0.0.523, host 0.0.75, SPA 0.5.535._
