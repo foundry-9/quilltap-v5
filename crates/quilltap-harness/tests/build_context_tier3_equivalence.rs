@@ -213,6 +213,10 @@ struct SpecMsg {
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct SpecChatOverrides {
+    /// P4.D103: puts the chat in an instructed project for the
+    /// standing-instructions spine op.
+    #[serde(default)]
+    project_id: Option<String>,
     #[serde(default)]
     summary_anchor_message_ids: Vec<String>,
     #[serde(default)]
@@ -713,6 +717,10 @@ async fn build_context_tier3_matches_oracle() {
                     .chat_overrides
                     .as_ref()
                     .and_then(|o| o.context_summary.clone()),
+                project_id: op
+                    .chat_overrides
+                    .as_ref()
+                    .and_then(|o| o.project_id.clone()),
                 ..Default::default()
             },
             existing_messages: build_existing(op),

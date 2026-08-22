@@ -79729,3 +79729,71 @@ down into `stacks`, which makes `version` a full comparand it never had before.
 generically, so `version`/`stacks` pass through and the inner ids still
 tokenize. Both regenerated at `a6870c5a`, green, and grepped to confirm all
 three column-carrying rows actually carry `"stacks"`.
+
+### Unit 4 — the builder slot, the cache-version bump, and the threading
+
+**The slot.** `BuildSystemPromptOptions::standing_instructions: Option<&str>`,
+pushed between the Taboo section and the tool instructions under v4's guard
+(`standingInstructions && standingInstructions.trim().length > 0`) and — the ONE
+place this section differs from Taboo — run through `process_template`, because
+a group prompt shared by several member characters legitimately wants to address
+`{{char}}`. The pushed value is NOT trimmed: v4 trims only to decide whether to
+push, so leading/trailing whitespace around real content reaches the prompt
+verbatim (its own corpus row).
+
+**`PROMPT_CACHE_STRUCTURE_VERSION` 3 → 4** in `cheap_llm.rs`, with v4's three
+history-comment lines. A note records why the two sibling commits did NOT bump:
+wording inside existing blocks is not a layout change, per the policy comment in
+`lib/llm/cache-key.ts` itself. The unit test moves to `quilltap:char:abc:v4`. A
+tree-wide grep confirms no corpus or fixture carries a `quilltap:char:…:v3`
+literal — the key is only ever produced, never recorded.
+
+**The four call sites, verified per site rather than assumed** (v4's own
+`buildSystemPrompt` importers, enumerated by grep in the v4 checkout):
+
+| v4 site | passes? | v5 twin |
+| --- | --- | --- |
+| `lib/chat/context-manager.ts:941` | YES | `services/build_context.rs` — resolves before the builder, same shape as the Taboo read above it |
+| `lib/tools/handlers/self-inventory/builders.ts:530` | YES | `tools/self_inventory.rs::build_prompt_section` |
+| `lib/services/announcer/character-voiced.ts:119` | NO | `services/announcer/character_voiced.rs` — `None`, commented |
+| `lib/chat/initialize.ts:110` | N/A | a LOCAL `buildSystemPrompt` in the same file (the greeting head) — structurally excluded, commented in `chat_initialize.rs` |
+
+Help and Brahma chats are excluded the same structural way (separate builders,
+unported in v5).
+
+**v4's outer try/catch backstop in `context-manager` has no v5 twin, and cannot
+change behavior:** v5's `resolve_standing_instructions` returns no error at all
+— every leg is a `match` on a `Result` inside the function — so there is nothing
+for a backstop to catch. Recorded at the call site so the next reader does not
+"restore" it. v4's self-inventory catch is EMPTY (an unused `err` binding, no
+logging, unlike every other site); v5's infallible resolver is the same
+observable silence, and that too is commented.
+
+**Differentials.**
+
+- `system_prompt_equivalence` gains EIGHT rows (`standing-*`): the
+  absent/empty/whitespace byte-identity triple (verified equal to each other AND
+  to the pre-feature `stack-only` layout), the position row (measured indices:
+  math note 429 → Taboo 909 → standing 1299 → tool instructions 1715 →
+  reinforcement 1737), the `{{char}}`/`{{user}}` resolution discriminator, a
+  roleplay+tools row, and the untrimmed-pushed-verbatim row. A `standing_hits >= 8`
+  floor keeps a stale oracle from passing by not carrying them. THREE mutations
+  proven red-first: no template processing (Taboo's treatment), the section moved
+  after the tool instructions, and trimming the pushed value.
+- `build_context_tier3` gains the spine proof. The fixture builder now bakes an
+  instructed project (`Expedition`) and THREE groups seeded Zebra Circle →
+  Almanac Society → Silent Order (whitespace-only instructions), with the
+  responding character Ada in all three; a new op
+  (`standing_instructions_in_system_prompt`) puts the chat in the project via
+  `chatOverrides.projectId` (a new field on both the corpus and the Rust
+  `SpecChatOverrides`). v4's answer: project first, then **Almanac before
+  Zebra** — the localeCompare sort against insert order — with Silent Order
+  contributing nothing and `{{char}}` resolved to `Ada`. Because Ada's
+  memberships are real, EVERY Ada op now carries the group leg; the project leg
+  and the sort only the new op. Dropping the pass reddens
+  `plain_single_char_turn` immediately.
+- `self_inventory`'s fixture project and group gain `instructions` (the project's
+  carrying a `{{char}}`), so `full_sections`' reconstructed prompt now shows the
+  section. Dropping the pass reddens it.
+
+Both threading sites mutation-proven red-first.

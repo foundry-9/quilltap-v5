@@ -134,6 +134,11 @@ fn template_character(character: &Value) -> TemplateCharacter {
 
 /// v4 `initialize.ts`'s own `buildSystemPrompt` — the flat single-shot prompt
 /// written to the chat head. Distinct from the per-turn identity-stack builder.
+///
+/// Because it is a SEPARATE function, the greeting head is structurally excluded
+/// from every option the shared builder grew: no Taboo section and — verified per
+/// call site at the P4.D103 port (v4 `8f868109`) — no standing-instructions
+/// section either. v4's own greeting head is the same shape.
 fn build_system_prompt(
     character: &Value,
     user_character: Option<&UserCharacter>,

@@ -312,7 +312,11 @@ where
     let sys_character = to_sys_character(params.character);
     // v4 passes ONLY `{ character, selectedSystemPromptId }` — every other option
     // is `undefined`, so no roleplay template, no tool instructions, no scenario,
-    // and the `{{timestamp}}` path never fires.
+    // and the `{{timestamp}}` path never fires. That includes
+    // `standingInstructions` (v4 `8f868109`): verified per call site at the
+    // P4.D103 port — `lib/services/announcer/character-voiced.ts:119` imports the
+    // shared builder but does not pass the option, so the announcer is
+    // structurally excluded from the section exactly as it is from Taboo.
     let system_prompt = match build_system_prompt(&BuildSystemPromptOptions {
         character: &sys_character,
         user_character: None,
@@ -327,6 +331,7 @@ where
         // v4 omits `tabooPhrases` here — the character-voiced announcer is not a
         // conversational turn, so it carries no Taboo section (`7df7de8e`).
         taboo_phrases: None,
+        standing_instructions: None,
         now_ms: 0,
         local_offset_minutes: 0,
     }) {

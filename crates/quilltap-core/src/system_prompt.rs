@@ -439,6 +439,12 @@ pub struct BuildSystemPromptOptions<'a> {
     /// is the intended default for the non-conversational call sites (the
     /// character-voiced announcer, `self_inventory`).
     pub taboo_phrases: Option<&'a [String]>,
+    /// Rendered standing-instructions section (project + group `instructions`,
+    /// see [`crate::standing_instructions`]), resolved by the caller and passed
+    /// down because this builder is deliberately synchronous. `None` (v4:
+    /// omitting the option) omits the section. Unlike Taboo, the section IS
+    /// template-processed — a project/group prompt may address `{{char}}`.
+    pub standing_instructions: Option<&'a str>,
     /// Injected `Date.now()` (ms) for the `{{timestamp}}` path.
     pub now_ms: i64,
     /// Injected host `getTimezoneOffset()` (minutes, positive = west of UTC).
@@ -578,6 +584,19 @@ pub fn build_system_prompt(
     // cacheable prefix) and never passes through `process_template`.
     if let Some(taboo_section) = render_taboo_section(options.taboo_phrases) {
         parts.push(taboo_section);
+    }
+
+    // Standing instructions (project + group `instructions`, v4 `8f868109`).
+    // Stable per character per chat — it changes only when the user edits a
+    // project/group or a membership — so it lives here in the cacheable prefix,
+    // after the universal material and before the per-turn tool instructions.
+    // Emits nothing when absent (the Taboo byte-identity contract).
+    // Template-processed like the roleplay template so `{{char}}`/`{{user}}`
+    // resolve — the ONE place this section differs from Taboo.
+    if let Some(si) = options.standing_instructions {
+        if !js_trim(si).is_empty() {
+            parts.push(process_template(si, &ctx));
+        }
     }
 
     // Tool instructions (per-turn dynamic). `if (toolInstructions)` — non-empty.
@@ -765,6 +784,7 @@ mod tests {
             scenario_text: None,
             precompiled_identity_stack: None,
             taboo_phrases: None,
+            standing_instructions: None,
             now_ms: 0,
             local_offset_minutes: 0,
         }
@@ -1028,6 +1048,7 @@ mod p4d50_taboo_section_tests {
             scenario_text: None,
             precompiled_identity_stack: None,
             taboo_phrases: None,
+            standing_instructions: None,
             now_ms: 0,
             local_offset_minutes: 0,
         }

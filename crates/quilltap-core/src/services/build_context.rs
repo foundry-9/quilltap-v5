@@ -1870,6 +1870,30 @@ where
             }
         };
 
+    // Standing instructions (v4 `8f868109`): the chat's project `instructions`
+    // plus the `instructions` of every group the RESPONDING character belongs to.
+    // Resolved here, rendered once, and handed to the synchronous builder — the
+    // same shape as the Taboo read above.
+    //
+    // v4 wraps this in a final try/catch backstop "so the turn never dies for a
+    // section that is guidance, not payload". v5's resolver cannot fail: every
+    // leg is a `match` on a `Result` inside
+    // `crate::standing_instructions::resolve_standing_instructions`, and the
+    // function returns no error at all. The backstop therefore has no v5 twin
+    // and could not change behavior if it did.
+    let standing_instructions = crate::standing_instructions::resolve_standing_instructions_section(
+        db,
+        input.chat.project_id.as_deref(),
+        Some(input.character.id.as_str()),
+    );
+    if standing_instructions.is_some() {
+        tracing::debug!(
+            chat_id = %input.chat.id,
+            character_id = %input.character.id,
+            "[ContextManager] Standing instructions applied to system prompt"
+        );
+    }
+
     // System prompt (block 1).
     let system_prompt = build_system_prompt(&BuildSystemPromptOptions {
         character: &input.character.sys,
@@ -1883,6 +1907,7 @@ where
         scenario_text: input.chat.scenario_text.as_deref(),
         precompiled_identity_stack: input.chat.precompiled_identity_stack.as_deref(),
         taboo_phrases: Some(&taboo_phrases),
+        standing_instructions: standing_instructions.as_deref(),
         now_ms: input.now_ms,
         local_offset_minutes: input.local_offset_minutes,
     })

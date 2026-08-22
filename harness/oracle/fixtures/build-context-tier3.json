@@ -1116,6 +1116,31 @@
       "timestampMode": null,
       "perTurnConversationSummaries": true,
       "seedFoldWhisperConversations": "### Relevant Past Conversations\n\n- **The Lighthouse Point Sketches** (`cf000000-0000-4000-8000-0000000000f1`) — 5 June 2024"
+    },
+    {
+      "_comment": "P4.D103 (v4 `8f868109`): the standing-instructions spine proof. `chatOverrides.projectId` puts the chat in the instructed Expedition project, and the responding character (Ada) is a member of THREE groups seeded in membership order Zebra / Almanac / Silent — so the rendered section must read project, then Almanac, then Zebra (localeCompare, against insert order), with Silent (whitespace-only instructions) contributing nothing. The section sits between the Taboo list this op also sets and the tool instructions.",
+      "name": "standing_instructions_in_system_prompt",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "chatOverrides": {
+        "projectId": "d3000000-0000-4000-8000-0000000000a1"
+      },
+      "tabooPhrases": [
+        "weight-bearing"
+      ],
+      "newUserMessage": "What did the survey turn up?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
     }
   ],
   "vaultConversationSummaries": [
@@ -1214,5 +1239,20 @@
       "systemKind": "relevant-conversations",
       "createdAt": "2024-06-10T00:00:00.000Z"
     }
-  ]
+  ],
+  "standingInstructions": {
+    "projectId": "d3000000-0000-4000-8000-0000000000a1",
+    "projectName": "Expedition",
+    "projectInstructions": "Log every observation in the expedition journal; {{char}} signs each entry.",
+    "groupZebraId": "e3000000-0000-4000-8000-0000000000a1",
+    "groupZebraName": "Zebra Circle",
+    "groupZebraInstructions": "Zebra rule: never use an exclamation mark.",
+    "groupAlmanacId": "e3000000-0000-4000-8000-0000000000a2",
+    "groupAlmanacName": "Almanac Society",
+    "groupAlmanacInstructions": "Almanac rule: cite a date whenever you can.",
+    "groupSilentId": "e3000000-0000-4000-8000-0000000000a3",
+    "groupSilentName": "Silent Order",
+    "groupSilentInstructions": "   ",
+    "memberCharacterId": "ca000000-0000-4000-8000-0000000000a1"
+  }
 }

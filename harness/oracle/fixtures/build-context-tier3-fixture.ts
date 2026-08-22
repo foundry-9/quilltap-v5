@@ -27,6 +27,22 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+interface StandingInstructionsSpec {
+  projectId: string;
+  projectName: string;
+  projectInstructions: string;
+  groupZebraId: string;
+  groupZebraName: string;
+  groupZebraInstructions: string;
+  groupAlmanacId: string;
+  groupAlmanacName: string;
+  groupAlmanacInstructions: string;
+  groupSilentId: string;
+  groupSilentName: string;
+  groupSilentInstructions: string;
+  memberCharacterId: string;
+}
+
 interface KnowledgeFile {
   path: string;
   fileType: string;
@@ -113,6 +129,7 @@ interface Spec {
   characters: CharacterSpec[];
   seedMemories: SeedMemory[];
   chat: ChatSpec;
+  standingInstructions: StandingInstructionsSpec;
   vaultConversationSummaries?: VaultConversationSummary[];
   seedMessages?: SeedMessage[];
 }
@@ -143,7 +160,9 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+    '@/lib/database/manager'
+  );
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -164,9 +183,19 @@ async function main(): Promise<void> {
     DocMountDocumentSchema,
     DocMountFolderSchema,
     DocMountFileLinkSchema,
+    GroupCharacterMemberSchema,
+    GroupDocMountLinkSchema,
+    ProjectDocMountLinkSchema,
   } = await import('@/lib/schemas/mount-index.types');
+  // P4.D103: the standing-instructions substrate (projects + groups + the
+  // membership join). Groups/projects are store-backed, so their slim rows live
+  // in MAIN and their `instructions` in the MOUNT-INDEX store.
+  const { GroupSchema } = await import('@/lib/schemas/group.types');
+  const { ProjectSchema } = await import('@/lib/schemas/project.types');
 
   await initializeDatabase();
+  await ensureCollection('groups', GroupSchema);
+  await ensureCollection('projects', ProjectSchema);
   const repos = getRepositories();
 
   // [P4.D50] Every real boot creates `instance_settings` via the version guard
@@ -189,6 +218,9 @@ async function main(): Promise<void> {
     ['doc_mount_documents', DocMountDocumentSchema],
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
+    ['group_doc_mount_links', GroupDocMountLinkSchema],
+    ['project_doc_mount_links', ProjectDocMountLinkSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
@@ -322,6 +354,33 @@ async function main(): Promise<void> {
         characterId: m.characterId,
         embedding: new Float32Array(m.vector),
       });
+    }
+  }
+
+  // P4.D103 (v4 `8f868109`): the standing-instructions substrate. One instructed
+  // project, and THREE groups seeded in an insert order that fights the name
+  // sort — Zebra Circle, then Almanac Society, then Silent Order (whitespace-only
+  // instructions, so it contributes nothing). The op that reads them puts the
+  // chat in the project via `chatOverrides.projectId`.
+  {
+    const si = spec.standingInstructions;
+    const project = await repos.projects.create(
+      { name: si.projectName, description: null, instructions: si.projectInstructions, state: {} } as never,
+      { id: si.projectId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+    );
+    if (project.id !== si.projectId) throw new Error(`project id drift: ${project.id}`);
+    const groups: Array<[string, string, string]> = [
+      [si.groupZebraId, si.groupZebraName, si.groupZebraInstructions],
+      [si.groupAlmanacId, si.groupAlmanacName, si.groupAlmanacInstructions],
+      [si.groupSilentId, si.groupSilentName, si.groupSilentInstructions],
+    ];
+    for (const [id, name, instructions] of groups) {
+      const g = await repos.groups.create(
+        { name, description: null, instructions, state: {} } as never,
+        { id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+      );
+      if (g.id !== id) throw new Error(`group id drift: ${g.id}`);
+      await repos.groupCharacterMembers.addMember(id, si.memberCharacterId);
     }
   }
 

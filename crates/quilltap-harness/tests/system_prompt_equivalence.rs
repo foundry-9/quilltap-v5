@@ -192,6 +192,9 @@ enum Row {
         /// `[]` = the explicit-empty arm, which must render identically.
         #[serde(rename = "tabooPhrases", default)]
         taboo_phrases: Option<Vec<String>>,
+        /// P4.D103 (v4 `8f868109`). `null` = v4's OMITTED option (no section).
+        #[serde(rename = "standingInstructions", default)]
+        standing_instructions: Option<String>,
         #[serde(rename = "nowMs")]
         now_ms: i64,
         #[serde(rename = "localOffsetMin")]
@@ -362,6 +365,9 @@ fn system_prompt_matches_oracle() {
     // P4.D50: the two cache-determinism golden rows must both be present — a
     // truncated / stale oracle must not pass by simply not carrying them.
     let mut golden_hits = 0usize;
+    // P4.D103: likewise for the standing-instructions rows — a stale oracle that
+    // predates the slot must not pass by simply not carrying them.
+    let mut standing_hits = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::IdentityStack {
@@ -405,6 +411,7 @@ fn system_prompt_matches_oracle() {
                 scenario_text,
                 precompiled_identity_stack,
                 taboo_phrases,
+                standing_instructions,
                 now_ms,
                 local_offset_min,
                 out,
@@ -424,11 +431,15 @@ fn system_prompt_matches_oracle() {
                     scenario_text: scenario_text.as_deref(),
                     precompiled_identity_stack: precompiled_identity_stack.as_deref(),
                     taboo_phrases: taboo_phrases.as_deref(),
+                    standing_instructions: standing_instructions.as_deref(),
                     now_ms,
                     local_offset_minutes: local_offset_min,
                 })
                 .unwrap_or_else(|e| panic!("systemPrompt '{id}' errored: {e}"));
                 assert_eq!(got, out, "systemPrompt '{id}'");
+                if id.starts_with("standing-") {
+                    standing_hits += 1;
+                }
                 // P4.D50: v4's cache-determinism goldens
                 // (`__tests__/unit/cache-determinism/system-prompt.test.ts` at
                 // `7df7de8e`), byte-copied. v5 has no golden fixture of its own;
@@ -508,5 +519,13 @@ fn system_prompt_matches_oracle() {
         "expected both cache-determinism golden rows (cache-golden-base / \
          cache-golden-with-taboo) — regenerate the oracle"
     );
-    eprintln!("OK: system-prompt matched oracle ({count} rows, {golden_hits} goldens).");
+    assert!(
+        standing_hits >= 8,
+        "expected at least 8 standing-instructions rows, got {standing_hits} — \
+         regenerate the oracle"
+    );
+    eprintln!(
+        "OK: system-prompt matched oracle ({count} rows, {golden_hits} goldens, \
+         {standing_hits} standing-instructions)."
+    );
 }

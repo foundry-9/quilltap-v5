@@ -24,7 +24,14 @@ use crate::cheap_model::get_cheapest_model;
 /// 3 — Taboo section added to the universal portion of the system prompt
 ///     (between the math note and tool instructions); see
 ///     docs/developer/features/complete/taboo.md.
-pub const PROMPT_CACHE_STRUCTURE_VERSION: u32 = 3;
+/// 4 — Standing-instructions section (project + group `instructions`) added
+///     between the Taboo section and the tool instructions; see
+///     lib/chat/context/standing-instructions.ts.
+///
+/// NB v4's two sibling prompt commits (`346e855f` bug 88, `a6870c5a` person
+/// consistency) deliberately did NOT bump: wording inside existing blocks is not
+/// a layout change, per the bump policy in `lib/llm/cache-key.ts` itself.
+pub const PROMPT_CACHE_STRUCTURE_VERSION: u32 = 4;
 
 /// v4 `buildCharacterCacheKey`: the per-character provider cache identifier.
 pub fn build_character_cache_key(character_id: Option<&str>) -> Option<String> {
@@ -457,8 +464,9 @@ mod tests {
     fn cache_key_shape() {
         assert_eq!(
             build_character_cache_key(Some("abc")).as_deref(),
-            // v3 since P4.D50 (the Taboo section joined the cacheable prefix).
-            Some("quilltap:char:abc:v3")
+            // v4 since P4.D103 (the standing-instructions section joined the
+            // cacheable prefix, between Taboo and the tool instructions).
+            Some("quilltap:char:abc:v4")
         );
         assert_eq!(build_character_cache_key(None), None);
         assert_eq!(build_character_cache_key(Some("")), None);

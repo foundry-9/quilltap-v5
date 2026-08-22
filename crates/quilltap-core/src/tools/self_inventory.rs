@@ -1501,6 +1501,18 @@ fn build_prompt_section(
     // reporting path. The reconstructed prompt is therefore missing the Taboo
     // section a real turn would carry — a known, accepted fidelity gap
     // (v4 `lib/tools/handlers/self-inventory/builders.ts`, `7df7de8e`).
+    //
+    // Standing instructions (v4 `8f868109`) ARE included: they are substantive
+    // conduct guidance a character should be able to introspect, and the repos
+    // are already in hand. v4's catch here is EMPTY — an unused `err` binding, no
+    // logging, unlike every other resolve site — so the swallow is silent on this
+    // path by design. v5's resolver is infallible by construction (it logs its
+    // own per-leg failures and returns), which is the same observable behavior.
+    let standing_instructions = crate::standing_instructions::resolve_standing_instructions_section(
+        db,
+        json_str(&chat, "projectId").as_deref(),
+        Some(character_id),
+    );
     let system_prompt = crate::system_prompt::build_system_prompt(
         &crate::system_prompt::BuildSystemPromptOptions {
             character: &sys,
@@ -1514,6 +1526,7 @@ fn build_prompt_section(
             scenario_text: json_str(&chat, "scenarioText").as_deref(),
             precompiled_identity_stack: None,
             taboo_phrases: None,
+            standing_instructions: standing_instructions.as_deref(),
             now_ms: 0,
             local_offset_minutes: 0,
         },

@@ -246,13 +246,21 @@ async function main(): Promise<void> {
     { id: spec.roleplayTemplate.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
   );
 
-  // 4. Project + group (each provisions an official store).
+  // 4. Project + group (each provisions an official store). P4.D103 (v4
+  // `8f868109`): both carry `instructions`, so the `buildPromptSection` report
+  // reconstructs the standing-instructions section a live turn would carry —
+  // the project's body holds a `{{char}}` placeholder so the template
+  // processing is observable in the output.
   await repos.projects.create(
-    { userId: spec.userId, name: spec.project.name } as never,
+    {
+      userId: spec.userId,
+      name: spec.project.name,
+      instructions: spec.project.instructions,
+    } as never,
     { id: spec.project.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never
   );
   await repos.groups.create(
-    { name: spec.group.name } as never,
+    { name: spec.group.name, instructions: spec.group.instructions } as never,
     { id: spec.group.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never
   );
 

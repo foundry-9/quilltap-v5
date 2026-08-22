@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — port(prompts): the standing-instructions slot in the cacheable system prompt
+
+_Versions: core 0.0.612, harness 0.0.535._
+
+`BuildSystemPromptOptions` gains `standing_instructions`, pushed between the
+Taboo section and the tool instructions and — unlike Taboo — run through
+`process_template`, so a project or group prompt can address `{{char}}`.
+Absent, empty, and whitespace-only all build a byte-identical prompt to the
+pre-feature layout. `PROMPT_CACHE_STRUCTURE_VERSION` 3 → 4, with v4's history
+comment carried; the two sibling wording commits deliberately did not bump.
+
+Threaded at v4's two passing call sites: `build_context` resolves before the
+synchronous builder (the same shape as the Taboo read above it), and
+`self_inventory`'s `build_prompt_section` includes the full section because it
+is substantive conduct guidance a character should be able to introspect. The
+two NON-passing sites are verified and commented rather than assumed — the
+character-voiced announcer imports the shared builder but never passes the
+option, and the greeting head is a separate function entirely.
+
+`system_prompt_equivalence` gains eight standing-instructions rows (absent /
+empty / whitespace byte-identity, the position between Taboo and tools, the
+`{{char}}`-resolution discriminator, roleplay + tools, and an untrimmed
+section pushed verbatim) plus a shape floor so a stale oracle cannot pass by
+not carrying them. Three mutations proven red-first.
+
+`build_context_tier3` gains the spine proof: the fixture bakes an instructed
+project and three groups whose membership insert order fights the name sort,
+and a new op puts the chat in the project. `self_inventory`'s fixture project
+and group gain `instructions`. Both threading sites mutation-proven red-first.
+
 #### 2026-08-22 — port(prompts): the version-stamped `compiledIdentityStacks` envelope
 
 _Versions: core 0.0.611, harness 0.0.534._

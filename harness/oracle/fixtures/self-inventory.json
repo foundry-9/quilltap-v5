@@ -45,11 +45,13 @@
   },
   "project": {
     "id": "9a9a9a9a-0000-4000-8000-000000000003",
-    "name": "The Impossible Library"
+    "name": "The Impossible Library",
+    "instructions": "Shelve every citation before you close the stacks; {{char}} initials the ledger."
   },
   "group": {
     "id": "6b6b6b6b-0000-4000-8000-000000000004",
-    "name": "Archive Guild"
+    "name": "Archive Guild",
+    "instructions": "Guild rule: name the archive you drew from."
   },
   "chat": {
     "id": "7c7c7c7c-0000-4000-8000-000000000005",

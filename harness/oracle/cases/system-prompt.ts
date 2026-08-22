@@ -92,6 +92,9 @@ type SystemPromptRow = {
   /** P4.D50 (v4 `7df7de8e`): the instance-wide Taboo phrases. `null` is v4's
    *  OMITTED option (no section); `[]` is the explicit-empty arm. */
   tabooPhrases?: string[] | null
+  /** P4.D103 (v4 `8f868109`): the rendered standing-instructions section.
+   *  `null` is v4's OMITTED option (no section). */
+  standingInstructions?: string | null
   nowMs: number
   localOffsetMin: number
   out: string
@@ -349,6 +352,7 @@ function pushSystemPrompt(
     scenarioText?: string | null
     precompiledIdentityStack?: string | null
     tabooPhrases?: string[]
+    standingInstructions?: string | null
   },
   nowMs: number,
 ) {
@@ -372,6 +376,7 @@ function pushSystemPrompt(
     // tell "no option" from "explicit empty list" — the two arms whose byte
     // identity keeps the golden prompt hash stable.
     tabooPhrases: opts.tabooPhrases ?? null,
+    standingInstructions: opts.standingInstructions ?? null,
     nowMs,
     localOffsetMin,
     out,
@@ -537,6 +542,82 @@ pushSystemPrompt(
 pushSystemPrompt(
   'taboo-nonascii-and-quotes',
   { character: TABOO_CHAR, tabooPhrases: ['un « je-ne-sais-quoi » 🎩', 'the "obvious" answer'] },
+  T_MAIN,
+)
+
+// ==== P4.D103: the standing-instructions slot (v4 `8f868109`) ==============
+// The section sits between the Taboo section and the tool instructions, and —
+// unlike Taboo — IS template-processed.
+const SI_CHAR = ch({
+  name: 'Test Character',
+  personality: 'Keeps a level head.',
+  pronouns: { subject: 'she', object: 'her', possessive: 'hers' },
+})
+const SI_SECTION = [
+  '[STANDING INSTRUCTIONS]',
+  "The sections below are standing instructions attached to this chat's project and to groups you belong to. They hold for the entire conversation. They refine how you conduct yourself here; they never replace who you are.",
+  '',
+  '## Project Instructions — Expedition',
+  '{{char}} keeps the expedition journal, and {{user}} signs each entry.',
+  '',
+  '## Group Instructions — Cartographers',
+  'No exclamation marks.',
+].join('\n')
+
+// Absent / empty / whitespace must all build the SAME prompt as the pre-feature
+// layout — the Taboo byte-identity contract, one level up.
+pushSystemPrompt('standing-absent', { character: SI_CHAR }, T_MAIN)
+pushSystemPrompt('standing-empty-string', { character: SI_CHAR, standingInstructions: '' }, T_MAIN)
+pushSystemPrompt(
+  'standing-whitespace-only',
+  { character: SI_CHAR, standingInstructions: '   \n\t ' },
+  T_MAIN,
+)
+// Present, no tools: the section is the LAST block, after the math note.
+pushSystemPrompt(
+  'standing-present-no-tools',
+  { character: SI_CHAR, standingInstructions: SI_SECTION },
+  T_MAIN,
+)
+// Present with Taboo AND tools: the ORDER is math note → Taboo → standing
+// instructions → tool instructions → reinforcement.
+pushSystemPrompt(
+  'standing-between-taboo-and-tools',
+  {
+    character: SI_CHAR,
+    standingInstructions: SI_SECTION,
+    tabooPhrases: ['weight-bearing'],
+    toolInstructions: 'Tools: search, edit.',
+  },
+  T_MAIN,
+)
+// The template-processing discriminator: `{{char}}`/`{{user}}` MUST resolve
+// (Taboo's phrases deliberately do not).
+pushSystemPrompt(
+  'standing-template-processed',
+  {
+    character: SI_CHAR,
+    userCharacter: { name: 'Wren', description: 'a passing scholar' },
+    standingInstructions: SI_SECTION,
+  },
+  T_MAIN,
+)
+// With a roleplay template in front of it too.
+pushSystemPrompt(
+  'standing-with-roleplay-and-tools',
+  {
+    character: SI_CHAR,
+    roleplayTemplate: { systemPrompt: 'Prose only.' },
+    standingInstructions: SI_SECTION,
+    toolInstructions: 'Tools: search.',
+  },
+  T_MAIN,
+)
+// A section that is only leading/trailing whitespace around real content still
+// renders — the guard is `.trim().length > 0`, not a trim of the pushed value.
+pushSystemPrompt(
+  'standing-untrimmed-pushed-verbatim',
+  { character: SI_CHAR, standingInstructions: `\n\n${SI_SECTION}\n\n` },
   T_MAIN,
 )
 
