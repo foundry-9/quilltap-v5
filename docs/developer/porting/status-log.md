@@ -89,7 +89,7 @@ unavailable`). The speakeasy SDK's is `API error occurred: Status {n}. Body:
 error arm scripted on a 5xx measures the retry policy (and hangs a
 single-response recorder) — use a 4xx.
 
-**Corpus + mutation record.** 22 `kind:'models'` rows across the five
+**Corpus + mutation record.** 24 `kind:'models'` rows across the five
 providers, each carrying every request (method, URL, full header set) and its
 canned answer. The differential replays the whole composed path over a
 `CannedWireTransport` keyed on the exact request signature — so a

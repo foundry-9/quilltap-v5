@@ -107,7 +107,7 @@ the SDK projection so v5 answers identically, and the
 `openrouter/models_live_every_signal` corpus row is the tripwire that fires
 when v4 fixes the read. Same class as the P4.D33 bank note and dogfood #24.
 
-The committed image-dialects corpus grows 22 `kind:'models'` rows recorded from
+The committed image-dialects corpus grows 24 `kind:'models'` rows recorded from
 v4's REAL plugin methods at the pin, carrying every request (method, URL, and
 full header set) and each page's canned answer. The differential replays them
 through the whole composed path over a canned transport keyed on the exact
