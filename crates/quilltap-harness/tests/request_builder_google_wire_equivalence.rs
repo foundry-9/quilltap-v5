@@ -36,6 +36,9 @@
 //!   V4=~/source/quilltap-server V5=<repo-root> \
 //!     bash <V5>/harness/oracle/providers/regenerate-google-wire.sh
 //! (The fixture is committed; no env var needed to run.)
+//! Run (by name — the corpus is committed, so this IS the whole recipe;
+//! recording is a deliberate by-hand step, never a sweep stage):
+//!   cargo test -p quilltap-harness --test request_builder_google_wire_equivalence -- --nocapture
 
 mod provider_header_common;
 

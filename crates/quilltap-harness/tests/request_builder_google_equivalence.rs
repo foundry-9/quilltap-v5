@@ -15,6 +15,9 @@
 //! The corpus is committed
 //! (`harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson`);
 //! no env var is needed to run — the family runs in every plain `cargo test`.
+//! Run (by name — the corpus is committed, so this IS the whole recipe;
+//! recording is a deliberate by-hand step, never a sweep stage):
+//!   cargo test -p quilltap-harness --test request_builder_google_equivalence -- --nocapture
 //! Regenerate the corpus (Node 24, only after a v4 provider drift) with
 //! `harness/oracle/providers/regenerate-google-wire.sh` (which drives
 //! `record-google-request.mjs` against v4's REAL plugin).

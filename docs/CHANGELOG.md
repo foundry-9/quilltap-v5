@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-21 — test(harness): sweep-runnable run lines for the three envelope families (P4.D97 rider)
+
+_Versions: harness 0.0.523._
+
+`request_builder_equivalence`, `request_builder_google_equivalence`, and
+`request_builder_google_wire_equivalence` were `nothing_to_run` refusals
+under the sweep driver — committed-corpus families whose recording is a
+deliberate by-hand step and whose headers carried no `cargo test` run line
+(three rows of the P4.53-measured vacuous-green debt; P4.54 owns the OTHER
+families' run lines this round and excludes these three by name). Each
+header gains the scoped run line; all three now run end-to-end by name
+through the driver, and `--self-test` stays at 0 failures.
+
 #### 2026-08-21 — docs(porting): the P4.D97 mirror refresh + dispositions (v4 bugs 84–86 docs)
 
 _Docs-only change._

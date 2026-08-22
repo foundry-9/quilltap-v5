@@ -77913,3 +77913,18 @@ regen in this lane runs from it.
 - **The lane's sibling-coordination note:** the shared contract (the wire
   shapes above) is verbatim in P4.D98's order; `P4D97_THINKING_WIRE_LANDED`
   (the e2e gate constant, P4.D98-owned) flips at unification.
+
+### Rider — the three envelope families' run lines (the P4.53 nothing_to_run rows this lane owns)
+
+The final by-name sweep hit the driver's `nothing_to_run` refusal on
+`request_builder_equivalence` (and inspection found the same on both google
+envelope families): committed-corpus families, recording deliberate-by-hand,
+NO run line in the header — three rows of the P4.53-measured vacuous-green
+debt, and the three P4.54's order excludes by name (they are this lane's).
+Each header gained the scoped `cargo test -p quilltap-harness --test <stem>
+-- --nocapture` line under an explicit "recording is never a sweep stage"
+sentence; all three run end-to-end by name through the driver against the
+pin (corpora untouched — verified by git status after the runs), and
+`recipe_sweep.py --self-test` stays at 0 failures. Comment-only harness
+change; the three binaries recompiled and re-ran green post-edit.
+Versions: harness 0.0.523.
