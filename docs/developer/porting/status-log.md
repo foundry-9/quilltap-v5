@@ -80524,3 +80524,80 @@ call sites.
 
 SPA gate for the unit: `npm test` **341 files / 5,048** (was 340 / 5,038),
 `npm run build` clean.
+
+### Unit 3 — the Group Instructions editor + the TS contract mirror + the gated beat
+
+v4 `8f868109`'s client half (plus its `a6870c5a` label rewrite, landed in
+one step since v5 never had the hand-rolled interim form).
+
+**The field.** `screens/groups/group-editor.ts` gains a `qt-markdown-field`
+at v4's `minHeight="14rem"`, re-keyed on the group id (v4's `remountKey`),
+placed THIRD in the form — between Description and Color, exactly where v4
+puts it — under `qt-prompt-field-label` over
+`PROMPT_FIELD_HINTS.groupInstructions` with `optional`. Load takes
+`group.instructions ?? ''` (v4 `g.instructions || ''`); save sends
+`this.instructions() || null`.
+
+**Why the client normalizes.** The Shared contract §2: the server's update
+path is a validated PASSTHROUGH, so a PUT carrying `""` STORES `""` (v4's
+quirk, carried). v4's `GroupDetailView` compensates client-side and so does
+this; the spec asserts the null on the outgoing bag, mutation-proven by
+dropping the `|| null`.
+
+**The contract mirror** (`core/core-contract.ts`): `instructions?: string |
+null` on `GroupCreateRequest` (the verb accepts it; the create SURFACE never
+sends it, because v4 left its own create dialog alone and v5's stays
+name+description), on `GroupUpdatePatch`, and on `GroupSummary`.
+`groups.api.ts`'s `updateGroup` now takes `GroupUpdatePatch` instead of a
+duplicated inline shape.
+
+⚠ **One recorded reading of the order.** The order's Tier 1 item 4 asks for
+`instructions: string | null` on the detail type. It landed OPTIONAL
+(`instructions?: string | null`) because v5's `GroupSummary` is ONE type
+serving both the list read and the detail read, and only the detail read is
+contractually obliged to carry the field — v4 declares it optional on its
+own equivalently-shared `Group` type for the same reason
+(`aurora/types.ts:11`). Nothing on the wire changes; a required declaration
+would have asserted something about the list projection this lane never
+measured. Flagged for the unifier.
+
+**Specs** (in `groups.spec.ts`'s `GroupEditor` block, six new): seeding from
+the loaded group with the header text read out of the hints table; the
+field's position in the form (rows 1–4 = name / description / instructions /
+color); saving an edited body; the cleared-to-null normalization; a group
+carrying `instructions: null` rendering an empty editor and still saving
+null. The existing save assertion grew the `instructions` key, and the
+`group` fixture grew an instructions value, so the round-trip is covered by
+the pre-existing beat too. Two mutations run red-then-green: dropping
+`|| null`, and moving the field to the end of the form.
+
+**The gated beat** (`e2e/groups-flow.spec.ts`, ACTIVATE-AT-UNIFY behind
+`P4D103_SERVER_LANDED = false`): type instructions → Save → reload → the
+editor holds them (which only passes if `groupUpdate` PERSISTED and
+`groupGet` PROJECTS), then clear → Save → the outgoing dispatch body is
+asserted to carry `instructions: null` on the wire, then a second reload
+shows the empty editor. The header's label and helper are asserted from the
+hints table on the way. Instructions are written through the UI, never
+seeded by SQL — groups are store-overlay entities
+([[store-overlay-properties-cannot-be-sql-seeded]]). The gate exists because
+without the server half a save would be silently dropped by the dispatch
+verb's unknown-field tolerance ([[dispatch-verb-ignores-unknown-fields]])
+and the beat would red on something that has nothing to do with this lane.
+
+### Tier 3 — the NO-PORTs, loud
+
+v4's `a6870c5a` migrated four more call sites that v5 has NO counterpart
+for. None is stubbed; each is recorded where the absence lives:
+
+| v4 surface | v5 evidence |
+|---|---|
+| AI wizard `steps/GenerationStep.tsx` + `ai-wizard/types.ts` | no AI wizard; `new-character.ts:58` records it as a named deferral (the button is disabled with v4's microcopy) |
+| optimizer `components/SuggestionCard.tsx` | no optimizer; `ui/progress-bar.ts:21-23` documents the absence |
+| `settings/ai-import/AIImportWizard.tsx` (its new Generated Wording section) | no AIImportWizard; "Summon From Lore" is a disabled stub at `chat/cast/add-character-dialog.ts:221-250` |
+| the roleplay-template modal's "Draft formatting instructions" button moving into `actions` | v5 has never had the control — a standing named deferral recorded in `template-form-modal.ts`; nothing is projected into that label row |
+
+The hints-table keys those surfaces consume are all present, so whichever
+future lane ports them inherits the copy for free.
+
+Also per v4: the group CREATE dialog gains nothing. v4 did not touch its
+own, so `group-create-dialog.ts` stays name + description.

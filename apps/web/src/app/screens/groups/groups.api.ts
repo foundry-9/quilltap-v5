@@ -14,6 +14,7 @@ import type {
   DocumentStoreSummary,
   GroupMemberSummary,
   GroupSummary,
+  GroupUpdatePatch,
 } from '../../core/core-contract';
 
 /** Query keys for the groups vertical (v4 `queryKeys.groups`). */
@@ -60,12 +61,7 @@ export async function createGroup(
 export async function updateGroup(
   core: CoreClient,
   groupId: string,
-  patch: {
-    name?: string;
-    description?: string | null;
-    color?: string | null;
-    icon?: string | null;
-  },
+  patch: GroupUpdatePatch,
 ): Promise<GroupSummary> {
   // The patch rides a nested `group` bag (the server's pinned shape).
   const data = await core.dispatchData({ type: 'groupUpdate', groupId, group: patch });

@@ -310,6 +310,35 @@ root-level `invalid_type` and takes the same `Validation error` path. Six new
 arms in the memories-config differential (two invalid + one writes-nothing
 composite comparing the stored bag per verb), all eight comparands proven red
 against the old lenient behavior.
+#### 2026-08-22 — feat(groups): the Group Instructions editor in the group detail view
+
+_Versions: SPA 0.5.542._
+
+P4.D104 unit 3 — v4 `8f868109`'s client half. The routed group editor gains
+a Group Instructions markdown field, third in the form between Description
+and Color exactly where v4 puts it, at v4's `minHeight="14rem"`, headed by
+the shared prompt-field label over `PROMPT_FIELD_HINTS.groupInstructions`
+with `optional`. Load reads `g.instructions || ''`; save sends
+`instructions || null` — the server's update path is a validated
+passthrough, so an emptied editor would otherwise persist `""`, and the
+client is what normalizes, as v4's does.
+
+The TS contract mirrors the Shared contract: `instructions` on
+`GroupCreateRequest`, on `GroupUpdatePatch`, and on the group row DTO. The
+row DTO declares it optional, exactly as v4's own shared `Group` type does —
+one type serves both the list read and the detail read, and only the detail
+read is contractually obliged to carry it.
+
+The group CREATE dialog gains nothing: v4 did not touch its own.
+
+Specs cover seeding from the loaded group, the header text drawn from the
+hints table, the field's position in the form, saving an edited body, the
+cleared-to-null normalization, and a group that carries no instructions at
+all. Both the null normalization and the field placement were
+mutation-proven. A gated Playwright beat (type → save → reload → clear →
+assert the wire carries null) waits on `P4D103_SERVER_LANDED`, which the
+unifier flips once the server half lands.
+
 #### 2026-08-22 — feat(prompts): migrate every prompt editor onto the shared field label
 
 _Versions: SPA 0.5.541._

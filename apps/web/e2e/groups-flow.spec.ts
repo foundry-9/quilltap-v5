@@ -46,6 +46,17 @@ const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'groups-projects-mount.db');
 /** Lane A owns the fixture; skip the live walk until it is committed. */
 const FIXTURE_READY = existsSync(MAIN_FIXTURE);
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D104 Shared contract §5). The Group Instructions
+ * round-trip needs P4.D103's server half: `groupUpdate` must ACCEPT the
+ * `instructions` key and `groupGet` must project it back. Until then a save
+ * would be silently dropped by the dispatch verb's unknown-field tolerance
+ * ([[dispatch-verb-ignores-unknown-fields]]) and the reload would read
+ * nothing — a red that says nothing about this lane. The unifier flips this
+ * to `true`.
+ */
+const P4D103_SERVER_LANDED = false;
+
 /** Every fixture table the groups walk reads is filtered by userId. */
 const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects'];
 
@@ -212,6 +223,94 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
     await reopened.getByRole('button', { name: 'Reset State' }).click();
     await reopened.getByRole('button', { name: 'Confirm Reset' }).click();
     await expect(reopened.locator('textarea')).toHaveValue('{}', { timeout: 15_000 });
+  });
+
+  /**
+   * P4.D104 — Group Instructions round-trip (v4 `8f868109` + `a6870c5a`).
+   *
+   * Two halves in one beat, both against the real server:
+   *  (a) type instructions → Save → reload → the editor holds the value, which
+   *      only passes if `groupUpdate` PERSISTED it and `groupGet` PROJECTS it;
+   *  (b) clear the editor → Save → the outgoing dispatch body carries
+   *      `instructions: null`, not `""`. The server's update path is a
+   *      validated passthrough, so the CLIENT is what normalizes (v4
+   *      `GroupDetailView.tsx:93`) — asserted on the wire, then confirmed by
+   *      a second reload showing an empty editor.
+   *
+   * Instructions are written through the UI, never seeded by SQL: groups are
+   * store-overlay entities and a SQL UPDATE on that column is invisible
+   * ([[store-overlay-properties-cannot-be-sql-seeded]]).
+   */
+  test('Group Instructions: type → save → reload → clear → save sends null', async ({ page }) => {
+    test.skip(
+      !P4D103_SERVER_LANDED,
+      'the instructions wire (groupUpdate accept + groupGet projection) lands with P4.D103',
+    );
+    test.setTimeout(90_000);
+
+    await page.goto(`${GROUPS_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await expect(page.locator('qt-group-card').first()).toBeVisible({ timeout: 10_000 });
+    await page.locator('qt-group-card').first().getByRole('link', { name: 'Edit' }).click();
+    await expect(page).toHaveURL(/\/characters\/groups\/[^/]+$/);
+    const editorUrl = page.url();
+    await expect(page.locator('#qt-group-name')).toBeVisible({ timeout: 10_000 });
+
+    // The header is the shared prompt-field label, drawn from the hints table.
+    const header = page.locator('qt-prompt-field-label');
+    await expect(header.locator('label')).toHaveText('Group Instructions (Optional)');
+    await expect(header).toContainText('Standing instructions folded into the prompt of every');
+
+    // --- (a) type → save → reload ---
+    const body = page.locator('qt-markdown-field .qt-rich-editor-content');
+    await expect(body).toBeVisible();
+    await body.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    const written = 'The regulars do not explain themselves to each other.';
+    await page.keyboard.type(written);
+
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().includes('/api/dispatch') &&
+          r.request().method() === 'POST' &&
+          (r.request().postData() ?? '').includes('groupUpdate'),
+      ),
+      page.getByRole('button', { name: 'Save Changes' }).click(),
+    ]);
+
+    await page.goto(editorUrl);
+    await page.reload();
+    await expect(page.locator('qt-markdown-field .qt-rich-editor-content')).toContainText(written, {
+      timeout: 15_000,
+    });
+
+    // --- (b) clear → save → the wire carries null ---
+    const cleared = page.locator('qt-markdown-field .qt-rich-editor-content');
+    await cleared.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+
+    const [request] = await Promise.all([
+      page.waitForRequest(
+        (r) =>
+          r.url().includes('/api/dispatch') &&
+          r.method() === 'POST' &&
+          (r.postData() ?? '').includes('groupUpdate'),
+      ),
+      page.getByRole('button', { name: 'Save Changes' }).click(),
+    ]);
+    const sent = JSON.parse(request.postData() ?? '{}') as {
+      group?: { instructions?: unknown };
+    };
+    expect(sent.group).toHaveProperty('instructions');
+    expect(sent.group?.instructions).toBeNull();
+
+    await page.goto(editorUrl);
+    await page.reload();
+    await expect(page.locator('qt-markdown-field .qt-rich-editor-content')).toHaveText('', {
+      timeout: 15_000,
+    });
   });
 
   test('create a throwaway group through the toolbar dialog', async ({ page }) => {

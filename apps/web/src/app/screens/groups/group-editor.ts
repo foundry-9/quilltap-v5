@@ -16,9 +16,12 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../core/core-client';
 import type { GroupMemberSummary, GroupSummary } from '../../core/core-contract';
+import { MarkdownField } from '../../editor/markdown-field';
 import { StateEditorModal } from '../../shared/state/state-editor-modal';
 import { Icon } from '../../ui/icon';
 import { LoadingState } from '../../ui/loading-state';
+import { PROMPT_FIELD_HINTS } from '../../ui/prompt-field-hints';
+import { PromptFieldLabel } from '../../ui/prompt-field-label';
 import { ToastService } from '../../ui/toast.service';
 import { fetchCharacterList } from '../characters/characters.api';
 import { GroupMembersCard } from './group-members-card';
@@ -37,14 +40,29 @@ import {
 /**
  * The routed group editor (v4 `app/aurora/groups/[id]/GroupDetailView.tsx`).
  * Route: `/characters/groups/:id` (v5's path idiom — v4 used `/aurora/groups/[id]`;
- * recorded divergence). An explicit-Save `<form>` (name*, description, color,
- * icon — NO autosave) over two collapsed-by-default cards (Members, Scriptorium).
- * Groups have NO image upload — colour + emoji only.
+ * recorded divergence). An explicit-Save `<form>` (name*, description,
+ * instructions, color, icon — NO autosave) over two collapsed-by-default cards
+ * (Members, Scriptorium). Groups have NO image upload — colour + emoji only.
+ *
+ * Group Instructions (v4 `8f868109` + `a6870c5a`) is the group's standing
+ * prompt, folded into the system prompt of every member character. It sits
+ * THIRD in the form, between Description and Color, exactly where v4 put it,
+ * over the shared `qt-markdown-field` at v4's `minHeight="14rem"`. The group
+ * CREATE dialog gains nothing — v4 did not touch its own.
  */
 @Component({
   selector: 'qt-group-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Icon, LoadingState, GroupMembersCard, GroupStoresCard, StateEditorModal],
+  imports: [
+    FormsModule,
+    Icon,
+    LoadingState,
+    GroupMembersCard,
+    GroupStoresCard,
+    StateEditorModal,
+    MarkdownField,
+    PromptFieldLabel,
+  ],
   template: `
     @if (groupQuery.isPending()) {
       <qt-loading-state message="Loading group..." class="mt-12" />
@@ -99,6 +117,21 @@ import {
               placeholder="Optional description of this group"
               class="w-full px-4 py-2 rounded-lg border qt-border-default bg-transparent text-foreground text-sm resize-none"
             ></textarea>
+          </div>
+
+          <!-- Group Instructions — the group's standing prompt. The form only
+               renders after the group has loaded, so re-keying on the group id
+               is enough for the editor to see the fetched value (v4
+               GroupDetailView.tsx:178-197). -->
+          <div>
+            <qt-prompt-field-label [hint]="hints.groupInstructions" optional />
+            <qt-markdown-field
+              ariaLabel="Group instructions"
+              minHeight="14rem"
+              [recordKey]="id()"
+              [value]="instructions()"
+              (contentChange)="instructions.set($event)"
+            />
           </div>
 
           <div>
@@ -210,9 +243,12 @@ export class GroupEditor {
 
   protected readonly name = signal('');
   protected readonly description = signal('');
+  protected readonly instructions = signal('');
   protected readonly color = signal('');
   protected readonly icon = signal('');
   protected readonly saving = signal(false);
+
+  protected readonly hints = PROMPT_FIELD_HINTS;
 
   protected readonly memberBusy = signal(false);
   protected readonly memberRemoving = signal<string | null>(null);
@@ -258,6 +294,8 @@ export class GroupEditor {
         seededFor = group.id;
         this.name.set(group.name ?? '');
         this.description.set(group.description ?? '');
+        // v4 `instructions: g.instructions || ''`.
+        this.instructions.set(group.instructions ?? '');
         this.color.set(group.color ?? '');
         this.icon.set(group.icon ?? '');
       }
@@ -288,6 +326,10 @@ export class GroupEditor {
       await updateGroup(this.core, this.id(), {
         name: this.name(),
         description: this.description() || null,
+        // v4 sends `formData.instructions || null`: the CLIENT normalizes an
+        // emptied editor to null, because the server's update path is a
+        // validated passthrough that would otherwise store `""`.
+        instructions: this.instructions() || null,
         color: this.color() || null,
         icon: this.icon() || null,
       });

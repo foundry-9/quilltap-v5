@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
@@ -6,6 +7,8 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { RichEditor } from '../../editor/rich-editor';
+import { PROMPT_FIELD_HINTS } from '../../ui/prompt-field-hints';
 import { GroupEditor } from './group-editor';
 import { GroupsSection } from './groups-section';
 import { ToastService } from '../../ui/toast.service';
@@ -128,6 +131,7 @@ describe('GroupEditor', () => {
     id: 'g1',
     name: 'Adventuring Party',
     description: 'The regulars',
+    instructions: 'Speak plainly to one another.',
     color: '#123456',
     icon: '🎭',
     officialMountPointId: null,
@@ -209,12 +213,108 @@ describe('GroupEditor', () => {
       group: {
         name: 'Renamed Party',
         description: 'The regulars',
+        instructions: 'Speak plainly to one another.',
         color: '#123456',
         icon: '🎭',
       },
     });
     // v4 `GroupDetailView.tsx:100` — toast only, no inline surface (P4.29).
     expect(toasts()).toEqual([{ type: 'success', message: 'Group updated successfully!' }]);
+  });
+
+  // --- Group Instructions (P4.D104, v4 `8f868109` + `a6870c5a`) --------------
+
+  function instructionsEditor(fixture: ComponentFixture<unknown>): RichEditor {
+    return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+  }
+
+  it('seeds Group Instructions from the loaded group, labelled from the hints table', async () => {
+    const fixture = await render(stubClient(baseHandler()));
+
+    expect(instructionsEditor(fixture).getMarkdown()).toBe('Speak plainly to one another.');
+
+    const header = fixture.nativeElement.querySelector(
+      'qt-prompt-field-label',
+    ) as HTMLElement;
+    expect(header.querySelector('label')?.textContent).toBe('Group Instructions (Optional)');
+    const helper = header.querySelectorAll('p')[0];
+    expect(helper.textContent).toBe(PROMPT_FIELD_HINTS.groupInstructions.helper);
+  });
+
+  it('places the field THIRD in the form, between Description and Color (v4 order)', async () => {
+    const fixture = await render(stubClient(baseHandler()));
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    const rows = Array.from(form.children) as HTMLElement[];
+    // Each field is one direct child `div`; the last child is the button row.
+    expect(rows[0].querySelector('label')?.textContent?.trim()).toBe('Group Name *');
+    expect(rows[1].querySelector('label')?.textContent?.trim()).toBe('Description');
+    expect(rows[2].querySelector('qt-prompt-field-label')).toBeTruthy();
+    expect(rows[3].querySelector('label')?.textContent?.trim()).toBe('Color');
+  });
+
+  it('saves an edited instructions body through groupUpdate', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        return baseHandler()(r);
+      }),
+    );
+
+    instructionsEditor(fixture).setMarkdown('You have known the others here for **years**.');
+    await settle(fixture);
+    (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    await settle(fixture);
+
+    const put = seen.find((r) => r.type === 'groupUpdate') as DispatchReq;
+    expect((put['group'] as Record<string, unknown>)['instructions']).toBe(
+      'You have known the others here for **years**.',
+    );
+  });
+
+  it('sends NULL, not "", when the editor is cleared (v4 `instructions || null`)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        return baseHandler()(r);
+      }),
+    );
+
+    instructionsEditor(fixture).setMarkdown('');
+    await settle(fixture);
+    (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    await settle(fixture);
+
+    const put = seen.find((r) => r.type === 'groupUpdate') as DispatchReq;
+    // The server's update path is a validated PASSTHROUGH: a PUT carrying ""
+    // would STORE "". The client is what normalizes, exactly as v4's does.
+    expect((put['group'] as Record<string, unknown>)['instructions']).toBeNull();
+  });
+
+  it('treats a group with no instructions as an empty editor', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        if (r.type === 'groupGet') {
+          return { group: { ...group, instructions: null } };
+        }
+        return baseHandler()(r);
+      }),
+    );
+
+    expect(instructionsEditor(fixture).getMarkdown()).toBe('');
+    (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    await settle(fixture);
+    const put = seen.find((r) => r.type === 'groupUpdate') as DispatchReq;
+    expect((put['group'] as Record<string, unknown>)['instructions']).toBeNull();
   });
 
   it('toasts a failed save with NO inline alert (v4 has none on this path, P4.29)', async () => {

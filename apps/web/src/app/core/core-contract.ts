@@ -1264,6 +1264,13 @@ export interface GroupCreateRequest {
   type: 'groupCreate';
   name: string;
   description?: string | null;
+  /**
+   * Standing instructions ("the group prompt"), v4 `8f868109`
+   * (`groups/route.ts:23`, `z.string().max(10000).nullable().optional()`).
+   * The create SURFACE does not send it — v4 left its create dialog alone, so
+   * v5's does too — but the verb accepts it.
+   */
+  instructions?: string | null;
   color?: string | null;
   icon?: string | null;
 }
@@ -1278,6 +1285,14 @@ export interface GroupGetRequest {
 export interface GroupUpdatePatch {
   name?: string;
   description?: string | null;
+  /**
+   * Standing instructions ("the group prompt"), v4 `8f868109`
+   * (`groups/[id]/schemas.ts`, `z.string().max(10000).nullable().optional()`).
+   * The update path is a validated PASSTHROUGH — a PUT with `""` stores `""`
+   * (v4's quirk, carried) — so the CLIENT sends `instructions || null`, which
+   * is what v4's `GroupDetailView` does.
+   */
+  instructions?: string | null;
   color?: string | null;
   icon?: string | null;
 }
@@ -3260,6 +3275,16 @@ export interface GroupSummary {
   id: string;
   name: string;
   description: string | null;
+  /**
+   * Standing instructions ("the group prompt") added to every member
+   * character's system prompt (v4 `aurora/types.ts:11`, `8f868109`).
+   *
+   * OPTIONAL, exactly as v4 declares it on this same shared type: one type
+   * serves both the list read and the detail read, and only the detail read is
+   * contractually obliged to carry the field. A required declaration here
+   * would assert something about the list projection this lane never measured.
+   */
+  instructions?: string | null;
   color: string | null;
   icon: string | null;
   officialMountPointId: string | null;
