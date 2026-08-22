@@ -423,63 +423,128 @@ pub async fn autonomous_room_update_settings(
 /// the outer `Some`; an explicit `null` ⇒ the inner `None` (clear); a value ⇒
 /// `Some(v)`. The two plain booleans + `title` (set-only) are non-tri-state.
 ///
-/// Shape validation is intentionally lenient here (the transport layer's Zod
-/// analogue): a present-but-wrong-typed field is dropped, mirroring the fields
-/// the modal actually posts. The one enforced guard v4 exposes at the service
-/// layer (invalid cron → 400) is handled by the lifecycle, not here.
+/// P4.55 (the merge-verb silent-keep sweep) made this FALLIBLE. v4 runs
+/// `updateSettingsSchema.parse` (`chats/[id]/autonomous-room/route.ts:178-184`,
+/// schema :60-71) BEFORE the service call and answers `validationError` — 400
+/// `"Validation error"` — for any present-but-invalid field. v5 used to DROP a
+/// wrong-typed or out-of-range field silently and answer 200, so a bogus
+/// `runVisibility`, a negative cap or a 400-character `title` vanished without
+/// a word. Only `.parse` failures land here; the one service-layer guard
+/// (invalid cron → 400 with its own sentence) still belongs to the lifecycle.
+///
+/// v5 answers the message only, no `details` issues array (the recorded
+/// no-details divergence class).
+///
+/// A non-object body is Zod's own root-level `invalid_type` — the same 400.
+/// (v4 reaches `badRequest('Invalid request body')` only when `req.json()`
+/// itself throws, which is upstream of this boundary: the dispatch layer hands
+/// us an already-parsed value.) Unknown keys are STRIPPED by `z.object`, never
+/// refused.
 fn parse_settings_patch(settings: &Value) -> Result<AutonomousRoomSettingsPatch, Response> {
-    let obj = settings.as_object();
     let mut patch = AutonomousRoomSettingsPatch::default();
-    let Some(obj) = obj else {
-        return Ok(patch);
+    let Some(obj) = settings.as_object() else {
+        return Err(validation_error());
     };
 
-    // title — set-only string.
-    if let Some(v) = obj.get("title").and_then(Value::as_str) {
-        patch.title = Some(v.to_string());
+    // title — `z.string().max(300).optional()`. `.optional()`, NOT `.nullish()`:
+    // a present `null` is an invalid_type failure, not a clear.
+    if let Some(v) = obj.get("title") {
+        let Some(t) = v.as_str().filter(|t| t.chars().count() <= 300) else {
+            return Err(validation_error());
+        };
+        patch.title = Some(t.to_string());
     }
-    // scheduleCron — nullish string.
-    patch.schedule_cron = tri_state_string(obj, "scheduleCron");
-    // The nullish numeric caps.
-    patch.schedule_freshness_window_ms = tri_state_number(obj, "scheduleFreshnessWindowMs");
-    patch.budget_max_turns = tri_state_number(obj, "budgetMaxTurns");
-    patch.budget_max_tokens = tri_state_number(obj, "budgetMaxTokens");
-    patch.budget_max_wall_clock_ms = tri_state_number(obj, "budgetMaxWallClockMs");
-    patch.budget_estimated_spend_cap_usd = tri_state_number(obj, "budgetEstimatedSpendCapUSD");
-    // runVisibility — nullish enum (stored as a string).
-    patch.run_visibility = tri_state_string(obj, "runVisibility");
-    // The two plain optional booleans.
-    if let Some(b) = obj
-        .get("runDestructiveToolsAllowed")
-        .and_then(Value::as_bool)
-    {
-        patch.run_destructive_tools_allowed = Some(b);
+    // scheduleCron — `z.string().max(120).nullish()`.
+    patch.schedule_cron = tri_state_string(obj, "scheduleCron", Some(120))?;
+    // The nullish numeric caps: `z.number().int().positive().nullish()` …
+    patch.schedule_freshness_window_ms = tri_state_number(obj, "scheduleFreshnessWindowMs", true)?;
+    patch.budget_max_turns = tri_state_number(obj, "budgetMaxTurns", true)?;
+    patch.budget_max_tokens = tri_state_number(obj, "budgetMaxTokens", true)?;
+    patch.budget_max_wall_clock_ms = tri_state_number(obj, "budgetMaxWallClockMs", true)?;
+    // … except the spend cap, which is `.positive()` WITHOUT `.int()`.
+    patch.budget_estimated_spend_cap_usd =
+        tri_state_number(obj, "budgetEstimatedSpendCapUSD", false)?;
+    // runVisibility — `z.enum(['owner_only','household','open']).nullish()`.
+    patch.run_visibility = tri_state_string(obj, "runVisibility", None)?;
+    if let Some(Some(vis)) = patch.run_visibility.as_ref() {
+        if !matches!(vis.as_str(), "owner_only" | "household" | "open") {
+            return Err(validation_error());
+        }
     }
-    if let Some(b) = obj.get("budgetExcludeCacheHits").and_then(Value::as_bool) {
-        patch.budget_exclude_cache_hits = Some(b);
+    // The two plain `z.boolean().optional()` fields.
+    for (key, slot) in [
+        (
+            "runDestructiveToolsAllowed",
+            &mut patch.run_destructive_tools_allowed,
+        ),
+        (
+            "budgetExcludeCacheHits",
+            &mut patch.budget_exclude_cache_hits,
+        ),
+    ] {
+        if let Some(v) = obj.get(key) {
+            let Some(b) = v.as_bool() else {
+                return Err(validation_error());
+            };
+            *slot = Some(b);
+        }
     }
     Ok(patch)
 }
 
+/// v4 `validationError(...)` — 400 `{"error":"Validation error"}` (the `details`
+/// issues array is the recorded no-details divergence class).
+fn validation_error() -> Response {
+    Response::error(ErrorKind::BadRequest, "Validation error")
+}
+
 /// Tri-state read for a `.nullish()` string column: absent → `None`; explicit
-/// null → `Some(None)` (clear); string → `Some(Some(v))`.
-fn tri_state_string(obj: &Map<String, Value>, key: &str) -> Option<Option<String>> {
+/// null → `Some(None)` (clear); string → `Some(Some(v))`. A present non-string
+/// is a Zod `invalid_type` refusal; `max_len` (in UTF-16 code units, as Zod
+/// measures) is the optional `.max()` check.
+fn tri_state_string(
+    obj: &Map<String, Value>,
+    key: &str,
+    max_len: Option<usize>,
+) -> Result<Option<Option<String>>, Response> {
     match obj.get(key) {
-        None => None,
-        Some(Value::Null) => Some(None),
-        Some(Value::String(s)) => Some(Some(s.clone())),
-        Some(_) => None,
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(Value::String(s)) => {
+            if max_len.is_some_and(|m| s.encode_utf16().count() > m) {
+                return Err(validation_error());
+            }
+            Ok(Some(Some(s.clone())))
+        }
+        Some(_) => Err(validation_error()),
     }
 }
 
 /// Tri-state read for a `.nullish()` numeric column: absent → `None`; explicit
-/// null → `Some(None)` (clear); number → `Some(Some(v))`.
-fn tri_state_number(obj: &Map<String, Value>, key: &str) -> Option<Option<f64>> {
+/// null → `Some(None)` (clear); number → `Some(Some(v))`. Every one of v4's
+/// numeric caps is `.positive()`; `int` additionally demands
+/// `Number.isSafeInteger`.
+fn tri_state_number(
+    obj: &Map<String, Value>,
+    key: &str,
+    int: bool,
+) -> Result<Option<Option<f64>>, Response> {
     match obj.get(key) {
-        None => None,
-        Some(Value::Null) => Some(None),
-        Some(Value::Number(n)) => n.as_f64().map(Some),
-        Some(_) => None,
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(Value::Number(n)) => {
+            let Some(f) = n.as_f64().filter(|f| !f.is_nan()) else {
+                return Err(validation_error());
+            };
+            if f <= 0.0 {
+                return Err(validation_error());
+            }
+            if int && !(f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0) {
+                return Err(validation_error());
+            }
+            Ok(Some(Some(f)))
+        }
+        Some(_) => Err(validation_error()),
     }
 }
 

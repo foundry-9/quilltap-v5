@@ -353,6 +353,50 @@ async function main(): Promise<void> {
       name: 'update_invalid_cron',
       run: () => postAction(ROOM_IDLE, 'update-settings', { scheduleCron: 'not a cron' }),
     },
+    // P4.55 (the merge-verb silent-keep sweep): v4 runs
+    // `updateSettingsSchema.parse` BEFORE the service call, so a
+    // present-but-invalid field is a 400 `Validation error` — v5 used to DROP
+    // it silently and answer 200. Five type/range/enum legs plus a
+    // writes-nothing composite over a room that already carries stored caps.
+    // (`update_invalid_cron` above is the SERVICE-layer guard, blind to this
+    // whole class.) Status + `error` message compared; the `details` issues
+    // array is the recorded no-details divergence class.
+    {
+      name: 'update_invalid_cap_type',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { budgetMaxTurns: 'many' }),
+    },
+    {
+      name: 'update_invalid_cap_negative',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { budgetMaxTurns: -5 }),
+    },
+    {
+      // `.int()` — a fractional cap fails where the un-`.int()`ed spend cap
+      // would pass.
+      name: 'update_invalid_cap_fractional',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { budgetMaxTurns: 2.5 }),
+    },
+    {
+      name: 'update_invalid_visibility',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { runVisibility: 'bogus' }),
+    },
+    {
+      // `z.string().max(300)`.
+      name: 'update_invalid_title_too_long',
+      run: () => postAction(ROOM_IDLE, 'update-settings', { title: 'x'.repeat(400) }),
+    },
+    {
+      // The refusal writes NOTHING: ROOM_RUNNING already carries stored caps
+      // (the `update_clear_cap` arm clears one of them), so the row dump is a
+      // real keep-current measurement, not a row of nulls.
+      name: 'update_invalid_writes_nothing',
+      run: async () => {
+        const { status, body } = await postAction(ROOM_RUNNING, 'update-settings', {
+          budgetMaxTurns: 99,
+          runVisibility: 'bogus',
+        });
+        return { status, body, tables: await dumpRoomRow(ROOM_RUNNING) };
+      },
+    },
     { name: 'update_non_autonomous', run: () => postAction(CHAT_SALON, 'update-settings', { budgetMaxTurns: 5 }) },
     { name: 'update_missing', run: () => postAction(MISSING, 'update-settings', { budgetMaxTurns: 5 }) },
     // --- Destructive clamp both ways ---

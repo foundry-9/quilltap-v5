@@ -200,6 +200,26 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+#### 2026-08-22 — fix(autonomous-rooms): refuse an invalid update-settings patch instead of dropping the field
+
+_Versions: core 0.0.610, harness 0.0.533._
+
+`parse_settings_patch` was deliberately lenient: a present-but-wrong-typed or
+out-of-range field was silently dropped and the request answered 200. A bogus
+`runVisibility`, a negative or fractional cap, a 400-character `title` all
+vanished without a word — and a valid field riding alongside an invalid one
+still landed. v4 runs `updateSettingsSchema.parse` before the service call and
+answers 400 `Validation error`, writing nothing.
+
+The parser is now fallible across all ten fields, each constraint taken from
+v4's schema: `.int().positive()` on the four integer caps, `.positive()` alone
+on the spend cap, the three-member `runVisibility` enum, `title` at 300 UTF-16
+units, `scheduleCron` at 120, and both booleans strict. `title` is `.optional()`
+rather than `.nullish()`, so a present `null` is a refusal, not a clear. Six new
+arms in the autonomous-rooms differential including a writes-nothing composite
+over a room with stored caps; all seven comparands proven red against the old
+leniency.
+
 #### 2026-08-22 — fix(memories): validate the housekeeping + extraction-limits config bodies before writing
 
 _Versions: core 0.0.609, harness 0.0.532._

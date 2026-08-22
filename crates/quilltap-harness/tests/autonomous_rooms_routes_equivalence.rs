@@ -596,6 +596,60 @@ fn autonomous_rooms_routes_match_oracle() {
             &mut failed,
         );
     }
+    // P4.55 (the merge-verb silent-keep sweep): v4 runs
+    // `updateSettingsSchema.parse` BEFORE the service call, so a
+    // present-but-invalid field is a 400 `Validation error`. v5 used to DROP it
+    // silently and answer 200 — `update_invalid_cron` above is the SERVICE-layer
+    // guard and was blind to this whole class.
+    for (name, patch) in [
+        (
+            "update_invalid_cap_type",
+            json!({ "budgetMaxTurns": "many" }),
+        ),
+        (
+            "update_invalid_cap_negative",
+            json!({ "budgetMaxTurns": -5 }),
+        ),
+        (
+            "update_invalid_cap_fractional",
+            json!({ "budgetMaxTurns": 2.5 }),
+        ),
+        (
+            "update_invalid_visibility",
+            json!({ "runVisibility": "bogus" }),
+        ),
+        (
+            "update_invalid_title_too_long",
+            json!({ "title": "x".repeat(400) }),
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        check_error(name, &upd(&db, &uid_a, ROOM_IDLE, patch), &mut failed);
+    }
+    {
+        // The refusal writes NOTHING. ROOM_RUNNING already carries stored caps,
+        // so the row dump is a real keep-current measurement — the valid
+        // `budgetMaxTurns` riding alongside the invalid `runVisibility` must
+        // not land either.
+        let db = fresh_db(&spec, "uinvw");
+        let name = "update_invalid_writes_nothing";
+        check_error(
+            name,
+            &upd(
+                &db,
+                &uid_a,
+                ROOM_RUNNING,
+                json!({ "budgetMaxTurns": 99, "runVisibility": "bogus" }),
+            ),
+            &mut failed,
+        );
+        check_tables_blanked(
+            name,
+            &dump_room_row(&db, ROOM_RUNNING),
+            &volatile,
+            &mut failed,
+        );
+    }
     {
         let db = fresh_db(&spec, "unon");
         check_error(

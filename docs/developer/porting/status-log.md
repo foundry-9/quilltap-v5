@@ -80138,3 +80138,56 @@ that v5 was persisting the garbage, not merely mis-answering.
 
 Family green end-to-end through the sweep driver
 (`--run memories_routes_equivalence`), oracles fresh at `a6870c5a`.
+
+### Unit 2 — B1: `parse_settings_patch` made fallible
+
+**The divergence, measured.** `api/autonomous_rooms.rs`'s `parse_settings_patch`
+documented its own leniency in a comment ("a present-but-wrong-typed field is
+dropped, mirroring the fields the modal actually posts"). The consequence was
+larger than the comment admitted: `{"budgetMaxTurns":"many"}`,
+`{"budgetMaxTurns":-5}`, `{"budgetMaxTurns":2.5}`, `{"runVisibility":"bogus"}`
+and a 400-character `title` were ALL dropped and answered 200 — and a valid
+field posted alongside an invalid one still landed, so a half-applied patch
+looked identical to a successful one.
+
+v4 (`app/api/v1/chats/[id]/autonomous-room/route.ts:178-184`) runs
+`updateSettingsSchema.parse` (schema :60-71) inside a try, AFTER the chat guard
+and BEFORE the service call, and answers `validationError` on a ZodError. The
+service-layer invalid-cron guard the v5 comment cited is a DIFFERENT, narrower
+check — `update_invalid_cron` was the family's only invalid arm and was blind
+to this entire class.
+
+**The port.** `parse_settings_patch` returns `Err(validation_error())` on any
+schema failure, constraint by constraint:
+
+- `title`: `z.string().max(300).optional()` — `.optional()`, NOT `.nullish()`,
+  so a present `null` is an `invalid_type` refusal and not a clear. Max
+  measured in UTF-16 code units, as Zod measures.
+- `scheduleCron`: `z.string().max(120).nullish()`.
+- `scheduleFreshnessWindowMs` / `budgetMaxTurns` / `budgetMaxTokens` /
+  `budgetMaxWallClockMs`: `z.number().int().positive().nullish()`.
+- `budgetEstimatedSpendCapUSD`: `.positive()` WITHOUT `.int()` — the one
+  numeric field where a fraction is legal. `tri_state_number` takes the `int`
+  flag rather than assuming.
+- `runVisibility`: the three-member enum, checked after the string tri-state so
+  a non-string still refuses as `invalid_type`.
+- `runDestructiveToolsAllowed` / `budgetExcludeCacheHits`: strict booleans.
+
+A non-object body now refuses too (Zod's root-level `invalid_type`). v4 reaches
+its own `badRequest('Invalid request body')` sentence only when `req.json()`
+throws, which is upstream of this boundary — the v5 dispatch layer hands the
+handler an already-parsed value, so that arm has no v5 analogue and the doc
+comment says so.
+
+**The differential.** Six new arms:
+`update_invalid_cap_type` / `..._cap_negative` / `..._cap_fractional` /
+`update_invalid_visibility` / `update_invalid_title_too_long`, plus
+`update_invalid_writes_nothing` — an invalid `runVisibility` posted TOGETHER
+with a valid `budgetMaxTurns: 99` against ROOM_RUNNING, which already carries
+stored caps, so the row dump measures keep-current rather than a row of nulls.
+
+**Mutation proof (red-first).** With the leniency restored, all SEVEN
+comparands go red — the five status arms, the composite's status, and
+`update_invalid_writes_nothing_tables`. The tables red is the one that
+matters: it measures v5 writing the valid `99` while dropping the bogus
+visibility, exactly the half-applied patch v4 refuses whole.
