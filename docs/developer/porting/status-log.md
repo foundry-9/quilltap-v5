@@ -80623,3 +80623,37 @@ from the bug. Pinned by a spec case and mutation-proven (removing the host
 line reddens it).
 
 Nothing else moved: `npm test` 341 files / **5,054**, `npm run build` clean.
+
+### P4.D104 — lane gate
+
+Client-only lane: **zero Rust touched** (`git diff` over `crates/`,
+`Cargo.toml`, `Cargo.lock`, `harness/` is empty), so there is no
+differential to regenerate and no crate to bump. `cargo fmt --all --check`
+run anyway and clean. The cargo workspace test/clippy legs are deliberately
+NOT part of this lane's gate — the order's own verification gate lists the
+SPA legs and Playwright, and no Rust source moved for them to measure. The
+debug `quilltap-web` + `quilltap` binaries were built solely to host the
+Playwright run.
+
+- `npm test` — **341 files / 5,054 tests, 0 failed** (from 340 / 5,038 at
+  lane start: +1 file, +16 tests, exactly this lane's additions).
+- `npm run build` — clean.
+- Full Playwright — **235 passed / 0 failed / 1 skipped (21.9 m)**, run
+  TWICE: once at unit 3, and again against the final build after unit 4's
+  host change. The single skip is this lane's own ACTIVATE-AT-UNIFY beat
+  (`P4D103_SERVER_LANDED = false`); the suite's test COUNT grew 235 → 236.
+- The new beat is deliberately NOT weakened to pass without the server half.
+  Its first live run happens at unification, when the unifier flips the
+  constant.
+
+**Versions:** SPA 0.5.539 → **0.5.543**. No crate versions bumped.
+
+**For the unifier:**
+
+1. Flip `P4D103_SERVER_LANDED` to `true` in `apps/web/e2e/groups-flow.spec.ts`
+   once P4.D103's `groupUpdate` accept + `groupGet` projection are on the
+   branch, and run `groups-flow` — the beat's first live run.
+2. The `GroupSummary.instructions` optionality reading is recorded in the
+   order header and in unit 3 above; nothing on the wire depends on it.
+3. This lane changed NOTHING outside `apps/web/**` plus the two append-only
+   docs and its own work-order file.
