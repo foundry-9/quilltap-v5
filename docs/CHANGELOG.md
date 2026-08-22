@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — fix(prompts): second-person tool reinforcement + identity-stack person consistency (v4 bug 88)
+
+_Versions: core 0.0.610, harness 0.0.533._
+
+Ports v4 `346e855f` (bug 88) and the server half of `a6870c5a` — the two
+wording commits — together, since the goldens they move are the same two.
+
+Bug 88: the last block of the assembled prompt drops its pronoun lookup
+entirely and reads `When you use workspace tools, you CALL them — you do not
+merely describe calling them.` v5 measurably HAD the bug: a character with no
+pronouns recorded ended its prompt on `they CALLS them — they does not`, and
+v5's own unit test pinned the third-person string. That assertion is flipped
+and widened — a character WITH pronouns and one WITHOUT must now produce the
+same final block.
+
+Person consistency: `build_identity_stack`'s aliases, pronouns, and
+physical-appearance blocks move to second person (the appearance block also
+loses its markdown bullet, and keeps a second-person WRAPPER only — the body
+stays noun phrases, shared with the image pipelines); manifesto, personality,
+and example dialogues gain referent-fixing wrapper lines. The outward-facing
+builders (public identity card, other-participants info, identity
+reinforcement) stay third person — their referent is someone else.
+
+New `IDENTITY_STACK_BUILDER_VERSION = 2`, colocated with the builder as v4
+colocates it, plus v4's `IDENTITY_STACK_GOLDENS` table byte-copied as a v5
+unit test that binds the constant to a hash of the builder's output in both
+directions. v5 reproduces v4's registered hash `1408705ab29bb3ba` exactly — a
+free cross-implementation check. The compiler that reads the stamp lands next.
+
+`system_prompt_equivalence` regenerated at `a6870c5a`: 65 rows green and both
+cache-determinism goldens move to v4's new values (`937ea8197a65d022` /
+`bc37032e92411263`) with the transition recorded inline. The regenerated
+NDJSON was grepped for all seven changed byte shapes (present) and all four
+retired ones (absent).
+
 #### 2026-08-22 — port(prompts): the standing-instructions module (project + group `instructions`)
 
 _Versions: core 0.0.609, harness 0.0.532._

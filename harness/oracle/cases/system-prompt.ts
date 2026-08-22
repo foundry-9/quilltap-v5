@@ -390,8 +390,11 @@ pushSystemPrompt(
   { character: ch({ name: 'Ada', pronouns: { subject: 'she', object: 'her', possessive: 'hers' } }), toolInstructions: 'Use the workspace tools when needed.' },
   T_MAIN,
 )
+// P4.D103 (v4 `346e855f`, bug 88): the reinforcement block no longer consults
+// pronouns at all, so this row and `with-tools` above must emit the SAME final
+// block. It used to be the row that produced "they CALLS them — they does not".
 pushSystemPrompt(
-  'with-tools-no-pronoun-they',
+  'with-tools-no-pronouns',
   { character: ch({ name: 'Ada' }), toolInstructions: 'Tool rules here.' },
   T_MAIN,
 )

@@ -79596,3 +79596,65 @@ puts `apple` first.
 
 Recipe verified end-to-end through `harness/tools/recipe_sweep.py --run
 standing_instructions_equivalence`.
+
+### Unit 2 — bug 88 + the identity-stack v2 wording + the builder version stamp
+
+v4 `346e855f` and the identity-stack half of `a6870c5a`, landed together
+because they move the SAME two cache-determinism goldens and v5 has no
+intermediate state to pin.
+
+**Bug 88 (the tool reinforcement).** v5 measurably HAD the bug — the pronoun
+lookup at `system_prompt.rs:546-557` reproduced `character.pronouns?.subject ||
+'they'`, so a pronoun-less character ended its prompt on `they CALLS them —
+they does not merely describe calling them`, and v5's own unit test pinned the
+third-person string (`she CALLS them`). The lookup is deleted; the block is now
+the fixed second-person literal, byte-exact, still routed through
+`process_template` (v4 kept that call even though the literal carries no
+placeholders — the two must not diverge silently). The unit test was flipped
+RED-FIRST and widened: a character WITH pronouns and one WITHOUT must produce
+the SAME final block, and `CALLS them` must not appear at all.
+
+**The identity-stack v2 wording.** All six block changes byte-exact:
+
+| block | change |
+| --- | --- |
+| Manifesto | gains `The following you hold as true about yourself, without question.` |
+| Personality | gains `The following is what you know about yourself. Others do not see it unless you show them.` |
+| Aliases | ONE line, second person, period after the list (was a mid-sentence `\n`, no period) |
+| Pronouns | second person, colon after "are" dropped |
+| Physical Appearance | `This is how you look — "…"` — the leading markdown bullet `- ` REMOVED; a second-person WRAPPER only, body stays noun phrases (shared with the image pipelines) |
+| Example Dialogue Style | gains `This is how you speak.` |
+
+`build_public_identity_card`, `build_other_participants_info`,
+`build_identity_reinforcement` and `NO_PUBLIC_IDENTITY_FALLBACK` are UNCHANGED
+and still third person — verified by grep, per v4's spec §3.3 (their referent
+is someone other than the reader). v4's WHY comments are carried at all three
+sites.
+
+**`IDENTITY_STACK_BUILDER_VERSION = 2`** landed colocated with
+`build_identity_stack` (v4 puts it immediately above the builder, not with the
+compiler, so the doc comments stay true) — the compiler that reads it is unit
+3. v4's `IDENTITY_STACK_GOLDENS` table is byte-copied into a v5 unit test
+(`identity_stack_golden_is_registered_for_the_current_builder_version`)
+enforcing bump-and-register in BOTH directions: no golden for the current
+version panics on the lookup; changed wording without a bump fails the hash.
+**v5's computed hash equals v4's registered `1408705ab29bb3ba` on the first
+run** — v5's identity-stack bytes ARE v4's bytes for v4's exact fixture, a free
+cross-implementation check that no oracle round-trip was needed to get.
+
+**Differential.** `system_prompt_equivalence` regenerated fresh at `a6870c5a`
+(65 rows, both goldens): the two cache-determinism goldens MOVE to v4's new
+`937ea8197a65d022` / `bc37032e92411263`, with v4's own two-step golden history
+recorded inline (v5 never occupies the intermediate `7517f7d9b496d20b` /
+`74c9b488b4a1517c` values — it lands both commits at once, so only the
+endpoints are asserted). Per [[green-regen-is-not-coverage]] the regenerated
+NDJSON was grepped: all SEVEN changed byte shapes are present (7 reinforcement
+/ 3 manifesto / 24 personality / 4 aliases / 16 pronouns / 5 appearance / 3
+dialogue rows) and all FOUR retired shapes are absent (zero rows). The
+`with-tools-no-pronoun-they` oracle row is renamed `with-tools-no-pronouns` —
+it no longer discriminates on pronouns, which is the point, and the comment
+now says so.
+
+A tree-wide grep confirms these strings live in exactly ONE place in v5 (v4
+carries a second hand-copied set in `lib/help-chat/system-prompt-builder.ts`;
+that surface is unported and its wording rides the `p4.9i2` bank).

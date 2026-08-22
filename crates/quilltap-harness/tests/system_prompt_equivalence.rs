@@ -437,9 +437,25 @@ fn system_prompt_matches_oracle() {
                 // that is v4's own design claim (an untouched instance's
                 // cacheable prefix does not move), so if it drifts, something
                 // other than this feature did it.
+                //
+                // Golden history — each transition is an intentional wording
+                // change, mirrored from v4's own inline history:
+                //   bd27b1ca407d9901 → 7517f7d9b496d20b (2026-08-22, v4
+                //     `346e855f`, bug 88) tool reinforcement moved to second
+                //     person, retiring the pronoun lookup whose `|| 'they'`
+                //     default rendered the ungrammatical "they CALLS them".
+                //   7517f7d9b496d20b → 937ea8197a65d022 (2026-08-22, v4
+                //     `a6870c5a`) person-consistency wording in the identity
+                //     stack (builder version 2): aliases, pronouns, and
+                //     physical-appearance moved to second person; referent-fixing
+                //     wrappers on manifesto / personality / example dialogues.
+                //   The Taboo golden moves in lockstep for the same two reasons:
+                //     911204033cd41164 → 74c9b488b4a1517c → bc37032e92411263.
+                //   v5 never skipped the intermediate values: it lands both
+                //   commits at once, so only the endpoints are asserted here.
                 if let Some(golden) = match id.as_str() {
-                    "cache-golden-base" => Some("bd27b1ca407d9901"),
-                    "cache-golden-with-taboo" => Some("911204033cd41164"),
+                    "cache-golden-base" => Some("937ea8197a65d022"),
+                    "cache-golden-with-taboo" => Some("bc37032e92411263"),
                     _ => None,
                 } {
                     assert_eq!(

@@ -186,6 +186,32 @@ fn stack_template_context(
     ctx
 }
 
+/// Version of [`build_identity_stack`]'s OUTPUT — the wording and layout of the
+/// blocks it emits (v4 `IDENTITY_STACK_BUILDER_VERSION`, `a6870c5a`). The
+/// system-prompt compiler
+/// ([`crate::services::system_prompt_compiler`]) stamps this into
+/// `chats.compiledIdentityStacks` on write and requires strict equality on
+/// read: a stored stack with an absent, older, or newer stamp is treated as
+/// missing, so the read-through fallback rebuilds it with the current wording.
+/// (Newer matters on a downgrade — a rolled-back build must not consume stacks
+/// a later build wrote.) Rows written before the stamp existed are bare
+/// participantId→stack maps with no `version` key; they read as stale
+/// (effectively version 0) and rebuild lazily. No migration needed.
+///
+/// Bump this whenever an edit to [`build_identity_stack`] changes its output
+/// for unchanged inputs — wording, ordering, blocks added or removed.
+/// Forgetting is not an option: the `identity_stack_golden_*` unit tests below
+/// bind this constant to a golden hash of the function's output (v4's
+/// `IDENTITY_STACK_GOLDENS` table, byte-copied), so editing without bumping
+/// fails on the hash and bumping without registering a new golden fails on the
+/// lookup.
+///
+/// Distinct from `PROMPT_CACHE_STRUCTURE_VERSION` ([`crate::cheap_llm`]), which
+/// versions the whole prompt shape for PROVIDER caches. This constant versions
+/// one function's output for OUR compiled-stack cache; colocation with the
+/// function is deliberate so whoever edits the strings sees it.
+pub const IDENTITY_STACK_BUILDER_VERSION: u32 = 2;
+
 /// Build just the static character-identity portion of the system prompt, with
 /// chat-level template variables resolved — v4 `buildIdentityStack`
 /// (system-prompt-builder.ts:55).
@@ -228,34 +254,53 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
         }
     }
 
+    // WHY the wrappers and second person throughout (v4 `a6870c5a`): the
+    // preamble above binds the model's identity slot with "You are {{char}}", so
+    // every block whose referent is the speaking character stays in the same
+    // register — a third-person sentence in this position reads as lore about
+    // someone else. Author-carried fields (manifesto, personality, example
+    // dialogues) get a referent-fixing wrapper instead of policing the author's
+    // own person: a body written as "Friday is warm" under "what you know about
+    // yourself" still lands in the right place. Outward-facing consumers
+    // ([`build_public_identity_card`], [`build_other_participants_info`], Host
+    // whispers) stay third person — their referent is someone other than the
+    // reader.
     if is_truthy(&character.manifesto) {
         parts.push(format!(
-            "\n## Character Manifesto\n{}",
+            "\n## Character Manifesto\nThe following you hold as true about yourself, without question.\n{}",
             process_template(character.manifesto.as_deref().unwrap(), &ctx)
         ));
     }
 
     if is_truthy(&character.personality) {
         parts.push(format!(
-            "\n## Character Personality\n{}",
+            "\n## Character Personality\nThe following is what you know about yourself. Others do not see it unless you show them.\n{}",
             process_template(character.personality.as_deref().unwrap(), &ctx)
         ));
     }
 
     if !character.aliases.is_empty() {
         parts.push(format!(
-            "\n## Character Aliases\nThis character also goes by: {}\nOther characters and the user may refer to them by any of these names.",
+            "\n## Character Aliases\nYou also go by: {}. Others may address you by any of these names.",
             character.aliases.join(", ")
         ));
     }
 
+    // The "refer to yourself in narration" clause is what justifies this block:
+    // characters routinely narrate their own actions in third person ("Ariadne
+    // reaches for the folder"), and this is what makes that narration use the
+    // right pronouns.
     if let Some(pr) = &character.pronouns {
         parts.push(format!(
-            "\n## Character Pronouns\nThis character's pronouns are: {}/{}/{}. Always use these pronouns when referring to this character.",
+            "\n## Character Pronouns\nYour pronouns are {}/{}/{}. Use them whenever you refer to yourself in narration, and expect others to use them for you.",
             pr.subject, pr.object, pr.possessive
         ));
     }
 
+    // Second-person WRAPPER only — the body stays third-person noun phrases,
+    // because the stored physicalDescription text is shared with the image
+    // pipelines (avatar prompts, appearance resolution, story backgrounds), and
+    // diffusion models take noun phrases, not "you have auburn hair".
     if let Some(desc) = &character.physical_description {
         // `desc.usageContext ? ` (best used: … )` : ''` — empty is falsy.
         let context_note = if is_truthy(&desc.usage_context) {
@@ -280,7 +325,7 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
         .unwrap_or("");
         if !desc_text.is_empty() {
             parts.push(format!(
-                "\n## Physical Appearance\n- \"{}\"{context_note}: {desc_text}",
+                "\n## Physical Appearance\nThis is how you look — \"{}\"{context_note}: {desc_text}",
                 desc.name
             ));
         }
@@ -288,7 +333,7 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
 
     if is_truthy(&character.example_dialogues) {
         parts.push(format!(
-            "\n## Example Dialogue Style\n{}",
+            "\n## Example Dialogue Style\nThis is how you speak.\n{}",
             process_template(character.example_dialogues.as_deref().unwrap(), &ctx)
         ));
     }
@@ -541,19 +586,31 @@ pub fn build_system_prompt(
         parts.push(process_template(options.tool_instructions.unwrap(), &ctx));
     }
 
-    // Character-voiced tool reinforcement (only when tools are available).
+    // Tool reinforcement (only when tools are available).
+    //
+    // WHY second person (v4 `346e855f`, bug 88): this is the LAST block in the
+    // prompt — the recency slot — and everything above it addresses the
+    // character directly ("You are {{char}}", Taboo's "anything you say", the
+    // standing-instructions preamble). It was third person only by inheritance:
+    // it went in (v4 `3f4d7a78a`, 2026-02-05) with literal "his/her ... he/she"
+    // placeholders, and the fix that followed (`11c4d6c2d`, 2026-03-19) was
+    // aimed at the *pronoun* being generic, not at the person — the very same
+    // commit added the second-person identity preamble above, creating the
+    // disagreement without noticing it. Third person here was never a model
+    // finding.
+    //
+    // Flipping it also retires the pronoun lookup entirely, which killed a real
+    // bug: the `|| 'they'` default rendered "they CALLS them ... they does not",
+    // so every character with no pronouns recorded ended its prompt on an
+    // ungrammatical sentence. Second person needs no pronoun at all.
+    //
+    // `process_template` is retained though the literal carries no placeholders
+    // — v4 kept the call too, and the two must not diverge silently.
     if has_tools {
-        // character.pronouns?.subject || 'they'
-        let subject = character
-            .pronouns
-            .as_ref()
-            .map(|p| p.subject.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("they");
-        let reinforcement_template = format!(
-            "When {{{{char}}}} uses workspace tools, {subject} CALLS them — {subject} does not merely describe calling them. Every tool action produces a tool_use block, not prose."
-        );
-        parts.push(process_template(&reinforcement_template, &ctx));
+        parts.push(process_template(
+            "When you use workspace tools, you CALL them — you do not merely describe calling them. Every tool action produces a tool_use block, not prose.",
+            &ctx,
+        ));
     }
 
     Ok(js_trim(&parts.join("\n\n")).to_string())
@@ -713,6 +770,116 @@ mod tests {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // v4's cache-determinism golden table for `buildIdentityStack`
+    // (`__tests__/unit/cache-determinism/system-prompt.test.ts`, `a6870c5a`),
+    // byte-copied. v5 registers v4's OWN hashes and reproduces them from its own
+    // port, so a green here is a free cross-implementation check: v5's bytes are
+    // v4's bytes for v4's exact fixture.
+    // -----------------------------------------------------------------------
+
+    /// v4's `FIXTURE_CHARACTER` — only the fields `buildIdentityStack` consumes.
+    fn golden_fixture_character() -> Character {
+        Character {
+            name: "Iris Volney".into(),
+            description: Some(
+                "A junior cartographer with a keen eye for geometric anomalies.".into(),
+            ),
+            personality: Some(
+                "Methodical, sceptical, and easily charmed by elegant proofs.".into(),
+            ),
+            aliases: vec!["Vee".into(), "The Mapmaker".into()],
+            pronouns: Some(Pronouns {
+                subject: "she".into(),
+                object: "her".into(),
+                possessive: "hers".into(),
+            }),
+            system_prompts: vec![SystemPromptEntry {
+                id: "22222222-2222-2222-2222-222222222222".into(),
+                content:
+                    "You are a careful cartographer; you reason from triangulation, not flourish."
+                        .into(),
+                is_default: true,
+            }],
+            scenarios: vec![],
+            example_dialogues: Some(
+                "\"Two readings off — never one.\" Iris tapped the brass dial of her sextant."
+                    .into(),
+            ),
+            physical_description: Some(PhysicalDescription {
+                name: "standard".into(),
+                short_prompt: Some(
+                    "auburn hair, ink-stained fingers, brass goggles around her neck".into(),
+                ),
+                medium_prompt: Some(String::new()),
+                long_prompt: Some(String::new()),
+                complete_prompt: Some(String::new()),
+                full_description: Some(String::new()),
+                usage_context: Some("general".into()),
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// v4's `hash()`: SHA-256 of the UTF-8 bytes, hex, first 16 chars.
+    fn golden_hash(s: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(s.as_bytes());
+        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        hex[..16].to_string()
+    }
+
+    /// v4 `IDENTITY_STACK_GOLDENS`, append-only. A new entry is the record that a
+    /// structural change to `build_identity_stack`'s output shipped, alongside a
+    /// bump of [`IDENTITY_STACK_BUILDER_VERSION`] — the stamp that invalidates
+    /// every chat's cached `compiledIdentityStacks` so old chats pick up the new
+    /// wording. Both directions are forced: change the wording without bumping
+    /// and the hash mismatches; bump without registering a golden here and the
+    /// lookup fails.
+    const IDENTITY_STACK_GOLDENS: &[(u32, &str)] = &[
+        // 1 (2026-08-22): stamp introduced, output-neutral — the hash is the
+        //   wording as it stood before the person-consistency change.
+        (1, "8b4320bf790721ee"),
+        // 2 (2026-08-22): person-consistency wording — aliases/pronouns/appearance
+        //   moved to second person, referent-fixing wrappers added to manifesto/
+        //   personality/example dialogues.
+        (2, "1408705ab29bb3ba"),
+    ];
+
+    #[test]
+    fn identity_stack_golden_is_registered_for_the_current_builder_version() {
+        // Bumped IDENTITY_STACK_BUILDER_VERSION without registering a golden →
+        // fails here.
+        let expected = IDENTITY_STACK_GOLDENS
+            .iter()
+            .find(|(v, _)| *v == IDENTITY_STACK_BUILDER_VERSION)
+            .map(|(_, h)| *h)
+            .unwrap_or_else(|| {
+                panic!(
+                    "no IDENTITY_STACK_GOLDENS entry for version {IDENTITY_STACK_BUILDER_VERSION}"
+                )
+            });
+        let ch = golden_fixture_character();
+        let actual = golden_hash(&build_identity_stack(&BuildIdentityStackOptions {
+            character: &ch,
+            user_character: Some(&UserCharacter {
+                name: "Wren".into(),
+                description: "a passing scholar".into(),
+            }),
+            selected_system_prompt_id: Some("22222222-2222-2222-2222-222222222222"),
+            scenario_text: Some("A draughty observatory two hours past midnight."),
+        }));
+        // Changed the wording without bumping the version → fails here. A drift
+        // here is ALSO a divergence from v4: these are v4's own registered hashes.
+        assert_eq!(
+            actual, expected,
+            "build_identity_stack's output changed. If intentional, bump \
+             IDENTITY_STACK_BUILDER_VERSION and register the new hash in \
+             IDENTITY_STACK_GOLDENS — the bump is what invalidates every chat's \
+             cached compiledIdentityStacks so existing chats pick up the change."
+        );
+    }
+
     #[test]
     fn identity_stack_minimal() {
         let ch = char_named("Ada");
@@ -757,8 +924,13 @@ mod tests {
     }
 
     #[test]
-    fn tool_reinforcement_uses_pronoun_subject() {
-        let ch = Character {
+    /// v4 bug 88 (`346e855f`): the tool reinforcement is a FIXED second-person
+    /// sentence with no pronoun lookup at all. A character WITH pronouns and one
+    /// WITHOUT must produce the same block — the pronoun-less arm is the one that
+    /// used to render the ungrammatical "they CALLS them ... they does not".
+    fn tool_reinforcement_is_second_person_with_no_pronoun_lookup() {
+        const EXPECTED: &str = "When you use workspace tools, you CALL them — you do not merely describe calling them. Every tool action produces a tool_use block, not prose.";
+        let with_pronouns = Character {
             pronouns: Some(Pronouns {
                 subject: "she".into(),
                 object: "her".into(),
@@ -766,12 +938,19 @@ mod tests {
             }),
             ..char_named("Ada")
         };
-        let s = build_system_prompt(&BuildSystemPromptOptions {
-            tool_instructions: Some("Use the tools."),
-            ..prompt_opts(&ch)
-        })
-        .unwrap();
-        assert!(s.contains("she CALLS them — she does not merely describe"));
+        let without_pronouns = char_named("Ada");
+        for ch in [&with_pronouns, &without_pronouns] {
+            let s = build_system_prompt(&BuildSystemPromptOptions {
+                tool_instructions: Some("Use the tools."),
+                ..prompt_opts(ch)
+            })
+            .unwrap();
+            assert!(s.ends_with(EXPECTED), "reinforcement block missing: {s}");
+            assert!(
+                !s.contains("CALLS them"),
+                "third-person form resurfaced: {s}"
+            );
+        }
     }
 
     #[test]
