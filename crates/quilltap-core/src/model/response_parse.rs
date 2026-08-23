@@ -98,8 +98,11 @@ pub enum ChatFlavor {
     /// NanoGPT (P4.D101): reasoning is `message.reasoning` with
     /// `message.reasoning_content` as the LEGACY fallback — a precedence no
     /// other flavor has — minus the gateway's prose echo (v4 bug 87). Tool
-    /// calls go through the OAC base's `normalizeToolCalls`, and v4's
-    /// `sendMessage` reads NO cache usage.
+    /// calls go through the OAC base's `normalizeToolCalls`.
+    ///
+    /// Cache usage (P4.D105, v4 `f8973813`): BOTH dialects the gateway emits,
+    /// via [`nanogpt_cache_usage`] — the only flavor that reports cache WRITES
+    /// as well as reads.
     NanoGpt,
 }
 
@@ -110,6 +113,64 @@ fn i64_at(v: &Value, key: &str) -> i64 {
 /// v4 `Math.max(0, a - b)`.
 fn sub_floor(a: i64, b: i64) -> i64 {
     (a - b).max(0)
+}
+
+/// v4 NanoGPT `extractCacheUsage` (P4.D105, `f8973813`) — the only ported
+/// extractor that reads TWO dialects and reports cache WRITES.
+///
+/// ```text
+/// if (!usage) return undefined;
+/// const read = usage.cache_read_input_tokens
+///           ?? usage.prompt_tokens_details?.cached_tokens ?? 0;
+/// const written = usage.cache_creation_input_tokens ?? 0;
+/// if (read <= 0 && written <= 0) return undefined;
+/// return { ...(read > 0 ? { cacheReadInputTokens: read, cachedTokens: read } : {}),
+///          ...(written > 0 ? { cacheCreationInputTokens: written } : {}) };
+/// ```
+///
+/// Two details the shape of this code is carrying, both load-bearing:
+///
+///   - The dialect chain is `??`, not `||`. A PRESENT zero
+///     `cache_read_input_tokens` (Anthropic-routed, nothing read this turn)
+///     therefore does NOT fall through to the OpenAI-style
+///     `prompt_tokens_details.cached_tokens` — `or_else` on the `Option`
+///     reproduces exactly that, since `Some(0)` short-circuits.
+///   - The two output keys are independently conditional, so a write-only turn
+///     yields `{ cacheCreationInputTokens }` with no read keys at all, and the
+///     caller's `cacheUsage?.cacheReadInputTokens ?? 0` then correctly
+///     subtracts nothing.
+///
+/// The cache-read EXCLUSION itself lives at the two call sites (v4 applies it
+/// in `sendMessage` / the streaming final chunk, not in the extractor): the
+/// shared `sub_floor(prompt_tokens, read)` / `sub_floor(total_tokens, read)`
+/// below, and the decoder's twin.
+pub(crate) fn nanogpt_cache_usage(usage: &Value) -> Option<StreamCacheUsage> {
+    if usage.is_null() {
+        return None;
+    }
+    let read = usage
+        .get("cache_read_input_tokens")
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            usage
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(Value::as_i64)
+        })
+        .unwrap_or(0);
+    let written = usage
+        .get("cache_creation_input_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if read <= 0 && written <= 0 {
+        return None;
+    }
+    Some(StreamCacheUsage {
+        cached_tokens: (read > 0).then_some(read),
+        cache_read_input_tokens: (read > 0).then_some(read),
+        cache_creation_input_tokens: (written > 0).then_some(written),
+        cache_discount: None,
+    })
 }
 
 /// Extract the OpenAI-family `tool_calls` from a message (v4 filters
@@ -402,7 +463,11 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                         .filter(|r| *r != content)
                         .filter(|s| !s.is_empty())
                         .map(str::to_string);
-                    (reasoning, normalize_oac_tool_calls(msg), None)
+                    (
+                        reasoning,
+                        normalize_oac_tool_calls(msg),
+                        nanogpt_cache_usage(&usage),
+                    )
                 }
                 ChatFlavor::OpenRouter | ChatFlavor::OpenRouterVision => unreachable!(),
             };

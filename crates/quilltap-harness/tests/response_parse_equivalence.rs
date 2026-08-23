@@ -25,6 +25,13 @@
 //! GOOGLE's `raw.sdkHttpResponse` is excluded: the genai SDK attaches the live
 //! HTTP headers there, so its contents depend on the transport, not the body —
 //! unpinnable by a body corpus (and unused: tool detection reads `candidates`).
+//!
+//! The corpus is committed, so no env var is needed — the family runs in every
+//! plain `cargo test`. Run (by name — the committed corpus IS the whole recipe;
+//! recording is a deliberate by-hand step, never a sweep stage):
+//!   cargo test -p quilltap-harness --test response_parse_equivalence -- --nocapture
+//! Regenerate the corpus (Node 24, only after a v4 provider drift) with
+//! `harness/oracle/providers/regenerate-response-bodies.sh`.
 
 use std::fs;
 use std::path::Path;
@@ -151,6 +158,18 @@ fn response_parse_matches_v4_recorded_llm_responses() {
     // P4.D78 — the two Ollama reasoning channels plus the conditional attach.
     let (mut ollama_native_reasoning, mut ollama_inline_reasoning, mut ollama_no_reasoning) =
         (false, false, false);
+    // P4.D105 — NanoGPT `extractCacheUsage`. Four arms, each read off v4's
+    // RECORDED response so a v5 regression cannot make the coverage claim true:
+    // the Anthropic dialect (read + write), a write-only turn, the OpenAI
+    // `cached_tokens` dialect, and a cache-touching row whose promptTokens v4
+    // actually reduced (the house rule — the thing a lost exclusion would
+    // silently un-test).
+    let (
+        mut nanogpt_cache_anthropic,
+        mut nanogpt_cache_write_only,
+        mut nanogpt_cache_openai_dialect,
+        mut nanogpt_cache_excluded_from_prompt,
+    ) = (false, false, false, false);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: Value = serde_json::from_str(line).expect("corpus line parses");
@@ -206,6 +225,47 @@ fn response_parse_matches_v4_recorded_llm_responses() {
             }
         }
 
+        if provider == "NANOGPT" {
+            let cache = rec["response"].get("cacheUsage");
+            let read = cache
+                .and_then(|c| c.get("cacheReadInputTokens"))
+                .and_then(Value::as_i64);
+            let written = cache
+                .and_then(|c| c.get("cacheCreationInputTokens"))
+                .and_then(Value::as_i64);
+            match (read, written) {
+                (Some(_), Some(_)) => nanogpt_cache_anthropic = true,
+                (None, Some(_)) => nanogpt_cache_write_only = true,
+                (Some(_), None) => {
+                    // Which dialect fed it — the wire body is the witness.
+                    let usage = body.get("usage").cloned().unwrap_or(Value::Null);
+                    if usage.get("cache_read_input_tokens").is_none() {
+                        nanogpt_cache_openai_dialect = true;
+                    }
+                }
+                (None, None) => {}
+            }
+            if let Some(r) = read.filter(|r| *r > 0) {
+                let wire_prompt = body
+                    .get("usage")
+                    .and_then(|u| u.get("prompt_tokens"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let recorded_prompt = rec["response"]["usage"]["promptTokens"]
+                    .as_i64()
+                    .unwrap_or(0);
+                assert_eq!(
+                    recorded_prompt,
+                    (wire_prompt - r).max(0),
+                    "NANOGPT/{case}: v4's recorded promptTokens is not \
+                     max(0, prompt_tokens - cacheRead) — the house rule moved"
+                );
+                if recorded_prompt < wire_prompt {
+                    nanogpt_cache_excluded_from_prompt = true;
+                }
+            }
+        }
+
         cases += 1;
         let (g, w) = (canon(&got), canon(&want));
         if g != w {
@@ -223,6 +283,7 @@ fn response_parse_matches_v4_recorded_llm_responses() {
         "GROK",
         "GOOGLE",
         "OPENAI_COMPATIBLE",
+        "NANOGPT",
     ] {
         assert!(
             seen.contains(family),
@@ -245,6 +306,26 @@ fn response_parse_matches_v4_recorded_llm_responses() {
     assert!(
         ollama_no_reasoning,
         "corpus lost the ollama row with NO reasoningContent (the conditional attach)"
+    );
+    // P4.D105 — the NanoGPT cache-usage coverage shape.
+    assert!(
+        nanogpt_cache_anthropic,
+        "corpus lost the nanogpt Anthropic-dialect row (cache read AND write)"
+    );
+    assert!(
+        nanogpt_cache_write_only,
+        "corpus lost the nanogpt write-only row (cacheCreationInputTokens with \
+         no read keys)"
+    );
+    assert!(
+        nanogpt_cache_openai_dialect,
+        "corpus lost the nanogpt OpenAI-dialect row \
+         (prompt_tokens_details.cached_tokens)"
+    );
+    assert!(
+        nanogpt_cache_excluded_from_prompt,
+        "corpus lost the nanogpt row where the cache read actually REDUCES \
+         promptTokens — the house rule is untested"
     );
     assert!(
         failures.is_empty(),

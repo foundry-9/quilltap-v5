@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — feat(nanogpt): both cache-usage dialects on the non-streaming response
+
+_Versions: core 0.0.622, harness 0.0.544._
+
+Port v4's new `extractCacheUsage` into the `ChatFlavor::NanoGpt` arm of
+`response_parse`. It reads BOTH dialects the gateway emits — Anthropic-style
+`cache_read_input_tokens` / `cache_creation_input_tokens` and OpenAI-style
+`prompt_tokens_details.cached_tokens` — with v4's `??` precedence, so a
+present-but-zero `cache_read_input_tokens` does not fall through to the
+OpenAI key. No cacheUsage at all when neither counter is positive; the read
+and write keys are independently conditional.
+
+The house rule then applies at the call site: cache reads come out of
+`promptTokens` and `totalTokens` (clamped at zero), `completionTokens`
+untouched. Before this, a NanoGPT turn billed every cached input token at
+full price.
+
+Response-bodies corpus 46 → 52 rows (six NanoGPT cases recorded from v4's
+real `sendMessage` with the SDK mocked below it); every pre-existing row is
+byte-identical. The differential gains the missing `NANOGPT` family-presence
+guard, four cache coverage arms, and a per-row assert that v4's recorded
+`promptTokens` really is `max(0, prompt_tokens - cacheRead)`.
+
+`response_parse_equivalence` also gets its self-contained run line — the
+last `nothing_to_run` envelope row (`recipe_sweep.py --self-test` clean, the
+family runs attributably by name).
+
 #### 2026-08-22 — feat(nanogpt): the Prompt Caching profile options and the `promptCaching` body key
 
 _Versions: core 0.0.621, harness 0.0.543._

@@ -103,6 +103,31 @@ function bodiesFor(provider) {
         // `arguments` object is JSON.stringify'd, and a nameless entry drops.
         { name: 'toolcalls-normalized', model: 'openai/gpt-5-mini', body: j({ id: 'n8', object: 'chat.completion', created: 1700000007, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'Calling.', tool_calls: [{ id: 'call_n_1', type: 'function', function: { name: 'search', arguments: { query: 'z' } } }, { id: 'call_n_2', type: 'function', function: { arguments: '{}' } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 13, completion_tokens: 8, total_tokens: 21 } }) },
         { name: 'no-usage', model: 'openai/gpt-5-mini', body: j({ id: 'n9', object: 'chat.completion', created: 1700000008, model: 'openai/gpt-5-mini', choices: [{ index: 0, message: { role: 'assistant', content: 'No usage block.' }, finish_reason: 'length' }] }) },
+        // P4.D105 (v4 `f8973813`) — `extractCacheUsage`, both dialects, and the
+        // house rule that cache READS come out of prompt/total.
+        //
+        // Anthropic-routed explicit caching: read AND write on one turn.
+        // 8500 - 8000 = 500 prompt, 8700 - 8000 = 700 total (v4's own unit test
+        // asserts exactly these two numbers).
+        { name: 'cache-anthropic-dialect', model: 'anthropic/claude-sonnet-5', body: j({ id: 'nc1', object: 'chat.completion', created: 1700000009, model: 'anthropic/claude-sonnet-5', choices: [{ index: 0, message: { role: 'assistant', content: 'Cached and written.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 8500, completion_tokens: 200, total_tokens: 8700, cache_read_input_tokens: 8000, cache_creation_input_tokens: 100 } }) },
+        // Write-only (the first turn of a cached conversation): cacheUsage
+        // carries ONLY cacheCreationInputTokens, and prompt/total are untouched
+        // because nothing was read.
+        { name: 'cache-write-only', model: 'anthropic/claude-sonnet-5', body: j({ id: 'nc2', object: 'chat.completion', created: 1700000010, model: 'anthropic/claude-sonnet-5', choices: [{ index: 0, message: { role: 'assistant', content: 'First write.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1200, completion_tokens: 30, total_tokens: 1230, cache_creation_input_tokens: 1200 } }) },
+        // OpenAI-style implicit caching — the other dialect, reached only
+        // because the Anthropic key is absent.
+        { name: 'cache-openai-dialect', model: 'openai/gpt-5.5', body: j({ id: 'nc3', object: 'chat.completion', created: 1700000011, model: 'openai/gpt-5.5', choices: [{ index: 0, message: { role: 'assistant', content: 'Implicitly cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 50, total_tokens: 1050, prompt_tokens_details: { cached_tokens: 900 } } }) },
+        // THE `??` PRECEDENCE PIN. A PRESENT zero `cache_read_input_tokens`
+        // does NOT fall through to `cached_tokens` (which `||` would have
+        // done), so this turn reports no cacheUsage and pays full price for
+        // all 600 prompt tokens.
+        { name: 'cache-read-zero-present', model: 'anthropic/claude-sonnet-5', body: j({ id: 'nc4', object: 'chat.completion', created: 1700000012, model: 'anthropic/claude-sonnet-5', choices: [{ index: 0, message: { role: 'assistant', content: 'Zero read.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 600, completion_tokens: 12, total_tokens: 612, cache_read_input_tokens: 0, prompt_tokens_details: { cached_tokens: 40 } } }) },
+        // The Math.max(0, …) clamp: a read larger than the reported prompt
+        // floors both counters at zero rather than going negative.
+        { name: 'cache-clamp', model: 'anthropic/claude-sonnet-5', body: j({ id: 'nc5', object: 'chat.completion', created: 1700000013, model: 'anthropic/claude-sonnet-5', choices: [{ index: 0, message: { role: 'assistant', content: 'Over-read.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110, cache_read_input_tokens: 500 } }) },
+        // Explicit zeros in both dialects: `read <= 0 && written <= 0` → no
+        // cacheUsage key at all (the `plain` row above covers the absent case).
+        { name: 'cache-zeros', model: 'anthropic/claude-sonnet-5', body: j({ id: 'nc6', object: 'chat.completion', created: 1700000014, model: 'anthropic/claude-sonnet-5', choices: [{ index: 0, message: { role: 'assistant', content: 'Nothing cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 40, completion_tokens: 8, total_tokens: 48, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } }) },
       ];
     case 'openai-compatible':
       return [

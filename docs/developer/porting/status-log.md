@@ -80943,3 +80943,77 @@ gives `corpus lost its nanogpt promptCaching 5m vector`, not a green run.
    differential compares body BYTES, so key order is load-bearing).
 
 Versions: core 0.0.621, harness 0.0.543.
+
+### Unit 2 — `extractCacheUsage` on the non-streaming response
+
+v4 `provider.ts:181-196` + the `sendMessage` return. Ported as
+`response_parse::nanogpt_cache_usage`, called from the
+`ChatFlavor::NanoGpt` arm; the cache-read EXCLUSION needed no new code —
+the shared snake_case branch already computes
+`read = cache_usage.cache_read_input_tokens ?? 0` and applies
+`sub_floor` to `prompt_tokens`/`total_tokens`, which is v4's
+`Math.max(0, x - cacheRead)` exactly.
+
+Two details the helper's shape is carrying, both recorded in its doc
+comment because both are one keystroke from wrong:
+
+- **The dialect chain is `??`, not `||`.** A PRESENT zero
+  `cache_read_input_tokens` does NOT fall through to
+  `prompt_tokens_details.cached_tokens`. `Option::or_else` reproduces
+  this because `Some(0)` short-circuits.
+- **The two output keys are independently conditional**, so a write-only
+  turn yields `{cacheCreationInputTokens}` with NO read keys, and the
+  caller's `?? 0` then subtracts nothing.
+
+**Differential — `response_parse_equivalence`, 46 → 52 rows.** Six new
+NanoGPT bodies recorded from v4's REAL `sendMessage` with the network
+mocked BELOW the SDK (`regenerate-response-bodies.sh` at the pin), every
+pre-existing row byte-identical (+6, zero deletions). What v4 answered:
+
+| case | v4 `usage` | v4 `cacheUsage` |
+| --- | --- | --- |
+| `cache-anthropic-dialect` | 500 / 200 / 700 | read+cached 8000, creation 100 |
+| `cache-write-only` | 1200 / 30 / 1230 | creation 1200 only |
+| `cache-openai-dialect` | 100 / 50 / 150 | read+cached 900 |
+| `cache-read-zero-present` | 600 / 12 / 612 | **absent** |
+| `cache-clamp` | 0 / 10 / 0 | read+cached 500 |
+| `cache-zeros` | 40 / 8 / 48 | **absent** |
+
+The first row reproduces the two numbers v4's own new unit test asserts
+(500 and 700). `cache-read-zero-present` is the `??`-precedence pin, and
+it MEASURED the answer rather than assuming it: v4 reports no cacheUsage
+and charges all 600 prompt tokens, which a `||` chain would not do.
+
+Coverage added to the differential (the `green-regen-is-not-coverage`
+rule): the **missing `NANOGPT` family-presence guard** (a pre-existing
+gap — the corpus has carried NanoGPT rows since P4.D101 with nothing
+asserting the family exists), four cache arms (Anthropic dialect,
+write-only, OpenAI dialect, and a row where the read actually REDUCES
+`promptTokens`), and a per-row equality asserting v4's recorded
+`promptTokens == max(0, prompt_tokens - cacheRead)` — so the house rule
+is pinned against v4's bytes, not just against v5's arithmetic.
+
+**Mutation proofs (each applied, run RED, reverted):**
+
+1. Drop the OpenAI-dialect `or_else` → red, `NANOGPT/cache-openai-dialect`.
+2. Revert the exclusion (`prompt_tokens`/`total_tokens` uncorrected) →
+   red on `cache-anthropic-dialect`, `cache-clamp`,
+   `cache-openai-dialect`.
+3. `.filter(|v| *v != 0)` on the read (i.e. `||` instead of `??`) → red,
+   `NANOGPT/cache-read-zero-present`.
+
+### Unit 2b — the `response_parse_equivalence` run-line debt (Tier 1 item 6)
+
+The family's header carried its regen script in prose but no indented,
+`--test`-scoped run line, so it was the last `nothing_to_run` envelope
+row. Added in the sanctioned committed-corpus shape (the
+`request_builder_equivalence` header's wording, which the driver already
+extracts cleanly) — and deliberately WITHOUT any `QT_ORACLE*=` variable,
+which would have flipped the family out of `committed_corpus` and armed
+its by-hand RECORDING stage inside the sweep (the P4.54 rule).
+
+    python3 harness/tools/recipe_sweep.py --show response_parse_equivalence
+    python3 harness/tools/recipe_sweep.py --run  response_parse_equivalence   # OK
+    python3 harness/tools/recipe_sweep.py --self-test                         # 0 failures
+
+Versions: core 0.0.622, harness 0.0.544.
