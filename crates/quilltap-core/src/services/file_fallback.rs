@@ -147,9 +147,49 @@ pub fn profile_supports_mime_type(profile: &Value, mime_type: &str) -> bool {
     crate::files::attachment_support::supports_mime_type(provider, mime_type)
 }
 
-/// v4 `needsFallbackProcessing(profile, mimeType)` — `!profileSupportsMimeType`.
+/// v4 `needsFallbackProcessing(profile, mimeType)`.
+///
+/// Two questions have to answer yes before raw bytes are worth sending, and
+/// bug 91 (v4 `a14a1811`) was asking only the first:
+///
+///  1. **Does the model read this?** — `profile_supports_mime_type`, which for
+///     images is the operator's per-profile `supportsImageUpload` tick.
+///  2. **Can the plugin put it on the wire?** — `provider_can_transport_images`.
+///     NanoGPT (pre-1.1.0), DeepSeek and OpenAI-Compatible all inherit a base
+///     that marks every attachment failed, so the answer is no however
+///     vision-capable the routed model happens to be.
+///
+/// When (1) says yes and (2) says no, the old predicate returned `false`, which
+/// suppressed the describer *and* left the bytes for a plugin that discarded
+/// them: the model got nothing, and nothing said so. Now that combination
+/// routes to the describe-fallback, which is exactly what it's for. The
+/// `image/` prefix gate is load-bearing — non-image types are unaffected by
+/// the transport check.
 pub fn needs_fallback_processing(profile: &Value, mime_type: &str) -> bool {
-    !profile_supports_mime_type(profile, mime_type)
+    if !profile_supports_mime_type(profile, mime_type) {
+        return true;
+    }
+    if mime_type.starts_with("image/") {
+        let provider = profile
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !crate::files::image_transport::provider_can_transport_images(provider) {
+            let profile_id = profile.get("id").and_then(Value::as_str).unwrap_or("");
+            let model_name = profile
+                .get("modelName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            tracing::info!(
+                profile_id,
+                provider,
+                model_name,
+                "[Attachment] Profile claims image support but its plugin cannot transport images; routing to describe-fallback"
+            );
+            return true;
+        }
+    }
+    false
 }
 
 /// v4 `isTextFile(mimeType)`.
@@ -293,14 +333,24 @@ async fn get_image_description_profile<CMP: CompletionProvider>(
         }
     }
 
-    // Fallback auto-pick: vision-capable profiles, cheap first.
+    // Fallback auto-pick: vision-capable profiles, cheap first. Filter to
+    // profiles that can *actually* describe an image: the model must read
+    // pictures AND its plugin must be able to send them. A NanoGPT vision
+    // profile passes the first test and fails the second, and picking one as
+    // the describer would produce a confident description of an image the
+    // model never received (bug 91, v4 `a14a1811`).
     let uid = deps.user_id.to_string();
     let available = deps
         .db
         .read_main(move |c| crate::db::connection_profiles::find_by_user_id(c, &uid))?;
     let vision: Vec<Value> = available
         .into_iter()
-        .filter(|p| profile_supports_mime_type(p, "image/jpeg"))
+        .filter(|p| {
+            profile_supports_mime_type(p, "image/jpeg")
+                && crate::files::image_transport::provider_can_transport_images(
+                    p.get("provider").and_then(Value::as_str).unwrap_or(""),
+                )
+        })
         .collect();
     if vision.is_empty() {
         return Ok(None);
@@ -377,12 +427,29 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         .map(str::to_string);
 
     // Support check (v4: the profile might not support the specific mimeType).
+    // Both halves matter — see `needs_fallback_processing`. A describer whose
+    // plugin drops the bytes would answer from the prompt alone and invent a
+    // picture (bug 91, v4 `a14a1811`).
     if !profile_supports_mime_type(profile, &file.mime_type) {
         let mut result = FallbackResult::unsupported(
             &file.filename,
             &file.mime_type,
             Some(format!(
                 "Image description profile ({provider} {model_name}) does not support image files"
+            )),
+        );
+        set_description_metadata(&mut result, &profile_id, &provider, &model_name);
+        return result;
+    }
+
+    if !crate::files::image_transport::provider_can_transport_images(&provider) {
+        let mut result = FallbackResult::unsupported(
+            &file.filename,
+            &file.mime_type,
+            Some(format!(
+                "Image description profile ({provider} {model_name}) cannot send images — the \
+                 {provider} plugin does not forward image attachments. Pick a describer on a \
+                 provider that does (OpenAI, Anthropic, Google, Grok, OpenRouter, Z.AI)."
             )),
         );
         set_description_metadata(&mut result, &profile_id, &provider, &model_name);

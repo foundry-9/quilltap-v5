@@ -364,6 +364,13 @@ fn file_attachment_matches_oracle() {
         ("lap_unsupported", "noImg", &["zip"]),
         ("lap_load_skip", "noImg", &["missing"]),
         ("lap_multi", "noImg", &["text", "zip"]),
+        // Bug 91 (a14a1811): a ticked vision box on a non-transporting plugin
+        // routes to the describe-fallback and the bytes do NOT ride.
+        (
+            "lap_vision_no_transport",
+            "visionNoTransport",
+            &["descImage"],
+        ),
     ];
     for (label, profile_key, file_keys) in lap_cases {
         let profile = &spec.resp_profiles[*profile_key];
@@ -399,6 +406,10 @@ fn file_attachment_matches_oracle() {
         ("fb_reuse_prompt", "noImg", "reusePrompt"),
         ("fb_reuse_desc", "noImg", "reuseDesc"),
         ("fb_reuse_whitespace", "noImg", "reuseWhitespace"),
+        // Bug 91 (a14a1811): the ticked-vision-box-on-Ollama route + the
+        // non-image type untouched by the transport check.
+        ("fb_vision_no_transport", "visionNoTransport", "descImage"),
+        ("fb_vision_no_transport_text", "visionNoTransport", "text"),
     ];
     let fb_deps = FallbackDeps {
         db: &db,
@@ -444,6 +455,127 @@ fn file_attachment_matches_oracle() {
             .get("lcffl_mount")
             .expect("oracle missing case lcffl_mount");
         assert_eq!(&got, want, "lcffl_mount diverged");
+    }
+
+    // ---- (D) the describer transport guard (bug 91, a14a1811) ----
+    // Mirrors the oracle's section order: patch the settings LAST (no restore —
+    // nothing reads them afterwards), point the configured describer at the
+    // OLLAMA profile, and run one fb op. `describe_image_with_profile` answers
+    // `unsupported` with the guard sentence and NO model call is made — the
+    // canned provider has no OLLAMA entry, so a send here panics (the
+    // mock-level "sendMessage never called" assert, mirrored from v4's test).
+    // The uncensored id is cleared too: any primary failure cascades to the
+    // uncensored describer, which would swallow the guard sentence.
+    drop(fb_deps);
+    drop(deps);
+    drop(db);
+    {
+        let writer = quilltap_core::db::Writer::open_writable(&main_work, &spec.test_pepper_base64)
+            .expect("writable open for the guard-phase settings patch");
+        writer
+            .connection()
+            .execute(
+                "UPDATE chat_settings SET imageDescriptionProfileId = ?1, \
+                 uncensoredImageDescriptionProfileId = NULL WHERE userId = ?2",
+                rusqlite::params!["30000000-0000-4000-8000-0000000000d3", spec.user_id],
+            )
+            .expect("patch settings for the guard op");
+    }
+    let db = Db::open(
+        DbPaths {
+            main: main_work.clone(),
+            mount_index: Some(mount_work.clone()),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("reopen db for the guard op");
+    {
+        let fb_deps = FallbackDeps {
+            db: &db,
+            completion: &provider,
+            transcoder: &transcoder,
+            user_id: &spec.user_id,
+            now_ms: 0,
+        };
+        let f = &file_by_key["descImage"];
+        let file = FallbackFile {
+            id: f.id.clone(),
+            filename: f.original_filename.clone(),
+            mime_type: f.mime_type.clone(),
+            data: Some(f.data_base64()),
+        };
+        let profile = &spec.resp_profiles["noImg"];
+        let result = rt.block_on(process_file_attachment_fallback(&fb_deps, &file, profile));
+        let got = serde_json::to_value(&result).expect("serialize FallbackResult");
+        let (_family, want) = cases
+            .get("fb_ollama_describer_guard")
+            .expect("oracle missing case fb_ollama_describer_guard");
+        assert_eq!(&got, want, "fb case fb_ollama_describer_guard diverged");
+    }
+    drop(db);
+
+    // ---- (E) the auto-pick describer filter (bug 91, a14a1811) ----
+    // Clear the configured describer and delete the two transporting profiles,
+    // leaving only the OLLAMA vision profile: the auto-pick filter excludes it
+    // and the no-describer arm answers. If the filter's transport predicate
+    // were dropped, v5 would pick the OLLAMA profile and consult the canned
+    // provider for a key it does not hold — a panic, not a silent pass.
+    {
+        let writer = quilltap_core::db::Writer::open_writable(&main_work, &spec.test_pepper_base64)
+            .expect("writable open for the autopick-phase patch");
+        writer
+            .connection()
+            .execute(
+                "UPDATE chat_settings SET imageDescriptionProfileId = NULL WHERE userId = ?1",
+                rusqlite::params![spec.user_id],
+            )
+            .expect("clear the configured describer");
+        writer
+            .connection()
+            .execute(
+                "DELETE FROM connection_profiles WHERE id IN (?1, ?2)",
+                rusqlite::params![
+                    "30000000-0000-4000-8000-0000000000d1",
+                    "30000000-0000-4000-8000-0000000000d2"
+                ],
+            )
+            .expect("delete the transporting describers");
+    }
+    let db = Db::open(
+        DbPaths {
+            main: main_work.clone(),
+            mount_index: Some(mount_work.clone()),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("reopen db for the autopick op");
+    {
+        let fb_deps = FallbackDeps {
+            db: &db,
+            completion: &provider,
+            transcoder: &transcoder,
+            user_id: &spec.user_id,
+            now_ms: 0,
+        };
+        let f = &file_by_key["descImage"];
+        let file = FallbackFile {
+            id: f.id.clone(),
+            filename: f.original_filename.clone(),
+            mime_type: f.mime_type.clone(),
+            data: Some(f.data_base64()),
+        };
+        let profile = &spec.resp_profiles["noImg"];
+        let result = rt.block_on(process_file_attachment_fallback(&fb_deps, &file, profile));
+        let got = serde_json::to_value(&result).expect("serialize FallbackResult");
+        let (_family, want) = cases
+            .get("fb_autopick_excludes_non_transporting")
+            .expect("oracle missing case fb_autopick_excludes_non_transporting");
+        assert_eq!(
+            &got, want,
+            "fb case fb_autopick_excludes_non_transporting diverged"
+        );
     }
 
     // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---

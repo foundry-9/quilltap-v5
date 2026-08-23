@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(files): images route to the describer when the plugin can't send them (bug 91, the wirings)
+
+_Versions: core 0.0.631, harness 0.0.554._
+
+Wires the transport predicate into the three fallback sites, mirroring v4
+`a14a1811`: `needs_fallback_processing` gains the image-only second arm
+(model reads it but the plugin can't send it → describe-fallback, with
+v4's info log), the auto-pick describer filter excludes non-transporting
+providers, and a configured describer whose plugin cannot transport
+answers `unsupported` with v4's guard sentence byte-exact — before any
+model call is made. `file_attachment_tier3` regenerated at the pin with
+six new ops (the Ollama-vision route, the non-image control, the
+describer guard with the send-never-made assert at the mock level, the
+auto-pick exclusion) over a fixture whose uncensored describer is
+corrected to a transporting provider as v4's test was — Z.AI rather than
+v4's OpenRouter pick, since OpenRouter only transports in the tier v4's
+tests see (the unit-2 upstream finding). Three mutations proven red.
+
 #### 2026-08-23 — feat(files): the image-transport predicate pair (bug 91, the predicate half)
 
 _Versions: core 0.0.630, harness 0.0.553._

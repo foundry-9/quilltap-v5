@@ -81834,3 +81834,47 @@ live checkout per the order.
   by the map rows' own tests + the image_transport family, not by a
   settings-routes case — a corpus candidate for a future maintenance pass.)
 - Versions: core 0.0.630, harness 0.0.553.
+
+### Unit 3 — bug 91's three fallback-site wirings
+
+- **Ported:** the three v4 edits to `lib/chat/file-attachment-fallback.ts`:
+  `needs_fallback_processing` gains the second arm (`image/` prefix gate +
+  `!provider_can_transport_images` → describe-fallback, with v4's
+  `logger.info` line as `tracing::info!`); the auto-pick describer filter
+  requires the transport predicate alongside `image/jpeg` support; and the
+  describer guard in `describe_image_with_profile` answers `unsupported`
+  with v4's sentence byte-exact ("cannot send images — the {provider}
+  plugin does not forward image attachments…") BEFORE any key resolution or
+  model call. All three land behind the §C2 seams — no signature moved.
+- **Differential:** `file_attachment_tier3` regenerated fresh at `a14a1811`
+  with SIX new ops: `lap_vision_no_transport` + `fb_vision_no_transport`
+  (ticked vision box on OLLAMA routes to describe; the bytes do NOT ride in
+  `attachmentsToSend`), `fb_vision_no_transport_text` (non-image type
+  untouched), `fb_ollama_describer_guard` (settings patched to the new
+  OLLAMA `Local llava` describer profile — the guard sentence, **and the
+  send is never made**: the canned mock holds no OLLAMA key, so a
+  regression panics rather than passing), and
+  `fb_autopick_excludes_non_transporting` (configured id cleared + the two
+  transporting profiles deleted → the no-describer sentence where the old
+  filter would have picked the OLLAMA profile). The per-case settings
+  patches follow `per-case-settings-patch-not-a-second-user` (identical
+  UPDATE on both sides; phases run LAST, in the oracle's order; v4's
+  updateForUser zod REFUSES `''` for the profile-id columns — clears are
+  `null`, a probe the oracle run itself caught).
+- **Fixture changes** (`harness/oracle/fixtures/file-attachment.json`):
+  the uncensored describer corrected from OLLAMA/llava-uncensored to a
+  transporting provider exactly as v4's own test fixture was — but to
+  **Z_AI/uncensored-vision-model, deliberately NOT v4's OPENROUTER pick**:
+  v4's test runs registry-uninitialized where OPENROUTER statically
+  transports, while in PRODUCTION (and in v5's baked manifests) OPENROUTER
+  cannot transport at this pin — the unit-2 upstream finding. Z_AI
+  transports in BOTH tiers, so the op is robust under either
+  configuration. Plus the new `Local llava` OLLAMA describer profile (d3)
+  and the `visionNoTransport` responding profile.
+- **Mutation proofs (all restored green):** neutralizing the second arm →
+  `lap_vision_no_transport` red; dropping the auto-pick predicate →
+  `fb_autopick_excludes_non_transporting` red; dropping the describer guard
+  → `fb_ollama_describer_guard` red with the canned provider's
+  unregistered-key error VISIBLE in the diff (the send-was-made proof);
+  (incidental) disabling the supportsImageUpload gate → red.
+- Versions: core 0.0.631, harness 0.0.554.

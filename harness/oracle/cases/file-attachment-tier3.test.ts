@@ -253,6 +253,10 @@ async function main(): Promise<void> {
     { label: 'lap_unsupported', profile: 'noImg', fileKeys: ['zip'] },
     { label: 'lap_load_skip', profile: 'noImg', fileKeys: ['missing'] },
     { label: 'lap_multi', profile: 'noImg', fileKeys: ['text', 'zip'] },
+    // Bug 91 (a14a1811): the chat profile's model reads images but its plugin
+    // cannot send them — the describe-fallback fires and the raw bytes do NOT
+    // ride in attachmentsToSend.
+    { label: 'lap_vision_no_transport', profile: 'visionNoTransport', fileKeys: ['descImage'] },
   ];
   for (const c of lapCases) {
     const profile = spec.respProfiles[c.profile];
@@ -288,6 +292,12 @@ async function main(): Promise<void> {
     { label: 'fb_reuse_prompt', profile: 'noImg', fileKey: 'reusePrompt' },
     { label: 'fb_reuse_desc', profile: 'noImg', fileKey: 'reuseDesc' },
     { label: 'fb_reuse_whitespace', profile: 'noImg', fileKey: 'reuseWhitespace' },
+    // Bug 91 (a14a1811): a ticked vision box on a non-transporting plugin
+    // routes an image to the describe-fallback…
+    { label: 'fb_vision_no_transport', profile: 'visionNoTransport', fileKey: 'descImage' },
+    // …while a non-image type on the same profile takes the ordinary
+    // unsupported-type text-inline path, untouched by the transport check.
+    { label: 'fb_vision_no_transport_text', profile: 'visionNoTransport', fileKey: 'text' },
   ];
   for (const c of fbCases) {
     const profile = spec.respProfiles[c.profile];
@@ -314,6 +324,80 @@ async function main(): Promise<void> {
   {
     const attachments = await loadChatFilesForLLM([meta.mountLinkId], { provider: 'DEEPSEEK' as never });
     lines.push(JSON.stringify({ kind: 'case', family: 'lcffl', label: 'lcffl_mount', result: attachments }));
+  }
+
+  // ---- (D) the describer transport guard (bug 91, a14a1811) -----------------
+  // Point the user's Image Description Profile at the OLLAMA describer — a
+  // profile whose plugin cannot transport images. `describeImageWithProfile`
+  // answers `unsupported` with the guard sentence and NO model call is made
+  // (the canned mock throws on any unregistered vision send, so a send here
+  // would fail the oracle run — the mock-level "sendMessage never called"
+  // assert). Patched LAST so every earlier case sees the original settings;
+  // deliberately not restored (nothing reads settings afterwards, and the
+  // Rust side mirrors the same order).
+  {
+    // The uncensored id is cleared too: any primary failure cascades to the
+    // uncensored describer, which would swallow the guard sentence with a
+    // successful Z.AI description.
+    await repos.chatSettings.updateForUser(spec.userId, {
+      imageDescriptionProfileId: '30000000-0000-4000-8000-0000000000d3',
+      uncensoredImageDescriptionProfileId: null,
+    } as never);
+    const profile = spec.respProfiles['noImg'];
+    const f = fileByKey['descImage'];
+    const fileMetadata = {
+      id: f.id,
+      filepath: `/api/v1/files/${f.id}`,
+      filename: f.originalFilename,
+      mimeType: f.mimeType,
+      size: dataByKey['descImage'].length,
+    };
+    const fileAttachment = { ...fileMetadata, data: dataByKey['descImage'] };
+    const result = await processFileAttachmentFallback(
+      fileMetadata,
+      fileAttachment as never,
+      profile as never,
+      repos,
+      spec.userId,
+    );
+    lines.push(
+      JSON.stringify({ kind: 'case', family: 'fb', label: 'fb_ollama_describer_guard', result }),
+    );
+  }
+
+  // ---- (E) the auto-pick describer filter (bug 91, a14a1811) ----------------
+  // Clear the configured describer and delete the two transporting profiles,
+  // leaving only the OLLAMA vision profile. The auto-pick filter now requires
+  // `providerCanTransportImages` alongside the mime support, so the OLLAMA
+  // profile is excluded and the no-describer arm answers — where the old
+  // filter would have picked it and described a picture it never received
+  // (the canned mock has no OLLAMA entry, so that regression throws here).
+  {
+    await repos.chatSettings.updateForUser(spec.userId, {
+      imageDescriptionProfileId: null,
+    } as never);
+    await repos.connections.delete(spec.descProfileId);
+    await repos.connections.delete(spec.uncensoredProfileId);
+    const profile = spec.respProfiles['noImg'];
+    const f = fileByKey['descImage'];
+    const fileMetadata = {
+      id: f.id,
+      filepath: `/api/v1/files/${f.id}`,
+      filename: f.originalFilename,
+      mimeType: f.mimeType,
+      size: dataByKey['descImage'].length,
+    };
+    const fileAttachment = { ...fileMetadata, data: dataByKey['descImage'] };
+    const result = await processFileAttachmentFallback(
+      fileMetadata,
+      fileAttachment as never,
+      profile as never,
+      repos,
+      spec.userId,
+    );
+    lines.push(
+      JSON.stringify({ kind: 'case', family: 'fb', label: 'fb_autopick_excludes_non_transporting', result }),
+    );
   }
 
   // ---- canned rows ----------------------------------------------------------
