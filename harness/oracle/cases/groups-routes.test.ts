@@ -431,6 +431,24 @@ async function main(): Promise<void> {
         ),
     },
     {
+      // P4.56 — the groups-side cleared-null pin P4.55 left owed. `description`
+      // is STORE-resident (a markdown file, not a slim column), so the DB patch
+      // is EMPTY and both sides take the no-DB-work branch of the store-backed
+      // update: v4 re-reads via `applyOverlayOne(_findById(id))`, v5 re-reads
+      // unconditionally. The measurement is what the echo carries for the
+      // cleared key — an explicit `null` in schema position, not an omission.
+      // Zero v5 source change is expected here (the projects side measured
+      // faithful; one `store_backed.rs`, two `StoreEntity` impls).
+      name: 'update_clear_description',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { description: null }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
       // The non-strict `z.object` STRIPS unknown keys before the patch reaches
       // `repos.groups.update`, so `state` here must NOT be written. v5's PUT was
       // a raw passthrough until P4.D103 and would have written it.

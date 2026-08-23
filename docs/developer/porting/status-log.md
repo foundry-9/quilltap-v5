@@ -81318,3 +81318,20 @@ it at boot. Without the repair the READ tolerates (a missing table reads as
 test creates it before boot with v4's exact DDL, the same repair and the same
 reason as `build-context-tier3-fixture.ts` (P4.D50). The committed fixture is
 NOT modified, so no sibling family is invalidated.
+
+### Unit 4 — the groups-side cleared-null pin (Tier 1 item 4), zero source change
+
+P4.55's owed arm. `update_clear_description` on `GAMMA`, mirroring the projects
+family's arm of the same name. `description` is STORE-resident for a group (a
+markdown file, not a slim column), so the DB patch is empty and both sides take
+the store-backed update's no-DB-work branch.
+
+**What the FRESH oracle says** (recorded, not assumed, per the order): v4 answers
+`"description": null` — the cleared key is PRESENT in the echo, carried after
+`updatedAt` with the other store-resident keys, not omitted. v5 matches
+byte-for-byte on the family's normalized comparand. **Zero v5 source change**,
+exactly as the order predicted; the family is green on the first run with the
+arm added.
+
+The family needs no stale-oracle floor: it drives cases by NAME, so a missing
+row reads as a `null` oracle body and fails the comparison outright.

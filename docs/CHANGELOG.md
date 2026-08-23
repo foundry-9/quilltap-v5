@@ -120,6 +120,20 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — test(groups): pin the cleared-null echo on the groups side
+
+_Versions: harness 0.0.545._
+
+The owed groups-side counterpart to P4.55's `update_clear_description` on
+projects. `description` is store-resident for a group (a markdown file, not a
+slim column), so the DB patch is empty and both sides take the store-backed
+update's no-DB-work branch — v4 re-reads through `applyOverlayOne(_findById(id))`,
+v5 re-reads unconditionally. The fresh oracle records what v4 actually answers:
+`"description": null`, present in the echo rather than omitted. v5 matches.
+Zero source change, as predicted — one `store_backed.rs`, two `StoreEntity`
+impls, so groups inherited the projects verdict by construction and now has its
+own pin.
+
 #### 2026-08-22 — feat(web): the data-retention REST edge (and the brahma-console edge that never worked)
 
 _Versions: core 0.0.622, web 0.0.78._

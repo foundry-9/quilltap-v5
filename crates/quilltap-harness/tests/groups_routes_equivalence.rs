@@ -543,6 +543,19 @@ fn groups_routes_match_oracle() {
         );
     }
     {
+        // P4.56 — the groups-side cleared-null pin. `description` is
+        // STORE-resident, so the DB patch is empty and both sides take the
+        // store-backed update's no-DB-work branch; this measures what the echo
+        // carries for the cleared key rather than assuming the projects answer.
+        let db = fresh_db(&spec, "update_clear_desc");
+        let resp = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "description": null }),
+        ));
+        check_blanked("update_clear_description", &resp, &mut failed);
+    }
+    {
         let db = fresh_db(&spec, "update_instr_over");
         let resp = rt.block_on(groups::group_update(
             &db,
