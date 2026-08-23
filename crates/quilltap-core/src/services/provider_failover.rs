@@ -187,6 +187,7 @@ where
         message_id: l.message_id,
         character_id: None,
         log_context: &none_ctx,
+        started_at_ms: crate::clock::now_unix_ms(),
     });
 
     let mut flags = EmptyResponseRecoveryFlags::default();

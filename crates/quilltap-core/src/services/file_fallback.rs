@@ -352,6 +352,10 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     file: &FallbackFile,
     profile: &Value,
 ) -> FallbackResult {
+    // v4 `file-attachment-fallback.ts:205` — `const describeStart = Date.now()`,
+    // captured at the top of the function so BOTH `logLLMCall` sites (the success
+    // row at `:351` and the failure row at `:460`) subtract from the same mark.
+    let describe_start_ms = crate::clock::now_unix_ms();
     let provider = profile
         .get("provider")
         .and_then(Value::as_str)
@@ -476,6 +480,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
                 temperature,
                 max_tokens,
                 &resp,
+                describe_start_ms,
             )
             .await;
 
@@ -542,7 +547,14 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         }
         Err(err) => {
             // Failure-path logLLMCall (IMAGE_DESCRIPTION), best-effort.
-            log_description_failure(deps, &provider, &model_name, &err.message).await;
+            log_description_failure(
+                deps,
+                &provider,
+                &model_name,
+                &err.message,
+                describe_start_ms,
+            )
+            .await;
             let mut result = FallbackResult::unsupported(
                 &file.filename,
                 &file.mime_type,
@@ -621,6 +633,7 @@ async fn log_description_success<CMP: CompletionProvider>(
     temperature: f64,
     max_tokens: i64,
     resp: &crate::model::completion::CompletionResponse,
+    describe_start_ms: i64,
 ) {
     let params = LogLlmCallParams {
         user_id: deps.user_id.to_string(),
@@ -661,7 +674,7 @@ async fn log_description_success<CMP: CompletionProvider>(
         cache_usage: None,
         raw_provider_usage: None,
         request_hashes: None,
-        duration_ms: Some(0.0),
+        duration_ms: Some((crate::clock::now_unix_ms() - describe_start_ms) as f64),
     };
     let _ = log_llm_call(deps.db, params, &LogContext::none()).await;
 }
@@ -671,6 +684,7 @@ async fn log_description_failure<CMP: CompletionProvider>(
     provider: &str,
     model_name: &str,
     error: &str,
+    describe_start_ms: i64,
 ) {
     let params = LogLlmCallParams {
         user_id: deps.user_id.to_string(),
@@ -704,7 +718,7 @@ async fn log_description_failure<CMP: CompletionProvider>(
         cache_usage: None,
         raw_provider_usage: None,
         request_hashes: None,
-        duration_ms: Some(0.0),
+        duration_ms: Some((crate::clock::now_unix_ms() - describe_start_ms) as f64),
     };
     let _ = log_llm_call(deps.db, params, &LogContext::none()).await;
 }

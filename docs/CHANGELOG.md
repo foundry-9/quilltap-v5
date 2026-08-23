@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(logging): the measured duration on the streaming chat log (dogfood #100)
+
+_Versions: core 0.0.628, harness 0.0.551._
+
+The 2026-08-22 dogfood pass found every streamed `CHAT_MESSAGE` row logging
+`durationMs = 0`, against 6,115 v4-written rows on the same instance where not
+one zero appears. Three sites hard-coded the value — the streaming chat write
+and both image-description writes — each behind a comment calling it a tracked
+follow-up because a measured stream clock could not be diffed. That blocker had
+already been lifted by `normalize_duration_ms`, which collapses any non-NULL
+duration to a presence marker on both sides; the comments never caught up.
+
+`StreamLogCtx` now carries `started_at_ms`, stamped where v4 takes its own
+`startTime` — once per `streamMessage` entry, so the primary attempt, the
+tool-unsupported retry, and each failover leg time only their own call.
+`describe_image_with_profile` takes v4's `describeStart` at the top and both its
+log sites subtract from it. Since no differential can tell a hard-coded zero
+from a measured one once the column is normalized, the guard is a source census
+in the `db_error_key_guard` idiom, mutation-proven red-first. Verified live: the
+next streamed turn logged 9,601 ms.
+
 #### 2026-08-22 — unify: the `f8973813` NanoGPT-caching + settings-wire round (P4.D105 ∥ P4.56)
 
 _Versions: core 0.0.627, harness 0.0.550, web 0.0.78._

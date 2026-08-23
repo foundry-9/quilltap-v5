@@ -835,13 +835,24 @@ pub(crate) struct StreamLogCtx<'a> {
     /// row is stamped with `autonomousRunId` for per-run budget accounting.
     /// `LogContext::none()` on every request-path caller.
     pub(crate) log_context: &'a LogContext,
+    /// v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
+    /// immediately before the provider loop and subtracted at the terminal
+    /// chunk (`:440`). Each `streamMessage` invocation gets its OWN start, so
+    /// the primary attempt, the tool-unsupported retry, and every failover leg
+    /// each time only their own call — which is why this rides the per-stream
+    /// context rather than the enclosing request.
+    pub(crate) started_at_ms: i64,
 }
 
 /// v4 `logLLMCall` on `chunk.done` (streaming.service.ts:405) — one `CHAT_MESSAGE`
 /// row with the request-prefix hashes, `rawProviderUsage`, `finishReason`, usage +
-/// cacheUsage. `durationMs` is v4's `Date.now() - startTime`; the differential's
-/// frozen clock makes it 0 and the port has no injected stream clock (a real value
-/// needs a spine-injected clock — a tracked follow-up), so it emits 0. Awaited (the
+/// cacheUsage. `durationMs` is v4's `Date.now() - startTime`, measured from
+/// [`StreamLogCtx::started_at_ms`]. (It emitted a hard-coded 0 until the
+/// 2026-08-22 dogfood pass found that every streamed chat message logged a zero
+/// duration where v4 logs a real one — dogfood finding #100. The deferral's
+/// stated blocker, that a measured clock could not be diffed, had already been
+/// lifted by `common::normalize_duration_ms`, which collapses any non-NULL
+/// duration to `"<ms>"` on BOTH sides and keeps NULL NULL.) Awaited (the
 /// writer never throws — the watermark precedent). The [`LogContext`] rides
 /// [`StreamLogCtx::log_context`] — none on the request path, the run's id under
 /// an autonomous turn (U4.4).
@@ -934,7 +945,7 @@ pub(crate) async fn log_chat_message_call(
         }),
         raw_provider_usage,
         request_hashes: Some(request_hashes),
-        duration_ms: Some(0.0),
+        duration_ms: Some((crate::clock::now_unix_ms() - log.started_at_ms) as f64),
     };
     let _ = log_llm_call(log.db, params_log, log.log_context).await;
 }
@@ -1094,6 +1105,7 @@ where
         message_id: &pre_generated_assistant_message_id,
         character_id: Some(&character_id),
         log_context: &log_context,
+        started_at_ms: crate::clock::now_unix_ms(),
     });
 
     sink.emit(ChatEvent::status(StatusPayload {
@@ -1152,6 +1164,7 @@ where
             message_id: &pre_generated_assistant_message_id,
             character_id: None,
             log_context: &log_context,
+            started_at_ms: crate::clock::now_unix_ms(),
         });
 
         let retry_err = consume_stream(

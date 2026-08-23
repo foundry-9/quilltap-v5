@@ -26,9 +26,13 @@
 //!      via `run_primary_stream`; W4.11b adds the failover-leg logging. Both dump
 //!      via the shared `common::{materialize,dump}_llm_logs` (id/createdAt/updatedAt
 //!      placeholdered, sorted by canonical JSON; `requestHashes` diffed as a row
-//!      column). `durationMs = Date.now() - startTime` is pinned to 0 on both sides
-//!      — the oracle FREEZES `Date.now` (so v4's value is 0), the port hard-codes
-//!      `Some(0.0)` (a real stream clock is a spine-injected follow-up). Rows:
+//!      column). `durationMs = Date.now() - startTime` is a PRESENCE marker on
+//!      both sides — `common::normalize_duration_ms` collapses any non-NULL value
+//!      to `"<ms>"` and keeps NULL NULL, so the oracle's frozen-clock 0 and the
+//!      port's measured elapsed compare equal while a side that stopped writing a
+//!      duration at all still fails. (The port hard-coded `Some(0.0)` until
+//!      dogfood finding #100 — every streamed chat message logged a zero duration
+//!      where v4 logs a real one.) Rows:
 //!      clean_stream + tool_unsupported_retry_success (characterId set), the four
 //!      failover legs (characterId NULL); NONE for recovery (v4 passes no userId).
 //!
@@ -769,8 +773,9 @@ async fn primary_stream_tier3_matches_oracle() {
     assert_eq!(got_chats["rows"], want_chats["rows"], "chats rows diverge");
 
     // W4.11b: the `llm_logs` CHAT_MESSAGE rows (id/createdAt/updatedAt placeholdered
-    // by the shared dump; durationMs = 0 both sides; requestHashes asserted as part
-    // of the row). Both sides sorted by canonical JSON.
+    // by the shared dump; durationMs collapsed to the `"<ms>"` presence marker on
+    // both sides; requestHashes asserted as part of the row). Both sides sorted by
+    // canonical JSON.
     assert_eq!(
         got_logs,
         oracle_llm_logs,
