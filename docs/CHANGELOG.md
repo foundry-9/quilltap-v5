@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): work orders for the `f8973813` round (P4.D105 ∥ P4.56)
+
+_Docs-only change._
+
+Plan the next round against the new v4 baseline `f8973813` (one commit of
+drift: NanoGPT prompt caching, plugin 1.0.3; bugfix unmoved). Two disjoint
+lanes: P4.D105 absorbs the drift (the two Prompt Caching profile options
+through the manifest generator, the `promptCaching` body key, both-dialect
+cache-usage normalization with the cache-read exclusion, plus the
+`response_parse_equivalence` run-line debt), and P4.56 closes the P4.55
+named remainders (the B2 data-retention present-`null` collapse with the
+harness edge-mapping rewire landing first, the missing `quilltap-web`
+data-retention REST edge, the groups-side cleared-null pin, the memories
+float-literal nit, the shared `apiKeyId`/`baseUrl` helper, and
+`settings_wire_actions` self-containment).
+
 #### 2026-08-22 — unify: the `a6870c5a` prompts-trio round (P4.D103 ∥ P4.D104 ∥ P4.55)
 
 _Versions: core 0.0.620, harness 0.0.542, SPA 0.5.544._
