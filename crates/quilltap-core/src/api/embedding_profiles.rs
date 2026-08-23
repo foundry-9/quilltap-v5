@@ -26,6 +26,9 @@ use crate::db::{api_keys, embedding_profiles as ep, tags, tfidf_vocabulary};
 use crate::provider_manifest::Registry;
 use crate::services::queue_service;
 
+// P4.56: the three profile-update handlers share ONE reader for the JS
+// semantics of `apiKeyId` / `baseUrl`; only the consequences differ per site.
+use super::settings::{classify_api_key_id, classify_base_url, ApiKeyIdPatch, BaseUrlPatch};
 use super::types::{ErrorKind, Response};
 
 // ===========================================================================
@@ -489,56 +492,36 @@ pub async fn embedding_profile_update(
         patch.provider = Some(provider);
     }
     if let Some(aki) = body_obj.get("apiKeyId") {
-        if aki.is_null() {
-            mo.insert("apiKeyId".into(), Value::Null);
-            patch.api_key_id = Some(None);
-        } else if let Some(id) = aki.as_str() {
-            match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
-                Ok(Some(_)) => {}
-                Ok(None) => return not_found("API key"),
-                Err(e) => return internal_fixed("Failed to update embedding profile", e),
+        match classify_api_key_id(aki) {
+            ApiKeyIdPatch::Clear => {
+                mo.insert("apiKeyId".into(), Value::Null);
+                patch.api_key_id = Some(None);
             }
-            mo.insert("apiKeyId".into(), Value::String(id.to_string()));
-            patch.api_key_id = Some(Some(id.to_string()));
-        } else {
-            // P4.55 (the missing-`else` sub-family): v5 used to DROP a present
-            // non-string `apiKeyId` silently and answer 200. v4 has no Zod
-            // schema on this route — it falls into `findApiKeyById(apiKeyId)`,
-            // which answers null for every non-string (a number can only match
-            // an id literally spelled that way, and every Quilltap id is a
-            // UUID; an object / array / boolean makes better-sqlite3's binder
-            // throw, which `safeQuery`'s `null` fallback swallows) →
-            // `notFound('API key')`. Measured on v4 for both `5` and `{}`.
-            return not_found("API key");
+            ApiKeyIdPatch::Set(id) => {
+                match db.read_main(|conn| api_keys::find_by_id(conn, id)) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => return not_found("API key"),
+                    Err(e) => return internal_fixed("Failed to update embedding profile", e),
+                }
+                mo.insert("apiKeyId".into(), Value::String(id.to_string()));
+                patch.api_key_id = Some(Some(id.to_string()));
+            }
+            ApiKeyIdPatch::Refuse => return not_found("API key"),
         }
     }
     if let Some(bu) = body_obj.get("baseUrl") {
-        // `baseUrl || null` — JS falsiness, not a string check. P4.55: v5's old
-        // `as_str()` filter collapsed EVERY non-string to null, so a truthy
-        // non-string silently CLEARED the column instead of reaching v4's
-        // failure.
-        match bu {
-            Value::String(s) if !s.is_empty() => {
-                mo.insert("baseUrl".into(), Value::String(s.clone()));
-                patch.base_url = Some(Some(s.clone()));
+        match classify_base_url(bu) {
+            BaseUrlPatch::Set(s) => {
+                mo.insert("baseUrl".into(), Value::String(s.to_string()));
+                patch.base_url = Some(Some(s.to_string()));
             }
-            // The falsy arms `||` turns into null: "", null, false, 0/-0.
-            Value::String(_) | Value::Null | Value::Bool(false) => {
+            BaseUrlPatch::Clear => {
                 mo.insert("baseUrl".into(), Value::Null);
                 patch.base_url = Some(None);
             }
-            Value::Number(n) if n.as_f64() == Some(0.0) => {
-                mo.insert("baseUrl".into(), Value::Null);
-                patch.base_url = Some(None);
+            BaseUrlPatch::Refuse => {
+                return Response::error(ErrorKind::Internal, "Failed to update embedding profile")
             }
-            // Truthy non-string: v4 assigns it VERBATIM, the repository's
-            // in-memory merge validation rejects the row, and the route's outer
-            // catch answers this fixed 500. RECORDED EDGE DIVERGENCE (§3
-            // unification review): v4's failure is TERMINAL — its isDefault
-            // sweep's writes land first, so `{"baseUrl": 5, "isDefault": true}`
-            // clears other defaults in v4 before the 500; v5 refuses here,
-            // before any write.
-            _ => return Response::error(ErrorKind::Internal, "Failed to update embedding profile"),
         }
     }
     if let Some(mn) = body_obj.get("modelName") {

@@ -120,6 +120,24 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — refactor(settings): one reader for the profile `apiKeyId` / `baseUrl` semantics
+
+_Versions: core 0.0.624._
+
+P4.55 fixed the missing-`else` sub-family at three sites and left the
+triplication as a named cleanup. The JS SEMANTICS now live once —
+`classify_api_key_id` and `classify_base_url` in `api/settings.rs` — and the
+three profile-update handlers (connection, image, embedding) keep only what
+genuinely differs: which patch struct, which lookup, which fixed 500 sentence.
+v4's reasoning (`findApiKeyById` on a non-string, `baseUrl || null` as JS
+falsiness) and the recorded terminal-but-after-side-effects divergence are
+stated once instead of three times.
+
+Behavior-neutral by construction and by measurement: all three families are
+green with no NDJSON movement, and a mutation that turns either reader's refusal
+arm into a clear reddens all three — so the shared reader is genuinely live at
+every site, not left beside dead code.
+
 #### 2026-08-22 — fix(memories): store integer-valued floats the JS way
 
 _Versions: core 0.0.623, harness 0.0.547._

@@ -81388,3 +81388,28 @@ against v4's `1`, and the stored-bag twins. Green after the fix.
 + `autoMergeSimilarThreshold: 1.0`) and `extraction_limits_set_int_float_literal`
 (`maxPerHour: 200.0` + `softFloor: 1.0`), both with `storedAfter`. No committed
 fixture changed, so no sibling family is invalidated.
+
+### Unit 7 (Tier 2 item 7) — the shared `apiKeyId` / `baseUrl` reader, behavior-neutral
+
+P4.55 fixed the missing-`else` sub-family at three sites (`connection_profile_
+update`, `image_profile_update`, `embedding_profile_update`) and named the
+triplication as a future cleanup. The three blocks agree on the JS SEMANTICS and
+differ only in consequence — which patch struct (an `Option<Option<String>>` vs
+a separate `clear_base_url` flag), which lookup (the connection site alone runs
+v4's provider match), and which fixed 500 sentence.
+
+So the DECISION is extracted, not the whole block: `classify_api_key_id` →
+`Clear | Set(&str) | Refuse` and `classify_base_url` → `Set(&str) | Clear |
+Refuse`, both in `api/settings.rs`, both carrying v4's reasoning once
+(`findApiKeyById(apiKeyId)` answering null for every non-string; `baseUrl ||
+null` as JS falsiness, not a string check) plus the RECORDED terminal-but-
+after-side-effects divergence, which this cleanup does not change.
+
+**Behavior-neutral, measured two ways.** All three families re-run green with no
+NDJSON movement (settings-routes 141 cases; the P4.55 arms
+`cp_update_api_key_id_number` / `cp_update_base_url_number` /
+`update_apikey_non_string` / `update_baseurl_non_string` all present and OK).
+And **mutation-proven live at every site**: flipping `_ => ApiKeyIdPatch::Refuse`
+to `Clear` and `_ => BaseUrlPatch::Refuse` to `Clear` reddens all three families
+— so the shared reader is genuinely wired at each site rather than sitting
+beside surviving copies.

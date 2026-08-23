@@ -54,6 +54,77 @@ use super::types::{ErrorKind, Response};
 // Shared helpers
 // ===========================================================================
 
+// ===========================================================================
+// The shared profile-patch field readers (P4.56)
+//
+// The three profile-update handlers — `connection_profile_update` here,
+// `image_profiles::image_profile_update`, and
+// `embedding_profiles::embedding_profile_update` — read `apiKeyId` and
+// `baseUrl` with the same JS semantics and diverge only in what they DO with
+// the answer (which patch struct, which lookup, which fixed 500 sentence). The
+// DECISION lives here once; the three sites keep their own consequences.
+// ===========================================================================
+
+/// What a present `apiKeyId` on a profile PUT means.
+///
+/// v4 has no Zod schema on any of the three routes: the value falls straight
+/// into `repos.connections.findApiKeyById(apiKeyId)`, whose `safeQuery` carries
+/// a `null` fallback. So a present non-string answers `notFound('API key')` —
+/// a number can only match an id literally spelled that way, and every Quilltap
+/// id is a UUID; an object / array / boolean makes better-sqlite3's binder
+/// throw, which the `null` fallback swallows. Measured on v4 for both `5` and
+/// `{}` (P4.55 D1/D2/D3, the missing-`else` sub-family: v5 used to DROP a
+/// present non-string silently and answer 200).
+pub(crate) enum ApiKeyIdPatch<'a> {
+    /// An explicit `null` — clear the column.
+    Clear,
+    /// A string — look it up, then set it.
+    Set(&'a str),
+    /// Anything else — v4's lookup misses, so `notFound('API key')`.
+    Refuse,
+}
+
+pub(crate) fn classify_api_key_id(v: &Value) -> ApiKeyIdPatch<'_> {
+    match v {
+        Value::Null => ApiKeyIdPatch::Clear,
+        Value::String(s) => ApiKeyIdPatch::Set(s),
+        _ => ApiKeyIdPatch::Refuse,
+    }
+}
+
+/// What a present `baseUrl` on a profile PUT means.
+///
+/// v4 writes `updateData.baseUrl = baseUrl || null` — JS FALSINESS, not a
+/// string check (P4.55: v5's old `as_str()` filter collapsed every non-string
+/// to null, so a truthy non-string silently CLEARED the column instead of
+/// reaching v4's failure).
+pub(crate) enum BaseUrlPatch<'a> {
+    /// A non-empty string — assign it.
+    Set(&'a str),
+    /// The falsy arms `||` turns into null: `""`, `null`, `false`, `0`/`-0`.
+    Clear,
+    /// A TRUTHY non-string: v4 assigns it VERBATIM, the repository's in-memory
+    /// merge validation then rejects the row, and the route's outer catch
+    /// answers its own fixed 500. Measured (`{"baseUrl": 5}` → 500, the table
+    /// untouched).
+    ///
+    /// RECORDED EDGE DIVERGENCE (§3 unification review, P4.55): v4's failure is
+    /// TERMINAL but comes AFTER side effects — an earlier `isDefault` sweep's
+    /// writes land first, so `{"baseUrl": 5, "isDefault": true}` clears the
+    /// other profiles' defaults in v4 before the 500, where v5 refuses before
+    /// any write. In v5's favor; unpinned, the input being hand-crafted-API-only.
+    Refuse,
+}
+
+pub(crate) fn classify_base_url(v: &Value) -> BaseUrlPatch<'_> {
+    match v {
+        Value::String(s) if !s.is_empty() => BaseUrlPatch::Set(s),
+        Value::String(_) | Value::Null | Value::Bool(false) => BaseUrlPatch::Clear,
+        Value::Number(n) if n.as_f64() == Some(0.0) => BaseUrlPatch::Clear,
+        _ => BaseUrlPatch::Refuse,
+    }
+}
+
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
@@ -1599,64 +1670,45 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
         patch.provider = Some(p.to_string());
     }
 
-    // apiKeyId (non-courier).
+    // apiKeyId (non-courier) — the shared reader decides the SHAPE; this site
+    // adds the provider match, which the other two profile kinds do not have.
     if !is_courier {
         if let Some(v) = bag.get("apiKeyId") {
-            if v.is_null() {
-                patch.api_key_id = Some(None);
-            } else if let Some(akid) = v.as_str() {
-                let akid_owned = akid.to_string();
-                let key = match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
-                    Ok(v) => v,
-                    Err(e) => return internal(e),
-                };
-                let Some(key) = key else {
-                    return not_found("API key");
-                };
-                let provider_to_check = patch
-                    .provider
-                    .clone()
-                    .or_else(|| s(&existing, "provider"))
-                    .unwrap_or_default();
-                if key.provider != provider_to_check {
-                    return bad_request("API key provider does not match profile provider");
+            match classify_api_key_id(v) {
+                ApiKeyIdPatch::Clear => patch.api_key_id = Some(None),
+                ApiKeyIdPatch::Set(akid) => {
+                    let akid_owned = akid.to_string();
+                    let key =
+                        match db.read_main(move |conn| api_keys::find_by_id(conn, &akid_owned)) {
+                            Ok(v) => v,
+                            Err(e) => return internal(e),
+                        };
+                    let Some(key) = key else {
+                        return not_found("API key");
+                    };
+                    let provider_to_check = patch
+                        .provider
+                        .clone()
+                        .or_else(|| s(&existing, "provider"))
+                        .unwrap_or_default();
+                    if key.provider != provider_to_check {
+                        return bad_request("API key provider does not match profile provider");
+                    }
+                    patch.api_key_id = Some(Some(akid.to_string()));
                 }
-                patch.api_key_id = Some(Some(akid.to_string()));
-            } else {
-                // P4.55 (the missing-`else` sub-family): v5 used to DROP a
-                // present non-string `apiKeyId` silently and answer 200. v4 has
-                // no Zod schema on this route — it falls straight into
-                // `findApiKeyById(apiKeyId)`, which answers null for every
-                // non-string (a number can only match an id literally spelled
-                // that way, and every Quilltap id is a UUID; an object / array /
-                // boolean makes better-sqlite3's binder throw, which
-                // `safeQuery`'s `null` fallback swallows) → `notFound('API
-                // key')`. Measured on v4 for both `5` and `{}`.
-                return not_found("API key");
+                ApiKeyIdPatch::Refuse => return not_found("API key"),
             }
         }
     }
 
-    // baseUrl (non-courier): `baseUrl || null` — JS falsiness, not a string
-    // check. P4.55: v5's old `as_str()` filter collapsed EVERY non-string to
-    // null, so a truthy non-string silently cleared the column instead of
-    // reaching v4's failure.
+    // baseUrl (non-courier) — the shared reader; this site's patch spells the
+    // clear as a separate flag rather than an `Option<Option<_>>`.
     if !is_courier {
         if let Some(v) = bag.get("baseUrl") {
-            match v {
-                Value::String(b) if !b.is_empty() => patch.base_url = Some(b.clone()),
-                // The falsy arms `||` turns into null: "", null, false, 0/-0.
-                Value::String(_) | Value::Null | Value::Bool(false) => patch.clear_base_url = true,
-                Value::Number(n) if n.as_f64() == Some(0.0) => patch.clear_base_url = true,
-                // Truthy non-string: v4 assigns it VERBATIM, and the
-                // repository's in-memory merge validation then rejects the row,
-                // so the route's outer catch answers this fixed 500. Measured
-                // (`{"baseUrl": 5}` → 500, profile untouched). RECORDED EDGE
-                // DIVERGENCE (§3 unification review): v4's failure is TERMINAL
-                // — earlier fields' side effects run first, so `{"baseUrl": 5,
-                // "isDefault": true}` clears the OTHER profiles' isDefault in
-                // v4 before the 500; v5 refuses here, before any write.
-                _ => return internal("Failed to update connection profile"),
+            match classify_base_url(v) {
+                BaseUrlPatch::Set(b) => patch.base_url = Some(b.to_string()),
+                BaseUrlPatch::Clear => patch.clear_base_url = true,
+                BaseUrlPatch::Refuse => return internal("Failed to update connection profile"),
             }
         }
     }
