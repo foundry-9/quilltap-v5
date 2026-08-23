@@ -81229,3 +81229,42 @@ is a comparand, not an inference. Family floor asserted at 13 rows.
 passes through the new path — the family regenerated fresh at `f8973813` through
 the sweep driver and re-run green, **139 cases matched** (was 135). All four new
 arms grepped present by name in the fresh NDJSON.
+
+### Unit 2 — the `double_option` fix + the present-`null` arms (Tier 1 item 3), red-first
+
+**RED first, measured through the unit-1 path.** With the two new arms added to
+the oracle and the family regenerated fresh at `f8973813`, the run failed on
+`dr_put_null`: oracle `{"error":"Validation error"}` (status 400), v5
+`{"staleChatDays":30}` (status 200). That is the divergence P4.55 confirmed,
+now visible for the first time — it was invisible before unit 1 because the
+harness never went through serde.
+
+**The fix.** `Request::DataRetentionSettingsUpdate.stale_chat_days` becomes
+`Option<Option<serde_json::Value>>` with `deserialize_with = "double_option"`,
+and `engine.rs`'s dispatch arm gains the three-arm match its two siblings
+(`TabooSettingsUpdate`, `BrahmaConsoleSettingsUpdate`) already had:
+
+- `None` → `{}` — the key is absent, v4's partial body, the merge keeps the
+  stored value.
+- `Some(Some(v))` → `{"staleChatDays": v}` — raw, so the handler runs the
+  Zod-faithful parse (out-of-range, non-integer, wrong-typed all refused there).
+- `Some(None)` → `{"staleChatDays": null}` — the explicit null reaches the same
+  parse, which refuses it, because Zod's `.default(30)` fires only for
+  `undefined`.
+
+No handler change was needed: `validate_stale_chat_days` already answers `None`
+for a JSON null, so the 400 sentence and status were already right — the value
+simply never reached it.
+
+**The arms.** `dr_put_null` pins v4's exact body and 400 status;
+`dr_put_null_writes_nothing` seeds 120, refuses the null, and the `after`
+refetch proves the seeded value survived (a 400 answered by a handler that had
+already clobbered the row would fail here). Family floor raised 13 → 15.
+**141 cases matched**, zero SKIP.
+
+**Tier 3 item 8 — the SPA survey, done, no follow-up owed.** v5 does have a
+data-retention card (`apps/web/src/app/screens/settings/chat/
+data-retention-settings.ts`), but `commit()` floors and bounds-checks the draft
+before calling `updateDataRetentionSettings(parsed: number)` — the client can
+neither send `null` nor omit the key, so no client surface sees a 400 it did not
+see before. `apps/web/**` untouched.

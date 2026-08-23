@@ -3933,8 +3933,15 @@ impl CoreEngine {
             },
             Request::DataRetentionSettingsUpdate { stale_chat_days } => match self.ready_db() {
                 Ok(db) => {
+                    // An absent key is v4's partial body (the merge keeps the
+                    // stored value); a present one — including an explicit
+                    // `null` — is carried raw so the handler's Zod-faithful
+                    // parse decides, and `null` is what v4 400s on.
                     let bag = match stale_chat_days {
-                        Some(v) => serde_json::json!({ "staleChatDays": v }),
+                        Some(Some(v)) => serde_json::json!({ "staleChatDays": v }),
+                        Some(None) => {
+                            serde_json::json!({ "staleChatDays": serde_json::Value::Null })
+                        }
                         None => serde_json::json!({}),
                     };
                     super::settings::data_retention_settings_update(&db, bag).await

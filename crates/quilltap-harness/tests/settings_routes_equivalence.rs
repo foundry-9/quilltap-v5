@@ -251,7 +251,8 @@ fn run_handler(
                 unreachable!("the tagged decode can only answer this variant");
             };
             let bag = match stale_chat_days {
-                Some(v) => serde_json::json!({ "staleChatDays": v }),
+                Some(Some(v)) => serde_json::json!({ "staleChatDays": v }),
+                Some(None) => serde_json::json!({ "staleChatDays": Value::Null }),
                 None => serde_json::json!({}),
             };
             rt.block_on(settings::data_retention_settings_update(db, bag))
@@ -564,8 +565,8 @@ fn settings_routes_match_v4() {
     // the `Request` serde path this lane rewired it onto. Row-driven floor — it
     // moves with every arm batch (P4.55's rule).
     assert!(
-        data_retention_cases >= 13,
-        "expected >= 13 data_retention cases, got {data_retention_cases} — regenerate the oracle"
+        data_retention_cases >= 15,
+        "expected >= 15 data_retention cases, got {data_retention_cases} — regenerate the oracle"
     );
     // P4.D50: the Taboo family must actually be present — a stale oracle that
     // predates it would otherwise pass by simply not carrying those rows.

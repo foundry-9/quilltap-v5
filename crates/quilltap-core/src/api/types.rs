@@ -1896,9 +1896,18 @@ pub enum Request {
     /// (`validationError` on failure). The raw value is carried so the handler
     /// validates the body itself (v4 `safeParse`), matching v4's rejection of
     /// out-of-range OR wrong-typed input; absent → keep current.
+    ///
+    /// `Option<Option<_>>` tri-state (P4.56): `None` = the key is ABSENT (the
+    /// merge keeps the stored value), `Some(None)` = an explicit `null`, which is
+    /// NOT `undefined` — Zod's `.default(30)` does not fire for it, so v4 answers
+    /// `validationError` — and `Some(Some(v))` = a present value the handler
+    /// validates. A plain `Option` collapsed absent and null into the same
+    /// keep-current arm, which is exactly the state collapse the Taboo §3 review
+    /// caught on the sibling verb; this variant's own doc comment was cited as
+    /// that fix's precedent while still carrying the bug.
     DataRetentionSettingsUpdate {
-        #[serde(default, rename = "staleChatDays")]
-        stale_chat_days: Option<serde_json::Value>,
+        #[serde(default, rename = "staleChatDays", deserialize_with = "double_option")]
+        stale_chat_days: Option<Option<serde_json::Value>>,
     },
     // === end P4.d3 ===
     // === P4.6ae === (the general files family — lane A, append-only)

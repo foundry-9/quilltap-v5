@@ -1477,6 +1477,14 @@ describe('settings-routes oracle', () => {
     { name: 'dr_put_too_small', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 0 } },
     { name: 'dr_put_non_integer', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 12.5 } },
     { name: 'dr_put_wrong_type', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 'abc' } },
+    // An explicit `null` is a PRESENT value, so Zod's `.default(30)` does not
+    // fire and the parse fails — distinct from omitting the key entirely, which
+    // is the arm above. (`dr_put_empty_merge` is the same body minus the key.)
+    { name: 'dr_put_null', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: null } },
+    // …and the composite: the refused null writes NOTHING, so the seeded value
+    // survives. Without this the 400 could be answered by a handler that had
+    // already clobbered the row.
+    { name: 'dr_put_null_writes_nothing', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: null }, seedDataRetention: 120, after: 'dataRetention' },
     // A rejected PUT writes NOTHING — the seeded value survives the 400.
     { name: 'dr_put_invalid_writes_nothing', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 5000 }, seedDataRetention: 120, after: 'dataRetention' },
     // taboo (P4.D50, v4 `7df7de8e`) — the instance-wide forbidden-phrase list.

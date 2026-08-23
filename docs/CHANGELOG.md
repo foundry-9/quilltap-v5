@@ -120,6 +120,32 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — fix(settings): an explicit `null` staleChatDays is a 400, not a silent keep
+
+_Versions: core 0.0.621, harness 0.0.544._
+
+`Request::DataRetentionSettingsUpdate` carried `#[serde(default)]
+stale_chat_days: Option<Value>`, so serde mapped an explicit `null` to `None`
+indistinguishably from an absent key; the dispatch arm then built `{}` and the
+handler kept the stored value at 200. v4's Zod `.default(30)` fires only for
+`undefined`, so `{"staleChatDays": null}` is a 400 `Validation error` there.
+Ironically this variant's own doc comment was cited as the precedent for the
+Taboo fix while still carrying the bug.
+
+The field is now the `double_option` tri-state and the dispatch arm has the
+three-arm match its siblings have: absent keeps the stored value,
+`Some(Some(v))` rides raw to the handler's Zod-faithful parse, and `Some(None)`
+carries the explicit `null` through to that same parse, which refuses it. Two
+arms pin it — `dr_put_null` (v4's exact 400 body) and
+`dr_put_null_writes_nothing` (seeded at 120, `after` refetch proves the refusal
+wrote nothing). Both were measured RED against the pre-fix code through the
+rewired serde path (`{"staleChatDays":30}` where v4 answers
+`{"error":"Validation error"}`). Family floor 15; 141 cases matched.
+
+The Angular card is unaffected: `data-retention-settings.ts` only ever sends a
+finite in-range integer, so no client surface can now see a 400 it did not see
+before.
+
 #### 2026-08-22 — test(settings): the data-retention differential rides the `Request` serde path
 
 _Versions: harness 0.0.543._
