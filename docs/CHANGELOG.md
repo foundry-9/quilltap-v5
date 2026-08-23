@@ -120,6 +120,23 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — test(harness): `settings_wire_actions` builds the fixture it reads
+
+_Versions: harness 0.0.546._
+
+The family reads `/tmp/qt-settings-fixture.db` and its recipe never built it —
+only `settings_routes_equivalence`'s regen invokes the builder. P4.54 measured
+the consequence: with `/tmp` cleaned the family does not SKIP, it FAILS every
+case, so it was green only because a sibling happened to run first. Its header
+now carries the fixture build as its own regen stage (the same idempotent
+builder invocation, spelled with the load-bearing `V5W=${V5W:-…}` form).
+
+Proven from a genuinely clean slate: `/tmp/qt-settings-fixture.db` deleted, then
+`recipe_sweep.py --run settings_wire_actions` rebuilds it and passes 5/5.
+`--self-test` stays at 0 failures — this family was never one of the two the
+self-test structurally requires to remain in the `nothing_to_run` debt list (it
+had a run line all along; what it lacked was a regen).
+
 #### 2026-08-22 — test(groups): pin the cleared-null echo on the groups side
 
 _Versions: harness 0.0.545._

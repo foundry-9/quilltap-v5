@@ -6,6 +6,19 @@
 //! key resolution, config validation, response mapping, and the models CACHE
 //! effect — is what these prove). Env-gated on the settings fixture.
 //!
+//! This family consumes no oracle NDJSON — it composes the ported handlers over
+//! injected seams — but it DOES read the shared settings fixture, and a recipe
+//! must build every /tmp file it reads rather than lean on a sibling's staging
+//! (P4.54 measured this family FAILING 0/4 whenever `settings_routes_
+//! equivalence` had not just run). The fixture build below is the same one that
+//! family's regen runs; it is idempotent, and the file is not committed.
+//!
+//! Build the fixture (Node 24, from the v4 checkout — see
+//! `build-settings-fixture.ts`'s own header):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
 //! Run:
 //!   QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db \
 //!     cargo test -p quilltap-harness --test settings_wire_actions

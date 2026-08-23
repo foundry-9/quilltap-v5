@@ -81335,3 +81335,25 @@ arm added.
 
 The family needs no stale-oracle floor: it drives cases by NAME, so a missing
 row reads as a `null` oracle body and fails the comparison outright.
+
+### Unit 5 — `settings_wire_actions` made self-contained (Tier 1 item 5)
+
+The family consumes no oracle NDJSON (it composes the ported handlers over
+injected seams) but it DOES read `/tmp/qt-settings-fixture.db`, and its recipe
+never built it — only `settings_routes_equivalence`'s regen invokes
+`build-settings-fixture.ts`. P4.54 measured the consequence and left it: with
+`/tmp` cleaned the family does not SKIP, it **FAILS every case**, so it was
+green only because a sibling ran first.
+
+The `.rs` header now carries the builder invocation as its own regen stage —
+indented so the driver extracts it, spelled `V5W=${V5W:-$HOME/source/quilltap-v5}`
+with `$V5W/…` references (the load-bearing form), no annotations on a command
+line, and the build is idempotent so running it alongside the settings-routes
+family costs nothing.
+
+**Proven from a clean slate:** `/tmp/qt-settings-fixture.db` deleted, then
+`recipe_sweep.py --run settings_wire_actions` → the builder runs, **5 passed /
+0 failed**. `--show` reads correctly on both stages. `--self-test`: **0
+failures** — this family was never one of the two the self-test structurally
+requires to stay in the `nothing_to_run` debt list (it already had a run line;
+what it lacked was a regen), so closing it moves nothing there.
