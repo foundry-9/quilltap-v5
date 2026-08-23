@@ -82451,3 +82451,22 @@ bundle assembly, spine.rs:3222) on `self` and `tool_runner()` adds
 fully live everywhere; tier 3 answers v4's exact could-not-describe
 sentence with `(describe-failed)` — v4's own shape when no vision
 profile resolves.
+
+### Unit 5 — the Librarian rewrites + the Lantern comment + the docs bank
+
+The five sentence rewrites byte-copied from the v4 diff: `attach_id_hint`,
+`build_upload_content` single/plural, `build_upload_opaque_content`
+single/plural — noting v4's own two spellings ("neither of those shows it
+to you" in the content pair vs "neither one shows it to you" in the opaque
+pair; each copied as-is, not normalized). The `post_office_librarian`
+family regenerated fresh at the pin (describe_image in 10 rows; the
+"neither…" clauses grepped present in 4) — red against the old strings,
+green after; the verb-order mutation (v4's own test pin,
+`indexOf('describe_image') < indexOf('attach_image')`, subsumed by the
+byte compare) proven red-then-restored. The Lantern `build_content`
+comment ported; no-output-moved proven by the
+`post_office_concierge_lantern_suparna` family green against a pin-fresh
+oracle with zero v5 string changes. Docs: bug-92's fix doc mirrored to
+`docs/v4/developer/bugs/fixed/` (the shared `bugs.md` index left to the
+round's unifier — all five lanes would collide on it);
+`help/keep-image-tools.md` banked into m6 row 11 (the p4.9i2 precedent).

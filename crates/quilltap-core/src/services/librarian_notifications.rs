@@ -619,7 +619,7 @@ fn attach_id_hint(link_id: &str, is_image: bool) -> String {
     if !is_image {
         format!("Catalogue handle: `{link_id}`.")
     } else {
-        format!("The illustration is catalogued under uuid `{link_id}` — it may be filed away in your own album later with keep_image, or re-summoned with attach_image.")
+        format!("The illustration is catalogued under uuid `{link_id}` — call describe_image with it to be told what it depicts, file it in your own album with keep_image, or hold it up to the room again later with attach_image.")
     }
 }
 
@@ -1068,14 +1068,14 @@ pub fn build_upload_content(params: &LibrarianUploadAnnouncement) -> String {
     if uploads.len() == 1 {
         let u = &uploads[0];
         let (file_id, filename) = (&u.file_id, &u.filename);
-        return format!("The Librarian has catalogued the user's freshly-uploaded illustration \"{filename}\" under uuid `{file_id}`. The bytes ride with the user's message above; the image may be filed away later with keep_image, or re-summoned with attach_image.");
+        return format!("The Librarian has catalogued the user's freshly-uploaded illustration \"{filename}\" under uuid `{file_id}`. The bytes ride with the user's message, and if your eyes read pictures you are looking at it already. If they do not — or if you want the particulars set down in words — call describe_image with that uuid and the Librarian will read it aloud to you. It may also be filed in your own album with keep_image, or held up to the room again later with attach_image; neither of those shows it to you.");
     }
     let list = uploads
         .iter()
         .map(|u| format!("- \"{}\" — uuid `{}`", u.filename, u.file_id))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("The Librarian has catalogued the user's freshly-uploaded illustrations. The bytes ride with the user's message above; each may be filed away later with keep_image, or re-summoned with attach_image:\n\n{list}")
+    format!("The Librarian has catalogued the user's freshly-uploaded illustrations. The bytes ride with the user's message, and if your eyes read pictures you are looking at them already. If they do not — or if you want the particulars set down in words — call describe_image with the uuid of any of them. Each may also be filed in your own album with keep_image, or held up to the room again later with attach_image; neither of those shows it to you:\n\n{list}")
 }
 
 pub fn build_upload_opaque_content(params: &LibrarianUploadAnnouncement) -> String {
@@ -1086,14 +1086,14 @@ pub fn build_upload_opaque_content(params: &LibrarianUploadAnnouncement) -> Stri
     if uploads.len() == 1 {
         let u = &uploads[0];
         let (file_id, filename) = (&u.file_id, &u.filename);
-        return format!("The user has uploaded an illustration: \"{filename}\" — uuid `{file_id}`. The bytes ride with the user's message above; the image may be filed away later with keep_image, or re-summoned with attach_image.");
+        return format!("The user has uploaded an illustration: \"{filename}\" — uuid `{file_id}`. The bytes ride with the user's message, so a vision-capable model can see it already. To have its contents described in words, call describe_image with that uuid. keep_image files it in your album and attach_image shows it to the room again; neither one shows it to you.");
     }
     let list = uploads
         .iter()
         .map(|u| format!("- \"{}\" — uuid `{}`", u.filename, u.file_id))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("The user has uploaded illustrations. The bytes ride with the user's message above; each may be filed away later with keep_image, or re-summoned with attach_image:\n\n{list}")
+    format!("The user has uploaded illustrations. The bytes ride with the user's message, so a vision-capable model can see them already. To have any of them described in words, call describe_image with its uuid. keep_image files one in your album and attach_image shows it to the room again; neither one shows it to you:\n\n{list}")
 }
 
 pub async fn post_librarian_upload_announcement(

@@ -68,8 +68,13 @@ fn aim(prompt: Option<&str>) -> Option<&str> {
 }
 
 /// Persona-voiced announcement body (v4 `buildContent`). Each branch surfaces the
-/// image uuid inline so a character reading it in history has the handle for
-/// `keep_image` / `attach_image`.
+/// image uuid inline so any character reading the announcement in chat history
+/// has the handle required to call `describe_image` (what is in it?),
+/// `keep_image` (file it) or `attach_image` (hold it up again) on it. Lantern
+/// images already ride into vision-capable turns as real attachments —
+/// `describe_image` is for the models that can't see them, and for when a
+/// character wants the particulars in words. (v4 `a14a1811`: comment-only —
+/// no emitted string moved; the family regen stays byte-identical.)
 pub fn build_content(
     kind: &LanternNotificationKind,
     prompt: Option<&str>,

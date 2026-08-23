@@ -215,6 +215,28 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — feat(librarian): the describe_image upload-announcement rewrites (P4.D108 unit 5)
+
+_Versions: core 0.0.633._
+
+The five Librarian sentence rewrites byte-exact from v4 `a14a1811`:
+`attach_id_hint` ("call describe_image with it to be told what it
+depicts…"), `build_upload_content` single + plural (the "if your eyes
+read pictures you are looking at it already" pair ending "neither of
+those shows it to you"), and `build_upload_opaque_content` single +
+plural (the "so a vision-capable model can see it already" pair ending
+"neither one shows it to you" — the two spellings differ deliberately;
+each byte-copied). The librarian family regenerated fresh at the pin
+went red-first against the old strings and green after; a verb-order
+mutation (attach before describe) proven red-then-restored. The Lantern
+`build_content` doc comment ports v4's comment-only change, with the
+no-output-moved claim proven by the concierge-lantern-suparna family
+running green against a pin-fresh oracle with zero v5 string changes.
+Also: the bug-92 fix doc mirrored into `docs/v4/developer/bugs/fixed/`,
+and the `help/keep-image-tools.md` rewrite (retitled H1 + the
+describe_image subsection) banked verbatim into `m6-screen-parity.md`
+row 11 for the `p4.9i2` help family.
+
 #### 2026-08-23 — feat(tools): register describe_image at every layer (P4.D108 unit 4)
 
 _Versions: core 0.0.632._
