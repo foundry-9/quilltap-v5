@@ -82199,3 +82199,67 @@ cargo test -p quilltap-harness --test tool_wire_call_site
 (The family is `committed_corpus` in the sweep driver, which by design never
 runs a recording stage — the regen above is the sanctioned path for it, and the
 `--run` half stays `cargo test … --test request_builder_equivalence`.)
+
+### Unit 3 — the `docs/v4` mirror refresh + the tree-wide audit (tier 2)
+
+`docs/v4/developer/PROVIDER_PLUGIN_DEVELOPMENT.md` refreshed from the pin (+35):
+v4's new "The attachment contract (read this before declaring
+`supportsAttachments`)" section — the two questions the host asks
+(`supportsImageUpload` on the profile, `attachmentSupport` through
+`providerCanTransportImages`), the "declare false is a respectable answer, do
+not declare true and drop them" rule, the honest-`attachmentResults`
+requirement, and the do-not-keep-your-own-vision-list guidance naming NanoGPT
+as the worked example.
+
+**The NanoGPT plugin README has no mirror to refresh.** `docs/v4/` mirrors v4's
+`docs/` tree only; `plugins/dist/qtap-plugin-nanogpt/README.md` (+29 at the pin)
+has never had a counterpart here. Recorded rather than invented.
+
+**Bug docs deliberately NOT mirrored.** `docs/v4/developer/bugs/fixed/` carries
+a selective set; bug 91's write-up spans this lane and P4.D106's transport
+predicate, and 92–95 belong wholly to the sibling lanes. Left for whichever lane
+wants them, so no two lanes write the same mirror file.
+
+**Audit (tier 2 item 7) — the old sentence's exact bytes, tree-wide.**
+`NanoGPT chat requests are text-only in Quilltap` now appears in v5 ONLY in this
+lane's own records (the work orders, the changelog, this log). The last live
+occurrence was `NANOGPT_ATTACHMENT_ERROR`, retired in unit 2. No template, help
+doc, manifest, or SPA string still claims it.
+
+**The two §C1 siblings, reported not edited:**
+
+- `crates/quilltap-core/src/files/attachment_support.rs` (P4.D106) carries rows
+  for ANTHROPIC / OPENAI / GOOGLE / GROK / DEEPSEEK / Z_AI / OPENROUTER /
+  OLLAMA / OPENAI_COMPATIBLE and **has no NANOGPT row at all** — it falls
+  through the unknown-provider branch.
+- `apps/web/src/app/screens/settings/providers/attachment-support.ts` (P4.D109)
+  likewise has no NANOGPT entry, and its header comment still states that Z_AI,
+  DEEPSEEK and NANOGPT have none "measured at v4 `d5830439`" — stale as of
+  `a14a1811` for at least NANOGPT and Z_AI.
+
+Both are the sibling lanes' to land per §C1; this lane's copy (the generated
+manifest) agrees with the contract table exactly.
+
+### Lane close — P4.D107
+
+**CLOSED.** Tier 1 items 1–5 all landed; tier 2 items 6–7 landed. Tier 3 stands
+as written:
+
+- 💸 **The live NanoGPT vision send** (a real image to a real vision-capable
+  routed model on the Friday copy) joins the standing dogfood queue, riding the
+  same walk as P4.D106's live proof. Nothing in this lane has been exercised
+  against a real NanoGPT endpoint.
+- **DeepSeek / OpenAI-Compatible / Ollama `image_url` support: nothing to
+  port.** v4 still cannot send images on those three (the fix is opt-in
+  serialisation in `packages/plugin-utils`' `OpenAICompatibleProvider` base,
+  gated on a publish). Their v5 drop constants — `DEEPSEEK_ATTACHMENT_ERROR`,
+  `OLLAMA_ATTACHMENT_ERROR`, `OPENAI_COMPATIBLE_ATTACHMENT_ERROR` — were
+  confirmed unchanged and still wired through `collect_drop_failures`. **Watch
+  item** for the round after that publish lands.
+
+**Nothing else deferred.** No stubs, no TODOs, no `not_available` refusals were
+needed: the whole surface landed.
+
+**Order premise corrections recorded above:** `providers_listing_equivalence`
+does not pin the attachment block (`provider_registry_equivalence` does), and
+the generator needed no `notes` extension.

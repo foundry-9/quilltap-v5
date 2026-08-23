@@ -126,6 +126,25 @@ spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
 port records the discrepancy and keeps the code. Also mirrors v4's
 bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
 sections to the `p4.9i2` row.
+#### 2026-08-23 — docs(v4): mirror the plugin-author attachment contract
+
+_Docs-only change._
+
+`docs/v4/developer/PROVIDER_PLUGIN_DEVELOPMENT.md` refreshed from v4
+`a14a1811`: the new attachment-contract section for plugin authors — the
+two questions the host asks before an image reaches a plugin, the rule
+that declaring `supportsAttachments: false` is a respectable answer while
+declaring `true` and dropping the bytes is not, the honest-ledger
+requirement, and the guidance against a router plugin keeping its own
+vision-model list.
+
+The NanoGPT plugin README has no mirror here (`docs/v4/` mirrors v4's
+`docs/` tree only), and the bug 91–95 write-ups are left for the sibling
+lanes so no two lanes write the same mirror file.
+
+Audited tree-wide: the retired "NanoGPT chat requests are text-only in
+Quilltap" sentence survives nowhere in v5 outside porting records.
+
 #### 2026-08-23 — feat(nanogpt): serialise image_url and report the real attachment ledger
 
 _Versions: core 0.0.630, harness 0.0.552._
