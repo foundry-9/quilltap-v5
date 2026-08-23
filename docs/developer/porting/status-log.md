@@ -82748,3 +82748,42 @@ python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence \
 #   QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson
 #   QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db
 ```
+
+## P4.D109 — the attachment-failure ledger's reader + the client attachment table (lane record, baseline `a14a1811`)
+
+Drift check at lane start (2026-08-23): v4 `main` HEAD **is** `a14a1811`
+(`git log a14a1811..main` empty), tree clean, checkout on `main`; `bugfix` HEAD
+`3a76b17d` with nothing unabsorbed past the tests-only `009c49b2` — exactly what
+the order recorded. No pin needed. This is a CLIENT lane: the oracle is v4's
+client source at the pin (`app/salon/[id]/hooks/useSSEStreaming.ts`,
+`lib/llm/attachment-support.ts`), mirrored by parity specs; no crate, harness or
+`docs/v4` file is touched.
+
+### Unit 1 — the frame field + the reducer carry (Tier 1 item 1)
+
+v4's fix reads `data.attachmentResults?.failed` straight off the done EVENT
+inside its SSE hook. v5's reader is the pure reducer, so the field needs two
+homes before any render site can see it, and the `v4-client-fix-needs-the-
+reducer-carry` memory names this exact trap: the render-site edit alone is INERT
+if the fold drops the frame field, and a notice-style spec driving the door
+directly cannot see the drop.
+
+- `core-contract.ts`: `AttachmentFailure` + `AttachmentResults` interfaces
+  (§C3's frozen shape — both members optional, because v4's reader is an
+  optional chain over an `unknown`-shaped bag and the recovery-path done sends
+  the whole field as `null`), and `ChatStreamFrame.attachmentResults?:
+  AttachmentResults | null` in the done family, next to `turn`.
+- `chat-stream.reducer.ts`: `FinalDoneInfo.attachmentResults`, set by
+  `reduceDone` as `frame.attachmentResults ?? null`, and `null` in `emptyDone()`.
+
+**The carry preserves the frame's own object reference** rather than copying or
+reshaping — the render site keys "warn once per done" off identity, and the
+Courier's `pendingExternalTurn` patch spreads the previous `finalDone` forward,
+so reference identity is exactly what distinguishes a NEW done from a re-render
+of the old one. Three reducer specs pin it: identity + contents on a done, the
+absent/explicit-null pair, and the Courier patch spreading the SAME reference.
+
+**Mutation-proven red first:** with the carry replaced by a literal `null`,
+`carries the done frame's attachmentResults onto finalDone, the same object
+(bug 94)` fails on the identity assertion (`expected null to be Object`);
+restored, both new cases pass.

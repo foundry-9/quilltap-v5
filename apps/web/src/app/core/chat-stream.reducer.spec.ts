@@ -174,6 +174,57 @@ describe('chat stream reducer', () => {
     });
   });
 
+  /**
+   * Bug 94 — the attachment ledger's carry. v4 reads `data.attachmentResults`
+   * straight off the done EVENT inside its SSE hook (`useSSEStreaming.ts:601`);
+   * v5's render site is downstream of this pure fold, so a render-site edit
+   * alone would be INERT if the fold dropped the field. Pinned here, at the
+   * reducer level, where a dropped carry cannot hide.
+   */
+  it('carries the done frame’s attachmentResults onto finalDone, the same object (bug 94)', () => {
+    const ledger = {
+      sent: ['file-ok'],
+      failed: [{ id: 'file-bad', error: 'Provider cannot send images' }],
+    };
+    const done = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: ledger,
+    });
+    // Identity, not just equality: the consumer keys "once per done" off the
+    // object reference, so the fold must hand the frame's own object through.
+    expect(done.finalDone?.attachmentResults).toBe(ledger);
+    expect(done.finalDone?.attachmentResults?.failed).toEqual([
+      { id: 'file-bad', error: 'Provider cannot send images' },
+    ]);
+  });
+
+  it('reads an absent or explicitly null ledger as null', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { done: true, messageId: 'm1' });
+    expect(absent.finalDone?.attachmentResults).toBeNull();
+    // The recovery-path done sends the field as `null` (`DonePayload`).
+    const explicit = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: null,
+    });
+    expect(explicit.finalDone?.attachmentResults).toBeNull();
+  });
+
+  it('spreads the last ledger forward unchanged on a Courier pendingExternalTurn patch', () => {
+    const ledger = { failed: [{ id: 'file-bad', error: 'Provider cannot send images' }] };
+    const done = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: ledger,
+    });
+    const parked = reduceChatFrame(done, { pendingExternalTurn: true });
+    // Same reference — the patch is not a new ledger, and a consumer keying off
+    // identity must not warn a second time for it.
+    expect(parked.finalDone?.attachmentResults).toBe(ledger);
+    expect(parked.finalDone?.pendingExternalTurn).toBe(true);
+  });
+
   it('applies an answer-confirmation revision to the bubble content', () => {
     const done = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
     const revised = reduceChatFrame(done, {

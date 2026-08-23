@@ -3741,6 +3741,32 @@ export interface ReasoningSegment {
 }
 
 /**
+ * One failed attachment on the done frame's ledger (v4 `SSEEvent.
+ * attachmentResults.failed[]`) — the file's id and the plugin's own error text.
+ */
+export interface AttachmentFailure {
+  id: string;
+  error: string;
+}
+
+/**
+ * What the provider plugin managed to put on the wire (v4 `SSEEvent.
+ * attachmentResults`, `useSSEStreaming.ts:82-91`). `failed` entries are
+ * attachments the model never received — surfaced as a warning toast on the
+ * done event, because a silently dropped image is indistinguishable from a
+ * model that saw it and said nothing (bug 94).
+ *
+ * The server home is `chat_events.rs`'s `DonePayload.attachment_results`
+ * (`{ sent: [...], failed: [{ id, error }] }`); both members stay optional here
+ * because v4's reader is an optional chain over an `unknown`-shaped bag, and a
+ * recovery-path done sends the whole field as `null`.
+ */
+export interface AttachmentResults {
+  sent?: string[];
+  failed?: AttachmentFailure[];
+}
+
+/**
  * One parsed chat stream frame. The wire frames are BARE single-key (or
  * flat-multi-key) objects — never a tagged wrapper — so, exactly as v4's client
  * does, we model them as one flat interface of optional fields and branch on
@@ -3780,6 +3806,8 @@ export interface ChatStreamFrame {
   usage?: TokenUsage | null;
   cacheUsage?: CacheUsage | null;
   turn?: NextSpeakerInfo | null;
+  /** The provider plugin's attachment ledger (bug 94) — see {@link AttachmentResults}. */
+  attachmentResults?: AttachmentResults | null;
 
   // tool frames
   toolsDetected?: number;

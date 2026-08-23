@@ -386,6 +386,23 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+#### 2026-08-23 — fix(salon): carry the done frame's attachment ledger through the reducer (bug 94)
+
+_Versions: SPA 0.5.545._
+
+v4's `SSEEvent` gained `attachmentResults` at `a14a1811` so the Salon could
+warn about attachments a provider plugin never put on the wire. v5 reads its
+frames through a pure reducer, so the field needs two homes before any render
+site can see it: `ChatStreamFrame.attachmentResults` on the contract (typed as
+the round's frozen `{ sent?, failed?: [{ id, error }] } | null` shape) and
+`FinalDoneInfo.attachmentResults` off the fold.
+
+The carry preserves the frame's own object reference rather than copying it —
+the render site keys "warn once per done" off identity, and the Courier's
+`pendingExternalTurn` patch spreads the previous ledger forward unchanged, so
+identity is exactly what separates a new done from a re-render. Pinned at the
+reducer level (a render-site spec cannot see a dropped carry), mutation-proven
+red first.
 
 #### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
 

@@ -34,6 +34,7 @@
  */
 
 import type {
+  AttachmentResults,
   ChatStreamFrame,
   ReasoningSegment,
   ResponseStatus,
@@ -105,6 +106,15 @@ export interface FinalDoneInfo {
   emptyResponseReason: string | null;
   pendingExternalTurn: boolean;
   toolsExecuted: boolean;
+  /**
+   * The provider plugin's attachment ledger, carried STRAIGHT off the frame
+   * (bug 94). The reducer neither reads nor reshapes it: the render site raises
+   * v4's warning from `failed`, and it can only do that if the pure fold hands
+   * the object through. Absent on the frame → `null`, and the SAME object
+   * reference is preserved so a consumer can use identity as the once-per-done
+   * key (the Courier's `pendingExternalTurn` patch spreads it forward unchanged).
+   */
+  attachmentResults: AttachmentResults | null;
 }
 
 /** The folded per-chat streaming state. */
@@ -306,6 +316,7 @@ function reduceDone(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamSt
     emptyResponseReason: frame.emptyResponseReason ?? null,
     pendingExternalTurn: frame.pendingExternalTurn ?? false,
     toolsExecuted: frame.toolsExecuted ?? false,
+    attachmentResults: frame.attachmentResults ?? null,
   };
   let s: ChatStreamState = { ...prev, finalDone };
 
@@ -434,5 +445,6 @@ function emptyDone(): FinalDoneInfo {
     emptyResponseReason: null,
     pendingExternalTurn: false,
     toolsExecuted: false,
+    attachmentResults: null,
   };
 }
