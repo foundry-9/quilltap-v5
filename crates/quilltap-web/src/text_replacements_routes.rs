@@ -179,6 +179,38 @@ pub async fn text_replacement_delete(
 // GET / PUT /api/v1/settings/data-retention (P4.56)
 // ===========================================================================
 
+/// The ONE settings-PUT edge (P4.57). Three surfaces on this router — the
+/// data-retention window, the Taboo list, the Brahma Console turn budget — are
+/// the same v4 route shape: `await req.json()` inside the try (so a malformed
+/// body lands in the catch as the route's own 500, not a 400), a
+/// `{...current, ...body}` merge, and a Zod parse that must be able to tell an
+/// ABSENT key from an explicit `null`.
+///
+/// `decode` is the variant's own decoder from `quilltap_core::api::types` — the
+/// single place that tri-state is resolved. Hand-building the variant here
+/// instead is what made the Taboo differential blind (the §3 review) and what
+/// collapsed data-retention's `null` into key-absent until P4.56; there is now
+/// no edge-local body reading left to get wrong.
+async fn settings_update_put(
+    state: &SharedState,
+    body: &axum::body::Bytes,
+    decode: fn(&Value) -> Option<CoreRequest>,
+    failure: &str,
+) -> AxumResponse {
+    let Ok(json_body) = serde_json::from_slice::<Value>(body) else {
+        return error_json(StatusCode::INTERNAL_SERVER_ERROR, failure);
+    };
+    let Some(req) = decode(&json_body) else {
+        // Unreachable while these variants' fields are raw `Value`s (which accept
+        // every JSON shape); mapped to v4's catch-all rather than panicking.
+        return error_json(StatusCode::INTERNAL_SERVER_ERROR, failure);
+    };
+    match dispatch_core(state, req).await {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
 pub async fn data_retention_settings_get(State(state): State<SharedState>) -> AxumResponse {
     match dispatch_core(&state, CoreRequest::DataRetentionSettings).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -190,44 +222,13 @@ pub async fn data_retention_settings_put(
     State(state): State<SharedState>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // v4 `await req.json()` inside the try — a malformed body lands in the catch
-    // as the 500, not a 400.
-    let Ok(json_body) = serde_json::from_slice::<Value>(&body) else {
-        return error_json(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to update data-retention settings",
-        );
-    };
-    // Decode through the `Request` itself so the absent / explicit-`null` /
-    // value tri-state is resolved by exactly ONE piece of code (the
-    // `double_option` field), not re-implemented at the edge — that
-    // re-implementation is what made the Taboo differential blind, and what let
-    // this very setting collapse `null` into key-absent until P4.56.
-    //
-    // A non-object body (v4's `{...current, ...body}` spread of a string /
-    // array / number) contributes no `staleChatDays`, so it decodes as the empty
-    // object — the key-absent arm, which keeps the stored value.
-    let mut map = match json_body {
-        Value::Object(o) => o,
-        _ => serde_json::Map::new(),
-    };
-    map.retain(|k, _| k == "staleChatDays");
-    map.insert(
-        "type".into(),
-        Value::String("dataRetentionSettingsUpdate".into()),
-    );
-    let Ok(req) = serde_json::from_value::<CoreRequest>(Value::Object(map)) else {
-        // Unreachable while the field is a raw `Value` (which accepts every JSON
-        // shape); mapped to v4's catch-all rather than panicking on a route.
-        return error_json(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to update data-retention settings",
-        );
-    };
-    match dispatch_core(&state, req).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
-        Err(r) => r,
-    }
+    settings_update_put(
+        &state,
+        &body,
+        quilltap_core::api::types::data_retention_update_request,
+        "Failed to update data-retention settings",
+    )
+    .await
 }
 
 // ===========================================================================
@@ -245,31 +246,13 @@ pub async fn taboo_settings_put(
     State(state): State<SharedState>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // v4 `await req.json()` inside the try — a malformed body lands in the
-    // catch as the 500, not a 400.
-    let json_body: Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return error_json(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update taboo settings",
-            )
-        }
-    };
-    // A non-object body (v4's `{...current, ...body}` spread of a string /
-    // array / number) contributes no `phrases` key, so the stored list
-    // survives — the same arm as an empty object.
-    // `Some(None)` preserves an explicit `null`, which Zod treats as a present
-    // value (`.default([])` fires only for `undefined`) and therefore rejects.
-    let phrases = json_body.get("phrases").map(|v| match v {
-        Value::Null => None,
-        other => Some(other.clone()),
-    });
-    let req = CoreRequest::TabooSettingsUpdate { phrases };
-    match dispatch_core(&state, req).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
-        Err(r) => r,
-    }
+    settings_update_put(
+        &state,
+        &body,
+        quilltap_core::api::types::taboo_update_request,
+        "Failed to update taboo settings",
+    )
+    .await
 }
 
 // ===========================================================================
@@ -287,32 +270,13 @@ pub async fn brahma_console_settings_put(
     State(state): State<SharedState>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // v4 `await req.json()` inside the try — a malformed body lands in the catch
-    // as the 500, not a 400.
-    let json_body: Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return error_json(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update brahma-console settings",
-            )
-        }
-    };
-    // A non-object body (v4's `{...current, ...body}` spread of a string / array
-    // / number) contributes no `maxAgentTurns`, so the stored value survives —
-    // the same arm as an empty object. `Some(None)` preserves an explicit `null`,
-    // which Zod rejects (`.default(50)` fires only for `undefined`); a
-    // present-but-invalid number/string rides through raw so the dispatch handler
-    // 400s it rather than the edge coercing or dropping it.
-    let max_agent_turns = json_body.get("maxAgentTurns").map(|v| match v {
-        Value::Null => None,
-        other => Some(other.clone()),
-    });
-    let req = CoreRequest::BrahmaConsoleSettingsUpdate { max_agent_turns };
-    match dispatch_core(&state, req).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
-        Err(r) => r,
-    }
+    settings_update_put(
+        &state,
+        &body,
+        quilltap_core::api::types::brahma_console_update_request,
+        "Failed to update brahma-console settings",
+    )
+    .await
 }
 
 // ===========================================================================

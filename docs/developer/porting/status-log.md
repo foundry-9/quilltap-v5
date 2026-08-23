@@ -82532,3 +82532,219 @@ slice never carried photo tools). SPA: zero edits (P4.D109's file set).
 images — described/promptonly/blank/plaintext; any consumer of the /tmp
 photo fixture .dbs must rebuild from the spec); `tool-dispatch.json` +1
 op and its builder now ensures the `files` table (rebuild required).
+---
+
+## P4.57 — tri-state decode-once for `taboo` + `brahma-console` (the P4.56 recorded lead)
+
+**Lane branch:** `claude/tristate-decode-once-166307`. **v4 baseline:**
+`a14a1811` (v4 main HEAD at lane start; drift-checked clean — `git log
+a14a1811..HEAD` empty, `bugfix` carries only already-absorbed release
+branches). Every regen ran from a detached worktree pinned at the baseline,
+`/tmp/qt-v4-a14a1811`, with all three symlink classes.
+
+**Status: CLOSED.** Tier 1 items 1–3 landed; Tier 2 item 4 (the survey) is
+recorded below; Tier 2 item 5 measured as ALREADY DONE (both smalls landed
+inside P4.56 itself). Tier 3 deferrals named. Commit: one — the handler
+signatures move, so a split would leave the tree non-compiling between
+commits.
+
+### The shape
+
+The three settings PUT surfaces on this router each derived the
+absent / explicit-`null` / value tri-state **three times**:
+
+| verb | edge | engine | handler |
+| --- | --- | --- | --- |
+| `taboo` | hand-rolled `json_body.get("phrases").map(Null => None \| other => Some)` | rebuilt a `bag` | re-read `bag.get("phrases")` |
+| `brahma-console` | the same hand-rolled match on `maxAgentTurns` | rebuilt a `bag` | re-read `bag.get("maxAgentTurns")` |
+| `data-retention` | already decoded through `Request` (P4.56) | rebuilt a `bag` | re-read `bag.get("staleChatDays")` |
+
+There is now ONE decoder per verb, in `api/types.rs` beside `double_option`:
+`taboo_update_request` / `brahma_console_update_request` /
+`data_retention_update_request`, all three over a private
+`settings_update_request(body, key, type_tag)` that retains the schema's own
+key, injects the tag, and lets the enum's serde decide. Three callers use
+them and nothing else reads a body key for these verbs any more:
+
+1. **The web edge** — `text_replacements_routes.rs` now has ONE
+   `settings_update_put(state, body, decode, failure)` behind all three
+   routes. The three PUT handlers are four lines each.
+2. **The dispatch layer** — the engine arms pass the decoded
+   `Option<Option<Value>>` straight to the handler; no bag is built.
+3. **The differential** — `settings_routes_equivalence`'s three PUT legs call
+   the same decoders (they previously hand-built the bag, which is exactly
+   the blindness P4.56 named).
+
+The handlers take the tri-state directly, so each merge is two arms:
+`Some(v) => json!({key: v})` (present, `v == None` rendering back as the
+`null` Zod refuses) and `None => json!({key: current})` (absent — the
+`{...current, ...body}` merge keeps the stored value).
+
+**Data-retention was included** even though Tier 1 names only taboo and
+brahma: the order's own scope section identifies its engine and handler as
+"the second derivation" and "the third", and leaving one of three verbs on
+the old shape would have kept the class alive next to its own retirement.
+It is inside this lane's owned files and is pinned by the same family.
+
+### Proof — no behavior moved (the point of the lane)
+
+Green-vs-green would not have been enough, so the **v5 side's own rows** were
+captured on both sides of the refactor. A temporary dump (env-gated, removed
+before the commit — `grep` clean) wrote each case's normalized
+`{name, isAck, status, body, after}` from the harness's main loop:
+
+- pre-refactor: `138` rows (141 oracle rows − the 3 RECORDED-ONLY v4
+  action-gate rows the family does not drive)
+- post-refactor: `138` rows
+- `diff` → **identical, byte for byte**
+
+The oracle itself was regenerated FRESH at `a14a1811` through
+`recipe_sweep.py --run settings_routes_equivalence --v4 /tmp/qt-v4-a14a1811`
+before the pre-capture, so both sides ran against the same v4 bytes.
+
+### Mutation proofs (five, all red-first)
+
+1. `settings_update_request` made to drop explicit nulls (`retain(|k, v| k ==
+   key && !v.is_null())`) → **red on `dr_put_null`**.
+2. The same collapse scoped to `phrases` only → **red on
+   `taboo_put_null_phrases`**.
+3. The same scoped to `maxAgentTurns` only → **red on `bc_put_null`**.
+4. `taboo_update_request`'s key mistyped `phrases` → `phrase` → **red on the
+   new unit pin** (`phrases: explicit null`).
+5. `brahma_console_update_request`'s tag mistyped → **red on the new unit
+   pin** (`decoder answered the wrong variant: BrahmaConsoleSettings`).
+6. (Wiring) the taboo edge pointed at `brahma_console_update_request` →
+   **red on the live web test**.
+
+Proofs 4–6 exist because of what the consolidation costs: the differential
+now drives through the very decoders it is checking, so a mistyped key or tag
+would turn every body into the keep-current arm at the edge, the dispatch
+layer AND the family simultaneously — the one class the route family can no
+longer catch. `settings_update_decoders_resolve_the_tristate` pins all three
+decoders against their literal wire spellings (absent / null / value /
+four non-object shapes / a body carrying its own `type`).
+
+### The live web-edge test
+
+`data_retention_web_routes` covered one surface fully and brahma's success
+arms. It now walks **all three pairs over the full tri-state** — and the
+**Taboo edge had never been walked live at all**, its `CoreResponse::Taboo`
+success arm covered only by inspection, which is precisely how the sibling
+`BrahmaConsole` omission from `unwrap_to_http` survived two rounds
+([[web-edge-unwrap-variant-list-rots]]). New arms: taboo GET default, PUT
+normalizing echo (trim + case-insensitive dedupe), absent-keeps,
+explicit-null 400, non-array 400, non-object 200-keeps, explicit-`[]` clears;
+brahma absent-keeps, explicit-null 400, wrong-type 400, non-object
+200-keeps, plus a refetch proving the refusals wrote nothing.
+
+One correction found while writing it: a blank phrase never reaches the
+normalizer — `parse_taboo_settings` refuses an entry that trims to length 0,
+so "blanks dropped" describes `normalizeTabooPhrases` and not any body a PUT
+can accept. The test comment says so and points at the family arm
+(`taboo_put_whitespace_only_entry`) that covers the refusal.
+
+### The serde pins — kept, and their doc comments corrected
+
+`taboo_update_phrases_tristate_survives_serde` and
+`brahma_console_update_max_agent_turns_tristate_survives_serde` are unchanged
+and still green. Both doc comments claimed a state this lane retired ("the
+web edge hand-constructs the variant"; "the dispatch leg the route
+differential drives through a hand-built bag"); each now records what the pin
+guarded when written and what it guards now.
+
+### Tier 2 item 4 — the survey of other hand-built edge variants (enumerate, don't fix)
+
+**In `text_replacements_routes.rs` itself: nothing left.** Its other six
+variants are either whole-body passthroughs (`TextReplacementsBulkReplace`,
+`TextReplacementCreate`, `TextReplacementUpdate` — the raw `body: Value`
+reaches the handler, so no tri-state is resolved at the edge) or built from
+path/query only (`TextReplacementDelete`, `ChatGetBackground`,
+`ChatGetCost`).
+
+**Already correct elsewhere:** `profile_routes.rs` decodes both of its
+tri-state verbs (`UserProfileUpdate`, `UserProfileSetAvatar`) through
+`from_value::<CoreRequest>` — the P4.9c precedent, and the reason those
+`double_option` fields were never a lead.
+
+**The remaining lead — a WIDER class than the tri-state, worth its own
+order.** The edges below read body keys with `.and_then(Value::as_str)` /
+`as_bool` / `as_array`, which collapses *three* inputs into `None`: absent,
+explicit `null`, **and a present-but-wrong-typed value**. The third is the
+dangerous one — a wrong type silently becomes "the caller didn't say"
+instead of reaching a validator that would refuse it. None is claimed as a
+defect here; each needs its v4 route read before anyone touches it:
+
+- `custom_tools_routes.rs:75–86` — `tool` / `parameters` / `private` /
+  `asCharacterId`
+- `characters_routes.rs:135,139` (`fileId` / `linkId`), `:300,307`
+  (`caption` / `tags`), `:449–459` (`format` / `defaultImageId`)
+- `backup_routes.rs:61` (`compact`), `:146` (`mode`), `:164`
+  (`keepArchivedCharacterBundles`), `:278` (`uploadId`)
+- `brahma_routes.rs:174` (`fileIds`)
+- `embedding_profiles_routes.rs:186` (`scope`)
+- `llm_logs_routes.rs:53–66` — query parameters, not a body; listed only so a
+  future sweep does not re-flag them
+- `qtap_routes.rs:118–226` — sub-objects passed through whole; the one real
+  question is `data_key_absent` at `:225`, which already distinguishes
+  absent from null deliberately
+
+### Tier 2 item 5 — measured, nothing to do
+
+Both banked P4.56-era smalls **landed inside P4.56 itself** (its units 6 and
+7), not after it: the memories float-literal echo goes through
+`normalize_js_numbers` at both setters (`api/memories.rs:1099,1231`), and
+`classify_api_key_id` / `classify_base_url` are live at four sites in
+`api/settings.rs`. Nothing was carried forward to this lane.
+
+### Tier 3 — the deferrals, loud
+
+- **The groups-side cleared-null pin and every settings surface outside
+  taboo / brahma / data-retention: named, not touched.** No file outside the
+  Ownership list was opened.
+- **The wider wrong-type-collapse class above is NOT fixed here** — it is
+  enumerated as future-order fodder, per the order.
+- **💸 nothing new for the dogfood queue.** No observable behavior moved, and
+  the 138-row byte-identity is the evidence. Had anything moved it would have
+  been a finding, not a rider.
+
+### One note for the next lane in this file
+
+`brahma_console_routes_equivalence` is the Brahma Console **CRUD** family
+(conversations over `api::brahma`); it drives no settings handler. The
+turn-budget arms the order calls "the brahma family" live inside
+`settings_routes_equivalence` under `family: "brahma_console"` (`bc_*`, 12+
+rows, guarded by its own `>= 12` count assert). Both were regenerated at the
+pin anyway; only the settings family can move for this work.
+
+### Gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again
+  with `--features quilltap-core/native-transport`.
+- `cargo test --workspace` (`CARGO_INCREMENTAL=0`, the lane's three oracle
+  env vars): **446 test binaries / 2,271 tests / 0 failed**, exit 0, and
+  **zero `SKIP: set …` lines in the whole log**. Positively confirmed to have
+  RUN by name: `settings_routes_match_v4`,
+  `brahma_console_routes_match_oracle`, `data_retention_web_edges`,
+  `settings_update_decoders_resolve_the_tristate`,
+  `taboo_update_phrases_tristate_survives_serde`,
+  `brahma_console_update_max_agent_turns_tristate_survives_serde`.
+- Both families regenerated FRESH from the pinned `a14a1811` worktree through
+  `recipe_sweep.py --run … --v4 /tmp/qt-v4-a14a1811` (one sweep at a time)
+  and re-run by name: green.
+- SPA: **no `apps/web` edits** — nothing in P4.D109's file set was opened, so
+  no `npm test` / `npm run build` was owed.
+- `harness/tools/check_spelling.py`: clean.
+
+Fixtures: **none changed** — no committed fixture, corpus or DB moved, so no
+sibling oracle is invalidated.
+
+### Regen recipe (unchanged from the committed one, run at the pin)
+
+```bash
+python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence \
+  --v4 /tmp/qt-v4-a14a1811
+# env for a by-name re-run:
+#   QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson
+#   QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db
+```

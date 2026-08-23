@@ -43,7 +43,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use quilltap_core::api::settings;
-use quilltap_core::api::types::{Request, Response};
+use quilltap_core::api::types::{self, Request, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use regex::Regex;
 use serde_json::Value;
@@ -112,26 +112,6 @@ fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Re
         }
         _ => {}
     }
-}
-
-/// Decode a data-retention PUT body into the `Request` variant exactly as the
-/// wire does: only the schema's own key is kept, the tagged `type` is inserted,
-/// and serde's `double_option` decides absent vs explicit-`null` vs value. A
-/// NON-object body (v4's `{...current, ...body}` spread of a string / array /
-/// number contributes no `staleChatDays`) decodes as the empty object, i.e. the
-/// key-absent arm.
-fn data_retention_update_request(body: &Value) -> Request {
-    let mut map = match body {
-        Value::Object(o) => o.clone(),
-        _ => serde_json::Map::new(),
-    };
-    map.retain(|k, _| k == "staleChatDays");
-    map.insert(
-        "type".into(),
-        Value::String("dataRetentionSettingsUpdate".into()),
-    );
-    serde_json::from_value::<Request>(Value::Object(map))
-        .expect("data-retention update body decodes into the Request variant")
 }
 
 /// Run a single case's handler and return `(body, is_ack, status)`.
@@ -236,51 +216,46 @@ fn run_handler(
             settings::model_list(db, provider.as_deref())
         }
         ("dataRetention", "GET") => settings::data_retention_settings_get(db),
-        // P4.56. This leg used to hand the oracle's RAW body straight to the
-        // handler, bypassing the `Request` enum's serde entirely — so a
-        // present-`null` arm would have passed green while the real wire
-        // (dispatch and the REST edge, both of which decode into `Request`)
-        // silently collapsed it to key-absent. The body now rides through the
-        // SAME serde decode the wire uses, and the resulting tri-state is
-        // mapped to the handler's bag exactly as `engine.rs`'s dispatch arm and
-        // `quilltap-web`'s edge do (the taboo / brahma-console shape).
+        // P4.56 / P4.57. These three PUT legs used to hand the oracle's RAW body
+        // to the handler (or re-derive the tri-state from a bag), bypassing the
+        // `Request` enum's serde — so a present-`null` arm could pass green while
+        // the real wire silently collapsed it to key-absent. Each now rides the
+        // SAME decoder the dispatch layer and the REST edge use
+        // (`types::*_update_request`), and the decoded tri-state goes straight to
+        // the handler, which is what the production callers do. A NON-object body
+        // (v4's `{...current, ...body}` spreads a string into indexed keys, so it
+        // contributes no key at all) decodes as the key-absent arm, which is
+        // exactly the merge-keeps-current case.
         ("dataRetention", "PUT") => {
-            let Request::DataRetentionSettingsUpdate { stale_chat_days } =
-                data_retention_update_request(body)
+            let Some(Request::DataRetentionSettingsUpdate { stale_chat_days }) =
+                types::data_retention_update_request(body)
             else {
                 unreachable!("the tagged decode can only answer this variant");
             };
-            let bag = match stale_chat_days {
-                Some(Some(v)) => serde_json::json!({ "staleChatDays": v }),
-                Some(None) => serde_json::json!({ "staleChatDays": Value::Null }),
-                None => serde_json::json!({}),
-            };
-            rt.block_on(settings::data_retention_settings_update(db, bag))
+            rt.block_on(settings::data_retention_settings_update(
+                db,
+                stale_chat_days,
+            ))
         }
-        // P4.D50. The oracle emits the raw request body, which may be a
-        // NON-object (v4's `{...current, ...body}` spreads a string into
-        // indexed keys and so contributes no `phrases`); `get("phrases")`
-        // answers None for those, which is exactly the merge-keeps-current arm.
         ("taboo", "GET") => settings::taboo_settings_get(db),
         ("taboo", "PUT") => {
-            let bag = match body.get("phrases") {
-                Some(v) => serde_json::json!({ "phrases": v }),
-                None => serde_json::json!({}),
+            let Some(Request::TabooSettingsUpdate { phrases }) = types::taboo_update_request(body)
+            else {
+                unreachable!("the tagged decode can only answer this variant");
             };
-            rt.block_on(settings::taboo_settings_update(db, bag))
+            rt.block_on(settings::taboo_settings_update(db, phrases))
         }
-        // P4.D57. Like taboo: the oracle emits the raw request body (possibly a
-        // NON-object string, whose spread contributes no `maxAgentTurns`), and
-        // the edge's body→bag mapping is mirrored here — a present value
-        // (including an explicit `null`) rides raw so the handler's Zod-faithful
-        // parse decides, an absent key keeps the current value.
         ("brahmaConsole", "GET") => settings::brahma_console_settings_get(db),
         ("brahmaConsole", "PUT") => {
-            let bag = match body.get("maxAgentTurns") {
-                Some(v) => serde_json::json!({ "maxAgentTurns": v }),
-                None => serde_json::json!({}),
+            let Some(Request::BrahmaConsoleSettingsUpdate { max_agent_turns }) =
+                types::brahma_console_update_request(body)
+            else {
+                unreachable!("the tagged decode can only answer this variant");
             };
-            rt.block_on(settings::brahma_console_settings_update(db, bag))
+            rt.block_on(settings::brahma_console_settings_update(
+                db,
+                max_agent_turns,
+            ))
         }
         other => panic!("unhandled route/method: {other:?}"),
     };

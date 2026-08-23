@@ -358,6 +358,34 @@ oracle cases gained the new import; the count tripwire in
 57 != 58 size mismatch against the fresh oracle before the regen, green
 after. The handler, registration, and Librarian rewrites follow in this
 lane's later units.
+#### 2026-08-23 — refactor(api): decode the settings tri-state once (taboo, brahma-console, data-retention)
+
+_Versions: core 0.0.629, harness 0.0.552, web 0.0.79._
+
+Three settings PUT surfaces — the Taboo list, the Brahma Console turn budget,
+and the data-retention window — each derived the absent / explicit-`null` /
+value tri-state three separate times: once at the web edge, once in the engine's
+dispatch arm (rebuilding a JSON bag), and once in the handler (re-reading that
+bag). Every re-derivation is a chance to collapse two of the three states, which
+is what the Taboo review caught on one verb and what P4.56 found still live on
+another.
+
+There is now exactly one decoder per verb, in `api/types.rs`
+(`taboo_update_request`, `brahma_console_update_request`,
+`data_retention_update_request`), and all three callers use it: the web edge
+(now a single shared `settings_update_put` for all three routes), the dispatch
+layer (the engine arms pass the decoded tri-state straight through), and the
+route differential. The handlers take `Option<Option<Value>>` directly instead
+of a rebuilt bag.
+
+No observable behavior changes. All 138 driven rows of
+`settings_routes_equivalence` are byte-identical before and after against an
+oracle regenerated at `a14a1811`, and the explicit-`null` 400 on each of the
+three surfaces was mutation-proven still red-capable. A new unit test pins each
+decoder against its literal wire key and tag — a typo there would silently turn
+every body into the keep-current arm at the edge, the dispatch layer and the
+differential at once. The live web-edge test grew from one surface to all three,
+each over the full tri-state; the Taboo edge had never been walked live at all.
 
 #### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
 

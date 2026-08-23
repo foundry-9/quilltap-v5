@@ -2829,7 +2829,10 @@ pub fn data_retention_settings_get(db: &Db) -> Response {
 /// echo the parsed settings. On a schema violation v4 returns `validationError`
 /// (a 400 `{error: 'Validation error', details}`); the port surfaces the
 /// `{error}` envelope (the Zod issue array is v4-implementation-specific).
-pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
+pub async fn data_retention_settings_update(
+    db: &Db,
+    stale_chat_days: Option<Option<Value>>,
+) -> Response {
     // P4.56: v4's catch answers its own FIXED sentence on every failure inside
     // the try (the read, the write); the `DbError` text used to leak instead.
     let failed = || {
@@ -2844,9 +2847,14 @@ pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
     };
     // The only schema field is `staleChatDays`; the merge overlays it when the
     // body carries it, else the current value survives.
-    let days = match bag.get("staleChatDays") {
+    //
+    // P4.57: the tri-state arrives DECODED (`types::data_retention_update_request`
+    // is the one decoder) rather than being re-derived here from a rebuilt bag —
+    // an explicit `null` is `Some(None)`, which validates as the `null` Zod's
+    // `.default(30)` never sees.
+    let days = match stale_chat_days {
         None => current,
-        Some(v) => match instance_settings::validate_stale_chat_days(v) {
+        Some(v) => match instance_settings::validate_stale_chat_days(&v.unwrap_or(Value::Null)) {
             Some(d) => d,
             None => return Response::error(ErrorKind::BadRequest, "Validation error"),
         },
@@ -2885,15 +2893,21 @@ pub fn taboo_settings_get(db: &Db) -> Response {
 /// with the database. A schema violation is v4's `validationError` (400
 /// `{error: 'Validation error', details}`); the port surfaces the `{error}`
 /// envelope, the Zod issue array being v4-implementation-specific.
-pub async fn taboo_settings_update(db: &Db, bag: Value) -> Response {
+pub async fn taboo_settings_update(db: &Db, phrases: Option<Option<Value>>) -> Response {
     let current = match db.read_main(instance_settings::get_taboo_settings) {
         Ok(p) => p,
         Err(_) => return Response::error(ErrorKind::Internal, "Failed to update taboo settings"),
     };
     // The schema's only field is `phrases`; the merge overlays it when the body
-    // carries it (even as an explicit empty array — that is the clear gesture),
-    // else the current value survives and is re-validated as v4 re-validates it.
-    let merged = match bag.get("phrases") {
+    // carries it (even as an explicit empty array — that is the clear gesture —
+    // or an explicit `null`, which Zod rejects), else the current value survives
+    // and is re-validated as v4 re-validates it.
+    //
+    // P4.57: the tri-state arrives DECODED (`types::taboo_update_request` is the
+    // one decoder) instead of being re-derived here from a rebuilt bag. `Some(v)`
+    // is the key present, `v` being `None` for an explicit `null` — which
+    // `json!` renders back as `null`, the value Zod refuses.
+    let merged = match phrases {
         Some(v) => json!({ "phrases": v }),
         None => json!({ "phrases": current }),
     };
@@ -2939,7 +2953,10 @@ pub fn brahma_console_settings_get(db: &Db) -> Response {
 /// `null`) is v4's `validationError` (400 `{error: 'Validation error', details}`);
 /// the port surfaces the `{error}` envelope, the Zod issue array being
 /// v4-implementation-specific. The taboo `taboo_settings_update` precedent.
-pub async fn brahma_console_settings_update(db: &Db, bag: Value) -> Response {
+pub async fn brahma_console_settings_update(
+    db: &Db,
+    max_agent_turns: Option<Option<Value>>,
+) -> Response {
     let current = match db.read_main(instance_settings::get_brahma_console_settings) {
         Ok(v) => v,
         Err(_) => {
@@ -2952,7 +2969,10 @@ pub async fn brahma_console_settings_update(db: &Db, bag: Value) -> Response {
     // The schema's only field is `maxAgentTurns`; the merge overlays it when the
     // body carries it (even an explicit `null` — which Zod rejects), else the
     // current value survives and is re-validated as v4 re-validates it.
-    let merged = match bag.get("maxAgentTurns") {
+    //
+    // P4.57: the tri-state arrives DECODED (`types::brahma_console_update_request`
+    // is the one decoder) rather than being re-derived here from a rebuilt bag.
+    let merged = match max_agent_turns {
         Some(v) => json!({ "maxAgentTurns": v }),
         None => json!({ "maxAgentTurns": current }),
     };

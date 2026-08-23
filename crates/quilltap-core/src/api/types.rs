@@ -3046,6 +3046,58 @@ where
     Deserialize::deserialize(de).map(Some)
 }
 
+/// Decode a single-key settings PUT body into its tagged [`Request`] variant —
+/// the ONE place the absent / explicit-`null` / value tri-state is resolved for
+/// the merge-shaped settings surfaces (P4.57).
+///
+/// v4's routes for these are `{...current, ...body}` spreads handed to Zod, so
+/// three bodies must stay distinguishable all the way to the handler: the key
+/// ABSENT (the merge keeps the stored value), an explicit `null` (PRESENT, so
+/// `.default(...)` does not fire and Zod answers `validationError`), and a value
+/// (validated, and possibly refused). Every edge that re-derived that split by
+/// hand was a fresh chance to collapse two of the three — which is exactly the
+/// defect the Taboo §3 review caught on one verb and P4.56 found still live on
+/// another. Routing the body through the `Request` enum's own serde (the
+/// [`double_option`] fields) leaves exactly one decoder in the tree; the callers
+/// below name the (key, tag) pairs so no call site spells them again.
+///
+/// A NON-object body is v4's spread of a string / array / number, which
+/// contributes no such key at all — it decodes as the empty object, i.e. the
+/// key-absent arm. `None` is answered only if the tagged decode fails, which is
+/// unreachable while these variants' fields are raw `Value`s (they accept every
+/// JSON shape); callers map it to the route's own catch-all rather than
+/// panicking on a route.
+fn settings_update_request(body: &serde_json::Value, key: &str, type_tag: &str) -> Option<Request> {
+    let mut map = match body {
+        serde_json::Value::Object(o) => o.clone(),
+        _ => serde_json::Map::new(),
+    };
+    map.retain(|k, _| k == key);
+    map.insert(
+        "type".into(),
+        serde_json::Value::String(type_tag.to_string()),
+    );
+    serde_json::from_value::<Request>(serde_json::Value::Object(map)).ok()
+}
+
+/// v4 `PUT /api/v1/settings/data-retention` body → [`Request::DataRetentionSettingsUpdate`].
+/// See [`settings_update_request`].
+pub fn data_retention_update_request(body: &serde_json::Value) -> Option<Request> {
+    settings_update_request(body, "staleChatDays", "dataRetentionSettingsUpdate")
+}
+
+/// v4 `PUT /api/v1/settings/taboo` body → [`Request::TabooSettingsUpdate`].
+/// See [`settings_update_request`].
+pub fn taboo_update_request(body: &serde_json::Value) -> Option<Request> {
+    settings_update_request(body, "phrases", "tabooSettingsUpdate")
+}
+
+/// v4 `PUT /api/v1/settings/brahma-console` body → [`Request::BrahmaConsoleSettingsUpdate`].
+/// See [`settings_update_request`].
+pub fn brahma_console_update_request(body: &serde_json::Value) -> Option<Request> {
+    settings_update_request(body, "maxAgentTurns", "brahmaConsoleSettingsUpdate")
+}
+
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
 /// cross-cutting error envelope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -3883,12 +3935,17 @@ impl Event {
 
 #[cfg(test)]
 mod tests {
-    use super::Request;
+    use super::{
+        brahma_console_update_request, data_retention_update_request, taboo_update_request, Request,
+    };
 
     /// P4.D50 §3-review pin: the `TabooSettingsUpdate.phrases` tri-state must
-    /// survive SERDE deserialization — the dispatch JSON leg, which the route
-    /// differential cannot see (the web edge hand-constructs the variant).
-    /// Without `deserialize_with = "double_option"`, `{"phrases": null}`
+    /// survive SERDE deserialization. (When this pin was written the web edge
+    /// hand-constructed the variant and the route differential could not see
+    /// this leg at all; since P4.57 every caller decodes through
+    /// [`taboo_update_request`], so the pin now guards the ONE decoder rather
+    /// than a leg nothing else covered.) Without
+    /// `deserialize_with = "double_option"`, `{"phrases": null}`
     /// silently collapsed to key-absent (keeping the stored list) where v4's
     /// PUT answers `validationError` — Zod's `.default([])` fires only for
     /// `undefined`, never for `null`.
@@ -3920,10 +3977,13 @@ mod tests {
     }
 
     /// P4.D57: the `BrahmaConsoleSettingsUpdate.maxAgentTurns` tri-state must
-    /// survive SERDE (the dispatch leg the route differential drives through a
-    /// hand-built bag). Absent ≠ null ≠ value, and a present-but-invalid value
-    /// survives as `Some(Some(_))` so the handler's Zod-faithful parse can 400 it
-    /// rather than the web edge collapsing it to keep-current.
+    /// survive SERDE. (Written when the route differential drove this leg
+    /// through a hand-built bag; since P4.57 the differential, the dispatch
+    /// layer and the REST edge all decode through
+    /// [`brahma_console_update_request`].) Absent ≠ null ≠ value, and a
+    /// present-but-invalid value survives as `Some(Some(_))` so the handler's
+    /// Zod-faithful parse can 400 it rather than a caller collapsing it to
+    /// keep-current.
     #[test]
     fn brahma_console_update_max_agent_turns_tristate_survives_serde() {
         let absent: Request =
@@ -3967,6 +4027,76 @@ mod tests {
                 max_agent_turns: Some(Some(_))
             }
         ));
+    }
+
+    /// P4.57: the three settings-PUT decoders are the ONLY place the
+    /// absent / explicit-`null` / value tri-state is resolved, so a mistyped key
+    /// or tag in one of them would silently turn every body into the key-absent
+    /// (keep-current) arm at the edge, the dispatch layer AND the differential
+    /// at once — the one failure the route family could no longer catch, because
+    /// the family now drives through these very functions. Each arm is pinned
+    /// here against the literal wire spelling.
+    #[test]
+    fn settings_update_decoders_resolve_the_tristate() {
+        use serde_json::json;
+
+        // (decoder, the wire key, a valid value for it)
+        #[allow(clippy::type_complexity)]
+        let cases: Vec<(
+            fn(&serde_json::Value) -> Option<Request>,
+            &str,
+            serde_json::Value,
+        )> = vec![
+            (data_retention_update_request, "staleChatDays", json!(120)),
+            (taboo_update_request, "phrases", json!(["x"])),
+            (brahma_console_update_request, "maxAgentTurns", json!(80)),
+        ];
+
+        /// Project a decoded variant to its tri-state, so the three surfaces can
+        /// be asserted with one table.
+        fn tristate(req: &Request) -> &Option<Option<serde_json::Value>> {
+            match req {
+                Request::DataRetentionSettingsUpdate { stale_chat_days } => stale_chat_days,
+                Request::TabooSettingsUpdate { phrases } => phrases,
+                Request::BrahmaConsoleSettingsUpdate { max_agent_turns } => max_agent_turns,
+                other => panic!("decoder answered the wrong variant: {other:?}"),
+            }
+        }
+
+        for (decode, key, value) in cases {
+            // ABSENT — v4's partial body; the merge keeps the stored value.
+            let absent = decode(&json!({})).expect("empty object decodes");
+            assert_eq!(tristate(&absent), &None, "{key}: absent");
+
+            // An explicit `null` is PRESENT — Zod's `.default(...)` never fires
+            // for it, so the handler must see it and answer `validationError`.
+            let null = decode(&json!({ key: serde_json::Value::Null })).expect("null decodes");
+            assert_eq!(tristate(&null), &Some(None), "{key}: explicit null");
+
+            // A value rides through raw (so a present-but-invalid one reaches
+            // the handler's Zod-faithful parse rather than being coerced).
+            let present = decode(&json!({ key: value.clone() })).expect("value decodes");
+            assert_eq!(tristate(&present), &Some(Some(value)), "{key}: value");
+
+            // A NON-object body is v4's `{...current, ...body}` spread of a
+            // string / array / number, which contributes no such key — the
+            // key-absent arm, NOT a refusal.
+            for body in [
+                json!("nope"),
+                json!([1, 2]),
+                json!(7),
+                serde_json::Value::Null,
+            ] {
+                let spread = decode(&body).expect("a non-object body decodes");
+                assert_eq!(tristate(&spread), &None, "{key}: non-object body {body}");
+            }
+
+            // Foreign keys are dropped before the tag is inserted, so a body
+            // carrying its own `type` cannot re-target the decode.
+            let foreign = decode(&json!({ "type": "unlock", "somethingElse": 1 }))
+                .expect("a foreign-keyed body decodes");
+            assert_eq!(tristate(&foreign), &None, "{key}: foreign keys dropped");
+        }
     }
 }
 

@@ -3931,20 +3931,16 @@ impl CoreEngine {
                 Ok(db) => super::settings::data_retention_settings_get(&db),
                 Err(resp) => resp,
             },
+            // P4.57: the decoded tri-state passes STRAIGHT through — an absent
+            // key is v4's partial body (the merge keeps the stored value), a
+            // present one (including an explicit `null`, which is what v4 400s
+            // on) rides raw so the handler's Zod-faithful parse decides. This arm
+            // used to rebuild a `bag` and the handler to re-read it, so one wire
+            // decode was followed by two more derivations of the same three-way
+            // split.
             Request::DataRetentionSettingsUpdate { stale_chat_days } => match self.ready_db() {
                 Ok(db) => {
-                    // An absent key is v4's partial body (the merge keeps the
-                    // stored value); a present one — including an explicit
-                    // `null` — is carried raw so the handler's Zod-faithful
-                    // parse decides, and `null` is what v4 400s on.
-                    let bag = match stale_chat_days {
-                        Some(Some(v)) => serde_json::json!({ "staleChatDays": v }),
-                        Some(None) => {
-                            serde_json::json!({ "staleChatDays": serde_json::Value::Null })
-                        }
-                        None => serde_json::json!({}),
-                    };
-                    super::settings::data_retention_settings_update(&db, bag).await
+                    super::settings::data_retention_settings_update(&db, stale_chat_days).await
                 }
                 Err(resp) => resp,
             },
@@ -3954,19 +3950,11 @@ impl CoreEngine {
                 Ok(db) => super::settings::taboo_settings_get(&db),
                 Err(resp) => resp,
             },
+            // P4.57: the decoded tri-state passes STRAIGHT through (see the
+            // data-retention arm above) — an absent key is v4's partial body (the
+            // merge keeps the stored list), a present one rides raw.
             Request::TabooSettingsUpdate { phrases } => match self.ready_db() {
-                Ok(db) => {
-                    // An absent key is v4's partial body (the merge keeps the
-                    // stored list); a present one — including an explicit
-                    // `null` — is carried raw so the handler's Zod-faithful
-                    // parse decides.
-                    let bag = match phrases {
-                        Some(Some(v)) => serde_json::json!({ "phrases": v }),
-                        Some(None) => serde_json::json!({ "phrases": serde_json::Value::Null }),
-                        None => serde_json::json!({}),
-                    };
-                    super::settings::taboo_settings_update(&db, bag).await
-                }
+                Ok(db) => super::settings::taboo_settings_update(&db, phrases).await,
                 Err(resp) => resp,
             },
             // === end P4.D50 ===
@@ -3975,19 +3963,11 @@ impl CoreEngine {
                 Ok(db) => super::settings::brahma_console_settings_get(&db),
                 Err(resp) => resp,
             },
+            // P4.57: the decoded tri-state passes STRAIGHT through (see the
+            // data-retention arm above).
             Request::BrahmaConsoleSettingsUpdate { max_agent_turns } => match self.ready_db() {
                 Ok(db) => {
-                    // An absent key is v4's partial body (the merge keeps the
-                    // stored value); a present one — including an explicit `null`
-                    // — is carried raw so the handler's Zod-faithful parse decides.
-                    let bag = match max_agent_turns {
-                        Some(Some(v)) => serde_json::json!({ "maxAgentTurns": v }),
-                        Some(None) => {
-                            serde_json::json!({ "maxAgentTurns": serde_json::Value::Null })
-                        }
-                        None => serde_json::json!({}),
-                    };
-                    super::settings::brahma_console_settings_update(&db, bag).await
+                    super::settings::brahma_console_settings_update(&db, max_agent_turns).await
                 }
                 Err(resp) => resp,
             },
