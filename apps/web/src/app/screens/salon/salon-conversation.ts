@@ -2900,6 +2900,9 @@ export class SalonConversation {
    *    the stage, and an empty message is skipped where v4 would toast a
    *    blank — both deliberate (the reducer coalesces repeats; a blank toast
    *    informs no one);
+   *  - a done frame carrying a FAILED attachment ledger → v4's warning toast
+   *    (`:601-616`, bug 94), raised before the chain branch so an intermediate
+   *    done warns too;
    *  - a terminal `emptyResponse` → v4's error toast with the server's reason
    *    or its fallback (`:720-722`);
    *  - a recorded transport/stream error → v4's `:1024-1027` toast;
@@ -2910,6 +2913,32 @@ export class SalonConversation {
     if (after.status?.stage === 'retrying' && before.status?.stage !== 'retrying') {
       const message = after.status.message;
       if (message) this.toasts.showWarning(message);
+    }
+    // Attachments the provider plugin could not put on the wire. The ledger has
+    // always been emitted and, until v4 `a14a1811`, was never displayed (bug
+    // 94) — so an image that silently failed to reach a vision model looked
+    // exactly like a model that had seen it and ignored it. v4 reads it inside
+    // `if (data.done)`, immediately after clearing the status and BEFORE the
+    // chain branch, so it warns once per done EVENT, intermediate dones
+    // included. Riding transitions, the ledger object's identity is that key:
+    // every done frame brings its own (the reducer carries the frame's object
+    // through), while the Courier's `pendingExternalTurn` patch spreads the
+    // previous one forward unchanged and must not warn twice.
+    const ledger = after.finalDone?.attachmentResults ?? null;
+    if (ledger !== (before.finalDone?.attachmentResults ?? null)) {
+      const failedAttachments = ledger?.failed;
+      if (Array.isArray(failedAttachments) && failedAttachments.length > 0) {
+        const first = failedAttachments[0]?.error ?? 'unknown reason';
+        const more =
+          failedAttachments.length > 1 ? ` (and ${failedAttachments.length - 1} more)` : '';
+        this.toasts.showWarning(
+          `${
+            failedAttachments.length === 1
+              ? 'An attachment was'
+              : `${failedAttachments.length} attachments were`
+          } not sent to the model${more}: ${first}`,
+        );
+      }
     }
     if (after.finalDone?.emptyResponse && !before.finalDone?.emptyResponse) {
       this.toasts.showError(

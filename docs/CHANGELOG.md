@@ -386,6 +386,28 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+#### 2026-08-23 — fix(salon): warn when the provider dropped an attachment (bug 94)
+
+_Versions: SPA 0.5.546._
+
+The ledger now has a reader. `reportStreamTransitions` — the Salon's single
+door from reducer transitions to toasts — raises v4's warning when a done frame
+carries failed attachments, with v4's message construction transcribed: the
+singular/plural arms, the `(and N more)` suffix before the colon, the
+first-error-only rule, and the `unknown reason` fallback for a plugin that
+reported a failure without saying why.
+
+v4 reads the ledger inside `if (data.done)`, before its chain branch, so it
+warns once per done EVENT — intermediate dones included. Riding transitions
+instead of events, the ledger object's identity is that key: a new done brings
+its own object, while the Courier's `pendingExternalTurn` patch spreads the
+previous one forward and a later `chainComplete` leaves `finalDone` alone.
+Six specs pin the arms; inverting the identity comparison reddens five of them.
+
+Nothing was added on the Brahma console, which shares the reducer: v4's fix is
+Salon-only (`useSSEStreaming.ts` is the Salon hook) and v5's Brahma consumer
+reads only `state.error`, so the carry exposes no toast there.
+
 #### 2026-08-23 — fix(salon): carry the done frame's attachment ledger through the reducer (bug 94)
 
 _Versions: SPA 0.5.545._

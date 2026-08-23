@@ -23,6 +23,7 @@ beforeAll(() => {
 import { CoreClient } from '../../core/core-client';
 import type {
   ChatDetail,
+  ChatStreamFrame,
   CoreRequest,
   CoreResponse,
   MessageDto,
@@ -2332,5 +2333,134 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
     )!;
     expect(alert.classList.contains('qt-alert-error')).toBe(true);
     expect(alert.textContent).toContain('quota exhausted');
+  });
+});
+
+/**
+ * Bug 94 — the attachment-failure ledger's reader.
+ *
+ * Provider plugins have always reported dropped attachments in
+ * `attachmentResults`; the object rode the SSE done event to a client that
+ * never read it, which is why bug 91 (images silently dropped for four
+ * providers) lasted as long as it did. v4 `a14a1811` gives it a reader in
+ * `useSSEStreaming.ts:601-616`: a WARNING toast on the done event, naming only
+ * the FIRST error and counting the rest.
+ *
+ * v4 shipped no test for the hook, so the parity floor is v4's own
+ * message-construction expression, transcribed and pinned arm by arm. Every
+ * state here is built by the REAL reducer from a real done frame, so these
+ * cases prove the carry and the door together.
+ */
+describe('SalonConversation attachment-failure warning (Bug 94)', () => {
+  /** Fold a done frame carrying (or omitting) a ledger. */
+  function done(attachmentResults?: ChatStreamFrame['attachmentResults']): ChatStreamState {
+    return reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      ...(attachmentResults === undefined ? {} : { attachmentResults }),
+    });
+  }
+
+  function report(
+    fixture: ComponentFixture<SalonConversation>,
+    before: ChatStreamState,
+    after: ChatStreamState,
+  ): void {
+    (
+      fixture.componentInstance as unknown as {
+        reportStreamTransitions(a: ChatStreamState, b: ChatStreamState): void;
+      }
+    ).reportStreamTransitions(before, after);
+  }
+
+  it('warns with the plugin’s own sentence when ONE attachment failed', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      initialChatStreamState(),
+      done({ sent: [], failed: [{ id: 'f1', error: 'NanoGPT could not read image/heic' }] }),
+    );
+    // v4's singular arm, byte for byte.
+    expect(toasts()).toEqual([
+      {
+        type: 'warning',
+        message: 'An attachment was not sent to the model: NanoGPT could not read image/heic',
+      },
+    ]);
+  });
+
+  it('counts the rest and shows only the FIRST error when several failed', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(
+      fixture,
+      initialChatStreamState(),
+      done({
+        failed: [
+          { id: 'f1', error: 'first reason' },
+          { id: 'f2', error: 'second reason' },
+          { id: 'f3', error: 'third reason' },
+        ],
+      }),
+    );
+    // The `(and N more)` suffix sits BEFORE the colon, and N counts the ones
+    // NOT shown — v4 `${failedAttachments.length - 1}`.
+    expect(toasts()).toEqual([
+      {
+        type: 'warning',
+        message: '3 attachments were not sent to the model (and 2 more): first reason',
+      },
+    ]);
+  });
+
+  it('falls back to `unknown reason` when the entry carries no error text', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    // v4's `?? 'unknown reason'` — a plugin that reported a failure without
+    // saying why still gets a sentence.
+    report(
+      fixture,
+      initialChatStreamState(),
+      done({ failed: [{ id: 'f1' } as unknown as { id: string; error: string }] }),
+    );
+    expect(toasts()).toEqual([
+      { type: 'warning', message: 'An attachment was not sent to the model: unknown reason' },
+    ]);
+  });
+
+  it('says nothing when the ledger is absent, null, or carries no failures', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    report(fixture, initialChatStreamState(), done());
+    report(fixture, initialChatStreamState(), done(null));
+    report(fixture, initialChatStreamState(), done({ sent: ['f1', 'f2'], failed: [] }));
+    report(fixture, initialChatStreamState(), done({ sent: ['f1'] }));
+    expect(toasts()).toEqual([]);
+  });
+
+  it('warns ONCE per done, not once per transition carrying the same ledger', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const settled = done({ failed: [{ id: 'f1', error: 'dropped' }] });
+    report(fixture, initialChatStreamState(), settled);
+    // The Courier's parked-placeholder patch spreads the SAME ledger forward;
+    // a later chainComplete leaves `finalDone` alone entirely. Neither is a new
+    // done event, so neither may warn again.
+    const parked = reduceChatFrame(settled, { pendingExternalTurn: true });
+    report(fixture, settled, parked);
+    report(fixture, parked, reduceChatFrame(parked, { chainComplete: true }));
+    expect(toasts()).toHaveLength(1);
+  });
+
+  it('warns again for the NEXT done in a chain, as v4’s per-event read does', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const first = done({ failed: [{ id: 'f1', error: 'dropped once' }] });
+    report(fixture, initialChatStreamState(), first);
+    const second = reduceChatFrame(first, {
+      done: true,
+      messageId: 'm2',
+      attachmentResults: { failed: [{ id: 'f2', error: 'dropped twice' }] },
+    });
+    report(fixture, first, second);
+    expect(toasts().map((t) => t.message)).toEqual([
+      'An attachment was not sent to the model: dropped once',
+      'An attachment was not sent to the model: dropped twice',
+    ]);
   });
 });

@@ -82787,3 +82787,38 @@ absent/explicit-null pair, and the Courier patch spreading the SAME reference.
 `carries the done frame's attachmentResults onto finalDone, the same object
 (bug 94)` fails on the identity assertion (`expected null to be Object`);
 restored, both new cases pass.
+
+### Unit 2 — the toast door (Tier 1 item 2) + the Brahma asymmetry (Tier 2 item 6)
+
+v4's block, transcribed into `reportStreamTransitions` (the Salon's single door
+from reducer transitions to toasts), placed BEFORE the `emptyResponse` arm so a
+done carrying both raises them in v4's order:
+
+- the singular arm `An attachment was`, the plural `${n} attachments were`;
+- ` (and ${n - 1} more)` — the suffix sits BEFORE the colon, and N counts the
+  failures NOT shown, not the total;
+- only `failed[0].error` is ever displayed, with `?? 'unknown reason'`;
+- `Array.isArray(...) && length > 0` guards, so absent / `null` / `{sent: []}` /
+  an empty `failed` array all say nothing.
+
+**Once per done, not once per transition.** v4 raises this from the done EVENT.
+The transition equivalent is the ledger OBJECT's identity: a new done frame
+carries its own ledger (unit 1's carry preserves the reference), the Courier's
+`pendingExternalTurn` patch spreads the previous one forward unchanged, and
+`chainComplete` doesn't touch `finalDone` at all. A chained second done with its
+own ledger warns again — which is what v4's per-event read does.
+
+Six specs, every state built by the REAL reducer from a real done frame (so the
+carry and the door are proven together): singular, plural + count, the
+`unknown reason` fallback, the four silent shapes, once-per-done across a
+Courier patch + chainComplete, and twice across two chained dones.
+**Mutation-proven red first:** inverting the identity comparison (`!==` → `===`)
+reddens FIVE of the six (the silent-shapes case is the one a broken door can
+still pass — recorded so the pin isn't mistaken for full coverage on its own).
+
+**Tier 2 item 6 — the Brahma asymmetry, measured, nothing added.** v4's fix
+lives in `useSSEStreaming.ts`, the Salon hook; the Brahma console has no
+counterpart. v5's `brahma-console-dialog.ts` shares the same reducer, so it now
+folds the ledger too — but its subscriber reads only `state.error` and has no
+toast door at all, so the carry makes NO Brahma-side toast reachable. Nothing
+to suppress and nothing to add.
