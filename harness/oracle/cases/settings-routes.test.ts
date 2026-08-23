@@ -71,7 +71,13 @@ interface CaseSpec {
   body?: Record<string, unknown>;
   /** Re-fetch the family list after the op (observe the persisted effect via the
    *  already-verified read marshaling), or none. */
-  after?: 'connProfiles' | 'apiKeys' | 'taboo' | 'brahmaConsole';
+  after?: 'connProfiles' | 'apiKeys' | 'taboo' | 'brahmaConsole' | 'dataRetention';
+  /** P4.56: seed `instance_settings['dataRetention']` through v4's REAL setter
+   *  before the case runs — the merge-over-current and writes-nothing arms need
+   *  a NON-DEFAULT stored value, or "kept the current value" and "reset to the
+   *  schema default 30" are the same observation. The Rust harness seeds
+   *  identically. */
+  seedDataRetention?: number;
   /** P4.D50: seed `instance_settings['taboo']` through v4's REAL setter before
    *  the case runs. Each case gets a pristine fixture copy, so this is the only
    *  way to reach the arms that depend on a list already being stored (the
@@ -175,6 +181,10 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
   await initializeProviderRegistry(thinkingPlugins);
 
   try {
+    if (c.seedDataRetention !== undefined) {
+      const { setDataRetentionSettings } = await import('@/lib/instance-settings');
+      await setDataRetentionSettings({ staleChatDays: c.seedDataRetention });
+    }
     if (c.seedTaboo) {
       const { setTabooSettings } = await import('@/lib/instance-settings');
       await setTabooSettings({ phrases: c.seedTaboo });
@@ -255,6 +265,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         paramId: c.paramId ?? null,
         body: c.body ?? null,
         after: c.after ?? null,
+        seedDataRetention: c.seedDataRetention ?? null,
         seedTaboo: c.seedTaboo ?? null,
         seedBrahmaConsole: c.seedBrahmaConsole ?? null,
         recorded: c.recorded ?? false,
@@ -266,6 +277,17 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
     if (c.after === 'connProfiles') {
       const mod = await import('@/app/api/v1/connection-profiles/route');
       const r = (await mod.GET(mockRequest(`http://x${CP_URL}`, 'GET') as never)) as never as {
+        json: () => Promise<unknown>;
+      };
+      out.after = await r.json();
+    } else if (c.after === 'dataRetention') {
+      // P4.56: the PUT echoes the PARSED settings; the refetch proves the echo
+      // and the stored row agree, and — on the reject arms — that a refused PUT
+      // left the seeded value untouched.
+      const mod = await import('@/app/api/v1/settings/data-retention/route');
+      const r = (await mod.GET(
+        mockRequest('http://x/api/v1/settings/data-retention', 'GET') as never,
+      )) as never as {
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
@@ -1435,15 +1457,28 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/models?provider=OPENAI',
     },
     // data-retention (P4.d3) — GET default, PUT valid / empty-merge / invalid arms.
+    // P4.56 threads the family through the `Request` enum's serde on the v5 side
+    // and adds the seeded arms, so "kept the current value" is distinguishable
+    // from "reset to the schema default".
     { name: 'dr_get_default', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'GET', url: 'http://x/api/v1/settings/data-retention' },
-    { name: 'dr_put_valid', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 90 } },
+    { name: 'dr_get_seeded', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'GET', url: 'http://x/api/v1/settings/data-retention', seedDataRetention: 120 },
+    { name: 'dr_put_valid', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 90 }, after: 'dataRetention' },
     { name: 'dr_put_boundary_max', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 3650 } },
     { name: 'dr_put_boundary_min', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 1 } },
     { name: 'dr_put_empty_merge', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: {} },
+    // An empty body over a SEEDED value must keep it, not fall back to the
+    // schema default 30 — the arm `dr_put_empty_merge` alone cannot tell those
+    // apart, because the unseeded current value IS 30.
+    { name: 'dr_put_empty_merge_seeded', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: {}, seedDataRetention: 120, after: 'dataRetention' },
+    // A non-object body: `{...current, ...body}` spreads a string into indexed
+    // keys, contributing no `staleChatDays`, so the stored value survives.
+    { name: 'dr_put_string_body', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: 'ninety' as never, seedDataRetention: 120, after: 'dataRetention' },
     { name: 'dr_put_too_big', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 5000 } },
     { name: 'dr_put_too_small', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 0 } },
     { name: 'dr_put_non_integer', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 12.5 } },
     { name: 'dr_put_wrong_type', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 'abc' } },
+    // A rejected PUT writes NOTHING — the seeded value survives the 400.
+    { name: 'dr_put_invalid_writes_nothing', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 5000 }, seedDataRetention: 120, after: 'dataRetention' },
     // taboo (P4.D50, v4 `7df7de8e`) — the instance-wide forbidden-phrase list.
     // Every case runs over its OWN fresh fixture copy, so a PUT case that also
     // wants to observe storage carries `after: 'taboo'` (the GET refetch).

@@ -120,6 +120,28 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — test(settings): the data-retention differential rides the `Request` serde path
+
+_Versions: harness 0.0.543._
+
+The settings-routes family's `dataRetention` PUT leg handed the oracle's raw
+body straight to `settings::data_retention_settings_update`, bypassing the
+`Request` enum's serde entirely. Every arm therefore proved the handler and
+nothing about the wire — a present-`null` arm added against that leg would have
+passed green while the real wire (dispatch, and the REST edge this lane adds)
+collapsed `null` to key-absent. The leg now decodes the body into
+`Request::DataRetentionSettingsUpdate` exactly as the wire does (schema key
+retained, tagged `type` inserted, serde deciding) and maps the result to the
+handler's bag the way `engine.rs` does.
+
+Four new arms, and the seeding the family never had: `seedDataRetention` writes
+a non-default `instance_settings['dataRetention']` through v4's real setter (and
+the ported one) before the case runs, so "kept the current value" is
+distinguishable from "reset to the schema default 30" — `dr_get_seeded`,
+`dr_put_empty_merge_seeded`, `dr_put_string_body` (v4's non-object spread), and
+`dr_put_invalid_writes_nothing`. `dr_put_valid` and the three seeded PUTs carry
+the family's new `after: 'dataRetention'` refetch, so the persisted effect is a
+comparand rather than an inference. Family floor: 13 rows. 139 cases matched.
 
 #### 2026-08-22 — docs(porting): work orders for the `f8973813` round (P4.D105 ∥ P4.56)
 

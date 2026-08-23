@@ -81188,3 +81188,44 @@ client straight off the regenerated manifest — but the transcription is
 now incomplete. One-file SPA follow-up.
 
 _No crate versions bumped by this unit._
+## P4.56 — the settings-wire remainder (lane record, baseline `f8973813`)
+
+Drift check at lane start: v4 `main` HEAD **is** `f8973813` (`git log
+f8973813..main` empty), `bugfix` HEAD `3a76b17d` with nothing unabsorbed —
+exactly what the order recorded. No pin needed; every regen ran against the
+checkout on `main` at the baseline.
+
+### Unit 1 — the harness edge-mapping rewire (Tier 1 item 2), landed FIRST by construction
+
+**Why first.** `settings_routes_equivalence.rs`'s `("dataRetention", "PUT")`
+leg called `settings::data_retention_settings_update(db, body.clone())` with the
+oracle's RAW body. That path never touches the `Request` enum, so every
+data-retention arm proved the HANDLER and nothing about the wire. A
+present-`null` arm added against that leg would have passed green while the real
+wire — `engine.rs`'s dispatch arm and (once this lane adds it) the REST edge —
+collapsed `null` to key-absent at serde. The vacuous-green class P4.55 named.
+
+**The rewire.** A new `data_retention_update_request(&Value) -> Request` decodes
+the body the way the wire does — keep only the schema's own key, insert the
+tagged `type`, let serde decide — and the decoded field is mapped to the
+handler's bag exactly as `engine.rs` maps it. A non-object body (v4's
+`{...current, ...body}` spread of a string / array / number contributes no
+`staleChatDays`) decodes as the empty object, i.e. the key-absent arm.
+
+**Seeding, which the family never had.** `seedDataRetention` writes a
+NON-DEFAULT `instance_settings['dataRetention']` through v4's real
+`setDataRetentionSettings` (Rust: the ported `set_data_retention_settings`)
+before the case runs. Without it "kept the current value" and "reset to the
+schema default 30" are the same observation, because the unseeded current value
+IS 30 — so `dr_put_empty_merge` alone could never have caught a wipe.
+
+**Four new arms + the `after` refetch.** `dr_get_seeded`,
+`dr_put_empty_merge_seeded`, `dr_put_string_body` (the non-object spread), and
+`dr_put_invalid_writes_nothing`. `after: 'dataRetention'` joins the family's
+refetch map on both sides, so the persisted effect (and "a 400 wrote nothing")
+is a comparand, not an inference. Family floor asserted at 13 rows.
+
+**Proof that the rewire is behavior-neutral:** every pre-existing arm still
+passes through the new path — the family regenerated fresh at `f8973813` through
+the sweep driver and re-run green, **139 cases matched** (was 135). All four new
+arms grepped present by name in the fresh NDJSON.

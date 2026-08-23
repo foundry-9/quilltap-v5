@@ -43,7 +43,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use quilltap_core::api::settings;
-use quilltap_core::api::types::Response;
+use quilltap_core::api::types::{Request, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use regex::Regex;
 use serde_json::Value;
@@ -112,6 +112,26 @@ fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Re
         }
         _ => {}
     }
+}
+
+/// Decode a data-retention PUT body into the `Request` variant exactly as the
+/// wire does: only the schema's own key is kept, the tagged `type` is inserted,
+/// and serde's `double_option` decides absent vs explicit-`null` vs value. A
+/// NON-object body (v4's `{...current, ...body}` spread of a string / array /
+/// number contributes no `staleChatDays`) decodes as the empty object, i.e. the
+/// key-absent arm.
+fn data_retention_update_request(body: &Value) -> Request {
+    let mut map = match body {
+        Value::Object(o) => o.clone(),
+        _ => serde_json::Map::new(),
+    };
+    map.retain(|k, _| k == "staleChatDays");
+    map.insert(
+        "type".into(),
+        Value::String("dataRetentionSettingsUpdate".into()),
+    );
+    serde_json::from_value::<Request>(Value::Object(map))
+        .expect("data-retention update body decodes into the Request variant")
 }
 
 /// Run a single case's handler and return `(body, is_ack, status)`.
@@ -216,8 +236,25 @@ fn run_handler(
             settings::model_list(db, provider.as_deref())
         }
         ("dataRetention", "GET") => settings::data_retention_settings_get(db),
+        // P4.56. This leg used to hand the oracle's RAW body straight to the
+        // handler, bypassing the `Request` enum's serde entirely — so a
+        // present-`null` arm would have passed green while the real wire
+        // (dispatch and the REST edge, both of which decode into `Request`)
+        // silently collapsed it to key-absent. The body now rides through the
+        // SAME serde decode the wire uses, and the resulting tri-state is
+        // mapped to the handler's bag exactly as `engine.rs`'s dispatch arm and
+        // `quilltap-web`'s edge do (the taboo / brahma-console shape).
         ("dataRetention", "PUT") => {
-            rt.block_on(settings::data_retention_settings_update(db, body.clone()))
+            let Request::DataRetentionSettingsUpdate { stale_chat_days } =
+                data_retention_update_request(body)
+            else {
+                unreachable!("the tagged decode can only answer this variant");
+            };
+            let bag = match stale_chat_days {
+                Some(v) => serde_json::json!({ "staleChatDays": v }),
+                None => serde_json::json!({}),
+            };
+            rt.block_on(settings::data_retention_settings_update(db, bag))
         }
         // P4.D50. The oracle emits the raw request body, which may be a
         // NON-object (v4's `{...current, ...body}` spreads a string into
@@ -313,6 +350,7 @@ fn settings_routes_match_v4() {
 
     let oracle = std::fs::read_to_string(&oracle_path).expect("read oracle ndjson");
     let mut n = 0;
+    let mut data_retention_cases = 0;
     let mut taboo_cases = 0;
     let mut brahma_console_cases = 0;
     let mut composer_settings_cases = 0;
@@ -404,6 +442,19 @@ fn settings_routes_match_v4() {
         )
         .expect("open db");
 
+        // P4.56: seed `instance_settings['dataRetention']` through the real
+        // setter (the oracle does the same) — the merge-keeps-current and
+        // writes-nothing arms need a NON-default stored value.
+        if let Some(seed) = req["seedDataRetention"].as_i64() {
+            rt.block_on(db.write(move |w| {
+                quilltap_core::db::instance_settings::set_data_retention_settings(
+                    w.main().connection(),
+                    seed,
+                )
+            }))
+            .expect("seed data-retention");
+        }
+
         // P4.D50: seed `instance_settings['taboo']` through the real setter
         // before the case runs (the oracle does the same) — each case gets a
         // pristine fixture copy, so the merge-over-current arms need it.
@@ -443,6 +494,7 @@ fn settings_routes_match_v4() {
             let r = match kind {
                 "connProfiles" => settings::connection_profile_list(&db, user, false),
                 "apiKeys" => settings::api_key_list(&db, user),
+                "dataRetention" => settings::data_retention_settings_get(&db),
                 "taboo" => settings::taboo_settings_get(&db),
                 "brahmaConsole" => settings::brahma_console_settings_get(&db),
                 _ => panic!("unknown after: {kind}"),
@@ -484,6 +536,9 @@ fn settings_routes_match_v4() {
             );
         }
         n += 1;
+        if row["family"].as_str() == Some("data_retention") {
+            data_retention_cases += 1;
+        }
         if row["family"].as_str() == Some("taboo") {
             taboo_cases += 1;
         }
@@ -505,6 +560,13 @@ fn settings_routes_match_v4() {
     }
     // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
     assert!(n >= 21, "expected >= 21 cases, got {n}");
+    // P4.56: the data-retention family, whose arms are meaningful only through
+    // the `Request` serde path this lane rewired it onto. Row-driven floor — it
+    // moves with every arm batch (P4.55's rule).
+    assert!(
+        data_retention_cases >= 13,
+        "expected >= 13 data_retention cases, got {data_retention_cases} — regenerate the oracle"
+    );
     // P4.D50: the Taboo family must actually be present — a stale oracle that
     // predates it would otherwise pass by simply not carrying those rows.
     assert!(
