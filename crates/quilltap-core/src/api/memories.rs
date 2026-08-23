@@ -30,6 +30,9 @@ use crate::db::{
     characters_read, chat_settings, chats_read, instance_settings, memories_read, tags, DbError,
 };
 use crate::model::embedding::EmbeddingProvider;
+// P4.56: the shared "render a JSON number the JS way" walk (an integer-valued
+// float collapses, exactly as `JSON.stringify` writes it).
+use crate::model::tool_wire::normalize_js_numbers;
 use crate::services::housekeeping::{
     get_housekeeping_preview, run_housekeeping, HousekeepingOptions, HousekeepingResult,
 };
@@ -1087,13 +1090,19 @@ pub async fn memory_housekeeping_config_set(db: &Db, user_id: &str, bag: Value) 
             .cloned()
             .unwrap_or_else(|| current[key].clone())
     };
-    let merged = json!({
+    // P4.56: JS has no float/int distinction, so a body carrying `200.0` (which
+    // Zod's `.int()` accepts — it is `Number.isInteger`) is stored and echoed by
+    // v4 as `200`. serde_json keeps the float, so the merged bag is rendered the
+    // JS way before it is written or echoed. Genuine fractions
+    // (`autoMergeSimilarThreshold: 0.5`) are untouched; `1.0` collapses to `1`
+    // exactly as `JSON.stringify` writes it.
+    let merged = normalize_js_numbers(json!({
         "enabled": pick("enabled"),
         "perCharacterCap": pick("perCharacterCap"),
         "perCharacterCapOverrides": pick("perCharacterCapOverrides"),
         "autoMergeSimilarThreshold": pick("autoMergeSimilarThreshold"),
         "mergeSimilar": pick("mergeSimilar"),
-    });
+    }));
     let uid = user_id.to_string();
     let merged_str = merged.to_string();
     let now = crate::clock::now_iso();
@@ -1218,12 +1227,13 @@ pub async fn memory_extraction_limits_set(db: &Db, bag: Value) -> Response {
             .cloned()
             .unwrap_or_else(|| current[key].clone())
     };
-    let merged = json!({
+    // P4.56: the housekeeping sibling's reasoning — see there.
+    let merged = normalize_js_numbers(json!({
         "enabled": pick("enabled"),
         "maxPerHour": pick("maxPerHour"),
         "softStartFraction": pick("softStartFraction"),
         "softFloor": pick("softFloor"),
-    });
+    }));
     let m2 = merged.clone();
     let wrote = db
         .write(move |w| instance_settings::set_memory_extraction_limits(w.main().connection(), &m2))

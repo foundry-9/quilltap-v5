@@ -81357,3 +81357,34 @@ family costs nothing.
 failures** — this family was never one of the two the self-test structurally
 requires to stay in the `nothing_to_run` debt list (it already had a run line;
 what it lacked was a regen), so closing it moves nothing there.
+
+### Unit 6 (Tier 2 item 6) — the memories float-literal nit, fixed and pinned
+
+**The divergence.** Zod's `.int()` is `Number.isInteger`, so
+`{"perCharacterCap": 200.0}` PASSES; JS has no float/int distinction, so v4's
+`JSON.stringify` writes the stored cell as `200`. serde_json keeps the float, so
+`memory_housekeeping_config_set` and `memory_extraction_limits_set` stored and
+echoed `200.0`. P4.55 recorded this and left it.
+
+**The fix.** Both merged bags go through the shared `normalize_js_numbers` walk
+(`model::tool_wire`, the documented "JS numbers do not distinguish 3 from 3.0"
+helper) before the write and the echo. Genuine fractions are untouched;
+`autoMergeSimilarThreshold: 1.0` collapses to `1`, as `JSON.stringify` writes
+it. `memory_recall_config_set` needs nothing — its merged value is a typed
+struct with no numeric field.
+
+**⚠ The family's own normalizer would have made these arms VACUOUS.**
+`memories_routes_equivalence`'s `norm()` runs `canon_numbers`, which collapses
+integer-valued floats on BOTH sides — exactly the difference the arms exist to
+measure ([[blinded-comparand-hides-the-new-arm]]). So the two arms compare
+through a new float-SENSITIVE `norm_float_exact` (sorted keys, verbatim
+numbers), on the echo AND on the re-read stored bag.
+
+**Red-first, measured.** With the arms added and the oracle regenerated fresh at
+`f8973813`, all FOUR comparands were red — `"autoMergeSimilarThreshold": 1.0`
+against v4's `1`, and the stored-bag twins. Green after the fix.
+
+**Arms:** `housekeeping_config_set_int_float_literal` (`perCharacterCap: 200.0`
++ `autoMergeSimilarThreshold: 1.0`) and `extraction_limits_set_int_float_literal`
+(`maxPerHour: 200.0` + `softFloor: 1.0`), both with `storedAfter`. No committed
+fixture changed, so no sibling family is invalidated.

@@ -120,6 +120,26 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — fix(memories): store integer-valued floats the JS way
+
+_Versions: core 0.0.623, harness 0.0.547._
+
+Zod's `.int()` is `Number.isInteger`, so `{"perCharacterCap": 200.0}` PASSES
+validation; JS then has no float/int distinction and `JSON.stringify` writes the
+stored cell as `200`. serde_json keeps the float, so v5's two memories-config
+setters stored and echoed `200.0`. Both merged bags now go through the shared
+`normalize_js_numbers` walk before they are written or echoed — genuine
+fractions (`softStartFraction: 0.7`) are untouched, `1.0` collapses to `1`
+exactly as `JSON.stringify` writes it.
+
+Pinned by `housekeeping_config_set_int_float_literal` and
+`extraction_limits_set_int_float_literal`, each comparing the echo AND the
+re-read stored bag. Both arms deliberately bypass the family's `norm` helper:
+its `canon_numbers` normalizer collapses integer-valued floats on both sides,
+which is precisely the difference being measured — a new float-sensitive
+`norm_float_exact` compares them instead. Measured RED first (`1.0` vs `1` on
+all four comparands), green after.
+
 #### 2026-08-22 — test(harness): `settings_wire_actions` builds the fixture it reads
 
 _Versions: harness 0.0.546._

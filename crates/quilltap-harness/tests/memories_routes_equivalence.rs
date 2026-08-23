@@ -112,6 +112,14 @@ fn canon_numbers(v: &mut Value) {
         _ => {}
     }
 }
+/// A float-SENSITIVE comparand. [`norm`] runs `canon_numbers`, which collapses
+/// `200.0` to `200` on BOTH sides — the exact difference the P4.56 float-literal
+/// arms exist to measure, so those arms must not go through it. Keys are still
+/// sorted (the families compare bags, not key order); numbers are rendered
+/// verbatim by serde_json, so an integer-valued float prints `200.0`.
+fn norm_float_exact(v: &Value) -> String {
+    serde_json::to_string_pretty(&sorted(v)).unwrap()
+}
 fn sorted(v: &Value) -> Value {
     match v {
         Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
@@ -864,6 +872,51 @@ fn memories_routes_match_oracle() {
         }
     }
     {
+        // P4.56 — the float-literal nit, measured with a float-SENSITIVE
+        // comparand. Zod's `.int()` is `Number.isInteger`, so `200.0` PASSES;
+        // JS has no float/int distinction, so v4 stores and echoes `200`.
+        // v5's serde_json keeps the float. The family's `canon_numbers`
+        // normalizer collapses exactly that difference, so this arm goes
+        // through `norm_float_exact` on BOTH the echo and the stored bag.
+        let db = fresh_db(&spec, "hcfl");
+        let name = "housekeeping_config_set_int_float_literal";
+        let resp = rt.block_on(memories::memory_housekeeping_config_set(
+            &db,
+            &uid,
+            json!({ "perCharacterCap": 200.0, "autoMergeSimilarThreshold": 1.0 }),
+        ));
+        let got = response_data(&resp);
+        let want = &oracle[name]["body"];
+        if norm_float_exact(&got) != norm_float_exact(want) {
+            eprintln!(
+                "[{name}] MISMATCH (float-exact):\n{}",
+                first_diff(&norm_float_exact(&got), &norm_float_exact(want))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK (float-exact).");
+        }
+        let uid2 = uid.clone();
+        let stored = db
+            .read_main(move |main| {
+                quilltap_core::db::chat_settings::find_auto_housekeeping_settings_by_user_id(
+                    main, &uid2,
+                )
+            })
+            .expect("read housekeeping settings after the float-literal set")
+            .unwrap_or(Value::Null);
+        let want_stored = &oracle[name]["storedAfter"];
+        if norm_float_exact(&stored) != norm_float_exact(want_stored) {
+            eprintln!(
+                "[{name}] storedAfter MISMATCH (float-exact):\n{}",
+                first_diff(&norm_float_exact(&stored), &norm_float_exact(want_stored))
+            );
+            failed.push(format!("{name}:storedAfter"));
+        } else {
+            eprintln!("[{name}] storedAfter OK (float-exact).");
+        }
+    }
+    {
         let db = fresh_db(&spec, "rcg");
         check_body(
             "recall_config_get",
@@ -1011,6 +1064,39 @@ fn memories_routes_match_oracle() {
             failed.push(format!("{name}:storedAfter"));
         } else {
             eprintln!("[{name}] storedAfter OK.");
+        }
+    }
+    {
+        // P4.56 — the extraction-limits sibling of the float-literal arm.
+        let db = fresh_db(&spec, "elfl");
+        let name = "extraction_limits_set_int_float_literal";
+        let resp = rt.block_on(memories::memory_extraction_limits_set(
+            &db,
+            json!({ "maxPerHour": 200.0, "softFloor": 1.0 }),
+        ));
+        let got = response_data(&resp);
+        let want = &oracle[name]["body"];
+        if norm_float_exact(&got) != norm_float_exact(want) {
+            eprintln!(
+                "[{name}] MISMATCH (float-exact):\n{}",
+                first_diff(&norm_float_exact(&got), &norm_float_exact(want))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK (float-exact).");
+        }
+        let stored = db
+            .read_main(quilltap_core::db::instance_settings::get_memory_extraction_limits)
+            .expect("read extraction limits after the float-literal set");
+        let want_stored = &oracle[name]["storedAfter"];
+        if norm_float_exact(&stored) != norm_float_exact(want_stored) {
+            eprintln!(
+                "[{name}] storedAfter MISMATCH (float-exact):\n{}",
+                first_diff(&norm_float_exact(&stored), &norm_float_exact(want_stored))
+            );
+            failed.push(format!("{name}:storedAfter"));
+        } else {
+            eprintln!("[{name}] storedAfter OK (float-exact).");
         }
     }
     {

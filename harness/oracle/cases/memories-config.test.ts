@@ -430,6 +430,31 @@ async function main(): Promise<void> {
         return { ...r, storedAfter: row?.autoHousekeepingSettings ?? null };
       },
     },
+    {
+      // P4.56 — the float-literal nit. Zod's `.int()` is `Number.isInteger`, so
+      // `200.0` PASSES; JS then has no float/int distinction at all, and
+      // `JSON.stringify` writes the stored cell as `200`. v5's serde_json keeps
+      // the float, so the echo and the stored bytes would read `200.0`. The
+      // family's `canon_numbers` normalizer collapses exactly this difference,
+      // so the Rust side compares this arm's echo AND `storedAfter` with a
+      // float-SENSITIVE stringify instead.
+      name: 'housekeeping_config_set_int_float_literal',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        const repos = getRepositories();
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeeping-config`, {
+              perCharacterCap: 200.0,
+              autoMergeSimilarThreshold: 1.0,
+            }),
+          ),
+        );
+        const row = await repos.chatSettings.findByUserId(spec.userId);
+        return { ...r, storedAfter: row?.autoHousekeepingSettings ?? null };
+      },
+    },
     { name: 'recall_config_get', run: () => listGet(`action=recall-config`) },
     {
       name: 'recall_config_set',
@@ -586,6 +611,23 @@ async function main(): Promise<void> {
         const r = await respond(
           await (await loadRoute('@/app/api/v1/memories/route')).POST(
             mockRequest(`${B}?action=extraction-limits-config`, { enabled: 1 }),
+          ),
+        );
+        return { ...r, storedAfter: await getMemoryExtractionLimits() };
+      },
+    },
+    {
+      // P4.56 — the extraction-limits sibling of the float-literal arm.
+      name: 'extraction_limits_set_int_float_literal',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { getMemoryExtractionLimits } = await import('@/lib/instance-settings');
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, {
+              maxPerHour: 200.0,
+              softFloor: 1.0,
+            }),
           ),
         );
         return { ...r, storedAfter: await getMemoryExtractionLimits() };
