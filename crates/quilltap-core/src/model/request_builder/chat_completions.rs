@@ -1613,6 +1613,26 @@ pub fn build_nanogpt_body(input: &RequestInput, results: &mut StreamAttachmentRe
             b.set("user", json!(k));
         }
     }
+    // v4 `f8973813` (plugin 1.0.3) — explicit prompt caching, the profile
+    // opt-in. NanoGPT's body-level helper auto-places the `cache_control`
+    // breakpoints for Anthropic-routed models; other routes ignore it (their
+    // upstreams already cache implicitly). Between `user` and the profile
+    // params, which is where v4 writes it.
+    //
+    // The gate is STRICT `=== true`, not truthiness: a hand-edited `1` or
+    // `"yes"` in the bag does NOT switch caching on. The TTL collapses the
+    // other way — only the literal `'1h'` buys the hour, and anything else
+    // (including an absent key) is `'5m'`.
+    //
+    // Both keys are CONSUMED here and are deliberately absent from
+    // [`NANOGPT_PROFILE_ALLOWLIST`], so neither ever reaches the wire verbatim
+    // (asserted in `nanogpt_profile_param_tests`, not trusted).
+    if nanogpt_prompt_caching_enabled(input) {
+        b.set(
+            "promptCaching",
+            json!({ "enabled": true, "ttl": nanogpt_cache_ttl(input) }),
+        );
+    }
     apply_profile_params_with(
         &mut b,
         input,
@@ -1620,6 +1640,68 @@ pub fn build_nanogpt_body(input: &RequestInput, results: &mut StreamAttachmentRe
         |_, value, _, _| Some(value.clone()),
     );
     b.into_value()
+}
+
+/// v4 `params.profileParameters?.enablePromptCaching === true` — strict, so a
+/// truthy non-boolean never arms caching.
+fn nanogpt_prompt_caching_enabled(input: &RequestInput) -> bool {
+    input
+        .profile_parameters
+        .as_ref()
+        .and_then(|p| p.get("enablePromptCaching"))
+        == Some(&Value::Bool(true))
+}
+
+/// v4 `params.profileParameters.cacheTTL === '1h' ? '1h' : '5m'`.
+fn nanogpt_cache_ttl(input: &RequestInput) -> &'static str {
+    let one_hour = input
+        .profile_parameters
+        .as_ref()
+        .and_then(|p| p.get("cacheTTL"))
+        .and_then(Value::as_str)
+        == Some("1h");
+    if one_hour {
+        "1h"
+    } else {
+        "5m"
+    }
+}
+
+#[cfg(test)]
+mod nanogpt_profile_param_tests {
+    use super::*;
+
+    /// The two Prompt Caching keys (v4 `f8973813`) are read for control and
+    /// CONSUMED — v4 keeps them off `NANOGPT_PROFILE_PARAM_ALLOWLIST`, which is
+    /// a claim about two lists rather than a line of code, so it is asserted
+    /// rather than trusted (the `ollama_control_params_are_off_the_wire`
+    /// pattern). One envelope row (`prompt-caching-consumed-keys`) proves the
+    /// same thing end-to-end against v4's recorded bytes.
+    #[test]
+    fn prompt_caching_control_keys_are_off_the_wire() {
+        for key in ["enablePromptCaching", "cacheTTL"] {
+            assert!(
+                !NANOGPT_PROFILE_ALLOWLIST.contains(&key),
+                "control param {key} leaked into the NanoGPT allow-list"
+            );
+        }
+    }
+
+    /// A profile bag must not be able to retarget the request (v4's whole
+    /// reason for an allow-list rather than a spread).
+    #[test]
+    fn nanogpt_allowlist_cannot_reach_the_request_shape() {
+        for key in [
+            "model",
+            "messages",
+            "stream",
+            "stream_options",
+            "tools",
+            "promptCaching",
+        ] {
+            assert!(!NANOGPT_PROFILE_ALLOWLIST.contains(&key));
+        }
+    }
 }
 
 #[cfg(test)]

@@ -80820,3 +80820,126 @@ tauri unchanged.
 - The generators-lane bank grew the four v4 files' person clauses + the
   "never flip a field's form of address" rule; the `p4.9i2` bank grew the
   trio's ten help files + the help-chat builder's two wording changes.
+
+---
+
+## P4.D105 — NanoGPT prompt caching (v4 `f8973813`, plugin 1.0.3)
+
+Lane branch `claude/nanogpt-prompt-caching-f83649`, worktree
+`.claude/worktrees/nanogpt-prompt-caching-f83649`. **Drift-check at lane
+start:** `git log f8973813..main --oneline` in `~/source/quilltap-server`
+returned EMPTY (v4 main HEAD == `f8973813`, tree clean, checkout on
+`main`), and `bugfix` measured at `3a76b17d` (2026-08-13) — behind main,
+nothing unabsorbed. No pinned worktree needed: the live checkout IS the
+pin for every regen in this lane.
+
+### Unit 1 — the Prompt Caching options group + the `promptCaching` body key
+
+(v4's moving parts 1 and 2 landed as one commit: the schema group and the
+body key it gates are the same feature, and separating them would have
+shipped an option that does nothing.)
+
+#### 1a — the manifest group
+
+v4's `f8973813` appends one group to the NanoGPT plugin's `optionsSchema`
+(`plugins/dist/qtap-plugin-nanogpt/index.ts:148-173`): a "Prompt Caching"
+group whose long Wodehouse-register `helpText` names the Anthropic-routed
+scope and the write-cost premium, carrying `enablePromptCaching`
+(`boolean`, default `false`) and `cacheTTL` (`enum`, default `'5m'`,
+values `5m`/`1h` with their "(1.25x write cost)" / "(2x write cost)"
+labels) gated by `showIf: { field: 'enablePromptCaching', equals: true }`.
+
+Ported by REGENERATION, never by hand (the augmentation-rot rule):
+
+    cd ~/source/quilltap-server
+    node <V5W>/harness/oracle/providers/gen-provider-manifests.mjs \
+      <V5W>/crates/quilltap-core/src/provider_manifest/manifests
+
+`resolveOptionsSchema` copies the plugin's schema wholesale, so the group
+arrived with no generator change at all — the augmentation table was not
+touched, and `git diff --stat` shows **exactly one file moved**
+(`nanogpt.json`, +33); the nine sibling manifests are byte-identical.
+
+No Rust change was needed either: `ProviderManifest.options_schema` is an
+opaque `Option<serde_json::Value>` (`provider_manifest/mod.rs:377`), so
+the new field types ride through untyped.
+
+**Differential.** Two families re-run through
+`harness/tools/recipe_sweep.py --run` over oracles regenerated FRESH from
+the v4 checkout at the pin:
+
+- `providers_listing_equivalence` — **ok**. This is the load-bearing one:
+  since P4.D83 it compares `optionsSchema` **byte-for-byte with field
+  ORDER included**, so the whole new group (help text, enum labels,
+  `showIf` shape) is pinned, not merely present. Coverage grepped in the
+  fresh NDJSON per the `green-regen-is-not-coverage` rule:
+  `enablePromptCaching` present, `Prompt Caching` present.
+  Reported: "9 options schemas byte-for-byte, 1 null, 3 thinking-turn
+  rules".
+- `provider_registry_equivalence` — **ok** (the manifest-derived getters
+  unmoved).
+
+**SPA: zero code, and zero code was written** (the lane may not touch
+`apps/web/**`). The provider-options panel renders booleans and
+`showIf`-gated enums generically — `showIf` compares the RAW stored value
+(`provider-options-panel.ts:359-360`) and both spec files already carry
+`equals: true` arms (P4.D84). Deferred loud, for the SPA's owner:
+`apps/web/src/app/screens/settings/providers/nanogpt-options.spec.ts`
+carries a HAND-TRANSCRIBED copy of v4's NanoGPT schema (deliberately not
+read from the server, so the halves cannot drift into agreement) and that
+copy still holds only the "NanoGPT Options" group. It is not wrong, it is
+now incomplete — extending it with the Prompt Caching group is a one-file
+SPA follow-up this lane is forbidden to make.
+
+#### 1b — the `promptCaching` body key
+
+v4 `provider.ts:171-178`, between the `user` set and `applyProfileParams`:
+
+    if (params.profileParameters?.enablePromptCaching === true) {
+      const ttl = params.profileParameters.cacheTTL === '1h' ? '1h' : '5m';
+      body.promptCaching = { enabled: true, ttl };
+    }
+
+Ported into `build_nanogpt_body` at v4's key position, via two named
+helpers so the two gates read as the contracts they are:
+
+- `nanogpt_prompt_caching_enabled` — STRICT `=== true`. The order asked
+  this to be probed rather than assumed, and it was: the recorder's
+  `prompt-caching-truthy-not-true` row (`enablePromptCaching: 1`) comes
+  back from v4's REAL `buildRequestBody` with no `promptCaching` key at
+  all.
+- `nanogpt_cache_ttl` — `'1h'` only for the literal string; every other
+  value, including an absent key, collapses to `'5m'`.
+
+Both keys are CONSUMED. `NANOGPT_PROFILE_ALLOWLIST` is unchanged (they
+were never on it), and the claim is now asserted rather than trusted:
+`prompt_caching_control_keys_are_off_the_wire` +
+`nanogpt_allowlist_cannot_reach_the_request_shape` in a new
+`nanogpt_profile_param_tests` module — the
+`ollama_control_params_are_off_the_wire` pattern, in the same file.
+
+**Differential — `request_builder_equivalence`, 307 → 321 rows.** Seven
+new NanoGPT cases, each recorded in BOTH modes from v4's real
+`buildRequestBody` (`regenerate-request-envelopes.sh` at the pin):
+`prompt-caching-5m`, `-1h`, `-ttl-absent`, `-ttl-garbage` (`'2h'` → 5m),
+`-off` (`false`), `-truthy-not-true` (`1`), and `-consumed-keys` (both
+control keys + `reasoning_effort` + a `cacheKey`, which also pins the
+`user` → `promptCaching` → `reasoning_effort` neighbourhood). **Every
+pre-existing row is byte-identical** — the corpus diff is +14 lines, zero
+deletions. `OK: 321 request envelopes (1 recorded refusal(s)) matched v4`.
+
+The differential also gained four coverage-shape asserts read off v4's
+RECORDED body (the `green-regen-is-not-coverage` rule, the Ollama-arm
+pattern): a 5m arm, a 1h arm, a bag-present-but-key-absent arm, and a
+consumed-keys arm that fails loudly if v4 ever starts forwarding either
+control key. Proven live: filtering all seven cases out of the corpus
+gives `corpus lost its nanogpt promptCaching 5m vector`, not a green run.
+
+**Mutation proofs (each applied, run RED, reverted):**
+
+1. Truthiness gate instead of `=== true` → red (`-truthy-not-true`).
+2. TTL hard-wired to `'5m'` → red (`-1h`, `-consumed-keys`).
+3. The block moved AFTER `apply_profile_params_with` → red (the
+   differential compares body BYTES, so key order is load-bearing).
+
+Versions: core 0.0.621, harness 0.0.543.

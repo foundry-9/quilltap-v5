@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — feat(nanogpt): the Prompt Caching profile options and the `promptCaching` body key
+
+_Versions: core 0.0.621, harness 0.0.543._
+
+Regenerate the ten built-in provider manifests against v4 `f8973813`
+(NanoGPT plugin 1.0.3). Only `nanogpt.json` moves: its `optionsSchema`
+gains v4's new "Prompt Caching" group — the `enablePromptCaching` boolean
+(default `false`) and the `cacheTTL` enum (`5m` / `1h`, default `5m`,
+gated by `showIf: { field: 'enablePromptCaching', equals: true }`) — with
+the group and field help text byte-copied from the plugin. The nine
+sibling manifests are byte-identical.
+
+No Rust change: `optionsSchema` is carried as an opaque value, and the
+SPA's provider-options panel already renders booleans and `showIf`-gated
+enums generically (P4.D84). `providers_listing_equivalence` (which pins
+`optionsSchema` byte-for-byte, field order included) and
+`provider_registry_equivalence` both re-run green over oracles
+regenerated fresh at the pin.
+
+`build_nanogpt_body` then emits v4's body-level helper:
+`promptCaching: { enabled: true, ttl }` between the `user` key and the
+allow-listed profile params, under a STRICT `enablePromptCaching === true`
+gate (a truthy `1` does not arm it) and v4's TTL collapse (only the
+literal `'1h'` buys the hour). Both option keys are consumed and stay off
+`NANOGPT_PROFILE_ALLOWLIST`, so neither reaches the wire verbatim —
+asserted by a unit test over the list and by a corpus row carrying both.
+
+The request-envelope corpus grows 307 → 321 rows (seven NanoGPT cases in
+both modes, recorded from v4's real `buildRequestBody`); every
+pre-existing row is byte-identical. The differential gains four
+coverage-shape asserts (both TTLs, the caching-off arm, the
+consumed-keys arm) read off v4's recorded body, so a corpus that lost
+the vectors cannot pass green.
+
 #### 2026-08-22 — docs(porting): work orders for the `f8973813` round (P4.D105 ∥ P4.56)
 
 _Docs-only change._

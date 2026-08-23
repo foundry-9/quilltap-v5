@@ -550,6 +550,22 @@ function casesFor(provider) {
     add('thinking-catalogue-id', { ...base, model: 'anthropic/claude-sonnet-5:thinking', profileParameters: { reasoning_effort: 'medium' } });
     // Everything at once.
     add('tools-and-profile-params', { ...base, model: 'openai/gpt-5-mini', tools: [TOOL], stop: ['END'], cacheKey: 'char-7', profileParameters: { reasoning_effort: 'low', frequency_penalty: 0.1 } });
+    // P4.D105 (v4 `f8973813`, plugin 1.0.3) — the body-level `promptCaching`
+    // helper. Its position in the key order is between `user` and the
+    // allow-listed profile params; `cache-key` above pins the neighbour.
+    add('prompt-caching-5m', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: true, cacheTTL: '5m' } });
+    add('prompt-caching-1h', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: true, cacheTTL: '1h' } });
+    // The TTL collapses: anything that is not the literal '1h' is '5m' —
+    // including an absent key and a hand-edited nonsense value.
+    add('prompt-caching-ttl-absent', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: true } });
+    add('prompt-caching-ttl-garbage', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: true, cacheTTL: '2h' } });
+    // The gate is STRICT `=== true`: `false`, and a truthy non-boolean, both
+    // leave the key off the body entirely.
+    add('prompt-caching-off', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: false, cacheTTL: '1h' } });
+    add('prompt-caching-truthy-not-true', { ...base, model: 'anthropic/claude-sonnet-5', profileParameters: { enablePromptCaching: 1, cacheTTL: '1h' } });
+    // …and neither control key is allow-listed, so a bag carrying both leaves
+    // neither on the wire verbatim (the two-lists claim, end to end).
+    add('prompt-caching-consumed-keys', { ...base, model: 'anthropic/claude-sonnet-5', cacheKey: 'char-13', profileParameters: { enablePromptCaching: true, cacheTTL: '1h', reasoning_effort: 'high' } });
   } else if (provider === 'openai') {
     add('plain', { ...base, model: 'gpt-4o' });
     add('first-call', { ...base, model: 'gpt-4o', messages: [SYS, USER] });

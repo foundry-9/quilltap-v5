@@ -290,6 +290,17 @@ fn request_builder_matches_v4() {
         mut saw_keep_alive_duration,
         mut saw_widened_option,
     ) = (false, false, false, false);
+    // P4.D105 (v4 `f8973813`) — the NanoGPT `promptCaching` helper. Same reason
+    // as the Ollama arms above: assert the SHAPE off v4's RECORDED body, so a
+    // corpus that lost the vectors cannot pass green with the feature untested.
+    // Four arms: both TTLs, the off arm (no key at all), and a bag carrying the
+    // two control keys with NEITHER reaching the wire verbatim.
+    let (
+        mut saw_caching_5m,
+        mut saw_caching_1h,
+        mut saw_caching_absent_with_bag,
+        mut saw_caching_keys_consumed,
+    ) = (false, false, false, false);
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -401,6 +412,50 @@ fn request_builder_matches_v4() {
                          as a number (the sentinels) or a duration string, nothing else"
                     ),
                     None => {}
+                }
+            }
+        }
+
+        // P4.D105 shape bookkeeping, read off v4's RECORDED body.
+        if provider == "NANOGPT" {
+            if let Some(body) = row
+                .get("body")
+                .and_then(Value::as_str)
+                .and_then(|b| serde_json::from_str::<Value>(b).ok())
+            {
+                let bag = row["input"].get("profileParameters");
+                match body.get("promptCaching") {
+                    Some(pc) => {
+                        assert_eq!(
+                            pc.get("enabled"),
+                            Some(&Value::Bool(true)),
+                            "NANOGPT/{case}[{mode}]: v4 only ever emits promptCaching                              with enabled:true"
+                        );
+                        match pc.get("ttl").and_then(Value::as_str) {
+                            Some("5m") => saw_caching_5m = true,
+                            Some("1h") => saw_caching_1h = true,
+                            other => panic!(
+                                "NANOGPT/{case}[{mode}]: v4 recorded ttl={other:?} — the                                  helper collapses every value to '5m' or '1h'"
+                            ),
+                        }
+                    }
+                    // A bag that did NOT arm caching: the key is absent
+                    // entirely (v4 never writes `enabled: false`).
+                    None if bag.is_some() => saw_caching_absent_with_bag = true,
+                    None => {}
+                }
+                // The two control keys are consumed, never forwarded — the
+                // allow-list claim, proven against v4's own bytes.
+                if let Some(Value::Object(bag)) = bag {
+                    if bag.contains_key("enablePromptCaching") || bag.contains_key("cacheTTL") {
+                        for key in ["enablePromptCaching", "cacheTTL"] {
+                            assert!(
+                                body.get(key).is_none(),
+                                "NANOGPT/{case}[{mode}]: v4 forwarded the consumed control                                  key {key} verbatim — the allow-list premise moved"
+                            );
+                        }
+                        saw_caching_keys_consumed = true;
+                    }
                 }
             }
         }
@@ -627,6 +682,23 @@ fn request_builder_matches_v4() {
     assert!(
         saw_keep_alive_duration,
         "corpus lost its ollama duration-string `keep_alive` vector"
+    );
+    // P4.D105 — the NanoGPT prompt-caching coverage shape.
+    assert!(
+        saw_caching_5m,
+        "corpus lost its nanogpt `promptCaching` 5m vector"
+    );
+    assert!(
+        saw_caching_1h,
+        "corpus lost its nanogpt `promptCaching` 1h vector"
+    );
+    assert!(
+        saw_caching_absent_with_bag,
+        "corpus lost its nanogpt caching-OFF vector (a profile bag that leaves          `promptCaching` off the body entirely)"
+    );
+    assert!(
+        saw_caching_keys_consumed,
+        "corpus lost its nanogpt consumed-control-keys vector — nothing proves          `enablePromptCaching`/`cacheTTL` stay off the wire"
     );
     assert!(
         openrouter_sdk_rows > 0,
