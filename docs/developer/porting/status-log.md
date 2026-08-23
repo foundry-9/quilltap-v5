@@ -82018,3 +82018,32 @@ live checkout per the order.
   forced by machine-wide disk exhaustion with five lanes building
   concurrently (gate 4's first run died on `errno 28` mid-relink; this
   lane's own `target` was fully cleaned and rebuilt cold).
+
+### P4.D106 — the lane gate (2026-08-23)
+
+- **Drift:** v4 HEAD == `a14a1811` throughout; the live checkout went DIRTY
+  mid-lane (the human's bug-96 work — title-update/cheap-llm-tasks, none of
+  this lane's files), so per the standing rule EVERY oracle was regenerated
+  from a detached worktree pinned at `a14a1811` (`/tmp/qt-v4-a14a1811`, all
+  three symlink classes — built by a sibling lane, verified clean at the
+  pin) and re-run; all green, changed bytes grepped present per family.
+- **The by-name sweep:** all 12 affected/new families through
+  `recipe_sweep.py --run <family> --v4 /tmp/qt-v4-a14a1811`, serially:
+  moderation_finish_reason (new), image_transport (new), attachment_anchor
+  (new), file_attachment_tier3, message_selector, build_context_tier3,
+  first_message_context, orchestrator_tier3, regenerate_swipe_tier3,
+  salon_swipe_generate, courier_transport_tier3, settings_routes — 12/12
+  green end-to-end, zero SKIP. `--self-test` 0 failures (the two new run
+  lines extract cleanly).
+- **The workspace gate:** `cargo fmt --all --check`; clippy plain AND
+  `--features quilltap-core/native-transport`, -D warnings, both clean;
+  `cargo test --workspace` WITH the lane's 24-variable env block —
+  **449 test binaries / 2,291 passed / 0 failed**, zero `SKIP:`/`not set`
+  lines in the log (every lane family ran inside the gate; orchestrator
+  2.25 s, build-context/settings 0.17 s — no 0.00 s masquerade on the
+  tier-2/3 families).
+- SPA untouched (P4.D109's surface); no `apps/web` or `quilltap-web` edits.
+- Commits: `624fb915` (bug 93 end-to-end), `474b6b33` (the predicate pair),
+  `1af10efb` (the fallback wirings), `09c9c81d` (the anchor), `57205a91`
+  (the wire stamp). Final versions: core 0.0.633, harness 0.0.555,
+  host 0.0.78.
