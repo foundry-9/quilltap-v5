@@ -15,7 +15,10 @@ import { evaluateThinkingTurn } from './thinking-turn';
  *
  * The fixture is the Shared contract of P4.D101 / P4.D102, transcribed from
  * v4's plugin `index.ts:109-147` — not read from the server, so the two halves
- * cannot drift into agreement by accident.
+ * cannot drift into agreement by accident. Extended at the P4.D105
+ * unification with the Prompt Caching group (v4 `f8973813`,
+ * `index.ts:148-173`) — still zero bespoke client code; the boolean row and
+ * the `showIf`-gated enum must come out of the generic panel.
  */
 
 const NANOGPT_SCHEMA: ProviderOptionsSchema = {
@@ -37,6 +40,32 @@ const NANOGPT_SCHEMA: ProviderOptionsSchema = {
             { value: 'high', label: 'High' },
             { value: 'xhigh', label: 'XHigh' },
           ],
+        },
+      ],
+    },
+    {
+      title: 'Prompt Caching',
+      helpText:
+        "NanoGPT's OpenAI- and Gemini-routed models cache repeated context on their own, gratis and automatic. Anthropic-routed (Claude) models want asking: switch this on and NanoGPT places the cache checkpoints itself, so a long-running conversation re-reads its history at a tenth the price. The ledger's honest caveat — writing the cache costs a premium over plain input (1.25x for the five-minute shelf, 2x for the hour), so the savings arrive from the second turn onward.",
+      fields: [
+        {
+          key: 'enablePromptCaching',
+          label: 'Enable Prompt Caching',
+          type: 'boolean',
+          default: false,
+          helpText:
+            'Applies to Anthropic-routed (Claude) models; other routes ignore it and carry on with their own implicit caching.',
+        },
+        {
+          key: 'cacheTTL',
+          label: 'Cache Duration',
+          type: 'enum',
+          default: '5m',
+          enumValues: [
+            { value: '5m', label: '5 minutes (1.25x write cost)' },
+            { value: '1h', label: '1 hour (2x write cost)' },
+          ],
+          showIf: { field: 'enablePromptCaching', equals: true },
         },
       ],
     },
@@ -104,6 +133,33 @@ describe('NanoGPT options group (verify-only — no NanoGPT-specific client code
       'select',
     ) as HTMLSelectElement;
     expect(select.value).toBe('high');
+  });
+
+  it('renders the Prompt Caching group with Cache Duration hidden while the toggle is off (v4 `f8973813` showIf)', async () => {
+    const fixture = await renderPanel();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Prompt Caching');
+    expect(text).toContain('Enable Prompt Caching');
+    expect(text).not.toContain('Cache Duration');
+  });
+
+  it('reveals the two Cache Duration entries, labels and order intact, once caching is enabled', async () => {
+    const fixture = await renderPanel({ enablePromptCaching: true });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Cache Duration');
+    const selects = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('select'),
+    ) as HTMLSelectElement[];
+    const ttl = selects.find((s) =>
+      Array.from(s.options).some((o) => o.value === '5m'),
+    ) as HTMLSelectElement;
+    expect(ttl).toBeDefined();
+    const options = Array.from(ttl.options);
+    expect(options.map((o) => o.value)).toEqual(['5m', '1h']);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      '5 minutes (1.25x write cost)',
+      '1 hour (2x write cost)',
+    ]);
   });
 });
 
