@@ -386,6 +386,16 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+#### 2026-08-23 — docs(porting): the P4.D109 lane record — Tier 2 reads, deferral, gate
+
+_No crate versions bumped._
+
+Closes the P4.D109 lane record with its Tier 2 verification reads (bug 93's
+moderation sentence already has a client reader through the existing
+`emptyResponseReason` path; `describe_image` renders through the tool card's
+name fallback, as every other photo tool does in both apps), the loud Tier 3
+deferral of the live proof to the dogfood queue, and the verification gate.
+
 #### 2026-08-23 — test(e2e): walk the dropped-attachment warning live (bug 94)
 
 _Versions: SPA 0.5.548._

@@ -82899,3 +82899,67 @@ again (1.3 s).
 main...HEAD -- crates/ harness/ Cargo.toml Cargo.lock` is empty and main's tree
 is clean), copied into the worktree's `target/release/` for `env.ts`'s
 resolution.
+
+### Tier 2 item 5 — the two verification reads, measured
+
+**Bug 93's moderation sentence needs NO client change.** v4's
+`describeModerationRefusal` has exactly one consumer:
+`provider-failover.service.ts:237`, inside `getEmptyResponseReason`, which
+returns the sentence as the empty-response REASON. That reason rides the done
+frame's `emptyResponseReason` and v5's door already renders it —
+`showError(after.finalDone.emptyResponseReason || <v4's fallback>)`, landed with
+the P4.6 Salon vertical. The composition is P4.D106's; the client is already its
+reader. Confirmed structurally too: `a14a1811`'s ONLY `app/`-tree edit besides
+the API route is `useSSEStreaming.ts`, and its whole diff is the bug-94 block
+(+10 type, +16 body).
+
+**describe_image (bug 92) needs NO client change.** v4's tool card
+(`components/chat/ToolMessage.tsx:243-330`) carries a name/icon table with no row
+for ANY photo tool — `keep_image`, `attach_image` and `list_images` all fall to
+`displayName: toolData.toolName`, and `describe_image` joins them there. v5's
+`tool-message.ts` is the same table with the same fallback
+(`TOOL_INFO[name] ?? { displayName: name, icon: '⚙️' }`, `:399`), so the new
+verb renders identically in both apps without an edit. `a14a1811` touched no
+component file, which is the same finding from v4's side. The commit's other
+`app/` edit — the `describe_image` row in `app/api/v1/tools/route.ts`'s
+`BUILT_IN_TOOLS` — is a SERVER route and belongs to P4.D108; this lane does not
+touch it.
+
+### Tier 3 — the deferral, loud
+
+**💸 The live proof is DEFERRED to the dogfood queue, riding the P4.D106/D107
+walk:** a real attachment failing inside a plugin that does send images (an
+unsupported MIME on NanoGPT is the cheapest shape) surfacing this toast on the
+Friday copy. Nothing is stubbed in-lane to stand in for it — the e2e beat drives
+the real client stack and fakes only the wire bytes of one frame, and says so in
+its own header.
+
+### The P4.D109 verification gate (2026-08-23)
+
+Run from the lane worktree, on the lane tip.
+
+- **`npm test` (the ng-run wrapper, never a bare `ng`): 341 test files / 5,068
+  tests / 0 failed.** The suite grew 5,056 → 5,068: three reducer-carry cases,
+  six toast-door cases, two attachment-table cases, and one profile-modal seed
+  case. No new spec FILE, hence 341 unchanged.
+- **`npm run build`: clean** (bundle generated, no errors).
+- **Full Playwright: 237 passed / 0 failed / 0 skipped (6.7 m)** — the suite grew
+  236 → 237 with the new beat. Run in full, not just the new file, because the
+  beat sends a message into the shared global-setup instance (Group Expedition).
+- **The two red-first mutation pins, both measured, not asserted:**
+  1. reducer carry → literal `null`: the identity case fails
+     (`expected null to be Object`); restored, green.
+  2. door guard `length > 0` → `length > 99` (chosen over `if (false && …)`,
+     which makes the block unreachable and costs TypeScript its `Array.isArray`
+     narrowing — six TS18048 errors, a build failure rather than a test
+     failure): FIVE of the six door cases red. The sixth
+     ("says nothing when the ledger is absent, null, or carries no failures") is
+     the one a broken door still passes — recorded so the pin is not mistaken
+     for full coverage on its own. The same mutation, rebuilt, also reddens the
+     e2e beat (44 polls, zero warnings).
+- **`cargo fmt --all --check`: clean.** No cargo build/test/clippy run and none
+  owed: `git diff main...HEAD -- crates/ harness/ Cargo.toml Cargo.lock docs/v4/`
+  is EMPTY — the lane is `apps/web/**` plus the two append-only docs, exactly as
+  the order's Ownership section scopes it.
+
+**Versions:** SPA 0.5.544 → 0.5.548 (one bump per commit). No crate bumped.
