@@ -12,6 +12,54 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — docs(porting): the P4.D105 v4 mirror refresh and lane dispositions
+
+_Docs-only change._
+
+Refresh `docs/v4/CHANGELOG.md` from the pinned `f8973813` worktree — the
+only one of the commit's four doc files that lives inside the mirror. It
+was two rounds stale, so this also brings in the `a6870c5a`
+person-consistency entry.
+
+Record in `status-log.md`: the two `help/connection-profiles.md` NanoGPT
+bullets banked verbatim for `p4.9i2` (they live at v4's top-level `help/`,
+outside the mirror); the spot-check of v4's audit claims (reasoning-effort
+values, the `delta.reasoning` / `reasoning_content` precedence,
+`stream_options.include_usage`, tool-call delta accumulation — all three
+already hold in v5, nothing to port); cache-read pricing verified as a
+NO-PORT (v4 has no NanoGPT pricing row at the pin); the downstream
+`cacheUsage` / `rawProviderUsage` plumbing verified generic rather than
+re-plumbed; and two deferrals — the live caching smoke to the dogfood
+queue, and the SPA's hand-transcribed NanoGPT schema fixture, which this
+lane may not touch.
+
+#### 2026-08-22 — feat(nanogpt): cache usage and rawProviderUsage on the streaming final chunk
+
+_Versions: core 0.0.623, harness 0.0.545._
+
+The streaming half of v4 `f8973813`. `Flavor::NanoGpt` now derives cache
+usage through the SAME `nanogpt_cache_usage` the non-streaming arm calls —
+v4 has one `extractCacheUsage` serving both, and two copies here would be
+two places to drift — and applies the same cache-read exclusion to the
+final chunk's `promptTokens`/`totalTokens`. `build_usage` gained a `written`
+counter alongside `cached`; NanoGPT is the only flavor of the five whose
+gateway reports cache writes, so the other four pass `None` and their
+recorded bytes are unchanged.
+
+NanoGPT also joins Z.AI in emitting `rawProviderUsage` on the final chunk:
+v4's `(usage ?? null)`, so the KEY is always present — an explicit `null`
+when the stream carried no usage frame, not an absent field.
+
+The `chat_completions_sse` corpus grows 16 → 22 cases (six NanoGPT wires:
+the Anthropic dialect, write-only, the OpenAI dialect, a present-zero read,
+the clamp, and a stream with no usage frame at all). All five sibling
+providers' recordings are byte-identical; the five pre-existing NanoGPT
+recordings change only by gaining `rawProviderUsage`. Both consumers —
+`stream_decoders_equivalence` (three chunkings) and
+`streaming_composer_equivalence` — are green, and the decoder differential
+gains six coverage arms plus a per-case assert that v4's own recorded
+`promptTokens` is `max(0, prompt_tokens - cacheRead)`.
+
 #### 2026-08-22 — feat(nanogpt): both cache-usage dialects on the non-streaming response
 
 _Versions: core 0.0.622, harness 0.0.544._

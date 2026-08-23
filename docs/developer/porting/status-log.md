@@ -81017,3 +81017,174 @@ its by-hand RECORDING stage inside the sweep (the P4.54 rule).
     python3 harness/tools/recipe_sweep.py --self-test                         # 0 failures
 
 Versions: core 0.0.622, harness 0.0.544.
+
+### Unit 3 — the streaming final chunk (cache usage + `rawProviderUsage`)
+
+v4 `provider.ts:359-375`. Three changes to `Flavor::NanoGpt`:
+
+1. **Cache usage through the SAME extractor.** `build_usage` calls
+   `response_parse::nanogpt_cache_usage` rather than growing a second
+   copy of the `??` chain — v4 has ONE `extractCacheUsage` method serving
+   both `sendMessage` and `streamMessage`, and two homes here would be
+   two places to drift.
+2. **`build_usage` gained a `written` counter** beside `cached`. NanoGPT
+   is the only one of the five flavors whose gateway reports cache
+   WRITES; the other four pass `None`, and the predicate
+   `(cached.is_some() || written.is_some())` reduces to the old
+   `cached.map(…)` for them — proven by their recordings coming back
+   byte-identical.
+3. **`rawProviderUsage` joins z-ai's habit.** v4 writes
+   `rawProviderUsage: (usage ?? null)`, so the KEY is always present on
+   NanoGPT's final chunk — an explicit `null` when no usage frame
+   arrived, never an absent field. v5's existing
+   `Some(self.usage_raw.clone().unwrap_or(Value::Null))` already had
+   exactly that shape; NanoGPT was added to the condition.
+
+**Differential — `chat_completions_sse`, 16 → 22 cases.** Six new wire
+transcripts, recorded by driving v4's REAL `streamMessage` over them
+(`regenerate-stream-fixtures.sh`, run from the PINNED worktree — see the
+lane note below). What v4 answered on the final chunk:
+
+| case | `usage` | `cacheUsage` | `rawProviderUsage` |
+| --- | --- | --- | --- |
+| `nanogpt-cache-anthropic` | 500 / 200 / 700 | read+cached 8000, creation 100 | the usage object |
+| `nanogpt-cache-write-only` | 1200 / 30 / 1230 | creation 1200 only | the usage object |
+| `nanogpt-cache-openai-dialect` | 100 / 50 / 150 | read+cached 900 | the usage object |
+| `nanogpt-cache-read-zero-present` | 600 / 12 / 612 | **absent** | the usage object |
+| `nanogpt-cache-clamp` | 0 / 10 / 0 | read+cached 500 | the usage object |
+| `nanogpt-cache-no-usage` | 0 / 0 / 0 | **absent** | **`null`** |
+
+All FIVE sibling providers' recordings came back byte-identical; the five
+pre-existing NanoGPT recordings changed only by gaining
+`rawProviderUsage`. Both consumers of the fixture ran — the decoder
+differential at all three chunkings (whole / per-frame / byte) and
+`streaming_composer_equivalence`, which is the family that caught the
+P4.D83 and P4.D101 widenings and would have caught this one.
+
+Coverage added (six arms + one equality, all read off v4's RECORDED final
+chunk): the three dialect shapes, a case where the read actually reduces
+`promptTokens`, and BOTH `rawProviderUsage` arms — plus a `panic!` on any
+third shape, so a future v4 change that drops the key is loud rather than
+silent.
+
+**Mutation proofs (each applied, run RED, reverted):**
+
+1. `Flavor::NanoGpt => (None, None)` (the P4.D101 state) → red.
+2. `rawProviderUsage` withheld from NanoGPT → red on
+   `nanogpt-reasoning-main`, i.e. on a PRE-EXISTING case — the widening
+   is pinned by the old rows too, not only the new ones.
+3. `cache_creation_input_tokens: None` → red on
+   `nanogpt-cache-anthropic`.
+
+### Lane note — v4's checkout went DIRTY mid-lane; every regen re-run from a pin
+
+At lane start `~/source/quilltap-server` was clean on `main` at
+`f8973813`. Partway through unit 2 it was **no longer clean**: HEAD still
+`f8973813`, but the working tree carried uncommitted edits including a
+`lib/` file (`lib/background-jobs/host/processor-host.ts`), CI/Docker
+infra, and a new `bug-89` doc. The plugin directory this lane reads was
+NOT among them, but "not among them" is a claim to measure, not to
+assume — [[oracle-regen-pinned-v4-worktree]] exists because exactly this
+once baked uncommitted v4 code into two oracles.
+
+So a lane-unique pin was created and EVERY regen re-run from it:
+
+    PIN=/tmp/qt-v4-pin-p4d105-f8973813
+    git -C ~/source/quilltap-server worktree add --detach "$PIN" f8973813
+    ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+    ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+            "$PIN/packages/quilltap/node_modules"
+    for d in ~/source/quilltap-server/plugins/dist/*/; do
+      [ -d "$d/node_modules" ] && \
+        ln -sfn "$d/node_modules" "$PIN/plugins/dist/$(basename "$d")/node_modules"
+    done
+
+Result: the manifest generator, the request-envelope corpus and the
+response-bodies corpus all came back **BYTE-IDENTICAL** from the pin
+(`git status --short` empty after each), so units 1 and 2 are clean; the
+stream fixtures were recorded from the pin in the first place.
+
+Versions: core 0.0.623, harness 0.0.545.
+
+### Unit 4 — Tier 2 and the lane's dispositions
+
+**The `docs/v4` mirror refresh (Tier 2 item 7).** Of the commit's four
+doc files, exactly one lives inside the mirror: `docs/CHANGELOG.md`.
+Refreshed from the PIN (`+44` lines — the NanoGPT prompt-caching entry
+AND the person-consistency entry the prior `a6870c5a` round left behind;
+the mirror was two rounds stale on this file). The other three are
+outside it and stay outside: v4's root `README.md`, the plugin's own
+`README.md`, and `help/connection-profiles.md`, which lives at v4's
+TOP-LEVEL `help/` — the mirror's `docs/v4/help/` holds a single unrelated
+file and is not that tree (the P4.D101 precedent).
+
+Recorded separately: the wider `docs/v4/` mirror is broadly stale
+(`diff -rq` against v4's `docs/developer` names ~8 differing files and a
+large set of `bugs/fixed/` rows this port never mirrored). That is
+pre-existing and outside this lane's mandate; it is a maintenance item,
+named here so it is not mistaken for a clean mirror.
+
+**→ the `p4.9i2` bank.** `help/connection-profiles.md`'s NanoGPT section
+gained exactly two bullets at `f8973813`, banked verbatim for whoever
+ports the Guide:
+
+> - **Enable Prompt Caching** — the OpenAI- and Gemini-routed houses
+>   cache repeated context of their own accord, gratis; the
+>   Anthropic-routed (Claude) models wait to be asked. Tick this and
+>   NanoGPT sets the cache checkpoints itself, so a long chat re-reads
+>   its own history at roughly a tenth the usual rate from the second
+>   turn onward. Writing the cache carries a modest premium over plain
+>   input, so the economy is in the return visits. Models routed
+>   elsewhere simply pay it no mind
+> - **Cache Duration** *(visible only when Prompt Caching is enabled)* —
+>   five minutes is the default and the cheapest entry in the ledger
+>   (1.25x to write); one hour costs more upfront (2x) but suits the
+>   slow, deliberate session that outlives the five-minute window
+
+**The audit spot-check (Tier 2 item 8) — v4's three claims all HOLD in
+v5, no port needed.** v4's commit message asserts that extended thinking
+and the streaming protocol "already match the documented contract"; that
+is a claim about surfaces this port landed at P4.D101/P4.D102, so it was
+read rather than re-ported. (a) *`reasoning_effort` values*: the
+manifest's enum is `''`/none/minimal/low/medium/high/xhigh and
+`build_nanogpt_body` forwards the key FLAT (never folded into
+`chat_template_kwargs`), pinned by the corpus's
+`reasoning-effort-flat` / `-blank-omits` / `-none-verbatim` rows. (b)
+*`delta.reasoning` with the `reasoning_content` fallback*: the decoder's
+`Flavor::NanoGpt` arm is the `??` precedence
+(`chat_completions_sse.rs:183-186`), with bug 87's prose-echo guard on
+top; the non-streaming twin is the same precedence. (c)
+*`stream_options.include_usage` + tool-call delta accumulation*:
+`base_body` sets `stream_options: {include_usage: true}` on the
+streaming path only, and the by-index accumulator is the shared one every
+chat-completions flavor uses since v4 `93ed8abf`.
+
+**Tier 3 item 10 — cache-read PRICING: NO-PORT, verified.** v4 at the
+pin has no NanoGPT row in `lib/llm/pricing.ts`, none in
+`fallback-data.ts`, none in `pricing-fetcher.ts`, and `pricing.ts`
+mentions no cache-read/cache-creation rate at all. Nothing to port. Also
+verified by reading (not re-plumbed, as the order directs):
+`cacheUsage`/`rawProviderUsage` already flow generically from the chunk
+into the llm-logs projection and the cost display
+(`services/primary_stream.rs:874-935, 965-1029`) — provider-agnostic, so
+NanoGPT's new values arrive there for free.
+
+**Tier 3 item 9 — 💸 the live smoke joins the dogfood queue.** No oracle
+judges what NanoGPT's gateway actually does with `promptCaching`: a real
+key, a Claude-routed model, two turns of the same long conversation, and
+`cacheUsage` visible in the LLM Inspector and the cost display. Also
+worth the same trip: the Prompt Caching card's own rendering (see the
+SPA deferral in unit 1) and the 1h TTL.
+
+**Deferred loud — the SPA spec fixture (ownership, not oversight).** This
+lane may not touch `apps/web/**`.
+`apps/web/src/app/screens/settings/providers/nanogpt-options.spec.ts`
+holds a deliberately hand-transcribed copy of v4's NanoGPT schema so the
+two halves cannot drift into agreement by accident; that copy still
+carries only the "NanoGPT Options" group. Nothing is WRONG — the panel
+renders booleans and `showIf`-gated enums generically (P4.D84, both
+already spec'd with `equals: true` arms), and the group reaches the
+client straight off the regenerated manifest — but the transcription is
+now incomplete. One-file SPA follow-up.
+
+_No crate versions bumped by this unit._
