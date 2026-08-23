@@ -60,9 +60,15 @@ pub enum Flavor {
     /// `delta.reasoning_content` as the LEGACY fallback — the `??` precedence,
     /// which no other flavor has. Same terminal `raw_response` shape as the
     /// OpenAI-SDK flavors (and it carries the accumulated run under the LEGACY
-    /// `reasoning_content` key), but NO cache usage and no
-    /// `raw_provider_usage` — v4's NanoGPT reads neither. Carries v4 bug 87's
-    /// prose-echo guard (see `pending_reasoning`).
+    /// `reasoning_content` key). Carries v4 bug 87's prose-echo guard (see
+    /// `pending_reasoning`).
+    ///
+    /// Cache usage (P4.D105, v4 `f8973813`): BOTH dialects, through the SAME
+    /// `nanogpt_cache_usage` the non-streaming twin uses — the only flavor
+    /// reporting cache WRITES. It also emits `raw_provider_usage`
+    /// UNCONDITIONALLY on the final chunk (v4 `rawProviderUsage: usage ?? null`,
+    /// so an absent usage frame yields an explicit `null`, not an absent key) —
+    /// z-ai's habit, which NanoGPT has now joined.
     NanoGpt,
 }
 
@@ -74,9 +80,9 @@ impl Flavor {
     /// → all-zero), where the raw openrouter path and the plain base omit it.
     ///
     /// They still differ BELOW this predicate, in explicit per-flavor arms: the
-    /// cache-usage source (deepseek's `prompt_cache_hit_tokens` vs z-ai's
-    /// `prompt_tokens_details`, and NanoGPT derives none at all) and
-    /// `raw_provider_usage` (z-ai alone emits it).
+    /// cache-usage source (deepseek's `prompt_cache_hit_tokens`, z-ai's
+    /// `prompt_tokens_details`, NanoGPT's two-dialect extractor) and
+    /// `raw_provider_usage` (z-ai and NanoGPT emit it; deepseek does not).
     ///
     /// NanoGPT (P4.D101) carries the accumulated run under the LEGACY
     /// `reasoning_content` key here — v4's `d5830439` dialect fix changed which
@@ -291,15 +297,28 @@ impl ChatCompletionsSseDecoder {
                 .and_then(|v| v.as_i64())
                 .filter(|c| *c > 0)
         };
-        // Cache-read tokens: flavor-specific source.
-        let cached: Option<i64> = match self.flavor {
+        // Cache counters: flavor-specific source. `written` exists for NanoGPT
+        // alone — the only gateway of the five that reports cache WRITES.
+        let (cached, written): (Option<i64>, Option<i64>) = match self.flavor {
             // deepseek: prompt_cache_hit_tokens (>0), see `extractCacheUsage`.
-            Flavor::DeepSeek => get("prompt_cache_hit_tokens").filter(|h| *h > 0),
+            Flavor::DeepSeek => (get("prompt_cache_hit_tokens").filter(|h| *h > 0), None),
             // z-ai / openrouter: prompt_tokens_details.cached_tokens.
-            Flavor::ZAi | Flavor::OpenRouterRaw => cached_from_details(),
-            // v4's NanoGPT `streamMessage` derives NO cacheUsage at all.
-            Flavor::OpenAiCompatible | Flavor::NanoGpt => None,
+            Flavor::ZAi | Flavor::OpenRouterRaw => (cached_from_details(), None),
+            // nanogpt (P4.D105, v4 `f8973813`): BOTH dialects with the `??`
+            // precedence. Deliberately the SAME function the non-streaming arm
+            // calls — v4 has one `extractCacheUsage` method serving both, and
+            // two copies here would be two places to drift.
+            Flavor::NanoGpt => {
+                let cu = crate::model::response_parse::nanogpt_cache_usage(raw);
+                (
+                    cu.and_then(|c| c.cache_read_input_tokens),
+                    cu.and_then(|c| c.cache_creation_input_tokens),
+                )
+            }
+            Flavor::OpenAiCompatible => (None, None),
         };
+        // v4 `cacheUsage?.cacheReadInputTokens ?? 0` — a write-only turn
+        // subtracts nothing.
         let cache_read = cached.unwrap_or(0);
         let prompt = get("prompt_tokens").unwrap_or(0);
         let completion = get("completion_tokens").unwrap_or(0);
@@ -309,9 +328,10 @@ impl ChatCompletionsSseDecoder {
             completion_tokens: completion,
             total_tokens: (total - cache_read).max(0),
         };
-        let cache_usage = cached.map(|c| StreamCacheUsage {
-            cached_tokens: Some(c),
-            cache_read_input_tokens: Some(c),
+        let cache_usage = (cached.is_some() || written.is_some()).then_some(StreamCacheUsage {
+            cached_tokens: cached,
+            cache_read_input_tokens: cached,
+            cache_creation_input_tokens: written,
             ..Default::default()
         });
         (Some(usage), cache_usage)
@@ -446,9 +466,12 @@ impl ChatCompletionsSseDecoder {
                 if self.saw_reasoning {
                     chunk.reasoning_content = Some(self.reasoning.clone());
                 }
-                // z-ai emits rawProviderUsage (the raw `usage` sub-object);
-                // deepseek does not (its plugin omits the field).
-                if self.flavor == Flavor::ZAi {
+                // z-ai and (since v4 `f8973813`) nanogpt emit rawProviderUsage
+                // — the raw `usage` sub-object, or an explicit `null` when the
+                // stream carried no usage frame (v4 `(usage ?? null)`, so the
+                // KEY is always present). deepseek does not (its plugin omits
+                // the field).
+                if matches!(self.flavor, Flavor::ZAi | Flavor::NanoGpt) {
                     chunk.raw_provider_usage = Some(self.usage_raw.clone().unwrap_or(Value::Null));
                 }
             }

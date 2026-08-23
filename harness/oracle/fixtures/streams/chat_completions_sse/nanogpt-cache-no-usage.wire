@@ -1,0 +1,5 @@
+data: {"id":"nc6","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"No usage frame."}}]}
+
+data: {"id":"nc6","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

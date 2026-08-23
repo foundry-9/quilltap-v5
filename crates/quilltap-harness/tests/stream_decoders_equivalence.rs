@@ -339,6 +339,17 @@ fn run_decoder(decoder: &str) {
     let recorded = load_recorded(decoder);
     assert!(!recorded.is_empty(), "no recorded cases for {decoder}");
     let mut checked = 0;
+    // P4.D105 — the NanoGPT streaming cache-usage coverage shape, read off v4's
+    // RECORDED final chunk (never off v5's decode), so a corpus that lost a
+    // vector cannot leave the feature untested and still pass green.
+    let (
+        mut nanogpt_cache_anthropic,
+        mut nanogpt_cache_write_only,
+        mut nanogpt_cache_openai_dialect,
+        mut nanogpt_cache_excluded,
+        mut nanogpt_rpu_null,
+        mut nanogpt_rpu_object,
+    ) = (false, false, false, false, false, false);
     for spec in &cases {
         let provider = spec["provider"].as_str().unwrap();
         let case = spec["case"].as_str().unwrap();
@@ -346,6 +357,48 @@ fn run_decoder(decoder: &str) {
             .iter()
             .find(|o| o.provider == provider && o.case == case)
             .unwrap_or_else(|| panic!("no recorded oracle for {provider}/{case}"));
+        if provider == "nanogpt" {
+            let final_chunk = oracle.chunks.last().expect("a final chunk");
+            let cache = final_chunk.get("cacheUsage");
+            let read = cache
+                .and_then(|c| c.get("cacheReadInputTokens"))
+                .and_then(Value::as_i64);
+            let written = cache
+                .and_then(|c| c.get("cacheCreationInputTokens"))
+                .and_then(Value::as_i64);
+            match (read, written) {
+                (Some(_), Some(_)) => nanogpt_cache_anthropic = true,
+                (None, Some(_)) => nanogpt_cache_write_only = true,
+                (Some(_), None) => nanogpt_cache_openai_dialect = true,
+                (None, None) => {}
+            }
+            // v4 `rawProviderUsage: (usage ?? null)` — the KEY is always
+            // present on NanoGPT's final chunk; both arms must be exercised.
+            match final_chunk.get("rawProviderUsage") {
+                Some(Value::Null) => nanogpt_rpu_null = true,
+                Some(Value::Object(u)) => {
+                    nanogpt_rpu_object = true;
+                    // The house rule, against v4's own bytes: the recorded
+                    // promptTokens is the RAW prompt_tokens minus the read.
+                    let wire_prompt = u.get("prompt_tokens").and_then(Value::as_i64).unwrap_or(0);
+                    let recorded_prompt =
+                        final_chunk["usage"]["promptTokens"].as_i64().unwrap_or(0);
+                    assert_eq!(
+                        recorded_prompt,
+                        (wire_prompt - read.unwrap_or(0)).max(0),
+                        "nanogpt/{case}: v4's recorded promptTokens is not \
+                         max(0, prompt_tokens - cacheRead) — the house rule moved"
+                    );
+                    if read.unwrap_or(0) > 0 && recorded_prompt < wire_prompt {
+                        nanogpt_cache_excluded = true;
+                    }
+                }
+                other => panic!(
+                    "nanogpt/{case}: v4 recorded rawProviderUsage={other:?} — the field is \
+                     supposed to be present on every final chunk, as the usage object or null"
+                ),
+            }
+        }
         run_decoder_case(decoder, spec, oracle);
         checked += 1;
     }
@@ -356,6 +409,34 @@ fn run_decoder(decoder: &str) {
         checked,
         recorded.len()
     );
+    if decoder == "chat_completions_sse" {
+        assert!(
+            nanogpt_cache_anthropic,
+            "corpus lost the nanogpt Anthropic-dialect stream case (read AND write)"
+        );
+        assert!(
+            nanogpt_cache_write_only,
+            "corpus lost the nanogpt write-only stream case"
+        );
+        assert!(
+            nanogpt_cache_openai_dialect,
+            "corpus lost the nanogpt OpenAI-dialect (cached_tokens) stream case"
+        );
+        assert!(
+            nanogpt_cache_excluded,
+            "corpus lost the nanogpt stream case where the cache read actually \
+             REDUCES promptTokens — the house rule is untested"
+        );
+        assert!(
+            nanogpt_rpu_null,
+            "corpus lost the nanogpt no-usage-frame case — nothing pins \
+             `rawProviderUsage: null` against an absent key"
+        );
+        assert!(
+            nanogpt_rpu_object,
+            "corpus lost every nanogpt case carrying a usage frame"
+        );
+    }
     eprintln!("OK: {decoder} — {checked} case(s) × 2–3 chunkings match v4.");
 }
 

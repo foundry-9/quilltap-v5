@@ -211,5 +211,59 @@
     "wire": "nanogpt-echo-diverges.wire",
     "model": "openai/gpt-5-mini",
     "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-anthropic",
+    "wire": "nanogpt-cache-anthropic.wire",
+    "model": "anthropic/claude-sonnet-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-write-only",
+    "wire": "nanogpt-cache-write-only.wire",
+    "model": "anthropic/claude-sonnet-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-openai-dialect",
+    "wire": "nanogpt-cache-openai-dialect.wire",
+    "model": "openai/gpt-5.5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-read-zero-present",
+    "wire": "nanogpt-cache-read-zero-present.wire",
+    "model": "anthropic/claude-sonnet-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-clamp",
+    "wire": "nanogpt-cache-clamp.wire",
+    "model": "anthropic/claude-sonnet-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "NanoGpt",
+    "provider": "nanogpt",
+    "case": "nanogpt-cache-no-usage",
+    "wire": "nanogpt-cache-no-usage.wire",
+    "model": "anthropic/claude-sonnet-5",
+    "temperature": 0.7
   }
 ]

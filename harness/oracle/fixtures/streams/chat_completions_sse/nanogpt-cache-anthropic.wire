@@ -1,0 +1,7 @@
+data: {"id":"nc1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Cached and written."}}]}
+
+data: {"id":"nc1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"nc1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":8500,"completion_tokens":200,"total_tokens":8700,"cache_read_input_tokens":8000,"cache_creation_input_tokens":100}}
+
+data: [DONE]
