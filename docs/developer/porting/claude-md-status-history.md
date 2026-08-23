@@ -2090,3 +2090,12 @@ Contents:
   detached worktree at `4cb1035e` for EVERY regen until that catch-up
   runs; it is the top next candidate.** (The drift-check/pin/sweep-driver
   boilerplate continued as in the current paragraph.)
+
+## Baseline paragraph superseded at the f8973813-round unification (2026-08-22)
+
+- **Oracle baseline: `a6870c5a` (2026-08-22, v4 main — "feat(prompts):
+  grammatical-person consistency in assembled prompts"), adopted at the
+  a6870c5a-round unification (2026-08-22).** v4 had NOT moved past it at
+  unification (verified immediately before the unified regen). (The
+  drift-check/pin/sweep-driver boilerplate continued as in the current
+  paragraph.)

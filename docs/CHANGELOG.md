@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-22 — unify: the `f8973813` NanoGPT-caching + settings-wire round (P4.D105 ∥ P4.56)
+
+_Versions: core 0.0.627, harness 0.0.550, web 0.0.78._
+
+Both lanes unified; the oracle baseline stays `f8973813` (v4's one newer
+commit `65f3476e` is CI/release infra + a comment-only lib edit +
+standalone-tarball native linking v5 doesn't have — NO-PORT with evidence;
+every gate regen ran from a pinned worktree). P4.D105: NanoGPT prompt
+caching whole — the Prompt Caching options group through the manifest
+generator, the `promptCaching` body key behind the strict `=== true` gate
+with the TTL collapse, both-dialect cache-usage normalization with the
+`??`-precedence pin measured on v4 and cache reads excluded from
+prompt/total on both the non-streaming response and the streaming final
+chunk (which also gains unconditional `rawProviderUsage`), plus the
+`response_parse_equivalence` run line. P4.56: the B2 data-retention
+present-`null` collapse fixed red-first via `double_option` behind the
+harness serde-path rewire, the new `GET/PUT /api/v1/settings/data-retention`
+edge (which uncovered and fixed the `BrahmaConsole` success-arm 500 standing
+since P4.D57, and two leaked-DbError sentences), the groups cleared-null pin
+(zero source change), `settings_wire_actions` self-containment, the
+float-literal store fix, and the shared `apiKeyId`/`baseUrl` classify
+readers. The §3 review found no blocking findings. Unification wire: the
+NanoGPT spec-fixture transcription gained the Prompt Caching group with two
+showIf render specs. Gate: 12/12 families fresh at the pin; 445 test
+binaries / 2,269 / 0; clippy both feature sets; release build; ng 341 files
+/ 5,056; full Playwright green (numbers in the round record).
+
 #### 2026-08-22 — docs(porting): the P4.D105 v4 mirror refresh and lane dispositions
 
 _Docs-only change._

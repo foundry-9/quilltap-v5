@@ -5593,3 +5593,45 @@ whenever v4 HEAD is past the baseline — all three symlink classes). The
 sweep driver remains the sanctioned per-family regen path — never run
 two sweeps concurrently. The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
+
+### The `f8973813` round (P4.D105 ∥ P4.56) — UNIFIED 2026-08-22
+
+Both lanes closed same-day; the baseline STAYS `f8973813` (v4's newer
+`65f3476e` = CI/release infra + a comment-only lib edit + standalone-tarball
+native linking v5 doesn't have — NO-PORT with evidence, recorded in the round
+record). NanoGPT prompt caching whole (options group via the generator, the
+strict-gate `promptCaching` body key, both-dialect cache usage with the
+measured `??`-precedence pin, streaming `rawProviderUsage`; corpora 321 /
+52 / 22, every pre-existing row byte-identical) ∥ the settings-wire
+remainder (B2 fixed red-first via `double_option` behind the harness
+serde rewire; the new data-retention REST edge, which uncovered the
+`BrahmaConsole` success-arm 500 standing since P4.D57 + two leaked-DbError
+sentences, all fixed + pinned; the groups cleared-null pin zero-change;
+`settings_wire_actions` self-contained; the float-literal store fix; the
+shared classify readers, mutation-proven at all three sites). §3: no
+blocking findings. Gate: the round record in `status-log.md`.
+
+**Next candidates, in rough value order** (updated at the
+`f8973813`-round unification, 2026-08-22):
+
+1. **The next v4 drift catch-up** (check both branches first, as always;
+   `65f3476e` is already dispositioned NO-PORT — the check starts from
+   `f8973813` and will list it again; the disposition in the round record
+   is the answer).
+2. **The owed 💸 dogfood queue** — now incl. this round's: the live
+   NanoGPT caching smoke (real key, Claude-routed model, two turns —
+   `cacheUsage` in the LLM Inspector + cost display, the Prompt Caching
+   card, the 1h TTL) and the data-retention invalid-config 400 on a live
+   screen; plus the standing items (standing instructions on a REAL turn,
+   the Group Instructions walk, the dedup/summaries first run, P4.D35's
+   other three write paths, the Fetch-Models live-key smoke).
+3. **The tri-state decode-once adoption** for `taboo` / `brahma-console`
+   (P4.56's recorded lead: both still re-derive the tri-state at three
+   call sites each; the data-retention edge demonstrates the shape).
+   Small, well-scoped.
+4. `p4.9i2` (the bank grew the NanoGPT Prompt Caching help bullets this
+   round) and the generators-lane bank (unchanged).
+5. Maintenance: the wider `docs/v4/` mirror staleness (~8 differing
+   files + unmirrored `bugs/fixed/` rows — P4.D105's Tier-2 note).
+
+PB1 stays parked by the standing rule. Round record: `status-log.md`.

@@ -1700,11 +1700,65 @@ records THERE. Update this summary only when a phase or round completes.
   Group Instructions walk + the invalid-config 400s. Versions: core
   0.0.620, harness 0.0.542, SPA 0.5.544; host/web/cli/tauri unchanged.
   Round record: `status-log.md`.
-- **Oracle baseline: `a6870c5a` (2026-08-22, v4 main — "feat(prompts):
-  grammatical-person consistency in assembled prompts"), adopted at the
-  a6870c5a-round unification (2026-08-22).** v4 had NOT moved past it at
-  unification (verified immediately before the unified regen).
-  **Drift-check BOTH development
+- **The `f8973813` NanoGPT-caching + settings-wire round (P4.D105 ∥
+  P4.56): UNIFIED on main (2026-08-22) — BOTH CLOSED; the oracle baseline
+  MOVES to `f8973813`.** v4's one drift commit absorbed whole: NanoGPT
+  prompt caching (plugin 1.0.3) — the Prompt Caching options group
+  through the manifest generator (zero generator change; nine siblings
+  byte-identical), the `promptCaching` body key behind the STRICT
+  `=== true` gate (probed on v4) with the literal-`'1h'` TTL collapse and
+  the consumed-keys asserts, and both-dialect cache-usage normalization
+  (`nanogpt_cache_usage` shared by the non-streaming parse AND the
+  streaming final chunk; the `??`-precedence pin MEASURED —
+  `cache-read-zero-present`: v4 charges all 600 prompt tokens; cache
+  reads excluded from prompt/total via the shared `sub_floor` leg;
+  unconditional `rawProviderUsage: usage ?? null`), corpora 307 → 321 /
+  46 → 52 / 16 → 22 with every pre-existing row byte-identical + eight
+  mutation proofs; the `response_parse_equivalence` run-line debt closed
+  ∥ P4.56: the P4.55 remainders — **B2 fixed red-first** (the harness
+  serde-path rewire landed FIRST so `dr_put_null` could measure the real
+  divergence: v4 400, v5 silent-keep; then `double_option` + the
+  three-arm engine match), the new `GET/PUT
+  /api/v1/settings/data-retention` edge decoding through the `Request`
+  enum — **which uncovered two real bugs, fixed + pinned:
+  `CoreResponse::BrahmaConsole` missing from `unwrap_to_http`'s success
+  arm since P4.D57 (both brahma-console REST edges 500'd on every
+  success) and the two data-retention handlers leaking `DbError` text** —
+  the groups cleared-null pin (zero source change, the fresh oracle
+  measured `"description": null` present-not-omitted),
+  `settings_wire_actions` building its own fixture (5/5 from a clean
+  /tmp), the float-literal store fix via `normalize_js_numbers` behind a
+  new float-SENSITIVE comparand (the family's own normalizer would have
+  made the arms vacuous), and the shared `classify_api_key_id` /
+  `classify_base_url` readers (behavior-neutral, mutation-proven live at
+  all three sites). **§3: NO blocking findings** (three non-blocking
+  notes in the round record); the wire: the NanoGPT spec-fixture
+  transcription gained the Prompt Caching group + two showIf render
+  specs. **Mid-round incident:** v4's checkout went DIRTY during the
+  lanes and later committed as `65f3476e` — dispositioned NO-PORT with
+  evidence (CI/release infra + a comment-only lib edit + standalone-
+  tarball native linking v5 doesn't have); both lanes and the unified
+  gate ran every regen from pinned worktrees at `f8973813`. The gate's
+  own catch: the first sweep launch piped through `| tail` (the standing
+  rule's exact mistake) — re-run by name with full capture, which then
+  caught two families silently SKIPping on missing env vars; re-run
+  green. Gate: 12/12 families fresh at the pin zero unexplained SKIP;
+  445 test binaries / 2,269 / 0 (exactly the union of the lanes'
+  deltas); clippy both feature sets; release build; ng 341 files /
+  5,056; full Playwright green (numbers in the round record). Versions:
+  core 0.0.627, harness 0.0.550, web 0.0.78; host/cli/tauri/SPA-version
+  unchanged. 💸 the dogfood queue gains the live NanoGPT caching smoke +
+  the data-retention 400 on a live screen. Round record:
+  `status-log.md`.
+- **Oracle baseline: `f8973813` (2026-08-22, v4 main — "feat(nanogpt):
+  prompt caching (plugin 1.0.3)"), adopted at the f8973813-round
+  unification (2026-08-22).** ⚠ v4 HEAD is ONE commit past it
+  (`65f3476e` — CI/release infra + a comment-only lib edit +
+  standalone-tarball native linking v5 doesn't have; dispositioned
+  NO-PORT with evidence in the round record, so the baseline deliberately
+  does not move to it) — **pin a detached worktree at `f8973813` for
+  every regen** until a future round re-dispositions or absorbs newer
+  drift. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
   `diff`, never the commit list; note WHICH branch the checkout occupies

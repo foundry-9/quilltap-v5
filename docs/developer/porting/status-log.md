@@ -81492,3 +81492,124 @@ QT_ORACLE_EP_ROUTES=/tmp/oracle-embedding-profiles-routes.ndjson
 
 Versions: **core 0.0.624, harness 0.0.547, web 0.0.78**; host / cli / tauri /
 SPA untouched.
+
+---
+
+## Round record — the `f8973813` NanoGPT-caching + settings-wire round (P4.D105 ∥ P4.56), UNIFIED 2026-08-22
+
+Both lanes CLOSED and unified on `unify/f8973813-round` the day they were
+ordered. The oracle baseline **stays `f8973813`** — v4 moved ONE commit past it
+mid-round (`65f3476e`, committing the very dirty-tree edits both lanes had
+detected and pinned around), dispositioned **NO-PORT with evidence** at this
+gate: the whole commit is CI/release-pipeline infra (`.github/**`, the tarball
+and rootfs scripts moved to `.mjs`, composite actions), plus v4 bug 89's
+standalone-tarball native-module linking (`packages/quilltap/bin/quilltap.js`
+`linkScopedPlatformSiblings` — v5 has no standalone-tarball download path;
+the Tier R surface, help/completions, is untouched), plus a COMMENT-ONLY edit
+in `lib/background-jobs/host/processor-host.ts` (a filename reference,
+`.ts` → `.mjs`). Zero portable behavior. Every regen at this gate ran from a
+pinned detached worktree at `f8973813`
+(`/tmp/qt-v4-pin-unify-f8973813`, all three symlink classes).
+
+### The reconciliation
+
+Twelve lane commits cherry-picked in order (P4.D105's four, then P4.56's
+eight); the only conflicts were the version files, resolved by the playbook's
+recount rule — the merges silently kept only one lane's counts, so the final
+versions were recounted as base + total bumps: core 0.0.620 + 3 + 4 =
+**0.0.627**, harness 0.0.542 + 3 + 5 = **0.0.550**, web **0.0.78** (P4.56's
+own bump, uncontested). Doc files union-merged; both lane records verified
+present. No source-level conflict (Ownership held).
+
+### §3 — the whole combined diff read; NO blocking findings
+
+The review compared every ported hunk against v4's real code at the pin.
+Positively verified: the strict `=== true` caching gate and the literal-`'1h'`
+TTL collapse (`Value::Bool(true)` / `as_str == Some("1h")` — exact); the
+`promptCaching` key position (after `user`, before the profile params); the
+`??`-vs-`||` dialect precedence (v5's `Option::or_else` reproduces
+`Some(0)` short-circuiting, and the `cache-read-zero-present` row MEASURED
+v4's answer); the exclusion riding the shared `sub_floor` leg on both the
+non-streaming parse and the decoder; the unconditional
+`rawProviderUsage: (usage ?? null)` shape; the `double_option` tri-state
+against v4's Zod `.default(30)` semantics; the classify-reader extraction
+preserving each site's consequences (incl. the recorded
+terminal-after-side-effects divergence, unchanged); and the float-literal
+arms' construction — the oracle CANNOT express `200.0` in JS (it IS `200`),
+so the Rust side feeds the float directly and compares v4's canonical answer
+through the new float-SENSITIVE comparand, which is the right shape, not a
+vacuity. Non-blocking notes, recorded: (a) several long assert-message string
+literals in the new coverage arms carry embedded runs of spaces from source
+line wrapping — failure-path cosmetics only; (b) the engine dispatch arm and
+the harness's `data_retention_update_request` twin deliberately duplicate the
+tri-state → bag mapping (a documented mirror — the harness must decode the way
+the wire does); (c) pre-existing `internal(e)` DbError-text leaks remain on
+sibling lookup arms this round did not own (the P4.50 taxonomy candidates'
+territory).
+
+### The unification wire
+
+P4.D105 was forbidden to touch `apps/web/**`, so its one SPA deferral landed
+here as the wire (`3f38bb3f`): the hand-transcribed NanoGPT schema fixture in
+`nanogpt-options.spec.ts` (the P4.D101/P4.D102 Shared contract — deliberately
+NOT read from the server) gained the Prompt Caching group transcribed from v4
+`f8973813`, plus two specs pinning that the generic panel renders it with zero
+bespoke client code: the boolean row, and the `showIf`-gated Cache Duration
+enum hidden until the toggle is on (labels and order intact). Green on first
+run; the SPA suite grew 5,054 → 5,056.
+
+### The gate (all from the unify branch)
+
+- The gate's own incident, owned here: the first 12-family sweep was launched
+  through `| tail -20` — the exact standing-rule mistake — so although its
+  results JSON recorded `{'ok': 12}`, the full log was gone. The run stages
+  were re-run BY NAME with full capture; that re-run's `SKIP:` grep then
+  caught two families silently skipping (`providers_listing`,
+  `provider_registry` — the env block was missing their two vars), re-run
+  with their vars: both green over the pin-fresh NDJSONs, the listing oracle
+  carrying `enablePromptCaching`. Zero unexplained SKIP anywhere.
+- `harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-unify-f8973813
+  --run-all --families <the 12>` → **12/12 ok**
+  (`/tmp/unify-f8973813-sweep.json`): settings-routes (141 cases),
+  groups-routes, memories-routes (+ memories-config), settings_wire_actions
+  (5/5, building its own fixture), image-profiles, embedding-profiles,
+  providers-listing (9 options schemas byte-for-byte), provider-registry
+  (278 rows), request-envelopes (**321**), response-bodies, stream-decoders
+  (chat_completions_sse 22 cases), streaming-composer. Changed bytes grepped
+  present: `promptCaching` ×10 in the envelope corpus, `cacheUsage` ×10 in
+  the response-bodies corpus, the nine new settings/groups/memories arms by
+  name in their fresh NDJSONs.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` exit 0, plain AND `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- `cargo test --workspace` with the round's nine-variable env block:
+  **445 test binaries / 2,269 passed / 0 failed**, cargo exit 0, zero
+  `SKIP:` lines in the whole captured log — exactly the union of the lanes'
+  deltas over the `a6870c5a` base (444/2,266 + P4.56's binary and test +
+  P4.D105's two).
+- SPA: `npm test` **341 files / 5,056 passed / 0 failed** (grew by the wire's
+  two specs); `npm run build` clean; full Playwright: see the line below,
+  recorded after the suite's run against the fresh build.
+- Full Playwright: **236 passed / 0 failed / 0 skipped** — the suite is
+  unchanged in count (the wire is unit-tier; no new beats this round).
+
+Versions: **core 0.0.627, harness 0.0.550, web 0.0.78**; host / cli / tauri
+/ SPA version untouched (SPA specs grew, version bump rides the wire commit's
+docs — none needed by convention for spec-only).
+
+### Standing after the round
+
+- 💸 the dogfood queue gains: the live NanoGPT caching smoke (a real key, a
+  Claude-routed model, two turns — `cacheUsage` in the LLM Inspector and the
+  cost display, the Prompt Caching card's rendering, the 1h TTL) and the
+  data-retention invalid-config 400 on a live screen.
+- Recorded for a future order: `taboo_settings_update` /
+  `brahma_console_settings_update` still re-derive the tri-state at three
+  call sites each; the data-retention edge demonstrates the decode-once
+  alternative (P4.56's Tier-3 note).
+- The wider `docs/v4/` mirror is broadly stale (~8 differing
+  `docs/developer` files + unmirrored `bugs/fixed/` rows) — a named
+  maintenance item (P4.D105's Tier-2 note), pre-existing.
+- v4 `65f3476e` NO-PORT disposition recorded above; the next drift check
+  starts from `f8973813` and will see it again — the disposition here is
+  the record.
