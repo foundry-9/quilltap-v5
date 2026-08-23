@@ -3182,10 +3182,36 @@ where
         })
     } else {
         // Empty response (no tool messages in the corpus). Emit the done frame.
+        // The provider may have said why it returned nothing. Z.AI reports
+        // `finish_reason: sensitive` on a moderation refusal, OpenAI
+        // `content_filter`, Google `SAFETY` — all of which make "try resending"
+        // actively wrong advice (bug 93, v4 `a14a1811`).
+        let empty_finish_reason = streaming_state
+            .raw_response
+            .as_ref()
+            .and_then(crate::finish_reason::extract_finish_reason);
         let empty_reason = provider_failover::get_empty_response_reason(
             recovery_flags.uncensored_retry_attempted,
             recovery_flags.same_provider_retry_attempted,
             content_was_flagged_dangerous,
+            empty_finish_reason.as_deref(),
+            Some(&effective_profile.provider),
+            Some(&effective_profile.model_name),
+        );
+        // v4 `logger.warn('Empty response for chat …', {…})` — the payload
+        // gains `finishReason` + `moderationRefusal` (bug 93).
+        tracing::warn!(
+            chat_id = %chat_id,
+            uncensored_retry_attempted = recovery_flags.uncensored_retry_attempted,
+            same_provider_retry_attempted = recovery_flags.same_provider_retry_attempted,
+            content_was_flagged_dangerous,
+            finish_reason = empty_finish_reason.as_deref().unwrap_or(""),
+            moderation_refusal = crate::moderation_finish_reason::is_moderation_finish_reason(
+                empty_finish_reason.as_deref()
+            ),
+            provider = %effective_profile.provider,
+            model = %effective_profile.model_name,
+            "Empty response"
         );
         sink.emit(ChatEvent::done(DonePayload {
             message_id: None,

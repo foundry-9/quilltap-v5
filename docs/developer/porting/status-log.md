@@ -81730,3 +81730,65 @@ and surfaced an out-of-band profile.
 - Not walked: the other six migrated prompt-field surfaces (C7 covered the
   group one), and the multi-source ICU collation of standing instructions —
   only one instructed entity exists on this instance.
+
+## P4.D106 — the image-transport predicate, moderation finish reasons, and the attachment anchor (v4 `a14a1811` bugs 91+93+95, server half)
+
+Lane branch `claude/p4-d106-image-transport-fa95f8`. Drift-check at lane start
+(2026-08-23): v4 HEAD == `a14a1811` (the round's pin), checkout on `main`, tree
+clean; `bugfix` HEAD still `3a76b17d` — nothing unabsorbed. Regens run from the
+live checkout per the order.
+
+### Unit 1 — bug 93 end-to-end: the moderation finish-reason recogniser + the empty-response wiring
+
+- **Ported:** v4's new `lib/llm/moderation-finish-reason.ts` →
+  `quilltap-core::moderation_finish_reason`. The ten-literal set verbatim
+  (`sensitive`, `content_filter`, `content-filter`, `refusal`, `safety`,
+  `prohibited_content`, `blocklist`, `spii`, `image_safety`, `recitation`);
+  `is_moderation_finish_reason` = `js_trim` + `to_lowercase` set membership,
+  false for None/empty; `describe_moderation_refusal` with the sentence
+  byte-exact (raw untrimmed reason interpolated, backticks kept).
+- **v4-side note carried as a comment, not propagated:** the module's docblock
+  says "(bug 94)" — the commit message and `bugs/fixed/bug-93-*.md` both say
+  bug 93. The CODE is ported; the number is corrected in v5 prose.
+- **Differential:** NEW tier-1 `moderation_finish_reason_equivalence` (oracle
+  `harness/oracle/cases/moderation-finish-reason.ts` driving v4's REAL module;
+  35 rows: all ten literals, Google's UPPERCASE dialect, mixed case, padded /
+  tab-newline / NBSP / U+2028 whitespace (pinning the `.trim()` twin), five
+  ordinary stops, five substring traps, null/empty, the Turkish dotted-capital
+  fold — both sides computed, and the raw-reason interpolation visible in the
+  padded rows' sentences). Corpus floor ≥30 rows, ≥15 recognised, ≥1 negative.
+  **Mutation proof:** dropping the `content-filter` literal reddens the family
+  (`lit_content_filter_hyphen`).
+- **The wiring:** `get_empty_response_reason` gains
+  `finish_reason`/`provider`/`model_name` (`Option<&str>` — v4's optional
+  object keys) and the moderation FIRST branch (v4's `provider ?? 'The
+  provider'` / `modelName ?? 'model'` defaults carried; the uncensored-retry
+  suffix appended verbatim); the five pre-existing sentences byte-unchanged
+  and the guard test EXTENDED (`moderation_refusal_beats_every_inference_
+  sentence` — all five flag combos + defaults + ordinary-stop fall-through).
+  The orchestrator empty branch extracts the finish reason from
+  `streaming_state.raw_response` (the RETRY's raw wins, as in v4 where the
+  restream overwrites `state.rawResponse`), threads the effective profile's
+  provider/model, and the `tracing::warn!` payload gains `finish_reason` +
+  `moderation_refusal` (v4's `logger.warn` keys).
+- **Differential, tier 2 of the pin:** the oracle case gained a second
+  section driving v4's REAL `getEmptyResponseReason` (12 matrix rows: the
+  first branch beating each pre-existing arm, the suffix riding exactly the
+  uncensored flag, defaults, padded-raw interpolation, and the five old
+  sentences byte-unchanged). **Composition pin:** NEW `moderation_refusal`
+  op in the orchestrator tier-3 corpus (empty stream, terminal chunk
+  `rawResponse: {choices:[{finish_reason:"sensitive"}]}` on BOTH attempts) —
+  regenerated fresh at the pin through the sweep driver, the moderation
+  sentence grepped present in the NDJSON, family green.
+- **Mutation proofs:** dropping the `content-filter` literal reddens the
+  family; neutralizing the first branch (`None` for the reason) reddens the
+  matrix rows; un-threading the orchestrator's `finishReason` reddens
+  `orchestrator_tier3_equivalence`. All restored green.
+- **Docs riders:** v4's `bugs/fixed/bug-91…95.md` (+ the pre-existing mirror
+  gaps 88–90) and `bugs.md` copied verbatim into `docs/v4`; the two help-file
+  sections (`connection-profiles.md` "Two questions, not one",
+  `dangerous-content.md` "When a Provider Refuses Outright") banked as the
+  P4.D106 note on `m6-screen-parity.md` row 11 per the P4.D105 precedent.
+- Recipe header self-contained per `recipe-header-conventions`;
+  `recipe_sweep.py --show` extracts both stages; `--self-test` 0 failures.
+- Versions: core 0.0.629, harness 0.0.552.

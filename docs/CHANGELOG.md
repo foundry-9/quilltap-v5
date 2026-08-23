@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — feat(llm): provider moderation refusals named, not blamed on the weather (bug 93)
+
+_Versions: core 0.0.629, harness 0.0.552._
+
+Ports v4 `a14a1811`'s bug-93 fix end-to-end. The new
+`quilltap-core::moderation_finish_reason` module carries the ten-literal set
+(incl. the hyphenated `content-filter` the v4 docblock doesn't call out),
+`is_moderation_finish_reason` (trim + lowercase set membership, no substring
+guessing), and `describe_moderation_refusal` with v4's sentence byte-exact.
+`get_empty_response_reason` gains the moderation first branch ahead of its
+five pre-existing sentences (byte-unchanged) plus the uncensored-retry
+suffix; the orchestrator's empty-response arm extracts the finish reason
+from the raw response, threads provider/model, and its warn payload gains
+`finishReason` + `moderationRefusal`. Pinned by the new tier-1
+`moderation_finish_reason_equivalence` family (35 module rows + 12
+`getEmptyResponseReason` matrix rows over v4's REAL code; dropping a
+literal, neutralizing the first branch, and un-threading the orchestrator
+each proven red) and a new `moderation_refusal` op in the orchestrator
+tier-3 corpus — v4's real `processMessage` answers the moderation sentence
+in the done frame where the "known issue" copy used to appear, and v5's
+spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
+port records the discrepancy and keeps the code. Also mirrors v4's
+bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
+sections to the `p4.9i2` row.
+
 #### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
 
 _Docs-only; no version bumps._

@@ -290,12 +290,36 @@ where
     flags
 }
 
-/// v4 `getEmptyResponseReason` — the five exact user-facing strings.
+/// v4 `getEmptyResponseReason` — the five exact user-facing strings, plus (v4
+/// `a14a1811`, bug 93) the moderation first branch: a provider that NAMED its
+/// refusal in the finish reason gets its own sentence ahead of every
+/// inference-from-an-empty-body sentence below, with the uncensored-retry
+/// suffix appended when that retry also came back empty.
 pub fn get_empty_response_reason(
     uncensored_retry_attempted: bool,
     same_provider_retry_attempted: bool,
     content_was_flagged_dangerous: bool,
+    finish_reason: Option<&str>,
+    provider: Option<&str>,
+    model_name: Option<&str>,
 ) -> String {
+    // A provider that named its refusal outright gets to say so. Everything
+    // below this point is inference from an empty body; this is testimony, and
+    // it changes the advice — "try resending" is wrong for a moderation stop
+    // (bug 93). v4: `provider ?? 'The provider'`, `modelName ?? 'model'`.
+    if let Some(refusal) = crate::moderation_finish_reason::describe_moderation_refusal(
+        finish_reason,
+        provider.unwrap_or("The provider"),
+        model_name.unwrap_or("model"),
+    ) {
+        if uncensored_retry_attempted {
+            return format!(
+                "{refusal} An uncensored provider was tried as well and also returned empty."
+            );
+        }
+        return refusal;
+    }
+
     if uncensored_retry_attempted && same_provider_retry_attempted {
         return "The AI model returned an empty response after retrying, and an uncensored provider \
                 also returned empty. This may indicate the content was filtered by both providers."
@@ -492,15 +516,70 @@ mod tests {
 
     #[tokio::test]
     async fn empty_response_reason_strings() {
-        assert!(get_empty_response_reason(true, true, false)
-            .contains("after retrying, and an uncensored"));
         assert!(
-            get_empty_response_reason(true, false, false).contains("retrying with an uncensored")
+            get_empty_response_reason(true, true, false, None, None, None)
+                .contains("after retrying, and an uncensored")
         );
-        assert!(get_empty_response_reason(false, false, true).contains("Concierge flagged"));
-        assert!(get_empty_response_reason(false, true, false).contains("empty response twice"));
-        assert!(get_empty_response_reason(false, false, false)
-            .contains("known issue with some providers"));
+        assert!(
+            get_empty_response_reason(true, false, false, None, None, None)
+                .contains("retrying with an uncensored")
+        );
+        assert!(
+            get_empty_response_reason(false, false, true, None, None, None)
+                .contains("Concierge flagged")
+        );
+        assert!(
+            get_empty_response_reason(false, true, false, None, None, None)
+                .contains("empty response twice")
+        );
+        assert!(
+            get_empty_response_reason(false, false, false, None, None, None)
+                .contains("known issue with some providers")
+        );
+    }
+
+    #[tokio::test]
+    async fn moderation_refusal_beats_every_inference_sentence() {
+        // Bug 93 (v4 `a14a1811`): a named refusal wins over each pre-existing
+        // arm, and a NON-moderation finish reason leaves them all untouched.
+        for (unc, same, flagged) in [
+            (false, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, false, false),
+            (true, true, false),
+        ] {
+            let s = get_empty_response_reason(
+                unc,
+                same,
+                flagged,
+                Some("sensitive"),
+                Some("Z_AI"),
+                Some("glm-5v-turbo"),
+            );
+            assert!(
+                s.contains("refused this turn on content grounds"),
+                "moderation branch must win for ({unc},{same},{flagged})"
+            );
+            assert_eq!(
+                s.contains("An uncensored provider was tried as well and also returned empty."),
+                unc,
+                "the suffix rides exactly the uncensored-retry arm"
+            );
+        }
+        // Defaults when the caller has no provider/model at hand.
+        let s = get_empty_response_reason(false, false, false, Some("SAFETY"), None, None);
+        assert!(s.starts_with("The provider model refused this turn"));
+        // An ordinary stop falls through to the old default.
+        let s = get_empty_response_reason(
+            false,
+            false,
+            false,
+            Some("stop"),
+            Some("OPENAI"),
+            Some("gpt-5"),
+        );
+        assert!(s.contains("known issue with some providers"));
     }
 
     #[tokio::test]

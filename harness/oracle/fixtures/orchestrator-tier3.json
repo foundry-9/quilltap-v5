@@ -1537,6 +1537,16 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "fc0a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "moderation_refusal",
+   "kind": "single",
+   "chatId": "4f6efed3-51ee-4495-a582-5821533b477c",
+   "content": "Describe the forbidden thing.",
+   "continueMode": false,
+   "streamLabel": "moderation_refusal",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
   }
  ],
  "streams": {
@@ -2373,6 +2383,48 @@
       "promptTokens": 12,
       "completionTokens": 4,
       "totalTokens": 16
+     }
+    }
+   ]
+  ],
+  "moderation_refusal": [
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 21,
+      "completionTokens": 0,
+      "totalTokens": 21
+     },
+     "rawResponse": {
+      "choices": [
+       {
+        "finish_reason": "sensitive"
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 21,
+      "completionTokens": 0,
+      "totalTokens": 21
+     },
+     "rawResponse": {
+      "choices": [
+       {
+        "finish_reason": "sensitive"
+       }
+      ]
      }
     }
    ]
