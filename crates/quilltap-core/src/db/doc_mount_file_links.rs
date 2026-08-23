@@ -1777,6 +1777,38 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// prior chunks before re-chunking; a no-op when none exist. The Rust port does
     /// not carry the chunker, so a keep writes no new chunk rows — this only clears
     /// any pre-existing ones for a rewrite-in-place.
+    /// The auto-describe blank-link update (v4
+    /// `auto-describe-attachment.ts`'s `repos.docMountFileLinks.update(link.id,
+    /// { description, descriptionUpdatedAt, extractedText, extractedTextSha256,
+    /// extractionStatus: 'converted' })`). `description_updated_at` is the
+    /// module's single pre-loop `now`; `updatedAt` is stamped at call time (v4's
+    /// base `_update` uses its own `getCurrentTimestamp()`). Returns `Ok(false)`
+    /// when no row matched.
+    pub fn apply_auto_description(
+        &self,
+        link_id: &str,
+        description: &str,
+        extracted_text_sha256: &str,
+        description_updated_at: &str,
+        updated_at: &str,
+    ) -> Result<bool, DbError> {
+        let affected = self.conn.execute(
+            "UPDATE doc_mount_file_links \
+               SET description = ?1, descriptionUpdatedAt = ?2, \
+                   extractedText = ?1, extractedTextSha256 = ?3, \
+                   extractionStatus = 'converted', updatedAt = ?4 \
+             WHERE id = ?5",
+            params![
+                description,
+                description_updated_at,
+                extracted_text_sha256,
+                updated_at,
+                link_id
+            ],
+        )?;
+        Ok(affected > 0)
+    }
+
     pub fn delete_chunks_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {
         let affected = self.conn.execute(
             "DELETE FROM doc_mount_chunks WHERE linkId = ?1",

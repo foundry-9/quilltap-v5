@@ -14,7 +14,11 @@
 //! - [`save_image_to_album`] — the stateful save service (v4
 //!   `save-image-to-album.ts`), with image bytes behind an injected
 //!   [`save_image_to_album::FileBytesStore`] seam.
+//! - [`auto_describe_attachment`] — the upload-time vision describe pipeline
+//!   (v4 `auto-describe-attachment.ts`), the `describe_image` tool's vision
+//!   tier (P4.D108).
 
+pub mod auto_describe_attachment;
 pub mod character_gallery_service;
 pub mod keep_image_markdown;
 pub mod photo_link_summary;

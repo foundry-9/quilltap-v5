@@ -215,6 +215,33 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — feat(photos): port the auto-describe-attachment pipeline (P4.D108 unit 2)
+
+_Versions: core 0.0.630._
+
+`photos/auto_describe_attachment.rs` ports v4's
+`lib/photos/auto-describe-attachment.ts` whole: the four pre-bytes skip
+arms in v4's order (`not-found` / `not-image` / `no-sha` /
+`already-described`), the bytes read behind the existing `FileBytesStore`
+seam (a failure is v4's warn + `no-bytes`), the vision call behind the §C2
+`ImageDescribeDriver` (the host's driver runs
+`generate_image_description` whole — profile resolution, refusals, the
+uncensored retry, `logLLMCall`), and the three-sink persist pass: the
+`files.description` write, every blank hard link updated (per-mount
+`description` + `extractedText` + the real chunk pass; kept-image links
+with markdown are left untouched), and the per-mount embedding enqueue
+through the recorded `SaveImageSideEffects` seam (the photo-trio
+precedent — v4's differential jest-mocks the enqueue identically). The
+links repo gained the dedicated `apply_auto_description` update mirroring
+v4's `docMountFileLinks.update` call. Five unit tests over a provisioned
+fresh two-partition instance pin the skip vocabulary (incl. the
+whitespace-only-description trim quirk carried from v4), the
+three-sink success path, the second-run `already-described`
+short-circuit with zero vision calls, and the kept-link skip. The
+module's differential (driving v4's real module with
+`generateImageDescription` mocked at the §C2 level) lands with the
+photo-tools family widening in unit 3.
+
 #### 2026-08-23 — feat(tools): the describe_image catalog entry + the attach/keep/list copy rewrites (P4.D108 unit 1)
 
 _Versions: core 0.0.629._

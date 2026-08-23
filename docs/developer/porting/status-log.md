@@ -82323,3 +82323,32 @@ N=~/.nvm/versions/node/v24.13.1/bin
 $N/npx tsx <v5>/harness/oracle/cases/tool-definitions.ts > /tmp/oracle-tool-definitions.ndjson
 $N/npx tsx <v5>/harness/oracle/cases/tool-definitions-canonical.ts > /tmp/oracle-tool-definitions-canonical.ndjson
 ```
+
+### Unit 2 — the auto-describe module (`photos/auto_describe_attachment.rs`)
+
+v4 `lib/photos/auto-describe-attachment.ts` (188 lines, surveyed fresh at the
+pin) ported whole. The skip-reason vocabulary transcribed exactly
+(`not-found`/`not-image`/`no-sha`/`no-bytes`/`describe-failed`/
+`already-described` — `already-described` is the handler race arm's
+load-bearing value); the write path is v4's three sinks (files.description →
+blank links' description+extractedText+chunks → per-mount embedding enqueue).
+Seam decisions, each matching an established precedent:
+- bytes = the photo trio's `FileBytesStore` (`Ok(None)`/`Err` both fold to
+  v4's downloadFile-catch `no-bytes`);
+- the vision leg = the §C2 `ImageDescribeDriver` (`api/chat_media.rs:1411`,
+  the SAME trait the host's `HostImageDescribeRunner` already implements over
+  `generate_image_description` — `file_fallback.rs` NOT touched); a `None`
+  driver behaves as v4 with a non-description result (`describe-failed`);
+- the embedding enqueue = the recorded `SaveImageSideEffects` seam (v4's own
+  differential jest-mocks `enqueueEmbeddingJobsForMountPoint` to a no-op —
+  `NoSideEffects` is mock-identical; production wires the host scheduler).
+The v4 truthiness quirk carried deliberately: an EMPTY imageDescription fails
+the describe check but a WHITESPACE-ONLY one passes and persists `''` after
+the trim. `DocMountFileLinksRepository::apply_auto_description` added (the
+exact column set v4's `update` call writes; `descriptionUpdatedAt` = the
+module's single pre-loop `now`). Five `#[tokio::test]`s over
+`provision_fresh_instance` (the file_storage.rs pattern) pin the arms, the
+three sinks, the kept-link skip, and the zero-vision-call short-circuits via
+a call-counting canned driver. The module differential (v4's REAL module,
+`generateImageDescription` mocked at §C2 level) rides unit 3's photo-tools
+family.
