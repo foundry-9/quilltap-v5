@@ -82470,3 +82470,15 @@ oracle with zero v5 string changes. Docs: bug-92's fix doc mirrored to
 `docs/v4/developer/bugs/fixed/` (the shared `bugs.md` index left to the
 round's unifier — all five lanes would collide on it);
 `help/keep-image-tools.md` banked into m6 row 11 (the p4.9i2 precedent).
+
+### Unit 6 — the gate's catch: the inventory count tripwire
+
+The lane's final full `cargo test --workspace` (the first run to execute the
+core lib's `services::tools_inventory` tests — the earlier targeted filter
+`tools::` never matched that module path) went red on
+`every_schema_key_resolves`: the module's own count tripwire still pinned
+`BUILT_IN_TOOLS.len() == 40`. Moved to 41 with the bug-92 provenance
+comment (`SCHEMA_KEYS` stays 37 — the no-schema quirk). The workspace
+re-ran green with the full env block. Lesson restated: a `--lib <filter>`
+run proves only the modules the filter matches; the per-commit workspace
+gate is what actually sweeps the count tripwires.

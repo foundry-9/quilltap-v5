@@ -390,6 +390,9 @@ mod tests {
             );
         }
         assert_eq!(SCHEMA_KEYS.len(), 37);
-        assert_eq!(BUILT_IN_TOOLS.len(), 40);
+        // 41 since P4.D108 added the describe_image row (v4 a14a1811, bug 92);
+        // like the other photo tools it has NO schema-map entry, so
+        // SCHEMA_KEYS stays at 37.
+        assert_eq!(BUILT_IN_TOOLS.len(), 41);
     }
 }

@@ -215,6 +215,17 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — fix(tools): the tools-inventory count tripwire moves 40 → 41 (P4.D108 unit 6)
+
+_Versions: core 0.0.634._
+
+The lane's final full workspace gate caught the one red the targeted runs
+had missed: `every_schema_key_resolves` (the tools-inventory module's own
+unit test) pins `BUILT_IN_TOOLS.len()` and still said 40 after unit 4
+added the describe_image row. The tripwire fired exactly as designed —
+moved to 41 with the bug-92 provenance comment; `SCHEMA_KEYS` correctly
+stays 37 (the photo-tool no-schema quirk). Workspace re-run green.
+
 #### 2026-08-23 — feat(librarian): the describe_image upload-announcement rewrites (P4.D108 unit 5)
 
 _Versions: core 0.0.633._
