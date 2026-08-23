@@ -120,6 +120,19 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — docs(porting): the P4.56 lane gate record
+
+_Docs-only change._
+
+The settings-wire remainder lane's verification gate: the six-family regen+run
+sweep from a pinned `f8973813` worktree (`{'ok': 6}`, zero SKIP), the nine new
+arms grepped present in the fresh NDJSONs, `cargo test --workspace` at 445
+binaries / 2,267 passed / 0 failed with zero SKIP lines, clippy on both feature
+sets, the release build, and `recipe_sweep.py --self-test` at 0 failures. Also
+records the Tier-3 dispositions: the SPA data-retention card needs no follow-up
+(it cannot send a `null`), and the taboo / brahma-console siblings still carry
+the bag-shaped wire this lane's edge demonstrates the alternative to.
+
 #### 2026-08-22 — refactor(settings): one reader for the profile `apiKeyId` / `baseUrl` semantics
 
 _Versions: core 0.0.624._

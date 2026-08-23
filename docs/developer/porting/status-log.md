@@ -81413,3 +81413,82 @@ And **mutation-proven live at every site**: flipping `_ => ApiKeyIdPatch::Refuse
 to `Clear` and `_ => BaseUrlPatch::Refuse` to `Clear` reddens all three families
 — so the shared reader is genuinely wired at each site rather than sitting
 beside surviving copies.
+
+### Tier 3 — the deferrals, loud
+
+**Item 8 (any SPA surface for data-retention): NOT DEFERRED — surveyed and no
+follow-up is owed.** v5 does carry a data-retention card
+(`apps/web/src/app/screens/settings/chat/data-retention-settings.ts`), but its
+`commit()` floors the draft with `Math.floor(Number(...))` and refuses anything
+non-finite or outside `[1, 3650]` before calling
+`updateDataRetentionSettings(parsed: number)`. The client can neither send
+`null` nor omit the key, so nothing on screen sees a 400 it did not see before
+this lane. `apps/web/**` was not opened; no `ng` gate applies.
+
+**Item 9 (💸 the invalid-config 400s on live surfaces): stays on the standing
+dogfood queue,** and gains this lane's data-retention leg. Nothing here can be
+proven by an oracle: the question is whether a rejected settings save reads
+usefully on a real screen.
+
+**Not this lane, recorded for whoever wants it.** `taboo_settings_update` and
+`brahma_console_settings_update` still take a `Value` bag with the tri-state
+re-derived at each of their three call sites (engine, web edge, harness), which
+is the shape that made this defect possible. Their arms all pass today, and
+changing three handlers' signatures was outside this order's mandate — but the
+data-retention edge now demonstrates the alternative (decode into the `Request`
+through serde, once), and the two siblings are the obvious next adopters.
+
+### The P4.56 verification gate (2026-08-22)
+
+⚠ **The v4 checkout went DIRTY mid-lane** — clean on `main` at `f8973813` when
+the lane started, and by the gate carrying uncommitted CI/Docker infra, a bug
+doc, AND `lib/background-jobs/host/processor-host.ts`. HEAD never moved
+(`git log f8973813..main` empty at both checks; `bugfix` unmoved at `3a76b17d`).
+Rather than argue about whether a `lib/` file "could" have reached these
+families, the whole gate regen ran from a lane-unique pinned worktree
+(`/tmp/qt-v4-pin-p4.56-f8973813`, all three symlink classes), and every family
+the lane had already regenerated was re-regenerated from it.
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0; and again
+  with `--features quilltap-core/native-transport` — exit 0.
+- **The six-family regen+run sweep from the PIN**
+  (`recipe_sweep.py --v4 /tmp/qt-v4-pin-p4.56-f8973813 --run-all --families …`):
+  **`{'ok': 6}`**, zero `SKIP:` lines — `settings_routes_equivalence` (141 cases
+  matched), `groups_routes_equivalence`, `memories_routes_equivalence`,
+  `settings_wire_actions` (5/5, building its own fixture),
+  `image_profiles_routes_equivalence`, `embedding_profiles_routes_equivalence`.
+  Artifact: `/tmp/p456-gate-sweep.json`.
+- **All nine new arms grepped present by name in the FRESH NDJSONs**:
+  `dr_get_seeded`, `dr_put_empty_merge_seeded`, `dr_put_string_body`,
+  `dr_put_invalid_writes_nothing`, `dr_put_null`, `dr_put_null_writes_nothing`
+  (settings-routes); `update_clear_description` (groups);
+  `housekeeping_config_set_int_float_literal`,
+  `extraction_limits_set_int_float_literal` (memories-config).
+- **`git status --short` came back clean after the pinned regen** — no committed
+  fixture or corpus moved, so this lane invalidates NO sibling oracle.
+- `recipe_sweep.py --self-test` — **0 failures**.
+- `cargo test --workspace` with the lane's seven-variable oracle env block:
+  **445 test binaries / 2,267 passed / 0 failed / 0 ignored**, cargo exit 0,
+  **zero `SKIP:` lines in the whole captured log**, and all seven lane binaries
+  confirmed to have RUN by name (incl. the new `data_retention_web_routes`,
+  green). The count is exactly the `a6870c5a` base (444 / 2,266) plus this
+  lane's one binary and one test.
+- `cargo build --release` — clean.
+- SPA: no `apps/web/**` file opened, so no `ng` gate applies.
+
+**Oracle env block for this lane** (all six regenerated at v4 `f8973813` from
+the pin, through `harness/tools/recipe_sweep.py`):
+
+```
+QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson
+QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db
+QT_ORACLE_GROUPS_ROUTES=/tmp/oracle-groups-routes.ndjson
+QT_ORACLE_MEMORIES_ROUTES=/tmp/oracle-memories-routes.ndjson
+QT_ORACLE_MEMORIES_CONFIG=/tmp/oracle-memories-config.ndjson
+QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson
+QT_ORACLE_EP_ROUTES=/tmp/oracle-embedding-profiles-routes.ndjson
+```
+
+Versions: **core 0.0.624, harness 0.0.547, web 0.0.78**; host / cli / tauri /
+SPA untouched.
