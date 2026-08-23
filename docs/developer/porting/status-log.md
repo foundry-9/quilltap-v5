@@ -81792,3 +81792,45 @@ live checkout per the order.
 - Recipe header self-contained per `recipe-header-conventions`;
   `recipe_sweep.py --show` extracts both stages; `--self-test` 0 failures.
 - Versions: core 0.0.629, harness 0.0.552.
+
+### Unit 2 — bug 91's predicate pair (`image_transport.rs` + the §C1 static rows)
+
+- **Ported:** `files/image_transport.rs::provider_can_transport_images` —
+  registry (manifest) tier → static tier → unknown-is-true, the lookup
+  uppercased exactly as v4's `getAttachmentSupport(provider.toUpperCase())`;
+  `attachment_support.rs` restructured over `known_provider_types` (`Some` =
+  v4 `isKnownProvider`, the distinction the old `&[]`-for-everything shape
+  could not carry) and gains `static_provider_can_transport_images` (keys off
+  the TYPES list, not a bool) + the §C1 rows (NANOGPT/Z_AI four image types,
+  DEEPSEEK known-empty, the OPENAI_COMPATIBLE comment). The map header's
+  "images never consult either map" note corrected — the transport predicate
+  now does.
+- **The registry-vs-static collapse, measured:** v5 manifests are baked → no
+  uninitialized state; manifest tier for known names, static only for unknown
+  ones. Recorded in the module header.
+- **Differential:** NEW tier-1 `image_transport_equivalence`
+  (`harness/oracle/cases/image-transport.ts` drives v4's REAL code in BOTH
+  configurations — 17 providers × {static, full_uninit, full_init}; the
+  full_init section initializes v4's registry with all TEN real dist plugins).
+  **The NANOGPT full_init row is the §C1 cross-lane pending**: v4 plugin 1.1.0
+  answers true, v5's manifest regen is P4.D107's — gated behind
+  `P4D107_NANOGPT_MANIFEST_LANDED = false`, which asserts BOTH sides' current
+  truth and goes red by design if D107 lands without the flip (flip it at
+  unification). **Mutation proofs:** dropping the registry tier reddens
+  full_init OPENROUTER; emptying the NANOGPT static row reddens static NANOGPT.
+- **⚠ v4-side finding, TO FILE UPSTREAM:** v4's OpenRouter plugin registry
+  entry declares `supportsAttachments: false` while the static map lists its
+  four image types and the non-streaming vision path works (bug 45) — so v4
+  PRODUCTION (registry initialized) answers false for OPENROUTER: its vision
+  profiles route to the describe-fallback and it cannot be a describer, even
+  though the a14a1811 guard sentence itself names OpenRouter as transporting.
+  v4's unit tests never see this (jest leaves the registry uninitialized →
+  static tier). v5 reproduces production faithfully via the baked manifest.
+- **Consumer sweep:** the map rows move the settings route's
+  `supportsImageUpload` create default for NANOGPT/Z_AI (as v4's shared map
+  does) — `settings_routes_equivalence` regenerated fresh at the pin through
+  the sweep driver and re-run: GREEN. (Measured honestly: that corpus carries
+  no NANOGPT/Z_AI create-with-omitted-flag row, so the default flip is pinned
+  by the map rows' own tests + the image_transport family, not by a
+  settings-routes case — a corpus candidate for a future maintenance pass.)
+- Versions: core 0.0.630, harness 0.0.553.

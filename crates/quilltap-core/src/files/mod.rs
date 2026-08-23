@@ -14,4 +14,5 @@
 
 pub mod attachment_support;
 pub mod image_processing;
+pub mod image_transport;
 pub mod text_detection;

@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — feat(files): the image-transport predicate pair (bug 91, the predicate half)
+
+_Versions: core 0.0.630, harness 0.0.553._
+
+Ports v4 `a14a1811`'s two-tier "can this plugin actually send an image?"
+predicate: the new `files/image_transport.rs::provider_can_transport_images`
+(manifest tier → static tier → unknown-is-true) and
+`attachment_support.rs::static_provider_can_transport_images` (keys off the
+types list after the known-provider guard). The static map gains the §C1
+rows — NANOGPT and Z_AI with the four image types, DEEPSEEK known-empty —
+which also moves the settings route's `supportsImageUpload` create default
+for those providers exactly as v4's shared map does. The registry-vs-static
+collapse in v5 is measured and recorded in the module header: manifests are
+baked, so the manifest tier answers for every known provider and the static
+tier only for names the manifest set lacks. Pinned by the new tier-1
+`image_transport_equivalence` family driving v4's REAL code in BOTH
+configurations (registry uninitialized → static fallback, and initialized
+with all ten real dist plugins → production truth; 51 rows). The NANOGPT
+registry row rides an ACTIVATE-AT-UNIFY gate (`P4D107_NANOGPT_MANIFEST_
+LANDED`) that self-arms when P4.D107's manifest regen lands. Two findings
+recorded for upstream: v4's OpenRouter plugin registry entry declares
+`supportsAttachments: false` while its static map and working vision path
+say otherwise (production routes OpenRouter vision profiles to the
+describe-fallback), and v4's own unit tests only ever see the static tier.
+Not yet wired — the three fallback-site wirings are the next unit.
+
 #### 2026-08-23 — feat(llm): provider moderation refusals named, not blamed on the weather (bug 93)
 
 _Versions: core 0.0.629, harness 0.0.552._
