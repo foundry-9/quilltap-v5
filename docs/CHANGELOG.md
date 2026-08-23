@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
+
+_Docs-only; no version bumps._
+
+The next round planned against a moved oracle baseline: v4 HEAD is
+`a14a1811` ("characters can look at images, and images reach vision models",
+bugs 91–95), three commits past `f8973813` — the other two dispositioned
+NO-PORT at planning (`65f3476e` already ruled at the f8973813 round;
+`718c9ada` is pure CI/bundler, the Turbopack revert, zero lib content).
+Five work orders committed: P4.D106 (the image-transport predicate +
+moderation finish reasons + the three-tier attachment anchor, server),
+P4.D107 (NanoGPT plugin 1.1.0 — `image_url` serialization + the real
+attachment ledger + the manifest flip), P4.D108 (the `describe_image`
+looking verb end-to-end, incl. the auto-describe module v5 never ported),
+P4.D109 (the attachment-failure toast + the client attachment table's
+stale-note retirement, SPA), and P4.57 (tri-state decode-once for
+taboo/brahma-console — the P4.56 recorded lead, a no-behavior-change
+consolidation). Three binding shared contracts pinned across the sibling
+orders: the a14a1811 attachment-capability values (three homes), the
+describer seam (file_fallback's frozen public fns), and the done-frame
+`attachmentResults` wire shape (chat_events.rs frozen for the round).
+
 #### 2026-08-23 — fix(logging): the measured duration on the streaming chat log (dogfood #100)
 
 _Versions: core 0.0.628, harness 0.0.551._
