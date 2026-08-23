@@ -215,6 +215,17 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — docs(porting): the P4.D108 lane-closed record
+
+_Docs-only change._
+
+The lane-closing record in the status log: six commits, the gate of
+record (446 binaries / 2,274 tests / 0 failed; the seven families 7/7
+fresh at `a14a1811` through the sweep driver, zero SKIP), and the loud
+deferrals (the dogfood live proof, the OrchestratorDeps/spine vision-tier
+wiring, the chat_files upload-time no-op, the shared bugs.md index for
+the unifier).
+
 #### 2026-08-23 — fix(tools): the tools-inventory count tripwire moves 40 → 41 (P4.D108 unit 6)
 
 _Versions: core 0.0.634._

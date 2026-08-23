@@ -82482,3 +82482,53 @@ comment (`SCHEMA_KEYS` stays 37 — the no-schema quirk). The workspace
 re-ran green with the full env block. Lesson restated: a `--lib <filter>`
 run proves only the modules the filter matches; the per-commit workspace
 gate is what actually sweeps the count tripwires.
+
+### P4.D108 — lane CLOSED (2026-08-23)
+
+**Every tier-1 and tier-2 deliverable landed; nothing OPEN under the order
+beyond the explicitly tiered deferrals.** Six commits: e1618d1f (catalog +
+copy rewrites), 06963ef6 (the auto-describe module), a50c8999 (the handler
++ the photo-tools family), 9d489c9f (the registration sweep), 9e2b15bd
+(the Librarian rewrites + docs bank), 9f7778a9 (the gate's catch — the
+inventory count tripwire 40 → 41).
+
+**Gate of record:** `cargo fmt --all --check`; clippy both feature sets
+clean; `cargo test --workspace` with the lane's 14-variable env block —
+**446 test binaries / 2,274 tests / 0 failed**; the seven families
+regenerated FRESH at `a14a1811` through `harness/tools/recipe_sweep.py`
+(`--force` from the worktree venue, v4 HEAD == the baseline so no pin
+worktree) — **7/7 ok, zero SKIP**, `describe_image` grepped present in
+every moving NDJSON (tool-definitions ×4 rows, photo-tools 15 new ops of
+29, tool-build ×6, tool-dispatch ×1, tools-inventory ×8, librarian ×10;
+the lantern family byte-identical with zero v5 string changes — the
+comment-only claim; `tool_wire`'s committed corpus untouched, its recorded
+slice never carried photo tools). SPA: zero edits (P4.D109's file set).
+
+**Deferred loud, carried forward:**
+- 💸 the live proof (a character calling describe_image on a fresh upload
+  AND on a generated image, both free tiers + a real vision call) joins
+  the standing dogfood queue.
+- The production vision-tier WIRING: `OrchestratorDeps.image_describe` +
+  the spine `tool_runner()` hookup (ordered shape in the unit-4 record) —
+  both files behind this lane's must-NOT boundary. Until it lands, tier 3
+  answers v4's exact `(describe-failed)` sentence everywhere; tiers 1/2
+  are fully live on every path.
+- The upload-time fire-and-forget auto-describe call stays the named
+  no-op in `services/chat_files.rs` (P4.D106's file) — the module makes
+  enlivening it a one-line `void`-equivalent spawn; recorded, not done.
+- The v4-client check (tier 3 #11): `a14a1811`'s app/ changes are the
+  tools route row + `useSSEStreaming.ts` (bug 94's attachmentResults
+  warning — P4.D109's own surface); NO describe-specific client
+  rendering change exists in v4 — nothing goes to P4.D109 from this lane.
+- The shared `docs/v4/developer/bugs.md` index refresh left to the
+  round's unifier (all five lanes collide on it); this lane mirrored its
+  own `bugs/fixed/bug-92-no-looking-verb-for-images.md`.
+- Not exercised: the sha256-sister IMAGE-preference's `?? sisters[0]`
+  fallback arm (needs two same-sha files with different categories —
+  ingest dedups by sha, so no natural fixture shape reaches it; the
+  IMAGE-preferring arm itself is exercised by describe_album_link).
+
+**Fixtures delivered/invalidated:** `photo-tools.json` widened (+4
+images — described/promptonly/blank/plaintext; any consumer of the /tmp
+photo fixture .dbs must rebuild from the spec); `tool-dispatch.json` +1
+op and its builder now ensures the `files` table (rebuild required).
