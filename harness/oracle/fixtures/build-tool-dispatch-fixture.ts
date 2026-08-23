@@ -108,6 +108,12 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   await ensureCollection('conversation_annotations', ConversationAnnotationSchema);
+  // P4.D108: the describe_image dispatch op resolves through `files` (empty —
+  // the op's uuid is deliberately unresolvable). v4-side jest creates the
+  // table lazily via ensureCollection on first repo touch; the Rust side opens
+  // the raw fixture, so the table must exist in the seed.
+  const { FileEntrySchema } = await import('@/lib/schemas/types');
+  await ensureCollection('files', FileEntrySchema);
   const repos = getRepositories();
 
   const midb = getRawMountIndexDatabase();

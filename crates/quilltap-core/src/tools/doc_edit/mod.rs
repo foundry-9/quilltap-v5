@@ -180,6 +180,7 @@ pub const DOC_EDIT_TOOL_NAMES: &[&str] = &[
     "keep_image",
     "list_images",
     "attach_image",
+    "describe_image",
 ];
 
 /// The doc-edit tool result shape (v4 `{ success, result?, error?, formattedText? }`).

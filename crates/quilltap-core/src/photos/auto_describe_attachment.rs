@@ -239,7 +239,7 @@ pub fn auto_describe_persist(
 pub async fn auto_describe_chat_image_attachment(
     db: &Db,
     file_bytes: &dyn FileBytesStore,
-    side_effects: &dyn SaveImageSideEffects,
+    side_effects: &(dyn SaveImageSideEffects + Sync),
     describe: Option<&dyn ImageDescribeDriver>,
     file_entry_id: &str,
 ) -> AutoDescribeOutput {

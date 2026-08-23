@@ -215,6 +215,35 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — feat(tools): register describe_image at every layer (P4.D108 unit 4)
+
+_Versions: core 0.0.632._
+
+The registration sweep: `DOC_EDIT_TOOL_NAMES` + the executor's two
+recognized-name lists + `PHOTO_TOOLS` + the dispatch arm +
+`run_describe_image` (precheck on the writer thread → the real
+auto-describe module composed from the runner's own `file_bytes` /
+`photo_side_effects` seams and the new injected `ImageDescribeDriver`
+[`with_image_describe`; default `None` answers v4's `describe-failed`
+shape, so tiers 1/2 stay fully live] → the after-vision serve); the
+`describeImage` slate push immediately after `attachImage` inside the
+document-editing gate (comment 18+3 → 18+4); the 41st
+`tools_inventory` row with the measured quirk carried (v4 at `a14a1811`
+registers describe_image ONLY as a BUILT_IN_TOOLS row — no schema-map
+entry, no availability arm). Red-first at fresh `a14a1811` oracles:
+`tool_build` (the slate lacked the key), `tools_inventory` (40 vs 41),
+and `tool_dispatch` (the new unresolvable-uuid describe op) all failed,
+then went green. The dispatch fixture builder gained an
+`ensureCollection('files', …)` — v4-side jest creates the table lazily
+on first repo touch, the Rust side opens the raw fixture. `tool_wire`:
+measured surface unmoved (the recorded slice never carried photo
+tools); the committed corpus untouched, family green. The three prompt
+renderings (native / simple-json / text-block): the order's premise
+REFUTED by measurement — neither v4 nor v5 renders any photo tool
+there and v4's commit touched none of them; no edits. The live-turn
+(`OrchestratorDeps`) and spine `tool_runner()` wiring of the driver is
+the recorded follow-up — both files are this lane's must-NOT boundary.
+
 #### 2026-08-23 — feat(tools): the describe_image handler + the photo-tools family widening (P4.D108 unit 3)
 
 _Versions: core 0.0.631, harness 0.0.552._

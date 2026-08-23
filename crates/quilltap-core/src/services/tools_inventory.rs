@@ -1,5 +1,5 @@
 //! The tool inventory (P4.9E3B) — v4 `GET /api/v1/tools`
-//! (`app/api/v1/tools/route.ts`, 727 LOC): the 40-entry `BUILT_IN_TOOLS`
+//! (`app/api/v1/tools/route.ts`, 727 LOC): the 41-entry `BUILT_IN_TOOLS`
 //! display table, the `BUILT_IN_TOOL_SCHEMAS` map (consulted only when
 //! `includeSchemas=true`, resolved against the byte-pinned
 //! [`crate::tools::definitions`] catalog), and the per-chat availability
@@ -10,9 +10,11 @@
 //! - **`doc_copy_file` is missing from the availability switch** (route.ts's
 //!   `doc_*` case list skips it), so it stays `available: true` even without a
 //!   project.
-//! - **The three photo tools have no schema-map entry** — `includeSchemas`
+//! - **The four photo tools have no schema-map entry** — `includeSchemas`
 //!   attaches no `parameters` to them — and no availability arm, despite their
-//!   comment claiming the doc-edit gate.
+//!   comment claiming the doc-edit gate. Measured again at `a14a1811`:
+//!   `describe_image` (bug 92) joined ONLY as a `BUILT_IN_TOOLS` row, so the
+//!   quirk carries to it unchanged.
 //! - A failed chat/character load is caught and warns: the context stays
 //!   null/two-true, it never errors the request.
 //!
@@ -84,11 +86,12 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "keep_image", name: "Keep Image", description: "Save a generated image to the character's photo album with optional caption and tags", category: "photos" },
     BuiltInTool { id: "list_images", name: "List Kept Images", description: "Search or list images previously saved to the photo album", category: "photos" },
     BuiltInTool { id: "attach_image", name: "Attach Kept Image", description: "Re-attach a previously kept image to the current chat message", category: "photos" },
+    BuiltInTool { id: "describe_image", name: "Describe Image", description: "Look at an image and report what it depicts", category: "photos" },
 ];
 
 /// v4 `BUILT_IN_TOOL_SCHEMAS` (route.ts:70–108): the 37 ids carrying an
 /// OpenAI-format definition, mapped to their [`crate::tools::definitions`]
-/// catalog keys (the byte-pinned parameters source). The three photo tools are
+/// catalog keys (the byte-pinned parameters source). The four photo tools are
 /// deliberately absent (module header).
 const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("ask_carina", "askCarina"),

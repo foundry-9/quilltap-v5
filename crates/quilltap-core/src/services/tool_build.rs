@@ -313,7 +313,9 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
     }
 
     if options.document_editing {
-        // v4's exact document-editing push list (18 doc tools + 3 photo tools).
+        // v4's exact document-editing push list (18 doc tools + 4 photo tools —
+        // describe_image joined at a14a1811, bug 92, immediately after
+        // attach_image; the order is wire-visible pre-canonicalization).
         // Note: doc_move_folder + the blob doc tools are NOT in this slate even
         // though they exist in the catalog — faithful to v4's push order.
         for key in [
@@ -338,6 +340,7 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
             "keepImage",
             "listImages",
             "attachImage",
+            "describeImage",
         ] {
             push_key(&mut universal, key);
         }

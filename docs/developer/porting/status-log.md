@@ -82396,3 +82396,58 @@ QT_ORACLE_PHOTO/QT_FIXTURE_PHOTO_MAIN/QT_FIXTURE_PHOTO_MOUNT →
 ⚠ Fixture invalidation: photo-tools.json widened (4 new images) — any
 sibling consumer of the photo fixture must regenerate from the new spec
 (the committed spec is the source; the .db files are /tmp artifacts).
+
+### Unit 4 — the registration sweep
+
+Every layer v4 registers the tool at, red-first against oracles regenerated
+fresh at `a14a1811`: `tool_build_equivalence` red (the slate lacked
+`describeImage`) → the push inside the document_editing gate immediately
+after `attachImage` → green; `tools_inventory_equivalence` red (40 vs 41)
+→ the row {Describe Image / "Look at an image and report what it depicts"
+/ photos} → green, with the MEASURED quirk decision recorded in the module
+header: v4's `+7` route diff registers describe_image ONLY as a
+BUILT_IN_TOOLS row (no schema-map entry, no availability arm — the
+photo-tool quirk carries to it, verified in the fresh NDJSON: the row has
+`userInvocable` and nothing else); `tool_dispatch_equivalence` red (the
+new unresolvable-uuid describe op answered the unknown-tool fallback) →
+DOC_EDIT_TOOL_NAMES + both executor name lists + PHOTO_TOOLS + the
+dispatch arm + `run_describe_image` → green. The executor gained the
+`image_describe: Option<Arc<dyn ImageDescribeDriver>>` seam
+(`with_image_describe`); `run_describe_image` is precheck-on-the-writer →
+the REAL `auto_describe_chat_image_attachment` (module signature widened
+to `&(dyn SaveImageSideEffects + Sync)` for the Send future) → the
+after-vision serve.
+
+**Fixture repair owned per the widening rule:** the tool-dispatch fixture
+builder gained `ensureCollection('files', FileEntrySchema)` — v4's jest
+side creates `files` lazily on first repo touch, so the oracle answered
+the No-image sentence while the raw-opened Rust side threw `no such
+table: files`; the seed now carries the (empty) table and both sides
+resolve identically. `tool-dispatch.json` grew the describe op (spec ops
+12 → 13; the harness drives ops straight from the committed spec, no
+mirror list).
+
+**Two order premises refuted by measurement, recorded not patched:**
+(1) the three prompt renderings (`native_tool_prompt.rs` /
+`simple_json_prompt.rs` / `text_block_prompt.rs`) carry NO photo tools in
+either v4 or v5, and v4's commit touched none of them — nothing to add;
+(2) the slate ORDER is not wire-visible through `tool_build_equivalence`
+(both sides canonicalize alpha-by-name) — v4's push position is matched
+anyway. `tool_wire`: surface unmoved (the recorded corpus slice never
+carried photo tools); committed corpus untouched; family green in the
+plain run.
+
+**Deferred loud — the production vision-tier wiring:** the per-turn
+runner is built inside `services/orchestrator.rs` (must-NOT) and the
+carina/brahma/Run-Tool runners in `quilltap-host/src/spine.rs
+tool_runner()` (host untouched per the order's version list + the
+"read, don't rewire" instruction on the existing describe wiring). The
+ordered follow-up shape: (a) `OrchestratorDeps` gains
+`image_describe: Option<Arc<dyn ImageDescribeDriver>>`, wired into the
+per-turn `BuiltInToolRunner` beside `web_search` (the P4.42 pattern);
+(b) the spine stores its existing `HostImageDescribeRunner` Arc (built at
+bundle assembly, spine.rs:3222) on `self` and `tool_runner()` adds
+`.with_image_describe(...)`. Until then describe_image tiers 1/2 are
+fully live everywhere; tier 3 answers v4's exact could-not-describe
+sentence with `(describe-failed)` — v4's own shape when no vision
+profile resolves.

@@ -140,6 +140,7 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "keep_image",
     "list_images",
     "attach_image",
+    "describe_image",
     // Terminal tools
     "terminal_read",
     "terminal_list",
@@ -229,6 +230,13 @@ pub const PORTED_TOOLS: &[&str] = &[
     "keep_image",
     "list_images",
     "attach_image",
+    // P4.D108 (v4 a14a1811 bug 92): the looking verb. Tiers 1/2 (stored
+    // description / generation prompt) are free reads; the vision tier runs the
+    // real `photos::auto_describe_attachment` module composed from the runner's
+    // own `file_bytes` + `photo_side_effects` seams and the injected
+    // `ImageDescribeDriver` (default: none — the module answers v4's
+    // `describe-failed` shape, exactly as v4 does with no vision profile).
+    "describe_image",
     // W4.9a: image generation. `generate_image` dispatches through the injected
     // `ErasedImageGeneration` seam (default: NotConfigured → v4's "not enabled"
     // guard error; production + the differential wire a real image/completion/
@@ -238,7 +246,12 @@ pub const PORTED_TOOLS: &[&str] = &[
 
 /// The three photo tools live in `DOC_EDIT_TOOL_NAMES` (v4 groups them under the
 /// doc-edit family) but dispatch to the [`photo`] handlers, NOT `run_doc_edit`.
-const PHOTO_TOOLS: &[&str] = &["keep_image", "list_images", "attach_image"];
+const PHOTO_TOOLS: &[&str] = &[
+    "keep_image",
+    "list_images",
+    "attach_image",
+    "describe_image",
+];
 
 /// Whether `name` is a doc-edit tool this runner dispatches through the shared
 /// `execute_doc_edit_tool` (every `doc_*` name except the photo trio, which has its
@@ -368,6 +381,15 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// moving `ask_carina` into the dispatched set is inert until a real engine is
     /// wired (production + the differential build one host-side).
     ask_carina: ask_carina::ErasedAskCarina,
+    /// The vision-describe boundary the `describe_image` tool's third tier uses
+    /// (P4.D108 — the §C2 `ImageDescribeDriver`; the host's driver composes
+    /// `file_fallback::generate_image_description` with the real codec +
+    /// `logLLMCall`). Default `None`: the auto-describe module answers v4's
+    /// `describe-failed` shape, exactly as v4 does when no vision profile
+    /// resolves — tiers 1/2 stay fully live. Wiring the live-turn runner
+    /// (`OrchestratorDeps`) and the spine's `tool_runner()` is the recorded
+    /// follow-up (this lane's must-NOT boundary).
+    image_describe: Option<Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
     /// The custom-tool consult seam the `run_custom` tool rides (P4.6bd — v4's
     /// `buildCustomToolLlmInvoker` at `run-custom-handler.ts:187`). Defaults to
     /// `None`: with no runner the handler passes no invoker and an `llm`-bearing
@@ -394,6 +416,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             photo_side_effects: Arc::new(NoSideEffects),
             image_generation: generate_image::ErasedImageGeneration::none(),
             ask_carina: ask_carina::ErasedAskCarina::not_available(),
+            image_describe: None,
             consult: None,
             fallback: LoudFallbackRunner,
         }
@@ -414,6 +437,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             photo_side_effects: self.photo_side_effects,
             image_generation: self.image_generation,
             ask_carina: self.ask_carina,
+            image_describe: self.image_describe,
             consult: self.consult,
             fallback,
         }
@@ -439,6 +463,18 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     /// real host store; the core default reports missing bytes).
     pub fn with_file_bytes(mut self, store: Arc<dyn FileBytesStore>) -> Self {
         self.file_bytes = store;
+        self
+    }
+
+    /// Inject the vision-describe driver the `describe_image` tool's third tier
+    /// runs through (P4.D108 — the §C2 seam; production wires the host's
+    /// `generate_image_description` runner; the core default leaves the vision
+    /// tier answering v4's `describe-failed` shape).
+    pub fn with_image_describe(
+        mut self,
+        driver: Arc<dyn crate::api::chat_media::ImageDescribeDriver>,
+    ) -> Self {
+        self.image_describe = Some(driver);
         self
     }
 
@@ -530,6 +566,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "keep_image" => self.run_keep_image(tc, ctx).await,
             "list_images" => self.run_list_images(tc, ctx).await,
             "attach_image" => self.run_attach_image(tc, ctx).await,
+            "describe_image" => self.run_describe_image(tc, ctx).await,
             // W4.9a: image generation.
             "generate_image" => self.run_generate_image(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
@@ -1199,6 +1236,80 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             photo_result_row("attach_image", out, true)
         })
         .await
+    }
+
+    // -- describe_image (photo-handlers.ts:handleDescribeImage) -------------
+    async fn run_describe_image(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        use crate::tools::photo::DescribeImageStep;
+
+        let args = tc.arguments.clone();
+        let photo_ctx = self.photo_context(ctx);
+
+        // Phase 1: resolve + the two free tiers. Reads only, but the resolve
+        // spans both partitions, so it rides the writer thread like the other
+        // photo handlers (v4 runs unsynchronized sequential awaits).
+        let pctx = photo_ctx.clone();
+        let step = self
+            .db
+            .write(move |writers| {
+                let Some(mount_w) = writers.mount_index() else {
+                    return Ok(DescribeImageStep::Done(photo::PhotoToolResult {
+                        success: false,
+                        result: None,
+                        error: Some("photo tools require the mount-index database".into()),
+                        formatted_text: None,
+                    }));
+                };
+                let mount = mount_w.connection();
+                let main = writers.main().connection();
+                Ok(photo::handle_describe_image_precheck(
+                    main, mount, &args, &pctx,
+                ))
+            })
+            .await
+            .unwrap_or_else(|e| {
+                DescribeImageStep::Done(photo::PhotoToolResult {
+                    success: false,
+                    result: None,
+                    error: Some(e.to_string()),
+                    formatted_text: None,
+                })
+            });
+        let entry = match step {
+            DescribeImageStep::Done(out) => return photo_result_row("describe_image", out, false),
+            DescribeImageStep::NeedsVision(entry) => entry,
+        };
+
+        // Phase 2: nothing on file — the vision tier. The REAL auto-describe
+        // module (v4's dynamic import) composed from the runner's own seams;
+        // its writes persist onto the FileEntry + blank links, so the next
+        // caller lands in tier 1.
+        let outcome = crate::photos::auto_describe_attachment::auto_describe_chat_image_attachment(
+            &self.db,
+            &*self.file_bytes,
+            &*self.photo_side_effects,
+            self.image_describe.as_deref(),
+            &entry.id,
+        )
+        .await;
+
+        // Phase 3: serve the result (or the already-described race re-read).
+        let out = self
+            .db
+            .write(move |writers| {
+                let main = writers.main().connection();
+                Ok(photo::handle_describe_image_after_vision(
+                    main, &entry, &photo_ctx, &outcome,
+                ))
+            })
+            .await
+            .unwrap_or_else(|e| photo::PhotoToolResult {
+                success: false,
+                result: None,
+                error: Some(e.to_string()),
+                formatted_text: None,
+            });
+        photo_result_row("describe_image", out, false)
     }
 
     /// Snapshot the [`PhotoToolContext`] the handlers need from the exec context.

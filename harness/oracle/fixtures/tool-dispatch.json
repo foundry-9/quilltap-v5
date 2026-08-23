@@ -172,6 +172,16 @@
         "character": "Nonexistent",
         "question": "What time is it?"
       }
+    },
+    {
+      "$comment": "P4.D108 (v4 a14a1811 bug 92) — describe_image dispatch: an unresolvable uuid answers the byte-exact No-image sentence through the real handler (proves the dispatch arm end-to-end; the fixture holds no image rows, so resolution legitimately fails on both sides).",
+      "tool": "describe_image",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {
+        "uuid": "99999999-9999-4999-8999-999999999999"
+      }
     }
   ]
 }
