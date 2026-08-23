@@ -200,6 +200,13 @@ pub struct ContextMessageMetadata {
     pub token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_injected: Option<bool>,
+    /// Set on the message carrying *this* turn's user input. Image attachments
+    /// anchor here rather than at the tail of the array, because staff
+    /// whispers (Host timestamps, Prospero context, connection-profile
+    /// bubbles) format as `role: user` and routinely land after it — v4
+    /// a14a1811, bug 95.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_user_turn: Option<bool>,
 }
 
 /// A message ready for the LLM (v4 `ContextMessage`). Absent optionals are
@@ -2978,7 +2985,16 @@ where
         context_messages.push(ContextMessage {
             role,
             content: msg.content.clone(),
-            metadata: None,
+            // Carried so the attachment anchor can tell the user's own
+            // historical turn from a staff whisper wearing role=user (bug 95).
+            // v4 `msg.id ? { messageId: msg.id } : undefined` — an empty
+            // string is falsy.
+            metadata: msg.id.as_ref().filter(|id| !id.is_empty()).map(|id| {
+                ContextMessageMetadata {
+                    message_id: Some(id.clone()),
+                    ..Default::default()
+                }
+            }),
             thought_signature: msg.thought_signature.clone(),
             name: msg.name.clone(),
             cache_control: if is_summary_head {
@@ -3335,7 +3351,12 @@ where
         context_messages.push(ContextMessage {
             role: "user",
             content: composed,
-            metadata: None,
+            // The attachment anchor's tier-1 flag (bug 95): THIS turn's user
+            // input, however many role=user whispers follow it.
+            metadata: Some(ContextMessageMetadata {
+                is_user_turn: Some(true),
+                ..Default::default()
+            }),
             thought_signature: None,
             name: new_user_msg_name,
             cache_control: None,

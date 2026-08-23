@@ -19,7 +19,6 @@ struct WireMessage {
     role: String,
     content: String,
     #[serde(default)]
-    #[allow(dead_code)]
     id: Option<String>,
     #[serde(rename = "thoughtSignature", default)]
     thought_signature: Option<String>,
@@ -92,6 +91,11 @@ fn message_selector_matches_oracle() {
         for (i, (got_msg, want_msg)) in got.messages.iter().zip(row.out.messages.iter()).enumerate()
         {
             assert_eq!(got_msg.role, want_msg.role, "'{}' msg[{i}].role", row.id);
+            // a14a1811 (bug 95): the main-loop copy now carries the source row
+            // id (the attachment anchor's tier-2 key); the force-include arm
+            // still omits it. Compared since P4.D106 — the comparator was
+            // id-blind before because the field was deliberately dropped.
+            assert_eq!(got_msg.id, want_msg.id, "'{}' msg[{i}].id", row.id);
             assert_eq!(
                 got_msg.content, want_msg.content,
                 "'{}' msg[{i}].content",

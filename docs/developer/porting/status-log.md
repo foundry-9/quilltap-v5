@@ -81878,3 +81878,61 @@ live checkout per the order.
   unregistered-key error VISIBLE in the diff (the send-was-made proof);
   (incidental) disabling the supportsImageUpload gate → red.
 - Versions: core 0.0.631, harness 0.0.554.
+
+### Unit 4 — bug 95: the attachment anchor (id carry + the three-scan selector)
+
+- **Ported:**
+  - `message_selector.rs`: the main-loop copy carries `id` (v4's +5); the
+    force-include arm still OMITS it (v4's object literal there has no `id`
+    key — a quirk preserved, comments updated both sites).
+  - `build_context.rs`: `ContextMessageMetadata` gains `is_user_turn`
+    (`isUserTurn`); the history loop stamps `metadata: {messageId}` for an
+    id-carrying selected message (v4 `msg.id ? {messageId} : undefined` —
+    empty string is falsy); the `newUserMessage` push stamps
+    `metadata: {isUserTurn: true}`.
+  - `message_context.rs`: NEW pub `select_attachment_anchor_index` over the
+    lightweight `AnchorMessage` shape (v4's exact three reverse scans:
+    isUserTurn with role NOT checked; user-role + truthy-id + set
+    membership; last-user floor; -1 else); the pre-normalization id set
+    (`type == "message" && role == "USER" && !systemSender && id`, both
+    falsy spellings handled); the warn line verbatim; and section L's
+    `is_last_user` REPLACED by `is_anchor` — extracted as
+    `construct_formatted_messages` so the WIRING is unit-pinned (the
+    composition corpora cannot see it: their Lantern seam is inert and
+    their ops carry no attachments — the P4.49 unpinned-wiring lesson
+    applied in advance). Anchor selection runs against
+    `built_context.messages`; `format_messages_for_provider` measured a
+    pure 1:1 map, so indices stay parallel with the formatted list.
+- **Differentials:**
+  - NEW tier-1 `attachment_anchor_equivalence`: v4's six test shapes BY NAME
+    as the corpus floor + 12 adversarial shapes, both sides computed
+    (tier-1 role-blindness — an isUserTurn flag on a system row wins;
+    per-tier last-wins; tier-1-beats-later-tier-2; explicit-false flag
+    skipped; exact lowercase `user` — an uppercase role with a matching id
+    falls through; tool-role id match skipped; metadata-without-id;
+    whispers-only floor; empty-string id falsy; the full regenerate shape
+    with tool tail). 18 rows.
+  - `message_selector_equivalence`: the comparator was **id-blind** (the
+    field was deliberately dropped pre-fix — the blinded-comparand class);
+    it now compares `id`, and the fresh oracle's `id-field-dropped` row was
+    RED before the fix and green after (red-first proven live).
+  - `build_context_tier3`: fresh oracle at the pin carries
+    `metadata.messageId` + `isUserTurn: true` (grepped present); BOTH
+    stamps mutation-proven live comparands (dropping either reddens the
+    family).
+  - Also regenerated fresh at the pin and re-run green:
+    `first_message_context`, `orchestrator_tier3` (the unit-1 regen, which
+    already carries v4's anchor), `regenerate_swipe_tier3`,
+    `salon_swipe_generate`, `courier_transport_tier3`.
+- **Mutation proofs (all restored green):** the selector flipped to the old
+  last-user rule → red via v4's case 2; each of the three scans neutralized
+  ALONE → red on its own discriminating row; the extracted constructor
+  flipped to the old rule → the wiring unit test red; both build-context
+  metadata stamps dropped → family red.
+- **Honest residual:** the 6-line call-site glue (that
+  `build_message_context` passes the COMPUTED index into the constructor)
+  is not corpus-discriminable today — pinning it end-to-end needs an
+  orchestrator op with a live Lantern/attachment, which needs fixture
+  surgery out of this lane's budget; the selector, the stamps, and the
+  constructor are each pinned on both sides of that glue.
+- Versions: core 0.0.632, harness 0.0.555.

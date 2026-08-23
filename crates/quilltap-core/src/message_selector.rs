@@ -79,14 +79,16 @@ pub fn select_recent_messages(
             break;
         }
 
-        // Preserve all fields including name and participantId (id is
-        // dropped, mirroring v4's object literal which omits it too).
+        // Preserve all fields including id, name and participantId. `id` is
+        // the source chat_messages row — the attachment anchor needs it to
+        // tell the user's own turn from a staff whisper wearing role=user
+        // (v4 a14a1811, bug 95).
         selected_messages.insert(
             0,
             SelectableMessage {
                 role: msg.role.clone(),
                 content: msg.content.clone(),
-                id: None,
+                id: msg.id.clone(),
                 thought_signature: msg.thought_signature.clone(),
                 name: msg.name.clone(),
                 participant_id: msg.participant_id.clone(),
@@ -95,7 +97,9 @@ pub fn select_recent_messages(
         total_tokens += msg_tokens;
     }
 
-    // Ensure we have at least the last message if possible.
+    // Ensure we have at least the last message if possible. (v4's
+    // force-include object literal still OMITS `id` — a quirk preserved: only
+    // the main-loop copy carries it since a14a1811.)
     if selected_messages.is_empty() && !messages.is_empty() {
         let last_msg = &messages[messages.len() - 1];
         selected_messages.push(SelectableMessage {

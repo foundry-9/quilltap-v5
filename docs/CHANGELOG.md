@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(chat): attachments anchor to the human's turn, not the last user-role message (bug 95)
+
+_Versions: core 0.0.632, harness 0.0.555._
+
+Ports v4 `a14a1811`'s bug-95 fix: staff whispers format as role=user, so
+"the last user-role message" stopped meaning the human's turn — on a
+regenerate the image landed on a connection-profile-change bubble, and
+after a tool call attachments dropped silently. The message selector's
+main-loop copy now carries the source row id (the force-include arm still
+omits it, as v4's does); `ContextMessage.metadata` gains `isUserTurn` and
+the history/new-user pushes stamp their metadata; and the new
+`select_attachment_anchor_index` (this turn's user input → the last
+genuine human turn by id, captured pre-normalization with the
+`!systemSender` clause → the old rule as a floor → -1 with a warn)
+replaces last-user-wins for BOTH the Lantern prefix and the attachment
+splice, with the final construction extracted and unit-pinned. Pinned by
+the new tier-1 `attachment_anchor_equivalence` family (v4's six shapes by
+name + 12 adversarial rows, each of the three scans droppable only redly)
+and seven affected families regenerated fresh at the pin — the
+message-selector comparator was id-blind and now compares it (red-first
+proven), and both build-context metadata stamps are mutation-proven live.
+
 #### 2026-08-23 — fix(files): images route to the describer when the plugin can't send them (bug 91, the wirings)
 
 _Versions: core 0.0.631, harness 0.0.554._

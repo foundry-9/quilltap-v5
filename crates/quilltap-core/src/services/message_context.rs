@@ -478,9 +478,74 @@ impl MessageContextSeams for NoopMessageContextSeams {}
 // The composition.
 // ===========================================================================
 
+/// The shape [`select_attachment_anchor_index`] scans (v4's inline
+/// `Array<{role, metadata?}>` parameter type) — adapted from
+/// [`crate::services::build_context::ContextMessage`] at the production call
+/// site, and built directly by the tier-1 differential.
+pub struct AnchorMessage<'a> {
+    pub role: &'a str,
+    /// `metadata.messageId` — the source `chat_messages` row id. `Some("")`
+    /// is treated as falsy exactly as v4's `id &&` guard does.
+    pub message_id: Option<&'a str>,
+    /// `metadata.isUserTurn` truthiness (absent/false collapse together).
+    pub is_user_turn: bool,
+}
+
+/// Pick the message that image attachments (and the Lantern description
+/// prefix) should ride on — v4 `selectAttachmentAnchorIndex` (a14a1811,
+/// bug 95).
+///
+/// Bug 95: this used to be "the last message, if it happens to be role user".
+/// Staff whispers format as `role: user` and routinely accumulate after the
+/// human's turn — a Host timestamp, a Prospero context memorandum, a
+/// connection-profile-change bubble — so on any regenerate or swipe the
+/// picture was stapled to "Abigail's current response model is now …" while
+/// the Librarian's announcement was telling the model the bytes rode with the
+/// user's message. Worse, after a tool call the tail isn't role user at all,
+/// and the attachments were dropped on the floor without a word.
+///
+/// Preference order:
+///  1. the message flagged as *this* turn's user input (`metadata.isUserTurn`,
+///     role NOT checked in this tier), set where `newUserMessage` is appended;
+///  2. the last `role: user` message whose source row was a genuine human turn
+///     — the regenerate/swipe case, where there is no new user message and
+///     the human's words are already in history;
+///  3. the last `role: user` message of any kind. This is the old behaviour,
+///     kept as a floor: a context shape we haven't anticipated should still
+///     deliver the bytes *somewhere* rather than silently discard them.
+///
+/// Returns -1 when there is no user-role message at all, which the caller
+/// logs — the attachments genuinely cannot be delivered in that shape.
+pub fn select_attachment_anchor_index(
+    messages: &[AnchorMessage],
+    user_turn_message_ids: &std::collections::HashSet<String>,
+) -> i64 {
+    for (i, m) in messages.iter().enumerate().rev() {
+        if m.is_user_turn {
+            return i as i64;
+        }
+    }
+    for (i, m) in messages.iter().enumerate().rev() {
+        if m.role == "user" {
+            if let Some(id) = m.message_id.filter(|id| !id.is_empty()) {
+                if user_turn_message_ids.contains(id) {
+                    return i as i64;
+                }
+            }
+        }
+    }
+    for (i, m) in messages.iter().enumerate().rev() {
+        if m.role == "user" {
+            return i as i64;
+        }
+    }
+    -1
+}
+
 /// A provider-formatted outgoing message (v4 `buildMessageContext`'s
-/// `formattedMessages` element). `attachments` is set only on the last user
-/// message when there are attachments; otherwise `thought_signature` is carried.
+/// `formattedMessages` element). `attachments` is set only on the anchor
+/// message when there are attachments (v4 a14a1811 — the last user message
+/// before bug 95); otherwise `thought_signature` is carried.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FormattedMsg {
     pub role: String,
@@ -777,6 +842,22 @@ where
     // --- D. Whisper-role normalization. ---
     let filtered = normalize_whisper_roles(&messages_after_whisper_filter, is_opaque_anywhere);
 
+    // Row ids of the *human's* own turns, captured before normalization erases
+    // the distinction. Staff whispers are re-roled to USER above, so after
+    // this point "role === 'user'" no longer means "the user said it" — and
+    // the image attachment anchor needs it to (v4 a14a1811, bug 95). v4:
+    // `m.type === 'message' && m.role === 'USER' && !m.systemSender && m.id`
+    // (systemSender and id are JS-falsy for both absent and empty-string).
+    let user_turn_message_ids: std::collections::HashSet<String> = messages_after_whisper_filter
+        .iter()
+        .filter(|m| {
+            m.message_type.as_deref() == Some("message")
+                && m.role.as_deref() == Some("USER")
+                && !m.system_sender.as_deref().is_some_and(|s| !s.is_empty())
+        })
+        .filter_map(|m| m.id.clone().filter(|id| !id.is_empty()))
+        .collect();
+
     // --- E. Conversation messages + first-message detection. ---
     let (conversation, mwp) = build_conversation_messages(&filtered, is_multi);
     let is_initial_message = !conversation
@@ -889,35 +970,39 @@ where
     }
 
     // --- L. Final message construction (prefix injection / attachment merge). ---
-    let mut formatted_messages: Vec<FormattedMsg> = Vec::new();
-    if !intermediate.is_empty() {
-        let last = intermediate.len() - 1;
-        for (idx, m) in intermediate.iter().enumerate() {
-            let is_last_user = idx == last && m.role == "user";
-            let content = if is_last_user && !lantern_prefix.is_empty() {
-                format!("{lantern_prefix}{}", m.content)
-            } else {
-                m.content.clone()
-            };
-            if is_last_user && !merged_attachments.is_empty() {
-                formatted_messages.push(FormattedMsg {
-                    role: m.role.clone(),
-                    content,
-                    name: m.name.clone(),
-                    thought_signature: None,
-                    attachments: Some(merged_attachments.clone()),
-                });
-            } else {
-                formatted_messages.push(FormattedMsg {
-                    role: m.role.clone(),
-                    content,
-                    name: m.name.clone(),
-                    thought_signature: m.thought_signature.clone(),
-                    attachments: None,
-                });
-            }
-        }
+    // The anchor is selected against `built_context.messages` (which carries
+    // the metadata); `format_messages_for_provider` is a pure 1:1 map, so
+    // indices stay parallel with `intermediate` and an index chosen against
+    // one applies to the other (v4's comment, verified against v5's map).
+    let anchor_view: Vec<AnchorMessage> = built_context
+        .messages
+        .iter()
+        .map(|m| AnchorMessage {
+            role: m.role,
+            message_id: m.metadata.as_ref().and_then(|md| md.message_id.as_deref()),
+            is_user_turn: m
+                .metadata
+                .as_ref()
+                .and_then(|md| md.is_user_turn)
+                .unwrap_or(false),
+        })
+        .collect();
+    let attachment_anchor_index =
+        select_attachment_anchor_index(&anchor_view, &user_turn_message_ids);
+    if !merged_attachments.is_empty() && attachment_anchor_index == -1 {
+        tracing::warn!(
+            attachment_count = merged_attachments.len(),
+            context_message_count = built_context.messages.len(),
+            "Image attachments could not be anchored — no user-role message in context; images will not reach the model"
+        );
     }
+
+    let mut formatted_messages: Vec<FormattedMsg> = construct_formatted_messages(
+        &intermediate,
+        attachment_anchor_index,
+        &lantern_prefix,
+        &merged_attachments,
+    );
 
     // --- M. Multi-character turn anchor. ---
     if is_multi {
@@ -942,6 +1027,54 @@ struct InterMsg {
     content: String,
     name: Option<String>,
     thought_signature: Option<String>,
+}
+
+/// Section L (v4 context-builder.service.ts:952–981) — the final message
+/// construction. The ANCHOR message (bug 95, v4 a14a1811 — previously
+/// "the last message, if role user") gets the Lantern prefix prepended and
+/// carries the merged attachments (its `thought_signature` is dropped in the
+/// attachment arm exactly as v4's object literal omits it); every other
+/// message rides through with `thought_signature` intact and no attachments.
+/// An anchor index of -1 matches no message: nothing is spliced, which the
+/// caller has already warned about.
+///
+/// Extracted so the WIRING — that the selected anchor, not "last user",
+/// drives BOTH the prefix and the splice — is unit-pinned (the composition
+/// corpora cannot see it: their Lantern seam is inert and their ops carry no
+/// attachments).
+fn construct_formatted_messages(
+    intermediate: &[InterMsg],
+    attachment_anchor_index: i64,
+    lantern_prefix: &str,
+    merged_attachments: &[Value],
+) -> Vec<FormattedMsg> {
+    let mut formatted_messages: Vec<FormattedMsg> = Vec::new();
+    for (idx, m) in intermediate.iter().enumerate() {
+        let is_anchor = idx as i64 == attachment_anchor_index;
+        let content = if is_anchor && !lantern_prefix.is_empty() {
+            format!("{lantern_prefix}{}", m.content)
+        } else {
+            m.content.clone()
+        };
+        if is_anchor && !merged_attachments.is_empty() {
+            formatted_messages.push(FormattedMsg {
+                role: m.role.clone(),
+                content,
+                name: m.name.clone(),
+                thought_signature: None,
+                attachments: Some(merged_attachments.to_vec()),
+            });
+        } else {
+            formatted_messages.push(FormattedMsg {
+                role: m.role.clone(),
+                content,
+                name: m.name.clone(),
+                thought_signature: m.thought_signature.clone(),
+                attachments: None,
+            });
+        }
+    }
+    formatted_messages
 }
 
 impl InterMsg {
@@ -974,6 +1107,60 @@ fn wire_role_str(role: WireRole) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn inter(role: &str, content: &str) -> InterMsg {
+        InterMsg {
+            role: role.to_string(),
+            content: content.to_string(),
+            name: None,
+            thought_signature: Some(format!("sig-{content}")),
+        }
+    }
+
+    /// Bug 95's WIRING (v4 a14a1811): the selected anchor — not "the last
+    /// message, if role user" — drives BOTH the Lantern prefix and the
+    /// attachment splice. The composition corpora cannot see this (inert
+    /// Lantern seam, no attachment ops), so the extracted constructor is
+    /// pinned here: flipping `is_anchor` back to the old last-user rule
+    /// reddens both asserts.
+    #[test]
+    fn anchor_not_last_user_drives_prefix_and_splice() {
+        // The bug-95 shape: the human's turn at index 1, a whisper wearing
+        // role=user after it.
+        let msgs = vec![
+            inter("assistant", "earlier"),
+            inter("user", "look at this picture"),
+            inter("user", "[Host] the clock strikes nine"),
+        ];
+        let atts = vec![serde_json::json!({"id": "att-1"})];
+        let out = construct_formatted_messages(&msgs, 1, "[Image: photo.png]\n", &atts);
+        assert_eq!(out.len(), 3);
+        // The anchor (index 1) carries prefix + attachments, and drops its
+        // thought signature exactly as v4's attachment-arm literal does.
+        assert_eq!(out[1].content, "[Image: photo.png]\nlook at this picture");
+        assert_eq!(out[1].attachments.as_deref(), Some(&atts[..]));
+        assert_eq!(out[1].thought_signature, None);
+        // The trailing whisper — the OLD anchor — stays bare.
+        assert_eq!(out[2].content, "[Host] the clock strikes nine");
+        assert!(out[2].attachments.is_none());
+        assert_eq!(
+            out[2].thought_signature.as_deref(),
+            Some("sig-[Host] the clock strikes nine")
+        );
+        // Non-anchor messages keep their signatures.
+        assert_eq!(out[0].thought_signature.as_deref(), Some("sig-earlier"));
+    }
+
+    #[test]
+    fn anchor_minus_one_splices_nothing() {
+        // -1 matches no index: the bytes are delivered nowhere (the caller
+        // warns) rather than stapled to a wrong message.
+        let msgs = vec![inter("system", "s"), inter("assistant", "a")];
+        let atts = vec![serde_json::json!({"id": "att-1"})];
+        let out = construct_formatted_messages(&msgs, -1, "prefix", &atts);
+        assert!(out.iter().all(|m| m.attachments.is_none()));
+        assert!(out.iter().all(|m| !m.content.starts_with("prefix")));
+    }
 
     fn msg(fields: &[(&str, Value)]) -> WhisperMessage {
         let mut m = serde_json::Map::new();
