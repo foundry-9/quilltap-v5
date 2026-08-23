@@ -120,6 +120,35 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+#### 2026-08-22 — feat(web): the data-retention REST edge (and the brahma-console edge that never worked)
+
+_Versions: core 0.0.622, web 0.0.78._
+
+`quilltap-web` served no data-retention route at all: v4's
+`GET/PUT /api/v1/settings/data-retention` had no v5 counterpart, so the setting
+was reachable only over `/api/dispatch`. The pair now exists, modeled on the
+taboo edge but decoding the PUT body into `Request::DataRetentionSettingsUpdate`
+through serde rather than hand-building the variant — the absent /
+explicit-`null` / value tri-state is resolved by exactly one piece of code, and
+a re-implementation at the edge is what made the Taboo differential blind.
+
+Found while extending `unwrap_to_http`'s success arm: `CoreResponse::BrahmaConsole`
+had been missing from that hand-maintained variant list since P4.D57, so BOTH
+brahma-console edges answered 500 `Unexpected core response` on every SUCCESS.
+Only the error path worked, because errors leave through `CoreResponse::Error` —
+which is why the settings differential (which drives the handler) could never
+see it. Fixed, and both settings pairs are now asserted on their success path by
+the new `data_retention_web_routes` live wire test.
+
+Also: the two data-retention handlers leaked the raw `DbError` text where v4's
+catch answers its own fixed sentence (`Failed to fetch…` / `Failed to update…`).
+Harmless while nothing served the route; the first thing an operator would have
+seen now that something does.
+
+The wire test is mutation-proven in both directions — reverting the
+`double_option` field makes the explicit-`null` PUT answer 200 instead of 400,
+and removing the `BrahmaConsole` arm makes its GET answer 500 instead of 200.
+
 #### 2026-08-22 — fix(settings): an explicit `null` staleChatDays is a 400, not a silent keep
 
 _Versions: core 0.0.621, harness 0.0.544._

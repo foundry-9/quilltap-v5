@@ -361,6 +361,13 @@ pub fn build_router(state: SharedState) -> Router {
             get(text_replacements_routes::text_replacements_get)
                 .post(text_replacements_routes::text_replacements_post),
         )
+        // === P4.56: the instance-wide data-retention window ===
+        .route(
+            "/api/v1/settings/data-retention",
+            get(text_replacements_routes::data_retention_settings_get)
+                .put(text_replacements_routes::data_retention_settings_put),
+        )
+        // === end P4.56 ===
         // === P4.D50: the instance-wide Taboo list ===
         .route(
             "/api/v1/settings/taboo",

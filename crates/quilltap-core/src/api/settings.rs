@@ -2762,7 +2762,13 @@ pub async fn api_key_test<V: ConnectionValidator>(
 pub fn data_retention_settings_get(db: &Db) -> Response {
     match db.read_main(instance_settings::get_data_retention_settings) {
         Ok(days) => Response::DataRetention(json!({ "staleChatDays": days })),
-        Err(e) => internal(e),
+        // P4.56: v4's catch answers its own FIXED sentence; this used to leak the
+        // `DbError` text (harmless while nothing served the route, and the first
+        // thing an operator would see now that `quilltap-web` does).
+        Err(_) => Response::error(
+            ErrorKind::Internal,
+            "Failed to fetch data-retention settings",
+        ),
     }
 }
 
@@ -2772,9 +2778,17 @@ pub fn data_retention_settings_get(db: &Db) -> Response {
 /// (a 400 `{error: 'Validation error', details}`); the port surfaces the
 /// `{error}` envelope (the Zod issue array is v4-implementation-specific).
 pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
+    // P4.56: v4's catch answers its own FIXED sentence on every failure inside
+    // the try (the read, the write); the `DbError` text used to leak instead.
+    let failed = || {
+        Response::error(
+            ErrorKind::Internal,
+            "Failed to update data-retention settings",
+        )
+    };
     let current = match db.read_main(instance_settings::get_data_retention_settings) {
         Ok(d) => d,
-        Err(e) => return internal(e),
+        Err(_) => return failed(),
     };
     // The only schema field is `staleChatDays`; the merge overlays it when the
     // body carries it, else the current value survives.
@@ -2790,7 +2804,7 @@ pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
         .await
     {
         Ok(_) => Response::DataRetention(json!({ "staleChatDays": days })),
-        Err(e) => internal(e),
+        Err(_) => failed(),
     }
 }
 

@@ -12,6 +12,7 @@
 //! - `DELETE /api/v1/settings/text-replacements/{id}`        → 204 (empty)
 //! - `GET  /api/v1/chats/{id}?action=get-background`         → the background body
 //! - `GET  /api/v1/chats/{id}?action=cost[&detailed=true]`   → the cost breakdown (P4.6ao)
+//! - `GET/PUT /api/v1/settings/data-retention`               → `{staleChatDays}` (P4.56)
 
 use std::collections::HashMap;
 
@@ -73,6 +74,14 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
         CoreResponse::TextReplacement(v)
         | CoreResponse::ChatBackground(v)
         | CoreResponse::Taboo(v)
+        // P4.56: `BrahmaConsole` was MISSING here since P4.D57 — both
+        // brahma-console edges answered 500 `Unexpected core response` on every
+        // SUCCESS (only the error arm worked, because it leaves through
+        // `CoreResponse::Error`). Invisible to the settings differential, which
+        // drives the handler; found while extending this match for
+        // `DataRetention`, and pinned by `data_retention_web_routes`.
+        | CoreResponse::BrahmaConsole(v)
+        | CoreResponse::DataRetention(v)
         | CoreResponse::ChatCost(v) => (
             success_status,
             [("content-type", "application/json")],
@@ -161,6 +170,61 @@ pub async fn text_replacement_delete(
     match dispatch_core(&state, CoreRequest::TextReplacementDelete { id }).await {
         // v4 `noContent()` — 204 with an EMPTY body (the dispatch carries null).
         Ok(CoreResponse::TextReplacement(Value::Null)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+// ===========================================================================
+// GET / PUT /api/v1/settings/data-retention (P4.56)
+// ===========================================================================
+
+pub async fn data_retention_settings_get(State(state): State<SharedState>) -> AxumResponse {
+    match dispatch_core(&state, CoreRequest::DataRetentionSettings).await {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+pub async fn data_retention_settings_put(
+    State(state): State<SharedState>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    // v4 `await req.json()` inside the try — a malformed body lands in the catch
+    // as the 500, not a 400.
+    let Ok(json_body) = serde_json::from_slice::<Value>(&body) else {
+        return error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update data-retention settings",
+        );
+    };
+    // Decode through the `Request` itself so the absent / explicit-`null` /
+    // value tri-state is resolved by exactly ONE piece of code (the
+    // `double_option` field), not re-implemented at the edge — that
+    // re-implementation is what made the Taboo differential blind, and what let
+    // this very setting collapse `null` into key-absent until P4.56.
+    //
+    // A non-object body (v4's `{...current, ...body}` spread of a string /
+    // array / number) contributes no `staleChatDays`, so it decodes as the empty
+    // object — the key-absent arm, which keeps the stored value.
+    let mut map = match json_body {
+        Value::Object(o) => o,
+        _ => serde_json::Map::new(),
+    };
+    map.retain(|k, _| k == "staleChatDays");
+    map.insert(
+        "type".into(),
+        Value::String("dataRetentionSettingsUpdate".into()),
+    );
+    let Ok(req) = serde_json::from_value::<CoreRequest>(Value::Object(map)) else {
+        // Unreachable while the field is a raw `Value` (which accepts every JSON
+        // shape); mapped to v4's catch-all rather than panicking on a route.
+        return error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update data-retention settings",
+        );
+    };
+    match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }

@@ -81268,3 +81268,53 @@ data-retention-settings.ts`), but `commit()` floors and bounds-checks the draft
 before calling `updateDataRetentionSettings(parsed: number)` — the client can
 neither send `null` nor omit the key, so no client surface sees a 400 it did not
 see before. `apps/web/**` untouched.
+
+### Unit 3 — the `quilltap-web` data-retention REST edge (Tier 1 item 1) + two bugs it uncovered
+
+**The edge.** `GET/PUT /api/v1/settings/data-retention` (v4's own URL) had no v5
+counterpart at all — grepped zero hits at planning, re-confirmed here. The pair
+lands in `text_replacements_routes.rs` beside its two siblings and is wired at
+`lib.rs`. The PUT decodes the body into `Request::DataRetentionSettingsUpdate`
+**through serde** (keep the schema key, insert the tagged `type`, let
+`double_option` decide) instead of hand-building the variant — the taboo/brahma
+edges hand-build theirs, and that re-implementation is precisely what the Taboo
+§3 review found makes a differential blind. A non-object body decodes as the
+empty object (v4's `{...current, ...body}` spread contributes no key), and a
+malformed body is v4's catch-all 500, since `await req.json()` sits inside the
+try.
+
+**Bug found: `CoreResponse::BrahmaConsole` was missing from `unwrap_to_http`'s
+success arm** — since P4.D57. Both brahma-console REST edges therefore answered
+**500 `Unexpected core response` on every SUCCESS**. Only the error path worked,
+because errors leave through `CoreResponse::Error`; the settings differential
+drives the handler and never sees the edge, so nothing could catch it. The SPA
+rides `/api/dispatch`, so no shipped screen was affected — the REST edges are
+v4-URL parity for other clients. Fixed in the same match, and now asserted.
+
+**Bug found: the two data-retention handlers leaked `DbError` text.** v4's catch
+answers its own fixed sentences (`Failed to fetch data-retention settings` /
+`Failed to update data-retention settings`); v5 returned `internal(e)`. Harmless
+while nothing served the route — and the first thing an operator would see now
+that something does. Both sites corrected (the update handler's three failure
+exits share one closure).
+
+**The live wire test** (`crates/quilltap-web/tests/data_retention_web_routes.rs`,
+over a booted server): default GET → PUT 120 → re-GET sticks → `{}` keeps 120
+(NOT reset to 30) → explicit `null` is a **400** with v4's body and writes
+nothing → out-of-range 400 writes nothing → a non-object body keeps 120 → and
+the brahma-console pair's success path.
+
+**Mutation-proven both ways.** Reverting the `double_option` field (checking out
+the pre-fix `types.rs` + `engine.rs`) makes the explicit-`null` PUT answer 200
+where 400 belongs; removing the `BrahmaConsole` arm makes its GET answer 500
+where 200 belongs.
+
+**A fixture-vintage repair, recorded.** The committed `chat-send-*` fixture
+carries no `instance_settings` table — it was hand-built, and v4 creates that
+table LAZILY in its version guard (`lib/startup/version-guard.ts:201-206`), so a
+real instance always has one. v5 has no version-guard port, so nothing creates
+it at boot. Without the repair the READ tolerates (a missing table reads as
+"never written" → the default 30) while every PUT dies on `no such table` — the
+test creates it before boot with v4's exact DDL, the same repair and the same
+reason as `build-context-tier3-fixture.ts` (P4.D50). The committed fixture is
+NOT modified, so no sibling family is invalidated.
