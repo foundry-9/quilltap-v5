@@ -126,6 +126,45 @@ spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
 port records the discrepancy and keeps the code. Also mirrors v4's
 bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
 sections to the `p4.9i2` row.
+#### 2026-08-23 — feat(nanogpt): serialise image_url and report the real attachment ledger
+
+_Versions: core 0.0.630, harness 0.0.552._
+
+v4 `a14a1811` (bug 91, NanoGPT plugin 1.1.0) stops dropping image
+attachments. `build_nanogpt_body` no longer calls `collect_drop_failures`
+with the blanket "text-only" sentence; the new `nanogpt_user_content`
+shapes user content exactly as v4's `buildUserContent` does: a plain
+string when the message carries no attachments, otherwise a content-part
+array — the text part only when the content is non-empty, one
+`image_url` part per forwarded image (`url` first, else the `data:` URI),
+`Unsupported file type: <mime>. NanoGPT forwards images only (<list>).`
+for a MIME NanoGPT does not accept, `Attachment missing data or URL` for
+a row carrying neither, and a single empty text part as the floor when
+every attachment failed and there was no text.
+
+The ledger the caller reports is now what the builder actually put on the
+wire — advertised and executed can no longer disagree. Both compositions
+read the same `BuiltRequest.attachment_results` from the one
+`build_request`, as v4 uses one `buildBody` for both modes.
+
+No vision-model list, deliberately, carrying v4's reasoning: NanoGPT
+fronts hundreds of upstream models and such a list would be stale within
+the week; the host has already decided by the time a request is built.
+
+Envelope corpus 321 → 341. The two pre-existing NanoGPT
+`image-attachment` rows flip; every other pre-existing row is
+byte-identical. Eight new NanoGPT rows cover the data-URI, remote-`url`,
+`url`-wins-over-data, unsupported-MIME, missing-data, mixed-ledger,
+empty-content, all-failed-floor and attachment-on-a-non-user-message
+arms, each recorded from v4's real dist plugin in both modes; seven
+mutation proofs.
+
+Mutation testing also found a pre-existing blind spot in two SIBLING
+providers: no corpus bag had ever carried a `url`, so Z.AI's and
+OpenRouter's `url`-before-data precedence stayed green under a swapped
+spelling. Both gained a `image-attachment-url-wins` row (corpus only — no
+source change), and both swaps now go red.
+
 #### 2026-08-23 — feat(nanogpt): the manifest attachment flip (plugin 1.1.0)
 
 _Versions: core 0.0.629._

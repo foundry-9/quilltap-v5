@@ -37,14 +37,19 @@ const OLLAMA_ATTACHMENT_ERROR: &str =
     "Ollama file attachment support not yet implemented (requires multimodal model detection)";
 const OPENAI_COMPATIBLE_ATTACHMENT_ERROR: &str =
     "OpenAI-compatible provider file attachment support varies by implementation (not yet implemented)";
-const NANOGPT_ATTACHMENT_ERROR: &str =
-    "NanoGPT chat requests are text-only in Quilltap. Send text-only messages.";
 
 /// v4's Z.AI supported mime types (`Z_AI_SUPPORTED_MIME_TYPES`).
 const Z_AI_SUPPORTED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 /// v4's OpenRouter supported image mime types (`SUPPORTED_IMAGE_MIME_TYPES`).
 const OPENROUTER_IMAGE_MIME_TYPES: &[&str] =
     &["image/jpeg", "image/png", "image/gif", "image/webp"];
+/// v4's NanoGPT supported image mime types
+/// (`NANOGPT_SUPPORTED_IMAGE_MIME_TYPES`, plugin 1.1.0). v4's own comment: this
+/// mirrors the `attachmentSupport.supportedMimeTypes` declared in the plugin's
+/// `index.ts` — keep the two in step. In v5 that second home is the generated
+/// manifest (`provider_manifest/manifests/nanogpt.json`), regenerated from the
+/// same plugin object, so the pair cannot drift silently.
+const NANOGPT_IMAGE_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 /// v4 Z.AI `isVisionModel` (`VISION_MODEL_PATTERNS`: `/^glm-\d+(\.\d+)?v/i`,
 /// `/^glm-5v/i`, `/^autoglm-phone/i` — the second is subsumed by the first;
@@ -116,6 +121,78 @@ fn zai_user_content(
         parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
         results.sent.push(att_id(a));
     }
+    if parts.is_empty() {
+        parts.push(json!({ "type": "text", "text": "" }));
+    }
+    Value::Array(parts)
+}
+
+/// v4 NanoGPT `buildUserContent` (plugin 1.1.0): no attachments → the plain
+/// string; otherwise a content-parts ARRAY (text + `image_url` parts).
+///
+/// The no-attachment case is the shape pin — NanoGPT returns `msg.content`
+/// itself, NOT a one-part array, so every text-only row on the wire keeps the
+/// string form it has always had. (Z.AI's twin does the same; OpenRouter's
+/// differs again, switching to an array only when a SUPPORTED image survives
+/// its filter.)
+///
+/// v4's why-comment, carried: NanoGPT is a router fronting hundreds of upstream
+/// models, so the plugin deliberately keeps NO list of its own of which ones
+/// read pictures — it would be stale within the week. The host has already made
+/// that call by the time a request is built: a connection profile only carries
+/// image attachments this far when its `supportsImageUpload` flag is set, and
+/// when it isn't the describe-fallback has replaced the bytes with text long
+/// before. So an attachment arriving here means the operator has asserted this
+/// model reads images, and the plugin's job is to send it. Hence no
+/// `is_vision_model` arm — the difference from `zai_user_content`.
+///
+/// Before this existed the bytes were dropped silently (v4 bug 91): the failure
+/// was reported in `attachmentResults`, which nothing displayed, so a genuinely
+/// vision-capable routed model answered from the prose alone and invented what
+/// it could not see.
+fn nanogpt_user_content(msg: &StreamMessage, results: &mut StreamAttachmentResults) -> Value {
+    let atts = msg.attachments();
+    if atts.is_empty() {
+        return json!(msg.content());
+    }
+    let mut parts: Vec<Value> = Vec::new();
+    if !msg.content().is_empty() {
+        parts.push(json!({ "type": "text", "text": msg.content() }));
+    }
+    for a in atts {
+        let mime = a
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !NANOGPT_IMAGE_MIME_TYPES.contains(&mime) {
+            att_fail(
+                results,
+                a,
+                format!(
+                    "Unsupported file type: {mime}. NanoGPT forwards images only ({}).",
+                    NANOGPT_IMAGE_MIME_TYPES.join(", ")
+                ),
+            );
+            continue;
+        }
+        // v4 `attachmentToImageUrl`: `attachment.url` first, else the data URL,
+        // else nothing — a row missing BOTH is the one failure the MIME gate
+        // cannot pre-empt.
+        let url = match att_str(a, "url") {
+            Some(u) => u.to_string(),
+            None => match att_str(a, "data") {
+                Some(d) => format!("data:{mime};base64,{d}"),
+                None => {
+                    att_fail(results, a, "Attachment missing data or URL");
+                    continue;
+                }
+            },
+        };
+        parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
+        results.sent.push(att_id(a));
+    }
+    // Every attachment failed and the message carried no text: v4 still emits an
+    // array, with one empty text part, rather than an empty `content`.
     if parts.is_empty() {
         parts.push(json!({ "type": "text", "text": "" }));
     }
@@ -1572,7 +1649,7 @@ const NANOGPT_PROFILE_ALLOWLIST: &[&str] = &[
     "reasoning_effort",
 ];
 
-/// v4 NanoGPT `buildBody` (plugin 1.0.2) — ONE body function for both modes, so
+/// v4 NanoGPT `buildBody` (plugin 1.1.0) — ONE body function for both modes, so
 /// the streaming and non-streaming wires cannot drift apart.
 ///
 /// Key order is v4's literal order: the [`base_body`] five plus `stream`
@@ -1593,9 +1670,18 @@ const NANOGPT_PROFILE_ALLOWLIST: &[&str] = &[
 /// never calls `collapseLeadingSystemMessages` — the fold belongs to the local
 /// endpoints (Ollama / OpenAI-Compatible), and folding here would change the
 /// bytes a hosted gateway receives.
+///
+/// Attachments (plugin 1.1.0, v4 bug 91): user content is shaped by
+/// [`nanogpt_user_content`], and the ledger it fills IS what the caller reports
+/// — v4 dropped `collectAttachmentFailures` from BOTH `sendMessage` and
+/// `streamMessage` for exactly this reason, so advertised and executed can no
+/// longer disagree. There is ONE body function for both modes here as in v4, so
+/// the streaming and non-streaming compositions necessarily read the same
+/// ledger rather than two that happen to match.
 pub fn build_nanogpt_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
-    collect_drop_failures(&input.messages, NANOGPT_ATTACHMENT_ERROR, results);
-    let messages = chat_messages(&input.messages, true, false, &mut plain_user_content);
+    let messages = chat_messages(&input.messages, true, false, &mut |m| {
+        nanogpt_user_content(m, results)
+    });
     let mut b = base_body(input, messages);
     b.set_opt("stop", stop_value(input));
     if let Some(tools) = &input.tools {

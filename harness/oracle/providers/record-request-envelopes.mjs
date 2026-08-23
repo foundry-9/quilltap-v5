@@ -244,6 +244,20 @@ const TXT_ATT_NO_DATA = { id: 'att-txt-5', filename: 'empty.txt', mimeType: 'tex
 // A binary (zip) that is NOT image/text/pdf — reaches v4 bug 33's new suffixed
 // Grok rejection ("... supports: <images>, text/*").
 const ZIP_ATT = { id: 'att-zip-1', filename: 'archive.zip', mimeType: 'application/zip', size: 8, data: 'UEsDBBQA' };
+// P4.D107 (v4 `a14a1811`, NanoGPT plugin 1.1.0). An attachment carrying a
+// remote `url` instead of inline `data` — NanoGPT's `attachmentToImageUrl`
+// prefers `url` and only falls back to the `data:` URI, and no pre-P4.D107
+// corpus bag carried a `url` at all, so that first arm was unreachable.
+const IMG_ATT_URL = {
+  id: 'att-img-url-1',
+  filepath: '/api/v1/files/att-img-url-1',
+  filename: 'remote.png',
+  mimeType: 'image/png',
+  size: 68,
+  url: 'https://cdn.example.invalid/remote.png',
+};
+// Both present — the precedence pin: `url` wins and the data is never encoded.
+const IMG_ATT_URL_AND_DATA = { ...IMG_ATT, id: 'att-img-both-1', url: 'https://cdn.example.invalid/both.png' };
 const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
 
 /// `modes` restricts a case to a subset of `stream` / `send` (default: both).
@@ -330,6 +344,11 @@ function casesFor(provider) {
     // P4.21 — the vision-model gate: a vision model gets image_url parts; a
     // non-vision model still switches to a parts ARRAY but reports the failure.
     add('image-attachment-vision', { ...base, model: 'glm-4.6v', messages: [SYS, USER_IMG] });
+    // P4.D107 — `attachmentToImageUrl` prefers a remote `url` over inline data.
+    // Found by mutation while porting NanoGPT's twin: no corpus bag carried a
+    // `url` at all, so this arm was unpinned for EVERY image-serialising
+    // provider (a swapped precedence stayed green tree-wide).
+    add('image-attachment-url-wins', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
     add('image-attachment-non-vision', { ...base, model: 'glm-4.6', messages: [SYS, USER_IMG] });
     add('attachment-no-data', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
   } else if (provider === 'openrouter') {
@@ -382,6 +401,8 @@ function casesFor(provider) {
     // streaming falls back to the unported SDK path.
     add('image-attachment', { ...base, model: 'openai/gpt-4o', messages: [SYS, USER_IMG] });
     add('image-attachment-tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, USER_IMG] });
+    // P4.D107 — the same url-over-data precedence pin (v4's `img.url ?? data:`).
+    add('image-attachment-url-wins', { ...base, model: 'openai/gpt-4o', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
     add('attachment-no-data', { ...base, model: 'openai/gpt-4o', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] }, ['send']);
     // v4 bug 31 — the NON-STREAMING vision send path (sendViaChatCompletions),
     // send-only: an image escapes the SDK to a direct chat-completions POST, a
@@ -537,9 +558,31 @@ function casesFor(provider) {
     // A bag cannot retarget the request; null skips; a key off the allow-list
     // is dropped.
     add('profile-params-skips', { ...base, model: 'openai/gpt-5-mini', profileParameters: { frequency_penalty: null, presence_penalty: '', logprobs: false, top_logprobs: 0, thinking: 'enabled', top_k: 40, model: 'HIJACKED', messages: [], stream: false, stream_options: {}, tools: [] } });
-    // NanoGPT DROPS attachments (text-only) — the body shows plain string
-    // content and the failure rides attachmentResults.
+    // P4.D107 (v4 `a14a1811`, plugin 1.1.0) — NanoGPT SERIALISES images now and
+    // reports a real ledger. Before 1.1.0 this row recorded plain-string content
+    // and a blanket "text-only" failure; the flip is visible in its diff.
     add('image-attachment', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, USER_IMG] });
+    // The `url` arm of attachmentToImageUrl — no corpus bag carried a `url`
+    // before this round, so the branch was unreachable in every provider.
+    add('image-attachment-url', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT_URL] }] });
+    // …and `url` WINS over inline data when a bag carries both.
+    add('image-attachment-url-wins', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
+    // A MIME NanoGPT does not forward: the joined-list failure sentence, and the
+    // content still switches to an array (the text part alone).
+    add('unsupported-attachment', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });
+    // Supported MIME, neither data nor url — the second failure sentence.
+    add('attachment-no-data', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
+    // A MIXED ledger in one message: two sent, two failed, in v4's push order.
+    add('multi-attachment-mixed', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, TIFF_ATT, IMG_NO_DATA, IMG_ATT_2] }] });
+    // No text beside the image — the text part is OMITTED, not emitted empty.
+    add('image-attachment-empty-content', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: '', attachments: [IMG_ATT] }] });
+    // …but when every attachment fails AND there is no text, v4 still emits an
+    // array carrying one EMPTY text part (the parts floor), never an empty
+    // content or a bare string.
+    add('attachment-all-failed-empty-content', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, { role: 'user', content: '', attachments: [TIFF_ATT, IMG_NO_DATA] }] });
+    // Attachments on a NON-user message are ignored entirely — neither
+    // serialised nor reported (only buildUserContent sees them).
+    add('attachment-on-assistant-ignored', { ...base, model: 'openai/gpt-5-mini', messages: [SYS, USER, { role: 'assistant', content: 'Here you go.', attachments: [IMG_ATT] }] });
     // NanoGPT is a HOSTED gateway and keeps its own formatMessages — it never
     // calls collapseLeadingSystemMessages, so all THREE system messages stay on
     // the wire. The regression guard against folding here.

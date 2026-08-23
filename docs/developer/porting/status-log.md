@@ -82101,3 +82101,101 @@ QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
 QT_ORACLE_PROVIDERS_LISTING=/tmp/oracle-providers-listing.ndjson \
   cargo test -p quilltap-harness --test providers_listing_equivalence
 ```
+
+### Unit 2 — `image_url` serialisation + the real ledger
+
+`build_nanogpt_body`'s first line was `collect_drop_failures(&input.messages,
+NANOGPT_ATTACHMENT_ERROR, results)` — the blanket "every attachment failed"
+that v4 dropped from BOTH `sendMessage` and `streamMessage` in plugin 1.1.0.
+Replaced by `nanogpt_user_content(msg, results)` threaded through
+`chat_messages`' user-content closure (the `zai_user_content` shape), and
+`NANOGPT_ATTACHMENT_ERROR` retired — v4's `attachmentErrorMessage` default did
+change (to `NanoGPT forwards images only for image MIME types NanoGPT
+accepts.`), but **that string reaches no ledger**: every failure now carries a
+per-attachment sentence, and the constructor default is only consumed by the
+base class's `collectAttachmentFailures`, which NanoGPT no longer calls.
+Measured, not transcribed — the order asked for exactly this check.
+
+v4's rules, ported byte-for-byte:
+
+- no attachments → `msg.content` as a **plain string**, not a one-part array
+  (the shape pin; Z.AI's twin agrees, OpenRouter's does not);
+- a text part **only** when `msg.content` is non-empty;
+- per attachment: MIME outside `NANOGPT_SUPPORTED_IMAGE_MIME_TYPES` →
+  `Unsupported file type: {mime}. NanoGPT forwards images only ({joined}).`;
+  `url` first, else `data:{mime};base64,{data}`, else `Attachment missing data
+  or URL`; otherwise an `image_url` part and the id onto `sent`;
+- `parts.length === 0` → one `{type:'text',text:''}` floor.
+
+Attachments on a non-user message are ignored entirely in v4 (only
+`buildUserContent` sees them) — and are **structurally unrepresentable** in v5,
+where `StreamMessage::attachments()` answers `&[]` for every variant but
+`User`. Pinned anyway by a corpus row, so v5's type choice is proven to match
+v4's behaviour rather than assumed.
+
+**Both compositions read the same ledger — asserted, not assumed.**
+`completion_provider.rs:125` and `streaming_provider.rs:259` both call the one
+`build_request` and both carry `built.attachment_results` outward
+(`:203` / `:298`), each already pinned by an existing unit test
+(`response_carries_the_builders_attachment_results`,
+`final_chunk_carries_the_builders_attachment_results`). Neither file was
+edited — they are P4.D106's anchor sites.
+
+**Corpus: 321 → 341 rows.** A keyed before/after diff shows the two
+pre-existing `nanogpt/image-attachment` rows CHANGED (the flip) and **every
+other pre-existing row byte-identical**; nothing vanished. New NanoGPT cases
+(both modes): `image-attachment-url`, `image-attachment-url-wins`,
+`unsupported-attachment`, `attachment-no-data`, `multi-attachment-mixed`,
+`image-attachment-empty-content`, `attachment-all-failed-empty-content`,
+`attachment-on-assistant-ignored`. Two new recorder bags: `IMG_ATT_URL` (a
+remote `url`, no data) and `IMG_ATT_URL_AND_DATA` (both).
+
+**Seven mutation proofs, each red-then-green:**
+
+| mutation | row that reds |
+|---|---|
+| drop the data-URI arm | `NANOGPT/image-attachment` body |
+| no-attachment case returns a one-part array | `NANOGPT/plain` body |
+| revert to the blanket `collect_drop_failures` | `NANOGPT/image-attachment` body |
+| stop pushing to `sent` (body untouched) | `NANOGPT/image-attachment` attachmentResults |
+| drop the empty-parts text floor | `NANOGPT/attachment-all-failed-empty-content` body |
+| data before url | `NANOGPT/image-attachment-url-wins` body |
+| unsupported sentence loses the joined list | `NANOGPT/unsupported-attachment` attachmentResults |
+
+⚠ **A `str.replace(old, new, 1)` mutation harness is a foot-gun here**: the
+Z.AI and NanoGPT url-resolution blocks are character-identical, so two of these
+mutations silently landed on Z.AI first and reported the wrong verdict. Every
+mutation anchor in this lane now asserts `count(old) == 1` before replacing.
+
+### A pre-existing blind spot found by the mutation pass (closed, corpus-only)
+
+The mis-fire was informative. Swapping **Z.AI's** url-before-data precedence
+left `request_builder_equivalence` GREEN, and so did swapping **OpenRouter's** —
+because **no corpus bag had ever carried a `url` at all**, in any provider. The
+whole `attachment.url` arm of the three image-serialising builders was
+unpinned, and had been since P4.21.
+
+Closed additively, within this lane's recorder ownership and with **zero v5
+source change**: `z-ai/image-attachment-url-wins` and
+`openrouter/image-attachment-url-wins` rows recorded from v4's real plugins
+(corpus 337 → 341). Both swaps now go red on their own provider's row.
+
+**Consumers of the widened fixture checked:** `tool_wire_call_site` reads the
+same NDJSON — re-run, 7/7 green. The two google families read siblings in the
+same directory; both regenerated through `regenerate-google-wire.sh` and
+confirmed **byte-identical** (the new recorder bags are referenced only by
+z-ai / openrouter / nanogpt cases).
+
+**Regen recipe (unit 2):**
+
+```bash
+cd <V5>
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+V4=~/source/quilltap-server V5=$PWD bash harness/oracle/providers/regenerate-request-envelopes.sh
+cargo test -p quilltap-harness --test request_builder_equivalence -- --nocapture
+cargo test -p quilltap-harness --test tool_wire_call_site
+```
+
+(The family is `committed_corpus` in the sweep driver, which by design never
+runs a recording stage — the regen above is the sanctioned path for it, and the
+`--run` half stays `cargo test … --test request_builder_equivalence`.)
