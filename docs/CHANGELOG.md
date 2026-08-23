@@ -126,6 +126,26 @@ spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
 port records the discrepancy and keeps the code. Also mirrors v4's
 bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
 sections to the `p4.9i2` row.
+#### 2026-08-23 — feat(nanogpt): the manifest attachment flip (plugin 1.1.0)
+
+_Versions: core 0.0.629._
+
+NanoGPT's plugin declares image attachment support as of v4 `a14a1811`
+(plugin 1.1.0), and the generated provider manifest follows it:
+`supportsAttachments` true, the four image MIME types, the new description,
+and the `notes` field explaining the host-decides posture (NanoGPT fronts
+hundreds of models and deliberately keeps no vision-model list of its own).
+
+Regenerated through `harness/oracle/providers/gen-provider-manifests.mjs`
+against the v4 checkout at the pin — never hand-edited. The generator's
+augmentation table needed no extension: `notes` was already read off the
+plugin's `attachmentSupport` object. The nine sibling manifests are
+byte-identical.
+
+The family that pins this block is `provider_registry_equivalence` (its
+`attachmentSupport` row), not `providers_listing_equivalence` — the
+listing oracle carries no attachment data at all. Proven red-first against
+the pre-flip manifest, then green.
 
 #### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
 

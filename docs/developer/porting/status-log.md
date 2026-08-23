@@ -82047,3 +82047,57 @@ live checkout per the order.
   `1af10efb` (the fallback wirings), `09c9c81d` (the anchor), `57205a91`
   (the wire stamp). Final versions: core 0.0.633, harness 0.0.555,
   host 0.0.78.
+---
+
+## P4.D107 — the NanoGPT vision wire (v4 `a14a1811`, plugin 1.1.0)
+
+**Lane branch:** `claude/nanogpt-vision-wire-workorder-f22cc7`.
+**Baseline:** v4 `a14a1811` (main, HEAD at lane start, tree CLEAN — drift-checked
+`git log a14a1811..main` empty; `bugfix` at `3a76b17d` as at planning). No pinned
+worktree needed: every regen in this lane ran against the live checkout while it
+sat on the baseline.
+
+### Unit 1 — the manifest attachment flip (the §C1 values, via the generator)
+
+v4's `plugins/dist/qtap-plugin-nanogpt/index.ts` flips `attachmentSupport` to
+`supportsAttachments: true` with the four image MIME types, the new description
+`Images (JPEG, PNG, GIF, WebP) — requires a vision-capable routed model`, and a
+NEW `notes` field carrying the host-decides posture. Regenerated
+`crates/quilltap-core/src/provider_manifest/manifests/nanogpt.json` through
+`harness/oracle/providers/gen-provider-manifests.mjs` at the pin — the
+augmentation-rot rule; no hand edit. **The generator needed no extension**: its
+`attachment` block already read `plugin.attachmentSupport?.notes ?? null`
+(`gen-provider-manifests.mjs:452`), so the field arrived on its own. `git status`
+after the regen showed exactly one modified file — the nine siblings are
+byte-identical.
+
+**An order premise CORRECTED by measurement.** The order names
+`providers_listing_equivalence` as the family that pins this surface. It does
+not: the listing oracle carries no `attachment` data at all (grep of the fresh
+NDJSON for `attachment` → zero hits). The family that pins it is
+**`provider_registry_equivalence`**, whose `attachmentSupport` row diffs the
+whole block including `notes`. Proven RED-FIRST — with the pre-flip manifest
+restored and the fresh oracle in place the row diverges on all three fields;
+with the flip, green. `providers_listing_equivalence` was regenerated and run
+too (green, unmoved) since the gate names it.
+
+Only `maxBase64Size` off this block is read by core outside the differentials
+(`files::image_processing::get_provider_max_base64_size`), and it is unchanged
+(`null`). The §C1 siblings — the server static map
+(`files/attachment_support.rs`, which has NO NanoGPT row) and the SPA table —
+belong to P4.D106 / P4.D109 and were not touched.
+
+**Regen recipe (unit 1):**
+
+```bash
+cd ~/source/quilltap-server           # at a14a1811, clean
+node <V5>/harness/oracle/providers/gen-provider-manifests.mjs \
+  <V5>/crates/quilltap-core/src/provider_manifest/manifests
+npx tsx <V5>/harness/oracle/cases/provider-registry.ts  > /tmp/oracle-provider-registry.ndjson
+npx tsx <V5>/harness/oracle/cases/providers-listing.ts  > /tmp/oracle-providers-listing.ndjson
+cd <V5>
+QT_ORACLE_PROVIDER_REGISTRY=/tmp/oracle-provider-registry.ndjson \
+  cargo test -p quilltap-harness --test provider_registry_equivalence
+QT_ORACLE_PROVIDERS_LISTING=/tmp/oracle-providers-listing.ndjson \
+  cargo test -p quilltap-harness --test providers_listing_equivalence
+```
