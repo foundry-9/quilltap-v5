@@ -273,13 +273,17 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
     }
 }
 
-impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
-    fn send_message(
+impl<K: ProviderKeySource> WireCompletionProvider<K> {
+    /// The shared send body — `send_message` passes no anchor;
+    /// `send_message_with_anchor` (P4.D106, bug 95) threads the caller's
+    /// attachment anchor into the wire build.
+    async fn send_inner(
         &self,
         provider: &str,
         base_url: Option<&str>,
         params: &CompletionParams,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        attachment_anchor_index: Option<usize>,
+    ) -> Result<CompletionResponse, CompletionError> {
         let api_key = self.keys.key_for(provider).unwrap_or_default();
         // P4.D42 (v4 `74ec93b5`): the caller's per-request budget becomes THIS
         // call's transport policy — a ceiling on one attempt, retries off. The
@@ -299,19 +303,39 @@ impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
                 ),
             )
             .with_request_budget(params.request_timeout_ms);
-        async move {
-            quilltap_core::model::completion_provider::execute_completion(
-                &self.transport,
-                provider,
-                base_url,
-                &api_key,
-                params,
-                &policy,
-                &self.user_agent,
-                self.base_url_env.as_deref(),
-            )
-            .await
-        }
+        quilltap_core::model::completion_provider::execute_completion_with_anchor(
+            &self.transport,
+            provider,
+            base_url,
+            &api_key,
+            params,
+            &policy,
+            &self.user_agent,
+            self.base_url_env.as_deref(),
+            attachment_anchor_index,
+        )
+        .await
+    }
+}
+
+impl<K: ProviderKeySource> CompletionProvider for WireCompletionProvider<K> {
+    fn send_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.send_inner(provider, base_url, params, None)
+    }
+
+    fn send_message_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.send_inner(provider, base_url, params, attachment_anchor_index)
     }
 }
 

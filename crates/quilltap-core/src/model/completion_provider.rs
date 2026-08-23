@@ -38,24 +38,41 @@ use crate::provider_manifest::Registry;
 /// representation on this path, so it is dropped exactly as v4's builders drop
 /// an id-less tool message (unreachable from every cheap-LLM caller).
 ///
-/// `params.attachments` are stamped onto the LAST user message (v4's
-/// image-description call sends `messages: [{ role: 'user', content, attachments:
-/// [attachmentForLLM] }]` — one user message carrying the vision payload), as
-/// `FileAttachment` JSON bags for the request builders to emit (P4.21; before
-/// this, the describe path built its params correctly and the wire dropped them
-/// — dogfood #37).
-pub(crate) fn request_input_from_params(params: &CompletionParams) -> RequestInput {
+/// `params.attachments` are stamped onto the ANCHORED message when the caller
+/// names one (P4.D106 / v4 `a14a1811` bug 95 — the regenerate path's anchor may
+/// sit BEFORE trailing staff whispers wearing role=user), else onto the LAST
+/// user message (v4's image-description call sends `messages: [{ role: 'user',
+/// content, attachments: [attachmentForLLM] }]` — one user message carrying the
+/// vision payload, where last-user IS the anchor), as `FileAttachment` JSON
+/// bags for the request builders to emit (P4.21; before this, the describe path
+/// built its params correctly and the wire dropped them — dogfood #37).
+/// `attachment_anchor_index` indexes into `params.messages`; a dropped
+/// (tool-role) or non-user target falls back to the last-user floor.
+pub(crate) fn request_input_from_params(
+    params: &CompletionParams,
+    attachment_anchor_index: Option<usize>,
+) -> RequestInput {
     use crate::model::completion::CompletionRole;
-    let mut messages: Vec<StreamMessage> = params
-        .messages
-        .iter()
-        .filter_map(|m| match m.role {
+    // Tool-role messages are dropped (unreachable from every caller that sets
+    // attachments), so the produced index of each INPUT message is tracked for
+    // the anchor mapping rather than assumed equal.
+    let mut messages: Vec<StreamMessage> = Vec::with_capacity(params.messages.len());
+    let mut produced_of_input: Vec<Option<usize>> = Vec::with_capacity(params.messages.len());
+    for m in &params.messages {
+        let sm = match m.role {
             CompletionRole::System => Some(StreamMessage::system(m.content.clone())),
             CompletionRole::User => Some(StreamMessage::user(m.content.clone())),
             CompletionRole::Assistant => Some(StreamMessage::assistant(m.content.clone())),
             CompletionRole::Tool => None,
-        })
-        .collect();
+        };
+        match sm {
+            Some(sm) => {
+                produced_of_input.push(Some(messages.len()));
+                messages.push(sm);
+            }
+            None => produced_of_input.push(None),
+        }
+    }
     if !params.attachments.is_empty() {
         let bags: Vec<serde_json::Value> = params
             .attachments
@@ -69,12 +86,18 @@ pub(crate) fn request_input_from_params(params: &CompletionParams) -> RequestInp
                 })
             })
             .collect();
-        if let Some(StreamMessage::User { attachments, .. }) = messages
-            .iter_mut()
-            .rev()
-            .find(|m| matches!(m, StreamMessage::User { .. }))
-        {
-            *attachments = bags;
+        let anchored: Option<usize> = attachment_anchor_index
+            .and_then(|ai| produced_of_input.get(ai).copied().flatten())
+            .filter(|&pi| matches!(messages[pi], StreamMessage::User { .. }));
+        let slot = anchored.or_else(|| {
+            messages
+                .iter()
+                .rposition(|m| matches!(m, StreamMessage::User { .. }))
+        });
+        if let Some(pi) = slot {
+            if let StreamMessage::User { attachments, .. } = &mut messages[pi] {
+                *attachments = bags;
+            }
         }
     }
     RequestInput {
@@ -119,9 +142,37 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
     user_agent: &'a str,
     base_url_env: Option<&'a str>,
 ) -> BoxFuture<'a, Result<CompletionResponse, CompletionError>> {
+    execute_completion_with_anchor(
+        transport,
+        provider,
+        base_url,
+        api_key,
+        params,
+        policy,
+        user_agent,
+        base_url_env,
+        None,
+    )
+}
+
+/// [`execute_completion`] with the attachment anchor threaded (P4.D106 / v4
+/// `a14a1811` bug 95) — see `request_input_from_params`. The anchorless entry
+/// point above keeps every pre-existing caller byte-identical.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
+    transport: &'a T,
+    provider: &'a str,
+    base_url: Option<&'a str>,
+    api_key: &'a str,
+    params: &'a CompletionParams,
+    policy: &'a TransportPolicy,
+    user_agent: &'a str,
+    base_url_env: Option<&'a str>,
+    attachment_anchor_index: Option<usize>,
+) -> BoxFuture<'a, Result<CompletionResponse, CompletionError>> {
     Box::pin(async move {
         let registry = Registry::built_in();
-        let input = request_input_from_params(params);
+        let input = request_input_from_params(params, attachment_anchor_index);
         let built = build_request(provider, &input)
             .map_err(|e| CompletionError::new(format!("request build: {e}")))?;
 
@@ -257,6 +308,46 @@ mod tests {
         }
     }
 
+    /// P4.D106 (v4 `a14a1811`, bug 95): a caller that names the anchor — the
+    /// regenerate path, where the carrier may sit BEFORE trailing staff
+    /// whispers wearing role=user — gets the bags on THAT message, and the
+    /// trailing user-role message stays bare. Pre-fix, the wire layer
+    /// re-stamped onto the last user message, undoing the anchor.
+    #[test]
+    fn attachments_are_stamped_onto_the_anchored_message() {
+        use crate::model::completion::CompletionAttachment;
+        use crate::model::stream::StreamMessage;
+        let mut p = params("vision-model");
+        p.messages = vec![
+            CompletionMessage::system("sys"),
+            CompletionMessage::user("look at this picture"),
+            CompletionMessage::user("[Host] the clock strikes nine"),
+        ];
+        p.attachments = vec![CompletionAttachment {
+            id: "file-1".to_string(),
+            filename: "photo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: "aGVsbG8=".to_string(),
+        }];
+        let input = request_input_from_params(&p, Some(1));
+        let atts: Vec<&[serde_json::Value]> = input
+            .messages
+            .iter()
+            .filter(|m| matches!(m, StreamMessage::User { .. }))
+            .map(|m| m.attachments())
+            .collect();
+        assert_eq!(atts.len(), 2);
+        assert_eq!(atts[0].len(), 1, "the anchored message carries the bag");
+        assert!(atts[1].is_empty(), "the trailing whisper stays bare");
+        // An anchor naming a non-user (or out-of-range) target falls back to
+        // the last-user floor rather than dropping the bytes.
+        let floored = request_input_from_params(&p, Some(0));
+        let last = floored.messages.last().unwrap();
+        assert_eq!(last.attachments().len(), 1);
+        let oob = request_input_from_params(&p, Some(99));
+        assert_eq!(oob.messages.last().unwrap().attachments().len(), 1);
+    }
+
     /// P4.21 (dogfood #37): a describe-shaped call — one user message +
     /// `CompletionParams.attachments` — must reach the request builders with the
     /// attachment stamped on the last user message. The old
@@ -264,6 +355,8 @@ mod tests {
     /// built its params correctly and the wire silently dropped the image; the
     /// canned tier-3 provider KEYS on attachments, which is why the differential
     /// stayed green through a total outage. This pins the conversion itself.
+    /// (Post-a14a1811 truth: with NO anchor named, last-user remains the rule —
+    /// the describe path's single user message IS its anchor.)
     #[test]
     fn attachments_are_stamped_onto_the_last_user_message() {
         use crate::model::completion::CompletionAttachment;
@@ -280,7 +373,7 @@ mod tests {
             mime_type: "image/png".to_string(),
             data: "aGVsbG8=".to_string(),
         }];
-        let input = request_input_from_params(&p);
+        let input = request_input_from_params(&p, None);
         // Only the LAST user message carries the bag (v4's describe call has one
         // user message; the rule generalizes as "last user" like the stamper's).
         let atts: Vec<&[serde_json::Value]> = input
@@ -332,6 +425,59 @@ mod tests {
             .headers
             .iter()
             .any(|(k, v)| k == "User-Agent" && v == "Quilltap/test"));
+    }
+
+    /// P4.D106 (bug 95) — the anchored placement AT THE WIRE BYTES. The canned
+    /// tier-3 providers key on the flat attachment list, not placement, so only
+    /// a body-level assert can see a re-anchor regression: on Z.AI (a
+    /// transporting chat-completions provider) the anchored interior user
+    /// message must carry the `image_url` part while the trailing user-role
+    /// whisper stays a plain string.
+    #[tokio::test]
+    async fn anchored_attachment_reaches_the_wire_on_the_anchored_message() {
+        use crate::model::completion::CompletionAttachment;
+        let body = br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}"#.to_vec();
+        let transport = FakeTransport {
+            body,
+            seen: std::sync::Mutex::new(None),
+        };
+        let policy = TransportPolicy::default();
+        let mut p = params("glm-5v-turbo");
+        p.messages = vec![
+            CompletionMessage::user("look at this picture"),
+            CompletionMessage::user("[Host] the clock strikes nine"),
+        ];
+        p.attachments = vec![CompletionAttachment {
+            id: "file-1".to_string(),
+            filename: "photo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: "aGVsbG8=".to_string(),
+        }];
+        execute_completion_with_anchor(
+            &transport,
+            "Z_AI",
+            None,
+            "synthetic-key",
+            &p,
+            &policy,
+            "Quilltap/test",
+            None,
+            Some(0),
+        )
+        .await
+        .expect("completion");
+        let seen = transport.seen.lock().unwrap().clone().unwrap();
+        let wire: serde_json::Value = serde_json::from_slice(&seen.body).unwrap();
+        let msgs = wire["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        // The anchored message is a content-part array carrying the image.
+        let first_parts = msgs[0]["content"].as_array().expect("anchored parts");
+        assert!(first_parts.iter().any(|part| part["type"] == "image_url"
+            && part["image_url"]["url"]
+                .as_str()
+                .is_some_and(|u| u.starts_with("data:image/png;base64,"))));
+        // The trailing whisper is a plain string — no image rode with it.
+        assert_eq!(msgs[1]["content"], "[Host] the clock strikes nine");
     }
 
     /// Dogfood finding #23's regression pin, AT THE CALL SITE. The differential

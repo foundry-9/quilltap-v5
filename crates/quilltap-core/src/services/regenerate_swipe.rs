@@ -395,10 +395,15 @@ where
             content: m.content.clone(),
         })
         .collect();
-    // The stamped attachments (last user message — the only carrier) thread into
-    // `CompletionParams.attachments`, which `request_input_from_params` stamps
-    // back onto the last user message for the builders (P4.21 drop site 3 — v4
-    // forwards `attachments: m.attachments` into `provider.sendMessage` here).
+    // The stamped attachments thread into `CompletionParams.attachments`, and
+    // since P4.D106 the CARRIER'S POSITION rides alongside: the anchor selector
+    // (bug 95) may place attachments on a message BEFORE trailing staff
+    // whispers wearing role=user, and the wire layer's old last-user re-stamp
+    // would have moved them right back onto a whisper. `formatted_messages`
+    // maps 1:1 into `messages` above, so the carrier's index is the anchor
+    // index. (P4.21 drop site 3 — v4 forwards `attachments: m.attachments`
+    // into `provider.sendMessage` message-for-message, so placement is
+    // inherent there.)
     //
     // NAMED DIVERGENCE (§3 review, recorded not fixed): this funnel narrows the
     // bag to 4 fields and so drops `url`. A mount-file bag carries BOTH `url`
@@ -408,11 +413,12 @@ where
     // provider cannot fetch it). Widening `CompletionAttachment` would disturb
     // the frozen canned-key serialization the tier-3 oracles record, so the
     // narrowing stays until that key is versioned.
-    let attachments: Vec<CompletionAttachment> = mc_result
+    let attachment_anchor_index: Option<usize> = mc_result
         .formatted_messages
         .iter()
-        .rev()
-        .find_map(|m| m.attachments.as_ref())
+        .position(|m| m.attachments.is_some());
+    let attachments: Vec<CompletionAttachment> = attachment_anchor_index
+        .and_then(|i| mc_result.formatted_messages[i].attachments.as_ref())
         .map(|bags| {
             bags.iter()
                 .map(|a| CompletionAttachment {
@@ -438,7 +444,7 @@ where
     let base_url = json_str(&connection_profile, "baseUrl");
     let model = json_str(&connection_profile, "modelName").unwrap_or_default();
     let response = completion
-        .send_message(
+        .send_message_with_anchor(
             &provider,
             base_url.as_deref(),
             &CompletionParams {
@@ -455,6 +461,7 @@ where
                 // `requestTimeoutMs` here.
                 request_timeout_ms: None,
             },
+            attachment_anchor_index,
         )
         .await
         .map_err(|e| DbError::Internal(format!("swipe generation failed: {}", e.message)))?;

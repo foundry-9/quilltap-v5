@@ -200,6 +200,32 @@ pub trait CompletionProvider {
         base_url: Option<&str>,
         params: &CompletionParams,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send;
+
+    /// The anchored-attachment variant (P4.D106; v4 `a14a1811`, bug 95).
+    ///
+    /// v4 carries attachments **per message**, so its non-streaming callers
+    /// (regenerate/swipe maps `attachments: m.attachments` message-for-message)
+    /// place them on whatever message the anchor selector chose. v5's
+    /// `CompletionParams` narrows them to a flat list (P4.21's canned-key
+    /// contract), which the wire layer used to re-stamp onto the LAST user
+    /// message — correct before bug 95, a re-anchor bug after it (a trailing
+    /// staff whisper wears role=user). The anchor position now rides alongside:
+    /// `attachment_anchor_index` indexes into `params.messages`.
+    ///
+    /// Implementations that build real wire input (the host's
+    /// `WireCompletionProvider`) override this; the default ignores the index
+    /// and answers [`send_message`](Self::send_message) — correct for canned /
+    /// test providers, whose keys deliberately do not see placement.
+    fn send_message_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        let _ = attachment_anchor_index;
+        self.send_message(provider, base_url, params)
+    }
 }
 
 /// `Arc<T>` is a [`CompletionProvider`] whenever `T` is (delegating to the inner
@@ -213,6 +239,18 @@ impl<T: CompletionProvider> CompletionProvider for Arc<T> {
         params: &CompletionParams,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         (**self).send_message(provider, base_url, params)
+    }
+
+    // Forwarded explicitly: the defaulted body would resolve against Arc's own
+    // `send_message` and silently drop the inner type's override.
+    fn send_message_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        (**self).send_message_with_anchor(provider, base_url, params, attachment_anchor_index)
     }
 }
 

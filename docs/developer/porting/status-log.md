@@ -81936,3 +81936,85 @@ live checkout per the order.
   surgery out of this lane's budget; the selector, the stamps, and the
   constructor are each pinned on both sides of that glue.
 - Versions: core 0.0.632, harness 0.0.555.
+
+### Unit 5 — the downstream-stamp measurement + fix (bug 95's wire half)
+
+- **Measured (order item 6), each path against v4 at the pin:**
+  - **Streaming (the Salon spine):** `orchestrator.rs`'s
+    `formatted_messages → StreamMessage` map is 1:1 with per-message
+    attachments — the anchor placement flows to the wire untouched. No edit.
+  - **Google merge:** v5 `request_builder/google.rs:218-238` merges
+    consecutive user runs and CONCATENATES each run's attachments — measured
+    FAITHFUL to v4's plugin (`provider.ts:343-357`, per-group merge, not a
+    hoist-to-last). The order's survey note ("onto the collapsed last user
+    message") was imprecise; no D107 coordination needed, no edit.
+  - **Non-streaming regenerate/swipe:** REAL re-anchor found. v4 forwards
+    `attachments: m.attachments` message-for-message; v5's funnel flattens to
+    `CompletionParams.attachments` and `request_input_from_params` re-stamped
+    onto the LAST user message — undoing the unit-4 anchor whenever a staff
+    whisper trails the human's turn (the bug-95 shape itself).
+- **The fix, ownership-constrained:** extending `CompletionParams` was
+  REJECTED — its literal sites include `api/settings.rs` (P4.57's file this
+  round). Instead: a defaulted trait method
+  `CompletionProvider::send_message_with_anchor(…, attachment_anchor_index)`
+  (default ignores the index and delegates — correct for every canned/test
+  provider, whose keys deliberately do not see placement; `Arc<T>` forwards
+  explicitly so the inner override survives);
+  `request_input_from_params(params, anchor)` maps the anchor through the
+  tool-role-drop index shift, stamps the anchored USER message, and keeps
+  last-user as the floor (non-user/out-of-range targets); `execute_completion`
+  delegates to the new `execute_completion_with_anchor` so every pre-existing
+  caller is byte-identical; the host's `WireCompletionProvider` (spine.rs)
+  overrides and threads it; `regenerate_swipe` computes the carrier's
+  position (`formatted_messages` maps 1:1 into `messages`) and calls the
+  anchored entry. ZERO canned-key movement; zero sibling-file edits.
+- **Pins:** `attachments_are_stamped_onto_the_last_user_message` updated to
+  the post-fix truth (anchorless = last-user, never deleted); NEW
+  `attachments_are_stamped_onto_the_anchored_message` (interior carrier,
+  trailing whisper bare, non-user/out-of-range floor); NEW wire-byte pin
+  `anchored_attachment_reaches_the_wire_on_the_anchored_message`
+  (FakeTransport through the FULL composition on Z_AI: the anchored
+  message's `image_url` content-part vs the whisper's plain string — the
+  canned tier-3 keys cannot see placement, so this is the only assert class
+  that can). **Mutation:** neutralizing the anchored slot reddens BOTH new
+  tests; restored green.
+- **Families re-run green:** regenerate_swipe_tier3, salon_swipe_generate
+  (fresh pinned oracles; their corpora carry no attachment ops, so the
+  anchored path is pinned at the unit/wire tier above — recorded honestly),
+  file_attachment_tier3.
+- **Honest residual:** the regenerate corpus cannot express an
+  attachment-carrying regenerate (the canned completion key is
+  placement-blind by design); the carrier-position computation and the bag
+  extraction derive from the SAME `position()` call, so they cannot disagree
+  by construction.
+- Versions: core 0.0.633, host 0.0.78.
+
+### P4.D106 — deferrals + cross-lane notes (loud, per the order)
+
+- **💸 Live proofs → the standing dogfood queue:** a real upload on a
+  `supportsImageUpload`-ticked NanoGPT profile reaching the model (needs
+  P4.D107's manifest + wire); a real Z.AI `sensitive` refusal showing the
+  named moderation sentence; a regenerate with a whisper-tailed transcript
+  carrying the image on the human's turn.
+- **Pre-existing deferral, NOT this lane's scope (order item 10):** the
+  upload-time fire-and-forget `autoDescribeChatImageAttachment` remains a
+  named no-op (`services/chat_files.rs:899`); P4.D108 ports the callable
+  module for the tool path.
+- **ACTIVATE-AT-UNIFY:** `P4D107_NANOGPT_MANIFEST_LANDED` in
+  `crates/quilltap-harness/tests/image_transport_equivalence.rs` — flip to
+  `true` when P4.D107's regenerated NanoGPT manifest lands (the test
+  self-arms red if the manifest lands without the flip, and stays green
+  asserting both sides' pre-D107 truth until then).
+- **⚠ TO FILE UPSTREAM (v4-side):** the OpenRouter plugin registry entry
+  declares `supportsAttachments: false` while the client map lists its four
+  image types and the non-streaming vision path works — so v4 production
+  (registry initialized) routes OpenRouter vision profiles to the
+  describe-fallback and refuses OpenRouter describers, even though
+  a14a1811's own guard sentence names OpenRouter as transporting; v4's unit
+  tests never see it (jest = static tier). Also: v4's
+  `moderation-finish-reason.ts` docblock mis-numbers itself "(bug 94)".
+- **Gate note:** gates 4b/5 build with `CARGO_PROFILE_DEV_DEBUG=0` /
+  `CARGO_PROFILE_TEST_DEBUG=0` (debuginfo off — test semantics identical);
+  forced by machine-wide disk exhaustion with five lanes building
+  concurrently (gate 4's first run died on `errno 28` mid-relink; this
+  lane's own `target` was fully cleaned and rebuilt cold).

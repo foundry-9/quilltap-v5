@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(model): the wire layer honors the attachment anchor instead of re-stamping last-user (bug 95, the stamp)
+
+_Versions: core 0.0.633, host 0.0.78._
+
+The downstream-stamp measurement the order required, and the one real
+re-anchor it found: the streaming spine and the google merge are faithful
+(per-message placement flows through; google merges per user-run exactly
+as v4's plugin does), but the non-streaming regenerate funnel flattened
+attachments into `CompletionParams.attachments` and the wire layer
+re-stamped them onto the LAST user message — undoing the anchor whenever
+a staff whisper trails the human's turn. Fixed with a defaulted
+`send_message_with_anchor` trait method (canned/test providers ignore it;
+their keys deliberately never see placement), the anchor threaded through
+`execute_completion_with_anchor` into `request_input_from_params` (mapped
+across the tool-role drop, last-user kept as the floor), the host's
+`WireCompletionProvider` override, and the regenerate funnel computing
+the carrier's position. Every pre-existing caller is byte-identical
+(`CompletionParams` untouched — extending it would have edited a sibling
+lane's file). Pinned by the updated last-user test, a new
+anchored-placement unit test, and a new wire-byte pin through the full
+composition on Z.AI (the anchored message's `image_url` part vs the
+trailing whisper's plain string); neutralizing the anchored slot reddens
+both.
+
 #### 2026-08-23 — fix(chat): attachments anchor to the human's turn, not the last user-role message (bug 95)
 
 _Versions: core 0.0.632, harness 0.0.555._
