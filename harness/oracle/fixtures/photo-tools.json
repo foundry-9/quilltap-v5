@@ -69,6 +69,55 @@
       "generationModel": "midjourney",
       "width": 640,
       "height": 480
+    },
+    {
+      "key": "described",
+      "fileId": "c0000000-0000-4000-8000-000000000011",
+      "bytes": [137, 80, 78, 71, 13, 10, 26, 10, 21, 22, 23, 24, 25],
+      "mimeType": "image/webp",
+      "originalFilename": "clockwork-hummingbird.webp",
+      "generationPrompt": "a clockwork hummingbird sketch",
+      "generationRevisedPrompt": "a clockwork hummingbird sketch in sepia ink",
+      "generationModel": "dall-e-3",
+      "width": 640,
+      "height": 480,
+      "description": "A sepia ink sketch of a clockwork hummingbird hovering over a brass flower."
+    },
+    {
+      "key": "promptonly",
+      "fileId": "c0000000-0000-4000-8000-000000000012",
+      "bytes": [137, 80, 78, 71, 13, 10, 26, 10, 31, 32, 33, 34],
+      "mimeType": "image/webp",
+      "originalFilename": "tin-rocket.webp",
+      "generationPrompt": "a tin rocket on a shelf beside a jar of stardust",
+      "generationRevisedPrompt": "",
+      "generationModel": "dall-e-3",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "key": "blank",
+      "fileId": "c0000000-0000-4000-8000-000000000013",
+      "bytes": [137, 80, 78, 71, 13, 10, 26, 10, 41, 42, 43],
+      "mimeType": "image/webp",
+      "originalFilename": "mystery.webp",
+      "generationPrompt": "",
+      "generationRevisedPrompt": "",
+      "generationModel": "",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "key": "plaintext",
+      "fileId": "c0000000-0000-4000-8000-000000000014",
+      "bytes": [110, 111, 116, 32, 97, 110, 32, 105, 109, 97, 103, 101, 32, 97, 116, 32, 97, 108, 108],
+      "mimeType": "text/plain",
+      "originalFilename": "notes.txt",
+      "generationPrompt": "",
+      "generationRevisedPrompt": "",
+      "generationModel": "",
+      "width": 0,
+      "height": 0
     }
   ],
   "bakedPhotos": [

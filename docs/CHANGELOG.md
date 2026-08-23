@@ -215,6 +215,33 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — feat(tools): the describe_image handler + the photo-tools family widening (P4.D108 unit 3)
+
+_Versions: core 0.0.631, harness 0.0.552._
+
+`tools/photo.rs` gains v4's `handleDescribeImage` split at the vision seam:
+`resolve_describable_file_entry` (direct image-v2 id → album link id →
+sha256 sisters, IMAGE-preferring; album membership deliberately NOT
+required), `handle_describe_image_precheck` (the two free tiers — stored
+description, then generation revisedPrompt || prompt — plus the No-image
+and not-an-image sentences byte-exact), and
+`handle_describe_image_after_vision` (serve the vision result, the
+already-described race re-read, or the could-not-describe sentence naming
+the skip reason). The attach_image no-kept-image error takes v4's rewritten
+sentence naming both verbs. The photo-tools family grows 14 → 29 ops: nine
+describe_image handler ops (the auto-describe module canned at v4's own
+jest-mock level, incl. a race op whose mock writes the winner's description
+first) and six module-level ops driving the REAL
+`auto_describe_chat_image_attachment` with `generateImageDescription`
+mocked at the §C2 seam, three of them dumping the module's three sink
+tables (files / links / chunks) in the shared-id remap form. A completeness
+assert now pins oracle rows == mirrored ops. Fixture: four new spec images
+(described / promptonly / blank / plaintext) through the same builder;
+oracle + fixture regenerated fresh at `a14a1811`. Mutation-proven four
+ways: tier reorder → describe_stored red; direct-id arm dropped →
+red; race re-read dropped → describe_race red; kept-link skip removed →
+autodescribe_kept red.
+
 #### 2026-08-23 — feat(photos): port the auto-describe-attachment pipeline (P4.D108 unit 2)
 
 _Versions: core 0.0.630._

@@ -1,10 +1,19 @@
 /**
  * @jest-environment node
  *
- * Differential ORACLE for the photo-trio doc-edit tool handlers (W4.9b; v4
- * `lib/tools/handlers/doc-edit/photo-handlers.ts` — keep_image / list_images /
- * attach_image). Drives v4's REAL `executeDocEditTool` + `formatDocEditResults`
- * over the shared two-DB fixture, ONE fresh copy per case (keep_image WRITES).
+ * Differential ORACLE for the photo doc-edit tool handlers (W4.9b + P4.D108;
+ * v4 `lib/tools/handlers/doc-edit/photo-handlers.ts` — keep_image /
+ * list_images / attach_image / describe_image). Drives v4's REAL
+ * `executeDocEditTool` + `formatDocEditResults` over the shared two-DB
+ * fixture, ONE fresh copy per case (keep_image WRITES).
+ *
+ * P4.D108 adds two op kinds: `describe_image` handler ops (the auto-describe
+ * MODULE is jest-mocked whole — v4's own mock level; `autoDescribe` picks the
+ * canned behavior, incl. the race arm that writes the description first) and
+ * `auto_describe` module ops (v4's REAL `autoDescribeChatImageAttachment`
+ * runs with `generateImageDescription` mocked at the §C2 seam; `dumpModule`
+ * dumps the module's three sink tables — files / doc_mount_file_links /
+ * doc_mount_chunks).
  *
  * Model boundary pinned: `generateEmbeddingForUser` is jest.mocked to the corpus
  * canned vectors (keyed by exact query text; failures in cannedFailures throw an
@@ -140,17 +149,37 @@ async function main(): Promise<void> {
 
   interface Op {
     label: string;
-    tool: 'keep_image' | 'list_images' | 'attach_image';
+    tool: 'keep_image' | 'list_images' | 'attach_image' | 'describe_image' | 'auto_describe';
     /** 'A' | 'B'; the acting character. */
     who: 'A' | 'B';
     /** Override chatId (the malformed-scene chat); defaults to spec.chatId. */
     chatId?: string;
     args: Record<string, unknown>;
-    /** For a keep op: freeze Date to this ISO so the minted keptAt is pinned. */
+    /** For a keep op: freeze Date to this ISO so the minted keptAt is pinned.
+     * Module (`auto_describe`) ops reuse it to pin descriptionUpdatedAt etc. */
     keptAt?: string;
     /** True for the keep ops → dump the six tables. */
     dump?: boolean;
+    /** describe_image ops: how to mock `@/lib/photos/auto-describe-attachment`
+     * (v4's OWN mock level for the handler — the module is mocked whole).
+     * 'throws' (default) proves tiers 1/2 never reach vision; 'vision' returns
+     * a canned description; 'race' writes the description first (the winner)
+     * then answers already-described; 'failed' answers describe-failed. */
+    autoDescribe?: 'throws' | 'vision' | 'race' | 'failed';
+    /** auto_describe (module-level) ops: how to mock
+     * `generateImageDescription` (the §C2 seam — everything above it runs
+     * REAL). 'description' answers a canned description (with surrounding
+     * whitespace, pinning the trim); 'unsupported' answers v4's no-profile
+     * result; 'throws' proves the precheck short-circuits never reach it. */
+    moduleMock?: 'description' | 'throws' | 'unsupported';
+    /** auto_describe ops: dump files + doc_mount_file_links + doc_mount_chunks
+     * (the module's three sinks). */
+    dumpModule?: boolean;
   }
+
+  const CANNED_VISION_DESCRIPTION = 'A copper kettle steams on a windowsill at dusk.';
+  const RACE_WINNER_DESCRIPTION = 'The winner wrote this description first.';
+  const MODULE_RAW_DESCRIPTION = '  A described mystery: two moths circle a lantern.  ';
 
   const ops: Op[] = [
     // ---- keep_image (write; dump the six tables; Date frozen to keptAt) ----
@@ -198,6 +227,41 @@ async function main(): Promise<void> {
       who: 'A',
       args: { uuid: '99999999-9999-4999-8999-999999999999' },
     },
+    // ---- describe_image (P4.D108; v4 a14a1811 bug 92 — the looking verb) ----
+    // Tier 1: a stored description is served WITHOUT a vision call ('described'
+    // also carries BOTH generation prompts, so a tier reorder is observable).
+    { label: 'describe_stored', tool: 'describe_image', who: 'A', args: { uuid: fid('described') } },
+    // Tier 2: revisedPrompt beats prompt; 'fresh' is UNKEPT (no album link) —
+    // the no-album-membership rule's pin.
+    { label: 'describe_generation_revised', tool: 'describe_image', who: 'A', args: { uuid: fid('fresh') } },
+    // Tier 2 fallback: an empty revisedPrompt falls to generationPrompt.
+    { label: 'describe_generation_prompt_only', tool: 'describe_image', who: 'A', args: { uuid: fid('promptonly') } },
+    // An album link uuid resolves via sha256 to the image-v2 sister.
+    { label: 'describe_album_link', tool: 'describe_image', who: 'A', args: { uuid: meta.bakedByKey.sunset.linkId } },
+    // Tier 3: nothing on file → the vision call (module mocked whole, v4's level).
+    { label: 'describe_vision', tool: 'describe_image', who: 'A', args: { uuid: fid('blank') }, autoDescribe: 'vision' },
+    // The race arm: another writer described it between our read and the call.
+    { label: 'describe_race', tool: 'describe_image', who: 'A', args: { uuid: fid('blank') }, autoDescribe: 'race' },
+    // The vision describer produced nothing.
+    { label: 'describe_failed', tool: 'describe_image', who: 'A', args: { uuid: fid('blank') }, autoDescribe: 'failed' },
+    // Unresolvable uuid → the No-image sentence.
+    { label: 'describe_missing', tool: 'describe_image', who: 'A', args: { uuid: '99999999-9999-4999-8999-999999999999' } },
+    // A non-image FileEntry → its sentence.
+    { label: 'describe_not_image', tool: 'describe_image', who: 'A', args: { uuid: fid('plaintext') } },
+    // ---- autoDescribeChatImageAttachment (module level; generateImageDescription
+    // mocked at the §C2 seam, everything above it REAL) ----
+    // The three sinks: files.description + the blank uploads link + chunks.
+    { label: 'autodescribe_writes', tool: 'auto_describe', who: 'A', args: { uuid: fid('blank') }, moduleMock: 'description', keptAt: '2026-04-03T09:00:00.000Z', dumpModule: true },
+    // A baked image: the kept vault link (markdown extractedText) is untouched;
+    // only the blank uploads link takes the description.
+    { label: 'autodescribe_kept', tool: 'auto_describe', who: 'A', args: { uuid: fid('forest') }, moduleMock: 'description', keptAt: '2026-04-03T09:30:00.000Z', dumpModule: true },
+    // already-described short-circuits BEFORE the vision call.
+    { label: 'autodescribe_already', tool: 'auto_describe', who: 'A', args: { uuid: fid('described') }, moduleMock: 'throws' },
+    // A non-description result → describe-failed, nothing persisted.
+    { label: 'autodescribe_failed', tool: 'auto_describe', who: 'A', args: { uuid: fid('blank') }, moduleMock: 'unsupported', keptAt: '2026-04-03T10:00:00.000Z', dumpModule: true },
+    // not-found / not-image.
+    { label: 'autodescribe_notfound', tool: 'auto_describe', who: 'A', args: { uuid: '88888888-8888-4888-8888-888888888888' }, moduleMock: 'throws' },
+    { label: 'autodescribe_notimage', tool: 'auto_describe', who: 'A', args: { uuid: fid('plaintext') }, moduleMock: 'throws' },
   ];
 
   const lines: string[] = [];
@@ -277,6 +341,79 @@ async function main(): Promise<void> {
       };
     });
 
+    // describe_image ops: mock the auto-describe MODULE whole (v4's own mock
+    // level for the handler differential — the Rust side cans the same seam).
+    // ⚠ `jest.doMock` registrations SURVIVE `jest.resetModules()`, so every
+    // iteration must (re-)register BOTH modules explicitly — a stale factory
+    // from a previous op would otherwise leak into this one.
+    if (op.tool !== 'describe_image') {
+      jest.doMock('@/lib/photos/auto-describe-attachment', () =>
+        jest.requireActual('@/lib/photos/auto-describe-attachment'),
+      );
+    }
+    if (op.tool !== 'auto_describe') {
+      jest.doMock('@/lib/chat/file-attachment-fallback', () =>
+        jest.requireActual('@/lib/chat/file-attachment-fallback'),
+      );
+    }
+    if (op.tool === 'describe_image') {
+      const mode = op.autoDescribe ?? 'throws';
+      jest.doMock('@/lib/photos/auto-describe-attachment', () => ({
+        __esModule: true,
+        autoDescribeChatImageAttachment: async (input: {
+          fileEntryId: string;
+          userId: string;
+          repos: { files: { update: (id: string, patch: unknown) => Promise<unknown> } };
+        }) => {
+          if (mode === 'throws') {
+            throw new Error('auto-describe must not be called for this op');
+          }
+          if (mode === 'vision') {
+            return { describedFileEntry: true, linksUpdated: 1, description: CANNED_VISION_DESCRIPTION };
+          }
+          if (mode === 'race') {
+            // The winner: persist the description, then answer already-described.
+            await input.repos.files.update(input.fileEntryId, { description: RACE_WINNER_DESCRIPTION });
+            return { describedFileEntry: false, linksUpdated: 0, description: null, skipReason: 'already-described' };
+          }
+          return { describedFileEntry: false, linksUpdated: 0, description: null, skipReason: 'describe-failed' };
+        },
+      }));
+    }
+    // auto_describe (module-level) ops: mock generateImageDescription at the
+    // §C2 seam; the REAL module (precheck, bytes, persist, chunk pass) runs.
+    if (op.tool === 'auto_describe') {
+      const mode = op.moduleMock ?? 'description';
+      jest.doMock('@/lib/chat/file-attachment-fallback', () => {
+        const actual = jest.requireActual('@/lib/chat/file-attachment-fallback');
+        return {
+          __esModule: true,
+          ...actual,
+          generateImageDescription: async (file: { filename: string; mimeType: string }) => {
+            if (mode === 'throws') {
+              throw new Error('generateImageDescription must not be called for this op');
+            }
+            if (mode === 'unsupported') {
+              return {
+                type: 'unsupported',
+                error: 'No image description profile available. Configure one in Settings → Chat Settings → Image Description Profile',
+                processingMetadata: { originalFilename: file.filename, originalMimeType: file.mimeType },
+              };
+            }
+            return {
+              type: 'image_description',
+              imageDescription: MODULE_RAW_DESCRIPTION,
+              processingMetadata: {
+                usedImageDescriptionLLM: true,
+                originalFilename: file.filename,
+                originalMimeType: file.mimeType,
+              },
+            };
+          },
+        };
+      });
+    }
+
     const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
     const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
       '@/lib/database/backends/sqlite/mount-index-client'
@@ -315,13 +452,28 @@ async function main(): Promise<void> {
         chatId: op.chatId ?? spec.chatId,
         characterId,
       };
-      const rawResult = await executeDocEditTool(op.tool, op.args, context as never);
-      const resultJson = JSON.stringify(rawResult);
-      const formatted = formatDocEditResults(op.tool, rawResult);
+      let resultJson: string;
+      let formatted: string;
+      if (op.tool === 'auto_describe') {
+        // Drive the REAL module (generateImageDescription mocked above).
+        const { autoDescribeChatImageAttachment } = await import('@/lib/photos/auto-describe-attachment');
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        const moduleResult = await autoDescribeChatImageAttachment({
+          fileEntryId: String(op.args.uuid),
+          userId: spec.userId,
+          repos: getRepositories(),
+        });
+        resultJson = JSON.stringify(moduleResult);
+        formatted = '';
+      } else {
+        const rawResult = await executeDocEditTool(op.tool, op.args, context as never);
+        resultJson = JSON.stringify(rawResult);
+        formatted = formatDocEditResults(op.tool, rawResult);
+      }
 
       const record: Record<string, unknown> = { label: op.label, resultJson, formatted };
 
-      if (op.dump) {
+      if (op.dump || op.dumpModule) {
         const midb = getRawMountIndexDatabase();
         if (!midb) throw new Error('mount-index DB handle unavailable for dump');
         const dumpMount = (table: string, orderBy: string) => {
@@ -343,14 +495,24 @@ async function main(): Promise<void> {
           return canonicalizeRows({ table, columns, rawRows, orderBy });
         };
         // Order by remap-invariant keys so the positional-UUID remap aligns both sides.
-        record.dumps = {
-          doc_mount_points: dumpMount('doc_mount_points', 'id'),
-          doc_mount_files: dumpMount('doc_mount_files', 'sha256'),
-          doc_mount_blobs: dumpMount('doc_mount_blobs', 'sha256'),
-          doc_mount_file_links: dumpMount('doc_mount_file_links', 'relativePath'),
-          doc_mount_folders: dumpMount('doc_mount_folders', 'path'),
-          files: await dumpMain('files', 'id'),
-        };
+        if (op.dump) {
+          record.dumps = {
+            doc_mount_points: dumpMount('doc_mount_points', 'id'),
+            doc_mount_files: dumpMount('doc_mount_files', 'sha256'),
+            doc_mount_blobs: dumpMount('doc_mount_blobs', 'sha256'),
+            doc_mount_file_links: dumpMount('doc_mount_file_links', 'relativePath'),
+            doc_mount_folders: dumpMount('doc_mount_folders', 'path'),
+            files: await dumpMain('files', 'id'),
+          };
+        } else {
+          // Module ops: the auto-describe three-sink tables (chunks ordered by
+          // content — remap-invariant; ids are minted).
+          record.dumps = {
+            files: await dumpMain('files', 'id'),
+            doc_mount_file_links: dumpMount('doc_mount_file_links', 'relativePath'),
+            doc_mount_chunks: dumpMount('doc_mount_chunks', 'content'),
+          };
+        }
       }
 
       lines.push(JSON.stringify(record));

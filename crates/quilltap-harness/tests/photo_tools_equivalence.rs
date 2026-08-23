@@ -1,7 +1,16 @@
-//! Tier-3 differential: the photo-trio tool handlers (W4.9b; v4
+//! Tier-3 differential: the photo tool handlers (W4.9b + P4.D108; v4
 //! `lib/tools/handlers/doc-edit/photo-handlers.ts`), ported as
 //! `quilltap_core::tools::photo::{handle_keep_image, handle_list_images,
-//! handle_attach_image}` over `quilltap_core::photos::save_image_to_album`.
+//! handle_attach_image}` over `quilltap_core::photos::save_image_to_album`,
+//! plus (P4.D108, v4 a14a1811 bug 92) the `describe_image` handler
+//! (`handle_describe_image_precheck` / `handle_describe_image_after_vision` —
+//! the auto-describe module canned at v4's own jest-mock level, incl. the
+//! already-described race arm) and the REAL
+//! `photos::auto_describe_attachment` module driven end-to-end with the
+//! vision call canned at the §C2 `ImageDescribeDriver` seam (`auto_describe`
+//! ops; three-sink dumps over `MODULE_TABLES`). A completeness assert pins
+//! oracle rows == mirrored ops, so a widened oracle cannot silently lose
+//! coverage.
 //!
 //! Both sides run the SAME op sequence (`photo-tools.json` + the fixture builder's
 //! `.meta.json` sidecar) on a FRESH copy of the two-DB fixture (two transparent
@@ -520,6 +529,252 @@ fn corpus() -> Vec<Op> {
 }
 
 // ===========================================================================
+// describe_image (P4.D108; v4 a14a1811 bug 92 — the looking verb)
+// ===========================================================================
+
+/// The oracle's canned auto-describe strings (photo-tools.test.ts).
+const CANNED_VISION_DESCRIPTION: &str = "A copper kettle steams on a windowsill at dusk.";
+const RACE_WINNER_DESCRIPTION: &str = "The winner wrote this description first.";
+const MODULE_RAW_DESCRIPTION: &str = "  A described mystery: two moths circle a lantern.  ";
+
+/// A describe_image HANDLER op. The auto-describe module is canned at exactly
+/// v4's mock level (the oracle jest-mocks the module whole); `mode` picks the
+/// canned behavior — `throws` proves tiers 1/2 never reach vision.
+struct DescribeOp {
+    label: &'static str,
+    build_args: fn(&Meta) -> Value,
+    mode: &'static str,
+}
+
+fn describe_corpus() -> Vec<DescribeOp> {
+    vec![
+        DescribeOp {
+            label: "describe_stored",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["described"] }),
+            mode: "throws",
+        },
+        DescribeOp {
+            label: "describe_generation_revised",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["fresh"] }),
+            mode: "throws",
+        },
+        DescribeOp {
+            label: "describe_generation_prompt_only",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["promptonly"] }),
+            mode: "throws",
+        },
+        DescribeOp {
+            label: "describe_album_link",
+            build_args: |m| json!({ "uuid": m.baked_by_key["sunset"].link_id }),
+            mode: "throws",
+        },
+        DescribeOp {
+            label: "describe_vision",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mode: "vision",
+        },
+        DescribeOp {
+            label: "describe_race",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mode: "race",
+        },
+        DescribeOp {
+            label: "describe_failed",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mode: "failed",
+        },
+        DescribeOp {
+            label: "describe_missing",
+            build_args: |_| json!({ "uuid": "99999999-9999-4999-8999-999999999999" }),
+            mode: "throws",
+        },
+        DescribeOp {
+            label: "describe_not_image",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["plaintext"] }),
+            mode: "throws",
+        },
+    ]
+}
+
+/// An auto_describe MODULE op: v4's REAL `autoDescribeChatImageAttachment`
+/// runs with `generateImageDescription` mocked at the §C2 seam; the Rust side
+/// drives the real module with a canned [`ImageDescribeDriver`] at the SAME
+/// seam.
+struct ModuleOp {
+    label: &'static str,
+    build_args: fn(&Meta) -> Value,
+    mock: &'static str,
+    dumps: bool,
+}
+
+fn module_corpus() -> Vec<ModuleOp> {
+    vec![
+        ModuleOp {
+            label: "autodescribe_writes",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mock: "description",
+            dumps: true,
+        },
+        ModuleOp {
+            label: "autodescribe_kept",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["forest"] }),
+            mock: "description",
+            dumps: true,
+        },
+        ModuleOp {
+            label: "autodescribe_already",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["described"] }),
+            mock: "throws",
+            dumps: false,
+        },
+        ModuleOp {
+            label: "autodescribe_failed",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mock: "unsupported",
+            dumps: true,
+        },
+        ModuleOp {
+            label: "autodescribe_notfound",
+            build_args: |_| json!({ "uuid": "88888888-8888-4888-8888-888888888888" }),
+            mock: "throws",
+            dumps: false,
+        },
+        ModuleOp {
+            label: "autodescribe_notimage",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["plaintext"] }),
+            mock: "throws",
+            dumps: false,
+        },
+    ]
+}
+
+/// The module ops' three-sink dump set (files / links / chunks), in the
+/// oracle's emission order. Chunks order by `content` — remap-invariant (the
+/// row ids are minted).
+const MODULE_TABLES: &[TableSpec] = &[
+    TableSpec {
+        table: "files",
+        order_by: "id",
+        from_mount: false,
+        id_columns: &["id"],
+        ts_columns: &["createdAt", "updatedAt"],
+        pin_chunk_count: false,
+    },
+    TableSpec {
+        table: "doc_mount_file_links",
+        order_by: "relativePath",
+        from_mount: true,
+        id_columns: &["id", "fileId", "folderId"],
+        ts_columns: &[
+            "createdAt",
+            "updatedAt",
+            "lastModified",
+            "descriptionUpdatedAt",
+        ],
+        pin_chunk_count: false,
+    },
+    TableSpec {
+        table: "doc_mount_chunks",
+        order_by: "content",
+        from_mount: true,
+        id_columns: &["id", "linkId", "mountPointId"],
+        ts_columns: &["createdAt", "updatedAt"],
+        pin_chunk_count: false,
+    },
+];
+
+fn normalize_module_dumps(dumps: &mut [Value]) {
+    let mut id_map: HashMap<String, String> = HashMap::new();
+    for (i, spec) in MODULE_TABLES.iter().enumerate() {
+        normalize_table(&mut dumps[i], spec, &mut id_map);
+    }
+}
+
+/// The oracle's `generateImageDescription` mock, as a canned §C2 driver.
+struct CannedModuleDriver {
+    mock: &'static str,
+    label: &'static str,
+}
+
+impl quilltap_core::api::chat_media::ImageDescribeDriver for CannedModuleDriver {
+    fn describe<'a>(
+        &'a self,
+        file: quilltap_core::services::file_fallback::FallbackFile,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = quilltap_core::services::file_fallback::FallbackResult>
+                + Send
+                + 'a,
+        >,
+    > {
+        use quilltap_core::services::file_fallback::{
+            FallbackResult, FallbackType, ProcessingMetadata,
+        };
+        let result = match self.mock {
+            "throws" => panic!(
+                "{}: generateImageDescription must not be called for this op",
+                self.label
+            ),
+            "unsupported" => FallbackResult {
+                type_: FallbackType::Unsupported,
+                text_content: None,
+                image_description: None,
+                processing_metadata: Some(ProcessingMetadata {
+                    original_filename: file.filename.clone(),
+                    original_mime_type: file.mime_type.clone(),
+                    ..Default::default()
+                }),
+                error: Some(
+                    "No image description profile available. Configure one in Settings → Chat Settings → Image Description Profile"
+                        .to_string(),
+                ),
+            },
+            "description" => FallbackResult {
+                type_: FallbackType::ImageDescription,
+                text_content: None,
+                image_description: Some(MODULE_RAW_DESCRIPTION.to_string()),
+                processing_metadata: Some(ProcessingMetadata {
+                    used_image_description_llm: Some(true),
+                    original_filename: file.filename.clone(),
+                    original_mime_type: file.mime_type.clone(),
+                    ..Default::default()
+                }),
+                error: None,
+            },
+            other => panic!("unknown module mock {other}"),
+        };
+        Box::pin(async move { result })
+    }
+}
+
+/// v4's `AutoDescribeOutput` JSON (the oracle's `JSON.stringify(moduleResult)`
+/// key order: describedFileEntry, linksUpdated, description, skipReason?).
+fn module_result_json(
+    out: &quilltap_core::photos::auto_describe_attachment::AutoDescribeOutput,
+) -> String {
+    let mut m = Map::new();
+    m.insert(
+        "describedFileEntry".into(),
+        Value::Bool(out.described_file_entry),
+    );
+    m.insert("linksUpdated".into(), Value::from(out.links_updated));
+    m.insert(
+        "description".into(),
+        out.description
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    if let Some(reason) = out.skip_reason {
+        m.insert(
+            "skipReason".into(),
+            Value::String(reason.as_str().to_string()),
+        );
+    }
+    serde_json::to_string(&Value::Object(m)).unwrap()
+}
+
+// ===========================================================================
 // The test
 // ===========================================================================
 
@@ -709,6 +964,190 @@ fn photo_tools_matches_oracle() {
         drop(mount);
         cleanup(&main_work, &mount_work);
     }
+
+    // ---- describe_image handler ops (P4.D108) -----------------------------
+    for op in describe_corpus() {
+        use quilltap_core::photos::auto_describe_attachment::{
+            AutoDescribeOutput, AutoDescribeSkipReason,
+        };
+        use quilltap_core::tools::photo::{
+            handle_describe_image_after_vision, handle_describe_image_precheck, DescribeImageStep,
+        };
+
+        let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, op.label);
+        let main = Writer::open_writable(&main_work, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main {}: {e}", op.label));
+        let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount {}: {e}", op.label));
+        let photo_ctx = PhotoToolContext {
+            chat_id: spec.chat_id.clone(),
+            user_id: spec.user_id.clone(),
+            project_id: None,
+            character_id: Some(spec.char_a_id.clone()),
+            embedding_profile_id: None,
+        };
+        let args = (op.build_args)(&meta);
+
+        let step = handle_describe_image_precheck(
+            main.connection(),
+            mount.connection(),
+            &args,
+            &photo_ctx,
+        );
+        let out = match step {
+            DescribeImageStep::Done(out) => out,
+            DescribeImageStep::NeedsVision(entry) => {
+                let outcome = match op.mode {
+                    "throws" => panic!(
+                        "{}: reached the vision tier — tiers 1/2 must serve without a vision call",
+                        op.label
+                    ),
+                    "vision" => AutoDescribeOutput {
+                        described_file_entry: true,
+                        links_updated: 1,
+                        description: Some(CANNED_VISION_DESCRIPTION.to_string()),
+                        skip_reason: None,
+                    },
+                    "race" => {
+                        // The winner writes first (mirrors the oracle's mock).
+                        use quilltap_core::db::files::{FileUpdate, FilesRepository};
+                        FilesRepository::new(main.connection())
+                            .update(
+                                &entry.id,
+                                &FileUpdate {
+                                    description: Some(RACE_WINNER_DESCRIPTION.to_string()),
+                                    updated_at: "2026-04-03T08:00:00.000Z".to_string(),
+                                    ..Default::default()
+                                },
+                            )
+                            .unwrap_or_else(|e| panic!("{}: race write: {e}", op.label));
+                        AutoDescribeOutput::skipped(AutoDescribeSkipReason::AlreadyDescribed)
+                    }
+                    "failed" => AutoDescribeOutput::skipped(AutoDescribeSkipReason::DescribeFailed),
+                    other => panic!("unknown describe mode {other}"),
+                };
+                handle_describe_image_after_vision(main.connection(), &entry, &photo_ctx, &outcome)
+            }
+        };
+
+        let want = oracle
+            .get(op.label)
+            .unwrap_or_else(|| panic!("oracle missing case {}", op.label));
+        // describe ops mint nothing → exact compare (fixture ids are pinned).
+        let got_json = serde_json::to_string(&raw_result_json(&out)).unwrap();
+        assert_eq!(
+            got_json, want.result_json,
+            "resultJson diverged for {}",
+            op.label
+        );
+        assert_eq!(
+            format_doc_edit_results(&out),
+            want.formatted,
+            "formatted diverged for {}",
+            op.label
+        );
+
+        drop(main);
+        drop(mount);
+        cleanup(&main_work, &mount_work);
+    }
+
+    // ---- auto_describe module ops (P4.D108) -------------------------------
+    for op in module_corpus() {
+        use quilltap_core::db::runtime::{Db, DbPaths};
+        use quilltap_core::photos::auto_describe_attachment::auto_describe_chat_image_attachment;
+
+        let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, op.label);
+        let args = (op.build_args)(&meta);
+        let uuid = args["uuid"].as_str().unwrap().to_string();
+
+        // Run the REAL module over a Db opened on the copies (the driver is
+        // the canned §C2 seam; bytes are the fixture-recorded per-fileId set;
+        // the enqueue is the NoSideEffects no-op the oracle jest-mocks).
+        let db = Db::open(
+            DbPaths {
+                main: main_work.clone(),
+                mount_index: Some(mount_work.clone()),
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .unwrap_or_else(|e| panic!("open db {}: {e}", op.label));
+        let driver = CannedModuleDriver {
+            mock: op.mock,
+            label: op.label,
+        };
+        let out = rt.block_on(auto_describe_chat_image_attachment(
+            &db,
+            &bytes,
+            &side_effects,
+            Some(&driver),
+            &uuid,
+        ));
+        drop(db);
+
+        let want = oracle
+            .get(op.label)
+            .unwrap_or_else(|| panic!("oracle missing case {}", op.label));
+        assert_eq!(
+            module_result_json(&out),
+            want.result_json,
+            "resultJson diverged for {}",
+            op.label
+        );
+
+        if op.dumps {
+            let main = Writer::open_writable(&main_work, &spec.test_pepper_base64)
+                .unwrap_or_else(|e| panic!("reopen main {}: {e}", op.label));
+            let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
+                .unwrap_or_else(|e| panic!("reopen mount {}: {e}", op.label));
+            let mut got_dumps: Vec<Value> = MODULE_TABLES
+                .iter()
+                .map(|s| {
+                    let w = if s.from_mount { &mount } else { &main };
+                    w.dump_table_json(s.table, s.order_by)
+                        .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
+                })
+                .collect();
+            let oracle_dumps = want
+                .dumps
+                .as_ref()
+                .unwrap_or_else(|| panic!("oracle case {} has no dumps", op.label));
+            let mut want_dumps: Vec<Value> = MODULE_TABLES
+                .iter()
+                .map(|s| {
+                    oracle_dumps
+                        .get(s.table)
+                        .cloned()
+                        .unwrap_or_else(|| panic!("oracle {} missing dump {}", op.label, s.table))
+                })
+                .collect();
+            normalize_module_dumps(&mut got_dumps);
+            normalize_module_dumps(&mut want_dumps);
+            for (i, s) in MODULE_TABLES.iter().enumerate() {
+                assert_eq!(
+                    got_dumps[i]["rows"], want_dumps[i]["rows"],
+                    "{}: {} rows diverged\n  rust:   {}\n  oracle: {}",
+                    op.label, s.table, got_dumps[i]["rows"], want_dumps[i]["rows"]
+                );
+            }
+            drop(main);
+            drop(mount);
+        }
+        cleanup(&main_work, &mount_work);
+    }
+
+    // Completeness: every oracle row must be mirrored here (a widened oracle
+    // with an unmirrored op is silent lost coverage — the
+    // green-regen-is-not-coverage rule).
+    let mirrored = corpus().len() + describe_corpus().len() + module_corpus().len();
+    assert_eq!(
+        oracle.len(),
+        mirrored,
+        "oracle has {} rows but the corpus mirrors {} — a new oracle op is unmirrored",
+        oracle.len(),
+        mirrored
+    );
 
     eprintln!("OK: photo-tools differential matched the oracle across all cases.");
 }

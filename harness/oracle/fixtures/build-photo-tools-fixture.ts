@@ -56,6 +56,9 @@ interface ImageSpec {
   generationModel: string;
   width: number;
   height: number;
+  /** P4.D108: a stored description (the describe_image stored-description
+   * tier). Absent = the row stays undescribed. */
+  description?: string;
 }
 interface BakedPhoto {
   vault: 'A' | 'B';
@@ -248,6 +251,8 @@ async function main(): Promise<void> {
       generationModel: img.generationModel,
       width: img.width,
       height: img.height,
+      // P4.D108: the describe_image stored-description tier's fixture rows.
+      ...(img.description !== undefined ? { description: img.description } : {}),
     } as never);
     const stored = await readImageBuffer(entry.id);
     realFileIdByKey[img.key] = entry.id;

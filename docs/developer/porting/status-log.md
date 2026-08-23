@@ -82352,3 +82352,47 @@ three sinks, the kept-link skip, and the zero-vision-call short-circuits via
 a call-counting canned driver. The module differential (v4's REAL module,
 `generateImageDescription` mocked at §C2 level) rides unit 3's photo-tools
 family.
+
+### Unit 3 — the describe_image handler + the photo-tools family widening
+
+`tools/photo.rs`: the v4 handler split at the vision seam so the family can
+can the module exactly where v4's jest mock sits — `resolve_describable_file_
+entry` (direct id [category-IMAGE-gated; v4's getImageById is a bare
+findFileById, the gate lives in the resolver] → link id → sha256 sisters
+IMAGE-preferring; NO album-membership check, v4's doc comment carried),
+`handle_describe_image_precheck` (both error sentences + tiers 1/2), and
+`handle_describe_image_after_vision` (vision serve / the already-described
+race re-read / the could-not-describe sentence). The attach_image
+no-kept-image sentence rewritten to v4's new both-verbs text (pinned by the
+attach_missing op going red at regen, then green). The success row is built
+in v4's literal key order (file_id, filename, mime_type, width?, height?,
+description, source) with absent width/height omitting the key.
+
+The family: fixture spec +4 images (described / promptonly / blank /
+plaintext — the plaintext row rides v4's own ingest quirk: ingestImageBuffer
+hardcodes category IMAGE, so the direct arm accepts it and the mime check
+fires naturally); oracle case +15 ops (9 handler + 6 module) with per-op
+jest.doMock — ⚠ TRAP for the record: **jest.doMock registrations survive
+jest.resetModules()**, so every iteration must re-register BOTH mocked
+modules explicitly or a previous op's factory leaks forward (found when the
+first module op inherited the handler ops' throwing mock). Harness: two new
+corpora (DescribeOp/ModuleOp) + MODULE_TABLES (files/links/chunks) dumps +
+the completeness assert (oracle rows == mirrored ops — the
+green-regen-is-not-coverage tripwire). Module ops open a real `Db` over the
+per-op copies (writer thread) and reopen `Writer`s for the dumps after.
+
+Mutation proofs, each red-then-restored: (1) tier reorder
+(generation-prompt before stored) → describe_stored red; (2) the direct-id
+arm dropped (album membership imposed) → red at the stored case (fresh
+unkept also reds); (3) the race re-read dropped → describe_race red;
+(4) the module's kept-link skip removed → autodescribe_kept red. Final run
+green, 29/29 ops.
+
+Regen recipe (unchanged from the family header; fixture must be REBUILT
+because the spec widened): build-photo-tools-fixture.ts → stage case+spec
+outside .claude → jest — see the test header; then
+QT_ORACLE_PHOTO/QT_FIXTURE_PHOTO_MAIN/QT_FIXTURE_PHOTO_MOUNT →
+`cargo test -p quilltap-harness --test photo_tools_equivalence`.
+⚠ Fixture invalidation: photo-tools.json widened (4 new images) — any
+sibling consumer of the photo fixture must regenerate from the new spec
+(the committed spec is the source; the .db files are /tmp artifacts).

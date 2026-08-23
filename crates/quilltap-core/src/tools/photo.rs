@@ -699,7 +699,7 @@ pub fn handle_attach_image(
 
     let Some(link) = link else {
         return PhotoToolResult::err(format!(
-            "No kept image found for uuid {} in {}'s vault. Call keep_image first to save it.",
+            "No kept image found for uuid {} in {}'s vault. attach_image only shows images you have already filed with keep_image — file it first if you want to hold it up again. If what you actually wanted was to see what the image depicts, call describe_image with this uuid instead; it does not require the image to be in your album.",
             uuid, vault.character_name
         ));
     };
@@ -838,6 +838,198 @@ fn nibble_hex(n: u8) -> char {
         0..=9 => (b'0' + n) as char,
         _ => (b'A' + (n - 10)) as char,
     }
+}
+
+// ============================================================================
+// describe_image — the looking verb. (v4 photo-handlers.ts, a14a1811 bug 92)
+//
+// Resolves any handle a character might be holding (image-v2 file uuid,
+// generate_image id, Librarian catalogue handle, or an album link uuid) to a
+// FileEntry, then answers with the best description available, spending a
+// vision call only when there isn't one. See bug 92 for why this exists: the
+// photo tools were all custodial, so models reached for attach_image to look
+// at things and were told to file them instead.
+// ============================================================================
+
+/// Resolve a describe_image uuid to its image-v2 FileEntry (v4
+/// `resolveDescribableFileEntry`). Accepts a file uuid directly, or a
+/// doc_mount_file_links id whose sha256 identifies the bytes. Album membership
+/// is deliberately NOT required — a character may want to look at an image
+/// they have not filed, which was the whole trap.
+pub fn resolve_describable_file_entry(
+    main: &Connection,
+    mount: &Connection,
+    uuid: &str,
+) -> Result<Option<crate::db::files::FileEntry>, crate::db::DbError> {
+    let files = FilesRepository::new(main);
+    // v4 `getImageById(uuid)` is a plain `findFileById`; the IMAGE gate is here.
+    if let Some(direct) = files.find_by_id(uuid)? {
+        if direct.category == "IMAGE" {
+            return Ok(Some(direct));
+        }
+    }
+    let links = DocMountFileLinksRepository::new(mount);
+    if let Some(link) = links.find_by_id_with_content(uuid)? {
+        if !link.sha256.is_empty() {
+            let sisters = files.find_by_sha256(&link.sha256)?;
+            let sister = sisters
+                .iter()
+                .find(|f| f.category == "IMAGE")
+                .or_else(|| sisters.first());
+            if let Some(s) = sister {
+                return Ok(Some(s.clone()));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// v4's `respond(description, source)` closure — the success row (v4 key
+/// order: `file_id, filename, mime_type, width?, height?, description,
+/// source`; an absent width/height omits the key, as `?? undefined` does
+/// under `JSON.stringify`) + the `'Described image for character'` log line.
+fn describe_respond(
+    entry: &crate::db::files::FileEntry,
+    ctx: &PhotoToolContext,
+    description: &str,
+    source: &str,
+) -> PhotoToolResult {
+    tracing::info!(
+        file_entry_id = %entry.id,
+        character_id = ctx.character_id.as_deref().unwrap_or_default(),
+        source,
+        description_length = utf16_len(description),
+        "Described image for character"
+    );
+    let mut result = serde_json::Map::new();
+    result.insert("file_id".into(), Value::String(entry.id.clone()));
+    result.insert(
+        "filename".into(),
+        Value::String(entry.original_filename.clone()),
+    );
+    result.insert("mime_type".into(), Value::String(entry.mime_type.clone()));
+    if let Some(w) = entry.width {
+        result.insert("width".into(), Value::from(w));
+    }
+    if let Some(h) = entry.height {
+        result.insert("height".into(), Value::from(h));
+    }
+    result.insert("description".into(), Value::String(description.to_string()));
+    result.insert("source".into(), Value::String(source.to_string()));
+    PhotoToolResult {
+        success: true,
+        result: Some(Value::Object(result)),
+        error: None,
+        formatted_text: Some(format!("{}:\n\n{}", entry.original_filename, description)),
+    }
+}
+
+/// The describe_image pre-vision step's outcome.
+pub enum DescribeImageStep {
+    /// The op finished — an error row, or tier 1/2 served for free.
+    Done(PhotoToolResult),
+    /// Nothing on file: run the vision tier
+    /// ([`crate::photos::auto_describe_attachment::auto_describe_chat_image_attachment`])
+    /// on this entry, then [`handle_describe_image_after_vision`].
+    NeedsVision(Box<crate::db::files::FileEntry>),
+}
+
+/// v4 `handleDescribeImage`, up to the vision call: resolution + the two free
+/// tiers (stored description, then generation revisedPrompt || prompt), with
+/// the two error sentences byte-exact.
+pub fn handle_describe_image_precheck(
+    main: &Connection,
+    mount: &Connection,
+    args: &Value,
+    ctx: &PhotoToolContext,
+) -> DescribeImageStep {
+    let uuid = arg_str(args, "uuid").unwrap_or_default();
+    let entry = match resolve_describable_file_entry(main, mount, &uuid) {
+        Ok(e) => e,
+        Err(e) => return DescribeImageStep::Done(PhotoToolResult::err(e.to_string())),
+    };
+    let Some(entry) = entry else {
+        return DescribeImageStep::Done(PhotoToolResult::err(format!(
+            "No image found for uuid {uuid}. Use the uuid from the Librarian's upload announcement, the id generate_image returned, or a uuid from list_images."
+        )));
+    };
+    if !entry.mime_type.starts_with("image/") {
+        return DescribeImageStep::Done(PhotoToolResult::err(format!(
+            "{} is not an image ({}).",
+            entry.original_filename, entry.mime_type
+        )));
+    }
+
+    // 1. A description stored at upload time — the common case, and free.
+    if let Some(stored) = entry
+        .description
+        .as_deref()
+        .map(js_trim)
+        .filter(|s| !s.is_empty())
+    {
+        let out = describe_respond(&entry, ctx, stored, "stored-description");
+        return DescribeImageStep::Done(out);
+    }
+
+    // 2. Quilltap generated it, so the prompt that made it is the most
+    //    faithful account available, and also free.
+    let prompt = entry
+        .generation_revised_prompt
+        .as_deref()
+        .map(js_trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            entry
+                .generation_prompt
+                .as_deref()
+                .map(js_trim)
+                .filter(|s| !s.is_empty())
+        });
+    if let Some(p) = prompt {
+        let out = describe_respond(&entry, ctx, p, "generation-prompt");
+        return DescribeImageStep::Done(out);
+    }
+
+    DescribeImageStep::NeedsVision(Box::new(entry))
+}
+
+/// v4 `handleDescribeImage`, after the vision call: serve the fresh
+/// description, or — `already-described` means another writer won the race
+/// between our read and the call — re-read rather than reporting a failure;
+/// otherwise the fixed could-not-describe sentence naming the skip reason.
+pub fn handle_describe_image_after_vision(
+    main: &Connection,
+    entry: &crate::db::files::FileEntry,
+    ctx: &PhotoToolContext,
+    outcome: &crate::photos::auto_describe_attachment::AutoDescribeOutput,
+) -> PhotoToolResult {
+    use crate::photos::auto_describe_attachment::AutoDescribeSkipReason;
+
+    if let Some(d) = outcome.description.as_deref().filter(|d| !d.is_empty()) {
+        return describe_respond(entry, ctx, d, "vision-call");
+    }
+
+    if outcome.skip_reason == Some(AutoDescribeSkipReason::AlreadyDescribed) {
+        let fresh = match FilesRepository::new(main).find_by_id(&entry.id) {
+            Ok(row) => row
+                .and_then(|f| f.description)
+                .map(|d| js_trim(&d).to_string())
+                .filter(|d| !d.is_empty()),
+            Err(e) => return PhotoToolResult::err(e.to_string()),
+        };
+        if let Some(fresh) = fresh {
+            return describe_respond(entry, ctx, &fresh, "stored-description");
+        }
+    }
+
+    PhotoToolResult::err(format!(
+        "Could not describe {}: the vision describer produced nothing ({}). Check Settings → Chat → Image Description Profile.",
+        entry.original_filename,
+        outcome
+            .skip_reason
+            .map(AutoDescribeSkipReason::as_str)
+            .unwrap_or("unknown reason"),
+    ))
 }
 
 #[cfg(test)]
