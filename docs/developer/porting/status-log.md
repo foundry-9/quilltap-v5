@@ -82263,3 +82263,32 @@ needed: the whole surface landed.
 **Order premise corrections recorded above:** `providers_listing_equivalence`
 does not pin the attachment block (`provider_registry_equivalence` does), and
 the generator needed no `notes` extension.
+
+### P4.D107 verification gate (2026-08-23)
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, plain AND
+  `--features quilltap-core/native-transport`.
+- `CARGO_INCREMENTAL=0 cargo test --workspace` with
+  `QT_ORACLE_PROVIDER_REGISTRY` + `QT_ORACLE_PROVIDERS_LISTING`:
+  **446 test binaries / 2,270 tests / 0 failed**, exit 0. The lane's families
+  positively confirmed to have RUN by name in the log —
+  `request_builder_matches_v4`, `provider_registry_matches_oracle`,
+  `providers_listing_matches_v4`, plus `tool_wire_call_site` and both google
+  binaries. Zero unexplained SKIP.
+- `harness/tools/recipe_sweep.py --run-all --families
+  request_builder_equivalence,providers_listing_equivalence,provider_registry_equivalence`
+  (one sweep, `--force` for the worktree venue) — **3/3 ok**, oracles
+  regenerated fresh against the live v4 checkout sitting on `a14a1811`
+  (`git log a14a1811..main` empty, tree clean, both at lane start and at the
+  gate). Working tree clean afterwards — no recipe wrote into the repo.
+- Corpus greps on the committed NDJSON: 341 rows, `image_url` present,
+  `NanoGPT forwards images only (image/jpeg, image/png, image/gif, image/webp).`
+  ×6, `Attachment missing data or URL` ×8.
+- `git diff --stat main..HEAD -- .../manifests/` shows ONE file — the nine
+  siblings are byte-identical.
+- No file outside the lane's Ownership section was touched (checked
+  mechanically against the order's exclusion list); no SPA edits.
+- `harness/tools/check_spelling.py` — exit 0.
+
+**Versions:** core 0.0.630, harness 0.0.552. host/web/cli/tauri/SPA unchanged.

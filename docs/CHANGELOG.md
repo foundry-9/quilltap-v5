@@ -126,6 +126,17 @@ spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
 port records the discrepancy and keeps the code. Also mirrors v4's
 bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
 sections to the `p4.9i2` row.
+#### 2026-08-23 — docs(porting): the P4.D107 verification gate record
+
+_Docs-only change._
+
+The lane's gate appended to `status-log.md`: fmt and both clippy feature
+sets clean; `cargo test --workspace` 446 binaries / 2,270 tests / 0
+failed with the lane's oracle env block, the three families confirmed to
+have RUN by name; the sweep driver 3/3 ok over oracles regenerated fresh
+against v4 at `a14a1811`; the corpus greps and the nine-sibling
+byte-identity check.
+
 #### 2026-08-23 — docs(v4): mirror the plugin-author attachment contract
 
 _Docs-only change._
