@@ -9,7 +9,7 @@
 
 use super::ToolDef;
 
-/// Every tool definition, in v4 `ALL_TOOLS` order. 57 entries.
+/// Every tool definition, in v4 `ALL_TOOLS` order. 58 entries.
 pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "askCarina",
@@ -19,12 +19,17 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "attachImage",
         name: "attach_image",
-        json: r#"{"name":"attach_image","description":"Re-attach an image you've previously kept (via keep_image) to your current message. Pass the uuid returned by keep_image or list_images. The image must live in your own photo album — to attach someone else's saved image, keep_image it first. The image renders inline in chat for any image-capable participant; non-image-capable models will see the stored prompt and caption in the tool result.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the kept image (the album link uuid returned by keep_image / list_images, or an image-v2 file uuid)."}},"required":["uuid"],"additionalProperties":false}}"#,
+        json: r#"{"name":"attach_image","description":"Show an image you've previously kept (via keep_image) to the room again, attached to your current message — the equivalent of taking a photograph out and holding it up. This does NOT let you see the picture: if you want to know what an image depicts, call describe_image instead. Pass the uuid returned by keep_image or list_images. The image must live in your own photo album — to show someone else's saved image, keep_image it first. It renders inline in chat for any image-capable participant; non-image-capable models will see the stored prompt and caption in the tool result.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the kept image (the album link uuid returned by keep_image / list_images, or an image-v2 file uuid)."}},"required":["uuid"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "deleteAnnotation",
         name: "delete_annotation",
         json: r#"{"name":"delete_annotation","description":"Remove your annotation from a specific message in this conversation. Only removes your own annotation — other characters' annotations are not affected.","parameters":{"type":"object","properties":{"message_index":{"type":"integer","minimum":0,"maximum":9007199254740991,"description":"The 0-based message number to remove your annotation from."}},"required":["message_index"],"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "describeImage",
+        name: "describe_image",
+        json: r#"{"name":"describe_image","description":"Look at an image and get a detailed description of what it contains. Use this whenever you need to know what is IN a picture — one the user just uploaded, one you generated, or one in an album. This is the only tool that tells you what an image depicts; keep_image and attach_image are filing and display, and neither shows you anything. Most images are already described, so this is usually instant; otherwise it runs a vision model. If the image was attached to a recent message and you can already see it, you don't need this — use it when you can't, or when you want the detail.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the image to look at: the uuid from a Librarian upload announcement, an image-v2 file uuid, the id returned by generate_image, or an album link uuid from keep_image / list_images."}},"required":["uuid"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "docCloseDocument",
@@ -164,7 +169,7 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "keepImage",
         name: "keep_image",
-        json: r#"{"name":"keep_image","description":"Save an image to your photo album (a `photos/` folder in your character vault) so it survives chat garbage collection and becomes searchable from your memory. Pass the UUID of an image that was generated in this chat, or the catalogue handle the Librarian announced when someone attached a photo from a gallery. Caption and tags are optional freeform labels for retrieval — they are not the platform's global Tag system. Returns the path the image now lives at in your vault. If you've already kept this image, the call fails — delete the existing copy first if you want to amend the caption or tags.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the image to keep. Use the id returned by generate_image, list_images, or the catalogue handle from a Librarian \"Image attached\" announcement."},"caption":{"type":"string","description":"Optional short caption describing what you wanted to remember about this image."},"tags":{"type":"array","items":{"type":"string"},"description":"Optional freeform retrieval labels. Indexed alongside the prompt for semantic search."}},"required":["uuid"],"additionalProperties":false}}"#,
+        json: r#"{"name":"keep_image","description":"File an image away in your photo album (a `photos/` folder in your character vault) so it survives chat garbage collection and becomes searchable from your memory. This is filing, not looking — to find out what an image depicts, call describe_image instead. Pass the UUID of an image that was generated in this chat, or the catalogue handle the Librarian announced when someone attached a photo from a gallery. Caption and tags are optional freeform labels for retrieval — they are not the platform's global Tag system. Returns the path the image now lives at in your vault. If you've already kept this image, the call fails — delete the existing copy first if you want to amend the caption or tags.","parameters":{"type":"object","properties":{"uuid":{"type":"string","minLength":1,"description":"UUID of the image to keep. Use the id returned by generate_image, list_images, or the catalogue handle from a Librarian \"Image attached\" announcement."},"caption":{"type":"string","description":"Optional short caption describing what you wanted to remember about this image."},"tags":{"type":"array","items":{"type":"string"},"description":"Optional freeform retrieval labels. Indexed alongside the prompt for semantic search."}},"required":["uuid"],"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "listEmail",
@@ -174,7 +179,7 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "listImages",
         name: "list_images",
-        json: r#"{"name":"list_images","description":"List images previously saved to your photo album (and other characters' albums if cross-character vault reads are enabled for this chat). When `query` is set, results are ranked by semantic similarity over the saved image's prompt, scene snapshot, caption, and tags. The returned metadata includes the prompt excerpt so even a non-image-capable model can reason about each entry without rendering it. Use the returned uuid with `attach_image` to show one of these images again in the chat.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Optional semantic search query. Searches the saved prompt, scene, caption, and tags."},"tags":{"type":"array","items":{"type":"string"},"description":"Optional tag filter. An image matches if any of its tags appears in the list."},"saved_by":{"type":"string","description":"Optional filter: character name or id of the character who saved the image. Defaults to all visible albums."},"limit":{"type":"number","description":"Maximum results to return. Defaults to 20."},"offset":{"type":"number","description":"Pagination offset. Defaults to 0."}},"additionalProperties":false}}"#,
+        json: r#"{"name":"list_images","description":"List images previously saved to your photo album (and other characters' albums if cross-character vault reads are enabled for this chat). When `query` is set, results are ranked by semantic similarity over the saved image's prompt, scene snapshot, caption, and tags. The returned metadata includes the prompt excerpt so even a non-image-capable model can reason about each entry without rendering it. Use a returned uuid with `attach_image` to show one of these images in the chat again, or with `describe_image` to be told what it depicts.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Optional semantic search query. Searches the saved prompt, scene, caption, and tags."},"tags":{"type":"array","items":{"type":"string"},"description":"Optional tag filter. An image matches if any of its tags appears in the list."},"saved_by":{"type":"string","description":"Optional filter: character name or id of the character who saved the image. Defaults to all visible albums."},"limit":{"type":"number","description":"Maximum results to return. Defaults to 20."},"offset":{"type":"number","description":"Pagination offset. Defaults to 0."}},"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "sendMail",

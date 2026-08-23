@@ -215,6 +215,22 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+#### 2026-08-23 — feat(tools): the describe_image catalog entry + the attach/keep/list copy rewrites (P4.D108 unit 1)
+
+_Versions: core 0.0.629._
+
+The tool-definition catalog regenerated at the `a14a1811` pin via
+`gen-tool-catalog.mjs`: 57 → 58 entries with the new `describeImage`
+definition (v4 bug 92 — the looking verb) in v4 `ALL_TOOLS` order after
+`deleteAnnotation`, plus the byte-exact description rewrites v4 shipped
+alongside it (`attach_image` is now explicitly a display verb that "does
+NOT let you see the picture", `keep_image` is "filing, not looking", and
+`list_images` names the `describe_image` arm). Both tool-definitions
+oracle cases gained the new import; the count tripwire in
+`definitions/mod.rs` moved 57 → 58. Red-first: the family failed on the
+57 != 58 size mismatch against the fresh oracle before the regen, green
+after. The handler, registration, and Librarian rewrites follow in this
+lane's later units.
 
 #### 2026-08-23 — docs(porting): the a14a1811 vision-round work orders (five lanes)
 

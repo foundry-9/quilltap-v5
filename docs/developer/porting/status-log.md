@@ -82292,3 +82292,34 @@ the generator needed no `notes` extension.
 - `harness/tools/check_spelling.py` — exit 0.
 
 **Versions:** core 0.0.630, harness 0.0.552. host/web/cli/tauri/SPA unchanged.
+## P4.D108 — the looking verb: `describe_image` end-to-end (v4 `a14a1811`, bug 92)
+
+Lane branch `claude/p4-describe-image-tool-846471`. Drift check at lane start
+(2026-08-23): v4 main HEAD == `a14a1811` (the baseline, tree clean, checkout on
+`main`), bugfix HEAD `3a76b17d` — exactly as planning measured; no pin worktree
+needed, every regen this lane runs from the live checkout.
+
+### Unit 1 — the catalog entry + the attach/keep/list copy rewrites
+
+The tool-definitions oracle cases (`tool-definitions.ts` +
+`tool-definitions-canonical.ts`) gained the `describeImage` import + entry in
+v4 `ALL_TOOLS` order (after `deleteAnnotation` — verified against v4's
+snapshot-test `ALL_TOOLS` at the pin). Oracles regenerated fresh at
+`a14a1811` (58 rows; `describe_image` present 4× — its own row + the three
+rewritten sibling descriptions). **Red-first**: `tool_definitions_equivalence`
+failed `catalog size 57 != oracle size 58` against the stale catalog; then
+`gen-tool-catalog.mjs` regenerated `definitions/data.rs` (the diff is exactly
+the four ordered changes: the count doc, the new `describeImage` entry, and
+the attach/keep/list description byte-rewrites) and the family went green.
+The `definitions/mod.rs` count tripwire moved 57 → 58 with the history
+comment extended. Consumers checked: no other site pins the 57 count or the
+old description bytes (`tool_build`/`tools_inventory` reach the catalog by
+key; the committed wire corpora record their own inputs).
+
+Regen recipe (both oracles, from the v4 checkout at the pin):
+```
+cd ~/source/quilltap-server
+N=~/.nvm/versions/node/v24.13.1/bin
+$N/npx tsx <v5>/harness/oracle/cases/tool-definitions.ts > /tmp/oracle-tool-definitions.ndjson
+$N/npx tsx <v5>/harness/oracle/cases/tool-definitions-canonical.ts > /tmp/oracle-tool-definitions-canonical.ndjson
+```

@@ -19,6 +19,7 @@ import type { UniversalTool } from '@/lib/plugins/interfaces/tool-plugin';
 import { askCarinaToolDefinition } from '@/lib/tools/ask-carina-tool';
 import { attachImageToolDefinition } from '@/lib/tools/attach-image-tool';
 import { deleteAnnotationToolDefinition } from '@/lib/tools/delete-annotation-tool';
+import { describeImageToolDefinition } from '@/lib/tools/describe-image-tool';
 import { docCloseDocumentToolDefinition } from '@/lib/tools/doc-close-document-tool';
 import { docCopyFileToolDefinition } from '@/lib/tools/doc-copy-file-tool';
 import { docCreateFolderToolDefinition } from '@/lib/tools/doc-create-folder-tool';
@@ -80,6 +81,7 @@ const ALL: UniversalTool[] = [
   askCarinaToolDefinition,
   attachImageToolDefinition,
   deleteAnnotationToolDefinition,
+  describeImageToolDefinition,
   docCloseDocumentToolDefinition,
   docCopyFileToolDefinition,
   docCreateFolderToolDefinition,
