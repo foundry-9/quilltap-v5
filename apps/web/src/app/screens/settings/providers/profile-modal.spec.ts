@@ -610,6 +610,18 @@ describe('ProfileModal (tool-use seed hint and capability seeds)', () => {
     expect(imageBox(fixture).checked).toBe(false);
   });
 
+  it('seeds it ON for NanoGPT — the bug-91 row, through the real gesture', async () => {
+    // Until v4 `a14a1811` the client table had no NANOGPT row, so a new NanoGPT
+    // profile started with the vision box unticked even though the plugin
+    // serialises `image_url` as of 1.1.0. The table now says so; this is the
+    // seed reading it.
+    const NANOGPT = provider({ id: 'NANOGPT', name: 'NANOGPT', displayName: 'NanoGPT' });
+    const fixture = await render({ providers: [provider({}), NANOGPT] });
+    fixture.componentInstance['onProviderChange']('NANOGPT');
+    fixture.detectChanges();
+    expect(imageBox(fixture).checked).toBe(true);
+  });
+
   it('does NOT re-seed it on an EXISTING profile (v4 keeps it inside the `:235` guard)', async () => {
     const fixture = await render({
       profile: {

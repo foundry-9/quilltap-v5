@@ -82822,3 +82822,37 @@ counterpart. v5's `brahma-console-dialog.ts` shares the same reducer, so it now
 folds the ledger too — but its subscriber reads only `state.error` and has no
 toast door at all, so the carry makes NO Brahma-side toast reachable. Nothing
 to suppress and nothing to add.
+
+### Unit 3 — the §C1 rows in the client table, and the staleness note retired (Tier 1 item 3)
+
+`attachment-support.ts`'s header had recorded, since P4.21, that v4's hand-kept
+table was missing NANOGPT / DEEPSEEK / Z_AI and that "the fix belongs upstream,
+not here". `a14a1811` IS that upstream fix. The three rows are transcribed from
+v4 at the pin, with v4's own trailing comments carried (the NanoGPT row names
+plugin 1.1.0 and bug 91; the DeepSeek row names the inherited base; the Z.AI row
+names vision models), and `OPENAI_COMPATIBLE`'s comment picks up v4's rewrite
+("the shared base class marks every attachment failed; no `image_url` part is
+ever emitted"). The ⚠ staleness paragraph is replaced by a convergence
+paragraph; the two-datasets provenance paragraph above it is untouched.
+
+**A shape note, unchanged from P4.21 and worth restating:** v5's row stores only
+`types`, because that is the only member either reader consults
+(`getSupportedMimeTypes` → `supportsMimeType` / `getAttachmentSupportDescription`
+— the description is COMPUTED from the mime list on both sides, so v4's per-row
+`description`/`notes` prose is presentation data with no reader in v5). §C1's
+table lists v4's `description` column for the sibling lanes' benefit; the value
+transcribed here is the mime list, verbatim.
+
+**Not ported, with evidence:** `a14a1811` also adds
+`staticProviderCanTransportImages` to the same v4 module. Its ONLY consumer is
+`lib/llm/image-transport.ts` (`ggrep` over `app/ lib/ components/` at the pin) —
+server code, P4.D106's surface. Nothing client-side calls it, so the SPA
+transcription does not grow a twin.
+
+**The seed follows the table.** `ProfileModal.onProviderChange` seeds
+`supportsImageUpload` from `supportsMimeType(provider, 'image/jpeg')`, so the
+new rows flip it: ON for NanoGPT and Z.AI, OFF for DeepSeek, unchanged for a
+provider the table has never heard of. Pinned in `attachment-support.spec.ts`
+(the mime lists, the three empty rows, the seed predicate, and the rendered
+sentence for each new provider) plus one `profile-modal.spec.ts` case driving
+the real provider-dropdown gesture and reading the checkbox.

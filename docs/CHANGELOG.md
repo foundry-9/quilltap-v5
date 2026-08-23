@@ -386,6 +386,24 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+#### 2026-08-23 — fix(settings): the client attachment table learns NanoGPT, DeepSeek and Z.AI (bug 91)
+
+_Versions: SPA 0.5.547._
+
+v5's transcription of v4's static client capability table carried a doc comment
+recording its own staleness: three shipped providers had no row, so all three
+fell through the unknown-provider branch to "no attachments", and a new profile
+on any of them started with the vision box unticked. The note said the fix
+belonged upstream. v4 `a14a1811` is that fix, so the rows land here with it —
+NANOGPT and Z_AI with the four image types, DEEPSEEK explicitly empty — and the
+staleness paragraph is rewritten to record the convergence.
+
+The seed moves with the table: a new NanoGPT or Z.AI profile now ticks the
+vision box, DeepSeek does not, and an endpoint the table has never heard of is
+unchanged. v5's row shape stores only `types` (the one member its two readers
+consult), so v4's per-row `description`/`notes` prose stays out, as it has since
+P4.21.
+
 #### 2026-08-23 — fix(salon): warn when the provider dropped an attachment (bug 94)
 
 _Versions: SPA 0.5.546._

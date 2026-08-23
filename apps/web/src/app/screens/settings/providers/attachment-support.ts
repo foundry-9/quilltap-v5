@@ -10,14 +10,19 @@
  * `ProviderInfo` mirrors it), so this hardcoded table is genuinely what v4's
  * `supportsImageUpload` seed derives from — transcribed rather than invented.
  *
- * ⚠ It is KNOWN STALE in v4 and faithfully stale here (recorded at P4.21):
- * each entry is a hand-kept mirror of its plugin's `supportedMimeTypes`, and
- * providers added since — Z_AI, DEEPSEEK, and now NANOGPT (P4.D102, measured at
- * v4 `d5830439`: `lib/llm/attachment-support.ts` has no row for any of the
- * three) — have no entry at all, so they fall through the unknown-provider
- * branch to "no attachments". A provider whose
- * plugin does accept images therefore starts a new profile with the vision box
- * unticked. That is v4's behaviour; the fix belongs upstream, not here.
+ * The staleness this header recorded at P4.21 has been REPAIRED UPSTREAM. v4
+ * `a14a1811` (bug 91) adds the three rows the hand-kept table lacked — NANOGPT,
+ * DEEPSEEK and Z_AI — and they are transcribed below, so the fall-through to
+ * "no attachments" no longer swallows a provider whose plugin does send images.
+ * The consequence flips with them: a new NanoGPT or Z.AI profile now seeds the
+ * vision box ON, while DeepSeek — whose plugin genuinely strips attachments
+ * before the wire — keeps it OFF.
+ *
+ * The table remains a HAND-KEPT mirror of each plugin's `supportedMimeTypes`
+ * (v4's own comment: deriving it from the manifests would remove the drift
+ * risk, but they aren't reachable from client code without the server-only
+ * registry — YAGNI until that changes), so it can go stale again. It is not
+ * stale today.
  */
 
 interface AttachmentCapability {
@@ -40,8 +45,17 @@ const PROVIDER_ATTACHMENT_CAPABILITIES: Record<string, AttachmentCapability> = {
   OLLAMA: { types: [] },
   // plugins/dist/qtap-plugin-openrouter — depends on the model being proxied
   OPENROUTER: { types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] },
-  // plugins/dist/qtap-plugin-openai-compatible — varies by implementation
+  // plugins/dist/qtap-plugin-openai-compatible — the shared base class marks
+  // every attachment failed; no `image_url` part is ever emitted.
   OPENAI_COMPATIBLE: { types: [] },
+  // plugins/dist/qtap-plugin-nanogpt — serialises image_url as of plugin 1.1.0
+  // (bug 91; before that it inherited the OpenAI-compatible base's "not yet
+  // implemented" handling and dropped images silently).
+  NANOGPT: { types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] },
+  // plugins/dist/qtap-plugin-deepseek — same inherited base, same drop.
+  DEEPSEEK: { types: [] },
+  // plugins/dist/qtap-plugin-z-ai — serialises image_url for vision models
+  Z_AI: { types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] },
 };
 
 /**
