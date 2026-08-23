@@ -386,6 +386,27 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+#### 2026-08-23 — test(e2e): walk the dropped-attachment warning live (bug 94)
+
+_Versions: SPA 0.5.548._
+
+A new Playwright beat sends in Group Expedition against the mock LLM and asserts
+v4's plural sentence in the real toast stack — the `(and N more)` suffix before
+the colon, and only the first plugin error.
+
+One thing is faked: the bytes of one `done` frame, rewritten by an init script
+that wraps `EventSource.prototype.onmessage` before app boot. Everything
+downstream is real — the live EventSource, the transport parse, the reducer
+carry, the Salon's toast door, the toast stack in the DOM. Provoking a genuine
+ledger is not reachable from the e2e's mock OpenAI-compatible endpoint: after
+this round's bug-91 fix the host routes an untransportable image to the
+describer instead of handing it to a plugin that drops it, so a real failure
+needs a per-attachment fault inside a plugin that does send images. The live
+proof on real data rides the P4.D106/D107 dogfood walk.
+
+Mutation-proven: with the door's `length > 0` guard broken, the beat's 44 polls
+resolve to zero warnings and it fails.
+
 #### 2026-08-23 — fix(settings): the client attachment table learns NanoGPT, DeepSeek and Z.AI (bug 91)
 
 _Versions: SPA 0.5.547._

@@ -82856,3 +82856,46 @@ provider the table has never heard of. Pinned in `attachment-support.spec.ts`
 (the mime lists, the three empty rows, the seed predicate, and the rendered
 sentence for each new provider) plus one `profile-modal.spec.ts` case driving
 the real provider-dropdown gesture and reading the checkbox.
+
+### Unit 4 — the live e2e beat (Tier 1 item 4)
+
+`apps/web/e2e/salon-attachment-ledger-flow.spec.ts`. Sends in **Group
+Expedition** (not Solo Voyage, whose token baseline the P4.6ap chat-totals beat
+hardcodes) against the M4 mock LLM on the shared global-setup server, and
+asserts the warning in the real toast stack.
+
+**Why the ledger is INJECTED at the wire rather than provoked.** A failed ledger
+is a provider-plugin report. Before this round, an OpenAI-compatible send with
+`supportsImageUpload` ticked would have produced one — the OAC builder's
+`collect_drop_failures` marks every attachment failed. After this round's bug-91
+fix (P4.D106) the host no longer hands an untransportable image to a dropping
+plugin at all: it routes to the describer. What remains reachable is a
+per-attachment fault INSIDE a plugin that does send images (an unsupported MIME
+on NanoGPT), which the e2e's mock chat-completions endpoint cannot express. A
+beat built on the OAC drop path would therefore have been a beat scheduled to
+turn red the moment its sibling lane merged.
+
+So the beat fakes exactly ONE thing — the bytes of one `done` frame — via an
+`addInitScript` that wraps the `onmessage` accessor on `EventSource.prototype`
+before app boot (the same property the real transport assigns at
+`core-transport.ts:151`), rewrites the first frame whose parsed `done === true`,
+and passes every other frame through untouched. Everything downstream is the
+real thing: the live `EventSource`, `parseEventData`, the pure reducer's carry,
+the Salon's toast door, and the toast stack in the real DOM. Nothing in the app
+is stubbed.
+
+The assertion is `toHaveText([EXPECTED])` on the warning locator — ONE polling
+assertion that pins both the sentence and that exactly one warning stands.
+Split into text-then-count, the second half would race v4's 3000 ms toast timer
+for no extra proof (the `e2e-playwright-traps` lesson in its other direction).
+
+**Green on its first run (1.4 s), then mutation-proven:** with the door's guard
+changed to `length > 99`, rebuilt and re-run, the beat's 44 polls resolve to
+zero warnings and it fails at the text assertion; restored and rebuilt, green
+again (1.3 s).
+
+**Binaries:** the lane touches no crate, so the e2e reused main's
+`target/release/{quilltap-web,quilltap}` (verified identical: `git diff
+main...HEAD -- crates/ harness/ Cargo.toml Cargo.lock` is empty and main's tree
+is clean), copied into the worktree's `target/release/` for `env.ts`'s
+resolution.
