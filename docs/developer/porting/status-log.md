@@ -81613,3 +81613,120 @@ docs — none needed by convention for spec-only).
 - v4 `65f3476e` NO-PORT disposition recorded above; the next drift check
   starts from `f8973813` and will see it again — the disposition here is
   the record.
+
+---
+
+## Dogfood pass — the four un-walked rounds (`12fe3e6f` → `4cb1035e` → `a6870c5a` → `f8973813`)
+
+**RAN 2026-08-23, agent-driven, on the Friday copy** (`~/qt-dogfood-friday`, rsynced
+the same evening; server `quilltap-web` with `RUST_BACKTRACE=1`, SPA from
+`apps/web/dist`). Walk doc:
+`docs/developer/porting/dogfood-walks/2026-08-22-four-round-pass.md` — 37 rows:
+**27 PASS, 1 finding (fixed), 3 deferred, 5 to the human, 1 blocked, 1 moot.**
+
+Four rounds had unified since the 2026-08-21 walk and none had met real data:
+P4.D97–D99 (thinking turn, bug 84), P4.D100–D102 (image `list-models`, NanoGPT),
+P4.D103/D104/P4.55 (standing instructions, the prompt-field label, validate-first),
+and P4.D105/P4.56 (NanoGPT prompt caching, the settings wire).
+
+### The finding
+
+**#100 — every streamed chat message logged `durationMs = 0`. FIXED**
+(`6500e1e1`, core 0.0.628 / harness 0.0.551). Three sites hard-coded the value:
+the streaming `CHAT_MESSAGE` write and both `IMAGE_DESCRIPTION` writes. The
+divergence was **measured, not inferred**: across the 6,115 v4-written rows on
+this instance, spanning all sixteen call types, not one carries a zero duration —
+and v5's first two streamed turns on the same instance both did. Each site
+carried a comment calling the zero a *tracked follow-up* because a measured
+stream clock could not be diffed; that blocker had already been lifted by
+`normalize_duration_ms` (any non-NULL duration collapses to `"<ms>"` on both
+sides, NULL stays NULL) and the comments never caught up. `StreamLogCtx` now
+carries `started_at_ms`, stamped at each of its three construction sites —
+primary attempt, tool-unsupported retry, failover leg — which is exactly where
+v4 re-enters `streamMessage` and takes a fresh `startTime`. Since no
+differential can tell a hard-coded zero from a measured one once the column is
+normalized, the guard is a **source census** in the `db_error_key_guard` idiom,
+mutation-proven red-first. Gate: fmt, clippy, `cargo test --workspace` **446
+binaries / 0 failed**, and the three affected differential families
+(`primary_stream_tier3`, `file_attachment_tier3`, `attach_mount_file`) re-run
+green against oracles regenerated from a worktree pinned at `f8973813`. Proven
+live: the next streamed turn logged **9,601 ms**.
+
+### v4 running the same features made three proofs free
+
+This instance runs a 4.9-dev v4, so v4's own rows and ledger are an oracle:
+
+- **The retire-prefill heal, both directions.** The copy arrived with
+  `retire-prefill-on-thinking-profiles-v1` **already written by v4**
+  (`quilltapVersion 4.9.0-dev.43`), so v5 correctly skipped — the cross-app
+  ledger proven in the v4→v5 direction on real data. Deleting the row and
+  rebooting, v5 reached a **byte-identical verdict** over the same 50 real
+  profiles: `Examined 1 prefill-enabled profile(s) on thinking-capable
+  providers; turned the [Name] prefill off on 0`.
+- **Standing instructions are byte-identical.** The `[STANDING INSTRUCTIONS]`
+  section extracted from a v4-written row and from v5's own compare **equal at
+  773 bytes**, and sit between the Taboo section and the tool instructions
+  (offsets 6343 < 7035 < 7806).
+- **The identity-stack envelope agrees.** Both implementations store
+  `{"version":2,"stacks":{…}}` at the current `IDENTITY_STACK_BUILDER_VERSION`.
+
+### What else was proven live
+
+The 13-case thinking-turn evaluator matrix against the real registry (rule
+outranks model habit, `disabledValues` before `enabledValues`, unknown values
+and the empty-string "(model default)" falling through); bug 85's repro chat
+completing with no assistant prefill tail; the profile editor's thinking-turn
+warning **mutation-proven in both directions** (it warns, never vetoes); the
+Group Instructions round-trip including the empty-save → `null` normalization;
+the Prompt Caching card and its `showIf`; `promptCaching` on the **real NanoGPT
+wire** in both TTL arms (`1h` honoured, absent collapsing to `5m`) with neither
+option key leaking; the data-retention present-`null` 400 with absent-keeps and
+value-writes intact; the brahma-console REST edge answering on success (it 500'd
+on every success from P4.D57 until P4.56); image `list-models` across four live
+keys, with OpenRouter falling back honestly (`source: "builtin"` +
+`fetchError`) rather than throwing; a real NanoGPT image at **216,414 bytes**
+of valid 1024×1024 WebP; and validate-first on the memories config, four arms.
+
+**v4 bug 82 is fixed, and the tap holds the contrast in one file:** the OLLAMA
+body carries **1** leading system message of 11,874 chars containing all three
+originals; two NANOGPT bodies, same model and same conversation, carry **3**.
+That is P4.D93's scoping proven in both directions at the byte level.
+
+**The 2026-08-19 connection-profile refresh question is RESOLVED as NOT a
+defect** — with the card already expanded, a tab switch took the count 51 → 52
+and surfaced an out-of-band profile.
+
+### Traps worth keeping
+
+- **The browser pane's `Cmd+Shift+R` does not reload the page** —
+  `performance.getEntriesByType('navigation')` still reports `"navigate"`. A
+  stale-looking list was a stale tab. Prove the reload before trusting any
+  negative; `location.reload()` works.
+- **`wire-tap.py` truncates its pretty-print at 8000 chars**, which silently
+  hides body keys that sit after a large `tools` array. Dump the raw body to a
+  file when the key under test is near the end.
+- **`llm_logs.request` is a projection, not the wire** — no provider body keys,
+  and its message array is **pre-builder**, so it cannot show the leading-system
+  fold. Only a tap can.
+- Store-overlay properties (`groups.instructions`) have no SQL column; the API
+  is the only reader.
+- A too-broad DOM selector ticked `Set as default profile` on a real profile —
+  caught by re-reading the row before saving. Scope selectors to `closest('label')`.
+
+### Standing after the pass
+
+- **⚠ v4 has DRIFTED three commits past the baseline** (`65f3476e`,
+  `718c9ada`, and **`a14a1811` "fix(images): characters can look at images, and
+  images reach vision models (bugs 91-95)"** — the last on a ported surface).
+  The drift catch-up is the top next candidate; pin `f8973813` for every regen
+  until it lands. A detached worktree is already prepared at
+  `/tmp/qt-v4-f8973813` with all three symlink classes.
+- 💸 **still owed:** the live NanoGPT caching smoke (D3), the Brahma raised
+  budget on a real deep query (D7), the failed-`generate_image` sentence
+  reaching notice + toast (A6), the candid story-background prompt (E4),
+  Pascal's other three write paths (E5), the NanoGPT embedding leg (B7 — a
+  full re-embed of the corpus), a bearer-token OAC endpoint (E3 — blocked, no
+  local OAC server), and the dedup/summaries first run (E6).
+- Not walked: the other six migrated prompt-field surfaces (C7 covered the
+  group one), and the multi-source ICU collation of standing instructions —
+  only one instructed entity exists on this instance.

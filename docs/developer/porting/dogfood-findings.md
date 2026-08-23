@@ -582,6 +582,30 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The browser pane's `Cmd+Shift+R` does not reload the page** (measured
+  2026-08-23). `performance.getEntriesByType('navigation')` still reports
+  `"navigate"`, so the tab keeps its loaded chunks *and* its query cache. A
+  list that looked stale after an out-of-band write was a stale tab, not a
+  stale cache — and that is exactly the shape of a false finding. **Prove the
+  reload before trusting any negative in this area**; `location.reload()` from
+  the JS tool does reload. Same family as the dead-`setInterval` lesson under
+  finding #99: verify the instrument before believing what it reports.
+- **Three channels, three different truths about a request** (2026-08-23).
+  `llm_logs.request` is a *projection*: it carries no provider body keys
+  (`promptCaching` and friends are invisible there) and its message array is
+  **pre-builder**, so it cannot show `collapse_leading_system_messages` — a
+  logged 3-leading-system row is not evidence the fold failed. The wire tap is
+  the only channel that sees the real body. And `harness/tools/wire-tap.py`
+  **truncates its pretty-print at 8000 chars**, which silently hides keys that
+  sit after a large `tools` array — dump the raw body to a file when the key
+  under test is near the end.
+- **Scope DOM selectors to `closest('label')` when clicking checkboxes.** A
+  selector that walked up "4 ancestors looking for matching text" ticked
+  `Set as default profile` on a real connection profile instead of the intended
+  box; it was caught only by re-reading the row before saving. Re-read the
+  persisted row after any settings gesture, and cancel rather than save when a
+  form's state is not what you expect.
+
 - **A negative from an unverified instrument is not a finding.** Finding #99 was
   first filed as "the tool-execution notice never appears," on the strength of
   three browser runs whose `setInterval` observers had silently stopped after

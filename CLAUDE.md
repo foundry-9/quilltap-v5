@@ -1750,14 +1750,58 @@ records THERE. Update this summary only when a phase or round completes.
   unchanged. 💸 the dogfood queue gains the live NanoGPT caching smoke +
   the data-retention 400 on a live screen. Round record:
   `status-log.md`.
+- **The four-round dogfood pass RAN (2026-08-23, agent-driven, on the
+  Friday copy) — 37 rows, 27 PASS, ONE finding found and fixed, and three
+  proofs that came free because v4 runs these same features on this
+  instance.** Walk doc:
+  `dogfood-walks/2026-08-22-four-round-pass.md`; record in `status-log.md`.
+  **FIXED: finding #100** — every streamed chat message logged
+  `durationMs = 0` (three sites hard-coded it; measured against 6,115
+  v4-written rows where not one zero appears). `StreamLogCtx` now carries
+  `started_at_ms` stamped where v4 takes its `startTime`; because no
+  differential can tell a hard-coded zero from a measured one once the
+  column is normalized, the guard is a **source census** in the
+  `db_error_key_guard` idiom, mutation-proven. Gate: 446 binaries / 0
+  failed + the three affected families green at a pinned `f8973813`;
+  live proof 9,601 ms (`6500e1e1`; core 0.0.628, harness 0.0.551).
+  **Free cross-implementation proofs:** the retire-prefill heal's ledger
+  row arrived ALREADY WRITTEN BY v4 (so the cross-app guard is proven
+  v4→v5 on real data) and v5 then reproduced v4's verdict byte-for-byte
+  over the same 50 profiles; the `[STANDING INSTRUCTIONS]` section is
+  **byte-identical to v4's at 773 bytes**, correctly between Taboo and
+  the tool instructions; both apps stamp `compiledIdentityStacks`
+  version 2. **Also proven live:** the 13-case thinking-turn evaluator
+  matrix, bug 85's repro chat, the editor's thinking warning
+  (mutation-proven both ways, warns-never-vetoes), Group Instructions
+  round-trip incl. empty→`null`, the Prompt Caching card + `promptCaching`
+  on the REAL NanoGPT wire in both TTL arms with no option-key leakage,
+  the data-retention 400, the brahma-console edge answering on success,
+  image `list-models` across four live keys (OpenRouter falling back
+  honestly rather than throwing), a real NanoGPT image at 216,414 bytes,
+  validate-first on the memories config, and **v4 bug 82's fold proven in
+  both directions in one tap file** (OLLAMA folds to 1 leading system
+  message, NANOGPT keeps 3, same model and conversation). **The
+  2026-08-19 connection-profile refresh question is RESOLVED as NOT a
+  defect.** Traps banked: the browser pane's `Cmd+Shift+R` does not
+  reload (prove it before trusting a negative), `wire-tap.py` truncates
+  at 8000 chars, and `llm_logs.request` is a pre-builder projection that
+  cannot show the fold. 💸 still owed: the caching smoke, the Brahma
+  budget on a deep query, the failed-`generate_image` sentence, the
+  candid story background, Pascal's other three write paths, the NanoGPT
+  embedding leg, a bearer-token OAC endpoint (blocked — no local server),
+  and dedup/summaries.
 - **Oracle baseline: `f8973813` (2026-08-22, v4 main — "feat(nanogpt):
   prompt caching (plugin 1.0.3)"), adopted at the f8973813-round
-  unification (2026-08-22).** ⚠ v4 HEAD is ONE commit past it
-  (`65f3476e` — CI/release infra + a comment-only lib edit +
-  standalone-tarball native linking v5 doesn't have; dispositioned
-  NO-PORT with evidence in the round record, so the baseline deliberately
-  does not move to it) — **pin a detached worktree at `f8973813` for
-  every regen** until a future round re-dispositions or absorbs newer
+  unification (2026-08-22).** ⚠ **v4 HEAD is now THREE commits past it**
+  (measured 2026-08-23): `65f3476e` (CI/release infra + a comment-only lib
+  edit + standalone-tarball native linking v5 doesn't have — dispositioned
+  NO-PORT with evidence), `718c9ada` (build/bundler, bug 90), and
+  **`a14a1811` "fix(images): characters can look at images, and images
+  reach vision models (bugs 91-95)" — a lib change on a PORTED surface,
+  unabsorbed.** The drift catch-up is the top next candidate. **Pin a
+  detached worktree at `f8973813` for every regen** until it lands (one is
+  prepared at `/tmp/qt-v4-f8973813` with all three symlink classes) —
+  until a future round re-dispositions or absorbs newer
   drift. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
