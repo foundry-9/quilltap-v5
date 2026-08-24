@@ -15,6 +15,12 @@
  * dumps the module's three sink tables — files / doc_mount_file_links /
  * doc_mount_chunks).
  *
+ * P4.58 widens the corpus with the two arms the P4.D108 lane left unpinned: an
+ * image with NULL width/height (the `?? undefined` key OMISSION on the
+ * describe_image success row and the attach_image descriptor) and the
+ * whitespace-only truthiness-then-trim quirk in both directions (a stored
+ * whitespace description, and a whitespace vision result that persists `''`).
+ *
  * Model boundary pinned: `generateEmbeddingForUser` is jest.mocked to the corpus
  * canned vectors (keyed by exact query text; failures in cannedFailures throw an
  * EmbeddingError → the semantic branch's silent fallback to plain listing). Date
@@ -170,8 +176,12 @@ async function main(): Promise<void> {
      * `generateImageDescription` (the §C2 seam — everything above it runs
      * REAL). 'description' answers a canned description (with surrounding
      * whitespace, pinning the trim); 'unsupported' answers v4's no-profile
-     * result; 'throws' proves the precheck short-circuits never reach it. */
-    moduleMock?: 'description' | 'throws' | 'unsupported';
+     * result; 'throws' proves the precheck short-circuits never reach it;
+     * (P4.58) 'whitespace' answers a WHITESPACE-ONLY description — truthy, so
+     * v4's `!result.imageDescription` guard passes it through, and the
+     * subsequent `.trim()` then persists an EMPTY string everywhere the real
+     * description would have gone. */
+    moduleMock?: 'description' | 'throws' | 'unsupported' | 'whitespace';
     /** auto_describe ops: dump files + doc_mount_file_links + doc_mount_chunks
      * (the module's three sinks). */
     dumpModule?: boolean;
@@ -180,6 +190,10 @@ async function main(): Promise<void> {
   const CANNED_VISION_DESCRIPTION = 'A copper kettle steams on a windowsill at dusk.';
   const RACE_WINNER_DESCRIPTION = 'The winner wrote this description first.';
   const MODULE_RAW_DESCRIPTION = '  A described mystery: two moths circle a lantern.  ';
+  // P4.58: whitespace-only — truthy (so it survives `!result.imageDescription`)
+  // but `.trim()`s to ''. Keep it whitespace-ONLY; any visible character would
+  // stop exercising the quirk.
+  const MODULE_WHITESPACE_DESCRIPTION = '  \t\n ';
 
   const ops: Op[] = [
     // ---- keep_image (write; dump the six tables; Date frozen to keptAt) ----
@@ -227,6 +241,11 @@ async function main(): Promise<void> {
       who: 'A',
       args: { uuid: '99999999-9999-4999-8999-999999999999' },
     },
+    // P4.58: the sha256 sister join finds a FileEntry with NULL width/height,
+    // so the descriptor's `width` / `height` are `undefined` and JSON.stringify
+    // OMITS both keys. Every other baked image carries dimensions, so this is
+    // the family's only row where the keys are absent rather than present.
+    { label: 'attach_dimensionless', tool: 'attach_image', who: 'A', args: { uuid: meta.bakedByKey.dimensionless.linkId } },
     // ---- describe_image (P4.D108; v4 a14a1811 bug 92 — the looking verb) ----
     // Tier 1: a stored description is served WITHOUT a vision call ('described'
     // also carries BOTH generation prompts, so a tier reorder is observable).
@@ -248,6 +267,14 @@ async function main(): Promise<void> {
     { label: 'describe_missing', tool: 'describe_image', who: 'A', args: { uuid: '99999999-9999-4999-8999-999999999999' } },
     // A non-image FileEntry → its sentence.
     { label: 'describe_not_image', tool: 'describe_image', who: 'A', args: { uuid: fid('plaintext') } },
+    // P4.58: the `width: entry.width ?? undefined` key-omission arm on the
+    // success row — this FileEntry's width/height are NULL, so both keys are
+    // absent from the JSON (tier 2 serves the generation prompt, so no vision).
+    { label: 'describe_dimensionless', tool: 'describe_image', who: 'A', args: { uuid: fid('dimensionless') } },
+    // P4.58: a WHITESPACE-ONLY stored description. v4's tier-1 gate is
+    // `entry.description?.trim()` truthiness, so this row must FALL THROUGH to
+    // the generation-prompt tier rather than serving the blank.
+    { label: 'describe_whitespace_stored', tool: 'describe_image', who: 'A', args: { uuid: fid('blankdesc') } },
     // ---- autoDescribeChatImageAttachment (module level; generateImageDescription
     // mocked at the §C2 seam, everything above it REAL) ----
     // The three sinks: files.description + the blank uploads link + chunks.
@@ -262,6 +289,16 @@ async function main(): Promise<void> {
     // not-found / not-image.
     { label: 'autodescribe_notfound', tool: 'auto_describe', who: 'A', args: { uuid: '88888888-8888-4888-8888-888888888888' }, moduleMock: 'throws' },
     { label: 'autodescribe_notimage', tool: 'auto_describe', who: 'A', args: { uuid: fid('plaintext') }, moduleMock: 'throws' },
+    // P4.58: the already-described precheck is `entry.description &&
+    // entry.description.trim().length > 0` — a whitespace-only stored value is
+    // truthy but trims empty, so the module PROCEEDS to the vision call and
+    // overwrites it (the dumps carry the overwrite).
+    { label: 'autodescribe_whitespace_stored', tool: 'auto_describe', who: 'A', args: { uuid: fid('blankdesc') }, moduleMock: 'description', keptAt: '2026-04-03T10:30:00.000Z', dumpModule: true },
+    // P4.58: the truthiness-then-trim quirk at the OTHER end — the describer
+    // answers whitespace, which passes `!result.imageDescription` and then
+    // trims to ''. v4 persists that empty string onto the FileEntry, onto every
+    // blank link (description + extractedText + its sha), and chunks it.
+    { label: 'autodescribe_whitespace_result', tool: 'auto_describe', who: 'A', args: { uuid: fid('blank') }, moduleMock: 'whitespace', keptAt: '2026-04-03T11:00:00.000Z', dumpModule: true },
   ];
 
   const lines: string[] = [];
@@ -392,6 +429,17 @@ async function main(): Promise<void> {
           generateImageDescription: async (file: { filename: string; mimeType: string }) => {
             if (mode === 'throws') {
               throw new Error('generateImageDescription must not be called for this op');
+            }
+            if (mode === 'whitespace') {
+              return {
+                type: 'image_description',
+                imageDescription: MODULE_WHITESPACE_DESCRIPTION,
+                processingMetadata: {
+                  usedImageDescriptionLLM: true,
+                  originalFilename: file.filename,
+                  originalMimeType: file.mimeType,
+                },
+              };
             }
             if (mode === 'unsupported') {
               return {

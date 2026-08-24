@@ -15,7 +15,9 @@
  *   3. The spec.images ingested via the REAL ingestImageBuffer — which mints its
  *      OWN fileId (crypto.randomUUID; it does NOT honour img.fileId) and may
  *      transcode raster → WebP. So we map realFileIdByKey[key] = entry.id, patch
- *      the generation metadata onto the FileEntry (ingest drops those fields), and
+ *      the generation metadata onto the FileEntry (ingest drops those fields —
+ *      P4.58: width/height are patched only when the spec NAMES them, so an
+ *      image that omits them keeps the NULL dimensions ingest left), and
  *      read the STORED bytes back (readImageBuffer) into realBytesByKey[key] so the
  *      Rust canned FileBytesStore returns EXACTLY the bytes v4 will hash.
  *   4. The spec.bakedPhotos baked via the REAL saveImageToAlbum (Date frozen to
@@ -54,10 +56,19 @@ interface ImageSpec {
   generationPrompt: string;
   generationRevisedPrompt: string;
   generationModel: string;
-  width: number;
-  height: number;
+  /** P4.58: ABSENT leaves the FileEntry's width/height NULL — `ingestImageBuffer`
+   * only records dimensions sharp could read, and the corpus bytes are not real
+   * images, so an absent spec value means the patch below never sets them. That
+   * is the ONLY way to reach the `?? undefined` key-omission arm in v4's
+   * describe_image / attach_image success rows (a present `0` does NOT: `??`
+   * keeps a present zero). Both keys travel together — a spec that names one
+   * and not the other is rejected below. */
+  width?: number;
+  height?: number;
   /** P4.D108: a stored description (the describe_image stored-description
-   * tier). Absent = the row stays undescribed. */
+   * tier). Absent = the row stays undescribed. P4.58 adds a WHITESPACE-ONLY
+   * value, which is truthy but trims to empty — the quirk both the
+   * already-described precheck and the describe_image stored tier turn on. */
   description?: string;
 }
 interface BakedPhoto {
@@ -245,12 +256,16 @@ async function main(): Promise<void> {
       mimeType: img.mimeType,
       userId: spec.userId,
     });
+    if ((img.width === undefined) !== (img.height === undefined)) {
+      throw new Error(`image ${img.key}: width and height must both be present or both absent`);
+    }
     await repos.files.update(entry.id, {
       generationPrompt: img.generationPrompt,
       generationRevisedPrompt: img.generationRevisedPrompt,
       generationModel: img.generationModel,
-      width: img.width,
-      height: img.height,
+      // P4.58: absent → never patched, so the row keeps the NULL width/height
+      // ingest left (sharp cannot read the corpus's synthetic bytes).
+      ...(img.width !== undefined ? { width: img.width, height: img.height } : {}),
       // P4.D108: the describe_image stored-description tier's fixture rows.
       ...(img.description !== undefined ? { description: img.description } : {}),
     } as never);

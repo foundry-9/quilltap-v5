@@ -83489,3 +83489,105 @@ equivalence.rs`'s only tripwire constant is P4.D107's NanoGPT one, already
 flipped true at the a14a1811 unification, and neither of the other two carried
 a bug-97 pin). §C anticipated a harness bump; the commit rule says bump what
 changed, so the unifier should recount core only from this lane.
+---
+
+## Lane record — P4.58 unit 1 (the photo-tools corpus blind spots) — v4 `0ba942b1`
+
+**Order:** `work-orders/p4.58-corpus-maintenance-smalls.md` (Tier 1 items 1, 2,
+and the photo half of item 4). **Branch:** `claude/corpus-maintenance-smalls-c06262`.
+**v5 source changed: NONE** — this is corpus/fixture/oracle-case work, exactly as
+the order predicted.
+
+**Drift check at lane start.** `~/source/quilltap-server` on `main`, tree CLEAN,
+HEAD `0ba942b1` — the round baseline exactly; `git log 0ba942b1..main` empty.
+`git diff main bugfix -- lib/ app/ packages/` measured (212 files — the standing
+4.8.x/4.9-dev divergence, nothing new). Every regen still ran from the
+lane-unique detached pin `/tmp/qt-v4-pin-p458-0ba942b1` (all three symlink
+classes) per §C.
+
+### What the survey found that the order did not
+
+- **There are no committed photo-tools fixture DBs to rebuild.** The order's
+  item 1 says "REBUILD the committed fixture DBs"; the family's builder writes
+  to `$QT_FIXTURE_PHOTO_MAIN`/`_MOUNT` = `/tmp/qt-photo-{main,mount}.db`, built
+  fresh by the recipe's own regen stage. The committed `photos-{main,mount}.db`
+  under `crates/quilltap-web/tests/fixtures/` belong to a DIFFERENT family
+  (`photos_routes_equivalence` / `photos_web_routes`, built by
+  `build-photos-fixture.ts`). A tree-wide grep for `QT_FIXTURE_PHOTO_MAIN` /
+  `photo-tools.json` / `build-photo-tools-fixture` confirms
+  `photo_tools_equivalence` is the ONLY consumer — **no dependent family needed
+  re-running**, which is what the order asked to be reported.
+- **The second omission site is `attach_image`, not `list_images`.** The order
+  named `photo.rs:730-739` (the sha256 sister join) as feeding `list_images`;
+  measured, that join feeds `AttachedImageDescriptor` only. `ListedImage`
+  carries no `width`/`height` field at all (v4's `ListedImage` likewise). The
+  new op is therefore an `attach_image`, and the order's "add a `list_images`
+  op" is refuted.
+- **The order's suggested fixture-side mutation cannot prove anything.** "Make
+  the builder always-insert width/height keys" changes the fixture BOTH sides
+  regenerate from, so v4 and v5 move together and the family stays green. The
+  proofs below mutate v5 source instead, which is what actually makes the new
+  rows measurements.
+
+### What landed
+
+**The spec/builder widening.** `ImageSpec.width` / `.height` are now optional,
+and the builder patches them only when the spec names them (a half-specified
+pair is a named build-time refusal). Since `ingestImageBuffer` derives
+dimensions from `sharp`, which cannot read the corpus's synthetic bytes, an
+absent spec value leaves the FileEntry's `width`/`height` NULL. That is the only
+route to v4's `?? undefined` key-omission arm — the pre-existing `plaintext` row
+carries a PRESENT `width: 0`, and `??` keeps a present zero
+([[js-nullish-chain-is-or-else-not-filter]]).
+
+**Two new fixture images.** `dimensionless` (no dimensions; a non-empty
+`generationPrompt` so tier 2 serves; BAKED into vault A so `attach_image` can
+reach it, with its own `photoChunkVectors` entry) and `blankdesc` (dimensions
+PRESENT — so the two arms don't confound — plus a whitespace-only stored
+`description` of `" \t \n  "`).
+
+**Five new ops, all mirrored behind the completeness assert:**
+
+| op | arm |
+| --- | --- |
+| `describe_dimensionless` | the success row OMITS `width`/`height` |
+| `attach_dimensionless` | the descriptor OMITS `width`/`height` |
+| `describe_whitespace_stored` | tier 1's `trim()` gate — falls through to the generation prompt |
+| `autodescribe_whitespace_stored` | the already-described precheck's `trim()` gate — the module PROCEEDS and overwrites |
+| `autodescribe_whitespace_result` | the new `whitespace` module mock — a truthy whitespace vision result persists `''` |
+
+Per the blinded-comparand rule the normalizers were checked first: both the
+attach and describe ops run with `dumps: false` / exact compare (no UUID
+normalization), so key PRESENCE is a live comparand — confirmed by the fresh
+NDJSON, where `describe_dimensionless` reads `…,"mime_type":"image/webp",
+"description":…` with no dimension keys while `describe_whitespace_stored` reads
+`…,"width":320,"height":240,…`. The persisted empty string is equally visible:
+`autodescribe_whitespace_result`'s dumps carry `files.description = ''`, the
+blank uploads link's `description`/`extractedText` = `''` with
+`extractedTextSha256 = e3b0c442…` (the empty-string sha), and ZERO chunk rows —
+v4 and v5 agree on all of it.
+
+**Mutation proofs (item 4, photo half).** Each mutation was applied to v5
+source, the family re-run by name, and the file restored from a `/tmp` backup
+(never `git checkout` mid-unit):
+
+| mutation | red row |
+| --- | --- |
+| `describe_respond` inserts `width`/`height` unconditionally (as `Null`) | `describe_dimensionless` |
+| `AttachedImageDescriptor` loses its two `skip_serializing_if` | `attach_dimensionless` |
+| the describe tier-1 gate drops `js_trim` | `describe_whitespace_stored` |
+| `auto_describe_precheck`'s already-described gate drops `js_trim` | `autodescribe_whitespace_stored` |
+| the vision-result guard becomes `!js_trim(d).is_empty()` | `autodescribe_whitespace_result` |
+
+`git status` on `crates/quilltap-core` is EMPTY after the reverts, and both
+families were re-run green afterwards.
+
+**Regen recipe (unchanged; the sweep driver is the sanctioned path):**
+
+```bash
+python3 harness/tools/recipe_sweep.py --run photo_tools_equivalence \
+  --v4 /tmp/qt-v4-pin-p458-0ba942b1
+```
+
+Oracle rows 29 → 34; `test result: ok` with `OK: photo-tools differential
+matched the oracle across all cases.`

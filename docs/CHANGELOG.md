@@ -80,6 +80,49 @@ Proven red-first, per family, over oracles regenerated fresh at the pin:
 `provider_registry_equivalence` red on the `attachmentSupport` block bytes,
 `file_attachment_tier3_equivalence` red on `fb_ollama_describer_guard`'s
 sentence — then all three green with no oracle re-run.
+#### 2026-08-23 — test(photo-tools): the NULL-dimension and whitespace-description arms reach the oracle
+
+_Versions: harness 0.0.560._
+
+P4.58 item 1+2. The photo-tools differential gained five ops and the fixture
+spec gained two images, closing the two corpus blind spots the P4.D108 lane
+recorded. No v5 source changed.
+
+The **key-omission arm**: v4 builds the `describe_image` success row and the
+`attach_image` descriptor with `width: entry.width ?? undefined`, so an absent
+dimension OMITS the key under `JSON.stringify`. The corpus could not reach that
+— its only candidate row carried a PRESENT `width: 0`, and `??` keeps a present
+zero. The fixture spec now makes `width`/`height` optional (both together, or
+neither — the builder refuses a half-specified pair) and the builder patches
+them only when the spec names them, so `ingestImageBuffer`'s NULL dimensions
+survive (sharp cannot read the corpus's synthetic bytes). A new `dimensionless`
+image, baked into vault A, drives both sites: `describe_dimensionless` and
+`attach_dimensionless`. Both compare EXACTLY (no UUID normalization), so key
+presence is a live comparand.
+
+The **truthiness-then-trim quirk**, pinned at both ends. v4's already-described
+precheck and the describe tier-1 gate both read `description && trim().length >
+0`, so a whitespace-only stored value is truthy but must not satisfy either: the
+new `blankdesc` image carries `" \t \n  "` and drives `describe_whitespace_stored`
+(falls through to the generation-prompt tier) and `autodescribe_whitespace_stored`
+(the module proceeds and overwrites). At the describer end, the new `whitespace`
+module mock answers a whitespace-only vision result — truthy, so it passes v4's
+`!result.imageDescription` guard, and the subsequent `.trim()` then persists an
+EMPTY string: `autodescribe_whitespace_result` diffs `files.description = ''`,
+the blank link's `description`/`extractedText` = `''` with the empty-string
+sha256, and zero chunks. Both apps agree.
+
+Mutation-proven red-first (each reverted from a file backup): unconditionally
+inserting `width`/`height` in `describe_respond` reds `describe_dimensionless`;
+dropping the descriptor's `skip_serializing_if` reds `attach_dimensionless`;
+dropping the trim from the describe tier-1 gate reds
+`describe_whitespace_stored`; dropping it from the already-described precheck
+reds `autodescribe_whitespace_stored`; and making the vision-result guard
+trim-based reds `autodescribe_whitespace_result`.
+
+The order's suggested fixture-side mutation (make the builder always insert the
+keys) was measured and rejected: it changes BOTH sides through the same
+regeneration and stays green, so it proves nothing.
 
 #### 2026-08-23 — docs(porting): the `0ba942b1` drift-round work orders (P4.D110 ∥ P4.D111 ∥ P4.58)
 

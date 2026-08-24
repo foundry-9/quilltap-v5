@@ -525,6 +525,18 @@ fn corpus() -> Vec<Op> {
             kept_at: None,
             dumps: false,
         },
+        // P4.58: the sha256 sister carries NULL width/height, so the descriptor
+        // OMITS both keys (v4 `width: undefined` under JSON.stringify; v5's
+        // `skip_serializing_if`). `dumps: false` keeps the compare EXACT — no
+        // UUID normalization — so key PRESENCE is a live comparand.
+        Op {
+            label: "attach_dimensionless",
+            tool: "attach_image",
+            chat: Chat::Main,
+            build_args: |m| json!({ "uuid": m.baked_by_key["dimensionless"].link_id }),
+            kept_at: None,
+            dumps: false,
+        },
     ]
 }
 
@@ -536,6 +548,9 @@ fn corpus() -> Vec<Op> {
 const CANNED_VISION_DESCRIPTION: &str = "A copper kettle steams on a windowsill at dusk.";
 const RACE_WINNER_DESCRIPTION: &str = "The winner wrote this description first.";
 const MODULE_RAW_DESCRIPTION: &str = "  A described mystery: two moths circle a lantern.  ";
+/// P4.58: whitespace-ONLY — truthy in JS (so v4's `!result.imageDescription`
+/// guard lets it through) but `.trim()`s to the empty string.
+const MODULE_WHITESPACE_DESCRIPTION: &str = "  \t\n ";
 
 /// A describe_image HANDLER op. The auto-describe module is canned at exactly
 /// v4's mock level (the oracle jest-mocks the module whole); `mode` picks the
@@ -593,6 +608,22 @@ fn describe_corpus() -> Vec<DescribeOp> {
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["plaintext"] }),
             mode: "throws",
         },
+        // P4.58: NULL width/height on the FileEntry — the success row omits
+        // both keys (`describe_respond`'s conditional inserts). Tier 2 serves
+        // the generation prompt, so `throws` also proves no vision call.
+        DescribeOp {
+            label: "describe_dimensionless",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["dimensionless"] }),
+            mode: "throws",
+        },
+        // P4.58: a WHITESPACE-ONLY stored description is truthy but trims
+        // empty, so tier 1 must NOT serve it — the row falls through to the
+        // generation-prompt tier.
+        DescribeOp {
+            label: "describe_whitespace_stored",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blankdesc"] }),
+            mode: "throws",
+        },
     ]
 }
 
@@ -644,6 +675,25 @@ fn module_corpus() -> Vec<ModuleOp> {
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["plaintext"] }),
             mock: "throws",
             dumps: false,
+        },
+        // P4.58: the already-described precheck (`entry.description &&
+        // entry.description.trim().length > 0`) — a whitespace-only stored
+        // value is truthy but trims empty, so the module PROCEEDS and
+        // overwrites it. The dumps carry the overwrite.
+        ModuleOp {
+            label: "autodescribe_whitespace_stored",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blankdesc"] }),
+            mock: "description",
+            dumps: true,
+        },
+        // P4.58: the same quirk at the describer end — a whitespace-only vision
+        // result passes v4's `!result.imageDescription` truthiness check and
+        // then trims to `''`, which is what gets persisted to all three sinks.
+        ModuleOp {
+            label: "autodescribe_whitespace_result",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["blank"] }),
+            mock: "whitespace",
+            dumps: true,
         },
     ]
 }
@@ -728,6 +778,18 @@ impl quilltap_core::api::chat_media::ImageDescribeDriver for CannedModuleDriver 
                     "No image description profile available. Configure one in Settings → Chat Settings → Image Description Profile"
                         .to_string(),
                 ),
+            },
+            "whitespace" => FallbackResult {
+                type_: FallbackType::ImageDescription,
+                text_content: None,
+                image_description: Some(MODULE_WHITESPACE_DESCRIPTION.to_string()),
+                processing_metadata: Some(ProcessingMetadata {
+                    used_image_description_llm: Some(true),
+                    original_filename: file.filename.clone(),
+                    original_mime_type: file.mime_type.clone(),
+                    ..Default::default()
+                }),
+                error: None,
             },
             "description" => FallbackResult {
                 type_: FallbackType::ImageDescription,
