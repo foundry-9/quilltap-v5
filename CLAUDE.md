@@ -1790,19 +1790,61 @@ records THERE. Update this summary only when a phase or round completes.
   candid story background, Pascal's other three write paths, the NanoGPT
   embedding leg, a bearer-token OAC endpoint (blocked — no local server),
   and dedup/summaries.
-- **Oracle baseline: `f8973813` (2026-08-22, v4 main — "feat(nanogpt):
-  prompt caching (plugin 1.0.3)"), adopted at the f8973813-round
-  unification (2026-08-22).** ⚠ **v4 HEAD is now THREE commits past it**
-  (measured 2026-08-23): `65f3476e` (CI/release infra + a comment-only lib
-  edit + standalone-tarball native linking v5 doesn't have — dispositioned
-  NO-PORT with evidence), `718c9ada` (build/bundler, bug 90), and
-  **`a14a1811` "fix(images): characters can look at images, and images
-  reach vision models (bugs 91-95)" — a lib change on a PORTED surface,
-  unabsorbed.** The drift catch-up is the top next candidate. **Pin a
-  detached worktree at `f8973813` for every regen** until it lands (one is
-  prepared at `/tmp/qt-v4-f8973813` with all three symlink classes) —
-  until a future round re-dispositions or absorbs newer
-  drift. **Drift-check BOTH development
+- **The `a14a1811` vision round (P4.D106 ∥ P4.D107 ∥ P4.D108 ∥ P4.D109 ∥
+  P4.57): UNIFIED on main (2026-08-23) — ALL FIVE CLOSED; the oracle
+  baseline MOVES to `a14a1811` and v4 bugs 91–95 are absorbed whole.**
+  The image-transport predicate pair (registry → static → unknown-true)
+  wired into the describe-fallback's three sites, the ten-literal
+  moderation finish-reason table replacing "known issue…try resending"
+  for named refusals, and the three-tier attachment anchor (id carry +
+  the pre-normalization user-turn set; the downstream-stamp measurement
+  found ONE real re-anchor — the non-streaming regenerate funnel — fixed
+  via `send_message_with_anchor` with a wire-byte pin; two NEW tier-1
+  families) ∥ NanoGPT plugin 1.1.0 (`image_url` + the truthful ledger;
+  corpus 321 → 341, every pre-existing row byte-identical; a tree-wide
+  `attachment.url`-arm blind spot closed corpus-only) ∥ the
+  `describe_image` looking verb end-to-end (catalog 57 → 58, the
+  auto-describe module v5 never had, the three-tier handler with the
+  no-album rule, the five Librarian rewrites; the production vision-tier
+  wiring landed as the §4 unification wire — OrchestratorDeps + the
+  spine thread the describe driver AND the photo-bytes store, ⚠ LIVE
+  vision spend on every tool path) ∥ the attachment-failure warning
+  toast through the reducer carry (identity-keyed once-per-done) + the
+  client attachment table's staleness note retired (a14a1811 IS the
+  upstream fix its header predicted) ∥ tri-state decode-once across all
+  three settings verbs (byte-diff-proven zero-behavior-change; the
+  differential's serde-bypass blindness closed). **The §3 review's
+  headline catch: the vision tier was structurally unreachable** (the
+  driver half without the bytes half = `no-bytes` starvation on every
+  production path — fixed with wiring probes + mutation-proven pins);
+  also fixed at unification: the `restream_into` attachment-ledger carry
+  (bug 94's new reader made the stale value user-visible), auto-describe
+  propagating DB failures raw as v4 does, `dangerMode` on the
+  empty-response warn, the NANOGPT coverage floors, the id-set predicate
+  extraction pin, and five smaller repairs. **⚠ TO FILE UPSTREAM (v4):**
+  the OpenRouter registry entry declares `supportsAttachments: false`
+  while its static map transports — v4 PRODUCTION routes OpenRouter
+  vision profiles to the describe-fallback and refuses OpenRouter
+  describers (jest never sees it); plus the moderation docblock's
+  "(bug 94)" mis-number. Gate: the pinned 24-family sweep 24/24 ok zero
+  SKIP; clippy both feature sets; ng 341 files / 5,068; the full numbers
+  in the round record. 💸 the dogfood queue gains the NanoGPT vision
+  send, the Z.AI refusal sentence, the describe_image walk (the vision
+  tier's first live run), the failed-attachment toast, and the
+  whisper-tailed regenerate. Versions: core 0.0.643, harness 0.0.559,
+  host 0.0.79, web 0.0.79, SPA 0.5.548. Round record: `status-log.md`.
+- **Oracle baseline: `a14a1811` (2026-08-22, v4 main — "fix(images):
+  characters can look at images, and images reach vision models (bugs
+  91-95)"), adopted at the a14a1811-round unification (2026-08-23).**
+  ⚠ **v4 HEAD is ONE commit past it** (moved mid-round): `3c041e46`
+  "fix(titles): a misspelled key stops silencing the auto-titler (bug
+  96)" — a lib change on a PORTED surface (the new `title-verdict.ts`
+  extracted from `cheap-llm-tasks/chat-tasks.ts` + the title-update
+  handler), unabsorbed; **the drift catch-up is the top next
+  candidate.** **Pin the detached worktree at `/tmp/qt-v4-a14a1811`
+  (prepared, all three symlink classes) for every regen** until it
+  lands. The old `/tmp/qt-v4-f8973813` worktree is stale and can be
+  removed. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
   `diff`, never the commit list; note WHICH branch the checkout occupies

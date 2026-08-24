@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — unify: the `a14a1811` vision round (P4.D106 ∥ P4.D107 ∥ P4.D108 ∥ P4.D109 ∥ P4.57)
+
+_Versions: core 0.0.643, harness 0.0.559, host 0.0.79, web 0.0.79, SPA 0.5.548._
+
+All five lanes unified; the oracle baseline moves to `a14a1811` and v4 bugs
+91–95 are absorbed whole: the image-transport predicate + moderation
+finish reasons + the three-tier attachment anchor (server), NanoGPT plugin
+1.1.0's `image_url` wire + truthful ledger, the `describe_image` looking
+verb end-to-end (with the production vision-tier wiring landed as the
+unification wire), the attachment-failure warning toast + the client
+attachment table's convergence, and tri-state decode-once across all three
+settings verbs. The §3 review's headline catch — the vision tier was
+structurally unreachable (driver wired, bytes store not) — plus the
+restream ledger carry, raw error propagation in auto-describe, and seven
+smaller findings, all fixed pre-merge. v4 drifted one commit mid-round
+(`3c041e46`, bug 96 — the next catch-up); every regen ran from the pinned
+worktree. Gate: the 24-family pinned sweep 24/24 zero SKIP; clippy both
+feature sets; 449 test binaries / 2,299 / 0; release build; ng 341 files /
+5,068; full Playwright 237/237 zero skips. Round record: `status-log.md`.
+
 #### 2026-08-23 — fix(unify): the a14a1811-round unification wires + the §3 review findings
 
 _Versions: core 0.0.643, harness 0.0.559, host 0.0.79._

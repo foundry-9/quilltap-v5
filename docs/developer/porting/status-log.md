@@ -82963,3 +82963,152 @@ Run from the lane worktree, on the lane tip.
   the order's Ownership section scopes it.
 
 **Versions:** SPA 0.5.544 → 0.5.548 (one bump per commit). No crate bumped.
+
+---
+
+## The `a14a1811` vision-round unification (P4.D106 ∥ P4.D107 ∥ P4.D108 ∥ P4.D109 ∥ P4.57) — UNIFIED on main 2026-08-23
+
+**All five lanes closed; the oracle baseline MOVES to `a14a1811`.** Branch
+`unify/a14a1811-round`; cherry-picked in dependency order (D106 → D107 →
+D108 → P4.57 → D109); versions accumulated to core 0.0.643, harness
+0.0.559, host 0.0.79, web 0.0.79, SPA 0.5.548 (the wire/fix commit's own
+bumps included). The per-lane tree-equality audit was clean: every lane's
+owned files match its tip exactly.
+
+### Drift at unification
+
+v4 HEAD moved ONE commit past the baseline during the lanes: `3c041e46`
+"fix(titles): a misspelled key stops silencing the auto-titler (bug 96)" —
+a REAL lib change on a ported surface (a new
+`lib/memory/cheap-llm-tasks/title-verdict.ts` extracted from
+`chat-tasks.ts` + a title-update handler fix), fully DISJOINT from this
+round's five lanes. Classified as the next round's drift catch-up
+(phase-4.md candidate 1); every unification regen ran from the detached
+worktree pinned at `a14a1811` (`/tmp/qt-v4-a14a1811`, all three symlink
+classes). `718c9ada` was dispositioned NO-PORT at planning (pure
+CI/bundler — the Turbopack revert; zero lib content); `65f3476e` was
+already ruled at the f8973813 round.
+
+### The §4 unification wires
+
+- **`P4D107_NANOGPT_MANIFEST_LANDED` flipped to `true`** — the
+  `image_transport_equivalence` full_init NANOGPT rows are plain
+  equalities (the tripwire D106 armed for exactly this moment).
+- **The describe_image vision tier made REACHABLE in production** —
+  P4.D108's recorded follow-up, landed whole: `OrchestratorDeps` gained
+  `image_describe` + `photo_bytes`, the per-turn runner construction was
+  extracted into `build_turn_tool_runner` (unit-pinned with wiring
+  probes, mutation-proven), and the spine's `tool_runner()` + both
+  `OrchestratorDeps` constructions thread the `HostImageDescribeRunner`
+  and the production photo-bytes store (`ProductionFileBytes` already
+  implemented the photos `FileBytesStore` — the same cast the
+  EngineAssembly's `save_image_bytes` makes). ⚠ LIVE: one vision-LLM call
+  per describe_image on an undescribed image, on every tool path
+  (in-chat, carina, Brahma, Run Tool). `photo_side_effects` stays
+  `NoSideEffects` — consistent with the engine's own `messageSaveImage`
+  arm; the embedding-enqueue side-effects seam remains the standing
+  repo-wide deferral.
+- **§C1 verified name-for-name across its three homes** (server static
+  map / generated manifest / SPA table — identical MIME lists); **§C3
+  held** (`chat_events.rs` + `events.rs` untouched by every lane).
+
+### The §3 review — four parallel reviewers + a personal read of the cross-cutting hunks
+
+**The catch that would have shipped: the vision tier was structurally
+unreachable** — the §4 wire's driver half alone left the runner's
+`file_bytes` on the `NotConfiguredBytes` default (zero production
+overrides tree-wide), so `describe_image`'s tier 3 answered
+`no-bytes` with a misleading settings hint despite a configured
+describer, on every production path. Fixed as above (the bytes half of
+the wire + probes). The rest, all fixed on the unify branch
+(`fix(unify)` commit):
+
+- **`restream_into` never carried the retry's attachment ledger** (v4
+  overwrites `state.attachmentResults` on every done chunk, `|| null`).
+  Pre-existing on main — but bug 94 gave the ledger its FIRST reader
+  this same round, which made the stale value user-visible: a recovery
+  turn would toast the failed first attempt's warnings. Fixed +
+  pinned (`restream_overwrites_the_attachment_ledger`).
+- **Auto-describe relabeled DB failures as skip reasons** where v4
+  propagates raw (uncaught throws): the precheck read failure wore
+  `not-found`, and the persist failure wore `describe-failed` — blaming
+  a vision call that had SUCCEEDED and cost money, with an unrelated
+  settings hint. The module now returns `Result` and the executor
+  surfaces the raw text as the tool error, v4's family-catch shape.
+- The empty-response warn payload gained v4's `dangerMode` key (a
+  moderation refusal is exactly when the operator wants to see whether
+  Auto-Route was OFF).
+- **The NANOGPT rows joined all three request-envelope coverage
+  floors** (modes / attachment vectors / headers) — the attachment
+  floor had never learned the fifth image-serialising provider, so a
+  future regen dropping every nanogpt attachment vector would have
+  passed green (the exact #37 failure shape the floor exists for).
+- **The id-set predicate extracted + pinned** — the anchor's middle
+  plumbing between the oracle-pinned selector and the unit-pinned
+  constructor; the reviewer named the silent mutation (a lowercase
+  `"user"` empties the set, tier 2 never fires, every whisper-tailed
+  regenerate falls to the floor — with every other test green). Now
+  `user_turn_message_ids` with a per-conjunct kill test.
+- `SamplingCapture` forwards `send_message_with_anchor` (the exact
+  wrapper hazard the `Arc` impl's comment names — latent, test-only).
+- `describe_image` joined the doc-edit stray-call guard arm; the
+  doc-comment splice in `doc_mount_file_links.rs` repaired
+  (`delete_chunks_by_link_id` got its doc back); two stale comments
+  corrected (the image-transport unit test's NANOGPT note, the
+  failover module doc's "five strings").
+- The `id-field-dropped` oracle case renamed to its post-a14a1811 truth
+  (`id-carried-through-selection`) + a NEW `force-include-drops-the-id`
+  row pinning the deliberately-preserved force-include id-omit quirk
+  (previously unpinned: carrying the id there passed everything).
+- Recorded, no change: the D109 e2e injection is first-done-frame-global
+  (sound while the suite is serial; fails loudly, never falsely); the
+  NanoGPT missing-mimeType `""`-vs-`undefined` render (the pre-existing
+  zai/openrouter convention); photo-tools corpus blind spots
+  (width/height-NULL omission, the whitespace-only quirk) and the
+  settings-routes seed-default row → phase-4.md candidate 4; `touched`
+  mounts iterate sorted vs v4's insertion order (enqueue order only).
+
+**Clean areas confirmed by review** (not skimmed): the moderation
+literals/template/trim semantics; the three-tier transport predicate incl.
+the OPENROUTER production inconsistency reproduced faithfully; the anchor's
+three scans + the produced-index mapping (correct by construction under
+tool-role drops); the NanoGPT content-shape rules; the SPA toast
+construction + once-per-done identity semantics end-to-end; P4.57's
+zero-behavior-change claim (malformed-body 500s, strip-mode Zod
+equivalence, the `unwrap_to_http` success arms).
+
+### ⚠ TO FILE UPSTREAM (v4-side, human)
+
+1. **The OpenRouter transport contradiction**: the plugin registry entry
+   declares `supportsAttachments: false` while the client-safe static map
+   lists its four image MIME types and the non-streaming vision path
+   works (bug 45) — so v4 PRODUCTION (registry initialized) routes
+   OpenRouter vision profiles to the describe-fallback and refuses
+   OpenRouter describers, even though a14a1811's own guard sentence names
+   OpenRouter as transporting. v4's jest never sees it (uninitialized
+   registry = static tier). v5 reproduces production faithfully via the
+   baked manifest.
+2. The `lib/llm/moderation-finish-reason.ts` docblock mis-numbers itself
+   "(bug 94)" — it is bug 93.
+
+### The unified gate (2026-08-23)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, plain AND
+  `--features quilltap-core/native-transport` (the gate caught a
+  `drop_non_drop` lint surfacing only at the union and two canned-spine
+  constructions missing the new field — repaired in the wire commit).
+- **The pinned sweep: 24/24 families ok, zero SKIP**, every oracle
+  regenerated FRESH from `/tmp/qt-v4-a14a1811` through
+  `recipe_sweep.py --run-all --v4 <pin>` (results artifact
+  `/tmp/unify-sweep-results.json`, label "a14a1811-round unify gate");
+  changed bytes grepped present per family (the moderation sentence ×27,
+  `describe_image` ×4/×10/×8 across tool-definitions / librarian /
+  inventory, the new force-include row ×1).
+- `cargo test --workspace` with the union env block: **449 test binaries / 2,299 tests / 0 failed** (exit 0), the round's new families positively confirmed to have RUN by name.
+- Release build (`quilltap-web` + `quilltap-cli`): clean, exit 0.
+- SPA: `npm test` **341 files / 5,068 tests, 0 failed**; `npm run build`
+  clean; full Playwright **237 passed / 0 failed / 0 skipped (5.5 m)** — the suite grew 236 → 237 with the activated attachment-ledger beat.
+
+Versions: core 0.0.643, harness 0.0.559, host 0.0.79, web 0.0.79,
+SPA 0.5.548; cli/tauri unchanged.

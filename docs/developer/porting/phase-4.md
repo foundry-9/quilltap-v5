@@ -5594,6 +5594,79 @@ sweep driver remains the sanctioned per-family regen path — never run
 two sweeps concurrently. The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
 
+### The `a14a1811` vision round (P4.D106 ∥ P4.D107 ∥ P4.D108 ∥ P4.D109 ∥ P4.57) — UNIFIED 2026-08-23
+
+All five lanes closed same-day; **the oracle baseline MOVES to `a14a1811`**
+(v4 main, "characters can look at images, and images reach vision models",
+bugs 91–95; the intervening `65f3476e` + `718c9ada` both NO-PORT with
+evidence). The transport predicate + moderation finish reasons + the
+three-tier attachment anchor (two NEW tier-1 families; the downstream-stamp
+measurement found and fixed a real re-anchor on the non-streaming
+regenerate funnel via `send_message_with_anchor`) ∥ NanoGPT plugin 1.1.0
+(`image_url` + the truthful ledger; corpus 321 → 341; a tree-wide
+`attachment.url`-arm blind spot closed) ∥ the `describe_image` looking verb
+end-to-end (catalog 57 → 58; the auto-describe module; the Librarian
+rewrites) ∥ the attachment-failure toast + the client attachment table's
+staleness note retired as v4's own upstream fix arrived ∥ tri-state
+decode-once across all three settings verbs (byte-diff-proven
+zero-behavior-change). **The §4 wires made the vision tier REACHABLE in
+production** (OrchestratorDeps + spine thread the describe driver AND the
+photo-bytes store), and **the §3 review's headline catch was exactly that
+wire's missing half** (driver-without-bytes = `no-bytes` starvation);
+also fixed at unification: the `restream_into` attachment-ledger carry
+(bug 94's new reader had made the stale value user-visible), auto-describe
+propagating DB failures raw, `dangerMode` on the empty-response warn, the
+NANOGPT coverage floors, the id-set predicate extraction pin, and five
+smaller repairs. **TO FILE UPSTREAM (v4-side):** the OpenRouter registry
+entry declares `supportsAttachments: false` while its static map
+transports — v4 production routes OpenRouter vision profiles to the
+describe-fallback and refuses OpenRouter describers (jest never sees it);
+plus the `moderation-finish-reason.ts` "(bug 94)" docblock mis-number.
+Gate + versions: the round record in `status-log.md`.
+
+**Next candidates, in rough value order** (updated at the
+`a14a1811`-round unification, 2026-08-23):
+
+1. **The `3c041e46` drift catch-up** (v4 bug 96 — the title-verdict
+   module extracted from `cheap-llm-tasks/chat-tasks.ts` + the
+   title-update handler fix; a behavior change on a ported surface,
+   classified at this unification; check both branches first, as
+   always).
+2. **The owed 💸 dogfood queue** — now incl. this round's: the NanoGPT
+   vision send (a real image to a real routed vision model), a real
+   Z.AI `sensitive` refusal showing the named sentence, the
+   `describe_image` walk (all three serve tiers on a fresh upload —
+   the vision tier's first LIVE run since the unification wire), the
+   failed-attachment warning toast, a whisper-tailed regenerate
+   carrying its image; plus the standing items (the caching smoke, the
+   Brahma budget, the failed-`generate_image` sentence, the candid
+   story background, Pascal's other three write paths, the NanoGPT
+   embedding leg, dedup/summaries).
+3. **The two v4-side filings** (human): the OpenRouter
+   registry/static-map transport contradiction, and the
+   moderation-docblock mis-number.
+4. Corpus maintenance candidates recorded this round: photo-tools rows
+   for the width/height-NULL omission + the whitespace-only-description
+   quirk; a settings-routes NANOGPT/Z_AI create-with-omitted-flag row
+   (the `supportsImageUpload` seed default).
+5. `p4.9i2` (the bank grew `connection-profiles.md`'s two-questions
+   section, `dangerous-content.md`'s refusal section, and the retitled
+   `keep-image-tools.md`).
+
+PB1 stays parked by the standing rule. Round record: `status-log.md`.
+
+**Standing regen note (supersedes the one above):** the oracle baseline
+is **`a14a1811`** (2026-08-22, v4 main — "fix(images): characters can
+look at images, and images reach vision models (bugs 91-95)"), adopted
+at the a14a1811-round unification (2026-08-23). ⚠ v4 HEAD moved ONE
+commit past it during the round (`3c041e46`, bug 96 — candidate 1
+above): **pin `/tmp/qt-v4-a14a1811` (already prepared, all three
+symlink classes) for every regen** until the catch-up lands.
+Drift-check BOTH development branches every round; `bugfix`'s only
+unabsorbed content remains the tests-only `009c49b2`. The sweep driver
+remains the sanctioned per-family regen path — never run two sweeps
+concurrently.
+
 ### The `f8973813` round (P4.D105 ∥ P4.56) — UNIFIED 2026-08-22
 
 Both lanes closed same-day; the baseline STAYS `f8973813` (v4's newer
