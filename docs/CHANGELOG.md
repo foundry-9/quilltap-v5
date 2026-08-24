@@ -80,6 +80,17 @@ Proven red-first, per family, over oracles regenerated fresh at the pin:
 `provider_registry_equivalence` red on the `attachmentSupport` block bytes,
 `file_attachment_tier3_equivalence` red on `fb_ollama_describer_guard`'s
 sentence — then all three green with no oracle re-run.
+#### 2026-08-23 — docs(dogfood): finding #95 closes — P4.D93 absorbed v4 bug 82
+
+_Docs-only change._
+
+P4.58 item 5. Row #95's status cell still read "FILED as v4 bug 82 … this row
+retires when the port absorbs the fix". v4 fixed it at `9125f492` and the P4.D93
+lane absorbed exactly that fix on 2026-08-19 (the leading-system-message fold,
+landed in the Ollama and OpenAI-Compatible builders only so hosted requests stay
+byte-identical; the request-envelope corpus went 257 → 263 with every older row
+unchanged). The cell now says so.
+
 #### 2026-08-23 — test(settings): the supportsImageUpload create-time seed default reaches the oracle
 
 _Versions: harness 0.0.561._
