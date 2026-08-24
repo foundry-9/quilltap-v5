@@ -9,6 +9,187 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
+
+Ordered against round baseline **`0ba942b1`**. **Drift check at lane start
+(2026-08-23):** v4 HEAD `0ba942b1` on `main`, tree CLEAN, `git log
+0ba942b1..main` empty; `bugfix` HEAD `3a76b17d` with nothing unabsorbed past
+the already-dispositioned tests-only `009c49b2`. No drift — the order's
+baseline held.
+
+**Pin:** even though the checkout was clean at the baseline, the lane built its
+own detached worktree at `/tmp/qt-v4-pin-d110-0ba942b1` (all three symlink
+classes: root `node_modules`, `packages/quilltap/node_modules`, every
+`plugins/dist/*/node_modules`) and ran EVERY regen from it through
+`recipe_sweep.py --v4`. The human's checkout is their active repo and can go
+dirty mid-lane; the pin removes the question. `/tmp/qt-v4-a14a1811` (the
+PREVIOUS baseline) was not used and cannot serve this family — it predates
+`3c041e46`.
+
+### The port
+
+v4 extracted `lib/memory/cheap-llm-tasks/title-verdict.ts` out of the two
+duplicated inline parsers in `chat-tasks.ts`. **v5 never duplicated that pair**
+— it has had ONE shared `parse_consideration` since P4.6ao — so there was no
+consolidation step, only the body change plus v4's new per-site `taskLabel`.
+
+- **New module** `crates/quilltap-core/src/services/context_summary/title_verdict.rs`:
+  `TitleVerdict` (v4's renamed shape; `TitleConsideration` retired),
+  `MAX_TITLE_LENGTH`, `TITLE_KEYS`, `fold_key`, `read_title_key`,
+  `normalize_title`, `strip_edge_quotes` (moved here from `tasks.rs`, which now
+  imports it — `clean_title` was its only other caller), and
+  `parse_title_verdict(content, task_label, chat_id)`.
+- **Pass 1** walks `TITLE_KEYS` canonical-first over the literal keys, skipping
+  `undefined` AND explicit `null` — so a null canonical key falls THROUGH to
+  the near-misses rather than ending the walk. **Pass 2** folds both sides
+  (`to_lowercase` then drop every non-`[a-z0-9]`) into a first-occurrence-wins
+  map and walks `TITLE_KEYS` again. That canonical-first ordering IS the
+  precedence rule when a model emits several keys.
+- **`normalize_title`** carries v4's SECOND trim (`.trim()` → strip one quote at
+  each end → `.trim()` again), which the pre-fix inline parsers — and v5 until
+  now — lacked, so padding tucked inside the quotes used to reach the chat row.
+  The 60-unit cap is unchanged (UTF-16 units via `utf16_truncate`).
+- **`reason`** now requires `typeof === 'string' && trim()` truthy and returns
+  the UNTRIMMED original — stricter than the old `||` chain.
+- **Four warn arms** as `tracing::warn!`, message strings and `context` values
+  (`cheap-llm-tasks.title-verdict`) byte-exact to v4. **Recorded, minor:** the
+  metadata FIELD NAMES follow this tree's snake_case tracing convention
+  (`chats.rs:1309`, `llm_logs.rs:1008`) rather than v4's camelCase JSON keys,
+  and an absent `chat_id` renders as the empty string where v4's
+  `JSON.stringify` drops the key. Both are cosmetic and confined to the log
+  line; the message and `context` — what an operator greps for — are exact.
+- **`title_update_job.rs`**: the checkpoint-burned warn inside the existing
+  no-rename guard, with v4's exact sentence and `context:
+  background-jobs.title-update`. Both callers now thread `chat_id`.
+- **The commit-prose trap the order flagged, honoured:** v4's message says only
+  the genuine decline justifies advancing the cursor "and all three did", but
+  the SHIPPED fix does not restructure cursor advancement. All three no-rename
+  outcomes still advance. The port matches the shipped behavior and says so in
+  a code comment.
+
+### The differential — `title_update_tier3`, red-first
+
+Seven cases added to `harness/oracle/cases/title-update-tier3.test.ts` and its
+Rust twin, each a canned reply the pre-fix parser read as "no rename wanted",
+driven through BOTH real handlers so recovery is measured as a WRITE (the
+renamed chat row + the story-background job's scene context), not as a parser
+return value:
+
+| case | shape | red pre-fix? |
+| --- | --- | --- |
+| `key_typo_suggest_title` | the exact live Friday payload under `suggestTitle` | **RED** |
+| `fold_key_snake_case` | `suggested_title` (fold pass only) | **RED** |
+| `canonical_beats_near_miss` | `title` + `suggestedTitle` both present | guard (green both) |
+| `rename_with_no_usable_title` | rename asked under `headline` | guard (green both) |
+| `quoted_padded_title` | `  "  A Padded Quoted Title  "  ` (the second trim) | **RED** |
+| `overlong_near_miss_title` | 70-char title under `newTitle` | **RED** |
+| `null_canonical_falls_through` | `suggestedTitle: null` + `newTitle` | **RED** |
+
+**Red-first measured before the port landed:** 5 of 7 STATE MISMATCH against
+unchanged v5, the other two green as designed (they pin precedence and the
+burn-the-cursor residue, neither of which the pre-fix parser got wrong). After
+the port: 17/17 OK, the existing 10 cases untouched. The fresh NDJSON was
+grepped for the changed bytes — each recovered title appears TWICE (chat row +
+job payload).
+
+### Unit suite
+
+v4's 16-case `__tests__/title-verdict.test.ts` mirrored 1:1 into the new
+module's `mod tests` (24 tests, the extras pinning the fine grain v4 leaves to
+its own source: the trim-truthy reason rule, strict `needsNewTitle`, the
+null-falls-through arm, the fold-collision first-occurrence rule, `fold_key`'s
+ASCII-only survival, `strip_edge_quotes`, and `normalize_title`'s
+emptied-title-is-absent). The three warn arms + the one required SILENCE are
+pinned through a capturing `tracing_subscriber::Layer` (the `cheap_llm_exec.rs`
+idiom).
+
+**Mutation proofs, each red then restored:**
+
+| mutation | red |
+| --- | --- |
+| `TITLE_KEYS` shrunk to the canonical key alone | 4 unit tests |
+| pass-1 walk reversed (canonical loses) | 1 unit test + `canonical_beats_near_miss` |
+| the SECOND trim removed from `normalize_title` | 2 unit tests + `quoted_padded_title` |
+| `reason`'s trim check weakened to `!is_empty()` | 1 unit test |
+| the handler warn guard replaced with `if false` | the wiring pin |
+| the handler warn's `needs_new_title` conjunct dropped | the wiring pin's silence leg |
+
+The handler warn writes no row, so the tier-3 dump is structurally blind to it —
+`rename_with_no_usable_title`'s DB state is byte-identical to a genuine decline,
+and that identity IS the bug's invisibility. It is pinned instead by
+`checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title` in the
+harness (no oracle; the committed fixture + a capturing layer over the REAL
+`handle_title_update`, both the firing leg and the must-stay-silent decline leg).
+That test is why `quilltap-harness` gained `tracing` + `tracing-subscriber`
+dev-dependencies — `title_update_job.rs`'s own test module has no fixture to
+drive the handler from.
+
+### Banked finding — v5's title-update handler carries ONE of v4's EIGHT log lines
+
+Measured while placing the new warn: v4 `lib/background-jobs/handlers/title-update.ts`
+emits eight log lines (`:89` no cheap LLM available, `:152` failed for chat,
+`:185` failed to create system event, `:196` the new checkpoint-burned warn,
+`:213` and `:224` the rename infos, `:294` and `:303` the story-background
+queue outcomes). v5's `title_update_job.rs` emits exactly ONE `tracing::` call
+— the one this lane just added. The other seven were never ported.
+
+**Out of this lane's mandate** (the order scopes item 3 to the new warn and
+names the rename / story-background branches as do-not-touch), so it is banked
+rather than fixed. It matters because P4.49 made `combined.log` the first place
+an operator looks after a title job does nothing: a chat that never renamed
+because no cheap LLM resolved, or whose story background failed to queue, is
+silent in v5 and narrated in v4. Worth its own small order alongside any wider
+handler-logging sweep.
+
+### Item 6 — the insurance regen
+
+`chat_tasks_equivalence` regenerated at the pin (its case imports the edited
+`chat-tasks.ts` module even though it drives no title function) and re-run:
+**green, no change needed**.
+
+### Deferrals
+
+**None.** Every Tier-1 and Tier-2 deliverable landed. Tier 3 anticipated none,
+and none arose: the tracing seam carried every meta key v4 logs (with the
+recorded naming convention above).
+
+### Gate
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, plain AND
+  `--features quilltap-core/native-transport` (the second run forced with a
+  `touch` on `lib.rs`, because cargo's cache made the first look instant).
+- `cargo test --workspace` with `QT_ORACLE_TITLE_UPDATE` +
+  `QT_ORACLE_CHAT_TASKS`, `CARGO_INCREMENTAL=0`, full log captured:
+  **449 test binaries / 2,320 tests / 0 failed**, zero `SKIP:` lines in the
+  whole log. `title_update_tier3_equivalence` ran 3 tests (the differential,
+  the runner-registration e2e, the new warn wiring pin);
+  `chat_tasks_equivalence` ran its 1.
+- Both lane families additionally run BY NAME with `--nocapture` over oracles
+  regenerated fresh at the `0ba942b1` pin: 17/17 case lines OK plus the throw
+  arm; the NDJSON grepped for the changed bytes.
+- No `apps/web` change → no `ng test` / `ng build` / Playwright run is required
+  for this lane, and none was run.
+
+### Regen recipes (verbatim, both through the sweep driver)
+
+```
+python3 harness/tools/recipe_sweep.py --run title_update_tier3_equivalence \
+  --v4 /tmp/qt-v4-pin-d110-0ba942b1
+python3 harness/tools/recipe_sweep.py --run chat_tasks_equivalence \
+  --v4 /tmp/qt-v4-pin-d110-0ba942b1
+```
+
+Env vars are the committed headers' own (`QT_FIXTURE_CB_MAIN` /
+`QT_FIXTURE_CB_MOUNT` → the committed `cost-background-{main,mount}.db`,
+`QT_ORACLE_OUT=/tmp/oracle-title-update.ndjson`; `chat-tasks.ts` writes
+`/tmp/oracle-chat-tasks.ndjson`). Rust side:
+`QT_ORACLE_TITLE_UPDATE` / `QT_ORACLE_CHAT_TASKS`.
+
+**No fixture changed** — the seven new cases are canned-reply variations over
+the existing committed `cost-background-*` pair, so no other family that reads
+those fixtures is invalidated.
+
 ## Lane record — P4.D101 (the NanoGPT bundled provider, server whole) — v4 `4cb1035e`
 
 Ordered against baseline **`d5830439`**, porting v4 `781fc420` (NanoGPT as a

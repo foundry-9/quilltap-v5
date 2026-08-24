@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(titles): a misspelled key stops silencing the auto-titler (bug 96)
+
+_Versions: core 0.0.644, harness 0.0.560._
+
+Ports v4 `3c041e46` whole. A cheap model answered `needsNewTitle: true` with the
+title under `suggestTitle` — two letters short of the `suggestedTitle` the prompt
+asks for. Reading the canonical key alone yielded nothing, the handler read that
+as a decline, the checkpoint cursor advanced, and no story background ever
+generated (it queues only off a successful rename).
+
+The parser moves into a new `services::context_summary::title_verdict` module —
+v5 already shared one parse site where v4 carried two copies, so this is the body
+change plus a per-site task label. It reads the canonical key first, then a short
+near-miss list (`suggestTitle`, `newTitle`, `proposedTitle`, `title`), then a
+case- and separator-folding second pass that catches `suggested_title` and
+friends; the canonical key wins when a model emits several, an explicit `null`
+falls through instead of stopping the walk, and the normalizer trims a second
+time after unwrapping the quotes. The reason field now requires a string whose
+trim is truthy. Four warn arms carry v4's exact sentences and `context` values
+into `combined.log`: response was not JSON, response JSON was not an object,
+title arrived under a non-canonical key, and a rename requested with no usable
+title. The job handler warns `checkpoint burned` on that last case.
+
+Cursor advancement is unchanged: all three no-rename outcomes still advance, as
+v4's shipped fix leaves them. The fix shrinks the unreadable set and makes the
+residue loud.
+
+The `title_update_tier3` differential grew seven cases driving the recovery
+through the real handler, so a recovered title is measured as a write — the
+renamed chat row and the story-background job's scene context. Five were red
+against the pre-fix parser. The `checkpoint burned` warn writes no row, so it is
+pinned by a capturing-subscriber wiring test over the real handler.
+
 #### 2026-08-23 — docs(porting): the `0ba942b1` drift-round work orders (P4.D110 ∥ P4.D111 ∥ P4.58)
 
 _Docs-only; no version bumps._

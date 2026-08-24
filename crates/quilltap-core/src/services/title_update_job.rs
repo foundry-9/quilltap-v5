@@ -51,13 +51,21 @@ use crate::db::{chats_messages_read, chats_read, connection_profiles};
 use crate::model::completion::CompletionProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::context_summary::tasks::{
-    consider_help_chat_title_update, consider_title_update, ChatMessage, TitleConsideration,
+    consider_help_chat_title_update, consider_title_update, ChatMessage,
 };
+// === P4.D110 (v4 `3c041e46`, bug 96) ===
+use crate::services::context_summary::title_verdict::TitleVerdict;
+// === end P4.D110 ===
 use crate::services::cost_estimation::{MessageCostEstimator, NoMessageCost};
 use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::image_profile_resolution::queue_story_background_if_enabled;
 use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
+
+/// v4's `context: 'background-jobs.title-update'` for this handler's warn lines
+/// — byte-exact, because it is what an operator greps `combined.log` for
+/// (P4.D110 / v4 bug 96).
+const CONTEXT: &str = "background-jobs.title-update";
 
 /// The decoded `TITLE_UPDATE` payload (v4 `TitleUpdatePayload`).
 #[derive(Clone, Debug, Default)]
@@ -306,6 +314,7 @@ where
             &recent,
             existing_context.as_deref(),
             &selection,
+            Some(payload.chat_id.as_str()),
         )
         .await
     } else {
@@ -316,6 +325,7 @@ where
             &recent,
             existing_context.as_deref(),
             &selection,
+            Some(payload.chat_id.as_str()),
         )
         .await
     };
@@ -357,12 +367,33 @@ where
     }
 
     // ── The verdict ──
-    let verdict: TitleConsideration = task.result.unwrap_or_default();
+    let verdict: TitleVerdict = task.result.unwrap_or_default();
     let Some(new_title) = verdict
         .suggested_title
+        .clone()
         .filter(|t| !t.is_empty())
         .filter(|_| verdict.needs_new_title)
     else {
+        // Distinguish a genuine "no" from a verdict we could not read. The cheap
+        // LLM asking for a rename and handing us nothing usable is a defect, not
+        // a decision (bug 96), and burning the checkpoint on it silently is how
+        // the chat kept its generic title — and never got a story background,
+        // since that queues off a successful rename below.
+        //
+        // The cursor still advances on ALL THREE no-rename outcomes, exactly as
+        // v4 `3c041e46` left it: the fix shrinks the unreadable set (via the
+        // tolerant parser) and makes the residue LOUD. It does not restructure
+        // cursor advancement.
+        if verdict.needs_new_title && verdict.suggested_title.as_deref().is_none_or(str::is_empty) {
+            tracing::warn!(
+                context = CONTEXT,
+                chat_id = %payload.chat_id,
+                current_interchange = payload.current_interchange,
+                reason = %verdict.reason,
+                "[Title Update] Rename requested with no usable title — checkpoint burned"
+            );
+        }
+
         // No rename needed — but still burn the checkpoint.
         advance_cursor(db, &payload.chat_id, payload.current_interchange, now_ms).await;
         return Ok(());

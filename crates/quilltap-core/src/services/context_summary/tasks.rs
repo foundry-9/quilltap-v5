@@ -5,7 +5,9 @@
 //!
 //! Each is a thin wrapper over the ported [`CheapLlmTaskExecutor`] (v4
 //! `executeCheapLLMTask`), with the exact system/user message pair v4 builds and
-//! the exact response cleanup its `parseResponse` closure applies. None of the
+//! the exact response cleanup its `parseResponse` closure applies. The two
+//! title-consideration tasks parse through [`super::title_verdict`] (v4
+//! `3c041e46` extracted the same body out of `chat-tasks.ts`). None of the
 //! three passes an uncensored fallback, a max-tokens override, or a characterId
 //! to the executor — so the provider call is temperature 0.3, max-tokens 2048,
 //! `cacheKey = None` (matching v4's `buildCharacterCacheKey(undefined)`).
@@ -20,7 +22,9 @@ use super::prompt_text::{
     FOLD_SUMMARY_PROMPT, HELP_CHAT_TITLE_CONSIDERATION_PROMPT, HELP_CHAT_TITLE_FROM_SUMMARY_PROMPT,
     HELP_CHAT_TITLE_PROMPT,
 };
-use crate::memory_tasks::strip_code_fences;
+// === P4.D110 (v4 `3c041e46`, bug 96): the shared title-verdict parser ===
+use super::title_verdict::{parse_title_verdict, strip_edge_quotes, TitleVerdict};
+// === end P4.D110 ===
 
 /// A conversation message the fold task renders (v4 `ChatMessage`: `role` is
 /// already lowercased `'user' | 'assistant'`).
@@ -47,20 +51,6 @@ fn clean_title(content: &str) -> String {
     } else {
         title
     }
-}
-
-/// `str.replace(/^["']|["']$/g, '')` — remove one leading quote char if present
-/// AND one trailing quote char if present (the alternation is anchored, so the
-/// global flag can match at most twice: once at start, once at end).
-fn strip_edge_quotes(s: &str) -> String {
-    let mut chars: Vec<char> = s.chars().collect();
-    if matches!(chars.first(), Some('"' | '\'')) {
-        chars.remove(0);
-    }
-    if matches!(chars.last(), Some('"' | '\'')) {
-        chars.pop();
-    }
-    chars.into_iter().collect()
 }
 
 /// v4 `foldChatSummary`: fold a batch of new turns into the running summary.
@@ -174,14 +164,6 @@ pub async fn generate_help_chat_title_from_summary<C: CompletionProvider>(
 // handler's two cheap-LLM tasks)
 // ===========================================================================
 
-/// v4's `considerTitleUpdate` / `considerHelpChatTitleUpdate` result payload.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct TitleConsideration {
-    pub needs_new_title: bool,
-    pub reason: String,
-    pub suggested_title: Option<String>,
-}
-
 /// The shared user message both consideration tasks build: the current title, the
 /// context line, and the conversation window (each message's content truncated to
 /// 500 UTF-16 units, role UPPERCASED).
@@ -214,55 +196,13 @@ fn consideration_user_content(
     )
 }
 
-/// The shared parser: strip fences, `JSON.parse`, then coerce. `needsNewTitle` is
-/// a STRICT `=== true`; `reason` falls back through `||` (so an empty string
-/// becomes the placeholder); `suggestedTitle` is trimmed, de-quoted (ONE quote at
-/// each end), capped at 60 UTF-16 units, and `|| null`-ed (so `''` → `None`).
-/// Any parse failure → the "Failed to parse response" no-op result.
-fn parse_consideration(content: &str) -> TitleConsideration {
-    let clean = strip_code_fences(content);
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&clean) else {
-        return TitleConsideration {
-            needs_new_title: false,
-            reason: "Failed to parse response".to_string(),
-            suggested_title: None,
-        };
-    };
-
-    // `parsed.suggestedTitle` — only cleaned when it's a truthy STRING (v4 guards
-    // `if (suggestedTitle && typeof suggestedTitle === 'string')`); any other
-    // truthy value passes through to the `|| null` below unchanged, and every
-    // non-string is dropped there because it can't be a title.
-    let suggested_title = match parsed.get("suggestedTitle").and_then(|v| v.as_str()) {
-        Some(raw) if !raw.is_empty() => {
-            let t = strip_edge_quotes(js_trim(raw));
-            let t = if utf16_len(&t) > 60 {
-                format!("{}...", utf16_truncate(&t, 57))
-            } else {
-                t
-            };
-            // `suggestedTitle || null` — a cleaned-to-empty title is falsy.
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
-        }
-        _ => None,
-    };
-
-    TitleConsideration {
-        needs_new_title: parsed.get("needsNewTitle") == Some(&serde_json::Value::Bool(true)),
-        // `parsed.reason || 'No reason provided'`.
-        reason: match parsed.get("reason").and_then(|v| v.as_str()) {
-            Some(r) if !r.is_empty() => r.to_string(),
-            _ => "No reason provided".to_string(),
-        },
-        suggested_title,
-    }
-}
-
 /// v4 `considerTitleUpdate`: does this chat need a new (literary) title?
+///
+/// `chat_id` names the chat in the parser's warn lines (v4 threads its own
+/// `chatId` argument into `parseTitleVerdict`); the per-site `taskLabel` it
+/// passes is `'consider-title-update'`, which is NOT the same string as the
+/// `task_type` below — v4 happens to spell both the same here, and spells the
+/// label differently on the help arm.
 pub async fn consider_title_update<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
@@ -270,7 +210,8 @@ pub async fn consider_title_update<C: CompletionProvider>(
     recent_messages: &[ChatMessage],
     existing_summary_or_title: Option<&str>,
     selection: &CheapLlmSelection,
-) -> CheapLlmTaskResult<TitleConsideration> {
+    chat_id: Option<&str>,
+) -> CheapLlmTaskResult<TitleVerdict> {
     let messages = vec![
         CompletionMessage::system(CHAT_TITLE_CONSIDERATION_PROMPT),
         CompletionMessage::user(consideration_user_content(
@@ -284,7 +225,7 @@ pub async fn consider_title_update<C: CompletionProvider>(
             completion,
             selection,
             messages,
-            parse_consideration,
+            |content| parse_title_verdict(content, "consider-title-update", chat_id),
             None,
             None,
             None,
@@ -295,7 +236,10 @@ pub async fn consider_title_update<C: CompletionProvider>(
 
 /// v4 `considerHelpChatTitleUpdate`: the same evaluation for a help-like chat —
 /// same user message, same parser, a practical (non-literary) system prompt.
-/// v4 passes the SAME `'consider-title-update'` task type as the literary arm.
+/// v4 passes the SAME `'consider-title-update'` task type as the literary arm —
+/// but a DIFFERENT parser `taskLabel` (`'consider-help-chat-title-update'`), so
+/// a warn line names which of the two evaluators produced the unreadable
+/// verdict.
 pub async fn consider_help_chat_title_update<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
@@ -303,7 +247,8 @@ pub async fn consider_help_chat_title_update<C: CompletionProvider>(
     recent_messages: &[ChatMessage],
     existing_summary_or_title: Option<&str>,
     selection: &CheapLlmSelection,
-) -> CheapLlmTaskResult<TitleConsideration> {
+    chat_id: Option<&str>,
+) -> CheapLlmTaskResult<TitleVerdict> {
     let messages = vec![
         CompletionMessage::system(HELP_CHAT_TITLE_CONSIDERATION_PROMPT),
         CompletionMessage::user(consideration_user_content(
@@ -317,7 +262,7 @@ pub async fn consider_help_chat_title_update<C: CompletionProvider>(
             completion,
             selection,
             messages,
-            parse_consideration,
+            |content| parse_title_verdict(content, "consider-help-chat-title-update", chat_id),
             None,
             None,
             None,
@@ -478,46 +423,6 @@ pub async fn title_help_chat<C: CompletionProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn consideration_parses_and_cleans() {
-        let r = parse_consideration(
-            r#"{"needsNewTitle":true,"reason":"topic shifted","suggestedTitle":"  \"A Ballonet Betrayed\"  "}"#,
-        );
-        assert!(r.needs_new_title);
-        assert_eq!(r.reason, "topic shifted");
-        assert_eq!(r.suggested_title.as_deref(), Some("A Ballonet Betrayed"));
-    }
-
-    #[test]
-    fn consideration_defaults_and_strictness() {
-        // `needsNewTitle` is a STRICT === true: the string "true" is not enough.
-        let r = parse_consideration(r#"{"needsNewTitle":"true"}"#);
-        assert!(!r.needs_new_title);
-        assert_eq!(r.reason, "No reason provided");
-        assert_eq!(r.suggested_title, None);
-        // A null title stays None.
-        let r = parse_consideration(r#"{"needsNewTitle":true,"suggestedTitle":null}"#);
-        assert!(r.needs_new_title);
-        assert_eq!(r.suggested_title, None);
-    }
-
-    #[test]
-    fn consideration_unparseable_is_a_no_op() {
-        let r = parse_consideration("I am not JSON");
-        assert!(!r.needs_new_title);
-        assert_eq!(r.reason, "Failed to parse response");
-        assert_eq!(r.suggested_title, None);
-    }
-
-    #[test]
-    fn consideration_title_is_capped_at_60() {
-        let long = "b".repeat(80);
-        let r = parse_consideration(&format!(r#"{{"suggestedTitle":"{long}"}}"#));
-        let t = r.suggested_title.unwrap();
-        assert_eq!(utf16_len(&t), 60);
-        assert!(t.ends_with("..."));
-    }
 
     #[test]
     fn consideration_context_line_falls_back_when_empty() {

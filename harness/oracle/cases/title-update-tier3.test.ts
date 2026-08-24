@@ -20,6 +20,15 @@
  * only, no event); the two background-gate skips (autonomous chat / disabled
  * settings — renamed, NO job); and the missing-chat throw.
  *
+ * P4.D110 (v4 `3c041e46`, bug 96) adds seven title-verdict cases driving the
+ * tolerant parser through the REAL handler, so key recovery is measured as a
+ * WRITE — the renamed chat row and the story-background job's scene context —
+ * rather than as a parser return value: the exact live `suggestTitle` payload,
+ * a `suggested_title` fold hit, canonical-beats-near-miss, a rename with
+ * nothing readable (cursor burns, title unchanged), a quoted+padded title (the
+ * second trim), an overlong title recovered from a near-miss key, and an
+ * explicit-null canonical key falling through to a later one.
+ *
  * Seams mocked, and why:
  *   - `createLLMProvider` — the tier-3 model boundary (the Rust side injects the
  *     same canned reply).
@@ -124,6 +133,120 @@ function buildCases(): CaseSpec[] {
     // The ONE arm that returns WITHOUT advancing the cursor (v4
     // title-update.ts:125-127): no visible conversation to evaluate.
     { name: 'empty_conversation', chat: (s) => s.chatRegenId },
+    // ── Bug 96 (v4 `3c041e46`): the tolerant title-verdict parser, driven
+    // through the REAL handler so the recovery is measured as a WRITE (the
+    // renamed chat row + the story-background job's scene context), not as a
+    // parser return value. Each canned reply is a shape the pre-fix parser
+    // read as "no rename wanted".
+    {
+      // The exact live payload from Friday chat 745e8a5e: `suggestTitle`,
+      // two letters short of the key the prompt asked for.
+      name: 'key_typo_suggest_title',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: "The current title is generic and doesn't reflect the content.",
+          suggestTitle: "The Beast's Hundred Gigajoules",
+        }),
+        promptTokens: 44,
+        completionTokens: 12,
+      }),
+    },
+    {
+      // The fold pass: `suggested_title` matches no literal TITLE_KEYS entry
+      // and is only reachable through `foldKey`.
+      name: 'fold_key_snake_case',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title is generic',
+          suggested_title: 'Amber Lines Above the Table',
+        }),
+        promptTokens: 41,
+        completionTokens: 9,
+      }),
+    },
+    {
+      // Precedence: TITLE_KEYS is walked canonical-first, so the canonical key
+      // wins even when a near-miss appears earlier in the object.
+      name: 'canonical_beats_near_miss',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title is generic',
+          title: 'The Wrong One',
+          suggestedTitle: 'The Right One',
+        }),
+        promptTokens: 42,
+        completionTokens: 11,
+      }),
+    },
+    {
+      // The residue the fix makes LOUD but does not rescue: a rename asked for
+      // under a key nothing can read. The cursor still burns (v4's comment at
+      // title-update.ts:190-194) — that is the durable effect the warn narrates.
+      name: 'rename_with_no_usable_title',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the current title says nothing',
+          headline: 'Under An Unknown Key',
+        }),
+        promptTokens: 40,
+        completionTokens: 10,
+      }),
+    },
+    {
+      // `normalizeTitle` trims, strips ONE quote at each end, then trims AGAIN
+      // — the second trim the pre-fix inline parsers lacked, so the padding
+      // inside the quotes used to survive into the stored title.
+      name: 'quoted_padded_title',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title is generic',
+          suggestedTitle: '  "  A Padded Quoted Title  "  ',
+        }),
+        promptTokens: 43,
+        completionTokens: 10,
+      }),
+    },
+    {
+      // The 60-unit cap still applies to a title recovered from a near-miss key.
+      name: 'overlong_near_miss_title',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title is generic',
+          newTitle:
+            'The Ballonet, the Beast, and the Long Interminable Descent Over Chicago',
+        }),
+        promptTokens: 45,
+        completionTokens: 18,
+      }),
+    },
+    {
+      // Pass 1 skips an explicit null on the canonical key rather than stopping
+      // there, so a title parked on a later key is still found.
+      name: 'null_canonical_falls_through',
+      chat: (s) => s.chatTitleId,
+      reply: () => ({
+        content: JSON.stringify({
+          needsNewTitle: true,
+          reason: 'the title is generic',
+          suggestedTitle: null,
+          newTitle: 'Recovered From A Null',
+        }),
+        promptTokens: 42,
+        completionTokens: 9,
+      }),
+    },
     // The throwing read.
     { name: 'chat_missing', chat: (s) => s.missingId, expectThrow: true },
   ];

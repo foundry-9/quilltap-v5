@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.559"
+version = "0.0.560"
 edition = "2021"
 publish = false
 
@@ -59,3 +59,9 @@ quilltap-host = { path = "../quilltap-host" }
 # v5-provisioned instance (raw reads over the writer connection) to diff against
 # the v4 oracle. Links the workspace sqlite3 (the sys crate), NOT bundled.
 rusqlite = { workspace = true }
+# P4.D110: the `checkpoint burned` warn (v4 `3c041e46`, bug 96) is a log line,
+# not a write, so the tier-3 oracle's DB-state dump cannot see it. The wiring
+# pin installs a capturing `Layer` and drives the REAL handler — the
+# `title_update_job.rs` test module has no fixture to drive it from.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["registry"] }

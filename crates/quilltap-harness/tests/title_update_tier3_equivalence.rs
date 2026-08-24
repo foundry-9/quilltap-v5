@@ -333,6 +333,86 @@ fn title_update_matches_oracle() {
             None,
             false,
         ),
+        // ── P4.D110 / v4 bug 96: the tolerant title-verdict parser, measured
+        // through the handler's WRITES. Each reply is a shape the pre-fix
+        // canonical-key-only parser read as "no rename wanted".
+        (
+            "key_typo_suggest_title",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"The current title is generic and doesn't reflect the content.","suggestTitle":"The Beast's Hundred Gigajoules"}"#.to_string(),
+                prompt_tokens: 44,
+                completion_tokens: 12,
+            }),
+            false,
+        ),
+        (
+            "fold_key_snake_case",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title is generic","suggested_title":"Amber Lines Above the Table"}"#.to_string(),
+                prompt_tokens: 41,
+                completion_tokens: 9,
+            }),
+            false,
+        ),
+        (
+            "canonical_beats_near_miss",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title is generic","title":"The Wrong One","suggestedTitle":"The Right One"}"#.to_string(),
+                prompt_tokens: 42,
+                completion_tokens: 11,
+            }),
+            false,
+        ),
+        (
+            "rename_with_no_usable_title",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the current title says nothing","headline":"Under An Unknown Key"}"#.to_string(),
+                prompt_tokens: 40,
+                completion_tokens: 10,
+            }),
+            false,
+        ),
+        (
+            "quoted_padded_title",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title is generic","suggestedTitle":"  \"  A Padded Quoted Title  \"  "}"#.to_string(),
+                prompt_tokens: 43,
+                completion_tokens: 10,
+            }),
+            false,
+        ),
+        (
+            "overlong_near_miss_title",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title is generic","newTitle":"The Ballonet, the Beast, and the Long Interminable Descent Over Chicago"}"#.to_string(),
+                prompt_tokens: 45,
+                completion_tokens: 18,
+            }),
+            false,
+        ),
+        (
+            "null_canonical_falls_through",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            Some(CannedTitle {
+                content: r#"{"needsNewTitle":true,"reason":"the title is generic","suggestedTitle":null,"newTitle":"Recovered From A Null"}"#.to_string(),
+                prompt_tokens: 42,
+                completion_tokens: 9,
+            }),
+            false,
+        ),
         (
             "chat_missing",
             &spec.missing_id,
@@ -486,4 +566,132 @@ fn title_update_runner_registration_e2e() {
         })
         .expect("read chat");
     assert_eq!(title.as_deref(), Some("The Ballonet's Slow Betrayal"));
+}
+
+// ===========================================================================
+// P4.D110 — the checkpoint-burned warn (v4 `3c041e46`, bug 96)
+// ===========================================================================
+
+/// v4's new inner arm inside the no-rename guard: when the model asked for a
+/// rename and handed back nothing usable, say so instead of burning the
+/// checkpoint in silence.
+///
+/// The differential above cannot see this — the warn writes no row, and the
+/// `rename_with_no_usable_title` case's DB state is byte-identical to a genuine
+/// decline (that identity IS the bug's invisibility). So this pins the WIRING:
+/// a capturing `Layer` over the REAL `handle_title_update`, on the committed
+/// fixture, with no oracle. It also asserts the sibling silence — a decline
+/// must NOT warn — so a warn moved outside the guard is red too.
+#[test]
+fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Drive one canned reply through the real handler, returning the captured
+    // lines.
+    let run = |tag: &str, content: &str| -> Vec<String> {
+        let db = fresh_db(tag);
+        let provider = CannedTitleProvider {
+            canned: spec.canned_titles.clone(),
+            override_reply: Some(CannedTitle {
+                content: content.to_string(),
+                prompt_tokens: 40,
+                completion_tokens: 10,
+            }),
+            throws: false,
+        };
+        let payload = TitleUpdatePayload {
+            chat_id: spec.chat_title_id.clone(),
+            connection_profile_id: spec.connection_profile_id.clone(),
+            current_interchange: 5.0,
+        };
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            rt.block_on(handle_title_update(
+                &db,
+                &provider,
+                &CheapLlmTaskExecutor::new(),
+                &NoMessageCost,
+                &spec.user_enabled_id,
+                &payload,
+                spec.frozen_now_ms,
+            ))
+            .expect("handler");
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    };
+
+    // (a) The bug-96 residue: a rename asked for under a key nothing can read.
+    let lines = run(
+        "burned_warn",
+        r#"{"needsNewTitle":true,"reason":"the current title says nothing","headline":"Under An Unknown Key"}"#,
+    );
+    let burned = lines
+        .iter()
+        .find(|l| {
+            l.contains("[Title Update] Rename requested with no usable title — checkpoint burned")
+        })
+        .unwrap_or_else(|| panic!("no checkpoint-burned warn in {lines:#?}"));
+    assert!(
+        burned.contains("context=background-jobs.title-update"),
+        "{burned}"
+    );
+    assert!(
+        burned.contains(&format!("chat_id={}", spec.chat_title_id)),
+        "{burned}"
+    );
+    assert!(burned.contains("current_interchange=5"), "{burned}");
+    assert!(
+        burned.contains("reason=the current title says nothing"),
+        "{burned}"
+    );
+
+    // (b) A genuine decline takes the SAME guard and must stay silent.
+    let lines = run(
+        "burned_warn_silent",
+        r#"{"needsNewTitle":false,"reason":"the title still fits","suggestedTitle":null}"#,
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("checkpoint burned")),
+        "a decline must not warn: {lines:#?}"
+    );
 }

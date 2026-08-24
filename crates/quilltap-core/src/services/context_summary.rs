@@ -100,6 +100,9 @@ use std::collections::HashMap;
 
 pub mod prompt_text;
 pub mod tasks;
+// === P4.D110 (v4 `3c041e46`, bug 96): the tolerant title-verdict parser ===
+pub mod title_verdict;
+// === end P4.D110 ===
 
 use tasks::{
     fold_chat_summary, generate_help_chat_title_from_summary, generate_title_from_summary,
