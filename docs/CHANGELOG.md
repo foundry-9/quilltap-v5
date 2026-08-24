@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — docs(porting): the `0ba942b1` drift-round work orders (P4.D110 ∥ P4.D111 ∥ P4.58)
+
+_Docs-only; no version bumps._
+
+The next round planned against a fresh drift check: v4 main is THREE commits
+past the `a14a1811` baseline — `3c041e46` (bug 96, the auto-titler's
+misspelled-key silence: a behavior change on a ported surface), `7a6716b5`
+(this port's own bug-97 filing; docs + a comment-only lib line), and the new
+`0ba942b1` (v4 fixing bug 97 — the pre-announced convergence). The `bugfix`
+branch gained only the tests-only `009c49b2` — nothing to port. Three
+work orders committed, fully disjoint, all pinned to the new `0ba942b1`
+round baseline:
+
+- **P4.D110** (`p4.d110-title-verdict.md`) — the title-verdict parser
+  (near-miss keys + fold pass + double-trim + four byte-exact warn arms) and
+  the handler's checkpoint-burned warn; v5 has ONE parse site already, so
+  the port is the body upgrade, the 16-case unit mirror, and the
+  `title_update_tier3` family extended red-first. The survey settled a
+  commit-prose trap: v4's shipped fix does NOT change cursor advancement.
+- **P4.D111** (`p4.d111-bug97-convergence.md`) — the ten-site convergence
+  checklist: the OpenRouter manifest regen (mechanical — attachment fields
+  are not augmented), the `image_transport.rs` assert flip + two stale
+  header narratives, the guard sentence's `NanoGPT, ` entry, the
+  `moderation_finish_reason.rs` mis-number note retired, three families
+  red-first at the pin, the help paragraph banked to `p4.9i2`. The SPA
+  attachment table needs NO change (it was correct throughout).
+- **P4.58** (`p4.58-corpus-maintenance-smalls.md`) — the a14a1811 round's
+  recorded corpus blind spots: photo-tools width/height-NULL omission +
+  whitespace-only-description arms (spec/builder widening + fixture rebuild
+  + mirrored ops), the settings-routes NANOGPT/Z_AI
+  create-with-omitted-`supportsImageUpload` rows + DEEPSEEK contrast,
+  mutation-proven; plus the stale dogfood #95 status cell. Zero expected v5
+  source change.
+
 #### 2026-08-23 — docs(porting): the round's two upstream findings filed as v4 bug 97
 
 _Docs-only; no version bumps._
