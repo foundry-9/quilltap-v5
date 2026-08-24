@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — unify: the `0ba942b1` drift round (P4.D110 ∥ P4.D111 ∥ P4.58)
+
+_Versions: core 0.0.645, harness 0.0.562._
+
+All three lanes unified same-day; the oracle baseline moves to `0ba942b1`
+and the drift debt is cleared (bugs 96 + 97 absorbed whole). The
+title-verdict parser lands with the checkpoint-burned warn (red-first,
+10 → 17 tier-3 cases, six mutation proofs); the bug-97 OpenRouter vision
+convergence retires every pin to plain equalities (red-first per family,
+nine sibling manifests byte-identical); the photo-tools and settings-routes
+corpus blind spots close with zero v5 source change and nine mutation
+proofs. The §3 review read the whole combined diff against v4's real code:
+**no blocking findings** (the recorded divergences are cosmetic tracing
+field-name conventions). The one wire was the version recount — two lanes
+bumped core off the same base and the auto-merge kept one, the playbook's
+standing trap. Gate: 7/7 pinned sweep zero SKIP with changed bytes grepped
+per family; 449 test binaries / 2,320 / 0; clippy both feature sets;
+release build; ng 341 files / 5,068; full Playwright 237/237 zero skips.
+Banked: v5's title-update handler carries 1 of v4's 8 log lines — a small
+handler-logging order.
+
 #### 2026-08-23 — fix(titles): a misspelled key stops silencing the auto-titler (bug 96)
 
 _Versions: core 0.0.644, harness 0.0.560._

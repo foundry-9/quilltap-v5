@@ -83671,3 +83671,101 @@ python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence \
 ```
 
 `settings-routes differential: 145 cases matched`.
+
+---
+
+## Round record — the `0ba942b1` drift round (P4.D110 ∥ P4.D111 ∥ P4.58) — UNIFIED 2026-08-23
+
+All three lanes closed same-day; **the oracle baseline MOVES to `0ba942b1`**
+(v4 main, "fix(openrouter): the plugin declares the vision path it already
+implements (bug 97)") and the drift debt is CLEARED — the three commits past
+`a14a1811` absorbed whole: `3c041e46` (bug 96 → P4.D110), `7a6716b5` (this
+port's bug-97 filing; its one comment-line lib edit → P4.D111 item 6),
+`0ba942b1` (v4's bug-97 fix → P4.D111, the pre-announced convergence).
+`bugfix` unchanged beyond the tests-only `009c49b2`.
+
+### The lanes (each record above)
+
+- **P4.D110** — the title-verdict parser (near-miss keys, fold pass,
+  double-trim, four byte-exact warn arms with per-site task labels) + the
+  checkpoint-burned handler warn, cursor semantics UNCHANGED (the shipped v4
+  behavior, not the commit prose). `title_update_tier3` 10 → 17 cases
+  RED-FIRST (5/7 STATE MISMATCH pre-fix); 24-test unit mirror; six mutation
+  proofs; the warn WIRING pinned by a capturing-layer harness test because
+  the burned-checkpoint DB state is byte-identical to a genuine decline —
+  that identity IS the bug's invisibility. **Banked:** v5's title-update
+  handler carries 1 of v4's 8 log lines; the other seven want a small
+  handler-logging order.
+- **P4.D111** — the ten-site bug-97 convergence: manifest regen (nine
+  siblings byte-identical), the predicate-test flip, two stale header
+  narratives rewritten as converged history, the guard sentence's
+  `NanoGPT, ` entry, the moderation mis-number note retired, the help
+  paragraph banked to `p4.9i2`. Red-first proven per family. Harness
+  deliberately NOT bumped (no harness source changed).
+- **P4.58** — the corpus blind spots closed with ZERO v5 source change and
+  THREE order premises refuted by measurement (no committed photo-tools DBs;
+  `attach_image` not `list_images`; fixture-side mutations prove nothing —
+  and the order's registry-tier warning about v4's create path was wrong:
+  `providerSupportsMimeType` is a static-map alias whose `baseUrl` is never
+  read). Photo-tools 29 → 34 rows (the `?? undefined` key omission + the
+  whitespace truthiness-then-trim quirk at BOTH ends); settings-routes
+  141 → 145 (the NANOGPT/Z_AI seed-default flip + DEEPSEEK contrast +
+  explicit-false); nine mutation proofs; dogfood #95's stale cell corrected.
+
+### The §3 unification review (the whole combined diff, read against v4's real code)
+
+**No blocking findings** — the second such round. Verified specifically: the
+fold-pass semantics (JS `Object.keys` integer-hoisting immaterial — a
+digit-only key cannot collide with any TITLE_KEYS fold; surrogate handling
+equivalent in both regex dialects), the one-quote-each-end equivalence of
+v4's two spellings, the guard's warn condition matching v4's falsy
+`!suggestedTitle` (None-or-empty), the guard sentence's Rust
+line-continuation bytes against v4's literal, and the union's blast radius
+(P4.58's settings rows read the map rows D111's lane owned — header-only
+edits there, no interference). The lanes' own recorded divergences
+(snake_case tracing field names; `chat_id=""` for an absent chat) stand as
+cosmetic. The one §C deviation (D111's harness non-bump) is justified and
+recorded in its lane record.
+
+### The unification wires
+
+No shared code contract this round. The version recount was the only
+mechanical wire: two lanes bumped core 643→644 off the same base and the
+auto-merge silently kept one (the playbook's standing trap, fired again) —
+recounted to **core 0.0.645, harness 0.0.562** as base + total bumps. The
+`v4-attachment-tiers-disagree` memory note amended at cleanup (OpenRouter
+converged at `0ba942b1`).
+
+### The unified gate (2026-08-23)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, plain AND `--features quilltap-core/native-transport`.
+- **The pinned sweep: 7/7 families ok, zero SKIP**, every oracle regenerated
+  FRESH from `/tmp/qt-v4-pin-unify-0ba942b1` through
+  `recipe_sweep.py --run-all --v4 <pin>` (results artifact
+  `/tmp/unify-sweep-results.json`, label "0ba942b1-round unify gate"):
+  `title_update_tier3`, `chat_tasks`, `image_transport`, `provider_registry`,
+  `file_attachment_tier3`, `photo_tools`, `settings_routes`. Changed bytes
+  grepped present per family (the recovered `suggestTitle` title ×2 in its
+  row — chat row + job payload; the `full_init`/OPENROUTER/`true` row; the
+  new manifest `notes` sentence; the NanoGPT-bearing guard sentence; the
+  dimension-keys-absent `describe_dimensionless` row + the empty-string
+  sha256 ×3; the `cp_create_image_default_nanogpt` row).
+- `cargo test --workspace` with the round's 16-variable env block:
+  **449 test binaries / 2,320 tests / 0 failed** (exit 0), zero
+  `not set; skipping` lines; the round's families positively confirmed to
+  have RUN by name.
+- Release build (`quilltap-web` + `quilltap-cli`): clean, exit 0.
+- SPA: `npm test` **341 files / 5,068 tests, 0 failed**; `npm run build`
+  clean; full Playwright **237 passed / 0 failed / 0 skipped (5.5 m)** —
+  the suite count unchanged (no new beats this round; no `apps/web` change
+  in any lane).
+
+Versions: core 0.0.645, harness 0.0.562; host/web/cli/tauri/SPA unchanged.
+
+**Standing after this round:** the P4.D110 banked handler-logging gap (7 of
+8 v4 log lines unported in `title_update_job.rs`) is the round's one new
+candidate; the owed 💸 dogfood queue is unchanged (this round's surfaces are
+oracle-covered — the recovered-title rename could join a future pass as a
+live look at `combined.log`'s new warn lines). v4 HEAD == the baseline at
+unification (verified immediately before the unified regen).

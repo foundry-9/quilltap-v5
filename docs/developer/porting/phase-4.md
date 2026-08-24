@@ -5728,3 +5728,63 @@ not be re-worded:
 
 Nothing else in that file moved at `0ba942b1`. The rest of the `p4.9i2` bank is
 unchanged.
+
+### The `0ba942b1` drift round (P4.D110 ∥ P4.D111 ∥ P4.58) — UNIFIED 2026-08-23
+
+All three lanes closed same-day; **the oracle baseline MOVES to `0ba942b1`**
+(v4 main — the bug-97 fix) and the drift debt is CLEARED: `3c041e46` (bug 96),
+`7a6716b5` (the filing; one comment line), `0ba942b1` (the convergence). The
+title-verdict parser whole (near-miss keys + fold pass + double-trim + four
+byte-exact warn arms + the checkpoint-burned handler warn, cursor semantics
+unchanged; `title_update_tier3` 10 → 17 red-first; the warn WIRING pinned by a
+capturing layer because the burned checkpoint's DB state is byte-identical to
+a decline) ∥ the bug-97 convergence (manifest regen with nine siblings
+byte-identical; the predicate flip; the guard sentence's NanoGPT entry; the
+moderation mis-number note retired; every former pin a plain equality,
+red-first per family; the help paragraph banked to `p4.9i2`) ∥ the corpus
+blind spots (photo-tools NULL-omission + whitespace quirk at both ends;
+settings-routes seed-default quartet; zero v5 source change; three order
+premises refuted by measurement). §3: **no blocking findings.** Gate: 7/7
+pinned sweep zero SKIP; 449 binaries / 2,320 / 0; clippy both sets; release
+build; ng 341 / 5,068; Playwright 237/237. Versions: core 0.0.645, harness
+0.0.562. Round record: `status-log.md`.
+
+**Next candidates, in rough value order** (updated at the `0ba942b1`-round
+unification, 2026-08-23):
+
+1. **The next v4 drift catch-up** (check both branches first, as always).
+2. **The owed 💸 dogfood queue** (unchanged by this round — its surfaces are
+   oracle-covered): the NanoGPT vision send, the Z.AI refusal sentence, the
+   `describe_image` walk, the failed-attachment toast, the whisper-tailed
+   regenerate, the caching smoke, the Brahma budget, the
+   failed-`generate_image` sentence, the candid story background, Pascal's
+   other three write paths, the NanoGPT embedding leg, dedup/summaries; a
+   future pass could add a live look at the new title-verdict warn lines in
+   `combined.log`.
+3. **The title-update handler logging gap** (P4.D110's banked finding: 7 of
+   v4's 8 log lines unported in `title_update_job.rs` — silent no-cheap-LLM /
+   failed-job / story-background outcomes; small, well-scoped, pairs with any
+   wider handler-logging sweep).
+4. The tri-state web-edge survey sites (P4.57's bank) and the
+   `taboo`/`brahma-console` three-call-site residue (P4.56's note).
+5. `p4.9i2` (the bank grew the bug-97 connection-profiles paragraph this
+   round) and the stale `docs/v4/` mirror maintenance.
+
+PB1 stays parked by the standing rule.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`0ba942b1`** (2026-08-23, v4 main — "fix(openrouter): the plugin declares
+the vision path it already implements (bug 97)"), adopted at the
+`0ba942b1`-round unification (2026-08-23). v4 had NOT moved past it at
+unification (verified immediately before the unified regen). Drift-check BOTH
+development branches every round (`git log 0ba942b1..main` AND `git diff main
+bugfix -- lib/ app/ packages/` — measure bugfix by `diff`, never the commit
+list; its only unabsorbed content today is the test-only `009c49b2`; note
+WHICH branch the checkout occupies before any regen, and pin a detached
+worktree — all three symlink classes — whenever v4 HEAD is past the baseline
+or the checkout is dirty). The `/tmp/qt-v4-a14a1811` and
+`/tmp/qt-v4-pin-unify-0ba942b1` worktrees are removed post-round; build a
+fresh lane-unique pin per lane. The sweep driver remains the sanctioned
+per-family regen path — never run two sweeps concurrently. The
+distill-transitive TZ pins, the committed-fixture rule, and the venue/staging
+rules stand unchanged.

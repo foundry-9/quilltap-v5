@@ -1835,20 +1835,42 @@ records THERE. Update this summary only when a phase or round completes.
   tier's first live run), the failed-attachment toast, and the
   whisper-tailed regenerate. Versions: core 0.0.643, harness 0.0.559,
   host 0.0.79, web 0.0.79, SPA 0.5.548. Round record: `status-log.md`.
-- **Oracle baseline: `a14a1811` (2026-08-22, v4 main — "fix(images):
-  characters can look at images, and images reach vision models (bugs
-  91-95)"), adopted at the a14a1811-round unification (2026-08-23).**
-  ⚠ **v4 HEAD is TWO commits past it**: `3c041e46` "fix(titles): a
-  misspelled key stops silencing the auto-titler (bug 96)" — a lib
-  change on a PORTED surface (the new `title-verdict.ts` extracted
-  from `cheap-llm-tasks/chat-tasks.ts` + the title-update handler),
-  unabsorbed, **the drift catch-up is the top next candidate** — and
-  `7a6716b5` (this port's own bug-97 filing: docs + a comment-only
-  lib line; NO-PORT class beyond optionally retiring v5's discrepancy
-  note in `moderation_finish_reason.rs`). **Pin the detached worktree at `/tmp/qt-v4-a14a1811`
-  (prepared, all three symlink classes) for every regen** until it
-  lands. The old `/tmp/qt-v4-f8973813` worktree is stale and can be
-  removed. **Drift-check BOTH development
+- **The `0ba942b1` drift round (P4.D110 ∥ P4.D111 ∥ P4.58): UNIFIED on
+  main (2026-08-23) — ALL THREE CLOSED; the oracle baseline MOVES to
+  `0ba942b1` and the drift debt is CLEARED** (bugs 96 + 97 absorbed
+  whole; `7a6716b5`'s one comment line ridden along). The title-verdict
+  parser end-to-end (near-miss keys + fold pass + double-trim + four
+  byte-exact warn arms with per-site task labels; the checkpoint-burned
+  handler warn with cursor semantics UNCHANGED — the commit-prose trap
+  settled by measurement at planning; `title_update_tier3` 10 → 17
+  RED-FIRST with 5/7 new cases state-mismatching pre-fix; the warn
+  WIRING pinned by a capturing tracing layer because the burned
+  checkpoint's DB state is byte-identical to a genuine decline) ∥ the
+  pre-announced bug-97 convergence (v4 fixed this port's own filing at
+  `0ba942b1`; the manifest regen with nine siblings byte-identical, the
+  predicate-test flip, the guard sentence's `NanoGPT, ` entry, the
+  moderation mis-number note retired — every former both-directions pin
+  now a plain equality, red-first per family; the help paragraph banked
+  to `p4.9i2`) ∥ P4.58's corpus blind spots closed with ZERO v5 source
+  change and THREE order premises refuted by measurement (no committed
+  photo-tools DBs; `attach_image` not `list_images`; fixture-side
+  mutations prove nothing — v5-source mutations used, nine proofs).
+  **The §3 review read the whole combined diff against v4's real code:
+  NO blocking findings** (the second such round); the one wire was the
+  version recount (the playbook's silent-auto-merge trap fired again).
+  Gate: the 7-family pinned sweep zero SKIP with changed bytes grepped;
+  449 test binaries / 2,320 / 0; clippy both feature sets; release
+  build; ng 341 files / 5,068; full Playwright 237/237 zero skips.
+  Banked: v5's title-update handler carries 1 of v4's 8 log lines (a
+  small handler-logging order — phase-4.md candidate 3). Versions: core
+  0.0.645, harness 0.0.562; host/web/cli/tauri/SPA unchanged. Round
+  record: `status-log.md`.
+- **Oracle baseline: `0ba942b1` (2026-08-23, v4 main — "fix(openrouter):
+  the plugin declares the vision path it already implements (bug 97)"),
+  adopted at the 0ba942b1-round unification (2026-08-23).** v4 had NOT
+  moved past it at unification. The round's pin worktrees are removed;
+  build a fresh lane-unique pin per lane whenever v4 HEAD moves past the
+  baseline or the checkout is dirty. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
   `diff`, never the commit list; note WHICH branch the checkout occupies
