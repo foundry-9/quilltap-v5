@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — docs(dogfood): the vision-round pass — 16 PASS, no v5 defects, eight live proofs discharged
+
+_Docs-only change._
+
+The `a14a1811` vision round and the `0ba942b1` drift round met real data for
+the first time: 19 rows, 16 PASS, one BLOCKED with its premise corrected, three
+deferred. No v5 defects, and zero panics in roughly two hours against the real
+800 MB instance.
+
+The `describe_image` vision tier ran in production for the first time — all
+three tiers proven on real images, with the `vision-call` arm a genuine
+6,996 ms GROK call whose description persisted onto the file row, then
+re-proven free as `stored-description`. The NanoGPT vision send is proven both
+on the wire (an `image_url` content part carrying a 3,000-character `data:`
+URL) and in the answer (`zai-org/glm-4.6v` reading a purpose-drawn PNG
+exactly). Also live: the bug-91 describe-fallback on a non-transporting Ollama
+seat, the bug-97 OpenRouter convergence, the attachment-failure toast, bug 93's
+moderation sentence in both arms, and bug 96's near-miss title key.
+
+The last two were driven by purpose-written provider stubs — one that answers
+with an empty stream carrying a chosen `finish_reason`, one that returns a
+canned verdict under a misspelled key — so the refusal path was exercised
+without composing anything a provider would have to refuse. Those stubs and a
+structural wire tap that walks message content parts (the existing
+`wire-tap.py` collapses `messages` to a count) are promoted to
+`harness/tools/`.
+
+Two rows recorded, neither a v5 defect: NanoGPT prompt caching writes a cache
+every turn and never reads one though the system blocks are byte-identical
+(raised for the human as a cost question — the wire itself is correct and
+identical to v4's), and a plain regenerate re-sends no attachments because v4
+does not either, which corrects the setup the whisper-tailed-regenerate item
+was written against.
+
 #### 2026-08-23 — unify: the `0ba942b1` drift round (P4.D110 ∥ P4.D111 ∥ P4.58)
 
 _Versions: core 0.0.645, harness 0.0.562._

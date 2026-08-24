@@ -1865,6 +1865,42 @@ records THERE. Update this summary only when a phase or round completes.
   small handler-logging order — phase-4.md candidate 3). Versions: core
   0.0.645, harness 0.0.562; host/web/cli/tauri/SPA unchanged. Round
   record: `status-log.md`.
+- **The vision-round dogfood pass RAN (2026-08-24, agent-driven, on the Friday
+  copy) — 19 rows, 16 PASS, NO v5 defects, and eight 💸 items discharged.**
+  Walk doc: `dogfood-walks/2026-08-24-vision-round-pass.md`; record in
+  `status-log.md`. **The `describe_image` vision tier ran in production for the
+  first time** — all three tiers proven on real images through Run Tool, with
+  the `vision-call` arm a real 6,996 ms GROK call whose description persisted,
+  then re-proven free as `stored-description` (`IMAGE_DESCRIPTION` rows 7 → 7).
+  **The NanoGPT vision send is proven twice over**: `image_url` + a 3,000-char
+  `data:` URL on the real wire (a new structural tap — `harness/tools/wire-tap.py`
+  collapses `messages` to a count and cannot see content parts), and
+  `zai-org/glm-4.6v` reading a purpose-drawn PNG exactly right. Also live: the
+  bug-91 describe-fallback on an OLLAMA seat (v4's log line, zero `image_url`,
+  the spliced description), the bug-97 OpenRouter convergence, the P4.D109
+  attachment-failure toast on a real `image/bmp` drop, **bug 93's moderation
+  sentence in BOTH arms** and **bug 96's near-miss title key** — the last two
+  driven end-to-end by purpose-written provider stubs (an empty stream with a
+  chosen `finish_reason`; a canned verdict under `Suggested_Title`), so the
+  refusal path was proven **without composing anything a provider would have to
+  refuse**. 💸 also discharged: bug 84's real sentence reaching the UI, Google
+  Fetch Models on a real key (37 models, not the 8-id fallback — finding #91),
+  and the concealed story-background variant at exactly 5,114 characters.
+  **Unplanned proofs:** P4.D42's 300 s request bound fired to the millisecond
+  and its retry succeeded; P4.50's split shows a real failure with no
+  `key derivation failed:` prefix; P4.D85's cleared-null heal; P4.D78's Ollama
+  `think`/`options`/`keep_alive` body; bug 54's sha256 dedup. **Two recorded
+  rows, neither a v5 defect:** **#101** NanoGPT prompt caching writes a cache
+  every turn and never reads one though the system blocks are byte-identical
+  (the flag demonstrably reaches Anthropic; where the gateway puts its
+  breakpoint is its own side of the wire and v4 sends the same body — raised
+  for the human as a cost question), and **#102** a plain regenerate re-sends
+  no attachments **because v4 does not either** (measured), so the
+  whisper-tailed-regenerate 💸 item needs a **Lantern**-bearing chat, not the
+  shape it was written against. Zero panics in ~2 hours on the real 800 MB
+  instance. **Still owed:** Pascal's other three write paths, the Brahma budget
+  on a deep query, dedup/summaries (human), the candid story-background arm,
+  and a ruling on finding #94 (`Free Memory: 0 B`).
 - **Oracle baseline: `0ba942b1` (2026-08-23, v4 main — "fix(openrouter):
   the plugin declares the vision path it already implements (bug 97)"),
   adopted at the 0ba942b1-round unification (2026-08-23).** v4 had NOT
