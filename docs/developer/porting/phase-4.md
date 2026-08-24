@@ -5788,3 +5788,50 @@ fresh lane-unique pin per lane. The sweep driver remains the sanctioned
 per-family regen path — never run two sweeps concurrently. The
 distill-transitive TZ pins, the committed-fixture rule, and the venue/staging
 rules stand unchanged.
+
+**The no-drift maintenance round (P4.59 ∥ P4.60 ∥ P4.61) — PLANNED
+2026-08-24.** Drift-checked at planning: **v4 has NOT moved** (`git log
+0ba942b1..main` empty; `bugfix` HEAD still `3a76b17d`, nothing unabsorbed
+beyond the tests-only `009c49b2`; checkout on `main`, clean) — the first
+round in weeks with zero drift debt, spent on the three highest-value
+banked items. The baseline STAYS `0ba942b1`; the lanes meet nowhere (no
+shared contracts, one identical ownership table in all three orders):
+
+- **P4.59** (`work-orders/p4.59-configured-search-provider.md`) — dogfood
+  finding #98: the configured-path search provider. The Serper provider
+  registered natively the way v4's `enabledByDefault: true` dist plugin is
+  (`serper_registered` flips real), the per-call key resolved from
+  `api_keys` through the already-wired-inert `DbSearchApiKeys`, the
+  plugin's own `executeSearch` sentences ported for the newly-live
+  registered arm, the `GET /api/v1/providers` `type: 'search'` entry
+  (retiring `provider_list()`'s "documented absence"), and the SPA
+  API-keys surface offering Serper. The P4.42 tier-3 family grows the
+  registered arms red-first with v4's REAL registry initialized with the
+  REAL dist plugin; the site-plugins env gate is measured, not assumed.
+- **P4.60** (`work-orders/p4.60-wrong-type-collapse-edges.md`) — the
+  P4.57-banked wrong-type-collapse adjudication: the eleven enumerated
+  edge sites (custom-tools / characters ×3 / backup ×4 / brahma /
+  embedding-profiles `scope`, plus the qtap confirm-only pass), each read
+  against its v4 route's Zod, verdicts FAITHFUL / DIVERGENT-FIXED /
+  DIVERGENT-RECORDED, fixes decoding through the `Request` enum with
+  guard order matching v4 (the `group_update` lesson), every fixed arm
+  pinned red-first in its owning routes family.
+- **P4.61** (`work-orders/p4.61-title-update-handler-logging.md`) —
+  P4.D110's banked finding: the seven missing `[Title Update]` log lines
+  (v5 carries 1 of v4's 8) ported byte-faithfully with capturing-layer
+  presence + silence pins per the differential-blind-to-log-only-fix
+  discipline; rider: the stale `docs/v4/` mirror refreshed mechanically
+  at the baseline (~8 files + `bugs/fixed/` rows).
+
+Deliberately left out: **`p4.9i2` (help/HelpChat) — the biggest remaining
+unported vertical, which now deserves its own DEDICATED round**: v5 has
+the help-doc substrate (chunks/sync/search, P4.D77) but no `help/` content
+directory, no help-chat service, none of v4's three `help-chats` REST
+routes, no Guide client, and a content bank grown across ~15 rounds — a
+proper survey-heavy multi-lane round, recommended as the NEXT round if v4
+stays quiet; the owed 💸 dogfood remainder (Pascal's other three write
+paths, the Brahma deep-query budget, dedup/summaries — human calls, not
+orders; the #101 NanoGPT-caching cost question also awaits the human);
+the tri-state `taboo`/`brahma-console` three-call-site residue (P4.56's
+note — adjacent to P4.60's territory but a different class; next
+maintenance pass); PB1 (parked by standing rule).

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — docs(porting): the no-drift maintenance round ordered (P4.59 ∥ P4.60 ∥ P4.61)
+
+_Docs-only; no version bumps._
+
+Three work orders for the first zero-drift round in weeks, all from the
+banked queues: P4.59 (dogfood #98 — the configured-path Serper search
+provider: `serper_registered` real, keys from `api_keys`, the providers
+listing's `type: 'search'` entry, the SPA API-keys surface), P4.60 (the
+P4.57-banked wrong-type-collapse edge adjudication across eleven
+enumerated route sites), and P4.61 (the seven missing `[Title Update]`
+log lines + the stale `docs/v4/` mirror refresh). The baseline stays
+`0ba942b1`; the lanes meet nowhere. `p4.9i2` (help/HelpChat) is named the
+recommended next dedicated round.
+
 #### 2026-08-24 — fix(almanack): the report measures free memory instead of reporting a hardcoded zero (dogfood #94)
 
 _Versions: host 0.0.80._
