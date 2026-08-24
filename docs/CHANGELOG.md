@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — docs(porting): the round's two upstream findings filed as v4 bug 97
+
+_Docs-only; no version bumps._
+
+The a14a1811-round record's two "TO FILE UPSTREAM" items are discharged,
+filed directly into v4's bug record (v4 commit `7a6716b5`, pushed): the
+OpenRouter registry/static-map transport contradiction is **v4 bug 97**
+(`bugs/bug-97-openrouter-registry-denies-vision.md`, with the fix spec —
+flip the plugin's stale pre-vision `attachmentSupport` declaration to what
+`provider.ts` has implemented since bug 45, comment-tied to its MIME list,
+plus a registry-initialised test so jest reads the production branch), and
+the `moderation-finish-reason.ts` docblock's "(bug 94)" mis-number was
+corrected to bug 93 in the same commit. v5-side records updated to match:
+CLAUDE.md's status bullet + baseline paragraph (v4 HEAD is now TWO commits
+past the pin — bug 96 plus this NO-PORT-class filing), phase-4.md's
+candidate 3, and the status-log follow-up.
+
 #### 2026-08-23 — unify: the `a14a1811` vision round (P4.D106 ∥ P4.D107 ∥ P4.D108 ∥ P4.D109 ∥ P4.57)
 
 _Versions: core 0.0.643, harness 0.0.559, host 0.0.79, web 0.0.79, SPA 0.5.548._

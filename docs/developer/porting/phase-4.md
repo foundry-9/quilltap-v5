@@ -5642,9 +5642,14 @@ Gate + versions: the round record in `status-log.md`.
    Brahma budget, the failed-`generate_image` sentence, the candid
    story background, Pascal's other three write paths, the NanoGPT
    embedding leg, dedup/summaries).
-3. **The two v4-side filings** (human): the OpenRouter
-   registry/static-map transport contradiction, and the
-   moderation-docblock mis-number.
+3. ~~The two v4-side filings~~ **FILED (2026-08-23, v4 `7a6716b5`)**:
+   the OpenRouter registry/static-map transport contradiction is **v4
+   bug 97** (`bugs/bug-97-openrouter-registry-denies-vision.md`, fix
+   spec included — OPEN, awaiting the v4-side fix; v5's pins converge
+   at the drift round after it lands), and the moderation-docblock
+   mis-number was corrected in the same commit (a comment-only lib
+   edit — NO-PORT beyond optionally retiring v5's own discrepancy
+   note in `moderation_finish_reason.rs`).
 4. Corpus maintenance candidates recorded this round: photo-tools rows
    for the width/height-NULL omission + the whitespace-only-description
    quirk; a settings-routes NANOGPT/Z_AI create-with-omitted-flag row
@@ -5658,10 +5663,11 @@ PB1 stays parked by the standing rule. Round record: `status-log.md`.
 **Standing regen note (supersedes the one above):** the oracle baseline
 is **`a14a1811`** (2026-08-22, v4 main — "fix(images): characters can
 look at images, and images reach vision models (bugs 91-95)"), adopted
-at the a14a1811-round unification (2026-08-23). ⚠ v4 HEAD moved ONE
-commit past it during the round (`3c041e46`, bug 96 — candidate 1
-above): **pin `/tmp/qt-v4-a14a1811` (already prepared, all three
-symlink classes) for every regen** until the catch-up lands.
+at the a14a1811-round unification (2026-08-23). ⚠ v4 HEAD is now TWO
+commits past it: `3c041e46` (bug 96 — candidate 1 above) and
+`7a6716b5` (this port's own bug-97 filing — docs + a comment-only lib
+line, NO-PORT class): **pin `/tmp/qt-v4-a14a1811` (already prepared,
+all three symlink classes) for every regen** until the catch-up lands.
 Drift-check BOTH development branches every round; `bugfix`'s only
 unabsorbed content remains the tests-only `009c49b2`. The sweep driver
 remains the sanctioned per-family regen path — never run two sweeps

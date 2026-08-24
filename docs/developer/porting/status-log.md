@@ -83112,3 +83112,36 @@ equivalence, the `unwrap_to_http` success arms).
 
 Versions: core 0.0.643, harness 0.0.559, host 0.0.79, web 0.0.79,
 SPA 0.5.548; cli/tauri unchanged.
+
+### Follow-up — the round's two upstream findings FILED (2026-08-23, v4 `7a6716b5`)
+
+The a14a1811-round record's "TO FILE UPSTREAM (human)" items are
+discharged, filed directly into v4's bug record on the human's
+instruction:
+
+- **v4 bug 97** — `docs/developer/bugs/bug-97-openrouter-registry-
+  denies-vision.md` + its `bugs.md` index row + a v4 CHANGELOG entry.
+  The OpenRouter registry entry (`qtap-plugin-openrouter/index.ts:74-80`)
+  still declares the pre-vision `supportsAttachments: false` while
+  `provider.ts:75-91` has serialised `image_url` since bug 45 —
+  production reads the stale `false` (describe-fallback routing + the
+  describer refusal whose own sentence names OpenRouter as
+  transporting), jest reads the static map's `true`. The file carries
+  the fix spec (flip the declaration comment-tied to
+  `SUPPORTED_IMAGE_MIME_TYPES`, the NanoGPT keep-in-step precedent, +
+  a registry-initialised test). OPEN — v5's pins (`openrouter.json`,
+  the `image_transport.rs` unit rows, the file-attachment fixture's
+  deliberate Z_AI describer pick) converge on the manifest regen at
+  the drift round after v4 fixes it.
+- The `lib/llm/moderation-finish-reason.ts` docblock's "(bug 94)"
+  mis-number corrected to bug 93 in the same commit (a comment-only
+  lib line).
+
+⚠ **v4 HEAD is now TWO commits past the `a14a1811` baseline**:
+`3c041e46` (bug 96 — the standing catch-up candidate) and `7a6716b5`
+(this filing — docs + the comment-only line; NO-PORT class beyond
+optionally retiring v5's own discrepancy note in
+`moderation_finish_reason.rs`, which currently says v4 mis-numbers the
+docblock — it no longer does). The regen pin at `/tmp/qt-v4-a14a1811`
+stands unchanged. CLAUDE.md's status bullet + baseline paragraph and
+phase-4.md's candidate 3 updated to match.

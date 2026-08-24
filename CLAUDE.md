@@ -1821,12 +1821,14 @@ records THERE. Update this summary only when a phase or round completes.
   (bug 94's new reader made the stale value user-visible), auto-describe
   propagating DB failures raw as v4 does, `dangerMode` on the
   empty-response warn, the NANOGPT coverage floors, the id-set predicate
-  extraction pin, and five smaller repairs. **⚠ TO FILE UPSTREAM (v4):**
-  the OpenRouter registry entry declares `supportsAttachments: false`
-  while its static map transports — v4 PRODUCTION routes OpenRouter
-  vision profiles to the describe-fallback and refuses OpenRouter
-  describers (jest never sees it); plus the moderation docblock's
-  "(bug 94)" mis-number. Gate: the pinned 24-family sweep 24/24 ok zero
+  extraction pin, and five smaller repairs. **FILED UPSTREAM (2026-08-23,
+  v4 `7a6716b5`): the OpenRouter transport contradiction is v4 bug
+  97** (the registry entry declares `supportsAttachments: false` while
+  its static map transports — v4 PRODUCTION routes OpenRouter vision
+  profiles to the describe-fallback and refuses OpenRouter describers
+  while the guard sentence recommends them; jest never sees it); the
+  moderation docblock's "(bug 94)" mis-number was corrected in the
+  same commit. Gate: the pinned 24-family sweep 24/24 ok zero
   SKIP; clippy both feature sets; ng 341 files / 5,068; the full numbers
   in the round record. 💸 the dogfood queue gains the NanoGPT vision
   send, the Z.AI refusal sentence, the describe_image walk (the vision
@@ -1836,12 +1838,14 @@ records THERE. Update this summary only when a phase or round completes.
 - **Oracle baseline: `a14a1811` (2026-08-22, v4 main — "fix(images):
   characters can look at images, and images reach vision models (bugs
   91-95)"), adopted at the a14a1811-round unification (2026-08-23).**
-  ⚠ **v4 HEAD is ONE commit past it** (moved mid-round): `3c041e46`
-  "fix(titles): a misspelled key stops silencing the auto-titler (bug
-  96)" — a lib change on a PORTED surface (the new `title-verdict.ts`
-  extracted from `cheap-llm-tasks/chat-tasks.ts` + the title-update
-  handler), unabsorbed; **the drift catch-up is the top next
-  candidate.** **Pin the detached worktree at `/tmp/qt-v4-a14a1811`
+  ⚠ **v4 HEAD is TWO commits past it**: `3c041e46` "fix(titles): a
+  misspelled key stops silencing the auto-titler (bug 96)" — a lib
+  change on a PORTED surface (the new `title-verdict.ts` extracted
+  from `cheap-llm-tasks/chat-tasks.ts` + the title-update handler),
+  unabsorbed, **the drift catch-up is the top next candidate** — and
+  `7a6716b5` (this port's own bug-97 filing: docs + a comment-only
+  lib line; NO-PORT class beyond optionally retiring v5's discrepancy
+  note in `moderation_finish_reason.rs`). **Pin the detached worktree at `/tmp/qt-v4-a14a1811`
   (prepared, all three symlink classes) for every regen** until it
   lands. The old `/tmp/qt-v4-f8973813` worktree is stale and can be
   removed. **Drift-check BOTH development
