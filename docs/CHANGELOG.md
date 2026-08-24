@@ -80,6 +80,41 @@ Proven red-first, per family, over oracles regenerated fresh at the pin:
 `provider_registry_equivalence` red on the `attachmentSupport` block bytes,
 `file_attachment_tier3_equivalence` red on `fb_ollama_describer_guard`'s
 sentence — then all three green with no oracle re-run.
+#### 2026-08-23 — test(settings): the supportsImageUpload create-time seed default reaches the oracle
+
+_Versions: harness 0.0.561._
+
+P4.58 item 3. The a14a1811 §C1 static-map rows flipped NANOGPT's and Z_AI's
+`PROVIDER_ATTACHMENT_CAPABILITIES` entries from `[]` to the four image types,
+which changes what a connection-profile CREATE stores for an OMITTED
+`supportsImageUpload`: false becomes true. `settings_routes_equivalence` stayed
+green through that flip because its corpus carried no NANOGPT or Z_AI create at
+all, let alone one omitting the field — the flip was pinned only by the map
+rows' own unit tests.
+
+Four new create rows, each with `after: 'connProfiles'` so the persisted value
+is diffed as well as the response: NANOGPT and Z_AI with the field omitted
+(both resolve TRUE), DEEPSEEK with the field omitted as the contrast (it stayed
+`[]`, so FALSE), and NANOGPT with an explicit `false` (the client-sent boolean
+wins over the map). The `connection_profiles >= 22` stale-oracle floor moves to
+26; the family runs 141 → 145 cases.
+
+One nuance in the order was measured and corrected: v4's route calls
+`providerSupportsMimeType`, which is `supportsMimeType` from
+`lib/llm/attachment-support.ts` — the CLIENT-SAFE hardcoded map, whose `baseUrl`
+parameter is accepted and never read. It is not the registry-aware
+`providerCanTransportImages`, so jest's uninitialized provider registry cannot
+change the answer and these rows pin exactly the table v5's
+`files::attachment_support::supports_mime_type` reads. The case comment says so.
+
+Mutation-proven red-first, each reverted from a file backup: emptying the
+NANOGPT map row reds `cp_create_image_default_nanogpt`; emptying only Z_AI's
+reds `cp_create_image_default_zai`; giving DEEPSEEK the image types reds
+`cp_create_image_default_deepseek` (with the three pre-existing DEEPSEEK creates
+temporarily skipped, since they cover the false direction incidentally and the
+loop aborts at the first mismatch); and making the create ignore the client
+boolean reds `cp_create_image_explicit_false_nanogpt`.
+
 #### 2026-08-23 — test(photo-tools): the NULL-dimension and whitespace-description arms reach the oracle
 
 _Versions: harness 0.0.560._

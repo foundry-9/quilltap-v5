@@ -83591,3 +83591,83 @@ python3 harness/tools/recipe_sweep.py --run photo_tools_equivalence \
 
 Oracle rows 29 → 34; `test result: ok` with `OK: photo-tools differential
 matched the oracle across all cases.`
+
+---
+
+## Lane record — P4.58 unit 2 (the settings-routes seed-default row) — v4 `0ba942b1`
+
+**Order:** `work-orders/p4.58-corpus-maintenance-smalls.md` (Tier 1 item 3 + the
+settings half of item 4; Tier 2 item 6). **v5 source changed: NONE.**
+
+### The blind spot
+
+The a14a1811 §C1 static-map rows moved NANOGPT and Z_AI from `[]` to the four
+image types in `PROVIDER_ATTACHMENT_CAPABILITIES`. That table is what a
+connection-profile CREATE consults for an OMITTED `supportsImageUpload`, so the
+flip changes the STORED value from false to true — and
+`settings_routes_equivalence` stayed green through it because the corpus carried
+no NANOGPT or Z_AI create at all (the P4.D106 lane recorded this at
+`status-log.md:81829`). The flip was pinned only by the map rows' own unit tests
+and by `image_transport`, neither of which touches the create path.
+
+### One order nuance corrected by measurement
+
+The order warned that v4's route passes `baseUrl` into a "REGISTRY-AWARE
+`providerSupportsMimeType`" while v5 calls the static `supports_mime_type`, so
+the new rows would pin the static tier only. Measured at `0ba942b1`:
+`providerSupportsMimeType` is an ALIAS import of `supportsMimeType` from
+`lib/llm/attachment-support.ts` (route.ts:19), i.e. the client-safe hardcoded
+map, and its `baseUrl` parameter is accepted and never read
+(`getSupportedMimeTypes` ignores it). The registry-aware function is
+`providerCanTransportImages` in `lib/llm/image-transport.ts`, which is NOT on
+this path. So the two implementations consult the same table by construction and
+jest's uninitialized registry cannot change the answer. The case comment records
+this rather than the warning.
+
+### What landed
+
+Four create rows, each `after: 'connProfiles'` so the PERSISTED value is a
+comparand and not just the 201 body:
+
+| row | body | resolved |
+| --- | --- | --- |
+| `cp_create_image_default_nanogpt` | NANOGPT, field omitted | `true` |
+| `cp_create_image_default_zai` | Z_AI, field omitted | `true` |
+| `cp_create_image_default_deepseek` | DEEPSEEK, field omitted | `false` |
+| `cp_create_image_explicit_false_nanogpt` | NANOGPT, explicit `false` | `false` |
+
+The `connection_profiles >= 22` stale-oracle floor moves to `>= 26` (Tier 2
+item 6: no OTHER `>=` floor in the file was moved by these rows, so none was
+touched). The family runs 141 → 145 cases, all matched.
+
+**Measured on the way:** the pre-existing `cp_create_prefill_absent_deepseek_
+thinking` row ALREADY persisted `supportsImageUpload: false` incidentally, so
+the false direction was not literally uncovered — but nothing named it, and no
+row covered the true direction at all. The dedicated contrast row makes the arm
+self-documenting and independent of a sibling lane's row keeping its shape.
+
+**Mutation proofs (item 4, settings half).** Each applied to v5 source and
+reverted from a `/tmp` file backup:
+
+| mutation | red row |
+| --- | --- |
+| `attachment_support.rs`: NANOGPT + Z_AI → `Some(&[])` | `cp_create_image_default_nanogpt` |
+| the same, Z_AI ONLY | `cp_create_image_default_zai` |
+| DEEPSEEK → the four image types | `cp_create_image_default_deepseek` |
+| `api/settings.rs`: drop the `typeof === boolean` branch (always use the map) | `cp_create_image_explicit_false_nanogpt` |
+
+⚠ The DEEPSEEK mutation first reds the three PRE-EXISTING DeepSeek creates,
+which cover the false direction incidentally; the loop aborts at the first
+mismatch, so the proof needed a temporary harness-side skip of those three rows
+to reach the new one. That skip was reverted with everything else.
+`attachment_support.rs` is P4.D111's file this round — it was mutated only in
+this worktree, never committed; `git status crates/quilltap-core` is EMPTY.
+
+**Regen recipe:**
+
+```bash
+python3 harness/tools/recipe_sweep.py --run settings_routes_equivalence \
+  --v4 /tmp/qt-v4-pin-p458-0ba942b1
+```
+
+`settings-routes differential: 145 cases matched`.

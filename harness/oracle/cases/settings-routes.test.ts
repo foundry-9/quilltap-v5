@@ -1056,6 +1056,69 @@ describe('settings-routes oracle', () => {
       url: `http://x${CP}`,
       body: { name: 'Prefill String', provider: 'OPENAI', modelName: 'gpt-4o', multiCharacterPrefill: 'yes' },
     },
+    // P4.58 — the a14a1811 §C1 static-map flip's create-time default. v4's
+    // route resolves an ABSENT `supportsImageUpload` through
+    // `providerSupportsMimeType(provider, 'image/jpeg', baseUrl || undefined)`,
+    // which is `supportsMimeType` from `lib/llm/attachment-support.ts`: the
+    // CLIENT-SAFE hardcoded `PROVIDER_ATTACHMENT_CAPABILITIES` map, whose
+    // `baseUrl` parameter is accepted and never read (measured at `0ba942b1`,
+    // not assumed — the registry-aware `providerCanTransportImages` is a
+    // DIFFERENT function and is not on this path). So these rows pin the static
+    // map exactly as v5's `files::attachment_support::supports_mime_type` does,
+    // and jest's uninitialized provider registry cannot change the answer.
+    // a14a1811 moved NANOGPT and Z_AI from `[]` to the four image types, i.e.
+    // false -> true here; before this lane the corpus carried no create at all
+    // that omitted the field on either provider.
+    {
+      name: 'cp_create_image_default_nanogpt',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: { name: 'Image Default NanoGPT', provider: 'NANOGPT', modelName: 'nano-vision' },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_create_image_default_zai',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: { name: 'Image Default ZAI', provider: 'Z_AI', modelName: 'glm-4.6v' },
+      after: 'connProfiles',
+    },
+    {
+      // The contrast: DEEPSEEK stayed `[]` at a14a1811, so the same omission
+      // resolves FALSE — the direction that makes the two rows above a
+      // measurement rather than a tautology.
+      name: 'cp_create_image_default_deepseek',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: { name: 'Image Default DeepSeek', provider: 'DEEPSEEK', modelName: 'deepseek-chat' },
+      after: 'connProfiles',
+    },
+    {
+      // A client-sent boolean WINS over the map (the `typeof === 'boolean'`
+      // branch), so a NANOGPT profile can still be marked vision-incapable.
+      name: 'cp_create_image_explicit_false_nanogpt',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Image Explicit Off NanoGPT',
+        provider: 'NANOGPT',
+        modelName: 'nano-vision',
+        supportsImageUpload: false,
+      },
+      after: 'connProfiles',
+    },
     {
       name: 'cp_update_prefill_false',
       family: 'connection_profiles',
