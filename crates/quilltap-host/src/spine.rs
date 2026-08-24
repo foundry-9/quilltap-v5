@@ -942,6 +942,15 @@ where
     /// turn (via [`OrchestratorDeps`]) and the carina/Brahma/Run-Tool engines
     /// (via [`Self::tool_runner`]).
     pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
+    /// The vision-describe driver `describe_image`'s third tier runs through
+    /// (P4.D108's recorded follow-up, landed as the a14a1811-round unification
+    /// wire; `None` for canned test spines — the tool's vision tier then
+    /// answers v4's `describe-failed` shape while tiers 1/2 stay live). ONE
+    /// `Option` feeds both the in-chat turn (via [`OrchestratorDeps`]) and the
+    /// carina/Brahma/Run-Tool engines (via [`Self::tool_runner`]).
+    /// ⚠ LIVE: one vision-LLM call per `describe_image` on an image with
+    /// neither a stored description nor a generation prompt.
+    pub image_describe: Option<Arc<dyn quilltap_core::api::chat_media::ImageDescribeDriver>>,
 }
 
 impl<EMB, CMP, STR, PF> ChatSpine<EMB, CMP, STR, PF>
@@ -966,6 +975,7 @@ where
             scrollback: self.scrollback.clone(),
             consult: self.consult.clone(),
             web_search: self.web_search.clone(),
+            image_describe: self.image_describe.clone(),
         }
     }
 
@@ -984,6 +994,15 @@ where
         if let Some(web_search) = &self.web_search {
             runner = runner.with_web_search_provider(Arc::clone(web_search));
         }
+        // The a14a1811-round unification wire: carina / ask_carina / Brahma /
+        // Run Tool reach `describe_image`'s vision tier through the same
+        // driver the in-chat turn uses — and the photo tools read real bytes
+        // (`ProductionFileBytes` implements the photos `FileBytesStore`; the
+        // same cast the EngineAssembly's `save_image_bytes` already makes).
+        if let Some(image_describe) = &self.image_describe {
+            runner = runner.with_image_describe(Arc::clone(image_describe));
+        }
+        runner = runner.with_file_bytes(Arc::clone(&self.file_bytes) as _);
         runner
     }
 
@@ -1324,6 +1343,10 @@ where
             // P4.42: the in-chat turn's `search_web` provider (None until
             // SERPER_API_KEY is set).
             web_search: self.web_search.clone(),
+            // The a14a1811-round wire: the in-chat `describe_image` vision tier
+            // + the photo-tool bytes store (the §3 review's catch).
+            image_describe: self.image_describe.clone(),
+            photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
         };
 
         let input = ProcessMessageInput {
@@ -1695,6 +1718,10 @@ where
             // P4.42: the in-chat turn's `search_web` provider (None until
             // SERPER_API_KEY is set).
             web_search: self.web_search.clone(),
+            // The a14a1811-round wire: the in-chat `describe_image` vision tier
+            // + the photo-tool bytes store (the §3 review's catch).
+            image_describe: self.image_describe.clone(),
+            photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
         };
 
         let now_fn = quilltap_core::enclave::announce::system_now_ms;
@@ -3058,6 +3085,9 @@ impl SpineFactory for ProductionSpineFactory {
         let outfit_completion = Arc::clone(&completion);
         // P4.9E4A: the attach-mount-file describe shares the same provider Arc.
         let describe_completion = Arc::clone(&completion);
+        // The a14a1811-round wire: the in-chat/tool-engine `describe_image`
+        // vision tier shares it too (its own Arc — `completion` moves below).
+        let turn_describe_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
         // P4.42: build the Serper web-search provider iff SERPER_API_KEY is set —
         // the SINGLE source of truth. `serper_registered = false` (the plugin
@@ -3092,6 +3122,14 @@ impl SpineFactory for ProductionSpineFactory {
             scrollback,
             consult: Some(Arc::clone(&consult)),
             web_search: web_search.clone(),
+            // The a14a1811-round wire — the same runner shape as the
+            // EngineAssembly's attach-path driver below. ⚠ LIVE: one
+            // vision-LLM call per describe_image on an undescribed image.
+            image_describe: Some(Arc::new(HostImageDescribeRunner {
+                db: db.clone(),
+                user_id: SINGLE_USER_ID.to_string(),
+                completion: turn_describe_completion,
+            })),
         });
         let chat_create: Arc<dyn ChatCreateDriver> = Arc::new(ChatCreateSpine {
             db: db.clone(),

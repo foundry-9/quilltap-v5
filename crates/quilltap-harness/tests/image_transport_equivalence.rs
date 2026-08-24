@@ -39,7 +39,9 @@ use serde::Deserialize;
 
 /// Flip to `true` at the P4.D107 unification (the regenerated NanoGPT manifest
 /// carries `supportsAttachments: true` + the four image MIME types).
-const P4D107_NANOGPT_MANIFEST_LANDED: bool = false;
+/// FLIPPED at the a14a1811-round unification (2026-08-23): D107's manifest is
+/// on the unify branch, so the full_init NANOGPT rows are plain equalities.
+const P4D107_NANOGPT_MANIFEST_LANDED: bool = true;
 
 #[derive(Deserialize)]
 struct Row {

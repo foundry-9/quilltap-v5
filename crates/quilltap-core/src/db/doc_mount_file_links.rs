@@ -1772,11 +1772,6 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(affected > 0)
     }
 
-    /// Delete every `doc_mount_chunks` row for a link (v4
-    /// `docMountChunks.deleteByLinkId`). Used by the chunk-rollup pass to clear
-    /// prior chunks before re-chunking; a no-op when none exist. The Rust port does
-    /// not carry the chunker, so a keep writes no new chunk rows — this only clears
-    /// any pre-existing ones for a rewrite-in-place.
     /// The auto-describe blank-link update (v4
     /// `auto-describe-attachment.ts`'s `repos.docMountFileLinks.update(link.id,
     /// { description, descriptionUpdatedAt, extractedText, extractedTextSha256,
@@ -1809,6 +1804,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// Delete every `doc_mount_chunks` row for a link (v4
+    /// `docMountChunks.deleteByLinkId`). Used by the chunk-rollup pass to clear
+    /// prior chunks before re-chunking; a no-op when none exist.
     pub fn delete_chunks_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {
         let affected = self.conn.execute(
             "DELETE FROM doc_mount_chunks WHERE linkId = ?1",

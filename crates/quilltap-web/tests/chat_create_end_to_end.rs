@@ -159,6 +159,7 @@ impl SpineFactory for CreateSpineFactory {
             scrollback: None,
             consult: None,
             web_search: None,
+            image_describe: None,
         });
         let chat_create = Arc::new(ChatCreateSpine {
             db: db.clone(),

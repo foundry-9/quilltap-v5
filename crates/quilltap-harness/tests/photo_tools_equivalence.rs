@@ -1077,13 +1077,18 @@ fn photo_tools_matches_oracle() {
             mock: op.mock,
             label: op.label,
         };
-        let out = rt.block_on(auto_describe_chat_image_attachment(
-            &db,
-            &bytes,
-            &side_effects,
-            Some(&driver),
-            &uuid,
-        ));
+        let out = rt
+            .block_on(auto_describe_chat_image_attachment(
+                &db,
+                &bytes,
+                &side_effects,
+                Some(&driver),
+                &uuid,
+            ))
+            // The corpus drives no DB-failure arm (v4 lets those THROW; the
+            // a14a1811 §3 review made v5 propagate them as Err) — an Err here
+            // is an infrastructure failure, not a comparand.
+            .unwrap_or_else(|e| panic!("module op {} errored: {e}", op.label));
         drop(db);
 
         let want = oracle

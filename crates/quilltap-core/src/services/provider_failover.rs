@@ -15,8 +15,9 @@
 //!      `effective_api_key` switch to the uncensored provider (so the finalizer
 //!      records the reroute).
 //!
-//! `get_empty_response_reason` returns the five exact user-facing strings that
-//! describe the outcome.
+//! `get_empty_response_reason` returns the exact user-facing strings that
+//! describe the outcome: the named moderation-refusal sentence first (bug 93,
+//! v4 `a14a1811`), then the five inference sentences.
 //!
 //! ## The dangerous-content routing seam
 //!
@@ -418,6 +419,14 @@ where
         if chunk.done {
             state.usage = chunk.usage;
             state.cache_usage = chunk.cache_usage;
+            // v4 `restreamInto`: `state.attachmentResults = chunk.attachmentResults
+            // || null` — the RETRY's ledger replaces the failed attempt's, and a
+            // retry that reports none CLEARS the stale one (found by the a14a1811
+            // §3 review: bug 94 gave the ledger its first reader, which made the
+            // missing overwrite user-visible as a warning the retry never produced).
+            state.attachment_results = crate::services::primary_stream::attachment_results_to_value(
+                &chunk.attachment_results,
+            );
             state.raw_response = chunk.raw_response.clone();
             if let Some(ts) = chunk.thought_signature.as_ref() {
                 if !ts.is_empty() {
@@ -623,6 +632,59 @@ mod tests {
         assert!(flags.same_provider_retry_attempted);
         assert!(!flags.uncensored_retry_attempted);
         assert_eq!(state.full_response, "recovered text");
+    }
+
+    /// The a14a1811 §3 review's catch: v4's `restreamInto` overwrites
+    /// `state.attachmentResults` from the retry's done chunk (`|| null`), so a
+    /// stale ledger from the failed first attempt can never outlive a recovery.
+    /// Bug 94 gave the ledger its first reader (the Salon warning toast), which
+    /// is what made the missing overwrite observable.
+    #[tokio::test]
+    async fn restream_overwrites_the_attachment_ledger() {
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_content_stream(
+            "OPENAI",
+            "m",
+            Some(0.7),
+            &params.messages,
+            &["recovered text"],
+            None,
+        );
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "OPENAI")),
+            effective_api_key: "k".into(),
+            // The failed first attempt reported a dropped attachment.
+            attachment_results: Some(serde_json::json!({
+                "sent": [],
+                "failed": [{ "id": "file-1", "error": "stale" }],
+            })),
+            ..Default::default()
+        };
+        attempt_empty_response_recovery(
+            &provider,
+            &sink,
+            &NoRouter,
+            AttemptEmptyResponseRecoveryOptions {
+                state: &mut state,
+                tool_messages_length: 0,
+                content_was_flagged_dangerous: false,
+                danger_settings: DangerSettings {
+                    mode: "OFF".into(),
+                    uncensored_text_profile_id: None,
+                },
+                connection_profile: profile("p1", "OPENAI"),
+                params,
+                user_id: "u".into(),
+                chat_id: "c".into(),
+                character_id: "ch".into(),
+                character_name: "Friday".into(),
+            },
+        )
+        .await;
+        // The canned retry reports no ledger — the stale one must be CLEARED,
+        // exactly v4's `chunk.attachmentResults || null`.
+        assert_eq!(state.attachment_results, None);
     }
 
     #[tokio::test]

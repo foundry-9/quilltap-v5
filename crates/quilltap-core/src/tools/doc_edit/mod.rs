@@ -303,7 +303,7 @@ pub fn execute_doc_edit_tool(
         // them to the dedicated `tools::photo` handlers directly — they never reach
         // this function. Guarded here so a stray direct call fails loudly rather than
         // hitting the retired stub.
-        "keep_image" | "list_images" | "attach_image" => {
+        "keep_image" | "list_images" | "attach_image" | "describe_image" => {
             return DocEditToolResult::fail(format!(
                 "{tool_name} is dispatched via tools::photo, not execute_doc_edit_tool"
             ));

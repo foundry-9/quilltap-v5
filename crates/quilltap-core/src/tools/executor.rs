@@ -362,6 +362,9 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// `EMPTY_BYTES`); production wires a real store host-side, the differential a
     /// canned in-memory one.
     file_bytes: Arc<dyn FileBytesStore>,
+    /// Whether a real store replaced the `NotConfiguredBytes` default (the
+    /// wiring probe's backing flag).
+    file_bytes_wired: bool,
     /// The recorded save side-effects (mount invalidation + embedding enqueue).
     /// Defaults to [`NoSideEffects`]; production wires the mount-chunk cache + the
     /// embedding scheduler host-side (the embedding-enqueue via `queue_service`
@@ -413,6 +416,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             embedding_provider: ErasedEmbeddingProvider::none(),
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             file_bytes: Arc::new(NotConfiguredBytes),
+            file_bytes_wired: false,
             photo_side_effects: Arc::new(NoSideEffects),
             image_generation: generate_image::ErasedImageGeneration::none(),
             ask_carina: ask_carina::ErasedAskCarina::not_available(),
@@ -434,6 +438,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             embedding_provider: self.embedding_provider,
             web_search_provider: self.web_search_provider,
             file_bytes: self.file_bytes,
+            file_bytes_wired: self.file_bytes_wired,
             photo_side_effects: self.photo_side_effects,
             image_generation: self.image_generation,
             ask_carina: self.ask_carina,
@@ -463,6 +468,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     /// real host store; the core default reports missing bytes).
     pub fn with_file_bytes(mut self, store: Arc<dyn FileBytesStore>) -> Self {
         self.file_bytes = store;
+        self.file_bytes_wired = true;
         self
     }
 
@@ -476,6 +482,23 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     ) -> Self {
         self.image_describe = Some(driver);
         self
+    }
+
+    /// Wiring probe: whether a vision-describe driver is injected. Exists so the
+    /// composition tests (the per-turn runner in `orchestrator`, the spine's
+    /// `tool_runner()`) can pin that production actually threads the driver —
+    /// the P4.49 lesson: an unpinned wiring line can vanish unseen while every
+    /// behavior test of the parts stays green.
+    pub fn image_describe_wired(&self) -> bool {
+        self.image_describe.is_some()
+    }
+
+    /// Wiring probe for the image-bytes store (same rationale): `false` means
+    /// the runner still holds the `NotConfiguredBytes` default, whose every
+    /// read answers missing bytes — which starves `describe_image`'s vision
+    /// tier (`no-bytes`) and `keep_image`'s byte reads on a live host.
+    pub fn file_bytes_wired(&self) -> bool {
+        self.file_bytes_wired
     }
 
     /// Inject the recorded photo save side-effects (mount invalidation + embedding
@@ -1284,14 +1307,33 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         // module (v4's dynamic import) composed from the runner's own seams;
         // its writes persist onto the FileEntry + blank links, so the next
         // caller lands in tier 1.
-        let outcome = crate::photos::auto_describe_attachment::auto_describe_chat_image_attachment(
-            &self.db,
-            &*self.file_bytes,
-            &*self.photo_side_effects,
-            self.image_describe.as_deref(),
-            &entry.id,
-        )
-        .await;
+        let outcome =
+            match crate::photos::auto_describe_attachment::auto_describe_chat_image_attachment(
+                &self.db,
+                &*self.file_bytes,
+                &*self.photo_side_effects,
+                self.image_describe.as_deref(),
+                &entry.id,
+            )
+            .await
+            {
+                Ok(o) => o,
+                // v4: the module's uncaught throw surfaces through the doc-edit
+                // family catch as the raw error text (the a14a1811 §3 review — a
+                // DB failure must not wear a describer-shaped skip sentence).
+                Err(e) => {
+                    return photo_result_row(
+                        "describe_image",
+                        photo::PhotoToolResult {
+                            success: false,
+                            result: None,
+                            error: Some(e),
+                            formatted_text: None,
+                        },
+                        false,
+                    )
+                }
+            };
 
         // Phase 3: serve the result (or the already-described race re-read).
         let out = self

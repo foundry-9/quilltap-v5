@@ -1048,7 +1048,7 @@ where
     None
 }
 
-fn attachment_results_to_value(
+pub(crate) fn attachment_results_to_value(
     r: &Option<crate::model::stream::StreamAttachmentResults>,
 ) -> Option<Value> {
     r.as_ref().map(|res| {

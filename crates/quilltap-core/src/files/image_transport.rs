@@ -68,10 +68,11 @@ mod tests {
 
     #[test]
     fn registry_tier_answers_for_the_built_ins() {
-        // The baked-manifest truths at this lane's pin. NANOGPT is asserted in
-        // `image_transport_equivalence` behind the P4.D107 gate (the manifest
-        // regen from plugin 1.1.0 is that lane's deliverable), not here.
-        for p in ["OPENAI", "ANTHROPIC", "GOOGLE", "GROK", "Z_AI"] {
+        // The baked-manifest truths. NANOGPT joined the transporting set when
+        // P4.D107's manifest regen (plugin 1.1.0) landed at the a14a1811-round
+        // unification — the `image_transport_equivalence` gate constant flipped
+        // with it.
+        for p in ["OPENAI", "ANTHROPIC", "GOOGLE", "GROK", "Z_AI", "NANOGPT"] {
             assert!(provider_can_transport_images(p), "{p} transports");
         }
         for p in ["OLLAMA", "DEEPSEEK", "OPENAI_COMPATIBLE"] {

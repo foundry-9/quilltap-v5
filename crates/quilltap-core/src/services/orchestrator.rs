@@ -209,6 +209,42 @@ fn host_self_inventory_env() -> SelfInventoryEnv {
     }
 }
 
+/// The per-turn [`BuiltInToolRunner`], with every injected boundary threaded:
+/// the Carina engine (`ask_carina` dispatch), the P4.42 web-search provider
+/// (`None` keeps the not-configured refusal), and the P4.D108 vision-describe
+/// driver (`None` keeps the auto-describe module's `describe-failed` answer —
+/// v4's own shape when no vision profile resolves). Extracted so the wiring is
+/// unit-pinned: `process_message`'s call site passes the deps' seams straight
+/// through, and a dropped thread here goes red in the test below rather than
+/// vanishing unseen (the P4.49 lesson).
+fn build_turn_tool_runner(
+    db: Db,
+    ask_carina: crate::tools::ask_carina::ErasedAskCarina,
+    web_search: Option<std::sync::Arc<dyn crate::tools::web_search::WebSearchProvider>>,
+    image_describe: Option<std::sync::Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
+    photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+) -> BuiltInToolRunner {
+    let mut tool_runner =
+        BuiltInToolRunner::new(db, host_self_inventory_env()).with_ask_carina(ask_carina);
+    // P4.42: the in-chat `search_web` runs through the host's web-search provider
+    // when one is wired (SERPER_API_KEY set); `None` leaves the not-configured
+    // boundary, so the tool refuses exactly as it did before this lane.
+    if let Some(web_search) = &web_search {
+        tool_runner = tool_runner.with_web_search_provider(std::sync::Arc::clone(web_search));
+    }
+    // The a14a1811-round unification wire: the in-chat `describe_image` third
+    // tier runs through the host's vision-describe driver when one is wired.
+    if let Some(image_describe) = &image_describe {
+        tool_runner = tool_runner.with_image_describe(std::sync::Arc::clone(image_describe));
+    }
+    // …and the photo tools read real bytes (the §3 review's catch — without
+    // this, the vision tier starves on `no-bytes` with the driver wired).
+    if let Some(photo_bytes) = &photo_bytes {
+        tool_runner = tool_runner.with_file_bytes(std::sync::Arc::clone(photo_bytes));
+    }
+    tool_runner
+}
+
 // ===========================================================================
 // The injected seams (unported subsystems `processMessage` touches).
 // ===========================================================================
@@ -505,6 +541,23 @@ pub struct OrchestratorDeps<
     /// keeps the not-configured boundary, so those turns refuse `search_web`
     /// exactly as before.
     pub web_search: Option<std::sync::Arc<dyn crate::tools::web_search::WebSearchProvider>>,
+    /// The vision-describe boundary the per-turn `describe_image` tool's third
+    /// tier runs through (P4.D108's recorded follow-up, landed as the
+    /// a14a1811-round unification wire). The spine wires the host's
+    /// `HostImageDescribeRunner`; `None` (existing constructions — the enclave,
+    /// canned differentials) keeps the auto-describe module's `describe-failed`
+    /// answer, so tiers 1/2 stay fully live and the vision tier refuses exactly
+    /// as v4 does when no vision profile resolves. ⚠ LIVE when wired: one
+    /// vision-LLM call per `describe_image` on an image with neither a stored
+    /// description nor a generation prompt.
+    pub image_describe: Option<std::sync::Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
+    /// The photo-tool image-bytes store (v4 reads through `fileStorageManager`,
+    /// which is always live there). `None` (existing constructions — the
+    /// enclave, canned differentials) keeps the `NotConfiguredBytes` default,
+    /// whose reads answer missing bytes — the a14a1811 §3 review's catch: with
+    /// the store unwired, `describe_image`'s vision tier answered `no-bytes` in
+    /// production even with a configured describer.
+    pub photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
 }
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
@@ -2676,14 +2729,13 @@ where
     // The per-turn built-in tool runner, with the injected Carina engine wired for
     // the `ask_carina` dispatch (v4's real `executeToolCallWithContext` routes it
     // there); `not_available` by default keeps a no-engine build's loud fallback.
-    let mut tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env())
-        .with_ask_carina(deps.ask_carina.clone());
-    // P4.42: the in-chat `search_web` runs through the host's web-search provider
-    // when one is wired (SERPER_API_KEY set); `None` leaves the not-configured
-    // boundary, so the tool refuses exactly as it did before this lane.
-    if let Some(web_search) = &deps.web_search {
-        tool_runner = tool_runner.with_web_search_provider(std::sync::Arc::clone(web_search));
-    }
+    let tool_runner = build_turn_tool_runner(
+        db.clone(),
+        deps.ask_carina.clone(),
+        deps.web_search.clone(),
+        deps.image_describe.clone(),
+        deps.photo_bytes.clone(),
+    );
     // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
     // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
     // reshape/parse both key off the provider manifest, so a native call is parsed
@@ -3199,12 +3251,17 @@ where
             Some(&effective_profile.model_name),
         );
         // v4 `logger.warn('Empty response for chat …', {…})` — the payload
-        // gains `finishReason` + `moderationRefusal` (bug 93).
+        // gains `finishReason` + `moderationRefusal` (bug 93). `danger_mode` is
+        // v4's `dangerMode: dangerSettings.mode` (the a14a1811 §3 review — a
+        // moderation refusal is exactly when the operator wants to see whether
+        // Auto-Route was OFF); `finish_reason` logs "" where v4 logs null
+        // (tracing has no null — the empty field plays that part).
         tracing::warn!(
             chat_id = %chat_id,
             uncensored_retry_attempted = recovery_flags.uncensored_retry_attempted,
             same_provider_retry_attempted = recovery_flags.same_provider_retry_attempted,
             content_was_flagged_dangerous,
+            danger_mode = %danger_settings.mode,
             finish_reason = empty_finish_reason.as_deref().unwrap_or(""),
             moderation_refusal = crate::moderation_finish_reason::is_moderation_finish_reason(
                 empty_finish_reason.as_deref()
@@ -4362,6 +4419,44 @@ mod tests {
     /// / paused initial result, and for `single_turn` (v4's `executeTurnChain`
     /// guards). None of these touch a provider, so the chained re-entry
     /// (`chain_input`) is never built.
+    /// The a14a1811-round unification wire, pinned (the P4.49 lesson): the
+    /// per-turn runner threads the deps' vision-describe driver. Dropping the
+    /// `with_image_describe` line in [`build_turn_tool_runner`] — the exact
+    /// regression an unpinned wiring invites — flips the wired probe false.
+    #[test]
+    fn turn_tool_runner_threads_the_image_describe_driver() {
+        struct NeverDescribe;
+        impl crate::api::chat_media::ImageDescribeDriver for NeverDescribe {
+            fn describe<'a>(
+                &'a self,
+                _file: crate::services::file_fallback::FallbackFile,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = crate::services::file_fallback::FallbackResult>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                unreachable!("wiring probe only — never invoked")
+            }
+        }
+        let (_dir, db) = test_db();
+        let wired = build_turn_tool_runner(
+            db.clone(),
+            ErasedAskCarina::not_available(),
+            None,
+            Some(std::sync::Arc::new(NeverDescribe)),
+            Some(std::sync::Arc::new(
+                crate::photos::save_image_to_album::NotConfiguredBytes,
+            )),
+        );
+        assert!(wired.image_describe_wired(), "the driver must be threaded");
+        assert!(wired.file_bytes_wired(), "the bytes store must be threaded");
+        let bare = build_turn_tool_runner(db, ErasedAskCarina::not_available(), None, None, None);
+        assert!(!bare.image_describe_wired(), "None stays the loud default");
+        assert!(!bare.file_bytes_wired(), "None stays the loud default");
+    }
+
     #[tokio::test]
     async fn chain_skips_on_guard_and_single_turn() {
         let (_dir, db) = test_db();
@@ -4414,6 +4509,8 @@ mod tests {
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
                 web_search: None,
+                image_describe: None,
+                photo_bytes: None,
             };
             execute_turn_chain(
                 &mut deps,

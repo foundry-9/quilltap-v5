@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-23 — fix(unify): the a14a1811-round unification wires + the §3 review findings
+
+_Versions: core 0.0.643, harness 0.0.559, host 0.0.79._
+
+The cross-lane wires: the `P4D107_NANOGPT_MANIFEST_LANDED` tripwire flipped
+to plain equality (D107's manifest is on the branch), and P4.D108's recorded
+follow-up landed whole — `describe_image`'s vision tier is now REACHABLE in
+production: `OrchestratorDeps` + the spine's `tool_runner()` thread the
+host's `HostImageDescribeRunner` AND the production photo-bytes store into
+every tool runner (the §3 review caught that the driver half alone still
+starved the tier on `no-bytes` — the runner's `NotConfiguredBytes` default
+had zero production overrides), pinned by wiring probes + a mutation-proven
+composition test.
+
+The §3 review findings, all fixed here: `restream_into` never carried the
+retry's attachment ledger (v4 overwrites `state.attachmentResults` on every
+done — bug 94's new reader made the stale value user-visible; pin test
+added); the auto-describe module relabeled DB failures as skip reasons
+where v4 propagates raw (the persist arm blamed a vision call that had
+SUCCEEDED — now `Result` with the raw text surfacing as the tool error);
+the empty-response warn payload gained v4's `dangerMode`; the NANOGPT rows
+joined all three request-envelope coverage floors; the id-set predicate
+extracted + pinned against its named silent mutation (lowercase `"user"`);
+`SamplingCapture` forwards the anchored entry point; `describe_image`
+joined the doc-edit stray-call guard; a doc-comment splice in
+`doc_mount_file_links` repaired; the `id-field-dropped` oracle case renamed
+to its post-a14a1811 truth + a force-include-with-id row pinning the
+deliberately-preserved id-drop quirk; two stale comments corrected.
+
 #### 2026-08-23 — fix(model): the wire layer honors the attachment anchor instead of re-stamping last-user (bug 95, the stamp)
 
 _Versions: core 0.0.633, host 0.0.78._

@@ -112,6 +112,25 @@ impl<P: CompletionProvider> CompletionProvider for SamplingCapture<P> {
         });
         self.inner.send_message(provider, base_url, params)
     }
+
+    // Forward the anchored entry point so a wrapped provider's own override
+    // survives the wrapper (the hazard `completion.rs`'s Arc impl names; found
+    // by the a14a1811 §3 review). Today every wrapped inner is canned — this is
+    // insurance for the first placement-sensitive wrap, not a live fix.
+    fn send_message_with_anchor(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+        attachment_anchor_index: Option<usize>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        let key = (self.key_of)(provider, params);
+        self.recorded.lock().unwrap().entry(key).or_insert_with(|| {
+            sampling_object(params.temperature, params.max_tokens, params.top_p)
+        });
+        self.inner
+            .send_message_with_anchor(provider, base_url, params, attachment_anchor_index)
+    }
 }
 
 /// The streaming twin of [`SamplingCapture`] — same contract, for families whose

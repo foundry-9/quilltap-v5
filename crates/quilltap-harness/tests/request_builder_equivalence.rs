@@ -592,6 +592,10 @@ fn request_builder_matches_v4() {
         "Z_AI",
         "OPENROUTER",
         "OPENAI_COMPATIBLE",
+        // a14a1811 (P4.D107): NanoGPT became the fifth image-serialising
+        // provider — its vectors join the floor so a regen that dropped
+        // them cannot pass green (the a14a1811 §3 review).
+        "NANOGPT",
     ] {
         for mode in ["stream", "send"] {
             assert!(
@@ -611,6 +615,10 @@ fn request_builder_matches_v4() {
         "Z_AI",
         "OPENROUTER",
         "OPENAI_COMPATIBLE",
+        // a14a1811 (P4.D107): NanoGPT became the fifth image-serialising
+        // provider — its vectors join the floor so a regen that dropped
+        // them cannot pass green (the a14a1811 §3 review).
+        "NANOGPT",
     ] {
         for mode in ["stream", "send"] {
             assert!(
@@ -640,6 +648,10 @@ fn request_builder_matches_v4() {
         "Z_AI",
         "OPENROUTER",
         "OPENAI_COMPATIBLE",
+        // a14a1811 (P4.D107): NanoGPT became the fifth image-serialising
+        // provider — its vectors join the floor so a regen that dropped
+        // them cannot pass green (the a14a1811 §3 review).
+        "NANOGPT",
     ] {
         assert!(
             header_providers.contains(p),

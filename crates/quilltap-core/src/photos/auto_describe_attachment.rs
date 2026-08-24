@@ -236,27 +236,28 @@ pub fn auto_describe_persist(
 /// v4 `autoDescribeChatImageAttachment` — the whole pipeline. Safe to call
 /// repeatedly: when the FileEntry already carries a description, the call
 /// short-circuits (`already-described`) before invoking the vision LLM.
+///
+/// `Err` carries the raw message for exactly the failures v4 lets THROW out of
+/// the module (the precheck's `repos.files.findById` and the persist pass's
+/// `repos.files.update` are uncaught there — the doc-edit family catch surfaces
+/// the raw text as the tool error). Relabeling them as skip reasons answered a
+/// misleading fixed sentence for a DB failure — and, on the persist arm, blamed
+/// a vision call that had SUCCEEDED and cost money (the a14a1811 §3 review).
 pub async fn auto_describe_chat_image_attachment(
     db: &Db,
     file_bytes: &dyn FileBytesStore,
     side_effects: &(dyn SaveImageSideEffects + Sync),
     describe: Option<&dyn ImageDescribeDriver>,
     file_entry_id: &str,
-) -> AutoDescribeOutput {
+) -> Result<AutoDescribeOutput, String> {
     // Arms 1–4 (cheap reads, no bytes).
     let id = file_entry_id.to_string();
     let precheck = db.read_main(move |c| auto_describe_precheck(c, &id));
     let entry = match precheck {
-        Ok(AutoDescribePrecheck::Skip(reason)) => return AutoDescribeOutput::skipped(reason),
+        Ok(AutoDescribePrecheck::Skip(reason)) => return Ok(AutoDescribeOutput::skipped(reason)),
         Ok(AutoDescribePrecheck::Proceed(entry)) => *entry,
-        Err(e) => {
-            tracing::warn!(
-                file_entry_id = %file_entry_id,
-                error = %e,
-                "auto-describe: precheck read failed"
-            );
-            return AutoDescribeOutput::skipped(AutoDescribeSkipReason::NotFound);
-        }
+        // v4: `repos.files.findById` throws uncaught — propagate the raw text.
+        Err(e) => return Err(e.to_string()),
     };
 
     // Bytes (v4 `fileStorageManager.downloadFile`; a throw is warn + no-bytes;
@@ -264,7 +265,7 @@ pub async fn auto_describe_chat_image_attachment(
     let buffer = match file_bytes.read_image_buffer(&entry) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => {
-            return AutoDescribeOutput::skipped(AutoDescribeSkipReason::NoBytes);
+            return Ok(AutoDescribeOutput::skipped(AutoDescribeSkipReason::NoBytes));
         }
         Err(error) => {
             tracing::warn!(
@@ -272,7 +273,7 @@ pub async fn auto_describe_chat_image_attachment(
                 error = %error,
                 "auto-describe: failed to read bytes for FileEntry"
             );
-            return AutoDescribeOutput::skipped(AutoDescribeSkipReason::NoBytes);
+            return Ok(AutoDescribeOutput::skipped(AutoDescribeSkipReason::NoBytes));
         }
     };
 
@@ -306,7 +307,9 @@ pub async fn auto_describe_chat_image_attachment(
             file_entry_id = %entry.id,
             "auto-describe: vision describe did not produce a description"
         );
-        return AutoDescribeOutput::skipped(AutoDescribeSkipReason::DescribeFailed);
+        return Ok(AutoDescribeOutput::skipped(
+            AutoDescribeSkipReason::DescribeFailed,
+        ));
     };
 
     let description = js_trim(&raw_description).to_string();
@@ -337,14 +340,10 @@ pub async fn auto_describe_chat_image_attachment(
 
     let (described_file_entry, links_updated, touched) = match persisted {
         Ok(t) => t,
-        Err(e) => {
-            tracing::warn!(
-                file_entry_id = %entry.id,
-                error = %e,
-                "auto-describe: persist pass failed"
-            );
-            return AutoDescribeOutput::skipped(AutoDescribeSkipReason::DescribeFailed);
-        }
+        // v4: `repos.files.update` throws uncaught — propagate the raw text
+        // (the vision call SUCCEEDED; a `describe-failed` relabel would blame
+        // the describer and point at an unrelated settings hint).
+        Err(e) => return Err(e.to_string()),
     };
 
     // Queue embedding generation for every mount we wrote chunks into so the
@@ -362,12 +361,12 @@ pub async fn auto_describe_chat_image_attachment(
         "auto-describe: completed"
     );
 
-    AutoDescribeOutput {
+    Ok(AutoDescribeOutput {
         described_file_entry,
         links_updated,
         description: Some(description),
         skip_reason: None,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -563,21 +562,24 @@ mod tests {
             Some(&driver),
             "99999999-9999-4999-8999-999999999999",
         )
-        .await;
+        .await
+        .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NotFound));
 
         // not-image.
         seed(&db, "f-text", SHA_A, "text/plain", None, false).await;
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-text")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NotImage));
 
         // no-sha (an empty sha256 — v4's `!entry.sha256` falsy check).
         seed(&db, "f-nosha", "", "image/webp", None, false).await;
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-nosha")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NoSha));
 
         // already-described (a whitespace-only description does NOT count —
@@ -593,7 +595,8 @@ mod tests {
         .await;
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-done")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(
             out.skip_reason,
             Some(AutoDescribeSkipReason::AlreadyDescribed)
@@ -616,13 +619,16 @@ mod tests {
         let driver = CannedDescribe::description("never used");
         let out =
             auto_describe_chat_image_attachment(&db, &failing, &effects, Some(&driver), "f-img")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(out.skip_reason, Some(AutoDescribeSkipReason::NoBytes));
         assert_eq!(driver.calls.load(Ordering::SeqCst), 0);
 
         // No driver assembled → describe-failed (v4's non-description result).
         let bytes = CannedBytes(Some(vec![1, 2, 3]));
-        let out = auto_describe_chat_image_attachment(&db, &bytes, &effects, None, "f-img").await;
+        let out = auto_describe_chat_image_attachment(&db, &bytes, &effects, None, "f-img")
+            .await
+            .unwrap();
         assert_eq!(
             out.skip_reason,
             Some(AutoDescribeSkipReason::DescribeFailed)
@@ -632,7 +638,8 @@ mod tests {
         let refusing = CannedDescribe::unsupported();
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&refusing), "f-img")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(
             out.skip_reason,
             Some(AutoDescribeSkipReason::DescribeFailed)
@@ -652,7 +659,8 @@ mod tests {
 
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(out.skip_reason, None);
         assert!(out.described_file_entry);
         assert_eq!(out.links_updated, 1);
@@ -695,7 +703,8 @@ mod tests {
         // A second run now short-circuits: already-described, no vision call.
         let out2 =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await;
+                .await
+                .unwrap();
         assert_eq!(
             out2.skip_reason,
             Some(AutoDescribeSkipReason::AlreadyDescribed)
@@ -725,7 +734,8 @@ mod tests {
         let driver = CannedDescribe::description("A description.");
         let out =
             auto_describe_chat_image_attachment(&db, &bytes, &effects, Some(&driver), "f-img")
-                .await;
+                .await
+                .unwrap();
         // The files row is described, but the kept link is skipped whole.
         assert!(out.described_file_entry);
         assert_eq!(out.links_updated, 0);

@@ -81,6 +81,27 @@ pub struct WhisperMessage {
     pub custom_announcer: Option<CustomAnnouncer>,
 }
 
+/// Row ids of the *human's* own turns, captured from the PRE-normalization
+/// list — staff whispers are re-roled to USER by `normalize_whisper_roles`, so
+/// after that pass "role === 'user'" no longer means "the user said it", and
+/// the image attachment anchor needs it to (v4 `a14a1811`, bug 95). v4:
+/// `m.type === 'message' && m.role === 'USER' && !m.systemSender && m.id`
+/// (systemSender and id are JS-falsy for both absent and empty-string).
+/// Extracted so the predicate is unit-pinned (the a14a1811 §3 review named the
+/// exact silent mutation: a lowercase `"user"` here would empty the set, tier 2
+/// would never fire, and every whisper-tailed regenerate would fall to the
+/// last-user floor — the bug-95 symptom — with every other test green).
+pub(crate) fn user_turn_message_ids(msgs: &[WhisperMessage]) -> std::collections::HashSet<String> {
+    msgs.iter()
+        .filter(|m| {
+            m.message_type.as_deref() == Some("message")
+                && m.role.as_deref() == Some("USER")
+                && m.system_sender.as_deref().is_none_or(|s| s.is_empty())
+        })
+        .filter_map(|m| m.id.clone().filter(|id| !id.is_empty()))
+        .collect()
+}
+
 impl WhisperMessage {
     /// Parse from the raw event JSON (the shape `chats_messages_read::get_messages`
     /// yields). Missing/typed-wrong fields → `None` (JS `undefined`).
@@ -843,20 +864,8 @@ where
     let filtered = normalize_whisper_roles(&messages_after_whisper_filter, is_opaque_anywhere);
 
     // Row ids of the *human's* own turns, captured before normalization erases
-    // the distinction. Staff whispers are re-roled to USER above, so after
-    // this point "role === 'user'" no longer means "the user said it" — and
-    // the image attachment anchor needs it to (v4 a14a1811, bug 95). v4:
-    // `m.type === 'message' && m.role === 'USER' && !m.systemSender && m.id`
-    // (systemSender and id are JS-falsy for both absent and empty-string).
-    let user_turn_message_ids: std::collections::HashSet<String> = messages_after_whisper_filter
-        .iter()
-        .filter(|m| {
-            m.message_type.as_deref() == Some("message")
-                && m.role.as_deref() == Some("USER")
-                && !m.system_sender.as_deref().is_some_and(|s| !s.is_empty())
-        })
-        .filter_map(|m| m.id.clone().filter(|id| !id.is_empty()))
-        .collect();
+    // the distinction (v4 a14a1811, bug 95) — see [`user_turn_message_ids`].
+    let user_turn_message_ids = user_turn_message_ids(&messages_after_whisper_filter);
 
     // --- E. Conversation messages + first-message detection. ---
     let (conversation, mwp) = build_conversation_messages(&filtered, is_multi);
@@ -1107,6 +1116,38 @@ fn wire_role_str(role: WireRole) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The a14a1811 §3 review's named silent mutation: the id-set predicate is
+    /// the middle plumbing between the oracle-pinned selector and the
+    /// unit-pinned constructor — with it wrong (e.g. a lowercase `"user"`),
+    /// the set is empty, tier 2 never fires, and every whisper-tailed
+    /// regenerate falls to the last-user floor while everything else stays
+    /// green. Each row here kills one mis-spelling of one conjunct.
+    #[test]
+    fn user_turn_id_set_pins_every_conjunct() {
+        let m = |ty: &str, role: &str, sender: Option<&str>, id: Option<&str>| WhisperMessage {
+            message_type: Some(ty.to_string()),
+            role: Some(role.to_string()),
+            system_sender: sender.map(String::from),
+            id: id.map(String::from),
+            ..Default::default()
+        };
+        let msgs = vec![
+            m("message", "USER", None, Some("keep-1")), // the human's turn
+            m("message", "user", None, Some("case-x")), // DB rows are "USER" — lowercase excluded
+            m("message", "USER", Some("Host"), Some("whisper-x")), // staff whisper excluded
+            m("message", "USER", Some(""), Some("keep-2")), // empty systemSender is JS-falsy
+            m("event", "USER", None, Some("event-x")),  // non-message excluded
+            m("message", "USER", None, Some("")),       // empty id is JS-falsy
+            m("message", "USER", None, None),           // absent id excluded
+            m("message", "ASSISTANT", None, Some("asst-x")),
+        ];
+        let ids = user_turn_message_ids(&msgs);
+        assert_eq!(
+            ids,
+            ["keep-1", "keep-2"].iter().map(|s| s.to_string()).collect()
+        );
+    }
 
     fn inter(role: &str, content: &str) -> InterMsg {
         InterMsg {

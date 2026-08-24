@@ -466,8 +466,11 @@ fn file_attachment_matches_oracle() {
     // mock-level "sendMessage never called" assert, mirrored from v4's test).
     // The uncensored id is cleared too: any primary failure cascades to the
     // uncensored describer, which would swallow the guard sentence.
-    drop(fb_deps);
-    drop(deps);
+    // Release the `&db` borrows before the writable reopen (the two deps
+    // structs hold only references — `let _` ends them without the
+    // drop-non-Drop lint; `db` itself has real drop glue).
+    let _ = fb_deps;
+    let _ = deps;
     drop(db);
     {
         let writer = quilltap_core::db::Writer::open_writable(&main_work, &spec.test_pepper_base64)

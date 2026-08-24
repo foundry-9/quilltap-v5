@@ -118,12 +118,23 @@ const cases: Case[] = [
     1000,
   ],
 
-  // id present on input is dropped from output (only role/content/
-  // thoughtSignature/name/participantId are carried).
+  // id carried through the main selection loop (v4 a14a1811 bug 95 — the
+  // anchor needs the source chat_messages row id; before that commit the id
+  // was dropped, and this case's old name/expectation pinned the drop).
   [
-    'id-field-dropped',
+    'id-carried-through-selection',
     [msg('USER', 'has an id', { id: 'msg-id-123' })],
     1000,
+  ],
+
+  // The force-include arm's quirk (a14a1811, preserved deliberately): v4's
+  // force-include object literal has NO id key, so an over-budget lone
+  // message loses its id even post-fix. Both sides computed — a v5 "fix"
+  // that carries the id here would go red against v4.
+  [
+    'force-include-drops-the-id',
+    [msg('USER', 'x'.repeat(500), { id: 'msg-id-forced' })],
+    5,
   ],
 
   // Empty-content message (still counts overhead, still selected if it fits).
