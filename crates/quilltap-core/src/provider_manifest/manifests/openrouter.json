@@ -83,10 +83,15 @@
     ]
   },
   "attachment": {
-    "supportsAttachments": false,
-    "supportedMimeTypes": [],
-    "description": "File attachment support depends on the underlying model",
-    "notes": "OpenRouter proxies to 100+ models with varying capabilities. Some models may support image/file attachments.",
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ],
+    "description": "Images (JPEG, PNG, GIF, WebP) — requires a vision-capable routed model",
+    "notes": "OpenRouter proxies to 100+ models with varying capabilities. The plugin forwards images for any model and lets the host decide: attachments only reach a profile whose \"Supports image attachments\" flag is set, and the describe-fallback substitutes text otherwise.",
     "maxFileSize": null,
     "maxBase64Size": null,
     "maxFiles": null

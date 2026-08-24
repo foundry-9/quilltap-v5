@@ -18,12 +18,17 @@
 //!      [`static_provider_can_transport_images`] (the predicate's static tier /
 //!      v4's uninitialized-registry fallback).
 //!
-//! They differ in coverage AND in answers (e.g. OPENROUTER lists the four image
-//! types here while its plugin registry entry declares `supportsAttachments:
-//! false` — so the static tier says it transports and the registry tier says it
-//! does not; v4 production, registry up, answers the registry). Whether a
-//! profile's images are RAW-SENT is gated by the profile's `supportsImageUpload`
-//! flag AND (since bug 91) the transport predicate.
+//! They differ in coverage (this map knows non-image types the registry has no
+//! opinion on, and the registry carries `maxBase64Size` this map lacks), and
+//! they CAN differ in answers — when they do, v4 production has the registry up
+//! and answers the registry, so a stale plugin declaration silently wins over a
+//! correct map. That is exactly what v4 bug 97 was (OPENROUTER: the map here was
+//! right throughout, the plugin's `supportsAttachments: false` was stale, and
+//! the registry tier won) — fixed upstream at `0ba942b1` and converged here by
+//! P4.D111; v4's `__tests__/unit/lib/llm/image-transport.test.ts` now holds the
+//! two sources together. Whether a profile's images are RAW-SENT is gated by the
+//! profile's `supportsImageUpload` flag AND (since bug 91) the transport
+//! predicate.
 //!
 //! v4 `supportsMimeType(provider, mimeType)` is `getSupportedMimeTypes(provider)
 //! .includes(mimeType)` — an exact, case-sensitive `Array.includes`. An unknown

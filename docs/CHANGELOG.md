@@ -44,6 +44,42 @@ through the real handler, so a recovered title is measured as a write — the
 renamed chat row and the story-background job's scene context. Five were red
 against the pre-fix parser. The `checkpoint burned` warn writes no row, so it is
 pinned by a capturing-subscriber wiring test over the real handler.
+#### 2026-08-23 — fix(images): OpenRouter transports images again, and the describer guard names NanoGPT (v4 bug 97)
+
+_Versions: core 0.0.644._
+
+The convergence half of this port's own upstream filing. P4.D106 measured a
+contradiction inside v4 and reproduced it faithfully: OpenRouter's plugin
+registry entry declared `supportsAttachments: false` while the client-safe
+static map listed its four image types, so v4 production — which has the
+registry up — answered false for OPENROUTER, routed every OpenRouter vision
+profile to the describe-fallback, and refused an OpenRouter describer in the
+same sentence that recommended OpenRouter. Filed as v4 bug 97; fixed upstream
+at `0ba942b1`, where plugin 1.0.59 declares `supportsAttachments: true` and
+imports its MIME list from the provider module that does the sending.
+
+v5 converges. The ten provider manifests were regenerated from the pinned v4
+worktree: only `openrouter.json` moved (`supportsAttachments` true, the four
+image MIME types, v4's new description and notes bytes), the other nine came
+back byte-identical. `provider_can_transport_images` therefore answers true for
+OPENROUTER, and its unit test moves that provider into the transporting set.
+Both stale narratives — the `image_transport` module header's "a v4 bug to file
+upstream" and the `attachment_support` header's OpenRouter example — are
+rewritten as converged notes.
+
+Two riders. The describe-fallback's transport-guard sentence gains NanoGPT
+between OpenRouter and Z.AI, byte-exact to v4's new literal, with v4's
+keep-in-step comment carried over; NanoGPT has transported images since plugin
+1.1.0, and the omission pushed operators away from a working choice. And the
+`moderation_finish_reason` docblock's note about v4's "(bug 94)" mis-numbering
+is retired — v4 corrected its own docblock at `7a6716b5`, so the note was now
+wrong about v4.
+
+Proven red-first, per family, over oracles regenerated fresh at the pin:
+`image_transport_equivalence` red on the OPENROUTER `full_init` row,
+`provider_registry_equivalence` red on the `attachmentSupport` block bytes,
+`file_attachment_tier3_equivalence` red on `fb_ollama_describer_guard`'s
+sentence — then all three green with no oracle re-run.
 
 #### 2026-08-23 — docs(porting): the `0ba942b1` drift-round work orders (P4.D110 ∥ P4.D111 ∥ P4.58)
 

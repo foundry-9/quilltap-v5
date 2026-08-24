@@ -11,10 +11,6 @@
 //! The list is deliberately literal. A finish reason we don't recognise stays
 //! unrecognised rather than being guessed at from a substring, because a false
 //! positive tells the user their content was refused when it wasn't.
-//!
-//! (v4's module docblock attributes itself to "bug 94" — that is a v4-side
-//! mis-numbering; the commit message and the filed bug doc both say bug 93.
-//! The CODE is ported; the wrong number is not.)
 
 /// Finish reasons that mean "the provider declined to answer on content
 /// grounds", lower-cased for comparison.

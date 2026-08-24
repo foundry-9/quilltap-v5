@@ -5714,3 +5714,17 @@ blocking findings. Gate: the round record in `status-log.md`.
    files + unmirrored `bugs/fixed/` rows — P4.D105's Tier-2 note).
 
 PB1 stays parked by the standing rule. Round record: `status-log.md`.
+
+### `p4.9i2` bank — `help/connection-profiles.md` (P4.D111, v4 `0ba942b1`)
+
+Banked 2026-08-23 by the bug-97 convergence lane. v4's `0ba942b1` added ONE
+paragraph to `help/connection-profiles.md`, immediately after the
+"They are not the same question…" paragraph (v4 line 417) and immediately
+before "Formerly the checkbox was taken as the whole answer…". It is carried
+here VERBATIM for the `p4.9i2` help-doc port; the house voice is v4's and must
+not be re-worded:
+
+> A third possibility, rarer and more vexing still, is a connector that *can* send a picture but has neglected to say so. **OpenRouter** was in precisely this position: its connector has forwarded images competently for some time, while the paperwork it files with Quilltap on startup still declared the old abstinence. Quilltap, reading the paperwork rather than the deed, routed every OpenRouter image to the description fallback and — with a straight face — refused an OpenRouter profile the post of describer in the very sentence that recommended OpenRouter for the job. The declaration has been corrected and now takes its list of formats directly from the connector that does the sending, so the two can no longer fall out of step. If your describer or your vision profile sits on OpenRouter, it will simply begin receiving the pictures themselves; nothing needs re-ticking.
+
+Nothing else in that file moved at `0ba942b1`. The rest of the `p4.9i2` bank is
+unchanged.

@@ -26,15 +26,19 @@
 //! sources are ignorant. Both tiers are real code with real differentials
 //! (`image_transport_equivalence` drives v4 in BOTH configurations).
 //!
-//! ⚠ Known v4-side inconsistency, reproduced faithfully: v4's OpenRouter
-//! plugin registry entry declares `supportsAttachments: false` while the
-//! static map lists its four image types — so v4 production (registry up)
-//! answers **false** for OPENROUTER and routes its vision profiles to the
-//! describe-fallback, even though the OpenRouter non-streaming vision path
-//! works and the describer guard sentence names OpenRouter as transporting.
-//! v5's baked manifest carries the same `false`, so both sides agree; the
-//! registry/static disagreement is a v4 bug to file upstream (P4.D106 lane
-//! record).
+//! ## The OpenRouter registry/static disagreement — CONVERGED (P4.D111)
+//!
+//! P4.D106 measured a v4-side contradiction and reproduced it faithfully:
+//! OpenRouter's plugin registry entry declared `supportsAttachments: false`
+//! while the static map listed its four image types, so v4 production
+//! (registry up) answered **false** for OPENROUTER and routed its vision
+//! profiles to the describe-fallback — in the same breath as a guard sentence
+//! recommending OpenRouter. Filed upstream as v4 bug 97 (`7a6716b5`) and
+//! FIXED at v4 `0ba942b1`: plugin 1.0.59 declares `supportsAttachments: true`
+//! and imports its MIME list from `provider.ts`'s exported
+//! `SUPPORTED_IMAGE_MIME_TYPES`, so declaration and wire cannot drift again.
+//! v5's regenerated manifest carries the flip, both tiers now agree, and the
+//! former both-directions pin is a plain equality.
 
 use crate::files::attachment_support::static_provider_can_transport_images;
 use crate::provider_manifest::Registry;
@@ -72,16 +76,23 @@ mod tests {
         // P4.D107's manifest regen (plugin 1.1.0) landed at the a14a1811-round
         // unification — the `image_transport_equivalence` gate constant flipped
         // with it.
-        for p in ["OPENAI", "ANTHROPIC", "GOOGLE", "GROK", "Z_AI", "NANOGPT"] {
+        // OPENROUTER joined the transporting set when P4.D111's manifest regen
+        // (plugin 1.0.59, v4 bug 97) landed — the declaration finally matches
+        // the `image_url` parts the provider has serialised since bug 45.
+        for p in [
+            "OPENAI",
+            "ANTHROPIC",
+            "GOOGLE",
+            "GROK",
+            "Z_AI",
+            "NANOGPT",
+            "OPENROUTER",
+        ] {
             assert!(provider_can_transport_images(p), "{p} transports");
         }
         for p in ["OLLAMA", "DEEPSEEK", "OPENAI_COMPATIBLE"] {
             assert!(!provider_can_transport_images(p), "{p} cannot transport");
         }
-        // OPENROUTER: the manifest declares supportsAttachments false (the v4
-        // registry/static inconsistency, reproduced faithfully — see the
-        // module header).
-        assert!(!provider_can_transport_images("OPENROUTER"));
     }
 
     #[test]

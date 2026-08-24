@@ -83326,3 +83326,166 @@ optionally retiring v5's own discrepancy note in
 docblock — it no longer does). The regen pin at `/tmp/qt-v4-a14a1811`
 stands unchanged. CLAUDE.md's status bullet + baseline paragraph and
 phase-4.md's candidate 3 updated to match.
+
+
+## P4.D111 — the bug-97 OpenRouter vision convergence (v4 `0ba942b1` + `7a6716b5`) — CLOSED
+
+**Lane branch:** `claude/p4-d111-bug97-convergence-c08ea8`. **Baseline:**
+`0ba942b1` (v4 main). **Drift check at lane start (2026-08-23):** the v4
+checkout was CLEAN, on `main`, at `0ba942b1`; `git log 0ba942b1..main`
+empty; `bugfix` HEAD `3a76b17d` with nothing unabsorbed past the tests-only
+`009c49b2` — exactly the planning measurement. Every regen nonetheless ran
+from the lane-unique pin `/tmp/qt-v4-pin-d111-0ba942b1` (all three symlink
+classes: root `node_modules`, `packages/quilltap/node_modules`, and 15
+`plugins/dist/*/node_modules` — this lane loads built plugin bundles, so
+that third class is load-bearing), because two sibling lanes shared the
+checkout for the round.
+
+### What this lane is
+
+The pre-announced convergence for this port's own upstream filing. P4.D106
+measured v4's registry-vs-static transport contradiction and reproduced it
+faithfully with a both-directions pin; the a14a1811 round filed it as v4
+**bug 97** (`7a6716b5`); v4 fixed it at `0ba942b1` (plugin 1.0.59 declares
+`supportsAttachments: true` and imports `SUPPORTED_IMAGE_MIME_TYPES` from
+`provider.ts`, so declaration and wire share one source). The pins therefore
+retire to plain equalities and v5's OpenRouter registry-tier answer flips
+true. No new v4 behavior was ported beyond the guard sentence's one-entry
+delta — this is convergence + narrative retirement + red-first proof.
+
+### Red-first, per family (Tier-1 item 4 — the whole point of a both-directions pin)
+
+Each family's oracle regenerated FRESH at the pin through
+`recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-d111-0ba942b1`, then run
+against UNCHANGED v5:
+
+| Family | Red-first verdict (unchanged v5) |
+|---|---|
+| `image_transport_equivalence` | **RED** — `full_init mismatch for "OPENROUTER"`, left `false` (v5 manifest) / right `true` (v4 plugin 1.0.59). The fresh NDJSON's six OPENROUTER rows all read `true` across `static` / `full_uninit` / `full_init`; before the fix only the two `full_init` rows disagreed. |
+| `provider_registry_equivalence` | **RED** — `provider-registry divergence on kind=attachmentSupport`, the whole OPENROUTER block: `false`+`[]`+the old description/notes vs `true`+the four image types+v4's new sentences. (This is the family that pins the manifest `attachment` bytes — the P4.D107 finding, NOT `providers_listing`.) |
+| `file_attachment_tier3_equivalence` | **RED** — `fb case fb_ollama_describer_guard diverged`, the recommendation list's missing `NanoGPT`. |
+
+After the changes below, all three GREEN with the SAME oracles (no re-run,
+no regen): `image_transport_equivalence: 17+17+17 rows OK`;
+`provider-registry matched oracle (278 rows)`; `file-attachment differential
+matched the oracle across all cases`.
+
+### What landed
+
+1. **The manifest regen** (`gen-provider-manifests.mjs`, run with cwd = the
+   pin). `git diff --stat` over
+   `crates/quilltap-core/src/provider_manifest/manifests` shows **ONLY
+   `openrouter.json`** — the nine siblings came back byte-identical, so the
+   augmentation table did not revert a hand-fix this time (the
+   manifest-generator-augmentation-rot trap, checked as the order required).
+   The block moves to `supportsAttachments: true`, the four image MIME types,
+   `"Images (JPEG, PNG, GIF, WebP) — requires a vision-capable routed model"`,
+   and v4's new `notes` sentence. `maxFileSize`/`maxBase64Size`/`maxFiles`
+   stay null, as v4's declaration carries none.
+2. **`image_transport.rs`** — `registry_tier_answers_for_the_built_ins` moves
+   OPENROUTER into the transporting loop
+   (`OPENAI/ANTHROPIC/GOOGLE/GROK/Z_AI/NANOGPT/OPENROUTER`) and the standalone
+   `assert!(!provider_can_transport_images("OPENROUTER"))` is deleted. The
+   module header's "⚠ Known v4-side inconsistency, reproduced faithfully …
+   a v4 bug to file upstream" section is rewritten as
+   "## The OpenRouter registry/static disagreement — CONVERGED (P4.D111)",
+   naming the filing (`7a6716b5`), the fix (`0ba942b1`), and the single-source
+   rule that keeps it from drifting again.
+3. **`attachment_support.rs` header** — the "they differ … AND in answers
+   (e.g. OPENROUTER …)" narrative is replaced. The rewrite keeps the durable
+   lesson (the two datasets CAN disagree, and production answers the registry,
+   so a stale plugin declaration silently beats a correct map) and cites bug 97
+   as the worked example rather than as a live divergence. **The static
+   capability ROWS were not touched** — v4's map was right throughout.
+4. **`file_fallback.rs`** — the transport-guard sentence gains `NanoGPT, `
+   between OpenRouter and Z.AI. Byte-exactness proven by the differential
+   against v4's literal, not by transcription; v4's keep-in-step comment is
+   carried over, adapted to v5's map location and naming
+   `image_transport_equivalence` as the v5 twin of v4's new
+   `__tests__/unit/lib/llm/image-transport.test.ts`. Repo-grep confirms this
+   is the only copy of the sentence.
+5. **`moderation_finish_reason.rs`** — the four-line note about v4's
+   "(bug 94)" docblock mis-numbering is deleted. v4 corrected its own docblock
+   at `7a6716b5`, so the note had become wrong about v4. The sentence TABLE is
+   untouched, and `moderation_finish_reason_equivalence` cannot see a comment.
+6. **Tier 2** — v4's `help/connection-profiles.md` +2 paragraph is banked
+   VERBATIM into the `p4.9i2` pool at the end of `phase-4.md`, with its
+   insertion point recorded (after "They are not the same question…", before
+   "Formerly the checkbox was taken as the whole answer…"). Nothing else in
+   that v4 file moved at `0ba942b1`.
+
+### Recorded, not changed
+
+- **The file-attachment fixture is UNCHANGED** (Tier-1 item 5). Case (D)
+  `fb_ollama_describer_guard` drives an **OLLAMA** describer — a provider both
+  tiers agree cannot transport — and clears
+  `uncensoredImageDescriptionProfileId` so no cascade to a working describer
+  can swallow the guard sentence. The P4.D106-era workaround of picking a
+  describer the two tiers agree on is now robust for OPENROUTER as well, but
+  nothing about it needs to move: the case never depended on OpenRouter's
+  answer. No fixture this lane owns changed, so no dependent-oracle sweep
+  beyond the three named families.
+- **The SPA attachment table (`attachment-support.ts`) was NOT touched** —
+  OPENROUTER already lists the four image types there, v4's static map was
+  correct throughout, and `0ba942b1` did not touch it. No `apps/web` change in
+  this lane, so no ng/Playwright run was required or run.
+- **The P4.D106 lane-record OPEN row** closes via this record. The memory note
+  `v4-attachment-tiers-disagree.md` still describes the disagreement as live
+  and needs amending — that is the supervisor's edit at unification, not this
+  lane's.
+- No deferrals: the order carried no Tier-3 refusal surface, and nothing was
+  banked instead of landed except the Tier-2 help paragraph, which is a
+  deliberate `p4.9i2` bank, not a refusal.
+
+### Regen recipes (exact)
+
+```bash
+PIN=/tmp/qt-v4-pin-d111-0ba942b1     # detached worktree at 0ba942b1, all three symlink classes
+V5W=<this worktree>
+
+# the three families (the sanctioned path — never two sweeps at once)
+python3 harness/tools/recipe_sweep.py --run image_transport_equivalence        --v4 "$PIN"
+python3 harness/tools/recipe_sweep.py --run provider_registry_equivalence      --v4 "$PIN"
+python3 harness/tools/recipe_sweep.py --run file_attachment_tier3_equivalence  --v4 "$PIN"
+
+# the manifest regen (cwd MUST be the v4 tree — it loads plugins/dist via createRequire)
+cd "$PIN" && node "$V5W/harness/oracle/providers/gen-provider-manifests.mjs" \
+  "$V5W/crates/quilltap-core/src/provider_manifest/manifests"
+# then: git diff --stat over the manifests dir — ONLY openrouter.json may move.
+```
+
+Env vars for a by-name re-run: `QT_ORACLE_IMAGE_TRANSPORT`,
+`QT_ORACLE_PROVIDER_REGISTRY`, `QT_ORACLE_FILE_ATTACHMENT` +
+`QT_FIXTURE_FILE_ATTACH_MAIN`/`QT_FIXTURE_FILE_ATTACH_MOUNT`.
+
+### The lane gate (2026-08-23)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` exit 0, plain AND
+  `--features quilltap-core/native-transport`.
+- `cargo test --workspace` with the lane's five oracle/fixture env vars:
+  **449 test binaries / 2,299 tests / 0 failed** (exit 0), full log captured.
+  The three families positively confirmed to have RUN by name — no
+  `not set; skipping` line for any of them. (Two `FAILED` string hits in the
+  log are a pre-existing benign boot WARN about the embedding-profile
+  FALLBACK exclusion, not test results.)
+- The three families BY NAME with `--nocapture`, zero SKIP:
+  `image_transport_equivalence: 17+17+17 rows OK`;
+  `provider-registry matched oracle (278 rows)`;
+  `file-attachment differential matched the oracle across all cases`.
+- The fresh NDJSONs grepped for the changed bytes: the new `notes` sentence
+  present in `oracle-provider-registry.ndjson`; the NanoGPT-bearing guard
+  sentence present in `oracle-file-attachment.ndjson`; the
+  `full_init`/OPENROUTER/`true` row present in `oracle-image-transport.ndjson`.
+- `git diff --stat` over the manifests dir: **ONLY `openrouter.json`**.
+- `harness/tools/check_spelling.py` exit 0.
+- **No SPA changes in this lane** — `apps/web/**` untouched, so no
+  `npm test` / `npm run build` / Playwright run was required, and none was
+  run.
+
+Versions: core 0.0.644. `quilltap-harness` was NOT bumped — no harness source
+changed (the three test files needed no pin-comment edits: `image_transport_
+equivalence.rs`'s only tripwire constant is P4.D107's NanoGPT one, already
+flipped true at the a14a1811 unification, and neither of the other two carried
+a bug-97 pin). §C anticipated a harness bump; the commit rule says bump what
+changed, so the unifier should recount core only from this lane.

@@ -442,6 +442,14 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         return result;
     }
 
+    // v4 `0ba942b1` (bug 97): the provider list in the message below names every
+    // entry in v4's `PROVIDER_ATTACHMENT_CAPABILITIES`
+    // (`crate::files::attachment_support`) that carries an `image/*` MIME type —
+    // keep it in step with that map. Bug 97 was this sentence recommending
+    // OpenRouter in the same breath as refusing an OpenRouter profile, because
+    // the plugin's own declaration disagreed with the map; v4's
+    // `__tests__/unit/lib/llm/image-transport.test.ts` now holds the two sources
+    // together, and `image_transport_equivalence` is its v5 twin.
     if !crate::files::image_transport::provider_can_transport_images(&provider) {
         let mut result = FallbackResult::unsupported(
             &file.filename,
@@ -449,7 +457,8 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
             Some(format!(
                 "Image description profile ({provider} {model_name}) cannot send images — the \
                  {provider} plugin does not forward image attachments. Pick a describer on a \
-                 provider that does (OpenAI, Anthropic, Google, Grok, OpenRouter, Z.AI)."
+                 provider that does (OpenAI, Anthropic, Google, Grok, OpenRouter, NanoGPT, \
+                 Z.AI)."
             )),
         );
         set_description_metadata(&mut result, &profile_id, &provider, &model_name);
