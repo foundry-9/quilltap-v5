@@ -83902,3 +83902,49 @@ human calls); the **candid** story-background arm (needs a dangerous-compatible
 image profile); and a ruling on finding #94 (the Almanack's hardcoded
 `Free Memory: 0 B`, whose "no portable read exists" premise the walk's own
 measurement disproves).
+
+### Follow-up — finding #94 FIXED (2026-08-24, on the human's ruling)
+
+The Almanack's `Free Memory: 0 B` is measured now. `free_memory_bytes()`
+mirrors `total_memory_bytes()`'s two `#[cfg]` arms and the module header's
+argument for the zero is replaced by what was measured.
+
+**The finding's own stated technique was wrong, and the fix measured rather
+than trusted it.** macOS free memory is **`Pages free` PLUS `Pages
+speculative`** × the page size `vm_stat` states in its own header — `vm_stat`
+prints `free_count - speculative_count` on its "Pages free" line and reports
+the speculative pages separately, while libuv's `uv_get_free_memory` reads the
+raw `free_count`. Checked against Node four times on the same host: `free`
+alone is off by ~236 MB; `free + speculative` tracks `os.freemem()` to within
+the drift between two samples (~500–1000 pages). The Linux arm reads `MemFree`
+— the key libuv reads before falling back to `sysinfo()` — through a parser now
+**shared with `MemTotal`**, so the two cannot drift apart in parsing. An
+unreadable platform still answers 0. The renderer is untouched (byte-pinned
+against v4's, which always emits a number), so the line stays faithful AND
+true.
+
+**Five tests, and the fifth is the one that matters.** The parsers are pinned
+against real captured output (a `vm_stat` from this 48 GB host; a real
+`/proc/meminfo` head) rather than a hand-written shape, the page size is proven
+READ not assumed (the same counts under a 4 KB header answer a quarter),
+unparseable output still falls back to the honest zero, and a live arm asserts
+`0 < free <= total`. **`runtime_facts_reports_the_measured_free_memory` exists
+because the mutation pass caught its absence**: reverting the struct literal to
+`0.0` left every other test green, since they all called the function directly
+— the unpinned-wiring class, caught in the act. It now reds with the finding's
+own sentence.
+
+⚠ **The differential cannot see any of this**: `almanack_tier2_equivalence`
+SPLICES the host facts from the oracle's recorded runtime block and never calls
+`runtime_facts()`. The unit tests are the whole guard, which is exactly why the
+wiring arm had to exist.
+
+**Live acceptance on the dogfood instance**: a freshly generated report reads
+**`Free Memory: 12.3 GB`** where it read `0 B` this morning, against Node's
+`os.freemem()` of 12.22 GB on the same host, same minute.
+
+Gate: `cargo fmt --all --check` clean; clippy `--workspace --all-targets -D
+warnings` clean, plain AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` **449 test binaries / 2,325 passed / 0 failed**, zero
+`not set; skipping` lines (2,320 → 2,325, exactly this change's five); release
+build (`quilltap-web` + `quilltap-cli`) clean. Versions: host 0.0.80.

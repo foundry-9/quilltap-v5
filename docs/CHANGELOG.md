@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(almanack): the report measures free memory instead of reporting a hardcoded zero (dogfood #94)
+
+_Versions: host 0.0.80._
+
+`almanack_services.rs` hardcoded `free_memory_bytes: 0.0`, so the Almanack's
+System Information read `Free Memory: 0 B` on a 48 GB machine — which reads as
+"this box is out of memory", not as "not measured". The module header argued
+the zero on the grounds that no dependency-free portable read exists. That
+premise was false by the file's own technique, which already shells out to
+`sysctl hw.memsize` and parses `/proc/meminfo`.
+
+`free_memory_bytes()` now mirrors `total_memory_bytes()`'s two `cfg` arms. The
+macOS arm turns on a detail worth stating: free memory is `Pages free` **plus**
+`Pages speculative`, times the page size `vm_stat` states in its own header.
+`vm_stat` prints `free_count - speculative_count` on its "Pages free" line and
+reports the speculative pages separately, while libuv's `uv_get_free_memory`
+reads the raw `free_count` — so the two lines have to be added back together to
+match what v4's `os.freemem()` reports. Measured against Node four times on the
+same host: `free` alone is off by roughly 236 MB, `free + speculative` tracks
+`os.freemem()` to within the drift between two samples. The Linux arm reads
+`MemFree`, the key libuv reads before falling back to `sysinfo()`, through a
+parser now shared with `MemTotal` so the two cannot drift apart in parsing. A
+platform that genuinely cannot be read still answers zero.
+
+The renderer is untouched: it is byte-pinned against v4's, which always emits a
+number, so computing the value keeps the line both faithful and true.
+
+Five tests. The parsers are pinned against real captured output rather than a
+hand-written shape, the page size is proven read rather than assumed, the
+unparseable arms still fall back to the honest zero, and a live arm asserts
+`0 < free <= total`. The fifth reads the value back through `runtime_facts()`,
+and exists because the mutation pass caught its absence: reverting the struct
+literal to `0.0` left every other test green, since they all called the
+function directly.
+
 #### 2026-08-24 — docs(dogfood): the vision-round pass — 16 PASS, no v5 defects, eight live proofs discharged
 
 _Docs-only change._

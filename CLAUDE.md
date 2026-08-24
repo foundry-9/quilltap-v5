@@ -1899,8 +1899,16 @@ records THERE. Update this summary only when a phase or round completes.
   whisper-tailed-regenerate 💸 item needs a **Lantern**-bearing chat, not the
   shape it was written against. Zero panics in ~2 hours on the real 800 MB
   instance. **Still owed:** Pascal's other three write paths, the Brahma budget
-  on a deep query, dedup/summaries (human), the candid story-background arm,
-  and a ruling on finding #94 (`Free Memory: 0 B`).
+  on a deep query, dedup/summaries (human), and the candid story-background arm.
+  **Finding #94 was RULED and FIXED the same day** (host 0.0.80): the Almanack
+  measures free memory now — and the finding's own technique was wrong, so the
+  fix measured it (macOS is `Pages free` PLUS `Pages speculative`, since
+  `vm_stat` subtracts speculative where `os.freemem()` does not; Linux reads
+  `MemFree` through a parser now shared with `MemTotal`). The mutation pass
+  caught an unpinned WIRING — reverting the struct literal to `0.0` left every
+  test green because they all called the function directly — so a
+  `runtime_facts()` arm was added. Live: `Free Memory: 12.3 GB` against Node's
+  12.22 GB on the same host.
 - **Oracle baseline: `0ba942b1` (2026-08-23, v4 main — "fix(openrouter):
   the plugin declares the vision path it already implements (bug 97)"),
   adopted at the 0ba942b1-round unification (2026-08-23).** v4 had NOT
