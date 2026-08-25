@@ -39,11 +39,19 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<vo
   }
 }
 
+interface RenderOpts {
+  item?: WardrobeItemDto;
+  sourceCharacterId?: string | null;
+  source?: { scope: string; id: string | null } | null;
+  excludeDestination?: { scope: string; id: string | null } | null;
+}
+
 async function render(
   mode: 'move' | 'copy',
   route: (req: AnyRequest) => Record<string, unknown> | Error = () => ({
     destinations: DESTINATIONS,
   }),
+  opts: RenderOpts = {},
 ): Promise<{ fixture: ComponentFixture<WardrobeTransferDialog>; seen: AnyRequest[] }> {
   const seen: AnyRequest[] = [];
   const core = {
@@ -63,9 +71,16 @@ async function render(
   });
   const fixture = TestBed.createComponent(WardrobeTransferDialog);
   fixture.componentRef.setInput('mode', mode);
-  fixture.componentRef.setInput('item', ITEM);
-  fixture.componentRef.setInput('sourceCharacterId', 'char-1');
+  fixture.componentRef.setInput('item', opts.item ?? ITEM);
+  fixture.componentRef.setInput(
+    'sourceCharacterId',
+    opts.sourceCharacterId === undefined ? 'char-1' : opts.sourceCharacterId,
+  );
   fixture.componentRef.setInput('sourceProjectId', 'p-src');
+  if (opts.source !== undefined) fixture.componentRef.setInput('source', opts.source);
+  if (opts.excludeDestination !== undefined) {
+    fixture.componentRef.setInput('excludeDestination', opts.excludeDestination);
+  }
   fixture.detectChanges();
   await settle(fixture);
   return { fixture, seen };
@@ -146,5 +161,207 @@ describe('WardrobeTransferDialog (v4 WardrobeTransferDialog.tsx)', () => {
   it('a failed load surfaces the error as v4\'s toast', async () => {
     await render('move', () => new Error('unknown request type'));
     expect(toasts().at(-1)).toEqual({ type: 'error', message: 'unknown request type' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The known-home exclusion and the component prompt (v4 `d7263f39` + `f6a10055`)
+// ---------------------------------------------------------------------------
+
+const OUTFIT: WardrobeItemDto = {
+  ...ITEM,
+  id: 'w-outfit',
+  title: 'Evening Kit',
+  componentItemIds: ['a', 'b'],
+} as WardrobeItemDto;
+
+function options(fixture: ComponentFixture<WardrobeTransferDialog>): string[] {
+  return [
+    ...(fixture.nativeElement as HTMLElement).querySelectorAll('select option'),
+  ].map((o) => (o as HTMLOptionElement).value);
+}
+
+function radios(fixture: ComponentFixture<WardrobeTransferDialog>): string[] {
+  return [
+    ...(fixture.nativeElement as HTMLElement).querySelectorAll(
+      'input[name="wardrobe-transfer-components"]',
+    ),
+  ].map((r) => ((r as HTMLInputElement).closest('label')?.textContent ?? '').trim());
+}
+
+async function submit(
+  fixture: ComponentFixture<WardrobeTransferDialog>,
+  label: string,
+): Promise<void> {
+  const button = [
+    ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+  ].find((b) => (b.textContent ?? '').trim() === label) as HTMLButtonElement;
+  button.click();
+  await settle(fixture);
+}
+
+describe("the item's known home is hidden from the destinations (v4 :126-148)", () => {
+  it('excludes General and skips the preselect when General IS the home (v4 :101-108)', async () => {
+    const { fixture } = await render('move', undefined, {
+      excludeDestination: { scope: 'general', id: null },
+      source: { scope: 'general', id: null },
+      sourceCharacterId: null,
+    });
+    expect(options(fixture)).toEqual(['project:p1', 'character:u1']);
+    // Nothing is preselected, so the submit button stays disarmed.
+    const move = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ].find((b) => (b.textContent ?? '').trim() === 'Move item') as HTMLButtonElement;
+    expect(move.disabled).toBe(true);
+  });
+
+  it('excludes a project, a group, or a character home by scope AND id', async () => {
+    const project = await render('copy', undefined, {
+      excludeDestination: { scope: 'project', id: 'p1' },
+    });
+    expect(options(project.fixture)).toEqual(['general:', 'character:u1']);
+
+    const character = await render('copy', undefined, {
+      excludeDestination: { scope: 'character', id: 'u1' },
+    });
+    expect(options(character.fixture)).toEqual(['general:', 'project:p1']);
+
+    // A DIFFERENT id of the same scope is left alone.
+    const other = await render('copy', undefined, {
+      excludeDestination: { scope: 'project', id: 'p-other' },
+    });
+    expect(options(other.fixture)).toEqual(['general:', 'project:p1', 'character:u1']);
+  });
+
+  it('with every destination excluded the placeholder appears (v4 :227-233)', async () => {
+    const { fixture } = await render(
+      'move',
+      () => ({
+        destinations: {
+          general: { available: true, label: 'Quilltap General' },
+          projects: [],
+          groups: [],
+          users: [],
+        },
+      }),
+      { excludeDestination: { scope: 'general', id: null } },
+    );
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'No destinations available',
+    );
+  });
+});
+
+describe('the component prompt for a composite outfit (v4 f6a10055 :290-327)', () => {
+  it('a non-composite item shows no prompt and sends no `components` key', async () => {
+    const { fixture, seen } = await render('move');
+    expect(radios(fixture)).toEqual([]);
+    await submit(fixture, 'Move item');
+    expect(seen.at(-1)).not.toHaveProperty('components');
+  });
+
+  it('moving an outfit offers move / copy / leave, defaulting to move (v4 :92-94)', async () => {
+    const { fixture, seen } = await render('move', undefined, { item: OUTFIT });
+    expect(radios(fixture)).toEqual([
+      'Move the components along with it',
+      'Copy the components (originals stay behind)',
+      'Leave the components behind',
+    ]);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'This outfit bundles 2 components',
+    );
+    await submit(fixture, 'Move item');
+    expect(seen.at(-1)).toMatchObject({ components: 'move' });
+  });
+
+  it('copying an outfit offers copy / don\'t — MOVE is unreachable, which is the refusal (v4 refine)', async () => {
+    const { fixture, seen } = await render('copy', undefined, { item: OUTFIT });
+    expect(radios(fixture)).toEqual([
+      'Copy the components along with it',
+      'Copy the outfit alone',
+    ]);
+    await submit(fixture, 'Copy item');
+    expect(seen.at(-1)).toMatchObject({ components: 'copy' });
+  });
+
+  it('the chosen mode reaches the wire (v4 :168)', async () => {
+    const { fixture, seen } = await render('move', undefined, { item: OUTFIT });
+    const leave = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll(
+        'input[name="wardrobe-transfer-components"]',
+      ),
+    ][2] as HTMLInputElement;
+    leave.click();
+    await settle(fixture);
+    await submit(fixture, 'Move item');
+    expect(seen.at(-1)).toMatchObject({ components: 'none' });
+  });
+
+  it('a single-component outfit says "component", not "components"', async () => {
+    const { fixture } = await render('move', undefined, {
+      item: { ...OUTFIT, componentItemIds: ['a'] } as WardrobeItemDto,
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'This outfit bundles 1 component',
+    );
+  });
+
+  it("a server refusal surfaces as v4's error toast", async () => {
+    const { fixture } = await render(
+      'copy',
+      (req) =>
+        (req.type as string) === 'wardrobeTransferApply'
+          ? new Error(
+              'Copying an outfit cannot move its components — the original outfit still needs them',
+            )
+          : { destinations: DESTINATIONS },
+      { item: OUTFIT },
+    );
+    await submit(fixture, 'Copy item');
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message:
+        'Copying an outfit cannot move its components — the original outfit still needs them',
+    });
+  });
+});
+
+describe('the explicit source container on the wire (v4 :163-168)', () => {
+  it('browsing a shared container sends `source` and OMITS sourceCharacterId', async () => {
+    const { fixture, seen } = await render('move', undefined, {
+      sourceCharacterId: null,
+      source: { scope: 'group', id: 'g1' },
+    });
+    await submit(fixture, 'Move item');
+    const body = seen.at(-1) as Record<string, unknown>;
+    expect(body).toMatchObject({ source: { scope: 'group', id: 'g1' } });
+    // The key is ABSENT, not null — the server's refine reads presence.
+    expect(body).not.toHaveProperty('sourceCharacterId');
+  });
+
+  it('the General source carries no id (v4 `...(source.id ? {id} : {})`)', async () => {
+    const { fixture, seen } = await render('move', undefined, {
+      sourceCharacterId: null,
+      source: { scope: 'general', id: null },
+      excludeDestination: { scope: 'general', id: null },
+    });
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      'select',
+    ) as HTMLSelectElement;
+    select.value = 'project:p1';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    await submit(fixture, 'Move item');
+    expect((seen.at(-1) as unknown as { source: Record<string, unknown> }).source).toEqual({
+      scope: 'general',
+    });
+  });
+
+  it('the character view sends sourceCharacterId and NO source (v4 :1481)', async () => {
+    const { fixture, seen } = await render('move');
+    await submit(fixture, 'Move item');
+    const body = seen.at(-1) as Record<string, unknown>;
+    expect(body).toMatchObject({ sourceCharacterId: 'char-1' });
+    expect(body).not.toHaveProperty('source');
   });
 });

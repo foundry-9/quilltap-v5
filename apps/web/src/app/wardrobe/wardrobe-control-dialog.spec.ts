@@ -50,6 +50,10 @@ function defaultRoute(req: AnyRequest): Record<string, unknown> | Error {
           { id: 'ip1', name: 'Painterly', provider: 'p', modelName: 'm', isDefault: true },
         ],
       };
+    case 'projectList':
+      return { projects: [{ id: 'p1', name: 'The Estate' }] };
+    case 'groupList':
+      return { groups: [{ id: 'g1', name: 'The Regiment' }] };
     case 'chatGet':
       return { chat: { projectId: null } };
     case 'characterWardrobeList':
@@ -123,6 +127,22 @@ function inner(component: WardrobeControlDialogInner): {
   wearFitting: () => Promise<void>;
   requestClose: () => void;
   useFittingActions: () => boolean;
+  selectedContainer: {
+    (): { scope: string; id: string | null } | null;
+    set(v: { scope: string; id: string | null } | null): void;
+  };
+  selectedCharacterId: () => string | null;
+  isCharacterScope: () => boolean;
+  listItems: () => WardrobeItemDto[];
+  resolutionPool: () => WardrobeItemDto[];
+  canManageItem: (item: WardrobeItemDto) => boolean;
+  selectedContainerLabel: () => string;
+  transferExcludeDestination: () => { scope: string; id: string | null } | null;
+  pickContainer: (value: string) => void;
+  handleDuplicate: (item: WardrobeItemDto) => Promise<void>;
+  handleToggleDefault: (item: WardrobeItemDto) => Promise<void>;
+  handleDelete: (item: WardrobeItemDto) => Promise<void>;
+  transferringItem: { (): WardrobeItemDto | null; set(v: WardrobeItemDto | null): void };
 } {
   return component as unknown as ReturnType<typeof inner>;
 }
@@ -279,9 +299,14 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
     // The dispatch log holds ONLY reads (no mutation verb of any kind).
     expect(
       seen.every((r) =>
-        ['characterList', 'imageProfileList', 'characterWardrobeList', 'wardrobeList'].includes(
-          r.type as string,
-        ),
+        [
+          'characterList',
+          'imageProfileList',
+          'projectList',
+          'groupList',
+          'characterWardrobeList',
+          'wardrobeList',
+        ].includes(r.type as string),
       ),
     ).toBe(true);
   });
@@ -294,6 +319,156 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
   it('in chat the fitting room seeds from the worn snapshot (v4 :316-317)', async () => {
     const { component } = await renderInner('chat-1');
     expect(inner(component).fittingSlots()).toEqual(WORN);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The container browser (v4 `d7263f39` — the top selector lists every place a
+// wardrobe item can live, and a shared container is edited in place)
+// ---------------------------------------------------------------------------
+
+const GENERAL_ITEM = dto({ id: 'gen', title: 'Domino Mask', characterId: null });
+const PROJECT_ITEM = dto({ id: 'proj', title: 'Estate Livery', characterId: null });
+
+/** A route whose General and project tiers carry their own distinct items. */
+function containerRoute(req: AnyRequest): Record<string, unknown> | Error {
+  switch (req.type as string) {
+    case 'wardrobeList':
+      return { wardrobeItems: [GENERAL_ITEM] };
+    case 'projectWardrobeList':
+      return { wardrobeItems: [PROJECT_ITEM] };
+    default:
+      return defaultRoute(req);
+  }
+}
+
+describe('the wardrobe container selector (v4 :1061-1135)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('lists characters, General, projects and groups in v4\'s optgroup order', async () => {
+    const { fixture } = await renderInner(null, containerRoute);
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      '#wardrobe-container-select',
+    ) as HTMLSelectElement;
+    expect([...select.querySelectorAll('optgroup')].map((g) => g.label)).toEqual([
+      'Characters',
+      'General',
+      'Projects',
+      'Groups',
+    ]);
+    expect([...select.querySelectorAll('option')].map((o) => o.value)).toEqual([
+      'character:c1',
+      'character:c2',
+      'general:',
+      'project:p1',
+      'group:g1',
+    ]);
+    // The label is "Wardrobe:", not "Character:" (v4 :1064-1066).
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Wardrobe:');
+  });
+
+  it('browsing General lists ONLY that container and drops the character column', async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    c.pickContainer('general:');
+    await settle(fixture);
+    expect(c.isCharacterScope()).toBe(false);
+    expect(c.selectedCharacterId()).toBeNull();
+    expect(c.listItems().map((i) => i.id)).toEqual(['gen']);
+    expect(c.selectedContainerLabel()).toBe('Quilltap General');
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Browsing a shared wardrobe');
+    // v4 keeps the right-hand outfit column behind `selectedCharacterId`
+    // (`:1260`), so it is gone here — there is nobody to dress.
+    expect(text).not.toContain('Outfit Builder');
+  });
+
+  it('a shared container grants the full kebab; the character view does not (v4 :442-450)', async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    // Character view: a shared archetype merged in is NOT manageable.
+    expect(c.canManageItem(SHIRT)).toBe(true);
+    expect(c.canManageItem(GENERAL_ITEM)).toBe(false);
+    // Browsing General: its own item IS manageable, a stranger is not.
+    c.pickContainer('general:');
+    await settle(fixture);
+    expect(c.canManageItem(GENERAL_ITEM)).toBe(true);
+    expect(c.canManageItem(PROJECT_ITEM)).toBe(false);
+  });
+
+  it('the project container resolves its label and pool from the catalogue', async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    c.pickContainer('project:p1');
+    await settle(fixture);
+    expect(c.selectedContainerLabel()).toBe('The Estate');
+    expect(c.listItems().map((i) => i.id)).toEqual(['proj']);
+    // The resolution pool folds in General so a borrowed component still
+    // renders (v4 `use-wardrobe-container-items.ts:14-17`).
+    expect(c.resolutionPool().map((i) => i.id)).toEqual(['proj', 'gen']);
+  });
+
+  it('a mangled option value parks on the placeholder rather than guessing (v4 :1077)', async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    c.pickContainer('bogus:x');
+    await settle(fixture);
+    expect(c.selectedContainer()).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Select a wardrobe to browse.',
+    );
+  });
+
+  it('Duplicate in a shared container POSTs into THAT container (v4 :526-534)', async () => {
+    const { fixture, component, seen } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    c.pickContainer('project:p1');
+    await settle(fixture);
+    await c.handleDuplicate(PROJECT_ITEM);
+    await settle(fixture);
+    const create = seen.filter((r) => (r.type as string).endsWith('WardrobeCreate'));
+    expect(create.at(-1)).toMatchObject({ type: 'projectWardrobeCreate', projectId: 'p1' });
+  });
+
+  it('the star and Delete in a shared container target THAT container (v4 :495-518)', async () => {
+    const { fixture, component, seen } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    c.pickContainer('project:p1');
+    await settle(fixture);
+    await c.handleToggleDefault(PROJECT_ITEM);
+    expect(seen.at(-1)).toMatchObject({ type: 'projectWardrobeUpdate', projectId: 'p1' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await c.handleDelete(PROJECT_ITEM);
+    expect(
+      seen.filter((r) => (r.type as string) === 'projectWardrobeDelete').at(-1),
+    ).toMatchObject({ projectId: 'p1', itemId: 'proj' });
+  });
+
+  it("the transfer dialog hides the item's known home (v4 :1483-1491)", async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    // Character view: only a character-OWNED item's own vault is excluded; a
+    // merged shared item's home tier isn't tracked, so nothing is.
+    c.transferringItem.set(SHIRT);
+    expect(c.transferExcludeDestination()).toEqual({ scope: 'character', id: 'c1' });
+    c.transferringItem.set(GENERAL_ITEM);
+    expect(c.transferExcludeDestination()).toBeNull();
+    // Shared container: the container itself.
+    c.pickContainer('project:p1');
+    await settle(fixture);
+    expect(c.transferExcludeDestination()).toEqual({ scope: 'project', id: 'p1' });
+  });
+
+  it('the character view is unchanged — merged four-tier read, wear buttons, right column', async () => {
+    const { fixture, component } = await renderInner(null, containerRoute);
+    const c = inner(component);
+    expect(c.isCharacterScope()).toBe(true);
+    expect(c.selectedCharacterId()).toBe('c1');
+    // Personal items plus the merged General archetype (v4's tier merge).
+    expect(c.listItems().map((i) => i.id).sort()).toEqual(['gen', 'hat', 'shirt']);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Outfit Builder');
+    expect(text).not.toContain('Browsing a shared wardrobe');
   });
 });
 
@@ -336,7 +511,7 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     expect(tabEl.querySelector('.qt-dialog-overlay')).toBeNull();
     expect(tabEl.querySelector('.qt-dialog-footer')).toBeNull();
     // The wardrobe body still renders inside the bare container.
-    expect(tabEl.querySelector('#wardrobe-char-select')).not.toBeNull();
+    expect(tabEl.querySelector('#wardrobe-container-select')).not.toBeNull();
   });
 
   it('the tab has NO Live-outfit tab and fires NO equip route (chatId null)', async () => {
@@ -361,9 +536,14 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     expect(equips(seen)).toEqual([]);
     expect(
       seen.every((r) =>
-        ['characterList', 'imageProfileList', 'characterWardrobeList', 'wardrobeList'].includes(
-          r.type as string,
-        ),
+        [
+          'characterList',
+          'imageProfileList',
+          'projectList',
+          'groupList',
+          'characterWardrobeList',
+          'wardrobeList',
+        ].includes(r.type as string),
       ),
     ).toBe(true);
   });
@@ -380,9 +560,10 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     fixture.detectChanges();
     await settle(fixture);
     const el = fixture.nativeElement as HTMLElement;
-    const select = el.querySelector('#wardrobe-char-select') as HTMLSelectElement;
-    // Characters sort by name (Aria < Zed) → the first is Aria (c1).
-    expect(select.value).toBe('c1');
+    const select = el.querySelector('#wardrobe-container-select') as HTMLSelectElement;
+    // Characters sort by name (Aria < Zed) → the first is Aria (c1), now named
+    // as an encoded container (v4 `encodeWardrobeContainer`).
+    expect(select.value).toBe('character:c1');
   });
 });
 

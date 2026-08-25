@@ -42,12 +42,14 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<vo
 
 async function render(
   inputs: Partial<{
-    characterId: string;
+    characterId: string | null;
     item: WardrobeItemDto | null;
     isShared: boolean;
     projectId: string | null;
     initialComponentItemIds: string[];
     initialMode: 'single' | 'bundle';
+    container: { scope: string; id: string | null } | null;
+    containerLabel: string;
   }> = {},
   route: (req: AnyRequest) => Record<string, unknown> | Error = () => ({ wardrobeItems: [] }),
 ): Promise<Handle> {
@@ -68,7 +70,10 @@ async function render(
     providers: [{ provide: CoreClient, useValue: core }],
   });
   const fixture = TestBed.createComponent(WardrobeItemEditor);
-  fixture.componentRef.setInput('characterId', inputs.characterId ?? 'char-1');
+  fixture.componentRef.setInput(
+    'characterId',
+    inputs.characterId === undefined ? 'char-1' : inputs.characterId,
+  );
   if (inputs.item !== undefined) fixture.componentRef.setInput('item', inputs.item);
   if (inputs.isShared !== undefined) fixture.componentRef.setInput('isShared', inputs.isShared);
   if (inputs.projectId !== undefined) fixture.componentRef.setInput('projectId', inputs.projectId);
@@ -77,6 +82,10 @@ async function render(
   }
   if (inputs.initialMode !== undefined) {
     fixture.componentRef.setInput('initialMode', inputs.initialMode);
+  }
+  if (inputs.container !== undefined) fixture.componentRef.setInput('container', inputs.container);
+  if (inputs.containerLabel !== undefined) {
+    fixture.componentRef.setInput('containerLabel', inputs.containerLabel);
   }
   fixture.detectChanges();
   await settle(fixture);
@@ -400,5 +409,125 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
       (editShared.component as unknown as { defaultOutfitLabel: () => string })
         .defaultOutfitLabel(),
     ).toBe('Worn by default by every character who can reach this item');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The editor pinned to a shared container (v4 `d7263f39` :75-76, :405-430,
+// :487-509) — the fix for the latent bug where ANY shared edit targeted
+// Quilltap General.
+// ---------------------------------------------------------------------------
+
+describe('the editor pinned to a shared container (v4 d7263f39)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const PROJECT = { scope: 'project', id: 'p1' } as const;
+  const GROUP = { scope: 'group', id: 'g1' } as const;
+  const GENERAL = { scope: 'general', id: null } as const;
+
+  it('EDITING routes to the container the item actually lives in — the bug fix (v4 :417-419)', async () => {
+    // Before this port, v5 answered `wardrobeUpdate` here: a project garment's
+    // edit silently forked a Quilltap General copy.
+    const { component } = await render({
+      characterId: null,
+      item: item({ id: 'p-item', characterId: null }),
+      container: PROJECT,
+    });
+    expect(component.buildSaveRequest()).toMatchObject({
+      type: 'projectWardrobeUpdate',
+      projectId: 'p1',
+      itemId: 'p-item',
+    });
+
+    const grouped = await render({
+      characterId: null,
+      item: item({ id: 'g-item', characterId: null }),
+      container: GROUP,
+    });
+    expect(grouped.component.buildSaveRequest()).toMatchObject({
+      type: 'groupWardrobeUpdate',
+      groupId: 'g1',
+      itemId: 'g-item',
+    });
+  });
+
+  it('CREATING POSTs into the pinned container, ignoring the create scope (v4 :419)', async () => {
+    for (const [container, expected] of [
+      [PROJECT, { type: 'projectWardrobeCreate', projectId: 'p1' }],
+      [GROUP, { type: 'groupWardrobeCreate', groupId: 'g1' }],
+      [GENERAL, { type: 'wardrobeCreate' }],
+    ] as const) {
+      const { component } = await render({ characterId: null, item: null, container });
+      expect(component.buildSaveRequest()).toMatchObject(expected);
+    }
+  });
+
+  it('a CHARACTER container leaves the classic routing alone (v4 :75-76)', async () => {
+    const { component } = await render({
+      item: item({ characterId: 'char-1' }),
+      container: { scope: 'character', id: 'char-1' },
+    });
+    expect(component.buildSaveRequest()).toMatchObject({
+      type: 'characterWardrobeUpdate',
+      characterId: 'char-1',
+    });
+  });
+
+  it('the scope selector is replaced by a destination note (v4 :487-509)', async () => {
+    const { fixture } = await render({
+      characterId: null,
+      item: null,
+      container: GROUP,
+      containerLabel: 'The Regiment',
+    });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Add to');
+    expect(text).toContain('The Regiment');
+    expect(text).toContain('Every character in this group can wear it.');
+    // The character-view radio group is gone.
+    expect((fixture.nativeElement as HTMLElement).querySelector('[role="radiogroup"]')).toBeNull();
+    expect(text).not.toContain('Shared — everywhere');
+  });
+
+  it('the note falls back to a generic name when no label is passed (v4 :495-501)', async () => {
+    const { fixture } = await render({ characterId: null, item: null, container: PROJECT });
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('This project');
+  });
+
+  it("the isDefault helper text gains v4's group arm (v4 :98-103)", async () => {
+    const group = await render({ characterId: null, item: null, container: GROUP });
+    expect((group.fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Worn by default by every character in this group',
+    );
+    const general = await render({ characterId: null, item: null, container: GENERAL });
+    expect((general.fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Worn by default by every character',
+    );
+  });
+
+  it('component candidates are the container + General, General alone when it IS the container (v4 :187-199)', async () => {
+    const project = await render({ characterId: null, item: null, container: PROJECT });
+    expect(project.seen.map((r) => r.type as string).sort()).toEqual([
+      'projectWardrobeList',
+      'wardrobeList',
+    ]);
+    // No character read fires — there is no character in this view.
+    expect(project.seen.some((r) => (r.type as string) === 'characterWardrobeList')).toBe(false);
+
+    const general = await render({ characterId: null, item: null, container: GENERAL });
+    expect(general.seen.map((r) => r.type as string)).toEqual(['wardrobeList']);
+
+    // The project TIER read (the character view's second fetch) is suppressed
+    // even when a projectId is in play — the container is the only source.
+    const pinned = await render({
+      characterId: null,
+      item: null,
+      projectId: 'other-project',
+      container: GROUP,
+    });
+    expect(pinned.seen.map((r) => r.type as string).sort()).toEqual([
+      'groupWardrobeList',
+      'wardrobeList',
+    ]);
   });
 });

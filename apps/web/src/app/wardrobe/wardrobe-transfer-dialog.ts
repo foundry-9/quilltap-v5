@@ -16,8 +16,10 @@ import { Modal } from '../ui/modal';
 import {
   dispatchWardrobe,
   type TransferDestinationsPayload,
+  type WardrobeTransferComponentMode,
   type WardrobeTransferScope,
 } from './wardrobe.api';
+import { sameWardrobeContainer, type WardrobeContainer } from './wardrobe-container';
 import { ToastService } from '../ui/toast.service';
 
 export type TransferMode = 'move' | 'copy';
@@ -97,20 +99,20 @@ export function decodeDestination(value: string): DestinationValue | null {
                 </option>
               }
 
-              @if (destinations()?.general?.available) {
+              @if (visibleDestinations()?.general?.available) {
                 <optgroup label="General">
                   <option
                     [value]="generalValue"
                     [selected]="selectedDestination() === generalValue"
                   >
-                    {{ destinations()?.general?.label }}
+                    {{ visibleDestinations()?.general?.label }}
                   </option>
                 </optgroup>
               }
 
-              @if ((destinations()?.projects ?? []).length > 0) {
+              @if ((visibleDestinations()?.projects ?? []).length > 0) {
                 <optgroup label="Projects">
-                  @for (project of destinations()?.projects ?? []; track project.id) {
+                  @for (project of visibleDestinations()?.projects ?? []; track project.id) {
                     <option
                       [value]="encode('project', project.id)"
                       [selected]="selectedDestination() === encode('project', project.id)"
@@ -121,9 +123,9 @@ export function decodeDestination(value: string): DestinationValue | null {
                 </optgroup>
               }
 
-              @if ((destinations()?.groups ?? []).length > 0) {
+              @if ((visibleDestinations()?.groups ?? []).length > 0) {
                 <optgroup label="Groups">
-                  @for (group of destinations()?.groups ?? []; track group.id) {
+                  @for (group of visibleDestinations()?.groups ?? []; track group.id) {
                     <option
                       [value]="encode('group', group.id)"
                       [selected]="selectedDestination() === encode('group', group.id)"
@@ -134,9 +136,9 @@ export function decodeDestination(value: string): DestinationValue | null {
                 </optgroup>
               }
 
-              @if ((destinations()?.users ?? []).length > 0) {
+              @if ((visibleDestinations()?.users ?? []).length > 0) {
                 <optgroup label="Users">
-                  @for (user of destinations()?.users ?? []; track user.id) {
+                  @for (user of visibleDestinations()?.users ?? []; track user.id) {
                     <option
                       [value]="encode('character', user.id)"
                       [selected]="selectedDestination() === encode('character', user.id)"
@@ -148,6 +150,32 @@ export function decodeDestination(value: string): DestinationValue | null {
               }
             </select>
           </div>
+        }
+
+        @if (isComposite()) {
+          <fieldset>
+            <legend class="qt-text-sm qt-text-secondary mb-1">{{ componentCountLabel() }}</legend>
+            <div class="space-y-1">
+              @for (opt of componentOptions(); track opt.value) {
+                <label class="flex items-center gap-2 cursor-pointer qt-text-sm">
+                  <input
+                    type="radio"
+                    name="wardrobe-transfer-components"
+                    class="qt-radio"
+                    [checked]="componentMode() === opt.value"
+                    (change)="componentMode.set(opt.value)"
+                    [disabled]="working()"
+                  />
+                  <span>{{ opt.label }}</span>
+                </label>
+              }
+            </div>
+            <p class="qt-text-xs qt-text-secondary mt-1">
+              All or nothing — the choice covers every component, nested pieces included. Only
+              components living in the same wardrobe travel; pieces from a shared tier stay put.
+              The transferred outfit is rewired to point at whichever components arrive with it.
+            </p>
+          </fieldset>
         }
 
         <p class="qt-text-xs qt-text-secondary">
@@ -183,8 +211,25 @@ export class WardrobeTransferDialog {
 
   readonly mode = input.required<TransferMode>();
   readonly item = input.required<WardrobeItemDto>();
-  readonly sourceCharacterId = input.required<string>();
+  /**
+   * Character-view source: the server probes the character's reachable tiers
+   * (vault → project → groups → General) for the item. Null when the dialog is
+   * browsing a shared container — {@link source} is passed instead
+   * (v4 `:31-36`).
+   */
+  readonly sourceCharacterId = input.required<string | null>();
   readonly sourceProjectId = input.required<string | null>();
+  /**
+   * Explicit source container (shared-container views): the server resolves
+   * the item straight from this container, no character probing (v4 `:37-41`).
+   */
+  readonly source = input<WardrobeContainer | null>(null);
+  /**
+   * The container the item is known to live in — hidden from the destination
+   * list, since moving or copying an item onto itself is refused anyway
+   * (v4 `:42-46`).
+   */
+  readonly excludeDestination = input<WardrobeContainer | null>(null);
 
   readonly closed = output<void>();
   readonly transferred = output<void>();
@@ -195,6 +240,15 @@ export class WardrobeTransferDialog {
   protected readonly destinations = signal<TransferDestinationsPayload | null>(null);
   protected readonly selectedDestination = signal('');
   protected readonly working = signal(false);
+  /**
+   * Composite outfits prompt for their components — all or nothing. A move
+   * defaults to moving them along; a copy defaults to copying them, since an
+   * outfit that arrives without its pieces is rarely what anyone meant
+   * (v4 `:88-94`). The component mounts per open, so v4's reset-on-open
+   * collapses into this initial read.
+   */
+  protected readonly isComposite = computed(() => (this.item().componentItemIds ?? []).length > 0);
+  protected readonly componentMode = signal<WardrobeTransferComponentMode>('copy');
 
   private loaded = false;
 
@@ -204,7 +258,10 @@ export class WardrobeTransferDialog {
     effect(() => {
       if (this.loaded) return;
       this.loaded = true;
-      untracked(() => void this.loadDestinations());
+      untracked(() => {
+        this.componentMode.set(this.mode() === 'move' ? 'move' : 'copy');
+        void this.loadDestinations();
+      });
     });
   }
 
@@ -214,8 +271,14 @@ export class WardrobeTransferDialog {
       const data = await dispatchWardrobe(this.core, { type: 'wardrobeTransferDestinations' });
       const destinations = data['destinations'] as TransferDestinationsPayload;
       this.destinations.set(destinations);
-      // v4 :80-82 — preselect General when available.
-      if (destinations.general.available) {
+      // v4 `:101-108` — preselect General when available AND not the item's own
+      // home; preselecting a destination the list then hides would arm the
+      // submit button against nothing.
+      const generalExcluded = sameWardrobeContainer(this.excludeDestination(), {
+        scope: 'general',
+        id: null,
+      });
+      if (destinations.general.available && !generalExcluded) {
         this.selectedDestination.set(this.generalValue);
       }
     } catch (err) {
@@ -225,7 +288,55 @@ export class WardrobeTransferDialog {
     }
   }
 
+  /**
+   * The item's known home container is dropped from the list — the server
+   * refuses same-place transfers, so offering it would only invite a scolding
+   * (v4 `:126-148`).
+   */
+  protected readonly visibleDestinations = computed<TransferDestinationsPayload | null>(() => {
+    const destinations = this.destinations();
+    if (!destinations) return null;
+    const exclude = this.excludeDestination();
+    if (!exclude) return destinations;
+    const excluded = (scope: WardrobeTransferScope, id: string | null): boolean =>
+      sameWardrobeContainer(exclude, { scope, id });
+    return {
+      general: {
+        ...destinations.general,
+        available: destinations.general.available && !excluded('general', null),
+      },
+      projects: destinations.projects.filter((p) => !excluded('project', p.id)),
+      groups: destinations.groups.filter((g) => !excluded('group', g.id)),
+      users: destinations.users.filter((u) => !excluded('character', u.id)),
+    };
+  });
+
   protected readonly selection = computed(() => decodeDestination(this.selectedDestination()));
+
+  /**
+   * v4 `:290-327` — the radio pair. Moving offers move / copy / leave; copying
+   * offers copy / don't. Copy + `components: 'move'` is unreachable from here
+   * by construction, and the server refuses it besides.
+   */
+  protected readonly componentOptions = computed<
+    Array<{ value: WardrobeTransferComponentMode; label: string }>
+  >(() =>
+    this.mode() === 'move'
+      ? [
+          { value: 'move', label: 'Move the components along with it' },
+          { value: 'copy', label: 'Copy the components (originals stay behind)' },
+          { value: 'none', label: 'Leave the components behind' },
+        ]
+      : [
+          { value: 'copy', label: 'Copy the components along with it' },
+          { value: 'none', label: 'Copy the outfit alone' },
+        ],
+  );
+
+  protected readonly componentCountLabel = computed(() => {
+    const count = (this.item().componentItemIds ?? []).length;
+    return `This outfit bundles ${count} ${count === 1 ? 'component' : 'components'}`;
+  });
 
   /** v4 `:97-98`. */
   protected readonly submitLabel = computed(() =>
@@ -237,7 +348,7 @@ export class WardrobeTransferDialog {
 
   /** v4 `:181-185` — the all-empty placeholder option. */
   protected readonly noDestinations = computed(() => {
-    const d = this.destinations();
+    const d = this.visibleDestinations();
     return (
       !!d &&
       !d.general.available &&
@@ -263,12 +374,21 @@ export class WardrobeTransferDialog {
     if (!selection) return;
     this.working.set(true);
     try {
+      const sourceCharacterId = this.sourceCharacterId();
+      const source = this.source();
       await dispatchWardrobe(this.core, {
         type: 'wardrobeTransferApply',
         action: this.mode(),
         itemId: this.item().id,
-        sourceCharacterId: this.sourceCharacterId(),
+        // v4 `:163-168` — each of these three rides only when it has a value;
+        // an absent `sourceCharacterId` is an ABSENT KEY, not a null, because
+        // the server's refine reads presence.
+        ...(sourceCharacterId ? { sourceCharacterId } : {}),
         sourceProjectId: this.sourceProjectId(),
+        ...(source
+          ? { source: { scope: source.scope, ...(source.id ? { id: source.id } : {}) } }
+          : {}),
+        ...(this.isComposite() ? { components: this.componentMode() } : {}),
         destination: {
           scope: selection.scope,
           ...(selection.id ? { id: selection.id } : {}),

@@ -16,7 +16,15 @@ import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { MarkdownField } from '../editor/markdown-field';
 import { WARDROBE_SLOT_TYPES, unionTypes } from './equipped-slots';
-import { dispatchWardrobe } from './wardrobe.api';
+import type { WardrobeContainer } from './wardrobe-container';
+import {
+  containerCreateRequest,
+  containerListRequest,
+  containerUpdateRequest,
+  dispatchWardrobe,
+  type WardrobeContainerRequest,
+  type WardrobeLaneRequest,
+} from './wardrobe.api';
 import { GROUP_ORDER, getCandidateGroup } from './item-editor/constants';
 import type { CandidateGroup, CandidateItem } from './item-editor/types';
 import { WardrobeComponentPicker } from './item-editor/wardrobe-component-picker';
@@ -90,9 +98,36 @@ function charCountClass(current: number, max: number): string {
         </div>
 
         <div class="qt-dialog-body space-y-4 flex-1">
+          <!-- Pinned destination — creating inside a shared container always
+               saves into that container; no scope to choose (v4 :487-509). -->
+          @if (!isEditing() && sharedContainer(); as shared) {
+            <div>
+              <span class="qt-label mb-1 block">Add to</span>
+              <p class="qt-text-sm text-foreground">
+                {{
+                  containerLabel() ??
+                    (shared.scope === 'general'
+                      ? 'Quilltap General'
+                      : shared.scope === 'project'
+                        ? 'This project'
+                        : 'This group')
+                }}
+              </p>
+              <p class="qt-text-xs qt-text-secondary mt-1">
+                {{
+                  shared.scope === 'general'
+                    ? 'Every character, in every chat, can wear it.'
+                    : shared.scope === 'project'
+                      ? "Every character in this project's chats can wear it."
+                      : 'Every character in this group can wear it.'
+                }}
+              </p>
+            </div>
+          }
+
           <!-- Destination scope — only when creating. Editing keeps an item in
-               its existing tier (v4 :429-468). -->
-          @if (!isEditing()) {
+               its existing tier (v4 :511-550). -->
+          @if (!isEditing() && !sharedContainer()) {
             <div>
               <span class="qt-label mb-2 block">Add to</span>
               <div
@@ -347,13 +382,25 @@ export class WardrobeItemEditor {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 
-  readonly characterId = input.required<string>();
+  /** Owning character — null when the editor is opened on a shared container
+   *  (v4 `:31-32`). */
+  readonly characterId = input.required<string | null>();
   readonly item = input<WardrobeItemDto | null>(null);
   /** Whether this item is being created/edited as a shared item. */
   readonly isSharedInput = input(false, { alias: 'isShared' });
   /** Project context (the chat's project) — when present the create-scope
-   *  selector offers a "this project" destination (v4 `:30-34`). */
+   *  selector offers a "this project" destination (v4 `:34-38`). */
   readonly projectId = input<string | null>(null);
+  /**
+   * The container the wardrobe dialog is browsing (v4 `:41-48`). When it is a
+   * shared container (General / a project / a group), the editor is PINNED to
+   * it: creates POST into it, edits PUT back to it, and the character-view
+   * "Add to" selector is replaced by a destination note. Character scope (or
+   * absent) keeps the classic character-view behaviour.
+   */
+  readonly container = input<WardrobeContainer | null>(null);
+  /** Display name for {@link container}, e.g. the project or group name. */
+  readonly containerLabel = input<string | undefined>(undefined);
   /** Pre-populated component IDs (Save-as-outfit from the Outfit Builder). */
   readonly initialComponentItemIds = input<string[] | undefined>(undefined);
   /** Force a starting mode (Save-as-outfit opens in bundle mode). */
@@ -367,6 +414,11 @@ export class WardrobeItemEditor {
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
 
   protected readonly isEditing = computed(() => this.item() !== null);
+  /** A non-character container pins the editor to that container (v4 `:75-76`). */
+  protected readonly sharedContainer = computed<WardrobeContainer | null>(() => {
+    const container = this.container();
+    return container && container.scope !== 'character' ? container : null;
+  });
   /** Whether the item lives in a shared tier rather than a character vault
    *  (v4 `:57-62`): on edit fixed by the item's own tier; on create the
    *  "Add to" selector governs routing and this only seeds the notice. */
@@ -389,6 +441,20 @@ export class WardrobeItemEditor {
       return this.isShared()
         ? 'Worn by default by every character who can reach this item'
         : "Part of this character's default outfit";
+    }
+    // Pinned to a shared container, the promise is that container's own
+    // (v4 `:98-103`) — including the group arm, which the character-view
+    // scope selector has no counterpart for.
+    const shared = this.sharedContainer();
+    if (shared) {
+      switch (shared.scope) {
+        case 'general':
+          return 'Worn by default by every character';
+        case 'project':
+          return 'Worn by default by every character in this project';
+        default:
+          return 'Worn by default by every character in this group';
+      }
     }
     switch (this.createScope()) {
       case 'global':
@@ -466,25 +532,43 @@ export class WardrobeItemEditor {
       });
     });
 
-    // Load candidate items once per (characterId, projectId) — this
-    // character's wardrobe + project + shared archetypes (v4 :139-189).
+    // Load candidate items once per (characterId, projectId, container) — in
+    // the character view this character's wardrobe + project + shared
+    // archetypes; pinned to a shared container, that container's items + the
+    // General archetypes (General alone when it IS the container). v4
+    // `:176-241`, keyed on `container?.scope` / `container?.id` as v4's dep
+    // array is.
     effect(() => {
       const characterId = this.characterId();
       const projectId = this.projectId();
-      const loadKey = `${characterId}|${projectId ?? ''}`;
+      const container = this.container();
+      const loadKey = `${characterId ?? ''}|${projectId ?? ''}|${container?.scope ?? ''}|${container?.id ?? ''}`;
       if (this.candidatesLoadedFor === loadKey) return;
       this.candidatesLoadedFor = loadKey;
       untracked(() => void this.loadCandidates(characterId, projectId));
     });
   }
 
-  private async loadCandidates(characterId: string, projectId: string | null): Promise<void> {
+  private async loadCandidates(characterId: string | null, projectId: string | null): Promise<void> {
+    const shared = this.sharedContainer();
     this.candidatesLoading.set(true);
     try {
-      // The three tier reads, in parallel (v4 :144-147); each fails soft.
+      // The three tier reads, in parallel (v4 :187-199); each fails soft.
+      // Pinned to a shared container the FIRST read is that container's own
+      // list — its items are the local (manageable) set, not shared imports —
+      // and the project tier drops out entirely. General needs no first read:
+      // the archetype read below already IS its list.
       const [personal, project, archetype] = await Promise.all([
-        this.core.dispatchData({ type: 'characterWardrobeList', characterId }).catch(() => null),
-        projectId
+        shared
+          ? shared.scope === 'general'
+            ? Promise.resolve(null)
+            : dispatchWardrobe(this.core, containerListRequest(shared)).catch(() => null)
+          : characterId
+            ? this.core
+                .dispatchData({ type: 'characterWardrobeList', characterId })
+                .catch(() => null)
+            : Promise.resolve(null),
+        !shared && projectId
           ? this.core
               .dispatchData({ type: 'projectWardrobeList', projectId })
               .catch(() => null)
@@ -689,18 +773,27 @@ export class WardrobeItemEditor {
   }
 
   /**
-   * The save request, routed BY TIER — v4 `:354-369` transcribed exactly:
+   * The save request, routed BY CONTAINER then BY TIER — v4 `:405-430`
+   * transcribed exactly:
    *
-   *     isEditing && isShared    → PUT  /api/v1/wardrobe/{item.id}
-   *     isEditing && !isShared   → PUT  /api/v1/characters/{cid}/wardrobe/{item.id}
+   *     sharedContainer && isEditing  → PUT  wardrobeItemUrl(container, id)
+   *     sharedContainer && !isEditing → POST wardrobeCollectionUrl(container)
+   *     isEditing && isShared         → PUT  /api/v1/wardrobe/{item.id}
+   *     isEditing && !isShared        → PUT  /api/v1/characters/{cid}/wardrobe/{item.id}
    *     createScope==='project'
-   *       && projectId           → POST /api/v1/projects/{projectId}/wardrobe
-   *     createScope==='global'   → POST /api/v1/wardrobe
-   *     otherwise                → POST /api/v1/characters/{cid}/wardrobe
+   *       && projectId                → POST /api/v1/projects/{projectId}/wardrobe
+   *     createScope==='global'        → POST /api/v1/wardrobe
+   *     otherwise                     → POST /api/v1/characters/{cid}/wardrobe
    *
-   * Exposed for the unit spec that pins all five branches.
+   * The shared-container arm is `d7263f39`'s bug fix, and **v5 measurably had
+   * the bug**: before this unit an edit to any shared item PUT
+   * `wardrobeUpdate` — Quilltap General — no matter which store the item
+   * actually lived in, so editing a project or group garment silently forked a
+   * General copy. Pinning the editor to the browsed container closes it.
+   *
+   * Exposed for the unit spec that pins every branch.
    */
-  buildSaveRequest(): Record<string, unknown> {
+  buildSaveRequest(): WardrobeLaneRequest | WardrobeContainerRequest {
     const isBundle = this.isBundle();
     const typesToSave = isBundle ? this.effectiveTypes() : this.selectedTypes();
     const componentsToSave = isBundle ? this.componentItemIds() : [];
@@ -719,12 +812,19 @@ export class WardrobeItemEditor {
 
     const existing = this.item();
     const projectId = this.projectId();
+    const shared = this.sharedContainer();
+    if (shared) {
+      return this.isEditing() && existing
+        ? containerUpdateRequest(shared, existing.id, item)
+        : containerCreateRequest(shared, item);
+    }
+    const characterId = this.characterId();
     if (this.isEditing() && existing) {
-      return this.isShared()
+      return this.isShared() || !characterId
         ? { type: 'wardrobeUpdate', itemId: existing.id, item }
         : {
             type: 'characterWardrobeUpdate',
-            characterId: this.characterId(),
+            characterId,
             itemId: existing.id,
             item,
           };
@@ -732,10 +832,10 @@ export class WardrobeItemEditor {
     if (this.createScope() === 'project' && projectId) {
       return { type: 'projectWardrobeCreate', projectId, item };
     }
-    if (this.createScope() === 'global') {
+    if (this.createScope() === 'global' || !characterId) {
       return { type: 'wardrobeCreate', item };
     }
-    return { type: 'characterWardrobeCreate', characterId: this.characterId(), item };
+    return { type: 'characterWardrobeCreate', characterId, item };
   }
 
   /** v4 `:317-386` — the validation gauntlet, then the tier-routed save. */
@@ -760,9 +860,7 @@ export class WardrobeItemEditor {
 
     this.saving.set(true);
     try {
-      await this.core.dispatchData(
-        this.buildSaveRequest() as Parameters<CoreClient['dispatchData']>[0],
-      );
+      await dispatchWardrobe(this.core, this.buildSaveRequest());
       // v4 `wardrobe-item-editor.tsx:383` — the success toast, before onSave.
       this.toasts.showSuccess(this.isEditing() ? 'Wardrobe item updated' : 'Wardrobe item created');
       this.saved.emit();

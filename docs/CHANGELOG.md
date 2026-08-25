@@ -76,6 +76,36 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — feat(wardrobe): the dialog browses and edits every wardrobe container (P4.D113)
+
+_Versions: SPA 0.5.553._
+
+The wardrobe dialog's top menu now lists every place a wardrobe item or outfit
+can live — each character, Quilltap General, each project, and each group —
+matching the Move/Copy destination roster. Browsing a shared container gives
+its items the full kebab plus in-place creation; in a character's merged view,
+items from other tiers stay Move/Copy-only as before. A shared container has
+no character to dress, so the equip buttons and the right-hand outfit column
+step aside.
+
+The item editor is pinned to the browsed container: creates POST into it and
+edits PUT back to it. This fixes a latent bug v5 shared with v4 — an edit to
+any shared item targeted Quilltap General regardless of which store the item
+actually lived in, so editing a project or group garment silently forked a
+General copy. The "Add to" scope selector is replaced by a destination note,
+the default-outfit helper text gains a group arm, and component candidates
+become the container's own items plus the General archetypes.
+
+The transfer dialog hides the item's known home from the destination list and,
+for a composite outfit, prompts for its components: moving offers move / copy /
+leave, copying offers copy / don't. Copy-plus-move is unreachable from the UI
+and refused by the server besides. The explicit `source` container rides the
+request when the home tier is known exactly, and `sourceCharacterId` is now an
+absent key rather than a null when there is no selected character.
+
+The wardrobe avatar preview download goes through the shared download util
+instead of a hidden anchor click, matching v4's `af1bc479`.
+
 #### 2026-08-25 — feat(wardrobe): a row's kebab follows the container it is being browsed in (P4.D113)
 
 _Versions: SPA 0.5.552._

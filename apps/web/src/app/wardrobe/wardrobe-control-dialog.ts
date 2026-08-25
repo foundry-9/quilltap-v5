@@ -42,12 +42,18 @@ import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemEditor } from './wardrobe-item-editor';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
-import type { WardrobeContainer } from './wardrobe-container';
+import {
+  GENERAL_CONTAINER,
+  decodeWardrobeContainer,
+  encodeWardrobeContainer,
+  type WardrobeContainer,
+} from './wardrobe-container';
 import {
   deleteWardrobeItem,
   dispatchWardrobe,
   duplicateWardrobeItem,
   loadCharacterWardrobeItems,
+  loadWardrobeContainerItems,
   toggleItemDefault,
 } from './wardrobe.api';
 import { ToastService } from '../ui/toast.service';
@@ -57,6 +63,13 @@ interface CharacterSummary {
   id: string;
   name: string;
   avatarUrl?: string | null;
+}
+
+/** A project or group offered as a browsable shared wardrobe container
+ *  (v4 `wardrobe-control-dialog.tsx:81-85`). */
+interface ContainerSummary {
+  id: string;
+  name: string;
 }
 
 type SlotFilter = 'all' | WardrobeSlotType;
@@ -167,11 +180,13 @@ type EditorIntent = 'create-single' | 'create-bundle';
     <!-- The shared dialog body (v4 WardrobeShell children): the flush notice,
          character selector, and the wardrobe/builder grid. -->
     <ng-template #body>
-          <!-- Character selector (v4 :887-918) -->
+          <!-- Container selector — every place a wardrobe item can live gets an
+               entry: characters, Quilltap General, projects, and groups
+               (v4 :1061-1135). -->
           <div class="flex flex-col gap-3 mb-3">
             <div class="flex items-center gap-2">
-              <label for="wardrobe-char-select" class="qt-text-sm qt-text-secondary">
-                Character:
+              <label for="wardrobe-container-select" class="qt-text-sm qt-text-secondary">
+                Wardrobe:
               </label>
               @if (selectedCharacter()?.avatarUrl; as avatarUrl) {
                 <img
@@ -182,22 +197,66 @@ type EditorIntent = 'create-single' | 'create-bundle';
               }
               <!-- Async options → [selected] per option (dogfood-#6). -->
               <select
-                id="wardrobe-char-select"
+                id="wardrobe-container-select"
                 class="qt-select flex-1 max-w-md"
-                (change)="selectedCharacterId.set($any($event.target).value || null)"
+                (change)="pickContainer($any($event.target).value)"
               >
-                @if (characters().length === 0) {
-                  <option value="" disabled [selected]="!selectedCharacterId()">
-                    No characters available
-                  </option>
+                @if (!selectedContainer()) {
+                  <option value="" disabled selected>Select a wardrobe</option>
                 }
-                @for (c of characters(); track c.id) {
-                  <option [value]="c.id" [selected]="c.id === selectedCharacterId()">
-                    {{ c.name }}
+                @if (characters().length > 0) {
+                  <optgroup label="Characters">
+                    @for (c of characters(); track c.id) {
+                      <option
+                        [value]="encodeContainer({ scope: 'character', id: c.id })"
+                        [selected]="isSelectedContainer('character', c.id)"
+                      >
+                        {{ c.name }}
+                      </option>
+                    }
+                  </optgroup>
+                }
+                <optgroup label="General">
+                  <option
+                    [value]="generalContainerValue"
+                    [selected]="isSelectedContainer('general', null)"
+                  >
+                    Quilltap General
                   </option>
+                </optgroup>
+                @if (projects().length > 0) {
+                  <optgroup label="Projects">
+                    @for (p of projects(); track p.id) {
+                      <option
+                        [value]="encodeContainer({ scope: 'project', id: p.id })"
+                        [selected]="isSelectedContainer('project', p.id)"
+                      >
+                        {{ p.name }}
+                      </option>
+                    }
+                  </optgroup>
+                }
+                @if (groups().length > 0) {
+                  <optgroup label="Groups">
+                    @for (g of groups(); track g.id) {
+                      <option
+                        [value]="encodeContainer({ scope: 'group', id: g.id })"
+                        [selected]="isSelectedContainer('group', g.id)"
+                      >
+                        {{ g.name }}
+                      </option>
+                    }
+                  </optgroup>
                 }
               </select>
             </div>
+            @if (!isCharacterScope() && selectedContainer(); as container) {
+              <p class="qt-text-xs qt-text-secondary px-1">
+                Browsing a shared wardrobe — items here can be worn by every character who can
+                reach this {{ container.scope === 'general' ? 'library' : container.scope }}.
+                Edit, duplicate, or delete them freely; pick a character above to dress someone.
+              </p>
+            }
           </div>
 
           <div class="grid md:grid-cols-2 gap-4">
@@ -249,11 +308,11 @@ type EditorIntent = 'create-single' | 'create-bundle';
               </div>
 
               <div class="flex-1 overflow-y-auto space-y-1 max-h-[55vh] pb-12">
-                @if (!selectedCharacterId()) {
+                @if (!selectedContainer()) {
                   <div class="qt-text-sm qt-text-secondary px-3 py-4">
-                    Select a character to see their wardrobe.
+                    Select a wardrobe to browse.
                   </div>
-                } @else if (itemsLoading()) {
+                } @else if (listLoading()) {
                   <div class="qt-text-sm qt-text-secondary px-3 py-4">Loading…</div>
                 } @else if (filteredItems().length === 0) {
                   <div class="qt-text-sm qt-text-secondary px-3 py-4">
@@ -262,12 +321,14 @@ type EditorIntent = 'create-single' | 'create-bundle';
                 } @else {
                   @for (item of filteredItems(); track item.id) {
                     <!-- inChat gates the row's Wear/+Layer visibility; we want
-                         them visible whenever the dialog shows equip-able state
-                         — that's any time (v4 :985-989). -->
+                         them visible whenever a character is selected (v4
+                         :1202-1210). Browsing a shared container there is
+                         nobody to dress, so they hide. -->
                     <qt-wardrobe-item-row
                       [item]="item"
-                      [allItems]="items()"
-                      [inChat]="true"
+                      [allItems]="resolutionPool()"
+                      [inChat]="isCharacterScope()"
+                      [canManage]="canManageItem"
                       [equipLabel]="useFittingActions() ? 'Try on' : 'Wear'"
                       [addAction]="useFittingActions() ? 'add' : 'layer'"
                       [isUpdatingDefault]="updatingDefaultId() === item.id"
@@ -292,7 +353,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
                 <button
                   type="button"
                   class="qt-button-primary qt-button-sm"
-                  [disabled]="!selectedCharacterId()"
+                  [disabled]="!selectedContainer()"
                   (click)="creatingNew.set('create-single')"
                 >
                   + New Item
@@ -458,12 +519,14 @@ type EditorIntent = 'create-single' | 'create-bundle';
     </ng-template>
 
     <!-- Inline editor — stacked on top of the dialog (v4 :1213-1246). -->
-    @if ((editingItem() || creatingNew()) && selectedCharacterId(); as cid) {
+    @if ((editingItem() || creatingNew()) && selectedContainer(); as container) {
       <qt-wardrobe-item-editor
-        [characterId]="cid"
+        [characterId]="selectedCharacterId()"
         [item]="editingItem()"
         [isShared]="false"
         [projectId]="dialogProjectId()"
+        [container]="container"
+        [containerLabel]="selectedContainerLabel()"
         [initialMode]="editorInitialMode()"
         [initialComponentItemIds]="
           creatingNew() === 'create-bundle' ? createBundleComponents() : undefined
@@ -477,12 +540,19 @@ type EditorIntent = 'create-single' | 'create-bundle';
     <!-- Transfer dialog — stacked on top of the dialog (v4 :1248-1269). -->
     @if (transferringItem(); as item) {
       @if (transferIntent(); as intent) {
-        @if (selectedCharacterId(); as cid) {
+        @if (selectedContainer()) {
+          <!-- Browsing a shared container, the item's home is known exactly —
+               name it as the source and drop it from the destination list. In
+               the character view the home tier of a merged shared item isn't
+               tracked, so the server probes, and only a character-owned item's
+               own vault can be safely excluded (v4 :1474-1493). -->
           <qt-wardrobe-transfer-dialog
             [mode]="intent"
             [item]="item"
-            [sourceCharacterId]="cid"
+            [sourceCharacterId]="selectedCharacterId()"
             [sourceProjectId]="dialogProjectId()"
+            [source]="isCharacterScope() ? null : selectedContainer()"
+            [excludeDestination]="transferExcludeDestination()"
             (closed)="closeTransfer()"
             (transferred)="onTransferred()"
           />
@@ -508,9 +578,29 @@ export class WardrobeControlDialogInner {
   protected readonly slotFilters = SLOT_FILTERS;
 
   protected readonly characters = signal<CharacterSummary[]>([]);
-  protected readonly selectedCharacterId = signal<string | null>(null);
+  protected readonly projects = signal<ContainerSummary[]>([]);
+  protected readonly groups = signal<ContainerSummary[]>([]);
+  /**
+   * Which wardrobe is being browsed: a character's merged view, or one shared
+   * container (Quilltap General, a project, a group) edited in place
+   * (v4 `:192-197`). `selectedCharacterId` is now DERIVED from it — a shared
+   * container has no character, which is what hides the right-hand
+   * outfit column and the character-only actions.
+   */
+  protected readonly selectedContainer = signal<WardrobeContainer | null>(null);
+  protected readonly isCharacterScope = computed(
+    () => this.selectedContainer()?.scope === 'character',
+  );
+  protected readonly selectedCharacterId = computed(() =>
+    this.isCharacterScope() ? (this.selectedContainer()?.id ?? null) : null,
+  );
+  /** The merged four-tier read — the character view's list (v4 `:198`). */
   protected readonly items = signal<WardrobeItemDto[]>([]);
   protected readonly itemsLoading = signal(false);
+  /** One shared container's own contents, and its resolution pool (v4 `:199-204`). */
+  protected readonly containerItems = signal<WardrobeItemDto[]>([]);
+  protected readonly containerResolutionItems = signal<WardrobeItemDto[]>([]);
+  protected readonly containerItemsLoading = signal(false);
   protected readonly dialogProjectId = signal<string | null>(null);
 
   protected readonly editingItem = signal<WardrobeItemDto | null>(null);
@@ -576,22 +666,26 @@ export class WardrobeControlDialogInner {
       untracked(() => {
         this.isInChat = chatId !== null;
         this.rightTab.set(this.isInChat ? 'live' : 'builder');
-        this.selectedCharacterId.set(initialCharacterId);
+        this.selectedContainer.set(
+          initialCharacterId ? { scope: 'character', id: initialCharacterId } : null,
+        );
         this.outfit = createOutfitStore(this.core, chatId, () => {
           const id = this.selectedCharacterId();
           return id ? [id] : [];
         });
         void this.loadCharacters();
+        void this.loadSharedContainers();
         void this.loadImageProfiles();
         void this.outfit.refreshOutfit();
       });
     });
 
-    // Reload the three-tier items whenever the selected character changes
-    // (v4 use-character-wardrobe-items refires on its deps).
+    // Reload whichever view is on display whenever the browsed container
+    // changes (v4's two hooks refire on their deps: the merged character read,
+    // or the single shared container's own list).
     effect(() => {
-      const characterId = this.selectedCharacterId();
-      untracked(() => void this.reloadItems(characterId));
+      const container = this.selectedContainer();
+      untracked(() => void this.reloadForContainer(container));
     });
 
     // Fitting-room seeding (v4 :299-320): once per character. In chat wait
@@ -670,12 +764,41 @@ export class WardrobeControlDialogInner {
         )
         .sort((a, b) => a.name.localeCompare(b.name));
       this.characters.set(sorted);
-      // Auto-select if nothing was specified (v4 :260).
-      if (!this.selectedCharacterId()) {
-        this.selectedCharacterId.set(sorted[0]?.id ?? null);
+      // Auto-select if nothing was specified: the first character, or the
+      // General library on a characterless instance (v4 `:313-317`).
+      if (!this.selectedContainer()) {
+        this.selectedContainer.set(
+          sorted[0] ? { scope: 'character', id: sorted[0].id } : GENERAL_CONTAINER,
+        );
       }
     } catch {
       this.characters.set([]);
+    }
+  }
+
+  /**
+   * v4 `:319-347` — the shared half of the container catalogue: every project
+   * and group gets a menu entry. Each read fails soft and independently; a
+   * missing tier simply contributes no options.
+   */
+  private async loadSharedContainers(): Promise<void> {
+    const [projects, groups] = await Promise.all([
+      this.core.dispatchData({ type: 'projectList' }).catch(() => null),
+      this.core.dispatchData({ type: 'groupList' }).catch(() => null),
+    ]);
+    if (projects) {
+      this.projects.set(
+        ((projects['projects'] as ContainerSummary[] | undefined) ?? [])
+          .map((p) => ({ id: p.id, name: p.name || 'Untitled project' }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+    }
+    if (groups) {
+      this.groups.set(
+        ((groups['groups'] as ContainerSummary[] | undefined) ?? [])
+          .map((g) => ({ id: g.id, name: g.name || 'Untitled group' }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
     }
   }
 
@@ -717,15 +840,66 @@ export class WardrobeControlDialogInner {
     }
   }
 
+  private async reloadContainerItems(container: WardrobeContainer | null): Promise<void> {
+    this.containerItemsLoading.set(true);
+    try {
+      const result = await loadWardrobeContainerItems(this.core, container);
+      this.containerItems.set(result.items);
+      this.containerResolutionItems.set(result.resolutionItems);
+    } finally {
+      this.containerItemsLoading.set(false);
+    }
+  }
+
+  /** Load whichever of the two views the given container selects. */
+  private async reloadForContainer(container: WardrobeContainer | null): Promise<void> {
+    if (container && container.scope !== 'character') {
+      this.items.set([]);
+      await this.reloadContainerItems(container);
+      return;
+    }
+    this.containerItems.set([]);
+    this.containerResolutionItems.set([]);
+    await this.reloadItems(container?.id ?? null);
+  }
+
+  /** v4 `:206-209` `reloadActiveItems` — refresh whichever view is on display. */
   private async reloadCurrentItems(): Promise<void> {
-    await this.reloadItems(this.selectedCharacterId());
+    await this.reloadForContainer(this.selectedContainer());
   }
 
   // ---------------------------------------------------------------------------
   // Filtered items (v4 :340-352)
   // ---------------------------------------------------------------------------
+  /**
+   * What the left column lists: the merged wearable pool in the character
+   * view, or exactly the browsed container's contents otherwise. The
+   * resolution pool additionally folds in General archetypes so a shared
+   * composite can still show its components (v4 `:432-440`).
+   */
+  protected readonly listItems = computed(() =>
+    this.isCharacterScope() ? this.items() : this.containerItems(),
+  );
+  protected readonly resolutionPool = computed(() =>
+    this.isCharacterScope() ? this.items() : this.containerResolutionItems(),
+  );
+  protected readonly listLoading = computed(() =>
+    this.isCharacterScope() ? this.itemsLoading() : this.containerItemsLoading(),
+  );
+
+  /**
+   * Full management (edit / star / duplicate / delete) is for items living in
+   * the viewed container; anything merged in from a shared tier elsewhere keeps
+   * only Move and Copy (v4 `:442-450`). Bound as a field so the row's
+   * `canManage` input gets one stable reference.
+   */
+  protected readonly canManageItem = (item: WardrobeItemDto): boolean => {
+    if (this.isCharacterScope()) return Boolean(item.characterId);
+    return this.containerItems().some((c) => c.id === item.id);
+  };
+
   protected readonly filteredItems = computed(() => {
-    const sorted = [...this.items()].sort((a, b) => a.title.localeCompare(b.title));
+    const sorted = [...this.listItems()].sort((a, b) => a.title.localeCompare(b.title));
     const term = this.titleFilter().trim().toLowerCase();
     const kindFilter = this.kindFilter();
     const slotFilter = this.slotFilter();
@@ -744,11 +918,22 @@ export class WardrobeControlDialogInner {
     () => this.characters().find((c) => c.id === this.selectedCharacterId()) ?? null,
   );
 
-  /** Interim container view — the real selector lands in the next unit. */
-  protected readonly selectedContainer = computed<WardrobeContainer>(() => ({
-    scope: 'character',
-    id: this.selectedCharacterId(),
-  }));
+  /** Display name of the browsed container, for the editor's pinned note
+   *  (v4 `:997-1011`). */
+  protected readonly selectedContainerLabel = computed(() => {
+    const container = this.selectedContainer();
+    if (!container) return '';
+    switch (container.scope) {
+      case 'character':
+        return this.selectedCharacter()?.name ?? '';
+      case 'general':
+        return 'Quilltap General';
+      case 'project':
+        return this.projects().find((p) => p.id === container.id)?.name ?? 'This project';
+      case 'group':
+        return this.groups().find((g) => g.id === container.id)?.name ?? 'This group';
+    }
+  });
 
   private readonly itemsById = computed(() => new Map(this.items().map((i) => [i.id, i])));
 
@@ -767,10 +952,11 @@ export class WardrobeControlDialogInner {
   // ---------------------------------------------------------------------------
 
   protected async handleToggleDefault(item: WardrobeItemDto): Promise<void> {
-    if (!this.selectedCharacterId()) return;
+    const container = this.selectedContainer();
+    if (!container) return;
     this.updatingDefaultId.set(item.id);
     try {
-      await toggleItemDefault(this.core, item, this.selectedContainer());
+      await toggleItemDefault(this.core, item, container);
       await this.reloadCurrentItems();
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
@@ -780,47 +966,61 @@ export class WardrobeControlDialogInner {
   }
 
   protected async handleDelete(item: WardrobeItemDto): Promise<void> {
-    const characterId = this.selectedCharacterId();
-    if (!characterId) return;
+    const container = this.selectedContainer();
+    if (!container) return;
     if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
     try {
-      await deleteWardrobeItem(this.core, item, this.selectedContainer());
+      await deleteWardrobeItem(this.core, item, container);
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete item');
       return;
     }
     this.toasts.showSuccess(`Deleted "${item.title}"`);
     await this.reloadCurrentItems();
-    if (this.isInChat) {
-      this.outfit.invalidateWardrobe(characterId);
-      await this.outfit.refreshOutfit();
-    }
+    await this.refreshWornOutfit();
   }
 
+  /**
+   * v4 `:521-590`. Duplicate is only offered for manageable items (kebab
+   * gating), so the copy stays where the original lives: the selected
+   * character's vault in the character view, or the browsed shared container
+   * itself. The new title is uniquified against the LIST on display.
+   */
   protected async handleDuplicate(item: WardrobeItemDto): Promise<void> {
+    const container = this.selectedContainer();
+    if (!container) return;
     const characterId = this.selectedCharacterId();
-    if (!characterId) return;
+    const target: WardrobeContainer | null = this.isCharacterScope()
+      ? characterId
+        ? { scope: 'character', id: characterId }
+        : null
+      : container;
+    if (!target) return;
     const title = nextCopyTitle(
       item.title,
-      this.items().map((i) => i.title),
+      this.listItems().map((i) => i.title),
     );
     try {
-      await duplicateWardrobeItem(
-        this.core,
-        { scope: 'character', id: characterId },
-        item,
-        title,
-      );
+      await duplicateWardrobeItem(this.core, target, item, title);
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to duplicate item');
       return;
     }
     this.toasts.showSuccess(`Duplicated "${item.title}"`);
     await this.reloadCurrentItems();
-    if (this.isInChat) {
-      this.outfit.invalidateWardrobe(characterId);
-      await this.outfit.refreshOutfit();
-    }
+    await this.refreshWornOutfit();
+  }
+
+  /**
+   * v4's `isInChat && selectedCharacterId` guard, which appears verbatim after
+   * every mutation since `d7263f39` — browsing a shared container there is
+   * nobody to re-dress, so the outfit chain stays put.
+   */
+  private async refreshWornOutfit(): Promise<void> {
+    const characterId = this.selectedCharacterId();
+    if (!this.isInChat || !characterId) return;
+    this.outfit.invalidateWardrobe(characterId);
+    await this.outfit.refreshOutfit();
   }
 
   // -------- Live-tab staging mutators (v4 :455-528) --------
@@ -1208,12 +1408,42 @@ export class WardrobeControlDialogInner {
   protected async onEditorSaved(): Promise<void> {
     this.closeEditor();
     await this.reloadCurrentItems();
-    const characterId = this.selectedCharacterId();
-    if (this.isInChat && characterId) {
-      this.outfit.invalidateWardrobe(characterId);
-      await this.outfit.refreshOutfit();
-    }
+    await this.refreshWornOutfit();
   }
+
+  /** The stable `general:` option value (v4 `encodeWardrobeContainer`). */
+  protected readonly generalContainerValue = encodeWardrobeContainer(GENERAL_CONTAINER);
+
+  protected encodeContainer(container: WardrobeContainer): string {
+    return encodeWardrobeContainer(container);
+  }
+
+  /** The `<select>`'s options load asynchronously, so the selection rides
+   *  `[selected]` per option, never `[value]` (the standing dogfood-#6 rule). */
+  protected isSelectedContainer(scope: WardrobeContainer['scope'], id: string | null): boolean {
+    const current = this.selectedContainer();
+    return current?.scope === scope && (current.id ?? null) === id;
+  }
+
+  /** v4 `:1077` — a mangled option value decodes to null, which parks the
+   *  dialog on "Select a wardrobe to browse" rather than guessing. */
+  protected pickContainer(value: string): void {
+    this.selectedContainer.set(decodeWardrobeContainer(value));
+  }
+
+  /**
+   * The container hidden from the transfer dialog's destination list
+   * (v4 `:1483-1491`): browsing a shared container, that container itself;
+   * in the character view, only a character-OWNED item's own vault — a merged
+   * shared item's home tier isn't tracked there, so nothing can be excluded.
+   */
+  protected readonly transferExcludeDestination = computed<WardrobeContainer | null>(() => {
+    const container = this.selectedContainer();
+    if (!container) return null;
+    if (!this.isCharacterScope()) return container;
+    const characterId = this.transferringItem()?.characterId;
+    return characterId ? { scope: 'character', id: characterId } : null;
+  });
 
   protected openTransfer(item: WardrobeItemDto, intent: TransferMode): void {
     this.transferringItem.set(item);
@@ -1228,11 +1458,7 @@ export class WardrobeControlDialogInner {
   protected async onTransferred(): Promise<void> {
     this.closeTransfer();
     await this.reloadCurrentItems();
-    const characterId = this.selectedCharacterId();
-    if (this.isInChat && characterId) {
-      this.outfit.invalidateWardrobe(characterId);
-      await this.outfit.refreshOutfit();
-    }
+    await this.refreshWornOutfit();
   }
 
   // ---------------------------------------------------------------------------

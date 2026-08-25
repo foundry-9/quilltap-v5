@@ -85296,3 +85296,86 @@ per-item question in a mixed list, and the nested-component inheritance.
 
 **Mutation proof:** making the fallback `true` instead of
 `Boolean(item.characterId)` reds the fallback case; restored green.
+
+### Unit 4 — the container browser, the pinned editor, the transfer prompts, the download rider (tier 1, items 2 / 3 / 5 / 6)
+
+These four land together because they are one compile unit: v4's rework makes
+`characterId` nullable through the dialog → editor → transfer chain, so no
+subset of them builds on its own.
+
+**The dialog** (`wardrobe-control-dialog.ts`). `selectedCharacterId` is now
+DERIVED from a new `selectedContainer` signal — a shared container has no
+character, which is exactly what hides the right-hand outfit column (v4 keeps
+it behind `selectedCharacterId`, `:1260`), the equip buttons (`inChat` →
+`isCharacterScope()`), and every character-only action. The selector carries
+v4's four optgroups in order (Characters / General / Projects / Groups) over
+the encoded container values; a mangled value decodes to null and parks the
+dialog on "Select a wardrobe to browse" rather than guessing. `projectList` /
+`groupList` load the shared half of the catalogue, each failing soft
+independently. `listItems` / `resolutionPool` / `listLoading` switch on the
+scope; `canManageItem` is v4's predicate (`:442-450`), bound as a field so the
+row input gets ONE stable reference. Duplicate targets the browsed container;
+the star and Delete route through it. v4's `isInChat && selectedCharacterId`
+guard — which appears verbatim after every mutation since `d7263f39` — is one
+`refreshWornOutfit()` helper.
+
+**The editor** (`wardrobe-item-editor.ts`). **The order asked whether v5 shared
+v4's latent mis-target bug: IT DID.** Before this unit `buildSaveRequest`
+answered `wardrobeUpdate` for every `isEditing && isShared` case, so an edit to
+a project or group garment PUT Quilltap General. Pinning to the container fixes
+it. Also landed: the destination note replacing the scope selector, the
+group arm of the isDefault helper text, and the candidate scoping (the
+container's own list + General; General ALONE when it is the container; the
+project tier suppressed entirely when pinned) — keyed on `container?.scope` /
+`container?.id` as v4's dep array is.
+
+**The transfer dialog** (`wardrobe-transfer-dialog.ts`). `visibleDestinations`
+drops the item's known home by scope AND id; the General preselect is skipped
+when General is that home (otherwise the submit button arms against an option
+the list then hides). The composite prompt is v4's radio pair with its exact
+labels and the count legend's singular/plural. On the wire: `source` (id
+omitted for General), `components` (only for a composite), and
+`sourceCharacterId` as an **absent key** rather than a null — the server's
+refine reads presence.
+
+**The `af1bc479` rider** (`avatar-generation-pane.ts`). The hidden-anchor click
+is retired; the button fetches the preview bytes and hands the blob to
+`triggerBlobDownload`, with v4's `Failed to fetch preview (status)` throw and
+`Failed to download avatar preview` toast. v5 has no Electron arm — the util's
+browser fallback is the honest behaviour, as its own header records.
+
+**MEASURED, NOT PORTED — a refutation of the order's tier-1 item 5.** The order
+asks for `componentsTransferred` / `unresolvedComponentIds` to be "rendered".
+**v4's client never reads either field.** Grepped at the pin: both appear only
+in `app/api/v1/wardrobe/transfers/route.ts` and its jest suite; the dialog's
+`handleSubmit` parses the body solely for `error`. Rendering them would be v5
+inventing UI v4 does not have, so it is NOT done — recorded here and in the
+final report rather than shipped. The **copy+move refusal IS surfaced**: the
+copy arm offers only copy / none, so the combination is unreachable from the
+UI, and a server 400 reaches the existing error toast — pinned with v4's exact
+refusal sentence.
+
+Specs (all new unless noted): `wardrobe-control-dialog.spec.ts` +9 (optgroup
+order and option values, General browsing dropping the character column, the
+`canManage` split both ways, the project label + resolution pool, the mangled
+value, Duplicate/star/Delete routing into the container, the exclusion
+computed's three arms, and a guard that the CHARACTER view is unchanged);
+`wardrobe-item-editor.spec.ts` +7 (the bug-fix routing for project AND group,
+creates into all three shared containers, the character container untouched,
+the destination note with and without a label, the group helper text, the
+candidate scoping); `wardrobe-transfer-dialog.spec.ts` +12 (the exclusions, the
+disarmed submit, the all-excluded placeholder, the radio pairs and defaults,
+the chosen mode on the wire, the singular legend, the refusal toast, and the
+three source-shape cases); `avatar-generation-pane.spec.ts` +3 and one existing
+case re-pinned (the anchor is gone). Three existing dialog cases were widened
+for the two new catalogue reads and the encoded select value.
+
+**Mutation proofs (4):** collapsing the editor's shared-container EDIT arm back
+to `wardrobeUpdate` reds the bug-fix case; dropping `components` from the
+transfer body reds the wire case; making `visibleDestinations` ignore the
+exclusion reds the exclusion case; reducing `canManageItem` to
+`Boolean(item.characterId)` reds the shared-container kebab case. All four
+restored green.
+
+SPA gate at this point: `npm test` 343 files / 5,128 passed; `npm run build`
+clean.

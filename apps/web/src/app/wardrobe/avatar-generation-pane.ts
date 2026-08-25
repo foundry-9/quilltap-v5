@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
+
+import { triggerBlobDownload } from '../core/download-utils';
+import { ToastService } from '../ui/toast.service';
 
 /** v4 `wardrobe-control-dialog.tsx:55-61` — the wardrobe pane's own profile
  *  summary shape (NOT the shared ImageProfilePicker's; this pane keeps v4's
@@ -86,19 +89,7 @@ export interface ImageProfileSummary {
             </button>
           </div>
           <div class="flex flex-col gap-2">
-            <a
-              #downloadLink
-              [href]="url"
-              [download]="previewFilename() ?? 'avatar-preview.webp'"
-              class="hidden"
-            >
-              download
-            </a>
-            <button
-              type="button"
-              (click)="downloadLink.click()"
-              class="qt-button-primary qt-button-sm"
-            >
+            <button type="button" (click)="handleDownload(url)" class="qt-button-primary qt-button-sm">
               Download
             </button>
           </div>
@@ -108,6 +99,8 @@ export interface ImageProfileSummary {
   `,
 })
 export class AvatarGenerationPane {
+  private readonly toasts = inject(ToastService);
+
   readonly selectedCharacterName = input.required<string>();
   readonly imageProfiles = input.required<ImageProfileSummary[]>();
   readonly selectedImageProfileId = input.required<string | null>();
@@ -119,4 +112,25 @@ export class AvatarGenerationPane {
   readonly selectImageProfile = output<string | null>();
   readonly generate = output<void>();
   readonly discardPreview = output<void>();
+
+  /**
+   * v4 `af1bc479` — the preview download went from a hidden anchor click to
+   * fetching the bytes and handing them to the shared download util, so the
+   * Electron shell (which has no right-click Save Image) gets its native save
+   * dialog. v5 has no Electron arm — the util's browser fallback is the honest
+   * behaviour here (its own header records that) — but the fetch-then-blob
+   * shape and the failure sentence are v4's.
+   */
+  protected async handleDownload(previewUrl: string): Promise<void> {
+    try {
+      const res = await fetch(previewUrl);
+      if (!res.ok) throw new Error(`Failed to fetch preview (${res.status})`);
+      triggerBlobDownload(await res.blob(), this.previewFilename() ?? 'avatar-preview.webp');
+    } catch (error) {
+      console.error('Failed to download avatar preview:', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.toasts.showError('Failed to download avatar preview');
+    }
+  }
 }
