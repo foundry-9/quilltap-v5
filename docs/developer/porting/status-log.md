@@ -85156,3 +85156,45 @@ ownership per the order's table.
   vs shared-container kebab paragraphs); `f6a10055` adds the
   outfit-components paragraph to `help/wardrobe.md`. Port nothing here.
 - Versions: core 0.0.658, harness 0.0.576.
+
+### P4.D112 lane close (2026-08-25)
+
+- Commits on `claude/p4-d112-wardrobe-containers-3af91f`: `b8cdfdd2` (the
+  slug fix), `b83d3a75` (transfers: explicit source + components),
+  `5c8cae05` (the group wardrobe CRUD).
+- **Gate:** `cargo fmt --all --check` clean; clippy `--workspace
+  --all-targets -D warnings` clean, plain AND
+  `--features quilltap-core/native-transport`; `cargo test --workspace`
+  with the lane's ten-variable env block — **454 test binaries / 2,342
+  passed / 0 failed** (453/2,338 baseline → +1 binary +4 tests, exactly the
+  lane's delta: the new group-wardrobe family + the three slug unit tests),
+  every lane family positively confirmed RUN. The five families regenerated
+  FRESH through the sweep driver (`--run-all`, artifact
+  `/tmp/p4d112-final-sweep.json`) — **5/5 ok, zero SKIP** — with the
+  changed bytes grepped in every fresh NDJSON (the collider UUID in the
+  emit + write dumps, `unresolvedComponentIds` + both `the ID of`
+  sentences + the `__destinations` row in the transfers oracle, the refine
+  sentence in the wardrobe-routes oracle, the three
+  `Group wardrobe item not found` + four `Validation error` rows in the
+  group-wardrobe oracle). v4 re-drift-checked at lane end: HEAD still
+  `f6a10055`, tree clean, checkout on `main` — no pin worktree was ever
+  needed; no sweeps ran concurrently.
+- **Tier status vs the order:** Tier 1 items 1–3 LANDED; Tier 2 item 4
+  (the `__destinations` GET unchanged-check) and item 5 (the web-edge
+  tri-state passthrough via five new `wardrobe-routes` cases) LANDED;
+  Tier 3 deferrals recorded loud (no REST edge for the group-wardrobe
+  URLs; the help deltas banked to `p4.9i2` — rows in the unit-3 record).
+- **Fixtures changed** (all owned by this lane; consumers re-run):
+  `vault-wardrobe-emit.json` (+1 case → emit family),
+  `vault-wardrobe-write-tier2.json` (+1 op → write family),
+  `wardrobe-transfers-tier2.json` (+composites/collision seed, 8 → 18
+  scenarios → transfers family + the new group-wardrobe family reuse its
+  BUILDER at different /tmp paths), `wardrobe-routes.json` (+5 cases →
+  wardrobe_routes family), NEW `group-wardrobe.json`. No committed .db
+  fixture changed; no other family consumes any of these.
+- One recorded lead (NOT touched — P4.D114 owns `api/projects.rs`): v5's
+  `project_wardrobe_create` validates the body BEFORE the project-exists
+  check, the guard-order class (missing project + invalid body → v5 400,
+  v4 404), and answers inline schema sentences (`Title is required`)
+  where v4's middleware answers the flat `Validation error`. The group
+  handlers landed with v4's order and envelope.
