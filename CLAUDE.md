@@ -1953,17 +1953,63 @@ records THERE. Update this summary only when a phase or round completes.
   scenario itself on the Friday copy (the `SERPER` row v4 wrote should now
   just work, no env var) + the title-update lines in a real `combined.log`.
   Round record: `status-log.md`.
-- **Oracle baseline: `0ba942b1` (2026-08-23, v4 main — "fix(openrouter):
-  the plugin declares the vision path it already implements (bug 97)"),
-  adopted at the 0ba942b1-round unification (2026-08-23), RETAINED at the
-  no-drift-round unification (2026-08-25).** ⚠ v4 HEAD is now TWO commits
-  past it (`af1bc479` + `c93ec7ff` — the pending catch-up): pin a detached
-  worktree at `0ba942b1` for EVERY regen until it lands. The round's pin worktrees are removed;
+- **The `f6a10055` wardrobe-containers drift round (P4.D112 ∥ P4.D113 ∥
+  P4.D114): UNIFIED on main (2026-08-25) — ALL THREE CLOSED; the oracle
+  baseline MOVES to `f6a10055` and the drift debt is CLEARED.** v4's four
+  commits past `0ba942b1` absorbed whole. Server (P4.D112): the
+  slug-collision vault fix (`build_slug_by_item_id_map` two-pass,
+  nobody-on-collision — **v5 measurably HAD the bug**, red-first), the
+  transfers explicit `source` container + `components: move|copy|none`
+  (transitive same-container closure, plan-first id remap,
+  refuse-on-collision with v4's title-in-"the ID of" quirk,
+  components-land-first, post-write read-back → `unresolvedComponentIds`;
+  corpus 8 → 18 + five web-edge tri-state cases; a NEW
+  `TransferError::Server` fixed a pre-existing collapse of v4's two
+  explicit serverError sentences), and the five `GroupWardrobe*` verbs
+  dispatch-only (the project-tier precedent) over the NEW 15-case
+  `group_wardrobe_routes_equivalence` real-DB family. SPA (P4.D113): the
+  container module 1:1 + the verb router, the dialog's container browser
+  (characters / General / projects / groups, v4's optgroups + banner copy),
+  `canManage` on the row, the pinned editor — **v5 had v4's latent
+  mis-target bug: any shared edit PUT Quilltap General; fixed** —
+  `imagePrompt` preserved on Duplicate (v5 had that bug too), the transfer
+  dialog's known-home hiding + component radio prompts, the download rider;
+  the ordered response-fields render REFUTED by measurement (v4's client
+  never reads `componentsTransferred`/`unresolvedComponentIds`). Both
+  (P4.D114): the blob route's inline `Content-Disposition` (stored
+  basename, header bytes vs v4's REAL helper), bug 98 via a 22-body
+  measurement — **bug 98's shape was already absent from v5; the real find
+  was the reverse: v5's create validated NOTHING but a non-blank name**
+  (the full `PROJECT_CREATE_SCHEMA` landed, 18 differential arms + 9 unit
+  tests, a v5-only whitespace-name refusal removed), the four download
+  surfaces + transcribed `clipboard-utils`, and the create-toast fix (v4's
+  fixed sentence, never the server's). **The §3 review: NO blocking
+  findings** (the third such round; two loud out-of-ownership edits stood,
+  the invented-banner check came back v4's-own-copy). Wires: the §2
+  contract folded into `core-contract.ts` with the casts retired + the
+  name-for-name diff clean; the component-transfer beat ARMED — it
+  self-parks on the committed fixture's missing General store (widening
+  that fixture is a named candidate). Gate: 6/6 families fresh from the
+  PINNED worktree zero SKIP with changed bytes grepped; 454 test binaries
+  / 2,353 / 0; clippy both feature sets; release build; ng 344 / 5,145;
+  full Playwright **241 passed / 0 failed / 1 skipped** (the one skip is
+  the store-probe park, by design). Versions: core 0.0.658, harness
+  0.0.576, web 0.0.87, SPA 0.5.556; host/cli/tauri unchanged. 💸 the
+  dogfood queue gains the container browser on real data, a real
+  component-carrying move, the Photos Download/Copy, and a create refusal
+  reading v4's sentence. Round record: `status-log.md`.
+- **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
+  moving or copying an outfit brings its components along"), adopted at
+  the f6a10055-round unification (2026-08-25).** ⚠ the v4 checkout's tree
+  was DIRTY at unification (in-progress chats-route edits, HEAD unmoved) —
+  until it is clean again, pin a detached worktree at `f6a10055` for
+  EVERY regen. The round's pin worktree is removed;
   build a fresh lane-unique pin per lane whenever v4 HEAD moves past the
   baseline or the checkout is dirty. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND
   `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
-  `diff`, never the commit list; note WHICH branch the checkout occupies
+  `diff`, never the commit list; its only unabsorbed content today is the
+  tests-only `009c49b2`; note WHICH branch the checkout occupies
   before any regen, and pin a detached worktree whenever v4 HEAD is past
   the baseline — ALL THREE symlink classes: root node_modules,
   `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
