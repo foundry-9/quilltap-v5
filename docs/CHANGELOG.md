@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the f6a10055-round dogfood pass — 41 rows, finding #103, #98 closed
+
+_Docs-only change._
+
+The walk doc for the `f6a10055` wardrobe-containers dogfood pass, its record in
+`status-log.md`, the finding #103 row (with its commit hash and live proof),
+finding #98 marked CLOSED, and the CLAUDE.md status bullet.
+
+41 rows: 34 PASS, one finding found and fixed on main (#103, `795ca3c5`), one
+blocked on a pre-existing gap (`qt-image-gallery` has no v5 host), three
+deferred, four left to the human. Two standing live-proof items discharged:
+web search running off the configured `SERPER` key with no environment
+variable, and the `[Title Update]` log lines in a real `combined.log`.
+
 #### 2026-08-25 — fix(vault): a dropped component reference says so (dogfood finding #103)
 
 _Versions: core 0.0.659._

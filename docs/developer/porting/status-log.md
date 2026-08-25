@@ -85943,3 +85943,145 @@ against v4's real code at the pin. Every suspicious spot resolved clean:
 
 Versions: core 0.0.658, harness 0.0.576, web 0.0.87, SPA 0.5.556;
 host/cli/tauri unchanged.
+
+---
+
+## Dogfood pass — the `f6a10055` wardrobe-containers round (2026-08-25, agent-driven)
+
+Walk doc: `dogfood-walks/2026-08-25-wardrobe-containers-pass.md`. A COPY of
+Friday at `~/qt-dogfood-friday`, refreshed 2026-08-25 ~10:55; server
+`quilltap-web --data-dir ~/qt-dogfood-friday --spa-dir …` with
+`RUST_BACKTRACE=1`; no passphrase (the engine assembled and started pumping
+jobs at boot). **41 rows: 34 PASS, 1 finding found and FIXED, 1 BLOCKED with
+a pre-existing reason, 3 deferred, 4 left to the human.** Every `CLAUDE` row
+reached a terminal status.
+
+### The finding — #103, fixed on main (`795ca3c5`)
+
+**A wardrobe component reference that goes unresolvable is dropped in total
+silence, and the next write to that container erases it from disk.** Found
+by consequence, not by reading code: moving *Black Leather Belt* out of the
+**Wardrobe Design** project took the parent outfit *Singularity Armor 1 -
+Revenant* from **7 component refs to 6**, and moving the belt back did **not**
+restore it. The emitted file explained why — before the move it still carried
+the ref (as the UUID `477e8247-…`); after the round trip it had been re-emitted
+at 17:14:34 without it. Nothing was logged at any step.
+
+The drop itself is v4-faithful and stays: v4's reader documents it
+(*"Unknown refs … are dropped from that item's component list with a
+warning"*) and the read-drop → write-persist round trip is inherent to the
+overlay in both apps. What v5 had lost is the **warning** — v4 warns at BOTH
+drop sites (`vault-overlay/parsers.ts:435` and `:453`), and its
+`resolveAndCheckComponentItems` takes `characterId, mountPointId` for no
+other reason than to name them there. v5's port had dropped the parameters
+and the warnings together, leaving a bare `// unknown ref → dropped` comment.
+
+Fixed by restoring both: `resolve_and_check_component_items` regains
+`character_id` / `mount_point_id` and emits v4's two messages verbatim
+(fields snake_cased per the port's logging convention). Three tests in the
+capturing-layer idiom pin the drop warning's five fields, the cycle warning,
+and **the silence leg** on a healthy vault; three separate mutations each red
+exactly one of them. Gate: **454 test binaries / 2,356 passed / 0 failed**
+(+3 — exactly the new tests), clippy `--workspace --all-targets -D warnings`
+clean, `cargo fmt --all --check` clean, spelling guard clean.
+
+**Proven LIVE on the rebuilt binary before the walk closed.** Deleting *Test
+Boots* out from under *Test Ensemble* in the Sebold Family store put this in
+the real `combined.log`:
+
+```
+"message":"Wardrobe item references unknown component; dropping ref",
+"context":{"module":"quilltap_core::vault_overlay",
+           "character_id":"42e542e5-…","mount_point_id":"42e542e5-…",
+           "item_id":"be074ad3-…","title":"Test Ensemble",
+           "component_ref":"b0af0cd7-…"}
+```
+
+`character_id == mount_point_id` there because a shared container reads with
+v4's own `characterId ?? mountPointId` convention. The ref was still dropped —
+the behaviour is unchanged and v4-faithful; it is merely audible now.
+
+### What the round's own deliverables proved on real data
+
+- **The container browser** (P4.D113): four optgroups in v4's order over the
+  real catalogue (Characters 32 / General 1 / Projects 8 / Groups 2); the
+  General container's **13** items matching its store name-for-name with no
+  character's vault merged in; the `canManage` split answering per-item in one
+  mixed list (a `· shared` item's kebab is exactly `[Move, Copy]`, a
+  character-owned one's is the full six); a mangled container value parking on
+  "Select a wardrobe to browse".
+- **The editor mis-target bug fix** — the round's headline — proven on both
+  shared tiers: editing a garment in **Wardrobe Design** sends
+  `projectWardrobeUpdate` and writes into store `82c1552c-…`, editing one in
+  **Sebold Family** sends `groupWardrobeUpdate` and writes into `42e542e5-…`,
+  while Quilltap General stays at 13 items with a newest `updatedAt` of
+  **2026-08-07**. Pre-fix both gestures PUT General.
+- **The five NEW `groupWardrobe*` verbs**: list/create/update/delete all live
+  (create → 2 items, delete after v4's confirm sentence → back to 1), and four
+  invalid creates answer the flat **400 `Validation error`** having written
+  nothing.
+- **Component-carrying transfers**: a real MOVE of a 3-component composite to a
+  group **kept every id** (project 28 → 24, group 1 → 5); a real COPY to
+  General **minted every id** and rewired the outfit's refs to the arrivals
+  (General 14 → 18, source untouched); `components: none` into a container
+  where the refs cannot resolve returned all four in `unresolvedComponentIds`
+  with v4's whole error line in the log; the copy+move combination is
+  unreachable in the UI (two radios, "Move the components" absent); the item's
+  known home is dropped from 52 destinations; and a **collision engineered the
+  way a real one arises** (a planted vault file carrying a live id) answered
+  v4's exact `An item with the ID of "Black Leather Belt" already exists at the
+  destination` and wrote nothing.
+- **The slug-collision vault fix**: the real instance has **zero** natural
+  colliders across 44 containers, so the shape was built — and the emitted file
+  wrote the collider by its **exact UUID** while its unique sibling stayed a
+  slug, with the (deliberately unchanged) reader resolving it back to the right
+  item.
+- **`Content-Disposition` on real transcoded blobs**: the stored `.webp`
+  basename wins over an `originalFileName` of `.png`; the RFC 5987 arm proven
+  on both a macOS screenshot carrying **U+202F** and a journal `.md` carrying
+  an em dash, ASCII-fallback underscores matching v4's real helper.
+- **The download surfaces**: Photos' four-button footer downloading under the
+  stored `fileName` and copying an `image/png` `ClipboardItem` with v4's
+  `Image copied to clipboard`; the Scriptorium file row downloading under the
+  FILE's name **on a row where the blob's `originalFileName` genuinely
+  disagrees**.
+- **The projects CREATE schema**: nine shapes that used to answer 200 (and one
+  that used to be *written*) now answer 400 with nothing written; the four
+  null-tolerant keys answer 200; the whitespace-only name v5 used to refuse now
+  succeeds; and a refused create's toast reads v4's fixed **`Failed to create
+  project`**, never the server's `Validation error`.
+
+### 💸 The queue — two discharged, one deferred with a recipe
+
+- **Finding #98 CLOSED.** Web search runs off the configured key: the server
+  had **no `SERPER_API_KEY`**, `providerList` returns the `SERPER` row as a
+  first-class `"type":"search"` entry, and `search_web` answered
+  `"Found 5 search results:"` on a real chat — off the `api_keys` row v4 itself
+  wrote. The finding's row is marked CLOSED with this proof.
+- **The `[Title Update]` lines discharged.** Forced cheaply rather than waited
+  for (the early checkpoints are interchanges 2, 3, 5, 7, 10, so a new chat
+  reaches the first in two turns, run here on the local `qwen3.5-9b` profile):
+  a real `TITLE_UPDATE` job COMPLETED and the success trio landed in the real
+  `combined.log`, with the three failure-arm lines correctly silent.
+- **Pascal's other three write paths: deferred a fourth time, but the recipe is
+  now written down** in the walk doc — the tiers are chosen by where the key
+  already lives, defaulting to the chat tier, so the walk is chat-tier /
+  project-tier / group-tier (the last needing the exactly-one rule), each
+  verifiable from the effect's own `{target, previous, next, tier}` record.
+
+### Recorded, not filed
+
+- **The kebab menu is clipped by the list's own scroll container** — with a
+  short list, four of six actions sit below the clip line until the inner list
+  is scrolled. **v4 is byte-identical here** (same container classes at
+  `wardrobe-control-dialog.tsx:1186`, same absolutely-positioned menu), so it
+  is a faithfully ported wart and a candidate upstream nicety, not a v5 defect.
+- **`qt-image-gallery` still has no v5 host** (E5). The `af1bc479` hover
+  Download button landed inside it correctly, but v4's two mount sites are
+  unported and v4's `GET /api/v1/images?tagType&tagId` has no v5 verb, so no
+  screen renders it. Pre-existing, recorded in the component's own header.
+- ⚠ **v4 has drifted further during/after the round.** At walk time v4's HEAD
+  was `6afacb187` ("fix(cli): shell completion survives flags on the line
+  (bug 101)"), with three commits past `f6a10055` touching `lib/`/`app/`/
+  `components/`. Every v4 read in this walk used `git show f6a10055:<path>`,
+  never the moved checkout. The catch-up remains the top next candidate.

@@ -1994,10 +1994,50 @@ records THERE. Update this summary only when a phase or round completes.
   / 2,353 / 0; clippy both feature sets; release build; ng 344 / 5,145;
   full Playwright **241 passed / 0 failed / 1 skipped** (the one skip is
   the store-probe park, by design). Versions: core 0.0.658, harness
-  0.0.576, web 0.0.87, SPA 0.5.556; host/cli/tauri unchanged. 💸 the
-  dogfood queue gains the container browser on real data, a real
-  component-carrying move, the Photos Download/Copy, and a create refusal
-  reading v4's sentence. Round record: `status-log.md`.
+  0.0.576, web 0.0.87, SPA 0.5.556; host/cli/tauri unchanged. Round
+  record: `status-log.md`. **💸 DISCHARGED by the 2026-08-25 dogfood pass**
+  (below) — the container browser, the component-carrying move, the Photos
+  Download/Copy, and the create refusal all ran on real data.
+- **The `f6a10055`-round dogfood pass RAN (2026-08-25, agent-driven, on the
+  Friday copy) — 41 rows, 34 PASS, ONE finding found and FIXED, and two
+  standing 💸 items discharged.** Walk doc:
+  `dogfood-walks/2026-08-25-wardrobe-containers-pass.md`; record in
+  `status-log.md`. **FIXED: finding #103** — a wardrobe component reference
+  that goes unresolvable is dropped in **total silence**, and the next write
+  to that container erases it from disk (found by consequence: moving one
+  component out of a project took the parent outfit from 7 refs to 6, and
+  moving it back did not restore it). The drop is v4-faithful and stays; the
+  **warning** was the port divergence — v4 warns at BOTH drop sites and
+  carries `characterId`/`mountPointId` for no other reason than to name them
+  there. Restored verbatim with three capturing-layer tests (drop fields,
+  cycle, and the silence leg), three mutations each reddening exactly one,
+  and a LIVE proof in the real `combined.log` (`795ca3c5`, core 0.0.659;
+  gate 454 binaries / 2,356 / 0). **Proven on real data:** the editor
+  mis-target fix on BOTH shared tiers (General untouched at 13 items, newest
+  `updatedAt` 2026-08-07), all five `groupWardrobe*` verbs, a MOVE that keeps
+  every id (project 28 → 24, group 1 → 5) and a COPY that mints every id and
+  rewires the refs (General 14 → 18), `unresolvedComponentIds` + v4's error
+  line, the engineered collision answering v4's exact sentence with nothing
+  written, the slug-collision fix writing a collider by UUID (the instance has
+  **zero** natural colliders across 44 containers), `Content-Disposition`
+  preferring the stored `.webp` basename over a `.png` `originalFileName` plus
+  both RFC 5987 arms, the Photos/Scriptorium downloads (the latter on a row
+  where the two names genuinely disagree), and the projects CREATE schema —
+  nine shapes that used to answer 200 now 400 with nothing written, the
+  whitespace-only name now accepted, and the toast reading v4's fixed
+  `Failed to create project`. **💸 discharged: finding #98 is CLOSED**
+  (`search_web` ran off the configured `api_keys` row with NO
+  `SERPER_API_KEY` in the environment, and `providerList` carries the
+  `"type":"search"` row) and the `[Title Update]` lines landed in a real
+  `combined.log` (forced cheaply — the early checkpoints are interchanges
+  2, 3, 5, 7, 10, so a new chat reaches the first in two turns). **Recorded,
+  not filed:** the kebab menu is clipped by the list's own scroll container
+  with a short list — **v4 is byte-identical there**, so it is a ported wart
+  and a candidate upstream nicety; and `qt-image-gallery` still has no v5
+  host. **Still owed:** Pascal's other three write paths (deferred a fourth
+  time, but the recipe is now written down), the avatar-preview download, the
+  Brahma deep-query budget, dedup/summaries, and the candid story-background
+  arm.
 - **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
   moving or copying an outfit brings its components along"), adopted at
   the f6a10055-round unification (2026-08-25).** ⚠ v4 HEAD moved TWO
