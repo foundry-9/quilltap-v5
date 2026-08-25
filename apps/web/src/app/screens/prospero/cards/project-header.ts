@@ -75,7 +75,7 @@ export interface ProjectEditForm {
         <a
           [routerLink]="['/salon/new']"
           [queryParams]="{ projectId: project().id }"
-          class="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground shadow hover:qt-bg-success/90"
+          class="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-on-success shadow hover:qt-bg-success/90"
         >
           <qt-icon name="plus" class="w-4 h-4" />
           New Chat

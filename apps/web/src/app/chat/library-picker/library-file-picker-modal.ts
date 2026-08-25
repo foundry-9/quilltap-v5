@@ -173,7 +173,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
           @if (galleryQuery.isPending()) {
             <p class="qt-text-secondary py-8 text-center">Loading your gallery…</p>
           } @else if (galleryQuery.isError()) {
-            <p class="qt-text-error py-8 text-center">
+            <p class="qt-text-destructive py-8 text-center">
               Couldn&rsquo;t load gallery: {{ galleryError() }}
             </p>
           } @else if (galleryEntries().length === 0) {

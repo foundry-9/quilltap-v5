@@ -27,7 +27,7 @@ import type { StartupState } from '../../startup/startup.service';
               cause corruption.
             </p>
             @if (reason()) {
-              <div class="qt-surface-secondary p-3 rounded-lg text-sm">
+              <div class="qt-bg-surface-alt p-3 rounded-lg text-sm">
                 <span class="qt-text-secondary">Held by:</span> <span class="qt-code">{{ reason() }}</span>
               </div>
             }
@@ -56,7 +56,7 @@ import type { StartupState } from '../../startup/startup.service';
         <!-- loading / unhealthy: the server is still booting; the gate retries. -->
         <div class="qt-pretheme-bg flex items-center justify-center min-h-screen p-4">
           <div class="qt-card max-w-md w-full p-6 space-y-3 text-center">
-            <p class="qt-text-tertiary text-xs uppercase tracking-wide">Quilltap is starting up</p>
+            <p class="qt-text-secondary text-xs uppercase tracking-wide">Quilltap is starting up</p>
             <h1 class="qt-heading-2 qt-text-primary">Just getting our bearings</h1>
             <div class="flex justify-center py-2"><div class="qt-spinner text-primary"></div></div>
             @if (message()) {

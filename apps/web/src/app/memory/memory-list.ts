@@ -61,7 +61,7 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
         @if (memories().length > 0) {
           <button
             type="button"
-            class="px-3 py-1.5 qt-bg-muted qt-text-body text-sm rounded-lg qt-hover-accent"
+            class="px-3 py-1.5 qt-bg-muted qt-body text-sm rounded-lg qt-hover-accent"
             title="Clean up old and low-importance memories"
             (click)="showHousekeeping.set(true)"
           >
@@ -91,7 +91,7 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
         </select>
         <button
           type="button"
-          class="px-3 py-2 text-sm border qt-border-default qt-bg-surface qt-text-body rounded-lg qt-hover-accent"
+          class="px-3 py-2 text-sm border qt-border-default qt-bg-surface qt-body rounded-lg qt-hover-accent"
           [title]="sortOrder() === 'asc' ? 'Ascending' : 'Descending'"
           (click)="toggleOrder()"
         >
@@ -192,7 +192,7 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
             <h2 class="qt-dialog-title">Delete memory</h2>
           </div>
           <div class="qt-dialog-body">
-            <p class="qt-text-body">Are you sure you want to delete this memory?</p>
+            <p class="qt-body">Are you sure you want to delete this memory?</p>
           </div>
           <div class="qt-dialog-footer">
             <button type="button" class="qt-button qt-button-secondary" (click)="pendingDeleteId.set(null)">

@@ -28,7 +28,7 @@ import { ToastService } from '../../../ui/toast.service';
           the fold.
         </p>
 
-        <div class="qt-text-body">
+        <div class="qt-body">
           <div class="flex items-center gap-4">
             <div>
               <span class="qt-text-muted">Memories missing an embedding: </span>
@@ -56,7 +56,7 @@ import { ToastService } from '../../../ui/toast.service';
         </div>
 
         @if (error(); as msg) {
-          <p class="qt-text-small qt-text-error">{{ msg }}</p>
+          <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
         }
       </div>
     }

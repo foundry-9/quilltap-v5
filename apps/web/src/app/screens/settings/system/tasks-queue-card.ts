@@ -50,7 +50,7 @@ function errText(err: unknown, fallback: string): string {
     <div>
       <!-- Simultaneous Labours (concurrency) -->
       <div class="qt-card p-4 mb-6">
-        <label for="maxConcurrentJobs" class="qt-text-body text-foreground font-medium">
+        <label for="maxConcurrentJobs" class="qt-body text-foreground font-medium">
           Simultaneous Labours — {{ displayConcurrency() }}
         </label>
         <input

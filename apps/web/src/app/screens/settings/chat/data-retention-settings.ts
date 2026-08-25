@@ -65,7 +65,7 @@ const MAX_DAYS = 3650;
         </div>
 
         @if (error()) {
-          <p class="qt-text-small qt-text-error">{{ error() }}</p>
+          <p class="qt-text-small qt-text-destructive">{{ error() }}</p>
         }
       </div>
     }

@@ -16,7 +16,7 @@ import { StateEditorModal } from '../../../shared/state/state-editor-modal';
   imports: [StateEditorModal],
   template: `
     <div class="space-y-3">
-      <p class="qt-text-sm qt-text-secondary">
+      <p class="text-sm qt-text-secondary">
         General state is the instance-wide foundation of the state cascade — every chat sees it
         unless a chat, project, or group sets the same key.
       </p>

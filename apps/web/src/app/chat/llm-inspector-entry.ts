@@ -65,7 +65,7 @@ const UI_TRUNCATE_LENGTH = 500;
   template: `
     <div>
       <pre
-        class="font-mono whitespace-pre-wrap overflow-auto max-h-60 p-2 qt-surface-alt rounded"
+        class="font-mono whitespace-pre-wrap overflow-auto max-h-60 p-2 qt-bg-surface-alt rounded"
         >{{ shown() }}</pre>
       @if (needsTruncation()) {
         <button
@@ -106,7 +106,7 @@ export class LlmInspectorExpandable {
   selector: 'qt-llm-inspector-message-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="qt-surface-alt p-2 rounded">
+    <div class="qt-bg-surface-alt p-2 rounded">
       <div class="flex justify-between mb-1">
         <span class="qt-text-secondary font-mono">{{ role() }}</span>
         <span class="qt-text-secondary">
@@ -232,7 +232,7 @@ export class LlmInspectorMessageBlock {
             @if (activeTab() === 'request') {
               <!-- Request tab (v4 :162-213) -->
               <div class="space-y-3">
-                <div class="qt-surface-alt p-2 rounded space-y-1">
+                <div class="qt-bg-surface-alt p-2 rounded space-y-1">
                   <div class="flex justify-between">
                     <span class="qt-text-secondary">Provider:</span>
                     <span class="qt-text font-mono">{{ log().provider }}</span>
@@ -247,7 +247,7 @@ export class LlmInspectorMessageBlock {
                   </div>
                 </div>
 
-                <div class="qt-surface-alt p-2 rounded space-y-1">
+                <div class="qt-bg-surface-alt p-2 rounded space-y-1">
                   <div class="flex justify-between">
                     <span class="qt-text-secondary">Messages:</span>
                     <span class="qt-text font-mono">{{ log().request.messageCount }}</span>
@@ -303,7 +303,7 @@ export class LlmInspectorMessageBlock {
               <!-- Usage tab (v4 :301-354) -->
               <div class="space-y-3">
                 @if (log().usage; as usage) {
-                  <div class="qt-surface-alt p-3 rounded grid grid-cols-3 gap-3">
+                  <div class="qt-bg-surface-alt p-3 rounded grid grid-cols-3 gap-3">
                     <div class="text-center">
                       <p class="qt-heading-4 qt-text">{{ usage.promptTokens.toLocaleString() }}</p>
                       <p class="qt-text-secondary mt-0.5">Prompt</p>
@@ -322,7 +322,7 @@ export class LlmInspectorMessageBlock {
                 }
 
                 @if (log().cacheUsage; as cache) {
-                  <div class="qt-surface-alt p-2 rounded space-y-1">
+                  <div class="qt-bg-surface-alt p-2 rounded space-y-1">
                     <!-- Each row renders only when its key is DEFINED (v4 :323, :330)
                          — an explicit 0 is real cache data and must show. -->
                     @if (cache.cacheCreationInputTokens !== undefined) {
@@ -345,7 +345,7 @@ export class LlmInspectorMessageBlock {
                 }
 
                 @if (log().durationMs != null) {
-                  <div class="qt-surface-alt p-2 rounded">
+                  <div class="qt-bg-surface-alt p-2 rounded">
                     <div class="flex justify-between">
                       <span class="qt-text-secondary">Duration:</span>
                       <!-- TWO decimals here; the collapsed row uses ONE (v4 :51 vs
@@ -356,7 +356,7 @@ export class LlmInspectorMessageBlock {
                 }
 
                 @if (noUsageData()) {
-                  <p class="qt-text-secondary p-2 qt-surface-alt rounded text-center">
+                  <p class="qt-text-secondary p-2 qt-bg-surface-alt rounded text-center">
                     No usage data available for this log
                   </p>
                 }

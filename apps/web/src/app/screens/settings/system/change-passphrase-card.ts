@@ -89,7 +89,7 @@ type Status = 'idle' | 'submitting' | 'success' | 'error';
           (input)="onConfirmInput($event)"
         />
         @if (mismatch()) {
-          <p class="qt-text-xs mt-1 qt-text-error">Passphrases do not match</p>
+          <p class="qt-text-xs mt-1 qt-text-destructive">Passphrases do not match</p>
         }
       </div>
 

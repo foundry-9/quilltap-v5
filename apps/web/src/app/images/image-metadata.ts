@@ -39,7 +39,7 @@ import type { CharacterGalleryLink, DetailCharacter } from './images.api';
                     {{ character.name }}
                   </span>
                   @if (character.defaultImageId === imageId()) {
-                    <span class="text-xs bg-success qt-text-success-foreground px-2 py-0.5 rounded">
+                    <span class="text-xs bg-success qt-text-on-success px-2 py-0.5 rounded">
                       Avatar
                     </span>
                   } @else {

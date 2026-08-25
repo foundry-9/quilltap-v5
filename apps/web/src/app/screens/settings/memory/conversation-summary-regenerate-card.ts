@@ -52,7 +52,7 @@ const STATUS_KEY = ['conversation-summaries', 'status'] as const;
       </div>
 
       @if (error(); as msg) {
-        <p class="qt-text-small qt-text-error">{{ msg }}</p>
+        <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
       }
     </div>
   `,

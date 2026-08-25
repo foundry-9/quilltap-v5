@@ -19,7 +19,8 @@ export function importanceLabel(importance: number): ImportanceBucket {
 
 /**
  * v4: `>= 0.7 → destructive`, `>= 0.4 → warning`, else `secondary`. Returns the
- * `qt-text-*` class the card paints the importance label with.
+ * `qt-text-*` class the card paints the importance label with. (qt-class-exception:
+ * the glob is prose, not a class.)
  */
 export function importanceColorClass(importance: number): string {
   if (importance >= 0.7) return 'qt-text-destructive';

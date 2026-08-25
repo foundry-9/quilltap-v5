@@ -48,7 +48,7 @@ import { ToastService } from '../ui/toast.service';
       }
       <button
         type="button"
-        class="bg-destructive hover:qt-bg-destructive/90 qt-text-destructive-foreground rounded transition-colors {{ isCompact() ? 'px-1.5 py-0.5 text-[9px]' : 'px-3 py-1 text-xs' }}"
+        class="bg-destructive hover:qt-bg-destructive/90 qt-text-on-destructive rounded transition-colors {{ isCompact() ? 'px-1.5 py-0.5 text-[9px]' : 'px-3 py-1 text-xs' }}"
         (click)="handleCleanup()"
       >
         Remove

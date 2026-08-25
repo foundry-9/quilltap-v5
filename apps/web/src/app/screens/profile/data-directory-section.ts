@@ -112,7 +112,7 @@ const PLATFORM_NAMES: Record<string, string> = {
             </div>
           </div>
         } @else {
-          <div class="qt-text-error text-sm">Unable to load data directory information</div>
+          <div class="qt-text-destructive text-sm">Unable to load data directory information</div>
         }
       </div>
     </div>

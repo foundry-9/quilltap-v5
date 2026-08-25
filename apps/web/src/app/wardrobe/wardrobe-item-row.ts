@@ -49,7 +49,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span
-              class="qt-text-sm text-foreground"
+              class="text-sm text-foreground"
               style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; max-width: 100%; min-width: 0"
               [title]="item().title"
             >

@@ -74,7 +74,7 @@ type TabType = 'request' | 'response' | 'usage';
             <div class="space-y-4">
               <div>
                 <h4 class="qt-label qt-text mb-2">Provider & Model</h4>
-                <div class="qt-surface-alt p-3 rounded space-y-1">
+                <div class="qt-bg-surface-alt p-3 rounded space-y-1">
                   <div class="flex justify-between">
                     <span class="qt-text-secondary">Provider:</span>
                     <span class="qt-text font-mono text-sm">{{ log.provider }}</span>
@@ -92,7 +92,7 @@ type TabType = 'request' | 'response' | 'usage';
 
               <div>
                 <h4 class="qt-label qt-text mb-2">Request Configuration</h4>
-                <div class="qt-surface-alt p-3 rounded space-y-1">
+                <div class="qt-bg-surface-alt p-3 rounded space-y-1">
                   <div class="flex justify-between">
                     <span class="qt-text-secondary">Messages:</span>
                     <span class="qt-text font-mono text-sm">{{ log.request.messageCount }}</span>
@@ -116,7 +116,7 @@ type TabType = 'request' | 'response' | 'usage';
                 <h4 class="qt-label qt-text mb-2">Message Summary</h4>
                 <div class="space-y-2">
                   @for (msg of log.request.messages; track $index) {
-                    <div class="qt-surface-alt p-2 rounded text-sm">
+                    <div class="qt-bg-surface-alt p-2 rounded text-sm">
                       <div class="flex justify-between mb-1">
                         <span class="qt-text-secondary font-mono">{{ msg.role }}</span>
                         <span class="qt-text-secondary text-xs">
@@ -149,7 +149,7 @@ type TabType = 'request' | 'response' | 'usage';
               <div>
                 <h4 class="qt-label qt-text mb-2">Content Preview ({{ log.response.contentLength }} chars)</h4>
                 <pre
-                  class="font-mono text-xs whitespace-pre-wrap overflow-auto max-h-64 p-3 qt-surface-alt rounded"
+                  class="font-mono text-xs whitespace-pre-wrap overflow-auto max-h-64 p-3 qt-bg-surface-alt rounded"
                   >{{ responseContent() }}{{ log.response.contentLength > 500 ? '\n\n[... truncated ...]' : '' }}</pre
                 >
               </div>
@@ -158,7 +158,7 @@ type TabType = 'request' | 'response' | 'usage';
                 <div>
                   <h4 class="qt-label qt-text mb-2">Full Content (Verbose)</h4>
                   <pre
-                    class="font-mono text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 qt-surface-alt rounded"
+                    class="font-mono text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 qt-bg-surface-alt rounded"
                     >{{ log.response.fullContent }}</pre
                   >
                 </div>
@@ -169,7 +169,7 @@ type TabType = 'request' | 'response' | 'usage';
               @if (log.usage; as usage) {
                 <div>
                   <h4 class="qt-label qt-text mb-2">Token Usage</h4>
-                  <div class="qt-surface-alt p-4 rounded grid grid-cols-3 gap-4">
+                  <div class="qt-bg-surface-alt p-4 rounded grid grid-cols-3 gap-4">
                     <div class="text-center">
                       <p class="qt-heading-2 qt-text">{{ usage.promptTokens.toLocaleString() }}</p>
                       <p class="text-xs qt-text-secondary mt-1">Prompt Tokens</p>
@@ -191,7 +191,7 @@ type TabType = 'request' | 'response' | 'usage';
               @if (log.cacheUsage; as cache) {
                 <div>
                   <h4 class="qt-label qt-text mb-2">Cache Usage</h4>
-                  <div class="qt-surface-alt p-3 rounded space-y-2">
+                  <div class="qt-bg-surface-alt p-3 rounded space-y-2">
                     @if (cache.cacheCreationInputTokens !== undefined) {
                       <div class="flex justify-between">
                         <span class="qt-text-secondary">Cache Creation:</span>
@@ -215,7 +215,7 @@ type TabType = 'request' | 'response' | 'usage';
               @if (log.durationMs != null) {
                 <div>
                   <h4 class="qt-label qt-text mb-2">Timing</h4>
-                  <div class="qt-surface-alt p-3 rounded">
+                  <div class="qt-bg-surface-alt p-3 rounded">
                     <div class="flex justify-between">
                       <span class="qt-text-secondary">Duration:</span>
                       <span class="qt-text font-mono">{{ durationText() }}</span>
@@ -225,7 +225,7 @@ type TabType = 'request' | 'response' | 'usage';
               }
 
               @if (noUsageData()) {
-                <p class="qt-text-secondary text-sm p-3 qt-surface-alt rounded text-center">
+                <p class="qt-text-secondary text-sm p-3 qt-bg-surface-alt rounded text-center">
                   No usage data available for this log
                 </p>
               }

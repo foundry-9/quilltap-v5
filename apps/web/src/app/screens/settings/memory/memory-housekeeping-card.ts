@@ -41,7 +41,7 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
           never touched. Off by default — toggle on once you've reviewed the limits below.
         </p>
 
-        <label class="flex items-center gap-3 qt-text-body">
+        <label class="flex items-center gap-3 qt-body">
           <input
             type="checkbox"
             class="qt-checkbox"
@@ -88,12 +88,12 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
                 <div class="space-y-1">
                   @for (character of characters(); track character.id) {
                     <div class="flex items-center gap-3">
-                      <div class="flex-1 qt-text-body">
+                      <div class="flex-1 qt-body">
                         <span>{{ character.name }}</span>
                         <span
                           [class]="
                             character.memoryCount > effectiveCap(character.id)
-                              ? 'qt-text-error qt-text-small'
+                              ? 'qt-text-destructive qt-text-small'
                               : 'qt-text-muted qt-text-small'
                           "
                         >
@@ -121,7 +121,7 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
           </div>
         }
 
-        <label class="flex items-center gap-3 qt-text-body">
+        <label class="flex items-center gap-3 qt-body">
           <input
             type="checkbox"
             class="qt-checkbox"
@@ -147,7 +147,7 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
         </div>
 
         @if (error(); as msg) {
-          <p class="qt-text-small qt-text-error">{{ msg }}</p>
+          <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
         }
       </div>
     }

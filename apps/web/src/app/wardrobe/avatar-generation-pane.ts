@@ -29,7 +29,7 @@ export interface ImageProfileSummary {
   template: `
     <div class="qt-card py-3 px-3 qt-bg-muted/30">
       <div class="flex flex-wrap items-center gap-2">
-        <label for="wardrobe-image-profile" class="qt-text-sm qt-text-secondary">
+        <label for="wardrobe-image-profile" class="text-sm qt-text-secondary">
           Image model
         </label>
         <!-- The options load asynchronously, so the selection rides [selected]

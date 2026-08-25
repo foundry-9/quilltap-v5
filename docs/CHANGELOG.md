@@ -192,6 +192,44 @@ collapse to a stray space. The host carries `block`, so `.qt-select`'s
 `select.value` after the children mount, so a selection naming no rendered
 option leaves the control blank instead of snapping to row 0 - reachable here
 whenever a tier's list refetches without the row the current selection names.
+#### 2026-08-25 — fix(themes): hover and opacity qt-* classes actually style something (bugs 100, 102)
+
+_Versions: SPA 0.5.557._
+
+The v5 port of v4 `309aaa97`. v5 ported the `qt-*` utility sheet at P4.D34 and
+inherited both halves of the defect with it: measured here at **69 class names
+over 364 call sites**, all resolving to no CSS rule at all.
+
+Two mechanisms. Tailwind v4 generates variants only for utilities it owns, and a
+class declared inside `@layer utilities` is not one of those — so `hover:qt-bg-muted`
+was never "qt-bg-muted, on hover", it was a class name nobody defined. Opacity
+modifiers fail the same way: `qt-bg-muted/50` is not qt-bg-muted at half strength.
+`_utilities.css` gains v4's +490 lines — the missing opacity steps for the muted,
+card, primary, destructive, success, warning, info and secondary tokens, the border
+and text steps to match, `qt-bg-secondary` / `qt-bg-input`, the `qt-text-on-*`
+family (bug 100's `qt-text-*-foreground` names were the Tailwind spelling with a
+`qt-` bolted on), and a STATE VARIANTS section with every state form written out
+and escaped by hand. The sheet is now byte-identical to v4's, modulo the two
+comment blocks v5 already carried.
+
+Thirty-seven component files had invented a name that was never vocabulary
+(`qt-text-error`, `qt-text-sm`, `qt-surface-alt` and friends); those moved onto
+the class that already existed rather than getting a definition, following v4's
+rewrite table exactly.
+
+The durable half is `apps/web/scripts/check-qt-classes.mjs`, run by `npm run lint`
+and ahead of the unit suite by `npm test`. It holds every `qt-bg-*` / `qt-text-*` /
+`qt-border-*` / `qt-shadow-*` reference, and every variant-prefixed `qt-*`
+reference whatever its family, against the selectors the stylesheets actually
+define, and fails on one that resolves to nothing. A class that does not exist is
+indistinguishable from one that inherits at every automated layer short of a real
+browser, which is how this survived three separate findings.
+
+Two v5-only adaptations: class strings live in Angular inline templates inside
+`.ts` files and in `.html` files, and an Angular component selector is a
+`qt-`-prefixed token too — `qt-text-replacement-settings` collides head-on with
+the `qt-text-` family — so the selectors are read out of the source itself rather
+than kept in an allowlist that would rot.
 
 #### 2026-08-25 — docs(porting): the four work orders for the `8f910137` drift catch-up round (P4.D115–P4.D118)
 

@@ -31,7 +31,7 @@ const MAX_PHRASES = 500;
     @if (loading()) {
       <p class="qt-text-small qt-text-muted">Consulting the list of forbidden phrases&hellip;</p>
     } @else if (loadError()) {
-      <p class="qt-text-small qt-text-error">{{ loadError() }}</p>
+      <p class="qt-text-small qt-text-destructive">{{ loadError() }}</p>
     } @else {
       <div class="space-y-4">
         <p class="qt-text-small qt-text-muted">
@@ -72,7 +72,7 @@ const MAX_PHRASES = 500;
             serve as separators. Press Enter or use Add.
           </p>
           @if (addError()) {
-            <div class="qt-text-small qt-text-error">{{ addError() }}</div>
+            <div class="qt-text-small qt-text-destructive">{{ addError() }}</div>
           }
         </form>
 

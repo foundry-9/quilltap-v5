@@ -86702,3 +86702,94 @@ Run from the lane worktree with `CARGO_INCREMENTAL=0`:
 - `core-contract.ts`'s `ChatSetScenarioResult` pins only the BODY. The response
   variant's `type` string is read through `dispatchData`, so P4.D115 may name it
   freely.
+## P4.D117 — the client-fixes drift pair (bugs 100/102 + bug 99)
+
+_Lane branch `claude/qt-classes-gallery-download-4e8e8a`. v4 baseline
+`f6a10055`; the lane's two source commits are `309aaa97` (bugs 100/102) and
+`8018c487` (bug 99). Drift-ledger §2 probe run at lane start: **PASS** —
+checkout on `main`, tree clean, both logs empty against §1's recorded
+`8f9101370` / `3a76b17df`. Every v4 read in this lane is
+`git show <sha>:<path>`, never the working tree._
+
+### Unit 1 — the qt-* utility sheet made real + the guard (bugs 100/102)
+
+**The census, measured before anything moved.** The ported guard, run against
+v5's PRE-expansion sheet, reported **69 distinct `qt-*` class names over 364
+call sites resolving to no CSS rule** (v4's own census: 82 names / 493 sites /
+170 files). The order's planning grep had found "20+ template files"; the real
+number is larger because the guard sees every family, not just
+`hover:qt-*`/`qt-text-on-*`. So the premise held and then some: v5 inherited
+both halves of the defect with the P4.D34 sheet port.
+
+**The sheet.** v5's `_utilities.css` was byte-identical to v4's PRE-commit
+sheet apart from two comment blocks (the `qt-text-danger` convergence note and
+the progress-bar third-consumer note, both from earlier rounds), so v4's
+490-line diff applied to it with **zero fuzz**. Verified after the fact by
+diffing the result against `git show 309aaa97:app/styles/qt-components/_utilities.css`:
+**the only remaining differences are those same two comment blocks.** Every
+rule — the opacity steps, `qt-bg-secondary`/`qt-bg-input`, `qt-border-accent`,
+`qt-border-primary-foreground`, the `qt-text-on-*` family, and the whole
+STATE VARIANTS section — is v4's bytes.
+
+**The call-site sweep: 37 files.** v4's rewrite table applied verbatim
+(`qt-text-error` → `qt-text-destructive`, `qt-text-tertiary` →
+`qt-text-secondary`, `qt-text-body` → `qt-body`, `qt-text-link` → `qt-action`,
+`qt-text-sm`/`qt-text-base` → `text-sm`/`text-base`, `qt-surface-alt` and
+`qt-surface-secondary` → `qt-bg-surface-alt`, and bug 100's
+`qt-text-{success,destructive}-foreground` → `qt-text-on-{success,destructive}`
+including the two hover forms). v4's care case (`qt-text-default` → `qt-text`,
+where the naive substitution would have made the base class beat its ternary
+modifier) **has no v5 analog** — v5 never used `qt-text-default`, and the one
+v5 ternary in the set (`memory-housekeeping-card.ts:96`) carries complete
+classes in both branches. The `qt-body`/`qt-action` targets were checked for
+the same layer hazard: both sit in `@layer components`, and no swept site pairs
+them with a competing colour class (`text-xs qt-action underline` matches v4's
+own post-fix line exactly — the Tailwind utility still wins the size).
+
+**Not swept, RECORDED for the unifier (P4.D116's dirs, per the ownership
+table):** three files carry five `qt-text-tertiary` sites the sweep was
+forbidden to touch —
+`src/app/screens/new-chat/green-room-dialog.ts` (`:62`, `:77`, `:82`),
+`src/app/screens/new-chat/outfit-slots-preview.ts` (`:38`), and
+`src/app/screens/new-chat/outfit-slots-preview.spec.ts` (`:39`). The rewrite is
+`qt-text-tertiary` → `qt-text-secondary`.
+
+**The guard: `apps/web/scripts/check-qt-classes.mjs`**, v4's script adapted.
+Wiring: a new `npm run lint` (v4's entry point) **and** prepended to `npm test`,
+so the standing SPA gate — the one the workspace gate and the unifier actually
+run — covers it. Three v5 adaptations, each named in the file's header:
+
+1. **Sources are `.ts` + `.html`** (Angular inline templates), not `.tsx`/`.jsx`;
+   the stylesheets it validates against are `src/styles.css` +
+   `src/styles/qt-components/*.css`. Bundled themes under `public/themes/` are
+   excluded from the *defined* set, mirroring v4's `app/`-only filter — a theme
+   targeting a hook is not the app defining one.
+2. **Angular component selectors are subtracted.** A v5 component tag is a
+   `qt-`-prefixed token too, and one of them — `qt-text-replacement-settings` —
+   collides head-on with the `qt-text-` family. v4 cannot have this problem (its
+   components are PascalCase JSX). Rather than an allowlist that rots, the
+   selectors are read out of the source itself, so a future `<qt-bg-…>`
+   component is subtracted the day it is written.
+3. **`PENDING_CROSS_LANE_SITES`** — the five P4.D116-owned sites above, held so
+   the guard is green on this lane's end state. **It is a tripwire, not an
+   allowlist:** an entry whose site now resolves (or no longer exists) is an
+   ERROR, so the block cannot outlive the fix. **The unifier applies the rewrite
+   in those three files and deletes the block.**
+
+One line took the escape hatch: `memory-format.ts:22` writes the glob
+`` `qt-text-*` `` in prose, which tokenizes as the never-real name `qt-text-`.
+Marked `qt-class-exception` — the convention the sheet header now documents
+(Tier 2).
+
+**Guard mutation proofs (four legs, each red exactly once):**
+
+| mutation | guard says | exit |
+|---|---|---|
+| plant `hover:qt-bg-nonexistent` in `image-gallery.ts:91` | `hover:qt-bg-nonexistent … image-gallery.ts:91` | 1 |
+| revert one swept site to `qt-text-success-foreground` | that name, 1 site | 1 |
+| rewrite `qt-text-tertiary` in P4.D116's `outfit-slots-preview.ts` | `PENDING_CROSS_LANE_SITES is stale` naming the file | 1 |
+| rename `.qt-text-on-success` in the sheet | that name, 5 sites | 1 |
+| clean tree | `934 qt-* classes defined, every guarded reference resolves (3 cross-lane site(s) held)` | 0 |
+
+Gate for the unit: guard green; `npm test` **344 files / 5,145 tests, 0
+failed**.

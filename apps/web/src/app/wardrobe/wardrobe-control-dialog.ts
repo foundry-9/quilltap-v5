@@ -185,7 +185,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
                (v4 :1061-1135). -->
           <div class="flex flex-col gap-3 mb-3">
             <div class="flex items-center gap-2">
-              <label for="wardrobe-container-select" class="qt-text-sm qt-text-secondary">
+              <label for="wardrobe-container-select" class="text-sm qt-text-secondary">
                 Wardrobe:
               </label>
               @if (selectedCharacter()?.avatarUrl; as avatarUrl) {
@@ -309,13 +309,13 @@ type EditorIntent = 'create-single' | 'create-bundle';
 
               <div class="flex-1 overflow-y-auto space-y-1 max-h-[55vh] pb-12">
                 @if (!selectedContainer()) {
-                  <div class="qt-text-sm qt-text-secondary px-3 py-4">
+                  <div class="text-sm qt-text-secondary px-3 py-4">
                     Select a wardrobe to browse.
                   </div>
                 } @else if (listLoading()) {
-                  <div class="qt-text-sm qt-text-secondary px-3 py-4">Loading…</div>
+                  <div class="text-sm qt-text-secondary px-3 py-4">Loading…</div>
                 } @else if (filteredItems().length === 0) {
-                  <div class="qt-text-sm qt-text-secondary px-3 py-4">
+                  <div class="text-sm qt-text-secondary px-3 py-4">
                     No items match this filter.
                   </div>
                 } @else {

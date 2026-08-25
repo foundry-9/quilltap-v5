@@ -118,7 +118,7 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
         </label>
 
         @if (error(); as msg) {
-          <p class="qt-text-small qt-text-error">{{ msg }}</p>
+          <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
         }
       </div>
     }

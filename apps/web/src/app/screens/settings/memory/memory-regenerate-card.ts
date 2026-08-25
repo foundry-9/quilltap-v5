@@ -57,7 +57,7 @@ const POLL_INTERVAL_MS = 5000;
         </div>
       } @else {
         <div class="flex items-center gap-3">
-          <span class="qt-text-body">
+          <span class="qt-body">
             This will delete and rebuild every chat-linked memory. Continue?
           </span>
           <button
@@ -80,7 +80,7 @@ const POLL_INTERVAL_MS = 5000;
       }
 
       @if (error(); as msg) {
-        <p class="qt-text-small qt-text-error">{{ msg }}</p>
+        <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
       }
     </div>
   `,

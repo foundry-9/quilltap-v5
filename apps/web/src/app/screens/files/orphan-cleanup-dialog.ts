@@ -26,7 +26,7 @@ export interface OrphanCleanupStats {
   template: `
     <qt-modal title="Untracked Files Detected" maxWidth="lg" (close)="cancel.emit()">
       <div class="space-y-4">
-        <p class="qt-text-base font-semibold">
+        <p class="text-base font-semibold">
           We have discovered <strong>{{ stats().orphanedCount }} files</strong> loitering about the
           premises without proper documentation — rather like uninvited guests at a garden party who
           nonetheless appear to have brought their own sandwiches.
@@ -98,7 +98,7 @@ export interface OrphanCleanupStats {
         </button>
         <button
           type="button"
-          class="qt-button bg-destructive qt-text-destructive-foreground disabled:opacity-50"
+          class="qt-button bg-destructive qt-text-on-destructive disabled:opacity-50"
           [disabled]="isProcessing()"
           (click)="delete.emit()"
         >

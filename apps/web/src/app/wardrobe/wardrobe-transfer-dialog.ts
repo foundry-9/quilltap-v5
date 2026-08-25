@@ -71,17 +71,17 @@ export function decodeDestination(value: string): DestinationValue | null {
       (close)="requestClose()"
     >
       <div class="space-y-3">
-        <p class="qt-text-sm">
+        <p class="text-sm">
           {{ mode() === 'move' ? 'Move' : 'Copy' }}
           <span class="font-medium">"{{ item().title }}"</span> to:
         </p>
 
 
         @if (loadingDestinations()) {
-          <p class="qt-text-sm qt-text-secondary">Loading destinations…</p>
+          <p class="text-sm qt-text-secondary">Loading destinations…</p>
         } @else {
           <div>
-            <label for="wardrobe-transfer-destination" class="qt-text-sm qt-text-secondary">
+            <label for="wardrobe-transfer-destination" class="text-sm qt-text-secondary">
               Destination
             </label>
             <!-- The options load asynchronously, so the selection rides
@@ -154,10 +154,10 @@ export function decodeDestination(value: string): DestinationValue | null {
 
         @if (isComposite()) {
           <fieldset>
-            <legend class="qt-text-sm qt-text-secondary mb-1">{{ componentCountLabel() }}</legend>
+            <legend class="text-sm qt-text-secondary mb-1">{{ componentCountLabel() }}</legend>
             <div class="space-y-1">
               @for (opt of componentOptions(); track opt.value) {
-                <label class="flex items-center gap-2 cursor-pointer qt-text-sm">
+                <label class="flex items-center gap-2 cursor-pointer text-sm">
                   <input
                     type="radio"
                     name="wardrobe-transfer-components"

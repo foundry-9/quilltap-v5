@@ -103,7 +103,7 @@ function charCountClass(current: number, max: number): string {
           @if (!isEditing() && sharedContainer(); as shared) {
             <div>
               <span class="qt-label mb-1 block">Add to</span>
-              <p class="qt-text-sm text-foreground">
+              <p class="text-sm text-foreground">
                 {{
                   containerLabel() ??
                     (shared.scope === 'general'

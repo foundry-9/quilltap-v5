@@ -17,7 +17,7 @@ import { Modal } from '../../ui/modal';
   template: `
     <qt-modal title="This file is in use" maxWidth="lg" (close)="cancel.emit()">
       <div class="space-y-4">
-        <p class="qt-text-base font-semibold">
+        <p class="text-base font-semibold">
           "{{ filename() }}" is associated with characters and messages
         </p>
 
@@ -65,7 +65,7 @@ import { Modal } from '../../ui/modal';
         </button>
         <button
           type="button"
-          class="qt-button bg-destructive qt-text-destructive-foreground disabled:opacity-50"
+          class="qt-button bg-destructive qt-text-on-destructive disabled:opacity-50"
           [disabled]="isDeleting()"
           (click)="confirm.emit()"
         >

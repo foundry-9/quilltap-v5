@@ -30,7 +30,7 @@ const CONFLICT_DESCRIPTION: Record<FileConflictInfo['conflictType'], string> = {
             <span class="text-lg">📄</span>
             <span class="font-medium">Existing File</span>
           </div>
-          <div class="qt-text-sm space-y-1 ml-7">
+          <div class="text-sm space-y-1 ml-7">
             <div class="font-medium">{{ conflict().existingFile.filename }}</div>
             <div class="qt-text-xs qt-text-secondary">{{ bytes(conflict().existingFile.size) }}</div>
           </div>
@@ -41,7 +41,7 @@ const CONFLICT_DESCRIPTION: Record<FileConflictInfo['conflictType'], string> = {
             <span class="text-lg">📎</span>
             <span class="font-medium">New File</span>
           </div>
-          <div class="qt-text-sm space-y-1 ml-7">
+          <div class="text-sm space-y-1 ml-7">
             <div class="font-medium">{{ conflict().newFile.filename }}</div>
             <div class="qt-text-xs qt-text-secondary">{{ bytes(conflict().newFile.size) }}</div>
           </div>

@@ -42,7 +42,7 @@ import { CoreClient } from '../../../core/core-client';
         </label>
 
         @if (error()) {
-          <p class="qt-text-small qt-text-error mt-2">{{ error() }}</p>
+          <p class="qt-text-small qt-text-destructive mt-2">{{ error() }}</p>
         }
       </div>
     }

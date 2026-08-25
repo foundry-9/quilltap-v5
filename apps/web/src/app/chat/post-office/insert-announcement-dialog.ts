@@ -303,7 +303,7 @@ const AS_IS = 'as-is';
               it in their context.
               <button
                 type="button"
-                class="qt-text-link underline"
+                class="qt-action underline"
                 [disabled]="isPosting() || stage() === 'generating'"
                 (click)="makePublic()"
               >
@@ -331,7 +331,7 @@ const AS_IS = 'as-is';
           @if (willRewrite() && stage() === 'review') {
             <button
               type="button"
-              class="text-xs qt-text-link underline"
+              class="text-xs qt-action underline"
               [disabled]="isPosting()"
               (click)="editSeed()"
             >

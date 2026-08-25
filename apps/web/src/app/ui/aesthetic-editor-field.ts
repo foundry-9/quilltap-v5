@@ -85,7 +85,7 @@ export type AestheticSaveFn = (content: string) => Promise<void>;
             <span class="qt-text-small qt-text-success">Saved</span>
           }
           @if (error(); as msg) {
-            <span class="qt-text-small qt-text-error">{{ msg }}</span>
+            <span class="qt-text-small qt-text-destructive">{{ msg }}</span>
           }
         </div>
       }

@@ -88,7 +88,7 @@ import type { ImageData } from './images.api';
                 </button>
                 <button
                   type="button"
-                  class="absolute bottom-2 right-2 bg-destructive qt-text-destructive-foreground p-2 rounded-full hover:qt-bg-destructive/90 transition-colors"
+                  class="absolute bottom-2 right-2 bg-destructive qt-text-on-destructive p-2 rounded-full hover:qt-bg-destructive/90 transition-colors"
                   title="Delete image"
                   aria-label="Delete image"
                   (click)="$event.stopPropagation(); handleDeleteImage(image.id)"
