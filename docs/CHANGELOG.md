@@ -92,6 +92,16 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+#### 2026-08-25 — docs(porting): the P4.D116 lane gate and unifier notes
+
+_Versions: SPA 0.5.561._
+
+Records the lane's verification gate (fmt, both clippy feature sets, the
+workspace tests, the SPA suite and build, the full Playwright run), what did not
+land and why, and the two notes the unifier needs: the five files that sit
+outside the Ownership table's three directories but are required by the order's
+own deliverables, and this lane's claim on e2e port 4330.
+
 #### 2026-08-25 — test(salon): the scenario-change kind at both render sites, and the gated picker walk (P4.D116 units 5-6)
 
 _Versions: SPA 0.5.560._

@@ -86647,3 +86647,58 @@ and the unifier should confirm no collision (4319–4329 and 4530 were taken at
 lane start).
 
 Versions: SPA 0.5.560.
+
+### P4.D116 — lane gate (2026-08-25)
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0`:
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean.
+- `cargo clippy --workspace --all-targets --features
+  quilltap-core/native-transport -- -D warnings` — clean.
+- `cargo test --workspace` — **exit 0**, 454 `test result` lines,
+  **2,361 passed / 0 failed**, zero `test result: FAILED`. (No Rust source is
+  touched by this lane; the run is the neutrality check. ⚠ The background
+  task reported "exit code 1" because the compound command ENDED in
+  `ggrep -c "^test result: FAILED"`, which exits 1 on a count of zero — the
+  cargo exit code itself, captured in the same output, is 0. The
+  `gate-log-failed-grep-lies` trap, wearing its other face.)
+- `npm test` — **347 files / 5,191 tests, 0 failed** (from 344/5,145 at the
+  round's start: +3 spec files, +46 tests).
+- `npm run build` — clean.
+- Full Playwright — **241 passed / 0 failed / 2 skipped (6.0 m)**. Both skips
+  are by design: this lane's own `salon-scenario-flow` beat (gated on
+  `P4D115_SERVER_LANDED`) and P4.D112's `wardrobe-flow` component-transfer beat
+  (the pre-existing store-probe park). Port 4319 was confirmed free before the
+  run and the sibling SPA lane was not running e2e.
+
+### P4.D116 — what did NOT land, and why
+
+- **Tier 3 item 9 — nothing to record.** The order asked whether the transcript
+  export surfaces the new kind anywhere client-side. It does not: v5's export is
+  a server-rendered download (`organize-section.ts` `onExportMarkdown` just
+  triggers `?action=export-markdown`), so v4's `markdown-transcript.ts` kind-set
+  addition has no client counterpart. It belongs entirely to P4.D115 item 5.
+- **The New-Chat group tier stays unrendered** (v4's own dead UI — see unit 2).
+- **`P4D115_SERVER_LANDED` is `false`.** The unifier flips it once
+  `chatSetScenario` is on the branch. Until then a save would be a silent
+  200-with-nothing-written (memory: `dispatch-verb-ignores-unknown-fields`).
+
+### P4.D116 — notes for the unifier
+
+- **Two files sit outside the Ownership table's three dirs, both required by the
+  order's own deliverables.** `screens/salon/salon-conversation.ts` (+3 lines —
+  deliverable 4's SalonView threading) and four spec files under
+  `chat/` — `announcement-group.spec.ts`, `chat-view-model.spec.ts`,
+  `message-row.spec.ts`, `system-message-labels.spec.ts` (deliverable 6's
+  "BOTH announcement render sites"). All five edits are pure additions. P4.D117
+  owns the qt-class sweep over `apps/web/src/app/**` outside this lane's dirs,
+  so a textual conflict in those four spec files is possible; this lane writes
+  no `qt-*` utility class names anywhere (its only qt-class *assertions* are on
+  existing component classes — `qt-chat-announcement-dot-medium`,
+  `qt-chat-system-bar-kind`).
+- **Port 4330** is this lane's e2e claim (4319–4329 and 4530 were taken at lane
+  start). Confirm no collision with P4.D117.
+- `core-contract.ts`'s `ChatSetScenarioResult` pins only the BODY. The response
+  variant's `type` string is read through `dispatchData`, so P4.D115 may name it
+  freely.
