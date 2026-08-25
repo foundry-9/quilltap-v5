@@ -2419,8 +2419,11 @@ pub enum Request {
     /// profile, else the user's default).
     #[serde(rename_all = "camelCase")]
     BrahmaConsoleCreate {
+        /// RAW (P4.60): v4's `createBrahmaChatSchema` is
+        /// `z.string().uuid().optional()`, so `null`, `""` and a non-uuid are
+        /// each a 400 `Validation error` — not "fall back to the default".
         #[serde(default)]
-        console_connection_profile_id: Option<String>,
+        console_connection_profile_id: Option<serde_json::Value>,
     },
     /// v4 `GET /api/v1/brahma-console/{id}` — chat detail.
     #[serde(rename_all = "camelCase")]
@@ -2431,13 +2434,15 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     BrahmaConsoleRename {
         chat_id: String,
-        title: String,
+        /// RAW (P4.60): `renameSchema` parses AFTER `verifyBrahmaChat`.
+        title: serde_json::Value,
     },
     /// v4 `PATCH /api/v1/brahma-console/{id}?action=set-model` — switch profile.
     #[serde(rename_all = "camelCase")]
     BrahmaConsoleSetModel {
         chat_id: String,
-        connection_profile_id: String,
+        /// RAW (P4.60): `setModelSchema` parses AFTER `verifyBrahmaChat`.
+        connection_profile_id: serde_json::Value,
     },
     /// v4 `DELETE /api/v1/brahma-console/{id}` — delete.
     #[serde(rename_all = "camelCase")]
@@ -2451,12 +2456,20 @@ pub enum Request {
     },
     /// v4 `POST /api/v1/brahma-console/{id}/messages` — send + stream (the
     /// orchestrator; frames ride the Event channel, chat-scoped).
+    ///
+    /// The two body fields ride as RAW JSON values (the `recall-replay`
+    /// precedent below) because v4's route runs `verifyBrahmaChat` FIRST and
+    /// only then `sendMessageSchema.parse` — so a bad body on a chat that isn't
+    /// a Brahma console is a **404**, not a 400. Validating at the transport
+    /// edge would answer the wrong one, and reading them with
+    /// `and_then(Value::as_str)`/`as_array` (P4.60) would not refuse a
+    /// wrong-typed value at all.
     #[serde(rename_all = "camelCase")]
     BrahmaConsoleSend {
         chat_id: String,
-        content: String,
+        content: serde_json::Value,
         #[serde(default)]
-        file_ids: Vec<String>,
+        file_ids: Option<serde_json::Value>,
     },
     // === end P4.9I1A ===
     // === P4.d13: the recall-replay verb (episodic recall §3, append-only) ===

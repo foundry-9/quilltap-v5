@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(brahma): the console bodies are validated in v4's order, after the 404 gate (P4.60 unit 3)
+
+_Versions: core 0.0.648, harness 0.0.565, web 0.0.82._
+
+The Brahma Console edge read `content`, `fileIds`, `title` and
+`connectionProfileId` with `and_then(Value::as_str)` / `as_array` and answered
+its own sentences. v4 parses each schema **uncaught**, so a wrong-typed value is
+the flat 400 `Validation error`, a non-uuid `fileIds` entry is refused rather
+than emptied, and — for send, rename and set-model — the parse runs AFTER
+`verifyBrahmaChat`, so a bad body on a chat that is not a Brahma console is a
+404.
+
+The four body fields now ride the dispatch verbs as raw JSON values (the
+`recall-replay` precedent) and the core arms validate them in v4's order;
+`brahma_send_prepare` keeps the gate and the schema together so they cannot
+drift apart. The SPA is unaffected — it omits absent keys and sends non-empty
+strings — so no client change was needed.
+
+`brahma_console_routes_equivalence` gains seventeen arms (17 → 34), including
+three that carry a body which would ALSO have failed, on a chat that 404s. The
+family also gains the case-count guard it lacked, so an oracle case forgotten on
+the Rust side can no longer pass silently.
+
 #### 2026-08-24 — fix(characters): the photos JSON body is parsed against v4's saveByIdSchema (P4.60 unit 2)
 
 _Versions: core 0.0.647, harness 0.0.564, web 0.0.81._

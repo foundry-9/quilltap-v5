@@ -4532,7 +4532,7 @@ impl CoreEngine {
                     super::brahma::brahma_console_create(
                         &db,
                         SINGLE_USER_ID,
-                        console_connection_profile_id.as_deref(),
+                        console_connection_profile_id.as_ref(),
                     )
                     .await
                 }
@@ -4580,20 +4580,27 @@ impl CoreEngine {
                 // The owner/brahma-type gate, before the driver runs (v4's route
                 // calls `verifyBrahmaChat` before `handleBrahmaConsoleMessage`).
                 match self.ready_db() {
-                    Ok(db) => {
-                        match super::brahma::verify_brahma_chat(&db, &chat_id, SINGLE_USER_ID) {
-                            Ok(_) => {
-                                self.brahma_console_send(super::brahma::BrahmaConsoleSendRequest {
-                                    user_id: SINGLE_USER_ID.to_string(),
-                                    chat_id,
-                                    content,
-                                    file_ids,
-                                })
-                                .await
-                            }
-                            Err(r) => r,
+                    // The gate AND the body validation, in v4's order — see
+                    // `brahma_send_prepare` (P4.60). Validating the body at the
+                    // transport edge would answer 400 where v4 answers 404.
+                    Ok(db) => match super::brahma::brahma_send_prepare(
+                        &db,
+                        &chat_id,
+                        SINGLE_USER_ID,
+                        &content,
+                        file_ids.as_ref(),
+                    ) {
+                        Ok((content, file_ids)) => {
+                            self.brahma_console_send(super::brahma::BrahmaConsoleSendRequest {
+                                user_id: SINGLE_USER_ID.to_string(),
+                                chat_id,
+                                content,
+                                file_ids,
+                            })
+                            .await
                         }
-                    }
+                        Err(r) => r,
+                    },
                     Err(r) => r,
                 }
             } // === end P4.9I1A ===

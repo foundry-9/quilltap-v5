@@ -75,6 +75,97 @@ fn internal(msg: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, msg.to_string())
 }
 
+/// v4 `sendMessageSchema` (`[id]/messages/route.ts:19-22`):
+///
+/// ```text
+/// content: z.string().min(1, 'Message content is required')
+/// fileIds: z.array(z.string().uuid()).optional()
+/// ```
+///
+/// `handleSendMessage` calls `.parse` **uncaught**, so a failure is the
+/// middleware's flat 400 `{error: 'Validation error'}` — the schema's own
+/// `'Message content is required'` sentence lives only in the deferred
+/// `details`. And the parse runs AFTER `verifyBrahmaChat`, so a bad body on a
+/// chat that isn't a Brahma console answers **404**, not 400.
+///
+/// P4.60: the web edge used to read `content` with `and_then(Value::as_str)`
+/// and `fileIds` with `as_array` + a `filter_map`, so `content: 123` answered a
+/// sentence v4 never emits and `fileIds: "x"` / `fileIds: ["not-a-uuid"]` were
+/// quietly emptied instead of refused.
+pub fn parse_brahma_send_body(
+    content: &Value,
+    file_ids: Option<&Value>,
+) -> Result<(String, Vec<String>), Response> {
+    let invalid = validation_error;
+
+    // content: z.string().min(1)
+    let content = match content {
+        Value::String(s) if !s.is_empty() => s.clone(),
+        _ => return Err(invalid()),
+    };
+
+    // fileIds: z.array(z.string().uuid()).optional() — optional, NOT nullable,
+    // so an explicit `null` is a ZodError where an absent key is not.
+    let ids = match file_ids {
+        None => Vec::new(),
+        Some(Value::Array(a)) => {
+            let mut out = Vec::with_capacity(a.len());
+            for item in a {
+                match item {
+                    Value::String(s) if super::chat_outfits::is_zod_uuid(s) => out.push(s.clone()),
+                    _ => return Err(invalid()),
+                }
+            }
+            out
+        }
+        Some(_) => return Err(invalid()),
+    };
+
+    Ok((content, ids))
+}
+
+/// `z.string().min(1, …)` on a raw body value, refused as v4's uncaught-ZodError
+/// 400. P4.60: the edge used to read these with `and_then(Value::as_str)`, which
+/// answered the schema's own sentence (a string that only ever appears inside
+/// the deferred `details`) and did not refuse a wrong TYPE at all.
+fn zod_min1_string(v: Option<&Value>) -> Result<String, Response> {
+    match v {
+        Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),
+        _ => Err(validation_error()),
+    }
+}
+
+/// `z.string().uuid(…)` on a raw body value.
+fn zod_uuid_string(v: Option<&Value>) -> Result<String, Response> {
+    match v {
+        Some(Value::String(s)) if super::chat_outfits::is_zod_uuid(s) => Ok(s.clone()),
+        _ => Err(validation_error()),
+    }
+}
+
+/// v4's middleware sentence for any uncaught `ZodError`.
+fn validation_error() -> Response {
+    Response::error(
+        ErrorKind::BadRequest,
+        crate::services::chat_participants::VALIDATION_ERROR,
+    )
+}
+
+/// v4 `handleSendMessage`'s prologue, in its ORDER: `verifyBrahmaChat` first,
+/// `sendMessageSchema.parse` second. Keeping the two together is what stops the
+/// pair drifting apart — a body validated at the transport edge would answer a
+/// 400 where v4's find-first answers 404.
+pub fn brahma_send_prepare(
+    db: &Db,
+    chat_id: &str,
+    user_id: &str,
+    content: &Value,
+    file_ids: Option<&Value>,
+) -> Result<(String, Vec<String>), Response> {
+    verify_brahma_chat(db, chat_id, user_id)?;
+    parse_brahma_send_body(content, file_ids)
+}
+
 /// v4 `verifyBrahmaChat(id, context)` (`_shared.ts`): the chat exists, is owned by
 /// the user, AND is `chatType === 'brahma'` — else a 404. Returns the overlaid
 /// chat `Value` on success.
@@ -157,11 +248,23 @@ pub fn brahma_console_list(db: &Db, user_id: &str) -> Response {
 pub async fn brahma_console_create(
     db: &Db,
     user_id: &str,
-    requested_profile_id: Option<&str>,
+    requested_profile_id: Option<&Value>,
 ) -> Response {
+    // `createBrahmaChatSchema.parse(body ?? {})` — uncaught, and BEFORE any
+    // lookup. `connectionProfileId` is `z.string().uuid().optional()`: optional
+    // but not nullable, so an explicit null (or an empty string, or a non-uuid)
+    // is a 400 `Validation error` rather than "fall back to the default".
+    let requested_profile_id = match requested_profile_id {
+        None | Some(Value::Null) if !matches!(requested_profile_id, Some(Value::Null)) => None,
+        Some(v) => match zod_uuid_string(Some(v)) {
+            Ok(pid) => Some(pid),
+            Err(r) => return r,
+        },
+        None => None,
+    };
     // Resolve the starting profile: the requested one (must exist + be owned),
     // else the user's default.
-    let profile_id: String = match requested_profile_id.filter(|p| !p.is_empty()) {
+    let profile_id: String = match requested_profile_id.as_deref() {
         Some(pid) => {
             let p = pid.to_string();
             match db.read_main(move |c| connection_profiles::find_by_id(c, &p)) {
@@ -276,10 +379,21 @@ pub fn brahma_console_get(db: &Db, user_id: &str, chat_id: &str) -> Response {
 
 /// v4 `handleRename` (`[id]/route.ts:69`): PATCH (no action) — set `title` +
 /// `isManuallyRenamed`. Body `{ chat: updated }`.
-pub async fn brahma_console_rename(db: &Db, user_id: &str, chat_id: &str, title: &str) -> Response {
+pub async fn brahma_console_rename(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    title: &Value,
+) -> Response {
     if let Err(r) = verify_brahma_chat(db, chat_id, user_id) {
         return r;
     }
+    // `renameSchema.parse` runs AFTER the verify (v4 `[id]/route.ts:78-80`).
+    let title = match zod_min1_string(Some(title)) {
+        Ok(t) => t,
+        Err(r) => return r,
+    };
+    let title = title.as_str();
     let cid = chat_id.to_string();
     let update = ChatUpdate {
         title: Some(title.to_string()),
@@ -309,11 +423,17 @@ pub async fn brahma_console_set_model(
     db: &Db,
     user_id: &str,
     chat_id: &str,
-    connection_profile_id: &str,
+    connection_profile_id: &Value,
 ) -> Response {
     if let Err(r) = verify_brahma_chat(db, chat_id, user_id) {
         return r;
     }
+    // `setModelSchema.parse` runs AFTER the verify (v4 `[id]/route.ts:109-111`).
+    let connection_profile_id = match zod_uuid_string(Some(connection_profile_id)) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let connection_profile_id = connection_profile_id.as_str();
     // The profile must exist and belong to this user.
     let pid = connection_profile_id.to_string();
     match db.read_main(move |c| connection_profiles::find_by_id(c, &pid)) {

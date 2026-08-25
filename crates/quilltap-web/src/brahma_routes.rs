@@ -49,9 +49,6 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
 fn parse_body(body: &axum::body::Bytes) -> Value {
     serde_json::from_slice::<Value>(body).unwrap_or_else(|_| Value::Object(Default::default()))
 }
-fn str_field(v: &Value, key: &str) -> Option<String> {
-    v.get(key).and_then(Value::as_str).map(str::to_string)
-}
 
 // ===========================================================================
 // GET / POST /api/v1/brahma-console
@@ -69,8 +66,11 @@ pub async fn brahma_console_collection_post(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let parsed = parse_body(&body);
+    // v4's `createBrahmaChatSchema` runs INSIDE the handler; the value rides raw
+    // so the dispatch arm can refuse a null / empty / non-uuid the way v4 does
+    // (P4.60).
     let req = CoreRequest::BrahmaConsoleCreate {
-        console_connection_profile_id: str_field(&parsed, "connectionProfileId"),
+        console_connection_profile_id: parsed.get("connectionProfileId").cloned(),
     };
     match dispatch_core(&state, req).await {
         // v4 `created(...)` → 201.
@@ -102,27 +102,26 @@ pub async fn brahma_console_item_patch(
     let parsed = parse_body(&body);
     match query.get("action").map(String::as_str) {
         None => {
-            // v4 `handleRename` — `renameSchema` requires a non-empty title.
-            let Some(title) = str_field(&parsed, "title").filter(|t| !t.is_empty()) else {
-                return error_json(StatusCode::BAD_REQUEST, "Title is required");
+            // v4 `handleRename` parses `renameSchema` AFTER `verifyBrahmaChat`,
+            // so the title rides raw and the dispatch arm refuses it in v4's
+            // order (P4.60).
+            let req = CoreRequest::BrahmaConsoleRename {
+                chat_id: id,
+                title: parsed.get("title").cloned().unwrap_or(Value::Null),
             };
-            let req = CoreRequest::BrahmaConsoleRename { chat_id: id, title };
             match dispatch_core(&state, req).await {
                 Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
                 Err(r) => r,
             }
         }
         Some("set-model") => {
-            // v4 `handleSetModel` — `setModelSchema` requires a connection profile id.
-            let Some(connection_profile_id) = str_field(&parsed, "connectionProfileId") else {
-                return error_json(
-                    StatusCode::BAD_REQUEST,
-                    "A connection profile id is required",
-                );
-            };
+            // Likewise `setModelSchema` — parsed after the verify (P4.60).
             let req = CoreRequest::BrahmaConsoleSetModel {
                 chat_id: id,
-                connection_profile_id,
+                connection_profile_id: parsed
+                    .get("connectionProfileId")
+                    .cloned()
+                    .unwrap_or(Value::Null),
             };
             match dispatch_core(&state, req).await {
                 Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -166,23 +165,14 @@ pub async fn brahma_console_messages_post(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let parsed = parse_body(&body);
-    // v4 `sendMessageSchema` — content is required (non-empty).
-    let Some(content) = str_field(&parsed, "content").filter(|c| !c.is_empty()) else {
-        return error_json(StatusCode::BAD_REQUEST, "Message content is required");
-    };
-    let file_ids = parsed
-        .get("fileIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(String::from))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    // v4 `sendMessageSchema` is parsed INSIDE the handler, after
+    // `verifyBrahmaChat` — so both body fields ride raw and the dispatch arm
+    // validates them in v4's order (P4.60). Reading them here also collapsed a
+    // wrong-typed value into "the caller didn't say".
     let req = CoreRequest::BrahmaConsoleSend {
         chat_id: id,
-        content,
-        file_ids,
+        content: parsed.get("content").cloned().unwrap_or(Value::Null),
+        file_ids: parsed.get("fileIds").cloned(),
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

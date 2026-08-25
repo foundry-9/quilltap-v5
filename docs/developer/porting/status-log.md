@@ -84062,3 +84062,51 @@ for `characters_routes.rs` drops 9 → 6 and is now wholly FAITHFUL: the export
 leg's `format` is a query parameter, `defaultImageId`/`name` are entity fields
 v4 reads off its typed record, and the ST-import PNG leg's three reads are of
 the server's own echo.
+
+### Unit 3 — the Brahma Console bodies — DIVERGENT, FIXED (four edges)
+
+The order enumerated `brahma_routes.rs:174` (`fileIds`). Reading v4's routes for
+it surfaced the same collapse on three neighbours in the same owned file, all
+trivially divergent, so they landed together (the order's tier-2 licence).
+
+| edge | v4 schema | v4 order | v5 before |
+|---|---|---|---|
+| `POST …/{id}/messages` | `sendMessageSchema` — `content` min 1, `fileIds` array of uuid | verify → parse | parse at the edge; `"Message content is required"`; `fileIds` emptied |
+| `POST /api/v1/brahma-console` | `createBrahmaChatSchema` — `connectionProfileId` uuid optional | parse (no gate) | any string; `""` fell back to the default |
+| `PATCH …/{id}` | `renameSchema` — `title` min 1 | verify → parse | parse at the edge; `"Title is required"` |
+| `PATCH …/{id}?action=set-model` | `setModelSchema` — uuid | verify → parse | parse at the edge; any string reached the lookup |
+
+Every schema is `.parse`d **uncaught**, so each refusal is the flat 400
+`Validation error` — v5's four hand-written sentences were strings v4 emits only
+inside the deferred `details`.
+
+**The guard order was the load-bearing part.** v4 runs `verifyBrahmaChat`
+before the schema on three of the four, so a bad body on a chat that is not a
+Brahma console answers **404**. Validating at the transport edge cannot express
+that, so the body fields now ride the dispatch verbs as RAW JSON values (the
+`recall-replay` precedent in `api/types.rs`) and the core arms validate them
+where v4 does. `brahma_send_prepare` holds the gate and the schema together in
+one function so the pair cannot drift apart, and the engine arm calls it.
+
+**The SPA needs no change** — `brahma-wire.ts` omits absent keys
+(`...(x ? {x} : {})`) and sends non-empty strings, so every request it makes
+still parses. The TS contract types continue to describe what it sends.
+
+**Differential.** `brahma_console_routes_equivalence` 17 → 34 cases, all against
+v4's REAL route handlers. Nine send arms, eight create/rename/set-model arms,
+and among them three GUARD-ORDER arms whose body would also have failed. The
+family gained `drop_zod_details` (the same assert-then-drop as unit 1) and — a
+gap found while working in it — a case-count guard: it had no `cases.len() ==
+oracle.len()` assertion, so a case added to the oracle and forgotten on the Rust
+side passed silently.
+
+Two mutation proofs on v5 source: parsing before the verify in
+`brahma_console_rename` → `rename_missing_chat_bad_body` reds 400-vs-404;
+restoring create's "any non-empty string" read → all three create arms red
+200-vs-400.
+
+`str_field`, the collapse helper, is gone; `brahma_routes.rs` now has ZERO
+`and_then(Value::as_` sites and its census row with it. The engine's
+`brahma_send_prepare` call is pinned in `web_edge_body_parse_guard`'s wiring
+list — for this surface the wiring that matters is in the dispatch arm, not the
+routes file.

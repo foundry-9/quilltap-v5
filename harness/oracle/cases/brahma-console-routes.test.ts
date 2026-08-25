@@ -158,6 +158,80 @@ const CASES: CaseSpec[] = [
   },
   { name: 'delete', run: (r) => respond(r.item.DELETE(mockRequest(itemUrl(CHAT_C)), params(CHAT_C))) },
   { name: 'get_messages', run: (r) => respond(r.messages.GET(mockRequest(`${itemUrl(CHAT_A)}/messages`), params(CHAT_A))) },
+  // -------------------------------------------------------------------------
+  // P4.60 — the create / rename / set-model bodies. Same class as the send
+  // body: every schema is `.parse`d UNCAUGHT, so a wrong-typed value is the
+  // flat 400 `Validation error`; rename and set-model parse AFTER
+  // `verifyBrahmaChat`, create parses BEFORE any lookup.
+  // -------------------------------------------------------------------------
+  {
+    name: 'create_profile_wrong_type',
+    run: (r) => respond((r.collection as RouteMod).POST(mockRequest(BASE, { connectionProfileId: 7 }))),
+  },
+  {
+    name: 'create_profile_empty',
+    run: (r) => respond((r.collection as RouteMod).POST(mockRequest(BASE, { connectionProfileId: '' }))),
+  },
+  {
+    name: 'create_profile_null',
+    run: (r) => respond((r.collection as RouteMod).POST(mockRequest(BASE, { connectionProfileId: null }))),
+  },
+  {
+    name: 'rename_title_wrong_type',
+    run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(CHAT_B), { title: 5 }), params(CHAT_B))),
+  },
+  {
+    name: 'rename_title_empty',
+    run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(CHAT_B), { title: '' }), params(CHAT_B))),
+  },
+  {
+    name: 'rename_missing_chat_bad_body',
+    run: (r) => respond(r.item.PATCH(mockRequest(itemUrl(MISSING), { title: 5 }), params(MISSING))),
+  },
+  {
+    name: 'set_model_profile_wrong_type',
+    run: (r) =>
+      respond(
+        r.item.PATCH(
+          mockRequest(`${itemUrl(CHAT_A)}?action=set-model`, { connectionProfileId: 5 }),
+          params(CHAT_A),
+        ),
+      ),
+  },
+  {
+    name: 'set_model_profile_not_uuid',
+    run: (r) =>
+      respond(
+        r.item.PATCH(
+          mockRequest(`${itemUrl(CHAT_A)}?action=set-model`, { connectionProfileId: 'nope' }),
+          params(CHAT_A),
+        ),
+      ),
+  },
+  // -------------------------------------------------------------------------
+  // P4.60 — the send body's wrong-type-collapse arms. `handleSendMessage`
+  // calls `sendMessageSchema.parse` UNCAUGHT, so every refusal is the flat 400
+  // `Validation error` (the schema's own 'Message content is required' lives
+  // only in the deferred `details`) — and it parses AFTER `verifyBrahmaChat`,
+  // so a bad body on a chat that is not a Brahma console is a 404.
+  // -------------------------------------------------------------------------
+  ...([
+    ['send_content_wrong_type', CHAT_A, { content: 123 }],
+    ['send_content_empty', CHAT_A, { content: '' }],
+    ['send_content_missing', CHAT_A, {}],
+    ['send_file_ids_string', CHAT_A, { content: 'hi', fileIds: 'x' }],
+    ['send_file_ids_bad_uuid', CHAT_A, { content: 'hi', fileIds: ['not-a-uuid'] }],
+    ['send_file_ids_element_number', CHAT_A, { content: 'hi', fileIds: [1] }],
+    ['send_file_ids_null', CHAT_A, { content: 'hi', fileIds: null }],
+    // The guard-ORDER arms: the verify runs first, so these are 404s even
+    // though the body would also have failed.
+    ['send_missing_chat_bad_body', MISSING, { content: '' }],
+    ['send_salon_chat_bad_body', CHAT_SALON, { content: 123 }],
+  ] as Array<[string, string, unknown]>).map(([name, chat, body]) => ({
+    name,
+    run: (r: Routes) =>
+      respond(r.messages.POST(mockRequest(`${itemUrl(chat)}/messages`, body), params(chat))),
+  })),
 ];
 
 async function runCase(

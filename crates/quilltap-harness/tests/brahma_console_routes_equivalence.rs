@@ -142,6 +142,28 @@ fn status_body(r: &Response, created: bool) -> (u16, Value) {
     }
 }
 
+/// v4's middleware answers an uncaught `ZodError` with `{error: 'Validation
+/// error', details: [...issues]}`; the `details` array is the standing
+/// project-wide deferral, so v5 carries the sentence alone. This does not just
+/// drop the key — it first PINS that the sentence left behind is exactly
+/// `Validation error`, so a route answering some other string with a details
+/// array would fail here rather than pass silently.
+fn drop_zod_details(name: &str, want_body: &Value) -> Value {
+    let Some(o) = want_body.as_object() else {
+        return want_body.clone();
+    };
+    if !o.contains_key("details") {
+        return want_body.clone();
+    }
+    assert_eq!(
+        o.get("error").and_then(Value::as_str),
+        Some("Validation error"),
+        "case '{name}': a ZodError body whose top-level sentence is NOT \
+         'Validation error' — the details deferral must not hide that"
+    );
+    json!({ "error": "Validation error" })
+}
+
 fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let scratch =
         std::env::temp_dir().join(format!("qt-brahma-routes-{}-{}", tag, std::process::id()));
@@ -186,7 +208,9 @@ fn brahma_console_routes_match_oracle() {
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
 
+    let mut checked = 0usize;
     let mut check = |name: &str, resp: &Response, created: bool| {
+        checked += 1;
         let (status, body) = status_body(resp, created);
         let want = &oracle[name];
         let want_status = want["status"].as_u64().unwrap() as u16;
@@ -194,10 +218,11 @@ fn brahma_console_routes_match_oracle() {
             eprintln!("[{name}] STATUS {status} != {want_status}");
             failed.push(format!("{name}_status"));
         }
-        if norm(&body) != norm(&want["body"]) {
+        let want_body = drop_zod_details(name, &want["body"]);
+        if norm(&body) != norm(&want_body) {
             eprintln!(
                 "[{name}] BODY MISMATCH:\n{}",
-                first_diff(&norm(&body), &norm(&want["body"]))
+                first_diff(&norm(&body), &norm(&want_body))
             );
             failed.push(name.to_string());
         } else {
@@ -267,12 +292,16 @@ fn brahma_console_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "createprof");
-        let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(P2)));
+        let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(P2))));
         check("create_with_profile", &r, true);
     }
     {
         let db = fresh_db(&spec, "createbad");
-        let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(MISSING)));
+        let r = rt.block_on(brahma::brahma_console_create(
+            &db,
+            USER_A,
+            Some(&json!(MISSING)),
+        ));
         check("create_bad_profile", &r, false);
     }
 
@@ -283,19 +312,27 @@ fn brahma_console_routes_match_oracle() {
             &db,
             USER_A,
             CHAT_B,
-            "Renamed Console",
+            &json!("Renamed Console"),
         ));
         check("rename", &r, false);
     }
     {
         let db = fresh_db(&spec, "setmodel");
-        let r = rt.block_on(brahma::brahma_console_set_model(&db, USER_A, CHAT_A, P2));
+        let r = rt.block_on(brahma::brahma_console_set_model(
+            &db,
+            USER_A,
+            CHAT_A,
+            &json!(P2),
+        ));
         check("set_model", &r, false);
     }
     {
         let db = fresh_db(&spec, "setmodelbad");
         let r = rt.block_on(brahma::brahma_console_set_model(
-            &db, USER_A, CHAT_A, MISSING,
+            &db,
+            USER_A,
+            CHAT_A,
+            &json!(MISSING),
         ));
         check("set_model_bad_profile", &r, false);
     }
@@ -305,6 +342,144 @@ fn brahma_console_routes_match_oracle() {
         check("delete", &r, false);
     }
 
+    // --- P4.60: the create / rename / set-model bodies ---
+    {
+        let db = fresh_db(&spec, "createwrongtype");
+        let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(7))));
+        check("create_profile_wrong_type", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "createempty");
+        let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(""))));
+        check("create_profile_empty", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "createnull");
+        let r = rt.block_on(brahma::brahma_console_create(
+            &db,
+            USER_A,
+            Some(&Value::Null),
+        ));
+        check("create_profile_null", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "renamewrongtype");
+        let r = rt.block_on(brahma::brahma_console_rename(
+            &db,
+            USER_A,
+            CHAT_B,
+            &json!(5),
+        ));
+        check("rename_title_wrong_type", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "renameempty");
+        let r = rt.block_on(brahma::brahma_console_rename(
+            &db,
+            USER_A,
+            CHAT_B,
+            &json!(""),
+        ));
+        check("rename_title_empty", &r, false);
+    }
+    {
+        // The guard-ORDER arm: the verify runs before the schema, so a bad body
+        // on a chat that does not exist is a 404.
+        let db = fresh_db(&spec, "renamemissing");
+        let r = rt.block_on(brahma::brahma_console_rename(
+            &db,
+            USER_A,
+            MISSING,
+            &json!(5),
+        ));
+        check("rename_missing_chat_bad_body", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "setmodelwrongtype");
+        let r = rt.block_on(brahma::brahma_console_set_model(
+            &db,
+            USER_A,
+            CHAT_A,
+            &json!(5),
+        ));
+        check("set_model_profile_wrong_type", &r, false);
+    }
+    {
+        let db = fresh_db(&spec, "setmodelnotuuid");
+        let r = rt.block_on(brahma::brahma_console_set_model(
+            &db,
+            USER_A,
+            CHAT_A,
+            &json!("nope"),
+        ));
+        check("set_model_profile_not_uuid", &r, false);
+    }
+
+    // --- P4.60: the send body, through v4's own guard ORDER ---
+    // `brahma_send_prepare` is what the dispatch arm runs: `verifyBrahmaChat`
+    // FIRST, `sendMessageSchema` second. The two 404 arms below carry a body
+    // that would ALSO have failed — they are the proof that the order holds.
+    {
+        let sends: Vec<(&str, &str, Value)> = vec![
+            ("send_content_wrong_type", CHAT_A, json!({ "content": 123 })),
+            ("send_content_empty", CHAT_A, json!({ "content": "" })),
+            ("send_content_missing", CHAT_A, json!({})),
+            (
+                "send_file_ids_string",
+                CHAT_A,
+                json!({ "content": "hi", "fileIds": "x" }),
+            ),
+            (
+                "send_file_ids_bad_uuid",
+                CHAT_A,
+                json!({ "content": "hi", "fileIds": ["not-a-uuid"] }),
+            ),
+            (
+                "send_file_ids_element_number",
+                CHAT_A,
+                json!({ "content": "hi", "fileIds": [1] }),
+            ),
+            (
+                "send_file_ids_null",
+                CHAT_A,
+                json!({ "content": "hi", "fileIds": null }),
+            ),
+            (
+                "send_missing_chat_bad_body",
+                MISSING,
+                json!({ "content": "" }),
+            ),
+            (
+                "send_salon_chat_bad_body",
+                CHAT_SALON,
+                json!({ "content": 123 }),
+            ),
+        ];
+        for (name, chat, body) in &sends {
+            let db = fresh_db(&spec, name);
+            let resp = brahma::brahma_send_prepare(
+                &db,
+                chat,
+                USER_A,
+                body.get("content").unwrap_or(&Value::Null),
+                body.get("fileIds"),
+            )
+            .err()
+            .unwrap_or_else(|| {
+                panic!("case '{name}': the prepare PASSED — every arm here is a refusal")
+            });
+            check(name, &resp, false);
+        }
+    }
+
+    // Declared on BOTH sides: a case added to the oracle and forgotten here
+    // would otherwise pass silently on a smaller set.
+    assert_eq!(
+        checked,
+        oracle.len(),
+        "the Rust case list and the oracle disagree: {checked} checked vs {} recorded",
+        oracle.len()
+    );
     assert!(
         failed.is_empty(),
         "brahma-console-routes FAILED: {failed:?}"

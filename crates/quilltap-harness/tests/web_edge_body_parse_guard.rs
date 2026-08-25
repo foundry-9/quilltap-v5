@@ -23,7 +23,12 @@
 
 use std::path::PathBuf;
 
-/// `(routes file, substring that must appear, what it wires)`.
+/// `(file, substring that must appear, what it wires)`.
+///
+/// Usually the routes file itself; for the Brahma console the wiring that
+/// matters is in the dispatch arm, because v4 validates the body only after its
+/// 404 gate and moving that check back to the edge would answer the wrong
+/// status.
 const PARSER_WIRING: &[(&str, &str, &str)] = &[
     (
         "crates/quilltap-web/src/custom_tools_routes.rs",
@@ -38,6 +43,13 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
         "POST /api/v1/characters/{id}/photos (JSON leg) — v4's \
          `saveByIdSchema.safeParse`, whose joined issue sentences are wire \
          payload",
+    ),
+    (
+        "crates/quilltap-core/src/api/engine.rs",
+        "brahma::brahma_send_prepare(",
+        "POST /api/v1/brahma-console/{id}/messages — `verifyBrahmaChat` FIRST, \
+         `sendMessageSchema` second; the pair travels together so the 404 \
+         cannot become a 400",
     ),
 ];
 
@@ -78,13 +90,6 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
          `Some(false)`. The third (`uploadId`) is still collapsing: v4 tests a \
          wrong-typed-but-truthy id against its UUID regex and answers a \
          DIFFERENT 400 sentence.",
-    ),
-    (
-        "crates/quilltap-web/src/brahma_routes.rs",
-        2,
-        "Still collapsing: the console send body's `content`/`fileIds` are v4's \
-         `sendMessageSchema`, whose uncaught `parse` refuses a wrong-typed \
-         value outright.",
     ),
     (
         "crates/quilltap-web/src/qtap_routes.rs",
