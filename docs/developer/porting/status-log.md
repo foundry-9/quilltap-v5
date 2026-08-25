@@ -86957,3 +86957,60 @@ red first). It was discarded and re-run after the port freed. **The tell is
 quilltap-web`; check it before every suite run, and queue behind the other lane
 rather than racing.** No data crossed over — each worktree has its own instance
 directory — so the sibling's run was unaffected beyond CPU contention.
+## Lane record — P4.D118 (the `6afacb18` CLI completion drift, bug 101) — v4 pin `6afacb18`
+
+Drift ledger §2 freshness probe at lane start (2026-08-25): v4 checkout on
+`main`, tree **clean**, `git log 8f9101370..main` empty, `git log 3a76b17df..bugfix`
+empty. **PASS** — §1's verdict and its pin-required regen rule stand.
+
+Pin (ledger §5.1, lane-unique): `/tmp/qt-v4-pin-p4d118-6afacb18`, detached at
+`6afacb187`, with all three symlink classes. `6afacb18` contains all of the
+`f6a10055` baseline, and `git diff 6afacb18 8f910137 -- packages/quilltap/lib/completion/`
+is **empty** — confirmed, not assumed — so the pin's template bytes are also v4
+`main` HEAD's.
+
+### Unit 1 — the three completion templates re-copied at v4 `6afacb18`
+
+**The survey item the order flagged is answered NO: neither side substitutes
+anything.** v4's `packages/quilltap/lib/completion-commands.js` does
+`fs.readFileSync(templatePath)` then `process.stdout.write(template)` — no
+markers, no interpolation; v5's `completion_cmd.rs` does `include_str!` then
+`out::write_stdout`. The shipped bytes ARE v4's file on both sides, so a byte
+copy is the whole port and no Tier-3 deferral is needed.
+
+**v5's pre-copy templates were byte-identical to v4's `6afacb18^` versions**
+(all three `diff -q` clean), which is what makes the red-first meaningful.
+
+**Tier R red-first**, at the pin, before the copy:
+
+```
+CLI differential: 188 cases, 3 failures
+[completion bash] stdout differs
+[completion fish] stdout differs
+[completion zsh]  stdout differs
+```
+
+Exactly the three cases that emit the changed bytes, and nothing else — the case
+corpus covers the change; no widening was needed. After the copy: **188 cases, 0
+failures.**
+
+**v5 measurably HAD bug 101's bash half.** Before the copy, v5's shipped
+`bash.template` driven under a real bash (GNU bash 3.2.57, macOS) with v4's
+`makeStubBin` stub on PATH:
+
+| line | v5 pre-copy | wanted |
+|---|---|---|
+| `quilltap docs ` | `list show files ls …` | ok (baseline) |
+| `quilltap docs --instance Friday ` | `list show files ls …` | ok — bash's arm was the milder one |
+| `quilltap docs --limit 5 ` | `--mount --instance --data-dir …` | **RED** — the verb list |
+| `quilltap docs --mount ` | `Stub` `Store` `Other` `Store` | **RED** — `Stub\ Store` |
+| `quilltap docs ls ` | `--mount --instance --data-dir …` | **RED** — `Stub\ Store` |
+| `quilltap memories -i ` | `StubInstance` | **RED** — `ls`, and no instance names |
+
+So the port is not cosmetic: it fixes a real v5 defect on a shipped surface.
+
+The loader's doc comment now records the new capture point (`6afacb18`, after
+`03154b72`), the no-substitution finding, and the two tests that hold the bytes.
+
+Version: cli 0.0.10 → 0.0.11.
+

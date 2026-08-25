@@ -1,8 +1,13 @@
 //! `quilltap completion <shell>` — the shell-completion emitters (v4
 //! `packages/quilltap/lib/completion-commands.js`). The three scripts are
 //! byte transcriptions of v4's `lib/completion/*.template` files (re-captured
-//! at v4 `03154b72` — the `db characters` sub-subverb family), emitted
-//! verbatim.
+//! at v4 `6afacb18` — bug 101, the flag-tolerant rewrite of all three; before
+//! that at `03154b72`, the `db characters` sub-subverb family), emitted
+//! verbatim. v4's emitter reads the template and writes it through untouched,
+//! so there is nothing to substitute on either side — the shipped bytes ARE
+//! v4's file. `tests/completion_behavior.rs` drives these same bytes under a
+//! real bash/zsh; `tests/cli_differential.rs` byte-diffs them against v4's
+//! launcher.
 
 use crate::out;
 

@@ -302,6 +302,42 @@ Two v5-only adaptations: class strings live in Angular inline templates inside
 `qt-`-prefixed token too — `qt-text-replacement-settings` collides head-on with
 the `qt-text-` family — so the selectors are read out of the source itself rather
 than kept in an allowlist that would rot.
+#### 2026-08-25 — fix(cli): shell completion survives flags on the line (v4 bug 101)
+
+_Versions: cli 0.0.11._
+
+P4.D118 unit 1 — the v4 `6afacb18` drift. All three completion templates
+(`bash`, `zsh`, `fish`) re-copied at v4's post-fix bytes. v4's emitter reads its
+template file and writes it through untouched, and so does ours, so the shipped
+bytes ARE v4's file: the port is a byte copy and the differential is Tier R
+against v4's real launcher.
+
+**v5 measurably had bug 101's bash half.** Driven under a real bash against a
+stub `quilltap` (v4's own `makeStubBin` shape), the pre-copy templates answered
+`quilltap docs --limit 5 <TAB>` with the docs *flag* list instead of the verb
+list, chopped `Stub Store` into `Stub` and `Store` on `--mount`, offered no
+store names at all on a store-taking positional such as `docs ls`, and read
+`memories -i` as `--instance` (offering instance names) rather than
+`--ignore-case`.
+
+What the new bytes bring: the bash scanner tracks which flags take a value *per
+subcommand*, so a flag's value can no longer be mistaken for the subcommand's
+verb — which also settles `-o` (the global `--open` vs themes' `--output`) and
+`memories -i`; `_quilltap_lines_compreply` fills `COMPREPLY` from
+newline-separated candidates with `printf '%q'` escaping, so store and instance
+names carrying spaces survive; `_quilltap_docs_positional` knows which docs
+positionals name a store and which name a local path (`move|copy|link` want one
+at both 2 and 4; `export`'s third arg is a local directory); and the live
+lookups reuse the `-i`/`-d`/`--passphrase` already on the line so they query the
+instance being addressed. The zsh template hands every subcommand's options and
+positionals to one `_arguments -C` call and branches on the parsed state, with
+`(-)` on the top-level positionals keeping a flag typed after the subcommand
+with that subcommand. fish, which never had the bug, gains store names on
+`--mount`.
+
+Tier R red-first at a v4 worktree pinned to `6afacb18`: 188 cases, **3
+failures — exactly `completion bash`, `completion zsh`, `completion fish`**,
+each a stdout difference. After the copy: 188 cases, 0 failures.
 
 #### 2026-08-25 — docs(porting): the four work orders for the `8f910137` drift catch-up round (P4.D115–P4.D118)
 
