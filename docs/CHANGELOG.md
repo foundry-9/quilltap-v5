@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — chore(unify): the f6a10055 wardrobe-containers drift round lands whole (P4.D112 ∥ P4.D113 ∥ P4.D114)
+
+_Versions: quilltap-core 0.0.658, quilltap-harness 0.0.576, quilltap-web 0.0.87, SPA 0.5.556._
+
+All three lanes of the `f6a10055` drift catch-up unified: the group
+wardrobe CRUD + component-carrying transfers + the slug-collision vault
+fix (server), the container-browser dialog with the pinned editor and the
+transfer component prompts (SPA), and the gallery downloads + bug-98
+create schema + blob `Content-Disposition` (both). The unification wires:
+the §2 contract (five `groupWardrobe*` verbs, the widened
+`wardrobeTransferApply`) folded into `core-contract.ts` with the casts
+retired and the name-for-name wire diff clean against `api/types.rs`;
+`P4D112_TRANSFER_COMPONENTS_LANDED` flipped live (the beat self-parks on
+the committed fixture's missing General store — a recorded follow-up).
+The §3 review found no blocking findings. The oracle baseline moves to
+`f6a10055`; the unified gate's regens ran from a pinned worktree because
+the v4 checkout's tree was dirty at unification. Gate numbers in the
+round record (`status-log.md`).
+
 #### 2026-08-25 — feat(groups): the group wardrobe gets its own CRUD verbs (P4.D112)
 
 _Versions: quilltap-core 0.0.658, quilltap-harness 0.0.576._

@@ -5927,3 +5927,56 @@ spellings). At unification the oracle baseline MOVES to `f6a10055`; until
 then **pin `f6a10055` for every regen** (the checkout sat clean on `main`
 at HEAD = the pin at planning). `bugfix` measured at planning: nothing
 unabsorbed beyond the tests-only `009c49b2`.
+
+**The `f6a10055` wardrobe-containers drift round — UNIFIED on main
+(2026-08-25): ALL THREE ORDERS CLOSED; the oracle baseline MOVES to
+`f6a10055` and the drift debt is CLEARED.** Full round record in
+`status-log.md`; per-order outcomes in the three status headers. The §3
+unification review found NO blocking findings. Headline facts: v5
+measurably had THREE of the bugs v4's commits fix (the slug-collision
+rewire, the shared-edit mis-target to Quilltap General, the dropped
+Portrait Cue on Duplicate) plus one all its own (the create-project
+validation vacuum — the far larger half of the bug-98 unit); the
+`componentsTransferred`/`unresolvedComponentIds` render ask was refuted
+(v4's client never reads them).
+
+**Next candidates, in rough value order** (updated at the
+`f6a10055`-round unification, 2026-08-25):
+
+1. **The owed 💸 dogfood queue** — gains this round's live surfaces: the
+   container browser on real Friday data (browse a project/group wardrobe
+   in place, edit there, star there), a real component-carrying outfit
+   move, the My Photos Download/Copy buttons on real photos, and a
+   create-project refusal reading v4's sentence.
+2. **Widen the committed `characters-*` e2e fixture with a Quilltap
+   General store** (instance_settings + the builtin-mount tables) so the
+   armed component-transfer beat and the container-browser write half can
+   run instead of self-parking on the `hasGeneralStore` probe — the
+   fixture gap predates the round and also blocks the "Shared —
+   everywhere" create scope beat that has never been exercisable.
+3. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
+   sites, then `files_routes.rs`'s 5 (P4.60's census).
+4. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank grew the
+   wardrobe-containers help rewrites this round).
+5. The handler-logging sweep (P4.61's deferral; this round added the
+   group-wardrobe handlers' unported `logger.info`/`warn` lines and the
+   `project_wardrobe_create` guard-order lead to its inventory).
+
+PB1 stays parked by the standing rule.
+
+**Standing regen note (supersedes the one above):** the oracle baseline is
+**`f6a10055`** (2026-08-25, v4 main — "feat(wardrobe): moving or copying
+an outfit brings its components along"), adopted at the
+`f6a10055`-round unification (2026-08-25). ⚠ the v4 checkout's TREE WAS
+DIRTY at unification (in-progress edits on the chats routes; HEAD
+unmoved) — the unified gate ran every regen from the pinned worktree
+`/tmp/qt-v4-pin-unify-f6a10055` (removed post-round; build a fresh
+lane-unique pin per lane whenever HEAD moves past the baseline or the
+checkout is dirty, all three symlink classes). Drift-check BOTH
+development branches every round (`git log f6a10055..main` AND `git diff
+main bugfix -- lib/ app/ packages/` — measure bugfix by `diff`, never the
+commit list; its only unabsorbed content today is the tests-only
+`009c49b2`; note WHICH branch the checkout occupies before any regen).
+The sweep driver remains the sanctioned per-family regen path — never run
+two sweeps concurrently. The distill-transitive TZ pins, the
+committed-fixture rule, and the venue/staging rules stand unchanged.

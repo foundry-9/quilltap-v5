@@ -85855,3 +85855,91 @@ edits ride un-bumped for the unifier to recount.
   and says so.
 - ⚠ **`screens/prospero/project-create-dialog.ts` is outside this lane's named
   Ownership row** (no other lane owns it either) — see the unit-4 record.
+
+---
+
+## Round record — the `f6a10055` wardrobe-containers drift round (P4.D112 ∥ P4.D113 ∥ P4.D114), UNIFIED 2026-08-25
+
+All three lanes cherry-picked onto `unify/f6a10055-round` in dependency
+order (D112 → D113 → D114); the only conflicts were the CHANGELOG /
+status-log unions and the version files, all resolved by accumulation.
+**The oracle baseline MOVES to `f6a10055` and the drift debt is CLEARED**
+(v4 HEAD unmoved at unification; ⚠ the checkout's TREE was DIRTY —
+in-progress chats-route edits — so every unified-gate regen ran from the
+pinned worktree `/tmp/qt-v4-pin-unify-f6a10055`, all three symlink
+classes).
+
+### The §3 unification review — NO blocking findings
+
+The whole combined diff (58 files, ~8.7k insertions) was read hunk-by-hunk
+against v4's real code at the pin. Every suspicious spot resolved clean:
+
+- The transfer dialog's `componentMode = signal('copy')` looked like a
+  dropped v4 default — the constructor sets v4's mode-dependent initial
+  (`mode === 'move' ? 'move' : 'copy'`) at `:262`. False alarm.
+- The dialog's "Browsing a shared wardrobe —…" paragraph was checked for
+  the invented-banner class: it is v4's own copy at `d7263f39` `:1130-1134`,
+  byte-for-byte.
+- D113's tier-1-item-5 refutation was independently re-verified:
+  `git grep` at the pin shows `componentsTransferred` /
+  `unresolvedComponentIds` appear ONLY in the route file — v4's client
+  never reads them; not rendering them is fidelity, not a gap.
+- The two out-of-ownership edits both stand as the lanes flagged them:
+  D114's four-line `project-create-dialog.ts` failure-sentence fix (the
+  deliverable is unreachable without it; no owner collision) and D113's
+  one-line `workspace-flow.spec.ts:253` selector-rename follow (the
+  tree-wide grep confirms it was the only external reference).
+- Non-blocking observation, added to the handler-logging sweep inventory:
+  the group-wardrobe handlers do not port v4's `logger.info` lines or the
+  DELETE cleanup `logger.warn` (the P4.61 class; consistent with current
+  practice).
+
+### The unification wires
+
+- The §2 Shared contract FOLDED: the five `GroupWardrobe*` request types +
+  the widened `WardrobeTransferApplyRequest` (`source`, `components`,
+  optional `sourceCharacterId`) moved from `wardrobe.api.ts`'s mirror into
+  `core-contract.ts`; both dispatch casts retired. The name-for-name wire
+  diff ran clean against `api/types.rs` (five variants' camelCase field
+  names) and `parse_transfer_request` (the transfers body key set).
+- `P4D112_TRANSFER_COMPONENTS_LANDED` flipped TRUE. The armed beat ran and
+  SELF-PARKED on its `hasGeneralStore` probe — the committed `characters-*`
+  e2e fixture has no shared container (a gap that predates the round);
+  **widening that fixture is the recorded follow-up** (phase-4.md
+  candidate 2). The component-travel semantics are tier-2-proven in
+  `wardrobe_transfers_tier2_equivalence` meanwhile.
+- SPA version bumped 0.5.555 → 0.5.556 for the fold.
+
+### The unified gate
+
+- `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+  -D warnings` clean, plain AND `--features
+  quilltap-core/native-transport`.
+- The round's six families regenerated FRESH from the PINNED worktree
+  through the sweep driver (`--run-all --families … --v4
+  /tmp/qt-v4-pin-unify-f6a10055`, artifact `/tmp/unify-f6a10055-sweep.json`)
+  — **6/6 ok, zero SKIP**: `vault_wardrobe_emit`, `vault_wardrobe_write`,
+  `wardrobe_transfers_tier2`, `wardrobe_routes`, `group_wardrobe_routes`
+  (NEW), `projects_routes`. The changed bytes grepped in every fresh
+  NDJSON: the collider-UUID `componentItems` entry in the emit AND write
+  dumps, both `the ID of` collision sentences + `componentsTransferred`
+  ×11 + the `__destinations` row + the neither-source refine in the
+  transfers oracle, the copy+move refine sentence in the wardrobe-routes
+  oracle, 3× `Group wardrobe item` + 4× `Validation error` in the
+  group-wardrobe oracle, and all 18 `create_*` arms in the
+  projects-routes oracle.
+- `cargo test --workspace` with the round's 15-variable env block —
+  **454 test binaries / 2,353 passed / 0 failed** (exit 0; `^test result:
+  FAILED` count 0), the round's families positively confirmed RUN by
+  their `Running tests/…` lines.
+- Release build (`quilltap-web` + `quilltap-cli`) clean.
+- SPA: `npm test` **344 files / 5,145 passed / 0 failed**;
+  `npm run build` clean.
+- Full Playwright against the fresh build: **241 passed / 0 failed /
+  1 skipped (6.0 m)** — the one skip is the armed component-transfer beat
+  self-parking on the fixture's missing General store, by design and with
+  its named reason (the suite grew 239 → 242 total tests with the round's
+  new beats).
+
+Versions: core 0.0.658, harness 0.0.576, web 0.0.87, SPA 0.5.556;
+host/cli/tauri unchanged.
