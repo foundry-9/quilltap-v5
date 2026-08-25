@@ -86428,3 +86428,59 @@ no v5 action (v5's API surface doc is the dispatch contract, not v4's file).
   three files (the two committed `.db`s + the sidecar) — fixture BYTES, not web
   source, so no web version bump; that directory is where all 82 committed
   differential fixtures live and no sibling lane owns it.
+## P4.D116 — the `44a8137e` scenario-change drift, SPA half (lane record)
+
+Lane branch `claude/p4-scenario-change-spa-f50008`, opened 2026-08-25 against
+the `f6a10055` baseline. The drift ledger's §2 freshness probe PASSED at lane
+start: v4 checkout on `main`, tree clean, `8f9101370..main` empty,
+`3a76b17df..bugfix` empty. Regen rule in force = pin-required; every v4 read in
+this lane is `git show 44a8137e:<path>` / `git show 44a8137e -- <path>` against
+the human's checkout, never a moved worktree file.
+
+### Unit 1 — the shared `ScenarioSelect` + its types
+
+NEW `apps/web/src/app/scenario/{scenario.types.ts,scenario-select.ts}`,
+transcribed 1:1 from v4's two new files at `44a8137e`
+(`components/scenario/types.ts`, `components/scenario/ScenarioSelect.tsx`).
+The four token constants, `scenarioSelectionToValue` /
+`scenarioValueToSelection` / `scenarioSelectionToPayload`, `ScenarioSelection`,
+`hasAnyScenarioOptions`, and the four-tier optgroup render all carry v4's
+spelling and v4's why-comments.
+
+**Fidelity, by spec** (`scenario.types.spec.ts` 9 arms,
+`scenario-select.spec.ts` 12 arms — the v4-client-oracle transcription
+pattern):
+
+- The parser's two easy-to-miss arms: a MALFORMED group token
+  (`group:no-colon-after-this`) reads as **custom**, returned from inside the
+  group branch — it never falls through to the character arm; and a group path
+  that itself contains colons stays whole, because v4 splits on the first
+  colon only.
+- Each option's label is asserted as one exact string. v4 concatenates three
+  adjacent JSX expressions with NOTHING between them; the naive Angular
+  translation puts them on separate template lines and Angular collapses the
+  newline into a space, shipping `The Inn  (project default)` (memory
+  `porting-a-react-component-to-angular` trap 2). Both label runs are therefore
+  computed in TypeScript and interpolated once.
+- The host carries `block`. v4's root node IS the `<select class="qt-select">`,
+  and `.qt-select` is `w-full`; an Angular custom element defaults to
+  `display: inline`, which would leave that percentage resolving against an
+  inline box (memory `angular-custom-element-host-is-inline`, dogfood
+  #97/#103).
+- `[attr.class]` rather than `[class]`, so v4's `className` string reaches the
+  DOM verbatim — Angular's class binding reorders the tokens, which the
+  className assertion caught.
+
+**The controlled-select mechanism is the `afterRenderEffect` idiom**, not
+`[value]` and not `[selected]` (memory
+`angular-select-cannot-mirror-react-controlled-value`). React assigns
+`select.value` after the children mount, so a selection naming no rendered
+option leaves the control blank (`selectedIndex === -1`); `[value]` runs before
+the `@for` fills the list and `[selected]` snaps to row 0 — here row 0 is
+"Custom…", which is exactly the state this whole v4 commit exists to stop the
+picker from showing. Reachable in production whenever a tier's list refetches
+without the row the current selection names. **Mutation-proven:** neutering the
+post-render assignment reddens exactly three arms (the selected-row assertion,
+the blank-off-list arm, and the late-arriving-options arm) and nothing else.
+
+Versions: SPA 0.5.557.

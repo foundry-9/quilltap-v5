@@ -92,6 +92,25 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+#### 2026-08-25 — feat(scenario): the scenario dropdown becomes a shared component (P4.D116 unit 1)
+
+_Versions: SPA 0.5.557._
+
+Ports the client half of v4 `44a8137e`'s first move: the scenario option
+shapes, the `<option value>` tokens, and the dropdown itself extracted into
+`apps/web/src/app/scenario/` so the New Chat dialog and the Salon sidebar's
+new in-chat picker render the same control. Transcribed 1:1 from v4's new
+`components/scenario/types.ts` and `components/scenario/ScenarioSelect.tsx`.
+
+Three Angular-port notes are pinned by spec. Each option's label is computed
+as one string and interpolated once, because v4 concatenates three adjacent
+JSX expressions with nothing between them and separate template lines would
+collapse to a stray space. The host carries `block`, so `.qt-select`'s
+`w-full` has a real box to fill. And the selected row is assigned in an
+`afterRenderEffect` rather than through `[value]`/`[selected]`: React assigns
+`select.value` after the children mount, so a selection naming no rendered
+option leaves the control blank instead of snapping to row 0 - reachable here
+whenever a tier's list refetches without the row the current selection names.
 
 #### 2026-08-25 — docs(porting): the four work orders for the `8f910137` drift catch-up round (P4.D115–P4.D118)
 
