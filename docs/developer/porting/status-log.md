@@ -85198,3 +85198,38 @@ ownership per the order's table.
   v4 404), and answers inline schema sentences (`Title is required`)
   where v4's middleware answers the flat `Validation error`. The group
   handlers landed with v4's order and envelope.
+---
+
+## P4.D113 — the wardrobe-containers drift, client half (lane branch `claude/wardrobe-containers-spa-port-8780ff`)
+
+**v4 baseline: `f6a10055`** (drift-checked at lane start: `git log
+f6a10055..main` empty, tree clean, checkout on `main`; `bugfix` at `3a76b17d`
+with nothing unabsorbed beyond the tests-only `009c49b2` — exactly the order's
+planning state). The lane's oracle is v4's CLIENT code, read at the pin.
+
+### Unit 1 — `wardrobe-container.ts` transcribed 1:1 (tier 1, item 1)
+
+v4's new `lib/wardrobe/wardrobe-container.ts` (73 lines, `d7263f39`) is the
+one place the four container scope strings live, and the transfers wire shares
+them (`source.scope`, §Shared contract item 4) — so it is transcribed
+character-for-character rather than re-derived, in the byte-exact static-data
+discipline.
+
+Landed: `WardrobeContainerScope`, `WardrobeContainer`, `GENERAL_CONTAINER`,
+`encodeWardrobeContainer`, `decodeWardrobeContainer`, `sameWardrobeContainer`.
+
+**Recorded mechanism divergence** (in the module header, as previous SPA lanes
+do): v4's module also exports `wardrobeCollectionUrl` / `wardrobeItemUrl`,
+returning the four REST URL families. v5's mutations ride dispatch verbs, so
+that routing lands in `wardrobe.api.ts` as a container → verb router (unit 2).
+Types, encoding, and the null-id rule are v4's verbatim.
+
+`wardrobe-container.spec.ts` — 9 cases, every arm of v4's three functions, not
+just the happy path: the four-scope round trip, the unknown-scope null
+(`bogus:x`, `''`, the near-miss `characters:c1`), the non-general-needs-an-id
+rule, general-with-an-id honoured as written (v4 does not special-case it),
+and the `split(':', 2)` truncation at a second colon.
+
+**Mutation proof:** deleting v4's `if (scopeRaw !== 'general' && !id) return
+null` line reds the "non-general scope MUST carry an id" case (1 failed), and
+restoring it re-greens.

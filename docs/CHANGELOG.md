@@ -76,6 +76,23 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — feat(wardrobe): the container module the dialog, editor, and transfer prompt will share (P4.D113)
+
+_Versions: SPA 0.5.550._
+
+A 1:1 transcription of v4's new `lib/wardrobe/wardrobe-container.ts`
+(`d7263f39`): the four container scopes, `GENERAL_CONTAINER`, and the
+encode / decode / same helpers the wardrobe dialog's new top selector, the
+pinned item editor, and the transfer dialog all read. The scope spellings are
+shared with the transfers wire (`source.scope`), so every arm — the unknown
+scope, the non-general-needs-an-id rule, the `split(':', 2)` truncation — is
+pinned by a parity spec rather than the happy path alone.
+
+Recorded mechanism divergence: v4's module also exports
+`wardrobeCollectionUrl` / `wardrobeItemUrl`, which build REST URLs. v5's
+mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
+verb router in a later unit of this lane; the types and the encoding stay
+v4's verbatim.
 
 #### 2026-08-25 — docs(porting): the f6a10055 wardrobe-containers drift round is planned (P4.D112 ∥ P4.D113 ∥ P4.D114)
 
