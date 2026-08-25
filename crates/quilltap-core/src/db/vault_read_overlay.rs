@@ -479,7 +479,14 @@ pub fn read_character_vault_wardrobe(
             Vec::new()
         };
 
-        resolve_and_check_component_items(&mut items, &item_by_slug, &item_by_id, &archetypes);
+        resolve_and_check_component_items(
+            &mut items,
+            &item_by_slug,
+            &item_by_id,
+            &archetypes,
+            character_id,
+            mount_point_id,
+        );
 
         return Ok(Some(serde_json::json!({
             "items": serde_json::to_value(&items).expect("serialize wardrobe items"),

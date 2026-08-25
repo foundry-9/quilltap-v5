@@ -1184,7 +1184,14 @@ impl SeedArchetype {
 /// `item_by_slug` / `item_by_id` map a slug / item-id to the **index** of its
 /// item in `items` (the caller builds them — slug is first-claimer-wins, every
 /// item is addressable by id). A ref is resolved slug-first then UUID; an unknown
-/// ref is dropped (read-tolerant). The cycle pass reads the **live** (already
+/// ref is dropped (read-tolerant) **with a warning**, and a cycle clears that
+/// item's list **with a warning** — v4 `parsers.ts:435` / `:453`, and
+/// `character_id` / `mount_point_id` are carried solely so those two lines can
+/// name the vault the way v4's do (`characterId ?? mountPointId` upstream).
+/// Dogfood finding #103: v5 did both drops in silence, which is what made an
+/// erased component reference invisible — the drop happens at read time and the
+/// next write to the container re-emits every sibling file from the read state,
+/// so the ref then leaves the disk. The cycle pass reads the **live** (already
 /// mutated) component lists, so clearing one item mid-pass affects later items'
 /// walks, exactly mirroring v4's mutable `itemById`.
 ///
@@ -1201,6 +1208,8 @@ pub fn resolve_and_check_component_items(
     item_by_slug: &HashMap<String, usize>,
     item_by_id: &HashMap<String, usize>,
     archetypes: &[SeedArchetype],
+    character_id: &str,
+    mount_point_id: &str,
 ) {
     // Build the archetype gap-fill lookups. v4 seeds each archetype into
     // `itemById` only when the id is unclaimed by a local item, and into
@@ -1239,8 +1248,22 @@ pub fn resolve_and_check_component_items(
                     out.push(items[j].id.clone());
                 } else if let Some(&j) = arche_by_id.get(r) {
                     out.push(archetypes[j].id.clone());
+                } else {
+                    // Unknown ref → dropped, and SAID SO. v4 warns here
+                    // (`parsers.ts:435`), and the warning is the only signal a
+                    // reference has gone: the drop happens at read time, and the
+                    // next write to this container re-emits every sibling file
+                    // from the read state, so the ref is erased from disk. Both
+                    // apps behave that way; only v5 used to do it in silence.
+                    tracing::warn!(
+                        character_id = %character_id,
+                        mount_point_id = %mount_point_id,
+                        item_id = %item.id,
+                        title = %item.title,
+                        component_ref = %r,
+                        "Wardrobe item references unknown component; dropping ref"
+                    );
                 }
-                // unknown ref → dropped
             }
             Some(out)
         })
@@ -1272,6 +1295,15 @@ pub fn resolve_and_check_component_items(
         }
         let cycles = detect_component_cycles(&item.id, &item.component_item_ids, &by_id);
         if !cycles.is_empty() {
+            // v4 `parsers.ts:453`.
+            tracing::warn!(
+                character_id = %character_id,
+                mount_point_id = %mount_point_id,
+                item_id = %item.id,
+                title = %item.title,
+                cycles = ?cycles,
+                "Wardrobe item declares a component cycle in vault; dropping its components"
+            );
             item.component_item_ids = Vec::new();
             by_id.insert(item.id.clone(), Vec::new());
         }
@@ -2338,7 +2370,7 @@ mod tests {
             wif("id-outfit", "Outfit", &["shirt", "id-pants", "ghost"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
         assert_eq!(
             items[2].component_item_ids,
             vec!["id-shirt".to_string(), "id-pants".to_string()],
@@ -2355,7 +2387,7 @@ mod tests {
             wif("id-b", "Cycle B", &["cycle-a"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
         assert_eq!(
             items[0].component_item_ids,
             Vec::<String>::new(),
@@ -2368,11 +2400,154 @@ mod tests {
         );
     }
 
+    // ── Dogfood finding #103: the two drops v4 WARNS about (`parsers.ts:435`
+    // and `:453`) used to happen in silence here. The drop itself is
+    // v4-faithful and stays; what was missing is the only signal that a
+    // component reference has gone. Pinned with the capturing-layer idiom
+    // (`title_verdict.rs` / `cheap_llm_exec.rs`), presence AND silence. ──
+
+    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    #[test]
+    fn an_unknown_component_ref_is_dropped_loudly() {
+        // The dogfooded shape: a composite whose component has left the
+        // container, so its ref resolves to nothing.
+        let logs = captured(|| {
+            let mut items = vec![
+                wif("id-outfit", "Singularity Armor", &["departed-belt"]),
+                wif("id-tunic", "Tactical Tunic", &[]),
+            ];
+            let (by_slug, by_id) = build_maps(&items);
+            resolve_and_check_component_items(
+                &mut items,
+                &by_slug,
+                &by_id,
+                &[],
+                "char-7",
+                "mount-9",
+            );
+            assert_eq!(
+                items[0].component_item_ids,
+                Vec::<String>::new(),
+                "the unknown ref is still dropped — v4-faithful"
+            );
+        });
+        let hit = logs
+            .iter()
+            .find(|l| l.contains("Wardrobe item references unknown component; dropping ref"))
+            .unwrap_or_else(|| panic!("no drop warning in {logs:?}"));
+        assert!(hit.starts_with("WARN "), "{hit}");
+        for field in [
+            "character_id=char-7",
+            "mount_point_id=mount-9",
+            "item_id=id-outfit",
+            "title=Singularity Armor",
+            "component_ref=departed-belt",
+        ] {
+            assert!(hit.contains(field), "missing {field} in {hit}");
+        }
+    }
+
+    #[test]
+    fn a_component_cycle_is_cleared_loudly() {
+        let logs = captured(|| {
+            let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
+            let (by_slug, by_id) = build_maps(&items);
+            resolve_and_check_component_items(
+                &mut items,
+                &by_slug,
+                &by_id,
+                &[],
+                "char-7",
+                "mount-9",
+            );
+            assert_eq!(items[0].component_item_ids, Vec::<String>::new());
+        });
+        let hit = logs
+            .iter()
+            .find(|l| {
+                l.contains(
+                    "Wardrobe item declares a component cycle in vault; dropping its components",
+                )
+            })
+            .unwrap_or_else(|| panic!("no cycle warning in {logs:?}"));
+        assert!(
+            hit.contains("item_id=id-self") && hit.contains("cycles="),
+            "{hit}"
+        );
+    }
+
+    #[test]
+    fn a_clean_resolve_says_nothing() {
+        // The silence leg: every ref resolves, no cycle — the reader must not
+        // cry wolf on a healthy vault (this is the arm that would go red if the
+        // warn were hoisted out of its `else`).
+        let logs = captured(|| {
+            let mut items = vec![
+                wif("id-outfit", "Singularity Armor", &["tactical-tunic"]),
+                wif("id-tunic", "Tactical Tunic", &[]),
+            ];
+            let (by_slug, by_id) = build_maps(&items);
+            resolve_and_check_component_items(
+                &mut items,
+                &by_slug,
+                &by_id,
+                &[],
+                "char-7",
+                "mount-9",
+            );
+            assert_eq!(items[0].component_item_ids, vec!["id-tunic".to_string()]);
+        });
+        assert!(
+            !logs.iter().any(|l| l.contains("dropping")),
+            "a healthy vault must resolve in silence: {logs:?}"
+        );
+    }
+
     #[test]
     fn self_cycle_clears() {
         let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
         assert_eq!(items[0].component_item_ids, Vec::<String>::new());
     }
 
@@ -2385,7 +2560,7 @@ mod tests {
             wif("id-box", "Box", &["hat"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
         assert_eq!(items[2].component_item_ids, vec!["id-hat-1".to_string()]);
     }
 
@@ -2407,7 +2582,14 @@ mod tests {
             seed("id-fitbit-arche", "Fitbit", &[]),
             seed("id-belt-arche", "Belt", &[]), // slug "belt" already claimed by local
         ];
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &archetypes);
+        resolve_and_check_component_items(
+            &mut items,
+            &by_slug,
+            &by_id,
+            &archetypes,
+            "char-1",
+            "mount-1",
+        );
         assert_eq!(
             items[1].component_item_ids,
             vec![
@@ -2425,7 +2607,14 @@ mod tests {
         let mut items = vec![wif("id-outfit", "Outfit", &["shared-bundle"])];
         let (by_slug, by_id) = build_maps(&items);
         let archetypes = vec![seed("id-bundle-arche", "Shared Bundle", &["id-outfit"])];
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &archetypes);
+        resolve_and_check_component_items(
+            &mut items,
+            &by_slug,
+            &by_id,
+            &archetypes,
+            "char-1",
+            "mount-1",
+        );
         assert_eq!(
             items[0].component_item_ids,
             Vec::<String>::new(),

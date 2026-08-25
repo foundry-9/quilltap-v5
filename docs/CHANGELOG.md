@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — fix(vault): a dropped component reference says so (dogfood finding #103)
+
+_Versions: core 0.0.659._
+
+The vault wardrobe reader drops two kinds of bad `componentItems:` entry — a
+ref that matches nothing in the container, and a ref that would form a cycle.
+Both drops are v4-faithful and stay. What was missing is that v4 logs a warning
+at each one (`vault-overlay/parsers.ts:435` and `:453`) and v5 did neither, so
+the drop was completely silent.
+
+That silence is what makes the consequence invisible. The drop happens at read
+time, and the next write to the container re-emits every sibling wardrobe file
+from the read state — so a reference that went unresolvable is erased from disk
+on the next unrelated write. Found by dogfooding: moving one component out of a
+project took the parent outfit's reference to it from 7 to 6, and moving the
+component back did not bring the reference back, with nothing logged at any
+point.
+
+`resolve_and_check_component_items` now takes `character_id` and
+`mount_point_id` — which is exactly why v4's own signature takes them — and
+emits v4's two messages verbatim with the same fields (snake_cased, per the
+port's logging convention). Three tests in the capturing-layer idiom pin the
+drop warning's fields, the cycle warning, and the silence leg on a healthy
+vault; each is mutation-proven against a separate mutation.
+
 #### 2026-08-25 — chore(unify): the f6a10055 wardrobe-containers drift round lands whole (P4.D112 ∥ P4.D113 ∥ P4.D114)
 
 _Versions: quilltap-core 0.0.658, quilltap-harness 0.0.576, quilltap-web 0.0.87, SPA 0.5.556._
