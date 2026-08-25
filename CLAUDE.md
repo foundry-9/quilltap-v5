@@ -2000,10 +2000,13 @@ records THERE. Update this summary only when a phase or round completes.
   reading v4's sentence. Round record: `status-log.md`.
 - **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
   moving or copying an outfit brings its components along"), adopted at
-  the f6a10055-round unification (2026-08-25).** ⚠ the v4 checkout's tree
-  was DIRTY at unification (in-progress chats-route edits, HEAD unmoved) —
-  until it is clean again, pin a detached worktree at `f6a10055` for
-  EVERY regen. The round's pin worktree is removed;
+  the f6a10055-round unification (2026-08-25).** ⚠ v4 HEAD moved TWO
+  commits past it DURING the round (`44a8137e` — the in-chat scene
+  change — and `8018c487` — bug 99, a character-gallery download fix on
+  the surfaces this round just ported), and the tree is STILL dirty (the
+  Aurora/Prospero headers): **the catch-up is the top next candidate
+  after the owed dogfood pass; pin a detached worktree at `f6a10055` for
+  EVERY regen until it lands.** The round's pin worktree is removed;
   build a fresh lane-unique pin per lane whenever v4 HEAD moves past the
   baseline or the checkout is dirty. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND

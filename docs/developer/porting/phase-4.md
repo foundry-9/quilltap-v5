@@ -5980,3 +5980,16 @@ commit list; its only unabsorbed content today is the tests-only
 The sweep driver remains the sanctioned per-family regen path — never run
 two sweeps concurrently. The distill-transitive TZ pins, the
 committed-fixture rule, and the venue/staging rules stand unchanged.
+
+**⚠ Post-unification drift note (2026-08-25, same day):** v4 HEAD moved
+TWO commits past the fresh `f6a10055` baseline while the round was
+unifying — `44a8137e` (feat(salon): the scene can be changed without
+leaving the conversation) and `8018c487` (fix(images): a character's
+photo gallery can download a picture again, bug 99 — a follow-up on the
+download surfaces this round just ported) — and the checkout's tree is
+still dirty (Aurora/Prospero header edits in progress). **The catch-up
+slots between candidates 1 and 2 above** (after the owed dogfood pass or
+alongside it); pin `f6a10055` for every regen until it lands, and
+re-survey bug 99 against P4.D114's surfaces at planning — v5 may or may
+not share it, since v5's photo galleries got their download buttons from
+`af1bc479`'s port, not v4's older gallery code.
