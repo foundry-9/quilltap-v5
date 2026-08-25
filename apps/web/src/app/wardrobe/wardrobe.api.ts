@@ -16,6 +16,14 @@
  * Landed verbs consumed directly (no §1 dependency):
  * `characterWardrobe{List,Create,Get,Update,Delete}`, `projectWardrobe*`,
  * `characterList`, `imageProfileList`, `chatGet`.
+ *
+ * §2 (the P4.D112/P4.D113 Shared contract): the FIVE `groupWardrobe*` verbs and
+ * the two `wardrobeTransferApply` body additions (`source`, `components`) are
+ * declared HERE, in the same idiom §1 used before it was folded — lane P4.D112
+ * delivers them in `api/types.rs`, this lane mirrors them name-for-name, and the
+ * unifier folds them into `core-contract.ts` and runs the wire diff. Until then
+ * `dispatchWardrobe` carries the §2 cast. Field names are the contract's
+ * verbatim.
  */
 
 import type { CoreClient } from '../core/core-client';
@@ -23,16 +31,26 @@ import type {
   ChatEquipRequest,
   ChatOutfitGetRequest,
   ChatRegenerateAvatarRequest,
+  CharacterWardrobeListRequest,
+  CharacterWardrobeCreateRequest,
+  CharacterWardrobeUpdateRequest,
+  CharacterWardrobeDeleteRequest,
+  ProjectWardrobeListRequest,
+  ProjectWardrobeCreateRequest,
+  ProjectWardrobeUpdateRequest,
+  ProjectWardrobeDeleteRequest,
   WardrobeCreateRequest,
   WardrobeDeleteRequest,
   WardrobeListRequest,
   WardrobePreviewAvatarRequest,
-  WardrobeTransferApplyRequest,
   WardrobeTransferDestinationsRequest,
+  WardrobeTransferScope,
   WardrobeUpdateRequest,
   WardrobeItemDto,
+  CoreRequest,
 } from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
+import type { WardrobeContainer, WardrobeContainerScope } from './wardrobe-container';
 
 // ---------------------------------------------------------------------------
 // §1 — lane P4.9f1's request types (FOLDED into core-contract at unification)
@@ -44,7 +62,6 @@ export type {
   ChatEquipRequest,
   WardrobeTransferDestinationsRequest,
   WardrobeTransferScope,
-  WardrobeTransferApplyRequest,
   WardrobeListRequest,
   WardrobeCreateRequest,
   WardrobeUpdateRequest,
@@ -53,7 +70,69 @@ export type {
   ChatRegenerateAvatarRequest,
 } from '../core/core-contract';
 
-/** The §1 union — every arm now lives in `CoreRequest`. */
+// ---------------------------------------------------------------------------
+// §2 — the P4.D112/P4.D113 Shared contract (mirrored here; folded at unification)
+// ---------------------------------------------------------------------------
+
+/**
+ * The group tier's CRUD, §Shared contract item 1 — field shapes mirror
+ * `ProjectWardrobe*` exactly. v4 `app/api/v1/groups/[id]/wardrobe[/itemId]`
+ * (`d7263f39`); before that commit the group tier had no endpoints at all.
+ */
+export interface GroupWardrobeListRequest {
+  type: 'groupWardrobeList';
+  groupId: string;
+}
+export interface GroupWardrobeCreateRequest {
+  type: 'groupWardrobeCreate';
+  groupId: string;
+  item: Record<string, unknown>;
+}
+export interface GroupWardrobeGetRequest {
+  type: 'groupWardrobeGet';
+  groupId: string;
+  itemId: string;
+}
+export interface GroupWardrobeUpdateRequest {
+  type: 'groupWardrobeUpdate';
+  groupId: string;
+  itemId: string;
+  item: Record<string, unknown>;
+}
+export interface GroupWardrobeDeleteRequest {
+  type: 'groupWardrobeDelete';
+  groupId: string;
+  itemId: string;
+}
+
+/** What travels with a composite outfit (§Shared contract item 2). */
+export type WardrobeTransferComponentMode = 'move' | 'copy' | 'none';
+
+/**
+ * `wardrobeTransferApply` WIDENED by §Shared contract item 2 — this supersedes
+ * the `core-contract.ts` shape, which the unifier updates in place:
+ *
+ *  - `source?: { scope, id? }` — the explicit home container, sent when the
+ *    dialog browses a shared container and the item's tier is known exactly.
+ *    The server then resolves straight from it, no character probing.
+ *  - `components?` — for a composite, what to do with its same-container
+ *    components (all or nothing).
+ *  - `sourceCharacterId` becomes OPTIONAL: v4 omits the key entirely when
+ *    there is no selected character (`:163`, the `...(x ? {x} : {})` spread).
+ *    At least one of `sourceCharacterId` / `source` is required — v4's refine.
+ */
+export interface WardrobeTransferApplyRequest {
+  type: 'wardrobeTransferApply';
+  action: 'move' | 'copy';
+  itemId: string;
+  sourceCharacterId?: string;
+  sourceProjectId: string | null;
+  source?: { scope: WardrobeContainerScope; id?: string };
+  components?: WardrobeTransferComponentMode;
+  destination: { scope: WardrobeTransferScope; id?: string };
+}
+
+/** The §1 + §2 union — the §2 arms ride the cast in `dispatchWardrobe`. */
 export type WardrobeLaneRequest =
   | ChatOutfitGetRequest
   | ChatEquipRequest
@@ -64,14 +143,24 @@ export type WardrobeLaneRequest =
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
   | WardrobePreviewAvatarRequest
-  | ChatRegenerateAvatarRequest;
+  | ChatRegenerateAvatarRequest
+  | GroupWardrobeListRequest
+  | GroupWardrobeCreateRequest
+  | GroupWardrobeGetRequest
+  | GroupWardrobeUpdateRequest
+  | GroupWardrobeDeleteRequest;
 
-/** The wardrobe dispatch choke-point (the §1 cast retired at unification). */
+/**
+ * The wardrobe dispatch choke-point. The §1 cast was retired when those verbs
+ * were folded into `core-contract.ts`; the §2 cast is back for the same reason
+ * and retires the same way — `groupWardrobe*` and the widened
+ * `wardrobeTransferApply` are not in `CoreRequest` until the unifier folds them.
+ */
 export function dispatchWardrobe(
   core: CoreClient,
-  request: WardrobeLaneRequest,
+  request: WardrobeLaneRequest | WardrobeContainerRequest,
 ): Promise<Record<string, unknown>> {
-  return core.dispatchData(request);
+  return core.dispatchData(request as unknown as CoreRequest);
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +178,185 @@ export interface TransferDestinationsPayload {
   projects: TransferDestinationOption[];
   groups: TransferDestinationOption[];
   users: TransferDestinationOption[];
+}
+
+// ---------------------------------------------------------------------------
+// The container → verb router (v4 `wardrobeCollectionUrl` / `wardrobeItemUrl`)
+// ---------------------------------------------------------------------------
+
+/**
+ * v4's two URL helpers return REST endpoints:
+ *
+ *     character → /api/v1/characters/{id}/wardrobe[/{itemId}]
+ *     project   → /api/v1/projects/{id}/wardrobe[/{itemId}]
+ *     group     → /api/v1/groups/{id}/wardrobe[/{itemId}]
+ *     general   → /api/v1/wardrobe[/{itemId}]
+ *
+ * v5 dispatches verbs instead, so the same four-way routing lives here. The
+ * `character` and `general` arms carry the container id / the singleton;
+ * `project` and `group` carry theirs. A `character`/`project`/`group`
+ * container always has an id (`decodeWardrobeContainer` refuses one without),
+ * so the non-null assertions below are the decoder's invariant, not a guess —
+ * `containerId` throws loudly rather than silently addressing the wrong tier.
+ */
+function containerId(container: WardrobeContainer): string {
+  if (!container.id) {
+    throw new Error(`Wardrobe container of scope "${container.scope}" has no id`);
+  }
+  return container.id;
+}
+
+/**
+ * What the four routers produce: the §2 group arms plus the character /
+ * project / General verbs that already exist. Every one of these is a real
+ * dispatch verb — the routing is the only thing this lane adds.
+ */
+export type WardrobeContainerRequest =
+  | CharacterWardrobeListRequest
+  | CharacterWardrobeCreateRequest
+  | CharacterWardrobeUpdateRequest
+  | CharacterWardrobeDeleteRequest
+  | ProjectWardrobeListRequest
+  | ProjectWardrobeCreateRequest
+  | ProjectWardrobeUpdateRequest
+  | ProjectWardrobeDeleteRequest
+  | GroupWardrobeListRequest
+  | GroupWardrobeCreateRequest
+  | GroupWardrobeUpdateRequest
+  | GroupWardrobeDeleteRequest
+  | WardrobeListRequest
+  | WardrobeCreateRequest
+  | WardrobeUpdateRequest
+  | WardrobeDeleteRequest;
+
+/** v4 `wardrobeCollectionUrl(container)` read with GET. */
+export function containerListRequest(container: WardrobeContainer): WardrobeContainerRequest {
+  switch (container.scope) {
+    case 'character':
+      return { type: 'characterWardrobeList', characterId: containerId(container) };
+    case 'project':
+      return { type: 'projectWardrobeList', projectId: containerId(container) };
+    case 'group':
+      return { type: 'groupWardrobeList', groupId: containerId(container) };
+    case 'general':
+      return { type: 'wardrobeList' };
+  }
+}
+
+/** v4 `wardrobeCollectionUrl(container)` written with POST. */
+export function containerCreateRequest(
+  container: WardrobeContainer,
+  item: Record<string, unknown>,
+): WardrobeContainerRequest {
+  switch (container.scope) {
+    case 'character':
+      return { type: 'characterWardrobeCreate', characterId: containerId(container), item };
+    case 'project':
+      return { type: 'projectWardrobeCreate', projectId: containerId(container), item };
+    case 'group':
+      return { type: 'groupWardrobeCreate', groupId: containerId(container), item };
+    case 'general':
+      return { type: 'wardrobeCreate', item };
+  }
+}
+
+/** v4 `wardrobeItemUrl(container, itemId)` written with PUT. */
+export function containerUpdateRequest(
+  container: WardrobeContainer,
+  itemId: string,
+  item: Record<string, unknown>,
+): WardrobeContainerRequest {
+  switch (container.scope) {
+    case 'character':
+      return {
+        type: 'characterWardrobeUpdate',
+        characterId: containerId(container),
+        itemId,
+        item,
+      };
+    case 'project':
+      return { type: 'projectWardrobeUpdate', projectId: containerId(container), itemId, item };
+    case 'group':
+      return { type: 'groupWardrobeUpdate', groupId: containerId(container), itemId, item };
+    case 'general':
+      return { type: 'wardrobeUpdate', itemId, item };
+  }
+}
+
+/** v4 `wardrobeItemUrl(container, itemId)` with DELETE. */
+export function containerDeleteRequest(
+  container: WardrobeContainer,
+  itemId: string,
+): WardrobeContainerRequest {
+  switch (container.scope) {
+    case 'character':
+      return { type: 'characterWardrobeDelete', characterId: containerId(container), itemId };
+    case 'project':
+      return { type: 'projectWardrobeDelete', projectId: containerId(container), itemId };
+    case 'group':
+      return { type: 'groupWardrobeDelete', groupId: containerId(container), itemId };
+    case 'general':
+      return { type: 'wardrobeDelete', itemId };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The shared-container loader (v4 `lib/hooks/use-wardrobe-container-items.ts`)
+// ---------------------------------------------------------------------------
+
+export interface WardrobeContainerLoadResult {
+  /** Items that live in the container itself — the editable set. */
+  items: WardrobeItemDto[];
+  /** `items` plus General archetypes, for resolving composite components. */
+  resolutionItems: WardrobeItemDto[];
+}
+
+/**
+ * Load one *shared* container's wardrobe — Quilltap General, a project store,
+ * or a group store — with NO tier merging: the list is exactly what lives in
+ * that container, which is what the dialog shows (and lets you edit) when
+ * browsing it directly. The character scope stays with
+ * {@link loadCharacterWardrobeItems}, whose job is the opposite: merge every
+ * tier a character can reach.
+ *
+ * Alongside the container's own list, the General archetypes are fetched as a
+ * *resolution pool* so composite rows can display components that bundle a
+ * General archetype — those stay read-only in the dialog because they don't
+ * live in the viewed container (v4 `use-wardrobe-container-items.ts:14-17`).
+ *
+ * A character-scoped (or null) container is a no-op, as v4's `active` guard is
+ * (`:50`); a failed read empties BOTH lists and warns, exactly as v4's catch
+ * does (`:81-85`) — a half-loaded container would offer edits into a place we
+ * could not read.
+ */
+export async function loadWardrobeContainerItems(
+  core: CoreClient,
+  container: WardrobeContainer | null,
+): Promise<WardrobeContainerLoadResult> {
+  if (!container || container.scope === 'character') {
+    return { items: [], resolutionItems: [] };
+  }
+  try {
+    // v4 `:66-70` — the container read and (unless it IS General) the
+    // archetype read, in parallel.
+    const [containerData, generalData] = await Promise.all([
+      dispatchWardrobe(core, containerListRequest(container)),
+      container.scope === 'general'
+        ? Promise.resolve(null)
+        : dispatchWardrobe(core, { type: 'wardrobeList' }).catch(() => null),
+    ]);
+    const own = (containerData['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? [];
+    const pool = [...own];
+    // v4 `:75-79` — General archetypes append, de-duped by id; the container's
+    // own copy wins because it was pushed first.
+    for (const w of (generalData?.['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? []) {
+      if (!pool.some((c) => c.id === w.id)) pool.push(w);
+    }
+    return { items: own, resolutionItems: pool };
+  } catch (err) {
+    console.warn('[loadWardrobeContainerItems] Failed to load container wardrobe', err);
+    return { items: [], resolutionItems: [] };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +453,26 @@ export async function loadCharacterWardrobeItems(
 
 /**
  * Toggle `isDefault` on an item (v4 `handleToggleDefault`,
- * `wardrobe-control-dialog.tsx:357-380`): character-owned items PUT the
- * character route (`:361`), shared archetypes PUT the global route (`:362`) —
- * the pair choice is the item's tier (`item.characterId`).
+ * `wardrobe-control-dialog.tsx:495-505` at `d7263f39`). Two arms, exactly as
+ * v4's ternary has them:
+ *
+ *  - **Character view** (`container.scope === 'character'`): the pair choice is
+ *    the item's own tier — character-owned items go to the character route,
+ *    shared archetypes to the global one. Only character-owned items reach this
+ *    handler anyway (kebab gating), but the fallback is v4's.
+ *  - **Browsing a shared container**: the item lives THERE, so the update goes
+ *    to that container's own route.
  */
-export async function toggleItemDefault(core: CoreClient, item: WardrobeItemDto): Promise<void> {
+export async function toggleItemDefault(
+  core: CoreClient,
+  item: WardrobeItemDto,
+  container: WardrobeContainer,
+): Promise<void> {
   const body = { isDefault: !item.isDefault };
+  if (container.scope !== 'character') {
+    await dispatchWardrobe(core, containerUpdateRequest(container, item.id, body));
+    return;
+  }
   if (item.characterId) {
     await core.dispatchData({
       type: 'characterWardrobeUpdate',
@@ -204,10 +486,18 @@ export async function toggleItemDefault(core: CoreClient, item: WardrobeItemDto)
 }
 
 /**
- * Delete an item over the same tier pair (v4 `handleDelete`,
- * `wardrobe-control-dialog.tsx:386-388`).
+ * Delete an item over the same two arms (v4 `handleDelete`,
+ * `wardrobe-control-dialog.tsx:512-518` at `d7263f39`).
  */
-export async function deleteWardrobeItem(core: CoreClient, item: WardrobeItemDto): Promise<void> {
+export async function deleteWardrobeItem(
+  core: CoreClient,
+  item: WardrobeItemDto,
+  container: WardrobeContainer,
+): Promise<void> {
+  if (container.scope !== 'character') {
+    await dispatchWardrobe(core, containerDeleteRequest(container, item.id));
+    return;
+  }
   if (item.characterId) {
     await core.dispatchData({
       type: 'characterWardrobeDelete',
@@ -220,29 +510,34 @@ export async function deleteWardrobeItem(core: CoreClient, item: WardrobeItemDto
 }
 
 /**
- * Duplicate a character-owned item (v4 `handleDuplicate`,
- * `wardrobe-control-dialog.tsx:404-448`). Duplicate is only offered for
- * character-owned items (the kebab hides it for shared archetypes), so it
- * always POSTs the character route (`:420-421`); composite references are
- * copied verbatim — member items are not cloned (v4's `:416` debug note).
+ * Duplicate a manageable item (v4 `handleDuplicate`,
+ * `wardrobe-control-dialog.tsx:521-590` at `d7263f39`). Duplicate is only
+ * offered for manageable items (kebab gating), so the copy stays where the
+ * original lives: the selected character's vault in the character view, or the
+ * browsed shared container itself.
+ *
+ * The payload carries `imagePrompt` since `d7263f39` — the Portrait Cue used to
+ * be dropped on every duplicate, so a copied garment came back describing
+ * nothing. Composite references are copied verbatim; member items are not
+ * cloned (v4's own debug note).
  */
 export async function duplicateWardrobeItem(
   core: CoreClient,
-  characterId: string,
+  target: WardrobeContainer,
   item: WardrobeItemDto,
   newTitle: string,
 ): Promise<void> {
-  await core.dispatchData({
-    type: 'characterWardrobeCreate',
-    characterId,
-    item: {
+  await dispatchWardrobe(
+    core,
+    containerCreateRequest(target, {
       title: newTitle,
       description: item.description ?? null,
+      imagePrompt: item.imagePrompt ?? null,
       types: item.types,
       appropriateness: item.appropriateness ?? null,
       isDefault: item.isDefault,
       componentItemIds: item.componentItemIds ?? [],
       replace: item.replace,
-    },
-  });
+    }),
+  );
 }

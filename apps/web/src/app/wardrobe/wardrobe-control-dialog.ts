@@ -42,6 +42,7 @@ import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemEditor } from './wardrobe-item-editor';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
+import type { WardrobeContainer } from './wardrobe-container';
 import {
   deleteWardrobeItem,
   dispatchWardrobe,
@@ -743,6 +744,12 @@ export class WardrobeControlDialogInner {
     () => this.characters().find((c) => c.id === this.selectedCharacterId()) ?? null,
   );
 
+  /** Interim container view — the real selector lands in the next unit. */
+  protected readonly selectedContainer = computed<WardrobeContainer>(() => ({
+    scope: 'character',
+    id: this.selectedCharacterId(),
+  }));
+
   private readonly itemsById = computed(() => new Map(this.items().map((i) => [i.id, i])));
 
   /** While the editor/transfer modal is up, backdrop/Escape must not close the
@@ -763,7 +770,7 @@ export class WardrobeControlDialogInner {
     if (!this.selectedCharacterId()) return;
     this.updatingDefaultId.set(item.id);
     try {
-      await toggleItemDefault(this.core, item);
+      await toggleItemDefault(this.core, item, this.selectedContainer());
       await this.reloadCurrentItems();
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
@@ -777,7 +784,7 @@ export class WardrobeControlDialogInner {
     if (!characterId) return;
     if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
     try {
-      await deleteWardrobeItem(this.core, item);
+      await deleteWardrobeItem(this.core, item, this.selectedContainer());
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete item');
       return;
@@ -798,7 +805,12 @@ export class WardrobeControlDialogInner {
       this.items().map((i) => i.title),
     );
     try {
-      await duplicateWardrobeItem(this.core, characterId, item, title);
+      await duplicateWardrobeItem(
+        this.core,
+        { scope: 'character', id: characterId },
+        item,
+        title,
+      );
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to duplicate item');
       return;

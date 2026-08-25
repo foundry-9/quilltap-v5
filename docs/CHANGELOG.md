@@ -76,6 +76,36 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — feat(wardrobe): every container reachable over its own verb, and Duplicate keeps the Portrait Cue (P4.D113)
+
+_Versions: SPA 0.5.551._
+
+v4's `wardrobeCollectionUrl` / `wardrobeItemUrl` build four families of REST
+URL; v5 dispatches verbs, so the same four-way routing lands as
+`containerListRequest` / `containerCreateRequest` / `containerUpdateRequest` /
+`containerDeleteRequest` in `wardrobe.api.ts`. A container missing its id
+throws by name rather than silently addressing the wrong tier.
+
+`loadWardrobeContainerItems` ports v4's new `use-wardrobe-container-items`
+hook: one shared container's own contents with no tier merging, plus the
+General archetypes as a resolution pool so a composite row can still show
+components it borrowed from General. A failed container read empties both
+lists, as v4's catch does — a half-loaded container would offer edits into a
+place we could not read.
+
+`toggleItemDefault` and `deleteWardrobeItem` gain the browsed container as an
+argument and pick v4's two arms from it; browsing a group, a shared item's
+star now targets the group rather than Quilltap General.
+`duplicateWardrobeItem` targets any container and carries `imagePrompt` — the
+Portrait Cue used to be dropped on every duplicate, so a copied garment came
+back describing nothing.
+
+The five `groupWardrobe*` verbs and the two `wardrobeTransferApply` body
+additions (`source`, `components`) are mirrored locally as a §2 block with a
+dispatch cast, in the idiom §1 used before it was folded; lane P4.D112
+delivers them in `api/types.rs` and the unifier folds them into
+`core-contract.ts`.
+
 #### 2026-08-25 — feat(wardrobe): the container module the dialog, editor, and transfer prompt will share (P4.D113)
 
 _Versions: SPA 0.5.550._

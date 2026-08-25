@@ -85233,3 +85233,46 @@ and the `split(':', 2)` truncation at a second colon.
 **Mutation proof:** deleting v4's `if (scopeRaw !== 'general' && !id) return
 null` line reds the "non-general scope MUST carry an id" case (1 failed), and
 restoring it re-greens.
+
+### Unit 2 — the container → verb router, the shared-container loader, `imagePrompt` on Duplicate (tier 1, items 1 + 4)
+
+`wardrobe.api.ts`. v4's two URL helpers become four verb routers
+(`containerListRequest` / `containerCreateRequest` / `containerUpdateRequest` /
+`containerDeleteRequest`) covering character / project / group / general — the
+Adaptation-notes mechanism divergence, recorded in the module header. A
+container without an id throws by name (`Wardrobe container of scope "group"
+has no id`) instead of silently addressing the wrong tier; the case is pinned.
+
+`loadWardrobeContainerItems` ports v4's new `use-wardrobe-container-items.ts`:
+the container's OWN contents (no tier merging — that is the character view's
+job) plus the General archetypes as a `resolutionItems` pool, de-duped with the
+container's copy winning. General is its own pool (no second read fires). A
+failed container read empties BOTH lists, as v4's catch does; a failed GENERAL
+read still yields the container (v4's per-response `.ok` check). A
+character-scoped or null container is a no-op, as v4's `active` guard is.
+
+`toggleItemDefault` / `deleteWardrobeItem` gained the browsed container and now
+carry v4's two arms (`d7263f39` `:495-518`): character view keeps the
+item's-own-tier pair; a shared container routes to ITSELF —
+so a `characterId: null` item starred while browsing a group updates the group,
+not Quilltap General. `duplicateWardrobeItem` takes a target container instead
+of a bare character id and carries **`imagePrompt`** (v4 `:576`) — v5 measurably
+had v4's pre-`d7263f39` bug of dropping the Portrait Cue on every duplicate.
+
+**§2 contract mirror.** The FIVE `groupWardrobe*` request types and the widened
+`wardrobeTransferApply` (`source?`, `components?`, and `sourceCharacterId`
+becoming OPTIONAL — v4 omits the key entirely) are declared in `wardrobe.api.ts`
+with a dispatch cast, exactly as §1 was before its fold. **The unifier folds
+them into `core-contract.ts` and runs the name-for-name wire diff against
+P4.D112's `api/types.rs`; the cast retires there.** The lane could not edit
+`core-contract.ts` itself — the order's Ownership confines this lane to
+`apps/web/src/app/wardrobe/**`.
+
+`wardrobe.api.spec.ts` grew from 12 to 22 cases: the four routers over all four
+scopes, the missing-id refusal, six loader cases, and the mutation arms incl.
+the group-star routing and the Portrait Cue in both a present and an absent
+(`imagePrompt: null`, never an absent key) shape.
+
+**Mutation proofs (2):** dropping `imagePrompt` from the duplicate payload reds
+the Portrait-Cue case; returning `resolutionItems: own` instead of the pool reds
+the General-pool case. Both restored green.
