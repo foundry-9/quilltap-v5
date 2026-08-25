@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — test(images): pin the moderation reroute to the reconstructed message (finding #104)
+
+_Versions: core 0.0.661._
+
+Finding #104's fix turned out to restore a dead feature, not just improve an
+error string. The Concierge decides whether to retry image generation on the
+uncensored profile by keyword-matching the error message
+(`is_image_moderation_error`). While every non-2xx from an SDK-backed provider
+collapsed into `Invalid response from <name> Images API`, nothing matched, the
+reroute never fired, and AUTO_ROUTE image generation was dead for OPENAI, GROK,
+Z_AI and NANOGPT.
+
+Measured live on one chat before and after: the job went FAILED with a single
+GROK attempt, then COMPLETED with two — GROK refusing with
+`400 "Generated image rejected by content moderation."` and NanoGPT/chroma
+answering `Generated 1 image(s) (Concierge reroute)`. v4 was never affected
+because its SDK throws that message.
+
+Adds `a_moderation_400_still_reads_as_a_moderation_error_downstream`, which runs
+the reconstructed message through `is_image_moderation_error` and keeps the
+pre-fix sentence as the counter-example, so re-wording the reconstruction can
+never silently switch the reroute off again. Mutation-proven.
+
 #### 2026-08-25 — docs(porting): the E6/E7/G6 follow-up rows and finding #104's record
 
 _Docs-only change._

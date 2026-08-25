@@ -1685,6 +1685,41 @@ mod tests {
         }
     }
 
+    /// **The consequence pin.** The reconstructed message is not just display
+    /// text: the Concierge's post-hoc reroute decides whether to retry on the
+    /// uncensored image profile by KEYWORD-MATCHING it
+    /// (`is_image_moderation_error`). While a Grok 400 collapsed into
+    /// `Invalid response from Grok Images API`, nothing matched, the reroute
+    /// never fired, and AUTO_ROUTE image generation was dead for all four
+    /// SDK-backed providers — measured live on 2026-08-25, where the same job
+    /// went FAILED before this fix and COMPLETED after it, with a second
+    /// `IMAGE_GENERATION` row on NANOGPT/chroma reading
+    /// `Generated 1 image(s) (Concierge reroute)`.
+    ///
+    /// So: any future change to `openai_sdk_error`'s wording has to keep the
+    /// provider's own words in the message, or it silently switches the reroute
+    /// off again. This test is what makes that loud.
+    #[test]
+    fn a_moderation_400_still_reads_as_a_moderation_error_downstream() {
+        use crate::services::dangerous_content::provider_routing::is_image_moderation_error;
+
+        let grok_400 = openai_sdk_error(&WireResponse::new(
+            400,
+            r#"{"error":"Generated image rejected by content moderation."}"#,
+        ));
+        assert!(
+            is_image_moderation_error(&grok_400.message),
+            "the reroute must still recognise this: {}",
+            grok_400.message
+        );
+
+        // The pre-fix message is the counter-example that explains the bug.
+        assert!(
+            !is_image_moderation_error("Invalid response from Grok Images API"),
+            "the generic sentence never matched — which is why the reroute died"
+        );
+    }
+
     /// The SDK/raw-fetch SPLIT, pinned in BOTH directions. Widening the gate
     /// to every provider compiles, reads like a simplification, and silently
     /// replaces GOOGLE's and OPENROUTER's own v4 sentences — a mutation that

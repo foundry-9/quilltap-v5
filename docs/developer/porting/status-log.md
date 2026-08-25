@@ -86122,6 +86122,49 @@ mutation widening the gate to ALL providers, silently replacing GOOGLE's
 `Gemini API error: 502` and OPENROUTER's own wording, stayed **green** until
 it existed. Five mutations, each reddening exactly the right tests.
 
+### ⚠ #104's real size, measured after the fact — a dead feature, not a bad string
+
+The question "should the Grok moderation refusal be filed as its own bug?"
+turned out to answer itself, and it corrects the report above.
+
+The Concierge's post-hoc image reroute decides whether to retry on the
+uncensored image profile by **keyword-matching the error message**
+(`is_image_moderation_error`: `"content moderation"`, `"rejected by content"`,
+`"content policy"`, …). While every non-2xx collapsed into
+`Invalid response from <name> Images API`, **nothing ever matched** — so
+`reroute_or_fail` resolved `None` and hard-failed. **AUTO_ROUTE image
+generation was dead in v5 for all four SDK-backed providers**, and the
+symptom looked exactly like a mysterious provider fault, which is why two
+dogfood passes filed it as an open question instead of a bug.
+
+Every other precondition was satisfiable on this instance the whole time and
+was verified: mode `AUTO_ROUTE`, `uncensoredImageProfileId` = Chroma,
+different from the current profile, owned by the user, with a live NanoGPT
+key. The message was the only thing in the way.
+
+**And there are TWO production reroute sites, not one** — `reroute_or_fail`
+in `image_job_common.rs` (story-background + avatar jobs) and the in-chat
+tool's own arm at `tools/generate_image.rs:2229`. Both keyword-match the same
+message and both sit above the same `ImageProvider` seam, so both were dead
+for the SDK providers and both are restored by the single fix. (The third
+`is_image_moderation_error` hit, `model/image.rs:402`, is a test over a canned
+provider.)
+
+**Measured live on the same chat, before and after the fix:**
+
+| | pre-fix (`FAILED`) | post-fix (`COMPLETED`) |
+|---|---|---|
+| attempt 1 | GROK `grok-imagine-image-2.0` — `Invalid response from Grok Images API` | GROK `grok-imagine-image-2.0` — `400 "Generated image rejected by content moderation."` |
+| attempt 2 | *(none — hard fail)* | **NANOGPT `chroma`** — `Generated 1 image(s) (Concierge reroute)` |
+
+v4 was never affected: its SDK throws that message, so its reroute always
+fired. Nothing to file upstream, and nothing left open — but the consequence
+is now pinned by a sixth test,
+`a_moderation_400_still_reads_as_a_moderation_error_downstream`, which runs
+the reconstructed message straight through `is_image_moderation_error` and
+keeps the pre-fix sentence as the counter-example. Re-wording the
+reconstruction can no longer switch the reroute off in silence.
+
 ### Recorded, not filed
 
 - **The kebab menu is clipped by the list's own scroll container** — with a

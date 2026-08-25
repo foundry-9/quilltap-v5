@@ -2058,7 +2058,16 @@ records THERE. Update this summary only when a phase or round completes.
   both-directions split guard added because a mutation widening the gate to ALL
   providers — silently replacing GOOGLE's and OPENROUTER's own sentences —
   stayed green until it existed. Five mutations, each reddening the right
-  tests.
+  tests. **⚠ #104 was a DEAD FEATURE, not a bad string — measured after the
+  fix:** the Concierge picks the uncensored-image reroute by KEYWORD-MATCHING
+  the error (`is_image_moderation_error`), so while every non-2xx read
+  `Invalid response from … Images API` nothing matched and **AUTO_ROUTE image
+  generation was dead for all four SDK providers**. Same chat, before vs
+  after: **FAILED** with one GROK row → **COMPLETED** with two, the second
+  **NANOGPT/`chroma`** reading `Generated 1 image(s) (Concierge reroute)`. v4
+  was never affected (its SDK throws that message), so there is nothing to
+  file upstream; a sixth test pins the message through
+  `is_image_moderation_error` with the pre-fix sentence as counter-example.
 - **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
   moving or copying an outfit brings its components along"), adopted at
   the f6a10055-round unification (2026-08-25).** ⚠ v4 HEAD moved TWO
