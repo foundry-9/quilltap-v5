@@ -192,6 +192,33 @@ collapse to a stray space. The host carries `block`, so `.qt-select`'s
 `select.value` after the children mount, so a selection naming no rendered
 option leaves the control blank instead of snapping to row 0 - reachable here
 whenever a tier's list refetches without the row the current selection names.
+#### 2026-08-25 — fix(images): a character's photo gallery can download a picture again (bug 99, part 1)
+
+_Versions: SPA 0.5.558._
+
+The download half of v4 `8018c487`. `af1bc479` (P4.D114) gave the hover Download
+button to every other image grid and missed the embedded character gallery, so a
+photo in a character's album could only be saved by opening the detail view —
+which, under a shell with no right-click Save Image, meant not at all.
+
+The Photo Gallery tab's tile overlay gains v4's Download button between Set as
+avatar and Delete, gated on `!isMissingImage` exactly as v4 gates it. The handler
+is v4's `useGalleryData.handleDownloadImage` verbatim: the src is `image.url`
+when set and the filepath with a leading `/` forced on otherwise, a non-ok fetch
+throws `Failed to fetch image (${status})`, and the blob goes to
+`triggerBlobDownload` under the entry's own `fileName`. The failure toast reads
+the fixed `Failed to download image`; the thrown message reaches only the console
+line, with v4's exact three-key bag.
+
+The tile → `ImageData` mapping was factored out of `selectedImage` so the
+download handler and the detail modal read the same projection, as v4's hook and
+modal read the same `GalleryImage`.
+
+Four specs pin it: the control's presence and `aria-label`, its absence on a tile
+whose bytes failed to load, the downloaded filename's source (the entry's
+`fileName`, not the blob path's basename), and the fixed toast sentence beside
+the real logged one.
+
 #### 2026-08-25 — fix(themes): hover and opacity qt-* classes actually style something (bugs 100, 102)
 
 _Versions: SPA 0.5.557._

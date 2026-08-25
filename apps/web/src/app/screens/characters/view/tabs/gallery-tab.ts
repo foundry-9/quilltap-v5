@@ -13,6 +13,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterPhoto } from '../../../../core/core-contract';
 import { apiUrl } from '../../../../core/api-url';
+import { triggerBlobDownload } from '../../../../core/download-utils';
 import { Icon } from '../../../../ui/icon';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { LoadingState } from '../../../../ui/loading-state';
@@ -35,9 +36,9 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
  * `components/images/embedded-gallery/EmbeddedPhotoGallery.tsx` +
  * `GalleryControls` + `GalleryGrid` + `GalleryImage` + `useGalleryData`):
  * the count + upload + Clear-Avatar + zoom header, the tile grid with the
- * Avatar ring/badge and the hover set-avatar / confirm-double-click delete
- * overlay, missing-image detection, and the deep `ImageDetailModal` opened
- * per tile — the ONLY host that passes `onAvatarSet`
+ * Avatar ring/badge and the hover set-avatar / download / confirm-double-click
+ * delete overlay, missing-image detection, and the deep `ImageDetailModal`
+ * opened per tile — the ONLY host that passes `onAvatarSet`
  * (`EmbeddedPhotoGallery.tsx:189-195`), and the one that sets
  * `linkId: selectedImage.id` (`:175`) so the modal's save-to-album takes the
  * link-relink branch.
@@ -49,6 +50,11 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
  *
  * Upload keeps the lane-C multipart route (the byte leg dispatch can't
  * express), and reports through the toast, as v4's `useGalleryData` does.
+ *
+ * The hover Download button is v4 bug 99 (`8018c487`): `af1bc479` gave the
+ * affordance to every other image grid and missed this one, leaving a photo in
+ * a character's album with no way to be saved at all under a shell that has no
+ * right-click Save Image.
  */
 @Component({
   selector: 'qt-character-gallery-tab',
@@ -182,6 +188,21 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                     <qt-icon name="user" class="w-4 h-4" />
                   </button>
                 }
+                <!-- v4 GalleryImage:84-95 (bug 99) — the hover Download button
+                     af1bc479 gave every other image grid and missed here.
+                     stopPropagation, so downloading does not also open the
+                     detail view. -->
+                @if (!missingImages().has(photo.linkId)) {
+                  <button
+                    type="button"
+                    class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:bg-primary hover:qt-text-on-primary transition-colors"
+                    title="Download image"
+                    aria-label="Download image"
+                    (click)="$event.stopPropagation(); handleDownloadImage(photo)"
+                  >
+                    <qt-icon name="download" class="w-4 h-4" />
+                  </button>
+                }
                 @if (currentAvatarId() !== photo.linkId || missingImages().has(photo.linkId)) {
                   <button
                     type="button"
@@ -256,13 +277,16 @@ export class CharacterGalleryTab {
   );
   protected readonly entityName = computed(() => this.characterQuery.data()?.name || 'Character');
 
-  protected readonly selectedImage = computed<ImageData | null>(() => {
-    const index = this.selectedIndex();
-    const photo = index >= 0 ? this.photos()[index] : undefined;
-    if (!photo) return null;
-    // v4 `:174-186` — the tile → ImageData mapping; `linkId: photo.linkId`
-    // (the id IS a link id here) drives the modal's link-relink save branch,
-    // and `tags: []` is hardcoded (scope correction 1).
+  /**
+   * v4 `:174-186` — the tile → ImageData mapping; `linkId: photo.linkId`
+   * (the id IS a link id here) drives the modal's link-relink save branch,
+   * and `tags: []` is hardcoded (scope correction 1).
+   *
+   * Factored out of `selectedImage` for bug 99: v4's `handleDownloadImage`
+   * reads its src off the SAME `GalleryImage` the modal gets
+   * (`useGalleryData.ts:154`), so the two must not be able to drift apart.
+   */
+  private toImageData(photo: CharacterPhoto): ImageData {
     return {
       id: photo.linkId,
       linkId: photo.linkId,
@@ -274,6 +298,12 @@ export class CharacterGalleryTab {
       createdAt: photo.keptAt,
       tags: [],
     };
+  }
+
+  protected readonly selectedImage = computed<ImageData | null>(() => {
+    const index = this.selectedIndex();
+    const photo = index >= 0 ? this.photos()[index] : undefined;
+    return photo ? this.toImageData(photo) : null;
   });
 
   /** v4 `:54-60` — the host's clamped index arithmetic. */
@@ -303,6 +333,36 @@ export class CharacterGalleryTab {
 
   protected markMissing(linkId: string): void {
     this.missingImages.update((prev) => new Set(prev).add(linkId));
+  }
+
+  /**
+   * v4 `useGalleryData.handleDownloadImage` (`:143-160`, bug 99): fetch the
+   * mount-blob bytes and hand the blob to the download helper, so the desktop
+   * shell gets its save path (there is no right-click Save Image there).
+   *
+   * The src expression is v4's verbatim — `image.url` when set, otherwise the
+   * filepath with a leading `/` forced on. The failure sentence
+   * (`'Failed to download image'`) is a fixed string, NOT the thrown message;
+   * the message goes only to the console line, with v4's exact three-key bag.
+   */
+  protected async handleDownloadImage(photo: CharacterPhoto): Promise<void> {
+    const image = this.toImageData(photo);
+    const src =
+      image.url || (image.filepath.startsWith('/') ? image.filepath : `/${image.filepath}`);
+    try {
+      const res = await fetch(src);
+      if (!res.ok) throw new Error(`Failed to fetch image (${res.status})`);
+      const blob = await res.blob();
+      triggerBlobDownload(blob, image.filename);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.toasts.showError('Failed to download image');
+      console.error('Error downloading image:', {
+        error: message,
+        entityId: this.characterId(),
+        imageId: image.id,
+      });
+    }
   }
 
   /** v4 `useGalleryData.handleSetAvatar` (`:88-113`) via `characterAvatar`. */

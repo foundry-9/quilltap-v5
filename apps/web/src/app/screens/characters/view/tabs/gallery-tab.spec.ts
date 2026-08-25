@@ -291,4 +291,102 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
     expect(toasts().at(-1)?.type).toBe('error');
     expect(toasts().at(-1)?.message).toContain('Unsupported MIME type');
   });
+
+  // ==========================================================================
+  // The hover Download button (v4 bug 99 — `8018c487`).
+  // GalleryImage.tsx:84-95 for the control, useGalleryData.ts:143-160 for the
+  // hook, EmbeddedPhotoGallery.tsx:85-88 for the stopPropagation wrapper.
+  // ==========================================================================
+
+  /** The `<a download>` the browser arm of `triggerBlobDownload` clicks. */
+  function captureAnchorClicks(): { href: string; download: string }[] {
+    const seen: { href: string; download: string }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      seen.push({ href: this.href, download: this.download });
+    });
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:stub-object-url',
+      revokeObjectURL: () => undefined,
+    });
+    return seen;
+  }
+
+  it('offers Download on every tile that has an image', async () => {
+    const fixture = await render(
+      stubClient({ photos: [entry({ linkId: 'link-1' }), entry({ linkId: 'link-2' })] }),
+    );
+    const buttons = fixture.nativeElement.querySelectorAll('button[title="Download image"]');
+    expect(buttons.length).toBe(2);
+    // v4 gives it both a title and an aria-label (`GalleryImage.tsx:92-93`).
+    expect((buttons[0] as HTMLElement).getAttribute('aria-label')).toBe('Download image');
+  });
+
+  // GalleryImage.tsx:85 — `!isMissingImage`, so a tile whose bytes 404'd
+  // offers no download at all.
+  it('hides Download on a tile whose image failed to load', async () => {
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'link-1' })] }));
+    fixture.nativeElement.querySelector('img')!.dispatchEvent(new Event('error'));
+    await flush(fixture);
+    expect(fixture.nativeElement.querySelectorAll('button[title="Download image"]').length).toBe(0);
+  });
+
+  it('downloads the blob under the entry filename, and does NOT open the detail view', async () => {
+    const anchors = captureAnchorClicks();
+    const blob = new Blob(['x'], { type: 'image/webp' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, blob: async () => blob }) as unknown as Response),
+    );
+    const fixture = await render(
+      stubClient({ photos: [entry({ linkId: 'link-1', fileName: 'zeppelin.webp' })] }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Download image"]') as HTMLElement
+    ).click();
+    await flush(fixture);
+
+    // The src is v4's expression (`useGalleryData.ts:154`): `image.url` first,
+    // which for this host is the blobUrl through `apiUrl`.
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      '/api/v1/mount-points/mp-1/blobs/',
+    );
+    // The filename is the entry's own `fileName` — NOT the blob path's basename.
+    expect(anchors).toEqual([{ href: 'blob:stub-object-url', download: 'zeppelin.webp' }]);
+    // EmbeddedPhotoGallery.tsx:86 carries `stopPropagation` and so does this
+    // port, though in BOTH the action overlay is a sibling of the tile button
+    // rather than a child, so nothing bubbles into it either way. The pin that
+    // matters is the observable one: downloading opens no detail view.
+    expect(fixture.nativeElement.querySelector('qt-image-detail-modal')).toBeNull();
+    expect(toasts()).toEqual([]);
+  });
+
+  // useGalleryData.ts:156-159 — the toast sentence is a FIXED string; the
+  // thrown message (`Failed to fetch image (404)`) goes only to the console.
+  it('reports a failed fetch with v4 fixed sentence, and logs the real one', async () => {
+    captureAnchorClicks();
+    const logged: unknown[][] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 404 }) as unknown as Response),
+    );
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'link-1' })] }));
+    (
+      fixture.nativeElement.querySelector('button[title="Download image"]') as HTMLElement
+    ).click();
+    await flush(fixture);
+
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to download image' });
+    expect(logged.at(-1)?.[0]).toBe('Error downloading image:');
+    expect(logged.at(-1)?.[1]).toEqual({
+      error: 'Failed to fetch image (404)',
+      entityId: 'c1',
+      imageId: 'link-1',
+    });
+  });
 });
