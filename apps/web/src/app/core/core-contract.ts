@@ -1751,6 +1751,35 @@ export interface ProjectWardrobeDeleteRequest {
   itemId: string;
 }
 
+/** Group wardrobe (v4 `/groups/:id/wardrobe`, `d7263f39`) — the group tier of
+ *  the four-tier wardrobe model; field shapes mirror `ProjectWardrobe*`
+ *  exactly (the P4.D112/P4.D113 Shared contract, folded at unification). */
+export interface GroupWardrobeListRequest {
+  type: 'groupWardrobeList';
+  groupId: string;
+}
+export interface GroupWardrobeCreateRequest {
+  type: 'groupWardrobeCreate';
+  groupId: string;
+  item: Record<string, unknown>;
+}
+export interface GroupWardrobeGetRequest {
+  type: 'groupWardrobeGet';
+  groupId: string;
+  itemId: string;
+}
+export interface GroupWardrobeUpdateRequest {
+  type: 'groupWardrobeUpdate';
+  groupId: string;
+  itemId: string;
+  item: Record<string, unknown>;
+}
+export interface GroupWardrobeDeleteRequest {
+  type: 'groupWardrobeDelete';
+  groupId: string;
+  itemId: string;
+}
+
 // ===========================================================================
 // The courier + chat-images surface (P4.6ac; p4.6ab implements the server side)
 // ---------------------------------------------------------------------------
@@ -2263,6 +2292,11 @@ export type CoreRequest =
   | ProjectWardrobeGetRequest
   | ProjectWardrobeUpdateRequest
   | ProjectWardrobeDeleteRequest
+  | GroupWardrobeListRequest
+  | GroupWardrobeCreateRequest
+  | GroupWardrobeGetRequest
+  | GroupWardrobeUpdateRequest
+  | GroupWardrobeDeleteRequest
   | ScenarioListRequest
   | ScenarioCreateRequest
   | ScenarioGetRequest
@@ -5957,13 +5991,28 @@ export interface WardrobeTransferDestinationsRequest {
 /** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */
 export type WardrobeTransferScope = 'general' | 'project' | 'group' | 'character';
 
-/** v4 `POST /api/v1/wardrobe/transfers` (`transfers/route.ts:47-57`). */
+/**
+ * v4 `POST /api/v1/wardrobe/transfers` (`transferRequestSchema` at
+ * `f6a10055`). Widened by the P4.D112/P4.D113 Shared contract (folded at
+ * unification):
+ *
+ *  - `source?` — the explicit home container (`d7263f39`), sent when the
+ *    dialog browses a shared container and the item's tier is known exactly;
+ *    the server resolves straight from it, no character probing.
+ *  - `components?` — for a composite outfit, what to do with its
+ *    same-container components (`f6a10055`; all or nothing).
+ *  - `sourceCharacterId` is OPTIONAL: v4 omits the key entirely when there is
+ *    no selected character. At least one of `sourceCharacterId` / `source` is
+ *    required — v4's refine.
+ */
 export interface WardrobeTransferApplyRequest {
   type: 'wardrobeTransferApply';
   action: 'move' | 'copy';
   itemId: string;
-  sourceCharacterId: string;
+  sourceCharacterId?: string;
   sourceProjectId: string | null;
+  source?: { scope: 'character' | 'project' | 'group' | 'general'; id?: string };
+  components?: 'move' | 'copy' | 'none';
   destination: { scope: WardrobeTransferScope; id?: string };
 }
 

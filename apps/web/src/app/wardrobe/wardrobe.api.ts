@@ -18,12 +18,12 @@
  * `characterList`, `imageProfileList`, `chatGet`.
  *
  * §2 (the P4.D112/P4.D113 Shared contract): the FIVE `groupWardrobe*` verbs and
- * the two `wardrobeTransferApply` body additions (`source`, `components`) are
- * declared HERE, in the same idiom §1 used before it was folded — lane P4.D112
- * delivers them in `api/types.rs`, this lane mirrors them name-for-name, and the
- * unifier folds them into `core-contract.ts` and runs the wire diff. Until then
- * `dispatchWardrobe` carries the §2 cast. Field names are the contract's
- * verbatim.
+ * the two `wardrobeTransferApply` body additions (`source`, `components`) were
+ * FOLDED into `core-contract.ts` at the round's unification, like §1 before
+ * them, and the §2 cast retired; the name-for-name wire diff ran there against
+ * `api/types.rs` (P4.D112's five `GroupWardrobe*` variants + the widened
+ * `parse_transfer_request`) and every name and payload matched. Re-exported
+ * below with the §1 set.
  */
 
 import type { CoreClient } from '../core/core-client';
@@ -39,18 +39,23 @@ import type {
   ProjectWardrobeCreateRequest,
   ProjectWardrobeUpdateRequest,
   ProjectWardrobeDeleteRequest,
+  GroupWardrobeListRequest,
+  GroupWardrobeCreateRequest,
+  GroupWardrobeGetRequest,
+  GroupWardrobeUpdateRequest,
+  GroupWardrobeDeleteRequest,
   WardrobeCreateRequest,
   WardrobeDeleteRequest,
   WardrobeListRequest,
   WardrobePreviewAvatarRequest,
+  WardrobeTransferApplyRequest,
   WardrobeTransferDestinationsRequest,
   WardrobeTransferScope,
   WardrobeUpdateRequest,
   WardrobeItemDto,
-  CoreRequest,
 } from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
-import type { WardrobeContainer, WardrobeContainerScope } from './wardrobe-container';
+import type { WardrobeContainer } from './wardrobe-container';
 
 // ---------------------------------------------------------------------------
 // §1 — lane P4.9f1's request types (FOLDED into core-contract at unification)
@@ -71,68 +76,25 @@ export type {
 } from '../core/core-contract';
 
 // ---------------------------------------------------------------------------
-// §2 — the P4.D112/P4.D113 Shared contract (mirrored here; folded at unification)
+// §2 — the P4.D112/P4.D113 Shared contract (folded into core-contract at
+// unification, like §1; re-exported so this module stays the wardrobe
+// data-layer entry point)
 // ---------------------------------------------------------------------------
 
-/**
- * The group tier's CRUD, §Shared contract item 1 — field shapes mirror
- * `ProjectWardrobe*` exactly. v4 `app/api/v1/groups/[id]/wardrobe[/itemId]`
- * (`d7263f39`); before that commit the group tier had no endpoints at all.
- */
-export interface GroupWardrobeListRequest {
-  type: 'groupWardrobeList';
-  groupId: string;
-}
-export interface GroupWardrobeCreateRequest {
-  type: 'groupWardrobeCreate';
-  groupId: string;
-  item: Record<string, unknown>;
-}
-export interface GroupWardrobeGetRequest {
-  type: 'groupWardrobeGet';
-  groupId: string;
-  itemId: string;
-}
-export interface GroupWardrobeUpdateRequest {
-  type: 'groupWardrobeUpdate';
-  groupId: string;
-  itemId: string;
-  item: Record<string, unknown>;
-}
-export interface GroupWardrobeDeleteRequest {
-  type: 'groupWardrobeDelete';
-  groupId: string;
-  itemId: string;
-}
+export type {
+  GroupWardrobeListRequest,
+  GroupWardrobeCreateRequest,
+  GroupWardrobeGetRequest,
+  GroupWardrobeUpdateRequest,
+  GroupWardrobeDeleteRequest,
+  WardrobeTransferApplyRequest,
+} from '../core/core-contract';
 
-/** What travels with a composite outfit (§Shared contract item 2). */
+/** What travels with a composite outfit (§Shared contract item 2 — the
+ *  `components` field's union, spelled out for the transfer dialog). */
 export type WardrobeTransferComponentMode = 'move' | 'copy' | 'none';
 
-/**
- * `wardrobeTransferApply` WIDENED by §Shared contract item 2 — this supersedes
- * the `core-contract.ts` shape, which the unifier updates in place:
- *
- *  - `source?: { scope, id? }` — the explicit home container, sent when the
- *    dialog browses a shared container and the item's tier is known exactly.
- *    The server then resolves straight from it, no character probing.
- *  - `components?` — for a composite, what to do with its same-container
- *    components (all or nothing).
- *  - `sourceCharacterId` becomes OPTIONAL: v4 omits the key entirely when
- *    there is no selected character (`:163`, the `...(x ? {x} : {})` spread).
- *    At least one of `sourceCharacterId` / `source` is required — v4's refine.
- */
-export interface WardrobeTransferApplyRequest {
-  type: 'wardrobeTransferApply';
-  action: 'move' | 'copy';
-  itemId: string;
-  sourceCharacterId?: string;
-  sourceProjectId: string | null;
-  source?: { scope: WardrobeContainerScope; id?: string };
-  components?: WardrobeTransferComponentMode;
-  destination: { scope: WardrobeTransferScope; id?: string };
-}
-
-/** The §1 + §2 union — the §2 arms ride the cast in `dispatchWardrobe`. */
+/** The §1 + §2 union — every arm now lives in `CoreRequest`. */
 export type WardrobeLaneRequest =
   | ChatOutfitGetRequest
   | ChatEquipRequest
@@ -151,16 +113,15 @@ export type WardrobeLaneRequest =
   | GroupWardrobeDeleteRequest;
 
 /**
- * The wardrobe dispatch choke-point. The §1 cast was retired when those verbs
- * were folded into `core-contract.ts`; the §2 cast is back for the same reason
- * and retires the same way — `groupWardrobe*` and the widened
- * `wardrobeTransferApply` are not in `CoreRequest` until the unifier folds them.
+ * The wardrobe dispatch choke-point. Both casts are retired — the §1 verbs and
+ * the §2 verbs (`groupWardrobe*`, the widened `wardrobeTransferApply`) all
+ * live in `CoreRequest` since their unification folds.
  */
 export function dispatchWardrobe(
   core: CoreClient,
   request: WardrobeLaneRequest | WardrobeContainerRequest,
 ): Promise<Record<string, unknown>> {
-  return core.dispatchData(request as unknown as CoreRequest);
+  return core.dispatchData(request);
 }
 
 // ---------------------------------------------------------------------------

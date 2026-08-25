@@ -61,7 +61,13 @@ const P4D87_HAIR_SLOT_LANDED = true;
  * the new server fields — browsing, in-place create/edit, and the radio pair
  * itself — is live in this lane and runs unconditionally.
  */
-const P4D112_TRANSFER_COMPONENTS_LANDED = false;
+// FLIPPED at the round's unification (2026-08-25): P4.D112's server half is on
+// main. The beat still carries the `hasGeneralStore` probe — the committed
+// characters-* fixture has no shared container to move into, so the beat
+// self-parks with that named reason until the fixture gains one (a recorded
+// follow-up; the component-travel semantics are tier-2-proven in
+// `wardrobe_transfers_tier2_equivalence` meanwhile).
+const P4D112_TRANSFER_COMPONENTS_LANDED = true;
 
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
