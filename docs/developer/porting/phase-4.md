@@ -5899,3 +5899,31 @@ commit list; its only unabsorbed content today is the tests-only
 sweep driver remains the sanctioned per-family regen path — never run two
 sweeps concurrently. The distill-transitive TZ pins, the committed-fixture
 rule, and the venue/staging rules stand unchanged.
+
+**The `f6a10055` wardrobe-containers drift round (P4.D112 ∥ P4.D113 ∥
+P4.D114) — PLANNED 2026-08-25.** v4 sits FOUR commits past `0ba942b1`
+(the two known at the last unification plus two wardrobe commits from
+2026-08-25): `af1bc479` (gallery download buttons + the mount-blob
+route's inline `Content-Disposition`), `c93ec7ff` (bug 98 — the projects
+CREATE schema stops refusing a blank/null description), `d7263f39` (the
+wardrobe dialog browses and edits every container — a NEW group wardrobe
+CRUD API, transfers gain an explicit `source {scope,id}`, the item
+editor's shared-edit mis-target fixed, Duplicate preserves
+`imagePrompt`), and `f6a10055` (moving/copying an outfit brings its
+same-container components along — plan-first id remap, refuse-on-
+collision, post-write read-back — plus the `buildSlugByItemIdMap`
+collision fix, which v5 measurably shares). All four are behavior drift
+on ported surfaces. Three lanes, orders committed:
+`p4.d112-wardrobe-containers-server.md` (core: group CRUD verbs +
+transfers components machinery + the slug fix),
+`p4.d113-wardrobe-containers-spa.md` (the whole
+`apps/web/src/app/wardrobe/` folder incl. `af1bc479`'s wardrobe hunk;
+group-dependent beats gated ACTIVATE-AT-UNIFY),
+`p4.d114-downloads-bug98.md` (the remaining download surfaces + the blob
+header + the create schema; no cross-lane contract). D112↔D113 share a
+binding contract (the five `groupWardrobe*` verbs, the transfers
+`source`/`components` body + response fields, the container scope-string
+spellings). At unification the oracle baseline MOVES to `f6a10055`; until
+then **pin `f6a10055` for every regen** (the checkout sat clean on `main`
+at HEAD = the pin at planning). `bugfix` measured at planning: nothing
+unabsorbed beyond the tests-only `009c49b2`.

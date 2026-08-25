@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the f6a10055 wardrobe-containers drift round is planned (P4.D112 ∥ P4.D113 ∥ P4.D114)
+
+Docs-only. v4 moved four commits past `0ba942b1` — the gallery-downloads +
+bug-98 pair already flagged at the last unification, plus the two-commit
+wardrobe-containers feature (a new group wardrobe CRUD API, component-
+carrying transfers, the slug-collision vault fix v5 shares). Three work
+orders committed under `docs/developer/porting/work-orders/` with a binding
+server↔SPA contract and a disjoint-ownership table; phase-4.md gains the
+planning note. Pin `f6a10055` for every regen until the round unifies.
+
 #### 2026-08-25 — chore(unify): the no-drift maintenance round lands whole (P4.59 ∥ P4.60 ∥ P4.61)
 
 _Versions: quilltap-core 0.0.655, quilltap-harness 0.0.574, quilltap-host 0.0.82, quilltap-web 0.0.86, SPA 0.5.549._
