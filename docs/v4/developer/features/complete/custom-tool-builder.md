@@ -2,6 +2,7 @@
 
 **Status:** Implemented (shipped).
 **Parent feature:** [pascal-custom-tools.md](../pascal-custom-tools.md) (shipped). This spec fills the item that spec deferred: *"a form-based editor could come later."* It is now coming.
+**Post-ship addition — the `llm` consult (not re-specced here; see the parent spec's "The `llm` consult"):** the Workbench gained a "consulted oracle" form section (`llmEnabled`/`llmPrompt`/`llmErrorMessage`/`llmMaxOutput` on `ToolDraft`, prompt-placeholder validation, prompt and error line required while enabled, the answer cap optional — blank means the 8,000-char default, bounded by `MAX_LLM_OUTPUT_CEILING`), two condition-chip subject kinds (`llm` — the answer, all six comparators, metadata-style fail-soft typing; `llm-ok` — success, eq/neq against a boolean, serialized to the comparator's single `ok` key), `{{llm}}` in the message insert menu, an oracle card on the proving bench (scripted answer / silence / live single-roll consult; the audit never calls live and holds one simulated answer fixed across all draws via `simulateOutcomes`' fifth argument), consult details on the mini-bubble debug line, and an "oracle" library badge.
 **Intended implementer:** an agent with this document, the parent spec, and the codebase. Everything here was verified against the code as of commit `8e4b00d4`; the character-metadata subject (§4.4.1) was added after the `metadata.json` feature shipped (`8bc43333`, spec: [character-metadata-json.md](complete/character-metadata-json.md)) and verified against `WhenObjectSchema` / `MetadataComparatorSchema` / `MetadataKeySchema` in `lib/pascal/custom-tool.types.ts`.
 
 ---
@@ -82,6 +83,15 @@ All form controls use existing `qt-*` semantic classes (`qt-input`, `qt-select`,
 - **Name** (required): identifier field enforcing `IDENTIFIER_PATTERN` (`/^[a-z][a-z0-9_-]{0,63}$/`) as-you-type (lowercase coercion, invalid chars rejected with a shake or inline hint, never silently). When creating and Title is filled first, auto-suggest a slug (`Force the Lock` → `force_the_lock`) that stops tracking once hand-edited.
 - **Description** (required, ≤500): textarea with counter. Helper text: "What the tool does *in the fiction* — this is how a model decides to reach for it."
 - **Options** row: `disabled` checkbox ("tombstone: suppresses this name at this tier and every farther one"), `revealOdds` checkbox (default on; off = "the house does not show the odds — models see only name, description, parameters"), `defaultVisibility` public/whisper toggle.
+
+### 4.1a Availability section — "Who may reach for it" (added 4.8)
+
+`components/custom-tools/GateSection.tsx`, rendered between identity and parameters — the gate is answered before any of the machinery below it, and reads that way.
+
+- A three-way mode radio maps 1:1 onto the format's clauses: **Anyone** (emit neither key), **Only show if…** (`availableWhen`), **Do not show if…** (`withheldWhen`). The format permits at most one clause per file, which is what lets one control represent it; a hand-written file carrying both fails `QtapCustomToolSchema` and lands in repair mode rather than being silently halved.
+- Conditions are a thinner chip than the outcome table's: the subject is always a metadata key and the operand is always a literal, because a gate has no parameters or state to reference. eq/neq get the same number/text/true-false type picker a metadata subject gets in the table, for the same reason (the stored type is unknowable at authoring time).
+- `draft.gateConditions` survives a mode change, like the roll form's unused half — turning "only if" into "not if" is the commonest edit there is.
+- Draft rules live in `validateGate` (`lib/pascal/tool-draft.ts`); the chip ⇄ JSON bijection is `gateConditionsFromGate` / `gateFromConditions`.
 
 ### 4.2 Parameters section
 

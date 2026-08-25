@@ -4,6 +4,187 @@
 
 ### 4.9-dev
 
+#### OpenRouter vision profiles send images again (bug 97)
+
+OpenRouter's plugin declared `supportsAttachments: false` with no MIME types, a truthful statement when it was
+written and stale since bug 45 taught `provider.ts` to serialise `image_url` content-parts for JPEG, PNG, GIF and
+WebP. Bug 91 made that declaration load-bearing: `providerCanTransportImages` asks the plugin registry first, so in
+production every OpenRouter vision profile routed its images to the describe-fallback, and the describer guard
+refused an OpenRouter profile in the same sentence that recommended OpenRouter. Jest never saw it — with the
+registry uninitialised the predicate reads the static map, which was correct.
+
+`qtap-plugin-openrouter` 1.0.59 declares `supportsAttachments: true` and imports its MIME list from `provider.ts`'s
+now-exported `SUPPORTED_IMAGE_MIME_TYPES`, so the declaration the registry reads and the bytes the provider sends
+cannot drift apart again. The model-dependent caveat is unchanged and still the host's call: images only reach a
+profile whose "Supports image attachments" flag is ticked.
+
+New test `__tests__/unit/lib/llm/image-transport.test.ts` covers the registry-initialised branch that had no
+coverage, and loads every bundled plugin's **built** `index.js` to assert its declaration gives the same answer as
+the static map in `lib/llm/attachment-support.ts` — the drift that produced this bug now fails the suite. The
+describer guard's provider list also gained NanoGPT, which has transported images since plugin 1.1.0.
+
+#### Bug 97 filed: the OpenRouter registry entry denies the vision path its own provider implements
+
+Docs only, plus a two-character comment correction. Bug 91's transport predicate correctly asks the plugin registry
+first — and the registry's OpenRouter answer is stale: `qtap-plugin-openrouter/index.ts` still declares the
+pre-vision conservative `supportsAttachments: false` while `provider.ts` has serialised `image_url` content-parts
+for four MIME types since bug 45, and the client-safe static map agrees with the provider. In production (registry
+initialised) the stale `false` wins: every OpenRouter vision profile silently routes to the describe-fallback, and
+the bug-91 describer guard refuses OpenRouter profiles with a sentence that itself names OpenRouter as a provider
+that forwards images. In jest the registry is uninitialised, the static map wins, and the suite is green over a
+branch production never takes. Found by the quilltap-v5 port's differential, which runs the predicate in both
+configurations. The bug file (`docs/developer/bugs/bug-97-openrouter-registry-denies-vision.md`) documents the fix
+as a spec: flip the plugin's `attachmentSupport` to what `provider.ts` implements (comment-tied to
+`SUPPORTED_IMAGE_MIME_TYPES`, the NanoGPT 1.1.0 keep-in-step precedent), keep the model-dependent caveat in prose,
+and add a registry-initialised test so jest finally reads the production branch. Also corrected in passing: the
+`lib/llm/moderation-finish-reason.ts` docblock mis-numbered itself "(bug 94)" — it is bug 93.
+
+#### Chat titles and story backgrounds stopped working when the cheap model misspelled one key (bug 96)
+
+A group chat kept the title "Group Chat (6 characters)" for seven interchanges and never produced a story background.
+The cause was one JSON key. The title-consideration prompt asks for `suggestedTitle`; `deepseek-v4-flash` answered
+`needsNewTitle: true` and put a perfectly good title under `suggestTitle`. Reading the canonical key returned
+`undefined`, which was coerced to `null`, which the handler read as "no rename needed" — the same branch as a genuine
+decline. That branch advances the checkpoint cursor, so the retry moved from interchange 7 to 10, where an identical
+stumble would have burned that checkpoint too.
+
+The story backgrounds were the same bug. Background generation is queued only after a successful rename, using the new
+title as its scene context, so a rename that never lands takes the background with it. No
+`STORY_BACKGROUND_GENERATION` job was ever enqueued for the chat.
+
+Nothing about this was visible: the job reported COMPLETED, the LLM log held a well-formed response, the token spend
+appeared in the system events, and the cursor advanced exactly as a real decline would. It was also intermittent — the
+same model titled three other chats correctly the same afternoon.
+
+Both title parsers (regular and help-chat) carried the same 25 duplicated lines and now share one
+(`lib/memory/cheap-llm-tasks/title-verdict.ts`). It reads the canonical key first, then a short list of near-misses
+(`suggestTitle`, `newTitle`, `proposedTitle`, `title`) with a case- and separator-insensitive second pass, and the
+canonical key always wins when a model emits more than one. It logs a warning when it recovers a title from a
+non-canonical key, and both the parser and the job handler warn when a rename is requested with no readable title
+rather than burning the checkpoint silently. Unparseable output still resolves to "keep the current title".
+
+Known and unchanged: a chat whose title is already good still gets no story background, because generation hangs off a
+successful rename. That coupling is documented in the bug entry.
+
+#### Characters can now look at images, and images actually reach vision models (bugs 91-95)
+
+Five defects from one session, all downstream of an image a user shared that no character could see.
+
+**Images were silently dropped for four providers (bug 91).** A profile's "Supports image attachments" checkbox says the
+*model* can read pictures. It says nothing about whether the *plugin* can send them, and the NanoGPT, DeepSeek,
+OpenAI-Compatible and Ollama plugins all stripped every attachment before the wire. Only the first question was being
+asked, so ticking the box on a real vision model (`deepseek-v4-flash-vision-exp`, `zai-org/glm-4.6v`) turned off the
+description fallback *and* handed the bytes to a plugin that discarded them. The model got nothing and wrote a
+confident paragraph about the image anyway. Both questions are now asked, via a single predicate
+(`lib/llm/image-transport.ts`) reading the plugin registry: when the model sees but the plugin cannot send, the request
+routes to the description fallback instead of losing the image. The same check now guards describer selection — an
+Ollama describer would have described a picture it never received. NanoGPT plugin 1.1.0 learned to serialize
+`image_url`, so those profiles send images for real; DeepSeek, OpenAI-Compatible and Ollama route to the describer.
+
+**New `describe_image` tool (bug 92).** Characters had three image tools and all three were custodial: `keep_image`
+files a picture, `attach_image` shows it to the room, `list_images` reads the catalogue. None answers "what is in this
+picture?", so models reached for `attach_image` and got told to file the image first. `describe_image(uuid)` serves the
+description auto-describe already wrote at upload, or the generation prompt for a Quilltap-made image, or a fresh
+vision call — and does not require the image to be in the caller's album. `attach_image` is unchanged in function; its
+description and its not-found error now say plainly that it does not show the caller anything, and name
+`describe_image`. The Librarian's upload announcement was rewritten to say the same.
+
+**Provider refusals are reported as refusals (bug 93).** Z.AI returned `finish_reason: sensitive` with empty content —
+a moderation refusal — and the Salon said "this is a known issue with some providers, please try resending", which
+cannot work. Moderation finish reasons across Z.AI, OpenAI, Azure and Google are now recognized
+(`lib/llm/moderation-finish-reason.ts`, literal matching, no substring guessing) and the message names the provider,
+the model and the reason, and says resending will fail again.
+
+**Dropped attachments are visible (bug 94).** Plugins reported failed attachments in `attachmentResults`, which rode
+the SSE done event to a client that never read it. The Salon now raises a warning toast naming the plugin's own error.
+This is why bug 91 lasted as long as it did.
+
+**Attachments anchor to the user's message (bug 95).** Images were attached to the last `role: user` message, but staff
+whispers format as `role: user`, so on a regenerate the image landed on a "your response model is now X" bubble or a
+Prospero context memorandum — while the Librarian's announcement said the bytes rode with the user's message. After a
+tool call nothing matched and the attachments were dropped entirely, without a log line. A new
+`selectAttachmentAnchorIndex` prefers this turn's user input, then the last message whose source row was a genuine
+human turn, then the old rule as a floor.
+
+#### Standalone tarball is webpack-built again (bug 90)
+
+**Critical, and self-inflicted by the previous commit.** 4.9.0-dev.52 could not start **anywhere** — the tarball, the
+Electron shell, `npx quilltap`, and both Docker images. On macOS every SQLite connection failed with `slice is not valid
+mach-o file`; in the arm64 Docker image the same file produced dlopen's misleading `cannot open shared object file: No
+such file or directory` (the binary was present, but x86-64 on an aarch64 host). Both ended at "Migrations failed -
+cannot start server."
+
+The previous commit switched `release.yml` from `--webpack` to Turbopack to converge it with the other two `next build`
+call sites. The two bundlers do not produce interchangeable standalone trees. Turbopack copies externalized packages
+into `.next/node_modules/<pkg>-<contenthash>/` and rewrites requires to point at those copies; webpack's NFT output
+uses `node_modules/<pkg>`. `build-standalone-tarball.mjs` strips platform binaries by name against
+`<staging>/node_modules/<pkg>`, so it never saw the hashed copies — and the tarball stopped being platform-agnostic,
+carrying whatever the build host compiled. `build-app` runs once on x86-64 ubuntu, so the published artifact carried a Linux x86-64
+`better_sqlite3.node` and `pty.node` that won resolution over the correct binaries. Docker is hit for its own reason
+worth stating: `Dockerfile.ci` copies that single artifact into **both** the amd64 and arm64 images, on the sound
+premise that it is pure JS and each image rebuilds its own natives in `deps-prod`. Turbopack broke the premise, so the
+arm64 image shipped an x86-64 binary shadowing the aarch64 one it had correctly built.
+
+`--webpack` is now pinned at all three call sites (`release.yml`, `ci.yml`, `scripts/build-standalone-tarball.mjs`),
+each with a comment saying it is load-bearing and pointing at bug 90 — "this flag looks stale" is the exact observation
+that caused the regression. The `loadWebpackHook` failure that originally motivated Turbopack in `7cba1eb4` is handled
+by `scripts/standalone-server-bootstrap.js` (added four days later), which is why every webpack-built release from 4.5
+through 4.9.0-dev.51 ran correctly.
+
+New guard: `scripts/assert-standalone-portable.mjs` enforces the actual invariant rather than trusting a flag — **no
+native binary anywhere under `<standalone>/.next/`**, a bundler-internal subtree no consumer strips or replaces.
+(`<standalone>/node_modules/` stays exempt; Docker replaces it wholesale and the tarball strips it by name.) It runs in
+`build-app` before the artifact is uploaded, so it protects Docker and the tarball equally, and again before the tarball
+is written. Verified against the real broken dev.52 artifact extracted from `foundry9/quilltap:dev`, which it rejects.
+
+The strip has never covered the Turbopack layout, going back to `7cba1eb4` — local macOS builds hid it by compiling for
+the platform they ran on. Using Turbopack here in future needs the strip extended to walk `.next/node_modules/` plus a
+real build-on-Linux/run-on-macOS test, which nothing automated does today. Note that CI cannot catch this class of
+failure at all: run 32614939380 went green in 11m45s and produced a tarball that could not start on any Mac.
+
+#### CI/release pipeline cleanup, and the PDF rasteriser's missing native (bug 89)
+
+**Bug 89 — PDF rendering was broken on the `npx quilltap` path.** `build-standalone-tarball.mjs` strips every
+`@napi-rs/canvas-*` platform binary from the tarball, and `packages/quilltap` declares `@napi-rs/canvas` as a runtime
+dependency so npm installs a correct one — but `linkNativeModules` never linked it into the standalone tree. That tree
+lives in the download cache, far outside the npm package's `node_modules`, so Node's upward walk never reached the
+installed copy. `linkNativeModules` now has one shared `linkScopedPlatformSiblings` helper serving both
+`sharp`→`@img/sharp-*` and `@napi-rs/canvas`→`@napi-rs/canvas-*`; it walks back as many path segments as the wrapper's
+own name has, so scoped and unscoped wrappers both resolve. Docker was never affected — it ships the full production
+`node_modules`.
+
+**Releases were built with the wrong bundler.** `7cba1eb4` moved the standalone build off `--webpack` because its
+tracer misses `next/dist/compiled/webpack-lib`, which broke the Electron shell's embedded server. That fix lived only
+in the tarball script, which CI invokes with `--skip-build` — so every release since still shipped a webpack-traced
+tree while local builds and CI validated a Turbopack-traced one. `release.yml` now builds with Turbopack, matching
+`ci.yml` and the script.
+
+**A tag that disagrees with `package.json` is now a build failure.** The standalone tarball is named from
+`package.json`'s version, but the published CLI builds its download URL from the git tag. Diverge them and the release
+still goes green (the asset upload uses a glob) while every `npx quilltap` first run 404s. `build-app` now checks both,
+having absorbed the old `validate-tag` job — which was a whole runner spin-up for one regex.
+
+**Other pipeline changes:**
+
+- `lint`, `build`, and `test` no longer chain. Gating build and test behind lint bought nothing but latency; they now
+  run in parallel and return the complete picture in one round trip.
+- Both workflows get a `concurrency` group. Superseded PR runs cancel; branch pushes and releases never do.
+- `create-release` downloaded *every* artifact — including `app-build`, the whole traced standalone tree — to use four
+  files. It now pulls only the release assets.
+- `build-standalone-tarball.ts` and `build-rootfs.ts` are now plain `.mjs`. The release jobs that run them never
+  `npm ci`, so they were fetching an unpinned `tsx` from the registry mid-release.
+- The platform→Dockerfile-target mapping was stated in both `build-rootfs.ts` and the release matrix, with nothing
+  keeping them honest. It now lives only in `build-rootfs.mjs`, which the workflow queries with `--print-target`.
+- New composite actions `.github/actions/setup` (Node + `npm ci`, the one place the CI Node version is pinned) and
+  `.github/actions/discord-notify` (the ~45-line curl/jq block that was duplicated across both workflows).
+- Docker builds now use the GitHub Actions layer cache, scoped per arch, so `npm ci --omit=dev && npm rebuild` — which
+  compiles every native module from source — is not repeated from scratch each release.
+- Both workflows declare `permissions: contents: read`, with `create-release` escalating for itself. `release.yml`
+  previously granted `contents: write` workflow-wide.
+- Removed the dead "check if tests exist" guard and its four dependent conditional steps (the repo has 613 unit test
+  files). A green suite that produces no coverage summary is now a failure rather than a warning, since it means the
+  jest config is broken.
+
 #### NanoGPT prompt caching (plugin 1.0.3)
 
 The NanoGPT plugin now supports NanoGPT's prompt caching (https://docs.nano-gpt.com/api-reference/miscellaneous/prompt-caching).
